@@ -18,9 +18,10 @@ impl Engine {
         &self,
         id: &ResolvedIdentity,
         signals: &SignalSet,
-        _gates: &PolicyGates,
+        gates: &PolicyGates,
     ) -> EvalOutput {
-        let recs = eval_alerts(id, signals);
+        let mut recs = eval_alerts(id, signals);
+        recs.extend(crate::policy::rules::advisories::eval_advisories(id, signals, gates));
         let mut effects = Vec::new();
         // Notify fires only when at least one rec is urgent (Warning or Risk).
         // Concern-severity passive advisories stay in-UI (Codex #3 fix; r1
