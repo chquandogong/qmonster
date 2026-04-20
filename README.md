@@ -147,6 +147,7 @@ real tmux session.
 - `docs/ai/VALIDATION.md` — phase-by-phase acceptance checks
 - `docs/ai/WORKFLOWS.md` — planning loop, day-end routine, gitignore flip
 - `docs/ai/REVIEW_GUIDE.md` — reviewer contract (Codex / Gemini / human)
+- `docs/ai/UI_MANUAL.md` — user manual for TUI badges, severity letters, and metrics
 
 ## Status & scope
 
