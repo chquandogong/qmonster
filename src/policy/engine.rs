@@ -2,6 +2,7 @@ use crate::domain::identity::ResolvedIdentity;
 use crate::domain::recommendation::{Recommendation, RequestedEffect};
 use crate::domain::signal::SignalSet;
 use crate::policy::rules::eval_alerts;
+use crate::policy::gates::PolicyGates;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Engine;
@@ -13,7 +14,12 @@ pub struct EvalOutput {
 }
 
 impl Engine {
-    pub fn evaluate(&self, id: &ResolvedIdentity, signals: &SignalSet) -> EvalOutput {
+    pub fn evaluate(
+        &self,
+        id: &ResolvedIdentity,
+        signals: &SignalSet,
+        _gates: &PolicyGates,
+    ) -> EvalOutput {
         let recs = eval_alerts(id, signals);
         let mut effects = Vec::new();
         if !recs.is_empty() {
@@ -51,6 +57,13 @@ mod tests {
         }
     }
 
+    fn gates() -> PolicyGates {
+        PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::High,
+        }
+    }
+
     #[test]
     fn engine_runs_alert_rules() {
         let s = SignalSet {
@@ -58,7 +71,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
         assert!(!out.recommendations.is_empty());
     }
 
@@ -69,7 +82,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
         assert!(out.effects.contains(&crate::domain::recommendation::RequestedEffect::Notify));
     }
 
@@ -80,7 +93,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
         assert!(
             out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::ArchiveLocal)
@@ -94,7 +107,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
         assert!(
             !out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::ArchiveLocal)
@@ -110,7 +123,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
         assert!(
             !out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::SensitiveNotImplemented)

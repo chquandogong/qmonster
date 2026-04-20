@@ -76,7 +76,11 @@ where
         }
 
         let signals = crate::adapters::parse_for(&resolved, &pane.tail);
-        let out: EvalOutput = ctx.policy.evaluate(&resolved, &signals);
+        let gates = crate::policy::gates::PolicyGates::from_config_and_identity(
+            &ctx.config.token,
+            resolved.confidence,
+        );
+        let out: EvalOutput = ctx.policy.evaluate(&resolved, &signals, &gates);
 
         deliver_effects(permits, &out, &pane.pane_id, &pane.tail, now, ctx);
 
