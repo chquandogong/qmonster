@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 13
-  latest_version: "1.7.4"
+  total_revisions: 14
+  latest_version: "1.7.5"
 
 timeline:
   - change_id: "initial"
@@ -1378,8 +1378,133 @@ timeline:
       - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
       - "Request a short Codex v1.7.4 confirmation re-check that ledger cleanup closes finding #1"
 
+  - change_id: "phase-3b-gemini-review-artifact-backfill"
+    semantic_version: "1.7.5"
+    change_sequence: 14
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.7.4 review — flagged the missing Gemini review artifacts that this round backfills)"
+      - "Gemini (gemini:1:research, v1.7.3 review source — pass / 적극 승인 verdict now archived in both .docs/gemini and .mission/evals)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close the single Codex v1.7.4 review finding: the live
+      CURRENT_STATE.md gate-status table claimed a Gemini v1.7.3
+      `pass` verdict but the workflow-mandated artifact pair
+      (.docs/<model>/ narrative + .mission/evals/ structured mirror,
+      per WORKFLOWS.md:56-58) was missing. Operator-relayed approval
+      stored only as conversation-transcript prose does not satisfy
+      the ledger record rule. Backfill both artifacts so the Gemini
+      v1.7.3 sign-off is a fully recorded gate input.
+    intent_ko: >
+      Codex v1.7.4 리뷰가 지적한 유일한 finding을 닫는다. 현재
+      CURRENT_STATE.md의 gate-status 표는 Gemini v1.7.3 `pass`를
+      확정된 것처럼 기재하지만, WORKFLOWS.md:56-58이 요구하는 두 개의
+      artifact(`.docs/<model>/` narrative review + `.mission/evals/`
+      structured mirror)가 존재하지 않았다. 대화 transcript에만 남긴
+      operator-relayed 승인은 ledger 기록 규칙을 충족하지 못한다.
+      두 artifact를 backfill하여 Gemini v1.7.3 사인오프를 정상적인
+      gate input으로 기록한다.
+    decision: >
+      Create two new ledger artifacts capturing the already-received
+      Gemini v1.7.3 verdict: (1) narrative review at
+      .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-
+      cleanup-review.md — full-format markdown review mirroring the
+      structure of the Codex review docs (executive summary, what
+      the plan got right, must-fix before next phase, architecture /
+      docs / provider / safety reviews, verdict). Source
+      provenance (operator-relayed from chat transcript) is stated
+      explicitly in the header. (2) Structured mirror at
+      .mission/evals/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-
+      cleanup-gemini-review.result.yaml. The `-gemini-` suffix
+      disambiguates from the already-present Codex mirror at the
+      non-suffixed filename (that file was intentionally overwritten
+      with Codex v1.7.3 content earlier in the session). Both files
+      use the same `evaluated_by: "llm-gemini"` attribution and cite
+      each other's path. Bump mission.yaml version 1.7.4 → 1.7.5,
+      title gains "+ Gemini v1.7.3 review artifacts backfilled"; new
+      v1.7.5 goal paragraph + one new done_when entry that records
+      the WORKFLOWS.md:56-58 compliance invariant;
+      execution_hints.suggested_approach rewritten to reflect the
+      complete gate bookkeeping state. CURRENT_STATE.md gate-status
+      table now cites the new file paths instead of the conversation
+      transcript. No code, test, or runtime change; ledger + docs
+      round only.
+    decision_ko: >
+      이미 수신된 Gemini v1.7.3 verdict을 포착하는 두 ledger artifact
+      신규 작성: (1) narrative review를 .docs/gemini/Qmonster-v0.4.0-
+      2026-04-21-phase3b-strong-rec-cleanup-review.md에 기록 — Codex
+      리뷰 문서 구조(executive summary, what the plan got right,
+      must-fix before next phase, architecture/docs/provider/safety
+      review, verdict)를 따르는 정식 markdown 리뷰. 출처
+      (operator-relayed from chat transcript)를 문서 헤더에서 명시.
+      (2) 구조화 mirror를 .mission/evals/Qmonster-v0.4.0-2026-04-21-
+      phase3b-strong-rec-cleanup-gemini-review.result.yaml에 기록.
+      `-gemini-` suffix는 동일 target의 Codex mirror(non-suffixed
+      이름, 세션 앞부분에서 Codex 내용으로 의도적으로 덮어쓰여진
+      상태)와 구분하기 위함. 두 파일 모두 `evaluated_by: "llm-gemini"`
+      으로 귀속 명시하고 서로를 상호 참조. mission.yaml 버전
+      1.7.4 → 1.7.5, title에 "Gemini v1.7.3 review artifacts
+      backfilled" 추가; v1.7.5 goal paragraph + WORKFLOWS.md:56-58
+      준수 불변식 한 건의 신규 done_when 추가;
+      execution_hints.suggested_approach를 게이트 bookkeeping 완결
+      상태를 반영하도록 재작성. CURRENT_STATE.md gate-status 표는
+      대화 transcript 대신 신규 파일 경로를 인용. 코드/테스트/런타임
+      변경 없음; ledger + docs 라운드.
+    triggered_by: "Codex v1.7.4 review (.docs/codex/Qmonster-v0.4.0-2026-04-21-phase3b-ledger-normalization-review.md + .mission/evals/Qmonster-v0.4.0-2026-04-21-phase3b-ledger-normalization-review.result.yaml) — one warning on missing Gemini v1.7.3 review artifacts"
+    issue_or_context: >
+      After v1.7.4 successfully closed Codex v1.7.3 finding #1 (live
+      ledger self-contradiction), the gate-status table in
+      CURRENT_STATE.md promoted Gemini's v1.7.3 verdict to `pass`
+      while storing the evidence only as "conversation transcript +
+      this CURRENT_STATE summary below". Codex v1.7.4 review flagged
+      this as a violation of WORKFLOWS.md:56-58 ("If a human or LLM
+      signed off on a verdict, record it under `.mission/evals/` as a
+      structured mirror; the narrative review doc stays under
+      `.docs/<model>/`"). The Gemini approval message itself had
+      been received in chat (2026-04-21 JST) and was substantive
+      enough to reconstruct a full narrative review, but had not
+      been promoted into the WORKFLOWS.md-compliant artifact pair.
+      This round performs that backfill.
+    changes:
+      added:
+        - ".docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md — full Gemini v1.7.3 narrative review (operator-relayed from chat transcript)"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-gemini-review.result.yaml — structured mirror of the Gemini v1.7.3 verdict (the `-gemini-` suffix disambiguates from the Codex mirror already occupying the non-suffixed filename)"
+      modified:
+        - "mission.yaml — version 1.7.4 → 1.7.5; title + goal paragraph + one new done_when entry + execution_hints.topology + suggested_approach updated; lineage total_revisions 13 → 14"
+        - "mission-history.yaml — meta.total_revisions 13 → 14; meta.latest_version → 1.7.5; new entry (this one, change_sequence 14); evolution_summary.current_phase updated"
+        - ".mission/CURRENT_STATE.md — version → 1.7.5; gate-status table now cites .docs/gemini/*.md + .mission/evals/*-gemini-review.result.yaml for the Gemini row; Phase 3 summary appended with v1.7.5 backfill"
+    changed_sections:
+      - "Gemini v1.7.3 review artifact pair (newly created)"
+      - "mission.yaml done_when (v1.7.5 WORKFLOWS-compliance invariant added)"
+      - ".mission/CURRENT_STATE.md gate-status table"
+    done_when_delta:
+      added:
+        - "Phase 3B Gemini review artifact backfill v1.7.5: Gemini v1.7.3 `pass` verdict is recorded per WORKFLOWS.md:56-58 — narrative at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md` + structured mirror at `.mission/evals/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-gemini-review.result.yaml`. CURRENT_STATE.md gate-status table cites the files. Codex v1.7.4 review finding #1 closed."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "0 LOC — ledger + docs round only"
+      tests: "159 lib + 16 integration (unchanged from v1.7.3)"
+      clippy: "--all-targets -D warnings clean (unchanged)"
+      runtime: "no behavior change"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md + 2 new review artifacts (.docs/gemini/ + .mission/evals/) updated / created"
+    breaking: false
+    risk: "very low — ledger + docs round; no source/test changes; validator must stay VALID"
+    related_commits: []
+    related_decisions:
+      - "KD-002"
+      - "KD-006"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
+      - "Request a short Codex v1.7.5 confirmation re-check that the Gemini artifacts satisfy WORKFLOWS.md:56-58"
+
 evolution_summary:
-  current_phase: "Phase 3 complete + gate-remediated + strong-rec contract cleaned + ledger normalized (v1.7.4); Phase 4 gate open to request after short Codex v1.7.4 confirmation"
+  current_phase: "Phase 3 complete + all gates remediated + Gemini v1.7.3 artifacts backfilled (v1.7.5); Phase 4 gate open to request after short Codex v1.7.5 confirmation"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
