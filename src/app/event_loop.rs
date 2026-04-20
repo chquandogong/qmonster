@@ -103,6 +103,28 @@ where
         });
     }
 
+    // Cross-pane pass (Phase 3A). Pure policy call; side-effects below.
+    let views: Vec<crate::policy::PaneView<'_>> = reports
+        .iter()
+        .filter(|r| !r.dead)
+        .map(|r| crate::policy::PaneView {
+            identity: &r.identity,
+            signals: &r.signals,
+            current_path: &r.current_path,
+        })
+        .collect();
+
+    let findings = ctx.policy.evaluate_cross_pane(&views);
+
+    for f in findings {
+        if let Some(r) = reports
+            .iter_mut()
+            .find(|r| r.pane_id == f.anchor_pane_id)
+        {
+            r.cross_pane_findings.push(f);
+        }
+    }
+
     Ok(reports)
 }
 
