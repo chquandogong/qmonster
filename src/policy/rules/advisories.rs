@@ -76,7 +76,7 @@ fn log_storm_advisory(
         reason: "heavy ingress — use RTK-style ingress filter and produce a context-mode summary after archive".into(),
         severity: Severity::Concern,
         source_kind: SourceKind::Heuristic,
-        suggested_command: None,
+        suggested_command: Some("tmux capture-pane -pS -2000 > ~/.qmonster/archive/$(date +%F)-<pane_id>.log".into()),
         side_effects: vec![],
     })
 }
@@ -136,7 +136,7 @@ fn context_pressure_warning(
         reason: "context warming — checkpoint first, archive large results, only then consider /compact".into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Estimated,
-        suggested_command: None,
+        suggested_command: Some("/compact".into()),
         side_effects: vec![],
     })
 }
@@ -169,7 +169,7 @@ fn context_pressure_critical(
         reason: "context near critical — checkpoint + archive now; /compact after".into(),
         severity: Severity::Risk,
         source_kind: SourceKind::Estimated,
-        suggested_command: None,
+        suggested_command: Some("/compact".into()),
         side_effects: vec![],
     })
 }
@@ -238,7 +238,7 @@ fn quota_tight_nudge(
         reason: "sustained context pressure — consider enabling `quota_tight` in config to unlock aggressive token-saver recommendations".into(),
         severity: Severity::Concern,
         source_kind: SourceKind::Heuristic,
-        suggested_command: None,
+        suggested_command: Some("# set quota_tight = true under [token] in config/qmonster.toml".into()),
         side_effects: vec![],
     })
 }
@@ -464,6 +464,32 @@ mod tests {
         let recs = eval_advisories(&id, &s, &gates);
         let any_aggressive = recs.iter().any(|r| r.action.starts_with("aggressive:"));
         assert!(!any_aggressive, "S3: aggressive variants never fire when gate is off");
+    }
+
+    #[test]
+    fn log_storm_advisory_carries_tmux_capture_suggested_command() {
+        let id = id_high(Role::Main);
+        let s = SignalSet { log_storm: true, ..SignalSet::default() };
+        let recs = eval_advisories(&id, &s, &gates_default());
+        let adv = recs
+            .iter()
+            .find(|r| r.action == "log-storm: ingress filter + summary")
+            .expect("log_storm_advisory fires");
+        let cmd = adv.suggested_command.as_deref().expect("suggested_command present");
+        assert!(cmd.contains("tmux capture-pane"), "got: {cmd}");
+        assert!(cmd.contains("~/.qmonster/archive/"), "got: {cmd}");
+    }
+
+    #[test]
+    fn context_pressure_warning_suggests_compact() {
+        let id = id_high(Role::Main);
+        let s = pressure(0.80);
+        let recs = eval_advisories(&id, &s, &gates_default());
+        let adv = recs
+            .iter()
+            .find(|r| r.action == "context-pressure: checkpoint")
+            .expect("C-warning fires");
+        assert_eq!(adv.suggested_command.as_deref(), Some("/compact"));
     }
 
     #[test]
