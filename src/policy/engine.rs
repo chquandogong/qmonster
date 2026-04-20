@@ -42,6 +42,23 @@ impl Engine {
             effects,
         }
     }
+
+    pub fn evaluate_cross_pane(
+        &self,
+        _panes: &[PaneView<'_>],
+    ) -> Vec<crate::domain::recommendation::CrossPaneFinding> {
+        Vec::new()
+    }
+}
+
+/// Read-only view over one pane's current state, used by cross-pane
+/// rules. Built upstream by `app::event_loop` from the per-pane
+/// report; never constructed inside `policy/`.
+#[derive(Debug, Clone, Copy)]
+pub struct PaneView<'a> {
+    pub identity: &'a ResolvedIdentity,
+    pub signals: &'a SignalSet,
+    pub current_path: &'a str,
 }
 
 #[cfg(test)]
@@ -166,5 +183,25 @@ mod tests {
             !out.recommendations.is_empty(),
             "sanity: repeated_output rec still exists in the list"
         );
+    }
+
+    #[test]
+    fn evaluate_cross_pane_returns_empty_for_zero_panes() {
+        let eng = Engine;
+        let views: Vec<PaneView<'_>> = vec![];
+        assert!(eng.evaluate_cross_pane(&views).is_empty());
+    }
+
+    #[test]
+    fn evaluate_cross_pane_returns_empty_for_one_pane() {
+        let identity = id(IdentityConfidence::High);
+        let signals = SignalSet::default();
+        let eng = Engine;
+        let views = vec![PaneView {
+            identity: &identity,
+            signals: &signals,
+            current_path: "/repo",
+        }];
+        assert!(eng.evaluate_cross_pane(&views).is_empty());
     }
 }
