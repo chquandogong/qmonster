@@ -45,9 +45,9 @@ impl Engine {
 
     pub fn evaluate_cross_pane(
         &self,
-        _panes: &[PaneView<'_>],
+        panes: &[PaneView<'_>],
     ) -> Vec<crate::domain::recommendation::CrossPaneFinding> {
-        Vec::new()
+        crate::policy::rules::concurrent::eval_concurrent(panes)
     }
 }
 
@@ -203,5 +203,25 @@ mod tests {
             current_path: "/repo",
         }];
         assert!(eng.evaluate_cross_pane(&views).is_empty());
+    }
+
+    #[test]
+    fn evaluate_cross_pane_uses_concurrent_rule() {
+        use crate::domain::identity::{PaneIdentity, Provider, Role};
+        let id_a = ResolvedIdentity {
+            identity: PaneIdentity { provider: Provider::Claude, instance: 1, role: Role::Main, pane_id: "%1".into() },
+            confidence: IdentityConfidence::High,
+        };
+        let id_b = ResolvedIdentity {
+            identity: PaneIdentity { provider: Provider::Claude, instance: 2, role: Role::Main, pane_id: "%2".into() },
+            confidence: IdentityConfidence::High,
+        };
+        let s = SignalSet { output_chars: 800, ..SignalSet::default() };
+        let views = vec![
+            PaneView { identity: &id_a, signals: &s, current_path: "/repo" },
+            PaneView { identity: &id_b, signals: &s, current_path: "/repo" },
+        ];
+        let findings = Engine.evaluate_cross_pane(&views);
+        assert_eq!(findings.len(), 1);
     }
 }
