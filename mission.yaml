@@ -1,6 +1,6 @@
 mission:
-  version: "1.7.0"
-  title: "Qmonster v0.4.0 — Phase 3 complete (3A + 3B: policy engine, suggested_command, strong-rec UX)"
+  version: "1.7.1"
+  title: "Qmonster v0.4.0 — Phase 3 complete + gate-remediated (3A + 3B: policy engine, suggested_command, strong-rec UX)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -73,6 +73,19 @@ mission:
     prefix ">> CHECKPOINT:"; --once prints the same slot. Phase 3 is
     now complete.
 
+    Phase 3B retry-remediation (v1.7.1) closes Gemini G-2 retry finding.
+    Six additional suggested_command entries populated across alerts.rs
+    (log_storm/archive-preview-suggested with tmux capture-pane command
+    mirroring log_storm_advisory), advisories.rs (aggressive_log_storm,
+    aggressive_context_pressure_warning, aggressive_context_pressure_critical,
+    verbose_review, aggressive_verbose_review each get comment-form
+    config-edit pointers to config/qmonster.toml or ~/.claude/settings.json),
+    and concurrent.rs (CrossPaneFinding gets tmux select-pane hint).
+    All remaining suggested_command: None sites in these three files now
+    carry inline justification comments explaining why no runnable CLI
+    command exists. Total suggested_command population: 10 rules (4 from
+    v1.7.0 + 6 new in v1.7.1). Gemini G-2 retry finding closed.
+
   done_when:
     # Phase-0 artefacts (kept as historical gating criteria — already met).
     - "Phase 0: mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate against the mission-spec schema."
@@ -131,6 +144,10 @@ mission:
     - "Phase 3B: advisory rules carry suggested_command where an actionable CLI snippet exists (tmux capture-pane, /compact, config-edit comments); rules without a clean equivalent stay None (Gemini G-2 closed)."
     - "Phase 3B: Recommendation.is_strong flag set on context_pressure_warning + context_pressure_critical; UI renders strong recs in dedicated slot above per-pane alerts with `>> CHECKPOINT:` prefix (Gemini G-7 closed)."
     - "Phase 3B: cargo build + cargo test (~155 lib + ~16 integration) + cargo clippy --all-targets -- -D warnings all clean."
+
+    # Phase-3B retry-remediation (v1.7.1).
+    - "Phase 3B retry-remediation v1.7.1: suggested_command populated on 10 total rules (4 from v1.7.0 + 6 new in alerts/advisories/concurrent) — config-edit pointers where no runnable CLI exists."
+    - "Phase 3B retry-remediation v1.7.1: remaining None suggested_command sites carry inline justification comments; Gemini G-2 retry finding closed."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -221,12 +238,13 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1)."
     suggested_approach: >
-      Phase 3B shipped (v1.7.0); Phase 3 is COMPLETE. Request Codex +
-      Gemini gate review for Phase 3B / v1.7.0. On clean pass, proceed
-      to Phase 4 — provider profile recommender + side_effects
-      populating (Gemini G-6) + auto-memory profile guide (Gemini G-5).
+      Phase 3B retry-remediation shipped (v1.7.1); Phase 3 is COMPLETE
+      and gate-remediated. Request final Codex + Gemini gate sign-off
+      on v1.7.1. On clean pass, proceed to Phase 4 — provider profile
+      recommender + side_effects populating (Gemini G-6) + auto-memory
+      profile guide (Gemini G-5).
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -277,5 +295,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 9
+    total_revisions: 10
     history: "mission-history.yaml"

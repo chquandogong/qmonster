@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 9
-  latest_version: "1.7.0"
+  total_revisions: 10
+  latest_version: "1.7.1"
 
 timeline:
   - change_id: "initial"
@@ -951,8 +951,97 @@ timeline:
       - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
       - "Request Codex + Gemini gate review for Phase 3B / v1.7.0"
 
+  - change_id: "phase-3b-gemini-retry-remediation"
+    semantic_version: "1.7.1"
+    change_sequence: 10
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Gemini (gemini:1:research, Phase-3B retry review — flagged G-2 incomplete)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close Gemini G-2 retry finding by expanding suggested_command
+      coverage to 6 additional sites across alerts.rs, advisories.rs,
+      and concurrent.rs, and adding inline justification comments on
+      every remaining deliberate None site. Phase 3 is now fully
+      gate-remediated.
+    intent_ko: >
+      Gemini G-2 재검토 지적을 닫기 위해 alerts.rs, advisories.rs,
+      concurrent.rs의 6개 추가 사이트에 suggested_command를 채우고,
+      남은 의도적 None 사이트 전체에 인라인 정당성 주석을 추가한다.
+      Phase 3이 이제 완전히 게이트 개선되었다.
+    decision: >
+      Lane A (6 new populations): alerts.rs log_storm rule gets the
+      tmux capture-pane archiving command (mirrors log_storm_advisory);
+      advisories.rs aggressive_log_storm, aggressive_context_pressure_warning,
+      aggressive_context_pressure_critical, verbose_review,
+      aggressive_verbose_review each get a comment-form config-edit
+      pointer to config/qmonster.toml or ~/.claude/settings.json;
+      concurrent.rs CrossPaneFinding in the eval_concurrent loop gets
+      a tmux select-pane coordination hint.
+      Lane B (inline justification comments): all remaining None sites
+      in alerts.rs (6), advisories.rs (3) annotated with // <reason>.
+      One new positive test (aggressive_verbose_review_suggests_attribution_edit)
+      locks in the attribution pointer. Total suggested_command
+      population: 10 rules (4 from v1.7.0 + 6 new). UI-layer strings
+      only; no behavior change.
+    decision_ko: >
+      Lane A (6개 신규 채움): alerts.rs log_storm 규칙에 tmux
+      capture-pane 아카이빙 명령어(log_storm_advisory와 동일); advisories.rs의
+      aggressive_log_storm, aggressive_context_pressure_warning,
+      aggressive_context_pressure_critical, verbose_review,
+      aggressive_verbose_review에 config/qmonster.toml 또는
+      ~/.claude/settings.json 편집 comment-form 포인터; concurrent.rs의
+      eval_concurrent 루프 내 CrossPaneFinding에 tmux select-pane
+      조정 힌트.
+      Lane B (인라인 정당성 주석): alerts.rs(6개), advisories.rs(3개)의
+      남은 None 사이트 전체에 // <이유> 주석 추가.
+      신규 양성 테스트(aggressive_verbose_review_suggests_attribution_edit)
+      한 건이 attribution 포인터를 고정. 총 suggested_command 채움: 10개
+      규칙(v1.7.0 4개 + 신규 6개). UI 레이어 문자열만 변경; 동작 변화 없음.
+    triggered_by: "Gemini Phase-3B retry review flagged G-2 incomplete"
+    issue_or_context: >
+      Phase 3B (v1.7.0) shipped suggested_command on 4 rules in
+      advisories.rs but left alerts.rs, the aggressive variants, and
+      concurrent.rs at None without justification comments. Gemini's
+      G-2 retry review flagged this as incomplete coverage — both the
+      missing populations and the unexplained None sites.
+    changes:
+      modified:
+        - "src/policy/rules/advisories.rs — 5 sites populated (aggressive_log_storm, aggressive_context_pressure_warning, aggressive_context_pressure_critical, verbose_review, aggressive_verbose_review) + 3 justification comments (code_exploration, repeated_cache_suggest, aggressive_repeated_cache_suggest)"
+        - "src/policy/rules/alerts.rs — 1 site populated (log_storm/archive-preview-suggested) + 6 justification comments (waiting_for_input, permission_prompt, repeated_output, verbose_answer, error_hint, subagent_hint)"
+        - "src/policy/rules/concurrent.rs — 1 site populated (CrossPaneFinding in eval_concurrent loop)"
+      added:
+        - "src/policy/rules/advisories.rs test: aggressive_verbose_review_suggests_attribution_edit"
+    changed_sections:
+      - "suggested_command population (alerts + advisories + concurrent)"
+      - "inline justification comments on remaining None sites"
+    done_when_delta:
+      added:
+        - "Phase 3B retry-remediation v1.7.1: suggested_command populated on 10 total rules (4 from v1.7.0 + 6 new in alerts/advisories/concurrent) — config-edit pointers where no runnable CLI exists."
+        - "Phase 3B retry-remediation v1.7.1: remaining None suggested_command sites carry inline justification comments; Gemini G-2 retry finding closed."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~28 LOC changed (6 None → Some + 9 justification comments + 1 new test)"
+      tests: "156 lib + 16 integration (up from 155 lib + 16 integration; +1 new positive test)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no behavior change; UI-layer strings only"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — additive string fields; no policy behavior changed; no test assertions flipped"
+    related_commits: []
+    related_decisions:
+      - "KD-006"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
+
 evolution_summary:
-  current_phase: "Phase 3 complete (3A + 3B shipped, gate-remediated at v1.6.1); Phase 4 gate open to request"
+  current_phase: "Phase 3 complete + gate-remediated (v1.7.1); Phase 4 gate open to request"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
