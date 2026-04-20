@@ -1518,7 +1518,7 @@ timeline:
       Close the single Codex v1.7.5 review finding: the newly
       backfilled Gemini v1.7.3 narrative review was missing the
       `## Scope-reduction suggestions` section required by
-      docs/ai/REVIEW_GUIDE.md:77-87. REVIEW_GUIDE lists nine required
+      docs/ai/REVIEW_GUIDE.md:77-95. REVIEW_GUIDE lists eleven required
       sections (Executive summary, What the plan got right, Must-fix
       before next phase, Scope-reduction suggestions,
       Token-optimization architecture review, Doc / mission / memory
@@ -1532,7 +1532,7 @@ timeline:
     intent_ko: >
       Codex v1.7.5 리뷰가 지적한 유일한 finding을 닫는다. v1.7.5에서
       backfill한 Gemini v1.7.3 narrative에 `## Scope-reduction
-      suggestions` 섹션이 빠져 있어 REVIEW_GUIDE.md:77-87이 요구하는
+      suggestions` 섹션이 빠져 있어 REVIEW_GUIDE.md:77-95이 요구하는
       9개 필수 섹션 중 하나가 누락된 상태였다. REVIEW_GUIDE는
       템플릿 준수를 불변식으로 두므로, 축소할 범위가 없는 리뷰라도
       "추가 축소 불필요"임을 명시한 bullet + (가능하면) 이후 phase로
@@ -1555,7 +1555,7 @@ timeline:
       premature generalization). Bump mission.yaml 1.7.5 → 1.7.6,
       title gains "Gemini review artifact template-compliant"; new
       v1.7.6 goal paragraph + one new done_when entry locking the
-      REVIEW_GUIDE:77-87 nine-section invariant;
+      REVIEW_GUIDE:77-95 eleven-section invariant;
       execution_hints.suggested_approach rewritten. CURRENT_STATE.md
       version + gate-status table + Phase 3 summary updated. No
       code, test, runtime, or ledger-structure change; docs round
@@ -1585,7 +1585,7 @@ timeline:
       v1.7.5 correctly added the Gemini v1.7.3 review artifact pair
       at the right locations per WORKFLOWS.md:56-58, closing the
       prior Codex v1.7.4 finding. However the newly created Gemini
-      narrative document was eight-for-nine on the REVIEW_GUIDE.md:
+      narrative document was ten-for-eleven on the REVIEW_GUIDE.md:
       77-87 section list — missing `Scope-reduction suggestions`.
       Codex v1.7.5 flagged this as a pure docs-format gap: "범위는
       좁은 docs-format 이슈" — the artifact pair and the ledger
@@ -1600,10 +1600,10 @@ timeline:
         - ".mission/CURRENT_STATE.md — version → 1.7.6; gate-status table row for Codex v1.7.5 now cites the review files + closure note; Phase 3 summary appended with v1.7.6"
     changed_sections:
       - "Gemini v1.7.3 narrative — Scope-reduction suggestions section added"
-      - "mission.yaml done_when (v1.7.6 REVIEW_GUIDE.md:77-87 nine-section compliance invariant)"
+      - "mission.yaml done_when (v1.7.6 REVIEW_GUIDE.md:77-95 eleven-section compliance invariant)"
     done_when_delta:
       added:
-        - "Phase 3B Gemini review artifact template compliance v1.7.6: the Gemini v1.7.3 narrative review at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md` carries all nine required sections from `docs/ai/REVIEW_GUIDE.md:77-87` in order (Executive summary, What the plan got right, Must-fix, Scope-reduction suggestions, Token-optimization architecture, Doc/mission/memory separation, Provider abstraction + tmux, Safety/audit/approval, Official-vs-heuristic, Concrete TODOs, Final verdict). Codex v1.7.5 review finding #1 closed."
+        - "Phase 3B Gemini review artifact template compliance v1.7.6: the Gemini v1.7.3 narrative review at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md` carries all eleven required sections from `docs/ai/REVIEW_GUIDE.md:77-95` in order (Executive summary, What the plan got right, Must-fix, Scope-reduction suggestions, Token-optimization architecture, Doc/mission/memory separation, Provider abstraction + tmux, Safety/audit/approval, Official-vs-heuristic, Concrete TODOs, Final verdict). Codex v1.7.5 review finding #1 closed."
       modified: []
       removed: []
     impact_scope:
