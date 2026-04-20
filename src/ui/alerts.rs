@@ -34,6 +34,7 @@ fn block(title: &str) -> Block<'_> {
 
 fn collect_items(notices: &[SystemNotice], reports: &[PaneReport]) -> Vec<ListItem<'static>> {
     let mut out = Vec::new();
+    // 1. System notices.
     for n in notices {
         let letter = n.severity.letter();
         let badge = n.source_kind.badge();
@@ -41,6 +42,20 @@ fn collect_items(notices: &[SystemNotice], reports: &[PaneReport]) -> Vec<ListIt
         let body = format!("[{letter}] [{badge}] SYSTEM: {} — {}", n.title, n.body);
         out.push(ListItem::new(body).style(Style::default().fg(color)));
     }
+    // 2. Cross-pane findings (above per-pane alerts).
+    for rep in reports {
+        for f in &rep.cross_pane_findings {
+            let color = theme::severity_color(f.severity);
+            let letter = f.severity.letter();
+            let badge = f.source_kind.badge();
+            let body = format!(
+                "[{letter}] [{badge}] CROSS-PANE: {}",
+                f.reason,
+            );
+            out.push(ListItem::new(body).style(Style::default().fg(color)));
+        }
+    }
+    // 3. Per-pane recommendations.
     for rep in reports {
         for rec in &rep.recommendations {
             let color = theme::severity_color(rec.severity);
@@ -138,5 +153,29 @@ mod tests {
         // System notice is rendered first.
         // We cannot easily inspect the text of a ListItem without private
         // fields, but ordering is stable: notice then pane.
+    }
+
+    #[test]
+    fn cross_pane_findings_render_above_per_pane_alerts() {
+        use crate::domain::recommendation::{CrossPaneFinding, CrossPaneKind};
+        let mut rep = base_report(vec![Recommendation {
+            action: "log-storm",
+            reason: "r".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Heuristic,
+            suggested_command: None,
+            side_effects: vec![],
+        }]);
+        rep.cross_pane_findings.push(CrossPaneFinding {
+            kind: CrossPaneKind::ConcurrentMutatingWork,
+            anchor_pane_id: "%1".into(),
+            other_pane_ids: vec!["%2".into()],
+            reason: "concurrent work on /repo".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Estimated,
+            suggested_command: None,
+        });
+        let items = collect_items(&[], &[rep]);
+        assert_eq!(items.len(), 2, "one cross-pane finding + one pane alert");
     }
 }
