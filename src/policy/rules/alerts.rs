@@ -157,4 +157,33 @@ mod tests {
         let recs = eval_alerts(&id(), &s);
         assert!(recs.is_empty());
     }
+
+    #[test]
+    fn repeated_output_fires_concern_severity() {
+        let s = SignalSet { repeated_output: true, ..SignalSet::default() };
+        let recs = eval_alerts(&id(), &s);
+        let rec = recs.iter().find(|r| r.action == "repeated-output-cache")
+            .expect("repeated_output must fire a recommendation");
+        assert_eq!(rec.severity, Severity::Concern);
+        assert_eq!(rec.source_kind, SourceKind::Heuristic);
+    }
+
+    #[test]
+    fn verbose_answer_fires_concern_severity() {
+        let s = SignalSet { verbose_answer: true, ..SignalSet::default() };
+        let recs = eval_alerts(&id(), &s);
+        let rec = recs.iter().find(|r| r.action == "verbose-output")
+            .expect("verbose_answer must fire a recommendation");
+        assert_eq!(rec.severity, Severity::Concern);
+        assert_eq!(rec.source_kind, SourceKind::Heuristic);
+    }
+
+    #[test]
+    fn error_hint_fires_warning_when_not_log_storm() {
+        let s = SignalSet { error_hint: true, log_storm: false, ..SignalSet::default() };
+        let recs = eval_alerts(&id(), &s);
+        let rec = recs.iter().find(|r| r.action == "error-detected")
+            .expect("error_hint without log_storm must fire");
+        assert_eq!(rec.severity, Severity::Warning);
+    }
 }
