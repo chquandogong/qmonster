@@ -1,6 +1,6 @@
 mission:
-  version: "1.7.5"
-  title: "Qmonster v0.4.0 — Phase 3 complete + all gates remediated + Gemini v1.7.3 review artifacts backfilled (3A + 3B: policy engine, suggested_command, strong-rec UX, next_step precondition; Codex v1.7.3/v1.7.4 findings closed)"
+  version: "1.7.6"
+  title: "Qmonster v0.4.0 — Phase 3 complete + all gates remediated + Gemini review artifact template-compliant (3A + 3B: policy engine, suggested_command, strong-rec UX, next_step precondition; Codex v1.7.3/v1.7.4/v1.7.5 findings closed)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -154,6 +154,22 @@ mission:
     now cites both files. Ledger-only round; no code, test, or
     runtime change.
 
+    Phase 3B Gemini review artifact template compliance (v1.7.6)
+    closes Codex v1.7.5 review finding #1. The v1.7.5 backfill
+    produced the Gemini v1.7.3 artifact pair at the correct locations,
+    but the narrative review was missing the `## Scope-reduction
+    suggestions` section required by docs/ai/REVIEW_GUIDE.md:77-87.
+    Fix: add the missing section to
+    .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-
+    cleanup-review.md with two concrete bullets — one stating no
+    additional reduction is needed this round (the next_step /
+    suggested_command two-field split is right-sized) and one
+    deferring a broader review of next_step adoption to Phase 4
+    when the provider-profile recommender use cases crystallize.
+    All nine REVIEW_GUIDE.md required sections are now present in
+    order in the Gemini review narrative. Docs-only round; no code,
+    test, runtime, or ledger-structure change.
+
   done_when:
     # Phase-0 artefacts (kept as historical gating criteria — already met).
     - "Phase 0: mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate against the mission-spec schema."
@@ -234,6 +250,9 @@ mission:
 
     # Phase-3B Gemini review artifact backfill (v1.7.5).
     - "Phase 3B Gemini review artifact backfill v1.7.5: Gemini v1.7.3 `pass` verdict is recorded per WORKFLOWS.md:56-58 — narrative at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md` + structured mirror at `.mission/evals/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-gemini-review.result.yaml`. CURRENT_STATE.md gate-status table cites the files. Codex v1.7.4 review finding #1 closed."
+
+    # Phase-3B Gemini review artifact template compliance (v1.7.6).
+    - "Phase 3B Gemini review artifact template compliance v1.7.6: the Gemini v1.7.3 narrative review at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md` carries all nine required sections from `docs/ai/REVIEW_GUIDE.md:77-87` in order (Executive summary, What the plan got right, Must-fix, Scope-reduction suggestions, Token-optimization architecture, Doc/mission/memory separation, Provider abstraction + tmux, Safety/audit/approval, Official-vs-heuristic, Concrete TODOs, Final verdict). Codex v1.7.5 review finding #1 closed."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -324,20 +343,20 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6)."
     suggested_approach: >
-      Phase 3B Gemini review artifact backfill shipped (v1.7.5). Phase
-      3 is COMPLETE, all reviewer gates remediated, ledger normalized,
-      and reviewer sign-offs recorded per WORKFLOWS.md:56-58. Gate
-      status: Gemini v1.7.3 pass (적극 승인) recorded at
-      `.docs/gemini/…-phase3b-strong-rec-cleanup-review.md` + mirror
-      at `.mission/evals/…-phase3b-strong-rec-cleanup-gemini-review.result.yaml`;
-      Codex v1.7.3 finding #1 closed by v1.7.4; Codex v1.7.4 finding
-      #1 closed by this v1.7.5 round. Request a short Codex v1.7.5
-      confirmation re-check that the Gemini artifacts now satisfy the
-      workflow rule, then proceed to Phase 4 — provider profile
-      recommender + side_effects populating (Gemini G-6) + auto-memory
-      profile guide (Gemini G-5).
+      Phase 3B Gemini review artifact template compliance shipped
+      (v1.7.6). Phase 3 is COMPLETE, all reviewer gates remediated,
+      ledger normalized, reviewer sign-offs recorded per
+      WORKFLOWS.md:56-58, and the Gemini narrative review now
+      satisfies REVIEW_GUIDE.md:77-87 (all nine required sections
+      present in order). Gate status: Gemini v1.7.3 pass (적극 승인);
+      Codex v1.7.3/v1.7.4/v1.7.5 findings all closed by v1.7.4/
+      v1.7.5/v1.7.6 respectively. Request a short Codex v1.7.6
+      confirmation re-check that the Scope-reduction section closes
+      the template gap, then proceed to Phase 4 — provider profile
+      recommender + side_effects populating (Gemini G-6) +
+      auto-memory profile guide (Gemini G-5).
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -388,5 +407,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 14
+    total_revisions: 15
     history: "mission-history.yaml"
