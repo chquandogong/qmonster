@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 5
-  latest_version: "1.4.0"
+  total_revisions: 6
+  latest_version: "1.5.0"
 
 timeline:
   - change_id: "initial"
@@ -507,8 +507,102 @@ timeline:
       - "Harden: pre-commit cargo check + cargo clippy -D warnings (M3)"
       - "Docs: add a Phase-2 validation block exercise (manual day-end CURRENT_STATE refresh)"
 
+  - change_id: "phase-2-gate-remediation"
+    semantic_version: "1.5.0"
+    change_sequence: 6
+    date: "2026-04-20"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, Phase-2 gate-open cross-check)"
+      - "Gemini (gemini:1:research, Phase-2 eval)"
+      - "CHENGHAO QUAN (operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close all three Codex Phase-2 findings (1 risk + 2 warnings) so
+      the Phase-3 gate can open without contract regressions. Gemini's
+      surface-level 'pass' is preserved; Codex's contract-level audit
+      takes precedence for the gate decision.
+    intent_ko: >
+      Codex Phase-2 지적 3건(risk 1 + warning 2)을 모두 닫고 Phase-3
+      게이트를 열 수 있게 정리. Gemini의 surface 'pass'는 유지하되,
+      Codex의 contract-level 지적을 게이트 기준으로 삼는다.
+    decision: >
+      (1) Added AuditEventKind::VersionSnapshotError + StartupLoad enum
+      with load_startup_snapshot() helper. Corrupted versions.json now
+      survives startup (may_save_fresh=false) and the operator sees a
+      warning SystemNotice — forensics preserved. (2) Added AtomicU64
+      error counter to SqliteAuditSink + stderr hint on failure + a
+      TDD that drops the table mid-session to force failure and assert
+      error_count == 1. (3) Extracted pick_root() as a pure function
+      and swapped the order to env > CLI > storage.root > default, per
+      docs/ai/ARCHITECTURE.md §Safety precedence. 4 unit tests verify
+      each source wins when expected.
+    decision_ko: >
+      (1) AuditEventKind::VersionSnapshotError + StartupLoad enum과
+      load_startup_snapshot() 헬퍼 도입. 깨진 versions.json은 startup에서
+      보존(may_save_fresh=false)되고 operator는 warning SystemNotice로
+      인지 — 포렌식 단서 유지. (2) SqliteAuditSink에 AtomicU64 error
+      counter + 실패시 stderr 힌트 + 세션 중 테이블을 DROP해 실패를
+      강제하고 error_count == 1을 검증하는 TDD 추가. (3) pick_root()를
+      순수 함수로 추출하고 docs/ai/ARCHITECTURE.md §Safety precedence에
+      맞춰 env > CLI > storage.root > default로 순서 정렬. 각 source
+      승리 시나리오 4건 유닛테스트.
+    triggered_by: "Codex Phase-2 gate-open review; Gemini Phase-2 eval also recorded"
+    issue_or_context: >
+      Phase 2 shipped the storage layer but three Codex contract-level
+      findings were open. Finding #1 could silently destroy a corrupt
+      versions.json. Finding #2 could turn durable audit into a silent
+      no-op on runtime DB errors. Finding #3 diverged storage-root
+      precedence from canonical docs. Gemini missed all three.
+    changes:
+      added:
+        - "AuditEventKind::VersionSnapshotError"
+        - "AuditEventKind::AuditWriteFailed (reserved for future use)"
+        - "app::version_drift::StartupLoad enum (Fresh | Previous | Corrupted)"
+        - "app::version_drift::load_startup_snapshot() with audit-log wiring"
+        - "src/app/path_resolution.rs with ResolvedRoot, RootSource, pick_root()"
+        - "SqliteAuditSink.error_count() + AtomicU64 counter + stderr hint"
+        - "3 new lib tests (path_resolution 4, startup_load 3, sqlite insert-failure 1)"
+        - ".mission/evals/…-phase2-codex-review.result.yaml (structured mirror)"
+        - ".docs/codex/…-phase2-review.md (narrative archive)"
+      modified:
+        - "src/main.rs: uses pick_root + load_startup_snapshot; may_save_fresh guard on save; source:{Env|Cli|Config|Default} printed in --once"
+        - "src/store/sqlite.rs: AuditDb visibility widened to pub (required for sink-internal test fixture)"
+        - "mission.yaml version 1.4.0 -> 1.5.0; lineage.total_revisions = 6"
+      removed:
+        - "src/main.rs inline resolve_paths function (replaced by pure pick_root)"
+    changed_sections:
+      - "version snapshot error handling (silent → audit-logged + preserved)"
+      - "audit sink durability (silent no-op → visible via error_count + stderr)"
+      - "storage root precedence (CLI > env → env > CLI per docs)"
+    done_when_delta:
+      added:
+        - "Corrupted versions.json survives startup; AuditEventKind::VersionSnapshotError recorded; warning SystemNotice surfaces"
+        - "SqliteAuditSink.error_count() increments on runtime INSERT failure"
+        - "pick_root honors env > CLI > storage.root > default; verified by 4 unit tests and live smoke test"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~200 LOC added across app + store + main"
+      tests: "116 lib + 8 integration (up from 108 + 8)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "still within ~/.qmonster/; versions.json is now preserved on corruption"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated; Codex review recorded to .docs/codex + .mission/evals"
+    breaking: false
+    risk: "low — all three fixes are additive with new TDD coverage; no Phase-2 contract relaxed"
+    related_commits: []
+    related_decisions:
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 3: A-G canonical rules (r2 §6.5) + concurrent-work warning (Gemini G-11) + suggested_command (Gemini G-2) + strong 'checkpoint before compact' UX (Gemini G-7)"
+      - "Phase 3+: consider bumping SafetyOverrideRejected → audit also for corrupted versions.json's neighbouring artefacts (DB corruption, etc.)"
+      - "Wire cargo check + cargo clippy -D warnings into pre-commit (M3)"
+
 evolution_summary:
-  current_phase: "Phase 2 — Archive + checkpoint + SQLite shipped (v1.4.0); Phase-3 gate open to request"
+  current_phase: "Phase 2 — Archive + checkpoint + SQLite shipped AND gate-remediated (v1.5.0); Phase-3 gate open to request"
   next_phase: "Phase 3 — Policy engine (A-G rules + concurrent-work warning + suggested commands)"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::Utc;
 
@@ -26,15 +27,28 @@ pub struct AuditRow {
 
 /// Durable audit sink backed by SQLite. Implements `EventSink`, so the
 /// Phase-1 InMemorySink can be swapped out transparently.
+///
+/// Runtime INSERT failures (disk full, schema drift, lock contention,
+/// table removed) do not panic — they increment `error_count` and
+/// surface to stderr so the operator can notice the durability
+/// degradation (Codex Phase-2 finding #2).
 pub struct SqliteAuditSink {
     db: AuditDb,
+    error_count: AtomicU64,
 }
 
 impl SqliteAuditSink {
     pub fn open(path: &Path) -> Result<Self, SqliteError> {
         Ok(Self {
             db: AuditDb::open(path)?,
+            error_count: AtomicU64::new(0),
         })
+    }
+
+    /// Count of runtime INSERT failures observed by this sink. Tests
+    /// and the CLI can inspect this to detect silent degradation.
+    pub fn error_count(&self) -> u64 {
+        self.error_count.load(Ordering::Relaxed)
     }
 
     /// Read the most recent `limit` rows in insertion order (oldest
@@ -76,7 +90,7 @@ impl EventSink for SqliteAuditSink {
     fn record(&self, event: AuditEvent) {
         let conn = self.db.connection().lock().expect("poisoned");
         let ts = Utc::now().to_rfc3339();
-        let _ = conn.execute(
+        let res = conn.execute(
             "INSERT INTO audit_events (ts_utc, kind, severity, pane_id, provider, role, summary) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
@@ -89,6 +103,13 @@ impl EventSink for SqliteAuditSink {
                 event.summary,
             ],
         );
+        if let Err(e) = res {
+            self.error_count.fetch_add(1, Ordering::Relaxed);
+            eprintln!(
+                "qmonster: audit insert failed ({kind:?}): {e}",
+                kind = event.kind
+            );
+        }
     }
 }
 
@@ -106,6 +127,8 @@ fn kind_to_str(k: AuditEventKind) -> &'static str {
         AuditEventKind::ArchiveWritten => "ArchiveWritten",
         AuditEventKind::SnapshotWritten => "SnapshotWritten",
         AuditEventKind::RetentionSwept => "RetentionSwept",
+        AuditEventKind::VersionSnapshotError => "VersionSnapshotError",
+        AuditEventKind::AuditWriteFailed => "AuditWriteFailed",
     }
 }
 
@@ -123,6 +146,8 @@ fn parse_kind(s: &str) -> Option<AuditEventKind> {
         "ArchiveWritten" => Some(AuditEventKind::ArchiveWritten),
         "SnapshotWritten" => Some(AuditEventKind::SnapshotWritten),
         "RetentionSwept" => Some(AuditEventKind::RetentionSwept),
+        "VersionSnapshotError" => Some(AuditEventKind::VersionSnapshotError),
+        "AuditWriteFailed" => Some(AuditEventKind::AuditWriteFailed),
         _ => None,
     }
 }
@@ -254,5 +279,25 @@ mod tests {
     fn sqlite_audit_sink_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<SqliteAuditSink>();
+    }
+
+    #[test]
+    fn runtime_insert_failure_increments_error_count() {
+        let td = TempDir::new().unwrap();
+        let sink = SqliteAuditSink::open(&td.path().join("q.db")).unwrap();
+        // Drop the table out from under the sink to force a runtime
+        // INSERT failure without touching the sink's constructor path.
+        {
+            let conn = sink.db.connection().lock().unwrap();
+            conn.execute_batch("DROP TABLE audit_events")
+                .expect("drop ok");
+        }
+        assert_eq!(sink.error_count(), 0);
+        sink.record(sample(AuditEventKind::AlertFired));
+        assert_eq!(
+            sink.error_count(),
+            1,
+            "INSERT must fail after table drop and bump error_count"
+        );
     }
 }

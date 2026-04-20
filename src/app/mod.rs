@@ -2,14 +2,18 @@ pub mod bootstrap;
 pub mod config;
 pub mod effects;
 pub mod event_loop;
+pub mod path_resolution;
 pub mod safety_audit;
 pub mod system_notice;
 pub mod version_drift;
 
 pub use bootstrap::Context;
+pub use path_resolution::{ResolvedRoot, pick_root};
 pub use safety_audit::{OverrideStats, apply_override_with_audit};
 pub use system_notice::{SystemNotice, record_startup_snapshot, route_version_drift};
-pub use version_drift::{VersionDiff, VersionSnapshot, capture_versions, compare};
+pub use version_drift::{
+    StartupLoad, VersionDiff, VersionSnapshot, capture_versions, compare, load_startup_snapshot,
+};
 pub use config::{
     ActionsMode, LogSensitivity, QmonsterConfig, RefreshPolicy, SafetyOverride,
     apply_safety_override,

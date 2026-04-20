@@ -1,0 +1,58 @@
+evaluation:
+  timestamp: "2026-04-20T20:20:00Z"
+  target: "Phase 2 (Archive + Checkpoint + SQLite) Implementation — gate-open review"
+  evaluated_by: "llm-codex"
+  source: ".docs/codex/Qmonster-v0.4.0-2026-04-20-phase2-review.md (narrative archive of findings shown during operator /context inspection)"
+  verdict: "rework"
+  remediation_round: "v1.5.0 (Phase-2 gate remediation)"
+  findings:
+    - id: "codex-phase2-1"
+      severity: "risk"
+      title: "Version snapshot load error path is silently swallowed"
+      references:
+        - "src/main.rs:125 (VersionSnapshot::load_from(...).unwrap_or(None))"
+        - "src/app/version_drift.rs:16 (doc contract: errors surface so callers can audit-log)"
+        - "src/main.rs:132 (fresh snapshot written immediately after)"
+      detail: >
+        A corrupted or unreadable ~/.qmonster/versions.json is turned
+        into Ok(None) and then instantly overwritten by the fresh
+        snapshot. Drift detection goes silent and the forensic artefact
+        is destroyed at the same time. Reproduced by placing malformed
+        JSON at --root/versions.json and running --once: startup
+        completed without any notice; the corrupt file was replaced.
+      resolution: >
+        Introduce a StartupLoad enum + load_startup_snapshot() helper
+        that distinguishes Fresh / Previous / Corrupted. On Corrupted:
+        audit-log as warning (dedicated AuditEventKind) AND suppress
+        the fresh save so the operator can inspect the broken file.
+    - id: "codex-phase2-2"
+      severity: "warning"
+      title: "SQLite audit sink hides runtime INSERT failures"
+      references:
+        - "src/store/audit.rs:76 (let _ = conn.execute(...))"
+      detail: >
+        The sink detects only `open` failures. Any downstream failure
+        (disk full, table dropped, schema drift, lock timeout) is
+        silently dropped, turning the durable sink into a no-op.
+        Phase-2's whole point is durability; this is a load-bearing gap.
+      resolution: >
+        Track failures in an AtomicU64 error counter; emit a stderr
+        hint per failure; expose `error_count()` so tests/operators
+        can observe durability degradation.
+    - id: "codex-phase2-3"
+      severity: "warning"
+      title: "Storage-root precedence inverts canonical docs"
+      references:
+        - "docs/ai/ARCHITECTURE.md §Safety precedence (env > CLI > user TOML > project TOML > defaults)"
+        - "src/main.rs resolve_paths (--root checked first, QMONSTER_ROOT second)"
+      detail: >
+        With both --root and QMONSTER_ROOT set, the implementation picks
+        --root, but the canonical docs say env wins. Drifts audit/archive
+        storage into an operator-unexpected location.
+      resolution: >
+        Extract resolve_paths into a pure function so it is testable,
+        then swap the check order to env > CLI > config > default.
+  notes:
+    - "cargo test --quiet and cargo clippy --all-targets -- -D warnings both pass against the existing code; these findings are contract-level regressions, not compile/test failures."
+    - "Gemini gave 'pass' on Phase 2 in a sibling eval; Codex's contract-level audit takes precedence for the gate."
+  gate_decision: "Phase 3 gate WITHHELD until the three findings above are closed via a v1.5.0 remediation round."

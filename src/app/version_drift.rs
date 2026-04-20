@@ -39,6 +39,62 @@ impl VersionSnapshot {
     }
 }
 
+/// Outcome of trying to load `versions.json` at startup. Distinguishing
+/// `Fresh` (file absent) from `Corrupted` (file present but unreadable
+/// / malformed) lets the caller preserve forensics by refusing to
+/// overwrite the broken file (Codex Phase-2 finding #1).
+#[derive(Debug)]
+pub enum StartupLoad {
+    Fresh,
+    Previous(VersionSnapshot),
+    Corrupted(std::io::Error),
+}
+
+impl StartupLoad {
+    pub fn previous(&self) -> Option<&VersionSnapshot> {
+        match self {
+            StartupLoad::Previous(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// `true` iff the caller may safely overwrite the snapshot file.
+    /// `Corrupted` returns `false` so the broken artefact survives for
+    /// the operator to inspect.
+    pub fn may_save_fresh(&self) -> bool {
+        !matches!(self, StartupLoad::Corrupted(_))
+    }
+}
+
+/// Load the startup snapshot from `path`, routing any IO/parse error
+/// to the audit sink as a dedicated `VersionSnapshotError` event. The
+/// returned `StartupLoad::Corrupted` variant signals the caller that
+/// the on-disk file should NOT be overwritten this session.
+pub fn load_startup_snapshot(
+    sink: &dyn crate::store::sink::EventSink,
+    path: &Path,
+) -> StartupLoad {
+    match VersionSnapshot::load_from(path) {
+        Ok(Some(s)) => StartupLoad::Previous(s),
+        Ok(None) => StartupLoad::Fresh,
+        Err(e) => {
+            sink.record(crate::domain::audit::AuditEvent {
+                kind: crate::domain::audit::AuditEventKind::VersionSnapshotError,
+                pane_id: "n/a".into(),
+                severity: crate::domain::recommendation::Severity::Warning,
+                summary: format!(
+                    "failed to load {}: {}",
+                    path.display(),
+                    e
+                ),
+                provider: None,
+                role: None,
+            });
+            StartupLoad::Corrupted(e)
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionDiff {
     pub tool: String,
@@ -167,5 +223,50 @@ mod tests {
         let snap = snapshot([("gemini", "0.1.0")]);
         snap.save_to(&path).unwrap();
         assert!(path.exists());
+    }
+
+    #[test]
+    fn startup_load_fresh_when_no_file() {
+        use crate::store::sink::InMemorySink;
+        let td = tempfile::TempDir::new().unwrap();
+        let path = td.path().join("missing.json");
+        let sink = InMemorySink::new();
+        let res = load_startup_snapshot(&sink, &path);
+        assert!(matches!(res, StartupLoad::Fresh));
+        assert!(res.may_save_fresh());
+        assert_eq!(sink.len(), 0);
+    }
+
+    #[test]
+    fn startup_load_previous_on_good_file() {
+        use crate::store::sink::InMemorySink;
+        let td = tempfile::TempDir::new().unwrap();
+        let path = td.path().join("versions.json");
+        snapshot([("claude", "1.0.0")]).save_to(&path).unwrap();
+        let sink = InMemorySink::new();
+        let res = load_startup_snapshot(&sink, &path);
+        assert!(matches!(res, StartupLoad::Previous(_)));
+        assert!(res.may_save_fresh());
+        assert_eq!(sink.len(), 0);
+    }
+
+    #[test]
+    fn startup_load_corrupted_on_malformed_file_and_audits() {
+        use crate::domain::audit::AuditEventKind;
+        use crate::store::sink::InMemorySink;
+        let td = tempfile::TempDir::new().unwrap();
+        let path = td.path().join("versions.json");
+        std::fs::write(&path, b"{not valid json").unwrap();
+        let sink = InMemorySink::new();
+        let res = load_startup_snapshot(&sink, &path);
+        assert!(matches!(res, StartupLoad::Corrupted(_)));
+        assert!(!res.may_save_fresh(), "forensics must survive");
+        let events = sink.snapshot();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, AuditEventKind::VersionSnapshotError);
+        assert_eq!(
+            events[0].severity,
+            crate::domain::recommendation::Severity::Warning
+        );
     }
 }

@@ -1,6 +1,6 @@
 mission:
-  version: "1.4.0"
-  title: "Qmonster v0.4.0 — Phase 2 archive + checkpoint + SQLite"
+  version: "1.5.0"
+  title: "Qmonster v0.4.0 — Phase 2 archive + checkpoint + SQLite (gate-remediated)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -61,6 +61,11 @@ mission:
     - "Phase 2: TUI key 's' writes a runtime snapshot; 'r' re-captures versions; 'c' clears notices; 'q'/Esc quit."
     - "Phase 2: new AuditEventKinds — ArchiveWritten, SnapshotWritten, RetentionSwept — recorded at appropriate severities."
     - "Phase 2: cargo build + cargo test + cargo clippy --all-targets -- -D warnings all clean. Live `--once` smoke test produces qmonster.db, versions.json, and archive/YYYY-MM-DD/<pane>/*.log files."
+
+    # Phase-2 gate remediation (v1.5.0, this revision).
+    - "Phase-2 remediation: version snapshot load errors surface via AuditEventKind::VersionSnapshotError; a corrupted versions.json is PRESERVED and a warning SystemNotice fires (Codex finding #1)."
+    - "Phase-2 remediation: SqliteAuditSink tracks runtime INSERT failures in an AtomicU64; stderr hint on every failure; error_count() exposes durability degradation to tests and operators (Codex finding #2)."
+    - "Phase-2 remediation: storage root precedence matches docs/ai/ARCHITECTURE.md — env > CLI > storage.root > default — via a pure pick_root() helper with 4 unit tests (Codex finding #3)."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -207,5 +212,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 5
+    total_revisions: 6
     history: "mission-history.yaml"

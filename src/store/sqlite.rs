@@ -34,7 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts_utc);
 CREATE INDEX IF NOT EXISTS idx_audit_kind ON audit_events(kind);
 ";
 
-pub(crate) struct AuditDb {
+pub struct AuditDb {
     conn: Mutex<Connection>,
 }
 

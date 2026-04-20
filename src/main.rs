@@ -14,18 +14,21 @@ use ratatui::prelude::*;
 use qmonster::app::bootstrap::Context;
 use qmonster::app::config::{QmonsterConfig, load_from_path};
 use qmonster::app::event_loop::{PaneReport, run_once};
+use qmonster::app::path_resolution::pick_root;
 use qmonster::app::safety_audit::apply_override_with_audit;
 use qmonster::app::system_notice::{
     SystemNotice, record_startup_snapshot, route_version_drift,
 };
-use qmonster::app::version_drift::{VersionSnapshot, capture_versions};
+use qmonster::app::version_drift::{
+    StartupLoad, VersionSnapshot, capture_versions, load_startup_snapshot,
+};
 use qmonster::domain::audit::{AuditEvent, AuditEventKind};
 use qmonster::domain::origin::SourceKind;
 use qmonster::domain::recommendation::Severity;
 use qmonster::notify::desktop::DesktopNotifier;
 use qmonster::store::{
-    ArchiveWriter, EventSink, InMemorySink, PaneSnapshot, QmonsterPaths, SnapshotInput,
-    SnapshotWriter, SqliteAuditSink, sweep,
+    ArchiveWriter, EventSink, InMemorySink, PaneSnapshot, SnapshotInput, SnapshotWriter,
+    SqliteAuditSink, sweep,
 };
 use qmonster::tmux::polling::PollingSource;
 use qmonster::ui::dashboard::render_dashboard;
@@ -68,7 +71,9 @@ fn main() -> anyhow::Result<()> {
         pairs.push((k.trim().into(), v.trim().into()));
     }
 
-    let paths = resolve_paths(cli.root.as_deref(), &config);
+    let env_root = std::env::var("QMONSTER_ROOT").ok();
+    let resolved = pick_root(cli.root.as_deref(), env_root.as_deref(), &config);
+    let paths = resolved.clone().into_paths();
     paths.ensure().context("ensure ~/.qmonster layout")?;
 
     // Phase-2: open durable audit sink; fall back to in-memory if the
@@ -121,22 +126,44 @@ fn main() -> anyhow::Result<()> {
         Err(e) => eprintln!("qmonster: retention sweep failed: {e}"),
     }
 
-    // Load previous version snapshot (if any), capture fresh, diff, save.
-    let prev = VersionSnapshot::load_from(&paths.versions_path()).unwrap_or(None);
+    // Load previous version snapshot with error surfacing (Codex Phase-2 #1):
+    // a corrupted file is audit-logged AND preserved (may_save_fresh = false).
+    let startup = load_startup_snapshot(&*ctx.sink, &paths.versions_path());
+    let may_save_fresh = startup.may_save_fresh();
     let fresh = capture_versions();
     let mut startup_notices: Vec<SystemNotice> = Vec::new();
-    if let Some(prev) = prev.as_ref() {
-        startup_notices = route_version_drift(prev, &fresh, &*ctx.sink);
+    match &startup {
+        StartupLoad::Previous(prev) => {
+            startup_notices = route_version_drift(prev, &fresh, &*ctx.sink);
+        }
+        StartupLoad::Fresh => {}
+        StartupLoad::Corrupted(_) => {
+            startup_notices.push(SystemNotice {
+                title: "versions.json corrupted".into(),
+                body: format!(
+                    "{} left in place for inspection; drift detection skipped this session",
+                    paths.versions_path().display()
+                ),
+                severity: Severity::Warning,
+                source_kind: SourceKind::ProjectCanonical,
+            });
+        }
     }
     record_startup_snapshot(&*ctx.sink, &fresh);
-    if let Err(e) = fresh.save_to(&paths.versions_path()) {
+    if may_save_fresh
+        && let Err(e) = fresh.save_to(&paths.versions_path())
+    {
         eprintln!("qmonster: could not persist version snapshot: {e}");
     }
 
     let snapshot_writer = SnapshotWriter::new(paths.clone());
 
     if cli.once {
-        println!("qmonster paths: {}", paths.root().display());
+        println!(
+            "qmonster paths: {} (source: {:?})",
+            paths.root().display(),
+            resolved.source
+        );
         println!("qmonster versions captured:");
         for (k, v) in &fresh.tools {
             println!("  {k}: {v}");
@@ -155,21 +182,6 @@ fn main() -> anyhow::Result<()> {
     }
 
     run_tui(&mut ctx, fresh, snapshot_writer, startup_notices)
-}
-
-fn resolve_paths(cli_root: Option<&std::path::Path>, config: &QmonsterConfig) -> QmonsterPaths {
-    if let Some(p) = cli_root {
-        return QmonsterPaths::at(p.to_path_buf());
-    }
-    if let Ok(env) = std::env::var("QMONSTER_ROOT")
-        && !env.is_empty()
-    {
-        return QmonsterPaths::at(PathBuf::from(env));
-    }
-    if let Some(root) = config.storage.root.as_deref() {
-        return QmonsterPaths::at(PathBuf::from(root));
-    }
-    QmonsterPaths::default_root()
 }
 
 fn print_reports(reports: &[PaneReport]) {
