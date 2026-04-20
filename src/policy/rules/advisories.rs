@@ -27,6 +27,18 @@ pub fn eval_advisories(
         out.push(rec);
     }
 
+    if let Some(rec) = context_pressure_critical(id, signals, gates) {
+        out.push(rec);
+        if gates.quota_tight {
+            out.push(aggressive_context_pressure_critical());
+        }
+    } else if let Some(rec) = context_pressure_warning(id, signals, gates) {
+        out.push(rec);
+        if gates.quota_tight {
+            out.push(aggressive_context_pressure_warning());
+        }
+    }
+
     out
 }
 
@@ -89,10 +101,78 @@ fn code_exploration(
     })
 }
 
+fn context_pressure_warning(
+    _id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    let v = signals.context_pressure.as_ref()?.value;
+    if !(0.75..0.85).contains(&v) {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    Some(Recommendation {
+        action: "context-pressure: checkpoint",
+        reason: "context warming — checkpoint first, archive large results, only then consider /compact".into(),
+        severity: Severity::Warning,
+        source_kind: SourceKind::Estimated,
+        suggested_command: None,
+        side_effects: vec![],
+    })
+}
+
+fn aggressive_context_pressure_warning() -> Recommendation {
+    Recommendation {
+        action: "aggressive: terse profile + archive",
+        reason: "quota-tight: apply terse output profile and archive anything >500 chars".into(),
+        severity: Severity::Warning,
+        source_kind: SourceKind::Heuristic,
+        suggested_command: None,
+        side_effects: vec![],
+    }
+}
+
+fn context_pressure_critical(
+    _id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    let v = signals.context_pressure.as_ref()?.value;
+    if v < 0.85 {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    Some(Recommendation {
+        action: "context-pressure: act now",
+        reason: "context near critical — checkpoint + archive now; /compact after".into(),
+        severity: Severity::Risk,
+        source_kind: SourceKind::Estimated,
+        suggested_command: None,
+        side_effects: vec![],
+    })
+}
+
+fn aggressive_context_pressure_critical() -> Recommendation {
+    Recommendation {
+        action: "aggressive: clamp output, archive all",
+        reason: "quota-tight critical: clamp max-output tokens and archive all non-trivial panes".into(),
+        severity: Severity::Risk,
+        source_kind: SourceKind::Heuristic,
+        suggested_command: None,
+        side_effects: vec![],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role};
+    use crate::domain::signal::MetricValue;
+    use crate::domain::origin::SourceKind as SK;
 
     fn id_high(role: Role) -> ResolvedIdentity {
         ResolvedIdentity {
@@ -140,5 +220,40 @@ mod tests {
         let gates = PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::Low };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(!recs.iter().any(|r| r.action == "code-exploration: graph/symbol"));
+    }
+
+    fn pressure(v: f32) -> SignalSet {
+        SignalSet {
+            context_pressure: Some(MetricValue::new(v, SK::Estimated)),
+            ..SignalSet::default()
+        }
+    }
+
+    #[test]
+    fn context_pressure_warning_at_0_75() {
+        let id = id_high(Role::Main);
+        let s = pressure(0.78);
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(recs.iter().any(|r| r.action == "context-pressure: checkpoint"));
+        assert!(!recs.iter().any(|r| r.action == "context-pressure: act now"));
+    }
+
+    #[test]
+    fn context_pressure_critical_at_0_85() {
+        let id = id_high(Role::Main);
+        let s = pressure(0.88);
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(recs.iter().any(|r| r.action == "context-pressure: act now"));
+        assert!(!recs.iter().any(|r| r.action == "context-pressure: checkpoint"));
+    }
+
+    #[test]
+    fn context_pressure_suppressed_on_low_identity_confidence() {
+        let id = id_low(Role::Main);
+        let s = pressure(0.92);
+        let gates = PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::Low };
+        let recs = eval_advisories(&id, &s, &gates);
+        assert!(!recs.iter().any(|r| r.action.starts_with("context-pressure")),
+            "Codex #2: context_pressure_* must respect the gate");
     }
 }
