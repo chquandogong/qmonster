@@ -46,6 +46,10 @@ pub fn eval_advisories(
         }
     }
 
+    if let Some(rec) = quota_tight_nudge(id, signals, gates) {
+        out.push(rec);
+    }
+
     out
 }
 
@@ -209,6 +213,29 @@ fn aggressive_verbose_review() -> Recommendation {
     }
 }
 
+fn quota_tight_nudge(
+    _id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    if gates.quota_tight {
+        return None; // no nudge if already enabled
+    }
+    let v = signals.context_pressure.as_ref()?.value;
+    if v < 0.90 {
+        return None;
+    }
+    // Not provider-flavored — do NOT check allow_provider_specific.
+    Some(Recommendation {
+        action: "quota-tight: consider enabling",
+        reason: "sustained context pressure — consider enabling `quota_tight` in config to unlock aggressive token-saver recommendations".into(),
+        severity: Severity::Concern,
+        source_kind: SourceKind::Heuristic,
+        suggested_command: None,
+        side_effects: vec![],
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,5 +338,32 @@ mod tests {
         let recs_main = eval_advisories(&main, &s, &gates_default());
         assert!(!recs_main.iter().any(|r| r.action == "verbose-review: terse profile"),
             "verbose_review must NOT fire on role=Main");
+    }
+
+    #[test]
+    fn quota_tight_nudge_fires_only_when_gate_off_and_pressure_high() {
+        let id = id_high(Role::Main);
+        let s = pressure(0.92);
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(recs.iter().any(|r| r.action == "quota-tight: consider enabling"));
+    }
+
+    #[test]
+    fn quota_tight_nudge_never_fires_when_gate_on() {
+        let id = id_high(Role::Main);
+        let s = pressure(0.92);
+        let gates = PolicyGates { quota_tight: true, identity_confidence: IdentityConfidence::High };
+        let recs = eval_advisories(&id, &s, &gates);
+        assert!(!recs.iter().any(|r| r.action == "quota-tight: consider enabling"));
+    }
+
+    #[test]
+    fn quota_tight_nudge_fires_regardless_of_identity_confidence() {
+        let id = id_low(Role::Main);
+        let s = pressure(0.92);
+        let gates = PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::Low };
+        let recs = eval_advisories(&id, &s, &gates);
+        assert!(recs.iter().any(|r| r.action == "quota-tight: consider enabling"),
+            "quota_tight_nudge is Qmonster-config-level, not provider-flavored");
     }
 }
