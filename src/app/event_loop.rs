@@ -1,0 +1,193 @@
+use std::time::Instant;
+
+use crate::app::bootstrap::Context;
+use crate::app::effects::EffectRunner;
+use crate::domain::audit::{AuditEvent, AuditEventKind};
+use crate::domain::identity::Provider;
+use crate::domain::recommendation::{Recommendation, RequestedEffect, Severity};
+use crate::notify::desktop::{NotifyBackend, summarize};
+use crate::policy::engine::EvalOutput;
+use crate::store::sink::EventSink;
+use crate::tmux::polling::{PaneSource, PollingError};
+
+/// Snapshot of effect permissions — cheap to pass by value, avoids
+/// borrow-checker friction in the main loop. Computed once per
+/// iteration from the current `QmonsterConfig`.
+#[derive(Debug, Clone, Copy)]
+struct EffectPermits {
+    notify: bool,
+    archive: bool,
+}
+
+/// One iteration of the observe loop. Pure over the side-effect
+/// interfaces (ctx.sink, ctx.notifier) so tests can swap them out.
+pub fn run_once<P, N>(
+    ctx: &mut Context<P, N>,
+    now: Instant,
+) -> Result<Vec<PaneReport>, PollingError>
+where
+    P: PaneSource,
+    N: NotifyBackend,
+{
+    let panes = ctx.source.list_panes()?;
+    let mut reports = Vec::with_capacity(panes.len());
+
+    // Lifecycle bookkeeping (zombie pane / re-attach reset).
+    let current_ids: Vec<String> = panes.iter().map(|p| p.pane_id.clone()).collect();
+    let known: Vec<String> = ctx.known_pane_ids().to_vec();
+    for id in &known {
+        if !current_ids.contains(id) {
+            ctx.lifecycle.forget(id);
+        }
+    }
+    ctx.set_known_pane_ids(current_ids);
+
+    let permits = {
+        let runner = EffectRunner::new(&ctx.config);
+        EffectPermits {
+            notify: runner.permit(RequestedEffect::Notify),
+            archive: runner.permit(RequestedEffect::ArchiveLocal),
+        }
+    };
+
+    for pane in panes {
+        let raw = crate::domain::identity::RawPaneInput {
+            pane_id: pane.pane_id.clone(),
+            title: pane.title.clone(),
+            current_command: pane.current_command.clone(),
+            tail: pane.tail.clone(),
+        };
+        let resolved = ctx.resolver.resolve(&raw);
+
+        let lc = ctx.lifecycle.observe(&pane.pane_id, pane.dead);
+        record_lifecycle(&*ctx.sink, &pane.pane_id, lc, resolved.identity.provider);
+
+        if pane.dead {
+            reports.push(PaneReport {
+                pane_id: pane.pane_id,
+                provider: resolved.identity.provider,
+                identity: resolved.clone(),
+                signals: crate::domain::signal::SignalSet::default(),
+                recommendations: vec![],
+                effects: vec![],
+                dead: true,
+            });
+            continue;
+        }
+
+        let signals = crate::adapters::parse_for(&resolved, &pane.tail);
+        let out: EvalOutput = ctx.policy.evaluate(&resolved, &signals);
+
+        deliver_effects(permits, &out, &pane.pane_id, now, ctx);
+
+        for rec in &out.recommendations {
+            ctx.sink.record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
+        }
+
+        reports.push(PaneReport {
+            pane_id: pane.pane_id,
+            provider: resolved.identity.provider,
+            identity: resolved,
+            signals,
+            recommendations: out.recommendations,
+            effects: out.effects,
+            dead: false,
+        });
+    }
+
+    Ok(reports)
+}
+
+fn deliver_effects<N: NotifyBackend>(
+    permits: EffectPermits,
+    out: &EvalOutput,
+    pane_id: &str,
+    now: Instant,
+    ctx_holder: &mut Context<impl PaneSource, N>,
+) {
+    for effect in &out.effects {
+        match effect {
+            RequestedEffect::Notify => {
+                if permits.notify {
+                    dispatch_notify(out, pane_id, now, ctx_holder);
+                }
+            }
+            RequestedEffect::ArchiveLocal => {
+                if permits.archive {
+                    // Phase 2 will implement the archive writer here.
+                    // Kept explicit so the match arm is not a silent drop.
+                    continue;
+                }
+            }
+            // Always denied — there is no code path that produces it and
+            // this arm doubles as a guardrail if a future rule slips.
+            RequestedEffect::SensitiveNotImplemented => continue,
+        }
+    }
+}
+
+fn dispatch_notify<N: NotifyBackend>(
+    out: &EvalOutput,
+    pane_id: &str,
+    now: Instant,
+    ctx_holder: &mut Context<impl PaneSource, N>,
+) {
+    for rec in &out.recommendations {
+        if ctx_holder
+            .rate_limiter
+            .should_fire(pane_id, rec.action, rec.severity, now)
+        {
+            let (title, body) = summarize(rec, pane_id);
+            ctx_holder.notifier.notify(&title, &body, rec.severity);
+        }
+    }
+}
+
+fn record_lifecycle(
+    sink: &dyn EventSink,
+    pane_id: &str,
+    lc: crate::domain::lifecycle::PaneLifecycleEvent,
+    provider: Provider,
+) {
+    use crate::domain::lifecycle::PaneLifecycleEvent as L;
+    let kind = match lc {
+        L::BecameDead => AuditEventKind::PaneBecameDead,
+        L::Reappeared => AuditEventKind::PaneReappeared,
+        L::Appeared => AuditEventKind::PaneIdentityResolved,
+        L::Unchanged => return,
+    };
+    sink.record(AuditEvent {
+        kind,
+        pane_id: pane_id.to_string(),
+        severity: Severity::Safe,
+        summary: format!("{:?}", lc),
+        provider: Some(provider),
+        role: None,
+    });
+}
+
+fn alert_event(pane_id: &str, rec: &Recommendation, provider: Provider) -> AuditEvent {
+    AuditEvent {
+        kind: AuditEventKind::AlertFired,
+        pane_id: pane_id.to_string(),
+        severity: rec.severity,
+        summary: format!("{}: {}", rec.action, rec.reason),
+        provider: Some(provider),
+        role: None,
+    }
+}
+
+/// Compact per-iteration summary used by the UI and the `--once`
+/// formatter. Carries enough of the pipeline output for Phase 1
+/// surfacing requirements (VALIDATION.md §60-62).
+#[derive(Debug, Clone)]
+pub struct PaneReport {
+    pub pane_id: String,
+    pub provider: Provider,
+    pub identity: crate::domain::identity::ResolvedIdentity,
+    pub signals: crate::domain::signal::SignalSet,
+    pub recommendations: Vec<Recommendation>,
+    pub effects: Vec<RequestedEffect>,
+    pub dead: bool,
+}
+

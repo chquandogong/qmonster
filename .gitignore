@@ -1,0 +1,13 @@
+/target
+.env
+.env.*
+/logs/
+*.sqlite
+/*.sqlite
+/.docs/
+/mission.yaml
+/mission-history.yaml
+/.mission/
+/.mission-spec/
+CLAUDE.local.md
+.claude/settings.local.json

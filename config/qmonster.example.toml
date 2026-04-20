@@ -1,0 +1,169 @@
+# qmonster.example.toml
+# Version: v0.4.0
+# Date: 2026-04-20
+# Qmonster = Dr. QUAN's Q + monitoring/master
+
+[meta]
+name = "Qmonster"
+version = "v0.4.0"
+date = "2026-04-20"
+meaning = "Q + monitoring/master"
+
+[project]
+layout_mode = "one_project_per_window"
+default_window_panes = 4
+default_main_provider = "claude"
+crosscheck_providers = ["codex", "gemini"]
+allow_repeated_provider = true
+
+[tmux]
+primary_prefix = "C-b"
+secondary_prefix = "C-g"
+window_name = "qmonster"
+pane_title_convention = "{provider}:{instance}:{role}"
+poll_interval_ms = 2000
+capture_lines = 24
+prefer_control_mode = false
+
+[ui]
+theme = "midnight-blue"
+use_minimal_color = true
+show_numeric_percentages = true
+show_source_labels = true
+compact_density = "balanced"
+
+[docs]
+canonical_dir = "docs/ai"
+working_dir = ".docs"
+init_dir = ".docs/init"
+prompts_dir = ".docs/prompts"
+final_dir = ".docs/final"
+archive_dir = ".docs/archive"
+mission_state_file = ".mission/CURRENT_STATE.md"
+report_filename_template = "{project}-{version}-{date}-{provider}-{kind}-r{round}.md"
+track_docs_ai_in_git = true
+track_mission_spec_in_git = false
+
+[logging]
+sensitivity = "balanced"         # minimal | balanced | forensic
+include_raw_in_audit_log = false
+retention_days = 14
+
+[audit]
+mode = "local_only"
+finding_levels = ["safe", "good", "concern", "warning", "risk"]
+
+[token]
+strategy = "observe_archive_recommend"
+manual_refresh_only = true
+show_official_vs_estimated = true
+aggressive_mode_for_quota_tight_users_only = true
+
+[token.thresholds]
+context_warn = 0.75
+context_crit = 0.85
+big_output_chars = 2200
+log_storm_lines = 8
+repeat_window = 4
+
+[actions]
+mode = "recommend_only"          # observe_only | recommend_only | safe_auto
+allow_auto_notifications = true
+allow_auto_archive = true
+allow_auto_prompt_send = false
+allow_destructive_actions = false
+
+[refresh]
+policy = "manual_only"
+check_latest_model_release = false
+check_interval_minutes = 0
+
+[storage]
+sqlite_path = "~/.qmonster/qmonster.db"
+archive_dir = "~/.qmonster/archive"
+snapshot_dir = "~/.qmonster/snapshots"
+
+[profiles.claude.full]
+include_git_instructions = false
+auto_connect_ide = false
+auto_install_ide_extension = false
+glob_respect_gitignore = true
+
+[profiles.claude.terse_review]
+output_style = "default"
+attribution_commit = ""
+attribution_pr = ""
+
+[profiles.claude.script_low_token]
+use_bare = true
+exclude_dynamic_system_prompt_sections = true
+strict_mcp_config = true
+disable_slash_commands = true
+no_session_persistence = true
+bash_max_output_length = 12000
+file_read_max_output_tokens = 4000
+max_mcp_output_tokens = 8000
+
+[profiles.codex.full]
+web_search = "cached"
+features_apps = true
+
+[profiles.codex.review]
+web_search = "disabled"
+tool_output_token_limit = 4000
+commit_attribution = ""
+features_apps = false
+apps_default_enabled = false
+
+[profiles.codex.exec_low_token]
+command = "codex exec"
+json_output = true
+output_last_message_path = "/tmp/codex-last.txt"
+sandbox = "read-only"
+ephemeral = true
+color = "never"
+
+[profiles.gemini.full]
+context_files = ["AGENTS.md", "GEMINI.md"]
+plan_mode = "manual"
+checkpointing = false
+
+[profiles.gemini.policy_review]
+context_files = ["AGENTS.md", "GEMINI.md"]
+auto_memory = false
+context_management = false
+skills_enabled = true
+
+[providers]
+default_roles = ["main", "review", "research", "monitor"]
+
+[[panes]]
+title_regex = "^claude:1:main$"
+provider = "claude"
+instance = 1
+role = "main"
+
+[[panes]]
+title_regex = "^codex:1:review$"
+provider = "codex"
+instance = 1
+role = "review"
+
+[[panes]]
+title_regex = "^gemini:1:research$"
+provider = "gemini"
+instance = 1
+role = "research"
+
+[[panes]]
+title_regex = "^qmonster:1:monitor$"
+provider = "qmonster"
+instance = 1
+role = "monitor"
+
+# 같은 프로젝트 안에서 provider 반복도 허용:
+# [[panes]]
+# title_regex = "^claude:2:review$"
+# provider = "claude"
+# instance = 2
+# role = "review"

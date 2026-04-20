@@ -1,0 +1,274 @@
+# ARCHITECTURE
+
+- Version: v0.4.0
+- Date: 2026-04-20 (round r2 reconciled)
+- Status: planning draft (not an implementation spec yet).
+
+## One-line shape (r2 canonical)
+
+```
+tmux::RawPaneSnapshot
+   → domain::IdentityResolver
+   → adapters::ProviderParser
+   → domain::SignalSet
+   → policy::Engine
+   → app::EffectRunner
+   ↘                     ↘
+  ui::ViewModel       store::EventSink
+```
+
+Two non-negotiable rules:
+
+1. **Identity resolution precedes provider dispatch.** `adapters/`
+   never infers `provider` or `role` — it receives a resolved identity
+   from `domain/` and parses tails into signals.
+2. **Policy is pure.** `policy/` performs no IO. It returns
+   `Recommendation`s (advisory) and `RequestedEffect`s (gated by the
+   actuation allow-list in `app::EffectRunner`).
+
+## Core loop
+
+```
+observe → classify → recommend → archive → checkpoint → limited actuation
+```
+
+No step silently skips another. `limited actuation` is restricted to
+the allow-list in `mission.yaml` constraints and `config [actions]`.
+Archive and checkpoint land in Phase 2; Phase 1 keeps only an
+in-memory `EventSink`.
+
+## Module layout (Rust crate)
+
+```
+src/
+  main.rs      # bootstrap only
+  app/         # bootstrap, config+safety-precedence, event loop, effect gate
+  domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
+  tmux/        # polling first; control-mode-capable PaneSource trait
+  adapters/    # per-provider tail parsers (no identity inference)
+  policy/      # pure rules; Phase 1 = rules/alerts.rs only
+  store/       # Phase 1: EventSink trait + NoopSink/InMemorySink
+               # Phase 2: sqlite, archive_fs, audit (type-level raw split), snapshots, retention
+  ui/          # ratatui widgets, alert queue, per-pane panels, theme
+  notify/      # desktop / terminal bell; severity-aware rate limiting
+```
+
+`src/main.rs` is bootstrap only. Every `mod.rs` is re-export only. No
+module grows into a god module.
+
+## Module responsibilities
+
+### `app/`
+
+Owns startup, config load (with safety-precedence enforcement — see
+"Safety precedence" below), polling cadence, event loop, shutdown.
+Wires the other modules. Holds the top-level recommend-vs-actuate gate
+in `effects.rs`. Does NOT contain business rules.
+
+### `domain/`
+
+Pure types, no IO:
+
+- `PaneIdentity = { provider, instance, role, pane_id }`
+- `IdentityConfidence = High | Medium | Low | Unknown`
+- `ResolvedIdentity = { identity, confidence }`
+- `IdentityResolver` — maps `RawPaneSnapshot` → `ResolvedIdentity`.
+- `SourceKind = ProviderOfficial | ProjectCanonical | Heuristic | Estimated`
+- `MetricValue<T> = { value, source_kind, confidence, provider }`
+- `Signal`, `SignalSet`, `TaskType`, `Severity`,
+  `Recommendation`, `RequestedEffect`, `AuditEvent`, `Finding`.
+- `PaneLifecycle` — transitions (`pane_dead`, session re-attach) that
+  drain alerts + reset per-pane pressure state.
+
+### `tmux/`
+
+A single trait `PaneSource` with a polling implementation first.
+Control-mode implementation must be drop-in substitutable. Returns
+`RawPaneSnapshot`, NOT `PaneSnapshot` — identity is resolved downstream.
+Format strings for `list-panes` and `capture-pane` live here. Knows
+nothing about providers, roles, or signal semantics.
+`[ProviderOfficial: tmux wiki / Formats / Control Mode]` informs the
+format strings and lifecycle assumptions.
+
+### `adapters/`
+
+Per-provider tail parsers: `claude.rs`, `codex.rs`, `gemini.rs`,
+`qmonster.rs`. Each takes a `ResolvedIdentity` and the raw tail and
+returns domain `Signal`s. No identity inference. No cross-provider
+logic. No SQLite. No ratatui.
+
+### `policy/`
+
+Pure: consumes `(ResolvedIdentity, SignalSet)` and emits
+`(Recommendation | RequestedEffect)[]`. Reads thresholds from config.
+Gates `aggressive_mode` behind the `quota_tight` flag AND the
+`IdentityConfidence` gate (low-confidence panes suppress
+provider-specific recommendations). Every rule attaches a
+`SourceKind` to its output. Phase 1 ships `rules/alerts.rs` only;
+the A–G canonical situations (log storm / code exploration / context
+pressure / verbose output / permission wait / quota-tight /
+repeated output) land in Phase 3.
+
+### `store/`
+
+- **Phase 1:** `EventSink` trait + `NoopSink` + `InMemorySink`. No
+  durable storage, no SQLite, no archive writer.
+- **Phase 2:**
+  - `sqlite.rs` — audit DB (metadata only).
+  - `archive_fs.rs` — raw tail archive with preview/full split.
+  - `audit.rs` — audit writer **whose type signature cannot accept
+    raw bytes**. Type-level isolation prevents raw tail from bleeding
+    into the audit log (Codex CSF-2 + Gemini G-8).
+  - `snapshots.rs` — runtime checkpoint writer to
+    `~/.qmonster/snapshots/`. Never writes `.mission/CURRENT_STATE.md`.
+  - `retention.rs` — retention job (default 14 days, config-driven).
+
+### `ui/`
+
+Ratatui widgets. Layout priority:
+
+1. Alert queue (Notify / stop / stopfail / input wait / permission wait
+   / subagent-detected / version-drift).
+2. Context / token / cost per pane, each rendered with its
+   `SourceKind` badge (`[PO] / [PC] / [HE] / [ES]`).
+3. Provider / role / instance / current command / path / repo /
+   branch / sandbox / approval mode.
+4. Tool / skill / MCP / memory activity.
+
+Palette: low-saturation, grey/navy/blue. Color only on state
+transitions, always paired with a numeric % or severity letter.
+UI consumes already-classified signals; it never re-parses tails.
+
+### `notify/`
+
+Desktop notification (`notify-send` or equivalent) + optional terminal
+bell. Severity-aware rate limiting so log storms do not spam.
+
+## Cross-cutting rules
+
+### Actuation policy (enforced at `app::EffectRunner`)
+
+- `observe_only` — no outbound actions at all.
+- `recommend_only` — **default**. Allowed auto actions: notifications,
+  runtime-local archive writes to `~/.qmonster/`. Disallowed: prompt
+  send, `/compact`, `/clear`, memory mutation, provider
+  reconfiguration, any destructive mutation.
+- `safe_auto` — reserved for a later phase. Not implemented now.
+
+### Safety precedence (resolves the r1 contradiction)
+
+Standard precedence for most config: `env > CLI > user TOML
+(~/.qmonster/config.toml) > project TOML > defaults`.
+
+Asymmetry for these four flags — env/CLI may only move them TOWARD
+safer behavior; any attempt to move them toward more permissive is
+ignored and logged as a `risk`-severity audit event:
+
+- `actions.mode` (safer: `observe_only` > `recommend_only` > `safe_auto`)
+- `allow_auto_prompt_send` (safer: `false`)
+- `allow_destructive_actions` (safer: `false`)
+- `refresh.policy` (safer: `manual_only`)
+
+Runtime code does NOT toggle these flags; they are set at startup by
+config + safer-only env/CLI overrides.
+
+### Data-shape rule
+
+- Config is TOML (static, stable). See `config/qmonster.example.toml`.
+- Runtime state is in-memory structs + (Phase 2+) SQLite. UI must
+  never treat runtime state as config or vice versa.
+
+### Storage split
+
+- `qmonster.db` = `~/.qmonster/qmonster.db` (Phase 2+; audit metadata
+  - indices + summaries). **Never contains raw tail bytes.**
+- `archive_dir = ~/.qmonster/archive/` (Phase 2+; raw tails with
+  preview/full split).
+- `snapshot_dir = ~/.qmonster/snapshots/` (Phase 2+; runtime
+  checkpoints before a user-requested compact). **Never overlaps with
+  `.mission/CURRENT_STATE.md`.**
+- `.mission/CURRENT_STATE.md` is a **day-end handoff document** written
+  by the human day-end routine (`docs/ai/WORKFLOWS.md` §3). Qmonster
+  runtime never writes it.
+
+### Filesystem write boundary
+
+Qmonster runtime writes only within `~/.qmonster/`. Project-directory
+files (`CURRENT_STATE.md`, `mission.yaml`, `mission-history.yaml`,
+`docs/ai/*`, provider config files, source files) are read-only to
+Qmonster across Phases 1–4. Any write elsewhere is a bug.
+
+### Abstraction boundaries (do not violate)
+
+- `tmux/` knows nothing about providers, roles, or signals.
+- `domain/` is pure, no IO.
+- `adapters/` know nothing about SQLite, ratatui, or identity
+  inference.
+- `policy/` is pure; returns values only. No IO.
+- `store/` knows nothing about ratatui; `ui/` knows nothing about
+  storage shape.
+- `audit.rs` cannot accept raw bytes — type-level enforcement, not
+  comment-level.
+
+## SourceKind taxonomy
+
+Every metric, threshold, and recommendation carries a `SourceKind`:
+
+| SourceKind         | Meaning                                                                                                               |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `ProviderOfficial` | Cited to a provider/tool's own documentation (Anthropic / OpenAI / Google / tmux).                                    |
+| `ProjectCanonical` | Qmonster project-local rule in `docs/ai/` or `config/qmonster.example.toml`.                                          |
+| `Heuristic`        | Community-tool derived (RTK, Context Mode, Token Savior, Caveman, claude-token-efficient, token-optimizer-mcp, etc.). |
+| `Estimated`        | Qmonster-derived inference or default chosen without external citation.                                               |
+
+Promotion rule: nothing promotes to `ProviderOfficial` without a direct
+provider-doc citation. Heuristic thresholds stay `Estimated` until
+Phase-1 fixture measurement justifies re-labeling.
+
+Display rule: every UI surface shows the `SourceKind` next to the
+value. Color is never used alone.
+
+## Token-optimization architecture (five layers)
+
+1. **Provider-native profile** (Phase 4 implementation). Pick the right
+   CLI flags/settings per `(provider, role, situation)` using
+   `ProviderOfficial` levers (Claude/Codex/Gemini). Profile names are
+   project-local (`ProjectCanonical`).
+2. **Observation** (Phase 1). Polling pane tail, provider parsers,
+   repeated-output / log-storm / verbose-answer / context-pressure /
+   token / cost signal extraction. **Phase 1 surfaces these as
+   display-only metrics (each with `SourceKind`), not as gating
+   signals.**
+3. **Archive + checkpoint** (Phase 2). Raw tails → archive;
+   preview/full split on screen; runtime snapshots pre-compact →
+   `~/.qmonster/snapshots/`. Never `.mission/CURRENT_STATE.md`.
+4. **Policy + recommendation** (Phase 1 = alerts only; Phase 3 =
+   A–G situations; Phase 4 = profile recommendations). Aggressive mode
+   gated by `quota_tight` flag.
+5. **Limited actuation** (see "Actuation policy"). Destructive code
+   paths are not created until the phase that owns them is approved.
+
+## MVP reference code — warning
+
+`.docs/init/qmonster_adaptive_token_optimizer_mvp.rs` is a **signal
+catalog** (useful) and a **prototype-level reference** (NOT an
+architecture template). In particular:
+
+- its `collect_snapshots()` fills `provider`/`role` inside the
+  tmux-facing code — violates "`tmux/` knows no providers".
+- its `recommend()` mixes provider-specific profile logic into the
+  rules — violates "`policy/` is pure".
+
+Copy the markers and parse functions when needed. Do NOT mirror its
+module shape.
+
+## Deferred for later phases
+
+- Control-mode tmux adapter.
+- Manual prompt-send helper with user confirmation.
+- Subagent token accounting (Phase 1 ships a detection-only warning).
+- Cross-window / cross-project correlation.
+- Anomaly detection on pane identity drift (Phase 1 logs transitions).
+- Concurrent-work warning across panes (Phase 3+).
+- Copy-pasteable command snippets with recommendations (Phase 3+).
+- Side-effect warnings on high-compression profiles (Phase 4+).
