@@ -35,7 +35,7 @@ lives in `REVIEW_GUIDE.md`. Every displayed metric must carry a
 
 - [ ] `tmux::PaneSource` returns `RawPaneSnapshot` via polling.
 - [ ] `domain::IdentityResolver` resolves `(provider, instance, role,
-    pane_id)` with an `IdentityConfidence` level. Provider-specific
+  pane_id)` with an `IdentityConfidence` level. Provider-specific
       recommendations are suppressed when confidence is `Low` or
       `Unknown`.
 - [ ] `adapters/` never performs identity inference.
@@ -92,8 +92,11 @@ lives in `REVIEW_GUIDE.md`. Every displayed metric must carry a
 - [ ] A–G canonical rules each fire in a reproducible test fixture:
       log-storm, code-exploration, context-pressure, verbose-output,
       permission-wait, quota-tight, repeated-output.
-- [ ] **Concurrent-work warning** across panes fires when two active
-      panes touch the same file or git branch (Gemini G-11).
+- [ ] **Concurrent-work warning** across panes (Gemini G-11). Phase 3A
+      ships a **project-level proxy**: fires when two or more Main/Review
+      panes operate in the same `current_path` with recent output. The
+      stricter "same file or git branch" trigger is deferred to Phase 3B
+      or a later round (file-level) and Phase 4+ (git-branch-level).
 - [ ] `aggressive_mode` only surfaces recommendations when
       `quota_tight = true` in config.
 - [ ] Every rule carries a `SourceKind`; for `Heuristic` rules, a
@@ -121,7 +124,7 @@ Levers below are cited as `[ProviderOfficial]` with doc pointers.
       `model_auto_compact_token_limit`, `[features].apps`,
       `[apps._default].enabled`, `mcp_servers.<id>.enabled`, and exec
       flags (`codex exec --profile --json --output-last-message
-    --sandbox read-only --ephemeral --color never`).
+  --sandbox read-only --ephemeral --color never`).
       `[ProviderOfficial]`
 - [ ] High-risk Claude levers (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`,
       `CLAUDE_CODE_DISABLE_CLAUDE_MDS`,

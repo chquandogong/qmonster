@@ -269,6 +269,8 @@ module shape.
 - Subagent token accounting (Phase 1 ships a detection-only warning).
 - Cross-window / cross-project correlation.
 - Anomaly detection on pane identity drift (Phase 1 logs transitions).
-- Concurrent-work warning across panes (Phase 3+).
+- Concurrent-work warning across panes (Phase 3A ships a project-level
+  proxy at `same current_path`; file-level and git-branch-level
+  detection deferred to Phase 3B / Phase 4+).
 - Copy-pasteable command snippets with recommendations (Phase 3+).
 - Side-effect warnings on high-compression profiles (Phase 4+).
