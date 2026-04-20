@@ -185,6 +185,18 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn print_reports(reports: &[PaneReport]) {
+    for rep in reports {
+        for f in &rep.cross_pane_findings {
+            println!(
+                "[{}] [{}] CROSS-PANE: {} (anchor: {}, others: {})",
+                f.severity.letter(),
+                f.source_kind.badge(),
+                f.reason,
+                f.anchor_pane_id,
+                f.other_pane_ids.join(", "),
+            );
+        }
+    }
     for r in reports {
         println!(
             "{} [{:?}:{}:{:?}] confidence={:?} dead={}",
