@@ -1,6 +1,6 @@
 mission:
-  version: "1.7.3"
-  title: "Qmonster v0.4.0 — Phase 3 complete + gate-remediated + strong-rec contract cleaned (3A + 3B: policy engine, suggested_command, strong-rec UX, next_step precondition)"
+  version: "1.7.4"
+  title: "Qmonster v0.4.0 — Phase 3 complete + gate-remediated + strong-rec contract cleaned + ledger normalized (3A + 3B: policy engine, suggested_command, strong-rec UX, next_step precondition; Codex v1.7.3 finding #1 closed)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -125,6 +125,18 @@ mission:
     Engine::evaluate output. Field-level next/run separation makes the
     ordering contract inherent rather than string-substring-dependent.
 
+    Phase 3B ledger normalization (v1.7.4) closes Codex v1.7.3 review
+    finding #1. The live `done_when` list in mission.yaml contained
+    two v1.7.2 statements that were superseded by v1.7.3 (the claim
+    that suggested_command embeds the snapshot precondition, and the
+    claim that tests enforce a substring contract). Both are no longer
+    true of the shipped code after v1.7.3's field split. Fix: replace
+    the two v1.7.2 done_when lines with a SUPERSEDED comment block
+    that points future reviewers to the historical record in
+    mission-history.yaml (change_sequence 11). mission.yaml and
+    mission-history.yaml now tell the same current story without
+    internal contradiction. No code or runtime change; ledger only.
+
   done_when:
     # Phase-0 artefacts (kept as historical gating criteria — already met).
     - "Phase 0: mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate against the mission-spec schema."
@@ -188,14 +200,20 @@ mission:
     - "Phase 3B retry-remediation v1.7.1: suggested_command populated on 10 total rules (4 from v1.7.0 + 6 new in alerts/advisories/concurrent) — config-edit pointers where no runnable CLI exists."
     - "Phase 3B retry-remediation v1.7.1: remaining None suggested_command sites carry inline justification comments; Gemini G-2 retry finding closed."
 
-    # Phase-3B strong-rec command refinement (v1.7.2).
-    - "Phase 3B strong-rec cmd refinement v1.7.2: context_pressure_warning + context_pressure_critical suggested_command embeds the snapshot-first precondition, matching the reason field and the CHECKPOINT slot UI premise."
-    - "Phase 3B strong-rec cmd refinement v1.7.2: unit + integration tests enforce a substring contract ('snapshot' + '/compact') so the two strong recs cannot silently drop the snapshot precondition."
+    # Phase-3B strong-rec command refinement (v1.7.2) — SUPERSEDED by v1.7.3.
+    # The two v1.7.2 `done_when` statements (embedding snapshot precondition
+    # inside suggested_command, plus substring-contract tests) are no longer
+    # true of the shipped code. Historical record lives in
+    # mission-history.yaml (change_sequence 11). Removed from the live
+    # mission contract at v1.7.4 per Codex v1.7.3 review finding #1.
 
     # Phase-3B strong-rec contract cleanup (v1.7.3).
     - "Phase 3B strong-rec contract cleanup v1.7.3: Recommendation gains next_step: Option<String> for prose preconditions; suggested_command on all rules is a single-surface runnable value (shell cmd / slash-command / `# config-edit` pointer). Codex v1.7.2 finding #1 closed."
     - 'Phase 3B strong-rec contract cleanup v1.7.3: strong-rec suggested_command on context_pressure_warning + context_pressure_critical is exact Some("/compact"); next_step carries the `press ''s'' to snapshot …` precondition. Tests assert_eq exact-string + render-ordering (`next:` before `run:`). Codex v1.7.2 finding #2 closed.'
     - "Phase 3B strong-rec contract cleanup v1.7.3: ui::alerts::format_strong_rec_body is the single pub helper used by both the TUI alert queue and `--once`; unit tests on the helper + integration test on a live Engine::evaluate output lock the render format."
+
+    # Phase-3B ledger normalization (v1.7.4).
+    - "Phase 3B ledger normalization v1.7.4: superseded v1.7.2 strong-rec done_when entries removed from the live mission contract; historical record retained in mission-history.yaml (change_sequence 11). mission.yaml and mission-history.yaml tell the same current story. Codex v1.7.3 review finding #1 closed."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -286,17 +304,17 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4)."
     suggested_approach: >
-      Phase 3B strong-rec contract cleanup shipped (v1.7.3); Phase 3
-      is COMPLETE, gate-remediated, and the strong-rec render contract
-      is now structurally locked via a separate next_step field +
-      shared format_strong_rec_body helper. Request final Codex +
-      Gemini gate sign-off on v1.7.3 (Gemini has not reviewed v1.7.1
-      or later yet; Codex v1.7.2 findings closed by v1.7.3). On clean
-      pass, proceed to Phase 4 — provider profile recommender +
-      side_effects populating (Gemini G-6) + auto-memory profile
-      guide (Gemini G-5).
+      Phase 3B ledger normalization shipped (v1.7.4). Phase 3 is
+      COMPLETE, gate-remediated, strong-rec contract cleaned, and
+      mission.yaml ↔ mission-history.yaml ↔ CURRENT_STATE.md all tell
+      the same current story. Gate status: Gemini v1.7.3 pass (적극
+      승인); Codex v1.7.3 approve-with-fixes with finding #1 closed by
+      this v1.7.4 round. Request Codex v1.7.4 short re-check to
+      confirm ledger closure, then proceed to Phase 4 — provider
+      profile recommender + side_effects populating (Gemini G-6) +
+      auto-memory profile guide (Gemini G-5).
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -347,5 +365,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 12
+    total_revisions: 13
     history: "mission-history.yaml"

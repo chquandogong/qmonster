@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 12
-  latest_version: "1.7.3"
+  total_revisions: 13
+  latest_version: "1.7.4"
 
 timeline:
   - change_id: "initial"
@@ -1269,8 +1269,117 @@ timeline:
       - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
       - "Request final Codex + Gemini gate sign-off on v1.7.3 (Gemini has not reviewed v1.7.1+ yet)"
 
+  - change_id: "phase-3b-ledger-normalization"
+    semantic_version: "1.7.4"
+    change_sequence: 13
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.7.3 review — flagged the live-ledger contradiction closed by this round)"
+      - "Gemini (gemini:1:research, v1.7.3 review — pass / 적극 승인, noted in CURRENT_STATE.md)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close the single Codex v1.7.3 review finding: mission.yaml's live
+      `done_when` list still carried two v1.7.2 statements (the claim
+      that suggested_command embeds the snapshot precondition, and the
+      claim that tests enforce a substring contract). Both are no
+      longer true of the shipped code after v1.7.3 restored pure
+      `/compact` and split the prose precondition into `next_step`.
+      The live mission contract must only contain currently-true
+      assertions; historical truth belongs in mission-history.yaml.
+    intent_ko: >
+      Codex v1.7.3 리뷰가 지적한 유일한 finding을 닫는다. mission.yaml의
+      live `done_when` 목록에 v1.7.2의 두 폐기된 진술(strong-rec의
+      suggested_command가 snapshot precondition을 내장한다는 주장,
+      그리고 substring 계약 테스트라는 주장)이 남아 있었다. v1.7.3에서
+      suggested_command가 순수 `/compact`로 복원되고 precondition이
+      next_step 필드로 이관된 시점부터 이 두 진술은 실행 코드와
+      모순된다. 살아있는 mission 계약에는 현재 참인 진술만 남고,
+      역사적 진실은 mission-history.yaml에서 보존한다.
+    decision: >
+      mission.yaml done_when: replace the two v1.7.2 strong-rec
+      command-refinement lines with a SUPERSEDED comment block that
+      (a) explicitly marks them as no longer true of the live code,
+      (b) points future reviewers to the historical record in
+      mission-history.yaml change_sequence 11, and (c) cites this
+      v1.7.4 normalization round as the point where they were removed
+      per Codex v1.7.3 finding #1. Add one new done_when entry under
+      "Phase 3B ledger normalization (v1.7.4)" that records the
+      ledger-consistency invariant (mission.yaml and
+      mission-history.yaml must tell the same current story). Bump
+      mission.yaml version 1.7.3 → 1.7.4, title gains "+ ledger
+      normalized"; execution_hints.suggested_approach rewritten to
+      reflect both Gemini v1.7.3 pass and Codex v1.7.3 finding #1
+      closure. No code, test, or runtime behavior change; ledger-only.
+      CURRENT_STATE.md gate-status table refreshed to cite the
+      correct eval files (the prior phase3b-strong-rec-cleanup-review
+      file was intentionally overwritten with the Codex content;
+      Gemini approval is documented in the conversation record and
+      CURRENT_STATE.md).
+    decision_ko: >
+      mission.yaml의 done_when에서 v1.7.2 strong-rec command-refinement
+      관련 2개 항목을 SUPERSEDED 주석 블록으로 교체. 주석은 (a) 해당
+      진술이 현재 코드와 부합하지 않음을 명시하고, (b) 역사 기록이
+      mission-history.yaml change_sequence 11에 보존됨을 안내하며,
+      (c) 본 v1.7.4 normalization 라운드가 Codex v1.7.3 finding #1에
+      따라 제거 시점임을 기록. "Phase 3B ledger normalization (v1.7.4)"
+      섹션 아래 ledger-consistency 불변식을 기록하는 신규 done_when
+      한 건 추가. mission.yaml 버전 1.7.3 → 1.7.4, title에 "ledger
+      normalized" 추가; execution_hints.suggested_approach를 Gemini
+      v1.7.3 pass와 Codex v1.7.3 finding #1 closure를 반영하도록
+      재작성. 코드/테스트/런타임 동작 변경 없음; ledger-only 라운드.
+      CURRENT_STATE.md의 gate-status 표를 올바른 eval 파일 경로로
+      갱신(기존 phase3b-strong-rec-cleanup-review 파일은 의도적으로
+      Codex 내용으로 덮어쓰여졌으며, Gemini 승인은 대화 기록과
+      CURRENT_STATE.md에 보존).
+    triggered_by: "Codex v1.7.3 review (.docs/codex/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md + .mission/evals/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.result.yaml) — one warning on ledger self-contradiction"
+    issue_or_context: >
+      After v1.7.3 successfully closed the two Codex v1.7.2 code-level
+      findings, mission.yaml still contained the v1.7.2 contract
+      assertions side-by-side with the v1.7.3 contract assertions in
+      its live done_when list — a self-contradicting current-state
+      document. Codex's v1.7.3 review, while confirming the code
+      changes are correct, flagged this ledger drift as the remaining
+      blocker. Keeping the stale assertions would have created a
+      false source of truth for the next reviewer or operator reading
+      mission.yaml as the live contract.
+    changes:
+      modified:
+        - "mission.yaml — removed two superseded v1.7.2 strong-rec done_when statements; replaced with SUPERSEDED comment block citing mission-history.yaml change_sequence 11 + Codex v1.7.3 finding #1; added one new v1.7.4 ledger-normalization done_when; version 1.7.3 → 1.7.4; title + goal paragraph + execution_hints.topology + suggested_approach updated; lineage total_revisions 12 → 13"
+        - "mission-history.yaml — meta.total_revisions 12 → 13; meta.latest_version → 1.7.4; new entry (this one, change_sequence 13); evolution_summary.current_phase updated"
+        - ".mission/CURRENT_STATE.md — version + title + Phase line → 1.7.4; gate-status table refreshed (accurate file paths for both reviewers); Phase 3 summary appended with v1.7.4 normalization; Next first action updated"
+    changed_sections:
+      - "mission.yaml done_when (v1.7.2 superseded; v1.7.4 added)"
+      - "mission.yaml goal, title, execution_hints"
+      - ".mission/CURRENT_STATE.md gate status + verification + next action"
+    done_when_delta:
+      added:
+        - "Phase 3B ledger normalization v1.7.4: superseded v1.7.2 strong-rec done_when entries removed from the live mission contract; historical record retained in mission-history.yaml (change_sequence 11). mission.yaml and mission-history.yaml tell the same current story. Codex v1.7.3 review finding #1 closed."
+      modified: []
+      removed:
+        - "Phase 3B strong-rec cmd refinement v1.7.2: context_pressure_warning + context_pressure_critical suggested_command embeds the snapshot-first precondition, matching the reason field and the CHECKPOINT slot UI premise."
+        - "Phase 3B strong-rec cmd refinement v1.7.2: unit + integration tests enforce a substring contract ('snapshot' + '/compact') so the two strong recs cannot silently drop the snapshot precondition."
+    impact_scope:
+      code: "0 LOC — ledger-only round"
+      tests: "159 lib + 16 integration (unchanged from v1.7.3)"
+      clippy: "--all-targets -D warnings clean (unchanged)"
+      runtime: "no behavior change"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "very low — ledger-only; no source/test changes; validator must stay VALID"
+    related_commits: []
+    related_decisions:
+      - "KD-006"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
+      - "Request a short Codex v1.7.4 confirmation re-check that ledger cleanup closes finding #1"
+
 evolution_summary:
-  current_phase: "Phase 3 complete + gate-remediated + strong-rec contract cleaned (v1.7.3); Phase 4 gate open to request"
+  current_phase: "Phase 3 complete + gate-remediated + strong-rec contract cleaned + ledger normalized (v1.7.4); Phase 4 gate open to request after short Codex v1.7.4 confirmation"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
