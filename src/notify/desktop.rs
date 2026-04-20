@@ -50,6 +50,7 @@ mod tests {
             source_kind: SourceKind::ProjectCanonical,
             suggested_command: None,
             side_effects: vec![],
+            is_strong: false,
         };
         let (title, body) = summarize(&rec, "%1");
         assert_eq!(title, "Qmonster [W]");

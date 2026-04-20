@@ -78,6 +78,7 @@ fn log_storm_advisory(
         source_kind: SourceKind::Heuristic,
         suggested_command: Some("tmux capture-pane -pS -2000 > ~/.qmonster/archive/$(date +%F)-<pane_id>.log".into()),
         side_effects: vec![],
+        is_strong: false,
     })
 }
 
@@ -89,6 +90,7 @@ fn aggressive_log_storm() -> Recommendation {
         source_kind: SourceKind::Heuristic,
         suggested_command: None,
         side_effects: vec![],
+        is_strong: false,
     }
 }
 
@@ -116,6 +118,7 @@ fn code_exploration(
         source_kind: SourceKind::Heuristic,
         suggested_command: None,
         side_effects: vec![],
+        is_strong: false,
     })
 }
 
@@ -138,6 +141,7 @@ fn context_pressure_warning(
         source_kind: SourceKind::Estimated,
         suggested_command: Some("/compact".into()),
         side_effects: vec![],
+        is_strong: true,
     })
 }
 
@@ -149,6 +153,7 @@ fn aggressive_context_pressure_warning() -> Recommendation {
         source_kind: SourceKind::Heuristic,
         suggested_command: None,
         side_effects: vec![],
+        is_strong: false,
     }
 }
 
@@ -171,6 +176,7 @@ fn context_pressure_critical(
         source_kind: SourceKind::Estimated,
         suggested_command: Some("/compact".into()),
         side_effects: vec![],
+        is_strong: true,
     })
 }
 
@@ -182,6 +188,7 @@ fn aggressive_context_pressure_critical() -> Recommendation {
         source_kind: SourceKind::Heuristic,
         suggested_command: None,
         side_effects: vec![],
+        is_strong: false,
     }
 }
 
@@ -206,6 +213,7 @@ fn verbose_review(
         source_kind: SourceKind::Heuristic,
         suggested_command: None,
         side_effects: vec![],
+        is_strong: false,
     })
 }
 
@@ -217,6 +225,7 @@ fn aggressive_verbose_review() -> Recommendation {
         source_kind: SourceKind::Heuristic,
         suggested_command: None,
         side_effects: vec![],
+        is_strong: false,
     }
 }
 
@@ -240,6 +249,7 @@ fn quota_tight_nudge(
         source_kind: SourceKind::Heuristic,
         suggested_command: Some("# set quota_tight = true under [token] in config/qmonster.toml".into()),
         side_effects: vec![],
+        is_strong: false,
     })
 }
 
@@ -261,6 +271,7 @@ fn repeated_cache_suggest(
         source_kind: SourceKind::Heuristic,
         suggested_command: None,
         side_effects: vec![],
+        is_strong: false,
     })
 }
 
@@ -272,6 +283,7 @@ fn aggressive_repeated_cache_suggest() -> Recommendation {
         source_kind: SourceKind::Heuristic,
         suggested_command: None,
         side_effects: vec![],
+        is_strong: false,
     }
 }
 

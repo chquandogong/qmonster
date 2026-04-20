@@ -32,6 +32,10 @@ pub struct Recommendation {
     pub source_kind: SourceKind,
     pub suggested_command: Option<String>,
     pub side_effects: Vec<String>,
+    /// G-7: if true, this recommendation is rendered in a dedicated
+    /// "CHECKPOINT" slot above per-pane alerts in the alert queue and
+    /// `--once` output.
+    pub is_strong: bool,
 }
 
 /// Effects the policy engine wants `app::EffectRunner` to consider.
@@ -90,6 +94,7 @@ mod tests {
             source_kind: SourceKind::Heuristic,
             suggested_command: None,
             side_effects: vec![],
+            is_strong: false,
         };
         assert_eq!(r.severity, Severity::Warning);
         assert_eq!(r.source_kind, SourceKind::Heuristic);

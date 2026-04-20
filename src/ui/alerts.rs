@@ -42,7 +42,23 @@ fn collect_items(notices: &[SystemNotice], reports: &[PaneReport]) -> Vec<ListIt
         let body = format!("[{letter}] [{badge}] SYSTEM: {} — {}", n.title, n.body);
         out.push(ListItem::new(body).style(Style::default().fg(color)));
     }
-    // 2. Cross-pane findings (above per-pane alerts).
+    // 2. Strong recommendations (G-7 checkpoint UX).
+    for rep in reports {
+        for rec in rep.recommendations.iter().filter(|r| r.is_strong) {
+            let color = theme::severity_color(rec.severity);
+            let letter = rec.severity.letter();
+            let badge = rec.source_kind.badge();
+            let pane_id = rep.pane_id.clone();
+            let cmd = rec.suggested_command.as_deref().unwrap_or("");
+            let body = if cmd.is_empty() {
+                format!("[{letter}] [{badge}] >> CHECKPOINT ({pane_id}): {}", rec.reason)
+            } else {
+                format!("[{letter}] [{badge}] >> CHECKPOINT ({pane_id}): {} — run: `{cmd}`", rec.reason)
+            };
+            out.push(ListItem::new(body).style(Style::default().fg(color)));
+        }
+    }
+    // 3. Cross-pane findings.
     for rep in reports {
         for f in &rep.cross_pane_findings {
             let color = theme::severity_color(f.severity);
@@ -55,9 +71,9 @@ fn collect_items(notices: &[SystemNotice], reports: &[PaneReport]) -> Vec<ListIt
             out.push(ListItem::new(body).style(Style::default().fg(color)));
         }
     }
-    // 3. Per-pane recommendations.
+    // 4. Per-pane non-strong recommendations.
     for rep in reports {
-        for rec in &rep.recommendations {
+        for rec in rep.recommendations.iter().filter(|r| !r.is_strong) {
             let color = theme::severity_color(rec.severity);
             let letter = rec.severity.letter();
             let pane_id = rep.pane_id.clone();
@@ -118,6 +134,7 @@ mod tests {
                 source_kind: SourceKind::ProjectCanonical,
                 suggested_command: None,
                 side_effects: vec![],
+                is_strong: false,
             },
             Recommendation {
                 action: "log-storm",
@@ -126,6 +143,7 @@ mod tests {
                 source_kind: SourceKind::Heuristic,
                 suggested_command: None,
                 side_effects: vec![],
+                is_strong: false,
             },
         ]);
         let items = collect_items(&[], &[rep]);
@@ -147,12 +165,41 @@ mod tests {
             source_kind: SourceKind::Heuristic,
             suggested_command: None,
             side_effects: vec![],
+            is_strong: false,
         }]);
         let items = collect_items(&[notice], &[rep]);
         assert_eq!(items.len(), 2);
         // System notice is rendered first.
         // We cannot easily inspect the text of a ListItem without private
         // fields, but ordering is stable: notice then pane.
+    }
+
+    #[test]
+    fn strong_recommendation_renders_in_dedicated_slot_above_per_pane_alerts() {
+        let strong = Recommendation {
+            action: "context-pressure: act now",
+            reason: "context near critical — checkpoint + archive now; /compact after".into(),
+            severity: Severity::Risk,
+            source_kind: SourceKind::Estimated,
+            suggested_command: Some("/compact".into()),
+            side_effects: vec![],
+            is_strong: true,
+        };
+        let normal = Recommendation {
+            action: "log-storm",
+            reason: "r".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Heuristic,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+        };
+        let rep = base_report(vec![strong, normal]);
+        let items = collect_items(&[], &[rep]);
+        // Two items: strong-rec line + normal-rec line. Strong appears first.
+        assert_eq!(items.len(), 2);
+        // We can't easily introspect ListItem text without private-field hacks,
+        // but ordering is stable and this test locks in the slot count.
     }
 
     #[test]
@@ -165,6 +212,7 @@ mod tests {
             source_kind: SourceKind::Heuristic,
             suggested_command: None,
             side_effects: vec![],
+            is_strong: false,
         }]);
         rep.cross_pane_findings.push(CrossPaneFinding {
             kind: CrossPaneKind::ConcurrentMutatingWork,

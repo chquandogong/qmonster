@@ -16,6 +16,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             source_kind: SourceKind::ProjectCanonical,
             suggested_command: None,
             side_effects: vec![],
+            is_strong: false,
         });
     }
 
@@ -27,6 +28,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             source_kind: SourceKind::ProjectCanonical,
             suggested_command: None,
             side_effects: vec![],
+            is_strong: false,
         });
     }
 
@@ -38,6 +40,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             source_kind: SourceKind::Heuristic,
             suggested_command: None,
             side_effects: vec![],
+            is_strong: false,
         });
     }
 
@@ -49,6 +52,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             source_kind: SourceKind::Heuristic,
             suggested_command: None,
             side_effects: vec![],
+            is_strong: false,
         });
     }
 
@@ -60,6 +64,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             source_kind: SourceKind::Heuristic,
             suggested_command: None,
             side_effects: vec![],
+            is_strong: false,
         });
     }
 
@@ -71,6 +76,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             source_kind: SourceKind::ProjectCanonical,
             suggested_command: None,
             side_effects: vec![],
+            is_strong: false,
         });
     }
 
@@ -82,6 +88,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             source_kind: SourceKind::Heuristic,
             suggested_command: None,
             side_effects: vec![],
+            is_strong: false,
         });
     }
 

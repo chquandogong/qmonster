@@ -185,6 +185,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn print_reports(reports: &[PaneReport]) {
+    // 1. Cross-pane findings.
     for rep in reports {
         for f in &rep.cross_pane_findings {
             println!(
@@ -197,6 +198,24 @@ fn print_reports(reports: &[PaneReport]) {
             );
         }
     }
+    // 2. Strong recommendations (G-7 checkpoint UX).
+    for rep in reports {
+        for rec in rep.recommendations.iter().filter(|r| r.is_strong) {
+            let cmd = rec.suggested_command.as_deref().unwrap_or("");
+            if cmd.is_empty() {
+                println!(
+                    "[{}] [{}] >> CHECKPOINT ({}): {}",
+                    rec.severity.letter(), rec.source_kind.badge(), rep.pane_id, rec.reason
+                );
+            } else {
+                println!(
+                    "[{}] [{}] >> CHECKPOINT ({}): {} — run: `{}`",
+                    rec.severity.letter(), rec.source_kind.badge(), rep.pane_id, rec.reason, cmd
+                );
+            }
+        }
+    }
+    // 3. Per-pane summaries with non-strong recommendations.
     for r in reports {
         println!(
             "{} [{:?}:{}:{:?}] confidence={:?} dead={}",
@@ -220,7 +239,7 @@ fn print_reports(reports: &[PaneReport]) {
                 r.effects.iter().map(|e| format!("{e:?}")).collect();
             println!("  effects: {}", names.join(" "));
         }
-        for rec in &r.recommendations {
+        for rec in r.recommendations.iter().filter(|rec| !rec.is_strong) {
             println!(
                 "  [{}] [{}] {}: {}",
                 rec.severity.letter(),

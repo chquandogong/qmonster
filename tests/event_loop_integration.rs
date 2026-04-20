@@ -329,6 +329,44 @@ fn run_once_handles_dead_pane_without_panic() {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 3B integration tests: strong-rec UX (G-7)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn context_pressure_rec_is_marked_strong_end_to_end() {
+    // Fixture: Claude Main pane whose tail contains "context window usage 82%"
+    // → triggers context_pressure_warning (severity Warning, is_strong true).
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%1",
+            "claude:1:main",
+            "claude",
+            "context window usage 82%",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert_eq!(reports.len(), 1);
+
+    let rec = reports[0]
+        .recommendations
+        .iter()
+        .find(|r| r.action == "context-pressure: checkpoint")
+        .expect("context_pressure_warning must fire for 82% pressure");
+
+    assert!(rec.is_strong, "context-pressure: checkpoint must be marked is_strong");
+    assert_eq!(
+        rec.suggested_command.as_deref(),
+        Some("/compact"),
+        "context-pressure: checkpoint must carry /compact as suggested_command"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Phase 3A integration tests: cross-pane findings
 // ---------------------------------------------------------------------------
 
