@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 8
-  latest_version: "1.6.1"
+  total_revisions: 9
+  latest_version: "1.7.0"
 
 timeline:
   - change_id: "initial"
@@ -862,9 +862,98 @@ timeline:
       - "Phase 3B (Round 2): suggested_command + strong-rec UX"
       - "Codex Phase-3A v1.6.1 gate re-review (if needed)"
 
+  - change_id: "phase-3b-suggested-command-and-strong-rec"
+    semantic_version: "1.7.0"
+    change_sequence: 9
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Sonnet 4.6)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feat"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Phase 3B closes the two Gemini Round-2 deferrals (G-2 and G-7).
+      G-2: populate suggested_command on advisory rules where a real,
+      copy-pasteable CLI snippet exists. G-7: add Recommendation.is_strong
+      flag and render strong recommendations in a dedicated alert-queue
+      slot with ">> CHECKPOINT:" prefix, positioned between SystemNotices
+      and CrossPaneFindings.
+    intent_ko: >
+      Phase 3B는 Gemini의 Round-2 유예 항목 두 건(G-2, G-7)을 완료한다.
+      G-2: 실제 복사-붙여넣기 가능한 CLI 스니펫이 존재하는 advisory 규칙에
+      suggested_command를 채운다. G-7: Recommendation.is_strong 필드를
+      추가하고, strong recommendation을 SystemNotice와 CrossPaneFinding
+      사이에 전용 슬롯에서 ">> CHECKPOINT:" 접두사로 렌더링한다.
+    decision: >
+      Option B selected for G-2 (provider-CLI commands, no new Qmonster
+      subcommand debt): log_storm_advisory gets the tmux capture-pane
+      archiving snippet, context_pressure_warning and
+      context_pressure_critical get "/compact", quota_tight_nudge gets a
+      config-edit comment-form hint; rules without a genuinely actionable
+      command stay None (honest signal). Option B selected for G-7
+      (dedicated slot): Recommendation gains is_strong: bool (default
+      false); context_pressure_warning and context_pressure_critical are
+      marked is_strong = true (aggressive variants stay false); collect_items
+      in ui/alerts.rs rewritten to 4-section order: SystemNotice → strong
+      recs (CHECKPOINT slot) → CrossPaneFindings → per-pane normal recs;
+      main.rs --once prints the strong slot before the per-pane loop and
+      excludes strong recs from the per-pane pass (no double-print).
+    decision_ko: >
+      G-2에는 Option B(provider-CLI 명령, 새 Qmonster 서브커맨드 채무 없음)를
+      선택: log_storm_advisory에 tmux capture-pane 아카이빙 스니펫,
+      context_pressure_warning/critical에 "/compact", quota_tight_nudge에
+      config-edit 주석 형식 힌트, 실행 가능한 명령이 없는 규칙은 None 유지
+      (정직한 신호). G-7에는 Option B(전용 슬롯)를 선택: Recommendation에
+      is_strong: bool(기본값 false) 추가, context_pressure_warning/critical만
+      is_strong = true(aggressive 변형은 false 유지), ui/alerts.rs
+      collect_items를 4-섹션 순서(SystemNotice → CHECKPOINT 슬롯 →
+      CrossPaneFindings → per-pane 일반 recs)로 재작성, main.rs --once는
+      per-pane 루프 이전에 strong 슬롯을 출력하고 per-pane에서 strong recs를
+      제외해 이중 출력 방지.
+    triggered_by: "Phase 3B work order: close Gemini G-2 + G-7 (two-round Phase 3 staging, Round 2)"
+    issue_or_context: >
+      Phase 3A shipped with all advisory rules carrying suggested_command: None
+      as a planned Round-2 deferral. Phase 3B closes those two items on a clean
+      foundation after Phase-3A gate remediation (v1.6.1).
+    changes:
+      modified:
+        - "src/policy/rules/advisories.rs — rule bodies: log_storm_advisory, context_pressure_warning, context_pressure_critical, quota_tight_nudge get suggested_command; all rules get is_strong (false or true)"
+        - "src/policy/rules/alerts.rs — all Recommendation literals: is_strong: false added"
+        - "src/domain/recommendation.rs — Recommendation struct: +is_strong: bool field; test literal updated"
+        - "src/ui/alerts.rs — collect_items: 4-section renderer (SystemNotice → CHECKPOINT → CrossPane → normal recs); existing test literals updated"
+        - "src/main.rs — print_reports: strong-rec CHECKPOINT section before per-pane loop; per-pane loop filters out strong recs"
+        - "src/notify/desktop.rs — test literal: is_strong: false added"
+      added:
+        - "src/policy/rules/advisories.rs tests: log_storm_advisory_carries_tmux_capture_suggested_command, context_pressure_warning_suggests_compact"
+        - "src/ui/alerts.rs tests: strong_recommendation_renders_in_dedicated_slot_above_per_pane_alerts"
+        - "tests/event_loop_integration.rs: context_pressure_rec_is_marked_strong_end_to_end"
+      removed: []
+    done_when_delta:
+      added:
+        - "Phase 3B: advisory rules carry suggested_command where an actionable CLI snippet exists (tmux capture-pane, /compact, config-edit comments); rules without a clean equivalent stay None (Gemini G-2 closed)."
+        - "Phase 3B: Recommendation.is_strong flag set on context_pressure_warning + context_pressure_critical; UI renders strong recs in dedicated slot above per-pane alerts with `>> CHECKPOINT:` prefix (Gemini G-7 closed)."
+        - "Phase 3B: cargo build + cargo test (~155 lib + ~16 integration) + cargo clippy --all-targets -- -D warnings all clean."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~130 LOC added/modified (rule bodies + is_strong field + 4-section renderer + --once update + 4 new tests)"
+      tests: "155 lib + 16 integration (up from 154 lib + 15 integration)"
+      runtime: "no new FS writes; no new audit kinds; UI/plumbing only"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — additive field on Recommendation; existing literals compile-error fail-fast; no policy behavior changed; UI ordering locked in by new slot test"
+    related_commits: []
+    related_decisions:
+      - "KD-006"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
+      - "Request Codex + Gemini gate review for Phase 3B / v1.7.0"
+
 evolution_summary:
-  current_phase: "Phase 3A shipped AND gate-remediated (v1.6.1); Phase-3B gate open to request"
-  next_phase: "Phase 3B — suggested_command + strong-rec UX"
+  current_phase: "Phase 3 complete (3A + 3B shipped, gate-remediated at v1.6.1); Phase 4 gate open to request"
+  next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

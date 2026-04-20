@@ -1,6 +1,6 @@
 mission:
-  version: "1.6.1"
-  title: "Qmonster v0.4.0 — Phase 3A policy engine (round 1: pure-policy A–G + G-11 cross-pane) (gate-remediated)"
+  version: "1.7.0"
+  title: "Qmonster v0.4.0 — Phase 3 complete (3A + 3B: policy engine, suggested_command, strong-rec UX)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -60,9 +60,18 @@ mission:
     154 lib + 15 integration tests; cargo clippy --all-targets -D
     warnings clean.
 
-    Phase 3B (Round 2) is next: populate suggested_command on all
-    Round-1 rules, add "checkpoint before compact" strong-recommendation
-    UX (Gemini G-7).
+    Phase 3B (Round 2, v1.7.0) closes the two Gemini Round-2 deferrals.
+    G-2: advisory rules in advisories.rs now carry suggested_command
+    where an actionable CLI snippet exists — log_storm_advisory gets
+    the tmux capture-pane archiving command, context_pressure_warning
+    and context_pressure_critical get "/compact", quota_tight_nudge
+    gets a config-edit comment; rules without a clean equivalent stay
+    None (honest signal). G-7: Recommendation gains is_strong: bool;
+    context_pressure_warning and context_pressure_critical are set
+    is_strong = true; the alert queue renders strong recommendations in
+    a dedicated slot between SystemNotices and CrossPaneFindings with
+    prefix ">> CHECKPOINT:"; --once prints the same slot. Phase 3 is
+    now complete.
 
   done_when:
     # Phase-0 artefacts (kept as historical gating criteria — already met).
@@ -117,6 +126,11 @@ mission:
     - "Phase 3A remediation v1.6.1: dispatch_notify filters by Severity >= Warning (Codex #1 closed)."
     - "Phase 3A remediation v1.6.1: alert_event splits AlertFired (>= Warning) vs RecommendationEmitted (< Warning) by severity (Codex #2 closed)."
     - "Phase 3A remediation v1.6.1: canonical docs (VALIDATION.md, ARCHITECTURE.md) acknowledge the shipped same-current_path G-11 proxy (Codex #3 closed)."
+
+    # Phase-3B (v1.7.0).
+    - "Phase 3B: advisory rules carry suggested_command where an actionable CLI snippet exists (tmux capture-pane, /compact, config-edit comments); rules without a clean equivalent stay None (Gemini G-2 closed)."
+    - "Phase 3B: Recommendation.is_strong flag set on context_pressure_warning + context_pressure_critical; UI renders strong recs in dedicated slot above per-pane alerts with `>> CHECKPOINT:` prefix (Gemini G-7 closed)."
+    - "Phase 3B: cargo build + cargo test (~155 lib + ~16 integration) + cargo clippy --all-targets -- -D warnings all clean."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -207,14 +221,12 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits (policy layer: PolicyGates → advisories → concurrent → Engine wiring → PaneReport extension → UI → integration tests)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX)."
     suggested_approach: >
-      Phase 3A + v1.6.1 remediation is shipped. Next: Phase 3B —
-      suggested_command + strong-rec UX. Populate suggested_command:
-      Option<String> on all Round-1 advisory rules (A/B/C/C-crit/D/
-      F-nudge/G + G-11). Add "checkpoint before compact" strong-
-      recommendation UX treatment (Gemini G-7), leveraging the Phase-2
-      SnapshotWriter. Request Phase-3B gate approval.
+      Phase 3B shipped (v1.7.0); Phase 3 is COMPLETE. Request Codex +
+      Gemini gate review for Phase 3B / v1.7.0. On clean pass, proceed
+      to Phase 4 — provider profile recommender + side_effects
+      populating (Gemini G-6) + auto-memory profile guide (Gemini G-5).
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -265,5 +277,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 8
+    total_revisions: 9
     history: "mission-history.yaml"
