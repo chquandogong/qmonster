@@ -1,0 +1,199 @@
+mission:
+  version: "1.3.0"
+  title: "Qmonster v0.4.0 — Phase 1 observe-first MVP (gate-remediated)"
+
+  goal: |
+    Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
+    tmux window (Claude main / Codex review / Gemini research / Qmonster
+    monitor) and provides alerts, token-optimization recommendations,
+    security/audit observability, and task observation under an
+    Observe-first / Alert-first / Recommendation-first policy.
+
+    Phase 0 (planning) produced the canonical docs, mission ledger, thin
+    routers, Claude plan r1, Codex r1 cross-check, Gemini r1 research,
+    and the Claude r2 final synthesis. Phase 1 (observe-first MVP)
+    shipped: tmux polling, identity resolver with IdentityConfidence,
+    per-provider adapters, pure policy engine with seven alert rules,
+    in-memory EventSink, severity-aware desktop/bell notifications,
+    ratatui dashboard with low-saturation palette + SourceKind badges,
+    safety-precedence enforcement, subagent / zombie-pane / version-
+    drift scenarios, audit-logged safety-override rejections, and an
+    effect-abstraction path that dispatches on RequestedEffect (not on
+    the recommendation list).
+
+    This revision (v1.3.0) is the Phase-1 gate-remediation round that
+    closes the Codex review findings (metric/signal surfacing,
+    safety-override audit, version-drift surfacing, effect dispatch,
+    clippy hygiene) and aligns the mission/history/state docs with the
+    true post-implementation state. The Phase-2 gate opens from here.
+
+  done_when:
+    # Phase-0 artefacts (kept as historical gating criteria — already met).
+    - "Phase 0: mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate against the mission-spec schema."
+    - "Phase 0: docs/ai/{PROJECT_BRIEF,ARCHITECTURE,VALIDATION,WORKFLOWS,REVIEW_GUIDE}.md contain real canonical content (not placeholder stubs)."
+    - "Phase 0: CLAUDE.md, AGENTS.md, GEMINI.md are thin routers (each ≤ ~60 lines) routing to canonical docs and the mission ledger without duplicating content."
+    - "Phase 0: .docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md exists and covers all 11 required sections."
+    - "Phase 0: .docs/final/Qmonster-v0.4.0-2026-04-20-claude-final-r2.md exists, classifies every reviewer item, documents the SourceKind taxonomy, and records the r2 edits applied to canonical docs and the ledger."
+    - "Phase 0: Codex r1 cross-check at .docs/codex/…-codex-crosscheck-r1.md and Gemini r1 research at .docs/gemini/…-gemini-research-r1.md were consumed by the r2 synthesis."
+    - "Phase 0: Official-vs-heuristic labeling preserved throughout canonical docs; every numeric threshold is ProviderOfficial / ProjectCanonical / Heuristic / Estimated."
+
+    # Phase-1 implementation criteria (all must be true for Phase 2 gate).
+    - "Phase 1: Rust source tree matches docs/ai/ARCHITECTURE.md + final-r2.md §6.3: src/{tmux,domain,adapters,policy,store,ui,notify,app,main} plus src/app/{safety_audit,system_notice,version_drift}. Identity inference lives only in domain/; policy/ is pure (no IO); store/ ships EventSink trait + NoopSink + InMemorySink only (no SQLite, no archive persistence)."
+    - "Phase 1: cargo build succeeds; cargo test passes (lib + integration); cargo clippy --all-targets -- -D warnings is clean."
+    - "Phase 1: `qmonster --once` reports pane discovery + resolved identity (provider, instance, role, confidence) + signal chips + metric rows with SourceKind badges + recommendations."
+    - "Phase 1: alert rules fire for input-wait, permission-wait, log-storm, repeated-output, verbose-answer, error-hint, and subagent-hint; each carries a SourceKind and a reason."
+    - "Phase 1: pane_dead transitions drain alerts for that pane (Gemini G-12); disappeared panes are reset to Reappeared on re-attach."
+    - "Phase 1: version-drift detector captures CLI versions on startup (audit kind StartupVersionSnapshot) and surfaces drift as a warning-severity SystemNotice in the alert queue on operator refresh."
+    - "Phase 1: safety-precedence asymmetry is enforced at startup; every attempted upward override is rejected AND recorded as AuditEventKind::SafetyOverrideRejected at risk severity; unknown keys are recorded at concern severity."
+    - "Phase 1: app::EffectRunner dispatches on out.effects (RequestedEffect) — not on the recommendation list — so Phase 2 ArchiveLocal and future effects plug in without touching the loop."
+    - "Phase 1: PaneReport carries identity + signals + effects; UI panel renders signal chips, metric rows with SourceKind badges, and recommendation list."
+    - "Phase 1: runtime FS writes stay inside ~/.qmonster/ (Phase 1 writes nothing at all — only in-memory sink)."
+
+    # Phase-1 gate remediation (v1.3.0, this revision).
+    - "Gate remediation: Codex findings 1–5 closed; Gemini missing scenarios verified integrated; mission/history/state docs align on Phase-1-shipped, Phase-2-pending; Codex review recorded under .mission/evals + .docs/codex; Gemini eval already recorded under .mission/evals."
+
+  constraints:
+    - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
+    - "Layer separation: docs/ai/ = canonical (Git-tracked); .docs/ = raw working docs (gitignored); mission.yaml + mission-history.yaml + .mission/ = local contract/ledger (gitignored in single-user phase)."
+    - "Auto memory (Claude MEMORY.md + topic files, Codex memories, Gemini save_memory / Auto Memory) is treated as local convenience only — never the primary state store."
+    - "Day-end state goes to .mission/CURRENT_STATE.md, not to any memory file."
+    - "No destructive automation is enabled by default. No auto /compact, /clear, /memory mutation, prompt injection, or provider reconfiguration."
+    - "Default action mode = recommend_only. Allowed auto actions: notifications, raw archive. Disallowed auto actions: prompt-send, destructive mutations."
+    - "Logging sensitivity default = balanced (minimal | balanced | forensic). Raw full tail goes to archive store, not the audit log."
+    - "Refresh policy = manual_only. Qmonster surfaces 'refresh available' but never silently upgrades model/CLI/settings."
+    - "Token optimization is an architectural pillar, not an add-on feature. It shapes the observe -> classify -> recommend -> archive -> checkpoint loop."
+    - "Aggressive recommendations only surface when the user has opted into quota-tight mode."
+    - "Official provider facts (Claude/Codex/Gemini docs) must be labeled distinctly from community heuristics (LinkedIn posts, RTK / Context Mode / Token Savior / Caveman / claude-token-efficient / token-optimizer-mcp) in every UI screen and every doc."
+    - "Pane identity = {provider, instance, role, pane_id}. Repeated providers within one project window are allowed (e.g., claude:1:main, claude:2:review)."
+    - "tmux: primary prefix stays Ctrl-b; Ctrl-g is secondary prefix. Pane title convention is '{provider}:{instance}:{role}'. One project = one window = four panes by default."
+    - "Git tracking: .docs/, mission.yaml, mission-history.yaml, .mission/, .mission-spec/ stay gitignored in this single-user phase. Design must allow flipping mission.yaml, mission-history.yaml, .mission/decisions/, .mission/evals/, and docs/ai/ to tracked state when the team/CI phase begins."
+    - "Implementation stack: Rust first (Ratatui/Crossterm). tmux integration via polling first, with the adapter shaped so control-mode can replace polling later. SQLite for archive/snapshot store."
+    - "UI color rule: low-saturation palette (grey / navy / blue). Color is reserved for state transitions (good/warning/critical) and always accompanied by a numeric % or severity letter — never color-only."
+    - "Source-of-number rule: every displayed metric must be labeled (official) if the provider reported it, or (estimated) if Qmonster derived it from tail/state/docs surface."
+    - "SourceKind taxonomy (r2): Qmonster replaces the two-way official/estimated split with a four-way SourceKind = ProviderOfficial | ProjectCanonical | Heuristic | Estimated. Every metric, threshold, recommendation, and doc citation must carry one. ProviderOfficial requires a direct provider-doc citation. See docs/ai/ARCHITECTURE.md §SourceKind taxonomy."
+    - "Safety precedence asymmetry (r2, resolves Codex C-6): env/CLI may only move actions.mode, allow_auto_prompt_send, allow_destructive_actions, and refresh.policy TOWARD safer behavior. Upward overrides are ignored at startup and logged as risk-severity audit events. Runtime code never toggles these flags."
+    - "Runtime FS write boundary (r2, Codex CSF-1 + Gemini G-9): Qmonster runtime writes only within ~/.qmonster/. Project-directory files (CURRENT_STATE.md, mission.yaml, mission-history.yaml, docs/ai/*, provider configs, source files) are read-only to Qmonster across Phases 1-4."
+    - "Runtime checkpoint location (r2, Codex C-4 + Gemini Doc-hierarchy): runtime snapshots go to ~/.qmonster/snapshots/. .mission/CURRENT_STATE.md is a day-end handoff document written by the human day-end routine — never by Qmonster runtime."
+    - "Contract vs runtime split (r2, Codex CD-2): mission.yaml defines the design envelope and approval gates. Runtime actuation flags (actions.mode, allow_auto_*) live in config/qmonster.example.toml. Do not duplicate runtime flags into mission.yaml."
+    - "Audit-log isolation (r2, Codex CSF-2 + Gemini G-8): the audit-log writer cannot accept raw bytes. Type-level enforcement, not comment-level. Raw tails live only in ~/.qmonster/archive/."
+    - "Identity-before-adapters pipeline (r2, Codex C-3): tmux::RawPaneSnapshot -> domain::IdentityResolver -> adapters::ProviderParser -> domain::SignalSet -> policy::Engine -> app::EffectRunner -> ui::ViewModel. adapters/ never performs identity inference."
+    - "IdentityConfidence gate (r2, Codex C-7): panes with IdentityConfidence::Low or Unknown suppress provider-specific recommendations. Basic alerts still fire."
+
+  approvals:
+    - gate: "planning artifacts drafted (claude r1)"
+      approver: human
+    - gate: "codex cross-check r1"
+      approver: codex
+    - gate: "gemini research/policy/safety r1"
+      approver: ai
+    - gate: "claude final synthesis r2"
+      approver: human
+    - gate: "begin Phase 1 (observe-first MVP) implementation"
+      approver: human
+
+  evals:
+    - name: "mission-schema-valid"
+      type: automated
+      description: "mission.yaml passes mission-spec validator."
+      command: "node -e \"import('yaml').then(async ({parse}) => { const {readFileSync} = await import('node:fs'); const {validateMission} = await import('/home/chquan/.claude/plugins/cache/mission-spec/mission-spec/1.16.15/dist/schema/validator.js'); const r = validateMission(parse(readFileSync('mission.yaml','utf-8'))); if (r.valid) { console.log('mission.yaml: VALID'); } else { console.error('INVALID:', r.errors.join(', ')); process.exit(1); } })\""
+      pass_criteria: "exit code 0 and stdout contains 'mission.yaml: VALID'"
+
+    - name: "docs-hierarchy-sanity"
+      type: manual
+      description: >
+        docs/ai/ contains 5 non-placeholder canonical files; .mission/
+        contains CURRENT_STATE.md filled with real content; .docs/claude/
+        contains the r1 planning report; CLAUDE.md, AGENTS.md, GEMINI.md
+        each stay ≤ ~60 lines and only route to canonical docs and the
+        mission ledger.
+
+    - name: "official-vs-heuristic-labeling"
+      type: manual
+      description: >
+        Spot-check the planning report and canonical docs: every
+        provider-specific lever is labeled (official) with the referenced
+        doc section, or (heuristic) when derived from community tools and
+        posts. Numeric thresholds from community tools are marked
+        (estimated).
+
+    - name: "thin-router-byte-budget"
+      type: manual
+      description: >
+        Reviewer confirms CLAUDE.md, AGENTS.md, GEMINI.md each contain
+        only: (a) pointers to docs/ai/, (b) pointers to mission ledger,
+        (c) pointers to working-doc directories, (d) one short block of
+        provider-specific rules. No procedures. No architecture content.
+        No decision records. No state.
+
+    - name: "no-premature-code"
+      type: automated
+      description: "Rust source must still compile to the placeholder bootstrap — no implementation added yet."
+      command: "cargo check --quiet"
+      pass_criteria: "exit code 0"
+
+    - name: "cross-check-handoff-ready"
+      type: manual
+      description: >
+        All four cross-check input files exist before Codex round: mission.yaml,
+        mission-history.yaml, .mission/CURRENT_STATE.md, docs/ai/*.md,
+        .docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md. The
+        planning report ends with an explicit Codex TODO list and an
+        explicit Gemini TODO list so reviewers know what to look at.
+
+  execution_hints:
+    topology: "Phase 1 shipped via single-session TDD. Phase-2 work anticipated to need one or two parallel agent swim-lanes (store writers are independent of the UI)."
+    suggested_approach: >
+      Phase 0 is closed. Phase 1 is shipped and the gate has been
+      remediated against Codex's review. Next: open the Phase-2 gate for
+      durable storage — src/store/{sqlite,archive_fs,audit,snapshots,
+      retention}.rs per final-r2.md §6.4. The audit writer must keep
+      the type-level rule (no raw bytes accepted); raw archive and
+      audit logs live in separate writers. Move the version-drift
+      previous-snapshot out of in-memory into ~/.qmonster/versions.json
+      as part of Phase 2.
+    note: >
+      SourceKind taxonomy remains non-negotiable: every metric,
+      threshold, recommendation, and audit summary carries a ProviderOfficial
+      / ProjectCanonical / Heuristic / Estimated tag. This rule now holds
+      for Phase 2+ code and docs as well, not just the planning round.
+
+  skills_needed:
+    - "Rust + Ratatui/Crossterm TUI architecture (later phases)"
+    - "tmux format strings and capture-pane usage"
+    - "Claude Code / Codex / Gemini CLI configuration surfaces"
+    - "SQLite schema design for archive + snapshot store"
+    - "Writing canonical docs that stay thin and survive reviewer iteration"
+
+  artifacts:
+    - "mission.yaml"
+    - "mission-history.yaml"
+    - ".mission/CURRENT_STATE.md"
+    - "docs/ai/PROJECT_BRIEF.md"
+    - "docs/ai/ARCHITECTURE.md"
+    - "docs/ai/VALIDATION.md"
+    - "docs/ai/WORKFLOWS.md"
+    - "docs/ai/REVIEW_GUIDE.md"
+    - "CLAUDE.md"
+    - "AGENTS.md"
+    - "GEMINI.md"
+    - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
+
+  budget_hint:
+    priority: "planning-only; no implementation this round"
+    estimated_sessions: 4
+    scope: "claude r1 -> codex r1 -> gemini r1 -> claude r2"
+    followups:
+      - "Phase 1: observe-first MVP (tmux polling, pane discovery, signal extraction, basic text dashboard)"
+      - "Phase 2: archive + checkpoint"
+      - "Phase 3: policy engine (log storm / code exploration / context pressure / verbose output / permission wait / quota-tight)"
+      - "Phase 4: provider profile recommender"
+      - "Phase 5: safer actuation (manual prompt-send helper with user confirmation)"
+
+  author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
+  created: "2026-04-20"
+
+  lineage:
+    initial_version: "1.0.0"
+    initial_date: "2026-04-20"
+    total_revisions: 4
+    history: "mission-history.yaml"

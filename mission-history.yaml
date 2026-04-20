@@ -1,0 +1,453 @@
+meta:
+  mission_id: "qmonster-v0.4.0-planning"
+  mission_title: "Qmonster v0.4.0 — planning foundation"
+  tracking_since: "2026-04-20"
+  tracking_mode: "local-first (single-user)"
+  total_revisions: 4
+  latest_version: "1.3.0"
+
+timeline:
+  - change_id: "initial"
+    semantic_version: "1.0.0"
+    change_sequence: 1
+    date: "2026-04-20"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (main pane)"
+    change_type: "initial"
+    motivation_type: "bootstrap"
+    persistence: "permanent"
+    intent: >
+      Establish Qmonster v0.4.0 planning foundation (canonical docs,
+      mission ledger, thin routers, Claude planning report r1) before
+      any implementation begins.
+    intent_ko: >
+      Qmonster v0.4.0 착수 단계에서 구현 코드 작성 이전에 canonical docs,
+      mission ledger, thin routers, Claude 계획 보고서 r1을 먼저
+      확정한다.
+    decision: >
+      Treat token optimization as an architectural pillar (not a
+      feature); keep auto memory out of primary state; default to
+      recommend_only actuation and manual refresh; preserve the
+      official-vs-heuristic labeling rule in every doc and UI surface.
+    decision_ko: >
+      토큰 최적화를 기능이 아닌 설계 축으로 채택, auto memory를 정본에서
+      배제, 기본 actuation은 recommend_only, refresh는 manual_only,
+      공식/휴리스틱 구분을 문서/UI에서 강제한다.
+    triggered_by: "user-supplied init kit v0.4.0 + /mission-spec:ms-init"
+    issue_or_context: >
+      First planning round for the Qmonster project. Supplied reference
+      materials in .docs/init/ were read and stable conclusions were
+      promoted into docs/ai/.
+    changes:
+      added:
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - ".mission/CURRENT_STATE.md (populated)"
+        - "docs/ai/PROJECT_BRIEF.md (expanded from stub)"
+        - "docs/ai/ARCHITECTURE.md (expanded from stub)"
+        - "docs/ai/VALIDATION.md (expanded from stub)"
+        - "docs/ai/WORKFLOWS.md (expanded from stub)"
+        - "docs/ai/REVIEW_GUIDE.md (expanded from stub)"
+        - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
+      modified: []
+      removed: []
+    changed_sections:
+      - "project layout"
+      - "doc hierarchy / memory roles"
+      - "mission contract + ledger"
+      - "planning report (round r1)"
+    done_when_delta:
+      added:
+        - "mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate"
+        - "docs/ai/*.md populated with real canonical content"
+        - "CLAUDE.md, AGENTS.md, GEMINI.md stay thin routers (≤ ~60 lines)"
+        - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md exists and covers all 11 required sections"
+        - "Official-vs-heuristic labeling preserved throughout"
+        - "No Qmonster implementation beyond placeholder src/ modules"
+        - ".docs/codex/Qmonster-v0.4.0-2026-04-20-codex-crosscheck-r1.md written"
+        - ".docs/gemini/Qmonster-v0.4.0-2026-04-20-gemini-research-r1.md written"
+        - ".docs/final/Qmonster-v0.4.0-2026-04-20-claude-final-r2.md written"
+      modified: []
+      removed: []
+    impact_scope:
+      repo_layout: "docs/ai/, .docs/, .mission/, .mission-spec/ semantics fixed"
+      routers: "CLAUDE.md / AGENTS.md / GEMINI.md constrained to thin routers"
+      gitignore: "single-user phase ignores .docs/, mission.yaml, mission-history.yaml, .mission/, .mission-spec/; team/CI flip path preserved"
+      config: "config/qmonster.example.toml treated as source of truth for defaults"
+      implementation_gate: "no Rust source is written beyond placeholders until claude r2 final synthesis"
+    breaking: false
+    risk: "low (planning-only; no runtime changes)"
+    related_commits: []
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Codex r1 cross-check -> .docs/codex/Qmonster-v0.4.0-2026-04-20-codex-crosscheck-r1.md"
+      - "Gemini r1 research/policy/safety -> .docs/gemini/Qmonster-v0.4.0-2026-04-20-gemini-research-r1.md"
+      - "Claude r2 final synthesis -> .docs/final/Qmonster-v0.4.0-2026-04-20-claude-final-r2.md"
+      - "Phase 1 (observe-first MVP) implementation after human approves the phase-1 gate"
+
+  - change_id: "r2-final-synthesis"
+    semantic_version: "1.1.0"
+    change_sequence: 2
+    date: "2026-04-20"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, r1 cross-check)"
+      - "Gemini (gemini:1:research, r1 research/policy/safety)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "reconciliation"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Reconcile Codex r1 cross-check and Gemini r1 research/policy
+      review into a final synthesis (r2); apply every approved
+      must-fix to canonical docs and the mission envelope before
+      Phase 1 implementation begins.
+    intent_ko: >
+      Codex r1 교차검증과 Gemini r1 조사/정책 리뷰를 r2 최종 종합본으로
+      통합하고, Phase 1 구현 착수 이전에 승인된 must-fix를 canonical
+      문서와 미션 envelope에 반영한다.
+    decision: >
+      Accept all 8 Codex must-fixes (1 closed, 1 Phase-1 implementation,
+      6 applied now to docs/mission); accept all 4 Codex scope
+      reductions (Phase 1 narrowed: no SQLite, no archive persistence,
+      no snapshot export, no profile recommender, no A-G policy rules
+      beyond basic alerts); adopt SourceKind = ProviderOfficial |
+      ProjectCanonical | Heuristic | Estimated; integrate Gemini's
+      subagent-detection warning, zombie-pane / re-attach reset, and
+      manual version-drift detector into Phase 1; integrate audit-log
+      type-level isolation into ARCHITECTURE.md (Phase 2 writer);
+      codify the safety-precedence asymmetry and the ~/.qmonster/
+      FS-write boundary in mission.yaml constraints.
+    decision_ko: >
+      Codex의 must-fix 8건을 모두 수용(1건 closed, 1건 Phase-1 구현,
+      6건 문서/미션에 즉시 반영), scope reduction 4건 전부 수용하여
+      Phase 1을 축소(SQLite/아카이브 영속/스냅샷 내보내기/프로필
+      추천/A-G 규칙 제외). SourceKind 분류 체계 도입. Gemini의 서브
+      에이전트 감지 경고/좀비 페인 및 재연결 초기화/수동 버전 드리프트
+      감지기를 Phase 1에 편입. ARCHITECTURE.md에 audit-log 타입 수준
+      격리를 명시(실제 writer는 Phase 2). 안전 precedence 비대칭성과
+      ~/.qmonster/ FS 쓰기 경계를 mission.yaml 제약에 코드화.
+    triggered_by: "Codex r1 crosscheck + Gemini r1 research (both approve-with-fixes)"
+    issue_or_context: >
+      r1 plan had six structural issues reviewers flagged: (1) authority
+      inversion between PROJECT_BRIEF.md and plan §3.1, (2) Phase-1 vs
+      archive/checkpoint contradiction, (3) adapters/ boundary placing
+      identity inference after provider dispatch, (4) runtime checkpoint
+      sink confused with day-end handoff, (5) (official) tag conflating
+      provider / project-local / prototype sources, (6) safety
+      precedence contradiction. Plus three Gemini operating gaps:
+      audit bleed risk, subagent/zombie-pane blind spots, version
+      drift signaling.
+    changes:
+      added:
+        - ".docs/final/Qmonster-v0.4.0-2026-04-20-claude-final-r2.md"
+        - "docs/ai/ARCHITECTURE.md §SourceKind taxonomy"
+        - "docs/ai/ARCHITECTURE.md §Safety precedence"
+        - "docs/ai/ARCHITECTURE.md §Filesystem write boundary"
+        - "docs/ai/ARCHITECTURE.md §MVP reference code warning"
+        - "docs/ai/VALIDATION.md Phase-1: subagent detection, zombie pane, version drift, SourceKind-in-UI checks"
+        - "docs/ai/VALIDATION.md Phase-3: concurrent-work warning"
+        - "docs/ai/VALIDATION.md Phase-4: side-effects field, auto-memory guidance"
+        - "docs/ai/WORKFLOWS.md §5: version-drift manual-refresh trigger"
+      modified:
+        - "docs/ai/ARCHITECTURE.md pipeline (RawPaneSnapshot -> IdentityResolver -> ProviderParser -> SignalSet -> Engine -> EffectRunner -> ViewModel + EventSink)"
+        - "docs/ai/ARCHITECTURE.md module responsibilities: identity inference moved from adapters/ into domain/; policy/ is pure; store/ Phase-1 minimal"
+        - "docs/ai/VALIDATION.md Phase-1 drops archive preview/full split and SQLite; keeps EventSink trait + NoopSink/InMemorySink"
+        - "docs/ai/WORKFLOWS.md §6: runtime checkpoints go to ~/.qmonster/snapshots/; CURRENT_STATE.md is human-written only"
+        - "mission.yaml mission.version bumped 1.0.0 -> 1.1.0"
+        - "mission.yaml constraints: added SourceKind, safety-precedence asymmetry, FS-write boundary, runtime-checkpoint location, envelope-vs-runtime split, audit-log isolation, identity-before-adapters pipeline, IdentityConfidence gate"
+        - "mission.yaml lineage.total_revisions = 2"
+        - "mission.yaml done_when: added .docs/final/ r2 requirement"
+        - ".mission/CURRENT_STATE.md refreshed to reflect r2 state + next first action"
+      removed: []
+    changed_sections:
+      - "authority order (resolved)"
+      - "Phase 1 scope (narrowed)"
+      - "adapters boundary (fixed)"
+      - "checkpoint sink (separated)"
+      - "source-tag taxonomy (expanded)"
+      - "safety precedence (asymmetric)"
+      - "runtime FS write boundary (stated)"
+      - "audit-log isolation (type-level rule added)"
+      - "subagent / zombie-pane / version-drift (new Phase-1 scenarios)"
+    done_when_delta:
+      added:
+        - ".docs/final/Qmonster-v0.4.0-2026-04-20-claude-final-r2.md exists and classifies every reviewer item with r2 edits recorded"
+      modified: []
+      removed: []
+    impact_scope:
+      repo_layout: "unchanged"
+      routers: "unchanged (still ~25 lines each)"
+      gitignore: "unchanged"
+      config: "config/qmonster.example.toml unchanged except comment stub for gemini-local-research (Phase-4 item)"
+      implementation_gate: "Phase-1 MVP narrowed; file-structure tree confirmed in .docs/final/...r2.md §6.3; begin-Phase-1 approval gate remains pending human sign-off"
+      canonical_docs: "ARCHITECTURE.md, VALIDATION.md, WORKFLOWS.md updated; PROJECT_BRIEF.md unchanged; REVIEW_GUIDE.md unchanged"
+    breaking: false
+    risk: "low — documentation reconciliation; no runtime code changed; mission schema still validates"
+    related_commits: []
+    related_decisions:
+      - "KD-006"
+      - "KD-007"
+      - "KD-008"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "Human approves 'begin Phase 1 (observe-first MVP) implementation' gate in mission.yaml.approvals"
+      - "Move no-premature-code eval (cargo check) to pre-commit or CI before Phase-1 merge (M3)"
+      - "Phase 1: ship subagent detection warning, zombie-pane lifecycle, manual version-drift detector"
+      - "Phase 1: validate Estimated thresholds against real pane fixtures; reclassify if evidence supports it (M1)"
+      - "Phase 2: implement store/audit.rs with type-level raw-byte exclusion and store/snapshots.rs writing ~/.qmonster/snapshots/"
+
+  - change_id: "phase-1-observe-first-mvp"
+    semantic_version: "1.2.0"
+    change_sequence: 3
+    date: "2026-04-20"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, approved the Phase-1 gate)"
+    change_type: "feat"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Ship the observe-first MVP (Phase 1) per the r2 final synthesis:
+      tmux polling, identity resolution with confidence, provider
+      parsers, basic alert rules, in-memory event sink, desktop +
+      terminal-bell notifications with a severity-aware rate limiter,
+      a ratatui dashboard, safety-precedence enforcement, and the
+      manual version-drift detector.
+    intent_ko: >
+      r2 최종 종합본에 맞춰 Phase 1 observe-first MVP 구현: tmux
+      polling, confidence를 가진 identity resolver, provider별 파서,
+      기본 alert rule, in-memory EventSink, severity 인지 rate
+      limiter가 붙은 desktop/terminal-bell 알림, ratatui 대시보드,
+      안전 precedence 강제, 수동 version-drift 감지기.
+    decision: >
+      TDD-first implementation of every pure module (domain, adapters,
+      policy, store sink, rate limiter, config safety precedence,
+      effect runner, version-drift). Integration-only testing for
+      tmux polling + ratatui rendering + desktop notification (kept
+      thin). 73 lib tests + 2 integration tests all pass. `cargo
+      build --quiet` and `cargo check` both clean.
+    triggered_by: "human approval of the 'begin Phase 1' gate in mission.yaml"
+    issue_or_context: >
+      Phase 0 artefacts had locked in authority order, SourceKind
+      taxonomy, and the narrowed Phase-1 scope. This entry records the
+      implementation that landed against that scope.
+    changes:
+      added:
+        - "Cargo.toml dependencies: ratatui, crossterm, serde, toml, anyhow, thiserror, clap, notify-rust, directories"
+        - "src/lib.rs (library entry for modules)"
+        - "src/domain/{origin,identity,signal,recommendation,audit,lifecycle}.rs (7 files, all pure)"
+        - "src/tmux/{types,polling}.rs with PaneSource trait + PollingSource + FixtureSource"
+        - "src/adapters/{common,claude,codex,gemini,qmonster}.rs (no identity inference; parse_for dispatcher)"
+        - "src/policy/{engine,gates}.rs + src/policy/rules/alerts.rs (7 alert kinds, pure, SourceKind-tagged)"
+        - "src/store/sink.rs with EventSink + NoopSink + InMemorySink (audit writer cannot accept raw bytes — type-level)"
+        - "src/notify/{rate_limit,desktop,bell}.rs with severity-aware throttling + NotifyBackend trait"
+        - "src/app/{config,effects,bootstrap,event_loop,version_drift}.rs (safety precedence enforced, actuation allow-list, Gemini G-3 detector)"
+        - "src/ui/{theme,alerts,panels,dashboard}.rs ratatui dashboard with low-saturation palette and SourceKind badges"
+        - "src/main.rs clap CLI + TUI loop + 'r' key for version refresh + 'q'/Esc to quit + --once smoke-test mode"
+        - "tests/event_loop_integration.rs with FixturePaneSource and RecordingNotifier"
+      modified:
+        - "src/main.rs (was bootstrap println-only)"
+        - "mission.yaml (version 1.1.0 -> 1.2.0; added Phase-1 done_when criteria)"
+      removed: []
+    changed_sections:
+      - "implementation scope (Phase 0 -> Phase 1)"
+      - "cargo dependencies (empty -> ratatui stack)"
+      - "src/ (placeholder modules -> full Phase 1 implementation)"
+    done_when_delta:
+      added:
+        - "Phase 1 observe-first MVP compiles, tests pass, and --once reports live tmux panes with identity/signals/recommendations"
+        - "SourceKind labels surfaced on every metric and recommendation in docs, tests, and UI"
+        - "Version-drift detector captures CLI versions and supports operator-requested refresh ('r' keybinding)"
+        - "Safety-precedence rules enforced at startup; env/CLI rejections audit-logged"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "new: ~2989 LOC across src/ (27 Rust source files); new Cargo deps"
+      tests: "73 lib tests + 2 integration tests (75 total, all passing)"
+      runtime: "runtime FS writes remain zero in Phase 1; in-memory sink only; no SQLite; no archive persistence"
+      docs: "no canonical-doc changes this round; mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated to reflect Phase-1 completion"
+    breaking: false
+    risk: "medium — first real implementation round; ratatui/notify-rust/tmux paths are integration-tested manually with --once. Phase 2 will add durable storage."
+    related_commits: []
+    related_decisions:
+      - "KD-007"
+      - "KD-008"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 2: store/{sqlite,archive_fs,audit,snapshots,retention}.rs per r2 §6.4"
+      - "Phase 3: A-G canonical rules (log-storm / code-exploration / context-pressure / verbose / permission / quota-tight / repeated), concurrent-work warning (Gemini G-11), suggested_command populating (Gemini G-2)"
+      - "Phase 4: provider profile recommender + side_effects populating (Gemini G-6) + auto-memory profile guide (Gemini G-5)"
+      - "Harden: pre-commit cargo check + cargo clippy -D warnings (M3)"
+      - "Move version-drift 'previous snapshot' from in-memory to ~/.qmonster/versions.json once Phase 2 lands persistence"
+
+  - change_id: "phase-1-gate-remediation"
+    semantic_version: "1.3.0"
+    change_sequence: 4
+    date: "2026-04-20"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, Phase-1 gate-open cross-check)"
+      - "Gemini (gemini:1:research, Phase-1 eval)"
+      - "CHENGHAO QUAN (operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close every Codex Phase-1 gate finding (3 risks + 2 warnings +
+      clippy) and align mission / history / CURRENT_STATE authority so
+      the Phase-2 gate can open on stable ground.
+    intent_ko: >
+      Codex의 Phase-1 gate 리뷰 지적 5건(risk 3 + warning 2)과 clippy
+      경고를 모두 닫고, mission/history/CURRENT_STATE의 권위 정합을
+      복구해 Phase-2 게이트가 안정적으로 열리도록 정리한다.
+    decision: >
+      (1) Rewrote mission.yaml goal/done_when/execution_hints to match
+      the Phase-1-shipped, Phase-2-pending state; bumped version 1.2.0
+      -> 1.3.0. (2) Extended PaneReport with identity + signals +
+      effects; UI panel renders signal chips + metric rows with
+      SourceKind badges; --once prints them. (3) Buffered and audit-
+      logged safety-override rejections through a new
+      apply_override_with_audit helper; risk severity for forbidden
+      upgrades, concern severity for unknown keys. (4) Introduced
+      SystemNotice and route_version_drift; version drift surfaces as
+      a warning-severity notice in the alert queue; startup snapshot
+      uses a dedicated AuditEventKind::StartupVersionSnapshot. (5)
+      Refactored deliver_effects to dispatch on out.effects via an
+      EffectPermits snapshot; ArchiveLocal and SensitiveNotImplemented
+      paths are explicit. (6) Cleaned clippy field_reassign_with_default
+      across adapters/common.rs + all test sites; doc-lint fix +
+      unused-mut fix. cargo clippy --all-targets -- -D warnings is
+      clean.
+    decision_ko: >
+      (1) mission.yaml의 goal/done_when/execution_hints를 Phase 1
+      출시 후 Phase 2 대기 상태로 재작성, version 1.3.0으로 bump.
+      (2) PaneReport에 identity/signals/effects 추가, UI panel이
+      signal chip과 MetricValue badge를 렌더링, --once 출력도 동일하게
+      반영. (3) safety-override 거부를 apply_override_with_audit로
+      감사 로그화(거부는 risk, unknown은 concern). (4) SystemNotice와
+      route_version_drift 도입으로 version drift를 alert queue에
+      warning-severity로 표출, startup snapshot은 StartupVersionSnapshot
+      전용 kind 사용. (5) deliver_effects를 out.effects 기반 dispatch로
+      리팩터(EffectPermits), ArchiveLocal/SensitiveNotImplemented 분기
+      명시화. (6) clippy field_reassign_with_default를 struct-update
+      구문으로 정리; 기타 doc-lint, unused-mut 수정. cargo clippy
+      --all-targets -- -D warnings 청정.
+    triggered_by: "Codex Phase-1 gate-open review (verdict: rework); Gemini Phase-1 eval (verdict: pass) also recorded"
+    issue_or_context: >
+      Codex flagged that mission.yaml/mission-history.yaml still
+      described Phase 0 PLANNING-ONLY; that metric/signal surfacing and
+      safety-override audit logging and version-drift alert surfacing
+      were not implemented; that deliver_effects ignored out.effects;
+      and that clippy -D warnings failed. Gemini's eval was positive
+      but surface-level. Gate was withheld pending these fixes.
+    changes:
+      added:
+        - "src/app/safety_audit.rs (apply_override_with_audit + OverrideStats; 4 tests)"
+        - "src/app/system_notice.rs (SystemNotice, record_startup_snapshot, route_version_drift; 5 tests)"
+        - "AuditEventKind::StartupVersionSnapshot"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-20-phase1-codex-review.result.yaml"
+        - ".docs/codex/Qmonster-v0.4.0-2026-04-20-phase1-review.md (narrative archive)"
+        - "tests/event_loop_integration.rs: observe_only_mode_suppresses_notifications, effects_are_propagated_onto_pane_report, identity/signals/metric assertions"
+      modified:
+        - "src/app/event_loop.rs: PaneReport has identity/signals/effects; deliver_effects dispatches on out.effects via EffectPermits snapshot"
+        - "src/main.rs: apply_override_with_audit replaces stderr-only path; render_dashboard receives SystemNotice; 'c' key clears notices"
+        - "src/ui/dashboard.rs: render_dashboard signature gains &[SystemNotice]"
+        - "src/ui/alerts.rs: alert queue renders system notices before per-pane items"
+        - "src/ui/panels.rs: panel header includes confidence letter; renders signal chips + metric row with SourceKind badges"
+        - "src/adapters/common.rs: parse_common_signals rebuilt as a single struct literal (field_reassign_with_default fix)"
+        - "src/policy/{engine,rules/alerts}.rs tests: struct-update syntax"
+        - "mission.yaml: goal/done_when/execution_hints rewritten for Phase 1 truth; version -> 1.3.0; lineage.total_revisions = 4"
+        - "mission-history.yaml: evolution_summary.current_phase updated; timeline entry added"
+      removed:
+        - "Dead unused_mut in main.rs config binding"
+        - "Obsolete _ArcMarker stub in src/app/event_loop.rs"
+    changed_sections:
+      - "PaneReport shape (+ identity, signals, effects)"
+      - "UI alerts + panels (+ SystemNotice; + signal chips + metric rows)"
+      - "Safety override auditing (audit-logged, not stderr-only)"
+      - "Effect dispatch (iterates out.effects, not recommendations)"
+      - "Phase truth in mission.yaml + mission-history.evolution_summary"
+    done_when_delta:
+      added:
+        - "cargo clippy --all-targets -- -D warnings passes clean"
+        - "safety override rejections are emitted as SafetyOverrideRejected audit events"
+        - "version drift surfaces as a warning-severity SystemNotice in the alert queue"
+        - "PaneReport + UI + --once expose identity, signal chips, and metric rows with SourceKind badges"
+        - "app::EffectRunner dispatches on RequestedEffect values returned by the Engine"
+      modified:
+        - "mission-history.yaml evolution_summary.current_phase reflects Phase-1-shipped state"
+      removed: []
+    impact_scope:
+      code: "~400 LOC added (safety_audit + system_notice + UI/event_loop refactors + new tests)"
+      tests: "Phase-1 remediation adds 9+ new tests (safety_audit 4, system_notice 5, integration observe_only + effect-propagation + identity/signals/metric); total ~93"
+      clippy: "--all-targets -D warnings now clean"
+      runtime: "still no FS writes; audit sink collects override rejections + drift events in memory"
+      docs: "no canonical-doc changes (already captured the rules in r2); only mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md"
+    breaking: false
+    risk: "low — additive code with fresh TDD coverage; previous 86 tests still pass"
+    related_commits: []
+    related_decisions:
+      - "KD-006"
+      - "KD-007"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 2: src/store/{sqlite,archive_fs,audit,snapshots,retention}.rs (raw/meta type-level split preserved)"
+      - "Persist version-drift previous snapshot to ~/.qmonster/versions.json"
+      - "Wire cargo check + cargo clippy -D warnings into pre-commit (M3)"
+
+evolution_summary:
+  current_phase: "Phase 1 — Observe-first MVP shipped and gate-remediated (v1.3.0); Phase-2 gate open to request"
+  next_phase: "Phase 2 — Archive + checkpoint + SQLite (per final-r2.md §6.4)"
+  guiding_principles:
+    - "Observe-first / Alert-first / Recommendation-first"
+    - "Token optimization as an architectural pillar"
+    - "docs/ai canonical, .docs working, mission-spec contract+ledger"
+    - "Auto memory is local convenience, not primary state"
+    - "No destructive automation by default; manual refresh only; balanced logging"
+    - "SourceKind taxonomy = ProviderOfficial | ProjectCanonical | Heuristic | Estimated (r2)"
+    - "Identity-before-adapters pipeline; policy/ is pure; runtime writes only in ~/.qmonster/ (r2)"
+    - "Safety-precedence asymmetry: env/CLI may only move actions.mode / allow_auto_prompt_send / allow_destructive_actions / refresh.policy toward safer (r2)"
+    - ".mission/CURRENT_STATE.md = day-end handoff, never runtime checkpoint sink (r2)"
+
+key_decisions:
+  - id: "KD-001"
+    title: "Pane identity = {provider, instance, role, pane_id}"
+    rationale: "Allows same-provider repetition within one project window (claude:1:main + claude:2:review + claude:3:research)."
+    source: ".docs/init/Qmonster_종합_기획_보고서_v0.4.0_2026-04-20.md §1.1, §4.2"
+  - id: "KD-002"
+    title: "Day-end state goes to .mission/CURRENT_STATE.md, not memory"
+    rationale: "Auto memory is machine-local, non-deterministic, not sharable across models; CURRENT_STATE.md is the canonical day-end ledger."
+    source: ".docs/init/cli_memory_comparison_report_ko_v2.md §0, §4.5"
+  - id: "KD-003"
+    title: "recommend_only by default; no destructive automation"
+    rationale: "Failure modes in the comprehensive plan §18 include 'too much automation up front'. Recommendation-first keeps us on the safe side until cross-checks confirm the surface."
+    source: ".docs/init/Qmonster_종합_기획_보고서_v0.4.0_2026-04-20.md §18, §20"
+  - id: "KD-004"
+    title: "Manual refresh only; Qmonster surfaces but never silently upgrades"
+    rationale: "Avoid version drift and provider-side behavioral surprises in a TUI that the operator relies on for observability."
+    source: ".docs/init/Qmonster_종합_기획_보고서_v0.4.0_2026-04-20.md §1.5"
+  - id: "KD-005"
+    title: "Official vs heuristic vs estimated labeling is non-negotiable"
+    rationale: "The operator needs to trust numbers at a glance; mixing authoritative provider levers with community heuristics silently erodes that trust."
+    source: ".docs/init/Qmonster_토큰_최적화_조사_및_구현_보고서_2026-04-19 2.md §7.5 (official levers) vs §3 (community tools as heuristics)"
+  - id: "KD-006"
+    title: "SourceKind taxonomy = ProviderOfficial | ProjectCanonical | Heuristic | Estimated"
+    rationale: "Codex r1 (C-5) and Gemini r1 (G-13) both flagged that (official) was conflating three distinct authorities. Splitting into four named kinds lets the UI, policy, and docs surface authority honestly."
+    source: ".docs/codex/Qmonster-v0.4.0-2026-04-20-codex-crosscheck-r1.md must-fix #5; .docs/gemini/Qmonster-v0.4.0-2026-04-20-gemini-research-r1.md TODO #5; final synthesis r2 §1"
+  - id: "KD-007"
+    title: "Identity-before-adapters pipeline"
+    rationale: "Identity cannot be inferred after provider dispatch — the adapter needs to know which provider it is. Fixing this now avoids a shape change once code exists."
+    source: ".docs/codex/Qmonster-v0.4.0-2026-04-20-codex-crosscheck-r1.md must-fix #3; final synthesis r2 §5.1"
+  - id: "KD-008"
+    title: "Phase 1 narrowed: no SQLite, no archive persistence, no profile recommender"
+    rationale: "Codex's scope reductions (CS-1..CS-4) keep Phase 1 honest to its 'observe-first' name and avoid Phase-2/4 creep. Storage/policy/profile layers still exist but as traits and interfaces only."
+    source: ".docs/codex/Qmonster-v0.4.0-2026-04-20-codex-crosscheck-r1.md scope reductions; final synthesis r2 §§6.2-6.3"
+  - id: "KD-009"
+    title: "Safety precedence is asymmetric"
+    rationale: "env/CLI may move actions.mode, allow_auto_prompt_send, allow_destructive_actions, refresh.policy toward safer only. Resolves r1's contradiction between standard precedence and the rule that runtime cannot elevate dangerous modes."
+    source: ".docs/codex/Qmonster-v0.4.0-2026-04-20-codex-crosscheck-r1.md must-fix #6; final synthesis r2 §4"

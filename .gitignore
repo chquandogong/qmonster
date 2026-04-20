@@ -1,13 +1,27 @@
+# Build artefacts
 /target
+
+# Local-only secrets / environment
 .env
 .env.*
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Local logs and databases (never tracked in any phase)
 /logs/
 *.sqlite
 /*.sqlite
+
+# Working docs — model-to-model raw drafts stay local by design
+# (see docs/ai/WORKFLOWS.md §7)
 /.docs/
-/mission.yaml
-/mission-history.yaml
-/.mission/
+
+# mission-spec plugin install slot (tool code, not project state)
 /.mission-spec/
-CLAUDE.local.md
-.claude/settings.local.json
+
+# .mission layer — team/CI phase:
+#   Track: .mission/decisions/, .mission/evals/
+#   Ignore: per-session state + snapshots + templates
+/.mission/CURRENT_STATE.md
+/.mission/snapshots/
+/.mission/templates/

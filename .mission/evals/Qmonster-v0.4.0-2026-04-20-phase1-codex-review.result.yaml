@@ -1,0 +1,76 @@
+evaluation:
+  timestamp: "2026-04-20T18:55:00Z"
+  target: "Phase 1 (Observe-first MVP) implementation — gate-open review"
+  evaluated_by: "llm-codex"
+  source: ".docs/codex/Qmonster-v0.4.0-2026-04-20-phase1-review.md (narrative; originally pasted inline)"
+  verdict: "rework"
+  remediation_round: "v1.3.0 (Phase-1 gate remediation)"
+  findings:
+    - id: "codex-phase1-1"
+      severity: "risk"
+      title: "mission.yaml / mission-history.yaml still describe Phase 0 PLANNING-ONLY"
+      references:
+        - "mission.yaml:13-18,27,111-115"
+        - "mission-history.yaml:287-289 (evolution_summary.current_phase)"
+        - ".mission/CURRENT_STATE.md:10,116-120 (already claims Phase 1 shipped)"
+      detail: >
+        Authority sources disagree on the current phase, which would make
+        any Phase 2 gate approval unstable.
+      resolution: "must-fix before Phase 2 gate"
+    - id: "codex-phase1-2"
+      severity: "risk"
+      title: "metric / signal surfacing missing from UI and --once output"
+      references:
+        - "docs/ai/VALIDATION.md:60-62"
+        - "src/app/event_loop.rs (PaneReport lacks identity detail, signals, metrics)"
+        - "src/ui/panels.rs (renders recommendations only)"
+        - "src/main.rs (--once prints provider/dead/recommendation only)"
+      detail: >
+        The Phase-1 contract requires every MetricValue<T> to be rendered
+        with its SourceKind badge. PaneReport currently carries only
+        recommendations, so there is nothing for the UI or --once path
+        to surface.
+      resolution: "extend PaneReport; update UI panel + --once formatter"
+    - id: "codex-phase1-3"
+      severity: "risk"
+      title: "safety override rejections are not audit-logged"
+      references:
+        - "docs/ai/VALIDATION.md:69-72"
+        - "mission-history.yaml:264-266"
+        - "src/main.rs:53-65 (stderr only)"
+        - "src/app/config.rs:181-259"
+      detail: >
+        apply_safety_override returns Rejected, but main.rs only prints to
+        stderr. The contract requires a risk-severity audit event.
+      resolution: "buffer rejections; emit AuditEventKind::SafetyOverrideRejected to the sink post-Context"
+    - id: "codex-phase1-4"
+      severity: "warning"
+      title: "version drift not surfaced in operator alert queue"
+      references:
+        - "docs/ai/VALIDATION.md:53-59"
+        - "src/main.rs:137-155"
+        - "src/ui/alerts.rs (only reads PaneReport.recommendations)"
+      detail: >
+        Drift is captured as AuditEvent but never reaches the operator
+        alert queue. Also, the startup snapshot reuses
+        AuditEventKind::PaneIdentityResolved which blurs semantics.
+      resolution: >
+        Add a dedicated AuditEventKind for startup snapshot; surface
+        VersionDriftDetected in the alert queue via a SystemNotice list
+        rendered alongside PaneReports.
+    - id: "codex-phase1-5"
+      severity: "warning"
+      title: "deliver_effects ignores out.effects"
+      references:
+        - "src/policy/engine.rs:16-27"
+        - "src/app/event_loop.rs:81-99"
+      detail: >
+        policy::Engine returns RequestedEffect values, but deliver_effects
+        loops recommendations directly. Once Phase 2 adds ArchiveLocal or
+        snapshot effects, this path is a dead field.
+      resolution: "dispatch on out.effects via an EffectPermits matrix"
+  notes:
+    - "cargo clippy --all-targets -D warnings fails on field_reassign_with_default in src/adapters/common.rs:60-77; not a gate blocker but must be addressed before Phase 2."
+    - "cargo test passes (75/75)."
+    - "Gemini gave 'pass' in a sibling eval but with much lighter detail; Codex's findings take precedence for gate decision."
+  gate_decision: "Phase 2 gate WITHHELD until risks 1–3 are closed and warnings 4–5 are remediated."
