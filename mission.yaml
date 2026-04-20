@@ -1,6 +1,6 @@
 mission:
-  version: "1.5.0"
-  title: "Qmonster v0.4.0 — Phase 2 archive + checkpoint + SQLite (gate-remediated)"
+  version: "1.6.0"
+  title: "Qmonster v0.4.0 — Phase 3A policy engine (round 1: pure-policy A–G + G-11 cross-pane)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -21,11 +21,37 @@ mission:
     effect-abstraction path that dispatches on RequestedEffect (not on
     the recommendation list).
 
-    This revision (v1.3.0) is the Phase-1 gate-remediation round that
-    closes the Codex review findings (metric/signal surfacing,
-    safety-override audit, version-drift surfacing, effect dispatch,
-    clippy hygiene) and aligns the mission/history/state docs with the
-    true post-implementation state. The Phase-2 gate opens from here.
+    Phase 1 gate remediation (v1.3.0) closed all Codex Phase-1 findings
+    (metric/signal surfacing, safety-override audit, version-drift
+    surfacing, effect dispatch, clippy hygiene) and aligned the
+    mission/history/state docs with the true post-implementation state.
+
+    Phase 2 (v1.4.0) shipped durable storage: SqliteAuditSink with
+    type-level raw exclusion, raw tail archive with preview/full split,
+    operator-triggered checkpoint snapshots to ~/.qmonster/snapshots/,
+    retention sweep, and persistent cross-session version drift
+    detection. Phase 2 gate remediation (v1.5.0) closed all three Codex
+    Phase-2 findings (version-snapshot error handling, audit sink
+    durability, storage-root precedence).
+
+    Phase 3A (this revision, v1.6.0) ships the pure-policy layer —
+    Round 1 of a two-round Phase 3. New advisory rules: A (log_storm
+    advisory), B (code_exploration), C/C-crit (context_pressure /
+    critical), D (verbose_review), F-nudge (quota_tight_nudge), G
+    (repeated_cache_suggest). Cross-pane: G-11 concurrent-work rule
+    detects same-path Main+Review concurrent work in concurrent.rs.
+    PolicyGates struct threads quota_tight + identity-confidence gates
+    through Engine::evaluate; Notify effect fires only for Severity >=
+    Warning (Codex #3 closed). Aggressive variants (S3 guardrail) fire
+    only when gates.quota_tight == true. Provider-flavored advisories
+    suppressed on IdentityConfidence::Low|Unknown. Phase-1 test backfill
+    for repeated_output/verbose_answer/error_hint (Gemini #1 closed).
+    22 single-responsibility TDD commits; 152 lib + 12 integration tests.
+
+    Phase 3B (Round 2) is next: populate suggested_command on all
+    Round-1 rules, add "checkpoint before compact" strong-recommendation
+    UX (Gemini G-7). Codex gate review + Gemini eval pending for Phase
+    3A; remediation round v1.6.1 if findings.
 
   done_when:
     # Phase-0 artefacts (kept as historical gating criteria — already met).
@@ -62,10 +88,19 @@ mission:
     - "Phase 2: new AuditEventKinds — ArchiveWritten, SnapshotWritten, RetentionSwept — recorded at appropriate severities."
     - "Phase 2: cargo build + cargo test + cargo clippy --all-targets -- -D warnings all clean. Live `--once` smoke test produces qmonster.db, versions.json, and archive/YYYY-MM-DD/<pane>/*.log files."
 
-    # Phase-2 gate remediation (v1.5.0, this revision).
+    # Phase-2 gate remediation (v1.5.0).
     - "Phase-2 remediation: version snapshot load errors surface via AuditEventKind::VersionSnapshotError; a corrupted versions.json is PRESERVED and a warning SystemNotice fires (Codex finding #1)."
     - "Phase-2 remediation: SqliteAuditSink tracks runtime INSERT failures in an AtomicU64; stderr hint on every failure; error_count() exposes durability degradation to tests and operators (Codex finding #2)."
     - "Phase-2 remediation: storage root precedence matches docs/ai/ARCHITECTURE.md — env > CLI > storage.root > default — via a pure pick_root() helper with 4 unit tests (Codex finding #3)."
+
+    # Phase-3A implementation criteria (v1.6.0, this revision).
+    - "Phase 3A: src/policy/rules/advisories.rs holds A/B/C/C-crit/D/F-nudge/G as pure functions; src/policy/rules/concurrent.rs holds G-11."
+    - "Phase 3A: Engine::evaluate takes &PolicyGates; Notify effect fires only for Severity >= Warning (Codex #3 closed)."
+    - "Phase 3A: Aggressive variants fire only when gates.quota_tight == true (S3 guardrail tested)."
+    - "Phase 3A: Provider-flavored advisories suppressed on IdentityConfidence::Low|Unknown."
+    - "Phase 3A: Concurrent-work rule requires same current_path + Main/Review role + !waiting + output_chars>=500; anchor = lex-smallest pane_id."
+    - "Phase 3A: Phase-1 unit-test backfill for repeated_output/verbose_answer/error_hint (Gemini #1 closed)."
+    - "Phase 3A: cargo build + cargo test (~152 lib + ~12 integration) + cargo clippy --all-targets -- -D warnings all clean."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -156,23 +191,26 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 2 shipped via single-session TDD (store layer stratified: paths → audit/sqlite → archive_fs → snapshots → retention)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits (policy layer: PolicyGates → advisories → concurrent → Engine wiring → PaneReport extension → UI → integration tests)."
     suggested_approach: >
-      Phase 2 is now shipped. Next: Phase 3 policy engine — A-G canonical
-      rules (log-storm handling tightened, code-exploration,
-      context-pressure, verbose-output, permission-wait, quota-tight,
-      repeated-output), concurrent-work warning across panes
-      (Gemini G-11), copy-pasteable suggested_command on recommendations
-      (Gemini G-2), strong-recommendation UX for "checkpoint before
-      compact" (Gemini G-7). Keep the pure-policy rule; the effect
-      abstraction already supports new RequestedEffect variants.
+      Phase 3A is now shipped. Next: Phase 3B — suggested_command +
+      strong-rec UX. Populate suggested_command: Option<String> on all
+      Round-1 advisory rules (A/B/C/C-crit/D/F-nudge/G + G-11). Add
+      "checkpoint before compact" strong-recommendation UX treatment
+      (Gemini G-7), leveraging the Phase-2 SnapshotWriter. Codex gate
+      review + Gemini eval pending for Phase 3A; remediation round
+      v1.6.1 if findings.
     note: >
-      SourceKind taxonomy remains non-negotiable. Phase 2 adds three
-      audit kinds (ArchiveWritten, SnapshotWritten, RetentionSwept)
-      that must be preserved through any future schema migration. The
-      type-level raw-exclusion on the audit writer is the load-bearing
-      contract — any Phase 3 change that tries to add a raw-bytes
-      column to the audit schema is a must-fix regression.
+      SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
+      (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
+      preserved through any future schema migration. The type-level
+      raw-exclusion on the audit writer is the load-bearing contract.
+      Phase 3A adds no new AuditEventKind variants and no DB schema
+      changes — those are non-goals for Round 1. Notify behavior
+      narrowed to Severity >= Warning (Codex #3): three Phase-1
+      Concern-severity alerts (repeated_output, verbose_answer,
+      error_hint) stop generating desktop notifications — no
+      integration tests relied on the old semantic.
 
   skills_needed:
     - "Rust + Ratatui/Crossterm TUI architecture (later phases)"
@@ -212,5 +250,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 6
+    total_revisions: 7
     history: "mission-history.yaml"

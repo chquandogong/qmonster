@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 6
-  latest_version: "1.5.0"
+  total_revisions: 7
+  latest_version: "1.6.0"
 
 timeline:
   - change_id: "initial"
@@ -601,9 +601,161 @@ timeline:
       - "Phase 3+: consider bumping SafetyOverrideRejected → audit also for corrupted versions.json's neighbouring artefacts (DB corruption, etc.)"
       - "Wire cargo check + cargo clippy -D warnings into pre-commit (M3)"
 
+  - change_id: "phase-3a-policy-engine-part1"
+    semantic_version: "1.6.0"
+    change_sequence: 7
+    date: "2026-04-20"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, Phase-3A design review)"
+      - "Gemini (gemini:1:research, Phase-3A design review)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feat"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Phase 3A ships the pure-policy layer — Round 1 of a two-round Phase 3
+      (operator-chosen staging). New advisory rules A (log_storm advisory),
+      B (code_exploration), C/C-crit (context_pressure / critical),
+      D (verbose_review), F-nudge (quota_tight_nudge), G
+      (repeated_cache_suggest) land in src/policy/rules/advisories.rs as
+      pure functions. G-11 concurrent-work cross-pane rule lands in
+      src/policy/rules/concurrent.rs. Severity-gated Notify effect (Codex
+      finding #3 closed): Engine::evaluate emits RequestedEffect::Notify
+      only for Severity >= Warning. Phase-1 unit-test backfill for
+      repeated_output, verbose_answer, error_hint (Gemini finding #1
+      closed). All three Codex design-review findings resolved before a
+      single commit shipped. 22 single-responsibility TDD commits; 152 lib
+      + 12 integration tests passing; cargo clippy --all-targets -D
+      warnings clean. Phase 3B (Round 2) is next.
+    intent_ko: >
+      Phase 3A는 두 라운드로 나뉜 Phase 3의 Round 1로, 순수 정책 레이어를
+      출시한다. 신규 advisory 규칙 A(log_storm advisory), B(code_exploration),
+      C/C-crit(context_pressure / critical), D(verbose_review),
+      F-nudge(quota_tight_nudge), G(repeated_cache_suggest)가
+      src/policy/rules/advisories.rs에 순수 함수로 구현됐다. G-11
+      동시작업 cross-pane 규칙은 src/policy/rules/concurrent.rs에 추가됐다.
+      심각도 기반 Notify 게이트(Codex 지적 #3 완료): Engine::evaluate는
+      Severity >= Warning인 경우에만 RequestedEffect::Notify를 발행한다.
+      repeated_output/verbose_answer/error_hint에 대한 Phase-1 단위 테스트
+      보충(Gemini 지적 #1 완료). Codex 설계 리뷰 지적 3건을 커밋 착수 전에
+      모두 해소했다. 단일 책임 TDD 커밋 22개; 라이브러리 테스트 152개 +
+      통합 테스트 12개 통과; cargo clippy --all-targets -D warnings 청정.
+      Phase 3B(Round 2)가 다음 단계다.
+    decision: >
+      PolicyGates struct introduced to carry quota_tight flag and
+      identity-confidence context through Engine::evaluate without breaking
+      the pure-function contract. PaneView<'a> uses borrowed &str
+      current_path to avoid heap allocation in the cross-pane pass.
+      Engine::evaluate grew a &PolicyGates parameter and a severity-gated
+      Notify emitter (Codex #3); Engine::evaluate_cross_pane is a sibling
+      method that accepts &[PaneView] and returns Vec<CrossPaneFinding>.
+      Advisory rules live in advisories.rs; concurrent-work rule in
+      concurrent.rs — sibling modules under src/policy/rules/. Aggressive
+      variants (e.g., context_pressure_aggressive) are emitted inside each
+      rule's own if-let block, gated on gates.quota_tight == true (S3
+      guardrail). context_pressure_warning vs _critical uses else-if so
+      Critical supersedes Warning when output_chars is >= 6000. F-nudge
+      (quota_tight_nudge) is deliberately exempt from the provider-specific
+      confidence gate — it surfaces regardless of identity confidence.
+      CrossPaneFinding + CrossPaneKind are new domain types; anchor pane
+      is determined by lex-smallest pane_id to avoid split-brain.
+      PaneReport gained current_path: String and
+      cross_pane_findings: Vec<CrossPaneFinding>. UI renders cross-pane
+      findings above per-pane alerts; --once prints the cross-pane summary.
+    decision_ko: >
+      PolicyGates 구조체를 도입해 quota_tight 플래그와 identity-confidence
+      컨텍스트를 Engine::evaluate 호출 경로 전반에 전달하면서도 순수 함수
+      계약을 유지한다. PaneView<'a>는 &str current_path를 빌려 cross-pane
+      패스에서의 heap 할당을 피한다. Engine::evaluate는 &PolicyGates
+      매개변수와 심각도 기반 Notify 발행기를 추가로 받으며(Codex #3),
+      Engine::evaluate_cross_pane은 &[PaneView]를 받아
+      Vec<CrossPaneFinding>을 반환하는 형제 메서드다. advisory 규칙은
+      advisories.rs에, 동시작업 규칙은 concurrent.rs에 위치하며
+      src/policy/rules/ 아래 형제 모듈로 구성됐다. aggressive 변형
+      (예: context_pressure_aggressive)은 gates.quota_tight == true일 때만
+      해당 규칙의 if-let 블록 안에서 발행된다(S3 guardrail). context_pressure는
+      else-if로 Warning/Critical을 분기해 output_chars >= 6000이면
+      Critical이 Warning을 대체한다. F-nudge(quota_tight_nudge)는
+      provider-specific confidence 게이트에서 의도적으로 제외돼 identity
+      confidence에 무관하게 표출된다. CrossPaneFinding + CrossPaneKind는
+      새 도메인 타입이며, 앵커 페인은 split-brain 방지를 위해 lex-smallest
+      pane_id로 결정된다. PaneReport에 current_path: String과
+      cross_pane_findings: Vec<CrossPaneFinding>가 추가됐다. UI는
+      cross-pane findings를 per-pane alerts 위에 렌더링하고, --once는
+      cross-pane 요약을 출력한다.
+    triggered_by: "human approval: 'Phase 3 진행해주세요' + operator choice of two-round staging + Codex/Gemini design review findings"
+    issue_or_context: >
+      Phase 2 (v1.5.0) shipped with gate remediation complete; Phase 3
+      canonical spec required A-G advisory rules + G-11 concurrent-work
+      warning + suggested_command + strong-rec UX. Operator chose two-round
+      staging (Phase 3A pure policy, Phase 3B plumbing/UX) during
+      brainstorming to keep each gate reviewable in isolation. Design spec
+      underwent Codex/Gemini review (v1 → v2), closing 3 Codex findings
+      (concurrent-work trigger tightened to require current_path equality,
+      IdentityConfidence gate applied uniformly including context_pressure,
+      Notify severity gate >= Warning) and incorporating Gemini's Phase-1
+      test gap (repeated_output/verbose_answer/error_hint backfill).
+    changes:
+      added:
+        - "src/policy/rules/advisories.rs — A/B/C/C-crit/D/F-nudge/G rules + aggressive variants + 15 unit tests"
+        - "src/policy/rules/concurrent.rs — G-11 cross-pane concurrent-work rule + 8 unit tests"
+        - "src/policy/gates.rs — PolicyGates struct + from_config_and_identity constructor"
+        - "src/domain/ — PaneView<'a> struct (borrowed identity/signals/current_path)"
+        - "src/domain/ — CrossPaneFinding + CrossPaneKind domain types"
+        - "Engine::evaluate_cross_pane method (accepts &[PaneView], returns Vec<CrossPaneFinding>)"
+        - "PaneReport.current_path: String field"
+        - "PaneReport.cross_pane_findings: Vec<CrossPaneFinding> field"
+        - "UI cross-pane findings rendering in src/ui/alerts.rs (above per-pane alerts)"
+        - "--once prints cross-pane findings summary"
+        - "Phase-1 test backfill: repeated_output_fires_concern_severity, verbose_answer_fires_concern_severity, error_hint_fires_warning_when_not_log_storm"
+        - "tests/event_loop_integration.rs: cross-pane findings + Notify gate integration tests (~4 new)"
+      modified:
+        - "Engine::evaluate signature (gained &PolicyGates) + body (severity-gated Notify)"
+        - "event_loop::run_once (cross-pane pass added + PaneReport current_path/cross_pane_findings populated)"
+        - "src/ui/alerts.rs (cross-pane findings rendered above per-pane items)"
+        - "src/ui/panels.rs (base_report test helper updated for new PaneReport fields)"
+        - "src/policy/mod.rs (re-exports for new types)"
+        - "src/policy/rules/mod.rs (advisories + concurrent submodules declared)"
+      removed: []
+    changed_sections:
+      - "Engine::evaluate signature (+ &PolicyGates)"
+      - "Notify effect severity gating (Codex #3 closed)"
+      - "PaneReport shape (+ current_path, + cross_pane_findings)"
+      - "Advisory rule module (src/policy/rules/advisories.rs)"
+      - "Cross-pane rule module (src/policy/rules/concurrent.rs)"
+      - "UI cross-pane findings rendering"
+    done_when_delta:
+      added:
+        - "Phase 3A: src/policy/rules/advisories.rs holds A/B/C/C-crit/D/F-nudge/G as pure functions; src/policy/rules/concurrent.rs holds G-11."
+        - "Phase 3A: Engine::evaluate takes &PolicyGates; Notify effect fires only for Severity >= Warning (Codex #3 closed)."
+        - "Phase 3A: Aggressive variants fire only when gates.quota_tight == true (S3 guardrail tested)."
+        - "Phase 3A: Provider-flavored advisories suppressed on IdentityConfidence::Low|Unknown."
+        - "Phase 3A: Concurrent-work rule requires same current_path + Main/Review role + !waiting + output_chars>=500; anchor = lex-smallest pane_id."
+        - "Phase 3A: Phase-1 unit-test backfill for repeated_output/verbose_answer/error_hint (Gemini #1 closed)."
+        - "Phase 3A: cargo build + cargo test (~152 lib + ~12 integration) + cargo clippy --all-targets -- -D warnings all clean."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~1000 LOC added across src/ (advisories.rs + concurrent.rs + policy wiring + PaneReport extension + UI cross-pane rendering)"
+      tests: "~22 new tests (152 lib + 12 integration, up from 116 lib + 8 integration)"
+      runtime: "no new FS writes; Notify behavior narrowed to Severity >= Warning (three Phase-1 Concern alerts stop desktop-notifying)"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "medium — behavior change on Notify (three Phase-1 Concern alerts stop desktop-notifying); code reviewers confirmed no integration tests relied on old Notify-for-any-rec semantic"
+    related_commits: []
+    related_decisions:
+      - "KD-007"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 3B (Round 2): populate suggested_command on all Round-1 rules; add 'checkpoint before compact' strong-rec UX (Gemini G-7)"
+      - "Codex Phase-3A gate review + Gemini eval; remediation round v1.6.1 if findings"
+      - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
+
 evolution_summary:
-  current_phase: "Phase 2 — Archive + checkpoint + SQLite shipped AND gate-remediated (v1.5.0); Phase-3 gate open to request"
-  next_phase: "Phase 3 — Policy engine (A-G rules + concurrent-work warning + suggested commands)"
+  current_phase: "Phase 3A shipped; Phase-3A gate open to request"
+  next_phase: "Phase 3B — suggested_command + strong-rec UX"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
