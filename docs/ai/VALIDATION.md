@@ -35,7 +35,7 @@ lives in `REVIEW_GUIDE.md`. Every displayed metric must carry a
 
 - [ ] `tmux::PaneSource` returns `RawPaneSnapshot` via polling.
 - [ ] `domain::IdentityResolver` resolves `(provider, instance, role,
-  pane_id)` with an `IdentityConfidence` level. Provider-specific
+pane_id)` with an `IdentityConfidence` level. Provider-specific
       recommendations are suppressed when confidence is `Low` or
       `Unknown`.
 - [ ] `adapters/` never performs identity inference.
@@ -102,9 +102,24 @@ lives in `REVIEW_GUIDE.md`. Every displayed metric must carry a
 - [ ] Every rule carries a `SourceKind`; for `Heuristic` rules, a
       pointer to the community source is recorded.
 - [ ] Recommendations may carry a `suggested_command: Option<String>`
-      for copy-paste ergonomics.
+      for copy-paste ergonomics. The value must be runnable on a single
+      surface (shell command, in-pane slash-command, or `# config-edit …`
+      comment pointer) — mixed-mode prose (e.g. TUI keybinding prose
+      plus a slash-command) belongs in `next_step`, not here. Rendered
+      by both the alert queue and `--once` with a ``run: `…``` prefix.
+- [ ] Recommendations may carry a `next_step: Option<String>` — prose
+      precondition that precedes the runnable `suggested_command`.
+      Required for strong recs whose safe execution depends on a step
+      that cannot be expressed on the same surface as the command
+      (e.g. C-warning / C-critical need "press `s` to snapshot first"
+      before running `/compact`). Rendered as `next: …` **before**
+      ``run: `…``` so the ordering is inherent to the field layout.
 - [ ] "Checkpoint before compact" surfaces as a **strong recommendation
-      with actionable steps**, not as forced automation.
+      with actionable steps**, not as forced automation. The snapshot
+      step lives in `next_step`, and `/compact` lives verbatim in
+      `suggested_command`; the single-source render helper
+      `ui::alerts::format_strong_rec_body` guarantees the `next:` →
+      `run:` order in both the TUI and `--once`.
 
 ## Phase 4 (Provider Profiles) checks
 
@@ -124,7 +139,7 @@ Levers below are cited as `[ProviderOfficial]` with doc pointers.
       `model_auto_compact_token_limit`, `[features].apps`,
       `[apps._default].enabled`, `mcp_servers.<id>.enabled`, and exec
       flags (`codex exec --profile --json --output-last-message
-  --sandbox read-only --ephemeral --color never`).
+--sandbox read-only --ephemeral --color never`).
       `[ProviderOfficial]`
 - [ ] High-risk Claude levers (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`,
       `CLAUDE_CODE_DISABLE_CLAUDE_MDS`,

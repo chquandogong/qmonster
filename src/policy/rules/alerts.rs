@@ -17,6 +17,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             suggested_command: None, // interactive: operator responds inside the pane
             side_effects: vec![],
             is_strong: false,
+            next_step: None,
         });
     }
 
@@ -29,6 +30,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             suggested_command: None, // interactive: operator responds inside the pane
             side_effects: vec![],
             is_strong: false,
+            next_step: None,
         });
     }
 
@@ -41,6 +43,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             suggested_command: Some("tmux capture-pane -pS -2000 > ~/.qmonster/archive/$(date +%F)-<pane_id>.log".into()),
             side_effects: vec![],
             is_strong: false,
+            next_step: None,
         });
     }
 
@@ -53,6 +56,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             suggested_command: None, // observation: action is a config change (see advisory)
             side_effects: vec![],
             is_strong: false,
+            next_step: None,
         });
     }
 
@@ -65,6 +69,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             suggested_command: None, // observation: action is a config change (see advisory)
             side_effects: vec![],
             is_strong: false,
+            next_step: None,
         });
     }
 
@@ -77,6 +82,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             suggested_command: None, // error text varies by provider; no universal command
             side_effects: vec![],
             is_strong: false,
+            next_step: None,
         });
     }
 
@@ -89,6 +95,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             suggested_command: None, // informational; no action required
             side_effects: vec![],
             is_strong: false,
+            next_step: None,
         });
     }
 

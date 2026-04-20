@@ -359,17 +359,45 @@ fn context_pressure_rec_is_marked_strong_end_to_end() {
         .expect("context_pressure_warning must fire for 82% pressure");
 
     assert!(rec.is_strong, "context-pressure: checkpoint must be marked is_strong");
-    let cmd = rec
-        .suggested_command
-        .as_deref()
-        .expect("context-pressure: checkpoint must carry a suggested_command");
-    assert!(
-        cmd.contains("snapshot"),
-        "strong-rec contract: checkpoint before compact. got: {cmd}"
+
+    // Codex v1.7.3 finding #1: suggested_command must be a pure,
+    // runnable in-pane command — exact `/compact`, not a mixed-mode
+    // prose string that would render as an impossible `run: `#
+    // press 's' ...`` in the UI / --once.
+    assert_eq!(
+        rec.suggested_command.as_deref(),
+        Some("/compact"),
+        "strong-rec contract: suggested_command is a runnable /compact; \
+         snapshot precondition belongs in next_step"
     );
+
+    // Codex v1.7.3 finding #2: the snapshot precondition is locked in a
+    // structurally separate field. Ordering is inherent (next_step
+    // always precedes suggested_command in render) so there is no
+    // substring-ordering loophole to exploit.
+    let step = rec
+        .next_step
+        .as_deref()
+        .expect("strong rec must carry a next_step explaining the snapshot precondition");
     assert!(
-        cmd.contains("/compact"),
-        "strong-rec contract: /compact stays as the later step. got: {cmd}"
+        step.contains("snapshot"),
+        "next_step must describe the snapshot precondition. got: {step}"
+    );
+
+    // Regression guard on the rendered format: the live format helper
+    // must emit `next: … — run: `/compact`` in that order. Any shape
+    // drift (dropping the `next:` segment, swapping the order, re-
+    // introducing mixed-mode prose in suggested_command) fails here.
+    let body = qmonster::ui::alerts::format_strong_rec_body(rec, &reports[0].pane_id);
+    let next_idx = body
+        .find("next: ")
+        .expect("rendered body must contain a `next: ` segment");
+    let run_idx = body
+        .find("run: `/compact`")
+        .expect("rendered body must contain a `run: `/compact`` segment");
+    assert!(
+        next_idx < run_idx,
+        "ordering contract: `next:` precedes `run:` in the render. body: {body}"
     );
 }
 

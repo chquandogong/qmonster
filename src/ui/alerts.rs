@@ -3,8 +3,27 @@ use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 
 use crate::app::event_loop::PaneReport;
 use crate::app::system_notice::SystemNotice;
-use crate::domain::recommendation::Severity;
+use crate::domain::recommendation::{Recommendation, Severity};
 use crate::ui::theme;
+
+/// Codex v1.7.3 (phase3b-strong-rec cleanup): single source of truth for
+/// the strong-recommendation render format used by both the TUI alert
+/// queue and the `--once` stdout path. Emits `next: …` before `run: …`
+/// so the snapshot precondition always precedes the executable command;
+/// omits either segment cleanly when its field is `None`.
+pub fn format_strong_rec_body(rec: &Recommendation, pane_id: &str) -> String {
+    let letter = rec.severity.letter();
+    let badge = rec.source_kind.badge();
+    let prefix = format!("[{letter}] [{badge}] >> CHECKPOINT ({pane_id}): {}", rec.reason);
+    let step = rec.next_step.as_deref().unwrap_or("");
+    let cmd = rec.suggested_command.as_deref().unwrap_or("");
+    match (step.is_empty(), cmd.is_empty()) {
+        (true, true) => prefix,
+        (true, false) => format!("{prefix} — run: `{cmd}`"),
+        (false, true) => format!("{prefix} — next: {step}"),
+        (false, false) => format!("{prefix} — next: {step} — run: `{cmd}`"),
+    }
+}
 
 /// Top-of-screen alert queue. Renders system notices first, then
 /// per-pane recommendations.
@@ -46,15 +65,7 @@ fn collect_items(notices: &[SystemNotice], reports: &[PaneReport]) -> Vec<ListIt
     for rep in reports {
         for rec in rep.recommendations.iter().filter(|r| r.is_strong) {
             let color = theme::severity_color(rec.severity);
-            let letter = rec.severity.letter();
-            let badge = rec.source_kind.badge();
-            let pane_id = rep.pane_id.clone();
-            let cmd = rec.suggested_command.as_deref().unwrap_or("");
-            let body = if cmd.is_empty() {
-                format!("[{letter}] [{badge}] >> CHECKPOINT ({pane_id}): {}", rec.reason)
-            } else {
-                format!("[{letter}] [{badge}] >> CHECKPOINT ({pane_id}): {} — run: `{cmd}`", rec.reason)
-            };
+            let body = format_strong_rec_body(rec, &rep.pane_id);
             out.push(ListItem::new(body).style(Style::default().fg(color)));
         }
     }
@@ -135,6 +146,7 @@ mod tests {
                 suggested_command: None,
                 side_effects: vec![],
                 is_strong: false,
+                next_step: None,
             },
             Recommendation {
                 action: "log-storm",
@@ -144,6 +156,7 @@ mod tests {
                 suggested_command: None,
                 side_effects: vec![],
                 is_strong: false,
+                next_step: None,
             },
         ]);
         let items = collect_items(&[], &[rep]);
@@ -166,6 +179,7 @@ mod tests {
             suggested_command: None,
             side_effects: vec![],
             is_strong: false,
+            next_step: None,
         }]);
         let items = collect_items(&[notice], &[rep]);
         assert_eq!(items.len(), 2);
@@ -184,6 +198,7 @@ mod tests {
             suggested_command: Some("/compact".into()),
             side_effects: vec![],
             is_strong: true,
+            next_step: Some("press 's' to snapshot + archive now, before running /compact".into()),
         };
         let normal = Recommendation {
             action: "log-storm",
@@ -193,6 +208,7 @@ mod tests {
             suggested_command: None,
             side_effects: vec![],
             is_strong: false,
+            next_step: None,
         };
         let rep = base_report(vec![strong, normal]);
         let items = collect_items(&[], &[rep]);
@@ -200,6 +216,52 @@ mod tests {
         assert_eq!(items.len(), 2);
         // We can't easily introspect ListItem text without private-field hacks,
         // but ordering is stable and this test locks in the slot count.
+    }
+
+    #[test]
+    fn format_strong_rec_body_emits_next_before_run_in_order() {
+        // Codex v1.7.3 finding #1+#2 regression guard: the render format
+        // must place the `next:` segment BEFORE the `run:` segment, and
+        // must only treat suggested_command as a runnable value (no
+        // mixed-mode prose). A regression like `run: /compact; snapshot
+        // later` would fail this ordered assertion.
+        let strong = Recommendation {
+            action: "context-pressure: act now",
+            reason: "context near critical".into(),
+            severity: Severity::Risk,
+            source_kind: SourceKind::Estimated,
+            suggested_command: Some("/compact".into()),
+            side_effects: vec![],
+            is_strong: true,
+            next_step: Some("press 's' to snapshot + archive now".into()),
+        };
+        let body = format_strong_rec_body(&strong, "%1");
+
+        let next_idx = body.find("next: press 's' to snapshot + archive now")
+            .expect("body must contain literal `next: …snapshot…` segment");
+        let run_idx = body.find("run: `/compact`")
+            .expect("body must contain literal `run: `/compact`` segment");
+        assert!(next_idx < run_idx,
+            "ordering contract: `next:` MUST precede `run:`. body: {body}");
+        assert!(body.contains(">> CHECKPOINT (%1)"),
+            "body must carry the CHECKPOINT slot prefix. got: {body}");
+    }
+
+    #[test]
+    fn format_strong_rec_body_omits_next_when_absent() {
+        let strong = Recommendation {
+            action: "x",
+            reason: "y".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Heuristic,
+            suggested_command: Some("/compact".into()),
+            side_effects: vec![],
+            is_strong: true,
+            next_step: None,
+        };
+        let body = format_strong_rec_body(&strong, "%1");
+        assert!(!body.contains("next:"), "no next_step → no `next:` segment. got: {body}");
+        assert!(body.contains("run: `/compact`"), "cmd still rendered. got: {body}");
     }
 
     #[test]
@@ -213,6 +275,7 @@ mod tests {
             suggested_command: None,
             side_effects: vec![],
             is_strong: false,
+            next_step: None,
         }]);
         rep.cross_pane_findings.push(CrossPaneFinding {
             kind: CrossPaneKind::ConcurrentMutatingWork,

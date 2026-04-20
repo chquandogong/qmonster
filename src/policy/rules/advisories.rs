@@ -79,6 +79,7 @@ fn log_storm_advisory(
         suggested_command: Some("tmux capture-pane -pS -2000 > ~/.qmonster/archive/$(date +%F)-<pane_id>.log".into()),
         side_effects: vec![],
         is_strong: false,
+        next_step: None,
     })
 }
 
@@ -91,6 +92,7 @@ fn aggressive_log_storm() -> Recommendation {
         suggested_command: Some("# edit config/qmonster.toml: [logging] sensitivity = \"minimal\"".into()),
         side_effects: vec![],
         is_strong: false,
+        next_step: None,
     }
 }
 
@@ -119,6 +121,7 @@ fn code_exploration(
         suggested_command: None, // workflow advice; no single command captures "graph navigation"
         side_effects: vec![],
         is_strong: false,
+        next_step: None,
     })
 }
 
@@ -139,9 +142,10 @@ fn context_pressure_warning(
         reason: "context warming — checkpoint first, archive large results, only then consider /compact".into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Estimated,
-        suggested_command: Some("# press 's' to snapshot first; then /compact".into()),
+        suggested_command: Some("/compact".into()),
         side_effects: vec![],
         is_strong: true,
+        next_step: Some("press 's' to snapshot first, then archive large results".into()),
     })
 }
 
@@ -154,6 +158,7 @@ fn aggressive_context_pressure_warning() -> Recommendation {
         suggested_command: Some("# edit config/qmonster.toml: [token] strategy = \"terse\"".into()),
         side_effects: vec![],
         is_strong: false,
+        next_step: None,
     }
 }
 
@@ -174,9 +179,10 @@ fn context_pressure_critical(
         reason: "context near critical — checkpoint + archive now; /compact after".into(),
         severity: Severity::Risk,
         source_kind: SourceKind::Estimated,
-        suggested_command: Some("# press 's' to snapshot first; then /compact".into()),
+        suggested_command: Some("/compact".into()),
         side_effects: vec![],
         is_strong: true,
+        next_step: Some("press 's' to snapshot + archive now, before running /compact".into()),
     })
 }
 
@@ -189,6 +195,7 @@ fn aggressive_context_pressure_critical() -> Recommendation {
         suggested_command: Some("# edit config/qmonster.toml: [token] strategy = \"terse\" + [logging] sensitivity = \"minimal\"".into()),
         side_effects: vec![],
         is_strong: false,
+        next_step: None,
     }
 }
 
@@ -214,6 +221,7 @@ fn verbose_review(
         suggested_command: Some("# edit config/qmonster.toml: [review] style = \"terse\"".into()),
         side_effects: vec![],
         is_strong: false,
+        next_step: None,
     })
 }
 
@@ -226,6 +234,7 @@ fn aggressive_verbose_review() -> Recommendation {
         suggested_command: Some("# edit ~/.claude/settings.json: \"attribution\": { \"commit\": false }".into()),
         side_effects: vec![],
         is_strong: false,
+        next_step: None,
     }
 }
 
@@ -250,6 +259,7 @@ fn quota_tight_nudge(
         suggested_command: Some("# set quota_tight = true under [token] in config/qmonster.toml".into()),
         side_effects: vec![],
         is_strong: false,
+        next_step: None,
     })
 }
 
@@ -272,6 +282,7 @@ fn repeated_cache_suggest(
         suggested_command: None, // install/config step varies by agent stack
         side_effects: vec![],
         is_strong: false,
+        next_step: None,
     })
 }
 
@@ -284,6 +295,7 @@ fn aggressive_repeated_cache_suggest() -> Recommendation {
         suggested_command: None, // config varies by agent stack
         side_effects: vec![],
         is_strong: false,
+        next_step: None,
     }
 }
 
@@ -493,7 +505,7 @@ mod tests {
     }
 
     #[test]
-    fn context_pressure_warning_suggests_snapshot_first() {
+    fn context_pressure_warning_carries_runnable_compact_with_snapshot_next_step() {
         let id = id_high(Role::Main);
         let s = pressure(0.80);
         let recs = eval_advisories(&id, &s, &gates_default());
@@ -501,13 +513,23 @@ mod tests {
             .iter()
             .find(|r| r.action == "context-pressure: checkpoint")
             .expect("C-warning fires");
-        let cmd = adv.suggested_command.as_deref().expect("populated");
-        assert!(cmd.contains("snapshot"), "contract: checkpoint before compact. got: {cmd}");
-        assert!(cmd.contains("/compact"), "should still mention /compact as later step. got: {cmd}");
+        // Codex v1.7.3 finding #1: suggested_command must be runnable on
+        // a single surface. "/compact" is a pure in-pane slash command.
+        assert_eq!(adv.suggested_command.as_deref(), Some("/compact"),
+            "suggested_command must be runnable in-pane; mixed-mode prose belongs in next_step");
+        // Codex v1.7.3 finding #2: contract must lock ordering — snapshot
+        // step precedes the run step. Structurally enforced by putting
+        // prose in next_step (preamble) and command in suggested_command
+        // (execution).
+        let step = adv.next_step.as_deref().expect("strong rec must carry snapshot next_step");
+        assert!(step.contains("snapshot"),
+            "next_step must describe the snapshot precondition. got: {step}");
+        assert!(step.contains("'s'") || step.contains("snapshot"),
+            "next_step should hint the TUI key `s` or the snapshot action. got: {step}");
     }
 
     #[test]
-    fn context_pressure_critical_suggests_snapshot_first() {
+    fn context_pressure_critical_carries_runnable_compact_with_snapshot_next_step() {
         let id = id_high(Role::Main);
         let s = pressure(0.92);
         let recs = eval_advisories(&id, &s, &gates_default());
@@ -515,9 +537,11 @@ mod tests {
             .iter()
             .find(|r| r.action == "context-pressure: act now")
             .expect("C-critical fires");
-        let cmd = adv.suggested_command.as_deref().expect("populated");
-        assert!(cmd.contains("snapshot"), "contract: checkpoint before compact (strong rec). got: {cmd}");
-        assert!(cmd.contains("/compact"), "should still mention /compact as later step. got: {cmd}");
+        assert_eq!(adv.suggested_command.as_deref(), Some("/compact"),
+            "suggested_command must be runnable in-pane; mixed-mode prose belongs in next_step");
+        let step = adv.next_step.as_deref().expect("strong rec must carry snapshot next_step");
+        assert!(step.contains("snapshot"),
+            "next_step must describe the snapshot precondition (strong rec). got: {step}");
     }
 
     #[test]

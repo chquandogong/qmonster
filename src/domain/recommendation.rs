@@ -30,12 +30,24 @@ pub struct Recommendation {
     pub reason: String,
     pub severity: Severity,
     pub source_kind: SourceKind,
+    /// Executable command intended for copy-paste: shell invocation,
+    /// in-pane slash-command, or `# config-edit …` comment pointer. Must
+    /// be runnable or copy-pastable on a single surface; mixed-surface
+    /// prose belongs in `next_step` instead. Renderers prefix this with
+    /// `run:` in the UI and `--once` output.
     pub suggested_command: Option<String>,
     pub side_effects: Vec<String>,
     /// G-7: if true, this recommendation is rendered in a dedicated
     /// "CHECKPOINT" slot above per-pane alerts in the alert queue and
     /// `--once` output.
     pub is_strong: bool,
+    /// Codex v1.7.3 (phase3b-strong-rec cleanup): prose operator-facing
+    /// precondition/hint that precedes the runnable
+    /// `suggested_command`. Used for strong recs whose safe execution
+    /// requires a step (e.g. TUI key `s` to snapshot first) that
+    /// cannot be represented as a command on the same surface.
+    /// Renderers print this as `next: …` before `run: …`.
+    pub next_step: Option<String>,
 }
 
 /// Effects the policy engine wants `app::EffectRunner` to consider.
@@ -95,6 +107,7 @@ mod tests {
             suggested_command: None,
             side_effects: vec![],
             is_strong: false,
+            next_step: None,
         };
         assert_eq!(r.severity, Severity::Warning);
         assert_eq!(r.source_kind, SourceKind::Heuristic);

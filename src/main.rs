@@ -201,18 +201,7 @@ fn print_reports(reports: &[PaneReport]) {
     // 2. Strong recommendations (G-7 checkpoint UX).
     for rep in reports {
         for rec in rep.recommendations.iter().filter(|r| r.is_strong) {
-            let cmd = rec.suggested_command.as_deref().unwrap_or("");
-            if cmd.is_empty() {
-                println!(
-                    "[{}] [{}] >> CHECKPOINT ({}): {}",
-                    rec.severity.letter(), rec.source_kind.badge(), rep.pane_id, rec.reason
-                );
-            } else {
-                println!(
-                    "[{}] [{}] >> CHECKPOINT ({}): {} — run: `{}`",
-                    rec.severity.letter(), rec.source_kind.badge(), rep.pane_id, rec.reason, cmd
-                );
-            }
+            println!("{}", qmonster::ui::alerts::format_strong_rec_body(rec, &rep.pane_id));
         }
     }
     // 3. Per-pane summaries with non-strong recommendations.
