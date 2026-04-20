@@ -413,4 +413,80 @@ mod tests {
         let recs = eval_advisories(&id, &s, &gates_default());
         assert!(recs.iter().any(|r| r.action == "repeated-output: result-hash cache"));
     }
+
+    #[test]
+    fn aggressive_variants_fire_only_when_quota_tight_gate_open() {
+        let id = id_high(Role::Review);
+        let s = SignalSet {
+            log_storm: true,
+            verbose_answer: true,
+            repeated_output: true,
+            context_pressure: Some(MetricValue::new(0.92, SK::Estimated)),
+            ..SignalSet::default()
+        };
+        let gates = PolicyGates { quota_tight: true, identity_confidence: IdentityConfidence::High };
+        let recs = eval_advisories(&id, &s, &gates);
+        let aggressive_actions: Vec<&str> = recs.iter().map(|r| r.action).filter(|a| a.starts_with("aggressive:")).collect();
+        assert!(aggressive_actions.contains(&"aggressive: drop non-essential ingress"));
+        assert!(aggressive_actions.contains(&"aggressive: clamp output, archive all"));
+        assert!(aggressive_actions.contains(&"aggressive: strip attribution"));
+        assert!(aggressive_actions.contains(&"aggressive: dedupe + hash"));
+        // Note: "aggressive: terse profile + archive" (for C-warning) does
+        // NOT fire here because C-critical supersedes C-warning.
+    }
+
+    #[test]
+    fn aggressive_context_pressure_warning_fires_at_moderate_pressure() {
+        let id = id_high(Role::Main);
+        let s = SignalSet {
+            context_pressure: Some(MetricValue::new(0.80, SK::Estimated)),
+            ..SignalSet::default()
+        };
+        let gates = PolicyGates { quota_tight: true, identity_confidence: IdentityConfidence::High };
+        let recs = eval_advisories(&id, &s, &gates);
+        let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
+        assert!(actions.contains(&"context-pressure: checkpoint"));
+        assert!(actions.contains(&"aggressive: terse profile + archive"),
+            "C-warning aggressive must fire when pressure in [0.75, 0.85) and gate is on");
+    }
+
+    #[test]
+    fn aggressive_variant_never_fires_when_gate_off() {
+        let id = id_high(Role::Review);
+        let s = SignalSet {
+            log_storm: true,
+            verbose_answer: true,
+            repeated_output: true,
+            context_pressure: Some(MetricValue::new(0.92, SK::Estimated)),
+            ..SignalSet::default()
+        };
+        let gates = PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::High };
+        let recs = eval_advisories(&id, &s, &gates);
+        let any_aggressive = recs.iter().any(|r| r.action.starts_with("aggressive:"));
+        assert!(!any_aggressive, "S3: aggressive variants never fire when gate is off");
+    }
+
+    #[test]
+    fn all_provider_flavored_advisories_suppressed_on_low_confidence() {
+        let id = id_low(Role::Review);
+        let s = SignalSet {
+            log_storm: true,
+            verbose_answer: true,
+            repeated_output: true,
+            context_pressure: Some(MetricValue::new(0.92, SK::Estimated)),
+            ..SignalSet::default()
+        };
+        let gates = PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::Low };
+        let recs = eval_advisories(&id, &s, &gates);
+        let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
+        // quota_tight_nudge fires — not provider-flavored.
+        assert!(actions.contains(&"quota-tight: consider enabling"));
+        // All provider-flavored advisories suppressed.
+        assert!(!actions.contains(&"log-storm: ingress filter + summary"));
+        assert!(!actions.contains(&"code-exploration: graph/symbol"));
+        assert!(!actions.contains(&"context-pressure: act now"));
+        assert!(!actions.contains(&"context-pressure: checkpoint"));
+        assert!(!actions.contains(&"verbose-review: terse profile"));
+        assert!(!actions.contains(&"repeated-output: result-hash cache"));
+    }
 }
