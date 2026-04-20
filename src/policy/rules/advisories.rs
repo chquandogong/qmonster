@@ -1,4 +1,4 @@
-use crate::domain::identity::ResolvedIdentity;
+use crate::domain::identity::{ResolvedIdentity, Role};
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::{Recommendation, Severity};
 use crate::domain::signal::SignalSet;
@@ -21,6 +21,10 @@ pub fn eval_advisories(
         if gates.quota_tight {
             out.push(aggressive_log_storm());
         }
+    }
+
+    if let Some(rec) = code_exploration(id, signals, gates) {
+        out.push(rec);
     }
 
     out
@@ -58,6 +62,33 @@ fn aggressive_log_storm() -> Recommendation {
     }
 }
 
+fn code_exploration(
+    id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    if !matches!(id.identity.role, Role::Main | Role::Review) {
+        return None;
+    }
+    let triggers_fired = matches!(signals.task_type, crate::domain::signal::TaskType::CodeExploration)
+        || signals.verbose_answer
+        || signals.output_chars >= 1500;
+    if !triggers_fired {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    Some(Recommendation {
+        action: "code-exploration: graph/symbol",
+        reason: "prefer graph/symbol navigation (Token Savior / code-review-graph); avoid full-file re-reads; delegate deep scans to the research pane".into(),
+        severity: Severity::Concern,
+        source_kind: SourceKind::Heuristic,
+        suggested_command: None,
+        side_effects: vec![],
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,7 +101,6 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
     fn id_low(role: Role) -> ResolvedIdentity {
         ResolvedIdentity {
             identity: PaneIdentity { provider: Provider::Claude, instance: 1, role, pane_id: "%1".into() },
@@ -93,5 +123,22 @@ mod tests {
             .expect("log_storm_advisory must fire");
         assert_eq!(adv.source_kind, SourceKind::Heuristic);
         assert_eq!(adv.severity, Severity::Concern);
+    }
+
+    #[test]
+    fn code_exploration_fires_on_verbose_main_role() {
+        let id = id_high(Role::Main);
+        let s = SignalSet { verbose_answer: true, ..SignalSet::default() };
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(recs.iter().any(|r| r.action == "code-exploration: graph/symbol"));
+    }
+
+    #[test]
+    fn code_exploration_suppressed_on_low_identity_confidence() {
+        let id = id_low(Role::Main);
+        let s = SignalSet { verbose_answer: true, ..SignalSet::default() };
+        let gates = PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::Low };
+        let recs = eval_advisories(&id, &s, &gates);
+        assert!(!recs.iter().any(|r| r.action == "code-exploration: graph/symbol"));
     }
 }
