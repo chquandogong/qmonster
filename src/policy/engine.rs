@@ -22,7 +22,12 @@ impl Engine {
     ) -> EvalOutput {
         let recs = eval_alerts(id, signals);
         let mut effects = Vec::new();
-        if !recs.is_empty() {
+        // Notify fires only when at least one rec is urgent (Warning or Risk).
+        // Concern-severity passive advisories stay in-UI (Codex #3 fix; r1
+        // plan "Alert-first" principle).
+        use crate::domain::recommendation::Severity;
+        let any_urgent = recs.iter().any(|r| r.severity >= Severity::Warning);
+        if any_urgent {
             effects.push(RequestedEffect::Notify);
         }
         // Phase 2: log storms trigger a runtime-local archive write so
@@ -127,6 +132,39 @@ mod tests {
         assert!(
             !out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::SensitiveNotImplemented)
+        );
+    }
+
+    #[test]
+    fn notify_effect_fires_only_for_warning_or_higher() {
+        let s = SignalSet {
+            waiting_for_input: true, // produces a Warning-severity rec
+            ..SignalSet::default()
+        };
+        let eng = Engine;
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        assert!(
+            out.effects.contains(&crate::domain::recommendation::RequestedEffect::Notify),
+            "Warning-severity rec must still trigger Notify"
+        );
+    }
+
+    #[test]
+    fn notify_effect_absent_when_only_concern_severity_recs() {
+        // repeated_output is Concern-severity in alerts.rs.
+        let s = SignalSet {
+            repeated_output: true,
+            ..SignalSet::default()
+        };
+        let eng = Engine;
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        assert!(
+            !out.effects.contains(&crate::domain::recommendation::RequestedEffect::Notify),
+            "Concern-severity recs must NOT trigger Notify (Codex #3)"
+        );
+        assert!(
+            !out.recommendations.is_empty(),
+            "sanity: repeated_output rec still exists in the list"
         );
     }
 }
