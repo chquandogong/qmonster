@@ -359,10 +359,17 @@ fn context_pressure_rec_is_marked_strong_end_to_end() {
         .expect("context_pressure_warning must fire for 82% pressure");
 
     assert!(rec.is_strong, "context-pressure: checkpoint must be marked is_strong");
-    assert_eq!(
-        rec.suggested_command.as_deref(),
-        Some("/compact"),
-        "context-pressure: checkpoint must carry /compact as suggested_command"
+    let cmd = rec
+        .suggested_command
+        .as_deref()
+        .expect("context-pressure: checkpoint must carry a suggested_command");
+    assert!(
+        cmd.contains("snapshot"),
+        "strong-rec contract: checkpoint before compact. got: {cmd}"
+    );
+    assert!(
+        cmd.contains("/compact"),
+        "strong-rec contract: /compact stays as the later step. got: {cmd}"
     );
 }
 

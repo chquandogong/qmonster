@@ -139,7 +139,7 @@ fn context_pressure_warning(
         reason: "context warming — checkpoint first, archive large results, only then consider /compact".into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Estimated,
-        suggested_command: Some("/compact".into()),
+        suggested_command: Some("# press 's' to snapshot first; then /compact".into()),
         side_effects: vec![],
         is_strong: true,
     })
@@ -174,7 +174,7 @@ fn context_pressure_critical(
         reason: "context near critical — checkpoint + archive now; /compact after".into(),
         severity: Severity::Risk,
         source_kind: SourceKind::Estimated,
-        suggested_command: Some("/compact".into()),
+        suggested_command: Some("# press 's' to snapshot first; then /compact".into()),
         side_effects: vec![],
         is_strong: true,
     })
@@ -493,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn context_pressure_warning_suggests_compact() {
+    fn context_pressure_warning_suggests_snapshot_first() {
         let id = id_high(Role::Main);
         let s = pressure(0.80);
         let recs = eval_advisories(&id, &s, &gates_default());
@@ -501,7 +501,23 @@ mod tests {
             .iter()
             .find(|r| r.action == "context-pressure: checkpoint")
             .expect("C-warning fires");
-        assert_eq!(adv.suggested_command.as_deref(), Some("/compact"));
+        let cmd = adv.suggested_command.as_deref().expect("populated");
+        assert!(cmd.contains("snapshot"), "contract: checkpoint before compact. got: {cmd}");
+        assert!(cmd.contains("/compact"), "should still mention /compact as later step. got: {cmd}");
+    }
+
+    #[test]
+    fn context_pressure_critical_suggests_snapshot_first() {
+        let id = id_high(Role::Main);
+        let s = pressure(0.92);
+        let recs = eval_advisories(&id, &s, &gates_default());
+        let adv = recs
+            .iter()
+            .find(|r| r.action == "context-pressure: act now")
+            .expect("C-critical fires");
+        let cmd = adv.suggested_command.as_deref().expect("populated");
+        assert!(cmd.contains("snapshot"), "contract: checkpoint before compact (strong rec). got: {cmd}");
+        assert!(cmd.contains("/compact"), "should still mention /compact as later step. got: {cmd}");
     }
 
     #[test]
