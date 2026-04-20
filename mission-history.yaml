@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 11
-  latest_version: "1.7.2"
+  total_revisions: 12
+  latest_version: "1.7.3"
 
 timeline:
   - change_id: "initial"
@@ -1137,8 +1137,140 @@ timeline:
     follow_up:
       - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
 
+  - change_id: "phase-3b-strong-rec-contract-cleanup"
+    semantic_version: "1.7.3"
+    change_sequence: 12
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.7.2 review — flagged two warnings closed by this round)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close the two Codex v1.7.2 review findings on the strong-rec
+      `suggested_command` contract. Finding #1: the v1.7.2 mixed-mode
+      value was not actually runnable on any single surface (shell
+      comments out the `#…` line; `--once` has no key handler for
+      "press 's'"; renderers still prefixed the value with `run:`,
+      promising copy-paste ergonomics the value could not deliver).
+      Finding #2: the v1.7.2 substring tests would still have passed
+      a regressed "/compact; snapshot later" string. Restore field
+      honesty + lock the ordering contract structurally.
+    intent_ko: >
+      Codex v1.7.2 리뷰가 지적한 두 건의 warning을 닫는다. #1: v1.7.2의
+      혼합-표면 값이 셸에서는 주석, `--once`에서는 키 핸들러 없음,
+      렌더러는 여전히 `run:` 접두사를 붙여 실제 복붙 가능성을
+      약속하지 못한다. #2: v1.7.2 substring 테스트는 `/compact;
+      snapshot later` 같은 퇴행 문자열도 통과시킨다. 필드 계약을
+      정직하게 되돌리고 순서 계약을 구조적으로 고정한다.
+    decision: >
+      (1) src/domain/recommendation.rs gains
+      `pub next_step: Option<String>` — prose operator-facing
+      precondition that precedes the runnable `suggested_command`.
+      Thread `next_step: None` through every Recommendation
+      constructor (~25 sites across advisories.rs, alerts.rs,
+      notify/desktop.rs, ui/alerts.rs, domain/recommendation.rs) via
+      rustc-guided exhaustive updates. (2) advisories.rs: the two
+      strong recs (context_pressure_warning, context_pressure_critical)
+      now carry `suggested_command = Some("/compact")` (pure runnable)
+      and `next_step = Some("press 's' to snapshot …, before running
+      /compact")` (prose precondition). (3) src/ui/alerts.rs: extract
+      a new `pub fn format_strong_rec_body(rec, pane_id) -> String`
+      as the single source of truth for the strong-rec render format;
+      the TUI alert queue and `--once` in src/main.rs both call it,
+      eliminating the prior format duplication. Emits `next: …` before
+      `run: \`…\`` so the ordering is inherent to the field layout
+      rather than string-substring-dependent. (4) Tests: unit
+      assertions switch from `contains("snapshot"+"/compact")` to
+      `assert_eq!(suggested_command, Some("/compact"))` (exact) plus
+      `next_step.contains("snapshot")`; two new unit tests on the
+      render helper lock ordering (`next_idx < run_idx`) and absence
+      (no `next:` when `next_step` is None); integration test
+      `context_pressure_rec_is_marked_strong_end_to_end` calls
+      `format_strong_rec_body` end-to-end on a live Engine::evaluate
+      output. (5) docs/ai/VALIDATION.md updated: `suggested_command`
+      bullet clarified (single-surface runnable); new `next_step`
+      bullet added; checkpoint-before-compact bullet rewritten to
+      reflect the field-level separation. No runtime behavior change
+      at the policy layer; this is a contract + render refactor.
+    decision_ko: >
+      (1) src/domain/recommendation.rs에 `pub next_step: Option<String>`
+      추가. 약 25개 Recommendation 생성 사이트(advisories.rs, alerts.rs,
+      notify/desktop.rs, ui/alerts.rs, domain/recommendation.rs)에
+      `next_step: None` 쓰루. (2) advisories.rs: 두 개의 strong rec에
+      `suggested_command = Some("/compact")`(순수 실행값)과
+      `next_step = Some("press 's' to snapshot …")`(전제조건 prose)
+      분리 저장. (3) src/ui/alerts.rs에 신규 pub helper
+      `format_strong_rec_body` 추출 — TUI 알림 큐와 main.rs의
+      `--once` 두 경로 모두 동일 헬퍼 호출. `next: …`가 `run: \`…\``보다
+      앞서 렌더링되도록 match-arm 으로 고정하여 순서 계약을 필드
+      레이아웃 차원으로 내재화. (4) 테스트: unit 단언을
+      `contains(…)`에서 `assert_eq!(suggested_command, Some("/compact"))`
+      + `next_step.contains("snapshot")`로 타이트닝; 렌더 헬퍼용 unit
+      테스트 2개 신규(`next:`가 `run:`보다 앞섬 / `next_step`이 None이면
+      `next:` 생략); 통합 테스트는 실제 Engine::evaluate 산출물에 대해
+      `format_strong_rec_body`를 호출하여 end-to-end 순서 계약을
+      검증. (5) docs/ai/VALIDATION.md에 `suggested_command`
+      (단일-표면 실행 가능) 조건 명시 + 신규 `next_step` 항목 추가 +
+      strong rec 체크포인트 항목 재작성. policy 레이어 동작 변경 없음.
+    triggered_by: "Codex v1.7.2 review (`.docs/codex/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-review.md` + `.mission/evals/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-review.result.yaml`) — two warning-level findings on field semantics + test strength"
+    issue_or_context: >
+      v1.7.2 tried to express the snapshot-first precondition by
+      overloading suggested_command with mixed-mode prose
+      ("# press 's' to snapshot first; then /compact"). Codex flagged
+      two problems: (1) the value is not runnable on any single
+      surface, and the `run:` render prefix still promises copy-paste
+      ergonomics it cannot satisfy — operators pasting the string
+      into a shell get a no-op, and `--once` has no key handler for
+      "press 's'"; (2) the "contains snapshot + contains /compact"
+      tests would also pass a regression like "/compact; snapshot
+      later" which reverses the meaning. The v1.7.3 remediation fixes
+      both by splitting concerns: a new structurally-separate
+      next_step field + a shared render helper that enforces
+      ordering at the field-layout level rather than via string
+      substring checks.
+    changes:
+      modified:
+        - "src/domain/recommendation.rs — add `pub next_step: Option<String>` with doc; update struct-construction test fixture"
+        - 'src/policy/rules/advisories.rs — revert strong-rec suggested_command to Some("/compact") (pure runnable); add next_step with snapshot-first prose on the two strong recs; thread next_step: None through all other rules; rewrite the two strong-rec unit tests as `_carries_runnable_compact_with_snapshot_next_step` with `assert_eq!` on suggested_command and `contains("snapshot")` on next_step'
+        - "src/policy/rules/alerts.rs — thread next_step: None through all 7 alert rules"
+        - "src/policy/rules/concurrent.rs — (unchanged; CrossPaneFinding has its own struct, no next_step threading needed)"
+        - "src/notify/desktop.rs — update test fixture with next_step: None"
+        - "src/ui/alerts.rs — extract new `pub fn format_strong_rec_body(rec, pane_id) -> String` as the single-source render helper; call it from the TUI alert queue branch; add two new unit tests that lock ordering (`next:` before `run:`) and absence (no `next:` when None); update strong-rec test fixture to set next_step = Some; update other test fixtures with next_step: None"
+        - "src/main.rs — `--once` strong-rec branch calls `qmonster::ui::alerts::format_strong_rec_body` instead of inlining the format"
+        - 'tests/event_loop_integration.rs — strong-rec contract assertions switched from substring to (a) `assert_eq!(suggested_command, Some("/compact"))`, (b) `next_step.contains("snapshot")`, (c) end-to-end call to `format_strong_rec_body` with `next_idx < run_idx` ordering assertion'
+        - "docs/ai/VALIDATION.md — clarified `suggested_command` bullet (single-surface runnable); added `next_step` bullet; rewrote checkpoint-before-compact bullet to reflect the field-level split and the single render-helper guarantee"
+    changed_sections:
+      - "Recommendation contract (new next_step field)"
+      - "strong-rec render format (single pub helper, ordered next → run)"
+      - "VALIDATION.md Phase 3 / suggested_command contract"
+    done_when_delta:
+      added:
+        - "Phase 3B strong-rec contract cleanup v1.7.3: Recommendation gains next_step: Option<String> for prose preconditions; suggested_command on all rules is a single-surface runnable value (shell cmd / slash-command / `# config-edit` pointer). Codex v1.7.2 finding #1 closed."
+        - 'Phase 3B strong-rec contract cleanup v1.7.3: strong-rec suggested_command on context_pressure_warning + context_pressure_critical is exact Some("/compact"); next_step carries the `press ''s'' to snapshot …` precondition. Tests assert_eq exact-string + render-ordering (`next:` before `run:`). Codex v1.7.2 finding #2 closed.'
+        - "Phase 3B strong-rec contract cleanup v1.7.3: ui::alerts::format_strong_rec_body is the single pub helper used by both the TUI alert queue and `--once`; unit tests on the helper + integration test on a live Engine::evaluate output lock the render format."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~60 LOC production (new field + 25 site threads + render helper + main.rs call) + ~55 LOC test delta (2 new unit tests on render helper + 2 rewritten strong-rec unit tests + 1 tightened integration test)"
+      tests: "159 lib + 16 integration (up from 157 lib + 16 integration; +2 new render-helper unit tests; 2 strong-rec unit tests rewritten in place)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no policy behavior change; contract + render refactor; the only user-visible change is the format of the strong-rec line (now shows a `next: press 's' to snapshot …` segment before `run: `/compact``)"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md + docs/ai/VALIDATION.md updated"
+    breaking: false
+    risk: "low-medium — struct field addition required exhaustive constructor updates but rustc caught every missing site; the render format changes the user-visible strong-rec line (adds a `next:` segment) but improves honesty of the `run:` prefix"
+    related_commits: []
+    related_decisions:
+      - "KD-006"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
+      - "Request final Codex + Gemini gate sign-off on v1.7.3 (Gemini has not reviewed v1.7.1+ yet)"
+
 evolution_summary:
-  current_phase: "Phase 3 complete + gate-remediated + strong-rec cmd refined (v1.7.2); Phase 4 gate open to request"
+  current_phase: "Phase 3 complete + gate-remediated + strong-rec contract cleaned (v1.7.3); Phase 4 gate open to request"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

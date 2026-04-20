@@ -1,6 +1,6 @@
 mission:
-  version: "1.7.2"
-  title: "Qmonster v0.4.0 — Phase 3 complete + gate-remediated + strong-rec cmd refined (3A + 3B: policy engine, suggested_command, strong-rec UX + snapshot-first)"
+  version: "1.7.3"
+  title: "Qmonster v0.4.0 — Phase 3 complete + gate-remediated + strong-rec contract cleaned (3A + 3B: policy engine, suggested_command, strong-rec UX, next_step precondition)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -104,6 +104,27 @@ mission:
     regress through Engine::evaluate + EffectRunner + ViewModel. UI-layer
     string refinement only; no policy behavior or severity changes.
 
+    Phase 3B strong-rec contract cleanup (v1.7.3) closes the two Codex
+    v1.7.2 review findings. Finding #1: the v1.7.2 value
+    "# press 's' to snapshot first; then /compact" was not runnable on
+    any single surface (shell comments out `#…`; `--once` has no key
+    handler; renderers still prefixed it with `run:` promising copy-
+    paste ergonomics the value couldn't deliver). Fix: introduce a
+    structurally separate Recommendation.next_step: Option<String> for
+    prose preconditions; revert suggested_command on the two strong
+    recs to pure Some("/compact"); move the snapshot hint into
+    next_step = Some("press 's' to snapshot … before /compact").
+    Finding #2: the v1.7.2 substring tests would still have passed a
+    regressed "/compact; snapshot later" string. Fix: assert_eq on
+    suggested_command = Some("/compact") (exact), and lock render
+    ordering via a new pub helper ui::alerts::format_strong_rec_body —
+    shared between the TUI alert queue and --once — with unit tests
+    that assert `next:` precedes `run:` in the rendered body and the
+    `next:` segment is omitted when next_step is None, plus an
+    integration test that calls the helper end-to-end on a live
+    Engine::evaluate output. Field-level next/run separation makes the
+    ordering contract inherent rather than string-substring-dependent.
+
   done_when:
     # Phase-0 artefacts (kept as historical gating criteria — already met).
     - "Phase 0: mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate against the mission-spec schema."
@@ -170,6 +191,11 @@ mission:
     # Phase-3B strong-rec command refinement (v1.7.2).
     - "Phase 3B strong-rec cmd refinement v1.7.2: context_pressure_warning + context_pressure_critical suggested_command embeds the snapshot-first precondition, matching the reason field and the CHECKPOINT slot UI premise."
     - "Phase 3B strong-rec cmd refinement v1.7.2: unit + integration tests enforce a substring contract ('snapshot' + '/compact') so the two strong recs cannot silently drop the snapshot precondition."
+
+    # Phase-3B strong-rec contract cleanup (v1.7.3).
+    - "Phase 3B strong-rec contract cleanup v1.7.3: Recommendation gains next_step: Option<String> for prose preconditions; suggested_command on all rules is a single-surface runnable value (shell cmd / slash-command / `# config-edit` pointer). Codex v1.7.2 finding #1 closed."
+    - 'Phase 3B strong-rec contract cleanup v1.7.3: strong-rec suggested_command on context_pressure_warning + context_pressure_critical is exact Some("/compact"); next_step carries the `press ''s'' to snapshot …` precondition. Tests assert_eq exact-string + render-ordering (`next:` before `run:`). Codex v1.7.2 finding #2 closed.'
+    - "Phase 3B strong-rec contract cleanup v1.7.3: ui::alerts::format_strong_rec_body is the single pub helper used by both the TUI alert queue and `--once`; unit tests on the helper + integration test on a live Engine::evaluate output lock the render format."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -260,13 +286,17 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3)."
     suggested_approach: >
-      Phase 3B strong-rec command refinement shipped (v1.7.2); Phase 3
-      is COMPLETE and gate-remediated. Request final Codex + Gemini
-      gate sign-off on v1.7.2. On clean pass, proceed to Phase 4 —
-      provider profile recommender + side_effects populating
-      (Gemini G-6) + auto-memory profile guide (Gemini G-5).
+      Phase 3B strong-rec contract cleanup shipped (v1.7.3); Phase 3
+      is COMPLETE, gate-remediated, and the strong-rec render contract
+      is now structurally locked via a separate next_step field +
+      shared format_strong_rec_body helper. Request final Codex +
+      Gemini gate sign-off on v1.7.3 (Gemini has not reviewed v1.7.1
+      or later yet; Codex v1.7.2 findings closed by v1.7.3). On clean
+      pass, proceed to Phase 4 — provider profile recommender +
+      side_effects populating (Gemini G-6) + auto-memory profile
+      guide (Gemini G-5).
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -317,5 +347,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 11
+    total_revisions: 12
     history: "mission-history.yaml"
