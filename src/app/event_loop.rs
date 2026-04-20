@@ -230,8 +230,13 @@ fn record_lifecycle(
 }
 
 fn alert_event(pane_id: &str, rec: &Recommendation, provider: Provider) -> AuditEvent {
+    let kind = if rec.severity >= Severity::Warning {
+        AuditEventKind::AlertFired
+    } else {
+        AuditEventKind::RecommendationEmitted
+    };
     AuditEvent {
-        kind: AuditEventKind::AlertFired,
+        kind,
         pane_id: pane_id.to_string(),
         severity: rec.severity,
         summary: format!("{}: {}", rec.action, rec.reason),

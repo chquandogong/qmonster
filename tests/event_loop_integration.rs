@@ -4,12 +4,33 @@ use std::time::Instant;
 use qmonster::app::bootstrap::Context;
 use qmonster::app::config::QmonsterConfig;
 use qmonster::app::event_loop::run_once;
+use qmonster::domain::audit::{AuditEvent, AuditEventKind};
 use qmonster::domain::identity::{IdentityConfidence, Provider, Role};
 use qmonster::domain::recommendation::Severity;
 use qmonster::notify::desktop::NotifyBackend;
-use qmonster::store::sink::InMemorySink;
+use qmonster::store::sink::{EventSink, InMemorySink};
 use qmonster::tmux::polling::{PaneSource, PollingError};
 use qmonster::tmux::types::RawPaneSnapshot;
+
+/// Audit sink that captures events into a shared buffer for test inspection.
+#[derive(Clone)]
+struct CaptureSink(Arc<Mutex<Vec<AuditEvent>>>);
+
+impl CaptureSink {
+    fn new() -> Self {
+        CaptureSink(Arc::new(Mutex::new(Vec::new())))
+    }
+
+    fn snapshot(&self) -> Vec<AuditEvent> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl EventSink for CaptureSink {
+    fn record(&self, event: AuditEvent) {
+        self.0.lock().unwrap().push(event);
+    }
+}
 
 struct FixturePaneSource {
     panes: Vec<RawPaneSnapshot>,
@@ -500,5 +521,91 @@ fn dispatch_notify_filters_concern_when_warning_coexists() {
         calls[0].2,
         Severity::Warning,
         "the sole notification must carry Warning severity"
+    );
+}
+
+#[test]
+fn concern_severity_rec_audit_logged_as_recommendation_emitted() {
+    // Pane tail triggers ONLY verbose_answer (Concern-severity, "verbose-output" action).
+    // alert_event must log it as RecommendationEmitted, NOT AlertFired
+    // (Codex Phase-3A finding #2).
+    let tail = "I'd be happy to help with that task.";
+    let source = FixturePaneSource {
+        panes: vec![pane("%1", "claude:1:main", "claude", tail, false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let capture = CaptureSink::new();
+    let mut ctx = Context::new(
+        QmonsterConfig::defaults(),
+        source,
+        notifier,
+        Box::new(capture.clone()),
+    );
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+
+    // Sanity: verbose-output rec must be present.
+    assert!(
+        reports[0]
+            .recommendations
+            .iter()
+            .any(|r| r.action == "verbose-output"),
+        "verbose-output (Concern) rec must be present"
+    );
+
+    let events = capture.snapshot();
+    // At least one event for the verbose-output rec must be RecommendationEmitted.
+    assert!(
+        events
+            .iter()
+            .any(|e| e.kind == AuditEventKind::RecommendationEmitted
+                && e.summary.contains("verbose-output")),
+        "verbose-output rec must be audit-logged as RecommendationEmitted, not AlertFired"
+    );
+    // No AlertFired event for verbose-output.
+    assert!(
+        !events
+            .iter()
+            .any(|e| e.kind == AuditEventKind::AlertFired && e.summary.contains("verbose-output")),
+        "verbose-output (Concern) rec must NOT be audit-logged as AlertFired"
+    );
+}
+
+#[test]
+fn warning_severity_rec_audit_logged_as_alert_fired() {
+    // Pane tail triggers ONLY waiting_for_input (Warning-severity, "notify-input-wait" action).
+    // alert_event must log it as AlertFired (Codex Phase-3A finding #2).
+    let tail = "Press ENTER to continue";
+    let source = FixturePaneSource {
+        panes: vec![pane("%1", "claude:1:main", "claude", tail, false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let capture = CaptureSink::new();
+    let mut ctx = Context::new(
+        QmonsterConfig::defaults(),
+        source,
+        notifier,
+        Box::new(capture.clone()),
+    );
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+
+    // Sanity: notify-input-wait rec must be present.
+    assert!(
+        reports[0]
+            .recommendations
+            .iter()
+            .any(|r| r.action == "notify-input-wait"),
+        "notify-input-wait (Warning) rec must be present"
+    );
+
+    let events = capture.snapshot();
+    // The notify-input-wait rec must be logged as AlertFired.
+    assert!(
+        events
+            .iter()
+            .any(|e| e.kind == AuditEventKind::AlertFired
+                && e.summary.contains("notify-input-wait")),
+        "notify-input-wait (Warning) rec must be audit-logged as AlertFired"
     );
 }
