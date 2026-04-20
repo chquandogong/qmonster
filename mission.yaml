@@ -1,6 +1,6 @@
 mission:
-  version: "1.7.1"
-  title: "Qmonster v0.4.0 — Phase 3 complete + gate-remediated (3A + 3B: policy engine, suggested_command, strong-rec UX)"
+  version: "1.7.2"
+  title: "Qmonster v0.4.0 — Phase 3 complete + gate-remediated + strong-rec cmd refined (3A + 3B: policy engine, suggested_command, strong-rec UX + snapshot-first)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -86,6 +86,24 @@ mission:
     command exists. Total suggested_command population: 10 rules (4 from
     v1.7.0 + 6 new in v1.7.1). Gemini G-2 retry finding closed.
 
+    Phase 3B strong-rec command refinement (v1.7.2) closes a pre-signoff
+    inconsistency on the two strong context-pressure recommendations.
+    context_pressure_warning and context_pressure_critical had
+    suggested_command = Some("/compact") — a bare destructive action —
+    while their reason fields ("checkpoint first, archive large results,
+    only then consider /compact" / "checkpoint + archive now; /compact
+    after") and the CHECKPOINT slot UI premise both demand snapshot-first.
+    Both rules now carry
+    Some("# press 's' to snapshot first; then /compact"). The warning
+    unit test switches from exact-string equality to substring
+    containment on "snapshot" + "/compact"; a parallel critical-variant
+    unit test (context_pressure_critical_suggests_snapshot_first) is
+    added for symmetry; the integration test
+    context_pressure_rec_is_marked_strong_end_to_end adopts the same
+    substring contract so the strong-rec precondition cannot silently
+    regress through Engine::evaluate + EffectRunner + ViewModel. UI-layer
+    string refinement only; no policy behavior or severity changes.
+
   done_when:
     # Phase-0 artefacts (kept as historical gating criteria — already met).
     - "Phase 0: mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate against the mission-spec schema."
@@ -148,6 +166,10 @@ mission:
     # Phase-3B retry-remediation (v1.7.1).
     - "Phase 3B retry-remediation v1.7.1: suggested_command populated on 10 total rules (4 from v1.7.0 + 6 new in alerts/advisories/concurrent) — config-edit pointers where no runnable CLI exists."
     - "Phase 3B retry-remediation v1.7.1: remaining None suggested_command sites carry inline justification comments; Gemini G-2 retry finding closed."
+
+    # Phase-3B strong-rec command refinement (v1.7.2).
+    - "Phase 3B strong-rec cmd refinement v1.7.2: context_pressure_warning + context_pressure_critical suggested_command embeds the snapshot-first precondition, matching the reason field and the CHECKPOINT slot UI premise."
+    - "Phase 3B strong-rec cmd refinement v1.7.2: unit + integration tests enforce a substring contract ('snapshot' + '/compact') so the two strong recs cannot silently drop the snapshot precondition."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -238,13 +260,13 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2)."
     suggested_approach: >
-      Phase 3B retry-remediation shipped (v1.7.1); Phase 3 is COMPLETE
-      and gate-remediated. Request final Codex + Gemini gate sign-off
-      on v1.7.1. On clean pass, proceed to Phase 4 — provider profile
-      recommender + side_effects populating (Gemini G-6) + auto-memory
-      profile guide (Gemini G-5).
+      Phase 3B strong-rec command refinement shipped (v1.7.2); Phase 3
+      is COMPLETE and gate-remediated. Request final Codex + Gemini
+      gate sign-off on v1.7.2. On clean pass, proceed to Phase 4 —
+      provider profile recommender + side_effects populating
+      (Gemini G-6) + auto-memory profile guide (Gemini G-5).
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -295,5 +317,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 10
+    total_revisions: 11
     history: "mission-history.yaml"

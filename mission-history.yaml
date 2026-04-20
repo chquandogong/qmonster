@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 10
-  latest_version: "1.7.1"
+  total_revisions: 11
+  latest_version: "1.7.2"
 
 timeline:
   - change_id: "initial"
@@ -1040,8 +1040,105 @@ timeline:
     follow_up:
       - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
 
+  - change_id: "phase-3b-strong-rec-command-refinement"
+    semantic_version: "1.7.2"
+    change_sequence: 11
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close a contract inconsistency on the two strong context-pressure
+      recommendations: their reason fields say "checkpoint first,
+      archive large results, only then consider /compact" /
+      "checkpoint + archive now; /compact after", but the
+      suggested_command was a bare "/compact" — which contradicts the
+      snapshot-first precondition the CHECKPOINT slot UI was built to
+      enforce. Refine the command to hint the snapshot step before
+      /compact, and lock the contract via unit + integration tests.
+    intent_ko: >
+      두 강한 context-pressure 권고의 reason 필드는 "checkpoint first,
+      archive large results, only then consider /compact" 또는
+      "checkpoint + archive now; /compact after" 라고 명시하지만, 실제
+      suggested_command은 "/compact" 단독이어서 CHECKPOINT 슬롯 UI가
+      지키려는 '스냅샷 먼저' 전제와 모순되었다. 커맨드를
+      '스냅샷 먼저 → /compact' 형태로 정합시키고, 유닛 및 통합
+      테스트로 계약을 고정한다.
+    decision: >
+      src/policy/rules/advisories.rs: context_pressure_warning and
+      context_pressure_critical suggested_command changed from
+      Some("/compact") to
+      Some("# press 's' to snapshot first; then /compact"). Unit-test
+      contract switched from exact-string equality (the former
+      context_pressure_warning_suggests_compact) to substring
+      containment on both "snapshot" and "/compact" — the test was
+      renamed to context_pressure_warning_suggests_snapshot_first to
+      reflect the new contract. Added a parallel unit test
+      context_pressure_critical_suggests_snapshot_first for symmetry
+      with the warning variant. Integration test
+      context_pressure_rec_is_marked_strong_end_to_end (the
+      load-bearing end-to-end proof that the strong-rec contract
+      survives Engine::evaluate + EffectRunner + ViewModel) loosened
+      from exact Some("/compact") equality to the same substring
+      contract. UI-layer string change only; no policy behavior or
+      severity changes.
+    decision_ko: >
+      src/policy/rules/advisories.rs: context_pressure_warning,
+      context_pressure_critical의 suggested_command를 Some("/compact")
+      에서 Some("# press 's' to snapshot first; then /compact")로
+      변경. 유닛 테스트 계약은 기존 context_pressure_warning_suggests_compact
+      (정확-일치)에서 "snapshot"+"/compact" 둘 다 포함하는 substring
+      검증으로 전환하고, 테스트 이름을
+      context_pressure_warning_suggests_snapshot_first로 갱신. warning
+      변형과 대칭이 되는 유닛 테스트
+      context_pressure_critical_suggests_snapshot_first 신규 추가. 통합
+      테스트 context_pressure_rec_is_marked_strong_end_to_end
+      (Engine::evaluate + EffectRunner + ViewModel을 관통하는 강한-권고
+      계약의 load-bearing E2E 증거) 또한 동일한 substring 계약으로
+      완화. UI 레이어 문자열만 변경; policy 동작/심각도 불변.
+    triggered_by: "pre-signoff read-through — reason field vs suggested_command field inconsistency on strong recs"
+    issue_or_context: >
+      Phase 3B (v1.7.0) introduced is_strong + a CHECKPOINT slot for
+      C-warning and C-critical on the explicit premise that operators
+      should snapshot before running /compact. Phase 3B retry
+      (v1.7.1) populated suggested_command on 10 rules. But the two
+      strong recs themselves still pointed to a bare "/compact" —
+      asking the operator to execute the destructive step without
+      the precondition the reason field describes. A pre-signoff
+      read-through caught the inconsistency before Codex / Gemini
+      review on v1.7.1.
+    changes:
+      modified:
+        - "src/policy/rules/advisories.rs — suggested_command on context_pressure_warning + context_pressure_critical now embeds the snapshot-first precondition; existing warning unit test tightened to substring contract and renamed; new critical unit test context_pressure_critical_suggests_snapshot_first added for symmetry"
+        - 'tests/event_loop_integration.rs — context_pressure_rec_is_marked_strong_end_to_end loosened from exact Some("/compact") to substring contract (must contain both "snapshot" and "/compact")'
+    changed_sections:
+      - "strong-rec suggested_command contract (policy rules + end-to-end test)"
+    done_when_delta:
+      added:
+        - "Phase 3B strong-rec cmd refinement v1.7.2: context_pressure_warning + context_pressure_critical suggested_command embeds the snapshot-first precondition, matching the reason field and the CHECKPOINT slot UI premise."
+        - "Phase 3B strong-rec cmd refinement v1.7.2: unit + integration tests enforce a substring contract ('snapshot' + '/compact') so the two strong recs cannot silently drop the snapshot precondition."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~4 LOC production + ~16 LOC test delta (1 new unit test, 1 tightened unit test, 1 loosened integration assertion)"
+      tests: "157 lib + 16 integration (up from 156 lib + 16 integration; +1 new positive test)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no behavior change; UI-layer string + test contract only"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — UI-layer string refinement; existing integration test kept its load-bearing intent while becoming contract-stable (substring) rather than brittle (exact-string)"
+    related_commits: []
+    related_decisions:
+      - "KD-006"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
+
 evolution_summary:
-  current_phase: "Phase 3 complete + gate-remediated (v1.7.1); Phase 4 gate open to request"
+  current_phase: "Phase 3 complete + gate-remediated + strong-rec cmd refined (v1.7.2); Phase 4 gate open to request"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
