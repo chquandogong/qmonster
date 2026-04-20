@@ -12,6 +12,37 @@ pub fn allow_aggressive(quota_tight: bool) -> bool {
     quota_tight
 }
 
+/// Bundled gate inputs for `Engine::evaluate`. Built upstream by
+/// `app::event_loop` from the current `QmonsterConfig` + per-pane
+/// `ResolvedIdentity`. Pure data — the struct does not read config
+/// or IO at evaluation time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PolicyGates {
+    pub quota_tight: bool,
+    pub identity_confidence: IdentityConfidence,
+}
+
+impl Default for PolicyGates {
+    fn default() -> Self {
+        Self {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::Unknown,
+        }
+    }
+}
+
+impl PolicyGates {
+    pub fn from_config_and_identity(
+        token: &crate::app::config::TokenConfig,
+        conf: IdentityConfidence,
+    ) -> Self {
+        Self {
+            quota_tight: token.quota_tight,
+            identity_confidence: conf,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -33,5 +64,31 @@ mod tests {
     fn aggressive_mode_requires_quota_tight_flag() {
         assert!(!allow_aggressive(false));
         assert!(allow_aggressive(true));
+    }
+
+    #[test]
+    fn quota_tight_gate_reads_from_config_true() {
+        let gates = PolicyGates {
+            quota_tight: true,
+            identity_confidence: IdentityConfidence::High,
+        };
+        assert!(gates.quota_tight);
+    }
+
+    #[test]
+    fn quota_tight_gate_defaults_to_false() {
+        let gates = PolicyGates::default();
+        assert!(!gates.quota_tight, "safety default: quota_tight must be false");
+        assert_eq!(gates.identity_confidence, IdentityConfidence::Unknown,
+            "safety default: low-confidence behavior until explicitly raised");
+    }
+
+    #[test]
+    fn policy_gates_from_config_and_identity_reads_both() {
+        use crate::app::config::TokenConfig;
+        let cfg = TokenConfig { quota_tight: true };
+        let gates = PolicyGates::from_config_and_identity(&cfg, IdentityConfidence::Medium);
+        assert!(gates.quota_tight);
+        assert_eq!(gates.identity_confidence, IdentityConfidence::Medium);
     }
 }
