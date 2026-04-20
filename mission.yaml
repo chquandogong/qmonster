@@ -1,6 +1,6 @@
 mission:
-  version: "1.6.0"
-  title: "Qmonster v0.4.0 — Phase 3A policy engine (round 1: pure-policy A–G + G-11 cross-pane)"
+  version: "1.6.1"
+  title: "Qmonster v0.4.0 — Phase 3A policy engine (round 1: pure-policy A–G + G-11 cross-pane) (gate-remediated)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -48,10 +48,21 @@ mission:
     for repeated_output/verbose_answer/error_hint (Gemini #1 closed).
     22 single-responsibility TDD commits; 152 lib + 12 integration tests.
 
+    Phase 3A gate remediation (v1.6.1) closed three Codex findings:
+    (1) dispatch_notify now filters by Severity >= Warning so Concern-
+    severity recs no longer reach the desktop notifier even when a Warning
+    rec co-exists in the same output; (2) alert_event now splits
+    AuditEventKind::AlertFired (>= Warning) vs RecommendationEmitted
+    (< Warning) so passive advisories are not wrongly labelled as alerts
+    in the audit log; (3) VALIDATION.md and ARCHITECTURE.md updated to
+    acknowledge the shipped same-current_path G-11 proxy and correctly
+    defer file-level / git-branch-level detection to Phase 3B / 4+.
+    154 lib + 15 integration tests; cargo clippy --all-targets -D
+    warnings clean.
+
     Phase 3B (Round 2) is next: populate suggested_command on all
     Round-1 rules, add "checkpoint before compact" strong-recommendation
-    UX (Gemini G-7). Codex gate review + Gemini eval pending for Phase
-    3A; remediation round v1.6.1 if findings.
+    UX (Gemini G-7).
 
   done_when:
     # Phase-0 artefacts (kept as historical gating criteria — already met).
@@ -101,6 +112,11 @@ mission:
     - "Phase 3A: Concurrent-work rule requires same current_path + Main/Review role + !waiting + output_chars>=500; anchor = lex-smallest pane_id."
     - "Phase 3A: Phase-1 unit-test backfill for repeated_output/verbose_answer/error_hint (Gemini #1 closed)."
     - "Phase 3A: cargo build + cargo test (~152 lib + ~12 integration) + cargo clippy --all-targets -- -D warnings all clean."
+
+    # Phase-3A gate remediation (v1.6.1).
+    - "Phase 3A remediation v1.6.1: dispatch_notify filters by Severity >= Warning (Codex #1 closed)."
+    - "Phase 3A remediation v1.6.1: alert_event splits AlertFired (>= Warning) vs RecommendationEmitted (< Warning) by severity (Codex #2 closed)."
+    - "Phase 3A remediation v1.6.1: canonical docs (VALIDATION.md, ARCHITECTURE.md) acknowledge the shipped same-current_path G-11 proxy (Codex #3 closed)."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -193,13 +209,12 @@ mission:
   execution_hints:
     topology: "Phase 3A shipped via 22 single-responsibility TDD commits (policy layer: PolicyGates → advisories → concurrent → Engine wiring → PaneReport extension → UI → integration tests)."
     suggested_approach: >
-      Phase 3A is now shipped. Next: Phase 3B — suggested_command +
-      strong-rec UX. Populate suggested_command: Option<String> on all
-      Round-1 advisory rules (A/B/C/C-crit/D/F-nudge/G + G-11). Add
-      "checkpoint before compact" strong-recommendation UX treatment
-      (Gemini G-7), leveraging the Phase-2 SnapshotWriter. Codex gate
-      review + Gemini eval pending for Phase 3A; remediation round
-      v1.6.1 if findings.
+      Phase 3A + v1.6.1 remediation is shipped. Next: Phase 3B —
+      suggested_command + strong-rec UX. Populate suggested_command:
+      Option<String> on all Round-1 advisory rules (A/B/C/C-crit/D/
+      F-nudge/G + G-11). Add "checkpoint before compact" strong-
+      recommendation UX treatment (Gemini G-7), leveraging the Phase-2
+      SnapshotWriter. Request Phase-3B gate approval.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -250,5 +265,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 7
+    total_revisions: 8
     history: "mission-history.yaml"

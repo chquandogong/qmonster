@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 7
-  latest_version: "1.6.0"
+  total_revisions: 8
+  latest_version: "1.6.1"
 
 timeline:
   - change_id: "initial"
@@ -753,8 +753,117 @@ timeline:
       - "Codex Phase-3A gate review + Gemini eval; remediation round v1.6.1 if findings"
       - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
 
+  - change_id: "phase-3a-gate-remediation"
+    semantic_version: "1.6.1"
+    change_sequence: 8
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Sonnet 4.6)"
+    contributors:
+      - "Codex (codex:1:review, Phase-3A gate-open cross-check)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close all three Codex Phase-3A findings (all warnings) so the
+      Phase-3B gate can open without contract regressions. Finding #1:
+      Notify dispatch leaked Concern-severity recs when a Warning rec
+      co-existed. Finding #2: alert_event used AlertFired for every rec
+      regardless of severity. Finding #3: canonical docs described the
+      G-11 concurrent-work rule in terms of a stricter trigger (same file
+      or git branch) that was not yet shipped, while the actual
+      implementation uses a same-current_path proxy.
+    intent_ko: >
+      Codex Phase-3A 지적 3건(모두 warning)을 닫고 Phase-3B 게이트를 열
+      수 있게 정리한다. 지적 #1: Warning rec가 함께 있을 때 dispatch_notify
+      가 Concern-severity rec에도 알림을 보내는 누출. 지적 #2: alert_event
+      가 severity에 무관하게 AlertFired를 사용. 지적 #3: canonical 문서가
+      실제 구현(same-current_path 프록시)이 아닌 미래 계획(same file/git
+      branch)으로 G-11 규칙을 설명.
+    decision: >
+      (1) dispatch_notify now filters recs by r.severity >= Severity::Warning
+      before calling the rate limiter and notifier — Concern-severity recs
+      no longer reach the desktop backend even when the Notify effect was
+      requested by the engine due to a co-existing Warning rec. Regression
+      test: dispatch_notify_filters_concern_when_warning_coexists.
+      (2) alert_event splits AuditEventKind: AlertFired for >= Warning,
+      RecommendationEmitted for < Warning (Concern/Good/Safe). The unused
+      RecommendationEmitted write-site is now exercised. Two regression
+      tests: concern_severity_rec_audit_logged_as_recommendation_emitted
+      + warning_severity_rec_audit_logged_as_alert_fired. CaptureSink
+      helper added to integration test file so audit events can be
+      inspected without downcasting Box<dyn EventSink>.
+      (3) VALIDATION.md:95-99 and ARCHITECTURE.md:272-274 rewritten to
+      reflect the shipped same-current_path proxy and correctly defer
+      file-level / git-branch-level detection to Phase 3B / Phase 4+.
+      No source changes to concurrent.rs — its inline docstring already
+      acknowledged the proxy.
+    decision_ko: >
+      (1) dispatch_notify가 rate limiter / notifier 호출 전에 r.severity >=
+      Severity::Warning으로 rec을 필터링 — engine이 Warning rec로 인해
+      Notify effect를 발행해도 Concern rec가 desktop backend에 도달하지
+      않음. 회귀 테스트: dispatch_notify_filters_concern_when_warning_coexists.
+      (2) alert_event가 AuditEventKind를 분리: Warning 이상은 AlertFired,
+      Warning 미만(Concern/Good/Safe)은 RecommendationEmitted. 미사용
+      write-site였던 RecommendationEmitted가 이제 실행됨. 회귀 테스트 2건:
+      concern_severity_rec_audit_logged_as_recommendation_emitted,
+      warning_severity_rec_audit_logged_as_alert_fired. Box<dyn EventSink>
+      downcasting 없이 audit event 검사를 위해 CaptureSink 헬퍼 추가.
+      (3) VALIDATION.md:95-99, ARCHITECTURE.md:272-274를 출시된
+      same-current_path 프록시로 재작성, 파일 수준/git-branch 수준
+      감지는 Phase 3B / Phase 4+로 정확히 연기. concurrent.rs의 인라인
+      docstring은 이미 프록시를 인정해 수정 불필요.
+    triggered_by: "Codex Phase-3A gate-open review (three warning findings)"
+    issue_or_context: >
+      Phase 3A (v1.6.0) shipped with the Notify severity gate at the
+      engine level but not at the dispatch level; the audit log used a
+      single AlertFired kind for all severities; and the canonical docs
+      still described the G-11 rule as requiring same file or git branch
+      when the implementation uses same current_path. All three are
+      contract-level regressions caught by the Codex gate review.
+    changes:
+      modified:
+        - "src/app/event_loop.rs: dispatch_notify adds .filter(|r| r.severity >= Severity::Warning)"
+        - "src/app/event_loop.rs: alert_event splits AlertFired vs RecommendationEmitted by severity"
+        - "docs/ai/VALIDATION.md: concurrent-work line (95-99) updated to reflect same-current_path proxy + Phase 3B/4+ deferral"
+        - "docs/ai/ARCHITECTURE.md: concurrent-work line (272-274) updated to reflect same-current_path proxy"
+      added:
+        - "tests/event_loop_integration.rs: dispatch_notify_filters_concern_when_warning_coexists (Codex #1 regression)"
+        - "tests/event_loop_integration.rs: concern_severity_rec_audit_logged_as_recommendation_emitted (Codex #2 regression)"
+        - "tests/event_loop_integration.rs: warning_severity_rec_audit_logged_as_alert_fired (Codex #2 regression)"
+        - "tests/event_loop_integration.rs: CaptureSink helper (Arc<Mutex<Vec<AuditEvent>>> + EventSink impl)"
+      removed: []
+    changed_sections:
+      - "dispatch_notify body (+ severity filter)"
+      - "alert_event body (+ severity split for audit kind)"
+      - "VALIDATION.md Phase 3 concurrent-work bullet"
+      - "ARCHITECTURE.md Deferred for later phases concurrent-work bullet"
+    done_when_delta:
+      added:
+        - "Phase 3A remediation v1.6.1: dispatch_notify filters by Severity >= Warning (Codex #1 closed)."
+        - "Phase 3A remediation v1.6.1: alert_event splits AlertFired (>= Warning) vs RecommendationEmitted (< Warning) by severity (Codex #2 closed)."
+        - "Phase 3A remediation v1.6.1: canonical docs (VALIDATION.md, ARCHITECTURE.md) acknowledge the shipped same-current_path G-11 proxy (Codex #3 closed)."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~120 LOC added (3 integration tests + CaptureSink helper); ~10 LOC modified (dispatch_notify + alert_event)"
+      tests: "152 lib + 15 integration (up from 152 lib + 12 integration)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "Notify behavior now strictly filtered at dispatch level too; Concern-severity audit events now use RecommendationEmitted kind"
+      docs: "VALIDATION.md + ARCHITECTURE.md concurrent-work bullets corrected; mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — additive regression tests; behavior narrowed further toward spec; no Phase-3A non-negotiable relaxed"
+    related_commits: []
+    related_decisions:
+      - "KD-006"
+      - "KD-007"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 3B (Round 2): suggested_command + strong-rec UX"
+      - "Codex Phase-3A v1.6.1 gate re-review (if needed)"
+
 evolution_summary:
-  current_phase: "Phase 3A shipped; Phase-3A gate open to request"
+  current_phase: "Phase 3A shipped AND gate-remediated (v1.6.1); Phase-3B gate open to request"
   next_phase: "Phase 3B — suggested_command + strong-rec UX"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

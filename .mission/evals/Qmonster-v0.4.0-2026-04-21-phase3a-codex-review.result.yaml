@@ -1,0 +1,66 @@
+evaluation:
+  timestamp: "2026-04-21T00:00:00Z"
+  target: "Phase 3A (pure-policy A–G + G-11 cross-pane) Implementation — gate-open review"
+  evaluated_by: "llm-codex"
+  source: "Codex Phase-3A gate review findings (operator relayed)"
+  verdict: "rework"
+  remediation_round: "v1.6.1 (Phase-3A gate remediation)"
+  findings:
+    - id: "codex-phase3a-1"
+      severity: "warning"
+      title: "Notify dispatch leak — Concern-severity recs reach notifier when Warning co-exists"
+      references:
+        - "src/app/event_loop.rs:191-206 (dispatch_notify iterates all out.recommendations)"
+      detail: >
+        Engine correctly gates RequestedEffect::Notify at >= Warning, but
+        dispatch_notify iterates ALL out.recommendations and passes each to
+        the notifier (subject only to rate limiting). So when a Warning rec
+        and a Concern rec are both present, both generate desktop
+        notifications — violating the contract that Concern-severity passive
+        advisories are in-UI only.
+      resolution: >
+        Add .filter(|r| r.severity >= Severity::Warning) inside dispatch_notify
+        before the rate-limiter check. Regression test:
+        dispatch_notify_filters_concern_when_warning_coexists verifies that
+        a tail producing both Warning and Concern recs yields exactly one
+        notification at Warning severity.
+    - id: "codex-phase3a-2"
+      severity: "warning"
+      title: "AlertFired used for all recommendations regardless of severity"
+      references:
+        - "src/app/event_loop.rs:231-240 (alert_event hardcodes AlertFired)"
+        - "src/domain/audit.rs:13 (RecommendationEmitted variant exists but has zero write sites)"
+      detail: >
+        alert_event() hardcodes AuditEventKind::AlertFired for every
+        recommendation. Phase 3A introduced Concern-severity passive
+        advisories (verbose_answer, repeated_output, error_hint) that are
+        semantically not alerts. AuditEventKind::RecommendationEmitted already
+        exists in the domain and is serialized in the SQLite writer, but has
+        no production write site.
+      resolution: >
+        Split alert_event by severity: AlertFired for rec.severity >=
+        Severity::Warning, RecommendationEmitted for < Warning. Two regression
+        tests verify each path. CaptureSink helper added to integration tests
+        to inspect audit events without downcasting Box<dyn EventSink>.
+    - id: "codex-phase3a-3"
+      severity: "warning"
+      title: "G-11 contract drift across canonical docs"
+      references:
+        - "docs/ai/VALIDATION.md:95-96 (fires when 'same file or git branch')"
+        - "docs/ai/ARCHITECTURE.md:272 (Concurrent-work warning across panes (Phase 3+))"
+        - "src/policy/rules/concurrent.rs:5-8 (acknowledges same-current_path proxy locally)"
+      detail: >
+        VALIDATION.md still says the concurrent-work warning fires when two
+        active panes touch the same file or git branch, and ARCHITECTURE.md
+        still lists it as Phase 3+. Both are wrong: Phase 3A shipped a
+        same-current_path proxy. The canonical layer drifts from the shipped
+        code, misleading future reviewers.
+      resolution: >
+        VALIDATION.md:95-99 rewritten to document the Phase 3A proxy and
+        defer the stricter triggers. ARCHITECTURE.md:272-274 updated to note
+        the shipped proxy and Phase 3B / 4+ deferral. concurrent.rs docstring
+        already correct — no source change needed.
+  notes:
+    - "cargo test and cargo clippy --all-targets -- -D warnings both pass before and after remediation."
+    - "All three findings are at warning severity (no risks). Remediation is additive (tests + filter + audit split + doc update)."
+  gate_decision: "Phase 3B gate WITHHELD until the three findings above are closed via the v1.6.1 remediation round."
