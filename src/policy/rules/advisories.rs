@@ -88,7 +88,7 @@ fn aggressive_log_storm() -> Recommendation {
         reason: "quota-tight: suppress low-value ingress lines; keep only error/warn markers".into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Heuristic,
-        suggested_command: None,
+        suggested_command: Some("# edit config/qmonster.toml: [logging] sensitivity = \"minimal\"".into()),
         side_effects: vec![],
         is_strong: false,
     }
@@ -116,7 +116,7 @@ fn code_exploration(
         reason: "prefer graph/symbol navigation (Token Savior / code-review-graph); avoid full-file re-reads; delegate deep scans to the research pane".into(),
         severity: Severity::Concern,
         source_kind: SourceKind::Heuristic,
-        suggested_command: None,
+        suggested_command: None, // workflow advice; no single command captures "graph navigation"
         side_effects: vec![],
         is_strong: false,
     })
@@ -151,7 +151,7 @@ fn aggressive_context_pressure_warning() -> Recommendation {
         reason: "quota-tight: apply terse output profile and archive anything >500 chars".into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Heuristic,
-        suggested_command: None,
+        suggested_command: Some("# edit config/qmonster.toml: [token] strategy = \"terse\"".into()),
         side_effects: vec![],
         is_strong: false,
     }
@@ -186,7 +186,7 @@ fn aggressive_context_pressure_critical() -> Recommendation {
         reason: "quota-tight critical: clamp max-output tokens and archive all non-trivial panes".into(),
         severity: Severity::Risk,
         source_kind: SourceKind::Heuristic,
-        suggested_command: None,
+        suggested_command: Some("# edit config/qmonster.toml: [token] strategy = \"terse\" + [logging] sensitivity = \"minimal\"".into()),
         side_effects: vec![],
         is_strong: false,
     }
@@ -211,7 +211,7 @@ fn verbose_review(
         reason: "review pane is verbose — consider Caveman / claude-token-efficient terse profile".into(),
         severity: Severity::Concern,
         source_kind: SourceKind::Heuristic,
-        suggested_command: None,
+        suggested_command: Some("# edit config/qmonster.toml: [review] style = \"terse\"".into()),
         side_effects: vec![],
         is_strong: false,
     })
@@ -223,7 +223,7 @@ fn aggressive_verbose_review() -> Recommendation {
         reason: "quota-tight: drop attribution footer and preamble on review output".into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Heuristic,
-        suggested_command: None,
+        suggested_command: Some("# edit ~/.claude/settings.json: \"attribution\": { \"commit\": false }".into()),
         side_effects: vec![],
         is_strong: false,
     }
@@ -269,7 +269,7 @@ fn repeated_cache_suggest(
         reason: "repeated output — consider a result-hash cache (token-optimizer-mcp)".into(),
         severity: Severity::Concern,
         source_kind: SourceKind::Heuristic,
-        suggested_command: None,
+        suggested_command: None, // install/config step varies by agent stack
         side_effects: vec![],
         is_strong: false,
     })
@@ -281,7 +281,7 @@ fn aggressive_repeated_cache_suggest() -> Recommendation {
         reason: "quota-tight: enable per-pane result-hash dedupe".into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Heuristic,
-        suggested_command: None,
+        suggested_command: None, // config varies by agent stack
         side_effects: vec![],
         is_strong: false,
     }
@@ -526,5 +526,17 @@ mod tests {
         assert!(!actions.contains(&"context-pressure: checkpoint"));
         assert!(!actions.contains(&"verbose-review: terse profile"));
         assert!(!actions.contains(&"repeated-output: result-hash cache"));
+    }
+
+    #[test]
+    fn aggressive_verbose_review_suggests_attribution_edit() {
+        let id = id_high(Role::Review);
+        let s = SignalSet { verbose_answer: true, ..SignalSet::default() };
+        let gates = PolicyGates { quota_tight: true, identity_confidence: IdentityConfidence::High };
+        let recs = eval_advisories(&id, &s, &gates);
+        let adv = recs.iter().find(|r| r.action == "aggressive: strip attribution")
+            .expect("aggressive_verbose_review fires under quota_tight");
+        let cmd = adv.suggested_command.as_deref().expect("populated in v1.7.1");
+        assert!(cmd.contains("attribution"), "got: {cmd}");
     }
 }

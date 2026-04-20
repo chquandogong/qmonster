@@ -56,7 +56,7 @@ pub fn eval_concurrent(panes: &[PaneView<'_>]) -> Vec<CrossPaneFinding> {
             ),
             severity: Severity::Warning,
             source_kind: SourceKind::Estimated,
-            suggested_command: None,
+            suggested_command: Some("# coordinate via research pane: tmux select-pane -t <research_pane_id>".into()),
         });
     }
     out

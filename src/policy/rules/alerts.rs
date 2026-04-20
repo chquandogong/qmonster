@@ -14,7 +14,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             reason: "pane appears to be waiting for user input".into(),
             severity: Severity::Warning,
             source_kind: SourceKind::ProjectCanonical,
-            suggested_command: None,
+            suggested_command: None, // interactive: operator responds inside the pane
             side_effects: vec![],
             is_strong: false,
         });
@@ -26,7 +26,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             reason: "pane appears to require an approval".into(),
             severity: Severity::Risk,
             source_kind: SourceKind::ProjectCanonical,
-            suggested_command: None,
+            suggested_command: None, // interactive: operator responds inside the pane
             side_effects: vec![],
             is_strong: false,
         });
@@ -38,7 +38,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             reason: "log storm pattern: consider keeping preview on screen and archiving the raw tail".into(),
             severity: Severity::Warning,
             source_kind: SourceKind::Heuristic,
-            suggested_command: None,
+            suggested_command: Some("tmux capture-pane -pS -2000 > ~/.qmonster/archive/$(date +%F)-<pane_id>.log".into()),
             side_effects: vec![],
             is_strong: false,
         });
@@ -50,7 +50,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             reason: "identical output seen in recent polls; consider result caching".into(),
             severity: Severity::Concern,
             source_kind: SourceKind::Heuristic,
-            suggested_command: None,
+            suggested_command: None, // observation: action is a config change (see advisory)
             side_effects: vec![],
             is_strong: false,
         });
@@ -62,7 +62,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             reason: "long/boilerplate output detected; terse profile may help".into(),
             severity: Severity::Concern,
             source_kind: SourceKind::Heuristic,
-            suggested_command: None,
+            suggested_command: None, // observation: action is a config change (see advisory)
             side_effects: vec![],
             is_strong: false,
         });
@@ -74,7 +74,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             reason: "error/trace-like text detected in pane tail".into(),
             severity: Severity::Warning,
             source_kind: SourceKind::ProjectCanonical,
-            suggested_command: None,
+            suggested_command: None, // error text varies by provider; no universal command
             side_effects: vec![],
             is_strong: false,
         });
@@ -86,7 +86,7 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             reason: "a subagent was launched; token consumption may be delayed or missing in main stats".into(),
             severity: Severity::Concern,
             source_kind: SourceKind::Heuristic,
-            suggested_command: None,
+            suggested_command: None, // informational; no action required
             side_effects: vec![],
             is_strong: false,
         });
