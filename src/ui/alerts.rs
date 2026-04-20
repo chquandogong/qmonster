@@ -88,6 +88,8 @@ mod tests {
             effects: vec![],
             dead: false,
             recommendations: recs,
+            current_path: "/repo".into(),
+            cross_pane_findings: vec![],
         }
     }
 

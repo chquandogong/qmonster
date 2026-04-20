@@ -71,6 +71,8 @@ where
                 recommendations: vec![],
                 effects: vec![],
                 dead: true,
+                current_path: pane.current_path.clone(),
+                cross_pane_findings: vec![],
             });
             continue;
         }
@@ -96,6 +98,8 @@ where
             recommendations: out.recommendations,
             effects: out.effects,
             dead: false,
+            current_path: pane.current_path.clone(),
+            cross_pane_findings: vec![],
         });
     }
 
@@ -225,5 +229,7 @@ pub struct PaneReport {
     pub recommendations: Vec<Recommendation>,
     pub effects: Vec<RequestedEffect>,
     pub dead: bool,
+    pub current_path: String,
+    pub cross_pane_findings: Vec<crate::domain::recommendation::CrossPaneFinding>,
 }
 

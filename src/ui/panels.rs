@@ -142,6 +142,8 @@ mod tests {
             recommendations: vec![],
             effects: vec![],
             dead: false,
+            current_path: "/repo".into(),
+            cross_pane_findings: vec![],
         }
     }
 
