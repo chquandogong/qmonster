@@ -452,3 +452,53 @@ fn concern_severity_recommendation_does_not_trigger_desktop_notification() {
         "Concern-severity recommendation must not trigger a desktop notification"
     );
 }
+
+#[test]
+fn dispatch_notify_filters_concern_when_warning_coexists() {
+    // Tail contains BOTH:
+    //   "Press ENTER to continue" → waiting_for_input → Warning → notify-input-wait
+    //   "I'd be happy to help"   → verbose_answer     → Concern → verbose-output
+    // The policy engine emits RequestedEffect::Notify (because Warning rec exists).
+    // dispatch_notify must fire the notifier ONLY for the Warning-severity rec,
+    // NOT for the Concern-severity rec (Codex Phase-3A finding #1).
+    let tail = "I'd be happy to help with that.\nPress ENTER to continue";
+    let source = FixturePaneSource {
+        panes: vec![pane("%1", "claude:1:main", "claude", tail, false)],
+    };
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let notifier = RecordingNotifier(seen.clone());
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+
+    // Sanity: both recommendations must be present in the report.
+    assert!(
+        reports[0]
+            .recommendations
+            .iter()
+            .any(|r| r.action == "notify-input-wait"),
+        "notify-input-wait (Warning) rec must be present"
+    );
+    assert!(
+        reports[0]
+            .recommendations
+            .iter()
+            .any(|r| r.action == "verbose-output"),
+        "verbose-output (Concern) rec must be present"
+    );
+
+    // dispatch_notify must have fired exactly once — for the Warning rec only.
+    let calls = seen.lock().unwrap();
+    assert_eq!(
+        calls.len(),
+        1,
+        "exactly one notification expected (Warning only, not Concern)"
+    );
+    // The single notification corresponds to the Warning-severity rec.
+    assert_eq!(
+        calls[0].2,
+        Severity::Warning,
+        "the sole notification must carry Warning severity"
+    );
+}

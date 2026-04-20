@@ -194,7 +194,8 @@ fn dispatch_notify<N: NotifyBackend>(
     now: Instant,
     ctx_holder: &mut Context<impl PaneSource, N>,
 ) {
-    for rec in &out.recommendations {
+    use crate::domain::recommendation::Severity;
+    for rec in out.recommendations.iter().filter(|r| r.severity >= Severity::Warning) {
         if ctx_holder
             .rate_limiter
             .should_fire(pane_id, rec.action, rec.severity, now)
