@@ -18,6 +18,8 @@ pub struct QmonsterConfig {
     pub logging: LoggingConfig,
     #[serde(default)]
     pub token: TokenConfig,
+    #[serde(default)]
+    pub storage: StorageConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,12 +127,16 @@ pub enum LogSensitivity {
 #[serde(default)]
 pub struct LoggingConfig {
     pub sensitivity: LogSensitivity,
+    pub retention_days: u64,
+    pub big_output_chars: usize,
 }
 
 impl Default for LoggingConfig {
     fn default() -> Self {
         Self {
             sensitivity: LogSensitivity::Balanced,
+            retention_days: 14,
+            big_output_chars: 2200,
         }
     }
 }
@@ -141,6 +147,13 @@ pub struct TokenConfig {
     pub quota_tight: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct StorageConfig {
+    /// `~/.qmonster/` by default; tests override via env `QMONSTER_ROOT`.
+    pub root: Option<String>,
+}
+
 impl QmonsterConfig {
     pub fn defaults() -> Self {
         Self {
@@ -149,6 +162,7 @@ impl QmonsterConfig {
             refresh: RefreshConfig::default(),
             logging: LoggingConfig::default(),
             token: TokenConfig::default(),
+            storage: StorageConfig::default(),
         }
     }
 }

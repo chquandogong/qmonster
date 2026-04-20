@@ -14,6 +14,9 @@ pub enum AuditEventKind {
     StartupVersionSnapshot,
     VersionDriftDetected,
     SafetyOverrideRejected,
+    ArchiveWritten,
+    SnapshotWritten,
+    RetentionSwept,
 }
 
 /// Structured audit record. The writer API must only accept this type —

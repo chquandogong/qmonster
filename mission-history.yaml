@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 4
-  latest_version: "1.3.0"
+  total_revisions: 5
+  latest_version: "1.4.0"
 
 timeline:
   - change_id: "initial"
@@ -400,9 +400,116 @@ timeline:
       - "Persist version-drift previous snapshot to ~/.qmonster/versions.json"
       - "Wire cargo check + cargo clippy -D warnings into pre-commit (M3)"
 
+  - change_id: "phase-2-archive-checkpoint-sqlite"
+    semantic_version: "1.4.0"
+    change_sequence: 5
+    date: "2026-04-20"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (operator)"
+    change_type: "feat"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Ship Phase 2 per final-r2.md §6.4: durable audit sink (SQLite)
+      with type-level raw exclusion, raw tail archive with preview/full
+      split, operator-triggered checkpoint snapshots to ~/.qmonster/
+      snapshots/, retention sweep, and persistent cross-session version
+      drift detection.
+    intent_ko: >
+      final-r2.md §6.4에 따라 Phase 2 출시: type-level raw 배제를 지닌
+      SQLite audit sink, preview/full split을 갖는 raw tail archive,
+      operator-trigger 스냅샷, retention sweep, 세션 간 버전 드리프트
+      감지기 영속화.
+    decision: >
+      Stratified store layer (paths → audit/sqlite → archive_fs →
+      snapshots → retention). SqliteAuditSink implements EventSink and
+      accepts only AuditEvent — the DB schema has no raw-bytes column,
+      so the r2 type-level rule survives at the storage boundary too.
+      ArchiveWriter lives in a separate module and is the only place in
+      the crate that writes raw pane bytes to disk. policy::Engine now
+      emits RequestedEffect::ArchiveLocal on log_storm; deliver_effects
+      dispatches via the existing EffectPermits matrix, so observe_only
+      config still blocks archive writes. Version drift uses
+      serde_json to round-trip ~/.qmonster/versions.json across
+      restarts. TUI gains 's' keybinding for operator-requested
+      snapshots. Retention sweep runs once on startup.
+    decision_ko: >
+      store 레이어 계층화(paths → audit/sqlite → archive_fs →
+      snapshots → retention). SqliteAuditSink는 EventSink 구현체이며
+      AuditEvent만 받음 — DB 스키마에 raw-bytes 컬럼이 없어 r2의
+      타입 수준 격리가 저장소 경계에서도 보존됨. ArchiveWriter는
+      crate 내에서 raw 바이트를 디스크에 쓰는 유일한 장소.
+      policy::Engine은 log_storm 시 RequestedEffect::ArchiveLocal을
+      발행; deliver_effects는 기존 EffectPermits 매트릭스로 dispatch
+      하므로 observe_only 모드는 여전히 archive 쓰기를 막음. 버전
+      드리프트는 ~/.qmonster/versions.json을 serde_json으로 왕복
+      저장해 재시작 간에도 감지. TUI에 's' 키로 operator 요청 스냅샷
+      추가. retention sweep은 startup 1회 실행.
+    triggered_by: "human approval of Phase-2 gate (post-Phase-1 v1.3.0 remediation)"
+    issue_or_context: >
+      Phase 1 shipped with in-memory sink only; audit events and archive
+      tails did not survive session restart. Phase 2 closes that gap
+      while preserving every Phase-1 non-negotiable (policy purity,
+      FS write boundary, type-level raw/meta split).
+    changes:
+      added:
+        - "src/store/paths.rs (QmonsterPaths + ensure)"
+        - "src/store/sqlite.rs (AuditDb low-level adapter; audit_events schema)"
+        - "src/store/audit.rs (SqliteAuditSink + AuditRow reader)"
+        - "src/store/archive_fs.rs (ArchiveWriter with preview/full split + path sanitization)"
+        - "src/store/snapshots.rs (SnapshotWriter to ~/.qmonster/snapshots/)"
+        - "src/store/retention.rs (sweep + RetentionReport)"
+        - "app/config StorageConfig + LoggingConfig.retention_days + big_output_chars"
+        - "main.rs CLI flag --root; env QMONSTER_ROOT; audit-logged fallback to InMemorySink when SQLite fails"
+        - "TUI 's' key: operator-requested snapshot; audit-logged SnapshotWritten"
+        - "AuditEventKinds: ArchiveWritten, SnapshotWritten, RetentionSwept"
+        - "Version-drift persist: VersionSnapshot::{load_from, save_to}"
+        - "9 new lib tests (paths 4, audit 4, archive_fs 4, snapshots 2, retention 3, version_drift 3, engine 2 ... cumulative 108 lib + 8 integration)"
+      modified:
+        - "Cargo.toml: rusqlite (bundled), chrono (serde), serde_json; dev filetime"
+        - "policy::Engine: log_storm → RequestedEffect::ArchiveLocal"
+        - "event_loop::deliver_effects: dispatch_archive; tail plumbed through"
+        - "Context: archive: Option<ArchiveWriter>; .with_archive() builder"
+      removed: []
+    changed_sections:
+      - "store layer (was sink-only → full Phase-2 stratification)"
+      - "audit kinds (Phase-1 9 → Phase-2 12)"
+      - "policy→effects wiring (ArchiveLocal now real)"
+      - "runtime persistence (audit DB, raw archive, snapshots, versions.json)"
+    done_when_delta:
+      added:
+        - "SqliteAuditSink persists AuditEvents across session restarts; DB schema has no raw-bytes column"
+        - "ArchiveWriter writes raw tails with preview/full split; lives under ~/.qmonster/archive/ only"
+        - "SnapshotWriter never touches .mission/CURRENT_STATE.md"
+        - "Retention sweep honors logging.retention_days"
+        - "Version drift surfaces across restarts via ~/.qmonster/versions.json"
+      modified:
+        - "Phase-1 'no SQLite / no archive persistence' criteria remain met as Phase-1 boundaries; Phase 2 relaxes them under the documented storage contract"
+      removed: []
+    impact_scope:
+      code: "~1200 LOC added (store/* + main.rs rewrite + event_loop archive dispatch + persistent version drift + 8 integration test lines)"
+      tests: "108 lib + 8 integration (up from 86 lib + 6 integration)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "FS writes now occur — only under ~/.qmonster/ (or --root/env override). Project-dir files still read-only."
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md + README.md updated for Phase 2"
+    breaking: false
+    risk: "medium — first round introducing durable storage. SQLite uses bundled rusqlite so no system dep. Audit schema is stable; any future schema change needs an explicit migration."
+    related_commits: []
+    related_decisions:
+      - "KD-006"
+      - "KD-007"
+      - "KD-008"
+    snapshot_after: ""
+    follow_up:
+      - "Phase 3: A-G canonical rules + concurrent-work warning (Gemini G-11) + suggested_command on recs (Gemini G-2) + strong checkpoint recommendation UX (Gemini G-7)"
+      - "Phase 4: provider profile recommender + side_effects (Gemini G-6) + auto-memory guide (Gemini G-5)"
+      - "Harden: pre-commit cargo check + cargo clippy -D warnings (M3)"
+      - "Docs: add a Phase-2 validation block exercise (manual day-end CURRENT_STATE refresh)"
+
 evolution_summary:
-  current_phase: "Phase 1 — Observe-first MVP shipped and gate-remediated (v1.3.0); Phase-2 gate open to request"
-  next_phase: "Phase 2 — Archive + checkpoint + SQLite (per final-r2.md §6.4)"
+  current_phase: "Phase 2 — Archive + checkpoint + SQLite shipped (v1.4.0); Phase-3 gate open to request"
+  next_phase: "Phase 3 — Policy engine (A-G rules + concurrent-work warning + suggested commands)"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

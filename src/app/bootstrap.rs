@@ -4,6 +4,7 @@ use crate::domain::lifecycle::PaneLifecycle;
 use crate::notify::desktop::NotifyBackend;
 use crate::notify::rate_limit::RateLimiter;
 use crate::policy::engine::Engine;
+use crate::store::archive_fs::ArchiveWriter;
 use crate::store::sink::EventSink;
 use crate::tmux::polling::PaneSource;
 
@@ -15,6 +16,7 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     pub source: P,
     pub notifier: N,
     pub sink: Box<dyn EventSink>,
+    pub archive: Option<ArchiveWriter>,
     pub resolver: IdentityResolver,
     pub policy: Engine,
     pub lifecycle: PaneLifecycle,
@@ -29,12 +31,18 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             source,
             notifier,
             sink,
+            archive: None,
             resolver: IdentityResolver::new(),
             policy: Engine,
             lifecycle: PaneLifecycle::new(),
             rate_limiter: RateLimiter::new(),
             known_pane_ids: Vec::new(),
         }
+    }
+
+    pub fn with_archive(mut self, writer: ArchiveWriter) -> Self {
+        self.archive = Some(writer);
+        self
     }
 
     pub fn known_pane_ids(&self) -> &[String] {

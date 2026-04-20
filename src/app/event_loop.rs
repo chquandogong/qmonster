@@ -78,7 +78,7 @@ where
         let signals = crate::adapters::parse_for(&resolved, &pane.tail);
         let out: EvalOutput = ctx.policy.evaluate(&resolved, &signals);
 
-        deliver_effects(permits, &out, &pane.pane_id, now, ctx);
+        deliver_effects(permits, &out, &pane.pane_id, &pane.tail, now, ctx);
 
         for rec in &out.recommendations {
             ctx.sink.record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
@@ -102,6 +102,7 @@ fn deliver_effects<N: NotifyBackend>(
     permits: EffectPermits,
     out: &EvalOutput,
     pane_id: &str,
+    tail: &str,
     now: Instant,
     ctx_holder: &mut Context<impl PaneSource, N>,
 ) {
@@ -114,14 +115,45 @@ fn deliver_effects<N: NotifyBackend>(
             }
             RequestedEffect::ArchiveLocal => {
                 if permits.archive {
-                    // Phase 2 will implement the archive writer here.
-                    // Kept explicit so the match arm is not a silent drop.
-                    continue;
+                    dispatch_archive(pane_id, tail, ctx_holder);
                 }
             }
             // Always denied — there is no code path that produces it and
             // this arm doubles as a guardrail if a future rule slips.
             RequestedEffect::SensitiveNotImplemented => continue,
+        }
+    }
+}
+
+fn dispatch_archive<N: NotifyBackend>(
+    pane_id: &str,
+    tail: &str,
+    ctx_holder: &mut Context<impl PaneSource, N>,
+) {
+    let Some(archive) = ctx_holder.archive.as_ref() else {
+        return;
+    };
+    match archive.archive_if_long(pane_id, tail) {
+        Ok(crate::store::ArchiveOutcome::Archived { path, bytes, .. }) => {
+            ctx_holder.sink.record(AuditEvent {
+                kind: AuditEventKind::ArchiveWritten,
+                pane_id: pane_id.to_string(),
+                severity: Severity::Safe,
+                summary: format!("archived {bytes}B → {}", path.display()),
+                provider: None,
+                role: None,
+            });
+        }
+        Ok(crate::store::ArchiveOutcome::Skipped { .. }) => {}
+        Err(e) => {
+            ctx_holder.sink.record(AuditEvent {
+                kind: AuditEventKind::ArchiveWritten,
+                pane_id: pane_id.to_string(),
+                severity: Severity::Warning,
+                summary: format!("archive failed: {e}"),
+                provider: None,
+                role: None,
+            });
         }
     }
 }

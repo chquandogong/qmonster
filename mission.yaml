@@ -1,6 +1,6 @@
 mission:
-  version: "1.3.0"
-  title: "Qmonster v0.4.0 — Phase 1 observe-first MVP (gate-remediated)"
+  version: "1.4.0"
+  title: "Qmonster v0.4.0 — Phase 2 archive + checkpoint + SQLite"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -49,8 +49,18 @@ mission:
     - "Phase 1: PaneReport carries identity + signals + effects; UI panel renders signal chips, metric rows with SourceKind badges, and recommendation list."
     - "Phase 1: runtime FS writes stay inside ~/.qmonster/ (Phase 1 writes nothing at all — only in-memory sink)."
 
-    # Phase-1 gate remediation (v1.3.0, this revision).
-    - "Gate remediation: Codex findings 1–5 closed; Gemini missing scenarios verified integrated; mission/history/state docs align on Phase-1-shipped, Phase-2-pending; Codex review recorded under .mission/evals + .docs/codex; Gemini eval already recorded under .mission/evals."
+    # Phase-1 gate remediation (v1.3.0, previous revision).
+    - "Gate remediation v1.3.0: Codex Phase-1 findings 1–5 closed; Gemini missing scenarios verified integrated; mission/history/state docs aligned; Codex review recorded under .mission/evals + .docs/codex."
+
+    # Phase-2 implementation criteria (v1.4.0, this revision).
+    - "Phase 2: src/store/{paths,audit,sqlite,archive_fs,snapshots,retention}.rs exist; SqliteAuditSink implements EventSink; ArchiveWriter writes raw tails under ~/.qmonster/archive/YYYY-MM-DD/<pane>/; SnapshotWriter writes JSON under ~/.qmonster/snapshots/ and never touches .mission/CURRENT_STATE.md; retention sweep honors logging.retention_days."
+    - "Phase 2: audit writer is type-level raw-free (AuditEvent only; DB schema has no raw_tail/bytes column)."
+    - "Phase 2: policy::Engine emits RequestedEffect::ArchiveLocal on log_storm; app::EffectRunner allow-list gates it; observe_only mode blocks archive writes."
+    - "Phase 2: version-drift previous snapshot persists to ~/.qmonster/versions.json; startup loads it, diffs against a fresh capture, and routes drift to a warning SystemNotice."
+    - "Phase 2: main.rs opens SqliteAuditSink with in-memory fallback; CLI flag --root, env QMONSTER_ROOT, and storage.root config settle the ~/.qmonster/ path."
+    - "Phase 2: TUI key 's' writes a runtime snapshot; 'r' re-captures versions; 'c' clears notices; 'q'/Esc quit."
+    - "Phase 2: new AuditEventKinds — ArchiveWritten, SnapshotWritten, RetentionSwept — recorded at appropriate severities."
+    - "Phase 2: cargo build + cargo test + cargo clippy --all-targets -- -D warnings all clean. Live `--once` smoke test produces qmonster.db, versions.json, and archive/YYYY-MM-DD/<pane>/*.log files."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -72,7 +82,7 @@ mission:
     - "Source-of-number rule: every displayed metric must be labeled (official) if the provider reported it, or (estimated) if Qmonster derived it from tail/state/docs surface."
     - "SourceKind taxonomy (r2): Qmonster replaces the two-way official/estimated split with a four-way SourceKind = ProviderOfficial | ProjectCanonical | Heuristic | Estimated. Every metric, threshold, recommendation, and doc citation must carry one. ProviderOfficial requires a direct provider-doc citation. See docs/ai/ARCHITECTURE.md §SourceKind taxonomy."
     - "Safety precedence asymmetry (r2, resolves Codex C-6): env/CLI may only move actions.mode, allow_auto_prompt_send, allow_destructive_actions, and refresh.policy TOWARD safer behavior. Upward overrides are ignored at startup and logged as risk-severity audit events. Runtime code never toggles these flags."
-    - "Runtime FS write boundary (r2, Codex CSF-1 + Gemini G-9): Qmonster runtime writes only within ~/.qmonster/. Project-directory files (CURRENT_STATE.md, mission.yaml, mission-history.yaml, docs/ai/*, provider configs, source files) are read-only to Qmonster across Phases 1-4."
+    - "Runtime FS write boundary (r2, Codex CSF-1 + Gemini G-9): Qmonster runtime writes only within ~/.qmonster/ (default) or the operator-specified --root. Project-directory files (CURRENT_STATE.md, mission.yaml, mission-history.yaml, docs/ai/*, provider configs, source files) remain read-only to Qmonster across Phases 2-4."
     - "Runtime checkpoint location (r2, Codex C-4 + Gemini Doc-hierarchy): runtime snapshots go to ~/.qmonster/snapshots/. .mission/CURRENT_STATE.md is a day-end handoff document written by the human day-end routine — never by Qmonster runtime."
     - "Contract vs runtime split (r2, Codex CD-2): mission.yaml defines the design envelope and approval gates. Runtime actuation flags (actions.mode, allow_auto_*) live in config/qmonster.example.toml. Do not duplicate runtime flags into mission.yaml."
     - "Audit-log isolation (r2, Codex CSF-2 + Gemini G-8): the audit-log writer cannot accept raw bytes. Type-level enforcement, not comment-level. Raw tails live only in ~/.qmonster/archive/."
@@ -95,7 +105,7 @@ mission:
     - name: "mission-schema-valid"
       type: automated
       description: "mission.yaml passes mission-spec validator."
-      command: "node -e \"import('yaml').then(async ({parse}) => { const {readFileSync} = await import('node:fs'); const {validateMission} = await import('/home/chquan/.claude/plugins/cache/mission-spec/mission-spec/1.16.15/dist/schema/validator.js'); const r = validateMission(parse(readFileSync('mission.yaml','utf-8'))); if (r.valid) { console.log('mission.yaml: VALID'); } else { console.error('INVALID:', r.errors.join(', ')); process.exit(1); } })\""
+      command: 'node -e "import(''yaml'').then(async ({parse}) => { const {readFileSync} = await import(''node:fs''); const {validateMission} = await import(''/home/chquan/.claude/plugins/cache/mission-spec/mission-spec/1.16.15/dist/schema/validator.js''); const r = validateMission(parse(readFileSync(''mission.yaml'',''utf-8''))); if (r.valid) { console.log(''mission.yaml: VALID''); } else { console.error(''INVALID:'', r.errors.join('', '')); process.exit(1); } })"'
       pass_criteria: "exit code 0 and stdout contains 'mission.yaml: VALID'"
 
     - name: "docs-hierarchy-sanity"
@@ -141,21 +151,23 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 1 shipped via single-session TDD. Phase-2 work anticipated to need one or two parallel agent swim-lanes (store writers are independent of the UI)."
+    topology: "Phase 2 shipped via single-session TDD (store layer stratified: paths → audit/sqlite → archive_fs → snapshots → retention)."
     suggested_approach: >
-      Phase 0 is closed. Phase 1 is shipped and the gate has been
-      remediated against Codex's review. Next: open the Phase-2 gate for
-      durable storage — src/store/{sqlite,archive_fs,audit,snapshots,
-      retention}.rs per final-r2.md §6.4. The audit writer must keep
-      the type-level rule (no raw bytes accepted); raw archive and
-      audit logs live in separate writers. Move the version-drift
-      previous-snapshot out of in-memory into ~/.qmonster/versions.json
-      as part of Phase 2.
+      Phase 2 is now shipped. Next: Phase 3 policy engine — A-G canonical
+      rules (log-storm handling tightened, code-exploration,
+      context-pressure, verbose-output, permission-wait, quota-tight,
+      repeated-output), concurrent-work warning across panes
+      (Gemini G-11), copy-pasteable suggested_command on recommendations
+      (Gemini G-2), strong-recommendation UX for "checkpoint before
+      compact" (Gemini G-7). Keep the pure-policy rule; the effect
+      abstraction already supports new RequestedEffect variants.
     note: >
-      SourceKind taxonomy remains non-negotiable: every metric,
-      threshold, recommendation, and audit summary carries a ProviderOfficial
-      / ProjectCanonical / Heuristic / Estimated tag. This rule now holds
-      for Phase 2+ code and docs as well, not just the planning round.
+      SourceKind taxonomy remains non-negotiable. Phase 2 adds three
+      audit kinds (ArchiveWritten, SnapshotWritten, RetentionSwept)
+      that must be preserved through any future schema migration. The
+      type-level raw-exclusion on the audit writer is the load-bearing
+      contract — any Phase 3 change that tries to add a raw-bytes
+      column to the audit schema is a must-fix regression.
 
   skills_needed:
     - "Rust + Ratatui/Crossterm TUI architecture (later phases)"
@@ -195,5 +207,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 4
+    total_revisions: 5
     history: "mission-history.yaml"

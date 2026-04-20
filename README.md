@@ -29,14 +29,14 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-| Phase | Scope                                                                                                                                                         | Status         |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| 0     | Planning — canonical docs, mission ledger, thin routers, r1 plan + r2 final synthesis                                                                         | **Shipped**    |
-| 1     | Observe-first MVP — tmux polling, identity resolver, adapters, alert rules, ratatui UI, desktop/bell notifications, safety precedence, version-drift detector | **Shipped**    |
-| 2     | Archive + checkpoint + SQLite                                                                                                                                 | _pending gate_ |
-| 3     | Policy engine A–G + concurrent-work warning                                                                                                                   | not started    |
-| 4     | Provider profile recommender                                                                                                                                  | not started    |
-| 5     | Manual prompt-send helper (safer actuation)                                                                                                                   | not started    |
+| Phase | Scope                                                                                                                                                                      | Status         |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| 0     | Planning — canonical docs, mission ledger, thin routers, r1 plan + r2 final synthesis                                                                                      | **Shipped**    |
+| 1     | Observe-first MVP — tmux polling, identity resolver, adapters, alert rules, ratatui UI, desktop/bell notifications, safety precedence, version-drift detector              | **Shipped**    |
+| 2     | Archive + checkpoint + SQLite — `SqliteAuditSink` with type-level raw exclusion, `ArchiveWriter` preview/full split, `SnapshotWriter`, retention, persistent version drift | **Shipped**    |
+| 3     | Policy engine A–G + concurrent-work warning + `suggested_command`                                                                                                          | _pending gate_ |
+| 4     | Provider profile recommender                                                                                                                                               | not started    |
+| 5     | Manual prompt-send helper (safer actuation)                                                                                                                                | not started    |
 
 ## Quick start
 
@@ -44,14 +44,20 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 # Build
 cargo build --release
 
-# Smoke test (one iteration; prints pane reports and version snapshot)
+# Smoke test (one iteration; prints pane reports, version snapshot,
+# and writes to ~/.qmonster/)
 cargo run -- --once
 
 # Launch the TUI
 cargo run --release
 #   q / Esc  — quit
 #   r        — re-capture CLI versions; drift appears as a warning alert
+#   s        — write a runtime snapshot to ~/.qmonster/snapshots/
 #   c        — clear system notices
+
+# Override the storage root (useful for tests / sandbox runs)
+QMONSTER_ROOT=/tmp/q cargo run -- --once
+cargo run -- --root /tmp/q --once
 ```
 
 For a tmux layout matching Qmonster's pane-title convention, see
@@ -80,8 +86,12 @@ Non-negotiable boundaries:
 
 - Identity resolution **before** provider dispatch.
 - `policy/` performs no IO.
-- Runtime writes stay inside `~/.qmonster/` (Phase 1 writes nothing).
+- Runtime writes stay inside `~/.qmonster/` (Phase 2 writes `qmonster.db`,
+  `archive/YYYY-MM-DD/<pane>/*.log`, `snapshots/*.json`, and
+  `versions.json` — never touches project-dir files).
 - `audit.rs` writer cannot accept raw bytes — type-level separation.
+  The SQLite schema has no raw_tail column; raw tails only live in
+  `archive_fs.rs`.
 
 See `docs/ai/ARCHITECTURE.md` for module responsibilities and the full
 SourceKind taxonomy (`ProviderOfficial | ProjectCanonical | Heuristic |
@@ -99,7 +109,11 @@ src/
   tmux/        PaneSource trait + polling implementation
   adapters/    claude / codex / gemini / qmonster tail parsers
   policy/      pure engine + alert rules
-  store/       EventSink trait + NoopSink + InMemorySink
+  store/       paths, sink (EventSink + NoopSink + InMemorySink),
+               audit (SqliteAuditSink), sqlite (low-level adapter),
+               archive_fs (raw tail preview/full split),
+               snapshots (operator-requested JSON checkpoints),
+               retention (age-based sweep)
   ui/          ratatui dashboard, alerts, panels, theme
   notify/      desktop + terminal-bell + severity-aware rate limiter
 

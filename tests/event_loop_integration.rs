@@ -189,6 +189,89 @@ fn effects_are_propagated_onto_pane_report() {
 }
 
 #[test]
+fn log_storm_triggers_archive_writer_when_permit_is_on() {
+    use qmonster::store::{ArchiveWriter, QmonsterPaths};
+    let td = tempfile::TempDir::new().unwrap();
+    let paths = QmonsterPaths::at(td.path());
+    paths.ensure().unwrap();
+    let writer = ArchiveWriter::new(paths.clone(), 10);
+
+    // Tail shaped like a log storm (many log-like lines).
+    let tail = (0..10)
+        .map(|i| format!("2026-04-20T00:00:0{i} INFO row {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%1", "claude:1:main", "claude", &tail, false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink)
+        .with_archive(writer);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert!(reports[0].signals.log_storm, "fixture must be a log storm");
+    assert!(reports[0]
+        .effects
+        .contains(&qmonster::domain::recommendation::RequestedEffect::ArchiveLocal));
+
+    // At least one archive file appeared under the archive dir.
+    let wrote_any = std::fs::read_dir(paths.archive_dir())
+        .unwrap()
+        .any(|_| true);
+    assert!(wrote_any, "expected an archive file under {:?}", paths.archive_dir());
+}
+
+#[test]
+fn observe_only_mode_does_not_call_archive_writer() {
+    use qmonster::store::{ArchiveWriter, QmonsterPaths};
+    let td = tempfile::TempDir::new().unwrap();
+    let paths = QmonsterPaths::at(td.path());
+    paths.ensure().unwrap();
+    let writer = ArchiveWriter::new(paths.clone(), 10);
+
+    let tail = (0..10)
+        .map(|i| format!("2026-04-20T00:00:0{i} INFO row {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let source = FixturePaneSource {
+        panes: vec![pane("%1", "claude:1:main", "claude", &tail, false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut cfg = QmonsterConfig::defaults();
+    cfg.actions.mode = qmonster::app::config::ActionsMode::ObserveOnly;
+    let mut ctx = Context::new(cfg, source, notifier, sink).with_archive(writer);
+
+    let _ = run_once(&mut ctx, Instant::now()).expect("ok");
+
+    // No archive files expected.
+    let any_file = walk_any_file(&paths.archive_dir());
+    assert!(!any_file, "observe_only must never write to archive");
+}
+
+fn walk_any_file(dir: &std::path::Path) -> bool {
+    fn inner(d: &std::path::Path) -> bool {
+        let Ok(entries) = std::fs::read_dir(d) else {
+            return false;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if inner(&p) {
+                    return true;
+                }
+            } else {
+                return true;
+            }
+        }
+        false
+    }
+    inner(dir)
+}
+
+#[test]
 fn run_once_handles_dead_pane_without_panic() {
     let source = FixturePaneSource {
         panes: vec![pane("%1", "claude:1:main", "claude", "zombie", true)],

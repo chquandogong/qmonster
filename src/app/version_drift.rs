@@ -1,11 +1,42 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::process::Command;
 
-/// Snapshot of CLI tool versions known to Qmonster. Kept in-memory in
-/// Phase 1 (no persistence); later phases can load/save from disk.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+/// Snapshot of CLI tool versions known to Qmonster. Persisted to
+/// `~/.qmonster/versions.json` in Phase 2 so drift can be detected
+/// across restarts (not just within a single session).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VersionSnapshot {
     pub tools: BTreeMap<String, String>,
+}
+
+impl VersionSnapshot {
+    /// Read a previously-saved snapshot. `Ok(None)` if the file does not
+    /// exist; errors surface for real IO/parse problems so the caller
+    /// can audit-log them.
+    pub fn load_from(path: &Path) -> std::io::Result<Option<Self>> {
+        match std::fs::read_to_string(path) {
+            Ok(text) => match serde_json::from_str::<VersionSnapshot>(&text) {
+                Ok(snap) => Ok(Some(snap)),
+                Err(e) => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Persist this snapshot to disk (creates parent directory).
+    pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let data = serde_json::to_vec_pretty(self).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
+        })?;
+        std::fs::write(path, data)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,5 +140,32 @@ mod tests {
             map.insert(k.to_string(), v.to_string());
         }
         VersionSnapshot { tools: map }
+    }
+
+    #[test]
+    fn load_returns_none_when_file_missing() {
+        let td = tempfile::TempDir::new().unwrap();
+        let path = td.path().join("does-not-exist.json");
+        let got = VersionSnapshot::load_from(&path).unwrap();
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn roundtrip_through_save_and_load() {
+        let td = tempfile::TempDir::new().unwrap();
+        let path = td.path().join("versions.json");
+        let snap = snapshot([("claude", "1.0.0"), ("tmux", "3.5")]);
+        snap.save_to(&path).unwrap();
+        let got = VersionSnapshot::load_from(&path).unwrap().unwrap();
+        assert_eq!(got, snap);
+    }
+
+    #[test]
+    fn save_creates_parent_dir_if_missing() {
+        let td = tempfile::TempDir::new().unwrap();
+        let path = td.path().join("nested/deeper/versions.json");
+        let snap = snapshot([("gemini", "0.1.0")]);
+        snap.save_to(&path).unwrap();
+        assert!(path.exists());
     }
 }

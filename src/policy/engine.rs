@@ -17,9 +17,14 @@ impl Engine {
         let recs = eval_alerts(id, signals);
         let mut effects = Vec::new();
         if !recs.is_empty() {
-            // Any alert at all means we want to notify. Archive is
-            // reserved for Phase 2; we never request sensitive effects.
             effects.push(RequestedEffect::Notify);
+        }
+        // Phase 2: log storms trigger a runtime-local archive write so
+        // the raw tail survives even though the screen only keeps a
+        // preview. The allow-list gate in app::EffectRunner still
+        // decides whether it actually runs.
+        if signals.log_storm {
+            effects.push(RequestedEffect::ArchiveLocal);
         }
         EvalOutput {
             recommendations: recs,
@@ -66,6 +71,34 @@ mod tests {
         let eng = Engine;
         let out = eng.evaluate(&id(IdentityConfidence::High), &s);
         assert!(out.effects.contains(&crate::domain::recommendation::RequestedEffect::Notify));
+    }
+
+    #[test]
+    fn log_storm_also_requests_archive_local() {
+        let s = SignalSet {
+            log_storm: true,
+            ..SignalSet::default()
+        };
+        let eng = Engine;
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s);
+        assert!(
+            out.effects
+                .contains(&crate::domain::recommendation::RequestedEffect::ArchiveLocal)
+        );
+    }
+
+    #[test]
+    fn non_storm_signal_does_not_request_archive() {
+        let s = SignalSet {
+            waiting_for_input: true,
+            ..SignalSet::default()
+        };
+        let eng = Engine;
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s);
+        assert!(
+            !out.effects
+                .contains(&crate::domain::recommendation::RequestedEffect::ArchiveLocal)
+        );
     }
 
     #[test]
