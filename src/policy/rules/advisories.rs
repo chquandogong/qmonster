@@ -39,6 +39,13 @@ pub fn eval_advisories(
         }
     }
 
+    if let Some(rec) = verbose_review(id, signals, gates) {
+        out.push(rec);
+        if gates.quota_tight {
+            out.push(aggressive_verbose_review());
+        }
+    }
+
     out
 }
 
@@ -167,6 +174,41 @@ fn aggressive_context_pressure_critical() -> Recommendation {
     }
 }
 
+fn verbose_review(
+    id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    if !matches!(id.identity.role, Role::Review) {
+        return None;
+    }
+    if !signals.verbose_answer {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    Some(Recommendation {
+        action: "verbose-review: terse profile",
+        reason: "review pane is verbose — consider Caveman / claude-token-efficient terse profile".into(),
+        severity: Severity::Concern,
+        source_kind: SourceKind::Heuristic,
+        suggested_command: None,
+        side_effects: vec![],
+    })
+}
+
+fn aggressive_verbose_review() -> Recommendation {
+    Recommendation {
+        action: "aggressive: strip attribution",
+        reason: "quota-tight: drop attribution footer and preamble on review output".into(),
+        severity: Severity::Warning,
+        source_kind: SourceKind::Heuristic,
+        suggested_command: None,
+        side_effects: vec![],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,5 +297,19 @@ mod tests {
         let recs = eval_advisories(&id, &s, &gates);
         assert!(!recs.iter().any(|r| r.action.starts_with("context-pressure")),
             "Codex #2: context_pressure_* must respect the gate");
+    }
+
+    #[test]
+    fn verbose_review_requires_review_role() {
+        let s = SignalSet { verbose_answer: true, ..SignalSet::default() };
+        let rev = id_high(Role::Review);
+        let main = id_high(Role::Main);
+
+        let recs_rev = eval_advisories(&rev, &s, &gates_default());
+        assert!(recs_rev.iter().any(|r| r.action == "verbose-review: terse profile"));
+
+        let recs_main = eval_advisories(&main, &s, &gates_default());
+        assert!(!recs_main.iter().any(|r| r.action == "verbose-review: terse profile"),
+            "verbose_review must NOT fire on role=Main");
     }
 }
