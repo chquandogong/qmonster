@@ -50,6 +50,13 @@ pub fn eval_advisories(
         out.push(rec);
     }
 
+    if let Some(rec) = repeated_cache_suggest(id, signals, gates) {
+        out.push(rec);
+        if gates.quota_tight {
+            out.push(aggressive_repeated_cache_suggest());
+        }
+    }
+
     out
 }
 
@@ -236,6 +243,38 @@ fn quota_tight_nudge(
     })
 }
 
+fn repeated_cache_suggest(
+    _id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    if !signals.repeated_output {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    Some(Recommendation {
+        action: "repeated-output: result-hash cache",
+        reason: "repeated output — consider a result-hash cache (token-optimizer-mcp)".into(),
+        severity: Severity::Concern,
+        source_kind: SourceKind::Heuristic,
+        suggested_command: None,
+        side_effects: vec![],
+    })
+}
+
+fn aggressive_repeated_cache_suggest() -> Recommendation {
+    Recommendation {
+        action: "aggressive: dedupe + hash",
+        reason: "quota-tight: enable per-pane result-hash dedupe".into(),
+        severity: Severity::Warning,
+        source_kind: SourceKind::Heuristic,
+        suggested_command: None,
+        side_effects: vec![],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,5 +404,13 @@ mod tests {
         let recs = eval_advisories(&id, &s, &gates);
         assert!(recs.iter().any(|r| r.action == "quota-tight: consider enabling"),
             "quota_tight_nudge is Qmonster-config-level, not provider-flavored");
+    }
+
+    #[test]
+    fn repeated_cache_suggest_fires_on_repeated_output() {
+        let id = id_high(Role::Main);
+        let s = SignalSet { repeated_output: true, ..SignalSet::default() };
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(recs.iter().any(|r| r.action == "repeated-output: result-hash cache"));
     }
 }
