@@ -47,6 +47,27 @@ pub enum RequestedEffect {
     SensitiveNotImplemented,
 }
 
+/// Cross-pane advisory. Emitted by `policy::Engine::evaluate_cross_pane`
+/// when a rule observes overlap/concurrency across two or more panes.
+/// Rendered in the alert queue alongside `SystemNotice`.
+#[derive(Debug, Clone)]
+pub struct CrossPaneFinding {
+    pub kind: CrossPaneKind,
+    pub anchor_pane_id: String,
+    pub other_pane_ids: Vec<String>,
+    pub reason: String,
+    pub severity: Severity,
+    pub source_kind: SourceKind,
+    pub suggested_command: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CrossPaneKind {
+    /// Gemini G-11: two or more panes producing output in the same
+    /// working directory — risk of divergent edits.
+    ConcurrentMutatingWork,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,5 +101,22 @@ mod tests {
         // gate in app::EffectRunner reads this ordering.
         assert!(RequestedEffect::Notify < RequestedEffect::ArchiveLocal);
         assert!(RequestedEffect::ArchiveLocal < RequestedEffect::SensitiveNotImplemented);
+    }
+
+    #[test]
+    fn cross_pane_finding_carries_anchor_and_others() {
+        let f = CrossPaneFinding {
+            kind: CrossPaneKind::ConcurrentMutatingWork,
+            anchor_pane_id: "%1".into(),
+            other_pane_ids: vec!["%2".into(), "%3".into()],
+            reason: "concurrent work on /repo".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Estimated,
+            suggested_command: None,
+        };
+        assert_eq!(f.kind, CrossPaneKind::ConcurrentMutatingWork);
+        assert_eq!(f.anchor_pane_id, "%1");
+        assert_eq!(f.other_pane_ids.len(), 2);
+        assert_eq!(f.severity, Severity::Warning);
     }
 }
