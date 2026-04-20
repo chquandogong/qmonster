@@ -1,3 +1,4 @@
+pub mod advisories;
 pub mod alerts;
 pub mod concurrent;
 
