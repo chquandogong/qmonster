@@ -20,6 +20,7 @@ use ratatui::widgets::ListState;
 use qmonster::app::bootstrap::Context;
 use qmonster::app::config::{QmonsterConfig, load_from_path};
 use qmonster::app::event_loop::{PaneReport, run_once, run_once_with_target};
+use qmonster::app::git_info::capture_repo_panel;
 use qmonster::app::path_resolution::pick_root;
 use qmonster::app::safety_audit::apply_override_with_audit;
 use qmonster::app::system_notice::{
@@ -40,8 +41,8 @@ use qmonster::store::{
 use qmonster::tmux::polling::{PaneSource, PollingSource};
 use qmonster::tmux::types::{RawPaneSnapshot, WindowTarget};
 use qmonster::ui::dashboard::{
-    DashboardView, TargetPickerView, close_button_rect, dashboard_rects, help_modal_rects,
-    render_dashboard, target_picker_rects,
+    DashboardView, TargetPickerView, close_button_rect, dashboard_rects, git_modal_rects,
+    help_modal_rects, render_dashboard, target_picker_rects, version_badge_rect,
 };
 
 #[derive(Debug, Parser)]
@@ -322,6 +323,10 @@ where
     let mut target_choices: Vec<TargetChoice> = Vec::new();
     let mut target_preview_title = "Panes".to_string();
     let mut target_preview_lines: Vec<String> = Vec::new();
+    let mut git_modal_open = false;
+    let mut git_modal_title = String::new();
+    let mut git_modal_lines: Vec<String> = Vec::new();
+    let mut git_scroll = 0usize;
     let mut help_open = false;
     let mut help_scroll = 0usize;
     let mut previous_alerts: HashSet<String> = HashSet::new();
@@ -443,6 +448,14 @@ where
                         },
                     );
                 }
+                if git_modal_open {
+                    qmonster::ui::dashboard::render_git_modal(
+                        frame,
+                        &git_modal_title,
+                        &git_modal_lines,
+                        git_scroll as u16,
+                    );
+                }
                 if help_open {
                     qmonster::ui::dashboard::render_help_modal(frame, help_scroll as u16);
                 }
@@ -451,6 +464,36 @@ where
             if event::poll(Duration::from_millis(100))? {
                 match event::read()? {
                     Event::Key(k) if k.kind == KeyEventKind::Press => {
+                        if git_modal_open {
+                            let size = terminal.size()?;
+                            let max_scroll = qmonster::ui::dashboard::max_git_scroll(
+                                Rect::new(0, 0, size.width, size.height),
+                                git_modal_lines.len(),
+                            );
+                            match k.code {
+                                KeyCode::Esc => {
+                                    git_modal_open = false;
+                                    git_scroll = 0;
+                                }
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    git_scroll = git_scroll.saturating_sub(1);
+                                }
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    git_scroll = git_scroll.saturating_add(1).min(max_scroll);
+                                }
+                                KeyCode::PageUp => {
+                                    git_scroll = git_scroll.saturating_sub(8);
+                                }
+                                KeyCode::PageDown => {
+                                    git_scroll = git_scroll.saturating_add(8).min(max_scroll);
+                                }
+                                KeyCode::Home => git_scroll = 0,
+                                KeyCode::End => git_scroll = max_scroll,
+                                _ => {}
+                            }
+                            continue;
+                        }
+
                         if help_open {
                             let size = terminal.size()?;
                             let max_scroll = qmonster::ui::dashboard::max_help_scroll(Rect::new(
@@ -892,6 +935,33 @@ where
                         let viewport = Rect::new(0, 0, size.width, size.height);
                         let now = Instant::now();
 
+                        if git_modal_open {
+                            let rects = git_modal_rects(viewport);
+                            if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
+                                && rect_contains(close_button_rect(rects.body), m.column, m.row)
+                            {
+                                git_modal_open = false;
+                                git_scroll = 0;
+                                continue;
+                            }
+                            if rect_contains(rects.body, m.column, m.row) {
+                                let max_scroll = qmonster::ui::dashboard::max_git_scroll(
+                                    viewport,
+                                    git_modal_lines.len(),
+                                );
+                                match m.kind {
+                                    MouseEventKind::ScrollUp => {
+                                        git_scroll = git_scroll.saturating_sub(1);
+                                    }
+                                    MouseEventKind::ScrollDown => {
+                                        git_scroll = git_scroll.saturating_add(1).min(max_scroll);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            continue;
+                        }
+
                         if help_open {
                             let rects = help_modal_rects(viewport);
                             if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
@@ -1070,7 +1140,14 @@ where
                                 }
                             }
                             MouseEventKind::Down(MouseButton::Left) => {
-                                if let Some(row) = list_row_at(rects.alerts, m) {
+                                if rect_contains(version_badge_rect(rects.footer), m.column, m.row)
+                                {
+                                    let panel = capture_repo_panel();
+                                    git_modal_title = panel.title;
+                                    git_modal_lines = panel.lines;
+                                    git_scroll = 0;
+                                    git_modal_open = true;
+                                } else if let Some(row) = list_row_at(rects.alerts, m) {
                                     focus = FocusedPanel::Alerts;
                                     let alerts_inner = rects.alerts.inner(Margin {
                                         vertical: 1,

@@ -10,6 +10,9 @@ use crate::app::system_notice::SystemNotice;
 use crate::ui::alerts::AlertView;
 use crate::ui::{alerts, labels, panels, theme};
 
+const VERSION_BADGE_PADDING: u16 = 2;
+const GIT_WIDTH_PERCENT: u16 = 72;
+const GIT_HEIGHT_PERCENT: u16 = 68;
 const HELP_WIDTH_PERCENT: u16 = 76;
 const HELP_HEIGHT_PERCENT: u16 = 76;
 const HELP_LABEL_WIDTH: usize = 18;
@@ -51,6 +54,12 @@ pub struct TargetPickerRects {
 }
 
 pub struct HelpModalRects {
+    pub area: Rect,
+    pub body: Rect,
+    pub hint: Rect,
+}
+
+pub struct GitModalRects {
     pub area: Rect,
     pub body: Rect,
     pub hint: Rect,
@@ -223,10 +232,48 @@ pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
     );
 }
 
+pub fn render_git_modal(frame: &mut Frame<'_>, title: &str, lines: &[String], scroll: u16) {
+    let rects = git_modal_rects(frame.area());
+    frame.render_widget(Clear, rects.area);
+
+    frame.render_widget(
+        Paragraph::new(lines.join("\n"))
+            .wrap(Wrap { trim: false })
+            .scroll((scroll, 0))
+            .block(
+                Block::default()
+                    .title(title)
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+            ),
+        rects.body,
+    );
+    frame.render_widget(
+        Paragraph::new("[x]").style(
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        ),
+        close_button_rect(rects.body),
+    );
+    frame.render_widget(
+        Paragraph::new("↑/↓ scroll · PgUp/PgDn jump · Home/End · click [x] close · Esc close")
+            .style(Style::default().fg(theme::TEXT_DIM))
+            .wrap(Wrap { trim: false }),
+        rects.hint,
+    );
+}
+
 pub fn max_help_scroll(viewport: Rect) -> usize {
     let rects = help_modal_rects(viewport);
     let visible_lines = rects.body.height.saturating_sub(2) as usize;
     help_lines().len().saturating_sub(visible_lines)
+}
+
+pub fn max_git_scroll(viewport: Rect, line_count: usize) -> usize {
+    let rects = git_modal_rects(viewport);
+    let visible_lines = rects.body.height.saturating_sub(2) as usize;
+    line_count.saturating_sub(visible_lines)
 }
 
 pub fn dashboard_rects(area: Rect) -> DashboardRects {
@@ -276,6 +323,34 @@ pub fn help_modal_rects(viewport: Rect) -> HelpModalRects {
     }
 }
 
+pub fn git_modal_rects(viewport: Rect) -> GitModalRects {
+    let area = centered_rect(GIT_WIDTH_PERCENT, GIT_HEIGHT_PERCENT, viewport);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(6), Constraint::Length(2)])
+        .split(area);
+    GitModalRects {
+        area,
+        body: chunks[0],
+        hint: chunks[1],
+    }
+}
+
+pub fn version_badge_label() -> String {
+    format!("v{}", env!("CARGO_PKG_VERSION"))
+}
+
+pub fn version_badge_rect(area: Rect) -> Rect {
+    let label = version_badge_label();
+    let width = (label.chars().count() as u16).saturating_add(VERSION_BADGE_PADDING);
+    Rect::new(
+        area.x + area.width.saturating_sub(width),
+        area.y + area.height.saturating_sub(1),
+        width.min(area.width),
+        1,
+    )
+}
+
 fn render_footer(area: Rect, buf: &mut Buffer, alerts_focused: bool, panes_focused: bool) {
     let focus = if alerts_focused {
         "focus: alerts"
@@ -284,12 +359,23 @@ fn render_footer(area: Rect, buf: &mut Buffer, alerts_focused: bool, panes_focus
     } else {
         "focus: overlay"
     };
+    let badge = version_badge_rect(area);
+    let text_width = area.width.saturating_sub(badge.width).saturating_sub(1);
+    let text_area = Rect::new(area.x, area.y, text_width, area.height);
     Paragraph::new(format!(
-        "{focus} · wheel scroll · click select · click severity bulk hide · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · ? help · q quit"
+        "{focus} · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · ? help · q quit"
     ))
     .style(Style::default().fg(theme::TEXT_DIM))
     .wrap(Wrap { trim: false })
-    .render(area, buf);
+    .render(text_area, buf);
+    Paragraph::new(version_badge_label())
+        .style(
+            theme::label_style()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        )
+        .alignment(Alignment::Center)
+        .render(badge, buf);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
@@ -322,6 +408,10 @@ fn help_lines() -> Vec<Line<'static>> {
             (
                 "Severity chip",
                 "click a bulk chip in Alerts to toggle auto-hide for that severity",
+            ),
+            (
+                "Version badge",
+                "click the bottom-right version to open Git status",
             ),
             ("Tab", "switch focus between alerts and pane list"),
             ("Up / Down", "move one item in the focused list"),
@@ -420,5 +510,13 @@ mod tests {
         let tall = max_help_scroll(Rect::new(0, 0, 120, 48));
         let short = max_help_scroll(Rect::new(0, 0, 120, 16));
         assert!(short >= tall);
+    }
+
+    #[test]
+    fn version_badge_hugs_bottom_right_edge() {
+        let area = Rect::new(4, 6, 40, 2);
+        let badge = version_badge_rect(area);
+        assert_eq!(badge.y, area.y + area.height - 1);
+        assert_eq!(badge.x + badge.width, area.x + area.width);
     }
 }
