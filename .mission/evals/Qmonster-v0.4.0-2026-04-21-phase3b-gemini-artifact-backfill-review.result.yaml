@@ -1,0 +1,29 @@
+evaluation:
+  timestamp: "2026-04-21T03:50:00Z"
+  target: "Phase 3B Gemini review artifact backfill (v1.7.5) review"
+  evaluated_by: "llm-codex"
+  source: "Codex review of a73483b..7214e4a"
+  verdict: "approve-with-fixes"
+  remediation_round: "v1.7.6 (Gemini narrative review template compliance)"
+  findings:
+    - id: "codex-phase3b-gemini-artifact-backfill-1"
+      severity: "warning"
+      title: "Gemini narrative review is still missing one required section from REVIEW_GUIDE.md"
+      references:
+        - "docs/ai/REVIEW_GUIDE.md:77-90"
+        - ".docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md"
+      detail: >
+        v1.7.5 correctly backfills the missing Gemini artifact pair, but
+        the newly created narrative review still omits the required
+        `Scope-reduction suggestions` section. The rest of the template
+        is present, so this is a narrow documentation-format issue, not
+        a code or ledger-identity regression.
+      resolution: >
+        Add a short `Scope-reduction suggestions` section to the Gemini
+        review doc, even if it only records that no further scope cuts
+        are needed for this round.
+  notes:
+    - "The v1.7.4 finding is otherwise closed: the Gemini sign-off now has both the `.docs/gemini/` narrative and the `.mission/evals/` structured mirror."
+    - "Verified directly: `cargo test --lib` (159 passed), `cargo test --test event_loop_integration` (16 passed), and `mission.yaml` parses successfully as YAML."
+    - "The mission-spec validator command from mission.yaml could not be reproduced verbatim in this environment because Node could not import the `yaml` package."
+  gate_decision: "Phase 4 gate should wait for the missing Gemini review-doc section, then a short docs-only re-check is sufficient."

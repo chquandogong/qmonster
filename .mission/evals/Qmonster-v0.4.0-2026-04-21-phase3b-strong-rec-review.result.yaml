@@ -1,0 +1,49 @@
+evaluation:
+  timestamp: "2026-04-21T02:30:00Z"
+  target: "Phase 3B strong-rec suggested_command refinement (v1.7.2) review"
+  evaluated_by: "llm-codex"
+  source: "Codex review of bbdc1ea..df87f03"
+  verdict: "approve-with-fixes"
+  remediation_round: "v1.7.3 (strong-rec contract cleanup)"
+  findings:
+    - id: "codex-phase3b-strong-rec-1"
+      severity: "warning"
+      title: "suggested_command is no longer runnable, but UI and --once still present it as `run:`"
+      references:
+        - "src/policy/rules/advisories.rs:142"
+        - "src/policy/rules/advisories.rs:177"
+        - "src/ui/alerts.rs:52-56"
+        - "src/main.rs:204-213"
+        - "docs/ai/VALIDATION.md:104-107"
+      detail: >
+        The new value `# press 's' to snapshot first; then /compact` is
+        not executable on any single surface. In a shell it is a comment,
+        in `--once` the `press 's'` step is impossible, and both renderers
+        still label the field as `run:` even though it is now a mixed-mode
+        operator hint rather than a command.
+      resolution: >
+        Make the field semantics honest: either keep `suggested_command`
+        executable/copy-pasteable and move the snapshot precondition into a
+        separate hint/step surface, or rename/re-render the field as a
+        generic next-step hint. Add one regression test for the rendering
+        or `--once` output path.
+    - id: "codex-phase3b-strong-rec-2"
+      severity: "warning"
+      title: "new tests check token presence, not the required ordering"
+      references:
+        - "src/policy/rules/advisories.rs:504-520"
+        - "tests/event_loop_integration.rs:362-372"
+        - "mission.yaml:97-104"
+      detail: >
+        The updated assertions only require the string to contain both
+        `snapshot` and `/compact`. A regression that mentions both tokens
+        but reverses the meaning or ordering would still pass, despite the
+        ledger claiming the snapshot-first precondition is now locked.
+      resolution: >
+        Tighten both unit and integration tests to assert ordering or an
+        exact stable contract string so the snapshot-first requirement
+        cannot regress silently.
+  notes:
+    - "Targeted tests pass: policy::rules::advisories::{context_pressure_warning_suggests_snapshot_first, context_pressure_critical_suggests_snapshot_first}, event_loop_integration::context_pressure_rec_is_marked_strong_end_to_end."
+    - "The ledger-only follow-up commit (df87f03) stays internally consistent; findings are confined to the production/test change in bf3294a and its render-path implications."
+  gate_decision: "Phase 4 gate should wait for the two warning-level fixes above and a short re-check."

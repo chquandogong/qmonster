@@ -1,0 +1,28 @@
+evaluation:
+  timestamp: "2026-04-21T06:55:00Z"
+  target: "Phase 4 P4-4 remediation confirm review (v1.8.5) Gemini"
+  evaluated_by: "llm-gemini"
+  source: "Local Gemini CLI headless confirm review of f22fd60..6ee164b using gemini-2.5-flash"
+  verdict: "approve-with-fixes"
+  remediation_round: "small follow-up after v1.8.5"
+  findings:
+    - id: "gemini-phase4-p4-4-confirm-1"
+      severity: "warning"
+      title: "Residual authority drift remains in the live summary text and doc comment"
+      references:
+        - "src/policy/rules/profiles.rs:305-314"
+        - "src/policy/rules/profiles.rs:349-352"
+      detail: >
+        Gemini judged the underlying fixes to be correct, but the
+        high-level comment and emitted `reason` string still imply all
+        three levers are ProviderOfficial. That is no longer true after
+        the ProjectCanonical relabel on `tool_output_token_limit`.
+      resolution: >
+        Update both strings to describe the mixed authority labels
+        honestly.
+  notes:
+    - "Gemini confirmed confirm point #1: `commit_attribution = \"\"` is fixed in implementation and in the explicit per-lever test."
+    - "Gemini confirmed confirm point #2: `tool_output_token_limit` is relabeled ProjectCanonical with an honest citation."
+    - "Gemini confirmed confirm point #3: the test now uses granular per-lever assertions instead of a blanket ProviderOfficial loop."
+    - "Initial Gemini attempt on the default preview model returned a capacity 429; the confirm review completed successfully on `gemini-2.5-flash`."
+  gate_decision: "Gemini sees the original findings as closed in code/tests, but recommends one final wording cleanup before P4-5."

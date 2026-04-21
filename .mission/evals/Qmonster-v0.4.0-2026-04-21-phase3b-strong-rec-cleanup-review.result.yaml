@@ -1,0 +1,29 @@
+evaluation:
+  timestamp: "2026-04-21T03:05:00Z"
+  target: "Phase 3B strong-rec contract cleanup (v1.7.3) review"
+  evaluated_by: "llm-codex"
+  source: "Codex review of df87f03..f62c05f"
+  verdict: "approve-with-fixes"
+  remediation_round: "v1.7.4 (mission ledger normalization)"
+  findings:
+    - id: "codex-phase3b-strong-rec-cleanup-1"
+      severity: "warning"
+      title: "mission.yaml still contains the superseded v1.7.2 strong-rec contract"
+      references:
+        - "mission.yaml:191-197"
+      detail: >
+        The live `done_when` list still includes the v1.7.2 statements
+        that strong recommendations embed the snapshot precondition
+        inside `suggested_command` and that the tests use the old
+        substring contract. Those assertions are now false after v1.7.3,
+        which correctly split the contract into `next_step` plus exact
+        `/compact`. The result is one file containing contradictory
+        current-state claims.
+      resolution: >
+        Remove or clearly mark superseded the two v1.7.2 `done_when`
+        lines in `mission.yaml`. Keep the historical v1.7.2 behavior in
+        `mission-history.yaml`, not in the live mission contract.
+  notes:
+    - "Code-level v1.7.2 findings are closed: `Recommendation.next_step` separates prose from commands; `ui::alerts::format_strong_rec_body` is shared by both TUI and `--once`."
+    - "Verified with full relevant suites: `cargo test --lib` (159 passed) and `cargo test --test event_loop_integration` (16 passed)."
+  gate_decision: "Phase 4 gate should wait for the ledger cleanup above, then a short Codex re-check is sufficient."

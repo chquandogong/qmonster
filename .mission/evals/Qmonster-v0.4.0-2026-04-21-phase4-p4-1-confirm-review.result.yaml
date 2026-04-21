@@ -1,0 +1,15 @@
+evaluation:
+  timestamp: "2026-04-21T02:44:14Z"
+  target: "Phase 4 P4-1 remediation (v1.8.1) confirm review"
+  evaluated_by: "llm-codex"
+  source: "Codex confirm review of 6bb172a..0f1023c"
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "Verified live-path closure: `Recommendation.profile: Option<ProviderProfile>` carries the structured bundle, `profiles.rs` attaches `Some(profile)`, and `ui::panels::format_profile_lines()` is called from both `src/ui/panels.rs` and `src/main.rs`."
+    - "Verified direct end-to-end evidence: `tests/event_loop_integration.rs::claude_default_profile_levers_flow_end_to_end_to_the_panel_renderer` passes and asserts header + per-lever badge/key/value/citation visibility."
+    - "`cargo test --lib` passes (166/166)."
+    - "`cargo test --test event_loop_integration` passes (17/17)."
+    - "`cargo clippy --all-targets -- -D warnings` passes."
+  gate_decision: "v1.8.1 is the fully approved Phase 4 P4-1 baseline. Proceed to P4-2 (Gemini G-5 auto-memory guide)."

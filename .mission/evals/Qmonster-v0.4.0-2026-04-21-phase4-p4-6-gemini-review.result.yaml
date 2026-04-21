@@ -1,0 +1,67 @@
+evaluation:
+  timestamp: "2026-04-21T09:00:00Z"
+  target: "Phase 4 P4-6 gemini-default baseline profile (v1.8.8) review"
+  evaluated_by: "llm-gemini"
+  source: "Operator-relayed Gemini review of 7997a95..3c1337d (chat transcript, 2026-04-21 JST); narrative review archived at .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-6-review.md"
+  verdict: "pass"
+  remediation_round: ""
+  criteria:
+    - name: "0 PO / 2 PC 보수적 scope"
+      status: "pass"
+      notes: >
+        Both levers labeled ProjectCanonical — honest minimum
+        defensible surface. Does not contradict Gemini official docs
+        (model default = auto, approval default = default, YOLO
+        explicit). Consistent with v1.8.5 codex-default
+        tool_output_token_limit relabel principle.
+    - name: "--model = gemini-2.5-flash value choice"
+      status: "pass"
+      notes: >
+        Most reasonable baseline for healthy main-pane routine work
+        (latency + cost). Gemini CLI model routing precedence uses
+        'auto' as default; Qmonster's explicit 'flash' pick is a
+        meaningful improvement for token-efficient baseline.
+    - name: "--yolo = unset representation"
+      status: "pass"
+      notes: >
+        Safest interactive baseline — auto-approval belongs to
+        scripted/quota_tight scenarios (P4-7 aggressive variant).
+        Alternative positive-form representation as
+        `--approval-mode = default` is semantically equivalent; the
+        current 'recommend NOT setting' expression is also honest.
+    - name: "VALIDATION.md:149-150 non-duplication design"
+      status: "pass"
+      notes: >
+        Constraint is enforced via the separate
+        recommend_mdr_over_auto_memory rule from P4-2 (fires on any
+        provider including Gemini under state-critical task types).
+        Not duplicated as a gemini-default lever — architecturally
+        clean.
+    - name: "No renderer change"
+      status: "pass"
+      notes: >
+        format_profile_lines from v1.8.3 handles the empty
+        side_effects case naturally. gemini-default's 2-lever shape
+        renders with the same visual pattern as Claude / Codex
+        3-lever baselines.
+  notes: >
+    Overall verdict from Gemini (transcript): "P4-6 베이스라인
+    (v1.8.8)을 적극 승인(Approve)합니다. 단위 테스트(186개) 및 통합
+    테스트(18개) 전량 통과를 확인했습니다. Gemini 에이전트로서
+    보기에 현재의 --model, --yolo 조합은 베이스라인 프로필로서
+    가장 합리적이고 안전한 구성입니다. 계획하신 대로 P4-7
+    (gemini-script-low-token aggressive — 3×2 grid 완성) 작업으로
+    바로 진입하셔도 좋습니다. 이 단계가 끝나면 3개 Provider에 대한
+    모든 기본/공격적 프로필 라인업이 완성되겠군요!"
+    Narrative archived at
+    .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-6-review.md.
+  gate_decision: >
+    v1.8.8 P4-6 approved by Gemini (pass / 적극 승인). Parallel
+    Codex review is approve (no must-fix findings) with one
+    non-blocker note suggesting `--approval-mode = default` as a
+    more direct positive-form representation than `--yolo = unset`.
+    Gemini considers both representations honest and valid for
+    baseline; Qmonster may address the positive-form upgrade in a
+    small follow-up round if desired, but it is not a P4-7 blocker.
+    Proceed to P4-7 — gemini-script-low-token aggressive variant
+    (completes 3 x 2 profile grid).

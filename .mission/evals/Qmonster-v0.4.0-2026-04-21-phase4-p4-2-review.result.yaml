@@ -1,0 +1,15 @@
+evaluation:
+  timestamp: "2026-04-21T03:02:58Z"
+  target: "Phase 4 P4-2 Gemini G-5 auto-memory guide (v1.8.2) review"
+  evaluated_by: "llm-codex"
+  source: "Codex review of 0f1023c..162345c"
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "`recommend_mdr_over_auto_memory` is appropriately narrow: fires only on `TaskType::Review | TaskType::SessionResume`, suppresses on Low/Unknown confidence via KD-007, and suppresses on `waiting_for_input || permission_prompt`."
+    - "`source_kind: ProjectCanonical` is the honest label because the memory-routing rule comes from Qmonster mission constraints, not provider documentation."
+    - "`cargo test --lib` passes (171/171)."
+    - "`cargo test --test event_loop_integration` passes (17/17)."
+    - "`cargo clippy --all-targets -- -D warnings` passes."
+  gate_decision: "Codex review is green for v1.8.2 P4-2. Gemini review remains pending before opening P4-3."

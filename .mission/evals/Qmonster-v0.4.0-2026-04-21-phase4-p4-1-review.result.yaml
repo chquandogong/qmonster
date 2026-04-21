@@ -1,0 +1,36 @@
+evaluation:
+  timestamp: "2026-04-21T02:17:36Z"
+  target: "Phase 4 P4-1 provider-profile recommender foundation (v1.8.0) review"
+  evaluated_by: "llm-codex"
+  source: "Codex review of eac75b4..6bb172a"
+  verdict: "approve-with-fixes"
+  remediation_round: ""
+  findings:
+    - id: "codex-phase4-p4-1-1"
+      severity: "warning"
+      title: "the structured provider profile is created, but the runtime path drops it before any operator-visible surface"
+      references:
+        - "src/policy/rules/profiles.rs:73-89"
+        - "src/domain/recommendation.rs:28-50"
+        - "src/main.rs:231-238"
+        - "src/ui/panels.rs:57-63"
+        - "mission.yaml:284-286"
+      detail: >
+        `recommend_claude_default()` constructs a `ProviderProfile`
+        with three `ProviderOfficial` levers and per-lever citations,
+        but `Recommendation` has no field to carry that bundle. The
+        live output path therefore degrades the profile into a prose
+        `reason` string; lever keys, values, citations, and source-kind
+        labels never reach `PaneReport`, `--once`, or the TUI.
+      resolution: >
+        Add a structured profile payload to the recommendation/output
+        path, render the profile name plus each lever's key/value/
+        citation/source-kind on at least one live surface, and add one
+        end-to-end regression test that proves the payload survives
+        `Engine::evaluate -> run_once -> render/format`.
+  notes:
+    - "`cargo test --lib` passes (163/163)."
+    - "`cargo test --test event_loop_integration` passes (16/16)."
+    - "`cargo clippy --all-targets -- -D warnings` passes."
+    - "Minor non-blocking ledger wording drift remains in `.mission/CURRENT_STATE.md` (`nine required sections` and a stale review range), but it does not change the Phase-4 runtime finding."
+  gate_decision: "Hold Phase 4 at approve-with-fixes until the structured ProviderProfile payload is visible end-to-end; then re-run Codex review before P4-2."

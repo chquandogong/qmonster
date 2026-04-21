@@ -1,0 +1,46 @@
+evaluation:
+  timestamp: "2026-04-21T03:00:00Z"
+  target: "Phase 3B strong-rec contract cleanup (v1.7.3) review"
+  evaluated_by: "llm-gemini"
+  source: "Operator-relayed Gemini review of df87f03..f62c05f (chat transcript, 2026-04-21 JST); narrative review archived at .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md"
+  verdict: "pass"
+  remediation_round: ""
+  criteria:
+    - name: "Safety + convenience separation (snapshot precondition vs runnable /compact)"
+      status: "pass"
+      notes: >
+        Structurally separating next_step (prose precondition) from
+        suggested_command (runnable) lets the UI surface the safety
+        step visually BEFORE the destructive /compact while preserving
+        copy-paste ergonomics of the command. Rendered as
+        `next: press 's' to snapshot … — run: `/compact``. 매우 우수.
+    - name: "Ordered render contract locked by index-based test"
+      status: "pass"
+      notes: >
+        format_strong_rec_body_emits_next_before_run_in_order asserts
+        next_idx < run_idx — an index-based regression guard that
+        perfectly blocks future edits from silently flipping the
+        rendered order. Combined with the integration test calling
+        the live helper on a real Engine::evaluate output, the
+        contract is locked at both the unit and end-to-end layers.
+    - name: "Root-cause fix rather than string-level workaround"
+      status: "pass"
+      notes: >
+        v1.7.2 patched the text; v1.7.3 recognized the representational
+        limitation and extended the domain model (Recommendation
+        struct) with a new `next_step: Option<String>` field instead.
+        A principled, architecture-level remediation rather than
+        another string-level band-aid. 인상적.
+  notes: >
+    Overall verdict from Gemini (transcript): "사용자 경험(UX) 개선의
+    모범적인 이터레이션 과정입니다. 적극 승인(Approve)합니다." Logic,
+    UI, and test layers are all stable. Baseline v1.7.3 can be merged
+    and shipped to production as-is. Narrative archived at
+    .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md.
+  gate_decision: >
+    v1.7.3 approved by Gemini (pass / 적극 승인). "로직, UI, 테스트
+    모든 면에서 매우 안정적이므로 그대로 병합(Merge) 및 프로덕션에
+    적용하셔도 좋습니다." Codex's separate v1.7.3 ledger-normalization
+    finding was closed at v1.7.4; the Gemini review-artifact backfill
+    (this file + the matching narrative) is the v1.7.5 remediation of
+    Codex v1.7.4 finding #1.

@@ -1,0 +1,63 @@
+evaluation:
+  timestamp: "2026-04-21T08:00:00Z"
+  target: "Phase 4 P4-5 codex-script-low-token aggressive profile (v1.8.7) review"
+  evaluated_by: "llm-gemini"
+  source: "Operator-relayed Gemini review of d286c8d..45dbe4e (chat transcript, 2026-04-21 JST); narrative review archived at .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-5-review.md"
+  verdict: "pass"
+  remediation_round: ""
+  criteria:
+    - name: "7-lever aggressive-profile scope (1 PC + 6 PO)"
+      status: "pass"
+      notes: >
+        Smaller than claude-script-low-token's 8-lever bundle but
+        matches Codex's documented aggressive surface. Feature toggles
+        + exec flags work together coherently for scripted-session
+        scenarios.
+    - name: "Runtime-derived reason summary (v1.8.6 pattern reuse)"
+      status: "pass"
+      notes: >
+        Reason is derived from profile.levers[*].source_kind counts
+        at runtime — same pattern as codex-default after v1.8.6
+        remediation. Future authority relabels auto-propagate into
+        both profiles' summaries. Hardcoded-drift class is blocked
+        at origin.
+    - name: "Mutual exclusion double-locking"
+      status: "pass"
+      notes: >
+        Mutual exclusion follows from the shared quota_tight gate,
+        but the explicit test
+        (codex_default_and_codex_script_low_token_are_mutually_exclusive_via_quota_tight_gate)
+        provides defense-in-depth. A future mistake that relaxes
+        either rule's gate would fail the test.
+    - name: "No renderer change"
+      status: "pass"
+      notes: >
+        format_profile_lines from v1.8.3 already handles the
+        side_effects section for any profile with a non-empty list.
+        codex-script-low-token's 7 side_effects flow through without
+        touching panels.rs / main.rs. YAGNI well-preserved.
+    - name: "G-5 cross-reference in auto-compaction side_effect"
+      status: "pass"
+      notes: >
+        'state handoff MUST go through .mission/CURRENT_STATE.md or
+        an MDR (aligns with Gemini G-5)' cross-reference in the
+        model_auto_compact_token_limit side_effect mirrors the
+        equivalent cross-reference in claude-script-low-token's
+        DISABLE_AUTO_MEMORY side_effect. Architectural principle
+        consistent across providers.
+  notes: >
+    Overall verdict from Gemini (transcript): "P4-5 베이스라인
+    (v1.8.7)을 적극 승인(Approve)합니다. 단위 테스트(183개), 통합
+    테스트(18개) 전량 통과 및 클리피(-D warnings) 클린 상태를
+    확인했습니다. 설계상의 결함이나 회귀(Regression) 요소가 발견되지
+    않았습니다. 계획하신 대로 P4-6 (gemini-default baseline) 작업으로
+    착수하셔도 좋습니다."
+    Narrative archived at
+    .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-5-review.md.
+  gate_decision: >
+    v1.8.7 P4-5 approved by Gemini (pass / 적극 승인). Parallel Codex
+    review also approve (no must-fix findings; one non-blocker note
+    about absent e2e integration test for the new profile
+    specifically — accepted because format_profile_lines is
+    unchanged and unit coverage is sufficient). Proceed to P4-6 —
+    gemini-default baseline profile.

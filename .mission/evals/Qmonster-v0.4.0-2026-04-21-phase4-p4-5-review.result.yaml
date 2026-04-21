@@ -1,0 +1,18 @@
+evaluation:
+  timestamp: "2026-04-21T07:37:05Z"
+  target: "Phase 4 P4-5 review (v1.8.7)"
+  evaluated_by: "llm-codex"
+  source: "Codex review of d286c8d..45dbe4e"
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "`recommend_codex_script_low_token` is correctly gated to healthy Codex main panes under `quota_tight` and stays mutually exclusive with `codex-default`."
+    - "The user-visible `reason` summary is derived at runtime from `profile.levers[*].source_kind`, reusing the v1.8.6 anti-drift pattern."
+    - "The new profile bundle is internally consistent: 7 levers total, 6 `ProviderOfficial` + 1 `ProjectCanonical`, with 1:1 populated `side_effects`."
+    - "ProviderOfficial claims were re-checked against current OpenAI Codex docs: `model_auto_compact_token_limit`, `web_search`, `commit_attribution`, `[features].apps`, `[apps._default].enabled`, and `codex exec --json/--sandbox/--ephemeral/--color` are all still documented."
+    - "Residual risk is low: there is no Codex-specific end-to-end integration test for the quota-tight path, but the renderer path is unchanged and current unit coverage is sufficient for this gate."
+    - "`cargo test --lib` passes (183/183)."
+    - "`cargo clippy --all-targets -- -D warnings` passes."
+    - "`cargo test --test event_loop_integration` passes (18/18)."
+  gate_decision: "v1.8.7 P4-5 is green from the Codex side. Proceed to P4-6 (`gemini-default`) once the Gemini review lane is also satisfied."

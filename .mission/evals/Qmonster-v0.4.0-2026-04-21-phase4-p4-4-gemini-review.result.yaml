@@ -1,0 +1,29 @@
+evaluation:
+  timestamp: "2026-04-21T04:05:00Z"
+  target: "Phase 4 P4-4 codex-default baseline profile (v1.8.4) Gemini review"
+  evaluated_by: "llm-gemini"
+  source: "Local Gemini CLI headless review of cf67687..f22fd60; narrative archived at .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-4-review.md"
+  verdict: "approve-with-fixes"
+  remediation_round: "v1.8.5+ before P4-5"
+  findings:
+    - id: "gemini-phase4-p4-4-1"
+      severity: "risk"
+      title: "`commit_attribution = false` should use the officially documented empty-string disable value"
+      references:
+        - "src/policy/rules/profiles.rs:388-391"
+        - "mission.yaml:288-291"
+        - "mission-history.yaml:2283-2289"
+      detail: >
+        Gemini judged the architecture and provider gating to be sound,
+        but flagged the `commit_attribution` value. Official Codex config
+        guidance treats this key as a string and uses an empty string to
+        disable automatic attribution.
+      resolution: >
+        Change the value to `\"\"` and update any test or narrative text
+        that currently says `false`.
+  notes:
+    - "Gemini explicitly approved the provider-gate purity design: no explicit cross-rule references are needed."
+    - "Gemini agreed that skipping a new integration test in P4-4 is acceptable because P4-3 already locks the shared render-path shape."
+    - "Gemini accepted the 3-lever baseline scope as the minimum meaningful increment for the first non-Claude provider profile."
+    - "Gemini did not raise a blocker on `tool_output_token_limit = 30000`; it treated the value as an acceptable project parity constraint."
+  gate_decision: "Gemini review is not fully green for P4-4 yet. Fix `commit_attribution`, then re-run the gate before opening P4-5."

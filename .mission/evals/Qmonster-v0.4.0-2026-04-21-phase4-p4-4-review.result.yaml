@@ -1,0 +1,50 @@
+evaluation:
+  timestamp: "2026-04-21T04:00:00Z"
+  target: "Phase 4 P4-4 codex-default baseline profile (v1.8.4) review"
+  evaluated_by: "llm-codex"
+  source: "Codex review of cf67687..f22fd60"
+  verdict: "approve-with-fixes"
+  remediation_round: "v1.8.5+ before P4-5"
+  findings:
+    - id: "codex-phase4-p4-4-1"
+      severity: "risk"
+      title: "`commit_attribution = false` does not match the official Codex setting shape"
+      references:
+        - "src/policy/rules/profiles.rs:388-391"
+        - "mission.yaml:288-291"
+        - "mission-history.yaml:2283-2289"
+        - ".mission/CURRENT_STATE.md:196-202"
+      detail: >
+        Codex documents `commit_attribution` as a string and says an empty
+        string disables automatic attribution. This round emits `false` as a
+        `ProviderOfficial` lever, which can mislead operators and breaks the
+        official-value contract for Phase-4 profile guidance.
+      resolution: >
+        Change the value to `""` if disablement is intended, update the
+        narrative mirrors, and strengthen the P4-4 test to assert the exact
+        value.
+    - id: "codex-phase4-p4-4-2"
+      severity: "warning"
+      title: "`tool_output_token_limit = 30000` is a project parity choice mislabeled as ProviderOfficial"
+      references:
+        - "src/policy/rules/profiles.rs:382-386"
+        - "mission.yaml:289-291,443-445"
+        - "mission-history.yaml:2284-2288,2348-2350"
+        - ".mission/CURRENT_STATE.md:196-202"
+      detail: >
+        The official Codex docs document the key but do not establish `30000`
+        as the canonical default. This round's own citation text says the
+        value was chosen for parity with Claude, which makes it a Qmonster
+        policy choice rather than a provider-official fact.
+      resolution: >
+        Either switch to an officially documented Codex value or relabel this
+        lever/value as non-official and update the "3 ProviderOfficial levers"
+        narrative/tests accordingly.
+  notes:
+    - "The 3-lever baseline scope is appropriately narrow for P4-4."
+    - "Provider-gate purity is correctly implemented via per-rule provider guards; no explicit cross-rule references are needed."
+    - "Skipping a new integration test is acceptable here because P4-3 already locks the live render-path shape and P4-4 does not modify UI/rendering behavior."
+    - "`cargo test --lib` passes (179/179)."
+    - "`cargo test --test event_loop_integration` passes (18/18)."
+    - "`cargo clippy --all-targets -- -D warnings` passes."
+  gate_decision: "Codex review is not green for P4-4 yet. Fix the two contract issues above, then re-run Codex/Gemini review before opening P4-5."

@@ -1,0 +1,30 @@
+evaluation:
+  timestamp: "2026-04-21T03:30:00Z"
+  target: "Phase 3B ledger normalization (v1.7.4) review"
+  evaluated_by: "llm-codex"
+  source: "Codex review of f62c05f..a73483b"
+  verdict: "approve-with-fixes"
+  remediation_round: "v1.7.5 (Gemini review artifact backfill)"
+  findings:
+    - id: "codex-phase3b-ledger-normalization-1"
+      severity: "warning"
+      title: "Gemini v1.7.3 pass is claimed in CURRENT_STATE, but the required review artifacts are missing"
+      references:
+        - "docs/ai/WORKFLOWS.md:56-58"
+        - ".mission/CURRENT_STATE.md:165-175"
+      detail: >
+        The ledger now says Gemini gave a v1.7.3 `pass`, but the
+        workflow requires two artifacts for an LLM sign-off: a narrative
+        review under `.docs/<model>/` and a structured mirror under
+        `.mission/evals/`. On disk, Gemini review artifacts stop at the
+        original r1 planning review, so the claimed v1.7.3 approval is
+        only represented by CURRENT_STATE prose plus a conversation
+        reference.
+      resolution: >
+        Add the missing Gemini v1.7.3 review doc under `.docs/gemini/`
+        and the matching `.mission/evals/` mirror, then update the
+        gate-status table to point to those files.
+  notes:
+    - "The prior Codex v1.7.3 finding is closed: mission.yaml no longer contains the superseded v1.7.2 strong-rec `done_when` entries."
+    - "Verified directly: `cargo test --lib` (159 passed) and `cargo test --test event_loop_integration` (16 passed)."
+  gate_decision: "Phase 4 gate should wait for the missing Gemini review artifacts, then a short ledger re-check is sufficient."

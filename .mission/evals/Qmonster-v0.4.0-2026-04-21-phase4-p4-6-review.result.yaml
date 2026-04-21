@@ -1,0 +1,19 @@
+evaluation:
+  timestamp: "2026-04-21T08:04:33Z"
+  target: "Phase 4 P4-6 review (v1.8.8)"
+  evaluated_by: "llm-codex"
+  source: "Codex review of 7997a95..3c1337d"
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "`recommend_gemini_default` is correctly gated to healthy Gemini main panes under `!quota_tight` and stays provider-pure inside the existing profile-rule architecture."
+    - "The user-visible `reason` summary is derived at runtime from `profile.levers[*].source_kind`, reusing the v1.8.6 anti-drift pattern."
+    - "The 0 `ProviderOfficial` / 2 `ProjectCanonical` split is conservative but honest against current Gemini docs: the default model is `auto`, and the default approval mode is `default` while YOLO must be enabled explicitly."
+    - "`--model = gemini-2.5-flash` is therefore a genuine Qmonster baseline choice rather than a provider default; `--yolo = unset` is likewise a safety-precedence choice rather than a Gemini-doc canonical value."
+    - "VALIDATION.md:149-150 is handled without duplication: Gemini auto-memory guidance already lives in the separate `recommend_mdr_over_auto_memory` rule."
+    - "Residual risk is low: there is no Gemini-specific end-to-end integration test yet, but the renderer path is unchanged and current unit coverage is sufficient for this gate."
+    - "`cargo test --lib` passes (186/186)."
+    - "`cargo clippy --all-targets -- -D warnings` passes."
+    - "`cargo test --test event_loop_integration` passes (18/18)."
+  gate_decision: "v1.8.8 P4-6 is green from the Codex side. Proceed to P4-7 (`gemini-script-low-token`) once the Gemini review lane is also satisfied."

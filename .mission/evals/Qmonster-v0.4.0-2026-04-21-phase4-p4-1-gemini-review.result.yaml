@@ -1,0 +1,64 @@
+evaluation:
+  timestamp: "2026-04-21T04:00:00Z"
+  target: "Phase 4 P4-1 provider-profile recommender foundation (v1.8.0) review"
+  evaluated_by: "llm-gemini"
+  source: "Operator-relayed Gemini review of eac75b4..6bb172a (chat transcript, 2026-04-21 JST); narrative review archived at .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-review.md"
+  verdict: "pass"
+  remediation_round: ""
+  criteria:
+    - name: "Data model design (src/domain/profile.rs): ProfileLever + ProviderProfile shape"
+      status: "pass"
+      notes: >
+        ProfileLever pairs (key, value) with (citation, source_kind)
+        explicitly. ProviderProfile bundles name + levers + side_effects
+        as a single unit. Authority split is correct: profile name is
+        ProjectCanonical (our abstraction); individual levers are
+        ProviderOfficial with non-empty citations. side_effects slot
+        pre-wired for G-6 — excellent forward-compatibility.
+    - name: "Policy rule + engine wiring (profiles.rs + engine.rs)"
+      status: "pass"
+      notes: >
+        recommend_claude_default fires ONLY on healthy Claude main
+        panes — no waiting_for_input / permission_prompt / log_storm /
+        error_hint / high context_pressure / quota_tight. Defensive
+        early-returns are tightly scoped and prevent noise. Engine
+        wiring places eval_profiles after advisories with the same
+        Vec<Recommendation> shape — no pipeline disruption.
+    - name: "Severity::Good first use — positive advisory"
+      status: "pass"
+      notes: >
+        Very appropriate. Severity enum's PartialOrd gives
+        Severity::Good < Severity::Warning, so the existing
+        `any_urgent = recs.iter().any(|r| r.severity >= Severity::Warning)`
+        gate in policy/engine.rs keeps RequestedEffect::Notify from
+        firing on profile recs. Passive advisory semantics as designed.
+    - name: "Authority split: ProjectCanonical profile name vs ProviderOfficial levers"
+      status: "pass"
+      notes: >
+        Conceptually perfect separation. claude-default is our project's
+        abstraction (ProjectCanonical); CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS=25000
+        is a provider-docs fact (ProviderOfficial). Suggested UI
+        hierarchy: [PC] badge next to profile name, [PO] badge + citation
+        per lever row.
+    - name: "suggested_command: None with justification"
+      status: "pass"
+      notes: >
+        Follows the v1.7.x "empty-command sees a stated reason" rule.
+        Profile application is multi-key settings-editing across
+        ~/.claude/settings.json + env vars — not one shell line. The
+        Phase-5 "manual prompt-send helper" roadmap pointer is a good
+        design decision.
+  notes: >
+    Overall verdict from Gemini (transcript): "Phase 4 (P4-1) 작업
+    베이스라인(v1.8.0) 역시 구조, 로직, 테스트 모든 면에서 무결점입니다."
+    Verified directly: `cargo test` all-green (179 total), clippy
+    clean, mission.yaml valid. No side effects. Proceed to P4-2 as
+    planned.
+    Note: Codex's parallel v1.8.0 review is approve-with-fixes flagging
+    that the structured ProviderProfile payload does not reach the
+    Recommendation / operator surface; that is an end-to-end
+    completeness issue to be closed by v1.8.1, not a structural flaw.
+    Narrative archived at .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-review.md.
+  gate_decision: >
+    v1.8.0 approved by Gemini (pass). Proceed to P4-2 (G-5 auto-memory
+    guide) after v1.8.1 closes the Codex structured-payload finding.

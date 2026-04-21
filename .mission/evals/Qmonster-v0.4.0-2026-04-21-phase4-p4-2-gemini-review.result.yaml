@@ -1,0 +1,71 @@
+evaluation:
+  timestamp: "2026-04-21T05:00:00Z"
+  target: "Phase 4 P4-2 Gemini G-5 auto-memory guide (v1.8.2) review"
+  evaluated_by: "llm-gemini"
+  source: "Operator-relayed Gemini review of 0f1023c..162345c (chat transcript, 2026-04-21 JST); narrative review archived at .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-2-review.md"
+  verdict: "pass"
+  remediation_round: ""
+  criteria:
+    - name: "Narrow trigger scope: Review + SessionResume only"
+      status: "pass"
+      notes: >
+        Handoff-grade state is specific to Review and SessionResume
+        task types; the other five TaskType variants are intentionally
+        excluded and this is locked by the
+        `suppressed_on_non_state_critical_task_types` test. Broader
+        scope would turn a useful advisory into noise; narrower scope
+        would miss Session-resume handoff.
+    - name: "IdentityConfidence (KD-007) gate"
+      status: "pass"
+      notes: >
+        task_type is adapter-inferred; unreliable at Low/Unknown
+        confidence. allow_provider_specific gate correctly suppresses
+        the rec in those cases. Consistent application of KD-007.
+    - name: "Attention-priority suppression (waiting_for_input / permission_prompt)"
+      status: "pass"
+      notes: >
+        When the operator is already being asked for input or
+        approval, layering the auto-memory guide on top would be
+        noise. The suppression is correctly narrow (only those two
+        signals; does NOT suppress on verbose/repeated output which
+        are passive themselves).
+    - name: "Authority label: SourceKind::ProjectCanonical"
+      status: "pass"
+      notes: >
+        G-5's guidance originates from the mission.yaml architectural
+        constraint ("auto memory ... never the primary state store"),
+        not from any provider doc. ProjectCanonical is the honest
+        label. First Phase-4 rule where the REC itself (not an
+        embedded bundle) carries ProjectCanonical — a reasonable
+        extension of the authority taxonomy.
+    - name: "Severity::Concern — passive advisory below Notify gate"
+      status: "pass"
+      notes: >
+        Stays below the `>= Warning` Notify threshold in
+        policy/engine.rs via Severity's PartialOrd implementation —
+        same pattern as existing passive advisories (verbose-output,
+        repeated-output-cache). No RequestedEffect::Notify leakage.
+    - name: "suggested_command: None + next_step with MDR / CURRENT_STATE pointers"
+      status: "pass"
+      notes: >
+        Operator routing decision, not a single runnable command.
+        Leaving suggested_command None with an inline justification
+        follows the v1.7.x "empty command, stated reason" rule and
+        the v1.7.3 next_step field's intended use. next_step text
+        points at the two canonical write targets (CURRENT_STATE.md
+        + new MDR-XXX.md) and explicitly discourages provider
+        save_memory / auto-memory.
+  notes: >
+    Overall verdict from Gemini (transcript): "P4-2 베이스라인(v1.8.2)
+    을 적극 승인(Approve)합니다. 코드 품질, 테스트 커버리지, 그리고
+    아키텍처적 일관성 모두 흠잡을 데가 없습니다. 계획하신 대로 다음
+    단계인 P4-3 작업으로 바로 넘어가셔도 좋습니다."
+    Verified: 171 lib + 17 integration passing; clippy clean.
+    mission.yaml and mission-history.yaml updated cleanly with
+    change_sequence 18. Narrative archived at
+    .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-2-review.md.
+  gate_decision: >
+    v1.8.2 P4-2 approved by Gemini (pass / 적극 승인). Parallel Codex
+    review also approve (no must-fix findings). Proceed to P4-3 —
+    Gemini G-6 side_effects population on the first aggressive-
+    variant profile (claude-script-low-token gated by quota_tight).

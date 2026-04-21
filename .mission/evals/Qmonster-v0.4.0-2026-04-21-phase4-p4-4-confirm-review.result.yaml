@@ -1,0 +1,41 @@
+evaluation:
+  timestamp: "2026-04-21T06:50:00Z"
+  target: "Phase 4 P4-4 remediation confirm review (v1.8.5)"
+  evaluated_by: "llm-codex"
+  source: "Codex confirm review of f22fd60..6ee164b"
+  verdict: "approve-with-fixes"
+  remediation_round: "small follow-up after v1.8.5"
+  findings:
+    - id: "codex-phase4-p4-4-confirm-1"
+      severity: "warning"
+      title: "Live recommendation summary still over-claims `3 ProviderOfficial levers`"
+      references:
+        - "src/policy/rules/profiles.rs:349-352"
+      detail: >
+        The lever cells and tests are fixed, but the emitted `reason`
+        string still tells the operator to apply three ProviderOfficial
+        levers. One lever is now explicitly ProjectCanonical, so the
+        user-visible authority story is still slightly inaccurate.
+      resolution: >
+        Rewrite the `reason` string to describe mixed authority
+        honestly.
+    - id: "codex-phase4-p4-4-confirm-2"
+      severity: "warning"
+      title: "The `codex-default` doc comment is stale after the v1.8.5 remediation"
+      references:
+        - "src/policy/rules/profiles.rs:305-314"
+      detail: >
+        The code comment still says the profile bundles three
+        ProviderOfficial levers and still mentions
+        `commit_attribution = false`, even though the implementation
+        now ships `commit_attribution = \"\"` and a 2 PO + 1 PC split.
+      resolution: >
+        Update the comment to match the shipped bundle contract.
+  notes:
+    - "Confirm point #1 is closed in code and tests: `commit_attribution = \"\"` is asserted explicitly."
+    - "Confirm point #2 is closed at the lever/citation level: `tool_output_token_limit = 30000` is now ProjectCanonical with an honest citation."
+    - "Confirm point #3 is closed: the old universal-ProviderOfficial loop was replaced by explicit per-lever assertions."
+    - "`cargo test recommend_codex_default --lib` passes."
+    - "`cargo test --lib` passes (179/179)."
+    - "`cargo clippy --all-targets -- -D warnings` passes."
+  gate_decision: "The original v1.8.4 findings are closed at the implementation/test level, but P4-4 is not fully green yet because live summary text and code comments still over-claim the lever authority mix. Fix that drift, then open P4-5."

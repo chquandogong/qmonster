@@ -1,0 +1,16 @@
+evaluation:
+  timestamp: "2026-04-21T07:05:00Z"
+  target: "Phase 4 P4-4 confirm-remediation re-review (v1.8.6)"
+  evaluated_by: "llm-codex"
+  source: "Codex confirm re-review of 6ee164b..b00aa94"
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "Confirm point #1 is closed: `recommend_codex_default.reason` is now derived from live `profile.levers[*].source_kind` counts and emits the honest `2 ProviderOfficial + 1 ProjectCanonical` summary."
+    - "Confirm point #2 is closed: the `recommend_codex_default` doc-comment now describes the correct 2 PO + 1 PC split and the correct `commit_attribution = \"\"` value."
+    - "Confirm point #3 is closed: the positive-fire unit test now asserts that `rec.reason` contains both `ProviderOfficial` and `ProjectCanonical`."
+    - "`cargo test --lib` passes (179/179)."
+    - "`cargo clippy --all-targets -- -D warnings` passes."
+    - "`cargo test --test event_loop_integration` passes (18/18)."
+  gate_decision: "v1.8.6 fully closes the v1.8.5-confirm warnings. P4-4 is green; proceed to P4-5."

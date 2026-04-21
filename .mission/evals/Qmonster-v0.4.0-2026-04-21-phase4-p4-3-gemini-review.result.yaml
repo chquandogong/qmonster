@@ -1,0 +1,81 @@
+evaluation:
+  timestamp: "2026-04-21T06:00:00Z"
+  target: "Phase 4 P4-3 Gemini G-6 side_effects + claude-script-low-token aggressive profile (v1.8.3) review"
+  evaluated_by: "llm-gemini"
+  source: "Operator-relayed Gemini review of 0e84d9b..18dc25f (chat transcript, 2026-04-21 JST); narrative review archived at .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-3-review.md"
+  verdict: "pass"
+  remediation_round: ""
+  criteria:
+    - name: "8-lever aggressive-profile scope (low-token flags + 3 high-risk env vars)"
+      status: "pass"
+      notes: >
+        Including all three high-risk env vars (CLAUDE_CODE_DISABLE_
+        AUTO_MEMORY, CLAUDE_CODE_DISABLE_CLAUDE_MDS,
+        CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS) in the aggressive
+        bundle makes the VALIDATION.md:144-148 guard test meaningful;
+        the
+        `high_risk_claude_levers_are_gated_to_claude_script_low_token_only`
+        test locks both inclusion (aggressive MUST contain) and
+        exclusion (default MUST NOT contain). Strong safety net for
+        future maintenance.
+    - name: "side_effects wording style"
+      status: "pass"
+      notes: >
+        Full-sentence trade-off descriptions rather than keyword
+        enumeration. Example: "--bare suppresses verbose status
+        output — debugging detail may be harder to reconstruct".
+        ~100 chars each — readable in one TUI glance. Each entry
+        explicitly names the cost of the flag's behavior change.
+    - name: "side_effects section formatting (restrained)"
+      status: "pass"
+      notes: >
+        `side_effects (<n>):` header + `- <effect>` entries. No
+        emoji, no all-caps warnings — matches Qmonster's
+        low-saturation TUI palette. Empty side_effects lists cause
+        the section to be omitted, keeping claude-default visually
+        compact. Clean branch.
+    - name: "Mutual exclusion via shared quota_tight gate"
+      status: "pass"
+      notes: >
+        claude-default has `if gates.quota_tight { return None; }`;
+        aggressive has `if !gates.quota_tight { return None; }`.
+        Pure-function condition inversion, no explicit cross-
+        reference between the two rules. End-to-end integration
+        test `claude_script_low_token_side_effects_flow_end_to_end_under_quota_tight`
+        proves the runtime behavior. Elegant.
+    - name: "G-6 side_effects end-to-end visibility"
+      status: "pass"
+      notes: >
+        `ProviderProfile.side_effects` populated 1:1 with the lever
+        list flows from the rule through Recommendation, PaneReport,
+        and out to both `--once` and the TUI panel via
+        `format_profile_lines`. Integration test asserts the
+        rendered output includes both DISABLE_AUTO_MEMORY and
+        "debugging detail" side_effect strings. Notify stays
+        below the gate because Severity::Good.
+    - name: "Documentation + ledger + memory separation"
+      status: "pass"
+      notes: >
+        No leakage into routers (CLAUDE.md / AGENTS.md / GEMINI.md)
+        or auto-memory. The side_effect string for
+        DISABLE_AUTO_MEMORY cross-references Gemini G-5 explicitly,
+        showing the code layer's convergence on the "auto-memory is
+        not primary state store" principle.
+  notes: >
+    Overall verdict from Gemini (transcript): "P4-3 베이스라인
+    (v1.8.3)을 적극 승인(Approve)합니다. 코드가 견고하며, 테스트
+    커버리지도 훌륭합니다. 시스템이 사용자에게 '비용(cost)을 명확히
+    고지하고 선택을 맡긴다'는 목표를 완벽하게 달성했습니다. 다음
+    단계 작업(P4-4+)으로 바로 넘어가셔도 좋습니다."
+    Verified: 176 lib + 18 integration passing; clippy clean.
+    mission.yaml / mission-history.yaml / .mission/CURRENT_STATE.md
+    updated cleanly with change_sequence 19. Narrative archived at
+    .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-3-review.md.
+  gate_decision: >
+    v1.8.3 P4-3 approved by Gemini (pass / 적극 승인). Parallel
+    Codex review also approve (no must-fix; one non-blocking note
+    about "Five new tests" prose drift at mission.yaml:268 — later
+    done_when/history entries already correct, and this docs-sync
+    round corrects the drift). Proceed to P4-4+ — Codex and Gemini
+    provider profiles (canonical baseline + aggressive variants
+    per provider).

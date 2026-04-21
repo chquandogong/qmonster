@@ -1,0 +1,17 @@
+evaluation:
+  timestamp: "2026-04-21T03:25:07Z"
+  target: "Phase 4 P4-3 Gemini G-6 side_effects + claude-script-low-token aggressive profile (v1.8.3) review"
+  evaluated_by: "llm-codex"
+  source: "Codex review of 0e84d9b..18dc25f"
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "Verified the 8-lever aggressive profile shape: five low-token CLI flags plus all three high-risk env vars, each with `ProviderOfficial` citations."
+    - "Verified G-6 closure: `ProviderProfile.side_effects` is populated 1:1 and rendered on the live path via `ui::panels::format_profile_lines()`."
+    - "Verified mutual exclusion by gate design: `claude-default` gates off on `quota_tight`, so the aggressive profile takes over without a duplicated explicit guard."
+    - "`cargo test --lib` passes (176/176)."
+    - "`cargo test --test event_loop_integration` passes (18/18)."
+    - "`cargo clippy --all-targets -- -D warnings` passes."
+    - "Minor non-blocking wording drift: `mission.yaml:268` says `Five new tests` while this round actually adds 6; later `done_when` and history entries already use the correct count."
+  gate_decision: "Codex review is green for v1.8.3 P4-3. Gemini review remains pending before opening P4-4+."
