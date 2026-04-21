@@ -1,0 +1,50 @@
+evaluation:
+  timestamp: "2026-04-21T11:55:00Z"
+  target: "Phase 4 P4-7 v1.8.10 remediation confirm review (6f5631e..7c9e951)"
+  evaluated_by: "llm-gemini"
+  source: "Operator-relayed Gemini confirm verdict (chat transcript, 2026-04-21 JST)"
+  verdict: "pass"
+  remediation_round: ""
+  criteria:
+    - name: "Codex v1.8.9 P4-7 finding #1 closed (save_memory → experimental.autoMemory)"
+      status: "pass"
+      notes: >
+        Gemini G-5 원칙이 가장 정확한 문서 스펙(Gemini CLI auto
+        memory config key)으로 구현됨. 레버가 phantom config key에서
+        documented key+value로 교체되어 authority graduates to
+        ProviderOfficial (1 PO + 2 PC). Provider surface accuracy
+        확보.
+    - name: "Codex v1.8.9 P4-7 finding #2 closed (stale prose synced)"
+      status: "pass"
+      notes: >
+        profiles.rs 3곳 stale prose (module doc-comment, gemini-
+        default --yolo lever comment, suppression test comment)
+        모두 shipped 3×2 grid 상태로 동기화됨.
+    - name: "Verification re-confirmed"
+      status: "pass"
+      notes: >
+        190개 유닛 테스트, 18개 통합 테스트 런타임, 클리피 경고
+        없음 모두 재확인됨.
+    - name: "Phase 4 3×2 grid milestone"
+      status: "pass"
+      notes: >
+        Provider-profile 3×2 Grid 구축이라는 Phase 4의 주요
+        이정표를 흠집 하나 없이 통과.
+  notes: >
+    Overall verdict from Gemini (transcript): "Codex P4-7 파인딩
+    모두 확실하게 Closed 되었으며, 최종 승인(Approve)합니다. 190개
+    유닛 테스트, 18개 통합 테스트 런타임, 클리피 경고 없음 모두
+    재확인했습니다. Gemini G-5 원칙을 가장 정확한 문서 스펙으로
+    구현해 냈습니다. 이로써 Provider-profile 3×2 Grid 구축이라는
+    Phase 4의 주요 이정표를 흠집 하나 없이 통과하셨습니다. 백필
+    커밋으로 작업 디렉토리를 비우신 후, P4-8+ (VALIDATION.md
+    체크박스 누적 정리) 혹은 Phase 5 (Safer Actuation) 진입을
+    시작하시면 되겠습니다."
+  gate_decision: >
+    v1.8.10 P4-7 remediation confirmed by Gemini (pass / 최종 승인).
+    Codex confirm re-review on same range (6f5631e..7c9e951) still
+    pending — once Codex confirm lands, Phase 4 3×2 grid will be
+    fully gate-approved. Next direction after Codex confirm: either
+    eval-artifact backfill + P4-8+ (VALIDATION.md checkbox tick +
+    deferred non-blocker cleanup) or Phase 5 (Safer actuation —
+    manual prompt-send helper with user confirmation).
