@@ -774,3 +774,121 @@ fn claude_default_profile_levers_flow_end_to_end_to_the_panel_renderer() {
         effects
     );
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4 P4-3 v1.8.3 integration test — aggressive profile with side_effects
+// flows end-to-end from Engine::evaluate through run_once/PaneReport to the
+// live renderer (qmonster::ui::panels::format_profile_lines) under
+// quota_tight mode. This test locks the Gemini G-6 contract: when the
+// operator opts into quota-tight, the `claude-script-low-token` profile
+// fires with its 8 ProviderOfficial levers + 8 operator-visible
+// side_effects, and the renderer surfaces them end-to-end in the same
+// render path the TUI panel and `--once` use. Regression would fail here
+// if the aggressive profile ever dropped the side_effects list or the
+// renderer ever skipped the section.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn claude_script_low_token_side_effects_flow_end_to_end_under_quota_tight() {
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%1",
+            "claude:1:main",
+            "claude",
+            "ok\n",
+            false,
+        )],
+    };
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let notifier = RecordingNotifier(seen.clone());
+    let sink = Box::new(InMemorySink::new());
+
+    // Flip the quota-tight toggle via config. Same safety-precedence
+    // path the runtime would use; no direct PolicyGates surgery.
+    let mut cfg = QmonsterConfig::defaults();
+    cfg.token.quota_tight = true;
+    let mut ctx = Context::new(cfg, source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    let rec = reports[0]
+        .recommendations
+        .iter()
+        .find(|r| r.action == "provider-profile: claude-script-low-token")
+        .expect("claude-script-low-token fires under quota_tight on a healthy Claude main pane");
+
+    // Rec still Severity::Good (positive advisory; stays below the
+    // Notify gate). Mutual exclusion: claude-default must NOT co-exist.
+    assert_eq!(rec.severity, Severity::Good);
+    assert!(
+        !reports[0]
+            .recommendations
+            .iter()
+            .any(|r| r.action == "provider-profile: claude-default"),
+        "mutual exclusion: claude-default must NOT fire when quota_tight is on"
+    );
+
+    // Structured profile payload carries both the lever list and the
+    // populated side_effects list (Gemini G-6).
+    let profile = rec
+        .profile
+        .as_ref()
+        .expect("aggressive profile rec must carry a structured ProviderProfile payload");
+    assert_eq!(profile.levers.len(), 8);
+    assert_eq!(
+        profile.side_effects.len(),
+        8,
+        "G-6 contract: side_effects is 1:1 with lever count"
+    );
+
+    // Live render path: format_profile_lines must surface both the
+    // lever block AND the side_effects block. Shape = 1 header + 8
+    // levers + 1 side-effects header + 8 entries = 18.
+    let lines = qmonster::ui::panels::format_profile_lines(rec);
+    assert_eq!(
+        lines.len(),
+        18,
+        "1 profile header + 8 lever rows + 1 side_effects header + 8 entries"
+    );
+
+    // Lever block: every row carries the [PO] badge.
+    let lever_lines = &lines[1..9];
+    for line in lever_lines {
+        assert!(line.contains("[PO]"), "lever row carries ProviderOfficial badge: {line}");
+    }
+
+    // side_effects block: header + each entry as `- <text>`.
+    let side_effects_header_idx = lines
+        .iter()
+        .position(|l| l.starts_with("side_effects"))
+        .expect("side_effects header line must be in the rendered output");
+    assert!(lines[side_effects_header_idx].contains("(8)"),
+        "header reports count: {}", lines[side_effects_header_idx]);
+    let entries = &lines[side_effects_header_idx + 1..];
+    assert_eq!(entries.len(), 8);
+    assert!(entries.iter().all(|e| e.starts_with("- ")),
+        "every side-effect entry uses the `- <text>` shape");
+
+    // Spot-check one high-risk lever's trade-off reaches the render
+    // path with the expected wording — regression would surface here
+    // if the string ever drifted or disappeared.
+    assert!(
+        entries.iter().any(|e| e.contains("DISABLE_AUTO_MEMORY")),
+        "G-6 contract: the DISABLE_AUTO_MEMORY side-effect must be visible end-to-end"
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.contains("debugging detail")),
+        "G-6 contract: --bare's debugging-detail trade-off must reach the render path"
+    );
+
+    // Notify must NOT be in effects — Severity::Good stays below the
+    // gate, even when the aggressive profile has 8 side_effects.
+    assert!(
+        !reports[0]
+            .effects
+            .contains(&qmonster::domain::recommendation::RequestedEffect::Notify),
+        "aggressive profile is still a positive advisory; Notify must not trigger; effects: {:?}",
+        reports[0].effects
+    );
+}
