@@ -4,7 +4,7 @@
 - Version: v0.4.0
 - Date: 2026-04-20
 - Target env: Ubuntu + tmux + Rust TUI
-- Phase: Phase 0 (planning), no implementation yet.
+- Phase: Phase 4 (provider-profile recommender) — P4-1 foundation shipped. Phases 1–3 complete and gate-approved.
 
 ## What Qmonster is
 

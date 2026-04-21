@@ -46,7 +46,9 @@ src/
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # polling first; control-mode-capable PaneSource trait
   adapters/    # per-provider tail parsers (no identity inference)
-  policy/      # pure rules; Phase 1 = rules/alerts.rs only
+  policy/      # pure rules; Phase 1 = rules/alerts.rs;
+               # Phase 3 adds rules/{advisories,concurrent}.rs;
+               # Phase 4 adds rules/profiles.rs (provider-profile recommender)
   store/       # Phase 1: EventSink trait + NoopSink/InMemorySink
                # Phase 2: sqlite, archive_fs, audit (type-level raw split), snapshots, retention
   ui/          # ratatui widgets, alert queue, per-pane panels, theme
@@ -107,7 +109,11 @@ provider-specific recommendations). Every rule attaches a
 `SourceKind` to its output. Phase 1 ships `rules/alerts.rs` only;
 the A–G canonical situations (log storm / code exploration / context
 pressure / verbose output / permission wait / quota-tight /
-repeated output) land in Phase 3.
+repeated output) land in Phase 3. Phase 4 adds `rules/profiles.rs` —
+a provider-profile recommender that bundles ProviderOfficial CLI
+flags / settings / env vars into named `ProjectCanonical` profiles
+(e.g. `claude-default`) with per-lever citations, consumed via
+`Engine::evaluate` alongside alerts and advisories.
 
 ### `store/`
 
