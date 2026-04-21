@@ -381,14 +381,28 @@ fn codex_default_profile() -> ProviderProfile {
             },
             ProfileLever {
                 key: "tool_output_token_limit",
+                // v1.8.5 remediation (Codex P4-4 finding #2): the KEY
+                // is ProviderOfficial (Codex docs describe it), but
+                // the VALUE 30000 is Qmonster's parity choice with
+                // Claude's BASH_MAX_OUTPUT_LENGTH — Codex's sample
+                // config shows 12000 as an example, not a canonical
+                // default. Label the lever as ProjectCanonical so
+                // the authority stays honest; the citation explains
+                // the split.
                 value: "30000",
-                citation: "Codex docs — settings surface, tool_output_token_limit (parity with Claude BASH_MAX_OUTPUT_LENGTH bound)",
-                source_kind: SourceKind::ProviderOfficial,
+                citation: "Codex docs describe the key (no canonical default — sample shows 12000 as example); Qmonster picks 30000 for cross-provider parity with Claude's BASH_MAX_OUTPUT_LENGTH bound",
+                source_kind: SourceKind::ProjectCanonical,
             },
             ProfileLever {
                 key: "commit_attribution",
-                value: "false",
-                citation: "Codex docs — settings surface, commit_attribution (removes marketing attribution from git commits)",
+                // v1.8.5 remediation (Codex P4-4 finding #1, risk):
+                // Codex docs define `commit_attribution` as a STRING;
+                // disabling the marketing attribution means an empty
+                // string, NOT the literal "false" (which would parse
+                // as the non-empty truthy string "false" and INCLUDE
+                // it as attribution text in commits).
+                value: "",
+                citation: "Codex docs — settings surface, commit_attribution is a string; empty string disables marketing attribution in git commits",
                 source_kind: SourceKind::ProviderOfficial,
             },
         ],
@@ -688,13 +702,20 @@ mod tests {
     }
 
     #[test]
-    fn recommend_codex_default_fires_with_provider_official_levers_on_healthy_codex_main() {
-        // Pattern parity with
-        // `recommend_claude_default_fires_with_provider_official_levers_on_healthy_claude_main`:
-        // rule must fire on a healthy Codex main pane, attach the
-        // structured profile end-to-end (NOT drop it like the v1.8.0
-        // regression), and carry exactly the three ProviderOfficial
-        // levers drawn from VALIDATION.md:137-143.
+    fn recommend_codex_default_fires_with_honest_authority_labels_on_healthy_codex_main() {
+        // v1.8.5 remediation (Codex P4-4 findings): the codex-default
+        // bundle is 2 ProviderOfficial levers (`web_search = cached`,
+        // `commit_attribution = ""`) + 1 ProjectCanonical lever
+        // (`tool_output_token_limit = 30000` — Qmonster parity choice).
+        // This test fails if any of the three lever values or
+        // source_kinds drifts away from that split, including the
+        // specific regressions the Codex P4-4 review caught:
+        //   - commit_attribution must be "" (empty string), NOT "false"
+        //     which would parse as the truthy string "false" per
+        //     Codex docs (risk finding #1).
+        //   - tool_output_token_limit must be labeled ProjectCanonical
+        //     because the value 30000 is Qmonster's parity choice,
+        //     not a Codex-doc canonical default (warning finding #2).
         let id = healthy_codex_main();
         let s = SignalSet::default();
         let recs = eval_profiles(&id, &s, &gates_default());
@@ -707,7 +728,7 @@ mod tests {
         assert_eq!(
             rec.source_kind,
             SourceKind::ProjectCanonical,
-            "profile bundle NAME is our abstraction; levers inside carry ProviderOfficial"
+            "profile bundle NAME is our abstraction"
         );
         assert_eq!(
             rec.severity,
@@ -720,15 +741,14 @@ mod tests {
         );
         assert!(
             rec.reason.contains("ProviderOfficial"),
-            "reason must cite ProviderOfficial authority label: {}", rec.reason
+            "reason must cite ProviderOfficial authority label for the levers that ARE ProviderOfficial: {}",
+            rec.reason
         );
         assert!(
             rec.suggested_command.is_none(),
             "profile rec has no single-surface runnable command (multi-key settings edit)"
         );
 
-        // Structured profile payload reaches the rec end-to-end
-        // (same contract Codex v1.8.1 locked for Claude).
         let profile = rec
             .profile
             .as_ref()
@@ -738,25 +758,51 @@ mod tests {
         assert_eq!(
             profile.levers.len(),
             3,
-            "codex-default bundles three ProviderOfficial levers"
+            "codex-default bundles three levers (2 ProviderOfficial + 1 ProjectCanonical)"
         );
+
+        // Every lever must carry a non-empty citation (universal).
         for lever in &profile.levers {
-            assert_eq!(
-                lever.source_kind,
-                SourceKind::ProviderOfficial,
-                "every lever inside the bundle is ProviderOfficial"
-            );
             assert!(
                 !lever.citation.is_empty(),
-                "every lever carries a non-empty citation"
+                "every lever carries a non-empty citation: {:?}",
+                lever,
             );
         }
-        // Spot-check the three expected lever keys — silent key drift
-        // or re-ordering fails here.
-        let keys: Vec<&str> = profile.levers.iter().map(|l| l.key).collect();
-        assert!(keys.contains(&"web_search"));
-        assert!(keys.contains(&"tool_output_token_limit"));
-        assert!(keys.contains(&"commit_attribution"));
+
+        // Per-lever value + source_kind contract. Exact values
+        // prevent silent drift (the commit_attribution = "false"
+        // regression caught by Codex P4-4 review would fail here).
+        let find_lever = |key: &str| -> &ProfileLever {
+            profile
+                .levers
+                .iter()
+                .find(|l| l.key == key)
+                .unwrap_or_else(|| panic!("lever `{key}` must be present in codex-default"))
+        };
+
+        let web_search = find_lever("web_search");
+        assert_eq!(web_search.value, "cached");
+        assert_eq!(
+            web_search.source_kind,
+            SourceKind::ProviderOfficial,
+            "web_search default is a Codex-doc fact"
+        );
+
+        let tool_limit = find_lever("tool_output_token_limit");
+        assert_eq!(tool_limit.value, "30000");
+        assert_eq!(
+            tool_limit.source_kind,
+            SourceKind::ProjectCanonical,
+            "the value 30000 is Qmonster's parity choice with Claude BASH_MAX_OUTPUT_LENGTH; Codex docs describe the key but don't mandate this value (Codex P4-4 finding #2)"
+        );
+
+        let commit_attr = find_lever("commit_attribution");
+        assert_eq!(
+            commit_attr.value, "",
+            "Codex docs: commit_attribution is a STRING; empty string disables marketing attribution. Literal \"false\" would parse as truthy and wrongly include 'false' as attribution text (Codex P4-4 finding #1, risk)"
+        );
+        assert_eq!(commit_attr.source_kind, SourceKind::ProviderOfficial);
 
         // Healthy baseline has no operator-visible trade-offs.
         assert!(
