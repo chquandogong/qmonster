@@ -4,7 +4,7 @@ Observe-first TUI for multi-CLI tmux development — watches Claude Code /
 Codex / Gemini panes (plus itself), surfaces alerts, token-pressure
 metrics, and recommendations **without** touching the panes it observes.
 
-- Version: v0.4.0 (Phase 4 complete; P4-8 wrap-up v1.8.12 shipped locally; Phase 5 not started)
+- Version: v0.4.0 project phase; mission revision = 1.8.12 (shared-verification hardening); crate package version = 0.1.0; Phase 5 not started
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -129,10 +129,11 @@ tmux/          qmonster.tmux.conf.example
 tests/         integration tests
 ```
 
-Local, single-user artefacts (gitignored): `.docs/`, `mission.yaml`,
-`mission-history.yaml`, `.mission/`, `CLAUDE.local.md`. The project is
-in the single-user phase of its gitignore policy; see
-`docs/ai/WORKFLOWS.md` §7 for the team/CI flip path.
+Local-only artefacts (gitignored): `.docs/`,
+`.mission/CURRENT_STATE.md`, `.mission/snapshots/`,
+`.mission/templates/`, `CLAUDE.local.md`. Shared repo ledger artefacts:
+`mission.yaml`, `mission-history.yaml`, `docs/ai/*`, `.mission/evals/`.
+See `docs/ai/WORKFLOWS.md` §7 for the exact tracking split.
 
 ## Development
 
@@ -140,6 +141,9 @@ in the single-user phase of its gitignore policy; see
 cargo test --all-targets
 cargo clippy --all-targets -- -D warnings
 cargo build
+mission-spec validate .
+mission-spec eval --shared .
+MISSION_SPEC_CLI=/abs/path/to/mission-spec.js ./scripts/verify-shared.sh
 ```
 
 The event-loop integration tests use a fixture `PaneSource` so they do

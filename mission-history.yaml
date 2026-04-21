@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — planning foundation"
+  mission_title: "Qmonster v0.4.0 — Phase 4 shared-verification hardening v1.8.12"
   tracking_since: "2026-04-20"
-  tracking_mode: "local-first (single-user)"
-  total_revisions: 27
-  latest_version: "1.8.11"
+  tracking_mode: "human-led multi-agent shared repo ledger"
+  total_revisions: 28
+  latest_version: "1.8.12"
 
 timeline:
   - change_id: "initial"
@@ -3311,8 +3311,91 @@ timeline:
       - "Request short Codex confirm re-review on v1.8.11 (Gemini v1.8.10 confirm already pass; Codex v1.8.10 confirm is what this round answers)"
       - "On green, proceed to P4-8+ (VALIDATION.md Phase-4 checkbox ticking + any deferred non-blockers) or open Phase 5 (safer actuation — manual prompt-send helper with user confirmation)"
 
+  - change_id: "phase4-shared-verification-hardening"
+    semantic_version: "1.8.12"
+    change_sequence: 28
+    date: "2026-04-22"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code"
+      - "Codex"
+      - "Gemini CLI"
+    change_type: "hardening"
+    motivation_type: "portability"
+    persistence: "permanent"
+    intent: >
+      Align the public repository contract with actual Git tracking and
+      shared-clone verification so mission-spec can evaluate the shared
+      repo without requiring local-only handoff files.
+    intent_ko: >
+      공개 저장소 계약을 실제 Git 추적 상태 및 shared-clone 검증 기준에
+      맞춰, mission-spec이 local-only handoff 파일 없이도 공개 저장소를
+      평가할 수 있도록 정렬한다.
+    decision: >
+      Shrink the live mission contract to portable shared gates only:
+      cargo build/test/clippy, mission-spec validation, and a small set
+      of tracked artifact-existence checks. Keep `.mission/
+      CURRENT_STATE.md` and `.docs/*` as local workflow artifacts, not
+      shared acceptance gates.
+    decision_ko: >
+      live mission contract는 portable shared gate만 남긴다:
+      cargo build/test/clippy, mission-spec validation, 그리고 추적되는
+      소수의 artefact 존재 조건. `.mission/CURRENT_STATE.md`와 `.docs/*`
+      는 shared acceptance gate가 아니라 local workflow artefact로 둔다.
+    triggered_by: "mission-spec shared review on GitHub main HEAD a03accc"
+    issue_or_context: >
+      mission-spec validate already passes on the public repo, but
+      mission-spec eval --shared only reaches 14/86 because the live
+      done_when contract still mixes shared gates with local-only and
+      prose-heavy historical criteria.
+    changes:
+      added:
+        - "scripts/verify-shared.sh"
+      modified:
+        - "README.md"
+        - "docs/ai/WORKFLOWS.md"
+        - "mission.yaml"
+        - "mission-history.yaml"
+      removed: []
+    changed_sections:
+      - "shared repo verification contract"
+      - "tracking model wording"
+      - "portable eval commands"
+      - "README / WORKFLOWS shared-vs-local split"
+    done_when_delta:
+      added:
+        - "cargo_build_passes"
+        - "cargo_test_passes"
+        - "cargo_clippy_clean"
+        - "mission.yaml exists"
+        - "mission-history.yaml exists"
+        - "docs/ai/WORKFLOWS.md exists"
+        - "scripts/verify-shared.sh exists"
+      modified:
+        - "shared completion now targets portable repo-level verification instead of prose-heavy historical gates"
+      removed:
+        - "Phase 0: mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate against the mission-spec schema."
+        - "Phase 0: .docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md exists and covers all 11 required sections."
+        - "Phase 0: .docs/final/Qmonster-v0.4.0-2026-04-20-claude-final-r2.md exists, classifies every reviewer item, documents the SourceKind taxonomy, and records the r2 edits applied to canonical docs and the ledger."
+    impact_scope:
+      runtime: "none — product code unchanged"
+      verification: "shared clone can evaluate portable gates directly"
+      docs: "README and WORKFLOWS now describe the actual tracked-vs-local split"
+      ledger: "mission title / tracking mode / latest version metadata aligned with the public repo contract"
+    breaking: false
+    risk: "low — contract/documentation hardening only; no Rust behavior change"
+    related_commits: []
+    related_decisions:
+      - "KD-002"
+      - "KD-003"
+      - "KD-006"
+    snapshot_after: ""
+    follow_up:
+      - "Run mission-spec eval --shared . and confirm the live contract is fully machine-evaluable on a fresh clone"
+      - "If desired, add a CI job that calls scripts/verify-shared.sh"
+
 evolution_summary:
-  current_phase: "Phase 4 COMPLETE — fully gate-approved by both reviewers. Codex v1.8.11 confirm2 returned `approve` (no findings) on 7c9e951..db98022; Gemini v1.8.10 confirm approve stands. 3×2 provider-profile grid (Claude + Codex + Gemini × baseline + aggressive) shipped and locked. Canonical docs synced: PROJECT_BRIEF.md phase line updated; VALIDATION.md Phase-4 checkboxes ticked (6 of 7 — token.thresholds deferred to Phase-1 fixture measurement); UI_MANUAL.md section 6 added for Provider Profile render format. Ready to open P4-8+ (remaining VALIDATION.md item + any deferred non-blockers) or Phase 5 (Safer Actuation)."
+  current_phase: "Phase 4 COMPLETE — shared-verification hardening v1.8.12 applied on top of the fully gate-approved profile grid. Codex v1.8.11 confirm2 returned `approve` (no findings) on 7c9e951..db98022; Gemini v1.8.10 confirm approve stands. 3×2 provider-profile grid (Claude + Codex + Gemini × baseline + aggressive) shipped and locked, and the public repo contract now distinguishes tracked shared ledger files from local-only handoff files. Ready to open P4-8+ (remaining VALIDATION.md item + any deferred non-blockers) or Phase 5 (Safer Actuation)."
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

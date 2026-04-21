@@ -1,6 +1,6 @@
 mission:
-  version: "1.8.11"
-  title: "Qmonster v0.4.0 — Phase 4 P4-7 follow-up v1.8.11 (2 additional gemini-script-low-token prose drifts fixed per Codex v1.8.10 confirm approve-with-fixes; authority split now honestly documented in all profiles.rs comments)"
+  version: "1.8.12"
+  title: "Qmonster v0.4.0 — Phase 4 shared-verification hardening v1.8.12"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -554,155 +554,17 @@ mission:
     VALIDATION.md:154-156 Phase-4 check (auto-memory guidance).
 
   done_when:
-    # Phase-0 artefacts (kept as historical gating criteria — already met).
-    - "Phase 0: mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate against the mission-spec schema."
-    - "Phase 0: docs/ai/{PROJECT_BRIEF,ARCHITECTURE,VALIDATION,WORKFLOWS,REVIEW_GUIDE}.md contain real canonical content (not placeholder stubs)."
-    - "Phase 0: CLAUDE.md, AGENTS.md, GEMINI.md are thin routers (each ≤ ~60 lines) routing to canonical docs and the mission ledger without duplicating content."
-    - "Phase 0: .docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md exists and covers all 11 required sections."
-    - "Phase 0: .docs/final/Qmonster-v0.4.0-2026-04-20-claude-final-r2.md exists, classifies every reviewer item, documents the SourceKind taxonomy, and records the r2 edits applied to canonical docs and the ledger."
-    - "Phase 0: Codex r1 cross-check at .docs/codex/…-codex-crosscheck-r1.md and Gemini r1 research at .docs/gemini/…-gemini-research-r1.md were consumed by the r2 synthesis."
-    - "Phase 0: Official-vs-heuristic labeling preserved throughout canonical docs; every numeric threshold is ProviderOfficial / ProjectCanonical / Heuristic / Estimated."
-
-    # Phase-1 implementation criteria (all must be true for Phase 2 gate).
-    - "Phase 1: Rust source tree matches docs/ai/ARCHITECTURE.md + final-r2.md §6.3: src/{tmux,domain,adapters,policy,store,ui,notify,app,main} plus src/app/{safety_audit,system_notice,version_drift}. Identity inference lives only in domain/; policy/ is pure (no IO); store/ ships EventSink trait + NoopSink + InMemorySink only (no SQLite, no archive persistence)."
-    - "Phase 1: cargo build succeeds; cargo test passes (lib + integration); cargo clippy --all-targets -- -D warnings is clean."
-    - "Phase 1: `qmonster --once` reports pane discovery + resolved identity (provider, instance, role, confidence) + signal chips + metric rows with SourceKind badges + recommendations."
-    - "Phase 1: alert rules fire for input-wait, permission-wait, log-storm, repeated-output, verbose-answer, error-hint, and subagent-hint; each carries a SourceKind and a reason."
-    - "Phase 1: pane_dead transitions drain alerts for that pane (Gemini G-12); disappeared panes are reset to Reappeared on re-attach."
-    - "Phase 1: version-drift detector captures CLI versions on startup (audit kind StartupVersionSnapshot) and surfaces drift as a warning-severity SystemNotice in the alert queue on operator refresh."
-    - "Phase 1: safety-precedence asymmetry is enforced at startup; every attempted upward override is rejected AND recorded as AuditEventKind::SafetyOverrideRejected at risk severity; unknown keys are recorded at concern severity."
-    - "Phase 1: app::EffectRunner dispatches on out.effects (RequestedEffect) — not on the recommendation list — so Phase 2 ArchiveLocal and future effects plug in without touching the loop."
-    - "Phase 1: PaneReport carries identity + signals + effects; UI panel renders signal chips, metric rows with SourceKind badges, and recommendation list."
-    - "Phase 1: runtime FS writes stay inside ~/.qmonster/ (Phase 1 writes nothing at all — only in-memory sink)."
-
-    # Phase-1 gate remediation (v1.3.0, previous revision).
-    - "Gate remediation v1.3.0: Codex Phase-1 findings 1–5 closed; Gemini missing scenarios verified integrated; mission/history/state docs aligned; Codex review recorded under .mission/evals + .docs/codex."
-
-    # Phase-2 implementation criteria (v1.4.0, this revision).
-    - "Phase 2: src/store/{paths,audit,sqlite,archive_fs,snapshots,retention}.rs exist; SqliteAuditSink implements EventSink; ArchiveWriter writes raw tails under ~/.qmonster/archive/YYYY-MM-DD/<pane>/; SnapshotWriter writes JSON under ~/.qmonster/snapshots/ and never touches .mission/CURRENT_STATE.md; retention sweep honors logging.retention_days."
-    - "Phase 2: audit writer is type-level raw-free (AuditEvent only; DB schema has no raw_tail/bytes column)."
-    - "Phase 2: policy::Engine emits RequestedEffect::ArchiveLocal on log_storm; app::EffectRunner allow-list gates it; observe_only mode blocks archive writes."
-    - "Phase 2: version-drift previous snapshot persists to ~/.qmonster/versions.json; startup loads it, diffs against a fresh capture, and routes drift to a warning SystemNotice."
-    - "Phase 2: main.rs opens SqliteAuditSink with in-memory fallback; CLI flag --root, env QMONSTER_ROOT, and storage.root config settle the ~/.qmonster/ path."
-    - "Phase 2: TUI key 's' writes a runtime snapshot; 'r' re-captures versions; 'c' clears notices; 'q'/Esc quit."
-    - "Phase 2: new AuditEventKinds — ArchiveWritten, SnapshotWritten, RetentionSwept — recorded at appropriate severities."
-    - "Phase 2: cargo build + cargo test + cargo clippy --all-targets -- -D warnings all clean. Live `--once` smoke test produces qmonster.db, versions.json, and archive/YYYY-MM-DD/<pane>/*.log files."
-
-    # Phase-2 gate remediation (v1.5.0).
-    - "Phase-2 remediation: version snapshot load errors surface via AuditEventKind::VersionSnapshotError; a corrupted versions.json is PRESERVED and a warning SystemNotice fires (Codex finding #1)."
-    - "Phase-2 remediation: SqliteAuditSink tracks runtime INSERT failures in an AtomicU64; stderr hint on every failure; error_count() exposes durability degradation to tests and operators (Codex finding #2)."
-    - "Phase-2 remediation: storage root precedence matches docs/ai/ARCHITECTURE.md — env > CLI > storage.root > default — via a pure pick_root() helper with 4 unit tests (Codex finding #3)."
-
-    # Phase-3A implementation criteria (v1.6.0, this revision).
-    - "Phase 3A: src/policy/rules/advisories.rs holds A/B/C/C-crit/D/F-nudge/G as pure functions; src/policy/rules/concurrent.rs holds G-11."
-    - "Phase 3A: Engine::evaluate takes &PolicyGates; Notify effect fires only for Severity >= Warning (Codex #3 closed)."
-    - "Phase 3A: Aggressive variants fire only when gates.quota_tight == true (S3 guardrail tested)."
-    - "Phase 3A: Provider-flavored advisories suppressed on IdentityConfidence::Low|Unknown."
-    - "Phase 3A: Concurrent-work rule requires same current_path + Main/Review role + !waiting + output_chars>=500; anchor = lex-smallest pane_id."
-    - "Phase 3A: Phase-1 unit-test backfill for repeated_output/verbose_answer/error_hint (Gemini #1 closed)."
-    - "Phase 3A: cargo build + cargo test (~152 lib + ~12 integration) + cargo clippy --all-targets -- -D warnings all clean."
-
-    # Phase-3A gate remediation (v1.6.1).
-    - "Phase 3A remediation v1.6.1: dispatch_notify filters by Severity >= Warning (Codex #1 closed)."
-    - "Phase 3A remediation v1.6.1: alert_event splits AlertFired (>= Warning) vs RecommendationEmitted (< Warning) by severity (Codex #2 closed)."
-    - "Phase 3A remediation v1.6.1: canonical docs (VALIDATION.md, ARCHITECTURE.md) acknowledge the shipped same-current_path G-11 proxy (Codex #3 closed)."
-
-    # Phase-3B (v1.7.0).
-    - "Phase 3B: advisory rules carry suggested_command where an actionable CLI snippet exists (tmux capture-pane, /compact, config-edit comments); rules without a clean equivalent stay None (Gemini G-2 closed)."
-    - "Phase 3B: Recommendation.is_strong flag set on context_pressure_warning + context_pressure_critical; UI renders strong recs in dedicated slot above per-pane alerts with `>> CHECKPOINT:` prefix (Gemini G-7 closed)."
-    - "Phase 3B: cargo build + cargo test (~155 lib + ~16 integration) + cargo clippy --all-targets -- -D warnings all clean."
-
-    # Phase-3B retry-remediation (v1.7.1).
-    - "Phase 3B retry-remediation v1.7.1: suggested_command populated on 10 total rules (4 from v1.7.0 + 6 new in alerts/advisories/concurrent) — config-edit pointers where no runnable CLI exists."
-    - "Phase 3B retry-remediation v1.7.1: remaining None suggested_command sites carry inline justification comments; Gemini G-2 retry finding closed."
-
-    # Phase-3B strong-rec command refinement (v1.7.2) — SUPERSEDED by v1.7.3.
-    # The two v1.7.2 `done_when` statements (embedding snapshot precondition
-    # inside suggested_command, plus substring-contract tests) are no longer
-    # true of the shipped code. Historical record lives in
-    # mission-history.yaml (change_sequence 11). Removed from the live
-    # mission contract at v1.7.4 per Codex v1.7.3 review finding #1.
-
-    # Phase-3B strong-rec contract cleanup (v1.7.3).
-    - "Phase 3B strong-rec contract cleanup v1.7.3: Recommendation gains next_step: Option<String> for prose preconditions; suggested_command on all rules is a single-surface runnable value (shell cmd / slash-command / `# config-edit` pointer). Codex v1.7.2 finding #1 closed."
-    - 'Phase 3B strong-rec contract cleanup v1.7.3: strong-rec suggested_command on context_pressure_warning + context_pressure_critical is exact Some("/compact"); next_step carries the `press ''s'' to snapshot …` precondition. Tests assert_eq exact-string + render-ordering (`next:` before `run:`). Codex v1.7.2 finding #2 closed.'
-    - "Phase 3B strong-rec contract cleanup v1.7.3: ui::alerts::format_strong_rec_body is the single pub helper used by both the TUI alert queue and `--once`; unit tests on the helper + integration test on a live Engine::evaluate output lock the render format."
-
-    # Phase-3B ledger normalization (v1.7.4).
-    - "Phase 3B ledger normalization v1.7.4: superseded v1.7.2 strong-rec done_when entries removed from the live mission contract; historical record retained in mission-history.yaml (change_sequence 11). mission.yaml and mission-history.yaml tell the same current story. Codex v1.7.3 review finding #1 closed."
-
-    # Phase-3B Gemini review artifact backfill (v1.7.5).
-    - "Phase 3B Gemini review artifact backfill v1.7.5: Gemini v1.7.3 `pass` verdict is recorded per WORKFLOWS.md:56-58 — narrative at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md` + structured mirror at `.mission/evals/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-gemini-review.result.yaml`. CURRENT_STATE.md gate-status table cites the files. Codex v1.7.4 review finding #1 closed."
-
-    # Phase-3B Gemini review artifact template compliance (v1.7.6).
-    - "Phase 3B Gemini review artifact template compliance v1.7.6: the Gemini v1.7.3 narrative review at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md` carries all eleven required sections from `docs/ai/REVIEW_GUIDE.md:77-95` in order (Executive summary, What the plan got right, Must-fix, Scope-reduction suggestions, Token-optimization architecture, Doc/mission/memory separation, Provider abstraction + tmux, Safety/audit/approval, Official-vs-heuristic, Concrete TODOs, Final verdict). Codex v1.7.5 review finding #1 closed."
-
-    # Phase-4 P4-1 (v1.8.0) — provider-profile recommender foundation.
-    - "Phase 4 P4-1 v1.8.0: `src/domain/profile.rs` introduces `ProviderProfile` (name: ProjectCanonical; levers: Vec<ProfileLever>; side_effects: Vec<String>; source_kind: SourceKind) and `ProfileLever` (key, value, citation, source_kind). Profile bundle name is ProjectCanonical; individual levers inside are ProviderOfficial with explicit per-lever citations."
-    - "Phase 4 P4-1 v1.8.0: `src/policy/rules/profiles.rs::eval_profiles` is wired into `Engine::evaluate` after advisories. `recommend_claude_default` fires a `Severity::Good` profile recommendation on Claude main panes when IdentityConfidence >= Medium, no active alerts, `!quota_tight`, and `context_pressure < 0.75`. The rec bundles three ProviderOfficial levers (`CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS`, `BASH_MAX_OUTPUT_LENGTH`, `includeGitInstructions`) each with a docs citation. suggested_command is None with inline justification (applying a profile is multi-key settings editing, not a single runnable command)."
-    - "Phase 4 P4-1 v1.8.0: 4 new unit tests total — 2 in domain/profile.rs (lock data shape: ProjectCanonical profile name + ProviderOfficial lever citations + empty P4-1 side_effects) and 2 in policy/rules/profiles.rs (rule fires on healthy Claude main with Good severity / ProjectCanonical profile source; suppressed on non-Claude provider). 163 lib + 16 integration; clippy --all-targets -D warnings clean."
-
-    # Phase-4 P4-1 remediation (v1.8.1).
-    - "Phase 4 P4-1 remediation v1.8.1: `Recommendation` gains `profile: Option<ProviderProfile>`. `recommend_claude_default` attaches the structured `claude-default` profile to the rec so lever key/value/citation/SourceKind survive past `Recommendation` into `PaneReport`, `--once`, and the TUI per-pane panel. `pub fn qmonster::ui::panels::format_profile_lines(rec) -> Vec<String>` is the single shared renderer called from both `main.rs` (--once) and `panels.rs::panel_body`. Codex v1.8.0 P4-1 review finding #1 closed."
-    - "Phase 4 P4-1 remediation v1.8.1: three new tests lock the end-to-end contract — unit in `policy/rules/profiles.rs` (rec.profile Some with 3 ProviderOfficial levers, non-empty citations, expected keys), unit in `ui/panels.rs` (renderer emits header with [PC] badge + lever count + profile name; each lever row contains [PO] badge + key + value + citation; empty Vec when no profile), integration in `tests/event_loop_integration.rs` (live `Engine::evaluate -> run_once` output fed through `format_profile_lines` yields 4 lines with all four authority pieces visible per lever; Severity::Good still does NOT trigger Notify)."
-    - "Phase 4 P4-1 remediation v1.8.1: Gemini's parallel v1.8.0 review (`pass` / 적극 승인) is recorded per WORKFLOWS.md:56-58 at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-review.md` + structured mirror at `.mission/evals/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-gemini-review.result.yaml`. 166 lib + 17 integration (up from 163 + 16); clippy --all-targets -D warnings clean."
-
-    # Phase-4 P4-2 (v1.8.2) — Gemini G-5 auto-memory guide.
-    - 'Phase 4 P4-2 v1.8.2: `src/policy/rules/auto_memory.rs::eval_auto_memory` is wired into `Engine::evaluate` after profiles. `recommend_mdr_over_auto_memory` fires a `Severity::Concern` passive advisory with `source_kind: ProjectCanonical` when `signals.task_type` is `Review` or `SessionResume`. The rec carries `next_step: Some("record in `.mission/CURRENT_STATE.md` or create a new `.mission/decisions/MDR-XXX.md`; avoid provider save_memory / auto-memory for state-critical content")`. Gemini G-5 VALIDATION.md:154-156 check closed.'
-    - "Phase 4 P4-2 v1.8.2: `recommend_mdr_over_auto_memory` respects the KD-007 IdentityConfidence gate (Low/Unknown suppressed because adapter task_type is unreliable) and suppresses on `waiting_for_input || permission_prompt` (operator attention already routed). No Notify trigger (Severity::Concern stays below the gate); no new RequestedEffect."
-    - "Phase 4 P4-2 v1.8.2: 5 new unit tests in `auto_memory.rs` lock the contract — fires on Review with ProjectCanonical source + MDR/CURRENT_STATE.md/save_memory next_step + Concern severity; fires on SessionResume; suppressed on Unknown/CodeExploration/LogTriage/Summary/Automation; suppressed on Low confidence; suppressed on waiting_for_input or permission_prompt. 171 lib + 17 integration (up from 166 + 17); clippy --all-targets -D warnings clean."
-
-    # Phase-4 P4-3 (v1.8.3) — Gemini G-6 side_effects + claude-script-low-token aggressive profile.
-    - "Phase 4 P4-3 v1.8.3: `src/policy/rules/profiles.rs::recommend_claude_script_low_token` fires a `Severity::Good` rec under `gates.quota_tight == true` on healthy Claude main panes. The bundled `ProviderProfile` `claude-script-low-token` carries 8 ProviderOfficial levers (`--bare`, `--exclude-dynamic-system-prompt-sections`, `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`, `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS=1`) each with per-lever citation. `claude-default` and the aggressive profile are mutually exclusive by design."
-    - "Phase 4 P4-3 v1.8.3: Gemini G-6 closed — `ProviderProfile.side_effects` on `claude-script-low-token` is 1:1 with the lever list (8 operator-visible trade-off strings). `ui::panels::format_profile_lines` renders the side_effects section as `side_effects (<n>):` header + `- <effect>` entries after the lever block; empty lists (as in `claude-default`) cause the section to be omitted so healthy-state baseline stays visually compact."
-    - "Phase 4 P4-3 v1.8.3: VALIDATION.md:144-148 high-risk-lever guard enforced at the test layer — `claude_default_profile` MUST NOT contain `CLAUDE_CODE_DISABLE_AUTO_MEMORY` / `CLAUDE_CODE_DISABLE_CLAUDE_MDS` / `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`; `claude_script_low_token_profile` MUST contain all three. Both directions locked by `high_risk_claude_levers_are_gated_to_claude_script_low_token_only`."
-    - "Phase 4 P4-3 v1.8.3: 6 new tests total — 3 unit in `policy/rules/profiles.rs` (shape, gate, high-risk guard), 2 unit in `ui/panels.rs` (side_effects section present/omitted), 1 end-to-end integration in `tests/event_loop_integration.rs` (quota_tight → 18 rendered lines with DISABLE_AUTO_MEMORY + debugging-detail trade-offs visible; no Notify trigger). 176 lib + 18 integration (up from 171 + 17); clippy --all-targets -D warnings clean."
-
-    # Phase-4 P4-4 (v1.8.4) — codex-default baseline profile.
-    # Superseded-in-part by v1.8.5 remediation below (commit_attribution
-    # value + tool_output_token_limit authority label). The fire
-    # conditions + provider-gate purity statements remain current.
-    - "Phase 4 P4-4 v1.8.4: `src/policy/rules/profiles.rs::recommend_codex_default` fires a `Severity::Good` rec with `source_kind: ProjectCanonical` when provider is Codex, role is Main, IdentityConfidence >= Medium, `!quota_tight`, no active alerts, and `context_pressure < 0.75`. `side_effects: vec![]` (healthy-state baseline); the aggressive Codex variant in P4-5 will populate it."
-    - "Phase 4 P4-4 v1.8.4: provider gates stay pure — a Codex pane never fires `claude-default` / `claude-script-low-token`, and a Claude pane never fires `codex-default`. All three profile rules coexist cleanly in `eval_profiles` via their own `if provider != ... { return None; }` guards."
-
-    # Phase-4 P4-4 remediation (v1.8.5) — Codex + Gemini P4-4 findings.
-    - 'Phase 4 P4-4 remediation v1.8.5: `codex-default` bundles 3 levers drawn from VALIDATION.md:137-143 — 2 ProviderOfficial (`web_search = cached`, `commit_attribution = ""`) + 1 ProjectCanonical (`tool_output_token_limit = 30000` — Qmonster parity choice with Claude BASH_MAX_OUTPUT_LENGTH; Codex docs describe the key but don''t mandate this value). Citations updated accordingly. Codex P4-4 finding #1 (risk: `commit_attribution = "false"` wrong per Codex spec; empty string disables) and Gemini''s parallel finding both closed. Codex P4-4 finding #2 (warning: authority-label over-claim on `tool_output_token_limit`) closed.'
-    - 'Phase 4 P4-4 remediation v1.8.5: positive-fire unit test renamed to `recommend_codex_default_fires_with_honest_authority_labels_on_healthy_codex_main` and tightened — per-lever exact value + source_kind assertions replace the prior loop that blanket-asserted every lever as ProviderOfficial. `commit_attribution = "false"` (the regression Codex / Gemini caught) would fail the new test. 179 lib + 18 integration (unchanged test count; one rewritten test in place); clippy --all-targets -D warnings clean.'
-
-    # Phase-4 P4-4 confirm-remediation (v1.8.6) — prose drift cleanup.
-    - 'Phase 4 P4-4 confirm-remediation v1.8.6: `recommend_codex_default`''s user-visible `reason` string in `src/policy/rules/profiles.rs` no longer asserts a uniform "3 ProviderOfficial levers" — it is derived at runtime from `profile.levers[*].source_kind` and now reads "apply 3 levers for a healthy-state baseline main-pane Codex session — 2 ProviderOfficial + 1 ProjectCanonical (see lever list below for per-lever citations)". Future authority changes auto-propagate into the summary. Codex v1.8.5-confirm finding #1 (warning: stale reason summary) closed.'
-    - 'Phase 4 P4-4 confirm-remediation v1.8.6: the `recommend_codex_default` doc-comment in `src/policy/rules/profiles.rs` is rewritten to describe the honest 2 ProviderOfficial + 1 ProjectCanonical split, the correct `commit_attribution = ""` value, and the Codex v1.8.4-review finding #2 rationale for the ProjectCanonical label on `tool_output_token_limit`. Codex v1.8.5-confirm finding #2 (warning: stale doc comment) closed.'
-    - 'Phase 4 P4-4 confirm-remediation v1.8.6: the positive-fire unit test adds a `rec.reason.contains("ProjectCanonical")` assertion alongside the existing `contains("ProviderOfficial")` check, locking the reason-summary honesty at the test layer. 179 lib + 18 integration (unchanged test count; one existing test tightened in place with +1 assertion); clippy --all-targets -D warnings clean.'
-
-    # Phase-4 P4-5 (v1.8.7) — codex-script-low-token aggressive profile.
-    - "Phase 4 P4-5 v1.8.7: `src/policy/rules/profiles.rs::recommend_codex_script_low_token` fires a `Severity::Good` rec under `gates.quota_tight == true` on healthy Codex main panes. The bundled `ProviderProfile` `codex-script-low-token` carries 7 levers drawn from VALIDATION.md:137-143 that were explicitly reserved away from `codex-default`: 1 ProjectCanonical (`model_auto_compact_token_limit = 100000` — Qmonster-chosen threshold, same honesty pattern as `tool_output_token_limit` in codex-default) + 6 ProviderOfficial (`[features].apps = false`, `[apps._default].enabled = false`, and four `codex exec` flags: `--json`, `--sandbox read-only`, `--ephemeral`, `--color never`). Each lever carries a per-lever Codex-docs citation."
-    - "Phase 4 P4-5 v1.8.7: Gemini G-6 parity for Codex closed — `ProviderProfile.side_effects` on `codex-script-low-token` is 1:1 with the lever list (7 operator-visible trade-off strings, each a full sentence). The reason summary derives ProviderOfficial / ProjectCanonical counts at runtime from `profile.levers[*].source_kind` (same pattern as codex-default after v1.8.6 remediation) so future authority changes auto-propagate into the summary."
-    - "Phase 4 P4-5 v1.8.7: `codex-default` and `codex-script-low-token` are mutually exclusive by design via the `gates.quota_tight` gate (same shape as `claude-default` ↔ `claude-script-low-token` from P4-3). Provider gates stay pure across all four profile rules — a Codex pane never fires any `claude-*` profile, a Claude pane never fires any `codex-*` profile."
-    - "Phase 4 P4-5 v1.8.7: 4 new unit tests in `policy/rules/profiles.rs` — shape (7 levers + 7 side_effects, Good severity, ProjectCanonical source, derived-from-data reason summary with both ProviderOfficial and ProjectCanonical counts, spot-checks on auto-compaction and sandbox trade-offs); gate-off (suppressed when !quota_tight; codex-default fires instead); provider-gate suppression on Claude pane (claude-script-low-token sanity check); explicit mutual-exclusion test toggling quota_tight and asserting exactly one of the two Codex profiles fires. 183 lib + 18 integration (up from 179 + 18); clippy --all-targets -D warnings clean."
-
-    # Phase-4 P4-6 (v1.8.8) — gemini-default baseline profile.
-    - "Phase 4 P4-6 v1.8.8: `src/policy/rules/profiles.rs::recommend_gemini_default` fires a `Severity::Good` rec with `source_kind: ProjectCanonical` when provider is Gemini, role is Main, IdentityConfidence >= Medium, `!quota_tight`, no active alerts, and `context_pressure < 0.75`. The bundled `ProviderProfile` `gemini-default` carries 2 levers, BOTH labeled `ProjectCanonical` (0 ProviderOfficial) — Gemini's documented config surface for explicit token-efficiency is narrower than Claude Code's or Codex's, so each VALUE is an honest Qmonster pick rather than a canonical default."
-    - "Phase 4 P4-6 v1.8.8: gemini-default's two levers are `--model = gemini-2.5-flash` (Qmonster's baseline model pick for healthy main-pane sessions; Gemini CLI docs describe --model but don't mandate a canonical default) and `--yolo = unset` (Qmonster architectural recommendation per safety-precedence constraint to keep --yolo UNSET on a healthy interactive baseline; the aggressive Gemini variant in P4-7 will reserve the auto-approval path for quota_tight-opted sessions). Each lever carries a per-lever citation explaining the documented-key/Qmonster-chosen-value split."
-    - "Phase 4 P4-6 v1.8.8: VALIDATION.md:149-150 constraint (`Gemini profile recommendations stay advisory; save_memory / Auto Memory is not treated as a state store`) is NOT duplicated as a lever in gemini-default — it is already enforced by the separate `recommend_mdr_over_auto_memory` rule from P4-2 (`src/policy/rules/auto_memory.rs`), which fires on any provider including Gemini under state-critical task types."
-    - "Phase 4 P4-6 v1.8.8: 3 new unit tests in `policy/rules/profiles.rs` — shape (2 levers + 0 PO + 2 PC + empty side_effects + per-lever value + source_kind assertions + derived-from-data reason summary); provider-gate suppression on Claude + Codex panes (claude-default / codex-default fire instead, symmetric gating); quota_tight suppression (reserves aggressive-variant path for P4-7). 186 lib + 18 integration (up from 183 + 18); clippy --all-targets -D warnings clean."
-
-    # Phase-4 P4-7 (v1.8.9) — gemini-script-low-token aggressive profile.
-    - "Phase 4 P4-7 v1.8.9: `src/policy/rules/profiles.rs::recommend_gemini_script_low_token` fires a `Severity::Good` rec under `gates.quota_tight == true` on healthy Gemini main panes. The bundled `ProviderProfile` `gemini-script-low-token` carries 3 levers, all labeled `ProjectCanonical` (0 ProviderOfficial) — same honesty pattern as `gemini-default` because Gemini's documented token-efficiency surface is narrower than Claude Code's or Codex's: `--yolo = enabled` (auto-approval opt-in; inverse of baseline's unset), `save_memory = disabled` (explicit off-switch aligned with VALIDATION.md:149-150 + Gemini G-5), `--model = gemini-2.5-flash` (explicit reaffirmation so scripted sessions see the model choice in one place)."
-    - "Phase 4 P4-7 v1.8.9: Gemini G-6 parity for Gemini closed — `ProviderProfile.side_effects` on `gemini-script-low-token` is 1:1 with the lever list (3 operator-visible trade-off strings, full sentences). The save_memory side_effect cross-references G-5 + `.mission/CURRENT_STATE.md` + MDR — same pattern Claude + Codex aggressive variants use, preserving architectural principle consistency across providers. This closes G-6 across all three providers and completes the 3x2 profile grid."
-    - "Phase 4 P4-7 v1.8.9: `gemini-default` and `gemini-script-low-token` are mutually exclusive by design via the `gates.quota_tight` gate (same shape as the Claude and Codex pairs). Provider gates stay pure across all six profile rules — a Gemini pane never fires any `claude-*` or `codex-*` profile; provider-gate purity is verified by explicit sanity checks on Claude + Codex panes within the test bundle."
-    - "Phase 4 P4-7 v1.8.9: 4 new unit tests in `policy/rules/profiles.rs` — shape (3 levers + 3 side_effects, 0 PO + 3 PC + Good severity + ProjectCanonical source + derived-from-data reason citing ProjectCanonical + per-lever value + source_kind assertions + G-5 cross-reference check on save_memory side_effect); gate-off (suppressed when !quota_tight; gemini-default fires instead); provider-gate suppression on Claude + Codex panes (claude-script-low-token / codex-script-low-token fire instead under quota_tight); explicit mutual-exclusion test toggling quota_tight and asserting exactly one of the two Gemini profiles fires. 190 lib + 18 integration (up from 186 + 18); clippy --all-targets -D warnings clean."
-
-    # Phase-4 P4-7 remediation (v1.8.10) — Codex P4-7 findings.
-    - "Phase 4 P4-7 remediation v1.8.10: `gemini-script-low-token` replaces the prior `save_memory = disabled` lever (phantom config key — save_memory is a tool name per Gemini CLI docs) with `experimental.autoMemory = false` (the documented Gemini CLI config key for the Auto Memory feature). Authority label graduates to `ProviderOfficial` because both the key and the disable value are documented. Bundle authority split is now 1 ProviderOfficial + 2 ProjectCanonical (was 0 PO + 3 PC). side_effect + citation updated to cite the correct config key; G-5 cross-reference preserved. Codex v1.8.9 P4-7 finding #1 (risk: save_memory surface mismatch) closed."
-    - 'Phase 4 P4-7 remediation v1.8.10: three stale-prose locations in `src/policy/rules/profiles.rs` synced to the 3x2 grid completion state — (a) module doc-comment at line 8 no longer says "P4-5 (aggressive Codex variant, tbd)" and instead describes all six profile rules + the G-5 / G-6 cross-reference pattern across providers; (b) gemini-default `--yolo = unset` lever comment around line 721 no longer says "(P4-7, tbd)" and instead names the shipped aggressive variant; (c) `recommend_gemini_default_suppressed_when_quota_tight_on` test comment no longer describes the aggressive variant as "tbd". Codex v1.8.9 P4-7 finding #2 (warning: stale prose) closed.'
-    - "Phase 4 P4-7 remediation v1.8.10: positive-fire shape test tightened — old blanket 0-PO-3-PC assertion split into explicit 1-PO-2-PC assertions; per-lever source_kind assertion on `experimental.autoMemory` explicitly verifies `ProviderOfficial`; reason-summary assertion now requires BOTH `ProviderOfficial` and `ProjectCanonical` tokens (mirroring the codex-default v1.8.6 pattern). 190 lib + 18 integration (unchanged test count — one existing test tightened in place); clippy --all-targets -D warnings clean."
-
-    # Phase-4 P4-7 follow-up (v1.8.11) — Codex v1.8.10 confirm warning.
-    - "Phase 4 P4-7 follow-up v1.8.11: two additional stale-prose locations in `src/policy/rules/profiles.rs` rewritten so every human-readable description of the aggressive Gemini bundle names the honest 1 ProviderOfficial + 2 ProjectCanonical split — (a) the `recommend_gemini_script_low_token` function doc-comment at lines 762-776 no longer says `every lever is labeled ProjectCanonical` and now explicitly calls out `experimental.autoMemory = false` as the ProviderOfficial lever with `--yolo = enabled` and `--model = gemini-2.5-flash` as the two ProjectCanonical levers; (b) the positive-fire test comment at lines 1728-1733 in `recommend_gemini_script_low_token_fires_on_quota_tight_with_honest_authority_labels_and_populated_side_effects` no longer says `All three levers are ProjectCanonical` and mirrors the same split. `.mission/CURRENT_STATE.md` (gitignored) was also synced locally for the same two drifts (reason-summary line + test-row 0 PO + 3 PC → 1 PO + 2 PC). No code-behavior / test-assertion / render-output change — the positive-fire test already enforces 1-PO-2-PC since v1.8.10. 190 lib + 18 integration (unchanged); clippy --all-targets -D warnings clean. Codex v1.8.10 confirm finding (warning: two nearby comments over-claim all-PC) closed."
+    - "cargo_build_passes"
+    - "cargo_test_passes"
+    - "cargo_clippy_clean"
+    - "mission.yaml exists"
+    - "mission-history.yaml exists"
+    - "docs/ai/WORKFLOWS.md exists"
+    - "scripts/verify-shared.sh exists"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
-    - "Layer separation: docs/ai/ = canonical (Git-tracked); .docs/ = raw working docs (gitignored); mission.yaml + mission-history.yaml + .mission/ = local contract/ledger (gitignored in single-user phase)."
+    - "Layer separation: docs/ai/ = canonical (Git-tracked); .docs/ = raw working docs (gitignored); mission.yaml + mission-history.yaml + .mission/evals/ = shared repo ledger; .mission/CURRENT_STATE.md = local-only handoff state."
     - "Auto memory (Claude MEMORY.md + topic files, Codex memories, Gemini save_memory / Auto Memory) is treated as local convenience only — never the primary state store."
     - "Day-end state goes to .mission/CURRENT_STATE.md, not to any memory file."
     - "No destructive automation is enabled by default. No auto /compact, /clear, /memory mutation, prompt injection, or provider reconfiguration."
@@ -714,7 +576,7 @@ mission:
     - "Official provider facts (Claude/Codex/Gemini docs) must be labeled distinctly from community heuristics (LinkedIn posts, RTK / Context Mode / Token Savior / Caveman / claude-token-efficient / token-optimizer-mcp) in every UI screen and every doc."
     - "Pane identity = {provider, instance, role, pane_id}. Repeated providers within one project window are allowed (e.g., claude:1:main, claude:2:review)."
     - "tmux: primary prefix stays Ctrl-b; Ctrl-g is secondary prefix. Pane title convention is '{provider}:{instance}:{role}'. One project = one window = four panes by default."
-    - "Git tracking: .docs/, mission.yaml, mission-history.yaml, .mission/, .mission-spec/ stay gitignored in this single-user phase. Design must allow flipping mission.yaml, mission-history.yaml, .mission/decisions/, .mission/evals/, and docs/ai/ to tracked state when the team/CI phase begins."
+    - "Git tracking: this repository is local-first with a shared repo ledger. Track mission.yaml, mission-history.yaml, docs/ai/*, and .mission/evals/; keep .docs/, .mission/CURRENT_STATE.md, .mission/snapshots/, .mission/templates/, and .mission-spec/ ignored."
     - "Implementation stack: Rust first (Ratatui/Crossterm). tmux integration via polling first, with the adapter shaped so control-mode can replace polling later. SQLite for archive/snapshot store."
     - "UI color rule: low-saturation palette (grey / navy / blue). Color is reserved for state transitions (good/warning/critical) and always accompanied by a numeric % or severity letter — never color-only."
     - "Source-of-number rule: every displayed metric must be labeled (official) if the provider reported it, or (estimated) if Qmonster derived it from tail/state/docs surface."
@@ -740,20 +602,31 @@ mission:
       approver: human
 
   evals:
-    - name: "mission-schema-valid"
+    - name: "cargo_build_passes"
       type: automated
-      description: "mission.yaml passes mission-spec validator."
-      command: 'node -e "import(''yaml'').then(async ({parse}) => { const {readFileSync} = await import(''node:fs''); const {validateMission} = await import(''/home/chquan/.claude/plugins/cache/mission-spec/mission-spec/1.16.15/dist/schema/validator.js''); const r = validateMission(parse(readFileSync(''mission.yaml'',''utf-8''))); if (r.valid) { console.log(''mission.yaml: VALID''); } else { console.error(''INVALID:'', r.errors.join('', '')); process.exit(1); } })"'
-      pass_criteria: "exit code 0 and stdout contains 'mission.yaml: VALID'"
+      description: "fresh clone에서 cargo build 성공"
+      command: "cargo build"
+      pass_criteria: "exit code 0"
 
-    - name: "docs-hierarchy-sanity"
+    - name: "cargo_test_passes"
+      type: automated
+      description: "fresh clone에서 cargo test --all-targets 성공"
+      command: "cargo test --all-targets"
+      pass_criteria: "exit code 0"
+
+    - name: "cargo_clippy_clean"
+      type: automated
+      description: "fresh clone에서 cargo clippy --all-targets -- -D warnings 성공"
+      command: "cargo clippy --all-targets -- -D warnings"
+      pass_criteria: "exit code 0"
+
+    - name: "local_workflow_handoff_sanity"
       type: manual
       description: >
-        docs/ai/ contains 5 non-placeholder canonical files; .mission/
-        contains CURRENT_STATE.md filled with real content; .docs/claude/
-        contains the r1 planning report; CLAUDE.md, AGENTS.md, GEMINI.md
-        each stay ≤ ~60 lines and only route to canonical docs and the
-        mission ledger.
+        `.mission/CURRENT_STATE.md` and `.docs/*` remain local-only
+        operator workflow artifacts. They may exist locally and are
+        still useful for handoff, but shared clone acceptance must not
+        depend on them.
 
     - name: "official-vs-heuristic-labeling"
       type: manual
@@ -772,21 +645,6 @@ mission:
         (c) pointers to working-doc directories, (d) one short block of
         provider-specific rules. No procedures. No architecture content.
         No decision records. No state.
-
-    - name: "no-premature-code"
-      type: automated
-      description: "Rust source must still compile to the placeholder bootstrap — no implementation added yet."
-      command: "cargo check --quiet"
-      pass_criteria: "exit code 0"
-
-    - name: "cross-check-handoff-ready"
-      type: manual
-      description: >
-        All four cross-check input files exist before Codex round: mission.yaml,
-        mission-history.yaml, .mission/CURRENT_STATE.md, docs/ai/*.md,
-        .docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md. The
-        planning report ends with an explicit Codex TODO list and an
-        explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
     topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1); P4-2 (Gemini G-5 auto-memory guide rule) shipped in 1 TDD commit (v1.8.2); P4-3 (Gemini G-6 side_effects + claude-script-low-token aggressive profile) shipped in 1 TDD commit (v1.8.3); P4-4 (codex-default baseline profile) shipped in 1 TDD commit (v1.8.4); P4-4 remediation (commit_attribution + tool_output_token_limit authority labels) shipped in 1 TDD commit (v1.8.5); P4-4 confirm-remediation (reason summary + doc-comment drift cleanup) shipped in 1 TDD commit (v1.8.6); P4-5 (codex-script-low-token aggressive profile + Gemini G-6 parity for Codex) shipped in 1 TDD commit (v1.8.7); P4-6 (gemini-default baseline — first Gemini provider entry) shipped in 1 TDD commit (v1.8.8); P4-7 (gemini-script-low-token aggressive + Gemini G-6 parity for Gemini; completes 3 x 2 profile grid) shipped in 1 TDD commit (v1.8.9); P4-7 remediation (save_memory → experimental.autoMemory surface fix + stale-prose sync) shipped in 1 TDD commit (v1.8.10); P4-7 follow-up (2 additional profiles.rs prose drifts from Codex v1.8.10 confirm) shipped in 1 docs-only commit (v1.8.11)."
@@ -866,5 +724,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 27
+    total_revisions: 28
     history: "mission-history.yaml"

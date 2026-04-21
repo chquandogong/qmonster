@@ -36,9 +36,11 @@ Canonical prompts for steps 2 and 3 live in
 - **Same thread, same pane, different day** → Claude `/resume` or
   `claude --continue`. Resume restores full message history + tool
   state; it is NOT a memory feature.
-- **Across panes or across models** → read `mission.yaml` and
-  `.mission/CURRENT_STATE.md` first. `ms-context` can bundle these if
-  needed.
+- **Across panes or across models** → shared baseline is
+  `mission.yaml`, `mission-history.yaml`, and the relevant `docs/ai/`
+  files. If `.mission/CURRENT_STATE.md` exists locally, treat it as an
+  optional local handoff note. `ms-context` can bundle the shared
+  contract first and local notes second.
 - **To a human reviewer** → point them at the round's `.docs/final/`
   entry and the relevant `docs/ai/` canonical docs.
 
@@ -47,9 +49,11 @@ Canonical prompts for steps 2 and 3 live in
 In this order, every day, **by a human** — Qmonster runtime never
 writes any of these files:
 
-1. Update `.mission/CURRENT_STATE.md` (mandatory). If a runtime
-   snapshot under `~/.qmonster/snapshots/` is relevant, the human
-   references or excerpts it; Qmonster does not auto-inline.
+1. Update `.mission/CURRENT_STATE.md` if you use a local handoff
+   document. If a runtime snapshot under `~/.qmonster/snapshots/` is
+   relevant, the human references or excerpts it; Qmonster does not
+   auto-inline. This file is local-only and not part of shared clone
+   acceptance.
 2. If scope / constraints / done_when changed, update `mission.yaml`
    AND append a `mission-history.yaml` timeline entry.
 3. Record any material decision as an MDR under `.mission/decisions/`.
@@ -66,9 +70,11 @@ writes any of these files:
 
 1. `claude --continue` or `claude --resume` if you want to pick up a
    specific thread.
-2. For a fresh session: read `mission.yaml`, then
-   `.mission/CURRENT_STATE.md`, then the relevant `docs/ai/` files.
-3. Only then open `.docs/*` for round-specific context.
+2. For a fresh shared clone: read `mission.yaml`,
+   `mission-history.yaml`, then the relevant `docs/ai/` files.
+3. If `.mission/CURRENT_STATE.md` exists locally, read it after the
+   shared contract. Only then open `.docs/*` for round-specific
+   context.
 
 ## 5. Cross-check and version-drift cadence
 
@@ -106,15 +112,24 @@ Re-run the planning loop when any of the following happen:
   surfaces cache-friendly structure as guidance `[ProjectCanonical]`;
   it does not toggle provider cache settings.
 
-## 7. gitignore flip path (single-user → team/CI)
+## 7. local-first with shared repo ledger
 
-Current (single-user):
+Tracked in shared repo:
+
+```
+mission.yaml
+mission-history.yaml
+docs/ai/*
+.mission/evals/
+```
+
+Ignored locally:
 
 ```
 /.docs/
-/mission.yaml
-/mission-history.yaml
-/.mission/
+/.mission/CURRENT_STATE.md
+/.mission/snapshots/
+/.mission/templates/
 /.mission-spec/
 CLAUDE.local.md
 .claude/settings.local.json
@@ -122,13 +137,8 @@ CLAUDE.local.md
 /*.sqlite
 ```
 
-When moving to team/CI:
-
-- **Track**: `mission.yaml`, `mission-history.yaml`,
-  `.mission/decisions/`, `.mission/evals/`, `docs/ai/*`.
-- **Keep ignored**: `.docs/`, `.mission-spec/`,
-  `.mission/snapshots/`, `.mission/templates/` (unless templates are
-  shared), local settings, auto-generated state, `*.sqlite`, `/logs/`.
+The repository is already using this split. Local workflow files remain
+useful, but shared verification must succeed without them.
 
 ## 8. Reference — round filename template
 
