@@ -445,6 +445,60 @@ fn context_pressure_rec_is_marked_strong_end_to_end() {
     );
 }
 
+#[test]
+fn strong_context_pressure_rec_emits_prompt_send_proposal_end_to_end() {
+    // Phase 5 P5-2 (v1.9.2) integration: when context_pressure_warning
+    // fires (is_strong + suggested_command = `/compact`), the engine
+    // graduates the hint into a structured `PromptSendProposed`
+    // effect that rides on `PaneReport.effects`. The dispatch loop
+    // stays inert (no side-effect fires for the proposal — that is
+    // P5-3); we only verify the structured proposal is visible on
+    // the report and carries the source pane + slash command.
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%7",
+            "claude:1:main",
+            "claude",
+            "context window usage 82%",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert_eq!(reports.len(), 1);
+
+    let proposal = reports[0]
+        .effects
+        .iter()
+        .find_map(|e| match e {
+            qmonster::domain::recommendation::RequestedEffect::PromptSendProposed {
+                target_pane_id,
+                slash_command,
+            } => Some((target_pane_id.as_str(), slash_command.as_str())),
+            _ => None,
+        })
+        .expect(
+            "P5-2 contract: strong context_pressure_warning rec must graduate to a PromptSendProposed effect on the owning pane",
+        );
+    assert_eq!(
+        proposal,
+        ("%7", "/compact"),
+        "proposal carries the source pane id + strong rec's slash command verbatim"
+    );
+
+    // The UI helper must render a line that names the pane, the
+    // slash command, and both operator keys (default config =
+    // recommend_only → accept gate passes).
+    let rendered = qmonster::ui::alerts::format_prompt_send_proposal("%7", "/compact", true);
+    assert!(rendered.contains("%7"));
+    assert!(rendered.contains("`/compact`"));
+    assert!(rendered.contains("[p] accept"));
+    assert!(rendered.contains("[d] dismiss"));
+}
+
 // ---------------------------------------------------------------------------
 // Phase 3A integration tests: cross-pane findings
 // ---------------------------------------------------------------------------

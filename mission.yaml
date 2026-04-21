@@ -1,6 +1,6 @@
 mission:
-  version: "1.9.1"
-  title: "Qmonster v0.4.0 — Phase 5 P5-1 confirm-archive v1.9.1 (Codex + Gemini both returned `approve` on v1.9.0 P5-1 scaffolding; 3 forward-looking P5-2/P5-3 design TODOs captured from Codex review)"
+  version: "1.9.2"
+  title: "Qmonster v0.4.0 — Phase 5 P5-2 v1.9.2 (first producing rule: strong recs with slash suggested_command graduate to PromptSendProposed; TUI accept/reject UX with [p]/[d] keys + audit emission; NO tmux send-keys yet — P5-3)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -613,6 +613,66 @@ mission:
     verification contract and v1.8.13 P4-8 wrap-up both
     untouched.
 
+    Phase 5 P5-2 (v1.9.2, this revision) — first producing rule
+    + TUI accept/reject UX. The P5-1 scaffolding now has a live
+    producer and operator-facing surface, with `tmux send-keys`
+    still deliberately deferred to P5-3 per Codex v1.9.0 confirm
+    review scope-reduction guidance. Deliverables: (1) producer
+    in `policy::Engine::evaluate` — every `is_strong == true` rec
+    whose `suggested_command` starts with `/` graduates to a
+    `RequestedEffect::PromptSendProposed { target_pane_id:
+    identity.pane_id.clone(), slash_command: cmd.clone() }` in
+    `EvalOutput.effects`. Today that maps to the two context-
+    pressure strong recs (`context_pressure_warning` at pressure
+    ≥ 0.75 and `context_pressure_critical` at ≥ 0.85, both with
+    `suggested_command = Some("/compact")`); any future strong
+    rec that advertises an in-pane slash-command graduates the
+    same way with no rule-by-rule wiring. (2) shared UI renderer
+    `ui::alerts::format_prompt_send_proposal(target_pane_id,
+    slash_command, accept_gated)` — emits `[proposal] [Qmonster]
+    <pane> — send `<cmd>` — [p] accept / [d] dismiss` when the
+    permit gate passes, collapsing to `[d] dismiss only (send
+    disabled)` when `EffectRunner::permit` returns false (Gemini
+    UX TODO closed); dismiss stays available in every actuation
+    mode so operators can always log an explicit rejection. (3)
+    `--once` path in `main.rs::print_reports` now prints pending
+    proposals after strong recs, computing `accept_gated` via a
+    real `EffectRunner::new(config).permit(effect)` call so
+    operators scripting against headless output see the honest
+    gate state rather than a hard-coded assumption. `print_reports`
+    signature grows a `&QmonsterConfig` argument. (4) TUI
+    keybindings `p` / `d` in the main-mode keypress handler —
+    'p' records `AuditEventKind::PromptSendAccepted` at Warning
+    severity on the operator-selected pane's pending proposal
+    (blocked with a Warning SystemNotice in `observe_only` per
+    the permit gate); 'd' records `PromptSendRejected` at Safe
+    severity and stays available in every mode. Both paths
+    surface a confirmation SystemNotice and keep the audit
+    summary as structured metadata only (`<pane> <cmd>
+    (acknowledged/dismissed by operator; P5-2 — no tmux send-keys
+    in this slice)`) per the r2 audit-isolation rule. If the
+    selected pane has no proposal, a Concern SystemNotice
+    explains the no-op. Tests (+6 net vs. v1.9.1 baseline):
+    `strong_rec_with_slash_suggested_command_graduates_to_prompt_
+    send_proposal` + `non_strong_rec_with_slash_suggested_command_
+    does_not_graduate` + `healthy_pane_produces_no_prompt_send_
+    proposal` pin the engine producer contract; `format_prompt_
+    send_proposal_shows_both_keys_when_accept_is_gated_on` +
+    `format_prompt_send_proposal_hides_accept_key_when_gate_
+    denies` pin the renderer; `strong_context_pressure_rec_emits_
+    prompt_send_proposal_end_to_end` is the integration test
+    that walks a context_pressure_warning fixture through
+    `run_once` and asserts `PaneReport.effects` carries the
+    proposal with the correct pane id + slash command, plus the
+    rendered form. 231 lib + 6 drift + 19 integration = 256
+    tests pass (up from 229 + 6 + 18 = 253 on v1.9.1 baseline).
+    clippy --all-targets -D warnings clean; cargo fmt clean.
+    VALIDATION.md Phase-5 checkboxes still honestly unticked —
+    manual confirmation, audit-logged actuation, and the
+    no-destructive-path guarantee all require the P5-3 execution
+    layer. Layered on v1.9.1 P5-1 confirm-archive; v1.9.0 P5-1
+    scaffolding, v1.8.14 / v1.8.13 / v1.8.12 all untouched.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -784,5 +844,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 32
+    total_revisions: 33
     history: "mission-history.yaml"

@@ -187,14 +187,14 @@ fn main() -> anyhow::Result<()> {
         }
         println!();
         let reports = run_once(&mut ctx, Instant::now())?;
-        print_reports(&reports);
+        print_reports(&reports, &ctx.config);
         return Ok(());
     }
 
     run_tui(&mut ctx, fresh, snapshot_writer, startup_notices)
 }
 
-fn print_reports(reports: &[PaneReport]) {
+fn print_reports(reports: &[PaneReport], config: &qmonster::app::config::QmonsterConfig) {
     // 1. Cross-pane findings.
     for rep in reports {
         for f in &rep.cross_pane_findings {
@@ -215,6 +215,33 @@ fn print_reports(reports: &[PaneReport]) {
                 "{}",
                 qmonster::ui::alerts::format_strong_rec_body(rec, &rep.pane_id)
             );
+        }
+    }
+    // 2b. Pending prompt-send proposals (P5-2 v1.9.2). Emitted
+    // alongside strong recs so the operator sees the structured
+    // proposal immediately below the CHECKPOINT line that generated
+    // it. `--once` mode has no accept keystroke (non-interactive),
+    // but we still reflect the `EffectRunner::permit` gate state so
+    // `observe_only` prints an honest "send disabled" form instead of
+    // advertising keys that would be ignored by the interactive TUI.
+    let runner = qmonster::app::effects::EffectRunner::new(config);
+    for rep in reports {
+        for effect in &rep.effects {
+            if let qmonster::domain::recommendation::RequestedEffect::PromptSendProposed {
+                target_pane_id,
+                slash_command,
+            } = effect
+            {
+                let accept_gated = runner.permit(effect);
+                println!(
+                    "{}",
+                    qmonster::ui::alerts::format_prompt_send_proposal(
+                        target_pane_id,
+                        slash_command,
+                        accept_gated,
+                    )
+                );
+            }
         }
     }
     // 3. Per-pane summaries with non-strong recommendations.
@@ -926,6 +953,114 @@ where
                                     },
                                     Instant::now(),
                                 );
+                            }
+                            KeyCode::Char('p') | KeyCode::Char('d') => {
+                                // P5-2 (v1.9.2): operator responds to a pending
+                                // prompt-send proposal on the currently selected
+                                // pane. 'p' records a `PromptSendAccepted` audit
+                                // event; 'd' records `PromptSendRejected`. No
+                                // `tmux send-keys` invocation yet — P5-3 adds
+                                // the executor path behind a separate gate
+                                // (operator confirmation + allow_auto_prompt_send
+                                // per Codex v1.9.0 review TODO #1). 'p' is a
+                                // no-op in `observe_only` mode since the display-
+                                // layer permit denies the proposal there; 'd'
+                                // remains active in every mode so the operator
+                                // can always log an explicit rejection.
+                                let accepting = k.code == KeyCode::Char('p');
+                                let selected = pane_state.selected();
+                                let runner = qmonster::app::effects::EffectRunner::new(&ctx.config);
+                                let pending = selected
+                                    .and_then(|i| last_reports.get(i))
+                                    .and_then(|rep| {
+                                        rep.effects.iter().find_map(|e| match e {
+                                            qmonster::domain::recommendation::RequestedEffect::PromptSendProposed {
+                                                target_pane_id,
+                                                slash_command,
+                                            } => Some((e, target_pane_id.clone(), slash_command.clone())),
+                                            _ => None,
+                                        })
+                                    });
+                                match pending {
+                                    None => {
+                                        notices.insert(
+                                            0,
+                                            SystemNotice {
+                                                title: if accepting {
+                                                    "no pending proposal to accept".into()
+                                                } else {
+                                                    "no pending proposal to dismiss".into()
+                                                },
+                                                body: "select a pane that carries a PromptSendProposed effect".into(),
+                                                severity: Severity::Concern,
+                                                source_kind: SourceKind::ProjectCanonical,
+                                            },
+                                        );
+                                    }
+                                    Some((effect, target, cmd)) => {
+                                        // Gemini UX TODO: honor the permit gate on the
+                                        // accept path. Dismiss stays available in any
+                                        // mode so an explicit rejection can always be
+                                        // logged to the audit trail.
+                                        if accepting && !runner.permit(effect) {
+                                            notices.insert(
+                                                0,
+                                                SystemNotice {
+                                                    title: "accept blocked by actuation mode".into(),
+                                                    body: format!(
+                                                        "proposal for {target} → `{cmd}` is visible but ObserveOnly blocks confirmation"
+                                                    ),
+                                                    severity: Severity::Warning,
+                                                    source_kind: SourceKind::ProjectCanonical,
+                                                },
+                                            );
+                                        } else {
+                                            let (kind, severity, verb) = if accepting {
+                                                (
+                                                    AuditEventKind::PromptSendAccepted,
+                                                    Severity::Warning,
+                                                    "acknowledged",
+                                                )
+                                            } else {
+                                                (
+                                                    AuditEventKind::PromptSendRejected,
+                                                    Severity::Safe,
+                                                    "dismissed",
+                                                )
+                                            };
+                                            ctx.sink.record(AuditEvent {
+                                                kind,
+                                                pane_id: target.clone(),
+                                                severity,
+                                                summary: format!("{target} {cmd} ({verb} by operator; P5-2 — no tmux send-keys in this slice)"),
+                                                provider: None,
+                                                role: None,
+                                            });
+                                            notices.insert(
+                                                0,
+                                                SystemNotice {
+                                                    title: format!("proposal {verb}"),
+                                                    body: format!("{target} → `{cmd}` (audit recorded; actuation lands in P5-3)"),
+                                                    severity: if accepting { Severity::Good } else { Severity::Safe },
+                                                    source_kind: SourceKind::ProjectCanonical,
+                                                },
+                                            );
+                                        }
+                                        sync_dashboard_state(
+                                            &notices,
+                                            &last_reports,
+                                            DashboardSyncState {
+                                                alert_state: &mut alert_state,
+                                                pane_state: &mut pane_state,
+                                                previous_alerts: &mut previous_alerts,
+                                                fresh_alerts: &mut fresh_alerts,
+                                                alert_times: &mut alert_times,
+                                                alert_hide_deadlines: &mut alert_hide_deadlines,
+                                            },
+                                            Instant::now(),
+                                        );
+                                    }
+                                }
                             }
                             _ => {}
                         }

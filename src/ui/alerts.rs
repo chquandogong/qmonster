@@ -58,6 +58,28 @@ fn actionable_tail(next_step: Option<&str>, suggested_command: Option<&str>) -> 
     }
 }
 
+/// Phase 5 P5-2 (v1.9.2): shared renderer for pending prompt-send
+/// proposals, used by both the TUI alert queue and the `--once`
+/// stdout path. Emits `[proposal] [Qmonster] <pane_id> — send
+/// <slash_command> — <hint>` where the hint narrates the operator
+/// keys. Setting `accept_gated = false` (e.g. `ObserveOnly` mode —
+/// `EffectRunner::permit(&PromptSendProposed { .. })` returned false)
+/// collapses the hint to `[d] dismiss only (send disabled)`; the
+/// dismiss key stays available so the operator can still log an
+/// explicit rejection to the audit trail from any mode.
+pub fn format_prompt_send_proposal(
+    target_pane_id: &str,
+    slash_command: &str,
+    accept_gated: bool,
+) -> String {
+    let hint = if accept_gated {
+        "[p] accept / [d] dismiss"
+    } else {
+        "[d] dismiss only (send disabled)"
+    };
+    format!("[proposal] [Qmonster] {target_pane_id} — send `{slash_command}` — {hint}")
+}
+
 const DETAIL_LABEL_WIDTH: usize = 8;
 pub const ALERT_AUTO_HIDE_DELAY: Duration = Duration::from_secs(12);
 const BULK_HIDE_PREFIX: &str = "bulk hide : ";
@@ -1398,5 +1420,43 @@ mod tests {
         );
         assert!(lines.len() > 1);
         assert!(lines[1].starts_with("           "));
+    }
+
+    #[test]
+    fn format_prompt_send_proposal_shows_both_keys_when_accept_is_gated_on() {
+        // P5-2 render contract (recommend_only / safe_auto path): the
+        // operator sees both the accept and dismiss keys so they can
+        // either confirm the pending send or explicitly dismiss it.
+        // Both actions get audit-logged downstream.
+        let line = format_prompt_send_proposal("%3", "/compact", true);
+        assert!(line.contains("[proposal]"), "proposal marker: {line}");
+        assert!(line.contains("[Qmonster]"), "authority label: {line}");
+        assert!(line.contains("%3"), "target pane id visible: {line}");
+        assert!(
+            line.contains("`/compact`"),
+            "slash command in backticks: {line}"
+        );
+        assert!(line.contains("[p] accept"), "accept key shown: {line}");
+        assert!(line.contains("[d] dismiss"), "dismiss key shown: {line}");
+    }
+
+    #[test]
+    fn format_prompt_send_proposal_hides_accept_key_when_gate_denies() {
+        // P5-2 render contract (observe_only path — Gemini UX TODO):
+        // when the `permit` gate returns false for the proposal, the
+        // accept key must disappear so the operator cannot initiate a
+        // send that the runner would have blocked anyway. Dismiss
+        // stays available so the operator can still log an explicit
+        // rejection from any mode.
+        let line = format_prompt_send_proposal("%3", "/compact", false);
+        assert!(!line.contains("[p] accept"), "accept key hidden: {line}");
+        assert!(
+            line.contains("send disabled"),
+            "operator sees why accept is missing: {line}"
+        );
+        assert!(
+            line.contains("[d] dismiss"),
+            "dismiss still available: {line}"
+        );
     }
 }

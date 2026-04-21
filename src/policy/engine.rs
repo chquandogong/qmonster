@@ -46,6 +46,26 @@ impl Engine {
         if signals.log_storm {
             effects.push(RequestedEffect::ArchiveLocal);
         }
+        // Phase 5 P5-2 (v1.9.2): every strong recommendation whose
+        // `suggested_command` names an in-pane slash-command (e.g.
+        // `/compact`) graduates from a copy-pasteable hint into a
+        // structured `PromptSendProposed` proposal. The proposal rides
+        // alongside the rec in `effects`; the UI layer pairs the two
+        // so an operator can confirm (P5-2 audit) or dismiss the send
+        // without scrolling to the strong-rec slot. Actual tmux
+        // send-keys execution is P5-3 — the proposal stays inert at
+        // the dispatch layer (see `app::event_loop::deliver_effects`).
+        for rec in &recs {
+            if rec.is_strong
+                && let Some(cmd) = rec.suggested_command.as_ref()
+                && cmd.starts_with('/')
+            {
+                effects.push(RequestedEffect::PromptSendProposed {
+                    target_pane_id: id.identity.pane_id.clone(),
+                    slash_command: cmd.clone(),
+                });
+            }
+        }
         EvalOutput {
             recommendations: recs,
             effects,
@@ -119,6 +139,92 @@ mod tests {
         assert!(
             out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::Notify)
+        );
+    }
+
+    #[test]
+    fn strong_rec_with_slash_suggested_command_graduates_to_prompt_send_proposal() {
+        // P5-2 producer contract: context_pressure_warning fires as a
+        // strong rec with `suggested_command = Some("/compact")` on
+        // context_pressure >= 0.75 && < 0.85. Engine MUST emit a
+        // matching `PromptSendProposed` effect targeting the source
+        // pane, carrying the same slash command.
+        let s = SignalSet {
+            context_pressure: Some(crate::domain::signal::MetricValue {
+                value: 0.80,
+                source_kind: crate::domain::origin::SourceKind::Estimated,
+                confidence: None,
+                provider: None,
+            }),
+            ..SignalSet::default()
+        };
+        let id = id(IdentityConfidence::High);
+        let out = Engine.evaluate(&id, &s, &gates());
+
+        let strong_rec = out
+            .recommendations
+            .iter()
+            .find(|r| r.is_strong)
+            .expect("context_pressure_warning is_strong rec must fire at 0.80");
+        assert_eq!(strong_rec.suggested_command.as_deref(), Some("/compact"));
+
+        let proposal = out
+            .effects
+            .iter()
+            .find_map(|e| match e {
+                crate::domain::recommendation::RequestedEffect::PromptSendProposed {
+                    target_pane_id,
+                    slash_command,
+                } => Some((target_pane_id.as_str(), slash_command.as_str())),
+                _ => None,
+            })
+            .expect("strong rec with slash suggested_command must produce a PromptSendProposed");
+        assert_eq!(
+            proposal,
+            ("%1", "/compact"),
+            "proposal must target the source pane and carry the strong rec's slash command verbatim"
+        );
+    }
+
+    #[test]
+    fn non_strong_rec_with_slash_suggested_command_does_not_graduate() {
+        // Any rec emitting `/…` as a copy-pasteable hint but NOT marked
+        // is_strong stays in the UI hint channel only. Only the
+        // strong/checkpoint-class recs graduate to proposals.
+        // `waiting_for_input` fires `notify-input-wait` at Warning
+        // severity with is_strong=false — no proposal should appear.
+        let s = SignalSet {
+            waiting_for_input: true,
+            ..SignalSet::default()
+        };
+        let out = Engine.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        let any_proposal = out.effects.iter().any(|e| {
+            matches!(
+                e,
+                crate::domain::recommendation::RequestedEffect::PromptSendProposed { .. }
+            )
+        });
+        assert!(
+            !any_proposal,
+            "non-strong recs must not produce prompt-send proposals"
+        );
+    }
+
+    #[test]
+    fn healthy_pane_produces_no_prompt_send_proposal() {
+        // Negative baseline: a healthy pane (Severity::Good profile
+        // rec only) has no strong rec and therefore no proposal.
+        let s = SignalSet::default();
+        let out = Engine.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        let any_proposal = out.effects.iter().any(|e| {
+            matches!(
+                e,
+                crate::domain::recommendation::RequestedEffect::PromptSendProposed { .. }
+            )
+        });
+        assert!(
+            !any_proposal,
+            "healthy pane must not emit prompt-send proposals"
         );
     }
 

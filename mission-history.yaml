@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — Phase 5 P5-1 confirm-archive v1.9.1 (Codex + Gemini both approve on v1.9.0 scaffolding; P5-2/P5-3 design TODOs captured)"
+  mission_title: "Qmonster v0.4.0 — Phase 5 P5-2 v1.9.2 (first producing rule + TUI accept/reject UX; no tmux send-keys — deferred to P5-3)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 32
-  latest_version: "1.9.1"
+  total_revisions: 33
+  latest_version: "1.9.2"
 
 timeline:
   - change_id: "initial"
@@ -3857,9 +3857,147 @@ timeline:
       - "P5-2 UX TODO (from Gemini review): leave docs/ai/VALIDATION.md Phase-5 checkboxes unticked until the P5-2 + P5-3 executor and UX surfaces land."
       - "Open P5-2 (first producing rule + TUI accept/reject UX — keep it narrow, no tmux send-keys in the same slice)"
 
+  - change_id: "phase-5-p5-2-first-producing-rule-and-tui-accept-reject-ux"
+    semantic_version: "1.9.2"
+    change_sequence: 33
+    date: "2026-04-22"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — approved the narrow P5-2 scope: first producer + confirmation UX only, no tmux send-keys)"
+      - "Codex v1.9.0 confirm review — the scope-reduction guidance ('keep P5-2 equally narrow: one producer + confirmation UX before any executor path') directly shapes this slice"
+      - "Gemini v1.9.0 confirm review — the UX TODO ('TUI accept button consults EffectRunner::permit; hide in ObserveOnly') is closed in this slice"
+    change_type: "feature"
+    motivation_type: "phase-progression"
+    persistence: "permanent"
+    intent: >
+      Close the Phase-5 P5-2 slice: land the first producing rule
+      that emits `RequestedEffect::PromptSendProposed` and the
+      operator-facing accept/reject UX + audit emission, without
+      introducing any `tmux send-keys` call. The executor path is
+      deliberately held for P5-3 behind a separate gate per Codex
+      v1.9.0 review TODO #1.
+    intent_ko: >
+      Phase-5 P5-2 슬라이스 마감: `RequestedEffect::PromptSendProposed`를
+      emit 하는 첫 producer 룰과 operator-facing accept/reject UX +
+      감사 이벤트 발행을 구현. `tmux send-keys` 호출은 Codex v1.9.0
+      리뷰 TODO #1에 따라 별도 게이트 뒤 P5-3로 유보.
+    decision: >
+      (1) Engine producer in `policy::Engine::evaluate`: every
+      `is_strong == true` rec whose `suggested_command` begins with
+      `/` graduates to a `PromptSendProposed { target_pane_id,
+      slash_command }` effect. Today that covers the two context-
+      pressure strong recs (`context_pressure_warning` at ≥ 0.75
+      pressure and `context_pressure_critical` at ≥ 0.85, both
+      carrying `Some("/compact")`). The rule is pattern-based, not
+      rec-list-based: any future strong rec with a slash command
+      graduates automatically — no rule-by-rule wiring.
+      (2) Shared UI helper `ui::alerts::format_prompt_send_proposal
+      (target_pane_id, slash_command, accept_gated: bool)` used by
+      both the interactive TUI and the `--once` headless path.
+      `accept_gated == false` collapses the hint to `[d] dismiss
+      only (send disabled)` closing Gemini v1.9.0 UX TODO.
+      (3) `--once` (`main.rs::print_reports`) now prints pending
+      proposals right after strong recs with a live
+      `EffectRunner::new(config).permit(effect)` call supplying
+      `accept_gated`; `print_reports` gains a `&QmonsterConfig`
+      parameter.
+      (4) TUI keybindings `p` / `d` added to the main-mode keypress
+      handler: 'p' = record `AuditEventKind::PromptSendAccepted`
+      (Warning severity) on the selected pane's first pending
+      proposal, blocked with a Warning SystemNotice in
+      `observe_only` per the permit gate; 'd' = record
+      `PromptSendRejected` (Safe severity) and stays available in
+      every mode. Both paths surface a confirmation SystemNotice;
+      summary strings are structured metadata only ("<pane> <cmd>
+      (acknowledged/dismissed by operator; P5-2 — no tmux
+      send-keys)"), preserving the r2 audit-isolation rule.
+      Selecting a pane without a pending proposal yields a Concern
+      SystemNotice describing the no-op.
+      Explicit non-goals for v1.9.2: no `tmux send-keys`, no
+      second execution gate, no `PromptSendFailed` terminal
+      outcome, no stable proposal key — all deferred to P5-3+ per
+      the v1.9.1 follow-up list Codex design TODOs.
+    decision_ko: >
+      (1) `policy::Engine::evaluate`의 producer: `is_strong == true`이면서
+      `suggested_command`이 `/`로 시작하는 모든 rec를
+      `PromptSendProposed { target_pane_id, slash_command }` effect로
+      승격. 현재는 두 개의 context-pressure strong rec
+      (`context_pressure_warning` 0.75↑, `context_pressure_critical`
+      0.85↑, 둘 다 `Some("/compact")`)에 해당. 패턴 기반이라 미래의
+      strong rec + 슬래시 command는 별도 배선 없이 자동 승격.
+      (2) 공유 UI 헬퍼 `ui::alerts::format_prompt_send_proposal(
+      target_pane_id, slash_command, accept_gated)`. `accept_gated ==
+      false`이면 hint가 `[d] dismiss only (send disabled)`로 축약 —
+      Gemini v1.9.0 UX TODO 마감.
+      (3) `--once`가 강-rec 다음에 pending proposal을 출력;
+      `accept_gated`은 실시간 `EffectRunner::new(config)
+      .permit(effect)` 결과 반영. `print_reports` 시그니처에
+      `&QmonsterConfig` 추가.
+      (4) TUI 키바인딩 `p` / `d` 추가: 'p' = 선택된 pane의 첫 pending
+      proposal에 대해 `AuditEventKind::PromptSendAccepted` (Warning)
+      기록; `observe_only` 모드에서는 permit 게이트 거부와 함께
+      Warning SystemNotice로 차단됨. 'd' = `PromptSendRejected` (Safe)
+      기록하며 모든 모드에서 가용. 양쪽 모두 확인 SystemNotice 표시;
+      summary 문자열은 구조화 메타데이터만 유지 ("<pane> <cmd>
+      (acknowledged/dismissed by operator; P5-2 — no tmux
+      send-keys)") — r2 audit-isolation 규칙 준수. 선택 pane에
+      pending proposal이 없으면 Concern SystemNotice로 no-op 설명.
+      v1.9.2 명시적 비-목표: `tmux send-keys` 호출 없음, 두 번째
+      execution gate 없음, `PromptSendFailed` terminal outcome 없음,
+      stable proposal key 없음 — 모두 P5-3+로 유보 (v1.9.1 follow-up의
+      Codex 설계 TODO 목록 참조).
+    triggered_by: "v1.9.1 follow-up: 'Open P5-2 (first producing rule + TUI accept/reject UX — keep it narrow, no tmux send-keys in the same slice)'"
+    issue_or_context: >
+      v1.9.0 P5-1 landed the type-layer scaffolding (PromptSendProposed
+      variant, 3 audit kinds, authority_tier, permit signature change);
+      v1.9.1 archived both reviewers' `approve` verdicts. The natural
+      next slice — per v1.9.1 change_sequence 32 follow-up list — is
+      the first producer that emits a proposal plus the TUI UX that
+      lets an operator confirm/dismiss it. Codex's scope-reduction
+      suggestion ('one producer + UX before any executor path')
+      shapes the boundary: no tmux send-keys in this slice.
+    changes:
+      added: []
+      modified:
+        - "src/policy/engine.rs"
+        - "src/ui/alerts.rs"
+        - "src/main.rs"
+        - "tests/event_loop_integration.rs"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - ".mission/CURRENT_STATE.md"
+      removed: []
+    changed_sections:
+      - "policy::Engine::evaluate — producer loop graduates is_strong + slash-suggested_command recs to PromptSendProposed effects"
+      - "ui::alerts::format_prompt_send_proposal — shared renderer; `accept_gated=false` collapses to dismiss-only hint"
+      - "main.rs::print_reports — now takes &QmonsterConfig; prints pending proposals with live permit gate state"
+      - "main.rs main-mode keypress handler — 'p' accept / 'd' dismiss with audit emission + SystemNotice + permit gating"
+      - "integration test: strong context_pressure_warning end-to-end emits a PromptSendProposed targeting the source pane"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "the first producing rule (strong + slash) now emits PromptSendProposed; the dispatch loop still leaves it inert (per P5-1 contract). Operator keys `p` / `d` newly live in the interactive TUI. No tmux send-keys; no destructive path added."
+      verification: "cargo build + cargo test --all-targets (231 lib + 6 drift + 19 integration = 256 tests; +6 net vs v1.9.1 baseline) + cargo clippy --all-targets -D warnings + cargo fmt --check all clean."
+      docs: "mission.yaml narrative + mission-history.yaml change_sequence 33 + evolution_summary.current_phase updated. docs/ai/VALIDATION.md Phase-5 checkboxes intentionally remain unticked — end-to-end behavior lands in P5-3."
+      ledger: "v1.9.2 layered on v1.9.1 P5-1 confirm-archive; v1.9.0 P5-1 scaffolding, v1.8.14 / v1.8.13 / v1.8.12 all intact."
+    breaking: false
+    risk: "low — no tmux send-keys (per Codex v1.9.0 scope guidance); operator keys emit audit events + local SystemNotices only; observe_only path guarded by the existing permit gate with an explicit UX block-notice for the accept attempt."
+    related_commits:
+      - "1d50166"
+    related_decisions:
+      - "KD-003"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "Request short Codex + Gemini confirm re-review on v1.9.2 before opening P5-3"
+      - "P5-3: tmux send-keys actuation behind a SECOND gate (operator confirmation + allow_auto_prompt_send per Codex v1.9.0 TODO #1) + semantic decision on PromptSendAccepted vs. PromptSendCompleted (Codex TODO #2; possibly add PromptSendFailed terminal outcome) + stable proposal key if the producer set ever grows multi-proposal-per-pane (Codex TODO #3)"
+      - "After P5-3 lands the executor, tick the three Phase-5 VALIDATION.md checkboxes"
+
 evolution_summary:
-  current_phase: "Phase 5 P5-1 FULLY GATE-APPROVED (v1.9.1 confirm-archive shipped) — Codex + Gemini both returned `approve` on v1.9.0 scaffolding with 0 must-fix findings. Codex contributed 3 forward-looking P5-2/P5-3 design TODOs (second execution gate; PromptSendAccepted semantic clarity + possible PromptSendFailed terminal outcome; stable proposal key if producer is multi-proposal). Gemini contributed 2 UX TODOs for P5-2 (permit-aware Accept rendering; hold VALIDATION ticks until end-to-end lands). 226 lib + 6 drift + 18 integration = 250 tests green at v1.9.0; no code / test change in v1.9.1. Layered on v1.8.14 P4-8 confirm-archive; v1.8.12 shared-verification contract, v1.8.13 P4-8 content, the 6-profile 3x2 grid, and v1.9.0 P5-1 scaffolding all untouched. Ready to open P5-2 (TUI accept/reject UX + first producing rule)."
-  next_phase: "Phase 5 — safer actuation (P5-2 TUI UX + first producing rule; P5-3 tmux send-keys + audit accepted/rejected/failed emission)"
+  current_phase: "Phase 5 P5-2 SHIPPED (v1.9.2) — first producing rule (`Engine::evaluate` graduates is_strong + slash-command recs to PromptSendProposed) + TUI accept/reject UX with `p`/`d` keys + audit emission (PromptSendAccepted Warning / PromptSendRejected Safe) + `--once` honest gate rendering. No tmux send-keys; no destructive path; observe_only accept path blocked by a Warning SystemNotice per the permit gate. 231 lib + 6 drift + 19 integration = 256 tests pass; clippy + fmt clean. Layered on v1.9.1 P5-1 confirm-archive; v1.9.0 scaffolding + v1.8.14 Phase-4 + v1.8.12 shared-verification contract all untouched. Ready for short Codex + Gemini confirm re-review before opening P5-3 (tmux send-keys behind a second gate)."
+  next_phase: "Phase 5 — safer actuation (P5-3 tmux send-keys + audit accepted/completed/failed emission + stable proposal key)"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
