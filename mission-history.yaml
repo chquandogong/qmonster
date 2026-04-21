@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — Phase 5 P5-1 opening v1.9.0 (Safer Actuation scaffolding — layered on v1.8.14 P4-8 confirm-archive)"
+  mission_title: "Qmonster v0.4.0 — Phase 5 P5-1 confirm-archive v1.9.1 (Codex + Gemini both approve on v1.9.0 scaffolding; P5-2/P5-3 design TODOs captured)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 31
-  latest_version: "1.9.0"
+  total_revisions: 32
+  latest_version: "1.9.1"
 
 timeline:
   - change_id: "initial"
@@ -3741,9 +3741,125 @@ timeline:
       - "P5-3: `tmux send-keys` actuation + `PromptSendAccepted`/`PromptSendRejected` audit emission + `allow_auto_prompt_send` gating"
       - "Phase-5 VALIDATION.md checkboxes to be ticked after P5-2/P5-3 close end-to-end behavior"
 
+  - change_id: "phase-5-p5-1-confirm-archive"
+    semantic_version: "1.9.1"
+    change_sequence: 32
+    date: "2026-04-22"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.9.0 P5-1 confirm re-review of 1d50166 — verdict `approve`, 0 must-fix findings; 3 forward-looking TODOs for P5-2/P5-3 design captured below)"
+      - "Gemini (gemini:1:research, v1.9.0 P5-1 confirm re-review of 1d50166 — verdict `approve`, 0 findings, 0 scope-reduction suggestions; 2 TODOs for P5-2 UX)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — requested the re-review round on v1.9.0 per change_sequence 31 follow-up)"
+    change_type: "gate-archive"
+    motivation_type: "gate-closure"
+    persistence: "permanent"
+    intent: >
+      Archive the v1.9.0 P5-1 confirm re-review verdicts from Codex
+      and Gemini. Ledger-only round mirroring f1f6868 (v1.8.11
+      P4-7 confirm2 archive) and a7aa38f (v1.8.14 P4-8 confirm
+      archive). Also capture three forward-looking TODOs from the
+      Codex review that should shape P5-2/P5-3 design — not
+      blockers for P5-1, but important enough to record in the
+      ledger where P5-2/P5-3 planning can see them.
+    intent_ko: >
+      Codex · Gemini 두 리뷰어가 v1.9.0 (1d50166) P5-1 스캐폴딩에 대해
+      낸 `approve` 판정을 아카이브. f1f6868 (v1.8.11) / a7aa38f
+      (v1.8.14) 패턴을 따르는 ledger-only 라운드. 추가로 Codex 리뷰가
+      제시한 세 개의 forward-looking TODO(P5-2/P5-3 설계에 반영할
+      사항 — P5-1 blocker는 아님)를 ledger에 기록해 이후 슬라이스
+      planning에서 참조할 수 있도록 한다.
+    decision: >
+      Bump version 1.9.0 → 1.9.1. Add the two v1.9.0 P5-1 confirm
+      result mirrors under `.mission/evals/` (Codex = approve,
+      0 findings + 3 TODOs; Gemini = approve, 0 findings + 2
+      TODOs). Update mission-history meta + evolution_summary
+      .current_phase to reflect the gate-approved P5-1 state.
+      Record the three Codex P5-2/P5-3 design TODOs in the
+      follow-up list of this entry:
+      (1) the real tmux send-keys path must sit behind a SECOND
+      gate that checks explicit operator confirmation AND
+      `allow_auto_prompt_send`; do not reuse `permit()` as the
+      execution gate;
+      (2) decide whether `PromptSendAccepted` means operator
+      confirmation or successful send — if post-confirmation
+      execution can fail, add a distinct terminal audit outcome
+      (e.g. `PromptSendFailed`) before ticking Phase-5
+      VALIDATION;
+      (3) if the first producer can emit multiple proposals per
+      pane, add a stable proposal key when that producer lands.
+      All three are design inputs for P5-2/P5-3 slices, not
+      v1.9.1 scope.
+    decision_ko: >
+      버전 1.9.0 → 1.9.1. `.mission/evals/`에 두 개의 v1.9.0 P5-1
+      confirm 결과 미러 추가 (Codex approve + 3 TODOs, Gemini
+      approve + 2 TODOs). mission-history meta와
+      evolution_summary.current_phase를 P5-1 게이트-통과 상태로
+      갱신. Codex의 P5-2/P5-3 설계 관련 forward-looking TODO 3개를
+      이 엔트리 follow-up에 기록: (1) 실제 tmux send-keys 경로는
+      operator confirmation + `allow_auto_prompt_send` 둘 다
+      체크하는 **별도 게이트** 뒤에 위치해야 함. `permit()`을
+      execution gate로 재활용하지 말 것. (2) `PromptSendAccepted`가
+      operator 확인 시점인지 실제 send 완료 시점인지 의미를 확정.
+      실행 실패 경로가 존재한다면 별도 terminal audit outcome
+      (예: `PromptSendFailed`)을 Phase-5 VALIDATION tick 전에
+      추가. (3) 첫 producer가 한 pane에 proposal을 여러 개 emit
+      할 수 있다면 stable proposal key를 도입. 셋 모두 P5-2/P5-3
+      설계 입력이며 v1.9.1 범위 아님.
+    triggered_by: "v1.9.0 follow-up list (change_sequence 31): 'Request short Codex + Gemini confirm re-review on v1.9.0 P5-1 scaffolding before opening P5-2'"
+    issue_or_context: >
+      The v1.9.0 P5-1 opening commit (`1d50166`) requested a
+      confirm re-review from both reviewers before P5-2 starts.
+      Both reviews ran locally this session (`codex exec` +
+      `gemini -p --approval-mode plan`) against commit 1d50166
+      and both returned `approve` with no must-fix findings.
+      The narrative reviews live locally under `.docs/codex/`
+      and `.docs/gemini/` (gitignored); the structured mirrors
+      are the shared artefact committed here. The Codex review
+      also contributed three substantive P5-2/P5-3 design TODOs
+      that P5-1's scaffolding cannot answer on its own and that
+      deserve a permanent ledger record rather than living only
+      in the local narrative.
+    changes:
+      added:
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-22-phase5-p5-1-confirm-review.result.yaml"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-22-phase5-p5-1-confirm-gemini-review.result.yaml"
+      modified:
+        - "mission.yaml"
+        - "mission-history.yaml"
+      removed: []
+    changed_sections:
+      - "mission.yaml version / title / lineage bumped to 1.9.1"
+      - "mission-history.yaml meta (title + total_revisions 32 + latest_version 1.9.1)"
+      - "evolution_summary.current_phase — P5-1 fully gate-approved; ready for P5-2 with Codex design TODOs as input"
+      - "new change_sequence 32 timeline entry carrying the three P5-2/P5-3 design TODOs from Codex"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "none — ledger + archive round only; no code / test / canonical-doc change"
+      verification: "no re-run required; v1.9.0 verification record stands (226 lib + 6 drift + 18 integration = 250 tests; clippy + fmt clean at commit 1d50166)"
+      docs: "confirm verdicts archived; docs/ai/VALIDATION.md Phase-5 checkboxes intentionally remain unticked (P5-2/P5-3 pending)"
+      ledger: "v1.9.1 layered on v1.9.0 P5-1 scaffolding; v1.8.14 P4-8 confirm-archive, v1.8.13 P4-8 content, v1.8.12 shared-verification contract, and 6-profile 3x2 grid all intact"
+    breaking: false
+    risk: "none — ledger-only gate-archive round"
+    related_commits:
+      - "1d50166"
+    related_decisions:
+      - "KD-003"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "P5-2 design input #1 (from Codex review): route the real tmux send-keys path through a SECOND gate (operator-confirmation + allow_auto_prompt_send) — do NOT reuse EffectRunner::permit() as the execution gate. The display-layer permit stays; the execution-layer gate is new."
+      - "P5-2/P5-3 design input #2 (from Codex review): decide semantics of PromptSendAccepted — operator-confirmation event vs. successful-send completion event. If post-confirmation execution can fail, add a terminal audit outcome (candidate name: `PromptSendFailed`) before Phase-5 VALIDATION ticking."
+      - "P5-2+ design input #3 (from Codex review): if the first producing rule emits multiple proposals per pane, add a stable proposal key to disambiguate operator targets; not a P5-1 blocker."
+      - "P5-2 UX TODO (from Gemini review): the TUI 'Accept' button should consult EffectRunner::permit when rendering so ObserveOnly mode naturally hides the accept path."
+      - "P5-2 UX TODO (from Gemini review): leave docs/ai/VALIDATION.md Phase-5 checkboxes unticked until the P5-2 + P5-3 executor and UX surfaces land."
+      - "Open P5-2 (first producing rule + TUI accept/reject UX — keep it narrow, no tmux send-keys in the same slice)"
+
 evolution_summary:
-  current_phase: "Phase 5 OPENED (v1.9.0) — Safer Actuation scaffolding shipped. New domain/audit types (`RequestedEffect::PromptSendProposed` variant + 3 `PromptSend*` AuditEventKinds) + `EffectRunner::permit` signature change to `&RequestedEffect` with PromptSendProposed passing in `recommend_only` (display-layer) while `allow_auto_prompt_send` continues to gate real actuation for P5-2+. NO tmux send-keys call, NO producing rule, NO TUI accept/reject UX in this slice — those are P5-2 / P5-3. 226 lib + 6 drift + 18 integration = 250 tests; clippy + fmt clean. Layered on v1.8.14 P4-8 confirm-archive; v1.8.12 shared-verification contract, v1.8.13 P4-8 content, and the 6-profile 3x2 grid all untouched."
-  next_phase: "Phase 5 — safer actuation (P5-2 TUI UX + first producing rule; P5-3 tmux send-keys + audit accepted/rejected emission)"
+  current_phase: "Phase 5 P5-1 FULLY GATE-APPROVED (v1.9.1 confirm-archive shipped) — Codex + Gemini both returned `approve` on v1.9.0 scaffolding with 0 must-fix findings. Codex contributed 3 forward-looking P5-2/P5-3 design TODOs (second execution gate; PromptSendAccepted semantic clarity + possible PromptSendFailed terminal outcome; stable proposal key if producer is multi-proposal). Gemini contributed 2 UX TODOs for P5-2 (permit-aware Accept rendering; hold VALIDATION ticks until end-to-end lands). 226 lib + 6 drift + 18 integration = 250 tests green at v1.9.0; no code / test change in v1.9.1. Layered on v1.8.14 P4-8 confirm-archive; v1.8.12 shared-verification contract, v1.8.13 P4-8 content, the 6-profile 3x2 grid, and v1.9.0 P5-1 scaffolding all untouched. Ready to open P5-2 (TUI accept/reject UX + first producing rule)."
+  next_phase: "Phase 5 — safer actuation (P5-2 TUI UX + first producing rule; P5-3 tmux send-keys + audit accepted/rejected/failed emission)"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

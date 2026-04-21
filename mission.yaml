@@ -1,6 +1,6 @@
 mission:
-  version: "1.9.0"
-  title: "Qmonster v0.4.0 — Phase 5 P5-1 opening v1.9.0 (Safer Actuation scaffolding — `RequestedEffect::PromptSendProposed` variant + 3 new `AuditEventKind`s + allow-list routing; NO tmux send-keys execution yet; TUI accept/reject UX deferred to P5-2+)"
+  version: "1.9.1"
+  title: "Qmonster v0.4.0 — Phase 5 P5-1 confirm-archive v1.9.1 (Codex + Gemini both returned `approve` on v1.9.0 P5-1 scaffolding; 3 forward-looking P5-2/P5-3 design TODOs captured from Codex review)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -784,5 +784,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 31
+    total_revisions: 32
     history: "mission-history.yaml"

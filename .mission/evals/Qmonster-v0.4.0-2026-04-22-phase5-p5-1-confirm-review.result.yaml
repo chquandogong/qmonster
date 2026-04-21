@@ -1,0 +1,20 @@
+evaluation:
+  timestamp: "2026-04-22T00:00:00Z"
+  target: "Phase 5 P5-1 opening confirm review (v1.9.0)"
+  evaluated_by: "llm-codex"
+  source: "Local `codex exec` headless confirm review of commit 1d50166 using gpt-5.4 (approval never, sandbox workspace-write, reasoning xhigh). Local shell sandbox was unavailable so the review pulled tracked files through the GitHub connector (chquandogong/qmonster); `cargo` was not re-executed — the review relies on the author-reported green verification (226 lib + 6 drift + 18 integration tests passing, clippy + fmt clean)."
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "Effect shape is sufficient for the Phase-5 goal: target_pane_id + slash_command is the minimum data needed; deliberately excludes raw tail or free-form payload."
+    - "authority_tier() is the right replacement for derived Ord — the payload-bearing enum has no meaningful total order, but the allow-list gradient is preserved explicitly."
+    - "Permit boundary correctly drawn: observe_only blocks everything, recommend_only only surfaces the proposal, allow_auto_prompt_send stays reserved for the future executor path."
+    - "deliver_effects keeps the proposal inert at runtime (UI-visible, side-effect-free)."
+    - "Forward-declaring the three audit kinds and locking SQLite symmetry now is a good trade: cheap dead enums, valuable storage-contract coverage."
+    - "Downstream consumers look safe in this slice: alert aggregation is recommendation/finding-driven, `--once` only debug-prints the effects vector — no panic or double-count path from PaneReport.effects."
+    - "Scope-reduction guidance (non-blocking): keep P5-2 equally narrow — add exactly one producer + the confirmation UX before touching any executor path. Do not combine first-producer work and tmux send-keys actuation in the same slice."
+    - "Forward-looking TODO #1 for P5-2/P5-3: keep the real tmux send-keys path behind a SECOND gate that checks explicit operator confirmation AND allow_auto_prompt_send; do not reuse permit() as the execution gate."
+    - "Forward-looking TODO #2 — semantic clarity before P5-3: decide whether PromptSendAccepted means operator-confirmation OR successful-send. If post-confirmation execution can fail, add a distinct terminal audit outcome (e.g. PromptSendFailed) before ticking Phase-5 VALIDATION."
+    - "Forward-looking TODO #3 — proposal identity: if the first producer can emit more than one proposal per pane, add a stable proposal key when that producer lands; not a P5-1 blocker."
+  gate_decision: "Codex confirms v1.9.0 P5-1 scaffolding is green. Combined with Gemini approve, Phase 5 is cleanly opened. The three forward-looking TODOs should be considered when planning P5-2 / P5-3."

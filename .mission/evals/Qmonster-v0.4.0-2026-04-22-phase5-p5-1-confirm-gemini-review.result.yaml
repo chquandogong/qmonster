@@ -1,0 +1,18 @@
+evaluation:
+  timestamp: "2026-04-22T00:00:00Z"
+  target: "Phase 5 P5-1 opening confirm review (v1.9.0)"
+  evaluated_by: "llm-gemini"
+  source: "Local Gemini CLI headless confirm review of commit 1d50166 (gemini -p --approval-mode plan). Session hit a gemini-3.1-pro-preview capacity-exhausted (429) retry loop and reached max attempts before the final review rendered; the complete 11-section review ultimately landed and is archived at .docs/gemini/...-phase5-p5-1-confirm-review.md."
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "Metadata-only payload on PromptSendProposed correctly upholds the audit-isolation rule — no raw pane bytes, only target_pane_id + slash_command."
+    - "authority_tier() method is a sound replacement for derived Ord on a payload-bearing enum; the explicit gradient Notify<Archive<PromptSend<Sensitive matches the allow-list intent."
+    - "recommend_only letting PromptSendProposed pass is the right architectural choice: it enables UI surfacing of pending actuations while the auto-execution gate (allow_auto_prompt_send) remains locked for the eventual executor path."
+    - "Forward-declared Accepted/Rejected audit kinds with SQLite round-trip tests are a cheap, valuable storage-contract lock before business logic lands."
+    - "ObserveOnly integrity preserved in EffectRunner::permit (line ~27 of src/app/effects.rs)."
+    - "SensitiveNotImplemented remains unconditionally denied — guardrail doubling preserved."
+    - "TODO for P5-2: let the TUI consult EffectRunner::permit when deciding whether to render the Accept button (especially to honor ObserveOnly mode)."
+    - "TODO: leave docs/ai/VALIDATION.md Phase-5 checkboxes unticked until the P5-2/P5-3 executor + UX surfaces land."
+  gate_decision: "Gemini confirms v1.9.0 P5-1 scaffolding is green. Combined with Codex approve, Phase 5 opens cleanly and P5-2 may proceed."
