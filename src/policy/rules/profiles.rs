@@ -41,6 +41,9 @@ pub fn eval_profiles(
     if let Some(rec) = recommend_codex_script_low_token(id, signals, gates) {
         out.push(rec);
     }
+    if let Some(rec) = recommend_gemini_default(id, signals, gates) {
+        out.push(rec);
+    }
     out
 }
 
@@ -599,6 +602,140 @@ fn codex_script_low_token_profile() -> ProviderProfile {
             "codex exec --ephemeral drops session state on invocation end — no resume; every run starts fresh".into(),
             "codex exec --color never strips ANSI colors — pipe-safe output but the operator loses color-coded severity / type cues when tailing the session directly".into(),
         ],
+        source_kind: SourceKind::ProjectCanonical,
+    }
+}
+
+/// `gemini-default`: healthy-state baseline profile for a Gemini main
+/// pane. Pattern parity with `recommend_claude_default` /
+/// `recommend_codex_default` — fires on a healthy Gemini main pane at
+/// IdentityConfidence of Medium or higher, `!quota_tight`, no active
+/// alerts, and low context pressure. Bundles two levers from the
+/// Gemini CLI surface, both labeled `ProjectCanonical`: Gemini's
+/// documented config surface for explicit token-efficiency is
+/// narrower than Claude Code's or Codex's, so we honestly flag VALUE
+/// choices as Qmonster picks rather than overclaim ProviderOfficial
+/// canonical defaults. The per-lever citation explains the
+/// "documented key, Qmonster-chosen value" split on each row.
+///
+/// The broader VALIDATION.md:149-150 constraint ("Gemini profile
+/// recommendations stay advisory; `save_memory` / Auto Memory is
+/// not treated as a state store") is NOT encoded here as a lever —
+/// it is already enforced by the separate
+/// `recommend_mdr_over_auto_memory` rule shipped in P4-2
+/// (`src/policy/rules/auto_memory.rs`), which fires on any provider
+/// (including Gemini) under state-critical task types. Encoding the
+/// same policy twice would be duplication.
+fn recommend_gemini_default(
+    id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    if id.identity.provider != Provider::Gemini {
+        return None;
+    }
+    if id.identity.role != Role::Main {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    if gates.quota_tight {
+        // Baseline only; the aggressive Gemini variant (P4-7) will
+        // own the quota_tight path.
+        return None;
+    }
+    if signals.waiting_for_input
+        || signals.permission_prompt
+        || signals.log_storm
+        || signals.error_hint
+    {
+        return None;
+    }
+    if let Some(mv) = signals.context_pressure.as_ref()
+        && mv.value >= 0.75
+    {
+        return None;
+    }
+
+    let profile = gemini_default_profile();
+    // Reason summary is derived from lever source_kinds at runtime
+    // (same pattern as the Claude and Codex baselines after v1.8.6
+    // remediation) so future authority relabels auto-propagate.
+    let provider_official_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProviderOfficial)
+        .count();
+    let project_canonical_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
+        .count();
+    let reason = format!(
+        "profile `{}`: apply {} levers for a healthy-state baseline main-pane Gemini session — {} ProviderOfficial + {} ProjectCanonical (see lever list below for per-lever citations)",
+        profile.name,
+        profile.levers.len(),
+        provider_official_count,
+        project_canonical_count,
+    );
+    let side_effects = profile.side_effects.clone();
+    Some(Recommendation {
+        action: "provider-profile: gemini-default",
+        reason,
+        severity: Severity::Good,
+        source_kind: SourceKind::ProjectCanonical,
+        // Same multi-key-settings-edit justification as the other
+        // baselines. Gemini CLI applies config via ~/.gemini/
+        // settings.json + flag, not a single runnable command.
+        suggested_command: None,
+        side_effects,
+        is_strong: false,
+        next_step: None,
+        profile: Some(profile),
+    })
+}
+
+fn gemini_default_profile() -> ProviderProfile {
+    ProviderProfile {
+        name: "gemini-default",
+        levers: vec![
+            // model: Qmonster's baseline choice is gemini-2.5-flash —
+            // a lighter / cheaper model, appropriate for healthy
+            // routine work (summarization, research, light coding).
+            // Gemini CLI docs describe the `--model` flag but don't
+            // mandate a canonical default value for all sessions,
+            // so the authority is split: the KEY is ProviderOfficial
+            // (documented), the VALUE is ProjectCanonical (Qmonster
+            // pick). Same honesty pattern as codex-default's
+            // tool_output_token_limit after v1.8.5.
+            ProfileLever {
+                key: "--model",
+                value: "gemini-2.5-flash",
+                citation: "Gemini CLI docs describe the --model flag (no canonical default for all sessions); Qmonster picks gemini-2.5-flash for healthy main-pane baseline to keep per-token cost low on routine work",
+                source_kind: SourceKind::ProjectCanonical,
+            },
+            // Auto-approval stays explicitly OFF in the baseline.
+            // Gemini's `--yolo` flag auto-approves agent actions,
+            // which belongs to the aggressive variant (P4-7, tbd);
+            // the safe default for an interactive healthy main pane
+            // is NOT to set --yolo. We express that as a lever so
+            // the render surfaces it to the operator — the authority
+            // label is ProjectCanonical because "recommend NOT
+            // setting a flag" is a Qmonster architectural choice
+            // (the mission.yaml safety-precedence constraint), not
+            // a Gemini-doc canonical value.
+            ProfileLever {
+                key: "--yolo",
+                value: "unset",
+                citation: "Gemini CLI docs describe --yolo as auto-approval for agent actions; Qmonster recommends KEEPING IT UNSET on a healthy interactive main-pane baseline per the safety-precedence constraint (aggressive variant in P4-7 will reserve the auto-approval path for quota_tight-opted sessions)",
+                source_kind: SourceKind::ProjectCanonical,
+            },
+        ],
+        // Healthy-state baseline: no operator-visible trade-offs.
+        // The aggressive Gemini variant (P4-7) will populate
+        // side_effects with its scripted-session cost list.
+        side_effects: vec![],
         source_kind: SourceKind::ProjectCanonical,
     }
 }
@@ -1245,6 +1382,175 @@ mod tests {
         assert!(
             aggressive_on,
             "codex-script-low-token fires when quota_tight is on"
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Phase 4 P4-6 v1.8.8 — gemini-default baseline profile (first
+    // non-Claude-non-Codex provider entry)
+    // -----------------------------------------------------------------
+
+    fn healthy_gemini_main() -> ResolvedIdentity {
+        ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Gemini,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::High,
+        }
+    }
+
+    #[test]
+    fn recommend_gemini_default_fires_with_honest_authority_labels_on_healthy_gemini_main() {
+        // Gemini's documented config surface for explicit token-
+        // efficiency is narrower than Claude Code's or Codex's, so
+        // the baseline bundle is honestly scoped at 2 levers — both
+        // labeled ProjectCanonical because each VALUE is a Qmonster
+        // pick rather than a Gemini-doc canonical default. This
+        // test locks the per-lever value + source_kind + the
+        // ProjectCanonical-heavy authority split.
+        let id = healthy_gemini_main();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&id, &s, &gates_default());
+
+        let rec = recs
+            .iter()
+            .find(|r| r.action == "provider-profile: gemini-default")
+            .expect("gemini-default profile rec fires on healthy Gemini main pane");
+
+        assert_eq!(rec.source_kind, SourceKind::ProjectCanonical);
+        assert_eq!(rec.severity, Severity::Good);
+        assert!(rec.reason.contains("gemini-default"));
+        assert!(
+            rec.reason.contains("ProjectCanonical"),
+            "reason must cite ProjectCanonical authority label (both levers are PC): {}",
+            rec.reason
+        );
+        assert!(
+            rec.suggested_command.is_none(),
+            "profile rec has no single-surface runnable command"
+        );
+
+        let profile = rec
+            .profile
+            .as_ref()
+            .expect("structured ProviderProfile must be attached to the rec");
+        assert_eq!(profile.name, "gemini-default");
+        assert_eq!(profile.source_kind, SourceKind::ProjectCanonical);
+        assert_eq!(
+            profile.levers.len(),
+            2,
+            "gemini-default bundles 2 levers — Gemini's documented surface for token-efficiency is narrower than Claude / Codex, so the honest minimum is smaller"
+        );
+        for lever in &profile.levers {
+            assert!(
+                !lever.citation.is_empty(),
+                "every lever carries a non-empty citation: {:?}",
+                lever,
+            );
+        }
+
+        // Per-lever value + source_kind contract.
+        let find_lever = |key: &str| -> &ProfileLever {
+            profile
+                .levers
+                .iter()
+                .find(|l| l.key == key)
+                .unwrap_or_else(|| panic!("lever `{key}` must be present in gemini-default"))
+        };
+
+        let model = find_lever("--model");
+        assert_eq!(model.value, "gemini-2.5-flash");
+        assert_eq!(
+            model.source_kind,
+            SourceKind::ProjectCanonical,
+            "the VALUE gemini-2.5-flash is Qmonster's pick; Gemini CLI docs describe --model but don't mandate this value for all sessions"
+        );
+
+        let yolo = find_lever("--yolo");
+        assert_eq!(yolo.value, "unset");
+        assert_eq!(
+            yolo.source_kind,
+            SourceKind::ProjectCanonical,
+            "\"recommend NOT setting --yolo\" is a Qmonster architectural choice (safety-precedence constraint), not a Gemini-doc canonical default"
+        );
+
+        // Authority split: 0 ProviderOfficial + 2 ProjectCanonical.
+        let po_count = profile
+            .levers
+            .iter()
+            .filter(|l| l.source_kind == SourceKind::ProviderOfficial)
+            .count();
+        let pc_count = profile
+            .levers
+            .iter()
+            .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
+            .count();
+        assert_eq!(po_count, 0, "no ProviderOfficial levers in gemini-default — every value is a Qmonster pick");
+        assert_eq!(pc_count, 2);
+
+        // Healthy baseline has no operator-visible trade-offs.
+        assert!(
+            profile.side_effects.is_empty(),
+            "gemini-default is a healthy-state baseline; side_effects stays empty until the P4-7 aggressive variant"
+        );
+    }
+
+    #[test]
+    fn recommend_gemini_default_suppressed_on_non_gemini_provider() {
+        // Provider gate: gemini-default must not fire on Claude or
+        // Codex panes, even under healthy signals. Claude + Codex
+        // baselines fire instead — sanity check that symmetric
+        // provider gating holds across all five profile rules.
+        let claude_main = healthy_claude_main();
+        let s = SignalSet::default();
+        let recs_claude = eval_profiles(&claude_main, &s, &gates_default());
+        assert!(
+            !recs_claude
+                .iter()
+                .any(|r| r.action == "provider-profile: gemini-default"),
+            "gemini-default is Gemini-only; Claude pane must not match"
+        );
+        assert!(
+            recs_claude
+                .iter()
+                .any(|r| r.action == "provider-profile: claude-default"),
+            "claude-default fires instead on a healthy Claude main pane"
+        );
+
+        let codex_main = healthy_codex_main();
+        let recs_codex = eval_profiles(&codex_main, &s, &gates_default());
+        assert!(
+            !recs_codex
+                .iter()
+                .any(|r| r.action == "provider-profile: gemini-default"),
+            "gemini-default is Gemini-only; Codex pane must not match"
+        );
+        assert!(
+            recs_codex
+                .iter()
+                .any(|r| r.action == "provider-profile: codex-default"),
+            "codex-default fires instead on a healthy Codex main pane"
+        );
+    }
+
+    #[test]
+    fn recommend_gemini_default_suppressed_when_quota_tight_on() {
+        // Baseline only — the aggressive Gemini variant (P4-7, tbd)
+        // will own the quota_tight path. This test reserves the
+        // gate so the aggressive variant, when added, cleanly takes
+        // over without overlap (same pattern as Claude / Codex
+        // baseline ↔ aggressive pairs).
+        let id = healthy_gemini_main();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&id, &s, &gates_quota_tight());
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "provider-profile: gemini-default"),
+            "gemini-default must NOT fire under quota_tight; aggressive variant will own that path in P4-7"
         );
     }
 }
