@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 23
-  latest_version: "1.8.7"
+  total_revisions: 24
+  latest_version: "1.8.8"
 
 timeline:
   - change_id: "initial"
@@ -2792,8 +2792,157 @@ timeline:
       - "P4-7: `gemini-script-low-token` aggressive variant"
       - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens"
 
+  - change_id: "phase-4-p4-6-gemini-default-baseline-profile"
+    semantic_version: "1.8.8"
+    change_sequence: 24
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Ship Phase-4 P4-6: the first Gemini provider profile.
+      `gemini-default` is the Gemini main-pane baseline, pattern
+      parity with `claude-default` / `codex-default`. Fifth profile
+      rule; provider gates + quota_tight gate now orchestrate 5
+      rules mutually exclusive per pane (Claude baseline +
+      aggressive, Codex baseline + aggressive, Gemini baseline).
+      P4-7 will add the Gemini aggressive variant and complete the
+      3 x 2 profile grid.
+    intent_ko: >
+      Phase 4 P4-6 착수: 첫 Gemini provider profile. `gemini-default`은
+      Gemini main-pane baseline — `claude-default` / `codex-default`
+      와 패턴 병렬. 다섯 번째 profile rule로 provider 게이트 +
+      quota_tight 게이트 조합으로 pane당 최대 1개 profile만 발화하는
+      상호 배타성 유지. P4-7이 Gemini aggressive 변형을 추가하면
+      3 × 2 profile grid 완성.
+    decision: >
+      (1) src/policy/rules/profiles.rs: new
+      `recommend_gemini_default` rule mirroring the Claude / Codex
+      baseline shape — provider == Gemini, role == Main,
+      IdentityConfidence of Medium or higher, !quota_tight, no
+      active alerts, context_pressure < 0.75. Returns a
+      `Severity::Good` rec with `source_kind: ProjectCanonical`,
+      `suggested_command: None`, structured profile payload.
+      Reason summary is derived from lever source_kinds at runtime
+      (same v1.8.6 pattern as codex-default and codex-script-low-
+      token).
+      (2) New `gemini_default_profile()` private constructor
+      bundles 2 levers, BOTH labeled `ProjectCanonical` (0
+      ProviderOfficial): `--model = gemini-2.5-flash` (Qmonster-
+      chosen lighter model for healthy main-pane sessions; Gemini
+      CLI docs describe --model but don't mandate a canonical
+      default value) and `--yolo = unset` (Qmonster architectural
+      recommendation per safety-precedence constraint; aggressive
+      variant in P4-7 will reserve auto-approval for quota_tight-
+      opted sessions). Per-lever citation explains the
+      documented-key / Qmonster-chosen-value split.
+      (3) The honest 0-ProviderOfficial / 2-ProjectCanonical split
+      reflects Gemini CLI's narrower documented config surface for
+      explicit token-efficiency compared to Claude Code / Codex.
+      We chose "honest labels on fewer levers" over "speculative
+      ProviderOfficial claims on more levers" — same principle
+      that drove the codex-default tool_output_token_limit relabel
+      at v1.8.5.
+      (4) VALIDATION.md:149-150 constraint ("Gemini profile recs
+      stay advisory; save_memory / Auto Memory is not treated as
+      a state store") is NOT encoded as a lever. It is already
+      enforced by the separate `recommend_mdr_over_auto_memory`
+      rule shipped in P4-2 (auto_memory.rs), which fires on any
+      provider including Gemini under state-critical task types
+      (Review / SessionResume). Encoding the same policy twice
+      would be duplication without value.
+      (5) `eval_profiles` dispatcher now calls all five rules in
+      order (claude-default → claude-script-low-token → codex-
+      default → codex-script-low-token → gemini-default).
+      Provider gates isolate Claude / Codex / Gemini; within each
+      provider the quota_tight gate handles baseline vs
+      aggressive. Five profile rules coexist mutually exclusive
+      per pane without any explicit cross-rule references.
+      (6) Three new unit tests: shape (2 levers + 0 PO + 2 PC +
+      empty side_effects + per-lever value + source_kind
+      assertions + derived-from-data reason summary), provider-
+      gate suppression on Claude + Codex panes (claude-default /
+      codex-default fire instead — symmetric gating sanity
+      checks), quota_tight suppression (reserves P4-7 path).
+      (7) No renderer change — existing format_profile_lines
+      helper handles the rec without modification (same as
+      codex-default in P4-4).
+    decision_ko: >
+      (1) src/policy/rules/profiles.rs에 신규 `recommend_gemini_default`
+      규칙 — Claude/Codex baseline과 동일 shape. Gemini main +
+      conf Medium 이상 + !quota_tight + healthy에서 발화.
+      Severity::Good + ProjectCanonical source + 런타임 파생 reason
+      (v1.8.6 패턴).
+      (2) 신규 `gemini_default_profile()` 생성자 — 2 lever, 둘 다
+      ProjectCanonical: `--model = gemini-2.5-flash`(Qmonster 선택
+      값; --model flag는 문서화됐으나 canonical 기본값 없음),
+      `--yolo = unset`(safety-precedence 제약에 따른 Qmonster 권고;
+      auto-approval은 P4-7에서). lever마다 "문서화된 키 + Qmonster
+      선택 값" split 명시.
+      (3) Gemini CLI의 documented token-efficiency surface가
+      Claude/Codex보다 좁아서 speculative ProviderOfficial claim
+      대신 정직한 label을 선택 — v1.8.5 codex-default
+      tool_output_token_limit 재라벨과 동일 원칙.
+      (4) VALIDATION.md:149-150 제약은 lever로 중복 표현하지 않음
+      — P4-2의 recommend_mdr_over_auto_memory(auto_memory.rs)가
+      이미 Gemini 포함 모든 provider의 state-critical task type에
+      대해 적용.
+      (5) eval_profiles dispatcher가 이제 5개 rule 순차 호출.
+      provider gate + quota_tight gate로 pane당 최대 1개 profile
+      발화.
+      (6) unit test 3개 신규 — shape / provider-gate 양방향 억제 /
+      quota_tight 억제.
+      (7) 렌더러 변경 없음.
+    triggered_by: "operator approval to proceed with P4-6 after v1.8.7 fully gate-approved (Gemini pass + Codex approve, no must-fix findings)"
+    issue_or_context: >
+      After P4-4 / P4-5 established the Codex baseline + aggressive
+      pair, P4-6 adds the first Gemini provider profile and widens
+      the recommender to its third provider. The slice intentionally
+      stays tight — 2 levers, both ProjectCanonical — because
+      Gemini CLI's documented surface for explicit token-efficiency
+      is narrower than Claude Code's or Codex's. Honest scope over
+      speculative authority claims, matching the codex-default
+      tool_output_token_limit relabel pattern from v1.8.5.
+    changes:
+      modified:
+        - "src/policy/rules/profiles.rs — `eval_profiles` dispatcher now calls 5 rules (adds `recommend_gemini_default` after the four existing rules); no change to existing rules / profiles"
+      added:
+        - "src/policy/rules/profiles.rs — new `recommend_gemini_default` rule + `gemini_default_profile()` constructor (2 ProjectCanonical levers) + 3 new unit tests (shape, provider-gate, quota_tight gate); new `healthy_gemini_main()` test helper"
+    changed_sections:
+      - "new Gemini baseline profile rule + constructor (2 ProjectCanonical levers)"
+      - "eval_profiles dispatcher extended to 5 rules (first Gemini entry)"
+    done_when_delta:
+      added:
+        - "Phase 4 P4-6 v1.8.8: `src/policy/rules/profiles.rs::recommend_gemini_default` fires a `Severity::Good` rec with `source_kind: ProjectCanonical` when provider is Gemini, role is Main, IdentityConfidence >= Medium, `!quota_tight`, no active alerts, and `context_pressure < 0.75`. The bundled `ProviderProfile` `gemini-default` carries 2 levers, BOTH labeled `ProjectCanonical` (0 ProviderOfficial) — Gemini's documented config surface for explicit token-efficiency is narrower than Claude Code's or Codex's, so each VALUE is an honest Qmonster pick rather than a canonical default."
+        - "Phase 4 P4-6 v1.8.8: gemini-default's two levers are `--model = gemini-2.5-flash` and `--yolo = unset`, each with a per-lever citation explaining the documented-key / Qmonster-chosen-value split."
+        - "Phase 4 P4-6 v1.8.8: VALIDATION.md:149-150 constraint (Gemini profile recommendations stay advisory; save_memory / Auto Memory not a state store) is NOT duplicated as a lever in gemini-default — it is already enforced by the `recommend_mdr_over_auto_memory` rule from P4-2, which fires on any provider including Gemini under state-critical task types."
+        - "Phase 4 P4-6 v1.8.8: 3 new unit tests in `policy/rules/profiles.rs` — shape (2 levers + 0 PO + 2 PC + empty side_effects + per-lever value + source_kind assertions + derived-from-data reason summary); provider-gate suppression on Claude + Codex panes (claude-default / codex-default fire instead, symmetric gating); quota_tight suppression (reserves P4-7 path). 186 lib + 18 integration (up from 183 + 18); clippy --all-targets -D warnings clean."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~140 LOC production (new rule + new profile constructor + dispatcher update + module-level doc additions) + ~120 LOC test delta (3 new unit tests + 1 new test helper)"
+      tests: "186 lib + 18 integration (up from 183 + 18; +3 new unit tests, 0 existing tests changed)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no runtime behavior change for existing signals; on healthy Gemini main panes, one Severity::Good recommendation now appears in PaneReport.recommendations carrying the `gemini-default` bundle. Claude / Codex panes are unaffected."
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — pure additive rule inside the existing dispatcher; provider gates keep it isolated; honest 0-ProviderOfficial / 2-ProjectCanonical authority split is a new shape that future Codex/Gemini review should confirm (it's intentionally conservative; reviewers may suggest broader ProviderOfficial claims if they find documented defaults)"
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+      - "KD-007"
+    snapshot_after: ""
+    follow_up:
+      - "Request Codex + Gemini gate review on v1.8.8 P4-6 before continuing to P4-7"
+      - "P4-7: `gemini-script-low-token` aggressive variant (quota_tight-gated, side_effects populated per Gemini G-6 parity for Gemini). Completes 3 x 2 profile grid."
+      - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens"
+
 evolution_summary:
-  current_phase: "Phase 4 P4-5 fully gate-approved — v1.8.7 codex-script-low-token: Gemini pass (적극 승인) + Codex approve (no must-fix findings); Claude + Codex both have baseline + aggressive profiles with Gemini G-6 parity; ready for P4-6 (gemini-default baseline)"
+  current_phase: "Phase 4 P4-6 shipped — first Gemini provider profile `gemini-default` baseline (v1.8.8); awaiting first Codex + Gemini gate review on v1.8.8 before P4-7 (gemini-script-low-token aggressive variant)"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
