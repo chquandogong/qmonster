@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 20
-  latest_version: "1.8.4"
+  total_revisions: 21
+  latest_version: "1.8.5"
 
 timeline:
   - change_id: "initial"
@@ -2371,8 +2371,162 @@ timeline:
       - "P4-7: `gemini-script-low-token` aggressive variant"
       - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens"
 
+  - change_id: "phase-4-p4-4-remediation-codex-spec-compliance"
+    semantic_version: "1.8.5"
+    change_sequence: 21
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.8.4 P4-4 review — flagged both findings closed by this round)"
+      - "Gemini (gemini:1:research, v1.8.4 P4-4 review via local CLI headless run — confirmed the commit_attribution risk independently)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close both reviewer findings raised in parallel against v1.8.4
+      P4-4: (a) Codex + Gemini both flagged as risk that
+      `commit_attribution = "false"` contradicts the Codex config
+      spec — the key is a string and disabling means an empty
+      string, NOT the literal "false" which would parse as truthy
+      and wrongly include "false" as attribution text in commits.
+      (b) Codex flagged as warning that `tool_output_token_limit =
+      30000`'s ProviderOfficial authority label is too strong —
+      Codex docs describe the key but the sample config shows 12000,
+      so 30000 is Qmonster's parity choice with Claude's
+      BASH_MAX_OUTPUT_LENGTH bound, not a Codex-doc canonical
+      default. Gemini considered (b) acceptable parity (non-blocker)
+      but fixing it aligns authority labels with actual source
+      honesty — same principle that drove the v1.8.1
+      ProjectCanonical-vs-ProviderOfficial bundle-vs-lever split.
+    intent_ko: >
+      v1.8.4 P4-4에 대해 Codex + Gemini가 병렬로 제기한 두 reviewer
+      finding을 닫는다. (a) `commit_attribution = "false"`가 Codex
+      config spec과 맞지 않는다는 지적 — 이 키는 문자열이고
+      비활성화는 빈 문자열("")이다. 리터럴 "false"는 truthy 문자열로
+      파싱되어 실제로 "false"가 attribution 텍스트로 커밋에
+      포함되는 반대 동작을 일으킴. Codex + Gemini 모두 risk로 분류.
+      (b) `tool_output_token_limit = 30000`의 ProviderOfficial
+      label이 과하다는 Codex 지적 — Codex 문서는 키를 기술할 뿐이며
+      샘플 설정의 12000은 예시일 뿐 canonical default로 못박지 않음.
+      30000은 Qmonster가 Claude BASH_MAX_OUTPUT_LENGTH와 parity를
+      맞춘 선택이므로 ProjectCanonical이 정직한 label. Gemini는
+      허용 가능한 parity choice로 보고 blocker는 아님으로 판정했으나
+      수정은 권장.
+    decision: >
+      (1) src/policy/rules/profiles.rs::codex_default_profile: fix
+      the two lever entries.
+        - `commit_attribution`: `value: "false"` → `value: ""` (empty
+          string). Citation updated to: "Codex docs — settings
+          surface, commit_attribution is a string; empty string
+          disables marketing attribution in git commits". source_kind
+          stays `ProviderOfficial` (the key IS documented; only the
+          value was wrong).
+        - `tool_output_token_limit`: `source_kind: ProviderOfficial`
+          → `source_kind: ProjectCanonical`. Citation updated to:
+          "Codex docs describe the key (no canonical default —
+          sample shows 12000 as example); Qmonster picks 30000 for
+          cross-provider parity with Claude's BASH_MAX_OUTPUT_LENGTH
+          bound". value 30000 unchanged (the parity choice is the
+          intended behavior).
+      (2) The other lever (`web_search = cached`) is unchanged.
+      (3) src/policy/rules/profiles.rs test update: rename
+      `recommend_codex_default_fires_with_provider_official_levers_on_healthy_codex_main`
+      → `_fires_with_honest_authority_labels_on_healthy_codex_main`.
+      Replace the old universal loop that asserted every lever as
+      ProviderOfficial with explicit per-lever value + source_kind
+      assertions. The regression Codex + Gemini caught
+      (`commit_attribution = "false"`) would fail the new test.
+      Also locks the exact ProjectCanonical label on
+      `tool_output_token_limit` and the empty-string value on
+      `commit_attribution` with clear failure messages citing the
+      originating Codex finding numbers.
+      (4) The other two P4-4 tests (non-Codex provider suppression,
+      quota_tight suppression) are unchanged — their assertions are
+      still accurate after the value/label corrections.
+    decision_ko: >
+      (1) codex_default_profile의 두 lever 항목 수정.
+        - `commit_attribution`: `value: "false"` → `value: ""` (빈
+          문자열). citation을 "Codex docs — commit_attribution은
+          문자열이며 빈 문자열이 marketing attribution을 비활성화"
+          로 갱신. source_kind는 ProviderOfficial 유지 (키 자체는
+          문서화되어 있음; 값만 잘못됐었음).
+        - `tool_output_token_limit`: `source_kind: ProviderOfficial`
+          → `source_kind: ProjectCanonical`. citation을 "Codex docs
+          는 키를 기술(canonical default 없음 — 샘플은 12000 예시);
+          30000은 Qmonster가 Claude BASH_MAX_OUTPUT_LENGTH bound와
+          parity를 위해 선택한 값"으로 갱신. 30000 값은 유지.
+      (2) `web_search = cached` lever는 변경 없음.
+      (3) 테스트 갱신: 기존 positive-fire 테스트 이름을
+      `_fires_with_honest_authority_labels_on_healthy_codex_main`으로
+      개명. 모든 lever를 ProviderOfficial로 blanket-assert하던
+      기존 루프를 per-lever value + source_kind 명시 assertion으로
+      교체. Codex P4-4 리뷰가 잡은 regression(`commit_attribution
+      = "false"`)은 새 테스트에서 실패. ProjectCanonical 라벨과 빈
+      문자열 값을 각 finding 번호를 인용한 실패 메시지와 함께 고정.
+      (4) 나머지 두 P4-4 테스트(provider 억제, quota_tight 억제)는
+      변경 없음.
+    triggered_by: >
+      Codex v1.8.4 P4-4 review (.docs/codex/...phase4-p4-4-review.md +
+      .mission/evals/...phase4-p4-4-review.result.yaml) — 1 risk +
+      1 warning. Gemini v1.8.4 P4-4 review (.docs/gemini/
+      ...phase4-p4-4-review.md +
+      .mission/evals/...phase4-p4-4-gemini-review.result.yaml) via
+      local CLI headless run — 1 risk (commit_attribution, same
+      issue). Both reviewers converged on the commit_attribution
+      fix independently.
+    issue_or_context: >
+      v1.8.4 shipped `commit_attribution = "false"` because the
+      pattern parity with Claude's `includeGitInstructions = false`
+      looked visually right. Codex's config spec (cited in both
+      reviews) treats this key as a string where empty disables —
+      the literal "false" silently breaks the intent. Separately,
+      the `tool_output_token_limit = 30000` citation called it a
+      Codex-doc default when actually the value is Qmonster's
+      parity choice; the authority label drift was a false
+      ProviderOfficial claim. Both issues are local to
+      codex_default_profile and fixable without touching any other
+      profile, rule, or render code.
+    changes:
+      modified:
+        - 'src/policy/rules/profiles.rs — codex_default_profile: commit_attribution value "false" → "" + citation rewrite (empty string disables per Codex spec); tool_output_token_limit source_kind ProviderOfficial → ProjectCanonical + citation rewrite (value is Qmonster parity choice, not Codex canonical default); positive-fire unit test renamed to `_fires_with_honest_authority_labels_on_healthy_codex_main` and tightened with per-lever explicit value + source_kind assertions'
+        - "mission.yaml — version 1.8.4 → 1.8.5; title replaced (P4-4 shipped → P4-4 remediated); new v1.8.5 paragraph in goal; v1.8.4 done_when entry that listed the wrong lever details replaced with current-state text + superseded-in-part comment; 2 new v1.8.5 done_when entries; execution_hints.topology + suggested_approach updated; lineage total_revisions 20 → 21"
+        - "mission-history.yaml — meta.total_revisions 20 → 21; latest_version → 1.8.5; new entry (this one, change_sequence 21, motivation_type reviewer-driven, change_type fix); evolution_summary.current_phase updated"
+        - ".mission/CURRENT_STATE.md — version → 1.8.5; P4-4 section reframed to include v1.8.5 remediation; gate-status table updated (Gemini + Codex P4-4 rows now show findings closed by v1.8.5); Next first action rewritten (request short v1.8.5 confirm review)"
+    changed_sections:
+      - "codex-default profile lever values + authority labels"
+      - "codex-default positive-fire test: exact per-lever assertions"
+      - "mission.yaml done_when: v1.8.4 current-state rewritten + 2 v1.8.5 entries added"
+    done_when_delta:
+      added:
+        - 'Phase 4 P4-4 remediation v1.8.5: `codex-default` bundles 3 levers drawn from VALIDATION.md:137-143 — 2 ProviderOfficial (`web_search = cached`, `commit_attribution = ""`) + 1 ProjectCanonical (`tool_output_token_limit = 30000` — Qmonster parity choice with Claude BASH_MAX_OUTPUT_LENGTH; Codex docs describe the key but don''t mandate this value). Citations updated accordingly. Codex P4-4 finding #1 (risk: `commit_attribution = "false"` wrong per Codex spec; empty string disables) and Gemini''s parallel finding both closed. Codex P4-4 finding #2 (warning: authority-label over-claim on `tool_output_token_limit`) closed.'
+        - 'Phase 4 P4-4 remediation v1.8.5: positive-fire unit test renamed to `recommend_codex_default_fires_with_honest_authority_labels_on_healthy_codex_main` and tightened — per-lever exact value + source_kind assertions replace the prior loop that blanket-asserted every lever as ProviderOfficial. `commit_attribution = "false"` (the regression Codex / Gemini caught) would fail the new test. 179 lib + 18 integration (unchanged test count; one rewritten test in place); clippy --all-targets -D warnings clean.'
+      modified:
+        - "Phase 4 P4-4 v1.8.4: `codex-default` bundles three levers drawn from VALIDATION.md:137-143. Fire-condition + provider-gate statements remain current; lever-specific value + authority details were updated by the v1.8.5 remediation entries above."
+      removed: []
+    impact_scope:
+      code: "~15 LOC production (2 lever value / source_kind / citation edits + 1 comment block) + ~40 LOC test delta (old loop replaced with per-lever explicit assertions); 1 test rename"
+      tests: "179 lib + 18 integration (unchanged test count — one rewritten test in place)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "the Codex baseline recommendation's rendered output now (a) shows `commit_attribution = ` with empty value — which, when an operator applies it, actually disables attribution per Codex spec, and (b) tags tool_output_token_limit's row with [PC] instead of [PO] in the format_profile_lines render path. No other user-visible change."
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated; Gemini P4-4 narrative + structured mirror already existed from the local CLI review run (not created in this round)"
+    breaking: false
+    risk: "low — lever value + authority label fix inside an existing profile; no new structure, no new rule, no render-helper change; reviewer-driven remediation with both reviewers pointing at the same concrete cell"
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "Request a short Codex + Gemini confirm re-review on v1.8.5 before opening P4-5"
+      - "P4-5: `codex-script-low-token` aggressive variant — quota_tight-gated, side_effects populated (Gemini G-6 parity for Codex)"
+      - "P4-6: `gemini-default` baseline profile"
+      - "P4-7: `gemini-script-low-token` aggressive variant"
+      - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens"
+
 evolution_summary:
-  current_phase: "Phase 4 P4-4 shipped — first non-Claude profile `codex-default` baseline (v1.8.4); awaiting first Codex + Gemini gate review on v1.8.4 before P4-5 (codex-script-low-token aggressive variant)"
+  current_phase: "Phase 4 P4-4 remediated — codex-default lever authority labels honest (v1.8.5); awaiting short Codex + Gemini confirm re-review before P4-5"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
