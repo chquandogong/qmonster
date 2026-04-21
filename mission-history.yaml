@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 17
-  latest_version: "1.8.1"
+  total_revisions: 18
+  latest_version: "1.8.2"
 
 timeline:
   - change_id: "initial"
@@ -1947,8 +1947,161 @@ timeline:
       - "P4-3: Gemini G-6 side_effects population on first aggressive-variant profile (e.g. claude-script-low-token gated by quota_tight)"
       - "P4-4+: Codex and Gemini provider profiles + VALIDATION.md Phase-4 checkboxes ticked"
 
+  - change_id: "phase-4-p4-2-auto-memory-guide"
+    semantic_version: "1.8.2"
+    change_sequence: 18
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Ship the second Phase-4 slice (P4-2): Gemini G-5 auto-memory
+      guide. When adapter-inferred `task_type` indicates
+      state-critical work (Review or SessionResume — both classes
+      of work that produce handoff-grade state that gets lost in
+      provider auto-memory), emit a passive advisory routing the
+      operator toward the project ledger (`.mission/CURRENT_STATE.md`
+      or a new `.mission/decisions/MDR-XXX.md`) via `next_step`.
+      Closes Gemini G-5 per VALIDATION.md:154-156 and the
+      "auto memory ... never the primary state store" mission.yaml
+      constraint.
+    intent_ko: >
+      Phase 4의 두 번째 슬라이스(P4-2) 도입: Gemini G-5 auto-memory
+      guide. adapter가 추론한 `task_type`이 state-critical 작업
+      (Review 또는 SessionResume — 둘 다 provider auto-memory에만
+      저장되면 유실되는 handoff-grade 상태를 생성하는 작업 유형)
+      일 때, 프로젝트 레저(`.mission/CURRENT_STATE.md` 또는 신규
+      `.mission/decisions/MDR-XXX.md`)로 operator를 안내하는 수동
+      advisory를 `next_step`에 실어 발화. VALIDATION.md:154-156의
+      Gemini G-5 및 mission.yaml의 "auto memory … never the primary
+      state store" 제약을 닫는다.
+    decision: >
+      (1) src/policy/rules/auto_memory.rs (new):
+      `pub fn eval_auto_memory(id, signals, gates) -> Vec<Recommendation>`
+      mirrors the other rules/*.rs dispatchers. The single rule
+      `recommend_mdr_over_auto_memory` fires a `Severity::Concern`
+      rec with `source_kind: ProjectCanonical` (Qmonster
+      architectural rule, not a provider-doc fact) when
+      `signals.task_type ∈ {Review, SessionResume}`. Gate logic:
+      (a) `allow_provider_specific(gates.identity_confidence)` —
+      KD-007 gate, because task_type inference comes from the
+      per-provider adapter and is unreliable at Low/Unknown
+      confidence; (b) suppression when `waiting_for_input ||
+      permission_prompt` — operator attention already routed to a
+      more pressing signal; (c) narrow task-type scope — the other
+      five TaskType variants (Unknown/CodeExploration/LogTriage/
+      Summary/Automation) produce output that is NOT handoff-grade
+      state. The rec carries `next_step: Some("record in
+      `.mission/CURRENT_STATE.md` or create a new `.mission/
+      decisions/MDR-XXX.md`; avoid provider save_memory / auto-
+      memory for state-critical content")` with `suggested_command:
+      None` (operator routing decision, not a runnable command).
+      `is_strong: false`; `profile: None`; `side_effects: vec![]`.
+      Five unit tests lock the contract: positive Review (full
+      shape + ProjectCanonical + next_step content), positive
+      SessionResume (action name present), narrow suppression
+      (five non-state-critical TaskType variants), KD-007 gate
+      (Low-confidence suppressed), attention-redirect suppression
+      (waiting_for_input and permission_prompt each).
+      (2) src/policy/rules/mod.rs: `pub mod auto_memory;`.
+      (3) src/policy/engine.rs: `Engine::evaluate` extends recs
+      with `eval_auto_memory(id, signals, gates)` after profiles
+      so G-5 recs flow through the same PaneReport -> ViewModel
+      path without touching UI code. No new `RequestedEffect`; no
+      effect-runner change.
+      Design decisions worth flagging to reviewers: (i) the rec is
+      Concern (not Warning/Risk) because the guidance is operator
+      routing, not an alert; (ii) `source_kind: ProjectCanonical`
+      because the "route to MDR, not auto-memory" rule comes from
+      our mission.yaml constraint ("auto memory ... never the
+      primary state store"), not from any provider doc; (iii)
+      there is no dedicated aggressive variant in P4-2 — the
+      guidance is equally relevant inside and outside quota_tight
+      mode.
+    decision_ko: >
+      (1) src/policy/rules/auto_memory.rs 신규:
+      `pub fn eval_auto_memory(id, signals, gates) -> Vec<Recommendation>`
+      는 다른 rules 파일과 동일한 dispatcher 형태. 단일 규칙
+      `recommend_mdr_over_auto_memory`이 `signals.task_type`이
+      {Review, SessionResume} 중 하나일 때 `Severity::Concern` +
+      `source_kind: ProjectCanonical`(Qmonster 아키텍처 규칙, provider
+      doc 사실 아님) 권고 발화. 게이트: (a) 제공자 특화 게이트
+      (KD-007) — task_type은 adapter가 추론하므로 Low/Unknown 신뢰도
+      에서는 불안정 → 억제; (b) `waiting_for_input ||
+      permission_prompt`에서 억제 — operator 주의가 이미 더 긴급한
+      신호에 잡혔음; (c) 좁은 task_type 범위 유지 — 나머지 5개
+      변형(Unknown/CodeExploration/LogTriage/Summary/Automation)은
+      handoff-grade 상태를 만들지 않음. `next_step`에 두 canonical
+      쓰기 타겟(CURRENT_STATE.md + 신규 MDR-XXX.md)과 "provider
+      save_memory 회피" 지시. `suggested_command: None`(operator
+      라우팅 결정, 실행 명령 아님); `is_strong: false`;
+      `profile: None`; `side_effects: vec![]`. Unit test 5건:
+      positive Review(전체 shape 검증), positive SessionResume,
+      narrow 억제(non-state-critical TaskType 5종), KD-007 게이트
+      (Low-confidence 억제), 주의-리다이렉트 억제
+      (waiting_for_input / permission_prompt 각각).
+      (2) src/policy/rules/mod.rs: `pub mod auto_memory;`.
+      (3) src/policy/engine.rs: `Engine::evaluate`가 profiles
+      이후 `eval_auto_memory` 확장 — 기존 PaneReport 경로 재사용,
+      UI 변경 없음. 신규 RequestedEffect 없음.
+    triggered_by: "operator request to proceed with P4-2 after v1.8.1 fully approved baseline (Gemini v1.8.0 pass + Codex v1.8.1 confirm approve)"
+    issue_or_context: >
+      Phase 4 opened at v1.8.0 with the provider-profile recommender
+      foundation (P4-1) and was remediated at v1.8.1 to thread the
+      structured ProviderProfile payload end-to-end. P4-2 ships the
+      next Phase-4 slice that closes Gemini G-5 per
+      VALIDATION.md:154-156: the auto-memory guide rule. This is a
+      new policy rule, not a profile bundle — it does not carry a
+      `ProviderProfile` payload. It is the first Phase-4 rule that
+      sets `source_kind: ProjectCanonical` on the REC itself (not on
+      a bundle inside it), because the guidance originates from our
+      own mission.yaml architectural constraint rather than provider
+      docs.
+    changes:
+      added:
+        - "src/policy/rules/auto_memory.rs — new module with `eval_auto_memory` dispatcher + `recommend_mdr_over_auto_memory` rule + 5 unit tests (positive Review with full shape verification, positive SessionResume, narrow suppression across five non-state-critical TaskType variants, Low-confidence gate suppression, waiting_for_input and permission_prompt attention-redirect suppression)"
+      modified:
+        - "src/policy/rules/mod.rs — `pub mod auto_memory;`"
+        - "src/policy/engine.rs — `Engine::evaluate` extends recs with `eval_auto_memory(id, signals, gates)` after profiles; no new effect, no runner change"
+        - "mission.yaml — version 1.8.1 → 1.8.2; title replaced (remediation → P4-2 shipped); new v1.8.2 goal paragraph; 3 new done_when entries for P4-2; execution_hints.topology + suggested_approach updated; lineage total_revisions 17 → 18"
+        - "mission-history.yaml — meta.total_revisions 17 → 18; meta.latest_version → 1.8.2; new entry (this one, change_sequence 18, change_type feature, motivation_type implementation); evolution_summary.current_phase updated"
+        - ".mission/CURRENT_STATE.md — version → 1.8.2; Phase 4 section expanded with a P4-2 sub-section; Gate status + Verification + Next first action refreshed for v1.8.2"
+    changed_sections:
+      - "new policy rule module: auto_memory dispatcher + G-5 rule"
+      - "Engine::evaluate extended to call eval_auto_memory after profiles"
+      - "VALIDATION.md:154-156 Gemini G-5 check is now satisfied in code (checkbox remains in VALIDATION.md as rubric)"
+    done_when_delta:
+      added:
+        - 'Phase 4 P4-2 v1.8.2: `src/policy/rules/auto_memory.rs::eval_auto_memory` is wired into `Engine::evaluate` after profiles. `recommend_mdr_over_auto_memory` fires a `Severity::Concern` passive advisory with `source_kind: ProjectCanonical` when `signals.task_type` is `Review` or `SessionResume`. The rec carries `next_step: Some("record in `.mission/CURRENT_STATE.md` or create a new `.mission/decisions/MDR-XXX.md`; avoid provider save_memory / auto-memory for state-critical content")`. Gemini G-5 VALIDATION.md:154-156 check closed.'
+        - "Phase 4 P4-2 v1.8.2: `recommend_mdr_over_auto_memory` respects the KD-007 IdentityConfidence gate (Low/Unknown suppressed because adapter task_type is unreliable) and suppresses on `waiting_for_input || permission_prompt` (operator attention already routed). No Notify trigger (Severity::Concern stays below the gate); no new RequestedEffect."
+        - "Phase 4 P4-2 v1.8.2: 5 new unit tests in `auto_memory.rs` lock the contract — fires on Review with ProjectCanonical source + MDR/CURRENT_STATE.md/save_memory next_step + Concern severity; fires on SessionResume; suppressed on Unknown/CodeExploration/LogTriage/Summary/Automation; suppressed on Low confidence; suppressed on waiting_for_input or permission_prompt. 171 lib + 17 integration (up from 166 + 17); clippy --all-targets -D warnings clean."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~100 LOC production (1 new rule module + 2-line mod.rs + 1-line engine.rs) + ~130 LOC test delta (5 new unit tests)"
+      tests: "171 lib + 17 integration (up from 166 + 17; +5 new tests, 0 existing tests changed)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no runtime behavior change for existing signals; on Claude/Codex/Gemini panes whose task_type is inferred as Review or SessionResume, an extra Severity::Concern recommendation now appears in PaneReport.recommendations (non-strong, non-Notify)"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — pure additive rule set with no effect-runner or UI changes; `source_kind: ProjectCanonical` on the rec itself (not on an embedded bundle) is a new design signal that Codex/Gemini review should confirm — G-5 guidance comes from the mission.yaml architectural constraint rather than any provider doc, so ProjectCanonical is the honest label"
+    related_commits: []
+    related_decisions:
+      - "KD-002"
+      - "KD-005"
+      - "KD-006"
+      - "KD-007"
+    snapshot_after: ""
+    follow_up:
+      - "Request Codex + Gemini gate review on v1.8.2 P4-2 before continuing to P4-3"
+      - "P4-3: Gemini G-6 side_effects population on first aggressive-variant profile (e.g. claude-script-low-token gated by quota_tight)"
+      - "P4-4+: Codex and Gemini provider profiles + remaining VALIDATION.md Phase-4 checkboxes"
+
 evolution_summary:
-  current_phase: "Phase 4 P4-1 remediated — structured ProviderProfile flows end-to-end to renderer (v1.8.1); awaiting short Codex confirmation before P4-2"
+  current_phase: "Phase 4 P4-2 shipped — Gemini G-5 auto-memory guide rule in eval_auto_memory (v1.8.2); awaiting first Codex + Gemini gate review on v1.8.2 before P4-3"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

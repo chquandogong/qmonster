@@ -1,6 +1,6 @@
 mission:
-  version: "1.8.1"
-  title: "Qmonster v0.4.0 — Phase 4 P4-1 remediated (structured ProviderProfile now reaches renderer end-to-end; Codex P4-1 finding #1 closed; Gemini pass + artifacts backfilled)"
+  version: "1.8.2"
+  title: "Qmonster v0.4.0 — Phase 4 P4-2 shipped (Gemini G-5 auto-memory guide rule: state-critical task types route handoff content to MDR / CURRENT_STATE, not to provider save_memory)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -235,6 +235,34 @@ mission:
     conditions unchanged; only the payload visibility and renderer
     coverage move forward.
 
+    Phase 4 P4-2 (v1.8.2, this revision) ships the Gemini G-5
+    auto-memory guide rule — the second Phase-4 slice. When the
+    adapter-inferred task_type is `TaskType::Review` or
+    `TaskType::SessionResume` (both classes of work that produce
+    handoff-grade state that gets lost if stored only in a
+    provider's machine-local memory), a new rule
+    `recommend_mdr_over_auto_memory` in
+    `src/policy/rules/auto_memory.rs` emits a `Severity::Concern`
+    passive advisory (no Notify; positive routing guidance) with
+    `next_step` pointing at the two canonical write targets:
+    `.mission/CURRENT_STATE.md` or a new
+    `.mission/decisions/MDR-XXX.md`. The rec carries
+    `source_kind: ProjectCanonical` (this is a Qmonster
+    architectural rule from mission.yaml constraints — "auto memory
+    ... never the primary state store" — not a provider-doc fact).
+    Respects KD-007 (Low-confidence panes suppress the rec because
+    `task_type` inference is unreliable) and suppresses when the
+    operator's attention is already on `waiting_for_input` or
+    `permission_prompt`. Wired into `Engine::evaluate` after
+    profiles so G-5 recs flow through the same PaneReport path.
+    Five new unit tests cover positive fires (Review + SessionResume),
+    negative narrow scope (Unknown / CodeExploration / LogTriage /
+    Summary / Automation all suppressed), identity-confidence gate,
+    and attention-redirect suppression. 171 lib + 17 integration
+    (up from 166 + 17; +5 new tests). clippy clean. No new
+    RequestedEffect; no effect-runner change. Closes Gemini G-5 for
+    VALIDATION.md:154-156 Phase-4 check (auto-memory guidance).
+
   done_when:
     # Phase-0 artefacts (kept as historical gating criteria — already met).
     - "Phase 0: mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate against the mission-spec schema."
@@ -329,6 +357,11 @@ mission:
     - "Phase 4 P4-1 remediation v1.8.1: three new tests lock the end-to-end contract — unit in `policy/rules/profiles.rs` (rec.profile Some with 3 ProviderOfficial levers, non-empty citations, expected keys), unit in `ui/panels.rs` (renderer emits header with [PC] badge + lever count + profile name; each lever row contains [PO] badge + key + value + citation; empty Vec when no profile), integration in `tests/event_loop_integration.rs` (live `Engine::evaluate -> run_once` output fed through `format_profile_lines` yields 4 lines with all four authority pieces visible per lever; Severity::Good still does NOT trigger Notify)."
     - "Phase 4 P4-1 remediation v1.8.1: Gemini's parallel v1.8.0 review (`pass` / 적극 승인) is recorded per WORKFLOWS.md:56-58 at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-review.md` + structured mirror at `.mission/evals/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-gemini-review.result.yaml`. 166 lib + 17 integration (up from 163 + 16); clippy --all-targets -D warnings clean."
 
+    # Phase-4 P4-2 (v1.8.2) — Gemini G-5 auto-memory guide.
+    - 'Phase 4 P4-2 v1.8.2: `src/policy/rules/auto_memory.rs::eval_auto_memory` is wired into `Engine::evaluate` after profiles. `recommend_mdr_over_auto_memory` fires a `Severity::Concern` passive advisory with `source_kind: ProjectCanonical` when `signals.task_type` is `Review` or `SessionResume`. The rec carries `next_step: Some("record in `.mission/CURRENT_STATE.md` or create a new `.mission/decisions/MDR-XXX.md`; avoid provider save_memory / auto-memory for state-critical content")`. Gemini G-5 VALIDATION.md:154-156 check closed.'
+    - "Phase 4 P4-2 v1.8.2: `recommend_mdr_over_auto_memory` respects the KD-007 IdentityConfidence gate (Low/Unknown suppressed because adapter task_type is unreliable) and suppresses on `waiting_for_input || permission_prompt` (operator attention already routed). No Notify trigger (Severity::Concern stays below the gate); no new RequestedEffect."
+    - "Phase 4 P4-2 v1.8.2: 5 new unit tests in `auto_memory.rs` lock the contract — fires on Review with ProjectCanonical source + MDR/CURRENT_STATE.md/save_memory next_step + Concern severity; fires on SessionResume; suppressed on Unknown/CodeExploration/LogTriage/Summary/Automation; suppressed on Low confidence; suppressed on waiting_for_input or permission_prompt. 171 lib + 17 integration (up from 166 + 17); clippy --all-targets -D warnings clean."
+
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
     - "Layer separation: docs/ai/ = canonical (Git-tracked); .docs/ = raw working docs (gitignored); mission.yaml + mission-history.yaml + .mission/ = local contract/ledger (gitignored in single-user phase)."
@@ -418,21 +451,22 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1); P4-2 (Gemini G-5 auto-memory guide rule) shipped in 1 TDD commit (v1.8.2)."
     suggested_approach: >
-      Phase 4 P4-1 remediation shipped (v1.8.1). Structured
-      `ProviderProfile` now reaches the operator end-to-end:
-      `Recommendation.profile` carries the bundle;
-      `ui::panels::format_profile_lines` is the shared renderer for
-      both the TUI panel and `--once`; per-lever [PO] key = value —
-      citation rows are visible. Gate status: Gemini v1.8.0 pass
-      (적극 승인) — artifact pair backfilled; Codex v1.8.0 P4-1
-      finding #1 closed by this v1.8.1 round. Request a short Codex
-      v1.8.1 confirmation re-check that the structured payload now
-      flows through the live path, then proceed to P4-2 — Gemini G-5
-      auto-memory guide (a rule that fires a "record to MDR /
-      CURRENT_STATE, not auto-memory" next_step when state-critical
-      work is detected).
+      Phase 4 P4-2 shipped (v1.8.2). The Gemini G-5 auto-memory
+      guide rule now fires a ProjectCanonical Concern-severity
+      passive advisory on Review / SessionResume task types with a
+      `next_step` pointing at `.mission/CURRENT_STATE.md` or a new
+      `.mission/decisions/MDR-XXX.md` — closing Gemini G-5 per
+      VALIDATION.md:154-156. Gate status: Phase-3 reviewer gates
+      all closed; Codex v1.8.1 confirm re-review approve (P4-1
+      baseline fully approved). Request Codex + Gemini gate review
+      on v1.8.2 before continuing to P4-3 — Gemini G-6
+      side_effects population on the first aggressive-variant
+      profile (e.g. `claude-script-low-token` gated by
+      `quota_tight`). P4-4+ afterwards: Codex and Gemini provider
+      profiles + VALIDATION.md Phase-4 checkboxes ticked
+      incrementally.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -483,5 +517,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 17
+    total_revisions: 18
     history: "mission-history.yaml"
