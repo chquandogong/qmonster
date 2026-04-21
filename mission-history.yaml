@@ -2655,7 +2655,7 @@ timeline:
       - "P4-7: `gemini-script-low-token` aggressive variant"
 
 evolution_summary:
-  current_phase: "Phase 4 P4-4 confirm-remediated — codex-default reason summary + doc comment now match v1.8.5 authority split (v1.8.6); awaiting short Codex + Gemini confirm re-review before P4-5"
+  current_phase: "Phase 4 P4-4 fully gate-approved — v1.8.6 codex-default baseline: Gemini v1.8.6 pass (최종 승인) + Codex v1.8.6 approve (no findings; all three confirm points verified closed); ready for P4-5 (codex-script-low-token aggressive variant)"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
