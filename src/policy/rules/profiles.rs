@@ -44,6 +44,9 @@ pub fn eval_profiles(
     if let Some(rec) = recommend_gemini_default(id, signals, gates) {
         out.push(rec);
     }
+    if let Some(rec) = recommend_gemini_script_low_token(id, signals, gates) {
+        out.push(rec);
+    }
     out
 }
 
@@ -733,9 +736,151 @@ fn gemini_default_profile() -> ProviderProfile {
             },
         ],
         // Healthy-state baseline: no operator-visible trade-offs.
-        // The aggressive Gemini variant (P4-7) will populate
-        // side_effects with its scripted-session cost list.
+        // The aggressive Gemini variant `gemini-script-low-token`
+        // (P4-7) populates side_effects with its scripted-session
+        // cost list; this baseline stays empty by design.
         side_effects: vec![],
+        source_kind: SourceKind::ProjectCanonical,
+    }
+}
+
+/// `gemini-script-low-token`: aggressive Gemini profile for headless /
+/// scripted sessions with a tight token budget. Pattern parity with
+/// `recommend_claude_script_low_token` (P4-3) and
+/// `recommend_codex_script_low_token` (P4-5). Fires only under
+/// operator-opted `quota_tight` mode + Gemini main + IdentityConfidence
+/// of Medium or higher + healthy signals. Mutually exclusive with
+/// `recommend_gemini_default` by design via the shared quota_tight
+/// gate — same shape as the Claude and Codex pairs. Bundles
+/// aggressive Gemini levers that were explicitly reserved away from
+/// `gemini-default`; every lever is labeled `ProjectCanonical`
+/// because the VALUES are Qmonster picks per Gemini's narrower
+/// documented token-efficiency surface (same honesty pattern as
+/// gemini-default). Gemini G-6 parity is maintained via 1:1
+/// populated `side_effects`, closing the G-6 line across all three
+/// providers (Claude in P4-3, Codex in P4-5, Gemini here).
+fn recommend_gemini_script_low_token(
+    id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    if id.identity.provider != Provider::Gemini {
+        return None;
+    }
+    if id.identity.role != Role::Main {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    if !gates.quota_tight {
+        // Aggressive profile — opt-in only (safety-precedence
+        // constraint; same rule as the Claude and Codex pairs).
+        return None;
+    }
+    if signals.waiting_for_input
+        || signals.permission_prompt
+        || signals.log_storm
+        || signals.error_hint
+    {
+        return None;
+    }
+    if let Some(mv) = signals.context_pressure.as_ref()
+        && mv.value >= 0.75
+    {
+        return None;
+    }
+
+    let profile = gemini_script_low_token_profile();
+    // Reason summary derived from lever source_kinds at runtime
+    // (same v1.8.6 pattern as the other four profile recs) so
+    // future authority relabels auto-propagate into the summary.
+    let provider_official_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProviderOfficial)
+        .count();
+    let project_canonical_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
+        .count();
+    let reason = format!(
+        "profile `{}`: apply {} levers for a quota-tight scripted Gemini session — {} ProviderOfficial + {} ProjectCanonical, with {} operator-visible side effects (see list below)",
+        profile.name,
+        profile.levers.len(),
+        provider_official_count,
+        project_canonical_count,
+        profile.side_effects.len(),
+    );
+    let side_effects = profile.side_effects.clone();
+    Some(Recommendation {
+        action: "provider-profile: gemini-script-low-token",
+        reason,
+        severity: Severity::Good,
+        source_kind: SourceKind::ProjectCanonical,
+        // Same multi-key-settings-edit justification as the other
+        // aggressive recs. Gemini CLI's --flag + settings.json +
+        // env combination is not a single runnable command. The
+        // structured `profile` below carries every lever's
+        // key/value/citation + the full side_effects list so
+        // operators see the trade-off cost BEFORE applying.
+        suggested_command: None,
+        side_effects,
+        is_strong: false,
+        next_step: None,
+        profile: Some(profile),
+    })
+}
+
+fn gemini_script_low_token_profile() -> ProviderProfile {
+    ProviderProfile {
+        name: "gemini-script-low-token",
+        levers: vec![
+            // Auto-approval opt-in (quota_tight gate makes it
+            // explicit). Inverse of the baseline's `--yolo = unset`:
+            // aggressive scripted sessions want the agent to run
+            // autonomously without per-call approval.
+            ProfileLever {
+                key: "--yolo",
+                value: "enabled",
+                citation: "Gemini CLI docs describe --yolo as auto-approval for agent actions; Qmonster enables it ONLY in this quota_tight-gated aggressive profile (baseline keeps --yolo unset per safety-precedence)",
+                source_kind: SourceKind::ProjectCanonical,
+            },
+            // Provider auto-memory explicitly off. VALIDATION.md:
+            // 149-150 says "save_memory / Auto Memory is not
+            // treated as a state store"; aggressive scripted
+            // sessions encode this as an explicit off-switch so
+            // Gemini's auto-memory can't silently grow during
+            // batch runs. State handoff must go through
+            // .mission/CURRENT_STATE.md or an MDR (G-5 rule).
+            ProfileLever {
+                key: "save_memory",
+                value: "disabled",
+                citation: "Qmonster architectural constraint per VALIDATION.md:149-150 + mission.yaml 'Auto memory ... never the primary state store'; aggressive scripted sessions make this policy explicit by disabling auto-memory writes (aligns with Gemini G-5 auto-memory guide rule shipped in P4-2)",
+                source_kind: SourceKind::ProjectCanonical,
+            },
+            // Explicit `--model` reaffirmation inside the aggressive
+            // bundle. Same value as gemini-default (`gemini-2.5-flash`)
+            // but surfaced here so operators scanning the aggressive
+            // bundle see the model choice in one place without
+            // cross-referencing the baseline.
+            ProfileLever {
+                key: "--model",
+                value: "gemini-2.5-flash",
+                citation: "Gemini CLI docs describe the --model flag (no canonical default mandated for all sessions); Qmonster reaffirms gemini-2.5-flash in the aggressive bundle so scripted sessions see the token-efficient model choice in one place alongside the other aggressive levers",
+                source_kind: SourceKind::ProjectCanonical,
+            },
+        ],
+        // Gemini G-6: every aggressive lever has a 1:1 operator-
+        // visible trade-off. Three levers → three side_effects.
+        // The save_memory entry cross-references G-5 (same pattern
+        // Claude + Codex aggressive variants use).
+        side_effects: vec![
+            "--yolo = enabled auto-approves every Gemini agent action in this scripted session — operator cedes per-call confirmation; pair with version-controlled prompts + post-hoc audit rather than interactive oversight".into(),
+            "save_memory = disabled blocks Gemini auto-memory writes for the duration of this session — state handoff MUST go through .mission/CURRENT_STATE.md or an MDR (aligns with Gemini G-5 auto-memory guide rule)".into(),
+            "--model = gemini-2.5-flash stays on a lighter model for aggressive cost reduction — complex reasoning tasks that would benefit from pro-tier capacity must be routed outside this scripted session or escalate to an interactive pane".into(),
+        ],
         source_kind: SourceKind::ProjectCanonical,
     }
 }
@@ -1551,6 +1696,215 @@ mod tests {
                 .iter()
                 .any(|r| r.action == "provider-profile: gemini-default"),
             "gemini-default must NOT fire under quota_tight; aggressive variant will own that path in P4-7"
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Phase 4 P4-7 v1.8.9 — gemini-script-low-token aggressive profile
+    // + Gemini G-6 side_effects parity for Gemini (completes 3x2 grid)
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn recommend_gemini_script_low_token_fires_on_quota_tight_with_honest_authority_labels_and_populated_side_effects() {
+        // Shape contract for the Gemini aggressive profile — mirrors
+        // claude-script-low-token (P4-3) and codex-script-low-token
+        // (P4-5) with Gemini-specific levers. All three levers are
+        // ProjectCanonical because Gemini's documented token-
+        // efficiency surface is narrower (same honesty pattern as
+        // gemini-default). 1:1 side_effects per Gemini G-6.
+        let id = healthy_gemini_main();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&id, &s, &gates_quota_tight());
+
+        let rec = recs
+            .iter()
+            .find(|r| r.action == "provider-profile: gemini-script-low-token")
+            .expect("gemini-script-low-token fires under quota_tight on a healthy Gemini main pane");
+
+        assert_eq!(rec.severity, Severity::Good, "positive advisory; stays below Notify gate");
+        assert_eq!(rec.source_kind, SourceKind::ProjectCanonical);
+
+        let profile = rec
+            .profile
+            .as_ref()
+            .expect("structured profile payload must reach the rec");
+        assert_eq!(profile.name, "gemini-script-low-token");
+        assert_eq!(profile.source_kind, SourceKind::ProjectCanonical);
+        assert_eq!(
+            profile.levers.len(),
+            3,
+            "bundles 3 aggressive Gemini levers: --yolo = enabled, save_memory = disabled, --model = gemini-2.5-flash"
+        );
+        for lever in &profile.levers {
+            assert!(
+                !lever.citation.is_empty(),
+                "every lever carries a non-empty citation: {:?}",
+                lever,
+            );
+        }
+        // G-6: side_effects 1:1 with lever count.
+        assert_eq!(
+            profile.side_effects.len(),
+            profile.levers.len(),
+            "G-6: every aggressive lever has a 1:1 operator-visible side effect"
+        );
+
+        // All ProjectCanonical — honest authority split per Gemini's
+        // narrower documented surface (same pattern as gemini-default).
+        let po_count = profile
+            .levers
+            .iter()
+            .filter(|l| l.source_kind == SourceKind::ProviderOfficial)
+            .count();
+        let pc_count = profile
+            .levers
+            .iter()
+            .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
+            .count();
+        assert_eq!(po_count, 0, "0 ProviderOfficial — Gemini docs describe the flags but don't mandate aggressive values");
+        assert_eq!(pc_count, 3);
+
+        // Reason summary honesty (v1.8.6 pattern).
+        assert!(rec.reason.contains("gemini-script-low-token"));
+        assert!(
+            rec.reason.contains("ProjectCanonical"),
+            "reason must cite ProjectCanonical authority label (all three levers are PC): {}",
+            rec.reason
+        );
+
+        // Per-lever value + source_kind contract.
+        let find_lever = |key: &str| -> &ProfileLever {
+            profile
+                .levers
+                .iter()
+                .find(|l| l.key == key)
+                .unwrap_or_else(|| panic!("lever `{key}` must be present in gemini-script-low-token"))
+        };
+        let yolo = find_lever("--yolo");
+        assert_eq!(yolo.value, "enabled", "aggressive profile enables --yolo (inverse of baseline's 'unset')");
+        assert_eq!(yolo.source_kind, SourceKind::ProjectCanonical);
+
+        let save_memory = find_lever("save_memory");
+        assert_eq!(save_memory.value, "disabled");
+        assert_eq!(save_memory.source_kind, SourceKind::ProjectCanonical);
+
+        let model = find_lever("--model");
+        assert_eq!(model.value, "gemini-2.5-flash");
+        assert_eq!(model.source_kind, SourceKind::ProjectCanonical);
+
+        // G-5 cross-reference: save_memory side_effect must mention
+        // G-5 / CURRENT_STATE.md / MDR — same pattern Claude + Codex
+        // aggressive variants use for their auto-memory-equivalent
+        // trade-offs.
+        assert!(
+            profile
+                .side_effects
+                .iter()
+                .any(|s| s.contains("CURRENT_STATE.md") && s.contains("G-5")),
+            "save_memory side_effect must cross-reference G-5 + CURRENT_STATE.md — architecture principle consistency across providers"
+        );
+    }
+
+    #[test]
+    fn recommend_gemini_script_low_token_suppressed_when_quota_tight_off() {
+        // Aggressive profile is opt-in only. Without quota_tight,
+        // the baseline gemini-default fires instead. Same mutual-
+        // exclusion pattern as the Claude and Codex pairs.
+        let id = healthy_gemini_main();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&id, &s, &gates_default());
+
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "provider-profile: gemini-script-low-token"),
+            "aggressive profile must NOT fire without quota_tight (safety-precedence constraint)"
+        );
+        assert!(
+            recs.iter()
+                .any(|r| r.action == "provider-profile: gemini-default"),
+            "baseline gemini-default fires instead when quota_tight is off"
+        );
+    }
+
+    #[test]
+    fn recommend_gemini_script_low_token_suppressed_on_non_gemini_provider() {
+        // Provider gate: the Gemini aggressive profile must never
+        // fire on a Claude or Codex pane, even under quota_tight.
+        // Under quota_tight on Claude pane, claude-script-low-token
+        // fires; on Codex pane, codex-script-low-token fires.
+        // Symmetric three-way provider gating.
+        let claude_main = healthy_claude_main();
+        let s = SignalSet::default();
+        let claude_recs = eval_profiles(&claude_main, &s, &gates_quota_tight());
+        assert!(
+            !claude_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: gemini-script-low-token"),
+            "gemini-script-low-token is Gemini-only; Claude provider must not match"
+        );
+        assert!(
+            claude_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: claude-script-low-token"),
+            "claude-script-low-token fires on a Claude pane under quota_tight"
+        );
+
+        let codex_main = healthy_codex_main();
+        let codex_recs = eval_profiles(&codex_main, &s, &gates_quota_tight());
+        assert!(
+            !codex_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: gemini-script-low-token"),
+            "gemini-script-low-token is Gemini-only; Codex provider must not match"
+        );
+        assert!(
+            codex_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: codex-script-low-token"),
+            "codex-script-low-token fires on a Codex pane under quota_tight"
+        );
+    }
+
+    #[test]
+    fn gemini_default_and_gemini_script_low_token_are_mutually_exclusive_via_quota_tight_gate() {
+        // Explicit mutual-exclusion contract test (mirrors the
+        // claude pair in P4-3 and the codex pair in P4-5). For a
+        // single Gemini main pane, flipping quota_tight toggles
+        // EXACTLY one of the two Gemini profile recs — never both,
+        // never neither (on a healthy baseline pane).
+        let id = healthy_gemini_main();
+        let s = SignalSet::default();
+
+        // quota_tight off: only gemini-default fires.
+        let off = eval_profiles(&id, &s, &gates_default());
+        let default_off = off
+            .iter()
+            .any(|r| r.action == "provider-profile: gemini-default");
+        let aggressive_off = off
+            .iter()
+            .any(|r| r.action == "provider-profile: gemini-script-low-token");
+        assert!(default_off, "gemini-default fires when quota_tight is off");
+        assert!(
+            !aggressive_off,
+            "gemini-script-low-token must NOT fire when quota_tight is off"
+        );
+
+        // quota_tight on: only gemini-script-low-token fires.
+        let on = eval_profiles(&id, &s, &gates_quota_tight());
+        let default_on = on
+            .iter()
+            .any(|r| r.action == "provider-profile: gemini-default");
+        let aggressive_on = on
+            .iter()
+            .any(|r| r.action == "provider-profile: gemini-script-low-token");
+        assert!(
+            !default_on,
+            "gemini-default must NOT fire when quota_tight is on"
+        );
+        assert!(
+            aggressive_on,
+            "gemini-script-low-token fires when quota_tight is on"
         );
     }
 }
