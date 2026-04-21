@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 19
-  latest_version: "1.8.3"
+  total_revisions: 20
+  latest_version: "1.8.4"
 
 timeline:
   - change_id: "initial"
@@ -2244,8 +2244,135 @@ timeline:
       - "P4-4+: Codex and Gemini provider profiles (canonical baseline + aggressive variants)"
       - "P4-5+: VALIDATION.md Phase-4 checkboxes ticked incrementally as profile coverage widens"
 
+  - change_id: "phase-4-p4-4-codex-default-baseline-profile"
+    semantic_version: "1.8.4"
+    change_sequence: 20
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Ship Phase-4 P4-4: the first non-Claude provider profile.
+      `codex-default` is the healthy-state baseline for a Codex main
+      pane, pattern-parity with `claude-default` from P4-1/P4-1-
+      remediation. After this slice, the profile recommender covers
+      two providers (Claude baseline + aggressive + Codex baseline);
+      P4-5 will add the Codex aggressive variant
+      `codex-script-low-token` (Gemini G-6 parity) and P4-6 / P4-7
+      will widen to Gemini.
+    intent_ko: >
+      Phase 4 P4-4 착수: 첫 non-Claude provider profile.
+      `codex-default`은 Codex main pane의 healthy-state baseline —
+      P4-1/P4-1 remediation의 `claude-default`와 패턴 병렬.
+      이 슬라이스 후 profile recommender가 두 provider를 커버
+      (Claude baseline+aggressive, Codex baseline); P4-5는 Codex
+      aggressive 변형(`codex-script-low-token`, Gemini G-6 병렬),
+      P4-6/P4-7은 Gemini로 확장.
+    decision: >
+      (1) src/policy/rules/profiles.rs: new
+      `recommend_codex_default` rule mirroring
+      `recommend_claude_default`'s shape — provider == Codex,
+      role == Main, IdentityConfidence >= Medium, !quota_tight, no
+      active alerts (waiting_for_input, permission_prompt,
+      log_storm, error_hint), context_pressure < 0.75. Returns a
+      `Severity::Good` rec with `source_kind: ProjectCanonical`,
+      `suggested_command: None`, structured profile payload.
+      (2) New `codex_default_profile()` private constructor: 3
+      ProviderOfficial levers drawn from VALIDATION.md:137-143 —
+      `web_search = cached` (explicit default; cached web results
+      reduce token usage vs live lookups), `tool_output_token_limit
+      = 30000` (parity with Claude's BASH_MAX_OUTPUT_LENGTH bound),
+      `commit_attribution = false` (removes marketing attribution
+      from git commits). Each lever carries a Codex-docs citation.
+      `side_effects: vec![]` — healthy baseline has no operator-
+      visible trade-offs; aggressive variant in P4-5 will populate
+      the slot.
+      (3) `eval_profiles` dispatcher updated: calls the three
+      existing rules + `recommend_codex_default` in order. Module
+      doc-comment updated to describe the cross-provider
+      coexistence pattern (provider gates keep profiles mutually
+      exclusive per pane without requiring explicit cross-rule
+      references).
+      (4) Three new unit tests in the tests module:
+      `recommend_codex_default_fires_with_provider_official_levers_on_healthy_codex_main`
+      (positive fire + full shape verification);
+      `recommend_codex_default_suppressed_on_non_codex_provider`
+      (provider gate; sanity check that claude-default still fires
+      on Claude pane to prove symmetric gating);
+      `recommend_codex_default_suppressed_when_quota_tight_on`
+      (reserves quota_tight path for P4-5 aggressive variant).
+    decision_ko: >
+      (1) src/policy/rules/profiles.rs에 신규
+      `recommend_codex_default` 규칙 —
+      `recommend_claude_default`와 동일 shape. provider == Codex,
+      role == Main, IdentityConfidence >= Medium, !quota_tight,
+      활성 알림 없음, context_pressure < 0.75. 반환값은
+      `Severity::Good` + `source_kind: ProjectCanonical` +
+      `suggested_command: None` + 구조화된 profile payload.
+      (2) 신규 `codex_default_profile()` 생성자: VALIDATION.md:
+      137-143에서 가져온 3개 ProviderOfficial lever
+      (`web_search = cached`, `tool_output_token_limit = 30000`,
+      `commit_attribution = false`). lever마다 Codex-docs citation
+      동반. `side_effects: vec![]` (healthy baseline은 trade-off
+      없음; P4-5 aggressive 변형이 슬롯을 채움).
+      (3) `eval_profiles` dispatcher — 기존 3개 규칙 뒤에
+      `recommend_codex_default` 호출. 모듈 doc-comment에 provider
+      간 coexistence 패턴(명시적 cross-rule 참조 없이 provider
+      게이트로 pane별 상호 배타) 기술.
+      (4) tests 모듈에 3개 unit test 신규.
+    triggered_by: "operator approval to proceed with P4-4 after v1.8.3 fully gate-approved (Gemini + Codex both approve/pass with no must-fix)"
+    issue_or_context: >
+      v1.8.3 closed all Gemini-numbered Phase-4 items within the
+      Claude surface (G-5 auto-memory guide + G-6 side_effects
+      population). P4-4 begins the cross-provider widening.
+      Starting with the Codex baseline (instead of aggressive) is
+      the minimum meaningful first non-Claude slice — it exercises
+      the provider-gate invariant on the default rule before the
+      aggressive variant lands, and keeps each review round small.
+    changes:
+      modified:
+        - "src/policy/rules/profiles.rs — `eval_profiles` dispatcher updated to call `recommend_codex_default` after the Claude rules; module doc-comment updated for cross-provider coexistence pattern"
+      added:
+        - "src/policy/rules/profiles.rs — new `recommend_codex_default` rule + `codex_default_profile()` constructor (3 ProviderOfficial levers with per-lever citations) + 3 new unit tests (positive fire, provider-gate suppression with Claude-pane sanity check, quota_tight suppression reserving P4-5 path)"
+      # No ui/panels.rs or tests/event_loop_integration.rs changes —
+      # the existing render helper and integration shape handle the
+      # new rec without modification.
+    changed_sections:
+      - "new Codex baseline profile + rule"
+      - "eval_profiles dispatcher extended with third rule (first non-Claude entry)"
+    done_when_delta:
+      added:
+        - "Phase 4 P4-4 v1.8.4: `src/policy/rules/profiles.rs::recommend_codex_default` fires a `Severity::Good` rec with `source_kind: ProjectCanonical` when provider is Codex, role is Main, IdentityConfidence >= Medium, `!quota_tight`, no active alerts, and `context_pressure < 0.75`. The bundled `ProviderProfile` `codex-default` carries 3 ProviderOfficial levers drawn from VALIDATION.md:137-143 (`web_search = cached`, `tool_output_token_limit = 30000`, `commit_attribution = false`) each with a per-lever Codex-docs citation. `side_effects: vec![]` (healthy-state baseline); the aggressive Codex variant in P4-5 will populate it."
+        - "Phase 4 P4-4 v1.8.4: provider gates stay pure — a Codex pane never fires `claude-default` / `claude-script-low-token`, and a Claude pane never fires `codex-default`. All three profile rules coexist cleanly in `eval_profiles` via their own `if provider != ... { return None; }` guards."
+        - "Phase 4 P4-4 v1.8.4: 3 new unit tests in `policy/rules/profiles.rs` — positive fire (full shape: 3 ProviderOfficial levers, non-empty citations, expected keys `web_search`/`tool_output_token_limit`/`commit_attribution`, empty side_effects, Good severity, ProjectCanonical source, suggested_command None); provider-gate suppression on Claude pane (sanity-check that claude-default still fires symmetrically); quota_tight suppression (reserves aggressive-variant path for P4-5). 179 lib + 18 integration (up from 176 + 18); clippy --all-targets -D warnings clean."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~100 LOC production (new rule + new profile constructor + dispatcher update + module doc-comment) + ~130 LOC test delta (3 new unit tests + 1 new test helper `healthy_codex_main`)"
+      tests: "179 lib + 18 integration (up from 176 + 18; +3 new unit tests, 0 existing tests changed)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no runtime behavior change for existing signals; on Codex main panes, a new Severity::Good recommendation appears in PaneReport.recommendations carrying the `codex-default` bundle. Claude panes are unaffected; no provider crossover."
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — pure additive rule inside an existing dispatcher; provider gates keep the new rule isolated; zero change to the render pipeline or any existing rule's behavior. Only new observable effect is one extra rec on Codex main panes"
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+      - "KD-007"
+    snapshot_after: ""
+    follow_up:
+      - "Request Codex + Gemini gate review on v1.8.4 P4-4 before continuing to P4-5"
+      - "P4-5: `codex-script-low-token` aggressive variant — quota_tight-gated, side_effects populated (Gemini G-6 parity for Codex)"
+      - "P4-6: `gemini-default` baseline profile"
+      - "P4-7: `gemini-script-low-token` aggressive variant"
+      - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens"
+
 evolution_summary:
-  current_phase: "Phase 4 P4-3 fully gate-approved — Gemini v1.8.3 pass (적극 승인) + Codex v1.8.3 approve (no must-fix; one non-blocking prose-count note corrected in-round); v1.8.3 = approved P4-3 baseline; ready for P4-4+ (Codex and Gemini provider profiles starting with codex-default baseline)"
+  current_phase: "Phase 4 P4-4 shipped — first non-Claude profile `codex-default` baseline (v1.8.4); awaiting first Codex + Gemini gate review on v1.8.4 before P4-5 (codex-script-low-token aggressive variant)"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
