@@ -38,6 +38,9 @@ pub fn eval_profiles(
     if let Some(rec) = recommend_codex_default(id, signals, gates) {
         out.push(rec);
     }
+    if let Some(rec) = recommend_codex_script_low_token(id, signals, gates) {
+        out.push(rec);
+    }
     out
 }
 
@@ -429,9 +432,173 @@ fn codex_default_profile() -> ProviderProfile {
             },
         ],
         // Healthy-state baseline: no operator-visible trade-offs.
-        // The aggressive Codex variant (P4-5) will populate
-        // side_effects with its scripted-session cost list.
+        // The aggressive Codex variant `claude-script-low-token`
+        // (P4-5) populates side_effects with its scripted-session
+        // cost list; this baseline stays empty by design.
         side_effects: vec![],
+        source_kind: SourceKind::ProjectCanonical,
+    }
+}
+
+/// `codex-script-low-token`: aggressive Codex profile for headless /
+/// scripted sessions with a tight token budget. Pattern parity with
+/// `recommend_claude_script_low_token` from P4-3 — fires only under
+/// operator-opted `quota_tight` mode + Codex main + IdentityConfidence
+/// of Medium or higher + healthy signals. Mutually exclusive with
+/// `recommend_codex_default` by design: `codex-default` has
+/// `if gates.quota_tight { return None; }` and this aggressive
+/// variant has `if !gates.quota_tight { return None; }`, same shape
+/// as the Claude pair. Bundles aggressive Codex levers drawn from
+/// VALIDATION.md:137-143 (`model_auto_compact_token_limit`,
+/// `[features].apps`, `[apps._default].enabled`, plus four
+/// `codex exec` flags) that were explicitly reserved away from
+/// `codex-default` for this slice. Every lever has a 1:1 operator-
+/// visible side_effect string (Gemini G-6 parity).
+fn recommend_codex_script_low_token(
+    id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    if id.identity.provider != Provider::Codex {
+        return None;
+    }
+    if id.identity.role != Role::Main {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    if !gates.quota_tight {
+        // Aggressive profile — opt-in only (safety-precedence
+        // constraint; same rule as claude-script-low-token).
+        return None;
+    }
+    if signals.waiting_for_input
+        || signals.permission_prompt
+        || signals.log_storm
+        || signals.error_hint
+    {
+        // Don't pile onto a pane that's already blocking on operator
+        // attention; the aggressive profile's multi-key edit would be
+        // noise compared to the pressing alert.
+        return None;
+    }
+    if let Some(mv) = signals.context_pressure.as_ref()
+        && mv.value >= 0.75
+    {
+        // High context pressure is handled by the Phase-3 strong recs.
+        return None;
+    }
+
+    let profile = codex_script_low_token_profile();
+    // Reason summary is derived from lever source_kinds (same
+    // pattern as codex-default after v1.8.6 remediation) so future
+    // authority relabels auto-propagate.
+    let provider_official_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProviderOfficial)
+        .count();
+    let project_canonical_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
+        .count();
+    let reason = format!(
+        "profile `{}`: apply {} levers for a quota-tight scripted Codex session — {} ProviderOfficial + {} ProjectCanonical, with {} operator-visible side effects (see list below)",
+        profile.name,
+        profile.levers.len(),
+        provider_official_count,
+        project_canonical_count,
+        profile.side_effects.len(),
+    );
+    let side_effects = profile.side_effects.clone();
+    Some(Recommendation {
+        action: "provider-profile: codex-script-low-token",
+        reason,
+        severity: Severity::Good,
+        source_kind: SourceKind::ProjectCanonical,
+        // Same multi-key-settings-edit justification as the other
+        // profile recs: applying the bundle is not a single
+        // runnable command. The structured `profile` below carries
+        // every lever's key/value/citation + the full side_effects
+        // list so operators see the trade-off cost BEFORE applying.
+        suggested_command: None,
+        side_effects,
+        is_strong: false,
+        next_step: None,
+        profile: Some(profile),
+    })
+}
+
+fn codex_script_low_token_profile() -> ProviderProfile {
+    ProviderProfile {
+        name: "codex-script-low-token",
+        levers: vec![
+            // model_auto_compact_token_limit: force earlier auto-
+            // compaction on scripted sessions. The VALUE is Qmonster's
+            // choice (no canonical Codex default), so label the lever
+            // ProjectCanonical — same honesty pattern as v1.8.5's
+            // tool_output_token_limit relabel.
+            ProfileLever {
+                key: "model_auto_compact_token_limit",
+                value: "100000",
+                citation: "Codex docs describe the key; Qmonster picks a conservative 100000 threshold for quota-tight scripted sessions so auto-compaction kicks in before tool_output_token_limit is exhausted",
+                source_kind: SourceKind::ProjectCanonical,
+            },
+            // Disable the [features].apps surface entirely in scripted
+            // sessions — the feature is documented and disabling it
+            // is a supported configuration.
+            ProfileLever {
+                key: "[features].apps",
+                value: "false",
+                citation: "Codex docs — settings surface, [features].apps toggle (disabling removes the apps feature surface in the session)",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            ProfileLever {
+                key: "[apps._default].enabled",
+                value: "false",
+                citation: "Codex docs — settings surface, [apps._default].enabled (disabling skips the default app in scripted sessions)",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            // codex exec flags for scripted-session use:
+            ProfileLever {
+                key: "codex exec --json",
+                value: "enabled",
+                citation: "Codex docs — exec flags, --json (structured JSON output instead of human-readable formatting)",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            ProfileLever {
+                key: "codex exec --sandbox",
+                value: "read-only",
+                citation: "Codex docs — exec flags, --sandbox read-only (filesystem and network writes blocked under the sandbox)",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            ProfileLever {
+                key: "codex exec --ephemeral",
+                value: "enabled",
+                citation: "Codex docs — exec flags, --ephemeral (session state is not persisted across the scripted invocation)",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            ProfileLever {
+                key: "codex exec --color",
+                value: "never",
+                citation: "Codex docs — exec flags, --color never (ANSI color codes disabled; pipe-safe output)",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+        ],
+        // Gemini G-6: every aggressive lever has an operator-visible
+        // trade-off. 1:1 with the lever list so operators can scan
+        // cost before applying.
+        side_effects: vec![
+            "model_auto_compact_token_limit = 100000 forces aggressive auto-compaction — earlier history loss than Codex's default threshold; state handoff MUST go through .mission/CURRENT_STATE.md or an MDR (aligns with Gemini G-5)".into(),
+            "[features].apps = false removes the apps feature surface — any workflow that relies on apps fails until the flag is flipped back".into(),
+            "[apps._default].enabled = false disables the default app — scripted sessions lose the auto-configured app entry point".into(),
+            "codex exec --json replaces human-readable output with structured JSON — direct tail-reading operators and adapters must parse JSON instead".into(),
+            "codex exec --sandbox read-only blocks filesystem and network writes — any code/tool that needs to write (compile artifacts, cache, logs) fails under the sandbox".into(),
+            "codex exec --ephemeral drops session state on invocation end — no resume; every run starts fresh".into(),
+            "codex exec --color never strips ANSI colors — pipe-safe output but the operator loses color-coded severity / type cues when tailing the session directly".into(),
+        ],
         source_kind: SourceKind::ProjectCanonical,
     }
 }
@@ -884,6 +1051,200 @@ mod tests {
                 .iter()
                 .any(|r| r.action == "provider-profile: codex-default"),
             "codex-default must NOT fire under quota_tight; aggressive variant will own that path in P4-5"
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Phase 4 P4-5 v1.8.7 — codex-script-low-token aggressive profile
+    // + Gemini G-6 side_effects parity for Codex
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn recommend_codex_script_low_token_fires_on_quota_tight_with_honest_authority_labels_and_populated_side_effects() {
+        // Shape contract for the Codex aggressive profile — mirrors
+        // the claude-script-low-token contract from P4-3 with
+        // Codex-specific levers. Fails if:
+        //   - the rule doesn't fire under quota_tight on a healthy
+        //     Codex main pane,
+        //   - the structured profile payload doesn't reach the rec,
+        //   - lever count drifts from 7,
+        //   - side_effects count drifts from 7 (1:1 invariant, G-6),
+        //   - every lever's citation is empty,
+        //   - the rec severity / source_kind aren't Good / ProjectCanonical.
+        let id = healthy_codex_main();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&id, &s, &gates_quota_tight());
+
+        let rec = recs
+            .iter()
+            .find(|r| r.action == "provider-profile: codex-script-low-token")
+            .expect("codex-script-low-token fires under quota_tight on a healthy Codex main pane");
+
+        assert_eq!(rec.severity, Severity::Good, "positive advisory; stays below Notify gate");
+        assert_eq!(rec.source_kind, SourceKind::ProjectCanonical);
+
+        let profile = rec
+            .profile
+            .as_ref()
+            .expect("structured profile payload must reach the rec");
+        assert_eq!(profile.name, "codex-script-low-token");
+        assert_eq!(profile.source_kind, SourceKind::ProjectCanonical);
+        assert_eq!(
+            profile.levers.len(),
+            7,
+            "bundles 7 aggressive Codex levers (model_auto_compact_token_limit + 2 feature toggles + 4 exec flags)"
+        );
+        for lever in &profile.levers {
+            assert!(
+                !lever.citation.is_empty(),
+                "every lever carries a non-empty citation: {:?}",
+                lever,
+            );
+        }
+        // Gemini G-6: side_effects populated 1:1 with lever count.
+        assert_eq!(
+            profile.side_effects.len(),
+            profile.levers.len(),
+            "G-6: every aggressive lever has a 1:1 operator-visible side effect"
+        );
+
+        // Authority split: 1 ProjectCanonical (the chosen
+        // model_auto_compact_token_limit value) + 6 ProviderOfficial.
+        // Pre-computed counts match the reason summary's derivation.
+        let po_count = profile
+            .levers
+            .iter()
+            .filter(|l| l.source_kind == SourceKind::ProviderOfficial)
+            .count();
+        let pc_count = profile
+            .levers
+            .iter()
+            .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
+            .count();
+        assert_eq!(po_count, 6, "6 ProviderOfficial (2 feature toggles + 4 exec flags)");
+        assert_eq!(pc_count, 1, "1 ProjectCanonical (model_auto_compact_token_limit value)");
+
+        // Reason summary honesty (Codex P4-4 v1.8.6 pattern — count
+        // each authority kind).
+        assert!(rec.reason.contains("codex-script-low-token"));
+        assert!(
+            rec.reason.contains("ProviderOfficial"),
+            "reason must cite ProviderOfficial authority label: {}",
+            rec.reason
+        );
+        assert!(
+            rec.reason.contains("ProjectCanonical"),
+            "reason must cite ProjectCanonical authority label: {}",
+            rec.reason
+        );
+
+        // Spot-check one high-risk trade-off reaches side_effects
+        // with the expected language — regression would fire here
+        // if the string ever drifts.
+        assert!(
+            profile
+                .side_effects
+                .iter()
+                .any(|s| s.contains("auto-compaction")),
+            "side_effects must mention the model_auto_compact_token_limit trade-off (aggressive auto-compaction)"
+        );
+        assert!(
+            profile
+                .side_effects
+                .iter()
+                .any(|s| s.contains("sandbox")),
+            "side_effects must mention the --sandbox read-only filesystem-block trade-off"
+        );
+    }
+
+    #[test]
+    fn recommend_codex_script_low_token_suppressed_when_quota_tight_off() {
+        // Aggressive profile is opt-in only. Without quota_tight,
+        // the baseline codex-default fires instead. This test also
+        // implicitly verifies mutual exclusion: codex-default itself
+        // gates off on quota_tight, so the two Codex profiles never
+        // co-exist in recs on a single pane (same pattern as the
+        // Claude pair from P4-1 / P4-3).
+        let id = healthy_codex_main();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&id, &s, &gates_default());
+
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "provider-profile: codex-script-low-token"),
+            "aggressive profile must NOT fire without quota_tight (safety-precedence constraint)"
+        );
+        assert!(
+            recs.iter()
+                .any(|r| r.action == "provider-profile: codex-default"),
+            "baseline codex-default fires instead when quota_tight is off"
+        );
+    }
+
+    #[test]
+    fn recommend_codex_script_low_token_suppressed_on_non_codex_provider() {
+        // Provider gate: the Codex aggressive profile must never
+        // fire on a Claude or Gemini pane, even under quota_tight.
+        // Under quota_tight on a Claude pane, claude-script-low-token
+        // fires instead — sanity check that symmetric provider
+        // gating holds across the four profiles.
+        let claude_main = healthy_claude_main();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&claude_main, &s, &gates_quota_tight());
+
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "provider-profile: codex-script-low-token"),
+            "codex-script-low-token is Codex-only; Claude provider must not match"
+        );
+        assert!(
+            recs.iter()
+                .any(|r| r.action == "provider-profile: claude-script-low-token"),
+            "claude-script-low-token fires on a Claude pane under quota_tight"
+        );
+    }
+
+    #[test]
+    fn codex_default_and_codex_script_low_token_are_mutually_exclusive_via_quota_tight_gate() {
+        // Explicit mutual-exclusion contract test (mirrors the
+        // implicit claude pair in P4-3). For a single Codex main
+        // pane, flipping quota_tight toggles EXACTLY one of the two
+        // profile recs — never both, never neither (on a healthy
+        // baseline pane).
+        let id = healthy_codex_main();
+        let s = SignalSet::default();
+
+        // quota_tight off: only codex-default fires.
+        let off = eval_profiles(&id, &s, &gates_default());
+        let default_off = off
+            .iter()
+            .any(|r| r.action == "provider-profile: codex-default");
+        let aggressive_off = off
+            .iter()
+            .any(|r| r.action == "provider-profile: codex-script-low-token");
+        assert!(default_off, "codex-default fires when quota_tight is off");
+        assert!(
+            !aggressive_off,
+            "codex-script-low-token must NOT fire when quota_tight is off"
+        );
+
+        // quota_tight on: only codex-script-low-token fires.
+        let on = eval_profiles(&id, &s, &gates_quota_tight());
+        let default_on = on
+            .iter()
+            .any(|r| r.action == "provider-profile: codex-default");
+        let aggressive_on = on
+            .iter()
+            .any(|r| r.action == "provider-profile: codex-script-low-token");
+        assert!(
+            !default_on,
+            "codex-default must NOT fire when quota_tight is on"
+        );
+        assert!(
+            aggressive_on,
+            "codex-script-low-token fires when quota_tight is on"
         );
     }
 }
