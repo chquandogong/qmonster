@@ -306,13 +306,17 @@ fn claude_script_low_token_profile() -> ProviderProfile {
 /// pane. Pattern parity with `recommend_claude_default` — fires on
 /// Codex main at ≥ Medium confidence when no active alerts / high
 /// context pressure / quota-tight gate are present. Bundles three
-/// `ProviderOfficial` levers drawn from the Codex settings surface
-/// (VALIDATION.md:137-143): `web_search = cached` (explicit default
-/// saves tokens by reusing cached web results), `tool_output_token_limit
-/// = 30000` (parity with Claude's `BASH_MAX_OUTPUT_LENGTH` cap), and
-/// `commit_attribution = false` (removes marketing attribution from
-/// git commits). Exec flags and aggressive-scripted-session levers
-/// belong in the Codex aggressive variant (P4-5, tbd).
+/// levers drawn from the Codex settings surface
+/// (VALIDATION.md:137-143): two `ProviderOfficial` (`web_search =
+/// cached` — explicit default saves tokens by reusing cached web
+/// results; `commit_attribution = ""` — empty string disables
+/// marketing attribution per Codex config spec) plus one
+/// `ProjectCanonical` (`tool_output_token_limit = 30000` — Qmonster
+/// parity choice with Claude's `BASH_MAX_OUTPUT_LENGTH` bound; Codex
+/// docs describe the key but don't mandate this value, so
+/// ProjectCanonical is the honest authority label per Codex
+/// v1.8.4-review finding #2). Exec flags and aggressive-scripted-
+/// session levers belong in the Codex aggressive variant (P4-5, tbd).
 fn recommend_codex_default(
     id: &ResolvedIdentity,
     signals: &SignalSet,
@@ -346,10 +350,28 @@ fn recommend_codex_default(
     }
 
     let profile = codex_default_profile();
+    // v1.8.6 remediation (Codex P4-4-confirm finding #1): after the
+    // v1.8.5 authority relabel the bundle is 2 ProviderOfficial + 1
+    // ProjectCanonical, not a uniform "3 ProviderOfficial". Honest
+    // user-visible summary below counts each kind explicitly so the
+    // operator sees the same authority split the renderer surfaces
+    // per-lever.
+    let provider_official_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProviderOfficial)
+        .count();
+    let project_canonical_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
+        .count();
     let reason = format!(
-        "profile `{}`: apply {} ProviderOfficial levers for a healthy-state baseline main-pane Codex session (see lever list below — each lever carries its own citation)",
+        "profile `{}`: apply {} levers for a healthy-state baseline main-pane Codex session — {} ProviderOfficial + {} ProjectCanonical (see lever list below for per-lever citations)",
         profile.name,
         profile.levers.len(),
+        provider_official_count,
+        project_canonical_count,
     );
     let side_effects = profile.side_effects.clone();
     Some(Recommendation {
@@ -742,6 +764,16 @@ mod tests {
         assert!(
             rec.reason.contains("ProviderOfficial"),
             "reason must cite ProviderOfficial authority label for the levers that ARE ProviderOfficial: {}",
+            rec.reason
+        );
+        // v1.8.6 remediation (Codex P4-4-confirm finding #1): the
+        // user-visible reason summary must reflect the honest
+        // authority split. "apply 3 ProviderOfficial levers" was
+        // wrong after v1.8.5 relabel because the bundle is now 2
+        // PO + 1 PC.
+        assert!(
+            rec.reason.contains("ProjectCanonical"),
+            "reason must also cite ProjectCanonical (the tool_output_token_limit lever authority is Qmonster's parity choice, not a Codex-doc default — Codex P4-4-confirm finding #1 locks the honest split in the summary): {}",
             rec.reason
         );
         assert!(
