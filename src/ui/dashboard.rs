@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
@@ -20,9 +21,48 @@ pub struct DashboardView<'a> {
     pub reports: &'a [PaneReport],
     pub fresh_alerts: &'a HashSet<String>,
     pub alert_times: &'a HashMap<String, String>,
+    pub hidden_until: &'a HashMap<String, Instant>,
+    pub now: Instant,
     pub target_label: &'a str,
     pub alerts_focused: bool,
     pub panes_focused: bool,
+}
+
+pub struct TargetPickerView<'a> {
+    pub title: &'a str,
+    pub hint: &'a str,
+    pub labels: &'a [String],
+    pub preview_title: &'a str,
+    pub preview_lines: &'a [String],
+    pub current_label: &'a str,
+}
+
+pub struct DashboardRects {
+    pub alerts: Rect,
+    pub panes: Rect,
+    pub footer: Rect,
+}
+
+pub struct TargetPickerRects {
+    pub area: Rect,
+    pub list: Rect,
+    pub preview: Rect,
+    pub hint: Rect,
+}
+
+pub struct HelpModalRects {
+    pub area: Rect,
+    pub body: Rect,
+    pub hint: Rect,
+}
+
+pub fn close_button_rect(area: Rect) -> Rect {
+    Rect::new(
+        area.x + area.width.saturating_sub(4),
+        area.y,
+        3.min(area.width),
+        1.min(area.height),
+    )
 }
 
 pub fn render_dashboard(
@@ -31,18 +71,10 @@ pub fn render_dashboard(
     pane_state: &mut ListState,
     view: DashboardView<'_>,
 ) {
-    let area = frame.area();
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage(36),
-            Constraint::Min(10),
-            Constraint::Length(2),
-        ])
-        .split(area);
+    let rects = dashboard_rects(frame.area());
 
     alerts::render_alerts(
-        chunks[0],
+        rects.alerts,
         frame.buffer_mut(),
         alert_state,
         AlertView {
@@ -50,13 +82,15 @@ pub fn render_dashboard(
             reports: view.reports,
             fresh_alerts: view.fresh_alerts,
             alert_times: view.alert_times,
+            hidden_until: view.hidden_until,
+            now: view.now,
             target_label: view.target_label,
             focused: view.alerts_focused,
         },
     );
 
     panels::render_pane_list(
-        chunks[1],
+        rects.panes,
         frame.buffer_mut(),
         view.reports,
         pane_state,
@@ -65,7 +99,7 @@ pub fn render_dashboard(
     );
 
     render_footer(
-        chunks[2],
+        rects.footer,
         frame.buffer_mut(),
         view.alerts_focused,
         view.panes_focused,
@@ -74,37 +108,29 @@ pub fn render_dashboard(
 
 pub fn render_target_picker(
     frame: &mut Frame<'_>,
-    title: &str,
-    hint: &str,
-    labels: &[String],
     state: &mut ListState,
-    current_label: &str,
+    view: TargetPickerView<'_>,
 ) {
-    let area = centered_rect(60, 60, frame.area());
-    frame.render_widget(Clear, area);
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(4), Constraint::Length(2)])
-        .split(area);
+    let rects = target_picker_rects(frame.area());
+    frame.render_widget(Clear, rects.area);
 
     let block = Block::default()
-        .title(format!("{title} · current {current_label}"))
+        .title(format!("{} · current {}", view.title, view.current_label))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme::BORDER_ACTIVE));
 
-    if labels.is_empty() {
+    if view.labels.is_empty() {
         frame.render_widget(
             Paragraph::new("no tmux windows discovered")
                 .style(Style::default().fg(theme::TEXT_DIM))
                 .block(block),
-            chunks[0],
+            rects.list,
         );
         frame.render_widget(
-            Paragraph::new(hint)
+            Paragraph::new(view.hint)
                 .style(Style::default().fg(theme::TEXT_DIM))
                 .wrap(Wrap { trim: false }),
-            chunks[1],
+            rects.hint,
         );
         return;
     }
@@ -112,9 +138,10 @@ pub fn render_target_picker(
     let selected = state
         .selected()
         .unwrap_or(0)
-        .min(labels.len().saturating_sub(1));
+        .min(view.labels.len().saturating_sub(1));
     state.select(Some(selected));
-    let items: Vec<ListItem<'_>> = labels
+    let items: Vec<ListItem<'_>> = view
+        .labels
         .iter()
         .map(|label| ListItem::new(label.as_str()))
         .collect();
@@ -129,25 +156,44 @@ pub fn render_target_picker(
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ "),
-        chunks[0],
+        rects.list,
         state,
     );
     frame.render_widget(
-        Paragraph::new(hint)
+        Paragraph::new("[x]").style(
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        ),
+        close_button_rect(rects.list),
+    );
+    frame.render_widget(
+        Paragraph::new(if view.preview_lines.is_empty() {
+            "no pane preview available".to_string()
+        } else {
+            view.preview_lines.join("\n")
+        })
+        .style(Style::default().fg(theme::TEXT_DIM))
+        .wrap(Wrap { trim: false })
+        .block(
+            Block::default()
+                .title(view.preview_title)
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme::BORDER_IDLE)),
+        ),
+        rects.preview,
+    );
+    frame.render_widget(
+        Paragraph::new(view.hint)
             .style(Style::default().fg(theme::TEXT_DIM))
             .wrap(Wrap { trim: false }),
-        chunks[1],
+        rects.hint,
     );
 }
 
 pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
-    let area = centered_rect(HELP_WIDTH_PERCENT, HELP_HEIGHT_PERCENT, frame.area());
-    frame.render_widget(Clear, area);
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(6), Constraint::Length(2)])
-        .split(area);
+    let rects = help_modal_rects(frame.area());
+    frame.render_widget(Clear, rects.area);
 
     frame.render_widget(
         Paragraph::new(help_lines())
@@ -159,24 +205,75 @@ pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
             ),
-        chunks[0],
+        rects.body,
     );
     frame.render_widget(
-        Paragraph::new("↑/↓ scroll · PgUp/PgDn jump · Home/End · Esc close")
+        Paragraph::new("[x]").style(
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        ),
+        close_button_rect(rects.body),
+    );
+    frame.render_widget(
+        Paragraph::new("↑/↓ scroll · PgUp/PgDn jump · Home/End · click [x] close · Esc close")
             .style(Style::default().fg(theme::TEXT_DIM))
             .wrap(Wrap { trim: false }),
-        chunks[1],
+        rects.hint,
     );
 }
 
 pub fn max_help_scroll(viewport: Rect) -> usize {
+    let rects = help_modal_rects(viewport);
+    let visible_lines = rects.body.height.saturating_sub(2) as usize;
+    help_lines().len().saturating_sub(visible_lines)
+}
+
+pub fn dashboard_rects(area: Rect) -> DashboardRects {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(36),
+            Constraint::Min(10),
+            Constraint::Length(2),
+        ])
+        .split(area);
+    DashboardRects {
+        alerts: chunks[0],
+        panes: chunks[1],
+        footer: chunks[2],
+    }
+}
+
+pub fn target_picker_rects(viewport: Rect) -> TargetPickerRects {
+    let area = centered_rect(76, 72, viewport);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(8), Constraint::Length(2)])
+        .split(area);
+    let body = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(46), Constraint::Percentage(54)])
+        .split(chunks[0]);
+    TargetPickerRects {
+        area,
+        list: body[0],
+        preview: body[1],
+        hint: chunks[1],
+    }
+}
+
+pub fn help_modal_rects(viewport: Rect) -> HelpModalRects {
     let area = centered_rect(HELP_WIDTH_PERCENT, HELP_HEIGHT_PERCENT, viewport);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(6), Constraint::Length(2)])
         .split(area);
-    let visible_lines = chunks[0].height.saturating_sub(2) as usize;
-    help_lines().len().saturating_sub(visible_lines)
+    HelpModalRects {
+        area,
+        body: chunks[0],
+        hint: chunks[1],
+    }
 }
 
 fn render_footer(area: Rect, buf: &mut Buffer, alerts_focused: bool, panes_focused: bool) {
@@ -188,7 +285,7 @@ fn render_footer(area: Rect, buf: &mut Buffer, alerts_focused: bool, panes_focus
         "focus: overlay"
     };
     Paragraph::new(format!(
-        "{focus} · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · ? help · q quit"
+        "{focus} · wheel scroll · click select · click severity bulk hide · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · ? help · q quit"
     ))
     .style(Style::default().fg(theme::TEXT_DIM))
     .wrap(Wrap { trim: false })
@@ -219,6 +316,13 @@ fn help_lines() -> Vec<Line<'static>> {
     let mut lines = vec![section_line("Controls")];
     lines.extend(
         [
+            ("Mouse wheel", "scroll the list or modal under the pointer"),
+            ("Mouse left", "select the clicked alert, pane, or target"),
+            ("Mouse double", "toggle hide on the clicked alert"),
+            (
+                "Severity chip",
+                "click a bulk chip in Alerts to toggle auto-hide for that severity",
+            ),
             ("Tab", "switch focus between alerts and pane list"),
             ("Up / Down", "move one item in the focused list"),
             ("j / k", "alternate list scroll keys"),

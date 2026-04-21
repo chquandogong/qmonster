@@ -19,7 +19,10 @@ pub enum PollingError {
 /// about providers or signals — that's why the return type is the raw
 /// snapshot list.
 pub trait PaneSource {
-    fn list_panes(&self, target: Option<&WindowTarget>) -> Result<Vec<RawPaneSnapshot>, PollingError>;
+    fn list_panes(
+        &self,
+        target: Option<&WindowTarget>,
+    ) -> Result<Vec<RawPaneSnapshot>, PollingError>;
     fn current_target(&self) -> Result<Option<WindowTarget>, PollingError>;
     fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError>;
     fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError>;
@@ -36,13 +39,18 @@ impl PollingSource {
 }
 
 impl PaneSource for PollingSource {
-    fn list_panes(&self, target: Option<&WindowTarget>) -> Result<Vec<RawPaneSnapshot>, PollingError> {
+    fn list_panes(
+        &self,
+        target: Option<&WindowTarget>,
+    ) -> Result<Vec<RawPaneSnapshot>, PollingError> {
         let fmt = PANE_LIST_FORMAT.replace("\\t", "\t");
-        let target = match target.cloned() {
-            Some(target) => Some(target),
-            None => current_window_target()?,
-        };
-        let args = list_panes_args(&fmt, target.as_ref());
+        // `None` means "all panes across all sessions/windows".
+        // The caller decides whether the default view should be the
+        // current window (TUI startup) or the global view ("all
+        // sessions"). Do not silently collapse `None` back to the
+        // current window here, or the All Sessions picker becomes a
+        // lie.
+        let args = list_panes_args(&fmt, target);
         let output = Command::new("tmux")
             .args(&args)
             .output()
@@ -81,10 +89,8 @@ impl PaneSource for PollingSource {
             ));
         }
         let text = String::from_utf8_lossy(&output.stdout);
-        let mut targets: Vec<WindowTarget> = text
-            .lines()
-            .filter_map(parse_list_windows_row)
-            .collect();
+        let mut targets: Vec<WindowTarget> =
+            text.lines().filter_map(parse_list_windows_row).collect();
         targets.sort();
         targets.dedup();
         Ok(targets)
@@ -114,13 +120,7 @@ fn current_window_target() -> Result<Option<WindowTarget>, PollingError> {
     }
     let fmt = WINDOW_LIST_FORMAT.replace("\\t", "\t");
     let output = Command::new("tmux")
-        .args([
-            "display-message",
-            "-p",
-            "-t",
-            &tmux_pane,
-            &fmt,
-        ])
+        .args(["display-message", "-p", "-t", &tmux_pane, &fmt])
         .output()
         .map_err(|e| PollingError::Command(e.to_string()))?;
     if !output.status.success() {
@@ -154,7 +154,10 @@ pub struct FixtureSource {
 
 #[cfg(test)]
 impl PaneSource for FixtureSource {
-    fn list_panes(&self, _target: Option<&WindowTarget>) -> Result<Vec<RawPaneSnapshot>, PollingError> {
+    fn list_panes(
+        &self,
+        _target: Option<&WindowTarget>,
+    ) -> Result<Vec<RawPaneSnapshot>, PollingError> {
         Ok(self.panes.clone())
     }
 
@@ -219,20 +222,11 @@ mod tests {
                 window_index: "1".into(),
             }),
         );
-        assert_eq!(
-            args,
-            vec![
-                "list-panes",
-                "-t",
-                "qwork:1",
-                "-F",
-                "fmt",
-            ]
-        );
+        assert_eq!(args, vec!["list-panes", "-t", "qwork:1", "-F", "fmt",]);
     }
 
     #[test]
-    fn list_panes_falls_back_to_all_panes_without_tmux_context() {
+    fn list_panes_without_target_uses_all_panes() {
         let args = list_panes_args("fmt", None);
         assert_eq!(args, vec!["list-panes", "-a", "-F", "fmt"]);
     }

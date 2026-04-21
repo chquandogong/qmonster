@@ -77,9 +77,9 @@ impl IdentityResolver {
         // non-canonical titles like "Claude Code" or "Gemini CLI"
         // useful, while still allowing generic bash/node panes to be
         // resolved from their visible output.
-        let title_provider = detect_provider(&raw.title);
-        let cmd_provider = detect_provider(&raw.current_command);
-        let tail_provider = detect_provider(&raw.tail);
+        let title_provider = detect_provider_title(&raw.title);
+        let cmd_provider = detect_provider_command(&raw.current_command);
+        let tail_provider = detect_provider_tail(&raw.tail);
 
         let (provider, confidence) = if title_provider != Provider::Unknown {
             (title_provider, IdentityConfidence::Medium)
@@ -130,13 +130,43 @@ fn parse_canonical_title(title: &str) -> Option<(Provider, u32, Role)> {
     Some((provider, instance, role))
 }
 
-fn detect_provider(s: &str) -> Provider {
+fn detect_provider_title(s: &str) -> Provider {
     let lower = s.to_lowercase();
-    // Check in priority order: qmonster first so the monitor pane does not
-    // get mis-classified when its tail mentions other providers.
+    if lower.contains("claude code") || contains_word(&lower, "claude") {
+        Provider::Claude
+    } else if contains_word(&lower, "codex") {
+        Provider::Codex
+    } else if contains_word(&lower, "gemini") {
+        Provider::Gemini
+    } else {
+        Provider::Unknown
+    }
+}
+
+fn detect_provider_command(s: &str) -> Provider {
+    let lower = s.to_lowercase();
     if contains_word(&lower, "qmonster") {
         Provider::Qmonster
     } else if contains_word(&lower, "claude") {
+        Provider::Claude
+    } else if contains_word(&lower, "codex") {
+        Provider::Codex
+    } else if contains_word(&lower, "gemini") {
+        Provider::Gemini
+    } else {
+        Provider::Unknown
+    }
+}
+
+fn detect_provider_tail(s: &str) -> Provider {
+    let lower = s.to_lowercase();
+    if looks_like_qmonster_monitor(&lower) {
+        Provider::Qmonster
+    } else if looks_like_codex_transcript(s, &lower) {
+        Provider::Codex
+    } else if looks_like_gemini_transcript(s, &lower) {
+        Provider::Gemini
+    } else if looks_like_claude_screen(&lower) || contains_word(&lower, "claude") {
         Provider::Claude
     } else if contains_word(&lower, "codex") {
         Provider::Codex
@@ -152,6 +182,45 @@ fn contains_word(haystack: &str, needle: &str) -> bool {
         .split(|c: char| !c.is_ascii_alphanumeric())
         .any(|token| token == needle)
         || haystack.contains(needle)
+}
+
+fn looks_like_qmonster_monitor(lower: &str) -> bool {
+    lower.contains("alerts · target")
+        && lower.contains("panes · target")
+        && lower.contains("focus:")
+}
+
+fn looks_like_codex_transcript(tail: &str, lower: &str) -> bool {
+    lower.contains("ctrl + t to view transcript")
+        || tail.lines().any(|line| {
+            let trimmed = line.trim_start();
+            trimmed.starts_with("• Ran ")
+                || trimmed.starts_with("• Explored")
+                || trimmed.starts_with("• Edited")
+                || trimmed.starts_with("• Updated")
+                || trimmed.starts_with("• Waited for")
+        })
+}
+
+fn looks_like_gemini_transcript(tail: &str, lower: &str) -> bool {
+    let tool_lines = tail
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            trimmed.starts_with("✓  ReadFolder")
+                || trimmed.starts_with("✓  ReadFile")
+                || trimmed.starts_with("✓  SearchText")
+                || trimmed.starts_with("✓  Shell")
+        })
+        .count();
+
+    tool_lines >= 2
+        || lower.contains("output too long and was saved to:")
+        || tail.lines().any(|line| line.trim_start().starts_with("✦ "))
+}
+
+fn looks_like_claude_screen(lower: &str) -> bool {
+    lower.contains("claude code v") || (lower.contains("claude") && lower.contains("opus"))
 }
 
 #[cfg(test)]
@@ -234,6 +303,50 @@ mod tests {
         let out = r.resolve(&raw("bash", "bash", "gemini version 1.2.3"));
         assert_eq!(out.identity.provider, Provider::Gemini);
         assert_eq!(out.confidence, IdentityConfidence::Low);
+    }
+
+    #[test]
+    fn codex_transcript_markers_resolve_without_provider_name() {
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw(
+            "mission-spec",
+            "node",
+            "• Ran cargo test --all-targets\n  └ finished `test` profile\n",
+        ));
+        assert_eq!(out.identity.provider, Provider::Codex);
+        assert_eq!(out.confidence, IdentityConfidence::Low);
+    }
+
+    #[test]
+    fn gemini_transcript_markers_resolve_without_provider_name() {
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw(
+            "Ready",
+            "node",
+            "✓  ReadFile foo.rs\n✓  SearchText 'bar' within src\nOutput too long and was saved to: /tmp/out.txt\n",
+        ));
+        assert_eq!(out.identity.provider, Provider::Gemini);
+        assert_eq!(out.confidence, IdentityConfidence::Low);
+    }
+
+    #[test]
+    fn qmonster_repo_name_in_tail_does_not_force_qmonster_provider() {
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw(
+            "Ready",
+            "node",
+            "/home/chquan/Qmonster\nworking tree is clean",
+        ));
+        assert_eq!(out.identity.provider, Provider::Unknown);
+        assert_eq!(out.confidence, IdentityConfidence::Unknown);
+    }
+
+    #[test]
+    fn qmonster_command_resolves_monitor_when_title_is_generic() {
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("Monitor", "./target/release/qmonster", ""));
+        assert_eq!(out.identity.provider, Provider::Qmonster);
+        assert_eq!(out.confidence, IdentityConfidence::Medium);
     }
 
     #[test]

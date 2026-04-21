@@ -39,8 +39,7 @@ pub struct Recommendation {
     pub suggested_command: Option<String>,
     pub side_effects: Vec<String>,
     /// G-7: if true, this recommendation is rendered in a dedicated
-    /// "CHECKPOINT" slot above per-pane alerts in the alert queue and
-    /// `--once` output.
+    /// "CHECKPOINT" alert kind in the alert queue and `--once` output.
     pub is_strong: bool,
     /// Codex v1.7.3 (phase3b-strong-rec cleanup): prose operator-facing
     /// precondition/hint that precedes the runnable

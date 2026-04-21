@@ -68,7 +68,10 @@ pub fn render_pane_list(
     target_label: &str,
     focused: bool,
 ) {
-    let title = format!("Panes · target {target_label} · selected pane expands below");
+    let title = format!(
+        "Panes · target {target_label} · selected pane expands below || counts panes:{}",
+        reports.len()
+    );
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(if focused {
@@ -109,6 +112,25 @@ pub fn render_pane_list(
     );
 }
 
+pub fn pane_index_at_row(reports: &[PaneReport], state: &ListState, row: u16) -> Option<usize> {
+    if reports.is_empty() {
+        return None;
+    }
+    let selected = state
+        .selected()
+        .unwrap_or(0)
+        .min(reports.len().saturating_sub(1));
+    let mut remaining = row;
+    for (idx, report) in reports.iter().enumerate().skip(state.offset()) {
+        let height = pane_list_lines(report, idx == selected, idx + 1 < reports.len()).len() as u16;
+        if remaining < height {
+            return Some(idx);
+        }
+        remaining = remaining.saturating_sub(height);
+    }
+    None
+}
+
 fn highlight_style(focused: bool) -> Style {
     let style = Style::default().fg(theme::TEXT_PRIMARY);
     if focused {
@@ -119,6 +141,14 @@ fn highlight_style(focused: bool) -> Style {
 }
 
 fn pane_list_item(report: &PaneReport, expanded: bool, with_separator: bool) -> ListItem<'static> {
+    ListItem::new(pane_list_lines(report, expanded, with_separator))
+}
+
+fn pane_list_lines(
+    report: &PaneReport,
+    expanded: bool,
+    with_separator: bool,
+) -> Vec<Line<'static>> {
     let mut lines = vec![
         Line::styled(
             pane_panel_title(report),
@@ -169,7 +199,7 @@ fn pane_list_item(report: &PaneReport, expanded: bool, with_separator: bool) -> 
         ));
     }
 
-    ListItem::new(lines)
+    lines
 }
 
 fn pane_header_color(report: &PaneReport) -> Color {
@@ -216,14 +246,24 @@ pub fn render_pane_panel(area: Rect, buf: &mut Buffer, report: &PaneReport) {
 
 pub fn pane_panel_title(report: &PaneReport) -> String {
     let id = &report.identity.identity;
-    format!(
-        "{}:{} · {} {} · {}",
-        report.session_name,
-        report.window_index,
-        provider_label(id.provider),
-        role_label(id.role),
-        report.pane_id,
-    )
+    if id.role == Role::Unknown {
+        format!(
+            "{}:{} · {} · {}",
+            report.session_name,
+            report.window_index,
+            provider_label(id.provider),
+            report.pane_id,
+        )
+    } else {
+        format!(
+            "{}:{} · {} {} · {}",
+            report.session_name,
+            report.window_index,
+            provider_label(id.provider),
+            role_label(id.role),
+            report.pane_id,
+        )
+    }
 }
 
 pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
@@ -521,6 +561,13 @@ mod tests {
     fn panel_title_includes_identity_and_confidence() {
         let rep = base_report();
         assert_eq!(pane_panel_title(&rep), "qwork:1 · Claude main · %1");
+    }
+
+    #[test]
+    fn panel_title_omits_unknown_role_word() {
+        let mut rep = base_report();
+        rep.identity.identity.role = Role::Unknown;
+        assert_eq!(pane_panel_title(&rep), "qwork:1 · Claude · %1");
     }
 
     #[test]

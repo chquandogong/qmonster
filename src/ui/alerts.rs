@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
@@ -58,64 +59,213 @@ fn actionable_tail(next_step: Option<&str>, suggested_command: Option<&str>) -> 
 }
 
 const DETAIL_LABEL_WIDTH: usize = 8;
+pub const ALERT_AUTO_HIDE_DELAY: Duration = Duration::from_secs(12);
+const BULK_HIDE_PREFIX: &str = "bulk hide : ";
 
 pub struct AlertView<'a> {
     pub notices: &'a [SystemNotice],
     pub reports: &'a [PaneReport],
     pub fresh_alerts: &'a HashSet<String>,
     pub alert_times: &'a HashMap<String, String>,
+    pub hidden_until: &'a HashMap<String, Instant>,
+    pub now: Instant,
     pub target_label: &'a str,
     pub focused: bool,
 }
 
-/// Top-of-screen alert queue. Renders system notices first, then
-/// per-pane recommendations.
+pub struct AlertMouseHit {
+    pub index: usize,
+    pub dismiss: bool,
+}
+
+/// Top-of-screen alert queue. Sorts alerts by operational priority so
+/// the first row answers "what should I look at first?" instead of
+/// replaying discovery order.
 pub fn render_alerts(area: Rect, buf: &mut Buffer, state: &mut ListState, view: AlertView<'_>) {
     let items = collect_items(
         view.notices,
         view.reports,
         view.fresh_alerts,
         view.alert_times,
+        view.hidden_until,
+        view.now,
     );
     let new_count = items.iter().filter(|item| item.is_new).count();
+    let pending_hide_count = items
+        .iter()
+        .filter(|item| item.hide_deadline.is_some())
+        .count();
     let title = format!(
-        "Alerts · target {} · {new_count} new / {} total",
+        "Alerts · target {} || visible:{} · new:{} · auto-hide:{}",
         view.target_label,
-        items.len()
+        items.len(),
+        new_count,
+        pending_hide_count,
     );
+    let block = block(&title, view.focused);
+    let inner = block.inner(area);
+    block.render(area, buf);
+    if inner.height == 0 || inner.width == 0 {
+        return;
+    }
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(0)])
+        .split(inner);
+    let bulk_area = layout[0];
+    let list_area = layout[1];
+    Paragraph::new(bulk_hide_line(&items))
+        .style(Style::default().fg(theme::TEXT_DIM))
+        .render(bulk_area, buf);
     if items.is_empty() {
         Paragraph::new("no alerts")
             .style(Style::default().fg(theme::TEXT_DIM))
-            .block(block(&title, view.focused))
-            .render(area, buf);
-    } else {
+            .render(list_area, buf);
+    } else if list_area.height > 0 {
         sync_list_selection(state, items.len());
-        let wrap_width = area.inner(Margin {
-            vertical: 1,
-            horizontal: 2,
-        });
+        let item_width = list_width(inner.width);
         let alert_items: Vec<ListItem<'static>> = items
             .iter()
-            .map(|item| alert_list_item(item, wrap_width.width.saturating_sub(2) as usize))
+            .map(|item| alert_list_item(item, item_width, view.now))
             .collect();
         StatefulWidget::render(
             List::new(alert_items)
-                .block(block(&title, view.focused))
                 .highlight_style(highlight_style(view.focused))
                 .highlight_symbol("▶ "),
-            area,
+            list_area,
             buf,
             state,
         );
     }
 }
 
-pub fn alert_count(notices: &[SystemNotice], reports: &[PaneReport]) -> usize {
-    notices.len()
-        + reports
-            .iter()
-            .map(|report| report.recommendations.len() + report.cross_pane_findings.len())
-            .sum::<usize>()
+pub fn bulk_hide_severity_at_column(view: AlertView<'_>, column: u16) -> Option<Severity> {
+    let items = collect_items(
+        view.notices,
+        view.reports,
+        view.fresh_alerts,
+        view.alert_times,
+        view.hidden_until,
+        view.now,
+    );
+    severity_chips(&items)
+        .into_iter()
+        .find(|chip| column >= chip.start_col && column < chip.end_col)
+        .map(|chip| chip.severity)
+}
+
+pub fn alert_index_at_row(
+    state: &ListState,
+    view: AlertView<'_>,
+    width: usize,
+    row: u16,
+) -> Option<usize> {
+    alert_hit_at_row(state, view, width, row).map(|hit| hit.index)
+}
+
+pub fn alert_hit_at_row(
+    state: &ListState,
+    view: AlertView<'_>,
+    width: usize,
+    row: u16,
+) -> Option<AlertMouseHit> {
+    let items = collect_items(
+        view.notices,
+        view.reports,
+        view.fresh_alerts,
+        view.alert_times,
+        view.hidden_until,
+        view.now,
+    );
+    let mut remaining = row;
+    for (idx, item) in items.iter().enumerate().skip(state.offset()) {
+        let dismiss_height = dismiss_line_count(item, width, view.now) as u16;
+        let height = alert_item_lines(item, width, view.now).len() as u16;
+        if remaining < height {
+            return Some(AlertMouseHit {
+                index: idx,
+                dismiss: remaining > 0 && remaining < 1 + dismiss_height,
+            });
+        }
+        remaining = remaining.saturating_sub(height);
+    }
+    None
+}
+
+pub fn alert_count(
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> usize {
+    collect_items(
+        notices,
+        reports,
+        &HashSet::new(),
+        &HashMap::new(),
+        hidden_until,
+        now,
+    )
+    .len()
+}
+
+pub fn visible_alert_keys(
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> Vec<String> {
+    collect_items(
+        notices,
+        reports,
+        &HashSet::new(),
+        &HashMap::new(),
+        hidden_until,
+        now,
+    )
+    .into_iter()
+    .map(|item| item.key)
+    .collect()
+}
+
+pub fn actionable_alert_keys_for_severity(
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+    severity: Severity,
+) -> Vec<String> {
+    collect_items(
+        notices,
+        reports,
+        &HashSet::new(),
+        &HashMap::new(),
+        hidden_until,
+        now,
+    )
+    .into_iter()
+    .filter(|item| item.kind.is_actionable() && item.severity == severity)
+    .map(|item| item.key)
+    .collect()
+}
+
+pub fn pending_auto_hide_count(
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> usize {
+    collect_items(
+        notices,
+        reports,
+        &HashSet::new(),
+        &HashMap::new(),
+        hidden_until,
+        now,
+    )
+    .into_iter()
+    .filter(|item| item.hide_deadline.is_some())
+    .count()
 }
 
 fn block(title: &str, focused: bool) -> Block<'_> {
@@ -147,13 +297,34 @@ pub fn alert_fingerprints(notices: &[SystemNotice], reports: &[PaneReport]) -> H
 
 #[derive(Debug, Clone)]
 struct AlertItem {
+    key: String,
     timestamp: String,
+    timestamp_sort_key: u32,
     severity: Severity,
+    kind: AlertKind,
     title: String,
     headline: String,
     details: Vec<String>,
     color: Color,
     is_new: bool,
+    hide_deadline: Option<Instant>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AlertKind {
+    SystemNotice,
+    Checkpoint,
+    CrossPane,
+    Recommendation,
+}
+
+#[derive(Debug, Clone)]
+struct SeverityChip {
+    severity: Severity,
+    start_col: u16,
+    end_col: u16,
+    total: usize,
+    pending: usize,
 }
 
 fn collect_items(
@@ -161,50 +332,75 @@ fn collect_items(
     reports: &[PaneReport],
     fresh_alerts: &HashSet<String>,
     alert_times: &HashMap<String, String>,
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
 ) -> Vec<AlertItem> {
     let mut out = Vec::new();
-    // 1. System notices.
     for n in notices {
         let badge = source_kind_label(n.source_kind);
         let color = theme::severity_color(n.severity);
         let key = notice_key(n);
+        let Some(hide_deadline) = visible_hide_deadline(hidden_until, &key, now) else {
+            continue;
+        };
         let timestamp = alert_timestamp(&key, alert_times);
+        let timestamp_sort_key = sortable_timestamp(&timestamp);
+        let is_new = fresh_alerts.contains(&key);
         out.push(AlertItem {
+            key,
             timestamp,
+            timestamp_sort_key,
             severity: n.severity,
+            kind: AlertKind::SystemNotice,
             title: format!("System Notice · {}", n.title),
             headline: format!("[{badge}] {}", n.body),
             details: vec![],
             color,
-            is_new: fresh_alerts.contains(&key),
+            is_new,
+            hide_deadline,
         });
     }
-    // 2. Strong recommendations (G-7 checkpoint UX).
     for rep in reports {
         for rec in rep.recommendations.iter().filter(|r| r.is_strong) {
             let color = theme::severity_color(rec.severity);
             let key = recommendation_key(&rep.pane_id, rec);
+            let Some(hide_deadline) = visible_hide_deadline(hidden_until, &key, now) else {
+                continue;
+            };
             let timestamp = alert_timestamp(&key, alert_times);
+            let timestamp_sort_key = sortable_timestamp(&timestamp);
+            let is_new = fresh_alerts.contains(&key);
             out.push(AlertItem {
+                key,
                 timestamp,
+                timestamp_sort_key,
                 severity: rec.severity,
+                kind: AlertKind::Checkpoint,
                 title: format!("Checkpoint · {}", rep.pane_id),
                 headline: format!("[{}] {}", source_kind_label(rec.source_kind), rec.reason),
                 details: recommendation_detail_lines(rec),
                 color,
-                is_new: fresh_alerts.contains(&key),
+                is_new,
+                hide_deadline,
             });
         }
     }
-    // 3. Cross-pane findings.
     for rep in reports {
         for f in &rep.cross_pane_findings {
             let color = theme::severity_color(f.severity);
             let key = finding_key(f);
+            let Some(hide_deadline) = visible_hide_deadline(hidden_until, &key, now) else {
+                continue;
+            };
             let timestamp = alert_timestamp(&key, alert_times);
+            let timestamp_sort_key = sortable_timestamp(&timestamp);
+            let is_new = fresh_alerts.contains(&key);
             out.push(AlertItem {
+                key,
                 timestamp,
+                timestamp_sort_key,
                 severity: f.severity,
+                kind: AlertKind::CrossPane,
                 title: format!("Cross-Pane · {}", f.anchor_pane_id),
                 headline: format!(
                     "[{}] cross-pane — {}",
@@ -216,34 +412,141 @@ fn collect_items(
                     aligned_detail("others", &f.other_pane_ids.join(", ")),
                 ],
                 color,
-                is_new: fresh_alerts.contains(&key),
+                is_new,
+                hide_deadline,
             });
         }
     }
-    // 4. Per-pane non-strong recommendations.
     for rep in reports {
         for rec in rep.recommendations.iter().filter(|r| !r.is_strong) {
             let color = theme::severity_color(rec.severity);
             let key = recommendation_key(&rep.pane_id, rec);
+            let Some(hide_deadline) = visible_hide_deadline(hidden_until, &key, now) else {
+                continue;
+            };
             let timestamp = alert_timestamp(&key, alert_times);
+            let timestamp_sort_key = sortable_timestamp(&timestamp);
+            let is_new = fresh_alerts.contains(&key);
             out.push(AlertItem {
+                key,
                 timestamp,
+                timestamp_sort_key,
                 severity: rec.severity,
+                kind: AlertKind::Recommendation,
                 title: format!("Recommendation · {}", rep.pane_id),
                 headline: format!("[{}] {}", source_kind_label(rec.source_kind), rec.reason),
                 details: recommendation_detail_lines(rec),
                 color,
-                is_new: fresh_alerts.contains(&key),
+                is_new,
+                hide_deadline,
             });
         }
     }
+    out.sort_by(|a, b| {
+        b.severity
+            .cmp(&a.severity)
+            .then_with(|| b.is_new.cmp(&a.is_new))
+            .then_with(|| b.timestamp_sort_key.cmp(&a.timestamp_sort_key))
+            .then_with(|| b.kind.priority().cmp(&a.kind.priority()))
+            .then_with(|| a.key.cmp(&b.key))
+    });
     out
 }
 
-fn alert_list_item(item: &AlertItem, width: usize) -> ListItem<'static> {
-    let prefix = format!("[{}] ", item.timestamp);
-    let continuation = " ".repeat(prefix.chars().count());
+fn bulk_hide_line(items: &[AlertItem]) -> Line<'static> {
+    let chips = severity_chips(items);
+    let mut spans = vec![Span::styled(
+        BULK_HIDE_PREFIX.to_string(),
+        Style::default()
+            .fg(theme::TEXT_DIM)
+            .add_modifier(Modifier::BOLD),
+    )];
+    if chips.is_empty() {
+        spans.push(Span::styled(
+            "actionable alerts only".to_string(),
+            Style::default().fg(theme::TEXT_DIM),
+        ));
+        return Line::from(spans);
+    }
+    for (idx, chip) in chips.iter().enumerate() {
+        if idx > 0 {
+            spans.push(Span::raw("  ".to_string()));
+        }
+        spans.push(Span::styled(
+            format!("{} ", chip.marker_text()),
+            theme::label_style(),
+        ));
+        spans.push(Span::styled(
+            severity_badge_text(chip.severity).to_string(),
+            theme::severity_badge_style(chip.severity).add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(
+            format!(" {}", chip.count_label()),
+            Style::default().fg(theme::TEXT_PRIMARY),
+        ));
+    }
+    Line::from(spans)
+}
+
+fn severity_chips(items: &[AlertItem]) -> Vec<SeverityChip> {
+    let mut chips = Vec::new();
+    let mut start_col = BULK_HIDE_PREFIX.chars().count() as u16;
+    for severity in [
+        Severity::Risk,
+        Severity::Warning,
+        Severity::Concern,
+        Severity::Good,
+        Severity::Safe,
+    ] {
+        let matching: Vec<&AlertItem> = items
+            .iter()
+            .filter(|item| item.kind.is_actionable() && item.severity == severity)
+            .collect();
+        if matching.is_empty() {
+            continue;
+        }
+        let total = matching.len();
+        let pending = matching
+            .iter()
+            .filter(|item| item.hide_deadline.is_some())
+            .count();
+        let width = SeverityChip::display_text(severity, total, pending)
+            .chars()
+            .count() as u16;
+        chips.push(SeverityChip {
+            severity,
+            start_col,
+            end_col: start_col.saturating_add(width),
+            total,
+            pending,
+        });
+        start_col = start_col.saturating_add(width + 2);
+    }
+    chips
+}
+
+fn list_width(inner_width: u16) -> usize {
+    inner_width.saturating_sub(3) as usize
+}
+
+fn alert_list_item(item: &AlertItem, width: usize, now: Instant) -> ListItem<'static> {
+    ListItem::new(alert_item_lines(item, width, now)).style(alert_style(item.color, item.is_new))
+}
+
+fn alert_item_lines(item: &AlertItem, width: usize, now: Instant) -> Vec<Line<'static>> {
+    let prefix = timestamp_prefix(item);
+    let continuation = continuation_prefix(&prefix);
     let mut lines: Vec<Line<'static>> = vec![title_line(item, &prefix)];
+    lines.extend(
+        wrap_with_prefix(
+            &dismiss_line_text(item, now),
+            width,
+            &continuation,
+            &continuation,
+        )
+        .into_iter()
+        .map(Line::from),
+    );
     lines.extend(
         wrap_with_prefix(
             &aligned_detail("summary", &item.headline),
@@ -269,7 +572,33 @@ fn alert_list_item(item: &AlertItem, width: usize) -> ListItem<'static> {
         ),
         Style::default().fg(theme::TEXT_DIM),
     ));
-    ListItem::new(lines).style(alert_style(item.color, item.is_new))
+    lines
+}
+
+fn dismiss_line_text(item: &AlertItem, now: Instant) -> String {
+    match item.hide_deadline {
+        Some(deadline) => {
+            let remaining = deadline.saturating_duration_since(now);
+            let secs = remaining.as_secs().max(1);
+            aligned_detail(
+                "dismiss",
+                &format!("[x] auto-hide in {secs}s · click undo · Enter/Space undo"),
+            )
+        }
+        None => aligned_detail("dismiss", "[ ] click hide · Enter/Space hide"),
+    }
+}
+
+fn dismiss_line_count(item: &AlertItem, width: usize, now: Instant) -> usize {
+    let prefix = timestamp_prefix(item);
+    let continuation = continuation_prefix(&prefix);
+    wrap_with_prefix(
+        &dismiss_line_text(item, now),
+        width,
+        &continuation,
+        &continuation,
+    )
+    .len()
 }
 
 fn title_line(item: &AlertItem, prefix: &str) -> Line<'static> {
@@ -318,6 +647,43 @@ fn alert_timestamp(key: &str, alert_times: &HashMap<String, String>) -> String {
         .get(key)
         .cloned()
         .unwrap_or_else(|| "--:--:--".into())
+}
+
+fn sortable_timestamp(timestamp: &str) -> u32 {
+    let mut parts = timestamp.split(':');
+    let Some(hours) = parts.next().and_then(|part| part.parse::<u32>().ok()) else {
+        return 0;
+    };
+    let Some(minutes) = parts.next().and_then(|part| part.parse::<u32>().ok()) else {
+        return 0;
+    };
+    let Some(seconds) = parts.next().and_then(|part| part.parse::<u32>().ok()) else {
+        return 0;
+    };
+    if parts.next().is_some() {
+        return 0;
+    }
+    (hours * 60 * 60) + (minutes * 60) + seconds
+}
+
+fn timestamp_prefix(item: &AlertItem) -> String {
+    format!("[{}] ", item.timestamp)
+}
+
+fn continuation_prefix(prefix: &str) -> String {
+    " ".repeat(prefix.chars().count())
+}
+
+fn visible_hide_deadline(
+    hidden_until: &HashMap<String, Instant>,
+    key: &str,
+    now: Instant,
+) -> Option<Option<Instant>> {
+    match hidden_until.get(key).copied() {
+        Some(deadline) if deadline <= now => None,
+        Some(deadline) => Some(Some(deadline)),
+        None => Some(None),
+    }
 }
 
 pub fn recommendation_detail_lines(rec: &Recommendation) -> Vec<String> {
@@ -473,6 +839,53 @@ pub fn severity_letter(sev: Severity) -> &'static str {
     sev.letter()
 }
 
+impl AlertKind {
+    fn priority(self) -> u8 {
+        match self {
+            AlertKind::SystemNotice => 0,
+            AlertKind::Recommendation => 1,
+            AlertKind::CrossPane => 2,
+            AlertKind::Checkpoint => 3,
+        }
+    }
+
+    fn is_actionable(self) -> bool {
+        !matches!(self, AlertKind::SystemNotice)
+    }
+}
+
+impl SeverityChip {
+    fn count_label(&self) -> String {
+        if self.pending > 0 && self.pending < self.total {
+            format!("{}/{}", self.pending, self.total)
+        } else {
+            self.total.to_string()
+        }
+    }
+
+    fn marker_text(&self) -> &'static str {
+        match (self.pending, self.total) {
+            (0, _) => "[ ]",
+            (pending, total) if pending >= total => "[x]",
+            _ => "[-]",
+        }
+    }
+
+    fn display_text(severity: Severity, total: usize, pending: usize) -> String {
+        let count = if pending > 0 && pending < total {
+            format!("{pending}/{total}")
+        } else {
+            total.to_string()
+        };
+        let marker = match (pending, total) {
+            (0, _) => "[ ]",
+            (armed, all) if armed >= all => "[x]",
+            _ => "[-]",
+        };
+        format!("{marker} {} {count}", severity_badge_text(severity))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -535,12 +948,13 @@ mod tests {
         ]);
         let fresh = HashSet::new();
         let times = HashMap::new();
-        let items = collect_items(&[], &[rep], &fresh, &times);
+        let hidden = HashMap::new();
+        let items = collect_items(&[], &[rep], &fresh, &times, &hidden, Instant::now());
         assert_eq!(items.len(), 2);
     }
 
     #[test]
-    fn system_notices_appear_before_per_pane_alerts() {
+    fn higher_severity_alerts_sort_before_lower_severity_alerts() {
         let notice = SystemNotice {
             title: "version drift".into(),
             body: "tmux: 3.4 -> 3.5".into(),
@@ -560,27 +974,18 @@ mod tests {
         }]);
         let fresh = HashSet::new();
         let times = HashMap::new();
-        let items = collect_items(&[notice], &[rep], &fresh, &times);
+        let hidden = HashMap::new();
+        let items = collect_items(&[notice], &[rep], &fresh, &times, &hidden, Instant::now());
         assert_eq!(items.len(), 2);
-        assert!(items[0].title.contains("System Notice"));
+        assert_eq!(items[0].severity, Severity::Risk);
+        assert!(items[0].title.contains("Recommendation"));
     }
 
     #[test]
-    fn strong_recommendation_renders_in_dedicated_slot_above_per_pane_alerts() {
+    fn fresh_alerts_sort_before_older_alerts_within_same_severity() {
         let strong = Recommendation {
-            action: "context-pressure: act now",
-            reason: "context near critical — checkpoint + archive now; /compact after".into(),
-            severity: Severity::Risk,
-            source_kind: SourceKind::Estimated,
-            suggested_command: Some("/compact".into()),
-            side_effects: vec![],
-            is_strong: true,
-            next_step: Some("press 's' to snapshot + archive now, before running /compact".into()),
-            profile: None,
-        };
-        let normal = Recommendation {
-            action: "log-storm",
-            reason: "r".into(),
+            action: "context-pressure",
+            reason: "fresh warning".into(),
             severity: Severity::Warning,
             source_kind: SourceKind::Heuristic,
             suggested_command: None,
@@ -589,13 +994,28 @@ mod tests {
             next_step: None,
             profile: None,
         };
-        let rep = base_report(vec![strong, normal]);
-        let fresh = HashSet::new();
-        let times = HashMap::new();
-        let items = collect_items(&[], &[rep], &fresh, &times);
-        // Two items: strong-rec line + normal-rec line. Strong appears first.
+        let normal = Recommendation {
+            action: "notify-input-wait",
+            reason: "older warning".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![strong.clone(), normal.clone()]);
+        let fresh = HashSet::from([recommendation_key("%1", &strong)]);
+        let times = HashMap::from([
+            (recommendation_key("%1", &normal), "14:32:10".into()),
+            (recommendation_key("%1", &strong), "14:32:05".into()),
+        ]);
+        let hidden = HashMap::new();
+        let items = collect_items(&[], &[rep], &fresh, &times, &hidden, Instant::now());
         assert_eq!(items.len(), 2);
-        assert!(items[0].title.contains("Checkpoint"));
+        assert_eq!(items[0].headline, "[Heur] fresh warning");
+        assert!(items[0].is_new);
     }
 
     #[test]
@@ -700,7 +1120,44 @@ mod tests {
     }
 
     #[test]
-    fn cross_pane_findings_render_above_per_pane_alerts() {
+    fn latest_timestamp_breaks_same_severity_ties_after_newness() {
+        let older = Recommendation {
+            action: "notify-input-wait",
+            reason: "older warning".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let newer = Recommendation {
+            action: "log-storm",
+            reason: "newer warning".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Heuristic,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![older.clone(), newer.clone()]);
+        let fresh = HashSet::new();
+        let times = HashMap::from([
+            (recommendation_key("%1", &older), "14:32:10".into()),
+            (recommendation_key("%1", &newer), "14:33:45".into()),
+        ]);
+        let hidden = HashMap::new();
+        let items = collect_items(&[], &[rep], &fresh, &times, &hidden, Instant::now());
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].headline, "[Heur] newer warning");
+        assert_eq!(items[0].timestamp, "14:33:45");
+    }
+
+    #[test]
+    fn cross_pane_findings_beat_plain_recommendations_on_same_priority_tie() {
         use crate::domain::recommendation::{CrossPaneFinding, CrossPaneKind};
         let mut rep = base_report(vec![Recommendation {
             action: "log-storm",
@@ -724,9 +1181,42 @@ mod tests {
         });
         let fresh = HashSet::new();
         let times = HashMap::new();
-        let items = collect_items(&[], &[rep], &fresh, &times);
+        let hidden = HashMap::new();
+        let items = collect_items(&[], &[rep], &fresh, &times, &hidden, Instant::now());
         assert_eq!(items.len(), 2, "one cross-pane finding + one pane alert");
         assert!(items[0].headline.contains("cross-pane"));
+    }
+
+    #[test]
+    fn actionable_items_beat_system_notices_on_same_priority_tie() {
+        let notice = SystemNotice {
+            title: "version drift".into(),
+            body: "tmux: 3.4 -> 3.5".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProviderOfficial,
+        };
+        let rec = Recommendation {
+            action: "notify-input-wait",
+            reason: "waiting".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![rec.clone()]);
+        let fresh = HashSet::new();
+        let times = HashMap::from([
+            (notice_key(&notice), "14:32:10".into()),
+            (recommendation_key("%1", &rec), "14:32:10".into()),
+        ]);
+        let hidden = HashMap::new();
+        let items = collect_items(&[notice], &[rep], &fresh, &times, &hidden, Instant::now());
+        assert_eq!(items.len(), 2);
+        assert!(items[0].title.contains("Recommendation"));
+        assert!(items[1].title.contains("System Notice"));
     }
 
     #[test]
@@ -746,9 +1236,146 @@ mod tests {
         let key = recommendation_key("%1", &rec);
         let fresh = HashSet::from([key.clone()]);
         let times = HashMap::from([(key, "14:32:10".into())]);
-        let items = collect_items(&[], &[rep], &fresh, &times);
+        let hidden = HashMap::new();
+        let items = collect_items(&[], &[rep], &fresh, &times, &hidden, Instant::now());
         assert_eq!(items[0].timestamp, "14:32:10");
         assert!(items[0].is_new);
+    }
+
+    #[test]
+    fn hidden_alert_is_filtered_after_deadline() {
+        let rec = Recommendation {
+            action: "notify-input-wait",
+            reason: "waiting".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![rec.clone()]);
+        let key = recommendation_key("%1", &rec);
+        let now = Instant::now();
+        let hidden = HashMap::from([(key, now - Duration::from_secs(1))]);
+        let keys = visible_alert_keys(&[], &[rep], &hidden, now);
+        assert!(keys.is_empty());
+    }
+
+    #[test]
+    fn severity_bulk_chips_ignore_system_notices() {
+        let notice = SystemNotice {
+            title: "polling recovered".into(),
+            body: "tmux ok".into(),
+            severity: Severity::Good,
+            source_kind: SourceKind::ProjectCanonical,
+        };
+        let rec = Recommendation {
+            action: "notify-input-wait",
+            reason: "waiting".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![rec]);
+        let items = collect_items(
+            &[notice],
+            &[rep],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+        let chips = severity_chips(&items);
+        assert_eq!(chips.len(), 1);
+        assert_eq!(chips[0].severity, Severity::Warning);
+    }
+
+    #[test]
+    fn severity_bulk_chip_uses_partial_marker_when_only_some_are_pending_hide() {
+        let rec_a = Recommendation {
+            action: "notify-input-wait",
+            reason: "waiting a".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rec_b = Recommendation {
+            action: "log-storm",
+            reason: "waiting b".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Heuristic,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![rec_a.clone(), rec_b.clone()]);
+        let pending_key = recommendation_key("%1", &rec_a);
+        let hidden = HashMap::from([(pending_key, Instant::now() + Duration::from_secs(9))]);
+        let items = collect_items(
+            &[],
+            &[rep],
+            &HashSet::new(),
+            &HashMap::new(),
+            &hidden,
+            Instant::now(),
+        );
+        let chips = severity_chips(&items);
+        assert_eq!(chips.len(), 1);
+        assert_eq!(chips[0].marker_text(), "[-]");
+        assert_eq!(chips[0].count_label(), "1/2");
+    }
+
+    #[test]
+    fn pending_auto_hide_keeps_alert_visible_with_dismiss_text() {
+        let item = AlertItem {
+            key: "rec|%1|x|W|y".into(),
+            timestamp: "14:32:10".into(),
+            timestamp_sort_key: sortable_timestamp("14:32:10"),
+            severity: Severity::Warning,
+            kind: AlertKind::Recommendation,
+            title: "Recommendation · %1".into(),
+            headline: "[Heur] waiting".into(),
+            details: vec![],
+            color: Color::Yellow,
+            is_new: false,
+            hide_deadline: Some(Instant::now() + Duration::from_secs(9)),
+        };
+        let line = dismiss_line_text(&item, Instant::now());
+        assert!(line.contains("[x] auto-hide"));
+        assert!(line.contains("click undo"));
+        assert!(line.contains("Enter/Space undo"));
+    }
+
+    #[test]
+    fn idle_alert_shows_unchecked_dismiss_marker() {
+        let item = AlertItem {
+            key: "rec|%1|x|W|y".into(),
+            timestamp: "14:32:10".into(),
+            timestamp_sort_key: sortable_timestamp("14:32:10"),
+            severity: Severity::Warning,
+            kind: AlertKind::Recommendation,
+            title: "Recommendation · %1".into(),
+            headline: "[Heur] waiting".into(),
+            details: vec![],
+            color: Color::Yellow,
+            is_new: false,
+            hide_deadline: None,
+        };
+        let line = dismiss_line_text(&item, Instant::now());
+        assert!(line.contains("[ ] click hide"));
+        assert!(line.contains("Enter/Space hide"));
     }
 
     #[test]
