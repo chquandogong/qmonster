@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 16
-  latest_version: "1.8.0"
+  total_revisions: 17
+  latest_version: "1.8.1"
 
 timeline:
   - change_id: "initial"
@@ -1777,8 +1777,178 @@ timeline:
       - "P4-4+: Codex and Gemini provider profiles + VALIDATION.md Phase-4 checkboxes ticked"
       - "Request Codex + Gemini gate review on v1.8.0 before continuing to P4-2"
 
+  - change_id: "phase-4-p4-1-structured-profile-payload-to-renderer"
+    semantic_version: "1.8.1"
+    change_sequence: 17
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.8.0 P4-1 review — flagged finding #1 closed by this round)"
+      - "Gemini (gemini:1:research, v1.8.0 P4-1 review — pass / 적극 승인; narrative + mirror artifacts backfilled in this round)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close Codex v1.8.0 P4-1 review finding #1: the structured
+      `ProviderProfile` built inside `recommend_claude_default` was
+      being discarded before the `Recommendation` returned from the
+      rule. Operators saw only a prose `reason` string; the three
+      ProviderOfficial lever keys/values/citations never survived
+      past `Recommendation` into `PaneReport`, `--once`, or the TUI
+      panel. This made the v1.8.0 ledger claim that the rec "bundles
+      three levers with citations" false in the live path. Fix:
+      carry the bundle through to the renderer via a new
+      `Recommendation.profile` slot + a shared render helper, and
+      lock the end-to-end contract with unit + integration tests.
+    intent_ko: >
+      Codex v1.8.0 P4-1 리뷰의 finding #1을 닫는다.
+      `recommend_claude_default` 내부에서 빌드한 구조화된
+      `ProviderProfile`이 규칙이 반환하는 `Recommendation` 이전에
+      버려지고 있었다. operator는 prose `reason` 문자열만 봤고,
+      세 개 ProviderOfficial lever의 key/value/citation은
+      `Recommendation` 이후 `PaneReport`, `--once`, TUI panel 어디에도
+      살아남지 못했다. v1.8.0 레저가 "세 개 lever + citation을
+      묶는다"고 주장한 계약이 live path에서 거짓이었다. 수정: 신규
+      `Recommendation.profile` 슬롯 + 공용 render 헬퍼로 번들을
+      렌더러까지 전달하고, unit + integration 테스트로 end-to-end
+      계약을 고정한다.
+    decision: >
+      (1) src/domain/recommendation.rs: add
+      `pub profile: Option<ProviderProfile>` as a new field on
+      Recommendation (default None for non-profile rules; Some(_)
+      only when the rec recommends a bundle).
+      (2) Thread `profile: None` through every existing
+      Recommendation constructor — rustc-guided exhaustive update
+      across advisories.rs (12 sites, mixed None + Some(next_step)
+      variants), alerts.rs (7 sites), notify/desktop.rs (1 test
+      fixture), ui/alerts.rs (8 sites incl. the strong-rec
+      `next_step: Some(...)` test fixture), recommendation.rs test
+      fixture. profiles.rs's `recommend_claude_default` gets the
+      actual `profile: Some(claude_default_profile())` so the bundle
+      carries through.
+      (3) src/ui/panels.rs: new
+      `pub fn format_profile_lines(rec: &Recommendation) -> Vec<String>`
+      as the single source of truth for the profile render. Emits 1
+      header line ("profile: {name} ({n} levers) [{source_kind badge}]")
+      + 1 line per lever ("[{lever badge}] {key} = {value} — {citation}").
+      Returns empty Vec when rec has no profile. Caller prepends
+      its own leading indent.
+      (4) src/main.rs (--once) + src/ui/panels.rs::panel_body both
+      call `format_profile_lines` after the rec header line and
+      print / ListItem-push each returned line with appropriate
+      indent (4-space in --once, 2-space in TUI panel).
+      (5) Three new tests: a unit in profiles.rs that rec.profile
+      carries a 3-lever bundle with ProviderOfficial source_kind +
+      non-empty citations + expected keys; two units in panels.rs
+      that the renderer emits the [PC] header + [PO] rows with
+      key/value/citation and returns empty for no-profile recs; one
+      integration in tests/event_loop_integration.rs that
+      Engine::evaluate -> run_once -> PaneReport.recommendations,
+      fed through format_profile_lines, yields 4 lines with all
+      four authority pieces visible per lever AND Severity::Good
+      does NOT trigger Notify.
+      (6) Backfill Gemini's v1.8.0 pass review artifacts per
+      WORKFLOWS.md:56-58 — `.docs/gemini/...phase4-p4-1-review.md`
+      (full narrative with all eleven REVIEW_GUIDE.md:77-95 sections)
+      + `.mission/evals/...phase4-p4-1-gemini-review.result.yaml`
+      (structured mirror). Gemini verdict: `pass` ("Phase 4 (P4-1)
+      작업 베이스라인(v1.8.0) 역시 구조, 로직, 테스트 모든 면에서
+      무결점입니다").
+      (7) Fix the non-blocking `.mission/CURRENT_STATE.md:266`
+      drift Codex noted: "nine required sections" + stale review
+      range updated.
+      No policy behavior change — `Severity::Good` / `Notify` gate /
+      profile fire conditions unchanged. Only payload visibility
+      and renderer coverage move forward.
+    decision_ko: >
+      (1) src/domain/recommendation.rs: Recommendation에
+      `pub profile: Option<ProviderProfile>` 신규 필드 추가.
+      (2) 기존 모든 Recommendation 생성자에 `profile: None` 쓰루 —
+      rustc 안내로 exhaustive 업데이트(advisories.rs 12개, alerts.rs
+      7개, notify/desktop.rs 1개, ui/alerts.rs 8개, recommendation.rs
+      test 1개). profiles.rs의 `recommend_claude_default`는 실제
+      `profile: Some(claude_default_profile())`로 bundle을 전달.
+      (3) src/ui/panels.rs에 신규 `pub fn format_profile_lines`
+      헬퍼. 헤더 1줄(profile 이름 + lever 수 + ProjectCanonical
+      badge) + lever당 1줄([PO] key = value — citation). profile
+      없으면 empty Vec.
+      (4) src/main.rs(--once) + src/ui/panels.rs::panel_body 모두
+      `format_profile_lines` 호출 — TUI(2-space indent)와
+      --once(4-space indent) 동일 헬퍼 재사용.
+      (5) 테스트 3건: profiles.rs unit(rec.profile 번들 검증),
+      panels.rs unit 2건(renderer 라인 구조 + profile 없을 때
+      empty), integration 1건(Engine::evaluate 실산출물을
+      format_profile_lines에 넣어 4줄 확인 + Notify 미트리거).
+      (6) Gemini v1.8.0 pass artifact pair 작성(narrative +
+      structured mirror) — WORKFLOWS.md:56-58 준수.
+      (7) Codex가 non-blocking으로 언급한 CURRENT_STATE.md:266의
+      "nine required sections" / stale review range 드리프트 동시
+      정리. policy 동작 변화 없음.
+    triggered_by: "Codex v1.8.0 P4-1 review (`.docs/codex/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-review.md` + `.mission/evals/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-review.result.yaml`) — one warning on structured ProviderProfile not reaching runtime surfaces"
+    issue_or_context: >
+      v1.8.0 P4-1 shipped the ProviderProfile data model and the
+      first rule, but a representational gap in Recommendation meant
+      the bundle was built and then immediately discarded. Codex
+      caught this as "the ledger claim that the recommendation
+      'bundles three ProviderOfficial levers ... each with a docs
+      citation' is false in the live path." Gemini gave pass overall
+      and did not flag this gap — likely because Gemini focused on
+      the policy-layer correctness. Both reviews are legitimate and
+      complementary. v1.8.1 addresses Codex's finding while
+      preserving Gemini's approved structure.
+    changes:
+      added:
+        - ".docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-review.md — Gemini v1.8.0 pass verdict full narrative (operator-relayed from chat transcript; all 11 REVIEW_GUIDE.md:77-95 required sections present)"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-gemini-review.result.yaml — structured mirror"
+      modified:
+        - "src/domain/recommendation.rs — new `pub profile: Option<ProviderProfile>` field + doc comment citing Codex v1.8.1 remediation; ProviderProfile import added; test fixture updated"
+        - "src/policy/rules/profiles.rs — recommend_claude_default now sets `profile: Some(claude_default_profile())`; new unit test `recommend_claude_default_attaches_structured_profile_with_three_provider_official_levers` locks the bundle contract"
+        - "src/policy/rules/advisories.rs — 12 Recommendation constructors threaded with `profile: None` (both None and Some(next_step) variants)"
+        - "src/policy/rules/alerts.rs — 7 Recommendation constructors threaded"
+        - "src/notify/desktop.rs — 1 test fixture threaded"
+        - "src/ui/alerts.rs — 8 Recommendation fixtures threaded (bare, vec!, strong-rec Some(next_step))"
+        - "src/ui/panels.rs — new `pub fn format_profile_lines` + 2 new unit tests + panel_body call + Recommendation import"
+        - "src/main.rs — `--once` per-pane loop calls `qmonster::ui::panels::format_profile_lines` after the rec header with 4-space indent"
+        - "tests/event_loop_integration.rs — new end-to-end test `claude_default_profile_levers_flow_end_to_end_to_the_panel_renderer` calls Engine::evaluate via run_once + format_profile_lines on the live output; asserts all 4 authority pieces per lever + Notify stays absent"
+        - "mission.yaml — version 1.8.0 → 1.8.1; title replaced; new v1.8.1 goal paragraph; 3 new done_when entries; execution_hints.topology + suggested_approach updated; lineage total_revisions 16 → 17"
+        - "mission-history.yaml — meta.total_revisions 16 → 17; meta.latest_version → 1.8.1; new entry (this one, change_sequence 17); evolution_summary.current_phase updated"
+        - ".mission/CURRENT_STATE.md — version → 1.8.1; gate-status table refreshed with 4 reviewer rows (Gemini v1.7.3 pass, Codex v1.7.5/v1.7.6/v1.8.0 findings + closure rounds, Gemini v1.8.0 pass, Codex v1.8.0 finding closed by v1.8.1); Verification updated; line-266 stale `nine required sections` / review range drift corrected"
+    changed_sections:
+      - "Recommendation contract (new structured profile payload field)"
+      - "ui/panels.rs new pub helper format_profile_lines"
+      - "profiles.rs rule attaches real ProviderProfile"
+      - "main.rs + panels.rs both call format_profile_lines"
+      - "new end-to-end integration test covers the live render path"
+    done_when_delta:
+      added:
+        - "Phase 4 P4-1 remediation v1.8.1: `Recommendation` gains `profile: Option<ProviderProfile>`. `recommend_claude_default` attaches the structured `claude-default` profile to the rec so lever key/value/citation/SourceKind survive past `Recommendation` into `PaneReport`, `--once`, and the TUI per-pane panel. `pub fn qmonster::ui::panels::format_profile_lines(rec) -> Vec<String>` is the single shared renderer called from both `main.rs` (--once) and `panels.rs::panel_body`. Codex v1.8.0 P4-1 review finding #1 closed."
+        - "Phase 4 P4-1 remediation v1.8.1: three new tests lock the end-to-end contract — unit in `policy/rules/profiles.rs` (rec.profile Some with 3 ProviderOfficial levers, non-empty citations, expected keys), unit in `ui/panels.rs` (renderer emits header with [PC] badge + lever count + profile name; each lever row contains [PO] badge + key + value + citation; empty Vec when no profile), integration in `tests/event_loop_integration.rs` (live `Engine::evaluate -> run_once` output fed through `format_profile_lines` yields 4 lines with all four authority pieces visible per lever; Severity::Good still does NOT trigger Notify)."
+        - "Phase 4 P4-1 remediation v1.8.1: Gemini's parallel v1.8.0 review (`pass` / 적극 승인) is recorded per WORKFLOWS.md:56-58 at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-review.md` + structured mirror at `.mission/evals/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-gemini-review.result.yaml`. 166 lib + 17 integration (up from 163 + 16); clippy --all-targets -D warnings clean."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~130 LOC production delta (1 new field + 1 new pub helper + ~29 constructor threads + 2 renderer call-sites) + ~170 LOC test delta (3 new tests: 1 unit in profiles, 2 unit in panels, 1 integration)"
+      tests: "166 lib + 17 integration (up from 163 + 16; +3 new tests, 0 existing tests changed)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no policy behavior change; operator-visible change is richer structured output when a profile rec fires (1 header line + 1 line per lever under the rec header, in both --once and TUI panel)"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md + 2 new review artifacts (.docs/gemini/ + .mission/evals/)"
+    breaking: false
+    risk: "low — pure additive field on Recommendation with rustc-guided exhaustive threading (zero chance of silent miss); new render helper is covered by unit + integration tests at both shape and content levels; ledger artifact backfill is docs-only"
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+      - "KD-007"
+    snapshot_after: ""
+    follow_up:
+      - "Request a short Codex v1.8.1 confirmation re-check that the structured payload flows through the live path"
+      - "On green, proceed to P4-2 — Gemini G-5 auto-memory guide rule"
+      - "P4-3: Gemini G-6 side_effects population on first aggressive-variant profile (e.g. claude-script-low-token gated by quota_tight)"
+      - "P4-4+: Codex and Gemini provider profiles + VALIDATION.md Phase-4 checkboxes ticked"
+
 evolution_summary:
-  current_phase: "Phase 4 opened — P4-1 provider-profile recommender foundation shipped (v1.8.0); awaiting first Codex + Gemini gate review on Phase 4 work"
+  current_phase: "Phase 4 P4-1 remediated — structured ProviderProfile flows end-to-end to renderer (v1.8.1); awaiting short Codex confirmation before P4-2"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

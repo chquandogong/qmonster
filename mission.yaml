@@ -1,6 +1,6 @@
 mission:
-  version: "1.8.0"
-  title: "Qmonster v0.4.0 — Phase 4 opened (P4-1: provider-profile recommender foundation — ProviderProfile/ProfileLever data model + recommend_claude_default rule)"
+  version: "1.8.1"
+  title: "Qmonster v0.4.0 — Phase 4 P4-1 remediated (structured ProviderProfile now reaches renderer end-to-end; Codex P4-1 finding #1 closed; Gemini pass + artifacts backfilled)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -196,6 +196,45 @@ mission:
     `Severity::Good` on a rule output — positive advisory, does not
     trigger the Notify gate.
 
+    Phase 4 P4-1 remediation (v1.8.1, this revision) closes Codex's
+    v1.8.0 review finding #1. Codex approved the direction but flagged
+    that `recommend_claude_default` built a real `ProviderProfile`
+    and then dropped it — only prose `reason` reached the operator;
+    the three `ProviderOfficial` lever keys/values/citations never
+    survived past `Recommendation` into `PaneReport` / `--once` / TUI.
+    That made the "bundles three levers with citations" contract
+    false in the live path. Fix: add `Recommendation.profile:
+    Option<ProviderProfile>`, thread `profile: None` through every
+    existing constructor (~27 sites across advisories.rs / alerts.rs /
+    profiles.rs / ui/alerts.rs / notify/desktop.rs / recommendation.rs
+    test fixtures), attach `Some(claude_default_profile())` in
+    `recommend_claude_default`, and introduce one shared
+    `pub fn ui::panels::format_profile_lines(rec) -> Vec<String>`
+    renderer used by both the TUI per-pane panel and `--once` so
+    per-lever `[PO] key = value — citation` rows become visible
+    end-to-end. Three new tests lock the contract: unit-level in
+    `policy/rules/profiles.rs` (rec.profile carries 3 ProviderOfficial
+    levers with non-empty citations), unit-level in `ui/panels.rs`
+    (renderer emits `[PC]` header + `[PO]` lever rows with key/
+    value/citation visible; returns empty Vec when rec has no
+    profile), and end-to-end in `tests/event_loop_integration.rs`
+    (live `Engine::evaluate -> run_once -> PaneReport` output, when
+    fed through `format_profile_lines`, yields 1 header + 3 lever
+    rows with all four authority pieces — key + value + citation +
+    SourceKind badge — visible; Notify is still not triggered
+    because Severity::Good stays below the gate). Gemini's parallel
+    v1.8.0 review gave `pass` (적극 승인) and the narrative + mirror
+    artifact pair is now archived at
+    `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-review.md`
+    and `.mission/evals/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-gemini-review.result.yaml`
+    per WORKFLOWS.md:56-58. `.mission/CURRENT_STATE.md:266` stale
+    "nine required sections" + stale review range wording also
+    corrected in this round. 166 lib + 17 integration (up from 163
+    lib + 16 integration; +3 new tests). clippy clean. No policy
+    behavior change — `Severity::Good` / `Notify` gate / profile fire
+    conditions unchanged; only the payload visibility and renderer
+    coverage move forward.
+
   done_when:
     # Phase-0 artefacts (kept as historical gating criteria — already met).
     - "Phase 0: mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate against the mission-spec schema."
@@ -284,6 +323,11 @@ mission:
     - "Phase 4 P4-1 v1.8.0: `src/domain/profile.rs` introduces `ProviderProfile` (name: ProjectCanonical; levers: Vec<ProfileLever>; side_effects: Vec<String>; source_kind: SourceKind) and `ProfileLever` (key, value, citation, source_kind). Profile bundle name is ProjectCanonical; individual levers inside are ProviderOfficial with explicit per-lever citations."
     - "Phase 4 P4-1 v1.8.0: `src/policy/rules/profiles.rs::eval_profiles` is wired into `Engine::evaluate` after advisories. `recommend_claude_default` fires a `Severity::Good` profile recommendation on Claude main panes when IdentityConfidence >= Medium, no active alerts, `!quota_tight`, and `context_pressure < 0.75`. The rec bundles three ProviderOfficial levers (`CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS`, `BASH_MAX_OUTPUT_LENGTH`, `includeGitInstructions`) each with a docs citation. suggested_command is None with inline justification (applying a profile is multi-key settings editing, not a single runnable command)."
     - "Phase 4 P4-1 v1.8.0: 4 new unit tests total — 2 in domain/profile.rs (lock data shape: ProjectCanonical profile name + ProviderOfficial lever citations + empty P4-1 side_effects) and 2 in policy/rules/profiles.rs (rule fires on healthy Claude main with Good severity / ProjectCanonical profile source; suppressed on non-Claude provider). 163 lib + 16 integration; clippy --all-targets -D warnings clean."
+
+    # Phase-4 P4-1 remediation (v1.8.1).
+    - "Phase 4 P4-1 remediation v1.8.1: `Recommendation` gains `profile: Option<ProviderProfile>`. `recommend_claude_default` attaches the structured `claude-default` profile to the rec so lever key/value/citation/SourceKind survive past `Recommendation` into `PaneReport`, `--once`, and the TUI per-pane panel. `pub fn qmonster::ui::panels::format_profile_lines(rec) -> Vec<String>` is the single shared renderer called from both `main.rs` (--once) and `panels.rs::panel_body`. Codex v1.8.0 P4-1 review finding #1 closed."
+    - "Phase 4 P4-1 remediation v1.8.1: three new tests lock the end-to-end contract — unit in `policy/rules/profiles.rs` (rec.profile Some with 3 ProviderOfficial levers, non-empty citations, expected keys), unit in `ui/panels.rs` (renderer emits header with [PC] badge + lever count + profile name; each lever row contains [PO] badge + key + value + citation; empty Vec when no profile), integration in `tests/event_loop_integration.rs` (live `Engine::evaluate -> run_once` output fed through `format_profile_lines` yields 4 lines with all four authority pieces visible per lever; Severity::Good still does NOT trigger Notify)."
+    - "Phase 4 P4-1 remediation v1.8.1: Gemini's parallel v1.8.0 review (`pass` / 적극 승인) is recorded per WORKFLOWS.md:56-58 at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-review.md` + structured mirror at `.mission/evals/Qmonster-v0.4.0-2026-04-21-phase4-p4-1-gemini-review.result.yaml`. 166 lib + 17 integration (up from 163 + 16); clippy --all-targets -D warnings clean."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -374,21 +418,21 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1)."
     suggested_approach: >
-      Phase 4 P4-1 shipped (v1.8.0). The provider-profile recommender
-      foundation (ProviderProfile / ProfileLever data model +
-      recommend_claude_default rule + Engine::evaluate wiring + 4
-      unit tests) is in place. Next slices (TDD-style, one at a
-      time): P4-2 — Gemini G-5 auto-memory guide (a rule that fires
-      a "record to MDR / CURRENT_STATE, not auto-memory" next_step
-      when state-critical work is detected); P4-3 — Gemini G-6
-      side_effects population on high-compression aggressive
-      profiles (first aggressive-variant profile, e.g.
-      `claude-script-low-token` gated by `quota_tight`); P4-4+ —
-      Codex and Gemini provider profiles + VALIDATION.md Phase-4
-      checkboxes ticked. Request Codex + Gemini gate review on
-      v1.8.0 before continuing to P4-2.
+      Phase 4 P4-1 remediation shipped (v1.8.1). Structured
+      `ProviderProfile` now reaches the operator end-to-end:
+      `Recommendation.profile` carries the bundle;
+      `ui::panels::format_profile_lines` is the shared renderer for
+      both the TUI panel and `--once`; per-lever [PO] key = value —
+      citation rows are visible. Gate status: Gemini v1.8.0 pass
+      (적극 승인) — artifact pair backfilled; Codex v1.8.0 P4-1
+      finding #1 closed by this v1.8.1 round. Request a short Codex
+      v1.8.1 confirmation re-check that the structured payload now
+      flows through the live path, then proceed to P4-2 — Gemini G-5
+      auto-memory guide (a rule that fires a "record to MDR /
+      CURRENT_STATE, not auto-memory" next_step when state-critical
+      work is detected).
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -439,5 +483,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 16
+    total_revisions: 17
     history: "mission-history.yaml"
