@@ -265,7 +265,7 @@ mission:
     `side_effects (<n>):` header + `- <effect>` entries after the
     lever block when the profile's side_effects list is non-empty;
     empty lists (as in `claude-default`) cause the section to be
-    omitted. Five new tests lock the contract: shape test on the
+    omitted. Six new tests lock the contract: shape test on the
     aggressive profile (8 levers, 8 side_effects, Good severity,
     ProjectCanonical source); gate test (suppressed when
     !quota_tight, `claude-default` fires instead); high-risk-lever

@@ -2245,7 +2245,7 @@ timeline:
       - "P4-5+: VALIDATION.md Phase-4 checkboxes ticked incrementally as profile coverage widens"
 
 evolution_summary:
-  current_phase: "Phase 4 P4-3 shipped — Gemini G-6 side_effects populated on claude-script-low-token aggressive profile (v1.8.3); awaiting first Codex + Gemini gate review on v1.8.3 before P4-4+"
+  current_phase: "Phase 4 P4-3 fully gate-approved — Gemini v1.8.3 pass (적극 승인) + Codex v1.8.3 approve (no must-fix; one non-blocking prose-count note corrected in-round); v1.8.3 = approved P4-3 baseline; ready for P4-4+ (Codex and Gemini provider profiles starting with codex-default baseline)"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
