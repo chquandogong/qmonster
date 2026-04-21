@@ -4,7 +4,7 @@
 - Version: v0.4.0
 - Date: 2026-04-20
 - Target env: Ubuntu + tmux + Rust TUI
-- Phase: Phase 4 (provider-profile recommender) — P4-1 foundation shipped. Phases 1–3 complete and gate-approved.
+- Phase: Phase 4 (provider-profile recommender) — all 7 slices shipped (P4-1 through P4-7) and fully gate-approved by both reviewers (Codex v1.8.11 confirm2 approve + Gemini v1.8.10 confirm approve). 3×2 provider-profile grid complete (Claude + Codex + Gemini × baseline + aggressive). Phases 1–3 complete and gate-approved.
 
 ## What Qmonster is
 

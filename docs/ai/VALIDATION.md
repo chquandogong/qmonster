@@ -125,7 +125,7 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
 
 Levers below are cited as `[ProviderOfficial]` with doc pointers.
 
-- [ ] Claude settings surface audited: `includeGitInstructions`,
+- [x] Claude settings surface audited: `includeGitInstructions`,
       `BASH_MAX_OUTPUT_LENGTH`, `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS`,
       `MAX_MCP_OUTPUT_TOKENS`, `autoConnectIde`,
       `autoInstallIdeExtension`, `CLAUDE_CODE_GLOB_NO_IGNORE`,
@@ -134,29 +134,50 @@ Levers below are cited as `[ProviderOfficial]` with doc pointers.
       (`--bare`, `--exclude-dynamic-system-prompt-sections`,
       `--strict-mcp-config`, `--disable-slash-commands`, `--tools`,
       `--no-session-persistence`). `[ProviderOfficial]`
-- [ ] Codex settings surface audited: `web_search` (`cached` default),
+      (P4-1 v1.8.0 claude-default 3 PO levers + P4-3 v1.8.3
+      claude-script-low-token 8 PO levers)
+- [x] Codex settings surface audited: `web_search` (`cached` default),
       `tool_output_token_limit`, `commit_attribution`,
       `model_auto_compact_token_limit`, `[features].apps`,
       `[apps._default].enabled`, `mcp_servers.<id>.enabled`, and exec
       flags (`codex exec --profile --json --output-last-message
 --sandbox read-only --ephemeral --color never`).
       `[ProviderOfficial]`
-- [ ] High-risk Claude levers (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`,
+      (P4-4 v1.8.4 codex-default + P4-5 v1.8.7
+      codex-script-low-token aggressive bundle)
+- [x] High-risk Claude levers (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`,
       `CLAUDE_CODE_DISABLE_CLAUDE_MDS`,
       `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`) are gated to
       `claude-script-low-token` only — never proposed as always-on
       defaults.
-- [ ] Gemini profile recommendations stay advisory; `save_memory` /
+      (locked by `high_risk_claude_levers_are_gated_to_claude_
+    script_low_token_only` test in P4-3 v1.8.3)
+- [x] Gemini profile recommendations stay advisory; `save_memory` /
       Auto Memory is not treated as a state store.
-- [ ] High-compression profile recommendations carry a
+      (P4-6 v1.8.8 gemini-default + P4-7 v1.8.9/v1.8.10
+      gemini-script-low-token. `Severity::Good` + no Notify path;
+      `experimental.autoMemory = false` ships as the documented
+      disable surface per v1.8.10 correction)
+- [x] High-compression profile recommendations carry a
       `side_effects: Vec<String>` list (e.g., "may lose debugging
       detail") visible in the UI (Gemini G-6).
-- [ ] Auto-memory guidance: profiles recommend "record to MDR /
+      (G-6 parity across all 3 aggressive profiles — Claude in
+      P4-3, Codex in P4-5, Gemini in P4-7. Renderer = `format_
+    profile_lines` in `src/ui/panels.rs`; emits a
+      `side_effects (<n>):` block after the lever rows)
+- [x] Auto-memory guidance: profiles recommend "record to MDR /
       CURRENT_STATE, not to auto-memory" when state-critical work is
       detected (Gemini G-5).
+      (P4-2 v1.8.2 `recommend_mdr_over_auto_memory` rule in
+      `src/policy/rules/auto_memory.rs`; fires on any provider
+      under `TaskType::Review` / `TaskType::SessionResume`. G-5
+      cross-reference also embedded in the aggressive profile
+      `side_effects` for all 3 providers)
 - [ ] `token.thresholds` structure may split per-provider ONLY if
       Phase-1 fixture data justifies the split; otherwise keep one
       global block.
+      (deferred — Phase-1 fixture-driven justification has not been
+      measured yet; single global block currently stands)
 
 ## Phase 5 (Safer Actuation) checks
 
