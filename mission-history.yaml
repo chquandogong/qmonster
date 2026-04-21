@@ -2942,7 +2942,7 @@ timeline:
       - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens"
 
 evolution_summary:
-  current_phase: "Phase 4 P4-6 shipped — first Gemini provider profile `gemini-default` baseline (v1.8.8); awaiting first Codex + Gemini gate review on v1.8.8 before P4-7 (gemini-script-low-token aggressive variant)"
+  current_phase: "Phase 4 P4-6 fully gate-approved — v1.8.8 gemini-default: Gemini pass (적극 승인; '--model, --yolo 조합은 가장 합리적이고 안전한 구성') + Codex approve (no must-fix; one non-blocker note on --approval-mode = default positive-form alternative, deferred); ready for P4-7 (gemini-script-low-token aggressive variant — completes 3 x 2 profile grid)"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
