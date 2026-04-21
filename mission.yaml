@@ -1,6 +1,6 @@
 mission:
-  version: "1.8.5"
-  title: 'Qmonster v0.4.0 — Phase 4 P4-4 remediated (codex-default: commit_attribution="" per Codex spec; tool_output_token_limit relabeled ProjectCanonical; Codex + Gemini P4-4 findings closed)'
+  version: "1.8.6"
+  title: "Qmonster v0.4.0 — Phase 4 P4-4 confirm-remediation (codex-default: reason summary + doc-comment now reflect honest 2 ProviderOfficial + 1 ProjectCanonical split; Codex v1.8.5-confirm findings closed)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -292,36 +292,55 @@ mission:
     unit tests for positive fire, provider-gate suppression, and
     quota_tight reservation). clippy clean.
 
-    Phase 4 P4-4 remediation (v1.8.5, this revision) closes two
-    reviewer findings raised in parallel against v1.8.4: (a) Codex
-    + Gemini both flagged as **risk** that `commit_attribution = "false"`
-    contradicts Codex spec — Codex config docs define the key as a
-    STRING and disable via empty string; the literal "false" would
-    parse as the truthy string "false" and WRONGLY include it as
-    attribution text in commits. Fix: `value: ""`. (b) Codex
-    flagged as warning that `tool_output_token_limit = 30000`'s
-    ProviderOfficial label is too strong — Codex docs describe the
-    key but the sample config shows 12000, so 30000 is Qmonster's
-    parity choice with Claude's BASH_MAX_OUTPUT_LENGTH bound, not
-    a canonical default. Fix: label that lever as
-    `SourceKind::ProjectCanonical` with a citation that acknowledges
-    the split. Gemini considered this second finding acceptable
-    parity (non-blocker); fixing it aligns authority labels with
-    the actual source honesty.
-    `codex_default_profile()` now carries 2 ProviderOfficial levers
-    (`web_search = cached`, `commit_attribution = ""`) + 1
-    ProjectCanonical lever (`tool_output_token_limit = 30000`) each
-    with an updated citation. The P4-4 positive-fire unit test is
-    renamed to `recommend_codex_default_fires_with_honest_authority_labels_on_healthy_codex_main`
-    and tightened: per-lever exact value + source_kind assertions
-    replace the old loop that blanket-asserted every lever as
-    ProviderOfficial. The regression the Codex P4-4 review caught
-    (`commit_attribution = "false"`) would fail this test.
-    179 lib + 18 integration (unchanged; the test count stays
-    constant — one rewritten test in place). clippy clean. No
-    runtime behavior change; existing recs on healthy Codex main
-    panes now carry the corrected lever values + honest authority
-    labels.
+    Phase 4 P4-4 remediation (v1.8.5) closed two reviewer findings
+    raised in parallel against v1.8.4: (a) Codex + Gemini both
+    flagged as risk that `commit_attribution = "false"` contradicts
+    Codex spec (key is a string; empty disables; "false" would
+    parse as a truthy attribution string — opposite of intended
+    behavior). Fix: `value: ""`. (b) Codex flagged as warning that
+    `tool_output_token_limit = 30000`'s ProviderOfficial label was
+    too strong — 30000 is Qmonster's parity choice, not a Codex-
+    doc canonical default. Fix: source_kind ProviderOfficial →
+    ProjectCanonical + citation rewrite. The positive-fire unit
+    test was renamed to
+    `recommend_codex_default_fires_with_honest_authority_labels_on_healthy_codex_main`
+    and tightened with per-lever explicit value + source_kind
+    assertions.
+
+    Phase 4 P4-4 confirm-remediation (v1.8.6, this revision) closes
+    the two Codex v1.8.5-confirm findings — prose drift that
+    survived the v1.8.5 code-layer fix. Codex confirmed v1.8.5
+    closed the lever-row + test pieces of the original findings,
+    but flagged that two user-visible texts in
+    `src/policy/rules/profiles.rs` still described the old uniform
+    "3 ProviderOfficial levers" world: (1) the `reason` string at
+    line 349 (emitted on every codex-default rec and surfaced to
+    the operator via PaneReport / --once / TUI panel), and (2) the
+    `recommend_codex_default` doc-comment at line 305 (still said
+    the bundle is "three ProviderOfficial levers" and still
+    mentioned `commit_attribution = false`). Gemini's parallel
+    confirm gave pass — it treated the prose drift as acceptable —
+    but Codex is right that the authoritative text next to the
+    code should not contradict the v1.8.5 authority split. Fix:
+    (1) rewrite the reason format! so it counts ProviderOfficial
+    and ProjectCanonical levers explicitly — "apply N levers for a
+    healthy-state baseline main-pane Codex session — M
+    ProviderOfficial + K ProjectCanonical (see lever list below
+    for per-lever citations)" — derived at runtime from
+    `profile.levers[*].source_kind` so future authority changes
+    auto-propagate; (2) rewrite the doc-comment to describe the
+    honest split (two ProviderOfficial + one ProjectCanonical),
+    the correct `commit_attribution = ""` value, and the Codex
+    v1.8.4-review finding #2 rationale for the ProjectCanonical
+    label on `tool_output_token_limit`. The positive-fire unit
+    test is extended with one new assertion
+    (`rec.reason.contains("ProjectCanonical")`) so the reason-
+    summary honesty is locked at the test layer alongside the
+    existing `contains("ProviderOfficial")` check. 179 lib + 18
+    integration (unchanged test count; one existing test tightened
+    in place with +1 assertion). clippy clean. No new rule, no
+    render-helper change, no provider-gate change — prose + one
+    derived-from-data reason + one new assertion.
 
     Phase 4 P4-2 (v1.8.2) shipped the Gemini G-5
     auto-memory guide rule — the second Phase-4 slice. When the
@@ -467,6 +486,11 @@ mission:
     - 'Phase 4 P4-4 remediation v1.8.5: `codex-default` bundles 3 levers drawn from VALIDATION.md:137-143 — 2 ProviderOfficial (`web_search = cached`, `commit_attribution = ""`) + 1 ProjectCanonical (`tool_output_token_limit = 30000` — Qmonster parity choice with Claude BASH_MAX_OUTPUT_LENGTH; Codex docs describe the key but don''t mandate this value). Citations updated accordingly. Codex P4-4 finding #1 (risk: `commit_attribution = "false"` wrong per Codex spec; empty string disables) and Gemini''s parallel finding both closed. Codex P4-4 finding #2 (warning: authority-label over-claim on `tool_output_token_limit`) closed.'
     - 'Phase 4 P4-4 remediation v1.8.5: positive-fire unit test renamed to `recommend_codex_default_fires_with_honest_authority_labels_on_healthy_codex_main` and tightened — per-lever exact value + source_kind assertions replace the prior loop that blanket-asserted every lever as ProviderOfficial. `commit_attribution = "false"` (the regression Codex / Gemini caught) would fail the new test. 179 lib + 18 integration (unchanged test count; one rewritten test in place); clippy --all-targets -D warnings clean.'
 
+    # Phase-4 P4-4 confirm-remediation (v1.8.6) — prose drift cleanup.
+    - 'Phase 4 P4-4 confirm-remediation v1.8.6: `recommend_codex_default`''s user-visible `reason` string in `src/policy/rules/profiles.rs` no longer asserts a uniform "3 ProviderOfficial levers" — it is derived at runtime from `profile.levers[*].source_kind` and now reads "apply 3 levers for a healthy-state baseline main-pane Codex session — 2 ProviderOfficial + 1 ProjectCanonical (see lever list below for per-lever citations)". Future authority changes auto-propagate into the summary. Codex v1.8.5-confirm finding #1 (warning: stale reason summary) closed.'
+    - 'Phase 4 P4-4 confirm-remediation v1.8.6: the `recommend_codex_default` doc-comment in `src/policy/rules/profiles.rs` is rewritten to describe the honest 2 ProviderOfficial + 1 ProjectCanonical split, the correct `commit_attribution = ""` value, and the Codex v1.8.4-review finding #2 rationale for the ProjectCanonical label on `tool_output_token_limit`. Codex v1.8.5-confirm finding #2 (warning: stale doc comment) closed.'
+    - 'Phase 4 P4-4 confirm-remediation v1.8.6: the positive-fire unit test adds a `rec.reason.contains("ProjectCanonical")` assertion alongside the existing `contains("ProviderOfficial")` check, locking the reason-summary honesty at the test layer. 179 lib + 18 integration (unchanged test count; one existing test tightened in place with +1 assertion); clippy --all-targets -D warnings clean.'
+
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
     - "Layer separation: docs/ai/ = canonical (Git-tracked); .docs/ = raw working docs (gitignored); mission.yaml + mission-history.yaml + .mission/ = local contract/ledger (gitignored in single-user phase)."
@@ -556,19 +580,26 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1); P4-2 (Gemini G-5 auto-memory guide rule) shipped in 1 TDD commit (v1.8.2); P4-3 (Gemini G-6 side_effects + claude-script-low-token aggressive profile) shipped in 1 TDD commit (v1.8.3); P4-4 (codex-default baseline profile) shipped in 1 TDD commit (v1.8.4); P4-4 remediation (commit_attribution + tool_output_token_limit authority labels) shipped in 1 TDD commit (v1.8.5)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1); P4-2 (Gemini G-5 auto-memory guide rule) shipped in 1 TDD commit (v1.8.2); P4-3 (Gemini G-6 side_effects + claude-script-low-token aggressive profile) shipped in 1 TDD commit (v1.8.3); P4-4 (codex-default baseline profile) shipped in 1 TDD commit (v1.8.4); P4-4 remediation (commit_attribution + tool_output_token_limit authority labels) shipped in 1 TDD commit (v1.8.5); P4-4 confirm-remediation (reason summary + doc-comment drift cleanup) shipped in 1 TDD commit (v1.8.6)."
     suggested_approach: >
-      Phase 4 P4-4 remediation shipped (v1.8.5). Codex + Gemini
-      P4-4 findings closed: `commit_attribution = ""` per Codex
-      spec (empty string disables), `tool_output_token_limit =
-      30000` relabeled ProjectCanonical (Qmonster parity choice,
-      not Codex-doc canonical default). `codex-default` now
-      carries 2 ProviderOfficial + 1 ProjectCanonical levers with
-      honest authority labels. Gate status: Phase-3 fully
+      Phase 4 P4-4 confirm-remediation shipped (v1.8.6). Codex
+      v1.8.5-confirm identified two prose-drift warnings (reason
+      summary + doc comment both still asserted the old uniform
+      "3 ProviderOfficial levers" world after v1.8.5's authority
+      relabel). Gemini v1.8.5-confirm gave pass. v1.8.6 closes both
+      Codex warnings by making the rec's `reason` derive the
+      ProviderOfficial / ProjectCanonical counts at runtime from
+      `profile.levers[*].source_kind`, rewriting the doc-comment
+      to reflect the 2 PO + 1 PC split + correct commit_attribution
+      value, and extending the positive-fire unit test with a
+      `rec.reason.contains("ProjectCanonical")` assertion.
+      codex-default's rendered reason now reads "apply 3 levers ...
+      — 2 ProviderOfficial + 1 ProjectCanonical (see lever list
+      below for per-lever citations)". Gate status: Phase-3 fully
       approved; P4-1 / P4-2 / P4-3 all fully approved; P4-4
-      findings closed by v1.8.5. Request short Codex + Gemini
-      confirm re-review on v1.8.5 before continuing to P4-5 —
-      Codex aggressive variant `codex-script-low-token`
+      findings + v1.8.5-confirm findings all closed. Request short
+      Codex + Gemini confirm re-review on v1.8.6 before continuing
+      to P4-5 — Codex aggressive variant `codex-script-low-token`
       (quota_tight-gated) populating side_effects per Gemini G-6;
       then P4-6 Gemini baseline + P4-7 Gemini aggressive variant.
     note: >
@@ -621,5 +652,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 21
+    total_revisions: 22
     history: "mission-history.yaml"

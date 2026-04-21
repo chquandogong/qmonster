@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 21
-  latest_version: "1.8.5"
+  total_revisions: 22
+  latest_version: "1.8.6"
 
 timeline:
   - change_id: "initial"
@@ -2525,8 +2525,137 @@ timeline:
       - "P4-7: `gemini-script-low-token` aggressive variant"
       - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens"
 
+  - change_id: "phase-4-p4-4-confirm-remediation-prose-drift"
+    semantic_version: "1.8.6"
+    change_sequence: 22
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.8.5-confirm review — flagged both prose-drift warnings closed by this round)"
+      - "Gemini (gemini:1:research, v1.8.5-confirm review — pass / 최종 승인; did not flag prose drift, but does not contradict Codex's flag)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close the two Codex v1.8.5-confirm warnings. Codex confirmed
+      that v1.8.5 closed the lever-row + test pieces of the
+      original P4-4 findings, but flagged two user-visible texts
+      in `src/policy/rules/profiles.rs` that still described the
+      old uniform "3 ProviderOfficial levers" world: (1) the
+      `reason` format! string at line 349 (emitted on every
+      codex-default rec and reaches the operator via PaneReport /
+      --once / TUI panel), and (2) the `recommend_codex_default`
+      doc-comment at line 305 (still said "three ProviderOfficial
+      levers" + mentioned `commit_attribution = false`). Both are
+      authority-honesty drift rather than behavior bugs, but the
+      authoritative text next to the code should not contradict
+      the v1.8.5 authority split. Gemini treated the drift as
+      acceptable (pass), but Codex is right to close it before
+      P4-5.
+    intent_ko: >
+      Codex v1.8.5-confirm 리뷰가 지적한 2개 warning(prose drift)을
+      닫는다. Codex는 v1.8.5가 lever 행 + 테스트 계약 쪽에서는
+      원래 P4-4 finding들을 제대로 닫았다고 확인했지만, `src/
+      policy/rules/profiles.rs`의 operator-facing 텍스트 두 곳에서
+      여전히 옛 "3 ProviderOfficial levers" 서술이 남아있다고
+      지적했다: (1) line 349의 `reason` format! 문자열(모든
+      codex-default rec에서 방출되어 PaneReport / --once / TUI
+      panel로 operator에게 전달), (2) line 305의
+      `recommend_codex_default` doc-comment(여전히 "three
+      ProviderOfficial levers"와 `commit_attribution = false` 언급).
+      둘 다 동작 버그가 아니라 authority-honesty drift이지만, 코드
+      옆의 authoritative text가 v1.8.5의 authority split과 모순
+      되어서는 안 된다. Gemini는 drift를 수용 가능하게 보았지만
+      (pass), Codex의 지적은 P4-5 이전에 닫는 것이 맞다.
+    decision: >
+      (1) `reason` format! 재작성: 이전에는 하드코딩된 "apply N
+      ProviderOfficial levers" 문자열이었으나, 이제 런타임에
+      `profile.levers[*].source_kind`를 counts하여 "apply N levers
+      for a healthy-state baseline main-pane Codex session — M
+      ProviderOfficial + K ProjectCanonical (see lever list below
+      for per-lever citations)" 형태로 생성된다. 향후 authority
+      라벨이 바뀌면 summary가 자동 전파되므로 동일한 drift가
+      재발하지 않는다.
+      (2) `recommend_codex_default` doc-comment 재작성: 정확한
+      2 PO + 1 PC split 기술, `commit_attribution = ""` 올바른
+      값 기술, `tool_output_token_limit`의 ProjectCanonical 라벨은
+      Codex v1.8.4-review finding #2에서 유래했음을 명시.
+      (3) positive-fire unit test
+      (`recommend_codex_default_fires_with_honest_authority_labels_on_healthy_codex_main`)
+      에 `rec.reason.contains("ProjectCanonical")` 신규 assertion
+      추가. 기존 `contains("ProviderOfficial")` assertion과
+      나란히 reason-summary honesty를 테스트 레이어에서 고정.
+      (4) 코드 / 테스트 / 런타임 동작 변경 없음 (새 rec가 나오는
+      경로나 조건은 v1.8.5와 동일). 변한 것은 operator-facing
+      reason 요약 문자열 + doc comment + test assertion 하나.
+    decision_ko: >
+      이 라운드는 docs + test assertion hygiene — v1.8.5의 authority
+      relabel이 남긴 prose drift를 정리한다. 핵심 셀(lever 행,
+      format_profile_lines 렌더, per-lever assertion)은 모두
+      v1.8.5에서 이미 정리되었고, v1.8.6는 이들과 일관되게
+      user-facing prose를 맞춘다.
+    triggered_by: >
+      Codex v1.8.5-confirm review — two warnings: (1) stale
+      reason summary at src/policy/rules/profiles.rs:349
+      ("apply 3 ProviderOfficial levers" no longer true after
+      v1.8.5 relabel), (2) stale doc comment at src/policy/rules/
+      profiles.rs:305 ("three ProviderOfficial levers ...
+      commit_attribution = false" still in doc text despite
+      the v1.8.5 implementation fix). Confirm artifacts:
+      .docs/codex/...phase4-p4-4-confirm-review.md +
+      .mission/evals/...phase4-p4-4-confirm-review.result.yaml.
+      Gemini v1.8.5-confirm is pass: .docs/gemini/
+      ...phase4-p4-4-confirm-review.md +
+      .mission/evals/...phase4-p4-4-confirm-gemini-review.result.yaml.
+    issue_or_context: >
+      After v1.8.5 fixed the lever values + source_kinds + tests,
+      two secondary texts in the same file still described the
+      pre-v1.8.5 world. Neither was behavior-visible at the
+      runtime layer (the renderer reads source_kind per-lever, not
+      the reason text), but both reached operators through the
+      `reason` string on PaneReport / --once / TUI panel and
+      through the doc-comment on the rule function. Closing the
+      prose drift aligns all authoritative statements about
+      codex-default with the current code.
+    changes:
+      modified:
+        - 'src/policy/rules/profiles.rs — recommend_codex_default doc-comment rewritten to reflect 2 PO + 1 PC split, commit_attribution="", and Codex v1.8.4 finding #2 rationale; reason format! rewritten to derive ProviderOfficial / ProjectCanonical counts at runtime from profile.levers[*].source_kind (future authority changes auto-propagate); positive-fire unit test extended with rec.reason.contains("ProjectCanonical") assertion'
+        - "mission.yaml — version 1.8.5 → 1.8.6; title replaced (P4-4 remediated → P4-4 confirm-remediation); new v1.8.6 paragraph in goal summarizing the prose-drift fix + derived-from-data reason approach; v1.8.5 goal paragraph simplified (removed 'this revision' wording); 3 new v1.8.6 done_when entries; execution_hints.topology + suggested_approach updated; lineage total_revisions 21 → 22"
+        - "mission-history.yaml — meta.total_revisions 21 → 22; latest_version → 1.8.6; new entry (this one, change_sequence 22, motivation_type reviewer-driven, change_type fix); evolution_summary.current_phase updated"
+        - ".mission/CURRENT_STATE.md — version → 1.8.6; P4-4 confirm-remediation sub-section added; gate-status table updated (2 Codex v1.8.5-confirm warnings now marked closed by v1.8.6; Gemini v1.8.5-confirm shown pass; new pending rows for v1.8.6 confirm re-review); Verification block updated"
+    changed_sections:
+      - "codex-default doc comment"
+      - "codex-default reason format! string (now derived from lever source_kinds)"
+      - "positive-fire unit test: +1 ProjectCanonical assertion"
+    done_when_delta:
+      added:
+        - 'Phase 4 P4-4 confirm-remediation v1.8.6: `recommend_codex_default`''s user-visible `reason` string in `src/policy/rules/profiles.rs` no longer asserts a uniform "3 ProviderOfficial levers" — it is derived at runtime from `profile.levers[*].source_kind` and now reads "apply 3 levers for a healthy-state baseline main-pane Codex session — 2 ProviderOfficial + 1 ProjectCanonical (see lever list below for per-lever citations)". Future authority changes auto-propagate into the summary. Codex v1.8.5-confirm finding #1 (warning: stale reason summary) closed.'
+        - 'Phase 4 P4-4 confirm-remediation v1.8.6: the `recommend_codex_default` doc-comment in `src/policy/rules/profiles.rs` is rewritten to describe the honest 2 ProviderOfficial + 1 ProjectCanonical split, the correct `commit_attribution = ""` value, and the Codex v1.8.4-review finding #2 rationale for the ProjectCanonical label on `tool_output_token_limit`. Codex v1.8.5-confirm finding #2 (warning: stale doc comment) closed.'
+        - 'Phase 4 P4-4 confirm-remediation v1.8.6: the positive-fire unit test adds a `rec.reason.contains("ProjectCanonical")` assertion alongside the existing `contains("ProviderOfficial")` check, locking the reason-summary honesty at the test layer. 179 lib + 18 integration (unchanged test count; one existing test tightened in place with +1 assertion); clippy --all-targets -D warnings clean.'
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~30 LOC production (reason format! rewrite to count-by-source_kind + doc-comment rewrite) + ~5 LOC test delta (+1 assertion)"
+      tests: "179 lib + 18 integration (unchanged test count; one existing test extended with +1 assertion)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "operator-facing change is the rendered reason summary: `apply 3 ProviderOfficial levers ...` → `apply 3 levers ... — 2 ProviderOfficial + 1 ProjectCanonical ...`. No other surface changes."
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "very low — prose + derived-from-data summary + one test assertion; no rule, no render-helper, no lever value, no source_kind, no gate change"
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+    snapshot_after: ""
+    follow_up:
+      - "Request a short Codex + Gemini confirm re-review on v1.8.6 before opening P4-5"
+      - "P4-5: `codex-script-low-token` aggressive variant — quota_tight-gated, side_effects populated (Gemini G-6 parity for Codex)"
+      - "P4-6: `gemini-default` baseline profile"
+      - "P4-7: `gemini-script-low-token` aggressive variant"
+
 evolution_summary:
-  current_phase: "Phase 4 P4-4 remediated — codex-default lever authority labels honest (v1.8.5); awaiting short Codex + Gemini confirm re-review before P4-5"
+  current_phase: "Phase 4 P4-4 confirm-remediated — codex-default reason summary + doc comment now match v1.8.5 authority split (v1.8.6); awaiting short Codex + Gemini confirm re-review before P4-5"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
