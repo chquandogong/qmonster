@@ -3312,7 +3312,7 @@ timeline:
       - "On green, proceed to P4-8+ (VALIDATION.md Phase-4 checkbox ticking + any deferred non-blockers) or open Phase 5 (safer actuation — manual prompt-send helper with user confirmation)"
 
 evolution_summary:
-  current_phase: "Phase 4 P4-7 follow-up v1.8.11 — two additional gemini-script-low-token prose drifts closed (fn doc-comment lines 762-776 + positive-fire test comment lines 1728-1733). Gemini v1.8.10 confirm pass stands; Codex v1.8.10 confirm warning now also closed. Short Codex re-confirm pending before P4-8+ / Phase 5. Phase 4 3×2 grid remains intact — no code-behavior / test-assertion / render-output change."
+  current_phase: "Phase 4 COMPLETE — fully gate-approved by both reviewers. Codex v1.8.11 confirm2 returned `approve` (no findings) on 7c9e951..db98022; Gemini v1.8.10 confirm approve stands. 3×2 provider-profile grid (Claude + Codex + Gemini × baseline + aggressive) shipped and locked. Canonical docs synced: PROJECT_BRIEF.md phase line updated; VALIDATION.md Phase-4 checkboxes ticked (6 of 7 — token.thresholds deferred to Phase-1 fixture measurement); UI_MANUAL.md section 6 added for Provider Profile render format. Ready to open P4-8+ (remaining VALIDATION.md item + any deferred non-blockers) or Phase 5 (Safer Actuation)."
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

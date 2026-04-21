@@ -518,8 +518,12 @@ mission:
     the positive-fire test already enforces 1-PO-2-PC since
     v1.8.10. 190 lib + 18 integration (unchanged). clippy --all-
     targets -D warnings clean. Codex v1.8.10 confirm finding
-    closed; short re-confirm from Codex requested before opening
-    P4-8 or Phase 5.
+    closed; Codex v1.8.11 confirm2 (7c9e951..db98022) returned
+    `approve` with no findings — Phase 4 is now fully gate-
+    approved by both reviewers (Codex + Gemini). Canonical docs
+    (PROJECT_BRIEF.md phase line, VALIDATION.md Phase-4 checkboxes,
+    UI_MANUAL.md section 6 Provider Profile render format) synced
+    to the shipped 3×2 grid state in the same round.
 
     Phase 4 P4-2 (v1.8.2) shipped the Gemini G-5
     auto-memory guide rule — the second Phase-4 slice. When the
@@ -800,11 +804,18 @@ mission:
       comment, gemini-default suppression test comment). Gate
       status: Gemini v1.8.9 pass (최종 승인 + Phase 4 완료
       선언) stands; Codex v1.8.9 findings both closed by this
-      v1.8.10 round. Request short Codex + Gemini confirm
-      re-review on v1.8.10 before proceeding to P4-8+ (VALIDATION.md
-      Phase-4 checkbox ticking + any deferred non-blockers) or
-      Phase 5 opening (manual prompt-send helper with user
-      confirmation).
+      v1.8.10 round. v1.8.11 follow-up closed the Codex v1.8.10
+      confirm warning; Codex v1.8.11 confirm2 returned `approve`
+      (no findings) — Phase 4 is now fully gate-approved by both
+      reviewers. Canonical docs synced in the same hygiene round
+      (PROJECT_BRIEF.md phase line, VALIDATION.md Phase-4
+      checkboxes ticked where shipped evidence exists, UI_MANUAL.md
+      section 6 Provider Profile render format). Ready to proceed
+      to P4-8+ (the single remaining VALIDATION.md item —
+      `token.thresholds` per-provider split decision — plus any
+      deferred non-blockers including the Codex v1.8.8-P4-6
+      `--approval-mode = default` suggestion) or Phase 5 opening
+      (manual prompt-send helper with user confirmation).
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
