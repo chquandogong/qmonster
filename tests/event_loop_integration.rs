@@ -10,7 +10,7 @@ use qmonster::domain::recommendation::Severity;
 use qmonster::notify::desktop::NotifyBackend;
 use qmonster::store::sink::{EventSink, InMemorySink};
 use qmonster::tmux::polling::{PaneSource, PollingError};
-use qmonster::tmux::types::RawPaneSnapshot;
+use qmonster::tmux::types::{RawPaneSnapshot, WindowTarget};
 
 /// Audit sink that captures events into a shared buffer for test inspection.
 #[derive(Clone)]
@@ -37,8 +37,24 @@ struct FixturePaneSource {
 }
 
 impl PaneSource for FixturePaneSource {
-    fn list_panes(&self) -> Result<Vec<RawPaneSnapshot>, PollingError> {
+    fn list_panes(&self, _target: Option<&WindowTarget>) -> Result<Vec<RawPaneSnapshot>, PollingError> {
         Ok(self.panes.clone())
+    }
+    fn current_target(&self) -> Result<Option<WindowTarget>, PollingError> {
+        Ok(self.available_targets()?.into_iter().next())
+    }
+    fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
+        let mut targets: Vec<WindowTarget> = self
+            .panes
+            .iter()
+            .map(|pane| WindowTarget {
+                session_name: pane.session_name.clone(),
+                window_index: pane.window_index.clone(),
+            })
+            .collect();
+        targets.sort();
+        targets.dedup();
+        Ok(targets)
     }
     fn capture_tail(&self, pane_id: &str, _lines: usize) -> Result<String, PollingError> {
         Ok(self
@@ -740,21 +756,21 @@ fn claude_default_profile_levers_flow_end_to_end_to_the_panel_renderer() {
     let lines = qmonster::ui::panels::format_profile_lines(rec);
     assert_eq!(lines.len(), 4, "1 header + 3 lever rows");
 
-    // Header line: profile name + lever count + ProjectCanonical badge.
+    // Header line: profile name + lever count + ProjectCanonical label.
     assert!(lines[0].contains("claude-default"), "header names profile: {}", lines[0]);
     assert!(lines[0].contains("3 levers"), "header counts levers: {}", lines[0]);
-    assert!(lines[0].contains("[PC]"),
-        "header carries ProjectCanonical badge so operator sees bundle authority: {}",
+    assert!(lines[0].contains("[Qmonster]"),
+        "header carries ProjectCanonical label so operator sees bundle authority: {}",
         lines[0]);
 
-    // Every lever row MUST carry the ProviderOfficial badge + key +
+    // Every lever row MUST carry the ProviderOfficial label + key +
     // value + citation. The whole point of Phase 4 is to surface
     // provider-native authority honestly; a silent drop of ANY of
     // those four pieces fails here.
     let lever_lines = &lines[1..];
     for line in lever_lines {
-        assert!(line.contains("[PO]"),
-            "every lever row carries the ProviderOfficial badge: {line}");
+        assert!(line.contains("[Official]"),
+            "every lever row carries the ProviderOfficial label: {line}");
     }
 
     // Spot-check one lever end-to-end: BASH_MAX_OUTPUT_LENGTH = 30000
@@ -850,10 +866,10 @@ fn claude_script_low_token_side_effects_flow_end_to_end_under_quota_tight() {
         "1 profile header + 8 lever rows + 1 side_effects header + 8 entries"
     );
 
-    // Lever block: every row carries the [PO] badge.
+    // Lever block: every row carries the [Official] label.
     let lever_lines = &lines[1..9];
     for line in lever_lines {
-        assert!(line.contains("[PO]"), "lever row carries ProviderOfficial badge: {line}");
+        assert!(line.contains("[Official]"), "lever row carries ProviderOfficial label: {line}");
     }
 
     // side_effects block: header + each entry as `- <text>`.

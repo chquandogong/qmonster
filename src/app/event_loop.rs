@@ -29,7 +29,19 @@ where
     P: PaneSource,
     N: NotifyBackend,
 {
-    let panes = ctx.source.list_panes()?;
+    run_once_with_target(ctx, now, None)
+}
+
+pub fn run_once_with_target<P, N>(
+    ctx: &mut Context<P, N>,
+    now: Instant,
+    target: Option<&crate::tmux::types::WindowTarget>,
+) -> Result<Vec<PaneReport>, PollingError>
+where
+    P: PaneSource,
+    N: NotifyBackend,
+{
+    let panes = ctx.source.list_panes(target)?;
     let mut reports = Vec::with_capacity(panes.len());
 
     // Lifecycle bookkeeping (zombie pane / re-attach reset).
@@ -65,6 +77,8 @@ where
         if pane.dead {
             reports.push(PaneReport {
                 pane_id: pane.pane_id,
+                session_name: pane.session_name,
+                window_index: pane.window_index,
                 provider: resolved.identity.provider,
                 identity: resolved.clone(),
                 signals: crate::domain::signal::SignalSet::default(),
@@ -92,6 +106,8 @@ where
 
         reports.push(PaneReport {
             pane_id: pane.pane_id,
+            session_name: pane.session_name,
+            window_index: pane.window_index,
             provider: resolved.identity.provider,
             identity: resolved,
             signals,
@@ -251,6 +267,8 @@ fn alert_event(pane_id: &str, rec: &Recommendation, provider: Provider) -> Audit
 #[derive(Debug, Clone)]
 pub struct PaneReport {
     pub pane_id: String,
+    pub session_name: String,
+    pub window_index: String,
     pub provider: Provider,
     pub identity: crate::domain::identity::ResolvedIdentity,
     pub signals: crate::domain::signal::SignalSet,
@@ -260,4 +278,3 @@ pub struct PaneReport {
     pub current_path: String,
     pub cross_pane_findings: Vec<crate::domain::recommendation::CrossPaneFinding>,
 }
-

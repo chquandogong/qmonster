@@ -51,6 +51,11 @@ cargo run -- --once
 # Launch the TUI
 cargo run --release
 #   q / Esc  — quit
+#   Tab      — switch focus between alerts and pane list
+#   ↑ / ↓    — scroll the focused list
+#   t        — choose target (all windows or a specific session:window)
+#   Enter    — confirm target selection
+#   ?        — open help / legend overlay
 #   r        — re-capture CLI versions; drift appears as a warning alert
 #   s        — write a runtime snapshot to ~/.qmonster/snapshots/
 #   c        — clear system notices

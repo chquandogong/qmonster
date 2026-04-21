@@ -1,8 +1,10 @@
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
+use chrono::Local;
 use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::{
@@ -10,10 +12,11 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::prelude::*;
+use ratatui::widgets::ListState;
 
 use qmonster::app::bootstrap::Context;
 use qmonster::app::config::{QmonsterConfig, load_from_path};
-use qmonster::app::event_loop::{PaneReport, run_once};
+use qmonster::app::event_loop::{PaneReport, run_once, run_once_with_target};
 use qmonster::app::path_resolution::pick_root;
 use qmonster::app::safety_audit::apply_override_with_audit;
 use qmonster::app::system_notice::{
@@ -31,8 +34,9 @@ use qmonster::store::{
     ArchiveWriter, EventSink, InMemorySink, PaneSnapshot, SnapshotInput, SnapshotWriter,
     SqliteAuditSink, sweep,
 };
-use qmonster::tmux::polling::PollingSource;
-use qmonster::ui::dashboard::render_dashboard;
+use qmonster::tmux::polling::{PaneSource, PollingSource};
+use qmonster::tmux::types::WindowTarget;
+use qmonster::ui::dashboard::{DashboardView, render_dashboard};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -192,7 +196,7 @@ fn print_reports(reports: &[PaneReport]) {
             println!(
                 "[{}] [{}] CROSS-PANE: {} (anchor: {}, others: {})",
                 f.severity.letter(),
-                f.source_kind.badge(),
+                qmonster::ui::labels::source_kind_label(f.source_kind),
                 f.reason,
                 f.anchor_pane_id,
                 f.other_pane_ids.join(", "),
@@ -208,7 +212,9 @@ fn print_reports(reports: &[PaneReport]) {
     // 3. Per-pane summaries with non-strong recommendations.
     for r in reports {
         println!(
-            "{} [{:?}:{}:{:?}] confidence={:?} dead={}",
+            "{}:{} {} {:?}:{}:{:?} confidence={:?} dead={}",
+            r.session_name,
+            r.window_index,
             r.pane_id,
             r.identity.identity.provider,
             r.identity.identity.instance,
@@ -216,9 +222,10 @@ fn print_reports(reports: &[PaneReport]) {
             r.identity.confidence,
             r.dead
         );
+        println!("  path: {}", r.current_path);
         let chips = qmonster::ui::panels::signal_chips(&r.signals);
         if !chips.is_empty() {
-            println!("  signals: {}", chips.join(" "));
+            println!("  state: {}", chips.join(" | "));
         }
         let metrics = qmonster::ui::panels::metric_row(&r.signals);
         if !metrics.is_empty() {
@@ -244,6 +251,18 @@ fn print_reports(reports: &[PaneReport]) {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FocusedPanel {
+    Alerts,
+    Panes,
+}
+
+#[derive(Debug, Clone)]
+struct TargetChoice {
+    label: String,
+    target: Option<WindowTarget>,
+}
+
 fn run_tui<P, N>(
     ctx: &mut Context<P, N>,
     mut versions: VersionSnapshot,
@@ -251,7 +270,7 @@ fn run_tui<P, N>(
     startup_notices: Vec<SystemNotice>,
 ) -> anyhow::Result<()>
 where
-    P: qmonster::tmux::polling::PaneSource,
+    P: PaneSource,
     N: qmonster::notify::desktop::NotifyBackend,
 {
     let mut stdout = io::stdout();
@@ -265,42 +284,195 @@ where
     let mut notices: Vec<SystemNotice> = startup_notices;
     let mut last_poll = Instant::now() - poll;
     let mut last_poll_error: Option<String> = None;
+    let mut selected_target = initial_target(&ctx.source);
+    let mut focus = FocusedPanel::Alerts;
+    let mut alert_state = ListState::default();
+    let mut pane_state = ListState::default();
+    let mut target_picker_open = false;
+    let mut target_picker_state = ListState::default();
+    let mut target_choices: Vec<TargetChoice> = Vec::new();
+    let mut help_open = false;
+    let mut previous_alerts: HashSet<String> = HashSet::new();
+    let mut fresh_alerts: HashSet<String> = HashSet::new();
+    let mut alert_times: HashMap<String, String> = HashMap::new();
+    refresh_alert_state(
+        &notices,
+        &last_reports,
+        &mut previous_alerts,
+        &mut fresh_alerts,
+        &mut alert_times,
+    );
+    sync_alert_selection(&mut alert_state, &notices, &last_reports);
+    sync_pane_selection(&mut pane_state, 0);
 
     let result = (|| -> anyhow::Result<()> {
         loop {
             let now = Instant::now();
             if now.saturating_duration_since(last_poll) >= poll {
                 last_poll = now;
-                match run_once(ctx, now) {
+                match run_once_with_target(ctx, now, selected_target.as_ref()) {
                     Ok(reports) => {
                         if let Some(notice) = route_polling_recovered(&mut last_poll_error) {
                             notices.insert(0, notice);
                         }
                         last_reports = reports;
+                        sync_dashboard_state(
+                            &notices,
+                            &last_reports,
+                            &mut alert_state,
+                            &mut pane_state,
+                            &mut previous_alerts,
+                            &mut fresh_alerts,
+                            &mut alert_times,
+                        );
                     }
                     Err(e) => {
                         if let Some(notice) =
                             route_polling_failure(&mut last_poll_error, e.to_string())
                         {
                             notices.insert(0, notice);
+                            sync_dashboard_state(
+                                &notices,
+                                &last_reports,
+                                &mut alert_state,
+                                &mut pane_state,
+                                &mut previous_alerts,
+                                &mut fresh_alerts,
+                                &mut alert_times,
+                            );
                         }
                     }
                 }
             }
 
-            terminal.draw(|frame| render_dashboard(frame, &notices, &last_reports))?;
+            let target = target_label(selected_target.as_ref());
+            terminal.draw(|frame| {
+                render_dashboard(
+                    frame,
+                    &mut alert_state,
+                    &mut pane_state,
+                    DashboardView {
+                        notices: &notices,
+                        reports: &last_reports,
+                        fresh_alerts: &fresh_alerts,
+                        alert_times: &alert_times,
+                        target_label: &target,
+                        alerts_focused: !target_picker_open
+                            && !help_open
+                            && focus == FocusedPanel::Alerts,
+                        panes_focused: !target_picker_open
+                            && !help_open
+                            && focus == FocusedPanel::Panes,
+                    },
+                );
+                if target_picker_open {
+                    let labels: Vec<String> =
+                        target_choices.iter().map(|choice| choice.label.clone()).collect();
+                    qmonster::ui::dashboard::render_target_picker(
+                        frame,
+                        &labels,
+                        &mut target_picker_state,
+                        &target,
+                    );
+                }
+                if help_open {
+                    qmonster::ui::dashboard::render_help_modal(frame);
+                }
+            })?;
 
             if event::poll(Duration::from_millis(100))?
                 && let Event::Key(k) = event::read()?
                 && k.kind == KeyEventKind::Press
             {
+                if help_open {
+                    match k.code {
+                        KeyCode::Esc | KeyCode::Char('?') => help_open = false,
+                        _ => {}
+                    }
+                    continue;
+                }
+
+                if target_picker_open {
+                    match k.code {
+                        KeyCode::Esc | KeyCode::Char('t') => target_picker_open = false,
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            move_selection(&mut target_picker_state, target_choices.len(), -1);
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            move_selection(&mut target_picker_state, target_choices.len(), 1);
+                        }
+                        KeyCode::Enter => {
+                            if let Some(label) = apply_target_choice(
+                                &target_choices,
+                                &target_picker_state,
+                                &mut selected_target,
+                            ) {
+                                notices.insert(0, target_switched_notice(&label));
+                                sync_dashboard_state(
+                                    &notices,
+                                    &last_reports,
+                                    &mut alert_state,
+                                    &mut pane_state,
+                                    &mut previous_alerts,
+                                    &mut fresh_alerts,
+                                    &mut alert_times,
+                                );
+                                target_picker_open = false;
+                                last_poll = Instant::now() - poll;
+                            }
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
                 match k.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
+                    KeyCode::Tab => focus = toggle_focus(focus),
+                    KeyCode::Char('?') => help_open = true,
+                    KeyCode::Up | KeyCode::Char('k') => match focus {
+                        FocusedPanel::Alerts => move_selection(
+                            &mut alert_state,
+                            qmonster::ui::alerts::alert_count(&notices, &last_reports),
+                            -1,
+                        ),
+                        FocusedPanel::Panes => {
+                            move_selection(&mut pane_state, last_reports.len(), -1);
+                        }
+                    },
+                    KeyCode::Down | KeyCode::Char('j') => match focus {
+                        FocusedPanel::Alerts => move_selection(
+                            &mut alert_state,
+                            qmonster::ui::alerts::alert_count(&notices, &last_reports),
+                            1,
+                        ),
+                        FocusedPanel::Panes => {
+                            move_selection(&mut pane_state, last_reports.len(), 1);
+                        }
+                    },
+                    KeyCode::Char('t') => {
+                        refresh_target_choices(
+                            &ctx.source,
+                            &mut target_choices,
+                            &mut target_picker_state,
+                            selected_target.as_ref(),
+                        );
+                        target_picker_open = true;
+                    }
                     KeyCode::Char('r') => {
                         let fresh = capture_versions();
                         let new_notices = route_version_drift(&versions, &fresh, &*ctx.sink);
                         if !new_notices.is_empty() {
                             notices = new_notices;
+                            sync_dashboard_state(
+                                &notices,
+                                &last_reports,
+                                &mut alert_state,
+                                &mut pane_state,
+                                &mut previous_alerts,
+                                &mut fresh_alerts,
+                                &mut alert_times,
+                            );
                         }
                         versions = fresh;
                     }
@@ -325,6 +497,15 @@ where
                                         source_kind: SourceKind::ProjectCanonical,
                                     },
                                 );
+                                sync_dashboard_state(
+                                    &notices,
+                                    &last_reports,
+                                    &mut alert_state,
+                                    &mut pane_state,
+                                    &mut previous_alerts,
+                                    &mut fresh_alerts,
+                                    &mut alert_times,
+                                );
                             }
                             Err(e) => {
                                 notices.insert(
@@ -336,11 +517,29 @@ where
                                         source_kind: SourceKind::ProjectCanonical,
                                     },
                                 );
+                                sync_dashboard_state(
+                                    &notices,
+                                    &last_reports,
+                                    &mut alert_state,
+                                    &mut pane_state,
+                                    &mut previous_alerts,
+                                    &mut fresh_alerts,
+                                    &mut alert_times,
+                                );
                             }
                         }
                     }
                     KeyCode::Char('c') => {
                         notices.clear();
+                        sync_dashboard_state(
+                            &notices,
+                            &last_reports,
+                            &mut alert_state,
+                            &mut pane_state,
+                            &mut previous_alerts,
+                            &mut fresh_alerts,
+                            &mut alert_times,
+                        );
                     }
                     _ => {}
                 }
@@ -371,4 +570,159 @@ fn snapshot_input_from(reports: &[PaneReport], notices: &[SystemNotice]) -> Snap
             .map(|n| format!("[{}] {}: {}", n.severity.letter(), n.title, n.body))
             .collect(),
     }
+}
+
+fn initial_target<P: PaneSource>(source: &P) -> Option<WindowTarget> {
+    source
+        .current_target()
+        .ok()
+        .flatten()
+        .or_else(|| source.available_targets().ok()?.into_iter().next())
+}
+
+fn refresh_target_choices<P: PaneSource>(
+    source: &P,
+    choices: &mut Vec<TargetChoice>,
+    state: &mut ListState,
+    selected: Option<&WindowTarget>,
+) {
+    let mut next_choices = vec![TargetChoice {
+        label: "all windows".into(),
+        target: None,
+    }];
+    if let Ok(targets) = source.available_targets() {
+        next_choices.extend(targets.into_iter().map(|target| TargetChoice {
+            label: target.label(),
+            target: Some(target),
+        }));
+    }
+    *choices = next_choices;
+    sync_target_choice_selection(state, choices, selected);
+}
+
+fn sync_target_choice_selection(
+    state: &mut ListState,
+    choices: &[TargetChoice],
+    selected: Option<&WindowTarget>,
+) {
+    if choices.is_empty() {
+        state.select(None);
+        return;
+    }
+    let selected_index = choices
+        .iter()
+        .position(|choice| choice.target.as_ref() == selected)
+        .unwrap_or(0);
+    state.select(Some(selected_index));
+}
+
+fn apply_target_choice(
+    choices: &[TargetChoice],
+    state: &ListState,
+    selected_target: &mut Option<WindowTarget>,
+) -> Option<String> {
+    let idx = state.selected()?;
+    let choice = choices.get(idx)?;
+    *selected_target = choice.target.clone();
+    Some(choice.label.clone())
+}
+
+fn toggle_focus(focus: FocusedPanel) -> FocusedPanel {
+    match focus {
+        FocusedPanel::Alerts => FocusedPanel::Panes,
+        FocusedPanel::Panes => FocusedPanel::Alerts,
+    }
+}
+
+fn target_label(target: Option<&WindowTarget>) -> String {
+    target
+        .map(WindowTarget::label)
+        .unwrap_or_else(|| "all windows".into())
+}
+
+fn target_switched_notice(label: &str) -> SystemNotice {
+    SystemNotice {
+        title: "target switched".into(),
+        body: format!("now watching {label}"),
+        severity: Severity::Good,
+        source_kind: SourceKind::ProjectCanonical,
+    }
+}
+
+fn sync_pane_selection(state: &mut ListState, pane_count: usize) {
+    match pane_count {
+        0 => state.select(None),
+        count => {
+            let selected = state.selected().unwrap_or(0).min(count.saturating_sub(1));
+            state.select(Some(selected));
+        }
+    }
+}
+
+fn move_selection(state: &mut ListState, pane_count: usize, step: isize) {
+    if pane_count == 0 {
+        state.select(None);
+        return;
+    }
+    let current = state.selected().unwrap_or(0) as isize;
+    let next = (current + step).clamp(0, pane_count.saturating_sub(1) as isize) as usize;
+    state.select(Some(next));
+}
+
+fn sync_alert_selection(state: &mut ListState, notices: &[SystemNotice], reports: &[PaneReport]) {
+    let count = qmonster::ui::alerts::alert_count(notices, reports);
+    match count {
+        0 => state.select(None),
+        total => {
+            let selected = state.selected().unwrap_or(0).min(total.saturating_sub(1));
+            state.select(Some(selected));
+        }
+    }
+}
+
+fn sync_dashboard_state(
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    alert_state: &mut ListState,
+    pane_state: &mut ListState,
+    previous_alerts: &mut HashSet<String>,
+    fresh_alerts: &mut HashSet<String>,
+    alert_times: &mut HashMap<String, String>,
+) {
+    sync_pane_selection(pane_state, reports.len());
+    refresh_alert_state(
+        notices,
+        reports,
+        previous_alerts,
+        fresh_alerts,
+        alert_times,
+    );
+    sync_alert_selection(alert_state, notices, reports);
+}
+
+fn refresh_alert_state(
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    previous_alerts: &mut HashSet<String>,
+    fresh_alerts: &mut HashSet<String>,
+    alert_times: &mut HashMap<String, String>,
+) {
+    let current = qmonster::ui::alerts::alert_fingerprints(notices, reports);
+    let timestamp = Local::now().format("%H:%M:%S").to_string();
+    let disappeared: Vec<String> = previous_alerts
+        .difference(&current)
+        .cloned()
+        .collect();
+    for key in disappeared {
+        alert_times.remove(&key);
+    }
+
+    *fresh_alerts = current
+        .difference(previous_alerts)
+        .cloned()
+        .collect();
+    for key in fresh_alerts.iter() {
+        alert_times.insert(key.clone(), timestamp.clone());
+    }
+    *previous_alerts = current;
 }

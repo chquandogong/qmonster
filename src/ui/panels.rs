@@ -1,10 +1,12 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::app::event_loop::PaneReport;
-use crate::domain::identity::IdentityConfidence;
+use crate::domain::identity::{IdentityConfidence, Provider, Role};
 use crate::domain::recommendation::Recommendation;
 use crate::domain::signal::SignalSet;
+use crate::ui::labels::source_kind_label;
 use crate::ui::theme;
 
 /// Codex v1.8.1 (Phase 4 P4-1 remediation): shared renderer for the
@@ -35,12 +37,12 @@ pub fn format_profile_lines(rec: &Recommendation) -> Vec<String> {
         "profile: {} ({} levers) [{}]",
         profile.name,
         profile.levers.len(),
-        profile.source_kind.badge(),
+        source_kind_label(profile.source_kind),
     ));
     for lever in &profile.levers {
         lines.push(format!(
             "[{}] {} = {} — {}",
-            lever.source_kind.badge(),
+            source_kind_label(lever.source_kind),
             lever.key,
             lever.value,
             lever.citation,
@@ -57,6 +59,97 @@ pub fn format_profile_lines(rec: &Recommendation) -> Vec<String> {
         }
     }
     lines
+}
+
+pub fn render_pane_list(
+    area: Rect,
+    buf: &mut Buffer,
+    reports: &[PaneReport],
+    state: &mut ListState,
+    target_label: &str,
+    focused: bool,
+) {
+    let title = format!("Panes · target {target_label} · selected pane expands below");
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(if focused {
+            theme::BORDER_ACTIVE
+        } else {
+            theme::BORDER_IDLE
+        }))
+        .title(title);
+
+    if reports.is_empty() {
+        Paragraph::new("no panes in the selected window")
+            .style(Style::default().fg(theme::TEXT_DIM))
+            .block(block)
+            .render(area, buf);
+        return;
+    }
+
+    let selected = state.selected().unwrap_or(0).min(reports.len().saturating_sub(1));
+    state.select(Some(selected));
+
+    let items: Vec<ListItem<'static>> = reports
+        .iter()
+        .enumerate()
+        .map(|(idx, report)| pane_list_item(report, idx == selected))
+        .collect();
+
+    StatefulWidget::render(
+        List::new(items)
+            .block(block)
+            .highlight_style(highlight_style(focused))
+            .highlight_symbol("▶ "),
+        area,
+        buf,
+        state,
+    );
+}
+
+fn highlight_style(focused: bool) -> Style {
+    let style = Style::default().fg(theme::TEXT_PRIMARY);
+    if focused {
+        style
+            .bg(theme::BADGE_BG)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        style.add_modifier(Modifier::BOLD)
+    }
+}
+
+fn pane_list_item(report: &PaneReport, expanded: bool) -> ListItem<'static> {
+    let mut lines = vec![
+        Line::from(pane_panel_title(report)),
+        Line::from(format!("path: {}", display_path(&report.current_path))),
+        Line::from(state_summary_line(report)),
+    ];
+
+    let metrics = metric_row(&report.signals);
+    if !metrics.is_empty() {
+        lines.push(Line::from(format!("metrics: {metrics}")));
+    }
+
+    if expanded {
+        for rec in report.recommendations.iter().take(3) {
+            lines.push(Line::from(format!(
+                "{}: {}",
+                severity_word(rec.severity),
+                rec.reason
+            )));
+            if let Some(tail) = crate::ui::alerts::format_recommendation_tail(rec) {
+                lines.push(Line::from(format!("  {tail}")));
+            }
+            for line in format_profile_lines(rec) {
+                lines.push(Line::from(format!("  {line}")));
+            }
+        }
+        if report.recommendations.is_empty() {
+            lines.push(Line::from("no active recommendations"));
+        }
+    }
+
+    ListItem::new(lines)
 }
 
 /// Per-pane panel: header line shows identity + confidence, then a
@@ -84,12 +177,12 @@ pub fn render_pane_panel(area: Rect, buf: &mut Buffer, report: &PaneReport) {
 pub fn pane_panel_title(report: &PaneReport) -> String {
     let id = &report.identity.identity;
     format!(
-        "{} {:?}:{}:{:?} [{}]",
+        "{}:{} · {} {} · {}",
+        report.session_name,
+        report.window_index,
+        provider_label(id.provider),
+        role_label(id.role),
         report.pane_id,
-        id.provider,
-        id.instance,
-        id.role,
-        confidence_letter(report.identity.confidence)
     )
 }
 
@@ -97,9 +190,9 @@ pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
     let mut items = Vec::new();
     let chips = signal_chips(&report.signals);
     if chips.is_empty() {
-        items.push(ListItem::new("signals: —").style(Style::default().fg(theme::TEXT_DIM)));
+        items.push(ListItem::new("state: normal").style(Style::default().fg(theme::TEXT_DIM)));
     } else {
-        items.push(ListItem::new(format!("signals: {}", chips.join(" "))));
+        items.push(ListItem::new(format!("state: {}", chips.join(" | "))));
     }
 
     let metrics = metric_row(&report.signals);
@@ -108,12 +201,14 @@ pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
     }
 
     for rec in report.recommendations.iter().take(6) {
-        let letter = rec.severity.letter();
-        let badge = rec.source_kind.badge();
         items.push(ListItem::new(format!(
-            "[{letter}] [{badge}] {}",
-            rec.action
+            "{}: {}",
+            severity_word(rec.severity),
+            rec.reason
         )));
+        if let Some(tail) = crate::ui::alerts::format_recommendation_tail(rec) {
+            items.push(ListItem::new(format!("  {tail}")));
+        }
         // v1.8.1: expose the structured ProviderProfile payload so the
         // operator can audit lever key/value/citation/SourceKind
         // directly in the panel (Codex P4-1 finding #1 closed).
@@ -127,25 +222,25 @@ pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
 pub fn signal_chips(s: &SignalSet) -> Vec<&'static str> {
     let mut chips = Vec::new();
     if s.waiting_for_input {
-        chips.push("WAIT");
+        chips.push("waiting for input");
     }
     if s.permission_prompt {
-        chips.push("PERM");
+        chips.push("approval needed");
     }
     if s.log_storm {
-        chips.push("STORM");
+        chips.push("log storm");
     }
     if s.repeated_output {
-        chips.push("REPEAT");
+        chips.push("repeated output");
     }
     if s.verbose_answer {
-        chips.push("VERB");
+        chips.push("verbose output");
     }
     if s.error_hint {
-        chips.push("ERR");
+        chips.push("error hint");
     }
     if s.subagent_hint {
-        chips.push("SUBAG");
+        chips.push("subagent activity");
     }
     chips
 }
@@ -154,26 +249,85 @@ pub fn metric_row(s: &SignalSet) -> String {
     let mut parts = Vec::new();
     if let Some(m) = s.context_pressure.as_ref() {
         parts.push(format!(
-            "CTX={:.0}% [{}]",
+            "context {:.0}% [{}]",
             m.value * 100.0,
-            m.source_kind.badge()
+            source_kind_label(m.source_kind)
         ));
     }
     if let Some(m) = s.token_count.as_ref() {
-        parts.push(format!("TOKENS={} [{}]", m.value, m.source_kind.badge()));
+        parts.push(format!(
+            "tokens {} [{}]",
+            m.value,
+            source_kind_label(m.source_kind)
+        ));
     }
     if let Some(m) = s.cost_usd.as_ref() {
-        parts.push(format!("COST=${:.2} [{}]", m.value, m.source_kind.badge()));
+        parts.push(format!(
+            "cost ${:.2} [{}]",
+            m.value,
+            source_kind_label(m.source_kind)
+        ));
     }
     parts.join("  ")
 }
 
-fn confidence_letter(c: IdentityConfidence) -> &'static str {
+fn state_summary_line(report: &PaneReport) -> String {
+    let chips = signal_chips(&report.signals);
+    let state = if chips.is_empty() {
+        "normal".to_string()
+    } else {
+        chips.join(" | ")
+    };
+    format!(
+        "{} confidence · {state}",
+        confidence_label(report.identity.confidence)
+    )
+}
+
+fn display_path(path: &str) -> String {
+    if path.is_empty() {
+        "unknown path".into()
+    } else {
+        path.into()
+    }
+}
+
+fn confidence_label(c: IdentityConfidence) -> &'static str {
     match c {
-        IdentityConfidence::High => "H",
-        IdentityConfidence::Medium => "M",
-        IdentityConfidence::Low => "L",
-        IdentityConfidence::Unknown => "?",
+        IdentityConfidence::High => "high",
+        IdentityConfidence::Medium => "medium",
+        IdentityConfidence::Low => "low",
+        IdentityConfidence::Unknown => "unknown",
+    }
+}
+
+fn provider_label(provider: Provider) -> &'static str {
+    match provider {
+        Provider::Claude => "Claude",
+        Provider::Codex => "Codex",
+        Provider::Gemini => "Gemini",
+        Provider::Qmonster => "Qmonster",
+        Provider::Unknown => "Unknown",
+    }
+}
+
+fn role_label(role: Role) -> &'static str {
+    match role {
+        Role::Main => "main",
+        Role::Review => "review",
+        Role::Research => "research",
+        Role::Monitor => "monitor",
+        Role::Unknown => "unknown",
+    }
+}
+
+fn severity_word(severity: crate::domain::recommendation::Severity) -> &'static str {
+    match severity {
+        crate::domain::recommendation::Severity::Safe => "safe",
+        crate::domain::recommendation::Severity::Good => "good",
+        crate::domain::recommendation::Severity::Concern => "concern",
+        crate::domain::recommendation::Severity::Warning => "warning",
+        crate::domain::recommendation::Severity::Risk => "risk",
     }
 }
 
@@ -187,6 +341,8 @@ mod tests {
     fn base_report() -> PaneReport {
         PaneReport {
             pane_id: "%1".into(),
+            session_name: "qwork".into(),
+            window_index: "1".into(),
             provider: Provider::Claude,
             identity: ResolvedIdentity {
                 identity: PaneIdentity {
@@ -209,7 +365,7 @@ mod tests {
     #[test]
     fn panel_title_includes_identity_and_confidence() {
         let rep = base_report();
-        assert_eq!(pane_panel_title(&rep), "%1 Claude:1:Main [H]");
+        assert_eq!(pane_panel_title(&rep), "qwork:1 · Claude main · %1");
     }
 
     #[test]
@@ -219,7 +375,7 @@ mod tests {
             log_storm: true,
             ..SignalSet::default()
         };
-        assert_eq!(signal_chips(&s), vec!["WAIT", "STORM"]);
+        assert_eq!(signal_chips(&s), vec!["waiting for input", "log storm"]);
     }
 
     #[test]
@@ -231,8 +387,22 @@ mod tests {
             ..SignalSet::default()
         };
         let row = metric_row(&s);
-        assert!(row.contains("CTX=71%"));
-        assert!(row.contains("[ES]"));
+        assert!(row.contains("context 71%"));
+        assert!(row.contains("[Estimate]"));
+    }
+
+    #[test]
+    fn state_summary_line_uses_full_words_instead_of_chips() {
+        let mut rep = base_report();
+        rep.signals = SignalSet {
+            waiting_for_input: true,
+            repeated_output: true,
+            ..SignalSet::default()
+        };
+        let summary = state_summary_line(&rep);
+        assert!(summary.contains("high confidence"));
+        assert!(summary.contains("waiting for input"));
+        assert!(summary.contains("repeated output"));
     }
 
     #[test]
@@ -299,18 +469,18 @@ mod tests {
         // Header: profile name + lever count + ProjectCanonical badge.
         assert!(lines[0].contains("claude-default"), "header names the profile: {}", lines[0]);
         assert!(lines[0].contains("2 levers"), "header reports lever count: {}", lines[0]);
-        assert!(lines[0].contains("[PC]"),
-            "header carries ProjectCanonical badge so operator sees bundle authority: {}",
+        assert!(lines[0].contains("[Qmonster]"),
+            "header carries ProjectCanonical label so operator sees bundle authority: {}",
             lines[0]);
 
         // Lever line #1: ProviderOfficial badge + key + value + citation.
-        assert!(lines[1].contains("[PO]"), "lever carries ProviderOfficial badge: {}", lines[1]);
+        assert!(lines[1].contains("[Official]"), "lever carries ProviderOfficial label: {}", lines[1]);
         assert!(lines[1].contains("BASH_MAX_OUTPUT_LENGTH"), "lever key visible: {}", lines[1]);
         assert!(lines[1].contains("30000"), "lever value visible: {}", lines[1]);
         assert!(lines[1].contains("bash output cap"), "lever citation visible: {}", lines[1]);
 
         // Lever line #2.
-        assert!(lines[2].contains("[PO]"));
+        assert!(lines[2].contains("[Official]"));
         assert!(lines[2].contains("includeGitInstructions"));
         assert!(lines[2].contains("false"));
         assert!(lines[2].contains("settings.json"));

@@ -1,9 +1,13 @@
+use std::collections::{HashMap, HashSet};
+
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::app::event_loop::PaneReport;
 use crate::app::system_notice::SystemNotice;
-use crate::domain::recommendation::{Recommendation, Severity};
+use crate::domain::recommendation::{CrossPaneFinding, Recommendation, Severity};
+use crate::ui::labels::source_kind_label;
 use crate::ui::theme;
 
 /// Codex v1.7.3 (phase3b-strong-rec cleanup): single source of truth for
@@ -13,7 +17,7 @@ use crate::ui::theme;
 /// omits either segment cleanly when its field is `None`.
 pub fn format_strong_rec_body(rec: &Recommendation, pane_id: &str) -> String {
     let letter = rec.severity.letter();
-    let badge = rec.source_kind.badge();
+    let badge = source_kind_label(rec.source_kind);
     let prefix = format!("[{letter}] [{badge}] >> CHECKPOINT ({pane_id}): {}", rec.reason);
     append_actionable_tail(prefix, rec)
 }
@@ -21,12 +25,9 @@ pub fn format_strong_rec_body(rec: &Recommendation, pane_id: &str) -> String {
 /// Shared renderer for non-strong recommendations so the alert queue
 /// and `--once` both surface `next:` / `run:` when present.
 pub fn format_recommendation_body(rec: &Recommendation, pane_id: &str) -> String {
-    let letter = rec.severity.letter();
-    let badge = rec.source_kind.badge();
-    let prefix = format!(
-        "[{letter}] [{badge}] {pane_id}: {} — {}",
-        rec.action, rec.reason
-    );
+    let severity = severity_word(rec.severity);
+    let badge = source_kind_label(rec.source_kind);
+    let prefix = format!("{severity} [{badge}] {pane_id} — {}", rec.reason);
     append_actionable_tail(prefix, rec)
 }
 
@@ -56,72 +57,331 @@ fn actionable_tail(next_step: Option<&str>, suggested_command: Option<&str>) -> 
     }
 }
 
+pub struct AlertView<'a> {
+    pub notices: &'a [SystemNotice],
+    pub reports: &'a [PaneReport],
+    pub fresh_alerts: &'a HashSet<String>,
+    pub alert_times: &'a HashMap<String, String>,
+    pub target_label: &'a str,
+    pub focused: bool,
+}
+
 /// Top-of-screen alert queue. Renders system notices first, then
 /// per-pane recommendations.
-pub fn render_alerts(
-    area: Rect,
-    buf: &mut Buffer,
-    notices: &[SystemNotice],
-    reports: &[PaneReport],
-) {
-    let items = collect_items(notices, reports);
+pub fn render_alerts(area: Rect, buf: &mut Buffer, state: &mut ListState, view: AlertView<'_>) {
+    let items = collect_items(
+        view.notices,
+        view.reports,
+        view.fresh_alerts,
+        view.alert_times,
+    );
+    let new_count = items.iter().filter(|item| item.is_new).count();
+    let title = format!(
+        "Alerts · target {} · {new_count} new / {} total",
+        view.target_label,
+        items.len()
+    );
     if items.is_empty() {
         Paragraph::new("no alerts")
             .style(Style::default().fg(theme::TEXT_DIM))
-            .block(block("Alerts"))
+            .block(block(&title, view.focused))
             .render(area, buf);
     } else {
-        Widget::render(List::new(items).block(block("Alerts")), area, buf);
+        sync_list_selection(state, items.len());
+        let wrap_width = area.inner(Margin {
+            vertical: 1,
+            horizontal: 2,
+        });
+        let alert_items: Vec<ListItem<'static>> = items
+            .iter()
+            .map(|item| alert_list_item(item, wrap_width.width.saturating_sub(2) as usize))
+            .collect();
+        StatefulWidget::render(
+            List::new(alert_items)
+                .block(block(&title, view.focused))
+                .highlight_style(highlight_style(view.focused))
+                .highlight_symbol("▶ "),
+            area,
+            buf,
+            state,
+        );
     }
 }
 
-fn block(title: &str) -> Block<'_> {
+pub fn alert_count(notices: &[SystemNotice], reports: &[PaneReport]) -> usize {
+    notices.len()
+        + reports
+            .iter()
+            .map(|report| report.recommendations.len() + report.cross_pane_findings.len())
+            .sum::<usize>()
+}
+
+fn block(title: &str, focused: bool) -> Block<'_> {
     Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::BORDER_IDLE))
+        .border_style(Style::default().fg(if focused {
+            theme::BORDER_ACTIVE
+        } else {
+            theme::BORDER_IDLE
+        }))
         .title(title)
 }
 
-fn collect_items(notices: &[SystemNotice], reports: &[PaneReport]) -> Vec<ListItem<'static>> {
+pub fn alert_fingerprints(notices: &[SystemNotice], reports: &[PaneReport]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for notice in notices {
+        out.insert(notice_key(notice));
+    }
+    for report in reports {
+        for rec in &report.recommendations {
+            out.insert(recommendation_key(&report.pane_id, rec));
+        }
+        for finding in &report.cross_pane_findings {
+            out.insert(finding_key(finding));
+        }
+    }
+    out
+}
+
+#[derive(Debug, Clone)]
+struct AlertItem {
+    body: String,
+    color: Color,
+    is_new: bool,
+}
+
+fn collect_items(
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    fresh_alerts: &HashSet<String>,
+    alert_times: &HashMap<String, String>,
+) -> Vec<AlertItem> {
     let mut out = Vec::new();
     // 1. System notices.
     for n in notices {
-        let letter = n.severity.letter();
-        let badge = n.source_kind.badge();
+        let badge = source_kind_label(n.source_kind);
         let color = theme::severity_color(n.severity);
-        let body = format!("[{letter}] [{badge}] SYSTEM: {} — {}", n.title, n.body);
-        out.push(ListItem::new(body).style(Style::default().fg(color)));
+        let key = notice_key(n);
+        let body = decorate_alert(
+            format!("{} [{badge}] system — {} — {}", severity_word(n.severity), n.title, n.body),
+            &key,
+            fresh_alerts,
+            alert_times,
+        );
+        out.push(AlertItem {
+            body,
+            color,
+            is_new: fresh_alerts.contains(&key),
+        });
     }
     // 2. Strong recommendations (G-7 checkpoint UX).
     for rep in reports {
         for rec in rep.recommendations.iter().filter(|r| r.is_strong) {
             let color = theme::severity_color(rec.severity);
-            let body = format_strong_rec_body(rec, &rep.pane_id);
-            out.push(ListItem::new(body).style(Style::default().fg(color)));
+            let key = recommendation_key(&rep.pane_id, rec);
+            let body = decorate_alert(
+                format_strong_rec_body(rec, &rep.pane_id),
+                &key,
+                fresh_alerts,
+                alert_times,
+            );
+            out.push(AlertItem {
+                body,
+                color,
+                is_new: fresh_alerts.contains(&key),
+            });
         }
     }
     // 3. Cross-pane findings.
     for rep in reports {
         for f in &rep.cross_pane_findings {
             let color = theme::severity_color(f.severity);
-            let letter = f.severity.letter();
-            let badge = f.source_kind.badge();
-            let body = format!(
-                "[{letter}] [{badge}] CROSS-PANE: {}",
-                f.reason,
+            let key = finding_key(f);
+            let body = decorate_alert(
+                format!(
+                    "{} [{}] cross-pane — {}",
+                    severity_word(f.severity),
+                    source_kind_label(f.source_kind),
+                    f.reason,
+                ),
+                &key,
+                fresh_alerts,
+                alert_times,
             );
-            out.push(ListItem::new(body).style(Style::default().fg(color)));
+            out.push(AlertItem {
+                body,
+                color,
+                is_new: fresh_alerts.contains(&key),
+            });
         }
     }
     // 4. Per-pane non-strong recommendations.
     for rep in reports {
         for rec in rep.recommendations.iter().filter(|r| !r.is_strong) {
             let color = theme::severity_color(rec.severity);
-            let body = format_recommendation_body(rec, &rep.pane_id);
-            out.push(ListItem::new(body).style(Style::default().fg(color)));
+            let key = recommendation_key(&rep.pane_id, rec);
+            let body = decorate_alert(
+                format_recommendation_body(rec, &rep.pane_id),
+                &key,
+                fresh_alerts,
+                alert_times,
+            );
+            out.push(AlertItem {
+                body,
+                color,
+                is_new: fresh_alerts.contains(&key),
+            });
         }
     }
     out
+}
+
+fn alert_list_item(item: &AlertItem, width: usize) -> ListItem<'static> {
+    let lines: Vec<Line<'static>> = wrap_text(&item.body, width)
+        .into_iter()
+        .map(Line::from)
+        .collect();
+    ListItem::new(lines).style(alert_style(item.color, item.is_new))
+}
+
+fn alert_style(color: Color, is_new: bool) -> Style {
+    let style = Style::default().fg(color);
+    if is_new {
+        style
+            .bg(theme::BADGE_BG)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        style
+    }
+}
+
+fn highlight_style(focused: bool) -> Style {
+    let style = Style::default().fg(theme::TEXT_PRIMARY);
+    if focused {
+        style
+            .bg(theme::BADGE_BG)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        style.add_modifier(Modifier::BOLD)
+    }
+}
+
+fn decorate_alert(
+    body: String,
+    key: &str,
+    fresh_alerts: &HashSet<String>,
+    alert_times: &HashMap<String, String>,
+) -> String {
+    let ts = alert_times
+        .get(key)
+        .cloned()
+        .unwrap_or_else(|| "--:--:--".into());
+    if fresh_alerts.contains(key) {
+        format!("[{ts}] NEW · {body}")
+    } else {
+        format!("[{ts}] {body}")
+    }
+}
+
+fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(12);
+    let mut out = Vec::new();
+    let mut current = String::new();
+
+    for word in text.split_whitespace() {
+        if word.chars().count() > width {
+            if !current.is_empty() {
+                out.push(std::mem::take(&mut current));
+            }
+            out.extend(split_long_word(word, width));
+            continue;
+        }
+
+        if current.is_empty() {
+            current.push_str(word);
+            continue;
+        }
+
+        let next_len = current.chars().count() + 1 + word.chars().count();
+        if next_len <= width {
+            current.push(' ');
+            current.push_str(word);
+        } else {
+            out.push(std::mem::take(&mut current));
+            current.push_str(word);
+        }
+    }
+
+    if !current.is_empty() {
+        out.push(current);
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
+}
+
+fn split_long_word(word: &str, width: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut chunk = String::new();
+    for ch in word.chars() {
+        if chunk.chars().count() == width {
+            out.push(std::mem::take(&mut chunk));
+        }
+        chunk.push(ch);
+    }
+    if !chunk.is_empty() {
+        out.push(chunk);
+    }
+    out
+}
+
+fn sync_list_selection(state: &mut ListState, item_count: usize) {
+    match item_count {
+        0 => state.select(None),
+        count => {
+            let selected = state.selected().unwrap_or(0).min(count.saturating_sub(1));
+            state.select(Some(selected));
+        }
+    }
+}
+
+fn notice_key(notice: &SystemNotice) -> String {
+    format!(
+        "notice|{}|{}|{}|{}",
+        notice.title,
+        notice.body,
+        notice.severity.letter(),
+        notice.source_kind.badge(),
+    )
+}
+
+fn recommendation_key(pane_id: &str, rec: &Recommendation) -> String {
+    format!(
+        "rec|{pane_id}|{}|{}|{}",
+        rec.action,
+        rec.severity.letter(),
+        rec.reason,
+    )
+}
+
+fn finding_key(finding: &CrossPaneFinding) -> String {
+    format!(
+        "finding|{}|{}|{}",
+        finding.anchor_pane_id,
+        finding.severity.letter(),
+        finding.reason,
+    )
+}
+
+fn severity_word(sev: Severity) -> &'static str {
+    match sev {
+        Severity::Safe => "safe",
+        Severity::Good => "good",
+        Severity::Concern => "concern",
+        Severity::Warning => "warning",
+        Severity::Risk => "risk",
+    }
 }
 
 pub fn severity_letter(sev: Severity) -> &'static str {
@@ -139,6 +399,8 @@ mod tests {
     fn base_report(recs: Vec<Recommendation>) -> PaneReport {
         PaneReport {
             pane_id: "%1".into(),
+            session_name: "qwork".into(),
+            window_index: "1".into(),
             provider: Provider::Claude,
             identity: ResolvedIdentity {
                 identity: PaneIdentity {
@@ -184,7 +446,9 @@ mod tests {
                 profile: None,
             },
         ]);
-        let items = collect_items(&[], &[rep]);
+        let fresh = HashSet::new();
+        let times = HashMap::new();
+        let items = collect_items(&[], &[rep], &fresh, &times);
         assert_eq!(items.len(), 2);
     }
 
@@ -207,11 +471,11 @@ mod tests {
             next_step: None,
             profile: None,
         }]);
-        let items = collect_items(&[notice], &[rep]);
+        let fresh = HashSet::new();
+        let times = HashMap::new();
+        let items = collect_items(&[notice], &[rep], &fresh, &times);
         assert_eq!(items.len(), 2);
-        // System notice is rendered first.
-        // We cannot easily inspect the text of a ListItem without private
-        // fields, but ordering is stable: notice then pane.
+        assert!(items[0].body.contains("system"));
     }
 
     #[test]
@@ -239,11 +503,12 @@ mod tests {
             profile: None,
         };
         let rep = base_report(vec![strong, normal]);
-        let items = collect_items(&[], &[rep]);
+        let fresh = HashSet::new();
+        let times = HashMap::new();
+        let items = collect_items(&[], &[rep], &fresh, &times);
         // Two items: strong-rec line + normal-rec line. Strong appears first.
         assert_eq!(items.len(), 2);
-        // We can't easily introspect ListItem text without private-field hacks,
-        // but ordering is stable and this test locks in the slot count.
+        assert!(items[0].body.contains("CHECKPOINT"));
     }
 
     #[test]
@@ -308,7 +573,7 @@ mod tests {
             profile: None,
         };
         let body = format_recommendation_body(&rec, "%7");
-        assert!(body.contains("%7: archive-preview-suggested"));
+        assert!(body.contains("%7"));
         assert!(body.contains("run: `tmux capture-pane -pS -2000 > ~/.qmonster/archive/x.log`"));
     }
 
@@ -354,7 +619,43 @@ mod tests {
             source_kind: SourceKind::Estimated,
             suggested_command: None,
         });
-        let items = collect_items(&[], &[rep]);
+        let fresh = HashSet::new();
+        let times = HashMap::new();
+        let items = collect_items(&[], &[rep], &fresh, &times);
         assert_eq!(items.len(), 2, "one cross-pane finding + one pane alert");
+        assert!(items[0].body.contains("cross-pane"));
+    }
+
+    #[test]
+    fn fresh_alert_is_prefixed_with_new_and_timestamp() {
+        let rec = Recommendation {
+            action: "notify-input-wait",
+            reason: "pane appears to be waiting for user input".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![rec.clone()]);
+        let key = recommendation_key("%1", &rec);
+        let fresh = HashSet::from([key.clone()]);
+        let times = HashMap::from([(key, "14:32:10".into())]);
+        let items = collect_items(&[], &[rep], &fresh, &times);
+        assert!(items[0].body.contains("NEW"));
+        assert!(items[0].body.contains("14:32:10"));
+        assert!(items[0].is_new);
+    }
+
+    #[test]
+    fn wrap_text_splits_long_alerts_into_multiple_lines() {
+        let lines = wrap_text(
+            "warning [Official] %1 — very long alert body that should wrap cleanly",
+            24,
+        );
+        assert!(lines.len() > 1);
+        assert!(lines.iter().all(|line| line.chars().count() <= 24));
     }
 }

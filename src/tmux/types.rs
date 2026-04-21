@@ -2,6 +2,19 @@
 /// fields. Kept in sync with `parse_list_panes_row` — any change here
 /// requires changing the parser (guarded by a unit test).
 pub const PANE_LIST_FORMAT: &str = "#{session_name}\\t#{window_index}\\t#{pane_id}\\t#{pane_title}\\t#{pane_current_command}\\t#{pane_current_path}\\t#{pane_active}\\t#{pane_dead}";
+pub const WINDOW_LIST_FORMAT: &str = "#{session_name}\\t#{window_index}";
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WindowTarget {
+    pub session_name: String,
+    pub window_index: String,
+}
+
+impl WindowTarget {
+    pub fn label(&self) -> String {
+        format!("{}:{}", self.session_name, self.window_index)
+    }
+}
 
 /// One row of `tmux list-panes` output. Raw in the sense that no
 /// provider/role inference has happened yet (r2 boundary: `tmux/`
@@ -37,6 +50,17 @@ pub fn parse_list_panes_row(line: &str) -> Option<RawPaneSnapshot> {
     })
 }
 
+pub fn parse_list_windows_row(line: &str) -> Option<WindowTarget> {
+    let parts: Vec<&str> = line.split('\t').collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    Some(WindowTarget {
+        session_name: parts[0].trim().to_string(),
+        window_index: parts[1].trim().to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,5 +91,19 @@ mod tests {
         let fmt = PANE_LIST_FORMAT;
         let token_count = fmt.split("\\t").count();
         assert_eq!(token_count, 8, "format = {fmt}");
+    }
+
+    #[test]
+    fn parse_list_windows_row_extracts_session_and_window() {
+        let row = parse_list_windows_row("qwork\t1").expect("parse ok");
+        assert_eq!(row.session_name, "qwork");
+        assert_eq!(row.window_index, "1");
+        assert_eq!(row.label(), "qwork:1");
+    }
+
+    #[test]
+    fn window_list_format_has_two_fields() {
+        let token_count = WINDOW_LIST_FORMAT.split("\\t").count();
+        assert_eq!(token_count, 2);
     }
 }
