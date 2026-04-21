@@ -80,6 +80,7 @@ fn log_storm_advisory(
         side_effects: vec![],
         is_strong: false,
         next_step: None,
+        profile: None,
     })
 }
 
@@ -93,6 +94,7 @@ fn aggressive_log_storm() -> Recommendation {
         side_effects: vec![],
         is_strong: false,
         next_step: None,
+        profile: None,
     }
 }
 
@@ -122,6 +124,7 @@ fn code_exploration(
         side_effects: vec![],
         is_strong: false,
         next_step: None,
+        profile: None,
     })
 }
 
@@ -146,6 +149,7 @@ fn context_pressure_warning(
         side_effects: vec![],
         is_strong: true,
         next_step: Some("press 's' to snapshot first, then archive large results".into()),
+        profile: None,
     })
 }
 
@@ -159,6 +163,7 @@ fn aggressive_context_pressure_warning() -> Recommendation {
         side_effects: vec![],
         is_strong: false,
         next_step: None,
+        profile: None,
     }
 }
 
@@ -183,6 +188,7 @@ fn context_pressure_critical(
         side_effects: vec![],
         is_strong: true,
         next_step: Some("press 's' to snapshot + archive now, before running /compact".into()),
+        profile: None,
     })
 }
 
@@ -196,6 +202,7 @@ fn aggressive_context_pressure_critical() -> Recommendation {
         side_effects: vec![],
         is_strong: false,
         next_step: None,
+        profile: None,
     }
 }
 
@@ -222,6 +229,7 @@ fn verbose_review(
         side_effects: vec![],
         is_strong: false,
         next_step: None,
+        profile: None,
     })
 }
 
@@ -235,6 +243,7 @@ fn aggressive_verbose_review() -> Recommendation {
         side_effects: vec![],
         is_strong: false,
         next_step: None,
+        profile: None,
     }
 }
 
@@ -260,6 +269,7 @@ fn quota_tight_nudge(
         side_effects: vec![],
         is_strong: false,
         next_step: None,
+        profile: None,
     })
 }
 
@@ -283,6 +293,7 @@ fn repeated_cache_suggest(
         side_effects: vec![],
         is_strong: false,
         next_step: None,
+        profile: None,
     })
 }
 
@@ -296,6 +307,7 @@ fn aggressive_repeated_cache_suggest() -> Recommendation {
         side_effects: vec![],
         is_strong: false,
         next_step: None,
+        profile: None,
     }
 }
 

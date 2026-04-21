@@ -52,6 +52,7 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
+            profile: None,
         };
         let (title, body) = summarize(&rec, "%1");
         assert_eq!(title, "Qmonster [W]");

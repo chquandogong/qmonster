@@ -3,8 +3,42 @@ use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 
 use crate::app::event_loop::PaneReport;
 use crate::domain::identity::IdentityConfidence;
+use crate::domain::recommendation::Recommendation;
 use crate::domain::signal::SignalSet;
 use crate::ui::theme;
+
+/// Codex v1.8.1 (Phase 4 P4-1 remediation): shared renderer for the
+/// structured `ProviderProfile` payload carried by provider-profile
+/// recommendations. Emits one line per lever, each carrying the
+/// per-lever `SourceKind` badge + key = value + citation, so the
+/// `ProjectCanonical` bundle (profile name) vs `ProviderOfficial`
+/// levers (individual rows) authority split is visible end-to-end
+/// on both the TUI pane panel and `--once` output. Caller prepends
+/// its own leading indent.
+///
+/// Returns an empty `Vec` when the rec has no profile payload.
+pub fn format_profile_lines(rec: &Recommendation) -> Vec<String> {
+    let Some(profile) = &rec.profile else {
+        return Vec::new();
+    };
+    let mut lines = Vec::with_capacity(profile.levers.len() + 1);
+    lines.push(format!(
+        "profile: {} ({} levers) [{}]",
+        profile.name,
+        profile.levers.len(),
+        profile.source_kind.badge(),
+    ));
+    for lever in &profile.levers {
+        lines.push(format!(
+            "[{}] {} = {} — {}",
+            lever.source_kind.badge(),
+            lever.key,
+            lever.value,
+            lever.citation,
+        ));
+    }
+    lines
+}
 
 /// Per-pane panel: header line shows identity + confidence, then a
 /// signals chip row, then a metrics row with SourceKind badges, then
@@ -61,6 +95,12 @@ pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
             "[{letter}] [{badge}] {}",
             rec.action
         )));
+        // v1.8.1: expose the structured ProviderProfile payload so the
+        // operator can audit lever key/value/citation/SourceKind
+        // directly in the panel (Codex P4-1 finding #1 closed).
+        for line in format_profile_lines(rec) {
+            items.push(ListItem::new(format!("  {line}")));
+        }
     }
     items
 }
@@ -174,5 +214,86 @@ mod tests {
         let row = metric_row(&s);
         assert!(row.contains("CTX=71%"));
         assert!(row.contains("[ES]"));
+    }
+
+    #[test]
+    fn format_profile_lines_is_empty_when_rec_carries_no_profile() {
+        use crate::domain::recommendation::{Recommendation, Severity};
+        let rec = Recommendation {
+            action: "notify-input-wait",
+            reason: "r".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        assert!(format_profile_lines(&rec).is_empty(),
+            "no profile -> no lever lines emitted; caller prints only the rec header");
+    }
+
+    #[test]
+    fn format_profile_lines_exposes_lever_key_value_citation_and_source_kind_badge() {
+        // Codex v1.8.1 (P4-1 finding #1 closed): the renderer must
+        // surface every lever's key + value + citation + per-lever
+        // SourceKind so the operator can audit authority directly on
+        // the panel / --once without having to cross-reference the
+        // reason prose. This test locks the exact line shape so a
+        // regression that drops any of those four pieces fails here.
+        use crate::domain::profile::{ProfileLever, ProviderProfile};
+        use crate::domain::recommendation::{Recommendation, Severity};
+        let profile = ProviderProfile {
+            name: "claude-default",
+            levers: vec![
+                ProfileLever {
+                    key: "BASH_MAX_OUTPUT_LENGTH",
+                    value: "30000",
+                    citation: "Claude Code docs — env vars, bash output cap",
+                    source_kind: SourceKind::ProviderOfficial,
+                },
+                ProfileLever {
+                    key: "includeGitInstructions",
+                    value: "false",
+                    citation: "Claude Code docs — settings.json",
+                    source_kind: SourceKind::ProviderOfficial,
+                },
+            ],
+            side_effects: vec![],
+            source_kind: SourceKind::ProjectCanonical,
+        };
+        let rec = Recommendation {
+            action: "provider-profile: claude-default",
+            reason: "r".into(),
+            severity: Severity::Good,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: Some(profile),
+        };
+        let lines = format_profile_lines(&rec);
+        assert_eq!(lines.len(), 3, "1 header + 2 lever lines");
+
+        // Header: profile name + lever count + ProjectCanonical badge.
+        assert!(lines[0].contains("claude-default"), "header names the profile: {}", lines[0]);
+        assert!(lines[0].contains("2 levers"), "header reports lever count: {}", lines[0]);
+        assert!(lines[0].contains("[PC]"),
+            "header carries ProjectCanonical badge so operator sees bundle authority: {}",
+            lines[0]);
+
+        // Lever line #1: ProviderOfficial badge + key + value + citation.
+        assert!(lines[1].contains("[PO]"), "lever carries ProviderOfficial badge: {}", lines[1]);
+        assert!(lines[1].contains("BASH_MAX_OUTPUT_LENGTH"), "lever key visible: {}", lines[1]);
+        assert!(lines[1].contains("30000"), "lever value visible: {}", lines[1]);
+        assert!(lines[1].contains("bash output cap"), "lever citation visible: {}", lines[1]);
+
+        // Lever line #2.
+        assert!(lines[2].contains("[PO]"));
+        assert!(lines[2].contains("includeGitInstructions"));
+        assert!(lines[2].contains("false"));
+        assert!(lines[2].contains("settings.json"));
     }
 }

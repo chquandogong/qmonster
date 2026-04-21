@@ -1,4 +1,5 @@
 use crate::domain::origin::SourceKind;
+use crate::domain::profile::ProviderProfile;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Severity {
@@ -48,6 +49,14 @@ pub struct Recommendation {
     /// cannot be represented as a command on the same surface.
     /// Renderers print this as `next: …` before `run: …`.
     pub next_step: Option<String>,
+    /// Codex v1.8.1 (Phase 4 P4-1 remediation): structured provider-
+    /// profile payload. `Some(_)` only when the rec recommends a
+    /// `ProviderProfile` (from `src/policy/rules/profiles.rs`); in
+    /// that case the renderer surfaces each lever's
+    /// key/value/citation/SourceKind so the `ProjectCanonical` bundle
+    /// vs `ProviderOfficial` lever authority split is visible end-
+    /// to-end rather than collapsed into `reason` prose.
+    pub profile: Option<ProviderProfile>,
 }
 
 /// Effects the policy engine wants `app::EffectRunner` to consider.
@@ -108,6 +117,7 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
+            profile: None,
         };
         assert_eq!(r.severity, Severity::Warning);
         assert_eq!(r.source_kind, SourceKind::Heuristic);

@@ -147,6 +147,7 @@ mod tests {
                 side_effects: vec![],
                 is_strong: false,
                 next_step: None,
+                profile: None,
             },
             Recommendation {
                 action: "log-storm",
@@ -157,6 +158,7 @@ mod tests {
                 side_effects: vec![],
                 is_strong: false,
                 next_step: None,
+                profile: None,
             },
         ]);
         let items = collect_items(&[], &[rep]);
@@ -180,6 +182,7 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
+            profile: None,
         }]);
         let items = collect_items(&[notice], &[rep]);
         assert_eq!(items.len(), 2);
@@ -199,6 +202,7 @@ mod tests {
             side_effects: vec![],
             is_strong: true,
             next_step: Some("press 's' to snapshot + archive now, before running /compact".into()),
+            profile: None,
         };
         let normal = Recommendation {
             action: "log-storm",
@@ -209,6 +213,7 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
+            profile: None,
         };
         let rep = base_report(vec![strong, normal]);
         let items = collect_items(&[], &[rep]);
@@ -234,6 +239,7 @@ mod tests {
             side_effects: vec![],
             is_strong: true,
             next_step: Some("press 's' to snapshot + archive now".into()),
+            profile: None,
         };
         let body = format_strong_rec_body(&strong, "%1");
 
@@ -258,6 +264,7 @@ mod tests {
             side_effects: vec![],
             is_strong: true,
             next_step: None,
+            profile: None,
         };
         let body = format_strong_rec_body(&strong, "%1");
         assert!(!body.contains("next:"), "no next_step → no `next:` segment. got: {body}");
@@ -276,6 +283,7 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
+            profile: None,
         }]);
         rep.cross_pane_findings.push(CrossPaneFinding {
             kind: CrossPaneKind::ConcurrentMutatingWork,

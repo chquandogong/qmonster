@@ -236,6 +236,12 @@ fn print_reports(reports: &[PaneReport]) {
                 rec.action,
                 rec.reason
             );
+            // v1.8.1: surface the structured ProviderProfile payload so
+            // lever key/value/citation/SourceKind are visible in --once
+            // (Codex P4-1 finding #1 closed).
+            for line in qmonster::ui::panels::format_profile_lines(rec) {
+                println!("    {line}");
+            }
         }
     }
 }

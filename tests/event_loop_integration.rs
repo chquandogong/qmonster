@@ -682,3 +682,95 @@ fn warning_severity_rec_audit_logged_as_alert_fired() {
         "notify-input-wait (Warning) rec must be audit-logged as AlertFired"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4 P4-1 v1.8.1 integration test — structured profile payload flows
+// end-to-end from Engine::evaluate through run_once/PaneReport to the
+// live renderer (qmonster::ui::panels::format_profile_lines). Codex
+// Phase-4 P4-1 review finding #1: the ProviderProfile must survive past
+// Recommendation and reach an operator-visible surface with every
+// lever's key + value + citation + per-lever SourceKind. This test
+// fails if the structured payload is dropped (the v1.8.0 regression)
+// or if any of those four pieces disappears from the rendered body.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn claude_default_profile_levers_flow_end_to_end_to_the_panel_renderer() {
+    // Fixture: a healthy Claude main pane — no wait, no permission
+    // prompt, no log-storm / error markers. The tail is short enough
+    // that output_chars stays well under any alert threshold, and no
+    // context_pressure marker is emitted. Under these conditions
+    // recommend_claude_default should fire (healthy-state baseline).
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%1",
+            "claude:1:main",
+            "claude",
+            "ok\n",
+            false,
+        )],
+    };
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let notifier = RecordingNotifier(seen.clone());
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    let rec = reports[0]
+        .recommendations
+        .iter()
+        .find(|r| r.action == "provider-profile: claude-default")
+        .expect("claude-default profile rec must fire for a healthy Claude main pane");
+
+    // Severity is Good (positive advisory), profile is Some(_), and
+    // the structured bundle must carry ProjectCanonical authority at
+    // the bundle level + ProviderOfficial authority per lever. This
+    // is the contract the v1.8.0 ledger claimed and v1.8.1 finally
+    // delivers end-to-end.
+    assert_eq!(rec.severity, Severity::Good);
+    let profile = rec
+        .profile
+        .as_ref()
+        .expect("Codex v1.8.1 finding #1: ProviderProfile must be attached to the rec");
+    assert_eq!(profile.levers.len(), 3);
+
+    // Exercise the LIVE renderer the --once path and the TUI panel
+    // both call. If the renderer ever drops a lever field, this
+    // assertion block fails end-to-end, not just at the unit level.
+    let lines = qmonster::ui::panels::format_profile_lines(rec);
+    assert_eq!(lines.len(), 4, "1 header + 3 lever rows");
+
+    // Header line: profile name + lever count + ProjectCanonical badge.
+    assert!(lines[0].contains("claude-default"), "header names profile: {}", lines[0]);
+    assert!(lines[0].contains("3 levers"), "header counts levers: {}", lines[0]);
+    assert!(lines[0].contains("[PC]"),
+        "header carries ProjectCanonical badge so operator sees bundle authority: {}",
+        lines[0]);
+
+    // Every lever row MUST carry the ProviderOfficial badge + key +
+    // value + citation. The whole point of Phase 4 is to surface
+    // provider-native authority honestly; a silent drop of ANY of
+    // those four pieces fails here.
+    let lever_lines = &lines[1..];
+    for line in lever_lines {
+        assert!(line.contains("[PO]"),
+            "every lever row carries the ProviderOfficial badge: {line}");
+    }
+
+    // Spot-check one lever end-to-end: BASH_MAX_OUTPUT_LENGTH = 30000
+    // with a docs citation containing "bash output cap".
+    let bash = lever_lines.iter().find(|l| l.contains("BASH_MAX_OUTPUT_LENGTH"))
+        .expect("BASH_MAX_OUTPUT_LENGTH lever line present");
+    assert!(bash.contains("30000"), "BASH_MAX_OUTPUT_LENGTH value visible: {bash}");
+    assert!(bash.contains("bash output cap"),
+        "BASH_MAX_OUTPUT_LENGTH citation visible — Codex finding required per-lever citations to reach the live path: {bash}");
+
+    // Notify gate (>= Warning) MUST still NOT fire for a profile rec
+    // alone — the healthy-state advisory stays passive.
+    let effects = &reports[0].effects;
+    assert!(
+        !effects.contains(&qmonster::domain::recommendation::RequestedEffect::Notify),
+        "profile rec is Severity::Good and must not trigger Notify; effects: {:?}",
+        effects
+    );
+}

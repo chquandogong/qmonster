@@ -71,22 +71,31 @@ fn recommend_claude_default(
     }
 
     let profile = claude_default_profile();
+    let reason = format!(
+        "profile `{}`: apply {} ProviderOfficial levers for a healthy-state baseline main-pane session (see lever list below — each lever carries its own citation)",
+        profile.name,
+        profile.levers.len(),
+    );
+    let side_effects = profile.side_effects.clone();
     Some(Recommendation {
         action: "provider-profile: claude-default",
-        reason: format!(
-            "profile `{}`: apply {} ProviderOfficial levers for a healthy-state baseline main-pane session (see citations inside each lever)",
-            profile.name,
-            profile.levers.len(),
-        ),
+        reason,
         severity: Severity::Good,
         source_kind: SourceKind::ProjectCanonical,
         // No single runnable command: applying a profile is a multi-
         // key settings edit across ~/.claude/settings.json and env.
-        // See VALIDATION.md Phase-4 checks for the full lever list.
+        // The structured `profile` payload below carries the three
+        // lever keys/values/citations the UI renders — do NOT fold
+        // those into suggested_command (Codex v1.8.1 finding #1).
         suggested_command: None,
-        side_effects: profile.side_effects.clone(),
+        side_effects,
         is_strong: false,
         next_step: None,
+        // v1.8.1 remediation: thread the structured ProviderProfile
+        // through to the renderer so the ProjectCanonical bundle vs
+        // ProviderOfficial lever authority split is visible end-to-
+        // end (Codex Phase-4 P4-1 finding #1 closed).
+        profile: Some(profile),
     })
 }
 
@@ -184,6 +193,56 @@ mod tests {
             rec.suggested_command.is_none(),
             "profile rec has no single-surface runnable command"
         );
+    }
+
+    #[test]
+    fn recommend_claude_default_attaches_structured_profile_with_three_provider_official_levers() {
+        // Codex v1.8.1 (P4-1 finding #1 closed): the structured
+        // ProviderProfile bundle must reach the Recommendation payload
+        // so the renderer can surface lever key/value/citation/source_kind.
+        // This test fails if recommend_claude_default ever drops the
+        // structured profile on the floor (the regression that shipped
+        // in v1.8.0).
+        let id = healthy_claude_main();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&id, &s, &gates_default());
+        let rec = recs
+            .iter()
+            .find(|r| r.action == "provider-profile: claude-default")
+            .expect("claude-default rec fires");
+
+        let profile = rec
+            .profile
+            .as_ref()
+            .expect("structured ProviderProfile must be attached to the rec; Codex v1.8.1 fix");
+        assert_eq!(profile.name, "claude-default");
+        assert_eq!(
+            profile.source_kind,
+            SourceKind::ProjectCanonical,
+            "profile bundle NAME is our abstraction"
+        );
+        assert_eq!(
+            profile.levers.len(),
+            3,
+            "claude-default bundles exactly three ProviderOfficial levers"
+        );
+        for lever in &profile.levers {
+            assert_eq!(
+                lever.source_kind,
+                SourceKind::ProviderOfficial,
+                "every lever inside the bundle is ProviderOfficial"
+            );
+            assert!(
+                !lever.citation.is_empty(),
+                "every lever carries a non-empty citation (a ProviderOfficial claim without a citation is Heuristic)"
+            );
+        }
+        // Spot-check the exact lever keys so a silent re-ordering or
+        // value change is caught.
+        let keys: Vec<&str> = profile.levers.iter().map(|l| l.key).collect();
+        assert!(keys.contains(&"CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS"));
+        assert!(keys.contains(&"BASH_MAX_OUTPUT_LENGTH"));
+        assert!(keys.contains(&"includeGitInstructions"));
     }
 
     #[test]
