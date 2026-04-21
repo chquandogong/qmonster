@@ -39,10 +39,7 @@ use qmonster::tmux::types::WindowTarget;
 use qmonster::ui::dashboard::{DashboardView, render_dashboard};
 
 #[derive(Debug, Parser)]
-#[command(
-    name = "qmonster",
-    about = "Observe-first TUI for multi-CLI tmux work"
-)]
+#[command(name = "qmonster", about = "Observe-first TUI for multi-CLI tmux work")]
 struct Cli {
     /// Path to a TOML config file.
     #[arg(long, value_name = "PATH")]
@@ -101,7 +98,10 @@ fn main() -> anyhow::Result<()> {
     let mut ctx = Context::new(config, source, notifier, sink).with_archive(archive);
 
     if !pairs.is_empty() {
-        let refs: Vec<(&str, &str)> = pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        let refs: Vec<(&str, &str)> = pairs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
         let stats = apply_override_with_audit(&mut ctx.config, &refs, &*ctx.sink);
         if stats.rejected + stats.unknown > 0 {
             eprintln!(
@@ -155,9 +155,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
     record_startup_snapshot(&*ctx.sink, &fresh);
-    if may_save_fresh
-        && let Err(e) = fresh.save_to(&paths.versions_path())
-    {
+    if may_save_fresh && let Err(e) = fresh.save_to(&paths.versions_path()) {
         eprintln!("qmonster: could not persist version snapshot: {e}");
     }
 
@@ -206,7 +204,10 @@ fn print_reports(reports: &[PaneReport]) {
     // 2. Strong recommendations (G-7 checkpoint UX).
     for rep in reports {
         for rec in rep.recommendations.iter().filter(|r| r.is_strong) {
-            println!("{}", qmonster::ui::alerts::format_strong_rec_body(rec, &rep.pane_id));
+            println!(
+                "{}",
+                qmonster::ui::alerts::format_strong_rec_body(rec, &rep.pane_id)
+            );
         }
     }
     // 3. Per-pane summaries with non-strong recommendations.
@@ -232,8 +233,7 @@ fn print_reports(reports: &[PaneReport]) {
             println!("  metrics: {metrics}");
         }
         if !r.effects.is_empty() {
-            let names: Vec<String> =
-                r.effects.iter().map(|e| format!("{e:?}")).collect();
+            let names: Vec<String> = r.effects.iter().map(|e| format!("{e:?}")).collect();
             println!("  effects: {}", names.join(" "));
         }
         for rec in r.recommendations.iter().filter(|rec| !rec.is_strong) {
@@ -307,6 +307,7 @@ where
     let mut target_picker_state = ListState::default();
     let mut target_choices: Vec<TargetChoice> = Vec::new();
     let mut help_open = false;
+    let mut help_scroll = 0usize;
     let mut previous_alerts: HashSet<String> = HashSet::new();
     let mut fresh_alerts: HashSet<String> = HashSet::new();
     let mut alert_times: HashMap<String, String> = HashMap::new();
@@ -381,8 +382,10 @@ where
                     },
                 );
                 if target_picker_open {
-                    let labels: Vec<String> =
-                        target_choices.iter().map(|choice| choice.label.clone()).collect();
+                    let labels: Vec<String> = target_choices
+                        .iter()
+                        .map(|choice| choice.label.clone())
+                        .collect();
                     let picker_title =
                         target_picker_title(target_picker_stage, target_picker_session.as_deref());
                     qmonster::ui::dashboard::render_target_picker(
@@ -395,7 +398,7 @@ where
                     );
                 }
                 if help_open {
-                    qmonster::ui::dashboard::render_help_modal(frame);
+                    qmonster::ui::dashboard::render_help_modal(frame, help_scroll as u16);
                 }
             })?;
 
@@ -404,8 +407,32 @@ where
                 && k.kind == KeyEventKind::Press
             {
                 if help_open {
+                    let size = terminal.size()?;
+                    let max_scroll = qmonster::ui::dashboard::max_help_scroll(Rect::new(
+                        0,
+                        0,
+                        size.width,
+                        size.height,
+                    ));
                     match k.code {
-                        KeyCode::Esc | KeyCode::Char('?') => help_open = false,
+                        KeyCode::Esc | KeyCode::Char('?') => {
+                            help_open = false;
+                            help_scroll = 0;
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            help_scroll = help_scroll.saturating_sub(1);
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            help_scroll = help_scroll.saturating_add(1).min(max_scroll);
+                        }
+                        KeyCode::PageUp => {
+                            help_scroll = help_scroll.saturating_sub(8);
+                        }
+                        KeyCode::PageDown => {
+                            help_scroll = help_scroll.saturating_add(8).min(max_scroll);
+                        }
+                        KeyCode::Home => help_scroll = 0,
+                        KeyCode::End => help_scroll = max_scroll,
                         _ => {}
                     }
                     continue;
@@ -479,7 +506,10 @@ where
                 match k.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
                     KeyCode::Tab => focus = toggle_focus(focus),
-                    KeyCode::Char('?') => help_open = true,
+                    KeyCode::Char('?') => {
+                        help_open = true;
+                        help_scroll = 0;
+                    }
                     KeyCode::Up | KeyCode::Char('k') => match focus {
                         FocusedPanel::Alerts => move_selection(
                             &mut alert_state,
@@ -499,6 +529,42 @@ where
                         FocusedPanel::Panes => {
                             move_selection(&mut pane_state, last_reports.len(), 1);
                         }
+                    },
+                    KeyCode::PageUp => match focus {
+                        FocusedPanel::Alerts => page_selection(
+                            &mut alert_state,
+                            qmonster::ui::alerts::alert_count(&notices, &last_reports),
+                            6,
+                            ScrollDir::Up,
+                        ),
+                        FocusedPanel::Panes => {
+                            page_selection(&mut pane_state, last_reports.len(), 3, ScrollDir::Up);
+                        }
+                    },
+                    KeyCode::PageDown => match focus {
+                        FocusedPanel::Alerts => page_selection(
+                            &mut alert_state,
+                            qmonster::ui::alerts::alert_count(&notices, &last_reports),
+                            6,
+                            ScrollDir::Down,
+                        ),
+                        FocusedPanel::Panes => {
+                            page_selection(&mut pane_state, last_reports.len(), 3, ScrollDir::Down);
+                        }
+                    },
+                    KeyCode::Home => match focus {
+                        FocusedPanel::Alerts => select_first(
+                            &mut alert_state,
+                            qmonster::ui::alerts::alert_count(&notices, &last_reports),
+                        ),
+                        FocusedPanel::Panes => select_first(&mut pane_state, last_reports.len()),
+                    },
+                    KeyCode::End => match focus {
+                        FocusedPanel::Alerts => select_last(
+                            &mut alert_state,
+                            qmonster::ui::alerts::alert_count(&notices, &last_reports),
+                        ),
+                        FocusedPanel::Panes => select_last(&mut pane_state, last_reports.len()),
                     },
                     KeyCode::Char('t') => {
                         target_picker_stage = TargetPickerStage::Session;
@@ -616,7 +682,11 @@ fn snapshot_input_from(reports: &[PaneReport], notices: &[SystemNotice]) -> Snap
                 pane_id: r.pane_id.clone(),
                 provider: format!("{:?}", r.identity.identity.provider),
                 role: format!("{:?}", r.identity.identity.role),
-                alerts: r.recommendations.iter().map(|x| x.action.to_string()).collect(),
+                alerts: r
+                    .recommendations
+                    .iter()
+                    .map(|x| x.action.to_string())
+                    .collect(),
             })
             .collect(),
         notices: notices
@@ -713,7 +783,9 @@ fn apply_target_choice(
             Some(TargetPickerOutcome::AdvanceToWindows(session.clone()))
         }
         (TargetChoiceValue::Window(target), TargetPickerStage::Window) => {
-            if let Some(session) = session_name && target.session_name != session {
+            if let Some(session) = session_name
+                && target.session_name != session
+            {
                 return None;
             }
             *selected_target = Some(target.clone());
@@ -817,6 +889,40 @@ fn move_selection(state: &mut ListState, pane_count: usize, step: isize) {
     state.select(Some(next));
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ScrollDir {
+    Up,
+    Down,
+}
+
+fn page_selection(state: &mut ListState, total: usize, page: usize, dir: ScrollDir) {
+    if total == 0 {
+        state.select(None);
+        return;
+    }
+    let step = page.max(1) as isize;
+    match dir {
+        ScrollDir::Up => move_selection(state, total, -step),
+        ScrollDir::Down => move_selection(state, total, step),
+    }
+}
+
+fn select_first(state: &mut ListState, total: usize) {
+    if total == 0 {
+        state.select(None);
+        return;
+    }
+    state.select(Some(0));
+}
+
+fn select_last(state: &mut ListState, total: usize) {
+    if total == 0 {
+        state.select(None);
+        return;
+    }
+    state.select(Some(total.saturating_sub(1)));
+}
+
 fn sync_alert_selection(state: &mut ListState, notices: &[SystemNotice], reports: &[PaneReport]) {
     let count = qmonster::ui::alerts::alert_count(notices, reports);
     match count {
@@ -838,13 +944,7 @@ fn sync_dashboard_state(
     alert_times: &mut HashMap<String, String>,
 ) {
     sync_pane_selection(pane_state, reports.len());
-    refresh_alert_state(
-        notices,
-        reports,
-        previous_alerts,
-        fresh_alerts,
-        alert_times,
-    );
+    refresh_alert_state(notices, reports, previous_alerts, fresh_alerts, alert_times);
     sync_alert_selection(alert_state, notices, reports);
 }
 
@@ -857,18 +957,12 @@ fn refresh_alert_state(
 ) {
     let current = qmonster::ui::alerts::alert_fingerprints(notices, reports);
     let timestamp = Local::now().format("%H:%M:%S").to_string();
-    let disappeared: Vec<String> = previous_alerts
-        .difference(&current)
-        .cloned()
-        .collect();
+    let disappeared: Vec<String> = previous_alerts.difference(&current).cloned().collect();
     for key in disappeared {
         alert_times.remove(&key);
     }
 
-    *fresh_alerts = current
-        .difference(previous_alerts)
-        .cloned()
-        .collect();
+    *fresh_alerts = current.difference(previous_alerts).cloned().collect();
     for key in fresh_alerts.iter() {
         alert_times.insert(key.clone(), timestamp.clone());
     }

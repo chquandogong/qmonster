@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use ratatui::prelude::*;
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::app::event_loop::PaneReport;
@@ -18,7 +18,10 @@ use crate::ui::theme;
 pub fn format_strong_rec_body(rec: &Recommendation, pane_id: &str) -> String {
     let letter = rec.severity.letter();
     let badge = source_kind_label(rec.source_kind);
-    let prefix = format!("[{letter}] [{badge}] >> CHECKPOINT ({pane_id}): {}", rec.reason);
+    let prefix = format!(
+        "[{letter}] [{badge}] >> CHECKPOINT ({pane_id}): {}",
+        rec.reason
+    );
     append_actionable_tail(prefix, rec)
 }
 
@@ -32,10 +35,7 @@ pub fn format_recommendation_body(rec: &Recommendation, pane_id: &str) -> String
 }
 
 pub fn format_recommendation_tail(rec: &Recommendation) -> Option<String> {
-    actionable_tail(
-        rec.next_step.as_deref(),
-        rec.suggested_command.as_deref(),
-    )
+    actionable_tail(rec.next_step.as_deref(), rec.suggested_command.as_deref())
 }
 
 fn append_actionable_tail(prefix: String, rec: &Recommendation) -> String {
@@ -56,6 +56,8 @@ fn actionable_tail(next_step: Option<&str>, suggested_command: Option<&str>) -> 
         (Some(step), Some(cmd)) => Some(format!("next: {step} — run: `{cmd}`")),
     }
 }
+
+const DETAIL_LABEL_WIDTH: usize = 8;
 
 pub struct AlertView<'a> {
     pub notices: &'a [SystemNotice],
@@ -146,6 +148,7 @@ pub fn alert_fingerprints(notices: &[SystemNotice], reports: &[PaneReport]) -> H
 #[derive(Debug, Clone)]
 struct AlertItem {
     timestamp: String,
+    severity: Severity,
     title: String,
     headline: String,
     details: Vec<String>,
@@ -168,12 +171,9 @@ fn collect_items(
         let timestamp = alert_timestamp(&key, alert_times);
         out.push(AlertItem {
             timestamp,
+            severity: n.severity,
             title: format!("System Notice · {}", n.title),
-            headline: format!(
-                "{} [{badge}] {}",
-                severity_word(n.severity),
-                n.body
-            ),
+            headline: format!("[{badge}] {}", n.body),
             details: vec![],
             color,
             is_new: fresh_alerts.contains(&key),
@@ -187,13 +187,9 @@ fn collect_items(
             let timestamp = alert_timestamp(&key, alert_times);
             out.push(AlertItem {
                 timestamp,
+                severity: rec.severity,
                 title: format!("Checkpoint · {}", rep.pane_id),
-                headline: format!(
-                    "{} [{}] {}",
-                    severity_word(rec.severity),
-                    source_kind_label(rec.source_kind),
-                    rec.reason
-                ),
+                headline: format!("[{}] {}", source_kind_label(rec.source_kind), rec.reason),
                 details: recommendation_detail_lines(rec),
                 color,
                 is_new: fresh_alerts.contains(&key),
@@ -208,14 +204,17 @@ fn collect_items(
             let timestamp = alert_timestamp(&key, alert_times);
             out.push(AlertItem {
                 timestamp,
+                severity: f.severity,
                 title: format!("Cross-Pane · {}", f.anchor_pane_id),
                 headline: format!(
-                    "{} [{}] cross-pane — {}",
-                    severity_word(f.severity),
+                    "[{}] cross-pane — {}",
                     source_kind_label(f.source_kind),
                     f.reason,
                 ),
-                details: vec![format!("anchor: {} · others: {}", f.anchor_pane_id, f.other_pane_ids.join(", "))],
+                details: vec![
+                    aligned_detail("anchor", &f.anchor_pane_id),
+                    aligned_detail("others", &f.other_pane_ids.join(", ")),
+                ],
                 color,
                 is_new: fresh_alerts.contains(&key),
             });
@@ -229,13 +228,9 @@ fn collect_items(
             let timestamp = alert_timestamp(&key, alert_times);
             out.push(AlertItem {
                 timestamp,
+                severity: rec.severity,
                 title: format!("Recommendation · {}", rep.pane_id),
-                headline: format!(
-                    "{} [{}] {}",
-                    severity_word(rec.severity),
-                    source_kind_label(rec.source_kind),
-                    rec.reason
-                ),
+                headline: format!("[{}] {}", source_kind_label(rec.source_kind), rec.reason),
                 details: recommendation_detail_lines(rec),
                 color,
                 is_new: fresh_alerts.contains(&key),
@@ -248,19 +243,16 @@ fn collect_items(
 fn alert_list_item(item: &AlertItem, width: usize) -> ListItem<'static> {
     let prefix = format!("[{}] ", item.timestamp);
     let continuation = " ".repeat(prefix.chars().count());
-    let title = if item.is_new {
-        format!("NEW · {}", item.title)
-    } else {
-        item.title.clone()
-    };
-    let mut lines: Vec<Line<'static>> = wrap_with_prefix(&title, width, &prefix, &continuation)
-        .into_iter()
-        .map(|line| Line::styled(line, Style::default().add_modifier(Modifier::BOLD)))
-        .collect();
+    let mut lines: Vec<Line<'static>> = vec![title_line(item, &prefix)];
     lines.extend(
-        wrap_with_prefix(&item.headline, width, &continuation, &continuation)
-            .into_iter()
-            .map(Line::from),
+        wrap_with_prefix(
+            &aligned_detail("summary", &item.headline),
+            width,
+            &continuation,
+            &continuation,
+        )
+        .into_iter()
+        .map(Line::from),
     );
     for detail in &item.details {
         lines.extend(
@@ -280,12 +272,33 @@ fn alert_list_item(item: &AlertItem, width: usize) -> ListItem<'static> {
     ListItem::new(lines).style(alert_style(item.color, item.is_new))
 }
 
+fn title_line(item: &AlertItem, prefix: &str) -> Line<'static> {
+    let mut spans = vec![Span::raw(prefix.to_string())];
+    if item.is_new {
+        spans.push(Span::styled(
+            "NEW ",
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .bg(theme::BADGE_BG)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    spans.push(Span::styled(
+        format!(" {} ", severity_badge_text(item.severity)),
+        theme::severity_badge_style(item.severity).add_modifier(Modifier::BOLD),
+    ));
+    spans.push(Span::raw(" "));
+    spans.push(Span::styled(
+        item.title.clone(),
+        Style::default().add_modifier(Modifier::BOLD),
+    ));
+    Line::from(spans)
+}
+
 fn alert_style(color: Color, is_new: bool) -> Style {
     let style = Style::default().fg(color);
     if is_new {
-        style
-            .bg(theme::BADGE_BG)
-            .add_modifier(Modifier::BOLD)
+        style.bg(theme::BADGE_BG).add_modifier(Modifier::BOLD)
     } else {
         style
     }
@@ -294,9 +307,7 @@ fn alert_style(color: Color, is_new: bool) -> Style {
 fn highlight_style(focused: bool) -> Style {
     let style = Style::default().fg(theme::TEXT_PRIMARY);
     if focused {
-        style
-            .bg(theme::BADGE_BG)
-            .add_modifier(Modifier::BOLD)
+        style.bg(theme::BADGE_BG).add_modifier(Modifier::BOLD)
     } else {
         style.add_modifier(Modifier::BOLD)
     }
@@ -309,15 +320,29 @@ fn alert_timestamp(key: &str, alert_times: &HashMap<String, String>) -> String {
         .unwrap_or_else(|| "--:--:--".into())
 }
 
-fn recommendation_detail_lines(rec: &Recommendation) -> Vec<String> {
+pub fn recommendation_detail_lines(rec: &Recommendation) -> Vec<String> {
     let mut out = Vec::new();
     if let Some(next) = rec.next_step.as_deref().filter(|s| !s.is_empty()) {
-        out.push(format!("next: {next}"));
+        out.push(aligned_detail("next", next));
     }
     if let Some(cmd) = rec.suggested_command.as_deref().filter(|s| !s.is_empty()) {
-        out.push(format!("run: `{cmd}`"));
+        out.push(aligned_detail("run", &format!("`{cmd}`")));
     }
     out
+}
+
+fn aligned_detail(label: &str, value: &str) -> String {
+    format!("{label:<DETAIL_LABEL_WIDTH$}: {value}")
+}
+
+fn severity_badge_text(sev: Severity) -> &'static str {
+    match sev {
+        Severity::Safe => "SAFE",
+        Severity::Good => "GOOD",
+        Severity::Concern => "CONCERN",
+        Severity::Warning => "WARNING",
+        Severity::Risk => "RISK",
+    }
 }
 
 fn wrap_with_prefix(
@@ -451,7 +476,9 @@ pub fn severity_letter(sev: Severity) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role};
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
     use crate::domain::origin::SourceKind;
     use crate::domain::recommendation::Recommendation;
     use crate::domain::signal::SignalSet;
@@ -591,14 +618,20 @@ mod tests {
         };
         let body = format_strong_rec_body(&strong, "%1");
 
-        let next_idx = body.find("next: press 's' to snapshot + archive now")
+        let next_idx = body
+            .find("next: press 's' to snapshot + archive now")
             .expect("body must contain literal `next: …snapshot…` segment");
-        let run_idx = body.find("run: `/compact`")
+        let run_idx = body
+            .find("run: `/compact`")
             .expect("body must contain literal `run: `/compact`` segment");
-        assert!(next_idx < run_idx,
-            "ordering contract: `next:` MUST precede `run:`. body: {body}");
-        assert!(body.contains(">> CHECKPOINT (%1)"),
-            "body must carry the CHECKPOINT slot prefix. got: {body}");
+        assert!(
+            next_idx < run_idx,
+            "ordering contract: `next:` MUST precede `run:`. body: {body}"
+        );
+        assert!(
+            body.contains(">> CHECKPOINT (%1)"),
+            "body must carry the CHECKPOINT slot prefix. got: {body}"
+        );
     }
 
     #[test]
@@ -615,8 +648,14 @@ mod tests {
             profile: None,
         };
         let body = format_strong_rec_body(&strong, "%1");
-        assert!(!body.contains("next:"), "no next_step → no `next:` segment. got: {body}");
-        assert!(body.contains("run: `/compact`"), "cmd still rendered. got: {body}");
+        assert!(
+            !body.contains("next:"),
+            "no next_step → no `next:` segment. got: {body}"
+        );
+        assert!(
+            body.contains("run: `/compact`"),
+            "cmd still rendered. got: {body}"
+        );
     }
 
     #[test]
@@ -626,7 +665,9 @@ mod tests {
             reason: "log storm pattern".into(),
             severity: Severity::Warning,
             source_kind: SourceKind::Heuristic,
-            suggested_command: Some("tmux capture-pane -pS -2000 > ~/.qmonster/archive/x.log".into()),
+            suggested_command: Some(
+                "tmux capture-pane -pS -2000 > ~/.qmonster/archive/x.log".into(),
+            ),
             side_effects: vec![],
             is_strong: false,
             next_step: None,
@@ -651,7 +692,9 @@ mod tests {
             profile: None,
         };
         let body = format_recommendation_body(&rec, "%2");
-        let next_idx = body.find("next: record in CURRENT_STATE first").expect("next segment");
+        let next_idx = body
+            .find("next: record in CURRENT_STATE first")
+            .expect("next segment");
         let run_idx = body.find("run: `# config-edit ...`").expect("run segment");
         assert!(next_idx < run_idx, "next must precede run. body: {body}");
     }

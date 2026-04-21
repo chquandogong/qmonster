@@ -72,11 +72,18 @@ impl IdentityResolver {
             };
         }
 
-        // Fallback: infer provider from command first, then from tail.
+        // Fallback: infer provider from pane title first, then from
+        // current command, then from recent pane text. This keeps
+        // non-canonical titles like "Claude Code" or "Gemini CLI"
+        // useful, while still allowing generic bash/node panes to be
+        // resolved from their visible output.
+        let title_provider = detect_provider(&raw.title);
         let cmd_provider = detect_provider(&raw.current_command);
         let tail_provider = detect_provider(&raw.tail);
 
-        let (provider, confidence) = if cmd_provider != Provider::Unknown {
+        let (provider, confidence) = if title_provider != Provider::Unknown {
+            (title_provider, IdentityConfidence::Medium)
+        } else if cmd_provider != Provider::Unknown {
             (cmd_provider, IdentityConfidence::Medium)
         } else if tail_provider != Provider::Unknown {
             (tail_provider, IdentityConfidence::Low)
@@ -141,7 +148,10 @@ fn detect_provider(s: &str) -> Provider {
 }
 
 fn contains_word(haystack: &str, needle: &str) -> bool {
-    haystack.contains(needle)
+    haystack
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .any(|token| token == needle)
+        || haystack.contains(needle)
 }
 
 #[cfg(test)]
@@ -196,6 +206,26 @@ mod tests {
             out.confidence,
             IdentityConfidence::Medium | IdentityConfidence::Low
         ));
+    }
+
+    #[test]
+    fn non_canonical_title_hint_gives_medium_confidence() {
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("Claude Code", "node", ""));
+        assert_eq!(out.identity.provider, Provider::Claude);
+        assert_eq!(out.confidence, IdentityConfidence::Medium);
+    }
+
+    #[test]
+    fn tail_text_hint_can_resolve_when_title_and_command_are_generic() {
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw(
+            "bash",
+            "bash",
+            "OpenAI Codex is waiting for confirmation on the current patch",
+        ));
+        assert_eq!(out.identity.provider, Provider::Codex);
+        assert_eq!(out.confidence, IdentityConfidence::Low);
     }
 
     #[test]

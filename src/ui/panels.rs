@@ -31,8 +31,7 @@ pub fn format_profile_lines(rec: &Recommendation) -> Vec<String> {
     let Some(profile) = &rec.profile else {
         return Vec::new();
     };
-    let mut lines =
-        Vec::with_capacity(profile.levers.len() + profile.side_effects.len() + 2);
+    let mut lines = Vec::with_capacity(profile.levers.len() + profile.side_effects.len() + 2);
     lines.push(format!(
         "profile: {} ({} levers) [{}]",
         profile.name,
@@ -87,7 +86,10 @@ pub fn render_pane_list(
         return;
     }
 
-    let selected = state.selected().unwrap_or(0).min(reports.len().saturating_sub(1));
+    let selected = state
+        .selected()
+        .unwrap_or(0)
+        .min(reports.len().saturating_sub(1));
     state.select(Some(selected));
 
     let items: Vec<ListItem<'static>> = reports
@@ -110,9 +112,7 @@ pub fn render_pane_list(
 fn highlight_style(focused: bool) -> Style {
     let style = Style::default().fg(theme::TEXT_PRIMARY);
     if focused {
-        style
-            .bg(theme::BADGE_BG)
-            .add_modifier(Modifier::BOLD)
+        style.bg(theme::BADGE_BG).add_modifier(Modifier::BOLD)
     } else {
         style.add_modifier(Modifier::BOLD)
     }
@@ -126,31 +126,39 @@ fn pane_list_item(report: &PaneReport, expanded: bool, with_separator: bool) -> 
                 .fg(pane_header_color(report))
                 .add_modifier(Modifier::BOLD),
         ),
-        Line::from(format!("path: {}", display_path(&report.current_path))),
-        Line::from(state_summary_line(report)),
+        Line::from(aligned_field("path", &display_path(&report.current_path))),
+        Line::from(aligned_field("status", &state_summary_line(report))),
     ];
 
-    let metrics = metric_row(&report.signals);
-    if !metrics.is_empty() {
-        lines.push(Line::from(format!("metrics: {metrics}")));
+    if let Some(line) = blocking_signal_line(&report.signals) {
+        lines.push(line);
+    }
+    if let Some(line) = signal_badge_line("signals", secondary_signal_chips(&report.signals)) {
+        lines.push(line);
+    }
+
+    if let Some(line) = metric_badge_line(&report.signals) {
+        lines.push(line);
     }
 
     if expanded {
         for rec in report.recommendations.iter().take(3) {
-            lines.push(Line::from(format!(
-                "{}: {}",
-                severity_word(rec.severity),
-                rec.reason
+            lines.push(Line::from(aligned_field(
+                severity_label(rec.severity),
+                &rec.reason,
             )));
-            if let Some(tail) = crate::ui::alerts::format_recommendation_tail(rec) {
-                lines.push(Line::from(format!("  {tail}")));
+            for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
+                lines.push(Line::from(format!("  {detail}")));
             }
             for line in format_profile_lines(rec) {
                 lines.push(Line::from(format!("  {line}")));
             }
         }
         if report.recommendations.is_empty() {
-            lines.push(Line::from("no active recommendations"));
+            lines.push(Line::from(aligned_field(
+                "status",
+                "no active recommendations",
+            )));
         }
     }
 
@@ -220,26 +228,28 @@ pub fn pane_panel_title(report: &PaneReport) -> String {
 
 pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
     let mut items = Vec::new();
-    let chips = signal_chips(&report.signals);
-    if chips.is_empty() {
-        items.push(ListItem::new("state: normal").style(Style::default().fg(theme::TEXT_DIM)));
-    } else {
-        items.push(ListItem::new(format!("state: {}", chips.join(" | "))));
+    items.push(ListItem::new(aligned_field(
+        "status",
+        &state_summary_line(report),
+    )));
+    if let Some(line) = blocking_signal_line(&report.signals) {
+        items.push(ListItem::new(line));
+    }
+    if let Some(line) = signal_badge_line("signals", secondary_signal_chips(&report.signals)) {
+        items.push(ListItem::new(line));
     }
 
-    let metrics = metric_row(&report.signals);
-    if !metrics.is_empty() {
-        items.push(ListItem::new(format!("metrics: {metrics}")));
+    if let Some(line) = metric_badge_line(&report.signals) {
+        items.push(ListItem::new(line));
     }
 
     for rec in report.recommendations.iter().take(6) {
-        items.push(ListItem::new(format!(
-            "{}: {}",
-            severity_word(rec.severity),
-            rec.reason
+        items.push(ListItem::new(aligned_field(
+            severity_label(rec.severity),
+            &rec.reason,
         )));
-        if let Some(tail) = crate::ui::alerts::format_recommendation_tail(rec) {
-            items.push(ListItem::new(format!("  {tail}")));
+        for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
+            items.push(ListItem::new(format!("  {detail}")));
         }
         // v1.8.1: expose the structured ProviderProfile payload so the
         // operator can audit lever key/value/citation/SourceKind
@@ -252,6 +262,12 @@ pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
 }
 
 pub fn signal_chips(s: &SignalSet) -> Vec<&'static str> {
+    let mut chips = blocking_signal_chips(s);
+    chips.extend(secondary_signal_chips(s));
+    chips
+}
+
+fn blocking_signal_chips(s: &SignalSet) -> Vec<&'static str> {
     let mut chips = Vec::new();
     if s.waiting_for_input {
         chips.push("waiting for input");
@@ -259,6 +275,11 @@ pub fn signal_chips(s: &SignalSet) -> Vec<&'static str> {
     if s.permission_prompt {
         chips.push("approval needed");
     }
+    chips
+}
+
+fn secondary_signal_chips(s: &SignalSet) -> Vec<&'static str> {
+    let mut chips = Vec::new();
     if s.log_storm {
         chips.push("log storm");
     }
@@ -303,15 +324,13 @@ pub fn metric_row(s: &SignalSet) -> String {
     parts.join("  ")
 }
 
+fn aligned_field(label: &str, value: &str) -> String {
+    format!("{label:<8}: {value}")
+}
+
 fn state_summary_line(report: &PaneReport) -> String {
-    let chips = signal_chips(&report.signals);
-    let state = if chips.is_empty() {
-        "normal".to_string()
-    } else {
-        chips.join(" | ")
-    };
     format!(
-        "{} confidence · {state}",
+        "{} confidence",
         confidence_label(report.identity.confidence)
     )
 }
@@ -353,14 +372,118 @@ fn role_label(role: Role) -> &'static str {
     }
 }
 
-fn severity_word(severity: crate::domain::recommendation::Severity) -> &'static str {
+fn severity_label(severity: crate::domain::recommendation::Severity) -> &'static str {
     match severity {
-        crate::domain::recommendation::Severity::Safe => "safe",
-        crate::domain::recommendation::Severity::Good => "good",
-        crate::domain::recommendation::Severity::Concern => "concern",
-        crate::domain::recommendation::Severity::Warning => "warning",
-        crate::domain::recommendation::Severity::Risk => "risk",
+        crate::domain::recommendation::Severity::Safe => "SAFE",
+        crate::domain::recommendation::Severity::Good => "GOOD",
+        crate::domain::recommendation::Severity::Concern => "CONCERN",
+        crate::domain::recommendation::Severity::Warning => "WARNING",
+        crate::domain::recommendation::Severity::Risk => "RISK",
     }
+}
+
+fn metric_badge_line(signals: &SignalSet) -> Option<Line<'static>> {
+    let mut spans = vec![Span::raw(format!("{:<8}: ", "metrics"))];
+    let mut has_any = false;
+
+    if let Some(metric) = signals.context_pressure.as_ref() {
+        has_any = true;
+        spans.push(Span::styled(
+            format!(" CTX {:.0}% ", metric.value * 100.0),
+            theme::severity_badge_style(context_metric_severity(metric.value)),
+        ));
+    }
+    if let Some(metric) = signals.token_count.as_ref() {
+        if has_any {
+            spans.push(Span::raw(" "));
+        }
+        has_any = true;
+        spans.push(Span::styled(
+            format!(
+                " TOKENS {} [{}] ",
+                metric.value,
+                source_kind_label(metric.source_kind)
+            ),
+            theme::label_style(),
+        ));
+    }
+    if let Some(metric) = signals.cost_usd.as_ref() {
+        if has_any {
+            spans.push(Span::raw(" "));
+        }
+        has_any = true;
+        spans.push(Span::styled(
+            format!(
+                " COST ${:.2} [{}] ",
+                metric.value,
+                source_kind_label(metric.source_kind)
+            ),
+            theme::label_style(),
+        ));
+    }
+
+    has_any.then(|| Line::from(spans))
+}
+
+fn context_metric_severity(value: f32) -> crate::domain::recommendation::Severity {
+    use crate::domain::recommendation::Severity;
+    if value >= 0.85 {
+        Severity::Risk
+    } else if value >= 0.75 {
+        Severity::Warning
+    } else if value >= 0.60 {
+        Severity::Concern
+    } else {
+        Severity::Good
+    }
+}
+
+fn blocking_signal_line(signals: &SignalSet) -> Option<Line<'static>> {
+    let chips = blocking_signal_chips(signals);
+    if chips.is_empty() {
+        return None;
+    }
+    let mut spans = vec![Span::raw(format!("{:<8}: ", "blocked"))];
+    spans.push(Span::styled(
+        " BLOCKED ",
+        theme::severity_badge_style(crate::domain::recommendation::Severity::Warning)
+            .add_modifier(Modifier::BOLD),
+    ));
+    for chip in chips {
+        spans.push(Span::raw(" "));
+        spans.push(signal_chip_span(
+            chip,
+            crate::domain::recommendation::Severity::Risk,
+        ));
+    }
+    Some(Line::from(spans))
+}
+
+fn signal_badge_line(label: &str, chips: Vec<&'static str>) -> Option<Line<'static>> {
+    if chips.is_empty() {
+        return None;
+    }
+    let mut spans = vec![Span::raw(format!("{label:<8}: "))];
+    for (idx, chip) in chips.into_iter().enumerate() {
+        if idx > 0 {
+            spans.push(Span::raw(" "));
+        }
+        spans.push(signal_chip_span(
+            chip,
+            crate::domain::recommendation::Severity::Concern,
+        ));
+    }
+    Some(Line::from(spans))
+}
+
+fn signal_chip_span(
+    chip: &'static str,
+    severity: crate::domain::recommendation::Severity,
+) -> Span<'static> {
+    Span::styled(
+        format!(" {} ", chip.to_ascii_uppercase()),
+        theme::severity_badge_style(severity),
+    )
 }
 
 #[cfg(test)]
@@ -433,8 +556,8 @@ mod tests {
         };
         let summary = state_summary_line(&rep);
         assert!(summary.contains("high confidence"));
-        assert!(summary.contains("waiting for input"));
-        assert!(summary.contains("repeated output"));
+        assert!(!summary.contains("waiting for input"));
+        assert!(!summary.contains("repeated output"));
     }
 
     #[test]
@@ -451,8 +574,10 @@ mod tests {
             next_step: None,
             profile: None,
         };
-        assert!(format_profile_lines(&rec).is_empty(),
-            "no profile -> no lever lines emitted; caller prints only the rec header");
+        assert!(
+            format_profile_lines(&rec).is_empty(),
+            "no profile -> no lever lines emitted; caller prints only the rec header"
+        );
     }
 
     #[test]
@@ -499,17 +624,43 @@ mod tests {
         assert_eq!(lines.len(), 3, "1 header + 2 lever lines");
 
         // Header: profile name + lever count + ProjectCanonical badge.
-        assert!(lines[0].contains("claude-default"), "header names the profile: {}", lines[0]);
-        assert!(lines[0].contains("2 levers"), "header reports lever count: {}", lines[0]);
-        assert!(lines[0].contains("[Qmonster]"),
+        assert!(
+            lines[0].contains("claude-default"),
+            "header names the profile: {}",
+            lines[0]
+        );
+        assert!(
+            lines[0].contains("2 levers"),
+            "header reports lever count: {}",
+            lines[0]
+        );
+        assert!(
+            lines[0].contains("[Qmonster]"),
             "header carries ProjectCanonical label so operator sees bundle authority: {}",
-            lines[0]);
+            lines[0]
+        );
 
         // Lever line #1: ProviderOfficial badge + key + value + citation.
-        assert!(lines[1].contains("[Official]"), "lever carries ProviderOfficial label: {}", lines[1]);
-        assert!(lines[1].contains("BASH_MAX_OUTPUT_LENGTH"), "lever key visible: {}", lines[1]);
-        assert!(lines[1].contains("30000"), "lever value visible: {}", lines[1]);
-        assert!(lines[1].contains("bash output cap"), "lever citation visible: {}", lines[1]);
+        assert!(
+            lines[1].contains("[Official]"),
+            "lever carries ProviderOfficial label: {}",
+            lines[1]
+        );
+        assert!(
+            lines[1].contains("BASH_MAX_OUTPUT_LENGTH"),
+            "lever key visible: {}",
+            lines[1]
+        );
+        assert!(
+            lines[1].contains("30000"),
+            "lever value visible: {}",
+            lines[1]
+        );
+        assert!(
+            lines[1].contains("bash output cap"),
+            "lever citation visible: {}",
+            lines[1]
+        );
 
         // Lever line #2.
         assert!(lines[2].contains("[Official]"));
@@ -556,7 +707,11 @@ mod tests {
         let lines = format_profile_lines(&rec);
 
         // Shape: 1 header + 1 lever + 1 side_effects header + 2 entries = 5.
-        assert_eq!(lines.len(), 5, "1 header + 1 lever + 1 side-effects header + 2 entries");
+        assert_eq!(
+            lines.len(),
+            5,
+            "1 header + 1 lever + 1 side-effects header + 2 entries"
+        );
 
         // side_effects section comes AFTER all lever rows. Find the
         // section header and verify it's past the lever row.
@@ -570,20 +725,30 @@ mod tests {
         );
 
         // Header declares the count.
-        assert!(lines[side_effects_header_idx].contains("(2)"),
-            "header reports count: {}", lines[side_effects_header_idx]);
+        assert!(
+            lines[side_effects_header_idx].contains("(2)"),
+            "header reports count: {}",
+            lines[side_effects_header_idx]
+        );
 
         // Every entry after the header starts with `- ` and carries
         // the operator-visible trade-off text.
         let entries = &lines[side_effects_header_idx + 1..];
         assert_eq!(entries.len(), 2);
         for entry in entries {
-            assert!(entry.starts_with("- "), "each side-effect entry starts with '- ': {entry}");
+            assert!(
+                entry.starts_with("- "),
+                "each side-effect entry starts with '- ': {entry}"
+            );
         }
-        assert!(entries.iter().any(|e| e.contains("verbose status output")),
-            "--bare side effect visible in rendered lines");
-        assert!(entries.iter().any(|e| e.contains("auto-memory")),
-            "DISABLE_AUTO_MEMORY side effect visible in rendered lines");
+        assert!(
+            entries.iter().any(|e| e.contains("verbose status output")),
+            "--bare side effect visible in rendered lines"
+        );
+        assert!(
+            entries.iter().any(|e| e.contains("auto-memory")),
+            "DISABLE_AUTO_MEMORY side effect visible in rendered lines"
+        );
     }
 
     #[test]

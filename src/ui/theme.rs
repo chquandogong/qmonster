@@ -21,6 +21,12 @@ pub fn severity_color(sev: Severity) -> Color {
     }
 }
 
+pub fn severity_badge_style(sev: Severity) -> Style {
+    Style::default()
+        .fg(Color::Rgb(22, 24, 30))
+        .bg(severity_color(sev))
+}
+
 pub fn label_style() -> Style {
     Style::default().fg(TEXT_DIM).bg(BADGE_BG)
 }
