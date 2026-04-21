@@ -7,7 +7,10 @@ pub mod recommendation;
 pub mod signal;
 
 pub use audit::{AuditEvent, AuditEventKind};
-pub use identity::{IdentityConfidence, IdentityResolver, PaneIdentity, Provider, RawPaneInput, ResolvedIdentity, Role};
+pub use identity::{
+    IdentityConfidence, IdentityResolver, PaneIdentity, Provider, RawPaneInput, ResolvedIdentity,
+    Role,
+};
 pub use lifecycle::{PaneLifecycle, PaneLifecycleEvent};
 pub use origin::SourceKind;
 pub use profile::{ProfileLever, ProviderProfile};

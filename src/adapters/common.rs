@@ -118,9 +118,7 @@ fn parse_first_percent(line: &str) -> Option<f32> {
             let start = i;
             let mut seen_dot = false;
             i += 1;
-            while i < chars.len()
-                && (chars[i].is_ascii_digit() || (!seen_dot && chars[i] == '.'))
-            {
+            while i < chars.len() && (chars[i].is_ascii_digit() || (!seen_dot && chars[i] == '.')) {
                 if chars[i] == '.' {
                     seen_dot = true;
                 }
@@ -158,7 +156,10 @@ fn detect_task_type(lower: &str) -> TaskType {
         || lower.contains("references")
     {
         TaskType::CodeExploration
-    } else if lower.contains("traceback") || lower.contains("stack trace") || lower.contains("panic") {
+    } else if lower.contains("traceback")
+        || lower.contains("stack trace")
+        || lower.contains("panic")
+    {
         TaskType::LogTriage
     } else {
         TaskType::Unknown

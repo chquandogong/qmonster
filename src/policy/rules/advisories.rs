@@ -87,10 +87,13 @@ fn log_storm_advisory(
 fn aggressive_log_storm() -> Recommendation {
     Recommendation {
         action: "aggressive: drop non-essential ingress",
-        reason: "quota-tight: suppress low-value ingress lines; keep only error/warn markers".into(),
+        reason: "quota-tight: suppress low-value ingress lines; keep only error/warn markers"
+            .into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Heuristic,
-        suggested_command: Some("# edit config/qmonster.toml: [logging] sensitivity = \"minimal\"".into()),
+        suggested_command: Some(
+            "# edit config/qmonster.toml: [logging] sensitivity = \"minimal\"".into(),
+        ),
         side_effects: vec![],
         is_strong: false,
         next_step: None,
@@ -106,8 +109,10 @@ fn code_exploration(
     if !matches!(id.identity.role, Role::Main | Role::Review) {
         return None;
     }
-    let triggers_fired = matches!(signals.task_type, crate::domain::signal::TaskType::CodeExploration)
-        || signals.verbose_answer
+    let triggers_fired = matches!(
+        signals.task_type,
+        crate::domain::signal::TaskType::CodeExploration
+    ) || signals.verbose_answer
         || signals.output_chars >= 1500;
     if !triggers_fired {
         return None;
@@ -142,7 +147,9 @@ fn context_pressure_warning(
     }
     Some(Recommendation {
         action: "context-pressure: checkpoint",
-        reason: "context warming — checkpoint first, archive large results, only then consider /compact".into(),
+        reason:
+            "context warming — checkpoint first, archive large results, only then consider /compact"
+                .into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Estimated,
         suggested_command: Some("/compact".into()),
@@ -222,7 +229,8 @@ fn verbose_review(
     }
     Some(Recommendation {
         action: "verbose-review: terse profile",
-        reason: "review pane is verbose — consider Caveman / claude-token-efficient terse profile".into(),
+        reason: "review pane is verbose — consider Caveman / claude-token-efficient terse profile"
+            .into(),
         severity: Severity::Concern,
         source_kind: SourceKind::Heuristic,
         suggested_command: Some("# edit config/qmonster.toml: [review] style = \"terse\"".into()),
@@ -239,7 +247,9 @@ fn aggressive_verbose_review() -> Recommendation {
         reason: "quota-tight: drop attribution footer and preamble on review output".into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Heuristic,
-        suggested_command: Some("# edit ~/.claude/settings.json: \"attribution\": { \"commit\": false }".into()),
+        suggested_command: Some(
+            "# edit ~/.claude/settings.json: \"attribution\": { \"commit\": false }".into(),
+        ),
         side_effects: vec![],
         is_strong: false,
         next_step: None,
@@ -314,32 +324,50 @@ fn aggressive_repeated_cache_suggest() -> Recommendation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role};
-    use crate::domain::signal::MetricValue;
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
     use crate::domain::origin::SourceKind as SK;
+    use crate::domain::signal::MetricValue;
 
     fn id_high(role: Role) -> ResolvedIdentity {
         ResolvedIdentity {
-            identity: PaneIdentity { provider: Provider::Claude, instance: 1, role, pane_id: "%1".into() },
+            identity: PaneIdentity {
+                provider: Provider::Claude,
+                instance: 1,
+                role,
+                pane_id: "%1".into(),
+            },
             confidence: IdentityConfidence::High,
         }
     }
 
     fn id_low(role: Role) -> ResolvedIdentity {
         ResolvedIdentity {
-            identity: PaneIdentity { provider: Provider::Claude, instance: 1, role, pane_id: "%1".into() },
+            identity: PaneIdentity {
+                provider: Provider::Claude,
+                instance: 1,
+                role,
+                pane_id: "%1".into(),
+            },
             confidence: IdentityConfidence::Low,
         }
     }
 
     fn gates_default() -> PolicyGates {
-        PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::High }
+        PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::High,
+        }
     }
 
     #[test]
     fn log_storm_advisory_fires_with_heuristic_source_kind() {
         let id = id_high(Role::Main);
-        let s = SignalSet { log_storm: true, ..SignalSet::default() };
+        let s = SignalSet {
+            log_storm: true,
+            ..SignalSet::default()
+        };
         let recs = eval_advisories(&id, &s, &gates_default());
         let adv = recs
             .iter()
@@ -352,18 +380,34 @@ mod tests {
     #[test]
     fn code_exploration_fires_on_verbose_main_role() {
         let id = id_high(Role::Main);
-        let s = SignalSet { verbose_answer: true, ..SignalSet::default() };
+        let s = SignalSet {
+            verbose_answer: true,
+            ..SignalSet::default()
+        };
         let recs = eval_advisories(&id, &s, &gates_default());
-        assert!(recs.iter().any(|r| r.action == "code-exploration: graph/symbol"));
+        assert!(
+            recs.iter()
+                .any(|r| r.action == "code-exploration: graph/symbol")
+        );
     }
 
     #[test]
     fn code_exploration_suppressed_on_low_identity_confidence() {
         let id = id_low(Role::Main);
-        let s = SignalSet { verbose_answer: true, ..SignalSet::default() };
-        let gates = PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::Low };
+        let s = SignalSet {
+            verbose_answer: true,
+            ..SignalSet::default()
+        };
+        let gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::Low,
+        };
         let recs = eval_advisories(&id, &s, &gates);
-        assert!(!recs.iter().any(|r| r.action == "code-exploration: graph/symbol"));
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "code-exploration: graph/symbol")
+        );
     }
 
     fn pressure(v: f32) -> SignalSet {
@@ -378,7 +422,10 @@ mod tests {
         let id = id_high(Role::Main);
         let s = pressure(0.78);
         let recs = eval_advisories(&id, &s, &gates_default());
-        assert!(recs.iter().any(|r| r.action == "context-pressure: checkpoint"));
+        assert!(
+            recs.iter()
+                .any(|r| r.action == "context-pressure: checkpoint")
+        );
         assert!(!recs.iter().any(|r| r.action == "context-pressure: act now"));
     }
 
@@ -388,31 +435,53 @@ mod tests {
         let s = pressure(0.88);
         let recs = eval_advisories(&id, &s, &gates_default());
         assert!(recs.iter().any(|r| r.action == "context-pressure: act now"));
-        assert!(!recs.iter().any(|r| r.action == "context-pressure: checkpoint"));
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "context-pressure: checkpoint")
+        );
     }
 
     #[test]
     fn context_pressure_suppressed_on_low_identity_confidence() {
         let id = id_low(Role::Main);
         let s = pressure(0.92);
-        let gates = PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::Low };
+        let gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::Low,
+        };
         let recs = eval_advisories(&id, &s, &gates);
-        assert!(!recs.iter().any(|r| r.action.starts_with("context-pressure")),
-            "Codex #2: context_pressure_* must respect the gate");
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action.starts_with("context-pressure")),
+            "Codex #2: context_pressure_* must respect the gate"
+        );
     }
 
     #[test]
     fn verbose_review_requires_review_role() {
-        let s = SignalSet { verbose_answer: true, ..SignalSet::default() };
+        let s = SignalSet {
+            verbose_answer: true,
+            ..SignalSet::default()
+        };
         let rev = id_high(Role::Review);
         let main = id_high(Role::Main);
 
         let recs_rev = eval_advisories(&rev, &s, &gates_default());
-        assert!(recs_rev.iter().any(|r| r.action == "verbose-review: terse profile"));
+        assert!(
+            recs_rev
+                .iter()
+                .any(|r| r.action == "verbose-review: terse profile")
+        );
 
         let recs_main = eval_advisories(&main, &s, &gates_default());
-        assert!(!recs_main.iter().any(|r| r.action == "verbose-review: terse profile"),
-            "verbose_review must NOT fire on role=Main");
+        assert!(
+            !recs_main
+                .iter()
+                .any(|r| r.action == "verbose-review: terse profile"),
+            "verbose_review must NOT fire on role=Main"
+        );
     }
 
     #[test]
@@ -420,34 +489,56 @@ mod tests {
         let id = id_high(Role::Main);
         let s = pressure(0.92);
         let recs = eval_advisories(&id, &s, &gates_default());
-        assert!(recs.iter().any(|r| r.action == "quota-tight: consider enabling"));
+        assert!(
+            recs.iter()
+                .any(|r| r.action == "quota-tight: consider enabling")
+        );
     }
 
     #[test]
     fn quota_tight_nudge_never_fires_when_gate_on() {
         let id = id_high(Role::Main);
         let s = pressure(0.92);
-        let gates = PolicyGates { quota_tight: true, identity_confidence: IdentityConfidence::High };
+        let gates = PolicyGates {
+            quota_tight: true,
+            identity_confidence: IdentityConfidence::High,
+        };
         let recs = eval_advisories(&id, &s, &gates);
-        assert!(!recs.iter().any(|r| r.action == "quota-tight: consider enabling"));
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "quota-tight: consider enabling")
+        );
     }
 
     #[test]
     fn quota_tight_nudge_fires_regardless_of_identity_confidence() {
         let id = id_low(Role::Main);
         let s = pressure(0.92);
-        let gates = PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::Low };
+        let gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::Low,
+        };
         let recs = eval_advisories(&id, &s, &gates);
-        assert!(recs.iter().any(|r| r.action == "quota-tight: consider enabling"),
-            "quota_tight_nudge is Qmonster-config-level, not provider-flavored");
+        assert!(
+            recs.iter()
+                .any(|r| r.action == "quota-tight: consider enabling"),
+            "quota_tight_nudge is Qmonster-config-level, not provider-flavored"
+        );
     }
 
     #[test]
     fn repeated_cache_suggest_fires_on_repeated_output() {
         let id = id_high(Role::Main);
-        let s = SignalSet { repeated_output: true, ..SignalSet::default() };
+        let s = SignalSet {
+            repeated_output: true,
+            ..SignalSet::default()
+        };
         let recs = eval_advisories(&id, &s, &gates_default());
-        assert!(recs.iter().any(|r| r.action == "repeated-output: result-hash cache"));
+        assert!(
+            recs.iter()
+                .any(|r| r.action == "repeated-output: result-hash cache")
+        );
     }
 
     #[test]
@@ -460,9 +551,16 @@ mod tests {
             context_pressure: Some(MetricValue::new(0.92, SK::Estimated)),
             ..SignalSet::default()
         };
-        let gates = PolicyGates { quota_tight: true, identity_confidence: IdentityConfidence::High };
+        let gates = PolicyGates {
+            quota_tight: true,
+            identity_confidence: IdentityConfidence::High,
+        };
         let recs = eval_advisories(&id, &s, &gates);
-        let aggressive_actions: Vec<&str> = recs.iter().map(|r| r.action).filter(|a| a.starts_with("aggressive:")).collect();
+        let aggressive_actions: Vec<&str> = recs
+            .iter()
+            .map(|r| r.action)
+            .filter(|a| a.starts_with("aggressive:"))
+            .collect();
         assert!(aggressive_actions.contains(&"aggressive: drop non-essential ingress"));
         assert!(aggressive_actions.contains(&"aggressive: clamp output, archive all"));
         assert!(aggressive_actions.contains(&"aggressive: strip attribution"));
@@ -478,12 +576,17 @@ mod tests {
             context_pressure: Some(MetricValue::new(0.80, SK::Estimated)),
             ..SignalSet::default()
         };
-        let gates = PolicyGates { quota_tight: true, identity_confidence: IdentityConfidence::High };
+        let gates = PolicyGates {
+            quota_tight: true,
+            identity_confidence: IdentityConfidence::High,
+        };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
         assert!(actions.contains(&"context-pressure: checkpoint"));
-        assert!(actions.contains(&"aggressive: terse profile + archive"),
-            "C-warning aggressive must fire when pressure in [0.75, 0.85) and gate is on");
+        assert!(
+            actions.contains(&"aggressive: terse profile + archive"),
+            "C-warning aggressive must fire when pressure in [0.75, 0.85) and gate is on"
+        );
     }
 
     #[test]
@@ -496,22 +599,34 @@ mod tests {
             context_pressure: Some(MetricValue::new(0.92, SK::Estimated)),
             ..SignalSet::default()
         };
-        let gates = PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::High };
+        let gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::High,
+        };
         let recs = eval_advisories(&id, &s, &gates);
         let any_aggressive = recs.iter().any(|r| r.action.starts_with("aggressive:"));
-        assert!(!any_aggressive, "S3: aggressive variants never fire when gate is off");
+        assert!(
+            !any_aggressive,
+            "S3: aggressive variants never fire when gate is off"
+        );
     }
 
     #[test]
     fn log_storm_advisory_carries_tmux_capture_suggested_command() {
         let id = id_high(Role::Main);
-        let s = SignalSet { log_storm: true, ..SignalSet::default() };
+        let s = SignalSet {
+            log_storm: true,
+            ..SignalSet::default()
+        };
         let recs = eval_advisories(&id, &s, &gates_default());
         let adv = recs
             .iter()
             .find(|r| r.action == "log-storm: ingress filter + summary")
             .expect("log_storm_advisory fires");
-        let cmd = adv.suggested_command.as_deref().expect("suggested_command present");
+        let cmd = adv
+            .suggested_command
+            .as_deref()
+            .expect("suggested_command present");
         assert!(cmd.contains("tmux capture-pane"), "got: {cmd}");
         assert!(cmd.contains("~/.qmonster/archive/"), "got: {cmd}");
     }
@@ -527,17 +642,27 @@ mod tests {
             .expect("C-warning fires");
         // Codex v1.7.3 finding #1: suggested_command must be runnable on
         // a single surface. "/compact" is a pure in-pane slash command.
-        assert_eq!(adv.suggested_command.as_deref(), Some("/compact"),
-            "suggested_command must be runnable in-pane; mixed-mode prose belongs in next_step");
+        assert_eq!(
+            adv.suggested_command.as_deref(),
+            Some("/compact"),
+            "suggested_command must be runnable in-pane; mixed-mode prose belongs in next_step"
+        );
         // Codex v1.7.3 finding #2: contract must lock ordering — snapshot
         // step precedes the run step. Structurally enforced by putting
         // prose in next_step (preamble) and command in suggested_command
         // (execution).
-        let step = adv.next_step.as_deref().expect("strong rec must carry snapshot next_step");
-        assert!(step.contains("snapshot"),
-            "next_step must describe the snapshot precondition. got: {step}");
-        assert!(step.contains("'s'") || step.contains("snapshot"),
-            "next_step should hint the TUI key `s` or the snapshot action. got: {step}");
+        let step = adv
+            .next_step
+            .as_deref()
+            .expect("strong rec must carry snapshot next_step");
+        assert!(
+            step.contains("snapshot"),
+            "next_step must describe the snapshot precondition. got: {step}"
+        );
+        assert!(
+            step.contains("'s'") || step.contains("snapshot"),
+            "next_step should hint the TUI key `s` or the snapshot action. got: {step}"
+        );
     }
 
     #[test]
@@ -549,11 +674,19 @@ mod tests {
             .iter()
             .find(|r| r.action == "context-pressure: act now")
             .expect("C-critical fires");
-        assert_eq!(adv.suggested_command.as_deref(), Some("/compact"),
-            "suggested_command must be runnable in-pane; mixed-mode prose belongs in next_step");
-        let step = adv.next_step.as_deref().expect("strong rec must carry snapshot next_step");
-        assert!(step.contains("snapshot"),
-            "next_step must describe the snapshot precondition (strong rec). got: {step}");
+        assert_eq!(
+            adv.suggested_command.as_deref(),
+            Some("/compact"),
+            "suggested_command must be runnable in-pane; mixed-mode prose belongs in next_step"
+        );
+        let step = adv
+            .next_step
+            .as_deref()
+            .expect("strong rec must carry snapshot next_step");
+        assert!(
+            step.contains("snapshot"),
+            "next_step must describe the snapshot precondition (strong rec). got: {step}"
+        );
     }
 
     #[test]
@@ -566,7 +699,10 @@ mod tests {
             context_pressure: Some(MetricValue::new(0.92, SK::Estimated)),
             ..SignalSet::default()
         };
-        let gates = PolicyGates { quota_tight: false, identity_confidence: IdentityConfidence::Low };
+        let gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::Low,
+        };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
         // quota_tight_nudge fires — not provider-flavored.
@@ -583,12 +719,23 @@ mod tests {
     #[test]
     fn aggressive_verbose_review_suggests_attribution_edit() {
         let id = id_high(Role::Review);
-        let s = SignalSet { verbose_answer: true, ..SignalSet::default() };
-        let gates = PolicyGates { quota_tight: true, identity_confidence: IdentityConfidence::High };
+        let s = SignalSet {
+            verbose_answer: true,
+            ..SignalSet::default()
+        };
+        let gates = PolicyGates {
+            quota_tight: true,
+            identity_confidence: IdentityConfidence::High,
+        };
         let recs = eval_advisories(&id, &s, &gates);
-        let adv = recs.iter().find(|r| r.action == "aggressive: strip attribution")
+        let adv = recs
+            .iter()
+            .find(|r| r.action == "aggressive: strip attribution")
             .expect("aggressive_verbose_review fires under quota_tight");
-        let cmd = adv.suggested_command.as_deref().expect("populated in v1.7.1");
+        let cmd = adv
+            .suggested_command
+            .as_deref()
+            .expect("populated in v1.7.1");
         assert!(cmd.contains("attribution"), "got: {cmd}");
     }
 }

@@ -18,10 +18,7 @@ pub struct SystemNotice {
 /// Route a tmux polling failure into a deduplicated system notice.
 /// Repeated identical errors are suppressed so the alert queue does not
 /// churn every poll tick while tmux is unavailable.
-pub fn route_polling_failure(
-    last_error: &mut Option<String>,
-    err: String,
-) -> Option<SystemNotice> {
+pub fn route_polling_failure(last_error: &mut Option<String>, err: String) -> Option<SystemNotice> {
     if last_error.as_deref() == Some(err.as_str()) {
         return None;
     }
@@ -188,7 +185,10 @@ mod tests {
         let first = route_polling_failure(&mut last, "tmux not running".into());
         assert!(first.is_some());
         let second = route_polling_failure(&mut last, "tmux not running".into());
-        assert!(second.is_none(), "same polling error should not spam notices");
+        assert!(
+            second.is_none(),
+            "same polling error should not spam notices"
+        );
     }
 
     #[test]

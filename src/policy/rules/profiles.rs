@@ -731,23 +731,32 @@ fn gemini_default_profile() -> ProviderProfile {
                 citation: "Gemini CLI docs describe the --model flag (no canonical default for all sessions); Qmonster picks gemini-2.5-flash for healthy main-pane baseline to keep per-token cost low on routine work",
                 source_kind: SourceKind::ProjectCanonical,
             },
-            // Auto-approval stays explicitly OFF in the baseline.
-            // Gemini's `--yolo` flag auto-approves agent actions;
-            // the safe default for an interactive healthy main pane
-            // is NOT to set --yolo. Baseline surfaces this as a
-            // lever (value `unset`) so operators scanning the
-            // rendered profile see the safety-precedence choice,
-            // and the aggressive variant `gemini-script-low-token`
-            // (P4-7, shipped) sets `--yolo = enabled` — inverse
-            // toggle on the same key. Authority is ProjectCanonical
-            // because "recommend NOT setting a flag" is a Qmonster
-            // architectural choice (mission.yaml safety-precedence
-            // constraint), not a Gemini-doc canonical value.
+            // Approval mode: pin the documented Gemini CLI default
+            // `default` (interactive confirm) as an explicit
+            // positive-form lever. Gemini CLI docs describe the
+            // --approval-mode flag with `default` and `yolo` values,
+            // and `default` is the documented default value — so
+            // both the KEY and the VALUE are provider-documented,
+            // which makes the authority ProviderOfficial (v1.8.13
+            // positive-form upgrade closing Codex P4-6 deferred
+            // non-blocker). Trade-off: the earlier baseline used
+            // `--yolo = unset` to preserve a same-key inverse
+            // toggle with the aggressive variant; we accept losing
+            // that aesthetic in exchange for (a) a positive
+            // expression operators can scan without parsing "NOT
+            // set", (b) 1 PO authority upgrade honestly available
+            // from Gemini docs, (c) lever rows that map cleanly to
+            // an actual `gemini --approval-mode default` invocation
+            // rather than the absence of a flag. The aggressive
+            // variant `gemini-script-low-token` (P4-7) keeps
+            // `--yolo = enabled` — the same semantic inverse
+            // (interactive vs auto-approve) expressed on a
+            // different key.
             ProfileLever {
-                key: "--yolo",
-                value: "unset",
-                citation: "Gemini CLI docs describe --yolo as auto-approval for agent actions; Qmonster recommends KEEPING IT UNSET on a healthy interactive main-pane baseline per the safety-precedence constraint (aggressive variant gemini-script-low-token sets --yolo = enabled under quota_tight)",
-                source_kind: SourceKind::ProjectCanonical,
+                key: "--approval-mode",
+                value: "default",
+                citation: "Gemini CLI docs describe --approval-mode with `default` (interactive confirm) and `yolo` (auto-approve) as the documented values; `default` is the documented default. Qmonster pins this positive-form lever on a healthy interactive main-pane baseline per the safety-precedence constraint (aggressive variant gemini-script-low-token opts into --yolo = enabled under quota_tight — semantic inverse on a different key)",
+                source_kind: SourceKind::ProviderOfficial,
             },
         ],
         // Healthy-state baseline: no operator-visible trade-offs.
@@ -857,13 +866,19 @@ fn gemini_script_low_token_profile() -> ProviderProfile {
         name: "gemini-script-low-token",
         levers: vec![
             // Auto-approval opt-in (quota_tight gate makes it
-            // explicit). Inverse of the baseline's `--yolo = unset`:
-            // aggressive scripted sessions want the agent to run
-            // autonomously without per-call approval.
+            // explicit). Semantic inverse of the baseline's
+            // `--approval-mode = default`: aggressive scripted
+            // sessions want the agent to run autonomously without
+            // per-call approval, so they opt into Gemini's `--yolo`
+            // flag. Different key, same approval-surface axis —
+            // the v1.8.13 positive-form swap on the baseline kept
+            // this aggressive lever intact because `--yolo =
+            // enabled` is still the canonical Gemini auto-approve
+            // opt-in; only the baseline representation changed.
             ProfileLever {
                 key: "--yolo",
                 value: "enabled",
-                citation: "Gemini CLI docs describe --yolo as auto-approval for agent actions; Qmonster enables it ONLY in this quota_tight-gated aggressive profile (baseline keeps --yolo unset per safety-precedence)",
+                citation: "Gemini CLI docs describe --yolo as auto-approval for agent actions; Qmonster enables it ONLY in this quota_tight-gated aggressive profile (baseline uses the positive-form --approval-mode = default per safety-precedence)",
                 source_kind: SourceKind::ProjectCanonical,
             },
             // Provider auto-memory explicitly off. Codex v1.8.9
@@ -958,11 +973,13 @@ mod tests {
         // Reason mentions the profile name AND cites ProviderOfficial authority.
         assert!(
             rec.reason.contains("claude-default"),
-            "reason must name the profile: {}", rec.reason
+            "reason must name the profile: {}",
+            rec.reason
         );
         assert!(
             rec.reason.contains("ProviderOfficial"),
-            "reason must cite ProviderOfficial authority label: {}", rec.reason
+            "reason must cite ProviderOfficial authority label: {}",
+            rec.reason
         );
         // No single runnable command — applying a profile is multi-
         // key settings editing; justified None.
@@ -1059,7 +1076,8 @@ mod tests {
     }
 
     #[test]
-    fn recommend_claude_script_low_token_fires_on_quota_tight_with_eight_provider_official_levers_and_populated_side_effects() {
+    fn recommend_claude_script_low_token_fires_on_quota_tight_with_eight_provider_official_levers_and_populated_side_effects()
+     {
         // Shape contract for the aggressive profile:
         // - fires under quota_tight + healthy Claude main
         // - exactly 8 ProviderOfficial levers with non-empty citations
@@ -1075,7 +1093,11 @@ mod tests {
             .iter()
             .find(|r| r.action == "provider-profile: claude-script-low-token")
             .expect("aggressive profile rec fires under quota_tight");
-        assert_eq!(rec.severity, Severity::Good, "positive advisory; stays below Notify gate");
+        assert_eq!(
+            rec.severity,
+            Severity::Good,
+            "positive advisory; stays below Notify gate"
+        );
         assert_eq!(rec.source_kind, SourceKind::ProjectCanonical);
 
         let profile = rec
@@ -1091,7 +1113,10 @@ mod tests {
         );
         for lever in &profile.levers {
             assert_eq!(lever.source_kind, SourceKind::ProviderOfficial);
-            assert!(!lever.citation.is_empty(), "every lever carries a non-empty citation");
+            assert!(
+                !lever.citation.is_empty(),
+                "every lever carries a non-empty citation"
+            );
         }
         // Gemini G-6: side_effects populated 1:1 with lever count.
         assert_eq!(
@@ -1230,7 +1255,8 @@ mod tests {
         );
         assert!(
             rec.reason.contains("codex-default"),
-            "reason must name the profile: {}", rec.reason
+            "reason must name the profile: {}",
+            rec.reason
         );
         assert!(
             rec.reason.contains("ProviderOfficial"),
@@ -1364,7 +1390,8 @@ mod tests {
     // -----------------------------------------------------------------
 
     #[test]
-    fn recommend_codex_script_low_token_fires_on_quota_tight_with_honest_authority_labels_and_populated_side_effects() {
+    fn recommend_codex_script_low_token_fires_on_quota_tight_with_honest_authority_labels_and_populated_side_effects()
+     {
         // Shape contract for the Codex aggressive profile — mirrors
         // the claude-script-low-token contract from P4-3 with
         // Codex-specific levers. Fails if:
@@ -1384,7 +1411,11 @@ mod tests {
             .find(|r| r.action == "provider-profile: codex-script-low-token")
             .expect("codex-script-low-token fires under quota_tight on a healthy Codex main pane");
 
-        assert_eq!(rec.severity, Severity::Good, "positive advisory; stays below Notify gate");
+        assert_eq!(
+            rec.severity,
+            Severity::Good,
+            "positive advisory; stays below Notify gate"
+        );
         assert_eq!(rec.source_kind, SourceKind::ProjectCanonical);
 
         let profile = rec
@@ -1425,8 +1456,14 @@ mod tests {
             .iter()
             .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
             .count();
-        assert_eq!(po_count, 6, "6 ProviderOfficial (2 feature toggles + 4 exec flags)");
-        assert_eq!(pc_count, 1, "1 ProjectCanonical (model_auto_compact_token_limit value)");
+        assert_eq!(
+            po_count, 6,
+            "6 ProviderOfficial (2 feature toggles + 4 exec flags)"
+        );
+        assert_eq!(
+            pc_count, 1,
+            "1 ProjectCanonical (model_auto_compact_token_limit value)"
+        );
 
         // Reason summary honesty (Codex P4-4 v1.8.6 pattern — count
         // each authority kind).
@@ -1453,10 +1490,7 @@ mod tests {
             "side_effects must mention the model_auto_compact_token_limit trade-off (aggressive auto-compaction)"
         );
         assert!(
-            profile
-                .side_effects
-                .iter()
-                .any(|s| s.contains("sandbox")),
+            profile.side_effects.iter().any(|s| s.contains("sandbox")),
             "side_effects must mention the --sandbox read-only filesystem-block trade-off"
         );
     }
@@ -1571,13 +1605,15 @@ mod tests {
 
     #[test]
     fn recommend_gemini_default_fires_with_honest_authority_labels_on_healthy_gemini_main() {
-        // Gemini's documented config surface for explicit token-
-        // efficiency is narrower than Claude Code's or Codex's, so
-        // the baseline bundle is honestly scoped at 2 levers — both
-        // labeled ProjectCanonical because each VALUE is a Qmonster
-        // pick rather than a Gemini-doc canonical default. This
-        // test locks the per-lever value + source_kind + the
-        // ProjectCanonical-heavy authority split.
+        // Gemini-default ships 2 levers with a mixed authority
+        // split — 1 ProviderOfficial (--approval-mode = default,
+        // a documented key with a documented default value;
+        // v1.8.13 positive-form upgrade) + 1 ProjectCanonical
+        // (--model = gemini-2.5-flash, Qmonster's value pick on
+        // a documented key). This test locks the per-lever
+        // value + source_kind + the 1-PO-1-PC authority split
+        // (mirrors the dual-authority reason pattern codex-default
+        // uses since v1.8.6).
         let id = healthy_gemini_main();
         let s = SignalSet::default();
         let recs = eval_profiles(&id, &s, &gates_default());
@@ -1591,8 +1627,13 @@ mod tests {
         assert_eq!(rec.severity, Severity::Good);
         assert!(rec.reason.contains("gemini-default"));
         assert!(
+            rec.reason.contains("ProviderOfficial"),
+            "reason must cite ProviderOfficial authority label (1 PO lever present — --approval-mode): {}",
+            rec.reason
+        );
+        assert!(
             rec.reason.contains("ProjectCanonical"),
-            "reason must cite ProjectCanonical authority label (both levers are PC): {}",
+            "reason must cite ProjectCanonical authority label (1 PC lever present — --model): {}",
             rec.reason
         );
         assert!(
@@ -1636,15 +1677,16 @@ mod tests {
             "the VALUE gemini-2.5-flash is Qmonster's pick; Gemini CLI docs describe --model but don't mandate this value for all sessions"
         );
 
-        let yolo = find_lever("--yolo");
-        assert_eq!(yolo.value, "unset");
+        let approval_mode = find_lever("--approval-mode");
+        assert_eq!(approval_mode.value, "default");
         assert_eq!(
-            yolo.source_kind,
-            SourceKind::ProjectCanonical,
-            "\"recommend NOT setting --yolo\" is a Qmonster architectural choice (safety-precedence constraint), not a Gemini-doc canonical default"
+            approval_mode.source_kind,
+            SourceKind::ProviderOfficial,
+            "--approval-mode is a documented Gemini CLI flag AND `default` is its documented default value — both key and value are provider-documented, so the authority is ProviderOfficial (v1.8.13 swap from --yolo = unset PC)"
         );
 
-        // Authority split: 0 ProviderOfficial + 2 ProjectCanonical.
+        // Authority split: 1 ProviderOfficial + 1 ProjectCanonical
+        // (v1.8.13 positive-form upgrade — was 0 PO + 2 PC).
         let po_count = profile
             .levers
             .iter()
@@ -1655,8 +1697,14 @@ mod tests {
             .iter()
             .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
             .count();
-        assert_eq!(po_count, 0, "no ProviderOfficial levers in gemini-default — every value is a Qmonster pick");
-        assert_eq!(pc_count, 2);
+        assert_eq!(
+            po_count, 1,
+            "1 ProviderOfficial: --approval-mode = default (documented key + documented default value)"
+        );
+        assert_eq!(
+            pc_count, 1,
+            "1 ProjectCanonical: --model = gemini-2.5-flash (Qmonster value pick)"
+        );
 
         // Healthy baseline has no operator-visible trade-offs.
         assert!(
@@ -1728,7 +1776,8 @@ mod tests {
     // -----------------------------------------------------------------
 
     #[test]
-    fn recommend_gemini_script_low_token_fires_on_quota_tight_with_honest_authority_labels_and_populated_side_effects() {
+    fn recommend_gemini_script_low_token_fires_on_quota_tight_with_honest_authority_labels_and_populated_side_effects()
+     {
         // Shape contract for the Gemini aggressive profile — mirrors
         // claude-script-low-token (P4-3) and codex-script-low-token
         // (P4-5) with Gemini-specific levers. Authority split is
@@ -1745,9 +1794,15 @@ mod tests {
         let rec = recs
             .iter()
             .find(|r| r.action == "provider-profile: gemini-script-low-token")
-            .expect("gemini-script-low-token fires under quota_tight on a healthy Gemini main pane");
+            .expect(
+                "gemini-script-low-token fires under quota_tight on a healthy Gemini main pane",
+            );
 
-        assert_eq!(rec.severity, Severity::Good, "positive advisory; stays below Notify gate");
+        assert_eq!(
+            rec.severity,
+            Severity::Good,
+            "positive advisory; stays below Notify gate"
+        );
         assert_eq!(rec.source_kind, SourceKind::ProjectCanonical);
 
         let profile = rec
@@ -1792,8 +1847,14 @@ mod tests {
             .iter()
             .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
             .count();
-        assert_eq!(po_count, 1, "1 ProviderOfficial: experimental.autoMemory = false (Gemini docs document both the key AND the disable value)");
-        assert_eq!(pc_count, 2, "2 ProjectCanonical: --yolo = enabled and --model = gemini-2.5-flash (Gemini docs describe the keys but don't mandate these aggressive values)");
+        assert_eq!(
+            po_count, 1,
+            "1 ProviderOfficial: experimental.autoMemory = false (Gemini docs document both the key AND the disable value)"
+        );
+        assert_eq!(
+            pc_count, 2,
+            "2 ProjectCanonical: --yolo = enabled and --model = gemini-2.5-flash (Gemini docs describe the keys but don't mandate these aggressive values)"
+        );
 
         // Reason summary honesty (v1.8.6 pattern).
         assert!(rec.reason.contains("gemini-script-low-token"));
@@ -1814,10 +1875,15 @@ mod tests {
                 .levers
                 .iter()
                 .find(|l| l.key == key)
-                .unwrap_or_else(|| panic!("lever `{key}` must be present in gemini-script-low-token"))
+                .unwrap_or_else(|| {
+                    panic!("lever `{key}` must be present in gemini-script-low-token")
+                })
         };
         let yolo = find_lever("--yolo");
-        assert_eq!(yolo.value, "enabled", "aggressive profile enables --yolo (inverse of baseline's 'unset')");
+        assert_eq!(
+            yolo.value, "enabled",
+            "aggressive profile enables --yolo (semantic inverse of baseline's --approval-mode = default; v1.8.13 positive-form swap on baseline)"
+        );
         assert_eq!(yolo.source_kind, SourceKind::ProjectCanonical);
 
         // Codex v1.8.9 P4-7 finding #1: the actual Gemini CLI

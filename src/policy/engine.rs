@@ -1,8 +1,8 @@
 use crate::domain::identity::ResolvedIdentity;
 use crate::domain::recommendation::{Recommendation, RequestedEffect};
 use crate::domain::signal::SignalSet;
-use crate::policy::rules::eval_alerts;
 use crate::policy::gates::PolicyGates;
+use crate::policy::rules::eval_alerts;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Engine;
@@ -21,9 +21,15 @@ impl Engine {
         gates: &PolicyGates,
     ) -> EvalOutput {
         let mut recs = eval_alerts(id, signals);
-        recs.extend(crate::policy::rules::advisories::eval_advisories(id, signals, gates));
-        recs.extend(crate::policy::rules::profiles::eval_profiles(id, signals, gates));
-        recs.extend(crate::policy::rules::auto_memory::eval_auto_memory(id, signals, gates));
+        recs.extend(crate::policy::rules::advisories::eval_advisories(
+            id, signals, gates,
+        ));
+        recs.extend(crate::policy::rules::profiles::eval_profiles(
+            id, signals, gates,
+        ));
+        recs.extend(crate::policy::rules::auto_memory::eval_auto_memory(
+            id, signals, gates,
+        ));
         let mut effects = Vec::new();
         // Notify fires only when at least one rec is urgent (Warning or Risk).
         // Concern-severity passive advisories stay in-UI (Codex #3 fix; r1
@@ -67,7 +73,9 @@ pub struct PaneView<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role};
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
     use crate::domain::signal::SignalSet;
 
     fn id(conf: IdentityConfidence) -> ResolvedIdentity {
@@ -108,7 +116,10 @@ mod tests {
         };
         let eng = Engine;
         let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
-        assert!(out.effects.contains(&crate::domain::recommendation::RequestedEffect::Notify));
+        assert!(
+            out.effects
+                .contains(&crate::domain::recommendation::RequestedEffect::Notify)
+        );
     }
 
     #[test]
@@ -164,7 +175,8 @@ mod tests {
         let eng = Engine;
         let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
         assert!(
-            out.effects.contains(&crate::domain::recommendation::RequestedEffect::Notify),
+            out.effects
+                .contains(&crate::domain::recommendation::RequestedEffect::Notify),
             "Warning-severity rec must still trigger Notify"
         );
     }
@@ -179,7 +191,8 @@ mod tests {
         let eng = Engine;
         let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
         assert!(
-            !out.effects.contains(&crate::domain::recommendation::RequestedEffect::Notify),
+            !out.effects
+                .contains(&crate::domain::recommendation::RequestedEffect::Notify),
             "Concern-severity recs must NOT trigger Notify (Codex #3)"
         );
         assert!(
@@ -212,17 +225,38 @@ mod tests {
     fn evaluate_cross_pane_uses_concurrent_rule() {
         use crate::domain::identity::{PaneIdentity, Provider, Role};
         let id_a = ResolvedIdentity {
-            identity: PaneIdentity { provider: Provider::Claude, instance: 1, role: Role::Main, pane_id: "%1".into() },
+            identity: PaneIdentity {
+                provider: Provider::Claude,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
             confidence: IdentityConfidence::High,
         };
         let id_b = ResolvedIdentity {
-            identity: PaneIdentity { provider: Provider::Claude, instance: 2, role: Role::Main, pane_id: "%2".into() },
+            identity: PaneIdentity {
+                provider: Provider::Claude,
+                instance: 2,
+                role: Role::Main,
+                pane_id: "%2".into(),
+            },
             confidence: IdentityConfidence::High,
         };
-        let s = SignalSet { output_chars: 800, ..SignalSet::default() };
+        let s = SignalSet {
+            output_chars: 800,
+            ..SignalSet::default()
+        };
         let views = vec![
-            PaneView { identity: &id_a, signals: &s, current_path: "/repo" },
-            PaneView { identity: &id_b, signals: &s, current_path: "/repo" },
+            PaneView {
+                identity: &id_a,
+                signals: &s,
+                current_path: "/repo",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &s,
+                current_path: "/repo",
+            },
         ];
         let findings = Engine.evaluate_cross_pane(&views);
         assert_eq!(findings.len(), 1);

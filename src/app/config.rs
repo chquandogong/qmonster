@@ -192,11 +192,7 @@ pub enum SafetyOverride {
 /// Safety-precedence rule (r2 §4): env/CLI overrides may only move
 /// `actions.mode` / `allow_auto_prompt_send` / `allow_destructive_actions`
 /// / `refresh.policy` toward safer. `logging.sensitivity` is free.
-pub fn apply_safety_override(
-    cfg: &mut QmonsterConfig,
-    key: &str,
-    value: &str,
-) -> SafetyOverride {
+pub fn apply_safety_override(cfg: &mut QmonsterConfig, key: &str, value: &str) -> SafetyOverride {
     match key {
         "actions.mode" => {
             let Some(new) = ActionsMode::from_str_maybe(value) else {

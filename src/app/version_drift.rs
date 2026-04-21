@@ -32,9 +32,8 @@ impl VersionSnapshot {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let data = serde_json::to_vec_pretty(self).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-        })?;
+        let data = serde_json::to_vec_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         std::fs::write(path, data)
     }
 }
@@ -70,10 +69,7 @@ impl StartupLoad {
 /// to the audit sink as a dedicated `VersionSnapshotError` event. The
 /// returned `StartupLoad::Corrupted` variant signals the caller that
 /// the on-disk file should NOT be overwritten this session.
-pub fn load_startup_snapshot(
-    sink: &dyn crate::store::sink::EventSink,
-    path: &Path,
-) -> StartupLoad {
+pub fn load_startup_snapshot(sink: &dyn crate::store::sink::EventSink, path: &Path) -> StartupLoad {
     match VersionSnapshot::load_from(path) {
         Ok(Some(s)) => StartupLoad::Previous(s),
         Ok(None) => StartupLoad::Fresh,
@@ -82,11 +78,7 @@ pub fn load_startup_snapshot(
                 kind: crate::domain::audit::AuditEventKind::VersionSnapshotError,
                 pane_id: "n/a".into(),
                 severity: crate::domain::recommendation::Severity::Warning,
-                summary: format!(
-                    "failed to load {}: {}",
-                    path.display(),
-                    e
-                ),
+                summary: format!("failed to load {}: {}", path.display(), e),
                 provider: None,
                 role: None,
             });
@@ -134,16 +126,20 @@ fn cli_version(cmd: &str, args: &[&str]) -> String {
 /// vec means "no drift".
 pub fn compare(before: &VersionSnapshot, after: &VersionSnapshot) -> Vec<VersionDiff> {
     let mut diffs = Vec::new();
-    let mut keys: Vec<&String> = before
-        .tools
-        .keys()
-        .chain(after.tools.keys())
-        .collect();
+    let mut keys: Vec<&String> = before.tools.keys().chain(after.tools.keys()).collect();
     keys.sort();
     keys.dedup();
     for key in keys {
-        let b = before.tools.get(key).cloned().unwrap_or_else(|| "<missing>".to_string());
-        let a = after.tools.get(key).cloned().unwrap_or_else(|| "<missing>".to_string());
+        let b = before
+            .tools
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| "<missing>".to_string());
+        let a = after
+            .tools
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| "<missing>".to_string());
         if a != b {
             diffs.push(VersionDiff {
                 tool: key.clone(),

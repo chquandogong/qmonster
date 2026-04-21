@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — Phase 4 shared-verification hardening v1.8.12"
+  mission_title: "Qmonster v0.4.0 — Phase 4 wrap-up P4-8 v1.8.13 (layered on v1.8.12 shared-verification hardening)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 28
-  latest_version: "1.8.12"
+  total_revisions: 29
+  latest_version: "1.8.13"
 
 timeline:
   - change_id: "initial"
@@ -3394,8 +3394,132 @@ timeline:
       - "Run mission-spec eval --shared . and confirm the live contract is fully machine-evaluable on a fresh clone"
       - "If desired, add a CI job that calls scripts/verify-shared.sh"
 
+  - change_id: "phase-4-wrap-up-p4-8-approval-mode-swap-and-token-thresholds-decision"
+    semantic_version: "1.8.13"
+    change_sequence: 29
+    date: "2026-04-22"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.8.8 P4-6 review flagged `--approval-mode = default` as a non-blocker positive-form alternative — this revision addresses that non-blocker; also due to confirm the v1.8.13 changes)"
+      - "Gemini (gemini:1:research, v1.8.8 P4-6 review concurred that both representations are honest and noted the positive-form upgrade was optional; also due to confirm the v1.8.13 changes)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — approved reconciliation onto the v1.8.12 shared-verification contract as v1.8.13 rather than overwriting v1.8.12)"
+    change_type: "feature-fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close Phase 4 end-to-end by addressing the two items deferred
+      when the 3x2 grid was declared complete at v1.8.11: (A) Codex's
+      v1.8.8 P4-6 positive-form non-blocker (`--approval-mode =
+      default` as an alternative to `--yolo = unset` for the
+      gemini-default baseline second lever) and (B) the remaining
+      Phase-4 VALIDATION.md checkbox (`token.thresholds` per-provider
+      split decision). Layered on top of v1.8.12 shared-verification
+      hardening — does not disturb the portable done_when contract
+      introduced at v1.8.12.
+    intent_ko: >
+      Phase 4를 end-to-end로 마감. v1.8.11에 3x2 grid 완성 선언 이후
+      유보되었던 두 항목을 닫는다. (A) Codex v1.8.8 P4-6 리뷰의
+      positive-form non-blocker (`--yolo = unset` 대신
+      `--approval-mode = default`), (B) 남은 Phase-4 VALIDATION.md
+      체크박스(`token.thresholds` per-provider 분할 결정). v1.8.12
+      shared-verification 하드닝 계약 위에 얹어 진행 — v1.8.12가
+      정리한 portable done_when 계약은 그대로 유지.
+    decision: >
+      (A) Swap the gemini-default second lever from `--yolo = unset`
+      (ProjectCanonical — "recommend NOT setting a flag") to
+      `--approval-mode = default` (ProviderOfficial — both the
+      flag and the `default` value are documented in Gemini CLI
+      docs). The bundle authority split graduates from 0 PO + 2 PC
+      to 1 PO + 1 PC and mirrors codex-default's v1.8.6 dual-
+      authority reason pattern (reason summary now contains both
+      `ProviderOfficial` and `ProjectCanonical` tokens). The
+      aggressive variant `gemini-script-low-token` keeps
+      `--yolo = enabled` — the pair now expresses a semantic
+      inverse on the approval-surface axis rather than a value
+      inverse on a shared key. Trade-off accepted for (1) a
+      positive-form lever operators can scan without parsing
+      "NOT set", (2) a 1-PO honesty upgrade honestly available
+      from Gemini docs, (3) lever rows that map cleanly to an
+      actual `gemini --approval-mode default` invocation.
+      (B) Retain the `token.thresholds` single global block.
+      Rationale (in-line in VALIDATION.md): (i) no `tests/
+      fixtures/` directory exists, so Phase-1 has produced no
+      measured per-provider threshold data; (ii) of the 5 keys
+      in `[token.thresholds]` (context_warn, context_crit,
+      big_output_chars, log_storm_lines, repeat_window), only
+      `big_output_chars` is currently wired into Rust (`src/
+      app/config.rs:131`, consumed by `ArchiveWriter`) — a
+      speculative per-provider split would add config burden
+      without touching actual policy; (iii) provider asymmetry
+      already lives in the profile-rule layer (`src/policy/
+      rules/profiles.rs`) + identity-confidence gates, not in
+      raw token thresholds. Future Phase-1 fixture data can
+      still justify a split without today's global block
+      locking us in.
+    decision_ko: >
+      (A) gemini-default 두 번째 레버를 `--yolo = unset` (PC)에서
+      `--approval-mode = default` (PO)로 교체. authority split은
+      0 PO + 2 PC → 1 PO + 1 PC이 되고, codex-default v1.8.6의
+      dual-authority reason 패턴을 따른다. aggressive 변형은
+      `--yolo = enabled`를 유지 — 공유 키 위의 값 반전이 아닌
+      approval-surface 축 위의 의미적 반전.
+      (B) `token.thresholds` 단일 global block 유지. 근거(VALIDATION.md
+      인라인): (i) `tests/fixtures/` 부재로 Phase-1 측정 데이터 없음,
+      (ii) `[token.thresholds]` 5개 키 중 Rust에 실제로 배선된 키는
+      `big_output_chars` 하나(`src/app/config.rs:131`, `ArchiveWriter`
+      소비)뿐 — 추측성 분할은 설정 부담만 추가, (iii) provider
+      비대칭성은 이미 profile-rule 계층 + identity-confidence 게이트에
+      존재. 후속 Phase-1 fixture 데이터가 실제 분할을 요구하면
+      지금의 global block이 이를 가로막지 않음(가역).
+    triggered_by: "Codex v1.8.8 P4-6 deferred non-blocker + remaining VALIDATION.md Phase-4 checkbox"
+    issue_or_context: >
+      Phase 4 was declared 'fully gate-approved' at v1.8.11 with all
+      6 profiles in the 3x2 grid shipped, but two items remained
+      open: (1) Codex's v1.8.8 P4-6 non-blocker suggesting
+      `--approval-mode = default` as a positive-form alternative to
+      the `--yolo = unset` expression in the gemini-default
+      baseline, and (2) the VALIDATION.md checkbox for
+      `token.thresholds` per-provider split (last Phase-4 check
+      unticked). Both items needed a clean resolution before
+      Phase 5 opens, on top of the v1.8.12 shared-verification
+      contract.
+    changes:
+      added: []
+      modified:
+        - "src/policy/rules/profiles.rs"
+        - "docs/ai/VALIDATION.md"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - ".mission/CURRENT_STATE.md"
+      removed: []
+    changed_sections:
+      - "gemini-default second lever (positive-form swap: --yolo = unset PC → --approval-mode = default PO)"
+      - "gemini-script-low-token prose refresh (aggressive --yolo citation now refers to baseline's --approval-mode = default instead of --yolo = unset)"
+      - "VALIDATION.md token.thresholds checkbox ticked with inline decision rationale"
+      - "ledger v1.8.13 P4-8 wrap-up entry layered on top of v1.8.12 shared-verification hardening"
+    done_when_delta:
+      added: []
+      modified:
+        - "Phase 4 scope now structurally closed: 7/7 VALIDATION.md Phase-4 checkboxes ticked; no reviewer-raised non-blockers open on the shipped rule set"
+      removed: []
+    impact_scope:
+      runtime: "gemini-default rec renders 1 PO + 1 PC lever rows instead of 0 PO + 2 PC; no policy-behavior / severity / Notify-gate change"
+      verification: "cargo build + cargo test (222 lib + 6 drift + 18 integration) + cargo clippy --all-targets -D warnings + cargo fmt --check all clean"
+      docs: "VALIDATION.md 7/7 Phase-4 boxes ticked with inline decision rationale for token.thresholds"
+      ledger: "v1.8.13 layered on top of v1.8.12 shared-verification hardening; meta title + latest version bumped; v1.8.12 timeline entry and portable done_when contract untouched"
+    breaking: false
+    risk: "low — lever-row cosmetic change + checkbox documentation only; no Rust behavior change"
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+    snapshot_after: ""
+    follow_up:
+      - "Request short Codex + Gemini confirm re-review on v1.8.13 before opening Phase 5"
+      - "Open Phase 5 (safer actuation — manual prompt-send helper with user confirmation)"
+
 evolution_summary:
-  current_phase: "Phase 4 COMPLETE — shared-verification hardening v1.8.12 applied on top of the fully gate-approved profile grid. Codex v1.8.11 confirm2 returned `approve` (no findings) on 7c9e951..db98022; Gemini v1.8.10 confirm approve stands. 3×2 provider-profile grid (Claude + Codex + Gemini × baseline + aggressive) shipped and locked, and the public repo contract now distinguishes tracked shared ledger files from local-only handoff files. Ready to open P4-8+ (remaining VALIDATION.md item + any deferred non-blockers) or Phase 5 (Safer Actuation)."
+  current_phase: "Phase 4 COMPLETE + P4-8 wrap-up shipped — v1.8.13 layered on v1.8.12 shared-verification hardening. All 6 profiles in the 3x2 grid (Claude + Codex + Gemini × baseline + aggressive) shipped and gate-approved; all 7 Phase-4 VALIDATION.md checkboxes ticked (last one — `token.thresholds` global-block decision — closed in v1.8.13 with inline rationale); `--approval-mode = default` positive-form swap on gemini-default closes Codex v1.8.8 P4-6 deferred non-blocker. Portable shared-verification contract from v1.8.12 (cargo build/test/clippy + tracked artefact existence) remains the live done_when. Short Codex + Gemini confirm re-review on v1.8.13 requested before opening Phase 5 (Safer Actuation)."
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

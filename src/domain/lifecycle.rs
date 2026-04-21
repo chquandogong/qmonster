@@ -27,9 +27,7 @@ impl PaneLifecycle {
             (None, _) => PaneLifecycleEvent::Appeared,
             (Some(true), false) => PaneLifecycleEvent::Reappeared,
             (Some(false), true) => PaneLifecycleEvent::BecameDead,
-            (Some(prev_dead), cur_dead) if prev_dead == cur_dead => {
-                PaneLifecycleEvent::Unchanged
-            }
+            (Some(prev_dead), cur_dead) if prev_dead == cur_dead => PaneLifecycleEvent::Unchanged,
             _ => PaneLifecycleEvent::Unchanged,
         }
     }

@@ -65,7 +65,9 @@ pub fn eval_concurrent(panes: &[PaneView<'_>]) -> Vec<CrossPaneFinding> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role};
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
     use crate::domain::signal::SignalSet;
 
     fn mk_id(role: Role, pane_id: &str) -> ResolvedIdentity {
@@ -93,8 +95,16 @@ mod tests {
         let id_b = mk_id(Role::Main, "%2");
         let s = busy_signals();
         let views = vec![
-            PaneView { identity: &id_a, signals: &s, current_path: "/repo" },
-            PaneView { identity: &id_b, signals: &s, current_path: "/repo" },
+            PaneView {
+                identity: &id_a,
+                signals: &s,
+                current_path: "/repo",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &s,
+                current_path: "/repo",
+            },
         ];
         let findings = eval_concurrent(&views);
         assert_eq!(findings.len(), 1);
@@ -108,11 +118,22 @@ mod tests {
         let id_b = mk_id(Role::Main, "%2");
         let s = busy_signals();
         let views = vec![
-            PaneView { identity: &id_a, signals: &s, current_path: "/repo-a" },
-            PaneView { identity: &id_b, signals: &s, current_path: "/repo-b" },
+            PaneView {
+                identity: &id_a,
+                signals: &s,
+                current_path: "/repo-a",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &s,
+                current_path: "/repo-b",
+            },
         ];
         let findings = eval_concurrent(&views);
-        assert!(findings.is_empty(), "Codex #1: different paths must not co-qualify");
+        assert!(
+            findings.is_empty(),
+            "Codex #1: different paths must not co-qualify"
+        );
     }
 
     #[test]
@@ -121,8 +142,16 @@ mod tests {
         let id_b = mk_id(Role::Main, "%2");
         let s = busy_signals();
         let views = vec![
-            PaneView { identity: &id_a, signals: &s, current_path: "" },
-            PaneView { identity: &id_b, signals: &s, current_path: "" },
+            PaneView {
+                identity: &id_a,
+                signals: &s,
+                current_path: "",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &s,
+                current_path: "",
+            },
         ];
         let findings = eval_concurrent(&views);
         assert!(findings.is_empty(), "empty-path panes must not co-qualify");
@@ -132,7 +161,11 @@ mod tests {
     fn single_pane_never_triggers() {
         let id_a = mk_id(Role::Main, "%1");
         let s = busy_signals();
-        let views = vec![PaneView { identity: &id_a, signals: &s, current_path: "/repo" }];
+        let views = vec![PaneView {
+            identity: &id_a,
+            signals: &s,
+            current_path: "/repo",
+        }];
         assert!(eval_concurrent(&views).is_empty());
     }
 
@@ -147,11 +180,22 @@ mod tests {
             ..SignalSet::default()
         };
         let views = vec![
-            PaneView { identity: &id_a, signals: &busy, current_path: "/repo" },
-            PaneView { identity: &id_b, signals: &waiting, current_path: "/repo" },
+            PaneView {
+                identity: &id_a,
+                signals: &busy,
+                current_path: "/repo",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &waiting,
+                current_path: "/repo",
+            },
         ];
         let findings = eval_concurrent(&views);
-        assert!(findings.is_empty(), "pane waiting for input disqualifies the group");
+        assert!(
+            findings.is_empty(),
+            "pane waiting for input disqualifies the group"
+        );
     }
 
     #[test]
@@ -160,10 +204,21 @@ mod tests {
         let id_b = mk_id(Role::Research, "%2");
         let s = busy_signals();
         let views = vec![
-            PaneView { identity: &id_a, signals: &s, current_path: "/repo" },
-            PaneView { identity: &id_b, signals: &s, current_path: "/repo" },
+            PaneView {
+                identity: &id_a,
+                signals: &s,
+                current_path: "/repo",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &s,
+                current_path: "/repo",
+            },
         ];
-        assert!(eval_concurrent(&views).is_empty(), "Research-only group must not fire");
+        assert!(
+            eval_concurrent(&views).is_empty(),
+            "Research-only group must not fire"
+        );
     }
 
     #[test]
@@ -173,14 +228,29 @@ mod tests {
         let id_m = mk_id(Role::Main, "%5");
         let s = busy_signals();
         let views = vec![
-            PaneView { identity: &id_z, signals: &s, current_path: "/repo" },
-            PaneView { identity: &id_a, signals: &s, current_path: "/repo" },
-            PaneView { identity: &id_m, signals: &s, current_path: "/repo" },
+            PaneView {
+                identity: &id_z,
+                signals: &s,
+                current_path: "/repo",
+            },
+            PaneView {
+                identity: &id_a,
+                signals: &s,
+                current_path: "/repo",
+            },
+            PaneView {
+                identity: &id_m,
+                signals: &s,
+                current_path: "/repo",
+            },
         ];
         let findings = eval_concurrent(&views);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].anchor_pane_id, "%1");
-        assert_eq!(findings[0].other_pane_ids, vec!["%5".to_string(), "%9".to_string()]);
+        assert_eq!(
+            findings[0].other_pane_ids,
+            vec!["%5".to_string(), "%9".to_string()]
+        );
     }
 
     #[test]
@@ -192,8 +262,16 @@ mod tests {
             ..SignalSet::default()
         };
         let views = vec![
-            PaneView { identity: &id_a, signals: &quiet, current_path: "/repo" },
-            PaneView { identity: &id_b, signals: &quiet, current_path: "/repo" },
+            PaneView {
+                identity: &id_a,
+                signals: &quiet,
+                current_path: "/repo",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &quiet,
+                current_path: "/repo",
+            },
         ];
         assert!(eval_concurrent(&views).is_empty());
     }

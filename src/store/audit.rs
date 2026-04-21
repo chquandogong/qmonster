@@ -69,13 +69,14 @@ impl SqliteAuditSink {
                     timestamp_utc: row.get(1)?,
                     kind: parse_kind(&row.get::<_, String>(2)?)
                         .unwrap_or(AuditEventKind::AlertFired),
-                    severity: parse_severity(&row.get::<_, String>(3)?)
-                        .unwrap_or(Severity::Safe),
+                    severity: parse_severity(&row.get::<_, String>(3)?).unwrap_or(Severity::Safe),
                     pane_id: row.get(4)?,
                     provider: row
                         .get::<_, Option<String>>(5)?
                         .and_then(|s| parse_provider(&s)),
-                    role: row.get::<_, Option<String>>(6)?.and_then(|s| parse_role(&s)),
+                    role: row
+                        .get::<_, Option<String>>(6)?
+                        .and_then(|s| parse_role(&s)),
                     summary: row.get(7)?,
                 })
             })

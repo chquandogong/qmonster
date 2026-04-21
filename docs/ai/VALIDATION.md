@@ -151,7 +151,7 @@ Levers below are cited as `[ProviderOfficial]` with doc pointers.
       `claude-script-low-token` only — never proposed as always-on
       defaults.
       (locked by `high_risk_claude_levers_are_gated_to_claude_
-    script_low_token_only` test in P4-3 v1.8.3)
+script_low_token_only` test in P4-3 v1.8.3)
 - [x] Gemini profile recommendations stay advisory; `save_memory` /
       Auto Memory is not treated as a state store.
       (P4-6 v1.8.8 gemini-default + P4-7 v1.8.9/v1.8.10
@@ -163,7 +163,7 @@ Levers below are cited as `[ProviderOfficial]` with doc pointers.
       detail") visible in the UI (Gemini G-6).
       (G-6 parity across all 3 aggressive profiles — Claude in
       P4-3, Codex in P4-5, Gemini in P4-7. Renderer = `format_
-    profile_lines` in `src/ui/panels.rs`; emits a
+profile_lines` in `src/ui/panels.rs`; emits a
       `side_effects (<n>):` block after the lever rows)
 - [x] Auto-memory guidance: profiles recommend "record to MDR /
       CURRENT_STATE, not to auto-memory" when state-critical work is
@@ -173,11 +173,25 @@ Levers below are cited as `[ProviderOfficial]` with doc pointers.
       under `TaskType::Review` / `TaskType::SessionResume`. G-5
       cross-reference also embedded in the aggressive profile
       `side_effects` for all 3 providers)
-- [ ] `token.thresholds` structure may split per-provider ONLY if
+- [x] `token.thresholds` structure may split per-provider ONLY if
       Phase-1 fixture data justifies the split; otherwise keep one
       global block.
-      (deferred — Phase-1 fixture-driven justification has not been
-      measured yet; single global block currently stands)
+      (P4-8 decision v1.8.13: single global block retained. Rationale:
+      (1) no `tests/fixtures/` directory exists so Phase-1 has not
+      produced measured per-provider threshold data that would
+      justify a split; (2) of the 5 keys in `[token.thresholds]`
+      (`context_warn`, `context_crit`, `big_output_chars`,
+      `log_storm_lines`, `repeat_window`), only `big_output_chars`
+      is currently wired into Rust (`src/app/config.rs:131`,
+      consumed by `ArchiveWriter`) — the other 4 keys are config-
+      surface only, so a speculative per-provider split would add
+      config burden without touching actual policy behavior; (3)
+      provider asymmetry lives in the profile-rule layer
+      (`src/policy/rules/profiles.rs`) and the identity-confidence
+      gates, not in raw token thresholds. If future Phase-1
+      fixture data ever surfaces a real per-provider divergence,
+      the split can still happen then without penalty — the
+      current global block is not locking us in.)
 
 ## Phase 5 (Safer Actuation) checks
 

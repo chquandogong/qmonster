@@ -101,7 +101,8 @@ where
         deliver_effects(permits, &out, &pane.pane_id, &pane.tail, now, ctx);
 
         for rec in &out.recommendations {
-            ctx.sink.record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
+            ctx.sink
+                .record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
         }
 
         reports.push(PaneReport {
@@ -133,10 +134,7 @@ where
     let findings = ctx.policy.evaluate_cross_pane(&views);
 
     for f in findings {
-        if let Some(r) = reports
-            .iter_mut()
-            .find(|r| r.pane_id == f.anchor_pane_id)
-        {
+        if let Some(r) = reports.iter_mut().find(|r| r.pane_id == f.anchor_pane_id) {
             r.cross_pane_findings.push(f);
         }
     }
@@ -211,7 +209,11 @@ fn dispatch_notify<N: NotifyBackend>(
     ctx_holder: &mut Context<impl PaneSource, N>,
 ) {
     use crate::domain::recommendation::Severity;
-    for rec in out.recommendations.iter().filter(|r| r.severity >= Severity::Warning) {
+    for rec in out
+        .recommendations
+        .iter()
+        .filter(|r| r.severity >= Severity::Warning)
+    {
         if ctx_holder
             .rate_limiter
             .should_fire(pane_id, rec.action, rec.severity, now)

@@ -39,10 +39,15 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
     if s.log_storm {
         out.push(Recommendation {
             action: "archive-preview-suggested",
-            reason: "log storm pattern: consider keeping preview on screen and archiving the raw tail".into(),
+            reason:
+                "log storm pattern: consider keeping preview on screen and archiving the raw tail"
+                    .into(),
             severity: Severity::Warning,
             source_kind: SourceKind::Heuristic,
-            suggested_command: Some("tmux capture-pane -pS -2000 > ~/.qmonster/archive/$(date +%F)-<pane_id>.log".into()),
+            suggested_command: Some(
+                "tmux capture-pane -pS -2000 > ~/.qmonster/archive/$(date +%F)-<pane_id>.log"
+                    .into(),
+            ),
             side_effects: vec![],
             is_strong: false,
             next_step: None,
@@ -95,7 +100,9 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
     if s.subagent_hint {
         out.push(Recommendation {
             action: "subagent-detected",
-            reason: "a subagent was launched; token consumption may be delayed or missing in main stats".into(),
+            reason:
+                "a subagent was launched; token consumption may be delayed or missing in main stats"
+                    .into(),
             severity: Severity::Concern,
             source_kind: SourceKind::Heuristic,
             suggested_command: None, // informational; no action required
@@ -112,7 +119,9 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role};
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
     use crate::domain::origin::SourceKind;
     use crate::domain::signal::SignalSet;
 
@@ -181,9 +190,14 @@ mod tests {
 
     #[test]
     fn repeated_output_fires_concern_severity() {
-        let s = SignalSet { repeated_output: true, ..SignalSet::default() };
+        let s = SignalSet {
+            repeated_output: true,
+            ..SignalSet::default()
+        };
         let recs = eval_alerts(&id(), &s);
-        let rec = recs.iter().find(|r| r.action == "repeated-output-cache")
+        let rec = recs
+            .iter()
+            .find(|r| r.action == "repeated-output-cache")
             .expect("repeated_output must fire a recommendation");
         assert_eq!(rec.severity, Severity::Concern);
         assert_eq!(rec.source_kind, SourceKind::Heuristic);
@@ -191,9 +205,14 @@ mod tests {
 
     #[test]
     fn verbose_answer_fires_concern_severity() {
-        let s = SignalSet { verbose_answer: true, ..SignalSet::default() };
+        let s = SignalSet {
+            verbose_answer: true,
+            ..SignalSet::default()
+        };
         let recs = eval_alerts(&id(), &s);
-        let rec = recs.iter().find(|r| r.action == "verbose-output")
+        let rec = recs
+            .iter()
+            .find(|r| r.action == "verbose-output")
             .expect("verbose_answer must fire a recommendation");
         assert_eq!(rec.severity, Severity::Concern);
         assert_eq!(rec.source_kind, SourceKind::Heuristic);
@@ -201,9 +220,15 @@ mod tests {
 
     #[test]
     fn error_hint_fires_warning_when_not_log_storm() {
-        let s = SignalSet { error_hint: true, log_storm: false, ..SignalSet::default() };
+        let s = SignalSet {
+            error_hint: true,
+            log_storm: false,
+            ..SignalSet::default()
+        };
         let recs = eval_alerts(&id(), &s);
-        let rec = recs.iter().find(|r| r.action == "error-detected")
+        let rec = recs
+            .iter()
+            .find(|r| r.action == "error-detected")
             .expect("error_hint without log_storm must fire");
         assert_eq!(rec.severity, Severity::Warning);
     }

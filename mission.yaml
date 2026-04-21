@@ -1,6 +1,6 @@
 mission:
-  version: "1.8.12"
-  title: "Qmonster v0.4.0 — Phase 4 shared-verification hardening v1.8.12"
+  version: "1.8.13"
+  title: "Qmonster v0.4.0 — Phase 4 wrap-up P4-8 v1.8.13 (`--approval-mode = default` positive-form swap on gemini-default closes Codex P4-6 deferred non-blocker; `token.thresholds` global-block decision documented; last Phase-4 VALIDATION checkbox ticked — layered on the v1.8.12 shared-verification hardening contract)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -724,5 +724,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 28
+    total_revisions: 29
     history: "mission-history.yaml"

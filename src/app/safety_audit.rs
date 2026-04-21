@@ -68,11 +68,8 @@ mod tests {
     fn accepted_override_produces_no_audit_event() {
         let mut cfg = QmonsterConfig::defaults();
         let sink = InMemorySink::new();
-        let results = apply_override_with_audit(
-            &mut cfg,
-            &[("actions.mode", "observe_only")],
-            &sink,
-        );
+        let results =
+            apply_override_with_audit(&mut cfg, &[("actions.mode", "observe_only")], &sink);
         assert_eq!(results.accepted, 1);
         assert_eq!(results.rejected, 0);
         assert_eq!(sink.len(), 0);
@@ -82,11 +79,7 @@ mod tests {
     fn rejected_override_writes_risk_audit_event() {
         let mut cfg = QmonsterConfig::defaults();
         let sink = InMemorySink::new();
-        let results = apply_override_with_audit(
-            &mut cfg,
-            &[("actions.mode", "safe_auto")],
-            &sink,
-        );
+        let results = apply_override_with_audit(&mut cfg, &[("actions.mode", "safe_auto")], &sink);
         assert_eq!(results.rejected, 1);
         let events = sink.snapshot();
         assert_eq!(events.len(), 1);
@@ -101,11 +94,7 @@ mod tests {
     fn unknown_key_is_also_audit_logged_at_concern_severity() {
         let mut cfg = QmonsterConfig::defaults();
         let sink = InMemorySink::new();
-        let results = apply_override_with_audit(
-            &mut cfg,
-            &[("nonexistent.key", "x")],
-            &sink,
-        );
+        let results = apply_override_with_audit(&mut cfg, &[("nonexistent.key", "x")], &sink);
         assert_eq!(results.unknown, 1);
         let events = sink.snapshot();
         assert_eq!(events.len(), 1);

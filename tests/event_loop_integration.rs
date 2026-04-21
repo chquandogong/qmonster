@@ -37,7 +37,10 @@ struct FixturePaneSource {
 }
 
 impl PaneSource for FixturePaneSource {
-    fn list_panes(&self, _target: Option<&WindowTarget>) -> Result<Vec<RawPaneSnapshot>, PollingError> {
+    fn list_panes(
+        &self,
+        _target: Option<&WindowTarget>,
+    ) -> Result<Vec<RawPaneSnapshot>, PollingError> {
         Ok(self.panes.clone())
     }
     fn current_target(&self) -> Result<Option<WindowTarget>, PollingError> {
@@ -117,7 +120,13 @@ fn pane_with_path(
 fn run_once_emits_recommendations_and_audit_events() {
     let source = FixturePaneSource {
         panes: vec![
-            pane("%1", "claude:1:main", "claude", "Press ENTER to continue", false),
+            pane(
+                "%1",
+                "claude:1:main",
+                "claude",
+                "Press ENTER to continue",
+                false,
+            ),
             pane("%2", "codex:1:review", "codex", "idle", false),
         ],
     };
@@ -133,13 +142,19 @@ fn run_once_emits_recommendations_and_audit_events() {
     let reports = run_once(&mut ctx, Instant::now()).expect("ok");
     assert_eq!(reports.len(), 2);
     // The first pane had a WAIT_INPUT tail — at least one recommendation.
-    assert!(reports[0]
-        .recommendations
-        .iter()
-        .any(|r| r.action == "notify-input-wait"));
+    assert!(
+        reports[0]
+            .recommendations
+            .iter()
+            .any(|r| r.action == "notify-input-wait")
+    );
     // The notify backend should have seen a call for that alert.
     let calls = seen.lock().unwrap();
-    assert!(calls.iter().any(|(_, body, _)| body.contains("notify-input-wait")));
+    assert!(
+        calls
+            .iter()
+            .any(|(_, body, _)| body.contains("notify-input-wait"))
+    );
 }
 
 #[test]
@@ -238,12 +253,16 @@ fn effects_are_propagated_onto_pane_report() {
     let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
 
     let reports = run_once(&mut ctx, Instant::now()).expect("ok");
-    assert!(reports[0]
-        .effects
-        .contains(&qmonster::domain::recommendation::RequestedEffect::Notify));
-    assert!(!reports[0]
-        .effects
-        .contains(&qmonster::domain::recommendation::RequestedEffect::SensitiveNotImplemented));
+    assert!(
+        reports[0]
+            .effects
+            .contains(&qmonster::domain::recommendation::RequestedEffect::Notify)
+    );
+    assert!(
+        !reports[0]
+            .effects
+            .contains(&qmonster::domain::recommendation::RequestedEffect::SensitiveNotImplemented)
+    );
 }
 
 #[test]
@@ -265,20 +284,26 @@ fn log_storm_triggers_archive_writer_when_permit_is_on() {
     };
     let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
     let sink = Box::new(InMemorySink::new());
-    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink)
-        .with_archive(writer);
+    let mut ctx =
+        Context::new(QmonsterConfig::defaults(), source, notifier, sink).with_archive(writer);
 
     let reports = run_once(&mut ctx, Instant::now()).expect("ok");
     assert!(reports[0].signals.log_storm, "fixture must be a log storm");
-    assert!(reports[0]
-        .effects
-        .contains(&qmonster::domain::recommendation::RequestedEffect::ArchiveLocal));
+    assert!(
+        reports[0]
+            .effects
+            .contains(&qmonster::domain::recommendation::RequestedEffect::ArchiveLocal)
+    );
 
     // At least one archive file appeared under the archive dir.
     let wrote_any = std::fs::read_dir(paths.archive_dir())
         .unwrap()
         .any(|_| true);
-    assert!(wrote_any, "expected an archive file under {:?}", paths.archive_dir());
+    assert!(
+        wrote_any,
+        "expected an archive file under {:?}",
+        paths.archive_dir()
+    );
 }
 
 #[test]
@@ -374,7 +399,10 @@ fn context_pressure_rec_is_marked_strong_end_to_end() {
         .find(|r| r.action == "context-pressure: checkpoint")
         .expect("context_pressure_warning must fire for 82% pressure");
 
-    assert!(rec.is_strong, "context-pressure: checkpoint must be marked is_strong");
+    assert!(
+        rec.is_strong,
+        "context-pressure: checkpoint must be marked is_strong"
+    );
 
     // Codex v1.7.3 finding #1: suggested_command must be a pure,
     // runnable in-pane command — exact `/compact`, not a mixed-mode
@@ -511,7 +539,10 @@ fn cross_pane_finding_attaches_to_correct_anchor() {
     assert_eq!(reports.len(), 3);
 
     // %1 is the lex-smallest, so it must be the anchor.
-    let rep_1 = reports.iter().find(|r| r.pane_id == "%1").expect("%1 report");
+    let rep_1 = reports
+        .iter()
+        .find(|r| r.pane_id == "%1")
+        .expect("%1 report");
     assert_eq!(rep_1.cross_pane_findings.len(), 1);
     assert_eq!(
         rep_1.cross_pane_findings[0].kind,
@@ -691,10 +722,9 @@ fn warning_severity_rec_audit_logged_as_alert_fired() {
     let events = capture.snapshot();
     // The notify-input-wait rec must be logged as AlertFired.
     assert!(
-        events
-            .iter()
-            .any(|e| e.kind == AuditEventKind::AlertFired
-                && e.summary.contains("notify-input-wait")),
+        events.iter().any(
+            |e| e.kind == AuditEventKind::AlertFired && e.summary.contains("notify-input-wait")
+        ),
         "notify-input-wait (Warning) rec must be audit-logged as AlertFired"
     );
 }
@@ -718,13 +748,7 @@ fn claude_default_profile_levers_flow_end_to_end_to_the_panel_renderer() {
     // context_pressure marker is emitted. Under these conditions
     // recommend_claude_default should fire (healthy-state baseline).
     let source = FixturePaneSource {
-        panes: vec![pane(
-            "%1",
-            "claude:1:main",
-            "claude",
-            "ok\n",
-            false,
-        )],
+        panes: vec![pane("%1", "claude:1:main", "claude", "ok\n", false)],
     };
     let seen = Arc::new(Mutex::new(Vec::new()));
     let notifier = RecordingNotifier(seen.clone());
@@ -757,11 +781,21 @@ fn claude_default_profile_levers_flow_end_to_end_to_the_panel_renderer() {
     assert_eq!(lines.len(), 4, "1 header + 3 lever rows");
 
     // Header line: profile name + lever count + ProjectCanonical label.
-    assert!(lines[0].contains("claude-default"), "header names profile: {}", lines[0]);
-    assert!(lines[0].contains("3 levers"), "header counts levers: {}", lines[0]);
-    assert!(lines[0].contains("[Qmonster]"),
+    assert!(
+        lines[0].contains("claude-default"),
+        "header names profile: {}",
+        lines[0]
+    );
+    assert!(
+        lines[0].contains("3 levers"),
+        "header counts levers: {}",
+        lines[0]
+    );
+    assert!(
+        lines[0].contains("[Qmonster]"),
         "header carries ProjectCanonical label so operator sees bundle authority: {}",
-        lines[0]);
+        lines[0]
+    );
 
     // Every lever row MUST carry the ProviderOfficial label + key +
     // value + citation. The whole point of Phase 4 is to surface
@@ -769,17 +803,26 @@ fn claude_default_profile_levers_flow_end_to_end_to_the_panel_renderer() {
     // those four pieces fails here.
     let lever_lines = &lines[1..];
     for line in lever_lines {
-        assert!(line.contains("[Official]"),
-            "every lever row carries the ProviderOfficial label: {line}");
+        assert!(
+            line.contains("[Official]"),
+            "every lever row carries the ProviderOfficial label: {line}"
+        );
     }
 
     // Spot-check one lever end-to-end: BASH_MAX_OUTPUT_LENGTH = 30000
     // with a docs citation containing "bash output cap".
-    let bash = lever_lines.iter().find(|l| l.contains("BASH_MAX_OUTPUT_LENGTH"))
+    let bash = lever_lines
+        .iter()
+        .find(|l| l.contains("BASH_MAX_OUTPUT_LENGTH"))
         .expect("BASH_MAX_OUTPUT_LENGTH lever line present");
-    assert!(bash.contains("30000"), "BASH_MAX_OUTPUT_LENGTH value visible: {bash}");
-    assert!(bash.contains("bash output cap"),
-        "BASH_MAX_OUTPUT_LENGTH citation visible — Codex finding required per-lever citations to reach the live path: {bash}");
+    assert!(
+        bash.contains("30000"),
+        "BASH_MAX_OUTPUT_LENGTH value visible: {bash}"
+    );
+    assert!(
+        bash.contains("bash output cap"),
+        "BASH_MAX_OUTPUT_LENGTH citation visible — Codex finding required per-lever citations to reach the live path: {bash}"
+    );
 
     // Notify gate (>= Warning) MUST still NOT fire for a profile rec
     // alone — the healthy-state advisory stays passive.
@@ -807,13 +850,7 @@ fn claude_default_profile_levers_flow_end_to_end_to_the_panel_renderer() {
 #[test]
 fn claude_script_low_token_side_effects_flow_end_to_end_under_quota_tight() {
     let source = FixturePaneSource {
-        panes: vec![pane(
-            "%1",
-            "claude:1:main",
-            "claude",
-            "ok\n",
-            false,
-        )],
+        panes: vec![pane("%1", "claude:1:main", "claude", "ok\n", false)],
     };
     let seen = Arc::new(Mutex::new(Vec::new()));
     let notifier = RecordingNotifier(seen.clone());
@@ -869,7 +906,10 @@ fn claude_script_low_token_side_effects_flow_end_to_end_under_quota_tight() {
     // Lever block: every row carries the [Official] label.
     let lever_lines = &lines[1..9];
     for line in lever_lines {
-        assert!(line.contains("[Official]"), "lever row carries ProviderOfficial label: {line}");
+        assert!(
+            line.contains("[Official]"),
+            "lever row carries ProviderOfficial label: {line}"
+        );
     }
 
     // side_effects block: header + each entry as `- <text>`.
@@ -877,12 +917,17 @@ fn claude_script_low_token_side_effects_flow_end_to_end_under_quota_tight() {
         .iter()
         .position(|l| l.starts_with("side_effects"))
         .expect("side_effects header line must be in the rendered output");
-    assert!(lines[side_effects_header_idx].contains("(8)"),
-        "header reports count: {}", lines[side_effects_header_idx]);
+    assert!(
+        lines[side_effects_header_idx].contains("(8)"),
+        "header reports count: {}",
+        lines[side_effects_header_idx]
+    );
     let entries = &lines[side_effects_header_idx + 1..];
     assert_eq!(entries.len(), 8);
-    assert!(entries.iter().all(|e| e.starts_with("- ")),
-        "every side-effect entry uses the `- <text>` shape");
+    assert!(
+        entries.iter().all(|e| e.starts_with("- ")),
+        "every side-effect entry uses the `- <text>` shape"
+    );
 
     // Spot-check one high-risk lever's trade-off reaches the render
     // path with the expected wording — regression would surface here
@@ -892,9 +937,7 @@ fn claude_script_low_token_side_effects_flow_end_to_end_under_quota_tight() {
         "G-6 contract: the DISABLE_AUTO_MEMORY side-effect must be visible end-to-end"
     );
     assert!(
-        entries
-            .iter()
-            .any(|e| e.contains("debugging detail")),
+        entries.iter().any(|e| e.contains("debugging detail")),
         "G-6 contract: --bare's debugging-detail trade-off must reach the render path"
     );
 

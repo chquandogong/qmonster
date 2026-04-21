@@ -78,9 +78,15 @@ mod tests {
     #[test]
     fn quota_tight_gate_defaults_to_false() {
         let gates = PolicyGates::default();
-        assert!(!gates.quota_tight, "safety default: quota_tight must be false");
-        assert_eq!(gates.identity_confidence, IdentityConfidence::Unknown,
-            "safety default: low-confidence behavior until explicitly raised");
+        assert!(
+            !gates.quota_tight,
+            "safety default: quota_tight must be false"
+        );
+        assert_eq!(
+            gates.identity_confidence,
+            IdentityConfidence::Unknown,
+            "safety default: low-confidence behavior until explicitly raised"
+        );
     }
 
     #[test]

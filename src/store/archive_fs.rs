@@ -120,10 +120,7 @@ mod tests {
             _ => panic!("expected Skipped"),
         }
         let entries: Vec<_> = walk_files(td.path()).collect();
-        assert!(
-            entries.is_empty(),
-            "no files expected; got {entries:?}"
-        );
+        assert!(entries.is_empty(), "no files expected; got {entries:?}");
     }
 
     #[test]
@@ -138,7 +135,11 @@ mod tests {
         let result = writer.archive_if_long("%7", &tail).unwrap();
 
         match result {
-            ArchiveOutcome::Archived { preview, path, bytes } => {
+            ArchiveOutcome::Archived {
+                preview,
+                path,
+                bytes,
+            } => {
                 assert_eq!(preview.chars().count(), threshold);
                 assert_eq!(bytes, 500);
                 assert!(path.exists(), "archive file must exist at {path:?}");
