@@ -1,6 +1,6 @@
 mission:
-  version: "1.9.2"
-  title: "Qmonster v0.4.0 — Phase 5 P5-2 v1.9.2 (first producing rule: strong recs with slash suggested_command graduate to PromptSendProposed; TUI accept/reject UX with [p]/[d] keys + audit emission; NO tmux send-keys yet — P5-3)"
+  version: "1.9.3"
+  title: "Qmonster v0.4.0 — Phase 5 P5-2 confirm-archive v1.9.3 (Codex + Gemini both returned `approve` on v1.9.2; 3 Codex + 3 Gemini P5-3 design TODOs captured — small divergence on audit structuring noted)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -844,5 +844,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 33
+    total_revisions: 34
     history: "mission-history.yaml"

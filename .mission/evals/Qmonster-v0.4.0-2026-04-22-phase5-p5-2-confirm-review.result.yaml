@@ -1,0 +1,20 @@
+evaluation:
+  timestamp: "2026-04-22T00:00:00Z"
+  target: "Phase 5 P5-2 confirm review (v1.9.2)"
+  evaluated_by: "llm-codex"
+  source: "Local `codex exec` headless confirm review of commit 40975ae using gpt-5.4 (approval never, sandbox workspace-write, reasoning xhigh). Read-only static review against the local file tree; `cargo` not re-executed — relies on the author-reported green verification record (231 lib + 6 drift + 19 integration = 256 tests, clippy + fmt clean)."
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "Exhaustively checked: only the two context-pressure advisories (`context_pressure_warning` ≥ 0.75 and `context_pressure_critical` ≥ 0.85) in src/policy/rules/advisories.rs satisfy `is_strong && suggested_command.starts_with('/')`; both map to `/compact` and are mutually exclusive — no current over-trigger case."
+    - "Selected-pane `.find_map` resolution is acceptable for P5-2 since the current producer set does not create a real multi-proposal-per-pane condition. Matches Codex v1.9.0 TODO #3 / Gemini v1.9.2 TODO #2 forward view."
+    - "Scope discipline holds: no `tmux send-keys`, no executor path, no second confirmation gate in this commit."
+    - "observe_only accept-block path correct — Warning notice, no PromptSendAccepted event, no hidden actuation. Codex explicitly does NOT require audit-logging the blocked attempt (keeps audit stream cleaner); Gemini v1.9.2 raised the opposite preference — this is a P5-3 design-call, not a v1.9.2 blocker."
+    - 'Audit summary shape `"<pane> <cmd> (verb by operator; P5-2 — no tmux send-keys in this slice)"` is good enough for searchability and preserves the no-raw-pane-tail boundary; structured slash_command column can wait until P5-3 or multi-proposal work makes the schema cost worthwhile.'
+    - "Residual risk noted: future semantic drift in `is_strong` — if a later strong slash advisory should stay advisory-only, add an explicit producer flag rather than weakening the current catch-all rule."
+    - "P5-3 TODO #1 (Codex): carry forward existing P5-3 items from v1.9.1 unchanged — second execution gate, proposal identity (stable key), and terminal outcome semantics."
+    - "P5-3 TODO #2 (Codex): if a new strong slash advisory appears before stable proposal keys land, re-check that auto-graduation still matches intent."
+    - "P5-3 TODO #3 (Codex, optional): surface `p` / `d` in the global help/footer text in src/ui/dashboard.rs when that UI is next touched — not a blocker."
+    - "Divergence from Gemini v1.9.2 on two P5-3 design calls: (a) blocked-attempt audit logging (Gemini pro / Codex con, cleanliness preference); (b) promoting slash_command to a structured AuditEvent field (Gemini pro post-P5-2, Codex says wait until P5-3 schema cost is justified). Both reviewers agree these are P5-3 decisions, not v1.9.2 scope."
+  gate_decision: "Codex confirms v1.9.2 P5-2 is green. Combined with Gemini approve, P5-2 is fully gate-approved. P5-3 may open once operator confirms the design-call divergences between the two reviewers on audit structuring (or equivalently, P5-3 can ship with Codex's lighter approach first and add structure reactively if Gemini's concern materializes)."

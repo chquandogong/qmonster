@@ -1,0 +1,19 @@
+evaluation:
+  timestamp: "2026-04-22T00:00:00Z"
+  target: "Phase 5 P5-2 confirm review (v1.9.2)"
+  evaluated_by: "llm-gemini"
+  source: "Local Gemini CLI headless confirm review of commit 40975ae (gemini -p --approval-mode plan). Session hit a gemini-3.1-pro-preview 429 capacity-exhausted retry loop before the final review rendered; the complete 11-section review is archived at .docs/gemini/...-phase5-p5-2-confirm-review.md."
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "Scope discipline is excellent — zero tmux send-keys execution; no second execution gate smuggled in. Codex v1.9.0 scope-reduction guidance ('one producer + confirmation UX before any executor path') followed exactly."
+    - "Producer soundness confirmed: `is_strong && suggested_command.starts_with('/')` correctly catches /compact while ignoring `tmux capture-pane` commands and `# config-edit` comments. Pattern-based catch-all is future-proof."
+    - "Permit-gate UX closed Gemini v1.9.0 TODO: format_prompt_send_proposal honors `accept_gated` so observe_only shows dismiss-only form."
+    - "TUI bindings `p` / `d` do not conflict with existing navigation keys."
+    - "P5-3 TODO #1 (Gemini): build the actual tmux send-keys path behind the secondary execution gate."
+    - "P5-3 TODO #2 (Gemini, confirming Codex v1.9.0 TODO #3): the `.iter().find_map` selection in `src/main.rs` blindly grabs the first PromptSendProposed on the selected pane — fine for today (context-pressure emits at most one) but multi-proposal-per-pane producers in P5-3 will need a stable proposal key."
+    - "P5-3 TODO #3 (Gemini, extends Codex v1.9.0 TODO #2 on PromptSendAccepted semantics): promote `slash_command` (and possibly `pane_id`) from prose summary into a structured field / payload on AuditEvent before end-to-end actuation lands, so post-P5-3 the audit log stays structurally queryable."
+    - "Observation for P5-3 (Gemini): consider audit-logging `observe_only` accept attempts as a distinct blocked-attempt kind so operator intent is distinguishable from system restriction in the audit trail. Not a v1.9.2 blocker."
+    - "docs/ai/VALIDATION.md Phase-5 checkboxes correctly remain unticked — they require the P5-3 execution loop."
+  gate_decision: "Gemini confirms v1.9.2 P5-2 is green. Combined with Codex approve, P5-3 may open. The three TODOs should shape P5-3 design (executor + disambiguation + audit structuring) alongside the v1.9.1 Codex design TODOs."
