@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 18
-  latest_version: "1.8.2"
+  total_revisions: 19
+  latest_version: "1.8.3"
 
 timeline:
   - change_id: "initial"
@@ -2100,8 +2100,152 @@ timeline:
       - "P4-3: Gemini G-6 side_effects population on first aggressive-variant profile (e.g. claude-script-low-token gated by quota_tight)"
       - "P4-4+: Codex and Gemini provider profiles + remaining VALIDATION.md Phase-4 checkboxes"
 
+  - change_id: "phase-4-p4-3-g6-side-effects-and-claude-script-low-token"
+    semantic_version: "1.8.3"
+    change_sequence: 19
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Ship Phase-4 P4-3: Gemini G-6 side_effects population on the
+      first aggressive-variant provider profile. Closes
+      VALIDATION.md:151-153 and the VALIDATION.md:144-148 high-risk
+      Claude lever gating (the three `CLAUDE_CODE_DISABLE_*` env
+      vars must live ONLY in the aggressive profile, never in the
+      always-on baseline). Extends
+      `ui::panels::format_profile_lines` to render the side_effects
+      section so the operator sees aggregate trade-off cost before
+      applying the profile.
+    intent_ko: >
+      Phase 4 P4-3 착수: Gemini G-6 — 첫 공격적 변형 provider
+      profile의 side_effects 채움. VALIDATION.md:151-153과
+      VALIDATION.md:144-148 고위험 Claude lever 게이팅(3개
+      `CLAUDE_CODE_DISABLE_*` env var은 공격적 profile에만 존재,
+      always-on baseline에는 절대 노출 금지)을 닫는다.
+      `ui::panels::format_profile_lines`를 확장해 side_effects
+      섹션을 렌더링하여 operator가 profile 적용 전 누적 trade-off
+      비용을 볼 수 있게 한다.
+    decision: >
+      (1) src/policy/rules/profiles.rs: new
+      `recommend_claude_script_low_token` rule gated on
+      `gates.quota_tight == true` + Claude main + IdentityConfidence
+      >= Medium + no active alerts + low context pressure. `eval_profiles`
+      dispatcher calls it after `recommend_claude_default`. Mutual
+      exclusion is inherent: `claude-default` has
+      `if gates.quota_tight { return None; }` so only one of the
+      two profiles ever fires per pane.
+      (2) New `claude_script_low_token_profile()` private constructor
+      builds the aggressive `ProviderProfile`: 8 `ProviderOfficial`
+      levers (`--bare`, `--exclude-dynamic-system-prompt-sections`,
+      `--strict-mcp-config`, `--disable-slash-commands`,
+      `--no-session-persistence`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`,
+      `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`,
+      `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS=1`) with per-lever
+      citation + `side_effects: Vec<String>` populated 1:1 with the
+      lever list (G-6). The three high-risk env vars live ONLY in
+      this profile; `claude_default_profile` is guaranteed not to
+      contain them.
+      (3) src/ui/panels.rs: `format_profile_lines` extended to emit
+      `side_effects (<n>):` header + `- <effect>` entries after the
+      lever block whenever `profile.side_effects` is non-empty; the
+      section is omitted for empty lists so `claude-default` stays
+      visually compact.
+      (4) Tests: 3 new unit in profiles.rs
+      (`recommend_claude_script_low_token_fires_on_quota_tight_with_eight_provider_official_levers_and_populated_side_effects`,
+      `recommend_claude_script_low_token_suppressed_when_quota_tight_off`,
+      `high_risk_claude_levers_are_gated_to_claude_script_low_token_only`).
+      2 new unit in ui/panels.rs
+      (`format_profile_lines_appends_side_effects_section_when_profile_has_side_effects`,
+      `format_profile_lines_omits_side_effects_section_when_profile_side_effects_is_empty`).
+      1 new end-to-end integration
+      (`claude_script_low_token_side_effects_flow_end_to_end_under_quota_tight`)
+      that flips `cfg.token.quota_tight = true`, runs run_once, and
+      asserts the 18-line rendered output includes DISABLE_AUTO_MEMORY
+      + "debugging detail" side_effects and that Notify is NOT
+      triggered (Severity::Good).
+    decision_ko: >
+      (1) src/policy/rules/profiles.rs 신규 규칙
+      `recommend_claude_script_low_token` — `gates.quota_tight ==
+      true` + Claude main + IdentityConfidence >= Medium + 활성
+      알림 없음 + 낮은 context pressure에서만 발화. `eval_profiles`
+      dispatcher가 `recommend_claude_default` 뒤에 호출. 상호
+      배타성은 내재적: `claude-default`의
+      `if gates.quota_tight { return None; }` 게이트로 한 pane에서
+      두 profile이 동시 발화하지 않음.
+      (2) `claude_script_low_token_profile()` 생성자가 공격적
+      `ProviderProfile` 구성: 8개 `ProviderOfficial` lever(5개
+      low-token CLI flag + 3개 high-risk env var) 각각 citation
+      포함, `side_effects: Vec<String>`는 lever와 1:1(G-6). 3개
+      고위험 env var은 이 profile에만 존재; `claude_default_profile`
+      에는 절대 포함 안 됨(테스트로 고정).
+      (3) src/ui/panels.rs의 `format_profile_lines`가
+      `profile.side_effects`가 비어있지 않을 때 `side_effects (<n>):`
+      헤더 + `- <effect>` 항목을 lever block 뒤에 렌더; 비어있으면
+      섹션 생략(claude-default 시각 간결성 유지).
+      (4) 테스트 6개 신규 — profiles.rs 3개(shape, gate, 고위험
+      가드), ui/panels.rs 2개(side_effects 렌더 / 생략), integration
+      1개(end-to-end quota_tight 경로 + 18줄 검증 + Notify 미트리거).
+    triggered_by: "operator approval to proceed with P4-3 after v1.8.2 fully gate-approved (Gemini + Codex both approve with no must-fix)"
+    issue_or_context: >
+      After Phase-4 P4-1 (provider-profile foundation + payload
+      visibility) and P4-2 (Gemini G-5 auto-memory guide) both
+      shipped and were fully gate-approved, P4-3 closes the last
+      two Phase-4 Gemini-numbered items: G-6 (side_effects on
+      high-compression profiles) and the VALIDATION.md:144-148
+      high-risk-lever guard. `claude-script-low-token` is the
+      canonical "aggressive variant" referenced in
+      VALIDATION.md:146; shipping it with populated side_effects is
+      the most natural way to satisfy G-6 end-to-end.
+    changes:
+      added:
+        - "src/policy/rules/profiles.rs — new `recommend_claude_script_low_token` rule + `claude_script_low_token_profile` bundle (8 ProviderOfficial levers + 8 side_effects) + 3 new unit tests (shape, gate, high-risk lever guard)"
+        - "tests/event_loop_integration.rs — new end-to-end test `claude_script_low_token_side_effects_flow_end_to_end_under_quota_tight` exercising run_once + format_profile_lines on the quota_tight path (18 rendered lines verified)"
+      modified:
+        - "src/ui/panels.rs — `format_profile_lines` extended with side_effects section (`side_effects (<n>):` header + `- <effect>` rows when non-empty; omitted when empty). 2 new unit tests lock both branches."
+        - "src/policy/rules/profiles.rs — `eval_profiles` dispatcher now calls both rules; module doc-comment updated to describe P4-1/P4-2/P4-3 progression and the mutual-exclusion design"
+        - "mission.yaml — version 1.8.2 → 1.8.3; title replaced; new v1.8.3 paragraph in goal covering the aggressive profile, G-6 closure, high-risk-lever guard, renderer extension, and 6 new tests; 4 new done_when entries for P4-3; execution_hints.topology + suggested_approach updated; lineage total_revisions 18 → 19"
+        - "mission-history.yaml — meta.total_revisions 18 → 19; latest_version → 1.8.3; new entry (this one, change_sequence 19); evolution_summary.current_phase updated"
+        - ".mission/CURRENT_STATE.md — version → 1.8.3; Phase 4 section expanded with a P4-3 sub-section; Gate status reset to show pending P4-3 reviews; Verification + Next first action refreshed"
+    changed_sections:
+      - "new aggressive provider profile + rule (claude-script-low-token)"
+      - "G-6 side_effects populated 1:1 with aggressive-profile levers"
+      - "VALIDATION.md:144-148 high-risk-lever guard enforced at test layer"
+      - "format_profile_lines extended with side_effects section rendering"
+      - "end-to-end integration test covers quota_tight path"
+    done_when_delta:
+      added:
+        - "Phase 4 P4-3 v1.8.3: `src/policy/rules/profiles.rs::recommend_claude_script_low_token` fires a `Severity::Good` rec under `gates.quota_tight == true` on healthy Claude main panes. The bundled `ProviderProfile` `claude-script-low-token` carries 8 ProviderOfficial levers (`--bare`, `--exclude-dynamic-system-prompt-sections`, `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`, `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS=1`) each with per-lever citation. `claude-default` and the aggressive profile are mutually exclusive by design."
+        - "Phase 4 P4-3 v1.8.3: Gemini G-6 closed — `ProviderProfile.side_effects` on `claude-script-low-token` is 1:1 with the lever list (8 operator-visible trade-off strings). `ui::panels::format_profile_lines` renders the side_effects section as `side_effects (<n>):` header + `- <effect>` entries after the lever block; empty lists (as in `claude-default`) cause the section to be omitted so healthy-state baseline stays visually compact."
+        - "Phase 4 P4-3 v1.8.3: VALIDATION.md:144-148 high-risk-lever guard enforced at the test layer — `claude_default_profile` MUST NOT contain `CLAUDE_CODE_DISABLE_AUTO_MEMORY` / `CLAUDE_CODE_DISABLE_CLAUDE_MDS` / `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`; `claude_script_low_token_profile` MUST contain all three. Both directions locked by `high_risk_claude_levers_are_gated_to_claude_script_low_token_only`."
+        - "Phase 4 P4-3 v1.8.3: 6 new tests total — 3 unit in `policy/rules/profiles.rs` (shape, gate, high-risk guard), 2 unit in `ui/panels.rs` (side_effects section present/omitted), 1 end-to-end integration in `tests/event_loop_integration.rs` (quota_tight → 18 rendered lines with DISABLE_AUTO_MEMORY + debugging-detail trade-offs visible; no Notify trigger). 176 lib + 18 integration (up from 171 + 17); clippy --all-targets -D warnings clean."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~220 LOC production (new rule + new profile constructor + format_profile_lines extension + eval_profiles dispatcher update) + ~280 LOC test delta (6 new tests)"
+      tests: "176 lib + 18 integration (up from 171 + 17; +5 lib + 1 integration; 0 existing tests changed)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no runtime behavior change for existing signals; on Claude main panes under `quota_tight == true`, a new Severity::Good recommendation appears in PaneReport.recommendations carrying the structured aggressive profile. `claude-default` stops firing in that case (mutual exclusion by design)."
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — pure additive rule set + additive renderer branch; zero changes to existing effect-runner, UI layout, or Recommendation type; new high-risk-lever guard is explicitly test-enforced at both inclusion (aggressive) and exclusion (default) directions to prevent silent regression"
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+      - "KD-007"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "Request Codex + Gemini gate review on v1.8.3 P4-3 before continuing to P4-4+"
+      - "P4-4+: Codex and Gemini provider profiles (canonical baseline + aggressive variants)"
+      - "P4-5+: VALIDATION.md Phase-4 checkboxes ticked incrementally as profile coverage widens"
+
 evolution_summary:
-  current_phase: "Phase 4 P4-2 fully gate-approved — Gemini v1.8.2 pass (적극 승인) + Codex v1.8.2 approve (no must-fix); v1.8.2 = approved P4-2 baseline; ready for P4-3 (Gemini G-6 side_effects population + claude-script-low-token aggressive profile)"
+  current_phase: "Phase 4 P4-3 shipped — Gemini G-6 side_effects populated on claude-script-low-token aggressive profile (v1.8.3); awaiting first Codex + Gemini gate review on v1.8.3 before P4-4+"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

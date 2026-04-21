@@ -1,6 +1,6 @@
 mission:
-  version: "1.8.2"
-  title: "Qmonster v0.4.0 — Phase 4 P4-2 shipped (Gemini G-5 auto-memory guide rule: state-critical task types route handoff content to MDR / CURRENT_STATE, not to provider save_memory)"
+  version: "1.8.3"
+  title: "Qmonster v0.4.0 — Phase 4 P4-3 shipped (Gemini G-6 side_effects population on claude-script-low-token aggressive profile; quota_tight-gated; 8 ProviderOfficial levers with 1:1 operator-visible trade-offs)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -235,7 +235,53 @@ mission:
     conditions unchanged; only the payload visibility and renderer
     coverage move forward.
 
-    Phase 4 P4-2 (v1.8.2, this revision) ships the Gemini G-5
+    Phase 4 P4-3 (v1.8.3, this revision) ships the Gemini G-6
+    side_effects population on the first aggressive-variant profile
+    per VALIDATION.md:151-153. A new profile
+    `claude-script-low-token` (ProjectCanonical bundle name) bundles
+    eight ProviderOfficial levers — five low-token CLI flags
+    (`--bare`, `--exclude-dynamic-system-prompt-sections`,
+    `--strict-mcp-config`, `--disable-slash-commands`,
+    `--no-session-persistence`) plus three high-risk env vars
+    (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`,
+    `CLAUDE_CODE_DISABLE_CLAUDE_MDS`,
+    `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`). The three high-risk
+    env vars are test-enforced to live in THIS profile only
+    (VALIDATION.md:144-148 guard locked by
+    `high_risk_claude_levers_are_gated_to_claude_script_low_token_only`).
+    `ProviderProfile.side_effects` is populated 1:1 with the lever
+    list — every lever has a corresponding operator-visible
+    trade-off string (e.g. "--bare suppresses verbose status output
+    — debugging detail may be harder to reconstruct";
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 disables provider auto-memory
+    — state handoff MUST go through .mission/CURRENT_STATE.md or an
+    MDR (aligns with Gemini G-5)"). The new rule
+    `recommend_claude_script_low_token` is gated on
+    `gates.quota_tight == true` + Claude main + IdentityConfidence
+    >= Medium + no active alerts + low context pressure;
+    `claude-default` and the aggressive variant are mutually
+    exclusive by design (the default gates OFF on quota_tight).
+    `ui::panels::format_profile_lines` is extended to emit a
+    `side_effects (<n>):` header + `- <effect>` entries after the
+    lever block when the profile's side_effects list is non-empty;
+    empty lists (as in `claude-default`) cause the section to be
+    omitted. Five new tests lock the contract: shape test on the
+    aggressive profile (8 levers, 8 side_effects, Good severity,
+    ProjectCanonical source); gate test (suppressed when
+    !quota_tight, `claude-default` fires instead); high-risk-lever
+    guard (default profile must NOT contain the 3 env vars;
+    aggressive profile MUST contain them); renderer test (section
+    appears when side_effects is non-empty, omitted when empty);
+    end-to-end integration test (quota_tight scenario through
+    run_once/PaneReport/format_profile_lines yields 18 lines — 1
+    header + 8 lever rows + 1 side_effects header + 8 entries — with
+    DISABLE_AUTO_MEMORY and "debugging detail" both visible; no
+    Notify trigger because Severity::Good). 176 lib + 18 integration
+    (up from 171 + 17; +5 lib + 1 integration). clippy clean. No
+    policy behavior change for existing signals; new recs only
+    surface on the previously-dormant quota_tight code path.
+
+    Phase 4 P4-2 (v1.8.2) shipped the Gemini G-5
     auto-memory guide rule — the second Phase-4 slice. When the
     adapter-inferred task_type is `TaskType::Review` or
     `TaskType::SessionResume` (both classes of work that produce
@@ -362,6 +408,12 @@ mission:
     - "Phase 4 P4-2 v1.8.2: `recommend_mdr_over_auto_memory` respects the KD-007 IdentityConfidence gate (Low/Unknown suppressed because adapter task_type is unreliable) and suppresses on `waiting_for_input || permission_prompt` (operator attention already routed). No Notify trigger (Severity::Concern stays below the gate); no new RequestedEffect."
     - "Phase 4 P4-2 v1.8.2: 5 new unit tests in `auto_memory.rs` lock the contract — fires on Review with ProjectCanonical source + MDR/CURRENT_STATE.md/save_memory next_step + Concern severity; fires on SessionResume; suppressed on Unknown/CodeExploration/LogTriage/Summary/Automation; suppressed on Low confidence; suppressed on waiting_for_input or permission_prompt. 171 lib + 17 integration (up from 166 + 17); clippy --all-targets -D warnings clean."
 
+    # Phase-4 P4-3 (v1.8.3) — Gemini G-6 side_effects + claude-script-low-token aggressive profile.
+    - "Phase 4 P4-3 v1.8.3: `src/policy/rules/profiles.rs::recommend_claude_script_low_token` fires a `Severity::Good` rec under `gates.quota_tight == true` on healthy Claude main panes. The bundled `ProviderProfile` `claude-script-low-token` carries 8 ProviderOfficial levers (`--bare`, `--exclude-dynamic-system-prompt-sections`, `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`, `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS=1`) each with per-lever citation. `claude-default` and the aggressive profile are mutually exclusive by design."
+    - "Phase 4 P4-3 v1.8.3: Gemini G-6 closed — `ProviderProfile.side_effects` on `claude-script-low-token` is 1:1 with the lever list (8 operator-visible trade-off strings). `ui::panels::format_profile_lines` renders the side_effects section as `side_effects (<n>):` header + `- <effect>` entries after the lever block; empty lists (as in `claude-default`) cause the section to be omitted so healthy-state baseline stays visually compact."
+    - "Phase 4 P4-3 v1.8.3: VALIDATION.md:144-148 high-risk-lever guard enforced at the test layer — `claude_default_profile` MUST NOT contain `CLAUDE_CODE_DISABLE_AUTO_MEMORY` / `CLAUDE_CODE_DISABLE_CLAUDE_MDS` / `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`; `claude_script_low_token_profile` MUST contain all three. Both directions locked by `high_risk_claude_levers_are_gated_to_claude_script_low_token_only`."
+    - "Phase 4 P4-3 v1.8.3: 6 new tests total — 3 unit in `policy/rules/profiles.rs` (shape, gate, high-risk guard), 2 unit in `ui/panels.rs` (side_effects section present/omitted), 1 end-to-end integration in `tests/event_loop_integration.rs` (quota_tight → 18 rendered lines with DISABLE_AUTO_MEMORY + debugging-detail trade-offs visible; no Notify trigger). 176 lib + 18 integration (up from 171 + 17); clippy --all-targets -D warnings clean."
+
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
     - "Layer separation: docs/ai/ = canonical (Git-tracked); .docs/ = raw working docs (gitignored); mission.yaml + mission-history.yaml + .mission/ = local contract/ledger (gitignored in single-user phase)."
@@ -451,22 +503,20 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1); P4-2 (Gemini G-5 auto-memory guide rule) shipped in 1 TDD commit (v1.8.2)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1); P4-2 (Gemini G-5 auto-memory guide rule) shipped in 1 TDD commit (v1.8.2); P4-3 (Gemini G-6 side_effects + claude-script-low-token aggressive profile) shipped in 1 TDD commit (v1.8.3)."
     suggested_approach: >
-      Phase 4 P4-2 shipped (v1.8.2). The Gemini G-5 auto-memory
-      guide rule now fires a ProjectCanonical Concern-severity
-      passive advisory on Review / SessionResume task types with a
-      `next_step` pointing at `.mission/CURRENT_STATE.md` or a new
-      `.mission/decisions/MDR-XXX.md` — closing Gemini G-5 per
-      VALIDATION.md:154-156. Gate status: Phase-3 reviewer gates
-      all closed; Codex v1.8.1 confirm re-review approve (P4-1
-      baseline fully approved). Request Codex + Gemini gate review
-      on v1.8.2 before continuing to P4-3 — Gemini G-6
-      side_effects population on the first aggressive-variant
-      profile (e.g. `claude-script-low-token` gated by
-      `quota_tight`). P4-4+ afterwards: Codex and Gemini provider
-      profiles + VALIDATION.md Phase-4 checkboxes ticked
-      incrementally.
+      Phase 4 P4-3 shipped (v1.8.3). Gemini G-6 closed — the new
+      aggressive profile `claude-script-low-token` (gated by
+      `quota_tight`) bundles 8 ProviderOfficial levers with 1:1
+      side_effects, and `format_profile_lines` surfaces the
+      side_effects section on both TUI panel and `--once`. The
+      VALIDATION.md:144-148 high-risk-lever guard is test-enforced.
+      Gate status: Phase-3 fully approved; P4-1 fully approved
+      (Gemini pass + Codex approve); P4-2 fully approved (Gemini
+      pass + Codex approve). Request Codex + Gemini gate review on
+      v1.8.3 before continuing to P4-4+ — Codex and Gemini provider
+      profiles (canonical baseline + aggressive variants), then
+      VALIDATION.md Phase-4 checkboxes ticked incrementally.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -517,5 +567,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 18
+    total_revisions: 19
     history: "mission-history.yaml"
