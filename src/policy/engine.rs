@@ -23,6 +23,7 @@ impl Engine {
         let mut recs = eval_alerts(id, signals);
         recs.extend(crate::policy::rules::advisories::eval_advisories(id, signals, gates));
         recs.extend(crate::policy::rules::profiles::eval_profiles(id, signals, gates));
+        recs.extend(crate::policy::rules::auto_memory::eval_auto_memory(id, signals, gates));
         let mut effects = Vec::new();
         // Notify fires only when at least one rec is urgent (Warning or Risk).
         // Concern-severity passive advisories stay in-UI (Codex #3 fix; r1
