@@ -2101,7 +2101,7 @@ timeline:
       - "P4-4+: Codex and Gemini provider profiles + remaining VALIDATION.md Phase-4 checkboxes"
 
 evolution_summary:
-  current_phase: "Phase 4 P4-2 shipped — Gemini G-5 auto-memory guide rule in eval_auto_memory (v1.8.2); awaiting first Codex + Gemini gate review on v1.8.2 before P4-3"
+  current_phase: "Phase 4 P4-2 fully gate-approved — Gemini v1.8.2 pass (적극 승인) + Codex v1.8.2 approve (no must-fix); v1.8.2 = approved P4-2 baseline; ready for P4-3 (Gemini G-6 side_effects population + claude-script-low-token aggressive profile)"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
