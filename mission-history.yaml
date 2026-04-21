@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 24
-  latest_version: "1.8.8"
+  total_revisions: 25
+  latest_version: "1.8.9"
 
 timeline:
   - change_id: "initial"
@@ -2941,8 +2941,172 @@ timeline:
       - "P4-7: `gemini-script-low-token` aggressive variant (quota_tight-gated, side_effects populated per Gemini G-6 parity for Gemini). Completes 3 x 2 profile grid."
       - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens"
 
+  - change_id: "phase-4-p4-7-gemini-script-low-token-aggressive-profile"
+    semantic_version: "1.8.9"
+    change_sequence: 25
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Ship Phase-4 P4-7: the Gemini aggressive variant. Mirrors
+      claude-script-low-token (P4-3) and codex-script-low-token
+      (P4-5) patterns while staying honest about Gemini's narrower
+      documented token-efficiency surface (0 ProviderOfficial, 3
+      ProjectCanonical — same as gemini-default). Closes Gemini
+      G-6 parity across ALL THREE providers and completes the
+      3 x 2 profile grid (Claude + Codex + Gemini × baseline +
+      aggressive).
+    intent_ko: >
+      Phase 4 P4-7 착수: Gemini aggressive variant. P4-3
+      (claude-script-low-token), P4-5 (codex-script-low-token)
+      패턴을 Gemini에 대칭 적용. 단 Gemini CLI의 documented
+      token-efficiency surface가 좁은 만큼 0 ProviderOfficial /
+      3 ProjectCanonical honest scope 유지 (gemini-default와
+      동일). Gemini G-6 parity를 세 provider 모두에서 달성,
+      3 × 2 profile grid 완성(Claude + Codex + Gemini × baseline
+      + aggressive).
+    decision: >
+      (1) src/policy/rules/profiles.rs: new
+      `recommend_gemini_script_low_token` rule gated on
+      `gates.quota_tight == true` + Gemini main + IdentityConfidence
+      of Medium or higher + no active alerts + low context
+      pressure. `eval_profiles` dispatcher now calls all SIX rules
+      (claude-default, claude-script-low-token, codex-default,
+      codex-script-low-token, gemini-default, gemini-script-low-
+      token) in order. Provider gates isolate Claude / Codex /
+      Gemini; within each provider the quota_tight gate separates
+      baseline from aggressive — 3 x 2 = 6 rules mutually
+      exclusive per pane via pure gates, no cross-rule
+      references.
+      (2) New `gemini_script_low_token_profile()` private
+      constructor bundles 3 levers, all ProjectCanonical (0
+      ProviderOfficial — same honesty pattern as gemini-default
+      because Gemini CLI's documented surface for explicit
+      token-efficiency is narrower than Claude / Codex):
+        - `--yolo = enabled` (auto-approval opt-in; inverse of
+           baseline's `unset`; Qmonster decision to enable ONLY
+           under quota_tight per safety-precedence)
+        - `save_memory = disabled` (explicit off-switch; aligns
+           with VALIDATION.md:149-150 'Gemini profile
+           recommendations stay advisory; save_memory / Auto
+           Memory is not treated as a state store' + Gemini G-5
+           rule from P4-2)
+        - `--model = gemini-2.5-flash` (explicit reaffirmation so
+           scripted sessions see the model choice in one place
+           alongside the other aggressive levers — same value as
+           gemini-default baseline)
+      (3) `ProviderProfile.side_effects` populated 1:1 with
+      lever list (3 operator-visible trade-off strings, each a
+      full sentence per Gemini G-6 contract). The save_memory
+      side_effect explicitly cross-references Gemini G-5 +
+      `.mission/CURRENT_STATE.md` + MDR — same pattern Claude
+      (CLAUDE_CODE_DISABLE_AUTO_MEMORY) and Codex
+      (model_auto_compact_token_limit) aggressive variants use,
+      preserving architectural principle consistency across ALL
+      THREE providers.
+      (4) Reason summary derived at runtime from lever
+      source_kinds (same v1.8.6 pattern as the other five profile
+      recs): 'apply 3 levers for a quota-tight scripted Gemini
+      session — 0 ProviderOfficial + 3 ProjectCanonical, with 3
+      operator-visible side effects (see list below)'.
+      (5) No renderer change — existing `format_profile_lines`
+      helper handles the new rec transitively (Gemini G-6 side_
+      effects section emits the same way Claude + Codex
+      aggressive variants render).
+      (6) Four new unit tests in `policy/rules/profiles.rs`:
+        - Shape: 3 levers + 3 side_effects, 0 PO + 3 PC, Good
+          severity, ProjectCanonical source, derived-from-data
+          reason citing ProjectCanonical, per-lever exact value +
+          source_kind assertions, AND an explicit G-5 cross-
+          reference check on the save_memory side_effect string
+          (locks architectural principle consistency at the test
+          layer across all three aggressive variants).
+        - Gate-off: suppressed when !quota_tight; gemini-default
+          fires instead.
+        - Provider-gate suppression: gemini-script-low-token does
+          NOT fire on Claude or Codex panes under quota_tight;
+          claude-script-low-token / codex-script-low-token fire
+          instead on their respective panes (sanity check for
+          three-way symmetric provider gating).
+        - Mutual exclusion: toggle quota_tight on a Gemini main
+          pane and assert exactly one of the two Gemini profiles
+          fires per configuration (mirrors the Claude and Codex
+          pair tests).
+    decision_ko: >
+      (1) src/policy/rules/profiles.rs에 신규
+      `recommend_gemini_script_low_token` 규칙. `eval_profiles`
+      dispatcher가 이제 6개 rule 순차 호출 — provider × quota_
+      tight 2축으로 pane당 최대 1개 profile.
+      (2) `gemini_script_low_token_profile()` 생성자가 3 lever
+      번들(모두 ProjectCanonical): `--yolo = enabled` (baseline의
+      unset 반전), `save_memory = disabled` (VALIDATION.md:149-
+      150 + G-5), `--model = gemini-2.5-flash` (baseline 값
+      reaffirm).
+      (3) side_effects 1:1로 3개 (G-6). save_memory 항목이
+      G-5 + CURRENT_STATE.md + MDR cross-reference — Claude +
+      Codex aggressive와 동일 패턴으로 세 provider 간 아키텍처
+      원칙 일관성 유지.
+      (4) reason 요약은 lever source_kinds에서 런타임 파생
+      (v1.8.6 패턴).
+      (5) 렌더러 변경 없음 — format_profile_lines가 transitively
+      처리.
+      (6) unit test 4개 — shape (G-5 cross-ref 검증 포함) /
+      gate-off / provider-gate / mutual-exclusion.
+    triggered_by: "operator approval (계속 해줘) to proceed with P4-7 after v1.8.8 fully gate-approved (Gemini pass + Codex approve with one deferred non-blocker)"
+    issue_or_context: >
+      After P4-6 established the Gemini baseline, P4-7 adds the
+      aggressive counterpart. This closes Gemini G-6 (side_effects
+      populated on high-compression profiles) across all three
+      providers, completing the Phase-4 line that started with
+      claude-script-low-token in P4-3. The 3 x 2 profile grid is
+      now complete: 3 providers x {baseline, aggressive} = 6
+      profile rules. Phase 4 profile recommender coverage is full
+      from a provider-axis perspective; remaining Phase-4 work
+      (P4-8+) is VALIDATION.md checklist ticking + any new levers
+      reviewers suggest.
+    changes:
+      modified:
+        - "src/policy/rules/profiles.rs — `eval_profiles` dispatcher now calls all 6 rules (adds `recommend_gemini_script_low_token` after `recommend_gemini_default`); no change to existing rules"
+      added:
+        - "src/policy/rules/profiles.rs — new `recommend_gemini_script_low_token` rule + `gemini_script_low_token_profile()` constructor (3 ProjectCanonical levers + 3 side_effects with G-5 cross-reference on the save_memory row) + 4 new unit tests (shape with G-5 assertion, gate-off, provider-gate, mutual-exclusion)"
+    changed_sections:
+      - "new Gemini aggressive profile rule + constructor (3 PC levers + 3 side_effects)"
+      - "eval_profiles dispatcher extended to 6 rules (3 x 2 grid complete)"
+      - "Gemini G-6 parity closed across all three providers"
+    done_when_delta:
+      added:
+        - "Phase 4 P4-7 v1.8.9: `src/policy/rules/profiles.rs::recommend_gemini_script_low_token` fires a `Severity::Good` rec under `gates.quota_tight == true` on healthy Gemini main panes. The bundled `ProviderProfile` `gemini-script-low-token` carries 3 levers, all labeled `ProjectCanonical` (0 ProviderOfficial) — same honesty pattern as gemini-default: `--yolo = enabled` (auto-approval opt-in; inverse of baseline's unset), `save_memory = disabled` (explicit off-switch aligned with VALIDATION.md:149-150 + Gemini G-5), `--model = gemini-2.5-flash` (explicit reaffirmation)."
+        - "Phase 4 P4-7 v1.8.9: Gemini G-6 parity for Gemini closed — `ProviderProfile.side_effects` on `gemini-script-low-token` is 1:1 with the lever list (3 operator-visible trade-off strings). The save_memory side_effect cross-references G-5 + `.mission/CURRENT_STATE.md` + MDR, same pattern Claude + Codex aggressive variants use. This closes G-6 across all three providers."
+        - "Phase 4 P4-7 v1.8.9: `gemini-default` and `gemini-script-low-token` are mutually exclusive by design via the `gates.quota_tight` gate (same shape as Claude and Codex pairs). All six profile rules coexist mutually exclusive per pane via provider × quota_tight gates — 3 x 2 profile grid complete."
+        - "Phase 4 P4-7 v1.8.9: 4 new unit tests in `policy/rules/profiles.rs` — shape (3 levers + 3 side_effects + 0 PO + 3 PC + G-5 cross-reference check on save_memory side_effect); gate-off (gemini-default fires instead when !quota_tight); provider-gate suppression on Claude + Codex panes (claude-script-low-token / codex-script-low-token fire instead — symmetric three-way gating); explicit mutual-exclusion test toggling quota_tight. 190 lib + 18 integration (up from 186 + 18); clippy --all-targets -D warnings clean."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~180 LOC production (new rule + new profile constructor + dispatcher update + module-level doc additions) + ~180 LOC test delta (4 new unit tests)"
+      tests: "190 lib + 18 integration (up from 186 + 18; +4 new unit tests, 0 existing tests changed)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no runtime behavior change for existing signals; on healthy Gemini main panes under gates.quota_tight == true, a new Severity::Good recommendation appears in PaneReport.recommendations carrying the gemini-script-low-token bundle. gemini-default stops firing in that case (mutual exclusion by design). Claude / Codex panes unaffected."
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — pure additive rule inside the existing dispatcher; mutual-exclusion enforced by the shared quota_tight gate + an explicit test; no new Recommendation structure, no render-helper change, no effect-runner change; honest 0-PO / 3-PC authority split is a continuation of the v1.8.5 / P4-6 pattern for providers with narrower documented token-efficiency surfaces"
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+      - "KD-007"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "Request Codex + Gemini gate review on v1.8.9 P4-7 before opening P4-8+"
+      - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens; address Codex v1.8.8-P4-6 deferred non-blocker (--approval-mode = default positive-form alternative) if still relevant after reviewer input on the completed grid"
+      - "Phase 5 opens: safer actuation — manual prompt-send helper with user confirmation"
+
 evolution_summary:
-  current_phase: "Phase 4 P4-6 fully gate-approved — v1.8.8 gemini-default: Gemini pass (적극 승인; '--model, --yolo 조합은 가장 합리적이고 안전한 구성') + Codex approve (no must-fix; one non-blocker note on --approval-mode = default positive-form alternative, deferred); ready for P4-7 (gemini-script-low-token aggressive variant — completes 3 x 2 profile grid)"
+  current_phase: "Phase 4 P4-7 shipped — Gemini aggressive variant `gemini-script-low-token` with 3 levers + 1:1 side_effects (v1.8.9); 3 x 2 profile grid complete (Claude + Codex + Gemini × baseline + aggressive); awaiting first Codex + Gemini gate review on v1.8.9 before opening P4-8+"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
