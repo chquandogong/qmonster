@@ -4,7 +4,7 @@ Observe-first TUI for multi-CLI tmux development — watches Claude Code /
 Codex / Gemini panes (plus itself), surfaces alerts, token-pressure
 metrics, and recommendations **without** touching the panes it observes.
 
-- Version: v0.4.0 project phase; mission revision = 1.8.12 (shared-verification hardening); crate package version = 0.1.0; Phase 5 not started
+- Version: v0.4.0 project phase; crate package version = 0.1.0; Phase 5 manual prompt-send helper not started
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -38,6 +38,11 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 | 4     | Provider profile recommender — 3×2 provider/profile grid, structured payload render, side-effects surfacing, and auto-memory routing guidance                               | **Shipped** — Phase 4 complete; P4-8 wrap-up v1.8.12             |
 | 5     | Manual prompt-send helper (safer actuation)                                                                                                                                | not started                                                      |
 
+Recent post-Phase-4 TUI follow-ups are already shipped in-tree:
+scrollable alerts/panes/help/target picker, mouse interaction, severity
+bulk hide, session/window filtering, and a bottom-right version badge
+that opens a Git status overlay.
+
 ## Quick start
 
 ```bash
@@ -53,13 +58,17 @@ cargo run --release
 #   q / Esc  — quit
 #   Tab      — switch focus between alerts and pane list
 #   ↑ / ↓    — scroll the focused list
+#   PgUp/PgDn, Home/End — faster list navigation
+#   Enter/Space — toggle auto-hide on the selected alert
 #   t        — choose target (session -> window)
 #   Enter    — move to window list / confirm window selection
-#   Left     — back to session list
+#   Left / Backspace — back to session list
 #   ?        — open help / legend overlay
 #   r        — re-capture CLI versions; drift appears as a warning alert
 #   s        — write a runtime snapshot to ~/.qmonster/snapshots/
 #   c        — clear system notices
+#   Mouse    — wheel scroll, click select, double-click alert hide
+#   Footer version badge — click bottom-right to open Git status
 
 # Override the storage root (useful for tests / sandbox runs)
 QMONSTER_ROOT=/tmp/q cargo run -- --once
@@ -67,8 +76,8 @@ cargo run -- --root /tmp/q --once
 ```
 
 For a tmux layout matching Qmonster's pane-title convention, see
-`tmux/qmonster.tmux.conf.example`. Default config is
-`config/qmonster.example.toml`.
+`tmux/qmonster.tmux.conf.example`. Runtime-consumed config keys are
+documented in `config/qmonster.example.toml`.
 
 ## Architecture at a glance
 
@@ -147,8 +156,7 @@ MISSION_SPEC_CLI=/abs/path/to/mission-spec.js ./scripts/verify-shared.sh
 ```
 
 The event-loop integration tests use a fixture `PaneSource` so they do
-not require a real tmux session. Current test suite size is 212 tests
-(194 unit + 18 integration).
+not require a real tmux session.
 
 ## Documentation
 

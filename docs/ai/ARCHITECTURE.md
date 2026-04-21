@@ -41,7 +41,7 @@ in-memory `EventSink`.
 
 ```
 src/
-  main.rs      # bootstrap only
+  main.rs      # CLI entry + current TUI event loop (still too large)
   app/         # bootstrap, config+safety-precedence, event loop, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # polling first; control-mode-capable PaneSource trait
@@ -55,8 +55,11 @@ src/
   notify/      # desktop / terminal bell; severity-aware rate limiting
 ```
 
-`src/main.rs` is bootstrap only. Every `mod.rs` is re-export only. No
-module grows into a god module.
+The long-term target is still a thinner `src/main.rs`, but the current
+implementation keeps the TUI event loop and modal orchestration there.
+The invariant that matters is boundary purity: provider parsing stays in
+`adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
+stays unaware of provider semantics.
 
 ## Module responsibilities
 
@@ -131,15 +134,16 @@ flags / settings / env vars into named `ProjectCanonical` profiles
 
 ### `ui/`
 
-Ratatui widgets. Layout priority:
+Ratatui widgets. Current operator surfaces:
 
-1. Alert queue (Notify / stop / stopfail / input wait / permission wait
-   / subagent-detected / version-drift).
-2. Context / token / cost per pane, each rendered with its
-   `SourceKind` badge (`[PO] / [PC] / [HE] / [ES]`).
-3. Provider / role / instance / current command / path / repo /
-   branch / sandbox / approval mode.
-4. Tool / skill / MCP / memory activity.
+1. Severity-first alert queue with timestamps, `NEW` highlighting,
+   per-alert auto-hide toggles, and severity bulk-hide chips.
+2. Per-pane list with inline expansion for the selected pane's
+   recommendations and provider-profile payload.
+3. Overlays for target selection (session -> window), help/legend, and
+   Git status from the bottom-right version badge.
+4. Source labels rendered in long form (`[Official]`, `[Qmonster]`,
+   `[Heur]`, `[Estimate]`) rather than two-letter abbreviations.
 
 Palette: low-saturation, grey/navy/blue. Color only on state
 transitions, always paired with a numeric % or severity letter.
@@ -180,7 +184,9 @@ config + safer-only env/CLI overrides.
 
 ### Data-shape rule
 
-- Config is TOML (static, stable). See `config/qmonster.example.toml`.
+- Config is TOML (static, stable). The runtime-parsed subset is the one
+  defined in `src/app/config.rs`; `config/qmonster.example.toml`
+  documents only those live keys.
 - Runtime state is in-memory structs + (Phase 2+) SQLite. UI must
   never treat runtime state as config or vice versa.
 

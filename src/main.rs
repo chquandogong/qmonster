@@ -99,7 +99,7 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
-    let source = PollingSource::new();
+    let source = PollingSource::new(config.tmux.capture_lines);
     let notifier = DesktopNotifier;
     let archive = ArchiveWriter::new(paths.clone(), config.logging.big_output_chars);
     let mut ctx = Context::new(config, source, notifier, sink).with_archive(archive);

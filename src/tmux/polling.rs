@@ -28,13 +28,25 @@ pub trait PaneSource {
     fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError>;
 }
 
+const DEFAULT_CAPTURE_LINES: usize = 24;
+
 /// Production implementation that shells out to the `tmux` CLI.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct PollingSource;
+#[derive(Debug, Clone, Copy)]
+pub struct PollingSource {
+    capture_lines: usize,
+}
 
 impl PollingSource {
-    pub fn new() -> Self {
-        Self
+    pub fn new(capture_lines: usize) -> Self {
+        Self {
+            capture_lines: capture_lines.max(1),
+        }
+    }
+}
+
+impl Default for PollingSource {
+    fn default() -> Self {
+        Self::new(DEFAULT_CAPTURE_LINES)
     }
 }
 
@@ -64,7 +76,7 @@ impl PaneSource for PollingSource {
         let mut rows = Vec::new();
         for line in text.lines() {
             if let Some(mut snap) = parse_list_panes_row(line) {
-                if let Ok(tail) = self.capture_tail(&snap.pane_id, 24) {
+                if let Ok(tail) = self.capture_tail(&snap.pane_id, self.capture_lines) {
                     snap.tail = tail;
                 }
                 rows.push(snap);
