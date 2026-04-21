@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — Phase 4 P4-8 confirm-archive v1.8.14 (Codex + Gemini both approve on v1.8.13; Phase 4 fully re-gate-approved)"
+  mission_title: "Qmonster v0.4.0 — Phase 5 P5-1 opening v1.9.0 (Safer Actuation scaffolding — layered on v1.8.14 P4-8 confirm-archive)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 30
-  latest_version: "1.8.14"
+  total_revisions: 31
+  latest_version: "1.9.0"
 
 timeline:
   - change_id: "initial"
@@ -3608,9 +3608,142 @@ timeline:
       - "Optional non-blocking cleanup (Codex note): normalize aggressive `gemini-script-low-token` lever from `--yolo = enabled` to `--approval-mode = yolo` to avoid the deprecated `--yolo` spelling per current Gemini CLI docs"
       - "Optional non-blocking wording refinement (Codex note): rewrite the token.thresholds decision rationale in docs/ai/VALIDATION.md to name `logging.big_output_chars` explicitly (more precise than the abstract `[token.thresholds]` phrasing)"
 
+  - change_id: "phase-5-p5-1-opening-safer-actuation-scaffolding"
+    semantic_version: "1.9.0"
+    change_sequence: 31
+    date: "2026-04-22"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — approved scaffolding-first approach over a larger end-to-end P5-1 in the same slice)"
+    change_type: "feature"
+    motivation_type: "phase-opening"
+    persistence: "permanent"
+    intent: >
+      Open Phase 5 (Safer Actuation) with a type-layer-only TDD
+      scaffolding slice. Mirrors Phase-4 P4-1's v1.8.0 opening pattern:
+      land the domain types + allow-list plumbing first, then grow the
+      actual user-facing actuation and the first producing rule in
+      later slices (P5-2+). This keeps the first Phase-5 commit
+      auditable and reversible while establishing the data-shape
+      contract reviewers can validate.
+    intent_ko: >
+      Phase 5 (Safer Actuation)를 type-layer 전용 TDD 스캐폴딩 슬라이스로
+      open. Phase-4 P4-1 v1.8.0 개방 패턴을 따른다: 도메인 타입 + allow-
+      list 배선을 먼저 내려 놓고, 실제 UI 발동 경로와 첫 producing rule은
+      이후 슬라이스(P5-2+)로 분리. 첫 Phase-5 커밋을 감사하기 쉽고
+      되돌리기 쉽게 유지하면서 리뷰어가 검증할 데이터-모양 계약을 먼저
+      잠근다.
+    decision: >
+      Land four things and NOTHING else in this slice: (1) new
+      `RequestedEffect::PromptSendProposed { target_pane_id: String,
+      slash_command: String }` variant, which forced the enum to
+      drop its derived `Copy + PartialOrd + Ord + Hash` — the
+      payload cannot cheaply participate in a total order. Authority
+      ordering is now exposed via `RequestedEffect::authority_tier()
+      -> u8` (Notify=0, ArchiveLocal=1, PromptSendProposed=2,
+      SensitiveNotImplemented=3). (2) three new `AuditEventKind`s —
+      `PromptSendProposed`, `PromptSendAccepted`, `PromptSendRejected`
+      — wired through `src/store/audit.rs::kind_to_str` and
+      `parse_kind` so SQLite round-trip cannot regress later even
+      though `Accepted` / `Rejected` have no producing code path yet.
+      (3) `EffectRunner::permit` signature change from
+      `fn permit(&self, effect: RequestedEffect) -> bool` to
+      `fn permit(&self, effect: &RequestedEffect) -> bool` (owned-
+      to-borrowed, necessary for the payload-bearing variant).
+      Behavior: `observe_only` blocks every variant including the
+      proposal; `recommend_only` lets the proposal pass (display-
+      layer effect, not actuation) regardless of
+      `allow_auto_prompt_send` — that flag continues to gate the
+      *real* tmux send-keys call that P5-2+ layers on top. (4)
+      `app/event_loop.rs::deliver_effects` gains a
+      `RequestedEffect::PromptSendProposed { .. } => continue` arm
+      so the proposal surfaces via `PaneReport.effects` without any
+      runtime side-effect firing in P5-1. No new rule emits the
+      proposal yet; no TUI accept/reject UX; no `tmux send-keys`
+      call. VALIDATION Phase-5 checkboxes stay unticked because
+      they cover end-to-end behavior that requires P5-2+ surface
+      work before they can be honestly ticked.
+    decision_ko: >
+      이 슬라이스에 정확히 네 가지만 포함 (그 외에는 아무것도 하지 않음):
+      (1) `RequestedEffect::PromptSendProposed { target_pane_id: String,
+      slash_command: String }` 신규 variant. 페이로드가 total order에
+      참여할 수 없으므로 enum에서 파생 `Copy + PartialOrd + Ord + Hash`를
+      제거; allow-list 우선순위는 `RequestedEffect::authority_tier() ->
+      u8` (Notify=0, ArchiveLocal=1, PromptSendProposed=2,
+      SensitiveNotImplemented=3)로 분리. (2) 3개 신규 `AuditEventKind`
+      (`PromptSendProposed` / `PromptSendAccepted` / `PromptSendRejected`);
+      `Accepted` / `Rejected`는 P5-1에 producing 경로 없지만 SQLite
+      round-trip 대칭을 지금 잠그기 위해 `kind_to_str` /
+      `parse_kind`에 양쪽 등록. (3) `EffectRunner::permit`의 시그니처를
+      `permit(effect: RequestedEffect)` → `permit(effect:
+      &RequestedEffect)`로 (페이로드 variant 때문에 borrow 필수). 동작:
+      `observe_only`는 proposal 포함 모두 차단, `recommend_only`에서는
+      proposal은 통과 (표시-계층 effect이지 actuation 아님); 이때
+      `allow_auto_prompt_send` 플래그는 이 계층을 게이팅하지 않고,
+      P5-2+에서 얹히는 실제 `tmux send-keys` 호출을 게이팅. (4)
+      `app/event_loop.rs::deliver_effects`에
+      `RequestedEffect::PromptSendProposed { .. } => continue` arm
+      추가 — proposal은 `PaneReport.effects`로 UI에 노출되지만 P5-1에서
+      런타임 side-effect는 발생하지 않음. 아직 이 proposal을 emit하는
+      rule 없음; TUI accept/reject UX 없음; `tmux send-keys` 호출 없음.
+      VALIDATION Phase-5 체크박스는 P5-2+ 표면 작업 전까지 정직하게
+      ticked될 수 없으므로 비워 둠.
+    triggered_by: "v1.8.14 follow-up: 'Open Phase 5 (Safer Actuation — manual prompt-send helper with user confirmation)'"
+    issue_or_context: >
+      Phase 4 closed fully gate-approved at v1.8.14 (Codex + Gemini
+      both `approve` on v1.8.13 P4-8 wrap-up). VALIDATION.md Phase-5
+      lists three checks: (a) manual prompt-send helper requires
+      explicit user confirmation, (b) every actuation is audit-logged
+      with approver/pane/command/outcome, (c) destructive actions
+      remain outside automation. The existing code surface had only
+      a `RequestedEffect::SensitiveNotImplemented` placeholder — no
+      data types, no audit kinds, no allow-list routing for the
+      actual prompt-send use case. Starting Phase 5 with a typed-
+      scaffolding slice lets reviewers validate the contract before
+      any `tmux send-keys` invocation exists in the tree.
+    changes:
+      added: []
+      modified:
+        - "src/domain/recommendation.rs"
+        - "src/domain/audit.rs"
+        - "src/store/audit.rs"
+        - "src/app/effects.rs"
+        - "src/app/event_loop.rs"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - ".mission/CURRENT_STATE.md"
+      removed: []
+    changed_sections:
+      - "domain::RequestedEffect — new PromptSendProposed payload variant; dropped derived Copy/PartialOrd/Ord/Hash; added authority_tier() method"
+      - "domain::AuditEventKind — 3 new kinds (PromptSendProposed / Accepted / Rejected)"
+      - "store::audit::{kind_to_str,parse_kind} — symmetric wiring for the 3 new kinds"
+      - "app::EffectRunner::permit — signature change to &RequestedEffect + PromptSendProposed arm returning true in recommend_only"
+      - "app::event_loop::deliver_effects — PromptSendProposed continue arm; UI surface via PaneReport.effects only"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "type-layer only — no new rule emits PromptSendProposed yet; no tmux send-keys call; no TUI accept/reject UX. PaneReport.effects can now (in principle) carry a proposal but nothing produces one in this slice."
+      verification: "cargo build + cargo test --all-targets (226 lib + 6 drift + 18 integration = 250 tests; +4 net vs. v1.8.14 baseline) + cargo clippy --all-targets -D warnings + cargo fmt --check all clean."
+      docs: "mission.yaml narrative block + mission-history.yaml change_sequence 31 + evolution_summary.current_phase updated. VALIDATION.md Phase-5 checkboxes intentionally left unticked — they describe end-to-end behavior that P5-2+ surface work unlocks."
+      ledger: "v1.9.0 layered on v1.8.14; v1.8.12 shared-verification contract + v1.8.13 P4-8 wrap-up + v1.8.14 confirm-archive all intact."
+    breaking: false
+    risk: "low — type-layer-only slice; no actuation path; the `permit` signature change from owned to borrowed touches all call sites and is fully covered by existing + new tests (no silent API drift)."
+    related_commits: []
+    related_decisions:
+      - "KD-003"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "Request short Codex + Gemini confirm re-review on v1.9.0 P5-1 scaffolding before opening P5-2"
+      - "P5-2: TUI accept/reject UX + first producing rule (candidate: high-context-pressure `/compact` graduating from `next_step` prose to a PromptSendProposed)"
+      - "P5-3: `tmux send-keys` actuation + `PromptSendAccepted`/`PromptSendRejected` audit emission + `allow_auto_prompt_send` gating"
+      - "Phase-5 VALIDATION.md checkboxes to be ticked after P5-2/P5-3 close end-to-end behavior"
+
 evolution_summary:
-  current_phase: "Phase 4 COMPLETE + P4-8 confirm-archive shipped — v1.8.14 archives the v1.8.13 confirm re-review verdicts from both reviewers. Codex v1.8.13 confirm returned `approve` (0 must-fix findings, 2 optional non-blocking notes carried to the follow-up list) and Gemini v1.8.13 confirm returned `approve` (0 findings). Phase 4 is therefore fully re-gate-approved by both reviewers on the P4-8 wrap-up, on top of the v1.8.12 shared-verification hardening contract. All 7 Phase-4 VALIDATION.md checkboxes remain ticked; 6 profiles in the 3x2 grid stay locked; `--approval-mode = default` positive-form swap on gemini-default holds; portable shared-verification `done_when` contract (cargo build/test/clippy + tracked artefact existence) remains the live acceptance gate. Phase 5 (Safer Actuation — manual prompt-send helper with user confirmation) may now open."
-  next_phase: "Phase 4 — provider profile recommender"
+  current_phase: "Phase 5 OPENED (v1.9.0) — Safer Actuation scaffolding shipped. New domain/audit types (`RequestedEffect::PromptSendProposed` variant + 3 `PromptSend*` AuditEventKinds) + `EffectRunner::permit` signature change to `&RequestedEffect` with PromptSendProposed passing in `recommend_only` (display-layer) while `allow_auto_prompt_send` continues to gate real actuation for P5-2+. NO tmux send-keys call, NO producing rule, NO TUI accept/reject UX in this slice — those are P5-2 / P5-3. 226 lib + 6 drift + 18 integration = 250 tests; clippy + fmt clean. Layered on v1.8.14 P4-8 confirm-archive; v1.8.12 shared-verification contract, v1.8.13 P4-8 content, and the 6-profile 3x2 grid all untouched."
+  next_phase: "Phase 5 — safer actuation (P5-2 TUI UX + first producing rule; P5-3 tmux send-keys + audit accepted/rejected emission)"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

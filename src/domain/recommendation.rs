@@ -60,15 +60,43 @@ pub struct Recommendation {
 
 /// Effects the policy engine wants `app::EffectRunner` to consider.
 /// The runner decides which actually fire based on `actions.mode` and
-/// the allow-list. Ordering is authority-sensitive: sensitive effects
-/// compare as "greater" so the gate can reject the top of the range.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// the allow-list. Authority-sensitive ordering is exposed via
+/// `authority_tier()` — derived `Ord` was dropped in Phase 5 P5-1
+/// (v1.9.0) when `PromptSendProposed` added a payload that cannot
+/// cheaply participate in a total order.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequestedEffect {
     Notify,
     ArchiveLocal,
-    /// Reserved — no Phase 1 code path creates this; placeholder for the
-    /// future allow-list gate. Never executed in `recommend_only`.
+    /// Phase 5 P5-1 (v1.9.0): operator-facing prompt-send proposal.
+    /// A rule builds this as a *proposal*; `app::EffectRunner` allows
+    /// the proposal to pass the allow-list (`recommend_only` → true,
+    /// `observe_only` → false) so the UI can render it as a pending
+    /// actuation. Actual execution via `tmux send-keys` lands in P5-2+
+    /// and stays gated behind explicit operator confirmation plus the
+    /// `allow_auto_prompt_send` flag (safety-precedence asymmetry —
+    /// env/CLI cannot promote that flag toward more permissive).
+    PromptSendProposed {
+        target_pane_id: String,
+        slash_command: String,
+    },
+    /// Reserved — no current code path creates this; placeholder for the
+    /// future destructive-effect allow-list gate. Never executed.
     SensitiveNotImplemented,
+}
+
+impl RequestedEffect {
+    /// Authority tier for allow-list ordering. Higher = more sensitive.
+    /// Replaces the Phase-1 `Ord` derive that was lost when
+    /// `PromptSendProposed` added a payload in P5-1 (v1.9.0).
+    pub fn authority_tier(&self) -> u8 {
+        match self {
+            RequestedEffect::Notify => 0,
+            RequestedEffect::ArchiveLocal => 1,
+            RequestedEffect::PromptSendProposed { .. } => 2,
+            RequestedEffect::SensitiveNotImplemented => 3,
+        }
+    }
 }
 
 /// Cross-pane advisory. Emitted by `policy::Engine::evaluate_cross_pane`
@@ -123,11 +151,48 @@ mod tests {
     }
 
     #[test]
-    fn requested_effect_ordering_preserves_allow_list_intent() {
-        // Ordering: notify < archive < sensitive actions. The allow-list
-        // gate in app::EffectRunner reads this ordering.
-        assert!(RequestedEffect::Notify < RequestedEffect::ArchiveLocal);
-        assert!(RequestedEffect::ArchiveLocal < RequestedEffect::SensitiveNotImplemented);
+    fn requested_effect_authority_tier_preserves_allow_list_gradient() {
+        // Gradient: notify < archive < prompt_send_proposed < sensitive.
+        // The allow-list gate in app::EffectRunner + future P5-2 actuation
+        // path use authority_tier() in place of the former `Ord` derive
+        // (dropped when PromptSendProposed gained a payload in P5-1).
+        let proposal = RequestedEffect::PromptSendProposed {
+            target_pane_id: "%1".into(),
+            slash_command: "/compact".into(),
+        };
+        assert!(
+            RequestedEffect::Notify.authority_tier()
+                < RequestedEffect::ArchiveLocal.authority_tier()
+        );
+        assert!(RequestedEffect::ArchiveLocal.authority_tier() < proposal.authority_tier());
+        assert!(
+            proposal.authority_tier() < RequestedEffect::SensitiveNotImplemented.authority_tier()
+        );
+    }
+
+    #[test]
+    fn prompt_send_proposed_carries_target_pane_and_slash_command() {
+        // P5-1 data-shape contract: the proposal carries exactly the
+        // target pane id + the slash command operator needs to confirm.
+        // No raw tail, no free-form payload — this is metadata, by design
+        // (audit-isolation rule stays intact; the audit log never needs
+        // raw bytes from this effect).
+        let p = RequestedEffect::PromptSendProposed {
+            target_pane_id: "%7".into(),
+            slash_command: "/compact".into(),
+        };
+        match &p {
+            RequestedEffect::PromptSendProposed {
+                target_pane_id,
+                slash_command,
+            } => {
+                assert_eq!(target_pane_id, "%7");
+                assert_eq!(slash_command, "/compact");
+            }
+            _ => panic!("expected PromptSendProposed"),
+        }
+        // Equality holds structurally (no Copy / Hash required).
+        assert_eq!(p, p.clone());
     }
 
     #[test]

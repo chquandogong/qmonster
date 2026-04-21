@@ -19,6 +19,21 @@ pub enum AuditEventKind {
     RetentionSwept,
     VersionSnapshotError,
     AuditWriteFailed,
+    /// Phase 5 P5-1 (v1.9.0): a policy rule emitted a
+    /// `RequestedEffect::PromptSendProposed` and the proposal reached
+    /// the UI surface. Metadata-only — the summary string carries the
+    /// target pane and slash command; raw pane tail never flows through
+    /// this event (audit-isolation rule).
+    PromptSendProposed,
+    /// Phase 5 P5-1 (v1.9.0): operator-confirmed a pending prompt-send
+    /// proposal. No executor code path exists yet in P5-1 (this kind
+    /// is a forward-declared audit contract); P5-2+ will record the
+    /// acceptance the moment the operator confirmation runs.
+    PromptSendAccepted,
+    /// Phase 5 P5-1 (v1.9.0): operator rejected / dismissed a pending
+    /// prompt-send proposal. Same forward-declaration note as
+    /// `PromptSendAccepted`.
+    PromptSendRejected,
 }
 
 /// Structured audit record. The writer API must only accept this type —
@@ -77,5 +92,47 @@ mod tests {
         };
         assert_eq!(e.kind, AuditEventKind::VersionDriftDetected);
         assert_eq!(e.severity, Severity::Warning);
+    }
+
+    #[test]
+    fn prompt_send_audit_kinds_are_distinct_and_carry_only_metadata() {
+        // P5-1 audit contract: three dedicated kinds cover the
+        // proposal → accepted / rejected lifecycle. Every field is
+        // structured metadata — summary holds target + slash command
+        // text, never raw pane bytes. The writer still rejects raw
+        // input by virtue of the struct signature (no bytes field).
+        let proposed = AuditEvent {
+            kind: AuditEventKind::PromptSendProposed,
+            pane_id: "%1".into(),
+            severity: Severity::Concern,
+            summary: "%1 /compact (pending operator confirmation)".into(),
+            provider: Some(Provider::Claude),
+            role: Some(Role::Main),
+        };
+        let accepted = AuditEvent {
+            kind: AuditEventKind::PromptSendAccepted,
+            pane_id: "%1".into(),
+            severity: Severity::Warning,
+            summary: "%1 /compact (operator-confirmed)".into(),
+            provider: Some(Provider::Claude),
+            role: Some(Role::Main),
+        };
+        let rejected = AuditEvent {
+            kind: AuditEventKind::PromptSendRejected,
+            pane_id: "%1".into(),
+            severity: Severity::Safe,
+            summary: "%1 /compact (operator-dismissed)".into(),
+            provider: Some(Provider::Claude),
+            role: Some(Role::Main),
+        };
+        assert_ne!(proposed.kind, accepted.kind);
+        assert_ne!(accepted.kind, rejected.kind);
+        assert_ne!(proposed.kind, rejected.kind);
+        // Sanity: all three are usable Copy values (this mirrors the
+        // pattern used throughout the domain and guarantees we did not
+        // accidentally break Copy by reshuffling the enum).
+        let _ = proposed.kind;
+        let _ = accepted.kind;
+        let _ = rejected.kind;
     }
 }

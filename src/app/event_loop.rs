@@ -57,8 +57,8 @@ where
     let permits = {
         let runner = EffectRunner::new(&ctx.config);
         EffectPermits {
-            notify: runner.permit(RequestedEffect::Notify),
-            archive: runner.permit(RequestedEffect::ArchiveLocal),
+            notify: runner.permit(&RequestedEffect::Notify),
+            archive: runner.permit(&RequestedEffect::ArchiveLocal),
         }
     };
 
@@ -162,6 +162,11 @@ fn deliver_effects<N: NotifyBackend>(
                     dispatch_archive(pane_id, tail, ctx_holder);
                 }
             }
+            // P5-1 scaffolding only: the proposal is surfaced via the
+            // PaneReport.effects list for the UI layer to render. No
+            // runtime dispatch here — the tmux send-keys call and the
+            // operator-confirmation UX land in a later Phase-5 slice.
+            RequestedEffect::PromptSendProposed { .. } => continue,
             // Always denied — there is no code path that produces it and
             // this arm doubles as a guardrail if a future rule slips.
             RequestedEffect::SensitiveNotImplemented => continue,
