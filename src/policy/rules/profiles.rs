@@ -8,21 +8,34 @@ use crate::policy::gates::{PolicyGates, allow_provider_specific};
 /// Phase 4 provider-profile recommender. Each rule is a pure function
 /// over `(identity, signals, gates)` and emits a `Recommendation` that
 /// carries a named `ProviderProfile` bundle. Profile NAMES are
-/// `ProjectCanonical`; levers inside are `ProviderOfficial` with
-/// explicit citations. P4-1 shipped `recommend_claude_default`; P4-3
-/// added the aggressive variant `recommend_claude_script_low_token`
-/// (gated by `quota_tight`) with a populated
-/// `ProviderProfile.side_effects` list — Gemini G-6. P4-4 adds
-/// `recommend_codex_default` — the first non-Claude baseline
-/// profile. Provider gates inside each rule keep the bundles
-/// mutually exclusive across providers (a Claude pane sees only
-/// Claude profiles, a Codex pane sees only Codex profiles).
-/// `recommend_claude_default` and `recommend_claude_script_low_token`
-/// are also mutually exclusive *within* Claude: the default profile's
+/// `ProjectCanonical`; levers inside carry their own authority label
+/// (`ProviderOfficial` when cited against a provider doc, or
+/// `ProjectCanonical` when the value is a Qmonster pick on a
+/// documented key). Every lever carries an explicit citation.
+///
+/// Phase 4's provider-profile coverage is the 3x2 grid — 3 providers
+/// (Claude / Codex / Gemini) × 2 modes (baseline / aggressive):
+///
+///   claude-default (P4-1)            claude-script-low-token (P4-3)
+///   codex-default (P4-4 + v1.8.5+)   codex-script-low-token (P4-5)
+///   gemini-default (P4-6)            gemini-script-low-token (P4-7)
+///
+/// Provider gates inside each rule isolate a pane to at most one
+/// provider's profiles. Within each provider, the default profile's
 /// `if gates.quota_tight { return None; }` gate hands off to the
-/// aggressive variant exactly when the operator opts into
-/// quota-tight mode. The same pattern will be applied to Codex in
-/// P4-5 (aggressive Codex variant).
+/// aggressive variant, which has the inverse
+/// `if !gates.quota_tight { return None; }` — so per pane at most one
+/// of the six profiles fires. Mutual exclusion is invariant-level
+/// (shared gate) and locked by explicit per-pair unit tests.
+///
+/// Gemini G-6 (side_effects on high-compression profiles) is honored
+/// across all three aggressive variants, each carrying a 1:1 lever
+/// ↔ operator-visible-trade-off list. Gemini G-5 (auto-memory is not
+/// a primary state store) is cross-referenced from each aggressive
+/// variant's memory-disabling side_effect and also enforced by the
+/// separate `recommend_mdr_over_auto_memory` rule in
+/// `src/policy/rules/auto_memory.rs`, which fires on any provider
+/// under state-critical task types.
 pub fn eval_profiles(
     id: &ResolvedIdentity,
     signals: &SignalSet,
@@ -719,19 +732,21 @@ fn gemini_default_profile() -> ProviderProfile {
                 source_kind: SourceKind::ProjectCanonical,
             },
             // Auto-approval stays explicitly OFF in the baseline.
-            // Gemini's `--yolo` flag auto-approves agent actions,
-            // which belongs to the aggressive variant (P4-7, tbd);
+            // Gemini's `--yolo` flag auto-approves agent actions;
             // the safe default for an interactive healthy main pane
-            // is NOT to set --yolo. We express that as a lever so
-            // the render surfaces it to the operator — the authority
-            // label is ProjectCanonical because "recommend NOT
-            // setting a flag" is a Qmonster architectural choice
-            // (the mission.yaml safety-precedence constraint), not
-            // a Gemini-doc canonical value.
+            // is NOT to set --yolo. Baseline surfaces this as a
+            // lever (value `unset`) so operators scanning the
+            // rendered profile see the safety-precedence choice,
+            // and the aggressive variant `gemini-script-low-token`
+            // (P4-7, shipped) sets `--yolo = enabled` — inverse
+            // toggle on the same key. Authority is ProjectCanonical
+            // because "recommend NOT setting a flag" is a Qmonster
+            // architectural choice (mission.yaml safety-precedence
+            // constraint), not a Gemini-doc canonical value.
             ProfileLever {
                 key: "--yolo",
                 value: "unset",
-                citation: "Gemini CLI docs describe --yolo as auto-approval for agent actions; Qmonster recommends KEEPING IT UNSET on a healthy interactive main-pane baseline per the safety-precedence constraint (aggressive variant in P4-7 will reserve the auto-approval path for quota_tight-opted sessions)",
+                citation: "Gemini CLI docs describe --yolo as auto-approval for agent actions; Qmonster recommends KEEPING IT UNSET on a healthy interactive main-pane baseline per the safety-precedence constraint (aggressive variant gemini-script-low-token sets --yolo = enabled under quota_tight)",
                 source_kind: SourceKind::ProjectCanonical,
             },
         ],
@@ -847,18 +862,21 @@ fn gemini_script_low_token_profile() -> ProviderProfile {
                 citation: "Gemini CLI docs describe --yolo as auto-approval for agent actions; Qmonster enables it ONLY in this quota_tight-gated aggressive profile (baseline keeps --yolo unset per safety-precedence)",
                 source_kind: SourceKind::ProjectCanonical,
             },
-            // Provider auto-memory explicitly off. VALIDATION.md:
-            // 149-150 says "save_memory / Auto Memory is not
-            // treated as a state store"; aggressive scripted
-            // sessions encode this as an explicit off-switch so
-            // Gemini's auto-memory can't silently grow during
-            // batch runs. State handoff must go through
+            // Provider auto-memory explicitly off. Codex v1.8.9
+            // P4-7 finding #1 (risk) corrected the surface here:
+            // Gemini CLI docs describe `save_memory` as a TOOL
+            // (invoked by the agent) and Auto Memory as a separate
+            // configuration key `experimental.autoMemory`. Setting
+            // the config key is the right surface to disable the
+            // Auto Memory feature per VALIDATION.md:149-150 + the
+            // mission.yaml "Auto memory ... never the primary state
+            // store" constraint. State handoff must go through
             // .mission/CURRENT_STATE.md or an MDR (G-5 rule).
             ProfileLever {
-                key: "save_memory",
-                value: "disabled",
-                citation: "Qmonster architectural constraint per VALIDATION.md:149-150 + mission.yaml 'Auto memory ... never the primary state store'; aggressive scripted sessions make this policy explicit by disabling auto-memory writes (aligns with Gemini G-5 auto-memory guide rule shipped in P4-2)",
-                source_kind: SourceKind::ProjectCanonical,
+                key: "experimental.autoMemory",
+                value: "false",
+                citation: "Gemini CLI docs — auto memory: experimental.autoMemory config key toggles the Auto Memory feature (distinct from the save_memory tool); Qmonster sets it to false in this aggressive profile per VALIDATION.md:149-150 + Gemini G-5 (auto memory is never the primary state store)",
+                source_kind: SourceKind::ProviderOfficial,
             },
             // Explicit `--model` reaffirmation inside the aggressive
             // bundle. Same value as gemini-default (`gemini-2.5-flash`)
@@ -874,11 +892,11 @@ fn gemini_script_low_token_profile() -> ProviderProfile {
         ],
         // Gemini G-6: every aggressive lever has a 1:1 operator-
         // visible trade-off. Three levers → three side_effects.
-        // The save_memory entry cross-references G-5 (same pattern
-        // Claude + Codex aggressive variants use).
+        // The experimental.autoMemory entry cross-references G-5
+        // (same pattern Claude + Codex aggressive variants use).
         side_effects: vec![
             "--yolo = enabled auto-approves every Gemini agent action in this scripted session — operator cedes per-call confirmation; pair with version-controlled prompts + post-hoc audit rather than interactive oversight".into(),
-            "save_memory = disabled blocks Gemini auto-memory writes for the duration of this session — state handoff MUST go through .mission/CURRENT_STATE.md or an MDR (aligns with Gemini G-5 auto-memory guide rule)".into(),
+            "experimental.autoMemory = false disables the Gemini Auto Memory feature for the duration of this session — state handoff MUST go through .mission/CURRENT_STATE.md or an MDR (aligns with Gemini G-5 auto-memory guide rule)".into(),
             "--model = gemini-2.5-flash stays on a lighter model for aggressive cost reduction — complex reasoning tasks that would benefit from pro-tier capacity must be routed outside this scripted session or escalate to an interactive pane".into(),
         ],
         source_kind: SourceKind::ProjectCanonical,
@@ -1683,11 +1701,12 @@ mod tests {
 
     #[test]
     fn recommend_gemini_default_suppressed_when_quota_tight_on() {
-        // Baseline only — the aggressive Gemini variant (P4-7, tbd)
-        // will own the quota_tight path. This test reserves the
-        // gate so the aggressive variant, when added, cleanly takes
-        // over without overlap (same pattern as Claude / Codex
-        // baseline ↔ aggressive pairs).
+        // Baseline only — the aggressive Gemini variant
+        // `gemini-script-low-token` (P4-7, shipped) owns the
+        // quota_tight path. This test enforces the mutual-exclusion
+        // gate on the default side; the aggressive side is
+        // asserted by `gemini_default_and_gemini_script_low_token_
+        // are_mutually_exclusive_via_quota_tight_gate`.
         let id = healthy_gemini_main();
         let s = SignalSet::default();
         let recs = eval_profiles(&id, &s, &gates_quota_tight());
@@ -1733,7 +1752,7 @@ mod tests {
         assert_eq!(
             profile.levers.len(),
             3,
-            "bundles 3 aggressive Gemini levers: --yolo = enabled, save_memory = disabled, --model = gemini-2.5-flash"
+            "bundles 3 aggressive Gemini levers: --yolo = enabled, experimental.autoMemory = false, --model = gemini-2.5-flash"
         );
         for lever in &profile.levers {
             assert!(
@@ -1749,8 +1768,13 @@ mod tests {
             "G-6: every aggressive lever has a 1:1 operator-visible side effect"
         );
 
-        // All ProjectCanonical — honest authority split per Gemini's
-        // narrower documented surface (same pattern as gemini-default).
+        // Codex v1.8.9 P4-7 finding #1 remediation (v1.8.10):
+        // authority split is now 1 PO (experimental.autoMemory —
+        // a documented Gemini CLI config key) + 2 PC (--yolo /
+        // --model — Qmonster value picks on documented keys).
+        // Same honesty principle as gemini-default; experimental.
+        // autoMemory is the one documented-value-and-key lever in
+        // the aggressive bundle, so it graduates to PO.
         let po_count = profile
             .levers
             .iter()
@@ -1761,14 +1785,19 @@ mod tests {
             .iter()
             .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
             .count();
-        assert_eq!(po_count, 0, "0 ProviderOfficial — Gemini docs describe the flags but don't mandate aggressive values");
-        assert_eq!(pc_count, 3);
+        assert_eq!(po_count, 1, "1 ProviderOfficial: experimental.autoMemory = false (Gemini docs document both the key AND the disable value)");
+        assert_eq!(pc_count, 2, "2 ProjectCanonical: --yolo = enabled and --model = gemini-2.5-flash (Gemini docs describe the keys but don't mandate these aggressive values)");
 
         // Reason summary honesty (v1.8.6 pattern).
         assert!(rec.reason.contains("gemini-script-low-token"));
         assert!(
+            rec.reason.contains("ProviderOfficial"),
+            "reason must cite ProviderOfficial authority label (experimental.autoMemory is PO): {}",
+            rec.reason
+        );
+        assert!(
             rec.reason.contains("ProjectCanonical"),
-            "reason must cite ProjectCanonical authority label (all three levers are PC): {}",
+            "reason must cite ProjectCanonical authority label (--yolo and --model are PC): {}",
             rec.reason
         );
 
@@ -1784,24 +1813,33 @@ mod tests {
         assert_eq!(yolo.value, "enabled", "aggressive profile enables --yolo (inverse of baseline's 'unset')");
         assert_eq!(yolo.source_kind, SourceKind::ProjectCanonical);
 
-        let save_memory = find_lever("save_memory");
-        assert_eq!(save_memory.value, "disabled");
-        assert_eq!(save_memory.source_kind, SourceKind::ProjectCanonical);
+        // Codex v1.8.9 P4-7 finding #1: the actual Gemini CLI
+        // surface is `experimental.autoMemory` (the Auto Memory
+        // config key), NOT `save_memory` (which is a tool name).
+        // This assertion locks the correct surface; a regression
+        // back to `save_memory` as a config key would fail here.
+        let auto_memory = find_lever("experimental.autoMemory");
+        assert_eq!(auto_memory.value, "false");
+        assert_eq!(
+            auto_memory.source_kind,
+            SourceKind::ProviderOfficial,
+            "experimental.autoMemory is documented in Gemini CLI config surface (both key and disable value); ProviderOfficial"
+        );
 
         let model = find_lever("--model");
         assert_eq!(model.value, "gemini-2.5-flash");
         assert_eq!(model.source_kind, SourceKind::ProjectCanonical);
 
-        // G-5 cross-reference: save_memory side_effect must mention
-        // G-5 / CURRENT_STATE.md / MDR — same pattern Claude + Codex
-        // aggressive variants use for their auto-memory-equivalent
-        // trade-offs.
+        // G-5 cross-reference: the auto-memory side_effect must
+        // mention G-5 / CURRENT_STATE.md / MDR — same pattern
+        // Claude + Codex aggressive variants use for their
+        // auto-memory-equivalent trade-offs.
         assert!(
             profile
                 .side_effects
                 .iter()
                 .any(|s| s.contains("CURRENT_STATE.md") && s.contains("G-5")),
-            "save_memory side_effect must cross-reference G-5 + CURRENT_STATE.md — architecture principle consistency across providers"
+            "auto-memory side_effect must cross-reference G-5 + CURRENT_STATE.md — architecture principle consistency across providers"
         );
     }
 
