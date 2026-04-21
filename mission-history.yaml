@@ -2793,7 +2793,7 @@ timeline:
       - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens"
 
 evolution_summary:
-  current_phase: "Phase 4 P4-5 shipped — Codex aggressive variant `codex-script-low-token` with 7 levers + 1:1 side_effects (v1.8.7); awaiting first Codex + Gemini gate review on v1.8.7 before P4-6 (gemini-default baseline)"
+  current_phase: "Phase 4 P4-5 fully gate-approved — v1.8.7 codex-script-low-token: Gemini pass (적극 승인) + Codex approve (no must-fix findings); Claude + Codex both have baseline + aggressive profiles with Gemini G-6 parity; ready for P4-6 (gemini-default baseline)"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
