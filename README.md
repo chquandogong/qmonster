@@ -4,7 +4,7 @@ Observe-first TUI for multi-CLI tmux development — watches Claude Code /
 Codex / Gemini panes (plus itself), surfaces alerts, token-pressure
 metrics, and recommendations **without** touching the panes it observes.
 
-- Version: v0.4.0 (Phase 4 P4-1 shipped; Phases 1–3 complete and gate-approved; baseline v1.8.1)
+- Version: v0.4.0 (Phase 4 complete; P4-8 wrap-up v1.8.12 shipped locally; Phase 5 not started)
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -35,7 +35,7 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 | 1     | Observe-first MVP — tmux polling, identity resolver, adapters, alert rules, ratatui UI, desktop/bell notifications, safety precedence, version-drift detector              | **Shipped**                                                      |
 | 2     | Archive + checkpoint + SQLite — `SqliteAuditSink` with type-level raw exclusion, `ArchiveWriter` preview/full split, `SnapshotWriter`, retention, persistent version drift | **Shipped**                                                      |
 | 3     | Policy engine A–G + concurrent-work warning + `suggested_command` + strong-rec `next_step` + shared render helper                                                          | **Shipped** (gate-approved v1.7.6)                               |
-| 4     | Provider profile recommender — `ProviderProfile` / `ProfileLever` data model + `recommend_claude_default` rule + end-to-end structured-payload render                      | **In progress** — P4-1 shipped (v1.8.1); P4-2/P4-3/P4-4+ pending |
+| 4     | Provider profile recommender — 3×2 provider/profile grid, structured payload render, side-effects surfacing, and auto-memory routing guidance                               | **Shipped** — Phase 4 complete; P4-8 wrap-up v1.8.12             |
 | 5     | Manual prompt-send helper (safer actuation)                                                                                                                                | not started                                                      |
 
 ## Quick start
@@ -136,9 +136,9 @@ cargo clippy --all-targets -- -D warnings
 cargo build
 ```
 
-Currently ~183 tests (166 lib + 17 integration). The event-loop
-integration tests use a fixture `PaneSource` so they do not require a
-real tmux session.
+The event-loop integration tests use a fixture `PaneSource` so they do
+not require a real tmux session. Current test suite size is 212 tests
+(194 unit + 18 integration).
 
 ## Documentation
 

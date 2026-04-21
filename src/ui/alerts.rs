@@ -15,13 +15,44 @@ pub fn format_strong_rec_body(rec: &Recommendation, pane_id: &str) -> String {
     let letter = rec.severity.letter();
     let badge = rec.source_kind.badge();
     let prefix = format!("[{letter}] [{badge}] >> CHECKPOINT ({pane_id}): {}", rec.reason);
-    let step = rec.next_step.as_deref().unwrap_or("");
-    let cmd = rec.suggested_command.as_deref().unwrap_or("");
-    match (step.is_empty(), cmd.is_empty()) {
-        (true, true) => prefix,
-        (true, false) => format!("{prefix} — run: `{cmd}`"),
-        (false, true) => format!("{prefix} — next: {step}"),
-        (false, false) => format!("{prefix} — next: {step} — run: `{cmd}`"),
+    append_actionable_tail(prefix, rec)
+}
+
+/// Shared renderer for non-strong recommendations so the alert queue
+/// and `--once` both surface `next:` / `run:` when present.
+pub fn format_recommendation_body(rec: &Recommendation, pane_id: &str) -> String {
+    let letter = rec.severity.letter();
+    let badge = rec.source_kind.badge();
+    let prefix = format!(
+        "[{letter}] [{badge}] {pane_id}: {} — {}",
+        rec.action, rec.reason
+    );
+    append_actionable_tail(prefix, rec)
+}
+
+pub fn format_recommendation_tail(rec: &Recommendation) -> Option<String> {
+    actionable_tail(
+        rec.next_step.as_deref(),
+        rec.suggested_command.as_deref(),
+    )
+}
+
+fn append_actionable_tail(prefix: String, rec: &Recommendation) -> String {
+    match format_recommendation_tail(rec) {
+        Some(tail) => format!("{prefix} — {tail}"),
+        None => prefix,
+    }
+}
+
+fn actionable_tail(next_step: Option<&str>, suggested_command: Option<&str>) -> Option<String> {
+    match (
+        next_step.filter(|s| !s.is_empty()),
+        suggested_command.filter(|s| !s.is_empty()),
+    ) {
+        (None, None) => None,
+        (None, Some(cmd)) => Some(format!("run: `{cmd}`")),
+        (Some(step), None) => Some(format!("next: {step}")),
+        (Some(step), Some(cmd)) => Some(format!("next: {step} — run: `{cmd}`")),
     }
 }
 
@@ -86,15 +117,7 @@ fn collect_items(notices: &[SystemNotice], reports: &[PaneReport]) -> Vec<ListIt
     for rep in reports {
         for rec in rep.recommendations.iter().filter(|r| !r.is_strong) {
             let color = theme::severity_color(rec.severity);
-            let letter = rec.severity.letter();
-            let pane_id = rep.pane_id.clone();
-            let badge = rec.source_kind.badge();
-            let body = format!(
-                "[{letter}] [{badge}] {pane}: {action} — {reason}",
-                pane = pane_id,
-                action = rec.action,
-                reason = rec.reason
-            );
+            let body = format_recommendation_body(rec, &rep.pane_id);
             out.push(ListItem::new(body).style(Style::default().fg(color)));
         }
     }
@@ -269,6 +292,43 @@ mod tests {
         let body = format_strong_rec_body(&strong, "%1");
         assert!(!body.contains("next:"), "no next_step → no `next:` segment. got: {body}");
         assert!(body.contains("run: `/compact`"), "cmd still rendered. got: {body}");
+    }
+
+    #[test]
+    fn format_recommendation_body_renders_run_for_non_strong_recommendation() {
+        let rec = Recommendation {
+            action: "archive-preview-suggested",
+            reason: "log storm pattern".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Heuristic,
+            suggested_command: Some("tmux capture-pane -pS -2000 > ~/.qmonster/archive/x.log".into()),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let body = format_recommendation_body(&rec, "%7");
+        assert!(body.contains("%7: archive-preview-suggested"));
+        assert!(body.contains("run: `tmux capture-pane -pS -2000 > ~/.qmonster/archive/x.log`"));
+    }
+
+    #[test]
+    fn format_recommendation_body_keeps_next_before_run_for_non_strong_recommendation() {
+        let rec = Recommendation {
+            action: "auto-memory: route to MDR / CURRENT_STATE",
+            reason: "state-critical task detected".into(),
+            severity: Severity::Concern,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: Some("# config-edit ...".into()),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: Some("record in CURRENT_STATE first".into()),
+            profile: None,
+        };
+        let body = format_recommendation_body(&rec, "%2");
+        let next_idx = body.find("next: record in CURRENT_STATE first").expect("next segment");
+        let run_idx = body.find("run: `# config-edit ...`").expect("run segment");
+        assert!(next_idx < run_idx, "next must precede run. body: {body}");
     }
 
     #[test]

@@ -17,7 +17,8 @@ use qmonster::app::event_loop::{PaneReport, run_once};
 use qmonster::app::path_resolution::pick_root;
 use qmonster::app::safety_audit::apply_override_with_audit;
 use qmonster::app::system_notice::{
-    SystemNotice, record_startup_snapshot, route_version_drift,
+    SystemNotice, record_startup_snapshot, route_polling_failure, route_polling_recovered,
+    route_version_drift,
 };
 use qmonster::app::version_drift::{
     StartupLoad, VersionSnapshot, capture_versions, load_startup_snapshot,
@@ -36,7 +37,7 @@ use qmonster::ui::dashboard::render_dashboard;
 #[derive(Debug, Parser)]
 #[command(
     name = "qmonster",
-    about = "Observe-first TUI for multi-CLI tmux work (Phase 2)"
+    about = "Observe-first TUI for multi-CLI tmux work"
 )]
 struct Cli {
     /// Path to a TOML config file.
@@ -230,11 +231,8 @@ fn print_reports(reports: &[PaneReport]) {
         }
         for rec in r.recommendations.iter().filter(|rec| !rec.is_strong) {
             println!(
-                "  [{}] [{}] {}: {}",
-                rec.severity.letter(),
-                rec.source_kind.badge(),
-                rec.action,
-                rec.reason
+                "  {}",
+                qmonster::ui::alerts::format_recommendation_body(rec, &r.pane_id)
             );
             // v1.8.1: surface the structured ProviderProfile payload so
             // lever key/value/citation/SourceKind are visible in --once
@@ -266,13 +264,28 @@ where
     let mut last_reports: Vec<PaneReport> = Vec::new();
     let mut notices: Vec<SystemNotice> = startup_notices;
     let mut last_poll = Instant::now() - poll;
+    let mut last_poll_error: Option<String> = None;
 
     let result = (|| -> anyhow::Result<()> {
         loop {
             let now = Instant::now();
             if now.saturating_duration_since(last_poll) >= poll {
                 last_poll = now;
-                last_reports = run_once(ctx, now).unwrap_or_default();
+                match run_once(ctx, now) {
+                    Ok(reports) => {
+                        if let Some(notice) = route_polling_recovered(&mut last_poll_error) {
+                            notices.insert(0, notice);
+                        }
+                        last_reports = reports;
+                    }
+                    Err(e) => {
+                        if let Some(notice) =
+                            route_polling_failure(&mut last_poll_error, e.to_string())
+                        {
+                            notices.insert(0, notice);
+                        }
+                    }
+                }
             }
 
             terminal.draw(|frame| render_dashboard(frame, &notices, &last_reports))?;

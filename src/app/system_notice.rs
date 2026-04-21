@@ -15,6 +15,37 @@ pub struct SystemNotice {
     pub source_kind: SourceKind,
 }
 
+/// Route a tmux polling failure into a deduplicated system notice.
+/// Repeated identical errors are suppressed so the alert queue does not
+/// churn every poll tick while tmux is unavailable.
+pub fn route_polling_failure(
+    last_error: &mut Option<String>,
+    err: String,
+) -> Option<SystemNotice> {
+    if last_error.as_deref() == Some(err.as_str()) {
+        return None;
+    }
+    *last_error = Some(err.clone());
+    Some(SystemNotice {
+        title: "tmux polling failed".into(),
+        body: err,
+        severity: Severity::Warning,
+        source_kind: SourceKind::ProjectCanonical,
+    })
+}
+
+/// Emit a recovery notice once polling starts succeeding again after a
+/// previous failure.
+pub fn route_polling_recovered(last_error: &mut Option<String>) -> Option<SystemNotice> {
+    let previous = last_error.take()?;
+    Some(SystemNotice {
+        title: "tmux polling recovered".into(),
+        body: format!("previous error cleared: {previous}"),
+        severity: Severity::Good,
+        source_kind: SourceKind::ProjectCanonical,
+    })
+}
+
 /// Record the initial version snapshot with its own audit kind
 /// (not reused from pane-identity kinds — Codex finding #4).
 pub fn record_startup_snapshot(sink: &dyn EventSink, snapshot: &VersionSnapshot) {
@@ -149,6 +180,25 @@ mod tests {
         let notices = route_version_drift(&before, &after, &sink);
         assert_eq!(notices.len(), 1);
         assert!(notices[0].body.contains("codex"));
+    }
+
+    #[test]
+    fn repeated_polling_failure_is_deduplicated() {
+        let mut last = None;
+        let first = route_polling_failure(&mut last, "tmux not running".into());
+        assert!(first.is_some());
+        let second = route_polling_failure(&mut last, "tmux not running".into());
+        assert!(second.is_none(), "same polling error should not spam notices");
+    }
+
+    #[test]
+    fn polling_recovery_emits_good_notice_once() {
+        let mut last = Some("tmux not running".into());
+        let notice = route_polling_recovered(&mut last).expect("recovery notice");
+        assert_eq!(notice.title, "tmux polling recovered");
+        assert_eq!(notice.severity, Severity::Good);
+        assert!(notice.body.contains("tmux not running"));
+        assert!(route_polling_recovered(&mut last).is_none());
     }
 
     fn _ensure(_: SystemNotice) {}
