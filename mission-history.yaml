@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 15
-  latest_version: "1.7.6"
+  total_revisions: 16
+  latest_version: "1.8.0"
 
 timeline:
   - change_id: "initial"
@@ -1622,8 +1622,163 @@ timeline:
       - "Phase 4: provider profile recommender + side_effects + auto-memory guide"
       - "Request a short Codex v1.7.6 confirmation re-check that the Scope-reduction section closes the template gap"
 
+  - change_id: "phase-4-p4-1-provider-profile-foundation"
+    semantic_version: "1.8.0"
+    change_sequence: 16
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Open Phase 4 (provider-profile recommender) with the smallest
+      TDD-compatible first slice (P4-1): introduce the pure data
+      model for provider profiles and ship the first rule so the
+      end-to-end pipeline (policy::Engine::evaluate -> EffectRunner
+      -> ViewModel) carries profile recommendations exactly like
+      advisories do. Leave G-5 (auto-memory guide) and G-6
+      (side_effects on high-compression profiles) for subsequent
+      slices so each change is independently reviewable.
+    intent_ko: >
+      Phase 4(provider-profile recommender)의 첫 TDD 슬라이스(P4-1)
+      착수: provider profile을 위한 순수 데이터 모델과 첫 규칙을
+      도입하여 end-to-end 파이프라인(policy::Engine::evaluate →
+      EffectRunner → ViewModel)이 advisories와 동일한 흐름으로
+      profile 권고를 전달하도록 한다. G-5(auto-memory guide)와
+      G-6(side_effects on 고압축 profiles)은 다음 슬라이스에서 별도
+      커밋으로 처리해 각 변경을 독립적으로 리뷰 가능하게 유지한다.
+    decision: >
+      (1) src/domain/profile.rs (new): `ProfileLever` (key, value,
+      citation, source_kind) and `ProviderProfile` (name, levers:
+      Vec<ProfileLever>, side_effects: Vec<String>, source_kind)
+      data types. Profile NAMES are `ProjectCanonical` (our
+      abstraction); individual levers inside are typically
+      `ProviderOfficial` with an explicit citation string.
+      `side_effects` slot is present but empty at P4-1; G-6
+      populates it on aggressive-variant profiles at P4-3. Two
+      unit tests lock the shape (ProfileLever pairs value with
+      non-empty citation; ProviderProfile carries ProjectCanonical
+      name with ProviderOfficial levers inside, empty side_effects).
+      (2) src/policy/rules/profiles.rs (new):
+      `eval_profiles(id, signals, gates) -> Vec<Recommendation>`
+      mirrors eval_advisories' shape. `recommend_claude_default` is
+      the first rule — fires only when provider == Claude, role ==
+      Main, IdentityConfidence >= Medium, !quota_tight, no active
+      alert signals (waiting_for_input, permission_prompt,
+      log_storm, error_hint), and context_pressure < 0.75. Returns
+      a `Severity::Good` recommendation (first use of Good on a
+      rule output — a positive advisory that does NOT trigger the
+      Notify gate) with SourceKind::ProjectCanonical (the profile
+      name is our abstraction) and a bundle of three levers: (a)
+      `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS = 25000`, (b)
+      `BASH_MAX_OUTPUT_LENGTH = 30000`, (c) `includeGitInstructions
+      = false` — each ProviderOfficial with a per-lever citation.
+      `suggested_command` is None with an inline justification
+      (applying a profile is multi-key settings editing, not a
+      single runnable command); `side_effects` is empty (no
+      expected side effects on the healthy-state baseline);
+      `is_strong` is false (profile is advisory, not checkpoint-
+      class). Two unit tests lock the behavior (fires on healthy
+      Claude main with Good severity + ProjectCanonical source +
+      reason cites "claude-default" and "ProviderOfficial";
+      suppressed on non-Claude provider).
+      (3) src/policy/rules/mod.rs: `pub mod profiles;` added.
+      (4) src/domain/mod.rs: `pub mod profile;` + `pub use
+      profile::{ProfileLever, ProviderProfile};`.
+      (5) src/policy/engine.rs: `Engine::evaluate` extends the recs
+      vec with `eval_profiles(id, signals, gates)` after advisories
+      so profile recs flow through the existing PaneReport → UI
+      path without touching UI code. No new RequestedEffect; no
+      effect-runner change.
+    decision_ko: >
+      (1) src/domain/profile.rs 신규: `ProfileLever`(key, value,
+      citation, source_kind)와 `ProviderProfile`(name, levers:
+      Vec<ProfileLever>, side_effects: Vec<String>, source_kind)
+      데이터 타입. 프로필 NAME은 우리 abstraction이라
+      `ProjectCanonical`; 내부 lever는 대개 `ProviderOfficial`(각
+      lever마다 citation 문자열 필수). `side_effects` 슬롯은 P4-1
+      시점에서 비어있고, G-6이 P4-3의 aggressive 변형 profile에서
+      채운다. shape을 고정하는 unit test 2건 추가.
+      (2) src/policy/rules/profiles.rs 신규:
+      `eval_profiles(id, signals, gates) -> Vec<Recommendation>`는
+      eval_advisories와 동일한 형태. `recommend_claude_default`는
+      첫 번째 규칙 — provider == Claude, role == Main,
+      IdentityConfidence >= Medium, !quota_tight, 활성 알림 신호
+      없음(waiting_for_input, permission_prompt, log_storm,
+      error_hint), context_pressure < 0.75일 때만 발화. 반환값은
+      `Severity::Good`(규칙 출력에서 Good 첫 사용 — Notify 게이트
+      통과하지 않는 긍정적 advisory) + SourceKind::ProjectCanonical
+      + 세 개 lever 번들: (a) `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS
+      = 25000`, (b) `BASH_MAX_OUTPUT_LENGTH = 30000`, (c)
+      `includeGitInstructions = false` — 각 ProviderOfficial +
+      citation. `suggested_command`은 None + 정당성 주석(profile
+      적용은 multi-key 설정 편집이라 단일 실행값 없음);
+      `side_effects` 빈 벡터(healthy-state baseline); `is_strong`
+      false. behavior를 고정하는 unit test 2건 추가(healthy Claude
+      main에서 Good + ProjectCanonical + reason이 "claude-default"
+      "ProviderOfficial" 포함 / Codex provider에서 suppressed).
+      (3) src/policy/rules/mod.rs: `pub mod profiles;` 추가.
+      (4) src/domain/mod.rs: `pub mod profile;` + re-export.
+      (5) src/policy/engine.rs: `Engine::evaluate`가 advisories
+      이후 `eval_profiles(id, signals, gates)`를 확장해 기존
+      PaneReport → UI 경로로 흐름 통일. 신규 RequestedEffect 없음;
+      effect runner 변경 없음.
+    triggered_by: "operator request to start Phase 4 after v1.7.6 baseline fully approved"
+    issue_or_context: >
+      Phase 3B closed at v1.7.6 with all reviewer gates remediated
+      and template-compliant. Phase 4 is next per mission.yaml
+      budget_hint.followups. The smallest meaningful first slice
+      (P4-1) introduces just the pure data model + one rule so the
+      pipeline plumbing is validated before G-5 / G-6 and
+      additional provider profiles pile on. This mirrors the Phase
+      3B pattern of small TDD commits each independently
+      reviewable.
+    changes:
+      added:
+        - "src/domain/profile.rs — ProfileLever + ProviderProfile data types with 2 unit tests on shape (ProjectCanonical bundle name + ProviderOfficial levers + empty P4-1 side_effects)"
+        - "src/policy/rules/profiles.rs — eval_profiles dispatcher + recommend_claude_default rule (Claude main + healthy signals → Good-severity profile rec with 3 ProviderOfficial levers) + 2 unit tests (fires on healthy + suppressed on non-Claude)"
+      modified:
+        - "src/domain/mod.rs — pub mod profile + pub use re-export"
+        - "src/policy/rules/mod.rs — pub mod profiles"
+        - "src/policy/engine.rs — Engine::evaluate extends recs with eval_profiles(id, signals, gates) after advisories"
+        - "mission.yaml — version 1.7.6 → 1.8.0; title replaced (Phase 3 closure → Phase 4 opening); new v1.8.0 goal paragraph; 3 new done_when entries (data model, rule + engine wiring, test count + clippy); execution_hints.topology + suggested_approach updated; lineage total_revisions 15 → 16"
+        - "mission-history.yaml — meta.total_revisions 15 → 16; meta.latest_version → 1.8.0; new entry (this one, change_sequence 16, change_type feature, motivation_type implementation); evolution_summary.current_phase updated"
+        - ".mission/CURRENT_STATE.md — version → 1.8.0; Phase 3 closing section preserved; new Phase 4 P4-1 section added; verification block updated to 163 lib + 16 integration; Next first action rewritten"
+    changed_sections:
+      - "new domain type: provider profile bundle + lever"
+      - "new policy rule set: profiles dispatcher + first Claude rule"
+      - "Engine::evaluate extended to call eval_profiles after advisories"
+    done_when_delta:
+      added:
+        - "Phase 4 P4-1 v1.8.0: `src/domain/profile.rs` introduces `ProviderProfile` (name: ProjectCanonical; levers: Vec<ProfileLever>; side_effects: Vec<String>; source_kind: SourceKind) and `ProfileLever` (key, value, citation, source_kind). Profile bundle name is ProjectCanonical; individual levers inside are ProviderOfficial with explicit per-lever citations."
+        - "Phase 4 P4-1 v1.8.0: `src/policy/rules/profiles.rs::eval_profiles` is wired into `Engine::evaluate` after advisories. `recommend_claude_default` fires a `Severity::Good` profile recommendation on Claude main panes when IdentityConfidence >= Medium, no active alerts, `!quota_tight`, and `context_pressure < 0.75`. The rec bundles three ProviderOfficial levers (`CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS`, `BASH_MAX_OUTPUT_LENGTH`, `includeGitInstructions`) each with a docs citation. suggested_command is None with inline justification (applying a profile is multi-key settings editing, not a single runnable command)."
+        - "Phase 4 P4-1 v1.8.0: 4 new unit tests total — 2 in domain/profile.rs (lock data shape: ProjectCanonical profile name + ProviderOfficial lever citations + empty P4-1 side_effects) and 2 in policy/rules/profiles.rs (rule fires on healthy Claude main with Good severity / ProjectCanonical profile source; suppressed on non-Claude provider). 163 lib + 16 integration; clippy --all-targets -D warnings clean."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~180 LOC production (src/domain/profile.rs + src/policy/rules/profiles.rs + small mod.rs + engine.rs edits) + ~60 LOC test delta (4 new unit tests)"
+      tests: "163 lib + 16 integration (up from 159 lib + 16 integration; +4 new unit tests, 0 existing tests changed)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no runtime behavior change for existing signals; on healthy Claude main panes, an extra Severity::Good recommendation now appears in PaneReport.recommendations (non-strong, non-Notify)"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — pure additive rule set with an isolated data model; first use of Severity::Good on a rule output is a design signal (profile = positive advisory, not alert) that future Codex/Gemini review should confirm; profile name ProjectCanonical vs lever ProviderOfficial authority split is the load-bearing design choice"
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+      - "KD-007"
+    snapshot_after: ""
+    follow_up:
+      - "P4-2: Gemini G-5 auto-memory guide rule"
+      - "P4-3: Gemini G-6 side_effects population on first aggressive-variant profile (e.g. claude-script-low-token gated by quota_tight)"
+      - "P4-4+: Codex and Gemini provider profiles + VALIDATION.md Phase-4 checkboxes ticked"
+      - "Request Codex + Gemini gate review on v1.8.0 before continuing to P4-2"
+
 evolution_summary:
-  current_phase: "Phase 3 complete + all gates remediated + Gemini narrative template-compliant (v1.7.6); Phase 4 gate open to request after short Codex v1.7.6 confirmation"
+  current_phase: "Phase 4 opened — P4-1 provider-profile recommender foundation shipped (v1.8.0); awaiting first Codex + Gemini gate review on Phase 4 work"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

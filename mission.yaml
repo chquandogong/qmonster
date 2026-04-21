@@ -1,6 +1,6 @@
 mission:
-  version: "1.7.6"
-  title: "Qmonster v0.4.0 — Phase 3 complete + all gates remediated + Gemini review artifact template-compliant (3A + 3B: policy engine, suggested_command, strong-rec UX, next_step precondition; Codex v1.7.3/v1.7.4/v1.7.5 findings closed)"
+  version: "1.8.0"
+  title: "Qmonster v0.4.0 — Phase 4 opened (P4-1: provider-profile recommender foundation — ProviderProfile/ProfileLever data model + recommend_claude_default rule)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -170,6 +170,32 @@ mission:
     order in the Gemini review narrative. Docs-only round; no code,
     test, runtime, or ledger-structure change.
 
+    Phase 4 opens (v1.8.0, this revision) — provider-profile
+    recommender foundation. Phase 4 ships the Token-optimization
+    layer-1 from ARCHITECTURE.md §231-249: pick the right CLI
+    flags / settings per `(provider, role, situation)` using
+    ProviderOfficial levers. P4-1 (this slice) introduces the pure
+    data model (`src/domain/profile.rs`: `ProviderProfile` +
+    `ProfileLever`) and the first rule (`src/policy/rules/profiles.rs`:
+    `recommend_claude_default`) that fires a `Severity::Good` profile
+    recommendation on a healthy Claude main pane, carrying three
+    ProviderOfficial levers (`CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS`,
+    `BASH_MAX_OUTPUT_LENGTH`, `includeGitInstructions`) each with a
+    per-lever citation. Engine::evaluate calls `eval_profiles` after
+    advisories so profile recs flow through the same PaneReport →
+    ViewModel path. Gates respected: provider ∈ {Claude}, role ∈
+    {Main}, IdentityConfidence ≥ Medium, `!quota_tight`, no active
+    alerts, `context_pressure < 0.75`. Profile name is
+    `ProjectCanonical`; individual levers are `ProviderOfficial`.
+    G-5 (auto-memory guide) and G-6 (side_effects population on
+    high-compression profiles) are explicitly deferred to P4-2 /
+    P4-3 respectively. 163 lib + 16 integration (up from 159 + 16;
+    +4 new unit tests: 2 in domain/profile.rs locking the data
+    shape, 2 in policy/rules/profiles.rs locking the rule + provider
+    gate). clippy --all-targets -D warnings clean. First use of
+    `Severity::Good` on a rule output — positive advisory, does not
+    trigger the Notify gate.
+
   done_when:
     # Phase-0 artefacts (kept as historical gating criteria — already met).
     - "Phase 0: mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md exist and validate against the mission-spec schema."
@@ -253,6 +279,11 @@ mission:
 
     # Phase-3B Gemini review artifact template compliance (v1.7.6).
     - "Phase 3B Gemini review artifact template compliance v1.7.6: the Gemini v1.7.3 narrative review at `.docs/gemini/Qmonster-v0.4.0-2026-04-21-phase3b-strong-rec-cleanup-review.md` carries all eleven required sections from `docs/ai/REVIEW_GUIDE.md:77-95` in order (Executive summary, What the plan got right, Must-fix, Scope-reduction suggestions, Token-optimization architecture, Doc/mission/memory separation, Provider abstraction + tmux, Safety/audit/approval, Official-vs-heuristic, Concrete TODOs, Final verdict). Codex v1.7.5 review finding #1 closed."
+
+    # Phase-4 P4-1 (v1.8.0) — provider-profile recommender foundation.
+    - "Phase 4 P4-1 v1.8.0: `src/domain/profile.rs` introduces `ProviderProfile` (name: ProjectCanonical; levers: Vec<ProfileLever>; side_effects: Vec<String>; source_kind: SourceKind) and `ProfileLever` (key, value, citation, source_kind). Profile bundle name is ProjectCanonical; individual levers inside are ProviderOfficial with explicit per-lever citations."
+    - "Phase 4 P4-1 v1.8.0: `src/policy/rules/profiles.rs::eval_profiles` is wired into `Engine::evaluate` after advisories. `recommend_claude_default` fires a `Severity::Good` profile recommendation on Claude main panes when IdentityConfidence >= Medium, no active alerts, `!quota_tight`, and `context_pressure < 0.75`. The rec bundles three ProviderOfficial levers (`CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS`, `BASH_MAX_OUTPUT_LENGTH`, `includeGitInstructions`) each with a docs citation. suggested_command is None with inline justification (applying a profile is multi-key settings editing, not a single runnable command)."
+    - "Phase 4 P4-1 v1.8.0: 4 new unit tests total — 2 in domain/profile.rs (lock data shape: ProjectCanonical profile name + ProviderOfficial lever citations + empty P4-1 side_effects) and 2 in policy/rules/profiles.rs (rule fires on healthy Claude main with Good severity / ProjectCanonical profile source; suppressed on non-Claude provider). 163 lib + 16 integration; clippy --all-targets -D warnings clean."
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -343,20 +374,21 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0)."
     suggested_approach: >
-      Phase 3B Gemini review artifact template compliance shipped
-      (v1.7.6). Phase 3 is COMPLETE, all reviewer gates remediated,
-      ledger normalized, reviewer sign-offs recorded per
-      WORKFLOWS.md:56-58, and the Gemini narrative review now
-      satisfies REVIEW_GUIDE.md:77-95 (all eleven required sections
-      present in order). Gate status: Gemini v1.7.3 pass (적극 승인);
-      Codex v1.7.3/v1.7.4/v1.7.5 findings all closed by v1.7.4/
-      v1.7.5/v1.7.6 respectively. Request a short Codex v1.7.6
-      confirmation re-check that the Scope-reduction section closes
-      the template gap, then proceed to Phase 4 — provider profile
-      recommender + side_effects populating (Gemini G-6) +
-      auto-memory profile guide (Gemini G-5).
+      Phase 4 P4-1 shipped (v1.8.0). The provider-profile recommender
+      foundation (ProviderProfile / ProfileLever data model +
+      recommend_claude_default rule + Engine::evaluate wiring + 4
+      unit tests) is in place. Next slices (TDD-style, one at a
+      time): P4-2 — Gemini G-5 auto-memory guide (a rule that fires
+      a "record to MDR / CURRENT_STATE, not auto-memory" next_step
+      when state-critical work is detected); P4-3 — Gemini G-6
+      side_effects population on high-compression aggressive
+      profiles (first aggressive-variant profile, e.g.
+      `claude-script-low-token` gated by `quota_tight`); P4-4+ —
+      Codex and Gemini provider profiles + VALIDATION.md Phase-4
+      checkboxes ticked. Request Codex + Gemini gate review on
+      v1.8.0 before continuing to P4-2.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -407,5 +439,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 15
+    total_revisions: 16
     history: "mission-history.yaml"
