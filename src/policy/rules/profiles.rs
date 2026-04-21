@@ -10,14 +10,19 @@ use crate::policy::gates::{PolicyGates, allow_provider_specific};
 /// carries a named `ProviderProfile` bundle. Profile NAMES are
 /// `ProjectCanonical`; levers inside are `ProviderOfficial` with
 /// explicit citations. P4-1 shipped `recommend_claude_default`; P4-3
-/// adds the aggressive variant `recommend_claude_script_low_token`
+/// added the aggressive variant `recommend_claude_script_low_token`
 /// (gated by `quota_tight`) with a populated
-/// `ProviderProfile.side_effects` list — Gemini G-6.
+/// `ProviderProfile.side_effects` list — Gemini G-6. P4-4 adds
+/// `recommend_codex_default` — the first non-Claude baseline
+/// profile. Provider gates inside each rule keep the bundles
+/// mutually exclusive across providers (a Claude pane sees only
+/// Claude profiles, a Codex pane sees only Codex profiles).
 /// `recommend_claude_default` and `recommend_claude_script_low_token`
-/// are mutually exclusive by design: the default profile's
+/// are also mutually exclusive *within* Claude: the default profile's
 /// `if gates.quota_tight { return None; }` gate hands off to the
 /// aggressive variant exactly when the operator opts into
-/// quota-tight mode.
+/// quota-tight mode. The same pattern will be applied to Codex in
+/// P4-5 (aggressive Codex variant).
 pub fn eval_profiles(
     id: &ResolvedIdentity,
     signals: &SignalSet,
@@ -28,6 +33,9 @@ pub fn eval_profiles(
         out.push(rec);
     }
     if let Some(rec) = recommend_claude_script_low_token(id, signals, gates) {
+        out.push(rec);
+    }
+    if let Some(rec) = recommend_codex_default(id, signals, gates) {
         out.push(rec);
     }
     out
@@ -290,6 +298,104 @@ fn claude_script_low_token_profile() -> ProviderProfile {
             "CLAUDE_CODE_DISABLE_CLAUDE_MDS=1 means CLAUDE.md / AGENTS.md are NOT auto-loaded — operator must pass project instructions explicitly".into(),
             "CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS=1 disables Agent SDK built-in sub-agents — complex delegations unavailable".into(),
         ],
+        source_kind: SourceKind::ProjectCanonical,
+    }
+}
+
+/// `codex-default`: healthy-state baseline profile for a Codex main
+/// pane. Pattern parity with `recommend_claude_default` — fires on
+/// Codex main at ≥ Medium confidence when no active alerts / high
+/// context pressure / quota-tight gate are present. Bundles three
+/// `ProviderOfficial` levers drawn from the Codex settings surface
+/// (VALIDATION.md:137-143): `web_search = cached` (explicit default
+/// saves tokens by reusing cached web results), `tool_output_token_limit
+/// = 30000` (parity with Claude's `BASH_MAX_OUTPUT_LENGTH` cap), and
+/// `commit_attribution = false` (removes marketing attribution from
+/// git commits). Exec flags and aggressive-scripted-session levers
+/// belong in the Codex aggressive variant (P4-5, tbd).
+fn recommend_codex_default(
+    id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    if id.identity.provider != Provider::Codex {
+        return None;
+    }
+    if id.identity.role != Role::Main {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    if gates.quota_tight {
+        // Baseline only; the aggressive Codex variant (P4-5) will
+        // own the quota_tight path.
+        return None;
+    }
+    if signals.waiting_for_input
+        || signals.permission_prompt
+        || signals.log_storm
+        || signals.error_hint
+    {
+        return None;
+    }
+    if let Some(mv) = signals.context_pressure.as_ref()
+        && mv.value >= 0.75
+    {
+        return None;
+    }
+
+    let profile = codex_default_profile();
+    let reason = format!(
+        "profile `{}`: apply {} ProviderOfficial levers for a healthy-state baseline main-pane Codex session (see lever list below — each lever carries its own citation)",
+        profile.name,
+        profile.levers.len(),
+    );
+    let side_effects = profile.side_effects.clone();
+    Some(Recommendation {
+        action: "provider-profile: codex-default",
+        reason,
+        severity: Severity::Good,
+        source_kind: SourceKind::ProjectCanonical,
+        // Same multi-key-settings-edit justification as the Claude
+        // baseline — applying a profile is not a single runnable
+        // command. Structured `profile` below carries each lever's
+        // key/value/citation for the renderer.
+        suggested_command: None,
+        side_effects,
+        is_strong: false,
+        next_step: None,
+        profile: Some(profile),
+    })
+}
+
+fn codex_default_profile() -> ProviderProfile {
+    ProviderProfile {
+        name: "codex-default",
+        levers: vec![
+            ProfileLever {
+                key: "web_search",
+                value: "cached",
+                citation: "Codex docs — settings surface, web_search default (cached results reduce token usage vs live lookups)",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            ProfileLever {
+                key: "tool_output_token_limit",
+                value: "30000",
+                citation: "Codex docs — settings surface, tool_output_token_limit (parity with Claude BASH_MAX_OUTPUT_LENGTH bound)",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            ProfileLever {
+                key: "commit_attribution",
+                value: "false",
+                citation: "Codex docs — settings surface, commit_attribution (removes marketing attribution from git commits)",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+        ],
+        // Healthy-state baseline: no operator-visible trade-offs.
+        // The aggressive Codex variant (P4-5) will populate
+        // side_effects with its scripted-session cost list.
+        side_effects: vec![],
         source_kind: SourceKind::ProjectCanonical,
     }
 }
@@ -563,5 +669,143 @@ mod tests {
                 aggressive_keys,
             );
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Phase 4 P4-4 v1.8.4 — codex-default baseline profile
+    // -----------------------------------------------------------------
+
+    fn healthy_codex_main() -> ResolvedIdentity {
+        ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Codex,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::High,
+        }
+    }
+
+    #[test]
+    fn recommend_codex_default_fires_with_provider_official_levers_on_healthy_codex_main() {
+        // Pattern parity with
+        // `recommend_claude_default_fires_with_provider_official_levers_on_healthy_claude_main`:
+        // rule must fire on a healthy Codex main pane, attach the
+        // structured profile end-to-end (NOT drop it like the v1.8.0
+        // regression), and carry exactly the three ProviderOfficial
+        // levers drawn from VALIDATION.md:137-143.
+        let id = healthy_codex_main();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&id, &s, &gates_default());
+
+        let rec = recs
+            .iter()
+            .find(|r| r.action == "provider-profile: codex-default")
+            .expect("codex-default profile rec fires on healthy Codex main pane");
+
+        assert_eq!(
+            rec.source_kind,
+            SourceKind::ProjectCanonical,
+            "profile bundle NAME is our abstraction; levers inside carry ProviderOfficial"
+        );
+        assert_eq!(
+            rec.severity,
+            Severity::Good,
+            "healthy-state profile rec is a positive advisory, not an alert"
+        );
+        assert!(
+            rec.reason.contains("codex-default"),
+            "reason must name the profile: {}", rec.reason
+        );
+        assert!(
+            rec.reason.contains("ProviderOfficial"),
+            "reason must cite ProviderOfficial authority label: {}", rec.reason
+        );
+        assert!(
+            rec.suggested_command.is_none(),
+            "profile rec has no single-surface runnable command (multi-key settings edit)"
+        );
+
+        // Structured profile payload reaches the rec end-to-end
+        // (same contract Codex v1.8.1 locked for Claude).
+        let profile = rec
+            .profile
+            .as_ref()
+            .expect("structured ProviderProfile must be attached to the rec");
+        assert_eq!(profile.name, "codex-default");
+        assert_eq!(profile.source_kind, SourceKind::ProjectCanonical);
+        assert_eq!(
+            profile.levers.len(),
+            3,
+            "codex-default bundles three ProviderOfficial levers"
+        );
+        for lever in &profile.levers {
+            assert_eq!(
+                lever.source_kind,
+                SourceKind::ProviderOfficial,
+                "every lever inside the bundle is ProviderOfficial"
+            );
+            assert!(
+                !lever.citation.is_empty(),
+                "every lever carries a non-empty citation"
+            );
+        }
+        // Spot-check the three expected lever keys — silent key drift
+        // or re-ordering fails here.
+        let keys: Vec<&str> = profile.levers.iter().map(|l| l.key).collect();
+        assert!(keys.contains(&"web_search"));
+        assert!(keys.contains(&"tool_output_token_limit"));
+        assert!(keys.contains(&"commit_attribution"));
+
+        // Healthy baseline has no operator-visible trade-offs.
+        assert!(
+            profile.side_effects.is_empty(),
+            "codex-default is a healthy-state baseline; no side_effects until the aggressive variant (P4-5)"
+        );
+    }
+
+    #[test]
+    fn recommend_codex_default_suppressed_on_non_codex_provider() {
+        // Symmetric to
+        // `recommend_claude_default_suppressed_on_non_claude_provider`:
+        // the Codex profile rule must stay pure (no accidental firing
+        // on Claude / Gemini / Qmonster panes). On a Claude main
+        // pane, claude-default fires INSTEAD — both rules respect
+        // their provider gate.
+        let claude_main = healthy_claude_main();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&claude_main, &s, &gates_default());
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "provider-profile: codex-default"),
+            "codex-default profile is Codex-only; Claude provider must not match"
+        );
+        // Sanity: claude-default still fires on the Claude pane.
+        assert!(
+            recs.iter()
+                .any(|r| r.action == "provider-profile: claude-default"),
+            "claude-default should still fire on a healthy Claude main pane"
+        );
+    }
+
+    #[test]
+    fn recommend_codex_default_suppressed_when_quota_tight_on() {
+        // codex-default is the baseline; the aggressive Codex
+        // variant (P4-5, tbd) will own the quota_tight path. This
+        // test locks the gate so the aggressive variant, when
+        // added, cleanly takes over without overlap — same pattern
+        // as claude-default ↔ claude-script-low-token mutual
+        // exclusion.
+        let id = healthy_codex_main();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&id, &s, &gates_quota_tight());
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "provider-profile: codex-default"),
+            "codex-default must NOT fire under quota_tight; aggressive variant will own that path in P4-5"
+        );
     }
 }
