@@ -1,0 +1,16 @@
+evaluation:
+  timestamp: "2026-04-22T00:00:00Z"
+  target: "Phase 4 P4-8 wrap-up confirm review (v1.8.13)"
+  evaluated_by: "llm-gemini"
+  source: "Local Gemini CLI headless confirm re-review of commit 92f477e (gemini -p --approval-mode plan, gemini-3.1-pro-preview after initial 429 retry)"
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "`--approval-mode = default` is a legitimate ProviderOfficial authority upgrade — both the key and the `default` value are canonical Gemini CLI configurations; Codex P4-6 deferred non-blocker fully closed."
+    - "v1.8.12 shared-verification contract preserved: `done_when` remains the portable shared-gate subset; `meta.tracking_mode` intact as `human-led multi-agent shared repo ledger`."
+    - "`token.thresholds` global-block decision rationale matches current repo state: no `tests/fixtures/`, only `big_output_chars` wired in `src/app/config.rs:131`, provider asymmetry lives in profile-rule layer."
+    - "Provider isolation, token-optimization architecture, and safety-precedence posture all hold; aggressive `--yolo = enabled` remains gated behind `quota_tight`."
+    - "Tests assert the new 1 PO + 1 PC authority split on gemini-default; no unlabeled or mislabeled heuristics."
+    - "Recommends opening Phase 5 (Safer Actuation) — Phase 4 validation fully fulfilled."
+  gate_decision: "Gemini confirms v1.8.13 P4-8 wrap-up is green. Combined with the pending Codex v1.8.13 confirm, Phase 4 can close and Phase 5 can open."

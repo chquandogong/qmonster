@@ -1,0 +1,18 @@
+evaluation:
+  timestamp: "2026-04-22T00:00:00Z"
+  target: "Phase 4 P4-8 wrap-up confirm review (v1.8.13)"
+  evaluated_by: "llm-codex"
+  source: "Local `codex exec` headless confirm re-review of commit 92f477e using gpt-5.4 (approval never, sandbox workspace-write, reasoning xhigh). Local shell sandbox was unavailable so the review pulled tracked files through the GitHub connector (chquandogong/qmonster) plus official Gemini CLI docs. `.mission/CURRENT_STATE.md` is gitignored and was not directly inspected."
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "`--approval-mode = default` is a legitimate ProviderOfficial upgrade — Gemini CLI docs document both the flag and `default` as its documented default value; Codex v1.8.8 P4-6 deferred non-blocker is effectively closed."
+    - "v1.8.12 shared-verification contract preserved: `mission.yaml` `done_when` list unchanged, `mission-history.yaml` `meta.tracking_mode` still `human-led multi-agent shared repo ledger`, `change_sequence: 28` intact, `change_sequence: 29` appended cleanly."
+    - "`token.thresholds` global-block decision rationale is repo-consistent: no `tests/fixtures/` directory, `config/qmonster.example.toml` exposes only `logging.big_output_chars`, and `src/store/archive_fs.rs` is where `ArchiveWriter` consumes it."
+    - "Provider gating unchanged in `src/policy/rules/profiles.rs`; the Gemini-only change does not leak into tmux or generic policy layers."
+    - "Safety posture strictly improves: baseline is now explicit, operator-scannable, and provider-documented rather than negative-form 'NOT set'."
+    - "Optional (non-blocking) next-touch cleanup: Gemini docs mark `--yolo` as deprecated in favor of `--approval-mode=yolo`; normalizing the aggressive `gemini-script-low-token` lever from `--yolo = enabled` to `--approval-mode = yolo` would remove reliance on the deprecated spelling. Not required for v1.8.13 gate."
+    - "Optional wording nuance: the `token.thresholds` rationale could name `logging.big_output_chars` explicitly (matches current runtime TOML surface more precisely than the abstract `[token.thresholds]` phrasing). Not required."
+    - "Codex did not re-execute `cargo build / test / clippy / fmt` — relies on the author's verification record (222 lib + 6 drift + 18 integration tests green; clippy + fmt clean)."
+  gate_decision: "Codex confirms v1.8.13 P4-8 wrap-up is green. Combined with the already-completed Gemini v1.8.13 confirm approve, Phase 4 is now fully gate-approved by both reviewers on top of the v1.8.12 shared-verification contract. Phase 5 (Safer Actuation) may open."

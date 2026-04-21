@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — Phase 4 wrap-up P4-8 v1.8.13 (layered on v1.8.12 shared-verification hardening)"
+  mission_title: "Qmonster v0.4.0 — Phase 4 P4-8 confirm-archive v1.8.14 (Codex + Gemini both approve on v1.8.13; Phase 4 fully re-gate-approved)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 29
-  latest_version: "1.8.13"
+  total_revisions: 30
+  latest_version: "1.8.14"
 
 timeline:
   - change_id: "initial"
@@ -3518,8 +3518,98 @@ timeline:
       - "Request short Codex + Gemini confirm re-review on v1.8.13 before opening Phase 5"
       - "Open Phase 5 (safer actuation — manual prompt-send helper with user confirmation)"
 
+  - change_id: "phase-4-p4-8-confirm-archive"
+    semantic_version: "1.8.14"
+    change_sequence: 30
+    date: "2026-04-22"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.8.13 confirm re-review of 92f477e — verdict `approve`, 0 must-fix findings; optional non-blocking note: Gemini CLI docs mark `--yolo` as deprecated in favor of `--approval-mode=yolo`, so the aggressive `gemini-script-low-token` lever could be normalized in a future touch)"
+      - "Gemini (gemini:1:research, v1.8.13 confirm re-review of 92f477e — verdict `approve`, 0 findings, 0 scope-reduction suggestions; recommends opening Phase 5)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — requested the re-review round on v1.8.13 per change_sequence 29 follow-up)"
+    change_type: "gate-archive"
+    motivation_type: "gate-closure"
+    persistence: "permanent"
+    intent: >
+      Archive the v1.8.13 confirm re-review verdicts from Codex and
+      Gemini and formally declare Phase 4 fully re-gate-approved on
+      the P4-8 wrap-up. Ledger-only round mirroring the f1f6868
+      (v1.8.11 P4-7 confirm2 archive) pattern — no code / test /
+      canonical-doc content change.
+    intent_ko: >
+      Codex · Gemini 두 리뷰어가 v1.8.13 (92f477e)에 대해 낸
+      `approve` 판정을 아카이브하고, P4-8 wrap-up 기준으로 Phase 4가
+      양쪽 리뷰어에게 다시 fully gate-approved되었음을 명시. 코드 /
+      테스트 / canonical doc 변경 없는 ledger-only 라운드로,
+      f1f6868 (v1.8.11 P4-7 confirm2 archive) 패턴을 따른다.
+    decision: >
+      Bump version 1.8.13 → 1.8.14. Add the two v1.8.13 confirm
+      result mirrors under `.mission/evals/` (Codex = approve,
+      0 findings; Gemini = approve, 0 findings). Update
+      mission-history meta + evolution_summary.current_phase to
+      reflect the fully gate-approved state. Preserve v1.8.12's
+      shared-verification contract and v1.8.13's P4-8 content
+      entirely intact. The two optional non-blocking notes Codex
+      raised (deprecated `--yolo` spelling on the aggressive
+      Gemini profile; more precise naming of
+      `logging.big_output_chars` in the token.thresholds
+      rationale) are captured in the follow-up list as future
+      touches, not as v1.8.14 scope.
+    decision_ko: >
+      버전 1.8.13 → 1.8.14. `.mission/evals/` 아래 두 개의 v1.8.13
+      confirm 결과 미러 추가 (Codex approve + Gemini approve, 모두
+      0 findings). mission-history meta와 evolution_summary.current_phase를
+      현재(fully gate-approved) 상태로 갱신. v1.8.12 shared-
+      verification 계약과 v1.8.13 P4-8 내용은 그대로 유지. Codex가
+      제시한 두 개의 옵션성 non-blocking 노트(aggressive Gemini
+      profile의 deprecated `--yolo` 표기 정규화, token.thresholds
+      근거문에서 `logging.big_output_chars` 명시)는 후속 touch로
+      follow-up에 기록만 하고 v1.8.14 범위에는 포함하지 않음.
+    triggered_by: "v1.8.13 follow-up list (change_sequence 29): 'Request short Codex + Gemini confirm re-review on v1.8.13 before opening Phase 5'"
+    issue_or_context: >
+      v1.8.13 P4-8 wrap-up (commit 92f477e) requested a confirm
+      re-review from both reviewers before Phase 5 gate opens.
+      Both reviews were run locally this session (codex exec + `gemini
+      -p --approval-mode plan`) against commit 92f477e and both
+      returned `approve` with no must-fix findings. The
+      evidence-weighted narratives live locally under `.docs/codex/`
+      and `.docs/gemini/` (gitignored per project workflow); the
+      structured mirrors are the shared artefact committed here.
+    changes:
+      added:
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-22-phase4-p4-8-confirm-review.result.yaml"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-22-phase4-p4-8-confirm-gemini-review.result.yaml"
+      modified:
+        - "mission.yaml"
+        - "mission-history.yaml"
+      removed: []
+    changed_sections:
+      - "mission.yaml version / title / lineage bumped to 1.8.14"
+      - "mission-history.yaml meta (title + total_revisions 30 + latest_version 1.8.14)"
+      - "evolution_summary.current_phase — Phase 4 fully re-gate-approved on v1.8.13 (P4-8 wrap-up); Phase 5 may open"
+      - "new change_sequence 30 timeline entry"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "none — ledger / archive round only"
+      verification: "no re-run required; v1.8.13 verification record stands (cargo build + 222 lib + 6 drift + 18 integration tests + clippy + fmt all green at commit 92f477e)"
+      docs: "confirm verdicts archived; no canonical `docs/ai/` edit"
+      ledger: "v1.8.14 layered on v1.8.13; v1.8.12 shared-verification contract and v1.8.13 P4-8 content unchanged; change_sequence 28 + 29 intact"
+    breaking: false
+    risk: "none — ledger-only gate-archive round"
+    related_commits:
+      - "92f477e"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Open Phase 5 (Safer Actuation — manual prompt-send helper with user confirmation)"
+      - "Optional non-blocking cleanup (Codex note): normalize aggressive `gemini-script-low-token` lever from `--yolo = enabled` to `--approval-mode = yolo` to avoid the deprecated `--yolo` spelling per current Gemini CLI docs"
+      - "Optional non-blocking wording refinement (Codex note): rewrite the token.thresholds decision rationale in docs/ai/VALIDATION.md to name `logging.big_output_chars` explicitly (more precise than the abstract `[token.thresholds]` phrasing)"
+
 evolution_summary:
-  current_phase: "Phase 4 COMPLETE + P4-8 wrap-up shipped — v1.8.13 layered on v1.8.12 shared-verification hardening. All 6 profiles in the 3x2 grid (Claude + Codex + Gemini × baseline + aggressive) shipped and gate-approved; all 7 Phase-4 VALIDATION.md checkboxes ticked (last one — `token.thresholds` global-block decision — closed in v1.8.13 with inline rationale); `--approval-mode = default` positive-form swap on gemini-default closes Codex v1.8.8 P4-6 deferred non-blocker. Portable shared-verification contract from v1.8.12 (cargo build/test/clippy + tracked artefact existence) remains the live done_when. Short Codex + Gemini confirm re-review on v1.8.13 requested before opening Phase 5 (Safer Actuation)."
+  current_phase: "Phase 4 COMPLETE + P4-8 confirm-archive shipped — v1.8.14 archives the v1.8.13 confirm re-review verdicts from both reviewers. Codex v1.8.13 confirm returned `approve` (0 must-fix findings, 2 optional non-blocking notes carried to the follow-up list) and Gemini v1.8.13 confirm returned `approve` (0 findings). Phase 4 is therefore fully re-gate-approved by both reviewers on the P4-8 wrap-up, on top of the v1.8.12 shared-verification hardening contract. All 7 Phase-4 VALIDATION.md checkboxes remain ticked; 6 profiles in the 3x2 grid stay locked; `--approval-mode = default` positive-form swap on gemini-default holds; portable shared-verification `done_when` contract (cargo build/test/clippy + tracked artefact existence) remains the live acceptance gate. Phase 5 (Safer Actuation — manual prompt-send helper with user confirmation) may now open."
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
