@@ -1,0 +1,59 @@
+evaluation:
+  timestamp: "2026-04-21T11:21:49Z"
+  target: "Phase 4 P4-7 gemini-script-low-token aggressive profile (v1.8.9) review"
+  evaluated_by: "llm-codex"
+  source: "Codex review of d09bfcb..05b8840"
+  verdict: "approve-with-fixes"
+  remediation_round: "v1.8.10+ before P4-8 / Phase 5"
+  findings:
+    - id: "codex-phase4-p4-7-1"
+      severity: "risk"
+      title: "`save_memory = disabled` does not match Gemini's documented config/tool surface"
+      references:
+        - "src/policy/rules/profiles.rs:850-861"
+        - "src/policy/rules/profiles.rs:879-881"
+        - "src/policy/rules/profiles.rs:1787-1804"
+        - "mission.yaml:434-441"
+        - "mission-history.yaml:2993-3005"
+        - ".mission/CURRENT_STATE.md:340-357"
+      detail: >
+        The current aggressive Gemini bundle treats `save_memory` as though it
+        were a disable-able config lever that blocks Auto Memory writes. The
+        official Gemini docs separate these concerns: `save_memory` is a tool
+        that writes facts into `GEMINI.md`, Auto Memory is a separate
+        `experimental.autoMemory` feature, and tool exclusion is configured via
+        `tools.exclude`. The bundle therefore overclaims a provider surface
+        that does not exist in the shape presented to the operator.
+      resolution: >
+        Replace this with an honest surface (`tools.exclude` for the tool or
+        `experimental.autoMemory = false` for the feature), or remove the
+        lever entirely and leave the G-5 routing rule in the separate
+        auto-memory advisory. Update the tests and narrative mirrors together.
+    - id: "codex-phase4-p4-7-2"
+      severity: "warning"
+      title: "Stale comments/tests still describe a pre-P4-7 grid"
+      references:
+        - "src/policy/rules/profiles.rs:8-25"
+        - "src/policy/rules/profiles.rs:721-734"
+        - "src/policy/rules/profiles.rs:1685-1698"
+      detail: >
+        The code comments and one Gemini quota-tight test still describe
+        earlier milestones: the module header says levers inside are
+        `ProviderOfficial` and still points to future Codex P4-5 work, while
+        the Gemini baseline path still says the aggressive variant is
+        "(P4-7, tbd)". That weakens the advertised one-glance consistency of
+        the completed six-rule provider-profile grid.
+      resolution: >
+        Refresh the module comment, the Gemini baseline comment, and the
+        quota-tight suppression test prose so they reflect the current
+        six-rule, mixed-authority, completed-grid state.
+  notes:
+    - "The six-rule provider-profile dispatcher is structurally sound and preserves provider-gate purity."
+    - "The Gemini baseline/aggressive pair is correctly separated by `quota_tight` and explicitly test-locked as mutually exclusive."
+    - "The user-visible `reason` summary for the aggressive Gemini bundle is derived at runtime from `profile.levers[*].source_kind`, reusing the v1.8.6 anti-drift pattern."
+    - "No renderer or actuation path changed in this round; the remaining issues are profile-surface accuracy and comment drift."
+    - "`cargo test --lib` passes (190/190)."
+    - "`cargo clippy --all-targets -- -D warnings` passes."
+    - "`cargo test --test event_loop_integration` passes (18/18)."
+    - "Official Gemini docs re-checked: configuration reference, tools reference, Auto Memory docs, and model-selection docs."
+  gate_decision: "Codex review is not green for P4-7 yet. Fix the Gemini memory-lever modeling and stale prose above, then re-run Codex/Gemini review before opening P4-8 or Phase 5."

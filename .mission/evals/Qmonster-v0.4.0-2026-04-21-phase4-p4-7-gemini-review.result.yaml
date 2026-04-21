@@ -1,0 +1,79 @@
+evaluation:
+  timestamp: "2026-04-21T10:00:00Z"
+  target: "Phase 4 P4-7 gemini-script-low-token aggressive profile (v1.8.9) review — completes 3x2 grid"
+  evaluated_by: "llm-gemini"
+  source: "Operator-relayed Gemini review of d09bfcb..05b8840 (chat transcript, 2026-04-21 JST); narrative review archived at .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-7-review.md"
+  verdict: "pass"
+  remediation_round: ""
+  criteria:
+    - name: "3 x 2 profile grid completion"
+      status: "pass"
+      notes: >
+        Claude / Codex / Gemini each have baseline + aggressive;
+        6 rules in eval_profiles dispatcher; mutual exclusion via
+        provider + quota_tight gates keeps pane at 0 or 1 active
+        profile rec with O(1) complexity.
+    - name: "Consistent 0 PO / 3 PC honesty pattern"
+      status: "pass"
+      notes: >
+        Gemini aggressive matches gemini-default in labeling all
+        levers ProjectCanonical. Consistent with Gemini docs
+        describing flag keys without mandating canonical default
+        values. Continuation of v1.8.5 / P4-6 honesty principle.
+    - name: "G-5 cross-reference pattern unified across 3 providers"
+      status: "pass"
+      notes: >
+        save_memory = disabled side_effect cross-references G-5 +
+        CURRENT_STATE.md + MDR — same architectural pattern Claude
+        (CLAUDE_CODE_DISABLE_AUTO_MEMORY) and Codex (model_auto_
+        compact_token_limit) aggressive variants use. The
+        "auto-memory is not primary state store" principle is
+        uniformly surfaced across all three providers at both code
+        and render layers.
+    - name: "Inverse baseline <-> aggressive toggle representation"
+      status: "pass"
+      notes: >
+        --yolo = unset (baseline) vs --yolo = enabled (aggressive)
+        — same lever key across the pair with inverted values.
+        Operator scanning the baseline↔aggressive pair sees
+        "which lever flips" at a glance. First toggle-style
+        baseline/aggressive representation (Claude and Codex pairs
+        use add-only extension); useful template for future profile
+        pairs.
+    - name: "No renderer change (transitive coverage)"
+      status: "pass"
+      notes: >
+        format_profile_lines from v1.8.3 handles the sixth profile
+        rec without modification; render-path stability proven
+        across all six profiles.
+    - name: "Robustness against common provider-expansion pitfalls"
+      status: "pass"
+      notes: >
+        Drift: reason summary runtime-derived, authority relabels
+        auto-propagate. Rule-crossing: 2-axis gating, zero
+        cross-rule references. Test duplication: pattern
+        repetition, not duplication — each provider pair has
+        matching shape/gate/provider/mutual-exclusion tests.
+  notes: >
+    Overall verdict from Gemini (transcript): "P4-7 베이스라인
+    (v1.8.9)을 최종 승인(Approve)하며, Phase 4 프로필 라인업의
+    전면 완성을 축하합니다! 190개의 단위 테스트와 18개의 통합
+    테스트 전량 통과, 클리피(-D warnings) 클린 상태를 직접
+    검증했습니다. 전체 코드베이스가 극도로 견고하며, 확장(Provider
+    추가) 시 발생할 수 있는 흔한 함정(Drift, 룰 간 침범, 테스트
+    중복)들을 훌륭한 추상화와 격리로 모두 피해갔습니다. 아주 멋진
+    작업이었습니다! 이제 P4-8+ (VALIDATION.md 체크박스 등 누적
+    정리) 혹은 Phase 5 (Manual prompt-send helper 등 Safer
+    actuation 기능) 중 어느 쪽으로 진입하셔도 좋은 완벽한 토대가
+    마련되었습니다."
+    Narrative archived at
+    .docs/gemini/Qmonster-v0.4.0-2026-04-21-phase4-p4-7-review.md.
+  gate_decision: >
+    v1.8.9 P4-7 approved by Gemini (pass / 최종 승인 + Phase 4
+    완료 선언). Codex parallel review pending at time of this
+    archive; the aggregate "fully gate-approved" declaration
+    will follow once the Codex verdict lands. Either P4-8+
+    (VALIDATION.md checkbox ticking + deferred non-blocker
+    cleanup) or Phase 5 (manual prompt-send helper with user
+    confirmation) is a valid next direction after the Codex
+    review completes.

@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 25
-  latest_version: "1.8.9"
+  total_revisions: 26
+  latest_version: "1.8.10"
 
 timeline:
   - change_id: "initial"
@@ -3105,8 +3105,138 @@ timeline:
       - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens; address Codex v1.8.8-P4-6 deferred non-blocker (--approval-mode = default positive-form alternative) if still relevant after reviewer input on the completed grid"
       - "Phase 5 opens: safer actuation — manual prompt-send helper with user confirmation"
 
+  - change_id: "phase-4-p4-7-remediation-gemini-surface-and-stale-prose"
+    semantic_version: "1.8.10"
+    change_sequence: 26
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.8.9 P4-7 review — flagged both findings closed by this round)"
+      - "Gemini (gemini:1:research, v1.8.9 P4-7 review — pass; did not flag the save_memory surface mismatch, but Codex's evidence against Gemini official docs is conclusive)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close both Codex v1.8.9 P4-7 review findings. Finding #1
+      (risk): the aggressive Gemini bundle used `save_memory =
+      disabled` as a config lever, but Gemini CLI docs describe
+      save_memory as a TOOL invoked by the agent and Auto Memory
+      as a separate configuration key `experimental.autoMemory`.
+      The phantom lever would silently NOT disable Auto Memory
+      when an operator applied the profile — the G-5 guarantee
+      fails at the actual config surface. Finding #2 (warning):
+      three prose locations in profiles.rs still described
+      pre-P4-7 state (module doc-comment, gemini-default --yolo
+      lever comment, and gemini-default suppression test
+      comment). Fix both in one round; strengthen the positive-
+      fire shape test so the corrected surface is locked.
+    intent_ko: >
+      Codex v1.8.9 P4-7 리뷰의 두 finding을 닫는다. #1 (risk):
+      Gemini aggressive 번들이 config lever로 `save_memory =
+      disabled`를 썼지만, Gemini CLI 문서는 save_memory를 agent
+      가 호출하는 TOOL로 기술하고 Auto Memory는 별도 config key
+      `experimental.autoMemory`로 분리. 허수 lever는 operator가
+      profile 적용 시 실제로 Auto Memory를 끄지 못해 G-5 보장이
+      실제 config surface에서 깨진다. #2 (warning): profiles.rs의
+      3개 prose 위치(모듈 doc-comment, gemini-default --yolo
+      lever 주석, gemini-default 억제 테스트 주석)에 pre-P4-7
+      상태 잔존. 한 라운드에 둘 다 고치고, positive-fire shape
+      테스트를 강화해 교정된 surface를 고정.
+    decision: >
+      (1) src/policy/rules/profiles.rs gemini_script_low_token_
+      profile: lever key/value 교체 — `save_memory = disabled`
+      → `experimental.autoMemory = false`. Gemini CLI 공식 문서
+      (auto memory config) 기준으로 키와 disable 값 모두 문서화
+      된 사실이므로 source_kind를 `ProviderOfficial`로 승격.
+      citation 재작성 — 정확한 config 경로와 "distinct from the
+      save_memory tool" 명시. side_effect 문자열도 `save_memory
+      = disabled ...` → `experimental.autoMemory = false disables
+      the Gemini Auto Memory feature ...`로 갱신. G-5 cross-
+      reference (CURRENT_STATE.md + MDR) 유지.
+      (2) 모듈 doc-comment (line 8) 재작성: "P4-5 (aggressive
+      Codex variant)" 같은 pending 서술을 제거하고 3x2 grid
+      완성 상태, cross-provider mutual exclusion 불변식, G-5/G-6
+      cross-reference 패턴을 명시.
+      (3) gemini-default `--yolo = unset` lever 주석: "(P4-7,
+      tbd)" 제거, aggressive variant가 shipped 상태임을 명시.
+      (4) gemini-default 억제 테스트 주석: aggressive variant를
+      "will own the quota_tight path"가 아닌 "shipped, owns the
+      quota_tight path"로 교체.
+      (5) positive-fire shape 테스트 강화 — `po_count == 0 &&
+      pc_count == 3` 블록을 `po_count == 1 && pc_count == 2`
+      로 교체; `experimental.autoMemory`에 대한 per-lever
+      assertion 추가 (값 `false` + source_kind `ProviderOfficial`);
+      reason-summary assertion에 `ProviderOfficial` AND
+      `ProjectCanonical` 둘 다 포함 여부 체크 (codex-default
+      v1.8.6 패턴과 동일).
+    decision_ko: >
+      이 라운드는 Gemini aggressive profile의 실제 config surface
+      를 정직화하고 3x2 grid 완성에 맞춰 주석/문구를 동기화.
+      코드 한 lever + 3개 prose spot + 1개 강화된 테스트 =
+      총 ~60 LOC 변경. 실행 정책/동작 변경 없음.
+    triggered_by: >
+      Codex v1.8.9 P4-7 review (.docs/codex/...phase4-p4-7-review.md
+      + .mission/evals/...phase4-p4-7-review.result.yaml) —
+      1 risk (save_memory surface mismatch vs Gemini CLI docs)
+      + 1 warning (three stale-prose locations in profiles.rs
+      describing pre-P4-7 state). Codex cross-checked against
+      geminicli.com/docs/reference/configuration/, tools,
+      auto memory, and model docs.
+    issue_or_context: >
+      v1.8.9 shipped `save_memory = disabled` in the aggressive
+      Gemini bundle on the assumption (informed by the Claude /
+      Codex aggressive variants' cross-provider pattern of
+      explicit auto-memory disabling) that `save_memory` was a
+      config key. Gemini CLI's actual documented surface shows
+      save_memory is a TOOL and the Auto Memory feature is toggled
+      by a distinct config key. Shipping the phantom key would
+      leave the G-5 promise functionally broken at apply-time —
+      the operator would apply the profile expecting Auto Memory
+      off and get the default behavior. Fixing the surface brings
+      the lever into alignment with Gemini docs, and the authority
+      label graduates to ProviderOfficial because the documented
+      key + documented value meets the PO bar. The three stale-
+      prose spots are cosmetic but land in operator-facing doc-
+      comments + test-layer comments, so closing them together
+      with the risk fix keeps the file coherent.
+    changes:
+      modified:
+        - "src/policy/rules/profiles.rs — gemini_script_low_token_profile: save_memory/disabled → experimental.autoMemory/false (ProjectCanonical → ProviderOfficial; citation + side_effect updated to match actual Gemini CLI auto-memory config surface); module doc-comment (line 8) rewritten for the shipped 3x2 grid; gemini-default --yolo lever comment no longer says 'P4-7, tbd'; gemini-default suppression test comment no longer says aggressive variant is pending; positive-fire shape test tightened with 1-PO-2-PC assertions + explicit experimental.autoMemory source_kind check + reason-summary cites both authority kinds"
+        - "mission.yaml — version 1.8.9 → 1.8.10; title replaced (P4-7 shipped → P4-7 remediated); v1.8.9 goal paragraph de-marked ('this revision' → past tense); new v1.8.10 paragraph summarizing both findings + their fixes + the test tightening; 3 new v1.8.10 done_when entries; execution_hints.topology + suggested_approach updated; lineage total_revisions 25 → 26"
+        - "mission-history.yaml — meta.total_revisions 25 → 26; latest_version → 1.8.10; new entry (this one, change_sequence 26); evolution_summary.current_phase updated"
+        - ".mission/CURRENT_STATE.md — version → 1.8.10; Phase-4 P4-7 section lever table row updated (save_memory → experimental.autoMemory, source_kind PC → PO); gate-status table shows Codex v1.8.9 approve-with-fixes closed by v1.8.10 + new pending v1.8.10 confirm rows; Verification + Next first action refreshed"
+    changed_sections:
+      - "gemini-script-low-token aggressive lever: save_memory → experimental.autoMemory (surface fix)"
+      - "Aggressive Gemini bundle authority split: 0 PO / 3 PC → 1 PO / 2 PC"
+      - "profiles.rs prose sync to shipped 3x2 grid state (module doc + two other spots)"
+      - "positive-fire shape test tightened with explicit per-lever source_kind + reason dual-authority assertions"
+    done_when_delta:
+      added:
+        - "Phase 4 P4-7 remediation v1.8.10: `gemini-script-low-token` replaces the prior `save_memory = disabled` lever (phantom config key — save_memory is a tool name per Gemini CLI docs) with `experimental.autoMemory = false` (the documented Gemini CLI config key for the Auto Memory feature). Authority label graduates to `ProviderOfficial` because both the key and the disable value are documented. Bundle authority split is now 1 ProviderOfficial + 2 ProjectCanonical (was 0 PO + 3 PC). side_effect + citation updated to cite the correct config key; G-5 cross-reference preserved. Codex v1.8.9 P4-7 finding #1 (risk: save_memory surface mismatch) closed."
+        - "Phase 4 P4-7 remediation v1.8.10: three stale-prose locations in `src/policy/rules/profiles.rs` synced to the 3x2 grid completion state — module doc-comment, gemini-default `--yolo = unset` lever comment, and `recommend_gemini_default_suppressed_when_quota_tight_on` test comment. Codex v1.8.9 P4-7 finding #2 (warning: stale prose) closed."
+        - "Phase 4 P4-7 remediation v1.8.10: positive-fire shape test tightened — old blanket 0-PO-3-PC assertion split into explicit 1-PO-2-PC assertions; per-lever source_kind assertion on `experimental.autoMemory` explicitly verifies `ProviderOfficial`; reason-summary assertion now requires BOTH `ProviderOfficial` and `ProjectCanonical` tokens (mirroring the codex-default v1.8.6 pattern). 190 lib + 18 integration (unchanged test count — one existing test tightened in place); clippy --all-targets -D warnings clean."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~30 LOC production (1 lever key/value/citation swap + 3 doc-comment rewrites) + ~30 LOC test delta (tightened assertions in one existing test)"
+      tests: "190 lib + 18 integration (unchanged test count; one existing test tightened in place)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "operator-visible change: aggressive Gemini profile render now shows `[PO] experimental.autoMemory = false — Gemini CLI docs — auto memory: experimental.autoMemory config key ...` instead of `[PC] save_memory = disabled — ...`. The apply-time behavior becomes correct (operator actually disables Auto Memory) — prior version would have applied a phantom key."
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — single lever surface correction inside an existing aggressive profile; tests updated in lockstep to lock the new surface; prose sync is docs-only. Semantically, operators applying v1.8.10 gemini-script-low-token now actually achieve the Auto Memory disable the profile claims (v1.8.9 would have silently left Auto Memory on)."
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+    snapshot_after: ""
+    follow_up:
+      - "Request short Codex + Gemini confirm re-review on v1.8.10 P4-7 remediation"
+      - "On green, proceed to P4-8+ (VALIDATION.md Phase-4 checkbox ticking + any deferred non-blockers including the Codex v1.8.8-P4-6 `--approval-mode = default` suggestion) or open Phase 5 (safer actuation — manual prompt-send helper with user confirmation)"
+
 evolution_summary:
-  current_phase: "Phase 4 P4-7 half-approved — Gemini v1.8.9 pass (최종 승인 + Phase 4 완료 선언: '전체 코드베이스가 극도로 견고'); 3 x 2 profile grid complete. Codex v1.8.9 review pending — full baseline-approved declaration awaits Codex verdict."
+  current_phase: "Phase 4 P4-7 remediated — save_memory phantom lever replaced with experimental.autoMemory per Gemini CLI docs; stale-prose synced; Gemini v1.8.9 pass stands; Codex v1.8.9 findings both closed by v1.8.10. Short confirm re-review pending before P4-8+ / Phase 5."
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
