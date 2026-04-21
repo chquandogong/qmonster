@@ -4,7 +4,7 @@ Observe-first TUI for multi-CLI tmux development — watches Claude Code /
 Codex / Gemini panes (plus itself), surfaces alerts, token-pressure
 metrics, and recommendations **without** touching the panes it observes.
 
-- Version: v0.4.0 (Phase 1 shipped)
+- Version: v0.4.0 (Phase 4 P4-1 shipped; Phases 1–3 complete and gate-approved; baseline v1.8.1)
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -29,14 +29,14 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-| Phase | Scope                                                                                                                                                                      | Status         |
-| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| 0     | Planning — canonical docs, mission ledger, thin routers, r1 plan + r2 final synthesis                                                                                      | **Shipped**    |
-| 1     | Observe-first MVP — tmux polling, identity resolver, adapters, alert rules, ratatui UI, desktop/bell notifications, safety precedence, version-drift detector              | **Shipped**    |
-| 2     | Archive + checkpoint + SQLite — `SqliteAuditSink` with type-level raw exclusion, `ArchiveWriter` preview/full split, `SnapshotWriter`, retention, persistent version drift | **Shipped**    |
-| 3     | Policy engine A–G + concurrent-work warning + `suggested_command`                                                                                                          | _pending gate_ |
-| 4     | Provider profile recommender                                                                                                                                               | not started    |
-| 5     | Manual prompt-send helper (safer actuation)                                                                                                                                | not started    |
+| Phase | Scope                                                                                                                                                                      | Status                                                           |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 0     | Planning — canonical docs, mission ledger, thin routers, r1 plan + r2 final synthesis                                                                                      | **Shipped**                                                      |
+| 1     | Observe-first MVP — tmux polling, identity resolver, adapters, alert rules, ratatui UI, desktop/bell notifications, safety precedence, version-drift detector              | **Shipped**                                                      |
+| 2     | Archive + checkpoint + SQLite — `SqliteAuditSink` with type-level raw exclusion, `ArchiveWriter` preview/full split, `SnapshotWriter`, retention, persistent version drift | **Shipped**                                                      |
+| 3     | Policy engine A–G + concurrent-work warning + `suggested_command` + strong-rec `next_step` + shared render helper                                                          | **Shipped** (gate-approved v1.7.6)                               |
+| 4     | Provider profile recommender — `ProviderProfile` / `ProfileLever` data model + `recommend_claude_default` rule + end-to-end structured-payload render                      | **In progress** — P4-1 shipped (v1.8.1); P4-2/P4-3/P4-4+ pending |
+| 5     | Manual prompt-send helper (safer actuation)                                                                                                                                | not started                                                      |
 
 ## Quick start
 
@@ -108,7 +108,7 @@ src/
                recommendation, audit, lifecycle
   tmux/        PaneSource trait + polling implementation
   adapters/    claude / codex / gemini / qmonster tail parsers
-  policy/      pure engine + alert rules
+  policy/      pure engine + rules (alert + advisory + concurrent + profile)
   store/       paths, sink (EventSink + NoopSink + InMemorySink),
                audit (SqliteAuditSink), sqlite (low-level adapter),
                archive_fs (raw tail preview/full split),
@@ -136,7 +136,7 @@ cargo clippy --all-targets -- -D warnings
 cargo build
 ```
 
-Phase 1 ships with ~90 tests (lib + integration). The event-loop
+Currently ~183 tests (166 lib + 17 integration). The event-loop
 integration tests use a fixture `PaneSource` so they do not require a
 real tmux session.
 
