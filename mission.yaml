@@ -1,6 +1,6 @@
 mission:
-  version: "1.8.6"
-  title: "Qmonster v0.4.0 — Phase 4 P4-4 confirm-remediation (codex-default: reason summary + doc-comment now reflect honest 2 ProviderOfficial + 1 ProjectCanonical split; Codex v1.8.5-confirm findings closed)"
+  version: "1.8.7"
+  title: "Qmonster v0.4.0 — Phase 4 P4-5 shipped (codex-script-low-token aggressive profile: quota_tight-gated; 7 Codex levers — 6 ProviderOfficial + 1 ProjectCanonical — with 1:1 side_effects; Gemini G-6 parity for Codex)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -307,7 +307,7 @@ mission:
     and tightened with per-lever explicit value + source_kind
     assertions.
 
-    Phase 4 P4-4 confirm-remediation (v1.8.6, this revision) closes
+    Phase 4 P4-4 confirm-remediation (v1.8.6) closed
     the two Codex v1.8.5-confirm findings — prose drift that
     survived the v1.8.5 code-layer fix. Codex confirmed v1.8.5
     closed the lever-row + test pieces of the original findings,
@@ -341,6 +341,44 @@ mission:
     in place with +1 assertion). clippy clean. No new rule, no
     render-helper change, no provider-gate change — prose + one
     derived-from-data reason + one new assertion.
+
+    Phase 4 P4-5 (v1.8.7, this revision) ships the Codex aggressive
+    variant `codex-script-low-token` — Gemini G-6 parity for Codex
+    mirroring `claude-script-low-token` from P4-3. `recommend_codex_
+    script_low_token` fires a `Severity::Good` rec on healthy Codex
+    main panes under operator-opted `gates.quota_tight == true` +
+    IdentityConfidence of Medium or higher + no active alerts +
+    low context pressure. The new profile bundles 7 levers drawn
+    from VALIDATION.md:137-143 that were explicitly reserved away
+    from `codex-default`: 1 ProjectCanonical
+    (`model_auto_compact_token_limit = 100000` — Qmonster-chosen
+    conservative threshold, same honesty pattern as
+    `tool_output_token_limit = 30000` in codex-default) + 6
+    ProviderOfficial (`[features].apps = false`,
+    `[apps._default].enabled = false`, and four `codex exec` flags:
+    `--json`, `--sandbox read-only`, `--ephemeral`, `--color never`).
+    Each lever carries a Codex-docs citation;
+    `ProviderProfile.side_effects` populated 1:1 with the lever
+    list (G-6 contract) — seven full-sentence operator-visible
+    trade-off strings including a cross-reference to Gemini G-5 on
+    the auto-compaction row. Reason summary is derived from the
+    lever source_kinds at runtime (same pattern as codex-default
+    v1.8.6): "apply 7 levers ... — 6 ProviderOfficial + 1
+    ProjectCanonical, with 7 operator-visible side effects (see
+    list below)". `codex-default` and `codex-script-low-token` are
+    mutually exclusive by design — `codex-default` has
+    `if gates.quota_tight { return None; }` and the aggressive
+    variant has `if !gates.quota_tight { return None; }`, same
+    shape as the Claude pair. Provider gates stay pure across all
+    four profiles: a Codex pane never sees `claude-*`, a Claude
+    pane never sees `codex-*`. 183 lib + 18 integration (up from
+    179 + 18; +4 new unit tests: shape with honest authority
+    labels + 7 levers + 7 side_effects; gate off when !quota_tight
+    with codex-default sanity check; provider-gate suppression on
+    Claude pane with claude-script-low-token sanity check; explicit
+    mutual-exclusion test toggling quota_tight and asserting
+    exactly one of the two Codex profiles fires). clippy
+    --all-targets -D warnings clean.
 
     Phase 4 P4-2 (v1.8.2) shipped the Gemini G-5
     auto-memory guide rule — the second Phase-4 slice. When the
@@ -491,6 +529,12 @@ mission:
     - 'Phase 4 P4-4 confirm-remediation v1.8.6: the `recommend_codex_default` doc-comment in `src/policy/rules/profiles.rs` is rewritten to describe the honest 2 ProviderOfficial + 1 ProjectCanonical split, the correct `commit_attribution = ""` value, and the Codex v1.8.4-review finding #2 rationale for the ProjectCanonical label on `tool_output_token_limit`. Codex v1.8.5-confirm finding #2 (warning: stale doc comment) closed.'
     - 'Phase 4 P4-4 confirm-remediation v1.8.6: the positive-fire unit test adds a `rec.reason.contains("ProjectCanonical")` assertion alongside the existing `contains("ProviderOfficial")` check, locking the reason-summary honesty at the test layer. 179 lib + 18 integration (unchanged test count; one existing test tightened in place with +1 assertion); clippy --all-targets -D warnings clean.'
 
+    # Phase-4 P4-5 (v1.8.7) — codex-script-low-token aggressive profile.
+    - "Phase 4 P4-5 v1.8.7: `src/policy/rules/profiles.rs::recommend_codex_script_low_token` fires a `Severity::Good` rec under `gates.quota_tight == true` on healthy Codex main panes. The bundled `ProviderProfile` `codex-script-low-token` carries 7 levers drawn from VALIDATION.md:137-143 that were explicitly reserved away from `codex-default`: 1 ProjectCanonical (`model_auto_compact_token_limit = 100000` — Qmonster-chosen threshold, same honesty pattern as `tool_output_token_limit` in codex-default) + 6 ProviderOfficial (`[features].apps = false`, `[apps._default].enabled = false`, and four `codex exec` flags: `--json`, `--sandbox read-only`, `--ephemeral`, `--color never`). Each lever carries a per-lever Codex-docs citation."
+    - "Phase 4 P4-5 v1.8.7: Gemini G-6 parity for Codex closed — `ProviderProfile.side_effects` on `codex-script-low-token` is 1:1 with the lever list (7 operator-visible trade-off strings, each a full sentence). The reason summary derives ProviderOfficial / ProjectCanonical counts at runtime from `profile.levers[*].source_kind` (same pattern as codex-default after v1.8.6 remediation) so future authority changes auto-propagate into the summary."
+    - "Phase 4 P4-5 v1.8.7: `codex-default` and `codex-script-low-token` are mutually exclusive by design via the `gates.quota_tight` gate (same shape as `claude-default` ↔ `claude-script-low-token` from P4-3). Provider gates stay pure across all four profile rules — a Codex pane never fires any `claude-*` profile, a Claude pane never fires any `codex-*` profile."
+    - "Phase 4 P4-5 v1.8.7: 4 new unit tests in `policy/rules/profiles.rs` — shape (7 levers + 7 side_effects, Good severity, ProjectCanonical source, derived-from-data reason summary with both ProviderOfficial and ProjectCanonical counts, spot-checks on auto-compaction and sandbox trade-offs); gate-off (suppressed when !quota_tight; codex-default fires instead); provider-gate suppression on Claude pane (claude-script-low-token sanity check); explicit mutual-exclusion test toggling quota_tight and asserting exactly one of the two Codex profiles fires. 183 lib + 18 integration (up from 179 + 18); clippy --all-targets -D warnings clean."
+
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
     - "Layer separation: docs/ai/ = canonical (Git-tracked); .docs/ = raw working docs (gitignored); mission.yaml + mission-history.yaml + .mission/ = local contract/ledger (gitignored in single-user phase)."
@@ -580,28 +624,23 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1); P4-2 (Gemini G-5 auto-memory guide rule) shipped in 1 TDD commit (v1.8.2); P4-3 (Gemini G-6 side_effects + claude-script-low-token aggressive profile) shipped in 1 TDD commit (v1.8.3); P4-4 (codex-default baseline profile) shipped in 1 TDD commit (v1.8.4); P4-4 remediation (commit_attribution + tool_output_token_limit authority labels) shipped in 1 TDD commit (v1.8.5); P4-4 confirm-remediation (reason summary + doc-comment drift cleanup) shipped in 1 TDD commit (v1.8.6)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1); P4-2 (Gemini G-5 auto-memory guide rule) shipped in 1 TDD commit (v1.8.2); P4-3 (Gemini G-6 side_effects + claude-script-low-token aggressive profile) shipped in 1 TDD commit (v1.8.3); P4-4 (codex-default baseline profile) shipped in 1 TDD commit (v1.8.4); P4-4 remediation (commit_attribution + tool_output_token_limit authority labels) shipped in 1 TDD commit (v1.8.5); P4-4 confirm-remediation (reason summary + doc-comment drift cleanup) shipped in 1 TDD commit (v1.8.6); P4-5 (codex-script-low-token aggressive profile + Gemini G-6 parity for Codex) shipped in 1 TDD commit (v1.8.7)."
     suggested_approach: >
-      Phase 4 P4-4 confirm-remediation shipped (v1.8.6). Codex
-      v1.8.5-confirm identified two prose-drift warnings (reason
-      summary + doc comment both still asserted the old uniform
-      "3 ProviderOfficial levers" world after v1.8.5's authority
-      relabel). Gemini v1.8.5-confirm gave pass. v1.8.6 closes both
-      Codex warnings by making the rec's `reason` derive the
-      ProviderOfficial / ProjectCanonical counts at runtime from
-      `profile.levers[*].source_kind`, rewriting the doc-comment
-      to reflect the 2 PO + 1 PC split + correct commit_attribution
-      value, and extending the positive-fire unit test with a
-      `rec.reason.contains("ProjectCanonical")` assertion.
-      codex-default's rendered reason now reads "apply 3 levers ...
-      — 2 ProviderOfficial + 1 ProjectCanonical (see lever list
-      below for per-lever citations)". Gate status: Phase-3 fully
-      approved; P4-1 / P4-2 / P4-3 all fully approved; P4-4
-      findings + v1.8.5-confirm findings all closed. Request short
-      Codex + Gemini confirm re-review on v1.8.6 before continuing
-      to P4-5 — Codex aggressive variant `codex-script-low-token`
-      (quota_tight-gated) populating side_effects per Gemini G-6;
-      then P4-6 Gemini baseline + P4-7 Gemini aggressive variant.
+      Phase 4 P4-5 shipped (v1.8.7). Codex aggressive variant
+      `codex-script-low-token` fires under operator-opted
+      `quota_tight` on healthy Codex main panes with 7 levers
+      drawn from VALIDATION.md:137-143 (1 ProjectCanonical +
+      6 ProviderOfficial) and 1:1 populated side_effects — Gemini
+      G-6 parity for Codex. Mutual exclusion between codex-default
+      and codex-script-low-token is locked by the shared
+      quota_tight gate + an explicit test. Provider gates stay
+      pure across all four profiles. Gate status: Phase-3 fully
+      approved; P4-1 / P4-2 / P4-3 / P4-4 all fully approved.
+      Request Codex + Gemini gate review on v1.8.7 before
+      continuing to P4-6 (`gemini-default` baseline) and P4-7
+      (`gemini-script-low-token` aggressive variant), completing
+      the cross-provider profile coverage per Gemini's one-
+      provider-per-slice scope-reduction recommendation.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -652,5 +691,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 22
+    total_revisions: 23
     history: "mission-history.yaml"

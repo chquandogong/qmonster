@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 22
-  latest_version: "1.8.6"
+  total_revisions: 23
+  latest_version: "1.8.7"
 
 timeline:
   - change_id: "initial"
@@ -2654,8 +2654,146 @@ timeline:
       - "P4-6: `gemini-default` baseline profile"
       - "P4-7: `gemini-script-low-token` aggressive variant"
 
+  - change_id: "phase-4-p4-5-codex-script-low-token-aggressive-profile"
+    semantic_version: "1.8.7"
+    change_sequence: 23
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Ship Phase-4 P4-5: the Codex aggressive variant mirroring
+      `claude-script-low-token` from P4-3. Closes Gemini G-6 parity
+      for Codex — `codex-script-low-token` bundles the aggressive
+      Codex levers explicitly reserved away from `codex-default`
+      (VALIDATION.md:137-143) with a populated `side_effects` list
+      (1:1 with lever count). Completes the two-profile-per-
+      provider coverage for Claude + Codex; P4-6 / P4-7 will widen
+      to Gemini.
+    intent_ko: >
+      Phase 4 P4-5 착수: P4-3의 `claude-script-low-token`을 Codex에
+      대칭 적용. Codex용 Gemini G-6 parity 달성 —
+      `codex-script-low-token`이 `codex-default`에서 명시적으로
+      reserve해둔 공격적 Codex lever들(VALIDATION.md:137-143)을
+      번들하고 `side_effects`를 lever와 1:1로 채운다. Claude +
+      Codex 두 provider에 대해 baseline + aggressive 커버가 완료
+      되며, P4-6/P4-7은 Gemini로 확장.
+    decision: >
+      (1) src/policy/rules/profiles.rs: new
+      `recommend_codex_script_low_token` rule gated on
+      `gates.quota_tight == true` + Codex main + IdentityConfidence
+      of Medium or higher + no active alerts + low context
+      pressure. `eval_profiles` dispatcher now calls all four
+      rules (claude-default, claude-script-low-token, codex-default,
+      codex-script-low-token). Mutual exclusion across all four:
+      provider gates isolate Claude vs Codex; within each provider
+      the default's `if gates.quota_tight { return None; }` +
+      aggressive's `if !gates.quota_tight { return None; }` form a
+      clean pair.
+      (2) New `codex_script_low_token_profile()` private
+      constructor bundles 7 levers:
+        - 1 ProjectCanonical: `model_auto_compact_token_limit =
+          100000` (Qmonster-chosen aggressive threshold — same
+          honesty pattern as `tool_output_token_limit = 30000` in
+          codex-default after v1.8.5 relabel);
+        - 6 ProviderOfficial: `[features].apps = false`,
+          `[apps._default].enabled = false`, and four codex exec
+          flags `--json`, `--sandbox read-only`, `--ephemeral`,
+          `--color never` — all documented in Codex settings
+          surface + exec-flags docs.
+      Each lever carries a Codex-docs citation. `side_effects:
+      Vec<String>` populated 1:1 with the lever list (Gemini G-6
+      contract) — seven full-sentence operator-visible trade-off
+      strings. The auto-compaction side_effect cross-references
+      Gemini G-5 (state handoff must go to CURRENT_STATE.md / MDR),
+      same cross-reference the Claude aggressive variant uses.
+      (3) Reason summary is derived at runtime from lever
+      source_kinds (same pattern as codex-default after v1.8.6
+      remediation): "apply 7 levers ... — 6 ProviderOfficial +
+      1 ProjectCanonical, with 7 operator-visible side effects
+      (see list below)". Future authority relabels auto-propagate.
+      (4) No renderer change — the v1.8.3 format_profile_lines
+      helper already emits the side_effects section for any
+      profile with a non-empty list.
+      (5) Four new unit tests: shape (7 levers, 7 side_effects,
+      derived counts in reason, authority split 6 PO + 1 PC,
+      spot-checks on auto-compaction and sandbox trade-offs);
+      gate-off when !quota_tight (codex-default sanity check);
+      provider-gate suppression on Claude pane
+      (claude-script-low-token sanity check); explicit mutual-
+      exclusion toggling quota_tight and asserting exactly one of
+      the two Codex profiles fires per configuration.
+    decision_ko: >
+      (1) src/policy/rules/profiles.rs에 신규
+      `recommend_codex_script_low_token` 규칙 — `gates.quota_tight
+      == true` + Codex main + IdentityConfidence Medium 이상 +
+      활성 알림 없음 + 낮은 context pressure에서만 발화.
+      `eval_profiles` dispatcher가 이제 4개 규칙을 모두 호출.
+      provider × quota_tight 축으로 4개 profile이 상호 배타.
+      (2) `codex_script_low_token_profile()` 생성자 추가 — 7 lever
+      (1 ProjectCanonical + 6 ProviderOfficial), 각 lever마다
+      Codex-docs citation, side_effects 리스트도 lever와 1:1로
+      채움(G-6). auto-compaction side_effect는 Gemini G-5를
+      cross-reference.
+      (3) reason 요약은 lever source_kinds에서 런타임 파생
+      (codex-default v1.8.6 패턴 재사용).
+      (4) 렌더러 변경 없음 — v1.8.3의 format_profile_lines가
+      side_effects 섹션을 이미 지원.
+      (5) 신규 unit test 4개 — shape, gate-off, provider-gate,
+      mutual-exclusion. 모두 green.
+    triggered_by: "operator approval to proceed with P4-5 after v1.8.6 fully gate-approved (Gemini + Codex both approve/pass with no findings)"
+    issue_or_context: >
+      P4-4 (codex-default) + its remediation rounds v1.8.5 / v1.8.6
+      established the Codex baseline profile and the pattern for
+      honest authority labels on mixed-authority levers. P4-5
+      ships the aggressive counterpart so Codex has the same
+      baseline-plus-aggressive coverage Claude has, and Gemini G-6
+      (side_effects on high-compression profiles) is satisfied for
+      both providers. P4-6 / P4-7 will do the same for Gemini.
+    changes:
+      modified:
+        - "src/policy/rules/profiles.rs — `eval_profiles` dispatcher calls `recommend_codex_script_low_token` after the three existing rules; new rule + `codex_script_low_token_profile` constructor + 4 new unit tests; module doc-comment was already current from prior rounds"
+        - 'mission.yaml — version 1.8.6 → 1.8.7; title replaced (P4-4 confirm-remediation → P4-5 shipped); new v1.8.7 paragraph in goal; prior v1.8.6 paragraph de-marked ("this revision" → past tense); 4 new done_when entries for P4-5; execution_hints.topology + suggested_approach updated; lineage total_revisions 22 → 23'
+        - "mission-history.yaml — meta.total_revisions 22 → 23; latest_version → 1.8.7; new entry (this one, change_sequence 23, change_type feature, motivation_type implementation); evolution_summary.current_phase updated"
+        - ".mission/CURRENT_STATE.md — version → 1.8.7; new P4-5 sub-section with lever bundle table + side_effects list + fire conditions + test summary; Gate status table reset (P4-5 rows pending); Verification + Next first action updated"
+    changed_sections:
+      - "new Codex aggressive profile rule + constructor (7 levers, 7 side_effects)"
+      - "eval_profiles dispatcher now calls all 4 profile rules"
+      - "mutual exclusion pattern applied to Codex pair via quota_tight gate"
+    done_when_delta:
+      added:
+        - "Phase 4 P4-5 v1.8.7: `src/policy/rules/profiles.rs::recommend_codex_script_low_token` fires a `Severity::Good` rec under `gates.quota_tight == true` on healthy Codex main panes. The bundled `ProviderProfile` `codex-script-low-token` carries 7 levers drawn from VALIDATION.md:137-143 — 1 ProjectCanonical (`model_auto_compact_token_limit = 100000`) + 6 ProviderOfficial (`[features].apps = false`, `[apps._default].enabled = false`, and four `codex exec` flags: `--json`, `--sandbox read-only`, `--ephemeral`, `--color never`). Each lever carries a per-lever Codex-docs citation."
+        - "Phase 4 P4-5 v1.8.7: Gemini G-6 parity for Codex closed — `ProviderProfile.side_effects` on `codex-script-low-token` is 1:1 with the lever list (7 operator-visible trade-off strings, each a full sentence). The reason summary derives ProviderOfficial / ProjectCanonical counts at runtime from `profile.levers[*].source_kind`."
+        - "Phase 4 P4-5 v1.8.7: `codex-default` and `codex-script-low-token` are mutually exclusive by design via the `gates.quota_tight` gate (same shape as `claude-default` ↔ `claude-script-low-token` from P4-3). Provider gates stay pure across all four profile rules."
+        - "Phase 4 P4-5 v1.8.7: 4 new unit tests in `policy/rules/profiles.rs` — shape (7 levers + 7 side_effects, Good severity, ProjectCanonical source, derived-from-data reason summary with both ProviderOfficial and ProjectCanonical counts, spot-checks on auto-compaction and sandbox trade-offs); gate-off (suppressed when !quota_tight; codex-default fires instead); provider-gate suppression on Claude pane (claude-script-low-token sanity check); explicit mutual-exclusion test toggling quota_tight and asserting exactly one of the two Codex profiles fires. 183 lib + 18 integration (up from 179 + 18); clippy --all-targets -D warnings clean."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~200 LOC production (new rule + new profile constructor + dispatcher update) + ~170 LOC test delta (4 new unit tests)"
+      tests: "183 lib + 18 integration (up from 179 + 18; +4 new unit tests, 0 existing tests changed)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no runtime behavior change for existing signals; on Codex main panes under `gates.quota_tight == true`, a new Severity::Good recommendation now appears in PaneReport.recommendations carrying the structured `codex-script-low-token` bundle. codex-default stops firing in that case (mutual exclusion by design). Claude panes are unaffected."
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — pure additive rule + profile constructor inside an existing dispatcher; mutual-exclusion invariant enforced by both the shared quota_tight gate and an explicit test; no new Recommendation structure, no render-helper change, no effect-runner change"
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+      - "KD-007"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "Request Codex + Gemini gate review on v1.8.7 P4-5 before continuing to P4-6"
+      - "P4-6: `gemini-default` baseline profile"
+      - "P4-7: `gemini-script-low-token` aggressive variant"
+      - "P4-8+: VALIDATION.md Phase-4 checkboxes ticked incrementally as lever coverage widens"
+
 evolution_summary:
-  current_phase: "Phase 4 P4-4 fully gate-approved — v1.8.6 codex-default baseline: Gemini v1.8.6 pass (최종 승인) + Codex v1.8.6 approve (no findings; all three confirm points verified closed); ready for P4-5 (codex-script-low-token aggressive variant)"
+  current_phase: "Phase 4 P4-5 shipped — Codex aggressive variant `codex-script-low-token` with 7 levers + 1:1 side_effects (v1.8.7); awaiting first Codex + Gemini gate review on v1.8.7 before P4-6 (gemini-default baseline)"
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
