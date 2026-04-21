@@ -768,12 +768,16 @@ fn gemini_default_profile() -> ProviderProfile {
 /// `recommend_gemini_default` by design via the shared quota_tight
 /// gate — same shape as the Claude and Codex pairs. Bundles
 /// aggressive Gemini levers that were explicitly reserved away from
-/// `gemini-default`; every lever is labeled `ProjectCanonical`
-/// because the VALUES are Qmonster picks per Gemini's narrower
-/// documented token-efficiency surface (same honesty pattern as
-/// gemini-default). Gemini G-6 parity is maintained via 1:1
-/// populated `side_effects`, closing the G-6 line across all three
-/// providers (Claude in P4-3, Codex in P4-5, Gemini here).
+/// `gemini-default`. Authority split is 1 ProviderOfficial + 2
+/// ProjectCanonical: `experimental.autoMemory = false` is
+/// ProviderOfficial (both the key and the disable value are
+/// documented in Gemini CLI auto memory docs — v1.8.10 surface
+/// correction), while `--yolo = enabled` and `--model = gemini-2.5-
+/// flash` stay ProjectCanonical (Qmonster picks per Gemini's
+/// narrower documented token-efficiency surface). Gemini G-6 parity
+/// is maintained via 1:1 populated `side_effects`, closing the G-6
+/// line across all three providers (Claude in P4-3, Codex in P4-5,
+/// Gemini here).
 fn recommend_gemini_script_low_token(
     id: &ResolvedIdentity,
     signals: &SignalSet,
@@ -1727,10 +1731,13 @@ mod tests {
     fn recommend_gemini_script_low_token_fires_on_quota_tight_with_honest_authority_labels_and_populated_side_effects() {
         // Shape contract for the Gemini aggressive profile — mirrors
         // claude-script-low-token (P4-3) and codex-script-low-token
-        // (P4-5) with Gemini-specific levers. All three levers are
-        // ProjectCanonical because Gemini's documented token-
-        // efficiency surface is narrower (same honesty pattern as
-        // gemini-default). 1:1 side_effects per Gemini G-6.
+        // (P4-5) with Gemini-specific levers. Authority split is
+        // 1 ProviderOfficial (experimental.autoMemory — documented
+        // key + documented disable value per Gemini CLI auto memory
+        // docs; v1.8.10 surface correction) + 2 ProjectCanonical
+        // (--yolo = enabled, --model = gemini-2.5-flash — Qmonster
+        // picks per Gemini's narrower documented token-efficiency
+        // surface). 1:1 side_effects per Gemini G-6.
         let id = healthy_gemini_main();
         let s = SignalSet::default();
         let recs = eval_profiles(&id, &s, &gates_quota_tight());
