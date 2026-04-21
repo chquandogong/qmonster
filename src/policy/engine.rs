@@ -60,9 +60,12 @@ impl Engine {
                 && let Some(cmd) = rec.suggested_command.as_ref()
                 && cmd.starts_with('/')
             {
+                let pane_id = id.identity.pane_id.clone();
+                let proposal_id = format!("{pane_id}:{cmd}");
                 effects.push(RequestedEffect::PromptSendProposed {
-                    target_pane_id: id.identity.pane_id.clone(),
+                    target_pane_id: pane_id,
                     slash_command: cmd.clone(),
+                    proposal_id,
                 });
             }
         }
@@ -175,14 +178,24 @@ mod tests {
                 crate::domain::recommendation::RequestedEffect::PromptSendProposed {
                     target_pane_id,
                     slash_command,
-                } => Some((target_pane_id.as_str(), slash_command.as_str())),
+                    proposal_id,
+                } => Some((
+                    target_pane_id.as_str(),
+                    slash_command.as_str(),
+                    proposal_id.as_str(),
+                )),
                 _ => None,
             })
             .expect("strong rec with slash suggested_command must produce a PromptSendProposed");
         assert_eq!(
-            proposal,
+            (proposal.0, proposal.1),
             ("%1", "/compact"),
             "proposal must target the source pane and carry the strong rec's slash command verbatim"
+        );
+        // P5-3: proposal_id is "{pane_id}:{slash_command}" — stable key.
+        assert_eq!(
+            proposal.2, "%1:/compact",
+            "proposal_id must be stable '{{pane_id}}:{{slash_command}}' format"
         );
     }
 

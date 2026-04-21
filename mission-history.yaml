@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — Phase 5 P5-2 confirm-archive v1.9.3 (Codex + Gemini both approve on v1.9.2; 6 P5-3 design TODOs captured with small audit-structuring divergence)"
+  mission_title: "Qmonster v0.4.0 — Phase 5 P5-3 tmux send-keys executor v1.10.0 (second gate + PromptSendGate + 3 audit kinds + stable proposal_id; DEFER structured slash_command, ADOPT PromptSendBlocked)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 34
-  latest_version: "1.9.3"
+  total_revisions: 35
+  latest_version: "1.10.0"
 
 timeline:
   - change_id: "initial"
@@ -4114,9 +4114,128 @@ timeline:
       - "P5-3 future-watch (Codex v1.9.2): if a new strong slash-command advisory is ever added with intent to STAY advisory-only, add an explicit producer flag rather than weakening the current `is_strong + starts_with('/')` catch-all rule"
       - "After P5-3 lands the executor, tick the three Phase-5 VALIDATION.md checkboxes"
 
+  - change_id: "phase-5-p5-3-tmux-send-keys-executor"
+    semantic_version: "1.10.0"
+    change_sequence: 35
+    date: "2026-04-22"
+    author: "Claude Code (claude:1:main, Sonnet 4.6)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Close Phase 5 P5-3 by landing the tmux send-keys executor behind
+      a second gate (operator confirmation + allow_auto_prompt_send),
+      adding three terminal-outcome audit kinds (Completed / Failed /
+      Blocked), and introducing a stable proposal_id key for
+      deterministic multi-proposal disambiguation. Two P5-3 design
+      divergences were pre-resolved: DEFER structured slash_command
+      field in AuditEvent (Codex position — keep prose summary; schema
+      cost not yet justified); ADOPT PromptSendBlocked for ObserveOnly
+      accept-block (Gemini position — distinguish operator intent from
+      system restriction in forensics).
+    intent_ko: >
+      Phase 5 P5-3: tmux send-keys 실행기를 두 번째 게이트(운영자 확인
+      + allow_auto_prompt_send) 뒤에 배치하고, 세 가지 종단 결과
+      audit 종류(Completed / Failed / Blocked)를 추가하며,
+      다중 proposal 명확한 선택을 위한 안정적인 proposal_id 키를
+      도입. P5-3 설계 의견 차이 두 건 사전 해소: 구조화 slash_command
+      필드 DEFER(Codex 입장 — prose summary 유지; 스키마 비용 미정당화),
+      PromptSendBlocked ADOPT(Gemini 입장 — ObserveOnly 차단 시도와
+      시스템 제한을 forensics에서 구분).
+    decision: >
+      (1) `PromptSendGate` enum (Blocked / AutoSendOff / Execute) +
+      pure function `check_send_gate(mode, allow_auto_prompt_send)` in
+      `src/main.rs`. Completely separate from `EffectRunner::permit`
+      (display-layer filter only). (2) Full `p`/`d` handler rewrite:
+      `Blocked` → emit `PromptSendBlocked` audit at Warning + Warning
+      SystemNotice; `AutoSendOff` → emit `PromptSendAccepted` + notice
+      (no tmux); `Execute` → emit `PromptSendAccepted`, call
+      `ctx.source.send_keys(&target, &cmd)`, emit `PromptSendCompleted`
+      on success or `PromptSendFailed` on error; `d` → emit
+      `PromptSendRejected`. Proposal lookup sorts by `proposal_id` for
+      deterministic selection. (3) Three new `AuditEventKind` variants
+      — `PromptSendCompleted`, `PromptSendFailed`, `PromptSendBlocked`
+      — wired into `kind_to_str` + `parse_kind` in `src/store/audit.rs`
+      (SQLite round-trip safe). (4) `proposal_id: String` added to
+      `RequestedEffect::PromptSendProposed`; format:
+      `"{target_pane_id}:{slash_command}"`; engine producer sets it;
+      all call sites updated. (5) `PaneSource::send_keys` added to
+      trait + implemented on `PollingSource` (`tmux send-keys -t {id}
+      {text} Enter`) and `FixtureSource` (no-op Ok(())).
+    decision_ko: >
+      (1) `PromptSendGate` 열거형(Blocked / AutoSendOff / Execute) +
+      순수 함수 `check_send_gate(mode, allow_auto_prompt_send)` in
+      `src/main.rs`. `EffectRunner::permit`(표시 레이어 필터)과
+      완전 분리. (2) `p`/`d` 핸들러 전면 재작성: `Blocked` → Warning
+      audit + Warning SystemNotice; `AutoSendOff` → PromptSendAccepted
+      + notice (tmux 미호출); `Execute` → PromptSendAccepted 발행,
+      `send_keys` 호출, 성공시 PromptSendCompleted / 오류시
+      PromptSendFailed; `d` → PromptSendRejected. proposal_id 기준
+      정렬. (3) `PromptSendCompleted` / `PromptSendFailed` /
+      `PromptSendBlocked` 세 AuditEventKind 추가 + kind_to_str /
+      parse_kind 대칭 등록. (4) `RequestedEffect::PromptSendProposed`에
+      `proposal_id: String` 추가 (형식: `"{pane_id}:{cmd}"`). (5)
+      `PaneSource::send_keys` trait 메서드 + PollingSource 구현
+      + FixtureSource no-op 구현.
+    triggered_by: "P5-2 follow-up list (change_sequence 34): 'P5-3 core work: build the tmux send-keys path behind a SECOND gate'"
+    issue_or_context: >
+      v1.9.3 confirm-archive (change_sequence 34) pre-resolved two
+      design divergences and consolidated six P5-3 TODOs. This round
+      closes all six: second gate (TODO #1), PromptSendAccepted vs
+      PromptSendCompleted semantic distinction (TODO #2), stable
+      proposal key (TODO #3), ADOPT PromptSendBlocked (Gemini divergence
+      resolved), DEFER structured slash_command (Codex divergence
+      resolved), and optional UX polish deferred to future round.
+    changes:
+      modified:
+        - "src/domain/audit.rs — 3 new AuditEventKind variants (PromptSendCompleted, PromptSendFailed, PromptSendBlocked) + distinctness test"
+        - "src/store/audit.rs — 6 new arms in kind_to_str / parse_kind + roundtrip test p5_3_prompt_send_kinds_roundtrip_through_sqlite"
+        - "src/domain/recommendation.rs — proposal_id: String field in RequestedEffect::PromptSendProposed + 2 new tests (shape + stable-key)"
+        - "src/policy/engine.rs — producer sets proposal_id = format!({pane_id}:{cmd}) + updated test assertion"
+        - "src/app/effects.rs — updated proposal_sample() with proposal_id field"
+        - "src/tmux/polling.rs — send_keys on PaneSource trait + PollingSource + FixtureSource implementations + 2 new tests"
+        - "src/main.rs — PromptSendGate enum + check_send_gate() + full p/d handler rewrite + 5 gate tests"
+        - "tests/event_loop_integration.rs — FixturePaneSource.send_keys + CapturingPaneSource + 3 new integration tests + updated proposal_id assertion"
+        - "mission.yaml — version 1.9.3 → 1.10.0; title + P5-3 goal paragraph; lineage total_revisions 34 → 35"
+        - "mission-history.yaml — meta updated + this change_sequence 35 entry"
+        - "docs/ai/VALIDATION.md — Phase-5 checkboxes [x] ticked with P5-3 evidence"
+      added: []
+      removed: []
+    changed_sections:
+      - "src/domain/audit.rs — PromptSendCompleted / PromptSendFailed / PromptSendBlocked variants"
+      - "src/store/audit.rs — kind_to_str / parse_kind round-trip coverage"
+      - "src/domain/recommendation.rs — proposal_id stable key"
+      - "src/tmux/polling.rs — PaneSource::send_keys"
+      - "src/main.rs — PromptSendGate + check_send_gate + p/d handler"
+      - "docs/ai/VALIDATION.md — Phase-5 checkboxes ticked"
+    done_when_delta:
+      added:
+        - "Phase 5 P5-3 v1.10.0: tmux send-keys behind two gates (operator confirmation + allow_auto_prompt_send); PromptSendGate enum separates execution gate from EffectRunner::permit display filter; PromptSendCompleted / PromptSendFailed / PromptSendBlocked audit kinds wired; proposal_id stable key; 269 tests green."
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "operator `p` with Execute gate now calls tmux send-keys; ObserveOnly emits PromptSendBlocked; allow_auto_prompt_send=false emits PromptSendAccepted without tmux. No auto-send path; no destructive action path."
+      verification: "cargo build + cargo test --all-targets (236 lib + 11 main + 22 integration = 269 tests; +13 net vs v1.9.3) + cargo clippy --all-targets -D warnings + cargo fmt --check all clean."
+      docs: "docs/ai/VALIDATION.md Phase-5 checkboxes ticked with P5-3 evidence; mission.yaml narrative updated; mission-history.yaml this entry."
+      ledger: "v1.10.0 layered on v1.9.3 confirm-archive; v1.9.2 P5-2, v1.9.1 P5-1 confirm, v1.9.0 P5-1 scaffolding, v1.8.14 Phase-4 all intact."
+    breaking: false
+    risk: "low — execution gate is two-keyed (explicit operator keystroke + allow_auto_prompt_send flag); safety-precedence asymmetry enforced; observe_only and recommend_only defaults both block before Execute branch."
+    related_commits: []
+    related_decisions:
+      - "KD-003"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "Request short Codex + Gemini confirm re-review on v1.10.0 before declaring Phase 5 complete"
+      - "Optional UX polish (Codex v1.9.2): surface `p` / `d` in global help/footer in src/ui/dashboard.rs when that UI surface is next touched"
+      - "Future-watch (Codex v1.9.2): if a new strong slash-command advisory should stay advisory-only, add an explicit producer flag rather than weakening the is_strong + starts_with('/') catch-all"
+      - "Promote slash_command to structured AuditEvent field when multi-outcome or multi-proposal needs justify the schema cost (deferred per Codex DEFER call)"
+
 evolution_summary:
-  current_phase: "Phase 5 P5-2 FULLY GATE-APPROVED (v1.9.3 confirm-archive shipped) — Codex + Gemini both returned `approve` on v1.9.2 with 0 must-fix findings. Producer soundness confirmed: only two mutually-exclusive context-pressure advisories satisfy `is_strong + starts_with('/')` today; no over-trigger case. Scope discipline held: no tmux send-keys, no second gate, no terminal outcomes. P5-3 design TODOs consolidated (6 items total) including one explicit cross-reviewer divergence on audit structuring — Gemini wants structured slash_command + blocked-attempt logging now, Codex prefers deferring both until schema cost is justified. Both agree the divergence is a P5-3 decision. 231 lib + 6 drift + 19 integration = 256 tests green at v1.9.2; no code / test change in v1.9.3. Layered on v1.9.2 P5-2; v1.9.1 P5-1 confirm-archive, v1.9.0 scaffolding, v1.8.14 Phase-4, and v1.8.12 shared-verification contract all untouched. Ready to open P5-3 (tmux send-keys executor behind a second gate)."
-  next_phase: "Phase 5 — safer actuation (P5-3 tmux send-keys + second gate + terminal outcomes + stable proposal key; operator to resolve the audit-structuring divergence when opening the slice)"
+  current_phase: "Phase 5 P5-3 SHIPPED (v1.10.0) — tmux send-keys executor landed behind two gates (operator confirmation + allow_auto_prompt_send). PromptSendGate enum separates execution gate from EffectRunner::permit display filter. Three terminal-outcome audit kinds (PromptSendCompleted / PromptSendFailed / PromptSendBlocked) wired into SQLite round-trip. proposal_id stable key added. Design divergences resolved: DEFER structured slash_command (Codex), ADOPT PromptSendBlocked (Gemini). 236 lib + 11 main + 22 integration = 269 tests green; clippy + fmt clean. All three Phase-5 VALIDATION.md checkboxes ticked. Layered on v1.9.3 confirm-archive; v1.9.2 P5-2, v1.9.0 P5-1, v1.8.14 Phase-4 all intact. Awaiting Codex + Gemini confirm re-review on v1.10.0."
+  next_phase: "Phase 5 — await Codex + Gemini confirm re-review on v1.10.0; optional UX polish (p/d in help/footer); future-watch on structured slash_command when schema cost justified"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

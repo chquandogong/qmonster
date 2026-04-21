@@ -1,6 +1,6 @@
 mission:
-  version: "1.9.3"
-  title: "Qmonster v0.4.0 — Phase 5 P5-2 confirm-archive v1.9.3 (Codex + Gemini both returned `approve` on v1.9.2; 3 Codex + 3 Gemini P5-3 design TODOs captured — small divergence on audit structuring noted)"
+  version: "1.10.0"
+  title: "Qmonster v0.4.0 — Phase 5 P5-3 tmux send-keys executor v1.10.0 (second gate + PromptSendGate enum + 3 new audit kinds + stable proposal_id; design divergences resolved: DEFER structured slash_command (Codex), ADOPT PromptSendBlocked (Gemini))"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -613,6 +613,52 @@ mission:
     verification contract and v1.8.13 P4-8 wrap-up both
     untouched.
 
+    Phase 5 P5-3 (v1.10.0, this revision) — tmux send-keys executor.
+    P5-3 closes the remaining Phase-5 implementation TODOs from P5-2
+    by landing the second execution gate, the actual `tmux send-keys`
+    call, and three terminal-outcome audit kinds. Two design
+    divergences between Codex and Gemini were pre-resolved before
+    implementation: (A) DEFER structured slash_command field in
+    AuditEvent (Codex position — keep prose summary format; schema
+    cost not yet justified) and (B) ADOPT PromptSendBlocked for
+    ObserveOnly accept-block attempts (Gemini position — distinguish
+    operator intent from system restriction in forensics). Deliverables:
+    (1) `PromptSendGate` enum (`Blocked` / `AutoSendOff` / `Execute`)
+    + pure function `check_send_gate(mode, allow_auto_prompt_send)`
+    for testability — completely separate from `EffectRunner::permit`
+    which remains the display-layer filter only (NOT the execution
+    gate). (2) Full `p`/`d` handler rewrite in `src/main.rs`:
+    `Blocked` → emit `PromptSendBlocked` audit + Warning notice;
+    `AutoSendOff` → emit `PromptSendAccepted` + notice (no tmux);
+    `Execute` → emit `PromptSendAccepted`, call
+    `ctx.source.send_keys(&target, &cmd)`, emit `PromptSendCompleted`
+    on success or `PromptSendFailed` on error; `d` → emit
+    `PromptSendRejected`. Proposal lookup sorts by `proposal_id` for
+    deterministic multi-proposal selection. (3) Three new
+    `AuditEventKind` variants — `PromptSendCompleted` (successful
+    send after both gates), `PromptSendFailed` (send-keys error
+    post-confirmation), `PromptSendBlocked` (ObserveOnly accept-block)
+    — each wired into `kind_to_str` + `parse_kind` symmetrically so
+    SQLite round-trips cannot regress. (4) `proposal_id: String` field
+    added to `RequestedEffect::PromptSendProposed` (format:
+    `"{target_pane_id}:{slash_command}"` — stable, deterministic,
+    collision-free within a poll cycle). Engine producer sets it;
+    all call sites updated; TUI lookup uses it for unambiguous
+    selection. (5) `PaneSource::send_keys` method added to the trait
+    and implemented on `PollingSource` (`tmux send-keys -t {id} {text}
+    Enter` — literal text, no shell expansion) and `FixtureSource`
+    (no-op, returns `Ok(())`). `CapturingPaneSource` test helper
+    records actual calls. Tests: 5 new unit tests for `check_send_gate`
+    in `main.rs`; 2 new tests in `tmux/polling.rs`; 1 roundtrip test
+    in `store/audit.rs`; 1 distinctness test in `domain/audit.rs`;
+    2 tests in `domain/recommendation.rs` (shape + stable-key);
+    1 updated engine test (proposal_id assertion); 3 new integration
+    tests (`CapturingPaneSource` + stable proposal_id + send_keys
+    error propagation). Total: 236 lib + 11 main + 22 integration =
+    269 tests (up from 256; +13 net). cargo clippy --all-targets -D
+    warnings clean; cargo fmt --check clean. Safety-precedence
+    asymmetry preserved; no auto `/compact`/`/clear`/`/memory`.
+
     Phase 5 P5-2 (v1.9.2, this revision) — first producing rule
     + TUI accept/reject UX. The P5-1 scaffolding now has a live
     producer and operator-facing surface, with `tmux send-keys`
@@ -844,5 +890,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 34
+    total_revisions: 35
     history: "mission-history.yaml"

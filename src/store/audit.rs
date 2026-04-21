@@ -133,6 +133,9 @@ fn kind_to_str(k: AuditEventKind) -> &'static str {
         AuditEventKind::PromptSendProposed => "PromptSendProposed",
         AuditEventKind::PromptSendAccepted => "PromptSendAccepted",
         AuditEventKind::PromptSendRejected => "PromptSendRejected",
+        AuditEventKind::PromptSendCompleted => "PromptSendCompleted",
+        AuditEventKind::PromptSendFailed => "PromptSendFailed",
+        AuditEventKind::PromptSendBlocked => "PromptSendBlocked",
     }
 }
 
@@ -155,6 +158,9 @@ fn parse_kind(s: &str) -> Option<AuditEventKind> {
         "PromptSendProposed" => Some(AuditEventKind::PromptSendProposed),
         "PromptSendAccepted" => Some(AuditEventKind::PromptSendAccepted),
         "PromptSendRejected" => Some(AuditEventKind::PromptSendRejected),
+        "PromptSendCompleted" => Some(AuditEventKind::PromptSendCompleted),
+        "PromptSendFailed" => Some(AuditEventKind::PromptSendFailed),
+        "PromptSendBlocked" => Some(AuditEventKind::PromptSendBlocked),
         _ => None,
     }
 }
@@ -285,6 +291,24 @@ mod tests {
         assert!(kinds.contains(&AuditEventKind::PromptSendProposed));
         assert!(kinds.contains(&AuditEventKind::PromptSendAccepted));
         assert!(kinds.contains(&AuditEventKind::PromptSendRejected));
+    }
+
+    #[test]
+    fn p5_3_prompt_send_kinds_roundtrip_through_sqlite() {
+        // P5-3 contract: PromptSendCompleted, PromptSendFailed, and
+        // PromptSendBlocked must round-trip through kind_to_str +
+        // parse_kind so they survive an audit write/read cycle.
+        let td = TempDir::new().unwrap();
+        let sink = SqliteAuditSink::open(&td.path().join("q.db")).unwrap();
+        sink.record(sample(AuditEventKind::PromptSendCompleted));
+        sink.record(sample(AuditEventKind::PromptSendFailed));
+        sink.record(sample(AuditEventKind::PromptSendBlocked));
+        let rows = sink.recent(10).unwrap();
+        assert_eq!(rows.len(), 3);
+        let kinds: Vec<AuditEventKind> = rows.iter().map(|r| r.kind).collect();
+        assert!(kinds.contains(&AuditEventKind::PromptSendCompleted));
+        assert!(kinds.contains(&AuditEventKind::PromptSendFailed));
+        assert!(kinds.contains(&AuditEventKind::PromptSendBlocked));
     }
 
     #[test]

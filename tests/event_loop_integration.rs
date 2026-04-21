@@ -67,6 +67,9 @@ impl PaneSource for FixturePaneSource {
             .map(|p| p.tail.clone())
             .unwrap_or_default())
     }
+    fn send_keys(&self, _pane_id: &str, _text: &str) -> Result<(), PollingError> {
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -477,16 +480,26 @@ fn strong_context_pressure_rec_emits_prompt_send_proposal_end_to_end() {
             qmonster::domain::recommendation::RequestedEffect::PromptSendProposed {
                 target_pane_id,
                 slash_command,
-            } => Some((target_pane_id.as_str(), slash_command.as_str())),
+                proposal_id,
+            } => Some((
+                target_pane_id.as_str(),
+                slash_command.as_str(),
+                proposal_id.as_str(),
+            )),
             _ => None,
         })
         .expect(
-            "P5-2 contract: strong context_pressure_warning rec must graduate to a PromptSendProposed effect on the owning pane",
+            "P5-2/P5-3 contract: strong context_pressure_warning rec must graduate to a PromptSendProposed effect on the owning pane",
         );
     assert_eq!(
-        proposal,
+        (proposal.0, proposal.1),
         ("%7", "/compact"),
         "proposal carries the source pane id + strong rec's slash command verbatim"
+    );
+    // P5-3: proposal_id is stable "{pane_id}:{slash_command}".
+    assert_eq!(
+        proposal.2, "%7:/compact",
+        "P5-3: proposal_id must be stable '{{pane_id}}:{{slash_command}}'"
     );
 
     // The UI helper must render a line that names the pane, the
@@ -1003,5 +1016,138 @@ fn claude_script_low_token_side_effects_flow_end_to_end_under_quota_tight() {
             .contains(&qmonster::domain::recommendation::RequestedEffect::Notify),
         "aggressive profile is still a positive advisory; Notify must not trigger; effects: {:?}",
         reports[0].effects
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5 P5-3 (v1.10.0) integration tests
+// ---------------------------------------------------------------------------
+
+/// A `PaneSource` that wraps `FixturePaneSource` and captures `send_keys`
+/// calls so tests can verify the execution gate behaviour without needing a
+/// live tmux session.
+struct CapturingPaneSource {
+    inner: FixturePaneSource,
+    calls: Arc<Mutex<Vec<(String, String)>>>,
+    send_result: Result<(), String>,
+}
+
+impl CapturingPaneSource {
+    fn new(panes: Vec<RawPaneSnapshot>) -> Self {
+        Self {
+            inner: FixturePaneSource { panes },
+            calls: Arc::new(Mutex::new(Vec::new())),
+            send_result: Ok(()),
+        }
+    }
+
+    fn with_send_error(mut self, msg: &str) -> Self {
+        self.send_result = Err(msg.to_string());
+        self
+    }
+
+    fn recorded_sends(&self) -> Vec<(String, String)> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+impl PaneSource for CapturingPaneSource {
+    fn list_panes(
+        &self,
+        target: Option<&WindowTarget>,
+    ) -> Result<Vec<RawPaneSnapshot>, PollingError> {
+        self.inner.list_panes(target)
+    }
+    fn current_target(&self) -> Result<Option<WindowTarget>, PollingError> {
+        self.inner.current_target()
+    }
+    fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
+        self.inner.available_targets()
+    }
+    fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError> {
+        self.inner.capture_tail(pane_id, lines)
+    }
+    fn send_keys(&self, pane_id: &str, text: &str) -> Result<(), PollingError> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push((pane_id.to_string(), text.to_string()));
+        match &self.send_result {
+            Ok(()) => Ok(()),
+            Err(msg) => Err(PollingError::NonZero(msg.clone())),
+        }
+    }
+}
+
+#[test]
+fn prompt_send_proposal_carries_stable_proposal_id_end_to_end() {
+    // P5-3: verify proposal_id is set to "{pane_id}:{slash_command}" by
+    // the engine producer and survives the full run_once pipeline onto
+    // PaneReport.effects.
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%3",
+            "claude:1:main",
+            "claude",
+            "context window usage 82%",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert_eq!(reports.len(), 1);
+
+    let proposal = reports[0]
+        .effects
+        .iter()
+        .find_map(|e| match e {
+            qmonster::domain::recommendation::RequestedEffect::PromptSendProposed {
+                target_pane_id,
+                slash_command,
+                proposal_id,
+            } => Some((
+                target_pane_id.as_str(),
+                slash_command.as_str(),
+                proposal_id.as_str(),
+            )),
+            _ => None,
+        })
+        .expect(
+            "P5-3: context_pressure_warning must produce a PromptSendProposed with proposal_id",
+        );
+
+    assert_eq!(proposal.0, "%3");
+    assert_eq!(proposal.1, "/compact");
+    assert_eq!(
+        proposal.2, "%3:/compact",
+        "P5-3: proposal_id must equal '{{pane_id}}:{{slash_command}}'"
+    );
+}
+
+#[test]
+fn capturing_source_records_send_keys_calls() {
+    // P5-3: verify the CapturingPaneSource fixture correctly records
+    // send_keys calls so that higher-level tests can use it.
+    let src = CapturingPaneSource::new(vec![]);
+    assert!(src.send_keys("%1", "/compact").is_ok());
+    assert!(src.send_keys("%2", "/clear").is_ok());
+    let calls = src.recorded_sends();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0], ("%1".to_string(), "/compact".to_string()));
+    assert_eq!(calls[1], ("%2".to_string(), "/clear".to_string()));
+}
+
+#[test]
+fn capturing_source_propagates_configured_error() {
+    // P5-3: CapturingPaneSource can simulate a tmux error so we can
+    // test PromptSendFailed paths without a live tmux session.
+    let src = CapturingPaneSource::new(vec![]).with_send_error("no server running");
+    let err = src.send_keys("%1", "/compact").unwrap_err();
+    assert!(
+        err.to_string().contains("no server running"),
+        "error message must propagate; got: {err}"
     );
 }

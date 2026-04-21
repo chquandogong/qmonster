@@ -61,6 +61,7 @@ mod tests {
         RequestedEffect::PromptSendProposed {
             target_pane_id: "%1".into(),
             slash_command: "/compact".into(),
+            proposal_id: "%1:/compact".into(),
         }
     }
 

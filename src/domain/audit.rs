@@ -34,6 +34,23 @@ pub enum AuditEventKind {
     /// prompt-send proposal. Same forward-declaration note as
     /// `PromptSendAccepted`.
     PromptSendRejected,
+    /// Phase 5 P5-3 (v1.10.0): `tmux send-keys` completed successfully
+    /// after the operator confirmed AND `allow_auto_prompt_send = true`
+    /// (both gates in the execution gate passed). Metadata only —
+    /// summary carries target pane + slash command + confirmation verb;
+    /// raw pane tail never flows through this event.
+    PromptSendCompleted,
+    /// Phase 5 P5-3 (v1.10.0): `tmux send-keys` call failed after the
+    /// execution gate passed (both gates: operator confirmation +
+    /// `allow_auto_prompt_send = true`). Summary carries the error
+    /// string from the tmux invocation.
+    PromptSendFailed,
+    /// Phase 5 P5-3 (v1.10.0): operator pressed `p` (accept) while
+    /// `actions.mode = observe_only`. Records the operator's intent as
+    /// distinct from a system restriction — forensics can distinguish
+    /// "operator tried and was blocked" from "no action was taken at
+    /// all". Adopted from Gemini v1.9.2 recommendation.
+    PromptSendBlocked,
 }
 
 /// Structured audit record. The writer API must only accept this type —
@@ -134,5 +151,46 @@ mod tests {
         let _ = proposed.kind;
         let _ = accepted.kind;
         let _ = rejected.kind;
+    }
+
+    #[test]
+    fn p5_3_audit_kinds_are_distinct_and_copy() {
+        // P5-3 contract: three new terminal-outcome kinds cover
+        // Completed / Failed / Blocked. Must be distinct, Copy, and
+        // carry only structured metadata (summary string, no bytes).
+        let completed = AuditEvent {
+            kind: AuditEventKind::PromptSendCompleted,
+            pane_id: "%1".into(),
+            severity: Severity::Safe,
+            summary: "%1 /compact (sent; operator-confirmed)".into(),
+            provider: Some(Provider::Claude),
+            role: Some(Role::Main),
+        };
+        let failed = AuditEvent {
+            kind: AuditEventKind::PromptSendFailed,
+            pane_id: "%1".into(),
+            severity: Severity::Warning,
+            summary: "%1 /compact (send failed: tmux error)".into(),
+            provider: Some(Provider::Claude),
+            role: Some(Role::Main),
+        };
+        let blocked = AuditEvent {
+            kind: AuditEventKind::PromptSendBlocked,
+            pane_id: "%1".into(),
+            severity: Severity::Warning,
+            summary: "%1 /compact (blocked; observe_only mode)".into(),
+            provider: Some(Provider::Claude),
+            role: Some(Role::Main),
+        };
+        assert_ne!(completed.kind, failed.kind);
+        assert_ne!(failed.kind, blocked.kind);
+        assert_ne!(completed.kind, blocked.kind);
+        // These must be different from the existing P5-1 kinds.
+        assert_ne!(completed.kind, AuditEventKind::PromptSendAccepted);
+        assert_ne!(blocked.kind, AuditEventKind::PromptSendRejected);
+        // Copy usage (no move required).
+        let _c = completed.kind;
+        let _f = failed.kind;
+        let _b = blocked.kind;
     }
 }

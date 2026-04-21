@@ -72,13 +72,23 @@ pub enum RequestedEffect {
     /// A rule builds this as a *proposal*; `app::EffectRunner` allows
     /// the proposal to pass the allow-list (`recommend_only` → true,
     /// `observe_only` → false) so the UI can render it as a pending
-    /// actuation. Actual execution via `tmux send-keys` lands in P5-2+
+    /// actuation. Actual execution via `tmux send-keys` lands in P5-3
     /// and stays gated behind explicit operator confirmation plus the
     /// `allow_auto_prompt_send` flag (safety-precedence asymmetry —
     /// env/CLI cannot promote that flag toward more permissive).
+    ///
+    /// P5-3 (v1.10.0): `proposal_id` is a stable key for unambiguous
+    /// operator selection when multiple proposals target one pane. Set
+    /// to `"{target_pane_id}:{slash_command}"` by the engine producer;
+    /// the TUI keybinding lookup uses it to deterministically identify
+    /// which proposal the operator is acting on.
     PromptSendProposed {
         target_pane_id: String,
         slash_command: String,
+        /// Stable key: `"{target_pane_id}:{slash_command}"`. Deterministic
+        /// across poll cycles for the same (pane, command) pair, enabling
+        /// unambiguous proposal selection in multi-proposal scenarios.
+        proposal_id: String,
     },
     /// Reserved — no current code path creates this; placeholder for the
     /// future destructive-effect allow-list gate. Never executed.
@@ -153,12 +163,13 @@ mod tests {
     #[test]
     fn requested_effect_authority_tier_preserves_allow_list_gradient() {
         // Gradient: notify < archive < prompt_send_proposed < sensitive.
-        // The allow-list gate in app::EffectRunner + future P5-2 actuation
-        // path use authority_tier() in place of the former `Ord` derive
+        // The allow-list gate in app::EffectRunner + P5-3 actuation path
+        // use authority_tier() in place of the former `Ord` derive
         // (dropped when PromptSendProposed gained a payload in P5-1).
         let proposal = RequestedEffect::PromptSendProposed {
             target_pane_id: "%1".into(),
             slash_command: "/compact".into(),
+            proposal_id: "%1:/compact".into(),
         };
         assert!(
             RequestedEffect::Notify.authority_tier()
@@ -171,28 +182,71 @@ mod tests {
     }
 
     #[test]
-    fn prompt_send_proposed_carries_target_pane_and_slash_command() {
-        // P5-1 data-shape contract: the proposal carries exactly the
-        // target pane id + the slash command operator needs to confirm.
+    fn prompt_send_proposed_carries_target_pane_slash_command_and_proposal_id() {
+        // P5-1/P5-3 data-shape contract: the proposal carries the target
+        // pane id, slash command, and (P5-3) a stable proposal_id key.
         // No raw tail, no free-form payload — this is metadata, by design
         // (audit-isolation rule stays intact; the audit log never needs
         // raw bytes from this effect).
         let p = RequestedEffect::PromptSendProposed {
             target_pane_id: "%7".into(),
             slash_command: "/compact".into(),
+            proposal_id: "%7:/compact".into(),
         };
         match &p {
             RequestedEffect::PromptSendProposed {
                 target_pane_id,
                 slash_command,
+                proposal_id,
             } => {
                 assert_eq!(target_pane_id, "%7");
                 assert_eq!(slash_command, "/compact");
+                assert_eq!(proposal_id, "%7:/compact");
             }
             _ => panic!("expected PromptSendProposed"),
         }
         // Equality holds structurally (no Copy / Hash required).
         assert_eq!(p, p.clone());
+    }
+
+    #[test]
+    fn proposal_id_is_stable_and_deterministic() {
+        // P5-3 stable-key contract: proposal_id is computed as
+        // "{target_pane_id}:{slash_command}" by the engine producer.
+        // Same inputs always produce the same key — no random component.
+        // This pins the format so future multi-proposal disambiguation
+        // logic can rely on it without parsing the struct fields.
+        let p1 = RequestedEffect::PromptSendProposed {
+            target_pane_id: "%3".into(),
+            slash_command: "/compact".into(),
+            proposal_id: "%3:/compact".into(),
+        };
+        let p2 = RequestedEffect::PromptSendProposed {
+            target_pane_id: "%3".into(),
+            slash_command: "/compact".into(),
+            proposal_id: "%3:/compact".into(),
+        };
+        // Same (pane, command) → same proposal_id.
+        let id1 = match &p1 {
+            RequestedEffect::PromptSendProposed { proposal_id, .. } => proposal_id.clone(),
+            _ => panic!("expected PromptSendProposed"),
+        };
+        let id2 = match &p2 {
+            RequestedEffect::PromptSendProposed { proposal_id, .. } => proposal_id.clone(),
+            _ => panic!("expected PromptSendProposed"),
+        };
+        assert_eq!(id1, id2);
+        // Different commands on the same pane produce different keys.
+        let p3 = RequestedEffect::PromptSendProposed {
+            target_pane_id: "%3".into(),
+            slash_command: "/clear".into(),
+            proposal_id: "%3:/clear".into(),
+        };
+        let id3 = match &p3 {
+            RequestedEffect::PromptSendProposed { proposal_id, .. } => proposal_id.clone(),
+            _ => panic!("expected PromptSendProposed"),
+        };
+        assert_ne!(id1, id3);
     }
 
     #[test]

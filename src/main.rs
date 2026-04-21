@@ -18,7 +18,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::ListState;
 
 use qmonster::app::bootstrap::Context;
-use qmonster::app::config::{QmonsterConfig, load_from_path};
+use qmonster::app::config::{ActionsMode, QmonsterConfig, load_from_path};
 use qmonster::app::event_loop::{PaneReport, run_once, run_once_with_target};
 use qmonster::app::git_info::capture_repo_panel;
 use qmonster::app::path_resolution::pick_root;
@@ -230,6 +230,7 @@ fn print_reports(reports: &[PaneReport], config: &qmonster::app::config::Qmonste
             if let qmonster::domain::recommendation::RequestedEffect::PromptSendProposed {
                 target_pane_id,
                 slash_command,
+                ..
             } = effect
             {
                 let accept_gated = runner.permit(effect);
@@ -317,6 +318,37 @@ struct AlertMouseClick {
 }
 
 const ALERT_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(450);
+
+/// P5-3 execution gate evaluation (pure, unit-testable).
+///
+/// The `tmux send-keys` call requires BOTH:
+/// (a) the operator pressed `p` (explicit confirmation), and
+/// (b) `allow_auto_prompt_send = true` in the config.
+///
+/// `EffectRunner::permit` is NOT reused here — it stays as the
+/// display-layer filter. This gate is the separate execution gate
+/// described in the P5-3 spec.
+#[derive(Debug, PartialEq, Eq)]
+enum PromptSendGate {
+    /// `actions.mode = observe_only` — record `PromptSendBlocked`.
+    Blocked,
+    /// Mode allows, but `allow_auto_prompt_send = false` — record
+    /// `PromptSendAccepted` only; no tmux invocation.
+    AutoSendOff,
+    /// Both gates pass — attempt `tmux send-keys`; then record
+    /// `PromptSendCompleted` or `PromptSendFailed`.
+    Execute,
+}
+
+fn check_send_gate(mode: ActionsMode, allow_auto_prompt_send: bool) -> PromptSendGate {
+    if mode == ActionsMode::ObserveOnly {
+        PromptSendGate::Blocked
+    } else if !allow_auto_prompt_send {
+        PromptSendGate::AutoSendOff
+    } else {
+        PromptSendGate::Execute
+    }
+}
 
 fn run_tui<P, N>(
     ctx: &mut Context<P, N>,
@@ -955,31 +987,46 @@ where
                                 );
                             }
                             KeyCode::Char('p') | KeyCode::Char('d') => {
-                                // P5-2 (v1.9.2): operator responds to a pending
+                                // P5-3 (v1.10.0): operator responds to a pending
                                 // prompt-send proposal on the currently selected
-                                // pane. 'p' records a `PromptSendAccepted` audit
-                                // event; 'd' records `PromptSendRejected`. No
-                                // `tmux send-keys` invocation yet — P5-3 adds
-                                // the executor path behind a separate gate
-                                // (operator confirmation + allow_auto_prompt_send
-                                // per Codex v1.9.0 review TODO #1). 'p' is a
-                                // no-op in `observe_only` mode since the display-
-                                // layer permit denies the proposal there; 'd'
-                                // remains active in every mode so the operator
-                                // can always log an explicit rejection.
+                                // pane.
+                                //
+                                // 'p' (accept): runs through the TWO-GATE execution
+                                //   path:
+                                //   1. mode != observe_only (if blocked →
+                                //      PromptSendBlocked audit + Warning notice)
+                                //   2. allow_auto_prompt_send = true (if off →
+                                //      PromptSendAccepted only; no tmux send)
+                                //   Both pass → tmux send-keys → PromptSendAccepted
+                                //   + PromptSendCompleted (or PromptSendFailed on
+                                //   tmux error).
+                                //
+                                // 'd' (dismiss): always available in every mode;
+                                //   records PromptSendRejected.
+                                //
+                                // EffectRunner::permit stays as the DISPLAY-LAYER
+                                // filter (controls whether proposals show up in the
+                                // UI). The execution gate is check_send_gate()
+                                // above — a SEPARATE gate that does NOT reuse
+                                // permit() per the P5-3 spec.
                                 let accepting = k.code == KeyCode::Char('p');
                                 let selected = pane_state.selected();
-                                let runner = qmonster::app::effects::EffectRunner::new(&ctx.config);
+                                // P5-3: collect proposals sorted by
+                                // proposal_id for deterministic selection
+                                // when multiple proposals target one pane.
                                 let pending = selected
                                     .and_then(|i| last_reports.get(i))
                                     .and_then(|rep| {
-                                        rep.effects.iter().find_map(|e| match e {
+                                        let mut proposals: Vec<_> = rep.effects.iter().filter_map(|e| match e {
                                             qmonster::domain::recommendation::RequestedEffect::PromptSendProposed {
                                                 target_pane_id,
                                                 slash_command,
-                                            } => Some((e, target_pane_id.clone(), slash_command.clone())),
+                                                proposal_id,
+                                            } => Some((proposal_id.clone(), target_pane_id.clone(), slash_command.clone())),
                                             _ => None,
-                                        })
+                                        }).collect();
+                                        proposals.sort_by(|a, b| a.0.cmp(&b.0));
+                                        proposals.into_iter().next().map(|(_, t, c)| (t, c))
                                     });
                                 match pending {
                                     None => {
@@ -997,51 +1044,147 @@ where
                                             },
                                         );
                                     }
-                                    Some((effect, target, cmd)) => {
-                                        // Gemini UX TODO: honor the permit gate on the
-                                        // accept path. Dismiss stays available in any
-                                        // mode so an explicit rejection can always be
-                                        // logged to the audit trail.
-                                        if accepting && !runner.permit(effect) {
-                                            notices.insert(
-                                                0,
-                                                SystemNotice {
-                                                    title: "accept blocked by actuation mode".into(),
-                                                    body: format!(
-                                                        "proposal for {target} → `{cmd}` is visible but ObserveOnly blocks confirmation"
-                                                    ),
-                                                    severity: Severity::Warning,
-                                                    source_kind: SourceKind::ProjectCanonical,
-                                                },
-                                            );
+                                    Some((target, cmd)) => {
+                                        if accepting {
+                                            match check_send_gate(
+                                                ctx.config.actions.mode,
+                                                ctx.config.actions.allow_auto_prompt_send,
+                                            ) {
+                                                PromptSendGate::Blocked => {
+                                                    // Gemini v1.9.2 ADOPT: log operator intent
+                                                    // in observe_only; distinguishes "tried and
+                                                    // blocked" from "nothing happened".
+                                                    ctx.sink.record(AuditEvent {
+                                                        kind: AuditEventKind::PromptSendBlocked,
+                                                        pane_id: target.clone(),
+                                                        severity: Severity::Warning,
+                                                        summary: format!(
+                                                            "{target} {cmd} (blocked; observe_only mode)"
+                                                        ),
+                                                        provider: None,
+                                                        role: None,
+                                                    });
+                                                    notices.insert(
+                                                        0,
+                                                        SystemNotice {
+                                                            title: "accept blocked (observe_only)".into(),
+                                                            body: format!(
+                                                                "{target} → `{cmd}`: ObserveOnly mode blocks confirmation (PromptSendBlocked logged)"
+                                                            ),
+                                                            severity: Severity::Warning,
+                                                            source_kind: SourceKind::ProjectCanonical,
+                                                        },
+                                                    );
+                                                }
+                                                PromptSendGate::AutoSendOff => {
+                                                    // Operator confirmed but auto-send is off.
+                                                    // Record acceptance (operator intent) but
+                                                    // do not invoke tmux send-keys.
+                                                    ctx.sink.record(AuditEvent {
+                                                        kind: AuditEventKind::PromptSendAccepted,
+                                                        pane_id: target.clone(),
+                                                        severity: Severity::Warning,
+                                                        summary: format!(
+                                                            "{target} {cmd} (acknowledged by operator; auto-send disabled)"
+                                                        ),
+                                                        provider: None,
+                                                        role: None,
+                                                    });
+                                                    notices.insert(
+                                                        0,
+                                                        SystemNotice {
+                                                            title: "proposal accepted (send disabled)".into(),
+                                                            body: format!(
+                                                                "{target} → `{cmd}` (audit: PromptSendAccepted; set allow_auto_prompt_send=true to enable execution)"
+                                                            ),
+                                                            severity: Severity::Good,
+                                                            source_kind: SourceKind::ProjectCanonical,
+                                                        },
+                                                    );
+                                                }
+                                                PromptSendGate::Execute => {
+                                                    // Both gates passed. Record acceptance first,
+                                                    // then attempt the tmux send-keys call.
+                                                    ctx.sink.record(AuditEvent {
+                                                        kind: AuditEventKind::PromptSendAccepted,
+                                                        pane_id: target.clone(),
+                                                        severity: Severity::Warning,
+                                                        summary: format!(
+                                                            "{target} {cmd} (acknowledged by operator; executing)"
+                                                        ),
+                                                        provider: None,
+                                                        role: None,
+                                                    });
+                                                    match ctx.source.send_keys(&target, &cmd) {
+                                                        Ok(()) => {
+                                                            ctx.sink.record(AuditEvent {
+                                                                kind: AuditEventKind::PromptSendCompleted,
+                                                                pane_id: target.clone(),
+                                                                severity: Severity::Safe,
+                                                                summary: format!(
+                                                                    "{target} {cmd} (sent; operator-confirmed)"
+                                                                ),
+                                                                provider: None,
+                                                                role: None,
+                                                            });
+                                                            notices.insert(
+                                                                0,
+                                                                SystemNotice {
+                                                                    title: "command sent".into(),
+                                                                    body: format!(
+                                                                        "{target} → `{cmd}` (tmux send-keys completed)"
+                                                                    ),
+                                                                    severity: Severity::Good,
+                                                                    source_kind: SourceKind::ProjectCanonical,
+                                                                },
+                                                            );
+                                                        }
+                                                        Err(e) => {
+                                                            ctx.sink.record(AuditEvent {
+                                                                kind: AuditEventKind::PromptSendFailed,
+                                                                pane_id: target.clone(),
+                                                                severity: Severity::Warning,
+                                                                summary: format!(
+                                                                    "{target} {cmd} (send failed: {e})"
+                                                                ),
+                                                                provider: None,
+                                                                role: None,
+                                                            });
+                                                            notices.insert(
+                                                                0,
+                                                                SystemNotice {
+                                                                    title: "send failed".into(),
+                                                                    body: format!(
+                                                                        "{target} → `{cmd}`: tmux error — {e}"
+                                                                    ),
+                                                                    severity: Severity::Warning,
+                                                                    source_kind: SourceKind::ProjectCanonical,
+                                                                },
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         } else {
-                                            let (kind, severity, verb) = if accepting {
-                                                (
-                                                    AuditEventKind::PromptSendAccepted,
-                                                    Severity::Warning,
-                                                    "acknowledged",
-                                                )
-                                            } else {
-                                                (
-                                                    AuditEventKind::PromptSendRejected,
-                                                    Severity::Safe,
-                                                    "dismissed",
-                                                )
-                                            };
+                                            // 'd' dismiss — always available in any mode.
                                             ctx.sink.record(AuditEvent {
-                                                kind,
+                                                kind: AuditEventKind::PromptSendRejected,
                                                 pane_id: target.clone(),
-                                                severity,
-                                                summary: format!("{target} {cmd} ({verb} by operator; P5-2 — no tmux send-keys in this slice)"),
+                                                severity: Severity::Safe,
+                                                summary: format!(
+                                                    "{target} {cmd} (dismissed by operator)"
+                                                ),
                                                 provider: None,
                                                 role: None,
                                             });
                                             notices.insert(
                                                 0,
                                                 SystemNotice {
-                                                    title: format!("proposal {verb}"),
-                                                    body: format!("{target} → `{cmd}` (audit recorded; actuation lands in P5-3)"),
-                                                    severity: if accepting { Severity::Good } else { Severity::Safe },
+                                                    title: "proposal dismissed".into(),
+                                                    body: format!(
+                                                        "{target} → `{cmd}` (PromptSendRejected logged)"
+                                                    ),
+                                                    severity: Severity::Safe,
                                                     source_kind: SourceKind::ProjectCanonical,
                                                 },
                                             );
@@ -1994,11 +2137,60 @@ fn window_choice_label(target: &WindowTarget) -> String {
 mod tests {
     use super::*;
     use crossterm::event::KeyModifiers;
+    use qmonster::app::config::ActionsMode;
     use qmonster::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use qmonster::domain::recommendation::Recommendation;
     use qmonster::domain::signal::SignalSet;
+
+    // P5-3 execution gate tests
+    #[test]
+    fn check_send_gate_observe_only_is_blocked() {
+        assert_eq!(
+            check_send_gate(ActionsMode::ObserveOnly, false),
+            PromptSendGate::Blocked
+        );
+        assert_eq!(
+            check_send_gate(ActionsMode::ObserveOnly, true),
+            PromptSendGate::Blocked,
+            "observe_only blocks even if allow_auto_prompt_send=true"
+        );
+    }
+
+    #[test]
+    fn check_send_gate_recommend_only_auto_send_off_is_auto_send_off() {
+        assert_eq!(
+            check_send_gate(ActionsMode::RecommendOnly, false),
+            PromptSendGate::AutoSendOff
+        );
+    }
+
+    #[test]
+    fn check_send_gate_recommend_only_auto_send_on_is_execute() {
+        assert_eq!(
+            check_send_gate(ActionsMode::RecommendOnly, true),
+            PromptSendGate::Execute
+        );
+    }
+
+    #[test]
+    fn check_send_gate_safe_auto_auto_send_on_is_execute() {
+        // safe_auto is not used yet but the gate should still work
+        // if someone configures it in the future.
+        assert_eq!(
+            check_send_gate(ActionsMode::SafeAuto, true),
+            PromptSendGate::Execute
+        );
+    }
+
+    #[test]
+    fn check_send_gate_safe_auto_auto_send_off_is_auto_send_off() {
+        assert_eq!(
+            check_send_gate(ActionsMode::SafeAuto, false),
+            PromptSendGate::AutoSendOff
+        );
+    }
 
     fn base_report(recs: Vec<Recommendation>) -> PaneReport {
         PaneReport {

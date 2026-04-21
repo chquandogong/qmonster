@@ -195,12 +195,26 @@ profile_lines` in `src/ui/panels.rs`; emits a
 
 ## Phase 5 (Safer Actuation) checks
 
-- [ ] Manual prompt-send helper requires explicit user confirmation.
-- [ ] Every actuation is recorded in the audit log with approver, pane,
+- [x] Manual prompt-send helper requires explicit user confirmation.
+      (P5-3 v1.10.0: `check_send_gate` enforces explicit operator
+      keystroke `p` + `allow_auto_prompt_send = true` as two independent
+      gates before any `tmux send-keys` call; `EffectRunner::permit`
+      remains display-layer only and does NOT gate execution)
+- [x] Every actuation is recorded in the audit log with approver, pane,
       command, and outcome (metadata only, no raw text).
-- [ ] Destructive actions remain outside the automation surface. No
+      (P5-3 v1.10.0: `PromptSendCompleted` on successful send,
+      `PromptSendFailed` on post-confirmation error, `PromptSendBlocked`
+      on ObserveOnly accept-block; prose summary `"{pane} {cmd}
+      (verb; ...)"` — no raw bytes per audit-isolation rule.
+      SQLite roundtrip locked by `p5_3_prompt_send_kinds_roundtrip_
+      through_sqlite` test in `src/store/audit.rs`)
+- [x] Destructive actions remain outside the automation surface. No
       code path exists for auto `/compact`, `/clear`, `/memory`
       mutation, provider reconfiguration.
+      (P5-3 v1.10.0: safety-precedence asymmetry preserved; only
+      explicit operator `p` keystroke + `allow_auto_prompt_send = true`
+      can reach `send_keys`; observe_only and recommend_only defaults
+      both gate before `Execute` branch; no auto-trigger path exists)
 
 ## Non-functional checks (all phases)
 
