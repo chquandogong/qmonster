@@ -1,0 +1,35 @@
+evaluation:
+  timestamp: "2026-04-21T11:54:44Z"
+  target: "Phase 4 P4-7 remediation confirm review (v1.8.10)"
+  evaluated_by: "llm-codex"
+  source: "Codex confirm review of 6f5631e..7c9e951"
+  verdict: "approve-with-fixes"
+  remediation_round: "small follow-up after v1.8.10"
+  findings:
+    - id: "codex-phase4-p4-7-confirm-1"
+      severity: "warning"
+      title: "Two `gemini-script-low-token` comments still over-claim an all-`ProjectCanonical` bundle"
+      references:
+        - "src/policy/rules/profiles.rs:762-776"
+        - "src/policy/rules/profiles.rs:1728-1733"
+        - "mission.yaml:665-667"
+        - "mission-history.yaml:3216-3218"
+      detail: >
+        The remediation correctly changed the shipped aggressive Gemini
+        bundle to `1 ProviderOfficial + 2 ProjectCanonical`, but two nearby
+        comments still say all three levers are ProjectCanonical. That leaves
+        a small but real prose drift between the implementation, the test
+        assertions, and the remediation narrative that claims the stale-prose
+        cleanup is complete.
+      resolution: >
+        Update both comment blocks to describe the mixed-authority bundle
+        honestly, then re-run the confirm. Keep the functional surface fix
+        unchanged.
+  notes:
+    - "The original risk is closed: `save_memory = disabled` was replaced with the real Gemini config surface `experimental.autoMemory = false`."
+    - "The positive-fire Gemini test now enforces `1 ProviderOfficial + 2 ProjectCanonical` and asserts the `experimental.autoMemory` lever directly."
+    - "The previously flagged `(P4-7, tbd)` drift in the Gemini baseline path is closed."
+    - "`cargo test recommend_gemini --lib` passes (6 matching tests)."
+    - "User-reported full verification for this range: lib 190/190, integration 18/18, clippy clean, mission.yaml schema OK."
+    - "Out-of-range/local note: `.mission/CURRENT_STATE.md` is gitignored and still contains old `0 PO + 3 PC` text in the current P4-7 section; sync it locally before handoff."
+  gate_decision: "The P4-7 remediation closes the original risk, but Codex does not mark it fully green yet because the stale-prose cleanup is still incomplete. Fix the two remaining comment drifts, then run one short confirm before opening P4-8 or Phase 5."

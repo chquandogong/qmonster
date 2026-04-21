@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — planning foundation"
   tracking_since: "2026-04-20"
   tracking_mode: "local-first (single-user)"
-  total_revisions: 26
-  latest_version: "1.8.10"
+  total_revisions: 27
+  latest_version: "1.8.11"
 
 timeline:
   - change_id: "initial"
@@ -3235,8 +3235,84 @@ timeline:
       - "Request short Codex + Gemini confirm re-review on v1.8.10 P4-7 remediation"
       - "On green, proceed to P4-8+ (VALIDATION.md Phase-4 checkbox ticking + any deferred non-blockers including the Codex v1.8.8-P4-6 `--approval-mode = default` suggestion) or open Phase 5 (safer actuation — manual prompt-send helper with user confirmation)"
 
+  - change_id: "phase-4-p4-7-followup-codex-v1810-confirm-warning"
+    semantic_version: "1.8.11"
+    change_sequence: 27
+    date: "2026-04-21"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.8.10 confirm review — flagged the single warning closed by this round; also re-confirmed v1.8.9 risk and two of three v1.8.10 prose fixes)"
+      - "Gemini (gemini:1:research, v1.8.10 confirm review — approve; did not flag the two additional profiles.rs drifts but approved the round overall; Codex's targeted sweep of neighboring comments caught what the narrative pass missed)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close the single warning Codex returned in the v1.8.10
+      confirm review (6f5631e..7c9e951, approve-with-fixes). The
+      v1.8.10 round shipped the 1 ProviderOfficial + 2 Project-
+      Canonical authority split in the shipped lever bundle and
+      the positive-fire shape test, but left two nearby human-
+      readable comments still claiming the bundle is "all
+      ProjectCanonical" — a narrative/implementation drift inside
+      the same round whose intent was to remove exactly this kind
+      of drift. Fix in one small docs-only round so every human-
+      readable description of the aggressive Gemini bundle is
+      consistent with the shipped authority split.
+    intent_ko: >
+      Codex v1.8.10 confirm 리뷰(6f5631e..7c9e951, approve-with-
+      fixes)에서 돌아온 단일 warning을 닫는다. v1.8.10은 레버
+      번들과 positive-fire shape 테스트를 1 PO + 2 PC로 갱신했지만,
+      근처 두 개의 사람이 읽는 주석이 여전히 번들을 "all Project
+      Canonical"이라고 과도표현. 이 라운드의 의도 자체가 이런
+      종류의 드리프트를 제거하는 것이었기에, 작은 docs-only
+      라운드로 aggressive Gemini 번들의 모든 서술을 shipped 권위
+      분할과 일관되게 정리.
+    decision: >
+      (1) src/policy/rules/profiles.rs lines 762-776 —
+      `recommend_gemini_script_low_token` 함수 doc-comment 재작성:
+      `every lever is labeled ProjectCanonical`을 제거하고 대신
+      `Authority split is 1 ProviderOfficial + 2 ProjectCanonical`
+      + 각 레버를 권위별로 명시(`experimental.autoMemory = false`
+      = PO; `--yolo = enabled`, `--model = gemini-2.5-flash` = PC)
+      + "v1.8.10 surface correction" 내부 참조 유지.
+      (2) src/policy/rules/profiles.rs lines 1728-1733 —
+      `recommend_gemini_script_low_token_fires_on_quota_tight_with_
+      honest_authority_labels_and_populated_side_effects` 테스트
+      주석 재작성: `All three levers are ProjectCanonical`을 제거
+      하고 동일 스플릿(1 PO + 2 PC) + per-lever 권위 명시로 교체.
+      (3) .mission/CURRENT_STATE.md (gitignored) 동일 드리프트
+      2곳 동기화: reason-summary 문자열 `0 ProviderOfficial + 3
+      ProjectCanonical` → `1 ProviderOfficial + 2 ProjectCanonical`,
+      테스트 로우 `0 PO + 3 PC ... save_memory side_effect` → `1
+      PO + 2 PC (v1.8.10 relabel) ... experimental.autoMemory
+      side_effect`. gitignored지만 local dev 경험의 정확성을 위해
+      sync.
+    decision_ko: ""
+    done_when_delta:
+      added:
+        - "Phase 4 P4-7 follow-up v1.8.11: two additional stale-prose locations in `src/policy/rules/profiles.rs` rewritten so every human-readable description of the aggressive Gemini bundle names the honest 1 ProviderOfficial + 2 ProjectCanonical split — the function doc-comment (762-776) and the positive-fire test comment (1728-1733). `.mission/CURRENT_STATE.md` (gitignored) also synced locally for the same two drifts. No code-behavior / test-assertion / render-output change. 190 lib + 18 integration unchanged; clippy --all-targets -D warnings clean. Codex v1.8.10 confirm finding closed."
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~15 LOC comment delta (no production-logic lines changed — both edits are Rust doc-comments / line comments around unchanged fn bodies)"
+      tests: "190 lib + 18 integration unchanged (no test source or assertion changed)"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "no operator-visible change — the v1.8.10 render output already read `[PO] experimental.autoMemory = false ...` and the reason summary already read `1 ProviderOfficial + 2 ProjectCanonical`; this round only aligns the source-comment descriptions with what was already being emitted"
+      docs: "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md updated"
+    breaking: false
+    risk: "low — pure comment-text updates inside two existing Rust functions; no production-logic or test-assertion changed; positive-fire test already locks 1-PO-2-PC since v1.8.10 so any regression would have been caught; .mission/CURRENT_STATE.md sync is local-only (gitignored)"
+    related_commits: []
+    related_decisions:
+      - "KD-005"
+      - "KD-006"
+    snapshot_after: ""
+    follow_up:
+      - "Request short Codex confirm re-review on v1.8.11 (Gemini v1.8.10 confirm already pass; Codex v1.8.10 confirm is what this round answers)"
+      - "On green, proceed to P4-8+ (VALIDATION.md Phase-4 checkbox ticking + any deferred non-blockers) or open Phase 5 (safer actuation — manual prompt-send helper with user confirmation)"
+
 evolution_summary:
-  current_phase: "Phase 4 P4-7 remediated — save_memory phantom lever replaced with experimental.autoMemory per Gemini CLI docs; stale-prose synced; Gemini v1.8.9 pass stands; Codex v1.8.9 findings both closed by v1.8.10. Short confirm re-review pending before P4-8+ / Phase 5."
+  current_phase: "Phase 4 P4-7 follow-up v1.8.11 — two additional gemini-script-low-token prose drifts closed (fn doc-comment lines 762-776 + positive-fire test comment lines 1728-1733). Gemini v1.8.10 confirm pass stands; Codex v1.8.10 confirm warning now also closed. Short Codex re-confirm pending before P4-8+ / Phase 5. Phase 4 3×2 grid remains intact — no code-behavior / test-assertion / render-output change."
   next_phase: "Phase 4 — provider profile recommender"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

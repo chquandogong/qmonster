@@ -1,6 +1,6 @@
 mission:
-  version: "1.8.10"
-  title: "Qmonster v0.4.0 — Phase 4 P4-7 remediated (gemini-script-low-token: save_memory → experimental.autoMemory per actual Gemini CLI surface; stale prose synced to 3×2 grid completion state; Codex v1.8.9 findings #1+#2 closed)"
+  version: "1.8.11"
+  title: "Qmonster v0.4.0 — Phase 4 P4-7 follow-up v1.8.11 (2 additional gemini-script-low-token prose drifts fixed per Codex v1.8.10 confirm approve-with-fixes; authority split now honestly documented in all profiles.rs comments)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -453,7 +453,7 @@ mission:
     no renderer change; existing format_profile_lines handles the
     new rec transitively.
 
-    Phase 4 P4-7 remediation (v1.8.10, this revision) closes the
+    Phase 4 P4-7 remediation (v1.8.10) closed the
     two Codex v1.8.9 P4-7 review findings. Finding #1 (risk): the
     aggressive Gemini profile used `save_memory = disabled` as a
     lever, but Gemini CLI docs describe `save_memory` as a TOOL
@@ -493,6 +493,33 @@ mission:
     shows `[PO] experimental.autoMemory = false — Gemini CLI
     docs — auto memory: experimental.autoMemory config key ...`
     instead of the prior `[PC] save_memory = disabled`.
+
+    Phase 4 P4-7 follow-up (v1.8.11, this revision) closes the
+    single warning Codex returned in the v1.8.10 confirm review
+    (6f5631e..7c9e951, approve-with-fixes). Codex confirmed the
+    risk (finding #1 — save_memory surface) was fully closed and
+    the stale-prose sweep (finding #2) had cleared three locations,
+    but flagged that the v1.8.10 pass had missed two additional
+    `gemini-script-low-token` comments that still over-claimed the
+    bundle as "all ProjectCanonical" even though the implementation
+    and tests now carry 1 ProviderOfficial + 2 ProjectCanonical.
+    This revision rewrites both spots — the `recommend_gemini_
+    script_low_token` function doc-comment (lines 762-776) and the
+    `recommend_gemini_script_low_token_fires_on_quota_tight_with_
+    honest_authority_labels_and_populated_side_effects` test
+    comment (lines 1728-1733) — so every human-readable description
+    of the aggressive Gemini bundle names the honest mixed-
+    authority split (1 PO = experimental.autoMemory documented key
+    + disable value; 2 PC = --yolo + --model Qmonster picks).
+    `.mission/CURRENT_STATE.md` was also synced locally (reason-
+    summary line + test-row "0 PO + 3 PC → 1 PO + 2 PC"), keeping
+    the gitignored dev doc consistent with the tracked ledger.
+    No code-behavior / test-assertion / render-output change —
+    the positive-fire test already enforces 1-PO-2-PC since
+    v1.8.10. 190 lib + 18 integration (unchanged). clippy --all-
+    targets -D warnings clean. Codex v1.8.10 confirm finding
+    closed; short re-confirm from Codex requested before opening
+    P4-8 or Phase 5.
 
     Phase 4 P4-2 (v1.8.2) shipped the Gemini G-5
     auto-memory guide rule — the second Phase-4 slice. When the
@@ -666,6 +693,9 @@ mission:
     - 'Phase 4 P4-7 remediation v1.8.10: three stale-prose locations in `src/policy/rules/profiles.rs` synced to the 3x2 grid completion state — (a) module doc-comment at line 8 no longer says "P4-5 (aggressive Codex variant, tbd)" and instead describes all six profile rules + the G-5 / G-6 cross-reference pattern across providers; (b) gemini-default `--yolo = unset` lever comment around line 721 no longer says "(P4-7, tbd)" and instead names the shipped aggressive variant; (c) `recommend_gemini_default_suppressed_when_quota_tight_on` test comment no longer describes the aggressive variant as "tbd". Codex v1.8.9 P4-7 finding #2 (warning: stale prose) closed.'
     - "Phase 4 P4-7 remediation v1.8.10: positive-fire shape test tightened — old blanket 0-PO-3-PC assertion split into explicit 1-PO-2-PC assertions; per-lever source_kind assertion on `experimental.autoMemory` explicitly verifies `ProviderOfficial`; reason-summary assertion now requires BOTH `ProviderOfficial` and `ProjectCanonical` tokens (mirroring the codex-default v1.8.6 pattern). 190 lib + 18 integration (unchanged test count — one existing test tightened in place); clippy --all-targets -D warnings clean."
 
+    # Phase-4 P4-7 follow-up (v1.8.11) — Codex v1.8.10 confirm warning.
+    - "Phase 4 P4-7 follow-up v1.8.11: two additional stale-prose locations in `src/policy/rules/profiles.rs` rewritten so every human-readable description of the aggressive Gemini bundle names the honest 1 ProviderOfficial + 2 ProjectCanonical split — (a) the `recommend_gemini_script_low_token` function doc-comment at lines 762-776 no longer says `every lever is labeled ProjectCanonical` and now explicitly calls out `experimental.autoMemory = false` as the ProviderOfficial lever with `--yolo = enabled` and `--model = gemini-2.5-flash` as the two ProjectCanonical levers; (b) the positive-fire test comment at lines 1728-1733 in `recommend_gemini_script_low_token_fires_on_quota_tight_with_honest_authority_labels_and_populated_side_effects` no longer says `All three levers are ProjectCanonical` and mirrors the same split. `.mission/CURRENT_STATE.md` (gitignored) was also synced locally for the same two drifts (reason-summary line + test-row 0 PO + 3 PC → 1 PO + 2 PC). No code-behavior / test-assertion / render-output change — the positive-fire test already enforces 1-PO-2-PC since v1.8.10. 190 lib + 18 integration (unchanged); clippy --all-targets -D warnings clean. Codex v1.8.10 confirm finding (warning: two nearby comments over-claim all-PC) closed."
+
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
     - "Layer separation: docs/ai/ = canonical (Git-tracked); .docs/ = raw working docs (gitignored); mission.yaml + mission-history.yaml + .mission/ = local contract/ledger (gitignored in single-user phase)."
@@ -755,7 +785,7 @@ mission:
         explicit Gemini TODO list so reviewers know what to look at.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1); P4-2 (Gemini G-5 auto-memory guide rule) shipped in 1 TDD commit (v1.8.2); P4-3 (Gemini G-6 side_effects + claude-script-low-token aggressive profile) shipped in 1 TDD commit (v1.8.3); P4-4 (codex-default baseline profile) shipped in 1 TDD commit (v1.8.4); P4-4 remediation (commit_attribution + tool_output_token_limit authority labels) shipped in 1 TDD commit (v1.8.5); P4-4 confirm-remediation (reason summary + doc-comment drift cleanup) shipped in 1 TDD commit (v1.8.6); P4-5 (codex-script-low-token aggressive profile + Gemini G-6 parity for Codex) shipped in 1 TDD commit (v1.8.7); P4-6 (gemini-default baseline — first Gemini provider entry) shipped in 1 TDD commit (v1.8.8); P4-7 (gemini-script-low-token aggressive + Gemini G-6 parity for Gemini; completes 3 x 2 profile grid) shipped in 1 TDD commit (v1.8.9); P4-7 remediation (save_memory → experimental.autoMemory surface fix + stale-prose sync) shipped in 1 TDD commit (v1.8.10)."
+    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1); P4-2 (Gemini G-5 auto-memory guide rule) shipped in 1 TDD commit (v1.8.2); P4-3 (Gemini G-6 side_effects + claude-script-low-token aggressive profile) shipped in 1 TDD commit (v1.8.3); P4-4 (codex-default baseline profile) shipped in 1 TDD commit (v1.8.4); P4-4 remediation (commit_attribution + tool_output_token_limit authority labels) shipped in 1 TDD commit (v1.8.5); P4-4 confirm-remediation (reason summary + doc-comment drift cleanup) shipped in 1 TDD commit (v1.8.6); P4-5 (codex-script-low-token aggressive profile + Gemini G-6 parity for Codex) shipped in 1 TDD commit (v1.8.7); P4-6 (gemini-default baseline — first Gemini provider entry) shipped in 1 TDD commit (v1.8.8); P4-7 (gemini-script-low-token aggressive + Gemini G-6 parity for Gemini; completes 3 x 2 profile grid) shipped in 1 TDD commit (v1.8.9); P4-7 remediation (save_memory → experimental.autoMemory surface fix + stale-prose sync) shipped in 1 TDD commit (v1.8.10); P4-7 follow-up (2 additional profiles.rs prose drifts from Codex v1.8.10 confirm) shipped in 1 docs-only commit (v1.8.11)."
     suggested_approach: >
       Phase 4 P4-7 remediation shipped (v1.8.10). Codex v1.8.9
       P4-7 findings closed: (#1, risk) `save_memory = disabled`
@@ -825,5 +855,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 26
+    total_revisions: 27
     history: "mission-history.yaml"
