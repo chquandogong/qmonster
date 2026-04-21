@@ -145,7 +145,10 @@ pub fn alert_fingerprints(notices: &[SystemNotice], reports: &[PaneReport]) -> H
 
 #[derive(Debug, Clone)]
 struct AlertItem {
-    body: String,
+    timestamp: String,
+    title: String,
+    headline: String,
+    details: Vec<String>,
     color: Color,
     is_new: bool,
 }
@@ -162,14 +165,16 @@ fn collect_items(
         let badge = source_kind_label(n.source_kind);
         let color = theme::severity_color(n.severity);
         let key = notice_key(n);
-        let body = decorate_alert(
-            format!("{} [{badge}] system — {} — {}", severity_word(n.severity), n.title, n.body),
-            &key,
-            fresh_alerts,
-            alert_times,
-        );
+        let timestamp = alert_timestamp(&key, alert_times);
         out.push(AlertItem {
-            body,
+            timestamp,
+            title: format!("System Notice · {}", n.title),
+            headline: format!(
+                "{} [{badge}] {}",
+                severity_word(n.severity),
+                n.body
+            ),
+            details: vec![],
             color,
             is_new: fresh_alerts.contains(&key),
         });
@@ -179,14 +184,17 @@ fn collect_items(
         for rec in rep.recommendations.iter().filter(|r| r.is_strong) {
             let color = theme::severity_color(rec.severity);
             let key = recommendation_key(&rep.pane_id, rec);
-            let body = decorate_alert(
-                format_strong_rec_body(rec, &rep.pane_id),
-                &key,
-                fresh_alerts,
-                alert_times,
-            );
+            let timestamp = alert_timestamp(&key, alert_times);
             out.push(AlertItem {
-                body,
+                timestamp,
+                title: format!("Checkpoint · {}", rep.pane_id),
+                headline: format!(
+                    "{} [{}] {}",
+                    severity_word(rec.severity),
+                    source_kind_label(rec.source_kind),
+                    rec.reason
+                ),
+                details: recommendation_detail_lines(rec),
                 color,
                 is_new: fresh_alerts.contains(&key),
             });
@@ -197,19 +205,17 @@ fn collect_items(
         for f in &rep.cross_pane_findings {
             let color = theme::severity_color(f.severity);
             let key = finding_key(f);
-            let body = decorate_alert(
-                format!(
+            let timestamp = alert_timestamp(&key, alert_times);
+            out.push(AlertItem {
+                timestamp,
+                title: format!("Cross-Pane · {}", f.anchor_pane_id),
+                headline: format!(
                     "{} [{}] cross-pane — {}",
                     severity_word(f.severity),
                     source_kind_label(f.source_kind),
                     f.reason,
                 ),
-                &key,
-                fresh_alerts,
-                alert_times,
-            );
-            out.push(AlertItem {
-                body,
+                details: vec![format!("anchor: {} · others: {}", f.anchor_pane_id, f.other_pane_ids.join(", "))],
                 color,
                 is_new: fresh_alerts.contains(&key),
             });
@@ -220,14 +226,17 @@ fn collect_items(
         for rec in rep.recommendations.iter().filter(|r| !r.is_strong) {
             let color = theme::severity_color(rec.severity);
             let key = recommendation_key(&rep.pane_id, rec);
-            let body = decorate_alert(
-                format_recommendation_body(rec, &rep.pane_id),
-                &key,
-                fresh_alerts,
-                alert_times,
-            );
+            let timestamp = alert_timestamp(&key, alert_times);
             out.push(AlertItem {
-                body,
+                timestamp,
+                title: format!("Recommendation · {}", rep.pane_id),
+                headline: format!(
+                    "{} [{}] {}",
+                    severity_word(rec.severity),
+                    source_kind_label(rec.source_kind),
+                    rec.reason
+                ),
+                details: recommendation_detail_lines(rec),
                 color,
                 is_new: fresh_alerts.contains(&key),
             });
@@ -237,10 +246,37 @@ fn collect_items(
 }
 
 fn alert_list_item(item: &AlertItem, width: usize) -> ListItem<'static> {
-    let lines: Vec<Line<'static>> = wrap_text(&item.body, width)
+    let prefix = format!("[{}] ", item.timestamp);
+    let continuation = " ".repeat(prefix.chars().count());
+    let title = if item.is_new {
+        format!("NEW · {}", item.title)
+    } else {
+        item.title.clone()
+    };
+    let mut lines: Vec<Line<'static>> = wrap_with_prefix(&title, width, &prefix, &continuation)
         .into_iter()
-        .map(Line::from)
+        .map(|line| Line::styled(line, Style::default().add_modifier(Modifier::BOLD)))
         .collect();
+    lines.extend(
+        wrap_with_prefix(&item.headline, width, &continuation, &continuation)
+            .into_iter()
+            .map(Line::from),
+    );
+    for detail in &item.details {
+        lines.extend(
+            wrap_with_prefix(detail, width, &continuation, &continuation)
+                .into_iter()
+                .map(Line::from),
+        );
+    }
+    lines.push(Line::styled(
+        format!(
+            "{}{}",
+            continuation,
+            "─".repeat(width.saturating_sub(continuation.chars().count()).max(8))
+        ),
+        Style::default().fg(theme::TEXT_DIM),
+    ));
     ListItem::new(lines).style(alert_style(item.color, item.is_new))
 }
 
@@ -266,25 +302,49 @@ fn highlight_style(focused: bool) -> Style {
     }
 }
 
-fn decorate_alert(
-    body: String,
-    key: &str,
-    fresh_alerts: &HashSet<String>,
-    alert_times: &HashMap<String, String>,
-) -> String {
-    let ts = alert_times
+fn alert_timestamp(key: &str, alert_times: &HashMap<String, String>) -> String {
+    alert_times
         .get(key)
         .cloned()
-        .unwrap_or_else(|| "--:--:--".into());
-    if fresh_alerts.contains(key) {
-        format!("[{ts}] NEW · {body}")
-    } else {
-        format!("[{ts}] {body}")
+        .unwrap_or_else(|| "--:--:--".into())
+}
+
+fn recommendation_detail_lines(rec: &Recommendation) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(next) = rec.next_step.as_deref().filter(|s| !s.is_empty()) {
+        out.push(format!("next: {next}"));
     }
+    if let Some(cmd) = rec.suggested_command.as_deref().filter(|s| !s.is_empty()) {
+        out.push(format!("run: `{cmd}`"));
+    }
+    out
+}
+
+fn wrap_with_prefix(
+    text: &str,
+    total_width: usize,
+    prefix: &str,
+    continuation_prefix: &str,
+) -> Vec<String> {
+    let reserved = prefix
+        .chars()
+        .count()
+        .max(continuation_prefix.chars().count());
+    let content_width = total_width.saturating_sub(reserved).max(12);
+    let wrapped = wrap_text(text, content_width);
+    let mut out = Vec::with_capacity(wrapped.len());
+    for (idx, line) in wrapped.into_iter().enumerate() {
+        if idx == 0 {
+            out.push(format!("{prefix}{line}"));
+        } else {
+            out.push(format!("{continuation_prefix}{line}"));
+        }
+    }
+    out
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
-    let width = width.max(12);
+    let width = width.max(8);
     let mut out = Vec::new();
     let mut current = String::new();
 
@@ -475,7 +535,7 @@ mod tests {
         let times = HashMap::new();
         let items = collect_items(&[notice], &[rep], &fresh, &times);
         assert_eq!(items.len(), 2);
-        assert!(items[0].body.contains("system"));
+        assert!(items[0].title.contains("System Notice"));
     }
 
     #[test]
@@ -508,7 +568,7 @@ mod tests {
         let items = collect_items(&[], &[rep], &fresh, &times);
         // Two items: strong-rec line + normal-rec line. Strong appears first.
         assert_eq!(items.len(), 2);
-        assert!(items[0].body.contains("CHECKPOINT"));
+        assert!(items[0].title.contains("Checkpoint"));
     }
 
     #[test]
@@ -623,7 +683,7 @@ mod tests {
         let times = HashMap::new();
         let items = collect_items(&[], &[rep], &fresh, &times);
         assert_eq!(items.len(), 2, "one cross-pane finding + one pane alert");
-        assert!(items[0].body.contains("cross-pane"));
+        assert!(items[0].headline.contains("cross-pane"));
     }
 
     #[test]
@@ -644,8 +704,7 @@ mod tests {
         let fresh = HashSet::from([key.clone()]);
         let times = HashMap::from([(key, "14:32:10".into())]);
         let items = collect_items(&[], &[rep], &fresh, &times);
-        assert!(items[0].body.contains("NEW"));
-        assert!(items[0].body.contains("14:32:10"));
+        assert_eq!(items[0].timestamp, "14:32:10");
         assert!(items[0].is_new);
     }
 
@@ -657,5 +716,17 @@ mod tests {
         );
         assert!(lines.len() > 1);
         assert!(lines.iter().all(|line| line.chars().count() <= 24));
+    }
+
+    #[test]
+    fn wrap_with_prefix_hangs_under_timestamp_column() {
+        let lines = wrap_with_prefix(
+            "warning [Heur] %1 — long message that wraps",
+            28,
+            "[14:32:10] ",
+            "           ",
+        );
+        assert!(lines.len() > 1);
+        assert!(lines[1].starts_with("           "));
     }
 }

@@ -69,6 +69,8 @@ pub fn render_dashboard(
 
 pub fn render_target_picker(
     frame: &mut Frame<'_>,
+    title: &str,
+    hint: &str,
     labels: &[String],
     state: &mut ListState,
     current_label: &str,
@@ -76,8 +78,13 @@ pub fn render_target_picker(
     let area = centered_rect(60, 60, frame.area());
     frame.render_widget(Clear, area);
 
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(4), Constraint::Length(2)])
+        .split(area);
+
     let block = Block::default()
-        .title(format!("Choose Target · current {current_label}"))
+        .title(format!("{title} · current {current_label}"))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme::BORDER_ACTIVE));
 
@@ -86,7 +93,13 @@ pub fn render_target_picker(
             Paragraph::new("no tmux windows discovered")
                 .style(Style::default().fg(theme::TEXT_DIM))
                 .block(block),
-            area,
+            chunks[0],
+        );
+        frame.render_widget(
+            Paragraph::new(hint)
+                .style(Style::default().fg(theme::TEXT_DIM))
+                .wrap(Wrap { trim: false }),
+            chunks[1],
         );
         return;
     }
@@ -105,8 +118,14 @@ pub fn render_target_picker(
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ "),
-        area,
+        chunks[0],
         state,
+    );
+    frame.render_widget(
+        Paragraph::new(hint)
+            .style(Style::default().fg(theme::TEXT_DIM))
+            .wrap(Wrap { trim: false }),
+        chunks[1],
     );
 }
 
@@ -118,8 +137,9 @@ pub fn render_help_modal(frame: &mut Frame<'_>) {
         "Controls".to_string(),
         "Tab: switch focus between alerts and pane list".to_string(),
         "Up / Down or j / k: scroll the focused list".to_string(),
-        "t: open tmux target picker (all windows or a session:window)".to_string(),
-        "Enter: confirm target selection".to_string(),
+        "t: open tmux target picker (session -> window)".to_string(),
+        "Enter: session next / window confirm".to_string(),
+        "Left or Backspace: return to session list".to_string(),
         "s: write a runtime snapshot".to_string(),
         "r: refresh version drift check".to_string(),
         "c: clear system notices".to_string(),
@@ -155,7 +175,7 @@ fn render_footer(area: Rect, buf: &mut Buffer, alerts_focused: bool, panes_focus
         "focus: overlay"
     };
     Paragraph::new(format!(
-        "{focus} · Tab switch · ↑/↓ scroll · t target · ? help · s snapshot · r refresh · c clear · q quit"
+        "{focus} · Tab switch · ↑/↓ scroll · t target · Enter select · ← back · ? help · s snapshot · q quit"
     ))
     .style(Style::default().fg(theme::TEXT_DIM))
     .wrap(Wrap { trim: false })

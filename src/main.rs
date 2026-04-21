@@ -257,10 +257,23 @@ enum FocusedPanel {
     Panes,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TargetPickerStage {
+    Session,
+    Window,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TargetChoiceValue {
+    AllSessions,
+    Session(String),
+    Window(WindowTarget),
+}
+
 #[derive(Debug, Clone)]
 struct TargetChoice {
     label: String,
-    target: Option<WindowTarget>,
+    value: TargetChoiceValue,
 }
 
 fn run_tui<P, N>(
@@ -289,6 +302,8 @@ where
     let mut alert_state = ListState::default();
     let mut pane_state = ListState::default();
     let mut target_picker_open = false;
+    let mut target_picker_stage = TargetPickerStage::Session;
+    let mut target_picker_session: Option<String> = None;
     let mut target_picker_state = ListState::default();
     let mut target_choices: Vec<TargetChoice> = Vec::new();
     let mut help_open = false;
@@ -368,8 +383,12 @@ where
                 if target_picker_open {
                     let labels: Vec<String> =
                         target_choices.iter().map(|choice| choice.label.clone()).collect();
+                    let picker_title =
+                        target_picker_title(target_picker_stage, target_picker_session.as_deref());
                     qmonster::ui::dashboard::render_target_picker(
                         frame,
+                        &picker_title,
+                        target_picker_hint(target_picker_stage),
                         &labels,
                         &mut target_picker_state,
                         &target,
@@ -395,6 +414,20 @@ where
                 if target_picker_open {
                     match k.code {
                         KeyCode::Esc | KeyCode::Char('t') => target_picker_open = false,
+                        KeyCode::Left | KeyCode::Backspace => {
+                            if target_picker_stage == TargetPickerStage::Window {
+                                target_picker_stage = TargetPickerStage::Session;
+                                target_picker_session = None;
+                                refresh_target_choices(
+                                    &ctx.source,
+                                    target_picker_stage,
+                                    target_picker_session.as_deref(),
+                                    &mut target_choices,
+                                    &mut target_picker_state,
+                                    selected_target.as_ref(),
+                                );
+                            }
+                        }
                         KeyCode::Up | KeyCode::Char('k') => {
                             move_selection(&mut target_picker_state, target_choices.len(), -1);
                         }
@@ -402,23 +435,40 @@ where
                             move_selection(&mut target_picker_state, target_choices.len(), 1);
                         }
                         KeyCode::Enter => {
-                            if let Some(label) = apply_target_choice(
+                            match apply_target_choice(
+                                target_picker_stage,
+                                target_picker_session.as_deref(),
                                 &target_choices,
                                 &target_picker_state,
                                 &mut selected_target,
                             ) {
-                                notices.insert(0, target_switched_notice(&label));
-                                sync_dashboard_state(
-                                    &notices,
-                                    &last_reports,
-                                    &mut alert_state,
-                                    &mut pane_state,
-                                    &mut previous_alerts,
-                                    &mut fresh_alerts,
-                                    &mut alert_times,
-                                );
-                                target_picker_open = false;
-                                last_poll = Instant::now() - poll;
+                                Some(TargetPickerOutcome::AdvanceToWindows(session_name)) => {
+                                    target_picker_stage = TargetPickerStage::Window;
+                                    target_picker_session = Some(session_name);
+                                    refresh_target_choices(
+                                        &ctx.source,
+                                        target_picker_stage,
+                                        target_picker_session.as_deref(),
+                                        &mut target_choices,
+                                        &mut target_picker_state,
+                                        selected_target.as_ref(),
+                                    );
+                                }
+                                Some(TargetPickerOutcome::Close(label)) => {
+                                    notices.insert(0, target_switched_notice(&label));
+                                    sync_dashboard_state(
+                                        &notices,
+                                        &last_reports,
+                                        &mut alert_state,
+                                        &mut pane_state,
+                                        &mut previous_alerts,
+                                        &mut fresh_alerts,
+                                        &mut alert_times,
+                                    );
+                                    target_picker_open = false;
+                                    last_poll = Instant::now() - poll;
+                                }
+                                None => {}
                             }
                         }
                         _ => {}
@@ -451,8 +501,12 @@ where
                         }
                     },
                     KeyCode::Char('t') => {
+                        target_picker_stage = TargetPickerStage::Session;
+                        target_picker_session = None;
                         refresh_target_choices(
                             &ctx.source,
+                            target_picker_stage,
+                            target_picker_session.as_deref(),
                             &mut target_choices,
                             &mut target_picker_state,
                             selected_target.as_ref(),
@@ -580,28 +634,33 @@ fn initial_target<P: PaneSource>(source: &P) -> Option<WindowTarget> {
         .or_else(|| source.available_targets().ok()?.into_iter().next())
 }
 
+enum TargetPickerOutcome {
+    AdvanceToWindows(String),
+    Close(String),
+}
+
 fn refresh_target_choices<P: PaneSource>(
     source: &P,
+    stage: TargetPickerStage,
+    session_name: Option<&str>,
     choices: &mut Vec<TargetChoice>,
     state: &mut ListState,
     selected: Option<&WindowTarget>,
 ) {
-    let mut next_choices = vec![TargetChoice {
-        label: "all windows".into(),
-        target: None,
-    }];
-    if let Ok(targets) = source.available_targets() {
-        next_choices.extend(targets.into_iter().map(|target| TargetChoice {
-            label: target.label(),
-            target: Some(target),
-        }));
-    }
-    *choices = next_choices;
-    sync_target_choice_selection(state, choices, selected);
+    let targets = source.available_targets().unwrap_or_default();
+    *choices = match stage {
+        TargetPickerStage::Session => build_session_choices(&targets),
+        TargetPickerStage::Window => {
+            build_window_choices(&targets, session_name.unwrap_or_default())
+        }
+    };
+    sync_target_choice_selection(state, stage, session_name, choices, selected);
 }
 
 fn sync_target_choice_selection(
     state: &mut ListState,
+    stage: TargetPickerStage,
+    session_name: Option<&str>,
     choices: &[TargetChoice],
     selected: Option<&WindowTarget>,
 ) {
@@ -609,22 +668,111 @@ fn sync_target_choice_selection(
         state.select(None);
         return;
     }
-    let selected_index = choices
-        .iter()
-        .position(|choice| choice.target.as_ref() == selected)
-        .unwrap_or(0);
+    let selected_index = match stage {
+        TargetPickerStage::Session => {
+            let current_session = selected.map(|target| target.session_name.as_str());
+            choices
+                .iter()
+                .position(|choice| match (&choice.value, current_session) {
+                    (TargetChoiceValue::AllSessions, None) => true,
+                    (TargetChoiceValue::Session(choice_session), Some(current)) => {
+                        choice_session == current
+                    }
+                    _ => false,
+                })
+                .unwrap_or(0)
+        }
+        TargetPickerStage::Window => choices
+            .iter()
+            .position(|choice| match (&choice.value, selected, session_name) {
+                (TargetChoiceValue::Window(choice_target), Some(current), Some(session)) => {
+                    choice_target == current && current.session_name == session
+                }
+                _ => false,
+            })
+            .unwrap_or(0),
+    };
     state.select(Some(selected_index));
 }
 
 fn apply_target_choice(
+    stage: TargetPickerStage,
+    session_name: Option<&str>,
     choices: &[TargetChoice],
     state: &ListState,
     selected_target: &mut Option<WindowTarget>,
-) -> Option<String> {
+) -> Option<TargetPickerOutcome> {
     let idx = state.selected()?;
     let choice = choices.get(idx)?;
-    *selected_target = choice.target.clone();
-    Some(choice.label.clone())
+    match (&choice.value, stage) {
+        (TargetChoiceValue::AllSessions, TargetPickerStage::Session) => {
+            *selected_target = None;
+            Some(TargetPickerOutcome::Close("all sessions".into()))
+        }
+        (TargetChoiceValue::Session(session), TargetPickerStage::Session) => {
+            Some(TargetPickerOutcome::AdvanceToWindows(session.clone()))
+        }
+        (TargetChoiceValue::Window(target), TargetPickerStage::Window) => {
+            if let Some(session) = session_name && target.session_name != session {
+                return None;
+            }
+            *selected_target = Some(target.clone());
+            Some(TargetPickerOutcome::Close(target.label()))
+        }
+        _ => None,
+    }
+}
+
+fn build_session_choices(targets: &[WindowTarget]) -> Vec<TargetChoice> {
+    let mut sessions: Vec<String> = targets
+        .iter()
+        .map(|target| target.session_name.clone())
+        .collect();
+    sessions.sort();
+    sessions.dedup();
+    let mut choices = vec![TargetChoice {
+        label: "all sessions · all windows".into(),
+        value: TargetChoiceValue::AllSessions,
+    }];
+    for session in sessions {
+        let window_count = targets
+            .iter()
+            .filter(|target| target.session_name == session)
+            .count();
+        choices.push(TargetChoice {
+            label: format!("{session} · {window_count} window(s)"),
+            value: TargetChoiceValue::Session(session),
+        });
+    }
+    choices
+}
+
+fn build_window_choices(targets: &[WindowTarget], session_name: &str) -> Vec<TargetChoice> {
+    targets
+        .iter()
+        .filter(|target| target.session_name == session_name)
+        .map(|target| TargetChoice {
+            label: format!("window {} · {}", target.window_index, target.label()),
+            value: TargetChoiceValue::Window(target.clone()),
+        })
+        .collect()
+}
+
+fn target_picker_title(stage: TargetPickerStage, session_name: Option<&str>) -> String {
+    match (stage, session_name) {
+        (TargetPickerStage::Session, _) => "Choose Session".into(),
+        (TargetPickerStage::Window, Some(session)) => format!("Choose Window · {session}"),
+        (TargetPickerStage::Window, None) => "Choose Window".into(),
+    }
+}
+
+fn target_picker_hint(stage: TargetPickerStage) -> &'static str {
+    match stage {
+        TargetPickerStage::Session => "Enter: open that session's window list · Esc: close",
+        TargetPickerStage::Window => {
+            "Enter: watch this window · Left/Backspace: sessions · Esc: close"
+        }
+    }
 }
 
 fn toggle_focus(focus: FocusedPanel) -> FocusedPanel {
@@ -637,7 +785,7 @@ fn toggle_focus(focus: FocusedPanel) -> FocusedPanel {
 fn target_label(target: Option<&WindowTarget>) -> String {
     target
         .map(WindowTarget::label)
-        .unwrap_or_else(|| "all windows".into())
+        .unwrap_or_else(|| "all sessions".into())
 }
 
 fn target_switched_notice(label: &str) -> SystemNotice {

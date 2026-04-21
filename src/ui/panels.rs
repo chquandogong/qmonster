@@ -93,7 +93,7 @@ pub fn render_pane_list(
     let items: Vec<ListItem<'static>> = reports
         .iter()
         .enumerate()
-        .map(|(idx, report)| pane_list_item(report, idx == selected))
+        .map(|(idx, report)| pane_list_item(report, idx == selected, idx + 1 < reports.len()))
         .collect();
 
     StatefulWidget::render(
@@ -118,9 +118,14 @@ fn highlight_style(focused: bool) -> Style {
     }
 }
 
-fn pane_list_item(report: &PaneReport, expanded: bool) -> ListItem<'static> {
+fn pane_list_item(report: &PaneReport, expanded: bool, with_separator: bool) -> ListItem<'static> {
     let mut lines = vec![
-        Line::from(pane_panel_title(report)),
+        Line::styled(
+            pane_panel_title(report),
+            Style::default()
+                .fg(pane_header_color(report))
+                .add_modifier(Modifier::BOLD),
+        ),
         Line::from(format!("path: {}", display_path(&report.current_path))),
         Line::from(state_summary_line(report)),
     ];
@@ -149,7 +154,34 @@ fn pane_list_item(report: &PaneReport, expanded: bool) -> ListItem<'static> {
         }
     }
 
+    if with_separator {
+        lines.push(Line::styled(
+            "────────────────────────────────────────",
+            Style::default().fg(theme::TEXT_DIM),
+        ));
+    }
+
     ListItem::new(lines)
+}
+
+fn pane_header_color(report: &PaneReport) -> Color {
+    report
+        .recommendations
+        .iter()
+        .map(|rec| rec.severity)
+        .max()
+        .map(theme::severity_color)
+        .unwrap_or_else(|| provider_color(report.identity.identity.provider))
+}
+
+fn provider_color(provider: Provider) -> Color {
+    match provider {
+        Provider::Claude => Color::Rgb(200, 175, 120),
+        Provider::Codex => Color::Rgb(120, 175, 205),
+        Provider::Gemini => Color::Rgb(140, 185, 145),
+        Provider::Qmonster => Color::Rgb(175, 160, 210),
+        Provider::Unknown => theme::TEXT_PRIMARY,
+    }
 }
 
 /// Per-pane panel: header line shows identity + confidence, then a
