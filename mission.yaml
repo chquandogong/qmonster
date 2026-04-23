@@ -1,6 +1,6 @@
 mission:
-  version: "1.10.2"
-  title: "Qmonster v0.4.0 — Phase 5 P5-4 polish v1.10.2 (surface `p` accept / `d` dismiss in global footer + `?` help overlay, with audit-kind names pinned by test; closes Codex v1.9.2 UX follow-up)"
+  version: "1.10.3"
+  title: "Qmonster v0.4.0 — Phase 5 P5-4 polish remediation + confirm-archive v1.10.3 (closes Codex v1.10.2 help-copy finding: p entry now enumerates Execute / AutoSendOff / observe_only audit chains distinctly; footer ordering pinned by test; Gemini v1.10.2 approve preserved)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -807,6 +807,46 @@ mission:
     everything below untouched. All three Phase-5 VALIDATION.md
     checkboxes remain ticked.
 
+    Phase 5 P5-4 polish remediation + confirm-archive (v1.10.3,
+    this revision) closes the single Codex v1.10.2 warning while
+    preserving Gemini's v1.10.2 approve (the fix tightens rather
+    than broadens the help surface Gemini reviewed). Combined
+    round — mirrors the v1.10.1 pattern. Fix: the `p` help row in
+    `src/ui/dashboard.rs::help_lines` now enumerates three distinct
+    audit outcomes instead of collapsing them: (a) Execute path
+    (`allow_auto_prompt_send=true`, non-observe_only) fires
+    `PromptSendAccepted → PromptSendCompleted or PromptSendFailed`;
+    (b) AutoSendOff path (`allow_auto_prompt_send=false`, non-
+    observe_only) fires `PromptSendAccepted + PromptSendBlocked`
+    (two events per keystroke — the v1.10.1 remediation closing
+    Gemini v1.10.0 #3); (c) observe_only path fires
+    `PromptSendBlocked` alone with no `PromptSendAccepted`. The
+    previous v1.10.2 copy collapsed (b) and (c) into a single
+    "or PromptSendBlocked" clause, which understated the audit
+    chain operators would see in their SQLite log. Tightened two
+    existing tests: (1) `footer_text_advertises_prompt_send_keys`
+    now pins the ordering contract `t target → p accept →
+    d dismiss → ? help` via explicit position assertions (Codex
+    v1.10.2 §8 — presence-only → position-locked); (2)
+    `help_overlay_documents_p_and_d_prompt_send_actions` gains
+    four additional assertions naming `AutoSendOff`,
+    `observe_only`, `PromptSendCompleted`, and `PromptSendFailed`
+    by token so a regression to the old collapsed copy fails
+    here first (Codex v1.10.2 #1). No new tests added — the
+    slice stays tight (272 tests unchanged; +4 assertions
+    across the two existing tests). clippy --all-targets -D
+    warnings clean; cargo fmt clean. This revision also archives
+    both v1.10.2 confirm verdicts: Codex `approve-with-fixes`
+    (#1 closed here; two non-blocking TODOs carried — test
+    tightening partially addressed; audit-vocabulary contract
+    location deferred as a future `store/audit` test) and
+    Gemini `approve` with one compatible non-blocking forward-
+    watch TODO (link audit-kind names to the
+    `AuditEventKind` enum via `Display`/`AsRef<str>` for
+    compile-time safety). Layered on v1.10.2 polish; v1.10.1
+    remediation-and-archive, v1.10.0 P5-3, and everything
+    below untouched.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -978,5 +1018,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 37
+    total_revisions: 38
     history: "mission-history.yaml"

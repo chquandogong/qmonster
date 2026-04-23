@@ -440,7 +440,7 @@ fn help_lines() -> Vec<Line<'static>> {
             ("c", "clear system notices"),
             (
                 "p",
-                "accept the pending prompt-send proposal on the selected pane (P5-3 safer-actuation; audit: PromptSendAccepted → Completed/Failed, or PromptSendBlocked when observe_only or allow_auto_prompt_send=false)",
+                "accept the pending prompt-send proposal on the selected pane (P5-3 safer-actuation). Audit chain depends on the actuation mode: Execute (allow_auto_prompt_send=true, non-observe_only) fires PromptSendAccepted → PromptSendCompleted or PromptSendFailed; AutoSendOff (allow_auto_prompt_send=false, non-observe_only) fires PromptSendAccepted + PromptSendBlocked; observe_only fires PromptSendBlocked alone (no PromptSendAccepted)",
             ),
             (
                 "d",
@@ -542,7 +542,10 @@ mod tests {
         // global footer must advertise `p` (accept) and `d` (dismiss)
         // alongside the other single-letter keys so operators notice
         // the P5-3 actuation surface without having to open the help
-        // overlay. Lock the key tokens against future typos.
+        // overlay. v1.10.3 tightening (Codex v1.10.2 §8): also pin the
+        // ordering — the two actuation keys should sit between
+        // `t target` and `? help` so they stay adjacent to target
+        // selection and immediately before the generic help/quit tail.
         let text = footer_text("focus: alerts");
         assert!(
             text.contains("p accept"),
@@ -556,6 +559,29 @@ mod tests {
         assert!(text.starts_with("focus: alerts"));
         assert!(text.contains("? help"));
         assert!(text.contains("q quit"));
+        // Placement contract: t target → p accept → d dismiss → ? help.
+        let target_pos = text
+            .find("t target")
+            .expect("footer must keep the `t target` anchor");
+        let p_pos = text.find("p accept").expect("footer must carry `p accept`");
+        let d_pos = text
+            .find("d dismiss")
+            .expect("footer must carry `d dismiss`");
+        let help_pos = text
+            .find("? help")
+            .expect("footer must keep the `? help` anchor");
+        assert!(
+            target_pos < p_pos,
+            "`p accept` must come after `t target` (actuation keys adjacent to target selection)"
+        );
+        assert!(
+            p_pos < d_pos,
+            "`p accept` must precede `d dismiss` (alphabetical / accept-before-dismiss)"
+        );
+        assert!(
+            d_pos < help_pos,
+            "actuation keys must precede `? help` (generic tail)"
+        );
     }
 
     #[test]
@@ -594,6 +620,31 @@ mod tests {
         assert!(
             d_entry.contains("PromptSendRejected"),
             "the `d` entry must name the PromptSendRejected audit kind. got: {d_entry}"
+        );
+        // v1.10.3 tightening (Codex v1.10.2 finding #1): the `p` help
+        // row MUST describe all three audit outcomes distinctly so
+        // the AutoSendOff branch is not confused with the observe_only
+        // branch. AutoSendOff is a two-event chain
+        // (PromptSendAccepted + PromptSendBlocked); observe_only fires
+        // PromptSendBlocked alone. The old copy collapsed them.
+        assert!(
+            p_entry.contains("AutoSendOff"),
+            "the `p` entry must name the AutoSendOff path explicitly so operators see that it fires TWO audit events (Accepted + Blocked). got: {p_entry}"
+        );
+        assert!(
+            p_entry.contains("observe_only"),
+            "the `p` entry must name the observe_only path explicitly so operators see it fires PromptSendBlocked ALONE (no Accepted). got: {p_entry}"
+        );
+        // Both terminal outcomes on the Execute path must be
+        // enumerated so operators know the audit log will carry one
+        // of them per successful confirmation.
+        assert!(
+            p_entry.contains("PromptSendCompleted"),
+            "the `p` entry must name PromptSendCompleted as the success terminal outcome on Execute. got: {p_entry}"
+        );
+        assert!(
+            p_entry.contains("PromptSendFailed"),
+            "the `p` entry must name PromptSendFailed as the failure terminal outcome on Execute. got: {p_entry}"
         );
     }
 }

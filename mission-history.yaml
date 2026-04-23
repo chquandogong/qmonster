@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — Phase 5 P5-4 polish v1.10.2 (surface `p`/`d` in footer + `?` help overlay with audit-kind names pinned by test)"
+  mission_title: "Qmonster v0.4.0 — Phase 5 P5-4 polish remediation + confirm-archive v1.10.3 (Codex v1.10.2 help-copy warning closed; Gemini v1.10.2 approve preserved; footer ordering pinned; 3-path audit chain enumerated)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 37
-  latest_version: "1.10.2"
+  total_revisions: 38
+  latest_version: "1.10.3"
 
 timeline:
   - change_id: "initial"
@@ -4475,9 +4475,143 @@ timeline:
       - "Optional confirm-review on v1.10.2: this slice is a pure UX polish against a single ui/ file, so a full Codex + Gemini confirm round is not strictly required. Operator may choose to skip or run a lightweight confirm, then archive the verdicts if both `approve`."
       - "Open Phase 6 per operator's next slice preference — Phase 5 has no outstanding debt."
 
+  - change_id: "phase-5-p5-4-polish-remediation-and-confirm-archive"
+    semantic_version: "1.10.3"
+    change_sequence: 38
+    date: "2026-04-23"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.10.2 confirm re-review of eec8295 — verdict `approve-with-fixes`, 1 warning-severity finding on the p help copy; finding closed in this commit)"
+      - "Gemini (gemini:1:research, v1.10.2 confirm re-review of eec8295 — verdict `approve`, 0 must-fix findings; 1 non-blocking TODO: link audit-kind names to the AuditEventKind enum via Display/AsRef<str> for compile-time safety)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — requested confirm-review on v1.10.2 despite the pure-polish nature of the slice, following the pattern of v1.9.1 / v1.9.3 / v1.8.14)"
+    change_type: "remediation-and-archive"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close the single Codex v1.10.2 warning (p help row
+      understates the AutoSendOff audit chain) and archive both
+      v1.10.2 confirm verdicts in a single combined round. The
+      fix tightens the help copy rather than changing any runtime
+      behavior, so Gemini's v1.10.2 approve verdict transports
+      cleanly without re-execution.
+    intent_ko: >
+      Codex v1.10.2의 warning 1개(p 도움말이 AutoSendOff 감사 체인을
+      축소 표현)를 닫고, 두 리뷰어의 v1.10.2 판정을 한 라운드로
+      아카이브. 수정 사항은 런타임 동작 변경 없이 도움말 문구만
+      조이는 방향이므로 Gemini의 v1.10.2 approve 판정은 재실행
+      없이 그대로 유지된다.
+    decision: >
+      Single-file patch in `src/ui/dashboard.rs`:
+      (1) Help-copy fix — the `p` help_lines entry now
+      enumerates three distinct audit outcomes:
+        - Execute path (allow_auto_prompt_send=true, non-
+          observe_only): `PromptSendAccepted → PromptSendCompleted
+          or PromptSendFailed`
+        - AutoSendOff path (allow_auto_prompt_send=false, non-
+          observe_only): `PromptSendAccepted + PromptSendBlocked`
+          (two events per keystroke — the v1.10.1 remediation's
+          audit-chain completion)
+        - observe_only path: `PromptSendBlocked` alone (no
+          PromptSendAccepted)
+      This replaces the v1.10.2 copy that read "... or
+      PromptSendBlocked when observe_only or
+      allow_auto_prompt_send=false" — which collapsed
+      AutoSendOff and observe_only into one outcome and
+      understated the audit chain.
+      (2) `footer_text_advertises_prompt_send_keys` test
+      tightening (Codex v1.10.2 §8): added position assertions
+      pinning the ordering `t target → p accept → d dismiss →
+      ? help`. Previously the test only proved presence.
+      (3) `help_overlay_documents_p_and_d_prompt_send_actions`
+      test tightening: four new assertions locking the `p`
+      entry's mention of `AutoSendOff`, `observe_only`,
+      `PromptSendCompleted`, and `PromptSendFailed` so any
+      regression to the old collapsed wording fails here first.
+      No new tests added (272 tests unchanged — +4 assertions
+      only across existing tests); the slice stays tight.
+      The Codex v1.10.2 TODO on moving the audit-vocabulary
+      contract to `store/audit::kind_to_str` and the Gemini
+      v1.10.2 TODO on `Display`/`AsRef<str>` for AuditEventKind
+      are compatible future-watch items; both are deferred to a
+      non-blocking cleanup round.
+    decision_ko: >
+      `src/ui/dashboard.rs` 단일 파일 패치:
+      (1) 도움말 문구 수정 — `p` help_lines 항목이 세 가지 감사
+      경로를 구분해 열거:
+        - Execute (allow_auto_prompt_send=true, 비 observe_only):
+          `PromptSendAccepted → PromptSendCompleted or PromptSendFailed`
+        - AutoSendOff (allow_auto_prompt_send=false, 비 observe_only):
+          `PromptSendAccepted + PromptSendBlocked` (키 입력당 이벤트
+          2건 — v1.10.1 remediation이 완성한 감사 체인)
+        - observe_only: `PromptSendBlocked` 단독 (PromptSendAccepted
+          없음)
+      v1.10.2의 "... or PromptSendBlocked when observe_only or
+      allow_auto_prompt_send=false" 문구를 대체 — 그 문구는
+      AutoSendOff와 observe_only를 하나로 축소해 감사 체인을
+      과소 표현했음.
+      (2) `footer_text_advertises_prompt_send_keys` 테스트 강화
+      (Codex v1.10.2 §8): `t target → p accept → d dismiss →
+      ? help` 순서 assertion 추가. 기존엔 presence만 검증.
+      (3) `help_overlay_documents_p_and_d_prompt_send_actions`
+      테스트 강화: `p` 항목이 `AutoSendOff`, `observe_only`,
+      `PromptSendCompleted`, `PromptSendFailed`를 모두 포함하는지
+      4개 추가 assertion — 축소된 옛 문구로 회귀 시 여기서 먼저
+      실패. 새 테스트 없이(272 tests 유지) 기존 2개 테스트에
+      총 +4 assertion만 추가. Codex의 `store/audit::kind_to_str`
+      vocab-contract 이전 TODO와 Gemini의 `Display`/`AsRef<str>`
+      TODO는 호환되는 future-watch 항목 — non-blocking cleanup
+      라운드로 유보.
+    triggered_by: "v1.10.2 follow-up list (change_sequence 37): 'Optional confirm-review on v1.10.2' + Codex v1.10.2 approve-with-fixes warning"
+    issue_or_context: >
+      v1.10.2 surfaced the `p`/`d` keys in the TUI footer + `?`
+      overlay. Both reviewers ran confirm rounds: Gemini returned
+      `approve` (0 must-fix + 1 compatible non-blocking TODO on
+      Display/AsRef compile-time safety); Codex returned
+      `approve-with-fixes` with one warning on the `p` help copy
+      understating the AutoSendOff audit chain (accepted + blocked
+      is two events per keystroke, not one). Operator chose the
+      v1.10.1 pattern — combined remediation + archive round —
+      because the fix is a single file, the Codex warning is a
+      correctness issue on operator-facing text, and doing a
+      two-commit split would add ledger noise for a tiny patch.
+    changes:
+      added:
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-23-phase5-p5-4-confirm-review.result.yaml"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-23-phase5-p5-4-confirm-gemini-review.result.yaml"
+      modified:
+        - "src/ui/dashboard.rs"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - ".mission/CURRENT_STATE.md"
+      removed: []
+    changed_sections:
+      - "ui::dashboard::help_lines — p help entry rewritten to enumerate Execute / AutoSendOff / observe_only audit outcomes distinctly"
+      - "ui::dashboard tests — footer_text test gains positional ordering assertions; help_overlay test gains 4 assertions locking the 3-path enumeration"
+      - "mission.yaml / mission-history.yaml — v1.10.3 narrative + change_sequence 38 + meta bump"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "none — only help-overlay string and test assertions changed; no runtime, audit schema, actuation, permit, or gate path touched"
+      verification: "cargo build + cargo test --all-targets (244 lib + 6 drift + 22 integration = 272 tests; test count unchanged vs v1.10.2) + cargo clippy --all-targets -D warnings + cargo fmt --check all clean"
+      docs: "mission.yaml + mission-history.yaml updated; VALIDATION.md unchanged (Phase-5 checkboxes still ticked — help-copy tightening only)"
+      ledger: "v1.10.3 layered on v1.10.2; v1.10.1 remediation-and-archive, v1.10.0 P5-3, and everything below untouched"
+    breaking: false
+    risk: "negligible — single-file help-copy correction + test tightening. No config, runtime, audit, gate, or actuation surface altered. The only user-visible effect is the `?` help overlay's `p` row getting longer and more precise."
+    related_commits:
+      - "eec8295"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Phase 5 is now structurally complete, fully gate-approved (Codex + Gemini both approve on v1.10.2 via v1.10.3 archive — Gemini on v1.10.2 directly, Codex on v1.10.3 after the help-copy fix closed the one warning), and operator-discoverable."
+      - "Future-watch TODO (Codex v1.10.2 §9 + Gemini v1.10.2 #10 — compatible pair): promote audit-kind vocabulary to a compile-time-safe source of truth. Two options on the table: (a) add a `store/audit` string-contract test for kind_to_str → 'PromptSendAccepted' | 'PromptSendRejected' | 'PromptSendBlocked' | 'PromptSendCompleted' | 'PromptSendFailed'; (b) derive AsRef<str> or Display on AuditEventKind and import into help_lines via the trait rather than hand-typed literals. Operator to pick when a broader audit-vocab pass is worth doing."
+      - "Remaining carry-forward items are all future-watch / deferred: proposal_id producer-identity extension, structured slash_command AuditEvent field, is_strong producer flag, send_keys live-tmux-session whitebox test."
+      - "Open Phase 6 per operator's next slice preference — Phase 5 has no outstanding debt."
+
 evolution_summary:
-  current_phase: "Phase 5 P5-4 POLISH SHIPPED (v1.10.2) — `p` / `d` keybindings now advertised in both TUI help surfaces (footer + `?` overlay) with the P5-3 audit-kind names (PromptSendAccepted / PromptSendRejected / PromptSendBlocked) pinned by unit test so future kind renames surface here first. Pure UX polish on `src/ui/dashboard.rs` — no runtime, audit, actuation, or gate surface touched. 244 lib + 6 drift + 22 integration = 272 tests green (+2 net vs v1.10.1); clippy + fmt clean. Phase 5 is structurally complete, fully gate-approved (Codex + Gemini both approve on v1.10.0; Gemini's 3 warnings closed in v1.10.1), and now operator-discoverable (UX polish in v1.10.2). No outstanding Phase-5 VALIDATION debt. Layered on v1.10.1 remediation-and-archive; v1.10.0 P5-3, v1.9.3 confirm-archive, and everything below untouched."
-  next_phase: "Phase 5 closed (P5-3 fully gate-approved + remediated at v1.10.1); operator to choose P5-4 scope or open Phase 6"
+  current_phase: "Phase 5 P5-4 POLISH FULLY GATE-APPROVED + REMEDIATED (v1.10.3) — v1.10.2 shipped the `p`/`d` footer/help UX; Codex v1.10.2 found the `p` help row understated the AutoSendOff audit chain; v1.10.3 closes that warning by enumerating Execute (Accepted → Completed/Failed) / AutoSendOff (Accepted + Blocked) / observe_only (Blocked alone) distinctly. Two existing tests tightened: footer ordering pinned, help overlay asserts all three paths named. 244 lib + 6 drift + 22 integration = 272 tests (unchanged vs v1.10.2 — +4 assertions only); clippy + fmt clean. Phase 5 is now structurally complete, fully gate-approved by both reviewers across the P5-1 → P5-2 → P5-3 → P5-4 arc, and operator-discoverable. No outstanding Phase-5 VALIDATION debt. Layered on v1.10.2; v1.10.1, v1.10.0, and everything below untouched."
+  next_phase: "Phase 5 closed; operator to choose Phase 6 scope, a non-blocking audit-vocab compile-time-safety cleanup, or a pause"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
