@@ -4,7 +4,7 @@ Observe-first TUI for multi-CLI tmux development — watches Claude Code /
 Codex / Gemini panes (plus itself), surfaces alerts, token-pressure
 metrics, and recommendations **without** touching the panes it observes.
 
-- Version: v0.4.0 project phase; crate package version = 0.1.0; Phase 5 manual prompt-send helper shipped + fully gate-approved (v1.10.5)
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag: `v1.10.8`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -29,14 +29,14 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-| Phase | Scope                                                                                                                                                                                                         | Status                                                                      |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| 0     | Planning — canonical docs, mission ledger, thin routers, r1 plan + r2 final synthesis                                                                                                                         | **Shipped**                                                                 |
-| 1     | Observe-first MVP — tmux polling, identity resolver, adapters, alert rules, ratatui UI, desktop/bell notifications, safety precedence, version-drift detector                                                 | **Shipped**                                                                 |
-| 2     | Archive + checkpoint + SQLite — `SqliteAuditSink` with type-level raw exclusion, `ArchiveWriter` preview/full split, `SnapshotWriter`, retention, persistent version drift                                    | **Shipped**                                                                 |
-| 3     | Policy engine A–G + concurrent-work warning + `suggested_command` + strong-rec `next_step` + shared render helper                                                                                             | **Shipped** (gate-approved v1.7.6)                                          |
-| 4     | Provider profile recommender — 3×2 provider/profile grid, structured payload render, side-effects surfacing, and auto-memory routing guidance                                                                 | **Shipped** — Phase 4 complete; P4-8 wrap-up v1.8.12                        |
-| 5     | Manual prompt-send helper (safer actuation) — `PromptSendGate` two-stage (display + execution), `tmux send-keys` with `-l` literal split, 6 `PromptSend*` audit kinds, `p`/`d` TUI keys, stable `proposal_id` | **Shipped** — P5-1 → P5-4 fully gate-approved; v1.10.5 audit-vocab followup |
+| Phase | Scope                                                                                                                                                                                                         | Status                                                                                      |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 0     | Planning — canonical docs, mission ledger, thin routers, r1 plan + r2 final synthesis                                                                                                                         | **Shipped**                                                                                 |
+| 1     | Observe-first MVP — tmux polling, identity resolver, adapters, alert rules, ratatui UI, desktop/bell notifications, safety precedence, version-drift detector                                                 | **Shipped**                                                                                 |
+| 2     | Archive + checkpoint + SQLite — `SqliteAuditSink` with type-level raw exclusion, `ArchiveWriter` preview/full split, `SnapshotWriter`, retention, persistent version drift                                    | **Shipped**                                                                                 |
+| 3     | Policy engine A–G + concurrent-work warning + `suggested_command` + strong-rec `next_step` + shared render helper                                                                                             | **Shipped** (gate-approved v1.7.6)                                                          |
+| 4     | Provider profile recommender — 3×2 provider/profile grid, structured payload render, side-effects surfacing, and auto-memory routing guidance                                                                 | **Shipped** — Phase 4 complete; P4-8 wrap-up v1.8.12                                        |
+| 5     | Manual prompt-send helper (safer actuation) — `PromptSendGate` two-stage (display + execution), `tmux send-keys` with `-l` literal split, 6 `PromptSend*` audit kinds, `p`/`d` TUI keys, stable `proposal_id` | **Shipped** — P5-1 → P5-4 fully gate-approved; audit-vocab arc closed; latest tag `v1.10.8` |
 
 Recent post-Phase-4 TUI follow-ups are already shipped in-tree:
 scrollable alerts/panes/help/target picker, mouse interaction, severity
@@ -67,6 +67,10 @@ cargo run --release
 #   r        — re-capture CLI versions; drift appears as a warning alert
 #   s        — write a runtime snapshot to ~/.qmonster/snapshots/
 #   c        — clear system notices
+#   p        — accept pending prompt-send proposal on the selected pane (P5-3
+#               safer-actuation; audit: PromptSendAccepted → Completed/Failed,
+#               or PromptSendBlocked on observe_only / auto-send-off)
+#   d        — dismiss pending prompt-send proposal (audit: PromptSendRejected)
 #   Mouse    — wheel scroll, click select, double-click alert hide
 #   Footer version badge — click bottom-right to open Git status
 
