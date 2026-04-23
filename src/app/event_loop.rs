@@ -91,7 +91,7 @@ where
             continue;
         }
 
-        let signals = crate::adapters::parse_for(&resolved, &pane.tail);
+        let signals = crate::adapters::parse_for(&resolved, &pane.tail, &ctx.pricing);
         let gates = crate::policy::gates::PolicyGates::from_config_and_identity(
             &ctx.config.token,
             resolved.confidence,

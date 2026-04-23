@@ -35,6 +35,7 @@ use qmonster::domain::origin::SourceKind;
 use qmonster::domain::recommendation::Severity;
 use qmonster::notify::desktop::DesktopNotifier;
 use qmonster::policy::gates::{PromptSendGate, check_send_gate};
+use qmonster::policy::pricing::PricingTable;
 use qmonster::store::{
     ArchiveWriter, EventSink, InMemorySink, PaneSnapshot, SnapshotInput, SnapshotWriter,
     SqliteAuditSink, sweep,
@@ -103,7 +104,11 @@ fn main() -> anyhow::Result<()> {
     let source = PollingSource::new(config.tmux.capture_lines);
     let notifier = DesktopNotifier;
     let archive = ArchiveWriter::new(paths.clone(), config.logging.big_output_chars);
-    let mut ctx = Context::new(config, source, notifier, sink).with_archive(archive);
+    let mut ctx = Context::new(config, source, notifier, sink)
+        .with_archive(archive)
+        .with_pricing(PricingTable::load_from_toml_or_empty(std::path::Path::new(
+            "config/pricing.toml",
+        )));
 
     if !pairs.is_empty() {
         let refs: Vec<(&str, &str)> = pairs

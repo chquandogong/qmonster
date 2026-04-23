@@ -3,11 +3,17 @@ use crate::adapters::common::parse_common_signals;
 use crate::domain::identity::ResolvedIdentity;
 use crate::domain::origin::SourceKind;
 use crate::domain::signal::{MetricValue, SignalSet};
+use crate::policy::pricing::PricingTable;
 
 pub struct ClaudeAdapter;
 
 impl ProviderParser for ClaudeAdapter {
-    fn parse(&self, _identity: &ResolvedIdentity, tail: &str) -> SignalSet {
+    fn parse(
+        &self,
+        _identity: &ResolvedIdentity,
+        tail: &str,
+        _pricing: &PricingTable,
+    ) -> SignalSet {
         let mut set = parse_common_signals(tail);
         let lower = tail.to_lowercase();
 
@@ -54,6 +60,7 @@ fn parse_context_percent_claude(lower: &str) -> Option<f32> {
 mod tests {
     use super::*;
     use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, Role};
+    use crate::policy::pricing::PricingTable;
 
     fn id() -> ResolvedIdentity {
         ResolvedIdentity {
@@ -70,14 +77,14 @@ mod tests {
     #[test]
     fn claude_adapter_inherits_common_signals() {
         let tail = "Press ENTER to continue";
-        let set = ClaudeAdapter.parse(&id(), tail);
+        let set = ClaudeAdapter.parse(&id(), tail, &PricingTable::empty());
         assert!(set.waiting_for_input);
     }
 
     #[test]
     fn claude_adapter_parses_claude_specific_percent() {
         let tail = "claude context 88%";
-        let set = ClaudeAdapter.parse(&id(), tail);
+        let set = ClaudeAdapter.parse(&id(), tail, &PricingTable::empty());
         let m = set.context_pressure.expect("parsed");
         assert!((m.value - 0.88).abs() < 0.01);
     }

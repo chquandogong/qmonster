@@ -2,11 +2,17 @@ use crate::adapters::ProviderParser;
 use crate::adapters::common::parse_common_signals;
 use crate::domain::identity::ResolvedIdentity;
 use crate::domain::signal::SignalSet;
+use crate::policy::pricing::PricingTable;
 
 pub struct GeminiAdapter;
 
 impl ProviderParser for GeminiAdapter {
-    fn parse(&self, _identity: &ResolvedIdentity, tail: &str) -> SignalSet {
+    fn parse(
+        &self,
+        _identity: &ResolvedIdentity,
+        tail: &str,
+        _pricing: &PricingTable,
+    ) -> SignalSet {
         parse_common_signals(tail)
     }
 }
@@ -15,6 +21,7 @@ impl ProviderParser for GeminiAdapter {
 mod tests {
     use super::*;
     use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, Role};
+    use crate::policy::pricing::PricingTable;
 
     fn id() -> ResolvedIdentity {
         ResolvedIdentity {
@@ -30,7 +37,11 @@ mod tests {
 
     #[test]
     fn gemini_adapter_inherits_subagent_hint() {
-        let set = GeminiAdapter.parse(&id(), "Starting subagent: web-explorer");
+        let set = GeminiAdapter.parse(
+            &id(),
+            "Starting subagent: web-explorer",
+            &PricingTable::empty(),
+        );
         assert!(set.subagent_hint);
     }
 }
