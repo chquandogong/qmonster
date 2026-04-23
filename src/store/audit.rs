@@ -114,29 +114,16 @@ impl EventSink for SqliteAuditSink {
     }
 }
 
+/// v1.10.4 audit-vocab cleanup (Codex v1.10.2 §9 + Gemini v1.10.2 #10):
+/// the SQL-row string form of each `AuditEventKind` now lives on the
+/// domain type as `AuditEventKind::as_str`. This free function is kept
+/// as a thin delegate so the local call sites in `SqliteAuditSink`
+/// stay readable; adding a variant is now a single-location change
+/// in `src/domain/audit.rs`. `parse_kind` (below) stays here because
+/// it is the fallible inverse and must return `Option` for unknown
+/// strings read from potentially-older DB rows.
 fn kind_to_str(k: AuditEventKind) -> &'static str {
-    match k {
-        AuditEventKind::PaneIdentityResolved => "PaneIdentityResolved",
-        AuditEventKind::PaneIdentityChanged => "PaneIdentityChanged",
-        AuditEventKind::PaneBecameDead => "PaneBecameDead",
-        AuditEventKind::PaneReappeared => "PaneReappeared",
-        AuditEventKind::AlertFired => "AlertFired",
-        AuditEventKind::RecommendationEmitted => "RecommendationEmitted",
-        AuditEventKind::StartupVersionSnapshot => "StartupVersionSnapshot",
-        AuditEventKind::VersionDriftDetected => "VersionDriftDetected",
-        AuditEventKind::SafetyOverrideRejected => "SafetyOverrideRejected",
-        AuditEventKind::ArchiveWritten => "ArchiveWritten",
-        AuditEventKind::SnapshotWritten => "SnapshotWritten",
-        AuditEventKind::RetentionSwept => "RetentionSwept",
-        AuditEventKind::VersionSnapshotError => "VersionSnapshotError",
-        AuditEventKind::AuditWriteFailed => "AuditWriteFailed",
-        AuditEventKind::PromptSendProposed => "PromptSendProposed",
-        AuditEventKind::PromptSendAccepted => "PromptSendAccepted",
-        AuditEventKind::PromptSendRejected => "PromptSendRejected",
-        AuditEventKind::PromptSendCompleted => "PromptSendCompleted",
-        AuditEventKind::PromptSendFailed => "PromptSendFailed",
-        AuditEventKind::PromptSendBlocked => "PromptSendBlocked",
-    }
+    k.as_str()
 }
 
 fn parse_kind(s: &str) -> Option<AuditEventKind> {

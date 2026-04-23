@@ -1,8 +1,21 @@
+use std::fmt;
+
 use crate::domain::identity::{Provider, Role};
 use crate::domain::recommendation::Severity;
 
 /// Audit event kinds recorded by the observe-first MVP. This list stays
 /// stable for the v0.4.0 line; additions require an MDR entry.
+///
+/// v1.10.4 audit-vocab compile-time safety (closes Codex v1.10.2 §9 +
+/// Gemini v1.10.2 #10 — compatible pair): the canonical string form of
+/// each variant is exposed via `AuditEventKind::as_str`, with
+/// `std::fmt::Display` and `AsRef<str>` both delegating. SQLite
+/// serialization (`store::audit::kind_to_str`) now routes through this
+/// method so there is a single source of truth for the audit-kind
+/// vocabulary. Unit tests in this module lock the exact string value
+/// of every variant so renaming a variant requires a deliberate test
+/// update (catches accidental schema drift at compile time and at test
+/// time).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AuditEventKind {
     PaneIdentityResolved,
@@ -63,6 +76,50 @@ pub enum AuditEventKind {
     /// blocked" from "no action was taken at all"; the summary string
     /// names which of the two gate reasons fired.
     PromptSendBlocked,
+}
+
+impl AuditEventKind {
+    /// Canonical string form used for audit-log serialization (SQLite
+    /// row value) and for operator-facing documentation (UI help
+    /// overlay, Phase-5 mission narrative). Single source of truth —
+    /// `store::audit::kind_to_str` delegates here, and adding a new
+    /// variant without extending this match is a compile-time error.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            AuditEventKind::PaneIdentityResolved => "PaneIdentityResolved",
+            AuditEventKind::PaneIdentityChanged => "PaneIdentityChanged",
+            AuditEventKind::PaneBecameDead => "PaneBecameDead",
+            AuditEventKind::PaneReappeared => "PaneReappeared",
+            AuditEventKind::AlertFired => "AlertFired",
+            AuditEventKind::RecommendationEmitted => "RecommendationEmitted",
+            AuditEventKind::StartupVersionSnapshot => "StartupVersionSnapshot",
+            AuditEventKind::VersionDriftDetected => "VersionDriftDetected",
+            AuditEventKind::SafetyOverrideRejected => "SafetyOverrideRejected",
+            AuditEventKind::ArchiveWritten => "ArchiveWritten",
+            AuditEventKind::SnapshotWritten => "SnapshotWritten",
+            AuditEventKind::RetentionSwept => "RetentionSwept",
+            AuditEventKind::VersionSnapshotError => "VersionSnapshotError",
+            AuditEventKind::AuditWriteFailed => "AuditWriteFailed",
+            AuditEventKind::PromptSendProposed => "PromptSendProposed",
+            AuditEventKind::PromptSendAccepted => "PromptSendAccepted",
+            AuditEventKind::PromptSendRejected => "PromptSendRejected",
+            AuditEventKind::PromptSendCompleted => "PromptSendCompleted",
+            AuditEventKind::PromptSendFailed => "PromptSendFailed",
+            AuditEventKind::PromptSendBlocked => "PromptSendBlocked",
+        }
+    }
+}
+
+impl AsRef<str> for AuditEventKind {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for AuditEventKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Structured audit record. The writer API must only accept this type —
@@ -163,6 +220,60 @@ mod tests {
         let _ = proposed.kind;
         let _ = accepted.kind;
         let _ = rejected.kind;
+    }
+
+    #[test]
+    fn audit_event_kind_as_str_contract_locks_every_variant_string() {
+        // v1.10.4 audit-vocab compile-time safety: lock the canonical
+        // string form of every AuditEventKind. This contract is what
+        // `store::audit::kind_to_str` serializes into SQLite and what
+        // the UI help overlay shows to operators. Renaming a variant
+        // without updating both this test AND the as_str match arm
+        // fails at compile time (exhaustive match) + at test time
+        // (explicit string expectation).
+        let cases: &[(AuditEventKind, &str)] = &[
+            (AuditEventKind::PaneIdentityResolved, "PaneIdentityResolved"),
+            (AuditEventKind::PaneIdentityChanged, "PaneIdentityChanged"),
+            (AuditEventKind::PaneBecameDead, "PaneBecameDead"),
+            (AuditEventKind::PaneReappeared, "PaneReappeared"),
+            (AuditEventKind::AlertFired, "AlertFired"),
+            (
+                AuditEventKind::RecommendationEmitted,
+                "RecommendationEmitted",
+            ),
+            (
+                AuditEventKind::StartupVersionSnapshot,
+                "StartupVersionSnapshot",
+            ),
+            (AuditEventKind::VersionDriftDetected, "VersionDriftDetected"),
+            (
+                AuditEventKind::SafetyOverrideRejected,
+                "SafetyOverrideRejected",
+            ),
+            (AuditEventKind::ArchiveWritten, "ArchiveWritten"),
+            (AuditEventKind::SnapshotWritten, "SnapshotWritten"),
+            (AuditEventKind::RetentionSwept, "RetentionSwept"),
+            (AuditEventKind::VersionSnapshotError, "VersionSnapshotError"),
+            (AuditEventKind::AuditWriteFailed, "AuditWriteFailed"),
+            (AuditEventKind::PromptSendProposed, "PromptSendProposed"),
+            (AuditEventKind::PromptSendAccepted, "PromptSendAccepted"),
+            (AuditEventKind::PromptSendRejected, "PromptSendRejected"),
+            (AuditEventKind::PromptSendCompleted, "PromptSendCompleted"),
+            (AuditEventKind::PromptSendFailed, "PromptSendFailed"),
+            (AuditEventKind::PromptSendBlocked, "PromptSendBlocked"),
+        ];
+        for (kind, expected) in cases {
+            assert_eq!(
+                kind.as_str(),
+                *expected,
+                "{kind:?}.as_str() must stringify as {expected:?}"
+            );
+            // Display, AsRef<str>, and as_str must all agree — one
+            // canonical representation, three ergonomic entry points.
+            assert_eq!(format!("{kind}"), *expected, "Display for {kind:?}");
+            let r: &str = kind.as_ref();
+            assert_eq!(r, *expected, "AsRef<str> for {kind:?}");
+        }
     }
 
     #[test]

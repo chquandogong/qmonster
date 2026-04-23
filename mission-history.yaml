@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — Phase 5 P5-4 polish remediation + confirm-archive v1.10.3 (Codex v1.10.2 help-copy warning closed; Gemini v1.10.2 approve preserved; footer ordering pinned; 3-path audit chain enumerated)"
+  mission_title: "Qmonster v0.4.0 — audit-vocab compile-time safety v1.10.4 (AuditEventKind::as_str + Display + AsRef<str>; store::kind_to_str delegates; 20-variant contract test)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 38
-  latest_version: "1.10.3"
+  total_revisions: 39
+  latest_version: "1.10.4"
 
 timeline:
   - change_id: "initial"
@@ -4609,9 +4609,133 @@ timeline:
       - "Remaining carry-forward items are all future-watch / deferred: proposal_id producer-identity extension, structured slash_command AuditEvent field, is_strong producer flag, send_keys live-tmux-session whitebox test."
       - "Open Phase 6 per operator's next slice preference — Phase 5 has no outstanding debt."
 
+  - change_id: "audit-vocab-compile-time-safety"
+    semantic_version: "1.10.4"
+    change_sequence: 39
+    date: "2026-04-23"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.10.2 §9 forward-watch TODO — `store/audit` string-contract test for kind_to_str vocabulary)"
+      - "Gemini (gemini:1:research, v1.10.2 #10 forward-watch TODO — Display/AsRef<str> on AuditEventKind for compile-time safety)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — chose this cleanup over Phase 6 opening or a pause)"
+    change_type: "refactor-cleanup"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close the compatible Codex v1.10.2 §9 + Gemini v1.10.2 #10
+      forward-watch TODOs in a single small domain-layer refactor.
+      Both reviewers converged on the same concern (audit-kind
+      vocabulary needs a compile-time source of truth) from
+      different angles; this slice adopts both positions at once.
+    intent_ko: >
+      Codex v1.10.2 §9와 Gemini v1.10.2 #10의 호환 TODO를 한 작은
+      domain-layer 리팩터로 닫는다. 두 리뷰어가 동일한 관심사(감사
+      kind 어휘에 compile-time source of truth 필요)를 서로 다른
+      각도에서 제기한 상태로, 이 슬라이스는 두 입장을 한 번에 수용.
+    decision: >
+      Touch only `src/domain/audit.rs` and `src/store/audit.rs`:
+      (1) `AuditEventKind` gains `pub const fn as_str(&self) ->
+      &'static str` with an exhaustive match over all 20 current
+      variants. The `const` qualifier lets the method serve as a
+      compile-time source of truth; the exhaustive match means
+      adding a new variant without extending this function is a
+      compile-time error.
+      (2) `impl AsRef<str> for AuditEventKind` + `impl
+      std::fmt::Display for AuditEventKind`, both delegating to
+      `as_str`. Callers pick the ergonomic form they prefer with
+      no drift possible.
+      (3) `src/store/audit.rs::kind_to_str` collapses from a 20-
+      arm match to `k.as_str()` — one-line delegate. `parse_kind`
+      stays in store/audit.rs because it is the fallible inverse
+      (returns `Option` for unknown strings).
+      (4) New domain-layer contract test
+      `audit_event_kind_as_str_contract_locks_every_variant_string`
+      iterates a table of all 20 (AuditEventKind, &str) pairs and
+      asserts `as_str`, `Display`, and `AsRef<str>` all agree with
+      the expected canonical form. This is the Codex-requested
+      string-contract test, co-located with the domain type
+      rather than in store/audit.
+      Scope boundary: `src/ui/dashboard.rs` is NOT touched. The
+      existing help_overlay test already catches UI token drift,
+      and rewriting the help prose to splice `as_str()` calls
+      through `format!` would widen the cleanup beyond the
+      audit-vocab concern. Left as future-watch.
+    decision_ko: >
+      `src/domain/audit.rs`와 `src/store/audit.rs` 두 파일만 건드림:
+      (1) `AuditEventKind::as_str(&self) -> &'static str` 추가 —
+      20개 variant 전수 exhaustive match. `const` 한정자로 compile-
+      time source of truth; 신규 variant 추가 시 이 함수를 확장하지
+      않으면 컴파일 실패.
+      (2) `AsRef<str>` + `Display` trait 구현, 둘 다 `as_str`에
+      위임. 호출자가 선호하는 ergonomic form 선택 가능, 드리프트
+      없음.
+      (3) `src/store/audit.rs::kind_to_str`는 20-arm match에서
+      `k.as_str()` 한 줄 delegate로 축소. `parse_kind`는 fallible
+      inverse이므로 store/audit.rs에 유지(unknown string에 대해
+      `Option` 반환).
+      (4) 새 domain-layer contract 테스트 —
+      `audit_event_kind_as_str_contract_locks_every_variant_string`
+      이 20개 (variant, &str) pair 테이블로 as_str / Display /
+      AsRef<str> 세 경로 모두 동일한 canonical form에 동의함을
+      검증. Codex가 요청한 string-contract 테스트를 store가 아닌
+      domain에 co-locate.
+      범위 경계: `src/ui/dashboard.rs` 미수정. 기존 help overlay
+      테스트가 이미 UI 토큰 드리프트를 잡으며, 도움말 프로즈에
+      `format!`로 `as_str()` 호출을 splice하는 것은 감사 어휘
+      관심사를 벗어난 확장. future-watch로 유보.
+    triggered_by: "v1.10.3 follow-up list (change_sequence 38): 'Future-watch TODO (Codex v1.10.2 §9 + Gemini v1.10.2 #10 — compatible pair): promote audit-kind vocabulary to a compile-time-safe source of truth. Operator to pick when a broader audit-vocab pass is worth doing.'"
+    issue_or_context: >
+      v1.10.3 closed P5-4 end-to-end with both reviewers gate-
+      approving. Codex v1.10.2 §9 and Gemini v1.10.2 #10 had
+      both surfaced a compatible non-blocking concern: the audit-
+      kind vocabulary was hand-typed in three places (the
+      store::audit::kind_to_str match arms, the help overlay
+      prose, and the domain tests), so renaming an enum variant
+      without updating every mirror site would silently ship a
+      schema/vocabulary drift. Codex wanted a string-contract
+      test; Gemini wanted a trait impl. This slice adopts both —
+      trait impl as the compile-time source of truth, contract
+      test as the test-level regression guard co-located with the
+      domain type.
+    changes:
+      added: []
+      modified:
+        - "src/domain/audit.rs"
+        - "src/store/audit.rs"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - ".mission/CURRENT_STATE.md"
+      removed: []
+    changed_sections:
+      - "domain::audit::AuditEventKind — new `pub const fn as_str` with exhaustive match over all 20 variants"
+      - "domain::audit — new `impl AsRef<str>` and `impl Display` for AuditEventKind, both delegating to as_str"
+      - "store::audit::kind_to_str — collapsed from 20-arm match to one-line `k.as_str()` delegate"
+      - "domain::audit tests — new `audit_event_kind_as_str_contract_locks_every_variant_string` 20-pair table-driven contract test"
+      - "mission.yaml / mission-history.yaml — v1.10.4 narrative + change_sequence 39 + meta bump"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "identical — `as_str` returns exactly the same strings `kind_to_str` did; SQLite row values unchanged; audit log continuity preserved"
+      verification: "cargo build + cargo test --all-targets (245 lib + 6 drift + 22 integration = 273 tests; +1 net vs v1.10.3) + cargo clippy --all-targets -D warnings + cargo fmt --check all clean"
+      docs: "mission.yaml + mission-history.yaml updated; VALIDATION.md unchanged (Phase-5 checkboxes still ticked — refactor-only)"
+      ledger: "v1.10.4 layered on v1.10.3; v1.10.2, v1.10.1, v1.10.0 P5-3 and everything below untouched"
+    breaking: false
+    risk: "negligible — refactor-only; no behavior change. Any existing consumer of store::audit::kind_to_str keeps working identically (same string outputs). The domain-layer trait additions are additive (new impls; no existing traits altered)."
+    related_commits:
+      - "356a98d"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Optional confirm-review on v1.10.4: refactor-only slice with a single new test; a full Codex + Gemini confirm round is not strictly required. Operator may skip or run a lightweight confirm."
+      - 'Future-watch (deferred in this slice): migrate `src/ui/dashboard.rs::help_lines` to splice the audit-kind names via `format!("{}", AuditEventKind::PromptSendAccepted)` so UI prose inherits the compile-time safety. Not done here to keep the slice tight; existing help_overlay_documents_* test still catches token drift at test time.'
+      - "Remaining carry-forward items: proposal_id producer-identity extension, structured slash_command AuditEvent field, is_strong producer flag, send_keys live-tmux-session whitebox test."
+      - "Open Phase 6 per operator's next slice preference — Phase 5 has no outstanding debt and the audit-vocab cleanup is shipped."
+
 evolution_summary:
-  current_phase: "Phase 5 P5-4 POLISH FULLY GATE-APPROVED + REMEDIATED (v1.10.3) — v1.10.2 shipped the `p`/`d` footer/help UX; Codex v1.10.2 found the `p` help row understated the AutoSendOff audit chain; v1.10.3 closes that warning by enumerating Execute (Accepted → Completed/Failed) / AutoSendOff (Accepted + Blocked) / observe_only (Blocked alone) distinctly. Two existing tests tightened: footer ordering pinned, help overlay asserts all three paths named. 244 lib + 6 drift + 22 integration = 272 tests (unchanged vs v1.10.2 — +4 assertions only); clippy + fmt clean. Phase 5 is now structurally complete, fully gate-approved by both reviewers across the P5-1 → P5-2 → P5-3 → P5-4 arc, and operator-discoverable. No outstanding Phase-5 VALIDATION debt. Layered on v1.10.2; v1.10.1, v1.10.0, and everything below untouched."
-  next_phase: "Phase 5 closed; operator to choose Phase 6 scope, a non-blocking audit-vocab compile-time-safety cleanup, or a pause"
+  current_phase: "Audit-vocab compile-time safety shipped (v1.10.4) — AuditEventKind now carries its canonical string form as a `pub const fn as_str` with exhaustive-match compile-time safety, and `impl AsRef<str>` + `impl Display` delegate to it. store::audit::kind_to_str collapses to a one-line `k.as_str()` delegate; the 20-arm match no longer duplicates the vocabulary. New domain-layer 20-pair contract test locks every variant's string across as_str / Display / AsRef<str>. Closes the compatible Codex v1.10.2 §9 + Gemini v1.10.2 #10 forward-watch TODOs in a single refactor. 245 lib + 6 drift + 22 integration = 273 tests green (+1 net vs v1.10.3); clippy + fmt clean. Refactor-only — SQLite row values identical to v1.10.3; audit log continuity preserved; no runtime / VALIDATION / actuation / gate surface touched. Phase 5 remains fully gate-approved (Codex + Gemini both `approve` across P5-1 → P5-2 → P5-3 → P5-4) and structurally complete. Layered on v1.10.3; v1.10.2 and everything below untouched."
+  next_phase: "Phase 5 closed + audit-vocab cleanup shipped; operator to choose Phase 6 scope, an optional v1.10.4 confirm review, or a pause"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

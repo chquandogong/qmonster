@@ -1,6 +1,6 @@
 mission:
-  version: "1.10.3"
-  title: "Qmonster v0.4.0 — Phase 5 P5-4 polish remediation + confirm-archive v1.10.3 (closes Codex v1.10.2 help-copy finding: p entry now enumerates Execute / AutoSendOff / observe_only audit chains distinctly; footer ordering pinned by test; Gemini v1.10.2 approve preserved)"
+  version: "1.10.4"
+  title: "Qmonster v0.4.0 — audit-vocab compile-time safety v1.10.4 (AuditEventKind gains as_str + Display + AsRef<str>; store::kind_to_str delegates; contract test locks all 20 variant strings — closes Codex v1.10.2 §9 + Gemini v1.10.2 #10 compatible pair)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -847,6 +847,50 @@ mission:
     remediation-and-archive, v1.10.0 P5-3, and everything
     below untouched.
 
+    Audit-vocab compile-time safety cleanup (v1.10.4, this
+    revision) closes the compatible Codex v1.10.2 §9 + Gemini
+    v1.10.2 #10 forward-watch TODOs in a single small domain-
+    layer refactor. Both reviewers converged on the same concern
+    from different angles — Codex wanted a `store/audit` string-
+    contract test locking the kind_to_str vocabulary; Gemini
+    wanted `Display`/`AsRef<str>` on `AuditEventKind` for
+    compile-time safety. The cleanest fix does both. Changes:
+    (1) `src/domain/audit.rs` — `AuditEventKind` gains
+    `pub const fn as_str(&self) -> &'static str` with an
+    exhaustive match over all 20 current variants (14 pre-Phase-5
+    + 3 P5-1 proposal-lifecycle + 3 P5-3 terminal-outcome). The
+    `const` qualifier lets the method serve as a compile-time
+    source of truth, and the exhaustive match means adding a new
+    variant without extending this match is a compile-time error.
+    (2) `src/domain/audit.rs` — `impl AsRef<str> for
+    AuditEventKind` and `impl std::fmt::Display for
+    AuditEventKind`, both delegating to `as_str`, so callers can
+    choose the ergonomic form they prefer without introducing
+    drift. (3) `src/store/audit.rs::kind_to_str` becomes a
+    one-line delegate (`k.as_str()`), preserving the existing
+    `SqliteAuditSink::record` call site shape while removing the
+    duplicated match arms that previously lived in this file;
+    adding a new variant is now a single-location change in the
+    domain module. (4) New domain-layer contract test
+    `audit_event_kind_as_str_contract_locks_every_variant_string`
+    iterates a table of all 20 `(AuditEventKind, &str)` pairs and
+    verifies `as_str`, `Display`, and `AsRef<str>` all agree with
+    the expected canonical form. 245 lib + 6 drift + 22
+    integration = 273 tests pass (+1 net vs. v1.10.3 baseline);
+    clippy --all-targets -D warnings clean; cargo fmt clean.
+    Scope boundary: `src/ui/dashboard.rs` is deliberately NOT
+    touched in this slice — the existing `help_overlay_documents_
+    p_and_d_prompt_send_actions` test already catches token
+    drift, and rewriting the help prose to splice `as_str()` at
+    runtime would widen the cleanup beyond the audit-vocab
+    concern. A future slice can migrate the UI text to
+    `format!("… {} …", AuditEventKind::PromptSendAccepted)` once
+    the operator decides that tighter coupling is worth the
+    readability cost. Layered on v1.10.3 P5-4 remediation-and-
+    archive; v1.10.2 polish, v1.10.1, v1.10.0 P5-3 and everything
+    below untouched. All three Phase-5 VALIDATION.md checkboxes
+    remain ticked.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1018,5 +1062,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 38
+    total_revisions: 39
     history: "mission-history.yaml"
