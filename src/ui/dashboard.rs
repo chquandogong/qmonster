@@ -338,7 +338,14 @@ pub fn git_modal_rects(viewport: Rect) -> GitModalRects {
 }
 
 pub fn version_badge_label() -> String {
-    format!("v{}", env!("CARGO_PKG_VERSION"))
+    // v1.10.6: show the git-based version (populated by `build.rs`)
+    // instead of `CARGO_PKG_VERSION`. The package version in
+    // `Cargo.toml` is rarely bumped per commit and would mislead
+    // operators about which code their binary actually carries.
+    // `build.rs` embeds `git describe --tags --always --dirty` so
+    // tagged builds show the tag, untagged builds show the short
+    // SHA, and a dirty working tree gets a `-dirty` suffix.
+    env!("QMONSTER_GIT_VERSION").to_string()
 }
 
 pub fn version_badge_rect(area: Rect) -> Rect {
@@ -499,8 +506,15 @@ fn section_line(title: &str) -> Line<'static> {
     )
 }
 
+/// 2-space indent applied to every detail row under a help section
+/// header so the rows visibly nest under "Controls" / "Source Labels"
+/// / "State Labels" instead of sitting flush against the modal's
+/// left border (v1.10.6 UX polish).
+const HELP_DETAIL_INDENT: &str = "  ";
+
 fn help_detail_line(label: &str, value: &str) -> Line<'static> {
     Line::from(vec![
+        Span::raw(HELP_DETAIL_INDENT),
         Span::styled(
             format!("{label:<HELP_LABEL_WIDTH$}"),
             Style::default()
@@ -534,8 +548,50 @@ mod tests {
     #[test]
     fn help_detail_line_aligns_label_and_description() {
         let text = line_text(help_detail_line("Tab", "switch focus"));
-        assert!(text.starts_with("Tab"));
+        // v1.10.6: detail rows carry a 2-space indent so they nest
+        // visibly under section headers in the help overlay. Label
+        // now starts at column HELP_DETAIL_INDENT.len().
+        assert!(
+            text.starts_with("  Tab"),
+            "detail row must start with the 2-space indent followed by the label. got: {text:?}"
+        );
         assert!(text.contains(": switch focus"));
+    }
+
+    #[test]
+    fn help_detail_line_indent_is_stable_across_rows() {
+        // Lock the indent so a future refactor can't silently change
+        // the column alignment. Section headers stay flush left (no
+        // indent) by construction — section_line returns Line::styled
+        // with just the title, which has no leading space.
+        for (label, value) in [
+            ("t", "open target picker"),
+            ("s", "snapshot"),
+            ("Mouse wheel", "scroll"),
+        ] {
+            let text = line_text(help_detail_line(label, value));
+            assert!(
+                text.starts_with("  "),
+                "every detail row starts with the 2-space indent. got: {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn version_badge_label_comes_from_build_embedded_git_version() {
+        // v1.10.6: the footer label is no longer the Cargo package
+        // version; `build.rs` resolves `git describe --tags --always
+        // --dirty` and embeds it via QMONSTER_GIT_VERSION. Assert
+        // that the runtime label equals that env var (set at build
+        // time) and that it is non-empty — even in a git-less build
+        // the fallback `v{pkg}-nogit` string is non-empty.
+        let label = version_badge_label();
+        assert!(!label.is_empty(), "version badge label must not be empty");
+        assert_eq!(
+            label,
+            env!("QMONSTER_GIT_VERSION"),
+            "footer version must come from QMONSTER_GIT_VERSION (set by build.rs), not CARGO_PKG_VERSION"
+        );
     }
 
     #[test]

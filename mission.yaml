@@ -1,6 +1,6 @@
 mission:
-  version: "1.10.5"
-  title: "Qmonster v0.4.0 — audit-vocab followup v1.10.5 (confirm-archive of v1.10.4 Codex + Gemini approves; UI help prose migrated to AuditEventKind::Display splicing; Codex optional TODOs #1 parse_kind round-trip + #2 Debug parity both adopted)"
+  version: "1.10.6"
+  title: "Qmonster v0.4.0 — UX polish v1.10.6 (help overlay detail rows gain 2-space indent under section headers; footer version badge now sourced from `git describe --tags --always --dirty` via new build.rs, replacing CARGO_PKG_VERSION)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -942,6 +942,38 @@ mission:
     Gemini both `approve` across the entire P5-1 → P5-2 → P5-3
     → P5-4 arc and the audit-vocab cleanup).
 
+    UX polish (v1.10.6, this revision) — two small operator-
+    requested improvements, single file + new build.rs. (1) Help
+    overlay indentation: detail rows under the section headers
+    (`Controls` / `Source Labels` / `State Labels`) now carry a
+    2-space indent via a new `HELP_DETAIL_INDENT` constant
+    prepended inside `help_detail_line`. Section headers stay
+    flush left (no indent) so the visual nesting reads naturally.
+    Two tests added/updated: `help_detail_line_aligns_label_and_
+    description` now asserts the indent is present; new
+    `help_detail_line_indent_is_stable_across_rows` locks the
+    indent across a sample of rows so a future refactor cannot
+    silently drop it. (2) Footer version badge now reflects the
+    actual git state of the binary instead of the rarely-bumped
+    Cargo package version. New `build.rs` at the crate root runs
+    `git describe --tags --always --dirty` at compile time and
+    embeds the result via `cargo:rustc-env=QMONSTER_GIT_VERSION=
+    …` with `cargo:rerun-if-changed=.git/HEAD` + the current
+    ref's file path so the label updates whenever HEAD moves.
+    `ui::dashboard::version_badge_label` reads `env!("QMONSTER_
+    GIT_VERSION")` instead of `env!("CARGO_PKG_VERSION")`.
+    Fallback for git-less builds (source tarball): `v{CARGO_PKG_
+    VERSION}-nogit`. New test `version_badge_label_comes_from_
+    build_embedded_git_version` locks the linkage. 248 lib + 6
+    drift + 22 integration = 276 tests (+2 net vs. v1.10.5);
+    clippy --all-targets -D warnings clean; cargo fmt clean. No
+    runtime behavior change beyond the two UI strings; audit
+    schema / actuation / gate all untouched. Layered on v1.10.5
+    audit-vocab followup (and the docs-hygiene commit `e869792`
+    that aligned README + PROJECT_BRIEF + UI_MANUAL with Phase 5
+    closure); v1.10.4 audit-vocab, v1.10.3 P5-4 archive, and
+    everything below untouched.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1113,5 +1145,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 40
+    total_revisions: 41
     history: "mission-history.yaml"

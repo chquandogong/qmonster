@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — audit-vocab followup v1.10.5 (confirm-archive of v1.10.4 approves + UI help migrated to AuditEventKind::Display splicing + parse_kind round-trip + Debug parity)"
+  mission_title: "Qmonster v0.4.0 — UX polish v1.10.6 (help overlay 2-space indent + footer version badge from git describe via new build.rs)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 40
-  latest_version: "1.10.5"
+  total_revisions: 41
+  latest_version: "1.10.6"
 
 timeline:
   - change_id: "initial"
@@ -4875,9 +4875,109 @@ timeline:
       - "Optional confirm-review on v1.10.5: bundled slice covers ledger-archive + UI linkage + test strengthening, none of which are safety-critical. Operator may skip a fourth Phase-5 review round or run a lightweight one; either is acceptable."
       - "Open Phase 6 per operator's next slice preference — Phase 5 has zero outstanding debt."
 
+  - change_id: "ux-polish-help-indent-and-footer-git-version"
+    semantic_version: "1.10.6"
+    change_sequence: 41
+    date: "2026-04-23"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — requested two specific polishes: help overlay indentation + footer version badge from git instead of CARGO_PKG_VERSION)"
+    change_type: "ux-polish"
+    motivation_type: "operator-driven"
+    persistence: "permanent"
+    intent: >
+      Two small operator-requested UX polishes on the TUI help
+      overlay and footer version badge. No runtime, audit, gate,
+      or actuation surface change.
+    intent_ko: >
+      운영자가 요청한 두 가지 TUI UX 개선: help overlay 들여쓰기와
+      footer 버전 배지를 git 기반으로 전환. 런타임 · audit · gate ·
+      actuation 표면 변경 없음.
+    decision: >
+      (1) Help overlay indentation: a new HELP_DETAIL_INDENT
+      constant (2 spaces) is prepended inside
+      `ui::dashboard::help_detail_line` so every detail row nests
+      visibly under its section header (`Controls` / `Source
+      Labels` / `State Labels`). Section headers stay flush left
+      by construction. Two tests updated/added:
+      `help_detail_line_aligns_label_and_description` now asserts
+      the indent is present; new
+      `help_detail_line_indent_is_stable_across_rows` locks the
+      indent across a sample of rows.
+      (2) Footer version badge from git: new `build.rs` at the
+      crate root captures `git describe --tags --always --dirty`
+      at compile time and embeds it via
+      `cargo:rustc-env=QMONSTER_GIT_VERSION=…`, with
+      `cargo:rerun-if-changed=.git/HEAD` plus the currently
+      checked-out ref's file watched so the label refreshes when
+      HEAD moves. `ui::dashboard::version_badge_label` reads
+      `env!("QMONSTER_GIT_VERSION")` instead of
+      `env!("CARGO_PKG_VERSION")`. Fallback for git-less builds
+      (tarball, offline): `v{CARGO_PKG_VERSION}-nogit`. New test
+      `version_badge_label_comes_from_build_embedded_git_version`
+      locks the linkage.
+    decision_ko: >
+      (1) Help overlay 들여쓰기: `ui::dashboard::help_detail_line`
+      내부에 2-space `HELP_DETAIL_INDENT` 상수를 prepend, 모든
+      detail 행이 섹션 헤더(`Controls` / `Source Labels` / `State
+      Labels`) 아래로 시각적으로 중첩됨. 섹션 헤더는 기본적으로
+      flush left 유지. 테스트 2건 추가/업데이트.
+      (2) Footer 버전 배지: 크레이트 루트에 새 `build.rs`를 두어
+      `git describe --tags --always --dirty` 결과를 컴파일 시점에
+      `QMONSTER_GIT_VERSION` 환경변수로 embed; `.git/HEAD` +
+      현재 ref 파일을 `rerun-if-changed`로 감시해 HEAD 이동 시
+      재빌드. `ui::dashboard::version_badge_label`이
+      `env!("QMONSTER_GIT_VERSION")`로부터 값을 읽음(기존
+      `CARGO_PKG_VERSION` 대체). git 미존재 빌드 fallback은
+      `v{CARGO_PKG_VERSION}-nogit`. 링키지 잠금 테스트 1건 추가.
+    triggered_by: "Operator polish request: '두 가지만 수정해줘, help 창에서 내용 들여쓰기, footer에서, 버전 번호를 패키지 버전으로 새로 관리하지 말고, 깃의 버전 번호로 관리/표시해줘'"
+    issue_or_context: >
+      v1.10.5 landed the audit-vocab followup and the docs-hygiene
+      commit (`e869792`) aligned README/PROJECT_BRIEF/UI_MANUAL
+      with Phase-5 closure. Two small operator-facing UX
+      friction points remained: the help overlay content had no
+      visual nesting under section headers (harder to scan), and
+      the footer "v0.1.0" label was the stale Cargo package
+      version rather than the actual build's git revision
+      (misleading about which code an operator is running).
+    changes:
+      added:
+        - "build.rs"
+      modified:
+        - "src/ui/dashboard.rs"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - ".mission/CURRENT_STATE.md"
+      removed: []
+    changed_sections:
+      - "build.rs (new) — git describe → QMONSTER_GIT_VERSION env var with fallback"
+      - "ui::dashboard::help_detail_line — HELP_DETAIL_INDENT (2 spaces) prepended"
+      - "ui::dashboard::version_badge_label — reads QMONSTER_GIT_VERSION instead of CARGO_PKG_VERSION"
+      - "ui::dashboard tests — indent contract + git-version linkage locked by 3 tests (1 updated + 2 new)"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "two UI strings change (help rows gain 2-col indent; footer shows git short SHA instead of v0.1.0); no audit schema, gate, or actuation surface touched"
+      verification: "cargo build + cargo test --all-targets (248 lib + 6 drift + 22 integration = 276 tests; +2 net vs v1.10.5) + cargo clippy --all-targets -D warnings + cargo fmt --check all clean"
+      docs: "mission.yaml + mission-history.yaml + CURRENT_STATE.md updated; VALIDATION.md unchanged"
+      ledger: "v1.10.6 layered on v1.10.5; e869792 docs-hygiene and everything below untouched"
+    breaking: false
+    risk: "negligible — single-file UI change + additive build script. Git-less fallback preserves buildability in tarball / offline scenarios. The only user-visible runtime change is the two UI strings."
+    related_commits:
+      - "ac1a75d"
+      - "e869792"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "If a release flow ever adds `git tag v1.10.6`, the footer badge will automatically show the tag instead of the short SHA (git describe --tags falls through). Tag-based releases remain optional."
+      - "Existing carry-forwards unchanged (proposal_id producer-identity, structured slash_command field, is_strong producer flag, send_keys live-tmux-session whitebox test)."
+      - "Open Phase 6 per operator's next slice preference; Phase 5 has zero outstanding debt."
+
 evolution_summary:
-  current_phase: 'Audit-vocab followup shipped (v1.10.5) — bundled round closing three v1.10.4 loose ends. (1) Both v1.10.4 reviewer verdicts archived (Codex approve + Gemini approve, zero must-fix from either). (2) UI help prose in `src/ui/dashboard.rs::help_lines` migrated to `format!("{}", AuditEventKind::Prompt*)` splicing — the overlay text now derives from the v1.10.4 Display impl rather than hand-typed literals; help_overlay test assertions also use as_str() so the test is compile-time-linked to the enum. (3) Codex optional TODO #1 adopted — new `parse_kind_inverts_as_str_for_every_variant` round-trip test pins the read/write symmetry across all 20 variants at the type-string layer. (4) Codex optional TODO #2 adopted — existing domain contract test gains a `{:?}` Debug parity assertion so Debug-equals-Display stops depending on variant-naming convention. 246 lib + 6 drift + 22 integration = 274 tests green (+1 net vs v1.10.4); clippy + fmt clean. SQLite row values still byte-identical across the full v1.10.x arc — audit log continuity preserved. Phase 5 remains fully gate-approved across P5-1 → P5-2 → P5-3 → P5-4 AND the audit-vocab cleanup is now fully closed with every reviewer TODO adopted. Layered on v1.10.4; v1.10.3, v1.10.2 and everything below untouched.'
-  next_phase: "Phase 5 closed + audit-vocab arc closed; operator to choose Phase 6 scope, optional v1.10.5 confirm review, or pause"
+  current_phase: "UX polish shipped (v1.10.6) — two operator-requested improvements atop v1.10.5. (1) Help overlay detail rows carry a 2-space indent (HELP_DETAIL_INDENT) so they nest visibly under Controls / Source Labels / State Labels section headers. (2) Footer version badge now reflects the binary's actual git state (`git describe --tags --always --dirty` → short SHA today, e.g. `e869792`) via a new `build.rs` that embeds QMONSTER_GIT_VERSION at compile time with `.git/HEAD` watched for rerun; fallback to `v{CARGO_PKG_VERSION}-nogit` for tarball/offline builds. 248 lib + 6 drift + 22 integration = 276 tests green (+2 net vs v1.10.5); clippy + fmt clean. Pure UX polish — no audit schema, gate, or actuation surface change. Phase 5 + audit-vocab arcs both remain fully gate-approved and closed. Layered on v1.10.5 audit-vocab followup and the e869792 docs-hygiene commit; v1.10.4, v1.10.3, v1.10.2 and everything below untouched."
+  next_phase: "Phase 5 + audit-vocab both closed, v1.10.6 UX polish shipped; operator to choose Phase 6 scope, an optional confirm review, or pause"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
