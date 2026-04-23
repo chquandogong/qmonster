@@ -415,67 +415,80 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 }
 
 fn help_lines() -> Vec<Line<'static>> {
-    // v1.10.5 audit-vocab UI linkage: the `p` / `d` help rows
-    // splice the P5 `AuditEventKind` names via `as_str()` (from
-    // `src/domain/audit.rs`) rather than hand-typing them. This
-    // completes the compile-time-safety chain started in v1.10.4:
-    // the domain method is the single source of truth, and the
-    // help text can no longer drift from it in isolation.
-    let p_text = format!(
-        "accept the pending prompt-send proposal on the selected pane (P5-3 safer-actuation). \
-         Audit chain depends on the actuation mode: Execute (allow_auto_prompt_send=true, \
-         non-observe_only) fires {accepted} → {completed} or {failed}; \
-         AutoSendOff (allow_auto_prompt_send=false, non-observe_only) fires {accepted} + {blocked}; \
-         observe_only fires {blocked} alone (no {accepted})",
-        accepted = AuditEventKind::PromptSendAccepted,
-        completed = AuditEventKind::PromptSendCompleted,
-        failed = AuditEventKind::PromptSendFailed,
-        blocked = AuditEventKind::PromptSendBlocked,
-    );
-    let d_text = format!(
-        "dismiss the pending prompt-send proposal on the selected pane (audit: {rejected}; available in every actuation mode)",
-        rejected = AuditEventKind::PromptSendRejected,
-    );
+    // v1.10.7 help indent fix: the `p` help row is split into a
+    // short summary + three bullet continuation lines so the
+    // per-path audit chain stays visibly indented under the
+    // section header instead of wrapping flush-left when the
+    // Paragraph re-flows. Bullet lines reuse the HELP_DETAIL_INDENT
+    // column so the visual nesting reads as `Controls › p ›
+    // bullets`. The audit-kind names are still spliced from the
+    // v1.10.4 `AuditEventKind::Display` impl (the v1.10.5
+    // compile-time linkage from the UI layer).
+    let accepted = AuditEventKind::PromptSendAccepted;
+    let completed = AuditEventKind::PromptSendCompleted;
+    let failed = AuditEventKind::PromptSendFailed;
+    let blocked = AuditEventKind::PromptSendBlocked;
+    let rejected = AuditEventKind::PromptSendRejected;
 
     let mut lines = vec![section_line("Controls")];
-    lines.extend(
-        [
-            ("Mouse wheel", "scroll the list or modal under the pointer"),
-            ("Mouse left", "select the clicked alert, pane, or target"),
-            ("Mouse double", "toggle hide on the clicked alert"),
-            (
-                "Severity chip",
-                "click a bulk chip in Alerts to toggle auto-hide for that severity",
-            ),
-            (
-                "Version badge",
-                "click the bottom-right version to open Git status",
-            ),
-            ("Tab", "switch focus between alerts and pane list"),
-            ("Up / Down", "move one item in the focused list"),
-            ("j / k", "alternate list scroll keys"),
-            ("PgUp / PgDn", "scroll one page in the focused list"),
-            ("Home / End", "jump to the first or last item"),
-            ("t", "open tmux target picker (session -> window)"),
-            (
-                "Enter",
-                "advance session selection or confirm window target",
-            ),
-            (
-                "Left / Backspace",
-                "return from window list to session list",
-            ),
-            ("s", "write a runtime snapshot"),
-            ("r", "refresh version drift check"),
-            ("c", "clear system notices"),
-            ("p", p_text.as_str()),
-            ("d", d_text.as_str()),
-            ("Esc / ?", "close this help"),
-            ("q", "quit the TUI"),
-        ]
-        .into_iter()
-        .map(|(label, value)| help_detail_line(label, value)),
-    );
+    for (label, value) in [
+        ("Mouse wheel", "scroll the list or modal under the pointer"),
+        ("Mouse left", "select the clicked alert, pane, or target"),
+        ("Mouse double", "toggle hide on the clicked alert"),
+        (
+            "Severity chip",
+            "click a bulk chip in Alerts to toggle auto-hide for that severity",
+        ),
+        (
+            "Version badge",
+            "click the bottom-right version to open Git status",
+        ),
+        ("Tab", "switch focus between alerts and pane list"),
+        ("Up / Down", "move one item in the focused list"),
+        ("j / k", "alternate list scroll keys"),
+        ("PgUp / PgDn", "scroll one page in the focused list"),
+        ("Home / End", "jump to the first or last item"),
+        ("t", "open tmux target picker (session -> window)"),
+        (
+            "Enter",
+            "advance session selection or confirm window target",
+        ),
+        (
+            "Left / Backspace",
+            "return from window list to session list",
+        ),
+        ("s", "write a runtime snapshot"),
+        ("r", "refresh version drift check"),
+        ("c", "clear system notices"),
+    ] {
+        lines.push(help_detail_line(label, value));
+    }
+
+    // `p` — multi-line with bullets so the audit-chain enumeration
+    // keeps its indent on every rendered row (v1.10.7 fix).
+    lines.push(help_detail_line(
+        "p",
+        "accept pending prompt-send proposal (P5-3 safer-actuation)",
+    ));
+    lines.push(help_continuation_bullet(&format!(
+        "Execute (allow_auto_prompt_send=true, non-observe_only): {accepted} → {completed} or {failed}"
+    )));
+    lines.push(help_continuation_bullet(&format!(
+        "AutoSendOff (allow_auto_prompt_send=false, non-observe_only): {accepted} + {blocked}"
+    )));
+    lines.push(help_continuation_bullet(&format!(
+        "observe_only: {blocked} alone (no {accepted})"
+    )));
+
+    // `d` — single-line short enough to not need bullets.
+    lines.push(help_detail_line(
+        "d",
+        &format!("dismiss pending prompt-send proposal (audit: {rejected}; every actuation mode)"),
+    ));
+
+    for (label, value) in [("Esc / ?", "close this help"), ("q", "quit the TUI")] {
+        lines.push(help_detail_line(label, value));
+    }
 
     lines.push(Line::raw(""));
     lines.push(section_line("Source Labels"));
@@ -511,6 +524,24 @@ fn section_line(title: &str) -> Line<'static> {
 /// / "State Labels" instead of sitting flush against the modal's
 /// left border (v1.10.6 UX polish).
 const HELP_DETAIL_INDENT: &str = "  ";
+
+/// 4-space indent + bullet marker used on continuation rows that
+/// elaborate a single help entry (v1.10.7). Distinct from
+/// HELP_DETAIL_INDENT so the reader can tell a bullet belongs to
+/// the entry immediately above it rather than being a new top-
+/// level row. Used by the `p` accept-proposal entry to enumerate
+/// the three audit-chain variants per actuation mode.
+const HELP_CONTINUATION_PREFIX: &str = "    · ";
+
+fn help_continuation_bullet(text: &str) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            HELP_CONTINUATION_PREFIX,
+            Style::default().fg(theme::TEXT_DIM),
+        ),
+        Span::styled(text.to_string(), Style::default().fg(theme::TEXT_DIM)),
+    ])
+}
 
 fn help_detail_line(label: &str, value: &str) -> Line<'static> {
     Line::from(vec![
@@ -680,58 +711,79 @@ mod tests {
                 }
             })
         };
-        let p_entry = entry_for("p").expect("help overlay must carry a `p` entry");
+        // v1.10.7: the `p` entry is now multi-line — a short summary
+        // row + three indented bullet continuations (one per
+        // actuation-mode audit chain). The entry_for helper still
+        // finds the summary row, but the audit-kind tokens now live
+        // in the bullet lines, so we assert against the full joined
+        // help text rather than a single row. `d` stays single-line.
+        let p_entry = entry_for("p").expect("help overlay must carry a `p` summary row");
         let d_entry = entry_for("d").expect("help overlay must carry a `d` entry");
-        // v1.10.5 audit-vocab UI linkage: the help text now splices
-        // AuditEventKind names via `as_str()`. Assertions pull the
-        // expected tokens from the enum so a future variant rename
-        // causes the help text to follow automatically and this
-        // assertion continues to pass — the test no longer
-        // hand-types any audit-kind literal.
+        assert!(
+            p_entry.contains("accept"),
+            "the `p` summary row must describe accept semantics. got: {p_entry}"
+        );
+
+        let joined = lines.join("\n");
+
+        // Audit-kind name assertions pulled from the AuditEventKind
+        // enum so a variant rename auto-propagates into the help
+        // text (v1.10.5 linkage) AND this test continues to pass.
         let accepted = AuditEventKind::PromptSendAccepted.as_str();
         let rejected = AuditEventKind::PromptSendRejected.as_str();
         let blocked = AuditEventKind::PromptSendBlocked.as_str();
         let completed = AuditEventKind::PromptSendCompleted.as_str();
         let failed = AuditEventKind::PromptSendFailed.as_str();
         assert!(
-            p_entry.contains(accepted),
-            "the `p` entry must name AuditEventKind::PromptSendAccepted ({accepted:?}). got: {p_entry}"
+            joined.contains(accepted),
+            "help overlay must name AuditEventKind::PromptSendAccepted ({accepted:?})"
         );
         assert!(
-            p_entry.contains(blocked),
-            "the `p` entry must mention AuditEventKind::PromptSendBlocked ({blocked:?}). got: {p_entry}"
+            joined.contains(blocked),
+            "help overlay must mention AuditEventKind::PromptSendBlocked ({blocked:?})"
         );
         assert!(
             d_entry.contains(rejected),
             "the `d` entry must name AuditEventKind::PromptSendRejected ({rejected:?}). got: {d_entry}"
         );
-        // v1.10.3 tightening (Codex v1.10.2 finding #1): the `p` help
-        // row MUST describe all three audit outcomes distinctly so
-        // the AutoSendOff branch is not confused with the observe_only
-        // branch. AutoSendOff is a two-event chain (Accepted +
-        // Blocked); observe_only fires Blocked alone. v1.10.5 keeps
-        // the branch labels (`AutoSendOff`, `observe_only`) as
-        // literal tokens because they are domain *concepts* named by
-        // the spec rather than enum variant names — they do not live
-        // on AuditEventKind.
+        // v1.10.3 tightening + v1.10.7 bullet split: the help text
+        // MUST describe all three audit outcomes distinctly so the
+        // AutoSendOff branch is not confused with observe_only.
+        // AutoSendOff is a two-event chain (Accepted + Blocked);
+        // observe_only fires Blocked alone. The branch labels
+        // (`AutoSendOff`, `observe_only`) are domain concepts named
+        // by the spec rather than enum variant names.
         assert!(
-            p_entry.contains("AutoSendOff"),
-            "the `p` entry must name the AutoSendOff path explicitly so operators see that it fires TWO audit events ({accepted} + {blocked}). got: {p_entry}"
+            joined.contains("AutoSendOff"),
+            "help overlay must name the AutoSendOff path so operators see that it fires TWO audit events ({accepted} + {blocked})"
         );
         assert!(
-            p_entry.contains("observe_only"),
-            "the `p` entry must name the observe_only path explicitly so operators see it fires {blocked} ALONE (no {accepted}). got: {p_entry}"
+            joined.contains("observe_only"),
+            "help overlay must name the observe_only path so operators see it fires {blocked} ALONE (no {accepted})"
         );
         // Both terminal outcomes on the Execute path must be
         // enumerated so operators know the audit log will carry one
         // of them per successful confirmation.
         assert!(
-            p_entry.contains(completed),
-            "the `p` entry must name AuditEventKind::PromptSendCompleted ({completed:?}) as the success terminal outcome on Execute. got: {p_entry}"
+            joined.contains(completed),
+            "help overlay must name AuditEventKind::PromptSendCompleted ({completed:?}) as the success terminal outcome on Execute"
         );
         assert!(
-            p_entry.contains(failed),
-            "the `p` entry must name AuditEventKind::PromptSendFailed ({failed:?}) as the failure terminal outcome on Execute. got: {p_entry}"
+            joined.contains(failed),
+            "help overlay must name AuditEventKind::PromptSendFailed ({failed:?}) as the failure terminal outcome on Execute"
+        );
+
+        // v1.10.7 bullet-indent contract: every continuation bullet
+        // must start with HELP_CONTINUATION_PREFIX so the audit-
+        // chain elaborations stay visually nested under the `p`
+        // summary row even when the Paragraph does not wrap them.
+        let bullet_count = lines
+            .iter()
+            .filter(|l| l.starts_with(HELP_CONTINUATION_PREFIX))
+            .count();
+        assert!(
+            bullet_count >= 3,
+            "the `p` summary row must be followed by at least 3 bullet-indented continuation lines (one per audit chain). got bullet_count = {bullet_count}. joined:\n{joined}"
         );
     }
 }

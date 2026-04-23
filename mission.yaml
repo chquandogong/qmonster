@@ -1,6 +1,6 @@
 mission:
-  version: "1.10.6"
-  title: "Qmonster v0.4.0 — UX polish v1.10.6 (help overlay detail rows gain 2-space indent under section headers; footer version badge now sourced from `git describe --tags --always --dirty` via new build.rs, replacing CARGO_PKG_VERSION)"
+  version: "1.10.7"
+  title: "Qmonster v0.4.0 — help p/d bullet split + v1.10.7 tag v1.10.7 (p help row now multi-line with 3 bullet continuations so AutoSendOff / observe_only audit chains keep visual indent; annotated git tag v1.10.7 lets the footer badge show the release label)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -974,6 +974,47 @@ mission:
     closure); v1.10.4 audit-vocab, v1.10.3 P5-4 archive, and
     everything below untouched.
 
+    Help p/d bullet split + first git tag (v1.10.7, this
+    revision) closes two operator-reported UX gaps from v1.10.6.
+    (1) Help indent was applied per `Line` via the new
+    `HELP_DETAIL_INDENT`, but the `p` / `d` entries wrapped
+    flush-left because the long description was one `Line` with
+    a soft-wrap — wrapped continuation rows lost the indent.
+    Fix: the `p` row is now a short summary followed by three
+    bullet continuation `Line`s (one per actuation mode),
+    prefixed with a new `HELP_CONTINUATION_PREFIX` = `"    · "`
+    (4-space indent + bullet). Each bullet names the audit
+    chain for its mode: Execute → `PromptSendAccepted →
+    PromptSendCompleted or PromptSendFailed`; AutoSendOff →
+    `PromptSendAccepted + PromptSendBlocked`; observe_only →
+    `PromptSendBlocked` alone. The `d` row stays single-line
+    since its text is short enough not to wrap. Audit-kind names
+    still come from the v1.10.5 `AuditEventKind::Display`
+    splicing (compile-time linkage preserved). (2) The footer
+    version badge landed in v1.10.6 as a `git describe`
+    delegation, but no git tags existed so it always rendered
+    the short SHA (`e869792`, `7fd25c9`). This revision creates
+    an annotated tag `v1.10.7` at the commit that ships this
+    slice, which makes `git describe --tags --always --dirty`
+    return `v1.10.7` at the tagged commit and
+    `v1.10.7-N-g<short>` for subsequent commits. Build.rs
+    rebuilds automatically when `.git/refs/tags/*` changes
+    because `.git/HEAD` is already watched and any
+    `git checkout v1.10.7` / `git describe` lookup reaches
+    through the same ref tree. The
+    `help_overlay_documents_p_and_d_prompt_send_actions` test
+    is rewritten for the new multi-line shape: it still uses
+    `entry_for("p")` for the summary row but asserts audit-kind
+    tokens against the joined help text (which includes
+    bullets), and adds a bullet-count assertion on
+    `HELP_CONTINUATION_PREFIX` so a regression that silently
+    drops the bullets fails here first. 248 lib + 6 drift + 22
+    integration = 276 tests (unchanged vs. v1.10.6 — the two
+    existing tests gain assertions but no new test bodies are
+    added). clippy --all-targets -D warnings clean; cargo fmt
+    clean. Layered on v1.10.6 UX polish (`7fd25c9`); everything
+    below untouched.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1145,5 +1186,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 41
+    total_revisions: 42
     history: "mission-history.yaml"

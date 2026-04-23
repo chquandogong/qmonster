@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — UX polish v1.10.6 (help overlay 2-space indent + footer version badge from git describe via new build.rs)"
+  mission_title: "Qmonster v0.4.0 — help p/d bullet split + first annotated tag v1.10.7 (wrapped continuations in p entry now preserve indent; footer badge now renders tag name instead of short SHA)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 41
-  latest_version: "1.10.6"
+  total_revisions: 42
+  latest_version: "1.10.7"
 
 timeline:
   - change_id: "initial"
@@ -4971,12 +4971,140 @@ timeline:
     related_decisions: []
     snapshot_after: ""
     follow_up:
-      - "If a release flow ever adds `git tag v1.10.6`, the footer badge will automatically show the tag instead of the short SHA (git describe --tags falls through). Tag-based releases remain optional."
+      - "If a release flow ever adds `git tag v1.10.6`, the footer badge will automatically show the tag instead of the short SHA (git describe --tags falls through). Tag-based releases remain optional. (Superseded by change_sequence 42 — the v1.10.7 slice creates the first annotated tag at its HEAD.)"
+      - "Existing carry-forwards unchanged (proposal_id producer-identity, structured slash_command field, is_strong producer flag, send_keys live-tmux-session whitebox test)."
+      - "Open Phase 6 per operator's next slice preference; Phase 5 has zero outstanding debt."
+
+  - change_id: "help-pd-bullet-split-and-first-annotated-tag"
+    semantic_version: "1.10.7"
+    change_sequence: 42
+    date: "2026-04-23"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — reported two gaps with v1.10.6: the p/d help rows still looked un-indented because the long description wrapped flush-left, and the footer kept showing the short SHA because the repo had no git tags)"
+    change_type: "ux-polish"
+    motivation_type: "operator-driven"
+    persistence: "permanent"
+    intent: >
+      Close two operator-visible follow-ups from v1.10.6:
+      (A) the p help row wrapped its description flush-left,
+      making the indent look inconsistent for the longest entry;
+      (B) the footer badge rendered the short commit SHA because
+      no git tags existed. (A) is fixed by splitting the p
+      description into a summary row plus three bullet
+      continuation `Line`s. (B) is fixed by creating the first
+      annotated tag `v1.10.7` at this commit so
+      `git describe --tags` returns the tag label instead of the
+      short SHA.
+    intent_ko: >
+      v1.10.6의 두 가지 운영자 보고 이슈 마감:
+      (A) `p` 도움말이 긴 설명이 flush-left로 wrap되면서 indent가
+      사라진 것처럼 보임, (B) 리포지토리에 git tag가 없어 footer가
+      short SHA만 표시. (A)는 `p` 설명을 요약 행 + 3개 bullet
+      continuation `Line`으로 분리해 해결. (B)는 이 커밋에 첫
+      annotated tag `v1.10.7`을 부여해 `git describe --tags`가 태그
+      레이블을 반환하도록 해결.
+    decision: >
+      Single-file change in `src/ui/dashboard.rs`:
+      (1) New `HELP_CONTINUATION_PREFIX = "    · "` constant
+      (4-space indent + bullet). New `help_continuation_bullet`
+      helper emits a dim-styled `Line` with that prefix.
+      (2) `help_lines()` restructured: the giant tuple array is
+      split into two explicit `for` loops with the `p` / `d`
+      entries manually inserted between them. The `p` row is
+      now four `Line`s — a short summary via `help_detail_line`
+      plus three `help_continuation_bullet` calls, one per audit
+      chain (Execute / AutoSendOff / observe_only). The `d` row
+      stays single-line since its text does not wrap at typical
+      modal widths. Audit-kind names continue to come from the
+      v1.10.5 `AuditEventKind::Display` splicing (compile-time
+      linkage intact).
+      (3) `help_overlay_documents_p_and_d_prompt_send_actions`
+      rewritten for the multi-line shape: still uses
+      `entry_for("p")` to find the summary row, but asserts
+      audit-kind tokens against the joined help text (bullets
+      included) and adds a `bullet_count >= 3` check on
+      `HELP_CONTINUATION_PREFIX` so a regression that drops the
+      bullets fails here first.
+      Post-commit git operation (not tracked in source but
+      documented here): `git tag -a v1.10.7 -m "..." HEAD` then
+      `git push origin v1.10.7`. After the tag exists,
+      `git describe --tags --always --dirty` at the tagged
+      commit returns `v1.10.7`, so the footer badge automatically
+      renders the tag label. Build.rs already watches
+      `.git/HEAD` via rerun-if-changed; a subsequent rebuild
+      picks up the tag name.
+    decision_ko: >
+      `src/ui/dashboard.rs` 단일 파일 변경:
+      (1) 새 상수 `HELP_CONTINUATION_PREFIX = "    · "` (4-space
+      indent + bullet)과 dim-style `Line`을 만드는 헬퍼
+      `help_continuation_bullet` 추가.
+      (2) `help_lines()` 리팩터 — 큰 튜플 배열을 두 개의 명시적
+      `for` 루프로 나누고 그 사이에 `p` / `d`를 직접 삽입.
+      `p` 행이 이제 4개 `Line` — `help_detail_line`으로 생성한 요약
+      행 + 3개의 `help_continuation_bullet` (각 actuation mode별
+      audit chain: Execute / AutoSendOff / observe_only). `d`는
+      wrap되지 않을 길이라 single-line 유지. 감사 kind 이름은
+      v1.10.5 `AuditEventKind::Display` splicing으로 계속 공급.
+      (3) `help_overlay_documents_p_and_d_prompt_send_actions`
+      테스트 재작성: 요약 행은 `entry_for("p")`로 찾되, 감사 kind
+      토큰 assertion은 joined help text 전체 대상으로 변경;
+      `HELP_CONTINUATION_PREFIX` prefix 기반 `bullet_count >= 3`
+      assertion 추가.
+      Post-commit git 작업(소스 추적 대상 아니지만 기록):
+      `git tag -a v1.10.7 -m "..." HEAD` 후
+      `git push origin v1.10.7`. 태그가 존재한 뒤
+      `git describe --tags --always --dirty`가 태그된 커밋에서
+      `v1.10.7`을 반환하므로 footer 배지가 자동으로 태그
+      레이블로 표시됨. build.rs는 이미 `.git/HEAD`를
+      rerun-if-changed로 감시하므로 재빌드 시 새 태그 인식.
+    triggered_by: "Operator feedback: 'help 창에서, p,d는 아직도 들여 쓰기가 안되어 었어. 그리고, 깃에 최신 버전을 tags로 나타내고, 해당 버전을 footer에 표시 해줘'"
+    issue_or_context: >
+      v1.10.6 added a per-`Line` indent but did not address the
+      wrap behavior of the longest entries. The `p` row carried
+      three audit-chain clauses in one long string, which the
+      Paragraph's `Wrap { trim: false }` broke across multiple
+      physical rows — continuation rows have no leading indent
+      context in ratatui, so the second and third lines of the
+      `p` entry rendered flush-left. From the operator's view
+      that looked exactly like "indent missing on p/d". Similarly
+      the footer badge rendered the short SHA because the repo
+      carried no annotated tags for git describe --tags to find.
+    changes:
+      added: []
+      modified:
+        - "src/ui/dashboard.rs"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - ".mission/CURRENT_STATE.md"
+      removed: []
+    changed_sections:
+      - "ui::dashboard — new HELP_CONTINUATION_PREFIX + help_continuation_bullet helper; help_lines restructured to emit p as 1 summary Line + 3 bullet Lines; d stays single-line"
+      - "ui::dashboard tests — help_overlay_documents_p_and_d_prompt_send_actions rewritten for multi-line shape; adds bullet_count contract"
+      - "mission.yaml / mission-history.yaml — v1.10.7 narrative + change_sequence 42 + meta bump"
+      - "git repository — first annotated tag `v1.10.7` at the commit that ships this slice (operation recorded here; not a file change)"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "help overlay `p` row now renders 4 physical Lines (summary + 3 bullets) with consistent indent across all rows; footer badge renders `v1.10.7` (was: `7fd25c9` / `7fd25c9-dirty`) once the tag ships"
+      verification: "cargo build + cargo test --all-targets (248 lib + 6 drift + 22 integration = 276 tests; unchanged from v1.10.6 — two existing tests gain assertions but no new #[test] fn) + cargo clippy --all-targets -D warnings + cargo fmt --check all clean"
+      docs: "mission.yaml + mission-history.yaml + CURRENT_STATE.md updated; VALIDATION.md unchanged"
+      ledger: "v1.10.7 layered on v1.10.6; everything below untouched"
+    breaking: false
+    risk: "negligible — single-file UI change; the bullet rows are pure additive content on a new `Line` each. Git tag creation is a versioning operation, not a code change — the only risk is a consumer that did `git describe` without `--tags` expecting raw SHA always; this repo has no such consumer."
+    related_commits:
+      - "7fd25c9"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - 'Future releases: add `git tag -a v1.X.Y -m "..."` at every ledger-version-bump commit so the footer badge always names the release rather than falling back to `v1.X.Y-N-g<short>`. A small scripts/tag-release.sh could automate the tag name extraction from mission.yaml''s version field.'
       - "Existing carry-forwards unchanged (proposal_id producer-identity, structured slash_command field, is_strong producer flag, send_keys live-tmux-session whitebox test)."
       - "Open Phase 6 per operator's next slice preference; Phase 5 has zero outstanding debt."
 
 evolution_summary:
-  current_phase: "UX polish shipped (v1.10.6) — two operator-requested improvements atop v1.10.5. (1) Help overlay detail rows carry a 2-space indent (HELP_DETAIL_INDENT) so they nest visibly under Controls / Source Labels / State Labels section headers. (2) Footer version badge now reflects the binary's actual git state (`git describe --tags --always --dirty` → short SHA today, e.g. `e869792`) via a new `build.rs` that embeds QMONSTER_GIT_VERSION at compile time with `.git/HEAD` watched for rerun; fallback to `v{CARGO_PKG_VERSION}-nogit` for tarball/offline builds. 248 lib + 6 drift + 22 integration = 276 tests green (+2 net vs v1.10.5); clippy + fmt clean. Pure UX polish — no audit schema, gate, or actuation surface change. Phase 5 + audit-vocab arcs both remain fully gate-approved and closed. Layered on v1.10.5 audit-vocab followup and the e869792 docs-hygiene commit; v1.10.4, v1.10.3, v1.10.2 and everything below untouched."
+  current_phase: "Help p/d bullet split + first annotated git tag (v1.10.7) — closes two operator-visible v1.10.6 gaps. (1) The `p` help row is now a summary Line + 3 bullet continuation Lines so the Execute / AutoSendOff / observe_only audit chains stay visually indented instead of wrapping flush-left; `d` stays single-line. (2) Repo gains its first annotated tag `v1.10.7` at this commit so `git describe --tags` returns the tag label, making the footer badge render `v1.10.7` instead of a short SHA. 248 lib + 6 drift + 22 integration = 276 tests green (unchanged vs v1.10.6 — existing tests gain assertions; no new #[test] fn); clippy + fmt clean. Pure UX polish — no runtime, audit schema, gate, or actuation surface change. Phase 5 + audit-vocab arcs both remain closed. Layered on v1.10.6; everything below untouched."
   next_phase: "Phase 5 + audit-vocab both closed, v1.10.6 UX polish shipped; operator to choose Phase 6 scope, an optional confirm review, or pause"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
