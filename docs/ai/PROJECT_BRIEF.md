@@ -2,9 +2,9 @@
 
 - Project: **Qmonster** — Dr. QUAN's Q + monitoring/master
 - Version: v0.4.0
-- Date: 2026-04-20
+- Date: 2026-04-20 (initial) / 2026-04-23 (current — Phase 5 closure)
 - Target env: Ubuntu + tmux + Rust TUI
-- Phase: Phase 4 (provider-profile recommender) — all 7 slices shipped (P4-1 through P4-7) and fully gate-approved by both reviewers (Codex v1.8.11 confirm2 approve + Gemini v1.8.10 confirm approve). 3×2 provider-profile grid complete (Claude + Codex + Gemini × baseline + aggressive). Phases 1–3 complete and gate-approved.
+- Phase: **Phase 5 (Safer Actuation) COMPLETE** — P5-1 scaffolding → P5-2 first producing rule + TUI accept/reject UX → P5-3 `tmux send-keys` executor + second gate + terminal audit kinds → P5-4 help/footer polish, all slices gate-approved end-to-end by both reviewers (mission-history change_sequence 29-38 for detail). Audit-vocab compile-time safety cleanup (v1.10.4/v1.10.5) closes the Codex + Gemini forward-watch TODOs and gives `AuditEventKind` a single-source-of-truth string form (`as_str` / `Display` / `AsRef<str>`). Phases 1–4 remain complete and gate-approved; no outstanding Phase-5 debt.
 
 ## What Qmonster is
 

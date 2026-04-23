@@ -117,6 +117,11 @@ side_effects (N):
 - `r`: version drift 재확인
 - `s`: snapshot 저장
 - `c`: system notice clear
+- `p`: 선택된 pane의 pending prompt-send proposal 수락 (Phase 5 safer-actuation). audit chain은 actuation mode에 따라 달라짐:
+  - Execute (`allow_auto_prompt_send=true`, 비 observe_only) → `PromptSendAccepted → PromptSendCompleted` 또는 `PromptSendFailed`
+  - AutoSendOff (`allow_auto_prompt_send=false`, 비 observe_only) → `PromptSendAccepted + PromptSendBlocked` (2 이벤트)
+  - observe_only → `PromptSendBlocked` 단독 (`PromptSendAccepted` 없음)
+- `d`: 선택된 pane의 pending prompt-send proposal 기각 (audit: `PromptSendRejected`; 모든 actuation mode에서 가용)
 - `q`, `Esc`: 종료 또는 overlay 닫기
 
 ## 8. Overlay
