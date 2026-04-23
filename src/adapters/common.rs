@@ -137,6 +137,23 @@ fn parse_first_percent(line: &str) -> Option<f32> {
     None
 }
 
+/// Parse a token count string like "4.3k", "258K", "1.53M", or "4300"
+/// into a u64. Returns `None` if the input is not a recognisable number.
+/// Case-insensitive for the suffix.
+pub fn parse_count_with_suffix(s: &str) -> Option<u64> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let (num_part, multiplier) = match trimmed.chars().last()? {
+        'k' | 'K' => (&trimmed[..trimmed.len() - 1], 1_000.0_f64),
+        'm' | 'M' => (&trimmed[..trimmed.len() - 1], 1_000_000.0_f64),
+        _ => (trimmed, 1.0_f64),
+    };
+    let value: f64 = num_part.parse().ok()?;
+    Some((value * multiplier).round() as u64)
+}
+
 fn detect_task_type(lower: &str) -> TaskType {
     if lower.contains("resume")
         || lower.contains("continue previous")
@@ -231,5 +248,28 @@ mod tests {
         let m = set.context_pressure.expect("context_pressure parsed");
         assert!((m.value - 0.82).abs() < 0.01);
         assert_eq!(m.source_kind, crate::domain::origin::SourceKind::Estimated);
+    }
+
+    #[test]
+    fn parse_count_with_suffix_handles_plain_integer() {
+        assert_eq!(parse_count_with_suffix("4300"), Some(4300));
+    }
+
+    #[test]
+    fn parse_count_with_suffix_handles_k_suffix() {
+        assert_eq!(parse_count_with_suffix("4.3k"), Some(4300));
+        assert_eq!(parse_count_with_suffix("258K"), Some(258_000));
+    }
+
+    #[test]
+    fn parse_count_with_suffix_handles_m_suffix() {
+        assert_eq!(parse_count_with_suffix("1.53M"), Some(1_530_000));
+        assert_eq!(parse_count_with_suffix("20.4K"), Some(20_400));
+    }
+
+    #[test]
+    fn parse_count_with_suffix_returns_none_for_garbage() {
+        assert_eq!(parse_count_with_suffix(""), None);
+        assert_eq!(parse_count_with_suffix("xyz"), None);
     }
 }
