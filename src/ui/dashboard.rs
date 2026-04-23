@@ -7,6 +7,7 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragra
 
 use crate::app::event_loop::PaneReport;
 use crate::app::system_notice::SystemNotice;
+use crate::domain::audit::AuditEventKind;
 use crate::ui::alerts::AlertView;
 use crate::ui::{alerts, labels, panels, theme};
 
@@ -407,6 +408,28 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 }
 
 fn help_lines() -> Vec<Line<'static>> {
+    // v1.10.5 audit-vocab UI linkage: the `p` / `d` help rows
+    // splice the P5 `AuditEventKind` names via `as_str()` (from
+    // `src/domain/audit.rs`) rather than hand-typing them. This
+    // completes the compile-time-safety chain started in v1.10.4:
+    // the domain method is the single source of truth, and the
+    // help text can no longer drift from it in isolation.
+    let p_text = format!(
+        "accept the pending prompt-send proposal on the selected pane (P5-3 safer-actuation). \
+         Audit chain depends on the actuation mode: Execute (allow_auto_prompt_send=true, \
+         non-observe_only) fires {accepted} → {completed} or {failed}; \
+         AutoSendOff (allow_auto_prompt_send=false, non-observe_only) fires {accepted} + {blocked}; \
+         observe_only fires {blocked} alone (no {accepted})",
+        accepted = AuditEventKind::PromptSendAccepted,
+        completed = AuditEventKind::PromptSendCompleted,
+        failed = AuditEventKind::PromptSendFailed,
+        blocked = AuditEventKind::PromptSendBlocked,
+    );
+    let d_text = format!(
+        "dismiss the pending prompt-send proposal on the selected pane (audit: {rejected}; available in every actuation mode)",
+        rejected = AuditEventKind::PromptSendRejected,
+    );
+
     let mut lines = vec![section_line("Controls")];
     lines.extend(
         [
@@ -438,14 +461,8 @@ fn help_lines() -> Vec<Line<'static>> {
             ("s", "write a runtime snapshot"),
             ("r", "refresh version drift check"),
             ("c", "clear system notices"),
-            (
-                "p",
-                "accept the pending prompt-send proposal on the selected pane (P5-3 safer-actuation). Audit chain depends on the actuation mode: Execute (allow_auto_prompt_send=true, non-observe_only) fires PromptSendAccepted → PromptSendCompleted or PromptSendFailed; AutoSendOff (allow_auto_prompt_send=false, non-observe_only) fires PromptSendAccepted + PromptSendBlocked; observe_only fires PromptSendBlocked alone (no PromptSendAccepted)",
-            ),
-            (
-                "d",
-                "dismiss the pending prompt-send proposal on the selected pane (audit: PromptSendRejected; available in every actuation mode)",
-            ),
+            ("p", p_text.as_str()),
+            ("d", d_text.as_str()),
             ("Esc / ?", "close this help"),
             ("q", "quit the TUI"),
         ]
@@ -609,42 +626,56 @@ mod tests {
         };
         let p_entry = entry_for("p").expect("help overlay must carry a `p` entry");
         let d_entry = entry_for("d").expect("help overlay must carry a `d` entry");
+        // v1.10.5 audit-vocab UI linkage: the help text now splices
+        // AuditEventKind names via `as_str()`. Assertions pull the
+        // expected tokens from the enum so a future variant rename
+        // causes the help text to follow automatically and this
+        // assertion continues to pass — the test no longer
+        // hand-types any audit-kind literal.
+        let accepted = AuditEventKind::PromptSendAccepted.as_str();
+        let rejected = AuditEventKind::PromptSendRejected.as_str();
+        let blocked = AuditEventKind::PromptSendBlocked.as_str();
+        let completed = AuditEventKind::PromptSendCompleted.as_str();
+        let failed = AuditEventKind::PromptSendFailed.as_str();
         assert!(
-            p_entry.contains("PromptSendAccepted"),
-            "the `p` entry must name the PromptSendAccepted audit kind so operators can map the key to the audit log. got: {p_entry}"
+            p_entry.contains(accepted),
+            "the `p` entry must name AuditEventKind::PromptSendAccepted ({accepted:?}). got: {p_entry}"
         );
         assert!(
-            p_entry.contains("PromptSendBlocked"),
-            "the `p` entry must mention PromptSendBlocked so the observe_only / auto-send-off branches are discoverable. got: {p_entry}"
+            p_entry.contains(blocked),
+            "the `p` entry must mention AuditEventKind::PromptSendBlocked ({blocked:?}). got: {p_entry}"
         );
         assert!(
-            d_entry.contains("PromptSendRejected"),
-            "the `d` entry must name the PromptSendRejected audit kind. got: {d_entry}"
+            d_entry.contains(rejected),
+            "the `d` entry must name AuditEventKind::PromptSendRejected ({rejected:?}). got: {d_entry}"
         );
         // v1.10.3 tightening (Codex v1.10.2 finding #1): the `p` help
         // row MUST describe all three audit outcomes distinctly so
         // the AutoSendOff branch is not confused with the observe_only
-        // branch. AutoSendOff is a two-event chain
-        // (PromptSendAccepted + PromptSendBlocked); observe_only fires
-        // PromptSendBlocked alone. The old copy collapsed them.
+        // branch. AutoSendOff is a two-event chain (Accepted +
+        // Blocked); observe_only fires Blocked alone. v1.10.5 keeps
+        // the branch labels (`AutoSendOff`, `observe_only`) as
+        // literal tokens because they are domain *concepts* named by
+        // the spec rather than enum variant names — they do not live
+        // on AuditEventKind.
         assert!(
             p_entry.contains("AutoSendOff"),
-            "the `p` entry must name the AutoSendOff path explicitly so operators see that it fires TWO audit events (Accepted + Blocked). got: {p_entry}"
+            "the `p` entry must name the AutoSendOff path explicitly so operators see that it fires TWO audit events ({accepted} + {blocked}). got: {p_entry}"
         );
         assert!(
             p_entry.contains("observe_only"),
-            "the `p` entry must name the observe_only path explicitly so operators see it fires PromptSendBlocked ALONE (no Accepted). got: {p_entry}"
+            "the `p` entry must name the observe_only path explicitly so operators see it fires {blocked} ALONE (no {accepted}). got: {p_entry}"
         );
         // Both terminal outcomes on the Execute path must be
         // enumerated so operators know the audit log will carry one
         // of them per successful confirmation.
         assert!(
-            p_entry.contains("PromptSendCompleted"),
-            "the `p` entry must name PromptSendCompleted as the success terminal outcome on Execute. got: {p_entry}"
+            p_entry.contains(completed),
+            "the `p` entry must name AuditEventKind::PromptSendCompleted ({completed:?}) as the success terminal outcome on Execute. got: {p_entry}"
         );
         assert!(
-            p_entry.contains("PromptSendFailed"),
-            "the `p` entry must name PromptSendFailed as the failure terminal outcome on Execute. got: {p_entry}"
+            p_entry.contains(failed),
+            "the `p` entry must name AuditEventKind::PromptSendFailed ({failed:?}) as the failure terminal outcome on Execute. got: {p_entry}"
         );
     }
 }

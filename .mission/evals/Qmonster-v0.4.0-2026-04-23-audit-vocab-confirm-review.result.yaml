@@ -1,0 +1,17 @@
+evaluation:
+  timestamp: "2026-04-23T00:00:00Z"
+  target: "Audit-vocab compile-time safety confirm review (v1.10.4)"
+  evaluated_by: "llm-codex"
+  source: "Local `codex exec` headless confirm review of commit 2059446 using gpt-5.4 (approval never, reasoning xhigh). Static re-review via GitHub connector against parent 356a98d; shell sandbox unavailable, `cargo` not re-executed — relies on author-reported green verification (273 tests, clippy + fmt clean)."
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "The 20 `as_str()` literals in domain/audit.rs match the 20 current enum variants AND the 20 existing parse_kind string arms one-for-one — confirmed by diffing against `356a98d`'s kind_to_str table. SQLite row values stay byte-identical."
+    - "Match is exhaustive with NO wildcard arm — adding a new variant without extending `as_str()` is a compile error, which is the compile-time-safety promise the slice was aimed at."
+    - "Display and AsRef<str> both route through as_str; {} and .as_ref() cannot drift. Debug remains derived, so {:?} call-sites are unchanged."
+    - "Scope discipline is right — keeping dashboard.rs out of the slice + keeping parse_kind/FromStr as-is. FromStr would be ergonomic only unless the inverse parser also moves into domain as a shared source of truth (not in this slice's mandate)."
+    - "Table-driven contract test is the correct pattern — failure messages already name the specific variant/path that broke; 20 near-identical tests would be noisier without adding coverage."
+    - "Optional TODO #1 (Codex, non-blocking): close the inverse side with a round-trip check — `parse_kind(kind.as_str()) == Some(kind)` for all 20 variants. Cheap follow-up that pins the parser against future drift."
+    - 'Optional TODO #2 (Codex, non-blocking): lock {:?} parity explicitly — add `format!("{kind:?}") == expected` to the existing contract test so the Debug-equals-Display correspondence stops depending on naming convention.'
+  gate_decision: "Codex approves v1.10.4 with no must-fix. Combined with Gemini approve, the slice is fully gate-approved. Both optional TODOs are cheap cleanups that can be bundled into the next slice (v1.10.5 combined confirm-archive + UI-linkage + optional-TODOs) without changing the approve verdict here."

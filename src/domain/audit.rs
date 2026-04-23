@@ -273,6 +273,18 @@ mod tests {
             assert_eq!(format!("{kind}"), *expected, "Display for {kind:?}");
             let r: &str = kind.as_ref();
             assert_eq!(r, *expected, "AsRef<str> for {kind:?}");
+            // v1.10.5 remediation (Codex v1.10.4 optional TODO #2):
+            // lock `{:?}` ↔ Display parity explicitly. Today the
+            // derived Debug output equals the Display output
+            // because variant names happen to match `as_str`
+            // literals; this assertion catches a future variant
+            // being renamed (or `as_str` being rewritten) that
+            // breaks the parity silently.
+            assert_eq!(
+                format!("{kind:?}"),
+                *expected,
+                "Debug for {kind:?} must equal Display/as_str for audit-log forensic clarity"
+            );
         }
     }
 

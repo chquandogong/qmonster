@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — audit-vocab compile-time safety v1.10.4 (AuditEventKind::as_str + Display + AsRef<str>; store::kind_to_str delegates; 20-variant contract test)"
+  mission_title: "Qmonster v0.4.0 — audit-vocab followup v1.10.5 (confirm-archive of v1.10.4 approves + UI help migrated to AuditEventKind::Display splicing + parse_kind round-trip + Debug parity)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 39
-  latest_version: "1.10.4"
+  total_revisions: 40
+  latest_version: "1.10.5"
 
 timeline:
   - change_id: "initial"
@@ -4733,9 +4733,151 @@ timeline:
       - "Remaining carry-forward items: proposal_id producer-identity extension, structured slash_command AuditEvent field, is_strong producer flag, send_keys live-tmux-session whitebox test."
       - "Open Phase 6 per operator's next slice preference — Phase 5 has no outstanding debt and the audit-vocab cleanup is shipped."
 
+  - change_id: "audit-vocab-followup-confirm-archive-and-ui-linkage"
+    semantic_version: "1.10.5"
+    change_sequence: 40
+    date: "2026-04-23"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex (codex:1:review, v1.10.4 confirm approve + 2 optional non-blocking TODOs — #1 parse_kind round-trip test + #2 `{:?}` Debug parity lock; both adopted here)"
+      - "Gemini (gemini:1:research, v1.10.4 confirm approve + 1 optional future-slice TODO — migrate UI help prose to AuditEventKind::Display splicing; adopted here)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — chose the combined v1.10.5 bundle over a two-commit split)"
+    change_type: "remediation-and-archive"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Bundle three loose ends from v1.10.4 into a single small
+      round: archive both reviewers' v1.10.4 approve verdicts,
+      close Gemini's optional future-slice TODO (UI linkage via
+      Display) which matches the v1.10.3 post-ship menu option 3
+      the operator pre-selected, and adopt both of Codex's
+      optional TODOs (parse_kind round-trip + Debug parity) since
+      the incremental cost is trivial and both strengthen the
+      audit-vocab safety net.
+    intent_ko: >
+      v1.10.4에서 남은 세 가지 루즈 엔드를 한 라운드에 묶어
+      처리한다: 두 리뷰어의 v1.10.4 approve 판정 아카이브, Gemini의
+      optional future-slice TODO (UI help prose를 AuditEventKind::
+      Display splicing으로 전환 — v1.10.3 post-ship 메뉴의 option 3과
+      동일하며 운영자가 사전 선택함) 마감, 그리고 Codex의 두 optional
+      TODO(parse_kind round-trip + Debug parity) 수용. 추가 비용이
+      미미하고 모두 audit-vocab 안전망을 강화하는 방향.
+    decision: >
+      Single commit bundling four items:
+      (1) Archive — `.mission/evals/` mirrors for both v1.10.4
+      verdicts (both `approve`, zero must-fix).
+      (2) UI linkage — `src/ui/dashboard.rs::help_lines` now
+      computes `p_text` / `d_text` via `format!("{accepted} →
+      {completed} or {failed}; ...", accepted =
+      AuditEventKind::PromptSendAccepted, ...)` so the help
+      overlay strings are produced from the v1.10.4 `Display`
+      impl rather than hand-typed literals. A fresh
+      `use crate::domain::audit::AuditEventKind;` import is the
+      only structural change; the tuple array passed to
+      `help_detail_line` keeps its static tuples and borrows the
+      two `format!`-built `String`s via `.as_str()`. The existing
+      `help_overlay_documents_p_and_d_prompt_send_actions` test
+      is also migrated — expected tokens now come from
+      `AuditEventKind::Prompt*.as_str()` so the test itself is
+      compile-time-linked to the enum (no more hand-typed
+      literals).
+      (3) Codex optional TODO #1 — new
+      `parse_kind_inverts_as_str_for_every_variant` test in
+      `src/store/audit.rs` iterates all 20 variants and asserts
+      `parse_kind(kind.as_str()) == Some(kind)`, plus a negative
+      assertion `parse_kind("__RetiredKindFromV0.3__") == None`
+      pinning the Option-return contract that keeps older DB
+      rows safe to read.
+      (4) Codex optional TODO #2 — an `assert_eq!(format!("{kind:?}"),
+      *expected)` assertion inserted into the existing
+      `audit_event_kind_as_str_contract_locks_every_variant_string`
+      test loop so `{:?}` ↔ Display parity no longer depends on
+      variant-naming convention.
+      SQLite row values remain byte-identical to v1.10.4 (and
+      therefore to v1.10.3). No runtime / VALIDATION / actuation /
+      gate surface touched.
+    decision_ko: >
+      네 항목을 단일 커밋에 묶음:
+      (1) 아카이브 — 두 v1.10.4 판정(양쪽 approve, must-fix 0)의
+      `.mission/evals/` 미러.
+      (2) UI 링키지 — `src/ui/dashboard.rs::help_lines`가
+      `format!("{accepted} → {completed} or {failed}; …", accepted =
+      AuditEventKind::PromptSendAccepted, …)`로 `p_text`/`d_text`를
+      생성. help overlay 문자열이 v1.10.4 `Display` impl에서 파생됨
+      (수기 리터럴 아님). `use crate::domain::audit::AuditEventKind;`
+      import 한 줄이 구조 변경의 전부; `help_detail_line`으로 들어가는
+      tuple 배열은 정적 튜플을 유지하면서 두 `format!`-구성된
+      `String`을 `.as_str()`로 빌려옴. 기존
+      `help_overlay_documents_p_and_d_prompt_send_actions` 테스트도
+      마이그레이션 — 기대 토큰이 `AuditEventKind::Prompt*.as_str()`에서
+      나오므로 테스트 자체가 컴파일 타임에 enum과 링크됨.
+      (3) Codex optional TODO #1 — `src/store/audit.rs`에
+      `parse_kind_inverts_as_str_for_every_variant` 테스트 추가,
+      20개 variant에 대해 `parse_kind(kind.as_str()) == Some(kind)`
+      검증 + 미지 문자열에 대해 `None` 반환 계약까지 고정.
+      (4) Codex optional TODO #2 — 기존
+      `audit_event_kind_as_str_contract_locks_every_variant_string`
+      루프에 `assert_eq!(format!("{kind:?}"), *expected)` assertion
+      삽입 → `{:?}` ↔ Display parity가 variant 명명 관습에 더는
+      의존하지 않음.
+      SQLite row 값은 v1.10.4(그리고 v1.10.3)와 byte-identical 유지.
+      런타임 / VALIDATION / actuation / gate 표면 변화 없음.
+    triggered_by: "v1.10.4 post-ship menu: operator selected options 1 (v1.10.4 confirm review) and 3 (UI help prose format! migration) in parallel; Codex v1.10.4 added 2 optional TODOs that slot cleanly into the same bundle."
+    issue_or_context: >
+      v1.10.4 audit-vocab compile-time safety shipped cleanly.
+      Both reviewers approved with zero must-fix findings. Three
+      loose ends remained: (i) archive the approve verdicts per
+      the repeated Phase-5 pattern (f1f6868 / a7aa38f / 1ae9e1e /
+      f90cd4a / 9c3753d / 356a98d); (ii) Gemini's TODO to migrate
+      the UI help prose to `Display` splicing matched the
+      operator's post-v1.10.3 menu selection of option 3, making
+      that work ready to bundle; (iii) Codex's two optional TODOs
+      (round-trip + Debug parity) were cheap additive assertions
+      that strengthen the same audit-vocab safety net the v1.10.4
+      slice targeted. Consolidating all three into one commit
+      avoids ledger noise while respecting the "tight slices"
+      discipline the Phase-5 arc has maintained.
+    changes:
+      added:
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-23-audit-vocab-confirm-review.result.yaml"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-23-audit-vocab-confirm-gemini-review.result.yaml"
+      modified:
+        - "src/ui/dashboard.rs"
+        - "src/domain/audit.rs"
+        - "src/store/audit.rs"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - ".mission/CURRENT_STATE.md"
+      removed: []
+    changed_sections:
+      - "ui::dashboard — new AuditEventKind import; p_text/d_text built via format! Display splicing; help_overlay test assertions migrated to as_str() lookups"
+      - "domain::audit::tests — contract test gains Debug parity assertion (Codex optional TODO #2)"
+      - "store::audit::tests — new parse_kind_inverts_as_str_for_every_variant round-trip test (Codex optional TODO #1)"
+      - "mission.yaml / mission-history.yaml — v1.10.5 narrative + change_sequence 40 + meta bump"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "identical — help overlay renders the same strings (Display delegates to as_str; values unchanged); audit log unchanged; SQLite row values still byte-identical to v1.10.3 baseline"
+      verification: "cargo build + cargo test --all-targets (246 lib + 6 drift + 22 integration = 274 tests; +1 net vs v1.10.4) + cargo clippy --all-targets -D warnings + cargo fmt --check all clean"
+      docs: "mission.yaml + mission-history.yaml + CURRENT_STATE.md updated; VALIDATION.md unchanged (refactor + additive test coverage only)"
+      ledger: "v1.10.5 layered on v1.10.4 audit-vocab; v1.10.3 P5-4 archive, v1.10.2, v1.10.1, v1.10.0 P5-3 and everything below untouched"
+    breaking: false
+    risk: "negligible — UI prose path still produces the same user-visible strings (Display contract locked in v1.10.4 + reinforced here); the two new/enlarged tests are additive; no runtime / audit / gate / actuation surface touched"
+    related_commits:
+      - "2059446"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Phase 5 and the audit-vocab compile-time safety arc are now both fully gate-approved and closed. No outstanding reviewer-raised Phase-5 items."
+      - "Remaining carry-forward items are all future-watch / deferred: proposal_id producer-identity extension (only if multi-proposal producers ever land), structured slash_command AuditEvent field (only if multi-outcome/multi-proposal forces the schema cost), is_strong producer flag (only if a new strong slash-command advisory should stay advisory-only), send_keys live-tmux-session whitebox test (larger than a unit test needs)."
+      - "Optional confirm-review on v1.10.5: bundled slice covers ledger-archive + UI linkage + test strengthening, none of which are safety-critical. Operator may skip a fourth Phase-5 review round or run a lightweight one; either is acceptable."
+      - "Open Phase 6 per operator's next slice preference — Phase 5 has zero outstanding debt."
+
 evolution_summary:
-  current_phase: "Audit-vocab compile-time safety shipped (v1.10.4) — AuditEventKind now carries its canonical string form as a `pub const fn as_str` with exhaustive-match compile-time safety, and `impl AsRef<str>` + `impl Display` delegate to it. store::audit::kind_to_str collapses to a one-line `k.as_str()` delegate; the 20-arm match no longer duplicates the vocabulary. New domain-layer 20-pair contract test locks every variant's string across as_str / Display / AsRef<str>. Closes the compatible Codex v1.10.2 §9 + Gemini v1.10.2 #10 forward-watch TODOs in a single refactor. 245 lib + 6 drift + 22 integration = 273 tests green (+1 net vs v1.10.3); clippy + fmt clean. Refactor-only — SQLite row values identical to v1.10.3; audit log continuity preserved; no runtime / VALIDATION / actuation / gate surface touched. Phase 5 remains fully gate-approved (Codex + Gemini both `approve` across P5-1 → P5-2 → P5-3 → P5-4) and structurally complete. Layered on v1.10.3; v1.10.2 and everything below untouched."
-  next_phase: "Phase 5 closed + audit-vocab cleanup shipped; operator to choose Phase 6 scope, an optional v1.10.4 confirm review, or a pause"
+  current_phase: 'Audit-vocab followup shipped (v1.10.5) — bundled round closing three v1.10.4 loose ends. (1) Both v1.10.4 reviewer verdicts archived (Codex approve + Gemini approve, zero must-fix from either). (2) UI help prose in `src/ui/dashboard.rs::help_lines` migrated to `format!("{}", AuditEventKind::Prompt*)` splicing — the overlay text now derives from the v1.10.4 Display impl rather than hand-typed literals; help_overlay test assertions also use as_str() so the test is compile-time-linked to the enum. (3) Codex optional TODO #1 adopted — new `parse_kind_inverts_as_str_for_every_variant` round-trip test pins the read/write symmetry across all 20 variants at the type-string layer. (4) Codex optional TODO #2 adopted — existing domain contract test gains a `{:?}` Debug parity assertion so Debug-equals-Display stops depending on variant-naming convention. 246 lib + 6 drift + 22 integration = 274 tests green (+1 net vs v1.10.4); clippy + fmt clean. SQLite row values still byte-identical across the full v1.10.x arc — audit log continuity preserved. Phase 5 remains fully gate-approved across P5-1 → P5-2 → P5-3 → P5-4 AND the audit-vocab cleanup is now fully closed with every reviewer TODO adopted. Layered on v1.10.4; v1.10.3, v1.10.2 and everything below untouched.'
+  next_phase: "Phase 5 closed + audit-vocab arc closed; operator to choose Phase 6 scope, optional v1.10.5 confirm review, or pause"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

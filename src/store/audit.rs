@@ -262,6 +262,58 @@ mod tests {
     }
 
     #[test]
+    fn parse_kind_inverts_as_str_for_every_variant() {
+        // v1.10.5 remediation (Codex v1.10.4 optional TODO #1): lock
+        // the inverse side of the audit-vocab contract. For every
+        // AuditEventKind variant, `parse_kind(kind.as_str()) ==
+        // Some(kind)` — the write path (`as_str` now the single
+        // source of truth) and the read path (`parse_kind`) cannot
+        // drift apart without failing this test. Pairs with the
+        // domain-layer `audit_event_kind_as_str_contract_locks_every_
+        // variant_string` to form a two-sided round-trip guarantee
+        // at the type-string layer (no SQLite session required).
+        let variants = [
+            AuditEventKind::PaneIdentityResolved,
+            AuditEventKind::PaneIdentityChanged,
+            AuditEventKind::PaneBecameDead,
+            AuditEventKind::PaneReappeared,
+            AuditEventKind::AlertFired,
+            AuditEventKind::RecommendationEmitted,
+            AuditEventKind::StartupVersionSnapshot,
+            AuditEventKind::VersionDriftDetected,
+            AuditEventKind::SafetyOverrideRejected,
+            AuditEventKind::ArchiveWritten,
+            AuditEventKind::SnapshotWritten,
+            AuditEventKind::RetentionSwept,
+            AuditEventKind::VersionSnapshotError,
+            AuditEventKind::AuditWriteFailed,
+            AuditEventKind::PromptSendProposed,
+            AuditEventKind::PromptSendAccepted,
+            AuditEventKind::PromptSendRejected,
+            AuditEventKind::PromptSendCompleted,
+            AuditEventKind::PromptSendFailed,
+            AuditEventKind::PromptSendBlocked,
+        ];
+        for kind in variants {
+            let s = kind.as_str();
+            assert_eq!(
+                parse_kind(s),
+                Some(kind),
+                "parse_kind({s:?}) must invert {kind:?}.as_str()"
+            );
+        }
+        // Unknown strings must still map to None so older DB rows
+        // carrying a retired kind name do not panic the reader —
+        // this is the load-bearing reason parse_kind returns Option
+        // rather than being derived via `TryFrom`.
+        assert_eq!(
+            parse_kind("__RetiredKindFromV0.3__"),
+            None,
+            "parse_kind must tolerate unknown historical strings by returning None"
+        );
+    }
+
+    #[test]
     fn prompt_send_audit_kinds_roundtrip_through_sqlite() {
         // P5-1 SQLite contract: the three new `PromptSend*` audit kinds
         // must round-trip through kind_to_str + parse_kind so they

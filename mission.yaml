@@ -1,6 +1,6 @@
 mission:
-  version: "1.10.4"
-  title: "Qmonster v0.4.0 — audit-vocab compile-time safety v1.10.4 (AuditEventKind gains as_str + Display + AsRef<str>; store::kind_to_str delegates; contract test locks all 20 variant strings — closes Codex v1.10.2 §9 + Gemini v1.10.2 #10 compatible pair)"
+  version: "1.10.5"
+  title: "Qmonster v0.4.0 — audit-vocab followup v1.10.5 (confirm-archive of v1.10.4 Codex + Gemini approves; UI help prose migrated to AuditEventKind::Display splicing; Codex optional TODOs #1 parse_kind round-trip + #2 Debug parity both adopted)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -891,6 +891,57 @@ mission:
     below untouched. All three Phase-5 VALIDATION.md checkboxes
     remain ticked.
 
+    Audit-vocab followup (v1.10.5, this revision) bundles three
+    loose ends from v1.10.4 into a single small round. Both
+    reviewers returned `approve` on v1.10.4 with zero must-fix
+    (Codex: no findings + 2 optional TODOs; Gemini: no findings +
+    1 optional future-slice TODO that happens to match Codex's
+    concurrent UI-linkage suggestion). v1.10.5 closes all four
+    non-blocking items and archives both verdicts:
+    (1) Confirm-archive (Codex v1.10.4 approve + Gemini v1.10.4
+    approve) — structured mirrors land at
+    `.mission/evals/...-audit-vocab-confirm-review.result.yaml`
+    (Codex) and `...-audit-vocab-confirm-gemini-review.result.yaml`
+    (Gemini). (2) Gemini v1.10.4 future-slice TODO + v1.10.3
+    post-ship menu option 3 — the `p` / `d` help prose in
+    `src/ui/dashboard.rs::help_lines` is migrated from hand-typed
+    audit-kind literals to `format!("{}", AuditEventKind::Prompt*)`
+    splicing via the v1.10.4 `Display` impl. Runtime-allocated
+    `p_text` / `d_text` strings are borrowed into the existing
+    tuple array passed to `help_detail_line`, preserving the
+    surrounding static tuples without restructure. Adding
+    `use crate::domain::audit::AuditEventKind;` at the top of
+    `dashboard.rs` is the only import change. The
+    `help_overlay_documents_p_and_d_prompt_send_actions` unit
+    test is also migrated — assertions now pull the expected
+    tokens via `AuditEventKind::Prompt*.as_str()` rather than
+    hand-typing the literals, so the test itself is now
+    compile-time-linked to the enum. (3) Codex v1.10.4 optional
+    TODO #1 — a new `parse_kind_inverts_as_str_for_every_variant`
+    test in `src/store/audit.rs` iterates all 20 variants and
+    asserts `parse_kind(kind.as_str()) == Some(kind)`; it also
+    asserts `parse_kind("__RetiredKindFromV0.3__") == None` to
+    pin the Option-return contract that makes older DB rows
+    safe to read. Pairs with the domain-layer as_str contract
+    to form a two-sided round-trip guarantee at the type-string
+    layer (no SQLite needed). (4) Codex v1.10.4 optional TODO
+    #2 — an explicit `assert_eq!(format!("{kind:?}"), *expected)`
+    assertion inside the existing domain contract test locks
+    `{:?}` ↔ Display parity so the Debug-equals-Display
+    correspondence no longer depends on variant-naming
+    convention. 246 lib + 6 drift + 22 integration = 274 tests
+    (+1 net vs. v1.10.4 — the new parse_kind round-trip test;
+    Debug parity is a +20 assertion insert into the existing
+    contract test). clippy --all-targets -D warnings clean;
+    cargo fmt clean. SQLite row values still byte-identical to
+    v1.10.4 (and therefore to v1.10.3) — the audit log
+    continuity promise holds across the full v1.10.x arc. Layered
+    on v1.10.4 audit-vocab; v1.10.3 P5-4 remediation-and-archive,
+    v1.10.2 polish, v1.10.1, v1.10.0 P5-3 and everything below
+    untouched. Phase 5 remains fully gate-approved (Codex +
+    Gemini both `approve` across the entire P5-1 → P5-2 → P5-3
+    → P5-4 arc and the audit-vocab cleanup).
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1062,5 +1113,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 39
+    total_revisions: 40
     history: "mission-history.yaml"
