@@ -525,13 +525,17 @@ fn section_line(title: &str) -> Line<'static> {
 /// left border (v1.10.6 UX polish).
 const HELP_DETAIL_INDENT: &str = "  ";
 
-/// 4-space indent + bullet marker used on continuation rows that
-/// elaborate a single help entry (v1.10.7). Distinct from
-/// HELP_DETAIL_INDENT so the reader can tell a bullet belongs to
-/// the entry immediately above it rather than being a new top-
-/// level row. Used by the `p` accept-proposal entry to enumerate
-/// the three audit-chain variants per actuation mode.
-const HELP_CONTINUATION_PREFIX: &str = "    · ";
+/// Hanging-indent prefix used on continuation bullets (v1.10.8 —
+/// operator asked for deeper bullet indent). 20 spaces place the
+/// `·` marker at column 20 (same column as the `:` in the summary
+/// row of a detail entry — HELP_DETAIL_INDENT (2) + HELP_LABEL_WIDTH
+/// (18) = 20), so the bullet text starts at column 22 and hangs
+/// visibly under the value text of the `p` summary row. Distinct
+/// from HELP_DETAIL_INDENT so the reader can tell a bullet belongs
+/// to the entry immediately above it rather than being a new
+/// top-level row. The `help_continuation_prefix_hangs_bullet_under_
+/// value_column` test locks this alignment against drift.
+const HELP_CONTINUATION_PREFIX: &str = "                    · ";
 
 fn help_continuation_bullet(text: &str) -> Line<'static> {
     Line::from(vec![
@@ -587,6 +591,44 @@ mod tests {
             "detail row must start with the 2-space indent followed by the label. got: {text:?}"
         );
         assert!(text.contains(": switch focus"));
+    }
+
+    #[test]
+    fn help_continuation_prefix_hangs_bullet_under_value_column() {
+        // v1.10.8 bullet-indent invariant. Summary row layout:
+        //   cols 0-1:   HELP_DETAIL_INDENT (2 spaces)
+        //   cols 2-19:  padded label (HELP_LABEL_WIDTH = 18)
+        //   col  20:    `:`
+        //   col  21:    ` ` (separator)
+        //   col  22+:   value text (the "value column")
+        // Continuation bullet must place its `·` at col 20 (same col
+        // as the `:` of the summary row) so the bullet text then
+        // starts at col 22 — visually hanging directly under the
+        // value of the `p` entry.
+        //
+        // Therefore the full prefix (leading whitespace + `·` + ` `)
+        // consumes exactly value_column characters before the
+        // bullet text begins.
+        let value_column =
+            HELP_DETAIL_INDENT.chars().count() + HELP_LABEL_WIDTH + ": ".chars().count();
+        let prefix_chars = HELP_CONTINUATION_PREFIX.chars().count();
+        assert_eq!(
+            prefix_chars, value_column,
+            "HELP_CONTINUATION_PREFIX must reach exactly the value column so bullet text starts aligned. got prefix_chars={prefix_chars}, value_column={value_column}"
+        );
+        // The character at col value_column - 2 (= col 20, same col
+        // as the `:` of the summary row) must be the bullet itself —
+        // not whitespace — so the visual alignment is intentional
+        // rather than accidental.
+        let bullet_col = value_column - 2;
+        let bullet_char = HELP_CONTINUATION_PREFIX
+            .chars()
+            .nth(bullet_col)
+            .expect("prefix must reach the bullet column");
+        assert_eq!(
+            bullet_char, '·',
+            "bullet marker must sit at column {bullet_col} (aligned with the `:` of the summary row)"
+        );
     }
 
     #[test]

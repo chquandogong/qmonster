@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — help p/d bullet split + first annotated tag v1.10.7 (wrapped continuations in p entry now preserve indent; footer badge now renders tag name instead of short SHA)"
+  mission_title: "Qmonster v0.4.0 — bullet hanging indent v1.10.8 (HELP_CONTINUATION_PREFIX deepened to 20 spaces + `· ` so bullet markers hang under the `:` of the summary row; annotated tag v1.10.8 at HEAD)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 42
-  latest_version: "1.10.7"
+  total_revisions: 43
+  latest_version: "1.10.8"
 
 timeline:
   - change_id: "initial"
@@ -5103,9 +5103,115 @@ timeline:
       - "Existing carry-forwards unchanged (proposal_id producer-identity, structured slash_command field, is_strong producer flag, send_keys live-tmux-session whitebox test)."
       - "Open Phase 6 per operator's next slice preference; Phase 5 has zero outstanding debt."
 
+  - change_id: "bullet-hanging-indent"
+    semantic_version: "1.10.8"
+    change_sequence: 43
+    date: "2026-04-23"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — follow-up on v1.10.7: 'bullet Line도 들여쓰기 해줘' — the shallow 4-space bullet indent wasn't nested enough visually)"
+    change_type: "ux-polish"
+    motivation_type: "operator-driven"
+    persistence: "permanent"
+    intent: >
+      Close the operator's follow-up on v1.10.7: the bullet rows
+      were indented to col 4, which visually read as only a
+      two-column shift from the summary row at col 2 — not a
+      clear nest. Move the bullets to a proper hanging-indent
+      under the value column of the summary row.
+    intent_ko: >
+      v1.10.7 follow-up 마감: bullet 행이 col 4로 들여쓰기되어
+      summary 행(col 2)보다 고작 2칸 이동한 것으로 읽힘 —
+      시각적 중첩이 약함. Summary 행 value 컬럼 아래로 hanging
+      indent시켜 명확하게 중첩시킨다.
+    decision: >
+      `HELP_CONTINUATION_PREFIX` deepened from 4 spaces to 20
+      spaces before the `· ` marker. This places the `·` at
+      column 20 (same column as the `:` of the summary row,
+      since HELP_DETAIL_INDENT(2) + HELP_LABEL_WIDTH(18) = 20)
+      and the bullet text then starts at column 22 — the value
+      column of the summary row. Result: bullets hang directly
+      under the value of the `p` entry in standard hanging-
+      indent style. A new unit test
+      `help_continuation_prefix_hangs_bullet_under_value_column`
+      computes the expected column offset from
+      `HELP_DETAIL_INDENT + HELP_LABEL_WIDTH + ": "` and asserts
+      (a) the prefix consumes exactly that many chars before the
+      bullet text begins and (b) the `·` sits at the col-20
+      bullet position. Any future change to
+      `HELP_DETAIL_INDENT` / `HELP_LABEL_WIDTH` /
+      `HELP_CONTINUATION_PREFIX` that breaks the alignment fails
+      here before shipping. No content change — the three
+      audit-chain bullets (Execute / AutoSendOff / observe_only)
+      and the `p` summary text are unchanged.
+      Post-commit git operation: create annotated tag `v1.10.8`
+      at HEAD and push. Build.rs re-runs on the new tag
+      (rerun-if-changed on `.git/HEAD` + currently-checked-out
+      ref), so a fresh build renders `v1.10.8` in the footer.
+    decision_ko: >
+      `HELP_CONTINUATION_PREFIX`를 4-space에서 20-space + `· `로
+      변경. `·` 마커가 col 20(HELP_DETAIL_INDENT(2) +
+      HELP_LABEL_WIDTH(18))에 위치 — summary 행의 `:`와 같은 col.
+      Bullet 텍스트는 col 22부터 시작해 summary value column 아래로
+      hanging indent 정렬. 새 유닛 테스트
+      `help_continuation_prefix_hangs_bullet_under_value_column`이
+      `HELP_DETAIL_INDENT + HELP_LABEL_WIDTH + ": "`에서 기대
+      column offset을 계산해 (a) prefix가 정확히 그 길이만큼의
+      chars를 소비, (b) `·`가 col 20의 bullet position에 위치함을
+      검증. 향후 상수 변경이 정렬을 깨트리면 여기서 먼저 fail.
+      내용은 불변 — 3개 audit-chain bullet(Execute / AutoSendOff /
+      observe_only) + `p` summary 모두 유지.
+      Post-commit: HEAD에 annotated tag `v1.10.8` 부착 + push.
+      build.rs의 rerun-if-changed가 tag 변경을 감지해 재빌드 시
+      footer가 `v1.10.8`로 렌더됨.
+    triggered_by: "Operator feedback on v1.10.7: '네, bullet Line도 들여쓰기 해줘'"
+    issue_or_context: >
+      v1.10.7 split the long `p` description into a summary Line
+      + 3 bullet Lines using a 4-space + bullet prefix
+      (`HELP_CONTINUATION_PREFIX = "    · "`). From the
+      operator's view the 4-space indent was only 2 more columns
+      than the summary row's 2-space indent, which read as a
+      flat or minimally-nested layout rather than a proper
+      hang-indent. Moving the prefix to 20 spaces aligns the
+      bullet `·` with the `:` of the summary row — a standard
+      visual convention that makes the continuation's nesting
+      unambiguous.
+    changes:
+      added: []
+      modified:
+        - "src/ui/dashboard.rs"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - ".mission/CURRENT_STATE.md"
+      removed: []
+    changed_sections:
+      - "ui::dashboard::HELP_CONTINUATION_PREFIX — deepened from 4-space to 20-space prefix; doc comment rewritten to document the hanging-indent column math"
+      - "ui::dashboard tests — new help_continuation_prefix_hangs_bullet_under_value_column locks the prefix column math against drift"
+      - "mission.yaml / mission-history.yaml — v1.10.8 narrative + change_sequence 43 + meta bump"
+      - "git repository — annotated tag `v1.10.8` at the commit that ships this slice (post-commit operation; not a file change)"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "bullet continuation rows now render 20-space-indented with `·` aligned under the `:` of the summary row; bullet text aligns with the value column; footer renders `v1.10.8` after the tag ships"
+      verification: "cargo build + cargo test --all-targets (249 lib + 6 drift + 22 integration = 277 tests; +1 net vs v1.10.7 — the new alignment invariant test) + cargo clippy --all-targets -D warnings + cargo fmt --check all clean"
+      docs: "mission.yaml + mission-history.yaml + CURRENT_STATE.md updated; VALIDATION.md unchanged"
+      ledger: "v1.10.8 layered on v1.10.7; v1.10.6 and everything below untouched"
+    breaking: false
+    risk: "negligible — one-string constant change plus one additive test. The bullet rows in narrow terminals may wrap differently now (the 20-space prefix leaves less horizontal room), but the content is the same and ratatui re-flow handles the long lines; most operator terminals (120+ cols) have ample room."
+    related_commits:
+      - "346fe27"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotate tag v1.10.8 at HEAD + push; build.rs's rerun-if-changed picks up the new ref so the footer renders `v1.10.8`."
+      - "Existing carry-forwards unchanged (proposal_id producer-identity, structured slash_command field, is_strong producer flag, send_keys live-tmux-session whitebox test)."
+      - "Open Phase 6 per operator's next slice preference; Phase 5 has zero outstanding debt."
+
 evolution_summary:
-  current_phase: "Help p/d bullet split + first annotated git tag (v1.10.7) — closes two operator-visible v1.10.6 gaps. (1) The `p` help row is now a summary Line + 3 bullet continuation Lines so the Execute / AutoSendOff / observe_only audit chains stay visually indented instead of wrapping flush-left; `d` stays single-line. (2) Repo gains its first annotated tag `v1.10.7` at this commit so `git describe --tags` returns the tag label, making the footer badge render `v1.10.7` instead of a short SHA. 248 lib + 6 drift + 22 integration = 276 tests green (unchanged vs v1.10.6 — existing tests gain assertions; no new #[test] fn); clippy + fmt clean. Pure UX polish — no runtime, audit schema, gate, or actuation surface change. Phase 5 + audit-vocab arcs both remain closed. Layered on v1.10.6; everything below untouched."
-  next_phase: "Phase 5 + audit-vocab both closed, v1.10.6 UX polish shipped; operator to choose Phase 6 scope, an optional confirm review, or pause"
+  current_phase: "Bullet hanging indent shipped (v1.10.8) — closes operator follow-up on v1.10.7's shallow 4-space bullets. HELP_CONTINUATION_PREFIX deepened from `    · ` (4-space) to `                    · ` (20-space), placing the `·` marker at column 20 (same col as the summary row's `:`) so bullet text at col 22 hangs directly under the value column of the `p` entry. New alignment-invariant test locks the column math against future drift. 249 lib + 6 drift + 22 integration = 277 tests green (+1 net); clippy + fmt clean. Pure UX polish — no runtime, audit schema, gate, or actuation surface change. Annotated tag `v1.10.8` created at HEAD (continuing the v1.10.7 per-ledger-version tagging convention) so the footer renders the release label. Phase 5 + audit-vocab arcs both remain closed. Layered on v1.10.7; everything below untouched."
+  next_phase: "Phase 5 + audit-vocab both closed; v1.10.8 ships bullet hang-indent with a tag; operator to choose Phase 6 scope, an optional confirm review on v1.10.7/v1.10.8, or pause"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

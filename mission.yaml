@@ -1,6 +1,6 @@
 mission:
-  version: "1.10.7"
-  title: "Qmonster v0.4.0 — help p/d bullet split + v1.10.7 tag v1.10.7 (p help row now multi-line with 3 bullet continuations so AutoSendOff / observe_only audit chains keep visual indent; annotated git tag v1.10.7 lets the footer badge show the release label)"
+  version: "1.10.8"
+  title: "Qmonster v0.4.0 — bullet hanging indent v1.10.8 (HELP_CONTINUATION_PREFIX deepened to 20 spaces + `· ` so bullet markers hang under the `:` of the summary row; bullet text now aligns with the value column; annotated tag v1.10.8 at HEAD so footer renders the release label)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1015,6 +1015,37 @@ mission:
     clean. Layered on v1.10.6 UX polish (`7fd25c9`); everything
     below untouched.
 
+    Bullet hanging indent (v1.10.8, this revision) closes the
+    operator's follow-up on v1.10.7: the bullet continuation
+    rows were indented to col 4 (HELP_CONTINUATION_PREFIX was
+    `"    · "`), which visually read as only 2 chars more
+    indent than the summary row at col 2 — not a clear nest.
+    Fix: `HELP_CONTINUATION_PREFIX` is deepened from 4 spaces to
+    20 spaces before the `· ` marker, so the bullet sits at
+    column 20 (same column as the `:` in the summary row) and
+    bullet text then starts at column 22 (the value column of
+    the summary row). Result: bullets hang directly under the
+    value of the `p` entry in classic hanging-indent style
+    instead of looking like shallow top-level rows. A new unit
+    test `help_continuation_prefix_hangs_bullet_under_value_
+    column` computes the expected column offset from
+    `HELP_DETAIL_INDENT` + `HELP_LABEL_WIDTH` + `": "` and
+    asserts (a) the prefix consumes exactly that many chars
+    before the bullet text begins, and (b) the `·` sits at
+    the col-20 bullet position — so any future tweak to
+    `HELP_DETAIL_INDENT` / `HELP_LABEL_WIDTH` /
+    `HELP_CONTINUATION_PREFIX` that breaks alignment fails here
+    before shipping. No content change — the three audit-chain
+    bullets (Execute / AutoSendOff / observe_only) and the
+    `p` summary text are unchanged. Also creates annotated tag
+    `v1.10.8` at the commit that ships this slice, so
+    `git describe --tags` returns `v1.10.8` and the footer
+    badge renders the release label (continuing the v1.10.7
+    per-ledger-version tagging convention). 249 lib + 6 drift
+    + 22 integration = 277 tests (+1 net vs. v1.10.7); clippy
+    --all-targets -D warnings clean; cargo fmt clean. Layered
+    on v1.10.7 (`346fe27`); everything below untouched.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1186,5 +1217,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 42
+    total_revisions: 43
     history: "mission-history.yaml"
