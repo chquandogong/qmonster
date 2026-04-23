@@ -362,12 +362,10 @@ fn render_footer(area: Rect, buf: &mut Buffer, alerts_focused: bool, panes_focus
     let badge = version_badge_rect(area);
     let text_width = area.width.saturating_sub(badge.width).saturating_sub(1);
     let text_area = Rect::new(area.x, area.y, text_width, area.height);
-    Paragraph::new(format!(
-        "{focus} · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · ? help · q quit"
-    ))
-    .style(Style::default().fg(theme::TEXT_DIM))
-    .wrap(Wrap { trim: false })
-    .render(text_area, buf);
+    Paragraph::new(footer_text(focus))
+        .style(Style::default().fg(theme::TEXT_DIM))
+        .wrap(Wrap { trim: false })
+        .render(text_area, buf);
     Paragraph::new(version_badge_label())
         .style(
             theme::label_style()
@@ -376,6 +374,16 @@ fn render_footer(area: Rect, buf: &mut Buffer, alerts_focused: bool, panes_focus
         )
         .alignment(Alignment::Center)
         .render(badge, buf);
+}
+
+/// Pure footer-line builder. Extracted from `render_footer` in v1.10.2
+/// so the list of advertised keybindings can be unit-tested without
+/// spinning up a buffer. The `focus` argument is the prefix (e.g.
+/// `"focus: alerts"`) decided by the caller.
+fn footer_text(focus: &str) -> String {
+    format!(
+        "{focus} · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · p accept · d dismiss · ? help · q quit"
+    )
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
@@ -430,6 +438,14 @@ fn help_lines() -> Vec<Line<'static>> {
             ("s", "write a runtime snapshot"),
             ("r", "refresh version drift check"),
             ("c", "clear system notices"),
+            (
+                "p",
+                "accept the pending prompt-send proposal on the selected pane (P5-3 safer-actuation; audit: PromptSendAccepted → Completed/Failed, or PromptSendBlocked when observe_only or allow_auto_prompt_send=false)",
+            ),
+            (
+                "d",
+                "dismiss the pending prompt-send proposal on the selected pane (audit: PromptSendRejected; available in every actuation mode)",
+            ),
             ("Esc / ?", "close this help"),
             ("q", "quit the TUI"),
         ]
@@ -518,5 +534,66 @@ mod tests {
         let badge = version_badge_rect(area);
         assert_eq!(badge.y, area.y + area.height - 1);
         assert_eq!(badge.x + badge.width, area.x + area.width);
+    }
+
+    #[test]
+    fn footer_text_advertises_prompt_send_keys() {
+        // v1.10.2 polish (Codex v1.9.2 / v1.10.0 follow-up): the
+        // global footer must advertise `p` (accept) and `d` (dismiss)
+        // alongside the other single-letter keys so operators notice
+        // the P5-3 actuation surface without having to open the help
+        // overlay. Lock the key tokens against future typos.
+        let text = footer_text("focus: alerts");
+        assert!(
+            text.contains("p accept"),
+            "footer must advertise `p accept`: {text}"
+        );
+        assert!(
+            text.contains("d dismiss"),
+            "footer must advertise `d dismiss`: {text}"
+        );
+        // Sanity: existing anchors still present.
+        assert!(text.starts_with("focus: alerts"));
+        assert!(text.contains("? help"));
+        assert!(text.contains("q quit"));
+    }
+
+    #[test]
+    fn help_overlay_documents_p_and_d_prompt_send_actions() {
+        // v1.10.2 polish: the `?` help overlay must describe both
+        // the accept (`p`) and dismiss (`d`) paths, including the
+        // P5-3 audit-event chain, so the operator can learn what
+        // pressing each key will record without having to read the
+        // mission ledger. Assertions look for the P5-3 kind names so
+        // a renamed event kind in the future will surface here first.
+        //
+        // `help_detail_line` left-pads the label to DETAIL_LABEL_WIDTH,
+        // so the rendered format is `"p   …   : accept …"` — we parse
+        // each line on the first `:` and match the trimmed label.
+        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
+        let entry_for = |key: &str| -> Option<String> {
+            lines.iter().find_map(|line| {
+                let (label, value) = line.split_once(':')?;
+                if label.trim() == key {
+                    Some(value.trim().to_string())
+                } else {
+                    None
+                }
+            })
+        };
+        let p_entry = entry_for("p").expect("help overlay must carry a `p` entry");
+        let d_entry = entry_for("d").expect("help overlay must carry a `d` entry");
+        assert!(
+            p_entry.contains("PromptSendAccepted"),
+            "the `p` entry must name the PromptSendAccepted audit kind so operators can map the key to the audit log. got: {p_entry}"
+        );
+        assert!(
+            p_entry.contains("PromptSendBlocked"),
+            "the `p` entry must mention PromptSendBlocked so the observe_only / auto-send-off branches are discoverable. got: {p_entry}"
+        );
+        assert!(
+            d_entry.contains("PromptSendRejected"),
+            "the `d` entry must name the PromptSendRejected audit kind. got: {d_entry}"
+        );
     }
 }
