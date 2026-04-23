@@ -1,0 +1,24 @@
+# Qmonster pricing table (Estimated, operator-curated)
+#
+# Values are USD per 1 million tokens. Leave placeholders at 0.00 to skip cost
+# estimation for a given (provider, model) pair -- Qmonster will render no
+# "COST [Est]" badge for that combination.
+#
+# This table is ProjectCanonical. Qmonster does NOT fetch provider pricing
+# pages. Refresh manually when prices change; the file is gitignored so each
+# operator owns their own numbers. Cost estimates are for trend tracking,
+# NOT for billing reconciliation.
+#
+# Last updated by operator: YYYY-MM-DD
+
+[[entries]]
+provider = "codex"
+model = "gpt-5.4"
+input_per_1m = 0.00    # TODO(operator): fill in from OpenAI pricing
+output_per_1m = 0.00
+
+[[entries]]
+provider = "claude"
+model = "claude-sonnet-4-6"
+input_per_1m = 0.00    # TODO(operator): fill in from Anthropic pricing
+output_per_1m = 0.00

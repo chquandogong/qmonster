@@ -25,3 +25,6 @@ CLAUDE.local.md
 /.mission/CURRENT_STATE.md
 /.mission/snapshots/
 /.mission/templates/
+
+# Operator-owned pricing table (see config/pricing.example.toml)
+config/pricing.toml
