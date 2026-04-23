@@ -79,6 +79,7 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         context_pressure: parse_context_pressure(&lower),
         token_count: None,
         cost_usd: None,
+        model_name: None,
     }
 }
 

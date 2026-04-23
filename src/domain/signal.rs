@@ -62,6 +62,7 @@ pub struct SignalSet {
     pub context_pressure: Option<MetricValue<f32>>,
     pub token_count: Option<MetricValue<u64>>,
     pub cost_usd: Option<MetricValue<f64>>,
+    pub model_name: Option<MetricValue<String>>,
 }
 
 #[cfg(test)]
@@ -93,5 +94,26 @@ mod tests {
         assert!(!s.verbose_answer);
         assert!(!s.error_hint);
         assert!(!s.subagent_hint);
+    }
+
+    #[test]
+    fn default_signal_set_has_no_model_name() {
+        let s = SignalSet::default();
+        assert!(s.model_name.is_none());
+    }
+
+    #[test]
+    fn signal_set_can_carry_model_name_with_source_kind() {
+        let s = SignalSet {
+            model_name: Some(
+                MetricValue::new("gpt-5.4".to_string(), SourceKind::ProviderOfficial)
+                    .with_provider(Provider::Codex),
+            ),
+            ..Default::default()
+        };
+        let m = s.model_name.as_ref().unwrap();
+        assert_eq!(m.value, "gpt-5.4");
+        assert_eq!(m.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(m.provider, Some(Provider::Codex));
     }
 }
