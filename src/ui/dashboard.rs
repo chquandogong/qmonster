@@ -203,11 +203,11 @@ pub fn render_target_picker(
 
 pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
     let rects = help_modal_rects(frame.area());
+    let text_width = help_body_text_width(rects.body);
     frame.render_widget(Clear, rects.area);
 
     frame.render_widget(
-        Paragraph::new(help_lines())
-            .wrap(Wrap { trim: false })
+        Paragraph::new(help_lines_for_width(text_width))
             .scroll((scroll, 0))
             .block(
                 Block::default()
@@ -268,7 +268,9 @@ pub fn render_git_modal(frame: &mut Frame<'_>, title: &str, lines: &[String], sc
 pub fn max_help_scroll(viewport: Rect) -> usize {
     let rects = help_modal_rects(viewport);
     let visible_lines = rects.body.height.saturating_sub(2) as usize;
-    help_lines().len().saturating_sub(visible_lines)
+    help_lines_for_width(help_body_text_width(rects.body))
+        .len()
+        .saturating_sub(visible_lines)
 }
 
 pub fn max_git_scroll(viewport: Rect, line_count: usize) -> usize {
@@ -414,16 +416,17 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         .split(popup[1])[1]
 }
 
+#[cfg(test)]
 fn help_lines() -> Vec<Line<'static>> {
-    // v1.10.7 help indent fix: the `p` help row is split into a
-    // short summary + three bullet continuation lines so the
-    // per-path audit chain stays visibly indented under the
-    // section header instead of wrapping flush-left when the
-    // Paragraph re-flows. Bullet lines reuse the HELP_DETAIL_INDENT
-    // column so the visual nesting reads as `Controls › p ›
-    // bullets`. The audit-kind names are still spliced from the
-    // v1.10.4 `AuditEventKind::Display` impl (the v1.10.5
-    // compile-time linkage from the UI layer).
+    help_lines_for_width(usize::MAX)
+}
+
+fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
+    // Help rows are wrapped before they reach Paragraph so every
+    // continuation line keeps the same hanging indent under the
+    // value column instead of re-flowing flush-left at the modal
+    // border. That applies to ordinary detail rows and the `p`
+    // bullet continuations alike.
     let accepted = AuditEventKind::PromptSendAccepted;
     let completed = AuditEventKind::PromptSendCompleted;
     let failed = AuditEventKind::PromptSendFailed;
@@ -461,33 +464,39 @@ fn help_lines() -> Vec<Line<'static>> {
         ("r", "refresh version drift check"),
         ("c", "clear system notices"),
     ] {
-        lines.push(help_detail_line(label, value));
+        lines.extend(help_wrapped_detail_lines(label, value, total_width));
     }
 
-    // `p` — multi-line with bullets so the audit-chain enumeration
-    // keeps its indent on every rendered row (v1.10.7 fix).
-    lines.push(help_detail_line(
+    lines.extend(help_wrapped_detail_lines(
         "p",
         "accept pending prompt-send proposal (P5-3 safer-actuation)",
+        total_width,
     ));
-    lines.push(help_continuation_bullet(&format!(
-        "Execute (allow_auto_prompt_send=true, non-observe_only): {accepted} → {completed} or {failed}"
-    )));
-    lines.push(help_continuation_bullet(&format!(
-        "AutoSendOff (allow_auto_prompt_send=false, non-observe_only): {accepted} + {blocked}"
-    )));
-    lines.push(help_continuation_bullet(&format!(
-        "observe_only: {blocked} alone (no {accepted})"
-    )));
+    lines.extend(help_wrapped_bullet_lines(
+        &format!(
+            "Execute (allow_auto_prompt_send=true, non-observe_only): {accepted} → {completed} or {failed}"
+        ),
+        total_width,
+    ));
+    lines.extend(help_wrapped_bullet_lines(
+        &format!(
+            "AutoSendOff (allow_auto_prompt_send=false, non-observe_only): {accepted} + {blocked}"
+        ),
+        total_width,
+    ));
+    lines.extend(help_wrapped_bullet_lines(
+        &format!("observe_only: {blocked} alone (no {accepted})"),
+        total_width,
+    ));
 
-    // `d` — single-line short enough to not need bullets.
-    lines.push(help_detail_line(
+    lines.extend(help_wrapped_detail_lines(
         "d",
         &format!("dismiss pending prompt-send proposal (audit: {rejected}; every actuation mode)"),
+        total_width,
     ));
 
     for (label, value) in [("Esc / ?", "close this help"), ("q", "quit the TUI")] {
-        lines.push(help_detail_line(label, value));
+        lines.extend(help_wrapped_detail_lines(label, value, total_width));
     }
 
     lines.push(Line::raw(""));
@@ -496,7 +505,7 @@ fn help_lines() -> Vec<Line<'static>> {
         labels::source_kind_legend()
             .into_iter()
             .map(split_once_space)
-            .map(|(label, value)| help_detail_line(label, value)),
+            .flat_map(|(label, value)| help_wrapped_detail_lines(label, value, total_width)),
     );
 
     lines.push(Line::raw(""));
@@ -505,7 +514,7 @@ fn help_lines() -> Vec<Line<'static>> {
         labels::signal_legend()
             .into_iter()
             .map(split_once_colon)
-            .map(|(label, value)| help_detail_line(label, value)),
+            .flat_map(|(label, value)| help_wrapped_detail_lines(label, value, total_width)),
     );
     lines
 }
@@ -537,10 +546,62 @@ const HELP_DETAIL_INDENT: &str = "  ";
 /// value_column` test locks this alignment against drift.
 const HELP_CONTINUATION_PREFIX: &str = "                    · ";
 
+fn help_body_text_width(body: Rect) -> usize {
+    body.width.saturating_sub(2) as usize
+}
+
+fn help_value_column() -> usize {
+    HELP_DETAIL_INDENT.chars().count() + HELP_LABEL_WIDTH + ": ".chars().count()
+}
+
+fn help_value_continuation_prefix() -> String {
+    " ".repeat(help_value_column())
+}
+
+fn help_wrapped_detail_lines(label: &str, value: &str, total_width: usize) -> Vec<Line<'static>> {
+    let content_width = total_width.saturating_sub(help_value_column()).max(8);
+    let wrapped = help_wrap_text(value, content_width);
+    let mut out = Vec::with_capacity(wrapped.len());
+    for (idx, chunk) in wrapped.into_iter().enumerate() {
+        if idx == 0 {
+            out.push(help_detail_line(label, &chunk));
+        } else {
+            out.push(help_value_continuation_line(&chunk));
+        }
+    }
+    out
+}
+
+fn help_wrapped_bullet_lines(text: &str, total_width: usize) -> Vec<Line<'static>> {
+    let content_width = total_width
+        .saturating_sub(HELP_CONTINUATION_PREFIX.chars().count())
+        .max(8);
+    let wrapped = help_wrap_text(text, content_width);
+    let mut out = Vec::with_capacity(wrapped.len());
+    for (idx, chunk) in wrapped.into_iter().enumerate() {
+        if idx == 0 {
+            out.push(help_continuation_bullet(&chunk));
+        } else {
+            out.push(help_value_continuation_line(&chunk));
+        }
+    }
+    out
+}
+
 fn help_continuation_bullet(text: &str) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             HELP_CONTINUATION_PREFIX,
+            Style::default().fg(theme::TEXT_DIM),
+        ),
+        Span::styled(text.to_string(), Style::default().fg(theme::TEXT_DIM)),
+    ])
+}
+
+fn help_value_continuation_line(text: &str) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            help_value_continuation_prefix(),
             Style::default().fg(theme::TEXT_DIM),
         ),
         Span::styled(text.to_string(), Style::default().fg(theme::TEXT_DIM)),
@@ -567,6 +628,59 @@ fn split_once_space(line: &'static str) -> (&'static str, &'static str) {
 
 fn split_once_colon(line: &'static str) -> (&'static str, &'static str) {
     line.split_once(": ").unwrap_or((line, ""))
+}
+
+fn help_wrap_text(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(8);
+    let mut out = Vec::new();
+    let mut current = String::new();
+
+    for word in text.split_whitespace() {
+        if word.chars().count() > width {
+            if !current.is_empty() {
+                out.push(std::mem::take(&mut current));
+            }
+            out.extend(help_split_long_word(word, width));
+            continue;
+        }
+
+        if current.is_empty() {
+            current.push_str(word);
+            continue;
+        }
+
+        let next_len = current.chars().count() + 1 + word.chars().count();
+        if next_len <= width {
+            current.push(' ');
+            current.push_str(word);
+        } else {
+            out.push(std::mem::take(&mut current));
+            current.push_str(word);
+        }
+    }
+
+    if !current.is_empty() {
+        out.push(current);
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
+}
+
+fn help_split_long_word(word: &str, width: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut chunk = String::new();
+    for ch in word.chars() {
+        chunk.push(ch);
+        if chunk.chars().count() == width {
+            out.push(std::mem::take(&mut chunk));
+        }
+    }
+    if !chunk.is_empty() {
+        out.push(chunk);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -609,8 +723,7 @@ mod tests {
         // Therefore the full prefix (leading whitespace + `·` + ` `)
         // consumes exactly value_column characters before the
         // bullet text begins.
-        let value_column =
-            HELP_DETAIL_INDENT.chars().count() + HELP_LABEL_WIDTH + ": ".chars().count();
+        let value_column = help_value_column();
         let prefix_chars = HELP_CONTINUATION_PREFIX.chars().count();
         assert_eq!(
             prefix_chars, value_column,
@@ -651,6 +764,45 @@ mod tests {
     }
 
     #[test]
+    fn wrapped_help_detail_lines_keep_continuations_under_value_column() {
+        let lines: Vec<String> = help_wrapped_detail_lines(
+            "Severity chip",
+            "click a bulk chip in Alerts to toggle auto-hide for that severity",
+            48,
+        )
+        .into_iter()
+        .map(line_text)
+        .collect();
+        let continuation_prefix = help_value_continuation_prefix();
+        assert!(lines.len() > 1, "expected wrapped help row: {lines:?}");
+        assert!(
+            lines[1].starts_with(&continuation_prefix),
+            "wrapped continuation must align with the value column. got: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn wrapped_help_bullets_keep_continuations_under_value_column() {
+        let lines: Vec<String> = help_wrapped_bullet_lines(
+            "Execute (allow_auto_prompt_send=true, non-observe_only): PromptSendAccepted → PromptSendCompleted or PromptSendFailed",
+            56,
+        )
+        .into_iter()
+        .map(line_text)
+        .collect();
+        let continuation_prefix = help_value_continuation_prefix();
+        assert!(lines.len() > 1, "expected wrapped help bullet: {lines:?}");
+        assert!(
+            lines[0].starts_with(HELP_CONTINUATION_PREFIX),
+            "first bullet line must keep the bullet prefix. got: {lines:?}"
+        );
+        assert!(
+            lines[1].starts_with(&continuation_prefix),
+            "wrapped bullet continuation must align with the value column. got: {lines:?}"
+        );
+    }
+
+    #[test]
     fn version_badge_label_comes_from_build_embedded_git_version() {
         // v1.10.6: the footer label is no longer the Cargo package
         // version; `build.rs` resolves `git describe --tags --always
@@ -672,6 +824,13 @@ mod tests {
         let tall = max_help_scroll(Rect::new(0, 0, 120, 48));
         let short = max_help_scroll(Rect::new(0, 0, 120, 16));
         assert!(short >= tall);
+    }
+
+    #[test]
+    fn help_scroll_budget_grows_when_viewport_narrows() {
+        let wide = max_help_scroll(Rect::new(0, 0, 120, 24));
+        let narrow = max_help_scroll(Rect::new(0, 0, 80, 24));
+        assert!(narrow >= wide);
     }
 
     #[test]
