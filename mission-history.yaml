@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — Phase 5 P5-3 tmux send-keys executor v1.10.0 (second gate + PromptSendGate + 3 audit kinds + stable proposal_id; DEFER structured slash_command, ADOPT PromptSendBlocked)"
+  mission_title: "Qmonster v0.4.0 — Phase 5 P5-3 remediation + confirm-archive v1.10.1 (3 Gemini v1.10.0 findings closed: policy/gates relocation, tmux -l literal flag, AutoSendOff terminal audit)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 35
-  latest_version: "1.10.0"
+  total_revisions: 36
+  latest_version: "1.10.1"
 
 timeline:
   - change_id: "initial"
@@ -4233,9 +4233,139 @@ timeline:
       - "Future-watch (Codex v1.9.2): if a new strong slash-command advisory should stay advisory-only, add an explicit producer flag rather than weakening the is_strong + starts_with('/') catch-all"
       - "Promote slash_command to structured AuditEvent field when multi-outcome or multi-proposal needs justify the schema cost (deferred per Codex DEFER call)"
 
+  - change_id: "phase-5-p5-3-remediation-and-confirm-archive"
+    semantic_version: "1.10.1"
+    change_sequence: 36
+    date: "2026-04-23"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Gemini (gemini:1:research, v1.10.0 confirm re-review of 74c58c8 — verdict `approve-with-fixes`, 3 warning must-fix findings; all three closed in this commit)"
+      - "Codex (codex:1:review, v1.10.0 confirm re-review of 74c58c8 — verdict `approve`, 0 must-fix findings; 3 optional polish TODOs)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — chose option A: apply all three Gemini fixes in a single combined remediation + confirm-archive round rather than a two-commit split)"
+    change_type: "remediation-and-archive"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Close the three Gemini v1.10.0 confirm findings and archive
+      both reviewers' v1.10.0 verdicts in a single combined round.
+      All three Gemini fixes tighten rather than broaden the surface
+      Codex approved, so Codex's `approve` verdict transports cleanly
+      to v1.10.1 without requiring re-execution.
+    intent_ko: >
+      Gemini v1.10.0 confirm의 3개 finding을 모두 닫고 두 리뷰어의
+      v1.10.0 판정(Codex `approve`, Gemini `approve-with-fixes`)을
+      한 라운드로 아카이브. 3개 수정 모두 Codex가 승인한 표면을
+      넓히지 않고 좁히거나 강화하므로, Codex `approve` 판정은
+      v1.10.1에 재실행 없이 그대로 유지된다.
+    decision: >
+      Apply all three Gemini findings as a single combined commit
+      (operator choice of option A over a two-commit remediation +
+      archive split):
+      (1) Finding #1 — gate abstraction boundary: move PromptSendGate
+      enum + check_send_gate function from src/main.rs to
+      src/policy/gates.rs; relocate the 5 gate-matrix unit tests
+      into the gates module; main.rs now imports via
+      `use qmonster::policy::gates::{PromptSendGate, check_send_gate}`.
+      (2) Finding #2 — tmux argument safety: split
+      PollingSource::send_keys into two tmux invocations —
+      `tmux send-keys -t {pane} -l {text}` (literal mode; `-l`
+      forces the payload to be interpreted as text regardless of
+      tmux key-name collisions) followed by `tmux send-keys -t
+      {pane} Enter` (Enter stays on its own invocation because `-l`
+      would literalise it). Add two whitebox tests to pin the
+      argument vector layout against future refactors.
+      (3) Finding #3 — AutoSendOff terminal audit gap: emit
+      PromptSendBlocked immediately after PromptSendAccepted in the
+      AutoSendOff branch, so every operator `p` keystroke ends in
+      exactly one of the terminal outcome kinds. Broaden the
+      PromptSendBlocked doc to cover both fire paths (ObserveOnly
+      blocks acceptance; AutoSendOff blocks execution after
+      acceptance); summary string names the reason. No new audit
+      kind added — existing PromptSendBlocked generalises cleanly,
+      which also respects Codex's "keep audit stream lean"
+      preference.
+    decision_ko: >
+      운영자의 option A 선택에 따라 Gemini의 3개 finding을 단일
+      커밋에 묶어 처리 (two-commit remediation + archive 분할 대신):
+      (1) #1 — gate abstraction 경계: PromptSendGate enum +
+      check_send_gate 함수를 src/main.rs → src/policy/gates.rs로
+      이전; 5개 gate-matrix 유닛 테스트도 함께 이전; main.rs는
+      `use qmonster::policy::gates::{PromptSendGate, check_send_gate}`로
+      import.
+      (2) #2 — tmux 인자 안전성: PollingSource::send_keys를 tmux
+      2회 호출로 분리 — `tmux send-keys -t {pane} -l {text}`
+      (literal 모드; `-l`로 페이로드가 tmux 키 이름(Up, C-c, -l 등)과
+      충돌 시에도 텍스트로 해석) 후 `tmux send-keys -t {pane} Enter`
+      (Enter는 별도 호출로 유지 — `-l` 뒤에 두면 literalise됨).
+      whitebox 테스트 2개로 argument vector 레이아웃 고정.
+      (3) #3 — AutoSendOff terminal audit 누락: AutoSendOff 분기에서
+      PromptSendAccepted 직후에 PromptSendBlocked 추가 발행 — 모든
+      operator `p` 키 입력이 정확히 하나의 terminal outcome kind로
+      종결됨. PromptSendBlocked 문서 주석을 두 발화 경로(ObserveOnly /
+      AutoSendOff) 모두 커버하도록 일반화; summary 문자열에 어느
+      게이트가 차단했는지 명시. 새 audit kind는 추가하지 않음 — 기존
+      PromptSendBlocked가 자연스럽게 일반화되어 Codex의 "audit
+      stream을 간결하게 유지" 선호와도 부합.
+    triggered_by: "v1.10.0 follow-up list (change_sequence 35): 'Request short Codex + Gemini confirm re-review on v1.10.0 before declaring Phase 5 complete'"
+    issue_or_context: >
+      v1.10.0 shipped P5-3 (tmux send-keys executor + second gate
+      + terminal outcomes). The confirm round produced divergent
+      verdicts: Codex approved with 0 must-fix (static review via
+      GitHub connector + tmux man page); Gemini approved-with-fixes
+      and raised 3 warning-severity findings. Operator chose
+      option A (apply all three fixes in a combined round) over
+      option B (Codex-side no-patch confirm-archive) or option C
+      (two-commit remediation + second review). Option A front-
+      loads the remediation cost while preserving Codex's approve
+      verdict (tightening-only changes) and closing all three
+      Gemini findings at once.
+    changes:
+      added:
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-23-phase5-p5-3-confirm-review.result.yaml"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-23-phase5-p5-3-confirm-gemini-review.result.yaml"
+      modified:
+        - "src/policy/gates.rs"
+        - "src/main.rs"
+        - "src/tmux/polling.rs"
+        - "src/domain/audit.rs"
+        - "mission.yaml"
+        - "mission-history.yaml"
+      removed: []
+    changed_sections:
+      - "policy::gates — PromptSendGate enum + check_send_gate + 5 gate-matrix tests migrated from main.rs (finding #1)"
+      - "main.rs — removed local PromptSendGate; imports from policy::gates; AutoSendOff branch emits PromptSendBlocked after PromptSendAccepted (finding #3)"
+      - "tmux::polling::send_keys — split into 2 invocations with -l flag (finding #2); 2 new whitebox tests lock argv layout"
+      - "domain::audit::PromptSendBlocked doc — broadened to cover ObserveOnly and AutoSendOff fire paths"
+      - "mission.yaml / mission-history.yaml — v1.10.1 narrative + change_sequence 36 + meta bump"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "gate logic is unchanged at the boundary (same matrix outputs); AutoSendOff now writes 2 audit events per operator `p` press instead of 1; send_keys now runs 2 tmux invocations per send instead of 1 (negligible latency cost)."
+      verification: "cargo build + cargo test --all-targets (242 lib + 6 drift + 22 integration = 270 tests; +1 net vs v1.10.0) + cargo clippy --all-targets -D warnings + cargo fmt --check all clean"
+      docs: "mission.yaml + mission-history.yaml updated; VALIDATION.md unchanged (all three Phase-5 checkboxes remain ticked from v1.10.0 — the remediation strengthens rather than regresses the surface that earned them)"
+      ledger: "v1.10.1 layered on v1.10.0; change_sequence 35 v1.10.0 entry intact; confirm-archive and remediation consolidated into one change_sequence 36 entry to avoid ledger noise"
+    breaking: false
+    risk: "low — all three fixes are localised and tightening-only. The send_keys split changes the tmux wire-level invocation but preserves the (pane_id, text) interface; no caller sees a difference. The AutoSendOff extra audit event could double-count in legacy forensics scripts that assume `p ⇒ at most one audit event`, but no such script exists in the repo."
+    related_commits:
+      - "74c58c8"
+    related_decisions:
+      - "KD-003"
+      - "KD-009"
+    snapshot_after: ""
+    follow_up:
+      - "P5-3 is now closed with both reviewers' concerns addressed; no further remediation required unless a future review surfaces something new."
+      - "Optional UX polish (carry-forward from Codex v1.9.2): surface `p` / `d` in global help/footer in src/ui/dashboard.rs when that UI surface is next touched"
+      - "Future-watch (Codex v1.9.2 + reiterated in v1.10.0): if a new strong slash-command advisory should stay advisory-only, add an explicit producer flag rather than weakening the is_strong + starts_with('/') catch-all"
+      - "Promote slash_command to structured AuditEvent field when multi-outcome or multi-proposal needs justify the schema cost (deferred per Codex DEFER call — now carried on the ledger with Gemini v1.10.0 #3 closed via PromptSendBlocked reuse)"
+      - "Optional test cleanup (Codex v1.10.0): the send_keys whitebox tests could pin actual process spawn args rather than re-asserting the argv layout; this v1.10.1 round adds a second whitebox that narrows the gap further but does not exercise a live tmux session"
+      - "If a future slice widens the producer set to include non-slash tmux keystrokes or arbitrary text, revisit the `-l`-split send_keys design to make sure the literal-vs-key-name boundary still matches operator intent"
+      - "Open P5-4 or Phase 6 per the operator's next slice preference — there is no outstanding Phase-5 VALIDATION debt and both reviewers' Phase-5 concerns are closed"
+
 evolution_summary:
-  current_phase: "Phase 5 P5-3 SHIPPED (v1.10.0) — tmux send-keys executor landed behind two gates (operator confirmation + allow_auto_prompt_send). PromptSendGate enum separates execution gate from EffectRunner::permit display filter. Three terminal-outcome audit kinds (PromptSendCompleted / PromptSendFailed / PromptSendBlocked) wired into SQLite round-trip. proposal_id stable key added. Design divergences resolved: DEFER structured slash_command (Codex), ADOPT PromptSendBlocked (Gemini). 236 lib + 11 main + 22 integration = 269 tests green; clippy + fmt clean. All three Phase-5 VALIDATION.md checkboxes ticked. Layered on v1.9.3 confirm-archive; v1.9.2 P5-2, v1.9.0 P5-1, v1.8.14 Phase-4 all intact. Awaiting Codex + Gemini confirm re-review on v1.10.0."
-  next_phase: "Phase 5 — await Codex + Gemini confirm re-review on v1.10.0; optional UX polish (p/d in help/footer); future-watch on structured slash_command when schema cost justified"
+  current_phase: "Phase 5 P5-3 FULLY GATE-APPROVED + REMEDIATED (v1.10.1) — all three Gemini v1.10.0 must-fix findings closed in a single combined round; Codex v1.10.0 `approve` verdict preserved because all three patches tighten (not broaden) the surface Codex reviewed. PromptSendGate + check_send_gate migrated to src/policy/gates.rs (finding #1). tmux send-keys split into two invocations with -l literal flag (finding #2). AutoSendOff branch now emits PromptSendBlocked after PromptSendAccepted, closing the audit chain for every operator `p` keystroke (finding #3); PromptSendBlocked doc broadened to cover both ObserveOnly and AutoSendOff fire paths without adding a new audit kind. 242 lib + 6 drift + 22 integration = 270 tests green; clippy + fmt clean. All three Phase-5 VALIDATION.md checkboxes remain honestly ticked. Layered on v1.10.0 P5-3; v1.9.3 confirm-archive, v1.9.2 P5-2, v1.9.0 P5-1, v1.8.14 Phase-4 all intact. Phase 5 is structurally complete."
+  next_phase: "Phase 5 closed (P5-3 fully gate-approved + remediated at v1.10.1); operator to choose P5-4 scope or open Phase 6"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

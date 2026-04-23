@@ -18,7 +18,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::ListState;
 
 use qmonster::app::bootstrap::Context;
-use qmonster::app::config::{ActionsMode, QmonsterConfig, load_from_path};
+use qmonster::app::config::{QmonsterConfig, load_from_path};
 use qmonster::app::event_loop::{PaneReport, run_once, run_once_with_target};
 use qmonster::app::git_info::capture_repo_panel;
 use qmonster::app::path_resolution::pick_root;
@@ -34,6 +34,7 @@ use qmonster::domain::audit::{AuditEvent, AuditEventKind};
 use qmonster::domain::origin::SourceKind;
 use qmonster::domain::recommendation::Severity;
 use qmonster::notify::desktop::DesktopNotifier;
+use qmonster::policy::gates::{PromptSendGate, check_send_gate};
 use qmonster::store::{
     ArchiveWriter, EventSink, InMemorySink, PaneSnapshot, SnapshotInput, SnapshotWriter,
     SqliteAuditSink, sweep,
@@ -319,36 +320,10 @@ struct AlertMouseClick {
 
 const ALERT_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(450);
 
-/// P5-3 execution gate evaluation (pure, unit-testable).
-///
-/// The `tmux send-keys` call requires BOTH:
-/// (a) the operator pressed `p` (explicit confirmation), and
-/// (b) `allow_auto_prompt_send = true` in the config.
-///
-/// `EffectRunner::permit` is NOT reused here — it stays as the
-/// display-layer filter. This gate is the separate execution gate
-/// described in the P5-3 spec.
-#[derive(Debug, PartialEq, Eq)]
-enum PromptSendGate {
-    /// `actions.mode = observe_only` — record `PromptSendBlocked`.
-    Blocked,
-    /// Mode allows, but `allow_auto_prompt_send = false` — record
-    /// `PromptSendAccepted` only; no tmux invocation.
-    AutoSendOff,
-    /// Both gates pass — attempt `tmux send-keys`; then record
-    /// `PromptSendCompleted` or `PromptSendFailed`.
-    Execute,
-}
-
-fn check_send_gate(mode: ActionsMode, allow_auto_prompt_send: bool) -> PromptSendGate {
-    if mode == ActionsMode::ObserveOnly {
-        PromptSendGate::Blocked
-    } else if !allow_auto_prompt_send {
-        PromptSendGate::AutoSendOff
-    } else {
-        PromptSendGate::Execute
-    }
-}
+// Phase 5 P5-3 second gate types (`PromptSendGate` + `check_send_gate`)
+// were moved to `qmonster::policy::gates` in v1.10.1 remediation
+// (Gemini v1.10.0 finding #1 closed). The TUI keystroke handler below
+// imports them via the `use` statement at the top of this file.
 
 fn run_tui<P, N>(
     ctx: &mut Context<P, N>,
@@ -1078,8 +1053,11 @@ where
                                                 }
                                                 PromptSendGate::AutoSendOff => {
                                                     // Operator confirmed but auto-send is off.
-                                                    // Record acceptance (operator intent) but
-                                                    // do not invoke tmux send-keys.
+                                                    // Record acceptance (operator intent is real)
+                                                    // AND a trailing `PromptSendBlocked` so the
+                                                    // audit chain is complete — v1.10.1
+                                                    // remediation closing Gemini v1.10.0 #3.
+                                                    // No tmux send-keys invocation.
                                                     ctx.sink.record(AuditEvent {
                                                         kind: AuditEventKind::PromptSendAccepted,
                                                         pane_id: target.clone(),
@@ -1090,12 +1068,22 @@ where
                                                         provider: None,
                                                         role: None,
                                                     });
+                                                    ctx.sink.record(AuditEvent {
+                                                        kind: AuditEventKind::PromptSendBlocked,
+                                                        pane_id: target.clone(),
+                                                        severity: Severity::Warning,
+                                                        summary: format!(
+                                                            "{target} {cmd} (execution blocked; allow_auto_prompt_send=false)"
+                                                        ),
+                                                        provider: None,
+                                                        role: None,
+                                                    });
                                                     notices.insert(
                                                         0,
                                                         SystemNotice {
                                                             title: "proposal accepted (send disabled)".into(),
                                                             body: format!(
-                                                                "{target} → `{cmd}` (audit: PromptSendAccepted; set allow_auto_prompt_send=true to enable execution)"
+                                                                "{target} → `{cmd}` (audit: PromptSendAccepted + PromptSendBlocked; set allow_auto_prompt_send=true to enable execution)"
                                                             ),
                                                             severity: Severity::Good,
                                                             source_kind: SourceKind::ProjectCanonical,
@@ -2137,60 +2125,15 @@ fn window_choice_label(target: &WindowTarget) -> String {
 mod tests {
     use super::*;
     use crossterm::event::KeyModifiers;
-    use qmonster::app::config::ActionsMode;
     use qmonster::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use qmonster::domain::recommendation::Recommendation;
     use qmonster::domain::signal::SignalSet;
 
-    // P5-3 execution gate tests
-    #[test]
-    fn check_send_gate_observe_only_is_blocked() {
-        assert_eq!(
-            check_send_gate(ActionsMode::ObserveOnly, false),
-            PromptSendGate::Blocked
-        );
-        assert_eq!(
-            check_send_gate(ActionsMode::ObserveOnly, true),
-            PromptSendGate::Blocked,
-            "observe_only blocks even if allow_auto_prompt_send=true"
-        );
-    }
-
-    #[test]
-    fn check_send_gate_recommend_only_auto_send_off_is_auto_send_off() {
-        assert_eq!(
-            check_send_gate(ActionsMode::RecommendOnly, false),
-            PromptSendGate::AutoSendOff
-        );
-    }
-
-    #[test]
-    fn check_send_gate_recommend_only_auto_send_on_is_execute() {
-        assert_eq!(
-            check_send_gate(ActionsMode::RecommendOnly, true),
-            PromptSendGate::Execute
-        );
-    }
-
-    #[test]
-    fn check_send_gate_safe_auto_auto_send_on_is_execute() {
-        // safe_auto is not used yet but the gate should still work
-        // if someone configures it in the future.
-        assert_eq!(
-            check_send_gate(ActionsMode::SafeAuto, true),
-            PromptSendGate::Execute
-        );
-    }
-
-    #[test]
-    fn check_send_gate_safe_auto_auto_send_off_is_auto_send_off() {
-        assert_eq!(
-            check_send_gate(ActionsMode::SafeAuto, false),
-            PromptSendGate::AutoSendOff
-        );
-    }
+    // P5-3 execution gate tests relocated to
+    // `src/policy/gates.rs` in v1.10.1 remediation (Gemini v1.10.0
+    // finding #1). See `check_send_gate_*` tests there.
 
     fn base_report(recs: Vec<Recommendation>) -> PaneReport {
         PaneReport {

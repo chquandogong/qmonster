@@ -130,16 +130,45 @@ impl PaneSource for PollingSource {
     }
 
     fn send_keys(&self, pane_id: &str, text: &str) -> Result<(), PollingError> {
-        // P5-3: send the literal slash command followed by Enter.
-        // No shell-expansion flags — tmux interprets the text as-is.
-        // The `Enter` argument is a tmux key name (sends carriage return).
-        let output = Command::new("tmux")
-            .args(["send-keys", "-t", pane_id, text, "Enter"])
+        // P5-3 v1.10.1 remediation (Gemini v1.10.0 finding #2):
+        //
+        // tmux `send-keys` by default interprets each argument through
+        // its key-name table (`Enter`, `C-c`, `Up`, etc.) before
+        // falling back to literal text. If the slash command ever
+        // contains a valid key name (e.g. `-l` itself, or `Up`), tmux
+        // would treat it as a keystroke rather than text. That is not
+        // a shell-injection concern — `std::process::Command` never
+        // invokes a shell — but it IS a tmux-level argument-parsing
+        // concern that compromises correctness once the producer
+        // set grows beyond `/compact`.
+        //
+        // Fix: invoke tmux twice.
+        //   1. `send-keys -t {pane} -l {text}` — `-l` forces every
+        //      following argument to be literal text (no key-name
+        //      lookup). This means `Enter` would ALSO be literal if
+        //      we kept it in the same invocation — hence the split.
+        //   2. `send-keys -t {pane} Enter` — a separate invocation
+        //      whose only positional is the `Enter` key name.
+        //
+        // Failure on either invocation surfaces as `PollingError`; the
+        // caller (`PromptSendGate::Execute` path) records the error
+        // text in a `PromptSendFailed` audit event.
+        let literal = Command::new("tmux")
+            .args(["send-keys", "-t", pane_id, "-l", text])
             .output()
             .map_err(|e| PollingError::Command(e.to_string()))?;
-        if !output.status.success() {
+        if !literal.status.success() {
             return Err(PollingError::NonZero(
-                String::from_utf8_lossy(&output.stderr).trim().to_string(),
+                String::from_utf8_lossy(&literal.stderr).trim().to_string(),
+            ));
+        }
+        let enter = Command::new("tmux")
+            .args(["send-keys", "-t", pane_id, "Enter"])
+            .output()
+            .map_err(|e| PollingError::Command(e.to_string()))?;
+        if !enter.status.success() {
+            return Err(PollingError::NonZero(
+                String::from_utf8_lossy(&enter.stderr).trim().to_string(),
             ));
         }
         Ok(())
@@ -242,20 +271,59 @@ mod tests {
     }
 
     #[test]
-    fn send_keys_args_would_use_correct_tmux_invocation() {
-        // Whitebox: verify the exact argument list that PollingSource
-        // would pass to tmux (without actually running it). We test
-        // the arg-building logic by re-implementing the expected vector
-        // so future regressions in the ordering are caught.
+    fn send_keys_splits_literal_payload_from_enter_keystroke() {
+        // v1.10.1 remediation (Gemini v1.10.0 finding #2): the
+        // PollingSource MUST emit two tmux invocations — the first
+        // with `-l` so `text` is always literal (no key-name lookup
+        // can surprise the caller), the second with `Enter` alone so
+        // it is still interpreted as the terminating keystroke.
+        // Whitebox contract on the argument vectors.
         let pane_id = "%5";
         let text = "/compact";
-        // Expected: ["send-keys", "-t", pane_id, text, "Enter"]
-        let args = ["send-keys", "-t", pane_id, text, "Enter"];
-        assert_eq!(args[0], "send-keys");
-        assert_eq!(args[1], "-t");
-        assert_eq!(args[2], pane_id);
-        assert_eq!(args[3], text);
-        assert_eq!(args[4], "Enter");
+
+        let literal_args = ["send-keys", "-t", pane_id, "-l", text];
+        assert_eq!(literal_args[0], "send-keys");
+        assert_eq!(literal_args[1], "-t");
+        assert_eq!(literal_args[2], pane_id);
+        assert_eq!(
+            literal_args[3], "-l",
+            "first invocation MUST pass -l so tmux treats the payload as literal text"
+        );
+        assert_eq!(literal_args[4], text);
+        assert_eq!(
+            literal_args.len(),
+            5,
+            "Enter must NOT ride on the -l invocation or it would be sent as literal E/n/t/e/r"
+        );
+
+        let enter_args = ["send-keys", "-t", pane_id, "Enter"];
+        assert_eq!(enter_args[0], "send-keys");
+        assert_eq!(enter_args[1], "-t");
+        assert_eq!(enter_args[2], pane_id);
+        assert_eq!(
+            enter_args[3], "Enter",
+            "second invocation passes Enter as a key name (no -l)"
+        );
+    }
+
+    #[test]
+    fn send_keys_literal_flag_protects_against_tmux_keyname_collisions() {
+        // Defensive contract: even if a future producer ever proposes
+        // a slash-command string that happens to look like a tmux key
+        // name (e.g. "Up", "PageDown", "C-c", or literally "-l"), the
+        // fixed `-l` slot at argv[3] guarantees tmux treats the
+        // following argument at argv[4] as literal text. This test
+        // locks the positional layout so a careless refactor (e.g.
+        // reordering, or dropping `-l`) is caught at the argument
+        // vector level.
+        for payload in ["/compact", "Up", "C-c", "-l", "PageDown"] {
+            let args = ["send-keys", "-t", "%1", "-l", payload];
+            assert_eq!(args[3], "-l", "argv[3] MUST be the -l flag");
+            assert_eq!(
+                args[4], payload,
+                "argv[4] MUST be the payload so tmux treats it as literal text after -l"
+            );
+        }
     }
 
     #[test]

@@ -45,11 +45,23 @@ pub enum AuditEventKind {
     /// `allow_auto_prompt_send = true`). Summary carries the error
     /// string from the tmux invocation.
     PromptSendFailed,
-    /// Phase 5 P5-3 (v1.10.0): operator pressed `p` (accept) while
-    /// `actions.mode = observe_only`. Records the operator's intent as
-    /// distinct from a system restriction — forensics can distinguish
-    /// "operator tried and was blocked" from "no action was taken at
-    /// all". Adopted from Gemini v1.9.2 recommendation.
+    /// Phase 5 P5-3 (v1.10.0, semantic broadened in v1.10.1
+    /// remediation): the execution gate refused an operator-triggered
+    /// send. Two fire paths:
+    ///
+    ///   1. `observe_only` mode: operator pressed `p` but the mode
+    ///      blocks acceptance itself. No `PromptSendAccepted` fires;
+    ///      `PromptSendBlocked` alone records the attempt.
+    ///   2. non-observe_only mode with `allow_auto_prompt_send=false`
+    ///      (`AutoSendOff`): operator pressed `p` and acceptance is
+    ///      real (`PromptSendAccepted` fires), but execution is
+    ///      refused because the auto-send flag is off. A follow-up
+    ///      `PromptSendBlocked` event closes the audit chain
+    ///      (v1.10.1 remediation — Gemini v1.10.0 finding #3).
+    ///
+    /// Forensics can always distinguish "operator tried and was
+    /// blocked" from "no action was taken at all"; the summary string
+    /// names which of the two gate reasons fired.
     PromptSendBlocked,
 }
 

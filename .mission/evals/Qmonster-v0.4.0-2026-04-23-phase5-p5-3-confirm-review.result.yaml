@@ -1,0 +1,22 @@
+evaluation:
+  timestamp: "2026-04-23T00:00:00Z"
+  target: "Phase 5 P5-3 confirm review (v1.10.0)"
+  evaluated_by: "llm-codex"
+  source: "Local `codex exec` headless confirm review of commit 74c58c8 using gpt-5.4 (approval never, sandbox workspace-write, reasoning xhigh). Static review against tracked repo files via GitHub connector + tmux(1) man page; relies on author-reported green verification (269 tests, clippy + fmt clean)."
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "Second gate separation is real: EffectRunner stays display-only; run_once still treats PromptSendProposed as inert."
+    - "proposal_id is produced deterministically in src/policy/engine.rs:60 and carried structurally on RequestedEffect::PromptSendProposed."
+    - "Three new audit kinds (Completed/Failed/Blocked) wired symmetrically in kind_to_str + parse_kind with a SQLite round-trip test."
+    - "PaneSource::send_keys keeps the provider boundary clean — tmux only gets (pane_id, text); production invocation localized in src/tmux/polling.rs:121."
+    - "Gate matrix verified: ObserveOnly → always Blocked; non-ObserveOnly + allow_auto_prompt_send=false → AutoSendOff; otherwise Execute. Unit test matrix in src/main.rs covers every cell."
+    - "Phase-5 VALIDATION.md ticks are honestly backed by code, not ledger narration."
+    - "tmux argument safety: Rust passes args directly, no shell interpretation. tmux key-name lookup IS active without -l, but current slash-command-only surface makes it safe. `-l` becomes worth the extra complexity if the producer set broadens to arbitrary text."
+    - "AutoSendOff audit gap (Gemini v1.10.0 finding #3) is NOT a blocker from Codex's perspective: no actuation occurs in that branch, so the 'every actuation is recorded' rule still holds. Codex treats this as by-design, not a validation failure."
+    - "Gate placement (Gemini v1.10.0 finding #1) is a polish move — defer until a second caller exists, then move to src/app/send_gate.rs (YAGNI)."
+    - "Optional TODO #1 (Codex): move PromptSendGate out of src/main.rs only when another caller appears."
+    - "Optional TODO #2 (Codex): strengthen send_keys invocation test to pin implementation rather than document intent."
+    - "Optional TODO #3 (Codex, future change only): if duplicate same-pane same-command proposals become possible, extend proposal_id with producer identity instead of switching to UUIDs."
+  gate_decision: "Codex approves v1.10.0 with no must-fix. Gemini v1.10.0 flagged three warnings (gate placement, tmux -l, AutoSendOff terminal audit) that Codex treats as optional polish / future-proofing / by-design rather than blockers. Operator chose to apply all three Gemini fixes in a v1.10.1 combined remediation + confirm-archive round — none of Codex's positive findings regress under those patches (moving the gate to policy/gates.rs tightens the boundary, adding -l narrows the tmux surface, adding a terminal event in AutoSendOff strengthens the audit chain). Neither reviewer's v1.10.0 verdict is invalidated by the operator choice."
