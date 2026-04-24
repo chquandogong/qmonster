@@ -74,6 +74,14 @@ impl PricingTable {
             .get(&(provider, model.to_string()))
             .filter(|r| r.input_per_1m > 0.0 || r.output_per_1m > 0.0)
     }
+
+    /// Test-only helper: insert a pricing entry directly without going
+    /// through TOML. Do NOT call from production code paths — production
+    /// must go through `load_from_toml_or_empty` so operator-curated
+    /// values are the source of truth.
+    pub fn insert_for_test(&mut self, provider: Provider, model: String, rates: PricingRates) {
+        self.entries.insert((provider, model), rates);
+    }
 }
 
 fn parse_provider(s: &str) -> Result<Provider, PricingError> {
