@@ -31,6 +31,14 @@ pub enum AuditEventKind {
     SnapshotWritten,
     RetentionSwept,
     VersionSnapshotError,
+    /// v1.11.2 remediation (Gemini v1.11.0 must-fix #2 + Codex Q5):
+    /// `PricingTable::load_from_toml` returned an error other than
+    /// NotFound (malformed TOML, unknown provider, I/O failure). The
+    /// TUI falls back to an empty pricing table so cost badges stay
+    /// blank; this event is the durable breadcrumb that records the
+    /// fallback, visible via SQLite query. Complements the ephemeral
+    /// `eprintln!` kept for dev / non-TUI runs.
+    PricingLoadFailed,
     AuditWriteFailed,
     /// Phase 5 P5-1 (v1.9.0): a policy rule emitted a
     /// `RequestedEffect::PromptSendProposed` and the proposal reached
@@ -99,6 +107,7 @@ impl AuditEventKind {
             AuditEventKind::SnapshotWritten => "SnapshotWritten",
             AuditEventKind::RetentionSwept => "RetentionSwept",
             AuditEventKind::VersionSnapshotError => "VersionSnapshotError",
+            AuditEventKind::PricingLoadFailed => "PricingLoadFailed",
             AuditEventKind::AuditWriteFailed => "AuditWriteFailed",
             AuditEventKind::PromptSendProposed => "PromptSendProposed",
             AuditEventKind::PromptSendAccepted => "PromptSendAccepted",
@@ -254,6 +263,7 @@ mod tests {
             (AuditEventKind::SnapshotWritten, "SnapshotWritten"),
             (AuditEventKind::RetentionSwept, "RetentionSwept"),
             (AuditEventKind::VersionSnapshotError, "VersionSnapshotError"),
+            (AuditEventKind::PricingLoadFailed, "PricingLoadFailed"),
             (AuditEventKind::AuditWriteFailed, "AuditWriteFailed"),
             (AuditEventKind::PromptSendProposed, "PromptSendProposed"),
             (AuditEventKind::PromptSendAccepted, "PromptSendAccepted"),

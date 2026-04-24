@@ -141,6 +141,7 @@ fn parse_kind(s: &str) -> Option<AuditEventKind> {
         "SnapshotWritten" => Some(AuditEventKind::SnapshotWritten),
         "RetentionSwept" => Some(AuditEventKind::RetentionSwept),
         "VersionSnapshotError" => Some(AuditEventKind::VersionSnapshotError),
+        "PricingLoadFailed" => Some(AuditEventKind::PricingLoadFailed),
         "AuditWriteFailed" => Some(AuditEventKind::AuditWriteFailed),
         "PromptSendProposed" => Some(AuditEventKind::PromptSendProposed),
         "PromptSendAccepted" => Some(AuditEventKind::PromptSendAccepted),
@@ -286,6 +287,7 @@ mod tests {
             AuditEventKind::SnapshotWritten,
             AuditEventKind::RetentionSwept,
             AuditEventKind::VersionSnapshotError,
+            AuditEventKind::PricingLoadFailed,
             AuditEventKind::AuditWriteFailed,
             AuditEventKind::PromptSendProposed,
             AuditEventKind::PromptSendAccepted,
@@ -330,6 +332,27 @@ mod tests {
         assert!(kinds.contains(&AuditEventKind::PromptSendProposed));
         assert!(kinds.contains(&AuditEventKind::PromptSendAccepted));
         assert!(kinds.contains(&AuditEventKind::PromptSendRejected));
+    }
+
+    #[test]
+    fn pricing_load_failed_audit_kind_roundtrips_through_sqlite() {
+        // v1.11.2 remediation (Gemini v1.11.0 must-fix #2): the new
+        // PricingLoadFailed kind must survive a write → read cycle so
+        // operator forensics can spot "cost badges blanked this
+        // session because config/pricing.toml was malformed" via a
+        // plain SQLite query, not just stderr.
+        let td = TempDir::new().unwrap();
+        let sink = SqliteAuditSink::open(&td.path().join("q.db")).unwrap();
+        sink.record(sample(AuditEventKind::PricingLoadFailed));
+        let rows = sink.recent(10).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].kind, AuditEventKind::PricingLoadFailed);
+        // Independent check: the single-source-of-truth string must
+        // appear verbatim in the stored metadata column.
+        assert_eq!(
+            AuditEventKind::PricingLoadFailed.as_str(),
+            "PricingLoadFailed"
+        );
     }
 
     #[test]

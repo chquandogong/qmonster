@@ -2,7 +2,7 @@
 #
 # Values are USD per 1 million tokens. Leave placeholders at 0.00 to skip cost
 # estimation for a given (provider, model) pair -- Qmonster will render no
-# "COST [Est]" badge for that combination.
+# "COST [Estimate]" badge for that combination.
 #
 # This table is ProjectCanonical. Qmonster does NOT fetch provider pricing
 # pages. Refresh manually when prices change; the file is gitignored so each

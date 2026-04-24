@@ -1159,7 +1159,8 @@ fn codex_status_line_end_to_end_populates_four_metrics() {
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use qmonster::domain::origin::SourceKind;
-    use qmonster::policy::pricing::{PricingRates, PricingTable};
+    use qmonster::policy::pricing::PricingTable;
+    use std::io::Write;
 
     let identity = ResolvedIdentity {
         identity: PaneIdentity {
@@ -1172,15 +1173,24 @@ fn codex_status_line_end_to_end_populates_four_metrics() {
     };
     let tail = "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp";
 
-    let mut pricing = PricingTable::empty();
-    pricing.insert_for_test(
-        Provider::Codex,
-        "gpt-5.4".into(),
-        PricingRates {
-            input_per_1m: 1.00,
-            output_per_1m: 10.00,
-        },
-    );
+    // v1.11.2 remediation (Gemini v1.11.0 must-fix #1): load the
+    // pricing fixture via the operator-facing TOML path, not via a
+    // test-only public API. Keep `_f` bound so the tempfile outlives
+    // the parse call.
+    let mut f = tempfile::NamedTempFile::new().unwrap();
+    write!(
+        f,
+        r#"
+[[entries]]
+provider = "codex"
+model = "gpt-5.4"
+input_per_1m = 1.00
+output_per_1m = 10.00
+"#
+    )
+    .unwrap();
+    let pricing = PricingTable::load_from_toml(f.path()).unwrap();
+    let _f = f;
 
     let signals = parse_for(&identity, tail, &pricing);
 

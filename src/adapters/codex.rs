@@ -12,7 +12,13 @@ struct CodexStatus {
     total_tokens: u64,
     input_tokens: u64,
     output_tokens: u64,
-    model: String,
+    /// v1.11.2 remediation (Codex v1.11.0 warning): the newest
+    /// status-line-shaped line is authoritative. If its model token
+    /// is outside the `gpt-/claude-/gemini-` allowlist we still emit
+    /// context + tokens (ProviderOfficial) and leave `model` as
+    /// `None` so cost/model badges stay blank rather than fall back
+    /// to a stale older `/status` frame.
+    model: Option<String>,
 }
 
 impl ProviderParser for CodexAdapter {
@@ -35,27 +41,36 @@ impl ProviderParser for CodexAdapter {
                 .with_confidence(0.95)
                 .with_provider(Provider::Codex),
         );
-        set.model_name = Some(
-            MetricValue::new(status.model.clone(), SourceKind::ProviderOfficial)
-                .with_confidence(0.95)
-                .with_provider(Provider::Codex),
-        );
-        set.cost_usd = pricing.lookup(Provider::Codex, &status.model).map(|rates| {
-            let cost = (status.input_tokens as f64 * rates.input_per_1m
-                + status.output_tokens as f64 * rates.output_per_1m)
-                / 1_000_000.0;
-            MetricValue::new(cost, SourceKind::Estimated)
-                .with_confidence(0.7)
-                .with_provider(Provider::Codex)
-        });
+        if let Some(model) = status.model.as_ref() {
+            set.model_name = Some(
+                MetricValue::new(model.clone(), SourceKind::ProviderOfficial)
+                    .with_confidence(0.95)
+                    .with_provider(Provider::Codex),
+            );
+            set.cost_usd = pricing.lookup(Provider::Codex, model).map(|rates| {
+                let cost = (status.input_tokens as f64 * rates.input_per_1m
+                    + status.output_tokens as f64 * rates.output_per_1m)
+                    / 1_000_000.0;
+                MetricValue::new(cost, SourceKind::Estimated)
+                    .with_confidence(0.7)
+                    .with_provider(Provider::Codex)
+            });
+        }
 
         set
     }
 }
 
 fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
-    // bottom-up — prefer the most recent frame's status bar over the
-    // /status command's bordered box output (which goes stale).
+    // v1.11.2 remediation (Codex v1.11.0 warning): the newest
+    // status-line-shaped line is authoritative. Bottom-up scan stops
+    // after the first shape match so we never silently fall back to
+    // an older `/status` frame whose values are stale. Per-field
+    // extraction is independent of the model gate: context + 3 token
+    // counts gate the result; model is optional — if the newest
+    // line's model token is outside the known allowlist the parser
+    // still emits context/tokens and leaves model `None` so cost and
+    // model badges stay blank (honest) rather than drift forward.
     for line in tail.lines().rev() {
         if !(line.contains("Context") && line.contains("% used") && line.contains(" · ")) {
             continue;
@@ -110,22 +125,21 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
             }
         }
 
-        // Require all four to consider the line a valid status bar.
-        if let (Some(c), Some(tot), Some(i), Some(o), Some(m)) = (
-            context_pct,
-            total_tokens,
-            input_tokens,
-            output_tokens,
-            model,
-        ) {
-            return Some(CodexStatus {
+        // Newest line is authoritative. Require context + 3 token
+        // counts to consider the line a valid status bar; model is
+        // optional. Whether we return Some or None here, we do NOT
+        // keep scanning upward — an older parseable line must never
+        // leak stale ProviderOfficial values.
+        return match (context_pct, total_tokens, input_tokens, output_tokens) {
+            (Some(c), Some(tot), Some(i), Some(o)) => Some(CodexStatus {
                 context_pct: c,
                 total_tokens: tot,
                 input_tokens: i,
                 output_tokens: o,
-                model: m,
-            });
-        }
+                model,
+            }),
+            _ => None,
+        };
     }
     None
 }
@@ -135,7 +149,9 @@ mod tests {
     use super::*;
     use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, Role};
     use crate::domain::origin::SourceKind;
-    use crate::policy::pricing::{PricingRates, PricingTable};
+    use crate::policy::pricing::PricingTable;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     fn id() -> ResolvedIdentity {
         ResolvedIdentity {
@@ -153,17 +169,27 @@ mod tests {
     // Codex CLI 0.122.0 status bar.
     const STATUS_LINE: &str = "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp";
 
-    fn pricing_with_gpt_5_4() -> PricingTable {
-        let mut t = PricingTable::empty();
-        t.insert_for_test(
-            Provider::Codex,
-            "gpt-5.4".into(),
-            PricingRates {
-                input_per_1m: 1.00,
-                output_per_1m: 10.00,
-            },
-        );
-        t
+    // v1.11.2 remediation (Gemini v1.11.0 must-fix #1 — remove the
+    // `insert_for_test` public API surface): build the pricing
+    // fixture via the same TOML path operators use. The returned
+    // `NamedTempFile` must be kept alive by the caller (`let
+    // (pricing, _f) = ...`) so the file is not deleted before the
+    // load completes.
+    fn pricing_with_gpt_5_4() -> (PricingTable, NamedTempFile) {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"
+[[entries]]
+provider = "codex"
+model = "gpt-5.4"
+input_per_1m = 1.00
+output_per_1m = 10.00
+"#
+        )
+        .unwrap();
+        let t = PricingTable::load_from_toml(f.path()).unwrap();
+        (t, f)
     }
 
     #[test]
@@ -178,7 +204,8 @@ mod tests {
 
     #[test]
     fn codex_adapter_extracts_four_metrics_from_status_line_with_pricing() {
-        let set = CodexAdapter.parse(&id(), STATUS_LINE, &pricing_with_gpt_5_4());
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let set = CodexAdapter.parse(&id(), STATUS_LINE, &pricing);
 
         let ctx = set.context_pressure.as_ref().expect("context parsed");
         assert!((ctx.value - 0.27).abs() < 0.001);
@@ -216,5 +243,42 @@ mod tests {
         assert!(set.context_pressure.is_none());
         assert!(set.token_count.is_none());
         assert!(set.model_name.is_none());
+    }
+
+    // v1.11.2 regression: unknown newest model token must NOT cause
+    // the parser to fall back to an older parseable line. Instead,
+    // populate context/tokens from the newest line and leave model/cost
+    // None.
+    const STATUS_LINE_NEWEST_UNKNOWN_MODEL: &str = "\
+Context 50% left · ~/old · gpt-5.4 · old-proj · main · Context 50% used · 5h 90% · weekly 80% · 0.122.0 · 128K window · 500K used · 400K in · 100K out · <redacted> · gp
+Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% used · 5h 85% · weekly 75% · 0.122.0 · 64K window · 2M used · 1.8M in · 200K out · <redacted> · gp";
+
+    #[test]
+    fn codex_adapter_newest_line_authoritative_even_with_unknown_model() {
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let set = CodexAdapter.parse(&id(), STATUS_LINE_NEWEST_UNKNOWN_MODEL, &pricing);
+
+        // context_pressure must come from the NEWEST line (70% used), not
+        // the older one (50% used).
+        let ctx = set.context_pressure.as_ref().expect("context from newest");
+        assert!(
+            (ctx.value - 0.70).abs() < 0.001,
+            "context {} should come from newest line",
+            ctx.value
+        );
+
+        // token_count must come from the NEWEST line (2M used), not the older (500K used).
+        let tokens = set.token_count.as_ref().expect("tokens from newest");
+        assert_eq!(tokens.value, 2_000_000);
+
+        // model unknown → model_name None, cost_usd None even though pricing has gpt-5.4.
+        assert!(
+            set.model_name.is_none(),
+            "unknown model prefix must NOT populate model_name"
+        );
+        assert!(
+            set.cost_usd.is_none(),
+            "no model → no cost even if pricing is populated"
+        );
     }
 }

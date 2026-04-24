@@ -115,6 +115,19 @@ fn main() -> anyhow::Result<()> {
             PricingTable::empty()
         }
         Err(e) => {
+            // v1.11.2 remediation (Gemini v1.11.0 must-fix #2 + Codex
+            // Q5): record a durable breadcrumb via the audit sink so
+            // the fallback is visible via SQLite query and survives
+            // the TUI alternate-screen cycle that swallows stderr.
+            // Keep the ephemeral eprintln for dev / non-TUI runs.
+            sink.record(AuditEvent {
+                kind: AuditEventKind::PricingLoadFailed,
+                pane_id: "n/a".into(),
+                severity: Severity::Warning,
+                summary: format!("pricing load failed at {}: {e}", pricing_path.display()),
+                provider: None,
+                role: None,
+            });
             eprintln!(
                 "qmonster: failed to load pricing table at {}: {e}; cost badges disabled this session",
                 pricing_path.display()
