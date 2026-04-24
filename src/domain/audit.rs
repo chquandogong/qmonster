@@ -39,6 +39,7 @@ pub enum AuditEventKind {
     /// fallback, visible via SQLite query. Complements the ephemeral
     /// `eprintln!` kept for dev / non-TUI runs.
     PricingLoadFailed,
+    ClaudeSettingsLoadFailed,
     AuditWriteFailed,
     /// Phase 5 P5-1 (v1.9.0): a policy rule emitted a
     /// `RequestedEffect::PromptSendProposed` and the proposal reached
@@ -108,6 +109,7 @@ impl AuditEventKind {
             AuditEventKind::RetentionSwept => "RetentionSwept",
             AuditEventKind::VersionSnapshotError => "VersionSnapshotError",
             AuditEventKind::PricingLoadFailed => "PricingLoadFailed",
+            AuditEventKind::ClaudeSettingsLoadFailed => "ClaudeSettingsLoadFailed",
             AuditEventKind::AuditWriteFailed => "AuditWriteFailed",
             AuditEventKind::PromptSendProposed => "PromptSendProposed",
             AuditEventKind::PromptSendAccepted => "PromptSendAccepted",
@@ -264,6 +266,10 @@ mod tests {
             (AuditEventKind::RetentionSwept, "RetentionSwept"),
             (AuditEventKind::VersionSnapshotError, "VersionSnapshotError"),
             (AuditEventKind::PricingLoadFailed, "PricingLoadFailed"),
+            (
+                AuditEventKind::ClaudeSettingsLoadFailed,
+                "ClaudeSettingsLoadFailed",
+            ),
             (AuditEventKind::AuditWriteFailed, "AuditWriteFailed"),
             (AuditEventKind::PromptSendProposed, "PromptSendProposed"),
             (AuditEventKind::PromptSendAccepted, "PromptSendAccepted"),

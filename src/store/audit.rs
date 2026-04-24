@@ -142,6 +142,7 @@ fn parse_kind(s: &str) -> Option<AuditEventKind> {
         "RetentionSwept" => Some(AuditEventKind::RetentionSwept),
         "VersionSnapshotError" => Some(AuditEventKind::VersionSnapshotError),
         "PricingLoadFailed" => Some(AuditEventKind::PricingLoadFailed),
+        "ClaudeSettingsLoadFailed" => Some(AuditEventKind::ClaudeSettingsLoadFailed),
         "AuditWriteFailed" => Some(AuditEventKind::AuditWriteFailed),
         "PromptSendProposed" => Some(AuditEventKind::PromptSendProposed),
         "PromptSendAccepted" => Some(AuditEventKind::PromptSendAccepted),
@@ -288,6 +289,7 @@ mod tests {
             AuditEventKind::RetentionSwept,
             AuditEventKind::VersionSnapshotError,
             AuditEventKind::PricingLoadFailed,
+            AuditEventKind::ClaudeSettingsLoadFailed,
             AuditEventKind::AuditWriteFailed,
             AuditEventKind::PromptSendProposed,
             AuditEventKind::PromptSendAccepted,
@@ -352,6 +354,26 @@ mod tests {
         assert_eq!(
             AuditEventKind::PricingLoadFailed.as_str(),
             "PricingLoadFailed"
+        );
+    }
+
+    #[test]
+    fn claude_settings_load_failed_audit_kind_roundtrips_through_sqlite() {
+        // Slice 2 (v1.12.0-1): the new ClaudeSettingsLoadFailed kind
+        // must survive a write → read cycle so operators can post-hoc
+        // query why the MODEL badge disappeared on Claude panes.
+        // Mirrors the sibling PricingLoadFailed round-trip test.
+        let td = TempDir::new().unwrap();
+        let sink = SqliteAuditSink::open(&td.path().join("q.db")).unwrap();
+        sink.record(sample(AuditEventKind::ClaudeSettingsLoadFailed));
+        let rows = sink.recent(10).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].kind, AuditEventKind::ClaudeSettingsLoadFailed);
+        // Independent check: the single-source-of-truth string must
+        // appear verbatim via the as_str canonical form.
+        assert_eq!(
+            AuditEventKind::ClaudeSettingsLoadFailed.as_str(),
+            "ClaudeSettingsLoadFailed"
         );
     }
 

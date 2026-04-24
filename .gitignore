@@ -28,3 +28,4 @@ CLAUDE.local.md
 
 # Operator-owned pricing table (see config/pricing.example.toml)
 config/pricing.toml
+config/claude-settings.json

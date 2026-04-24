@@ -1,0 +1,4 @@
+{
+  "_comment": "Qmonster reads the `model` key to populate the MODEL badge on Claude panes. Other keys are ignored. Copy this file to config/claude-settings.json and edit the model value to match your Claude Code settings. The file is gitignored so each operator owns their own copy.",
+  "model": "claude-sonnet-4-6"
+}
