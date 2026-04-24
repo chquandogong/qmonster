@@ -1151,3 +1151,73 @@ fn capturing_source_propagates_configured_error() {
         "error message must propagate; got: {err}"
     );
 }
+
+#[test]
+fn codex_status_line_end_to_end_populates_four_metrics() {
+    use qmonster::adapters::parse_for;
+    use qmonster::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
+    use qmonster::domain::origin::SourceKind;
+    use qmonster::policy::pricing::{PricingRates, PricingTable};
+
+    let identity = ResolvedIdentity {
+        identity: PaneIdentity {
+            provider: Provider::Codex,
+            instance: 1,
+            role: Role::Review,
+            pane_id: "%9".into(),
+        },
+        confidence: IdentityConfidence::High,
+    };
+    let tail = "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp";
+
+    let mut pricing = PricingTable::empty();
+    pricing.insert_for_test(
+        Provider::Codex,
+        "gpt-5.4".into(),
+        PricingRates {
+            input_per_1m: 1.00,
+            output_per_1m: 10.00,
+        },
+    );
+
+    let signals = parse_for(&identity, tail, &pricing);
+
+    assert_eq!(
+        signals.context_pressure.as_ref().unwrap().source_kind,
+        SourceKind::ProviderOfficial
+    );
+    assert_eq!(signals.token_count.as_ref().unwrap().value, 1_530_000);
+    assert_eq!(signals.model_name.as_ref().unwrap().value, "gpt-5.4");
+    let cost = signals.cost_usd.as_ref().unwrap();
+    assert!((cost.value - 1.714).abs() < 0.01);
+    assert_eq!(cost.source_kind, SourceKind::Estimated);
+}
+
+#[test]
+fn codex_status_line_end_to_end_without_pricing_populates_three_metrics() {
+    use qmonster::adapters::parse_for;
+    use qmonster::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
+    use qmonster::policy::pricing::PricingTable;
+
+    let identity = ResolvedIdentity {
+        identity: PaneIdentity {
+            provider: Provider::Codex,
+            instance: 1,
+            role: Role::Review,
+            pane_id: "%9".into(),
+        },
+        confidence: IdentityConfidence::High,
+    };
+    let tail = "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp";
+
+    let signals = parse_for(&identity, tail, &PricingTable::empty());
+
+    assert!(signals.context_pressure.is_some());
+    assert!(signals.token_count.is_some());
+    assert!(signals.model_name.is_some());
+    assert!(signals.cost_usd.is_none());
+}
