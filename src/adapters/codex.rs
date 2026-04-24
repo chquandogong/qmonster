@@ -86,7 +86,7 @@ impl ProviderParser for CodexAdapter {
 /// parse_codex_status_line's success path (only after the status
 /// bar itself matches the shape heuristic).
 fn parse_codex_reasoning_effort(tail: &str) -> Option<String> {
-    for line in tail.lines() {
+    for line in tail.lines().rev() {
         if let Some(idx) = line.find("reasoning ") {
             let after = &line[idx + "reasoning ".len()..];
             let effort = after
@@ -503,5 +503,54 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
 
         assert!(set.reasoning_effort.is_none());
         assert!(set.context_pressure.is_none());
+    }
+
+    #[test]
+    fn codex_adapter_reasoning_effort_rejects_unknown_values() {
+        // Future Codex may add new reasoning-effort values (e.g., `custom`,
+        // `max`). Task 5's whitelist (xhigh/high/medium/low/auto) is strict
+        // — unknown values must produce None, not surface as a fake
+        // provider-official stamp. This test pins the whitelist against
+        // a future well-meaning refactor that broadens it.
+        let tail = concat!(
+            "│  Model:                       gpt-5.4 (reasoning custom, summaries auto)               │\n",
+            "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp"
+        );
+        let id = id();
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, tail, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
+
+        assert!(
+            set.reasoning_effort.is_none(),
+            "unknown reasoning value `custom` must NOT populate reasoning_effort"
+        );
+        // status-bar fields still populate (per-field independence)
+        assert!(set.context_pressure.is_some());
+        assert!(set.token_count.is_some());
+    }
+
+    #[test]
+    fn codex_adapter_reasoning_effort_uses_newest_status_box_when_multiple_present() {
+        // Operator ran /status twice with different effort settings.
+        // The newer one (below in tail, later in time) must win.
+        let tail = concat!(
+            "│  Model:                       gpt-5.4 (reasoning low, summaries auto)                  │\n",
+            "... other tail output between the two /status invocations ...\n",
+            "│  Model:                       gpt-5.4 (reasoning xhigh, summaries auto)                │\n",
+            "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp"
+        );
+        let id = id();
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, tail, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
+
+        let effort = set.reasoning_effort.as_ref().expect("effort parsed");
+        assert_eq!(
+            effort.value, "xhigh",
+            "parser must return newest /status box value (xhigh), not oldest (low)"
+        );
     }
 }
