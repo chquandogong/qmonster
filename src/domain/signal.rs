@@ -63,6 +63,9 @@ pub struct SignalSet {
     pub token_count: Option<MetricValue<u64>>,
     pub cost_usd: Option<MetricValue<f64>>,
     pub model_name: Option<MetricValue<String>>,
+    pub git_branch: Option<MetricValue<String>>,
+    pub worktree_path: Option<MetricValue<String>>,
+    pub reasoning_effort: Option<MetricValue<String>>,
 }
 
 #[cfg(test)]
@@ -115,5 +118,38 @@ mod tests {
         assert_eq!(m.value, "gpt-5.4");
         assert_eq!(m.source_kind, SourceKind::ProviderOfficial);
         assert_eq!(m.provider, Some(Provider::Codex));
+    }
+
+    #[test]
+    fn default_signal_set_has_no_git_branch_or_worktree_or_effort() {
+        let s = SignalSet::default();
+        assert!(s.git_branch.is_none());
+        assert!(s.worktree_path.is_none());
+        assert!(s.reasoning_effort.is_none());
+    }
+
+    #[test]
+    fn signal_set_can_carry_observability_fields() {
+        let s = SignalSet {
+            git_branch: Some(
+                MetricValue::new("main".to_string(), SourceKind::ProviderOfficial)
+                    .with_confidence(0.95)
+                    .with_provider(Provider::Codex),
+            ),
+            worktree_path: Some(
+                MetricValue::new("~/Qmonster".to_string(), SourceKind::ProviderOfficial)
+                    .with_provider(Provider::Codex),
+            ),
+            reasoning_effort: Some(
+                MetricValue::new("xhigh".to_string(), SourceKind::ProviderOfficial)
+                    .with_confidence(0.6)
+                    .with_provider(Provider::Codex),
+            ),
+            ..SignalSet::default()
+        };
+        assert_eq!(s.git_branch.as_ref().unwrap().value, "main");
+        assert_eq!(s.worktree_path.as_ref().unwrap().value, "~/Qmonster");
+        assert_eq!(s.reasoning_effort.as_ref().unwrap().value, "xhigh");
+        assert_eq!(s.reasoning_effort.as_ref().unwrap().confidence, Some(0.6));
     }
 }

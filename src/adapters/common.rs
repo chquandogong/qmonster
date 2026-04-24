@@ -80,6 +80,9 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         token_count: None,
         cost_usd: None,
         model_name: None,
+        git_branch: None,
+        worktree_path: None,
+        reasoning_effort: None,
     }
 }
 
