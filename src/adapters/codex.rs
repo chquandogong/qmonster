@@ -18,6 +18,10 @@ struct CodexStatus {
     /// `None` so cost/model badges stay blank rather than fall back
     /// to a stale older `/status` frame.
     model: Option<String>,
+    worktree_path: Option<String>,
+    git_branch: Option<String>,
+    #[allow(dead_code)] // populated + consumed in Task 5
+    reasoning_effort: Option<String>,
 }
 
 impl ProviderParser for CodexAdapter {
@@ -57,6 +61,17 @@ impl ProviderParser for CodexAdapter {
                     .with_provider(Provider::Codex)
             });
         }
+        set.worktree_path = status.worktree_path.map(|p| {
+            MetricValue::new(p, SourceKind::ProviderOfficial)
+                .with_confidence(0.95)
+                .with_provider(Provider::Codex)
+        });
+        set.git_branch = status.git_branch.map(|b| {
+            MetricValue::new(b, SourceKind::ProviderOfficial)
+                .with_confidence(0.95)
+                .with_provider(Provider::Codex)
+        });
+        // reasoning_effort set in Task 5
 
         set
     }
@@ -76,73 +91,101 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
         if !(line.contains("Context") && line.contains("% used") && line.contains(" · ")) {
             continue;
         }
-        let tokens: Vec<&str> = line.split(" · ").map(str::trim).collect();
 
         let mut context_pct: Option<u8> = None;
         let mut total_tokens: Option<u64> = None;
         let mut input_tokens: Option<u64> = None;
         let mut output_tokens: Option<u64> = None;
         let mut model: Option<String> = None;
+        let mut worktree_path: Option<String> = None;
+        let mut git_branch: Option<String> = None;
+        let mut skip_next_plain_identifier = false;
 
-        for tok in &tokens {
-            // "Context 27% used"
-            if let Some(rest) = tok.strip_prefix("Context ")
+        for token in line.split(" · ").map(str::trim) {
+            // worktree: first ~/- or /-prefixed token
+            if worktree_path.is_none() && (token.starts_with('~') || token.starts_with('/')) {
+                worktree_path = Some(token.to_string());
+                continue;
+            }
+            // model: provider-known prefix
+            if model.is_none()
+                && (token.starts_with("gpt-")
+                    || token.starts_with("claude-")
+                    || token.starts_with("gemini-"))
+            {
+                model = Some(token.to_string());
+                // Project name token sits immediately after model. Skip it.
+                skip_next_plain_identifier = true;
+                continue;
+            }
+            // Context pressure (Slice 1)
+            if let Some(rest) = token.strip_prefix("Context ")
                 && let Some(pct_str) = rest.strip_suffix("% used")
                 && let Ok(pct) = pct_str.parse::<u8>()
             {
                 context_pct = Some(pct);
                 continue;
             }
-            // "1.53M used" — guard against the context "% used" form collision
-            if let Some(num) = tok.strip_suffix(" used")
-                && !tok.contains("% used")
-                && let Some(n) = parse_count_with_suffix(num)
+            // Token counts (Slice 1)
+            if total_tokens.is_none()
+                && let Some(num) = token.strip_suffix(" used")
+                && let Some(n) = parse_count_with_suffix(num.trim())
             {
                 total_tokens = Some(n);
                 continue;
             }
-            // "1.51M in"
-            if let Some(num) = tok.strip_suffix(" in")
-                && let Some(n) = parse_count_with_suffix(num)
+            if input_tokens.is_none()
+                && let Some(num) = token.strip_suffix(" in")
+                && let Some(n) = parse_count_with_suffix(num.trim())
             {
                 input_tokens = Some(n);
                 continue;
             }
-            // "20.4K out"
-            if let Some(num) = tok.strip_suffix(" out")
-                && let Some(n) = parse_count_with_suffix(num)
+            if output_tokens.is_none()
+                && let Some(num) = token.strip_suffix(" out")
+                && let Some(n) = parse_count_with_suffix(num.trim())
             {
                 output_tokens = Some(n);
                 continue;
             }
-            // Model name: known provider prefixes
-            if model.is_none()
-                && (tok.starts_with("gpt-")
-                    || tok.starts_with("claude-")
-                    || tok.starts_with("gemini-"))
-            {
-                model = Some((*tok).to_string());
+            // Plain identifier: either the project name (skip once) or the branch.
+            if git_branch.is_none() && model.is_some() && is_plain_identifier(token) {
+                if skip_next_plain_identifier {
+                    skip_next_plain_identifier = false;
+                    continue;
+                }
+                git_branch = Some(token.to_string());
                 continue;
             }
         }
 
-        // Newest line is authoritative. Require context + 3 token
-        // counts to consider the line a valid status bar; model is
-        // optional. Whether we return Some or None here, we do NOT
-        // keep scanning upward — an older parseable line must never
-        // leak stale ProviderOfficial values.
-        return match (context_pct, total_tokens, input_tokens, output_tokens) {
-            (Some(c), Some(tot), Some(i), Some(o)) => Some(CodexStatus {
+        // Newest-line authoritative (v1.11.2): stop at the first
+        // shape-matching line whether or not every field parsed.
+        if let (Some(c), Some(tot), Some(inp), Some(out)) =
+            (context_pct, total_tokens, input_tokens, output_tokens)
+        {
+            return Some(CodexStatus {
                 context_pct: c,
                 total_tokens: tot,
-                input_tokens: i,
-                output_tokens: o,
+                input_tokens: inp,
+                output_tokens: out,
                 model,
-            }),
-            _ => None,
-        };
+                worktree_path,
+                git_branch,
+                reasoning_effort: None, // populated in Task 5
+            });
+        }
+        return None;
     }
     None
+}
+
+fn is_plain_identifier(s: &str) -> bool {
+    if s.is_empty() || s.len() > 60 {
+        return false;
+    }
+    s.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '_' || c == '.' || c == '-')
 }
 
 #[cfg(test)]
@@ -313,5 +356,67 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
             set.cost_usd.is_none(),
             "no model → no cost even if pricing is populated"
         );
+    }
+
+    #[test]
+    fn codex_adapter_extracts_worktree_and_branch_from_status_line() {
+        let id = id();
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, STATUS_LINE, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
+
+        let worktree = set.worktree_path.as_ref().expect("worktree parsed");
+        assert_eq!(worktree.value, "~/Qmonster");
+        assert_eq!(worktree.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(worktree.provider, Some(Provider::Codex));
+        assert_eq!(worktree.confidence, Some(0.95));
+
+        let branch = set.git_branch.as_ref().expect("branch parsed");
+        assert_eq!(branch.value, "main");
+        assert_eq!(branch.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(branch.provider, Some(Provider::Codex));
+        assert_eq!(branch.confidence, Some(0.95));
+    }
+
+    #[test]
+    fn codex_adapter_branch_extraction_skips_project_name() {
+        // Position order in Codex 0.122.0: Context, worktree, model, project, branch.
+        // Project ("Qmonster") and branch ("main") are both plain identifiers;
+        // the parser must skip project (the token immediately after model)
+        // and pick branch (the next plain identifier after that).
+        let id = id();
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, STATUS_LINE, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
+
+        let branch = set.git_branch.as_ref().expect("branch parsed");
+        assert_eq!(
+            branch.value, "main",
+            "branch must be `main`, not `Qmonster` (the project-name token immediately after model)"
+        );
+    }
+
+    #[test]
+    fn codex_adapter_status_line_without_matching_worktree_token_leaves_worktree_none() {
+        // Synthetic status-bar-shaped line with no ~/-prefixed cwd token.
+        // Still has all four required fields so the status struct parses;
+        // worktree just stays None (per-field independence per v1.11.2).
+        let tail = "Context 30% left · no-slash · gpt-5.4 · proj · feat · Context 70% used · 5h 90% · weekly 80% · 0.122.0 · 100K window · 500K used · 400K in · 100K out · <rid> · gp";
+        let id = id();
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, tail, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
+
+        assert!(
+            set.worktree_path.is_none(),
+            "no `~/`- or `/`-prefixed token means worktree stays None"
+        );
+        // context/tokens/model still populate from the same line
+        assert!(set.context_pressure.is_some());
+        assert!(set.token_count.is_some());
+        assert!(set.model_name.is_some());
     }
 }
