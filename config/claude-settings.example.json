@@ -1,4 +1,4 @@
 {
-  "_comment": "Qmonster reads the `model` key to populate the MODEL badge on Claude panes. Other keys are ignored. Copy this file to config/claude-settings.json and edit the model value to match your Claude Code settings. The file is gitignored so each operator owns their own copy.",
+  "_comment": "Qmonster reads the `model` key from your real Claude Code settings file at ~/.claude/settings.json (the location src/policy/claude_settings.rs defaults to). This file in config/ is only a reference template showing the expected shape — do NOT copy it to config/claude-settings.json, Qmonster will not read from there. Other settings.json keys are ignored by Qmonster; safe to keep them alongside `model`.",
   "model": "claude-sonnet-4-6"
 }

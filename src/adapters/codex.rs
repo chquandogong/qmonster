@@ -87,6 +87,15 @@ impl ProviderParser for CodexAdapter {
 /// bar itself matches the shape heuristic).
 fn parse_codex_reasoning_effort(tail: &str) -> Option<String> {
     for line in tail.lines().rev() {
+        // Anchor to real /status box structure: the box-draw vertical glyph
+        // `│` at the line edges AND the literal `Model:` label must both be
+        // present on the same line as the `reasoning ` match. This prevents
+        // arbitrary transcript prose like "set reasoning high for this run"
+        // from being mis-stamped as a ProviderOfficial /status box read.
+        // (v1.12.1 remediation — codex-v1.12.0-1 warning.)
+        if !line.contains('│') || !line.contains("Model:") {
+            continue;
+        }
         if let Some(idx) = line.find("reasoning ") {
             let after = &line[idx + "reasoning ".len()..];
             let effort = after
@@ -529,6 +538,33 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         // status-bar fields still populate (per-field independence)
         assert!(set.context_pressure.is_some());
         assert!(set.token_count.is_some());
+    }
+
+    #[test]
+    fn codex_adapter_reasoning_effort_does_not_match_arbitrary_prose() {
+        // v1.12.1 regression (codex-v1.12.0-1 warning): a normal transcript
+        // line containing `reasoning high` plus a valid status bar must NOT
+        // surface reasoning_effort as ProviderOfficial. Only actual /status
+        // box lines (containing `│` box glyph AND `Model:` literal) count.
+        let tail = concat!(
+            "Actually you should set reasoning high for this run; the prior\n",
+            "session used reasoning low and it was insufficient.\n",
+            "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp"
+        );
+        let id = id();
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, tail, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
+
+        assert!(
+            set.reasoning_effort.is_none(),
+            "prose `reasoning high` without /status box structure must NOT surface reasoning_effort"
+        );
+        // status bar fields still populate
+        assert!(set.context_pressure.is_some());
+        assert!(set.token_count.is_some());
+        assert!(set.model_name.is_some());
     }
 
     #[test]
