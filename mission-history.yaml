@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.12.0 Slice 2 (observability field expansion) shipped; Codex + Gemini cross-check returned approve-with-fixes (2 Codex warnings + Gemini ledger catch-up must-fix); v1.12.1 remediation pending, v1.12.2 confirm-archive pending"
+  mission_title: "Qmonster v0.4.0 — v1.12.0 Slice 2 (observability field expansion) + v1.12.1 remediation (Codex warnings closed) + v1.12.2 confirm-archive (ledger catch-up for v1.10.9/v1.11.0/v1.11.1/v1.12.0 + confirm approval seal) — Slice 2 gate fully green, Slice 3 unblocked"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 46
-  latest_version: "1.12.0"
+  total_revisions: 51
+  latest_version: "1.12.2"
 
 timeline:
   - change_id: "initial"
@@ -5480,9 +5480,325 @@ timeline:
       - "v1.12.2 confirm-archive: ledger-only, bundles confirm approval + ledger catch-up (individual change_sequence entries for v1.10.9 / v1.11.0 / v1.11.1 / v1.12.0 via the v1.12.0-1..-8 sub-slices OR at Slice-arc granularity, author's choice)."
       - "Deferred optional follow-ups carried over into slice-arc cleanup round: Task 3 ctx() test helper hoist + Provider::Unknown comment; Task 4 skip_next_plain_identifier declaration-site comment + STATUS_LINE_NEWEST_UNKNOWN_MODEL extension; Task 6/7 ellipsize helper for long operator-supplied strings; Task 7 push_badge DRY + context-only-row test; Task 8 tighten cost tolerance; PricingError/ClaudeSettingsError::NotFound dead-variant cleanup."
 
+  - change_id: "v1.10.9-help-row-pre-wrap-backfill"
+    semantic_version: "1.10.9"
+    change_sequence: 47
+    date: "2026-04-23"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator — flagged that help-overlay text wraps flush-left at narrow viewports)"
+    change_type: "ux-polish"
+    motivation_type: "operator-driven"
+    persistence: "permanent"
+    intent: >
+      Extend v1.10.8 hanging-indent principle from the `p` bullet
+      block to every help-overlay row. `render_help_modal` +
+      `max_help_scroll` derive wrap width from viewport and emit
+      pre-wrapped `Line`s instead of relying on `Paragraph::wrap(Wrap{trim:false})`.
+      Width-aware scroll budget: narrower viewport grows scroll rows.
+    decision: >
+      Width-aware pre-wrap implemented. Commit 337f80c shipped the
+      change; annotated tag v1.10.9 at HEAD. Pure UX polish — no
+      runtime, audit, gate, or actuation surface change.
+    triggered_by: "Operator follow-up on v1.10.8 help-overlay hanging indent"
+    issue_or_context: >
+      At narrow viewports the help-overlay detail lines wrapped
+      flush-left at the modal edge, undoing the v1.10.8 hanging
+      indent for every row except the pre-split `p` bullets.
+    changes:
+      added: []
+      modified:
+        - "src/ui/dashboard.rs (+327/-38)"
+      removed: []
+    changed_sections:
+      - "ui::dashboard — help_lines_for_width(total_width) + help_wrap_text + help_wrapped_detail_lines + help_wrapped_bullet_lines + help_body_text_width; max_help_scroll made viewport-aware"
+      - "git repository — annotated tag v1.10.9 at 337f80c"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "help overlay now wraps with hanging indent on all rows, not just bullets"
+      verification: "252 lib + 6 drift + 22 integration = 280 tests (+3 net vs v1.10.8); clippy + fmt clean"
+      ledger: "BACKFILLED in v1.12.2 confirm-archive per Gemini v1.12.0 must-fix"
+    breaking: false
+    risk: "negligible — UI-only, no behavior surface change"
+    related_commits:
+      - "337f80c"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up: []
+
+  - change_id: "v1.11.0-slice-1-shipment-backfill"
+    semantic_version: "1.11.0"
+    change_sequence: 48
+    date: "2026-04-23"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors: []
+    change_type: "feature-slice"
+    motivation_type: "observability-gap"
+    persistence: "permanent"
+    intent: >
+      P0-1 Slice 1 — first population of usage-hint fields on Codex
+      + Claude panes. Closes the honest-gap audit from v1.10.9 that
+      TUI blanked 4 operator-decision fields (context %, tokens,
+      model, cost) despite SignalSet + UI having the wiring ready.
+    decision: >
+      Shipped in 8 TDD commits (v1.11.0-1..-8) on main per operator
+      consent, tagged v1.11.0 at bf47eb9. New PricingTable module
+      (operator-curated TOML, zero-rate-as-unset); SignalSet gains
+      model_name field; ProviderParser::parse trait extended with
+      3rd arg &PricingTable; Codex status-line parser populates 4
+      metrics (cost_usd via Estimated/0.7 pricing lookup); Claude
+      parses ↓ Nk tokens (model/cost stay honestly None); UI renders
+      MODEL badge + K/M suffix formatter.
+    triggered_by: "Operator audit of v1.10.9 TUI surface revealed blanks on vision-2 operating metrics"
+    issue_or_context: >
+      v1.11.0 spec at docs/superpowers/specs/2026-04-23-p0-1-slice-1-usage-hint-parsing-design.md
+      (bd36995 = Slice 2 spec which references this one).
+    changes:
+      added:
+        - "src/policy/pricing.rs (new module, ~198 LOC)"
+        - "config/pricing.example.toml (operator template, gitignored actual)"
+      modified:
+        - "src/domain/signal.rs (model_name field)"
+        - "src/adapters/mod.rs (trait signature)"
+        - "src/adapters/{claude,codex,gemini,qmonster}.rs (mechanical signature migration)"
+        - "src/adapters/common.rs (exhaustive-literal cascade)"
+        - "src/app/{bootstrap,event_loop}.rs (Context.pricing + caller)"
+        - "src/main.rs (pricing load + builder wiring)"
+        - "src/ui/panels.rs, src/ui/labels.rs (MODEL badge + format_count_with_suffix)"
+        - "tests/event_loop_integration.rs (2 new integration tests)"
+        - ".gitignore (config/pricing.toml)"
+      removed: []
+    changed_sections:
+      - "adapters/policy/ui layers extended for 4-metric Codex populate + 1-metric (token_count) Claude populate"
+      - "git repository — annotated tag v1.11.0 at bf47eb9"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "Codex panes now render CTX/TOKENS/COST/MODEL badges; Claude panes render TOKENS only (model/cost honestly None)"
+      verification: "275 lib + 6 drift + 24 integration = 305 tests (+25 net vs v1.10.9); clippy + fmt clean"
+      ledger: "BACKFILLED in v1.12.2 confirm-archive per Gemini v1.12.0 must-fix"
+    breaking: false
+    risk: "medium — trait signature change + new schema field + external TOML file I/O; all mitigated by mechanical migration pattern and v1.11.2 remediation of cross-check findings"
+    related_commits:
+      - "bc5722c (pricing module)"
+      - "8d20f12 (model_name field)"
+      - "7732d32 (trait migration)"
+      - "f804b5d (count-suffix parser)"
+      - "5069b93 (Codex status line parser)"
+      - "39ecc42 (Claude output tokens)"
+      - "de28460 (UI badge + formatter)"
+      - "bf47eb9 (integration tests + tag)"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up: []
+
+  - change_id: "v1.11.1-spec-drift-cleanup-backfill"
+    semantic_version: "1.11.1"
+    change_sequence: 49
+    date: "2026-04-23"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors: []
+    change_type: "patch-cleanup"
+    motivation_type: "pre-review-cleanup"
+    persistence: "permanent"
+    intent: >
+      Close 3 final-review items discovered before v1.11.0 cross-check
+      dispatch: I-3 (Claude context_pressure missing spec stamps);
+      I-4 (main.rs silent fallback on pricing.toml parse error);
+      I-5 (pricing path CWD-relative instead of QMONSTER_ROOT-based).
+    decision: >
+      Single-commit patch (0107793) tagged v1.11.1. Claude
+      context_pressure gains with_confidence(0.6) + with_provider(Claude)
+      stamps per spec §4.5; main.rs pricing load explicit-match error
+      routing with eprintln breadcrumb + QMONSTER_ROOT-relative path.
+    triggered_by: "v1.11.0 final review (in-session) flagged 3 I-items before external review dispatch"
+    issue_or_context: "Pre-review polish before v1.11.0 Codex/Gemini cross-check round"
+    changes:
+      added: []
+      modified:
+        - "src/adapters/claude.rs (+ stamps on context_pressure)"
+        - "src/main.rs (+ explicit pricing error match + QMONSTER_ROOT-relative path)"
+      removed: []
+    changed_sections:
+      - "adapters::claude — context_pressure MetricValue gains .with_confidence(0.6).with_provider(Provider::Claude)"
+      - "main.rs — pricing load block rewritten with explicit match on PricingError variants"
+      - "git repository — annotated tag v1.11.1 at 0107793"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "Claude context badge now shows confidence + provider metadata; pricing.toml parse errors emit eprintln before cross-check review"
+      verification: "305 tests green unchanged (existing tests tightened in-place, not expanded)"
+      ledger: "BACKFILLED in v1.12.2 confirm-archive per Gemini v1.12.0 must-fix"
+    breaking: false
+    risk: "negligible — additive stamps + error-routing improvement"
+    related_commits:
+      - "0107793"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up: []
+
+  - change_id: "v1.12.0-slice-2-shipment-backfill"
+    semantic_version: "1.12.0"
+    change_sequence: 50
+    date: "2026-04-24"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors: []
+    change_type: "feature-slice"
+    motivation_type: "slice-1-follow-up"
+    persistence: "permanent"
+    intent: >
+      P0-1 Slice 2 — observability field expansion. Closes Slice 1
+      reviewer follow-ups on SignalSet field expansion + ParserContext
+      struct migration. Populates 3 new SignalSet fields (git_branch,
+      worktree_path, reasoning_effort) on Codex panes + Claude
+      model_name via ~/.claude/settings.json external read.
+    decision: >
+      Shipped in 8 TDD commits (v1.12.0-1..-5 + v1.12.0-5-fixup +
+      v1.12.0-6..-8) on main per operator consent, tagged v1.12.0 at
+      cf258f7. New ClaudeSettings module (mirrors PricingTable
+      pattern); AuditEventKind::ClaudeSettingsLoadFailed variant;
+      ProviderParser::parse migrated from 3 positional args to
+      &ParserContext struct; Codex status bar adds worktree/branch
+      extraction with skip_next_plain_identifier one-shot flag; Codex
+      /status box adds reasoning_effort with newest-line-authoritative
+      .rev() scan and whitelist regression test; Claude model_name
+      populated from ctx.claude_settings.model() (ProviderOfficial/0.9);
+      UI metric_badge_line returns Vec<Line> with 2-row split
+      (metrics: primary, context: BRANCH/PATH/EFFORT).
+    triggered_by: "v1.11.0 cross-check follow-ups + operator spec/plan approval in Slice 2 brainstorming"
+    issue_or_context: >
+      Slice 2 spec at docs/superpowers/specs/2026-04-24-slice-2-observability-fields-design.md;
+      plan at docs/superpowers/plans/2026-04-24-slice-2-observability-fields-plan.md.
+      Both reviewers endorsed the ParserContext promotion once a
+      second cross-cutting input arrived; ClaudeSettings is that input.
+    changes:
+      added:
+        - "src/policy/claude_settings.rs (new module, ~120 LOC)"
+        - "config/claude-settings.example.json (operator template, gitignored actual)"
+        - "tests/fixtures/codex.rs (integration-test fixture module)"
+      modified:
+        - "src/domain/signal.rs (3 new fields)"
+        - "src/domain/audit.rs + src/store/audit.rs (new ClaudeSettingsLoadFailed variant)"
+        - "src/adapters/mod.rs (ParserContext struct + trait migration)"
+        - "src/adapters/{claude,codex,gemini,qmonster}.rs (signature migration + Codex extensions + Claude settings read)"
+        - "src/adapters/common.rs (exhaustive-literal cascade)"
+        - "src/app/{bootstrap,event_loop}.rs (Context.claude_settings + caller)"
+        - "src/main.rs (claude_settings load + builder wiring)"
+        - "src/ui/panels.rs (Vec<Line> metric_badge_line, primary_metric_row + context_metric_row)"
+        - "tests/event_loop_integration.rs (2 new integration tests)"
+        - ".gitignore (config/claude-settings.json)"
+      removed: []
+    changed_sections:
+      - "ProviderParser trait — migrated from 3 positional args to &ParserContext struct"
+      - "SignalSet — gains git_branch + worktree_path + reasoning_effort fields"
+      - "UI — metric_badge_line split into 2 rows for readability"
+      - "git repository — annotated tag v1.12.0 at cf258f7"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "Codex panes now render full 7-metric badge set (CTX/TOKENS/COST/MODEL + BRANCH/PATH/EFFORT); Claude panes render MODEL from settings.json when present"
+      verification: "299 lib + 6 drift + 26 integration = 331 tests (+26 net vs v1.11.3); clippy + fmt clean"
+      ledger: "BACKFILLED in v1.12.2 confirm-archive per Gemini v1.12.0 must-fix"
+    breaking: false
+    risk: "medium — trait signature change + 3 new schema fields + external JSON file I/O + 2-row UI refactor; all mitigated by v1.11.2-pattern mechanical migration and v1.12.1 remediation of cross-check findings"
+    related_commits:
+      - "fe1a09b (ClaudeSettings module)"
+      - "12b3381 (3 signal fields)"
+      - "35c9711 (ParserContext migration)"
+      - "5712e80 (Codex worktree + branch)"
+      - "077b91e (Codex reasoning effort)"
+      - "551a3e2 (reasoning-effort fixup)"
+      - "dd079e0 (Claude model from settings)"
+      - "ab31310 (2-row UI)"
+      - "cf258f7 (integration tests + tag)"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up: []
+
+  - change_id: "v1.12.2-slice-2-confirm-archive"
+    semantic_version: "1.12.2"
+    change_sequence: 51
+    date: "2026-04-24"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex CLI v0.122.0 (gpt-5.4, reasoning xhigh) — confirm review of v1.12.1 remediation (commit 9d07cf3); verdict `approve`, no new must-fix"
+      - "Gemini CLI (--approval-mode plan, read-only) — confirm review of v1.12.1 (9d07cf3); verdict `approve`, no new must-fix"
+    change_type: "confirm-archive"
+    motivation_type: "gate-seal"
+    persistence: "permanent"
+    intent: >
+      Record the cross-model confirm round on v1.12.1 remediation
+      and seal the v1.12.0 Slice 2 arc with a ledger-only
+      micro-version bump (v1.12.2). Bundles the ledger catch-up
+      Gemini flagged in the v1.12.0 review round (sequences 47-50
+      backfill v1.10.9 / v1.11.0 / v1.11.1 / v1.12.0 individual
+      entries that had been deferred since v1.11.3).
+    decision: >
+      Both Codex and Gemini returned `approve` on commit 9d07cf3
+      (v1.12.1) with no new must-fix findings and no regressions.
+      Both v1.12.0-round must-fix items confirmed closed:
+      codex-v1.12.0-1 — parse_codex_reasoning_effort now requires
+      `│` + `Model:` conjunction anchor before extracting;
+      codex-v1.12.0-2 — claude-settings.example.json _comment
+      corrected to point at ~/.claude/settings.json. Gemini's
+      ledger catch-up must-fix addressed in this commit by
+      backfilling sequences 47-50. v1.12.2 tag is ledger-only —
+      no source changes since v1.12.1 (9d07cf3).
+    triggered_by: "Operator request: proceed to v1.12.2 confirm-archive after both confirm reviews return `approve`"
+    issue_or_context: >
+      After v1.12.1 remediation shipped and cleared both Codex
+      and Gemini confirm rounds, the project's confirm-archive
+      convention calls for a ledger-only micro-version bump that
+      (a) makes the gate decision permanent in the shared ledger,
+      (b) backfills the ledger entries Gemini flagged as must-fix,
+      (c) anchors the next slice on a clean reviewed baseline.
+      This commit is that seal.
+    changes:
+      added:
+        - ".docs/codex/Qmonster-v0.4.0-2026-04-24-v1.12.1-confirm-review.md (gitignored)"
+        - ".docs/gemini/Qmonster-v0.4.0-2026-04-24-v1.12.1-confirm-review.md (gitignored)"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-24-v1.12.1-confirm-review.result.yaml"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-24-v1.12.1-confirm-gemini-review.result.yaml"
+      modified:
+        - "mission.yaml (meta: version 1.12.0 → 1.12.2; title updated for Slice 2 arc + confirm-archive)"
+        - "mission-history.yaml (sequences 47-51 added; meta: latest_version → 1.12.2, total_revisions 46 → 51)"
+      removed: []
+    changed_sections:
+      - "mission-history — sequences 47 (v1.10.9), 48 (v1.11.0), 49 (v1.11.1), 50 (v1.12.0) backfilled + sequence 51 (this confirm-archive) added"
+      - "mission-history.meta — latest_version + total_revisions bump"
+      - "mission.yaml.meta — version + title aligned with post-Slice-2-arc reality"
+      - ".mission/evals — two v1.12.1 confirm review result yamls added"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      code: "none — ledger-only micro-version bump per confirm-archive convention"
+      ledger: "5 new timeline entries + 2 new evals + meta bump across mission.yaml + mission-history.yaml; code/config untouched"
+      review_gate: "v1.12.0 Slice 2 arc transitions from `approve-with-fixes awaiting remediation` (sequence 46) to `fully green, approve sealed, ledger complete, Slice 3 unblocked` (this sequence 51)"
+      follow_up_carryover: "Slice 3 brainstorming unblocked. Deferred optional follow-ups from per-task reviews remain open: Task 3 ctx() helper hoist + Provider::Unknown comment; Task 4 skip_next_plain_identifier declaration-site comment + STATUS_LINE_NEWEST_UNKNOWN_MODEL assertion extension; Task 6/7 ellipsize helper; Task 7 push_badge DRY + context-only-row test; Task 8 cost tolerance tightening; PricingError::NotFound + ClaudeSettingsError::NotFound dead-variant cleanup. Not blocking; bundle into Slice 3 housekeeping round if scope permits."
+    breaking: false
+    risk: "negligible — confirm-archive commit is ledger-only; the reviewed code baseline (9d07cf3) does not change."
+    related_commits:
+      - "9d07cf3"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Open Slice 3 brainstorming when operator is ready: Gemini observability fields (requires archive sample collection), reasoning_effort session-level cache, optional CodexSettings/GeminiSettings modules mirroring ClaudeSettings, ellipsize helper for long operator-supplied strings, adaptive metric_badge_line width handling."
+      - "Annotated tag v1.12.2 at this commit (ledger-only) so operators can pin to the sealed-gate baseline."
+
 evolution_summary:
-  current_phase: "v1.12.0 Slice 2 shipped (observability field expansion: SignalSet git_branch/worktree_path/reasoning_effort + Claude model from ~/.claude/settings.json via new ClaudeSettings module + ParserContext trait migration + 2-row metric_badge_line + 2 integration tests). 331 tests green on cf258f7. Cross-check round completed 2026-04-24: both Codex and Gemini returned `approve-with-fixes`. Three must-fix items queued: (1) Codex parser over-match regression on `parse_codex_reasoning_effort` — must anchor to real /status box structure; (2) claude-settings.example.json wrong-path mismatch — must point at ~/.claude/settings.json; (3) Gemini-flagged mission-history ledger catch-up (v1.10.9/v1.11.0/v1.11.1 missing individual entries) before confirm-archive. v1.12.1 remediation will narrow to the 2 Codex warnings; v1.12.2 confirm-archive will bundle the ledger backfill."
-  next_phase: "v1.12.1 remediation slice (2 Codex warnings) → Codex/Gemini confirm round → v1.12.2 confirm-archive (ledger-only with catch-up for v1.10.9/v1.11.0/v1.11.1/v1.12.0 individual entries + meta bump). After v1.12.2, Slice 3 brainstorming opens (Gemini observability fields, reasoning_effort session cache, optional CodexSettings/GeminiSettings modules, ellipsize helper for long operator strings, adaptive metric_badge_line width handling)."
+  current_phase: "v1.12.0 Slice 2 arc fully sealed (observability field expansion). v1.12.0 shipped 3 new SignalSet fields (git_branch/worktree_path/reasoning_effort) + ClaudeSettings module for Claude model + ParserContext trait migration + 2-row TUI; v1.12.1 closed the 2 Codex warnings from cross-check (parse_codex_reasoning_effort anchor + claude-settings.example.json path correction); v1.12.2 is this confirm-archive commit (ledger-only, both reviewers approve on 9d07cf3). 332 tests green on v1.12.1; clippy + fmt clean. Ledger catch-up backfilled in this round: sequences 47-50 document v1.10.9 / v1.11.0 / v1.11.1 / v1.12.0 shipments. No code changes in the confirm-archive — artifacts + meta + ledger only."
+  next_phase: "Slice 3 brainstorming — candidates: Gemini observability fields (requires stable archive samples), reasoning_effort session-level cache, optional CodexSettings/GeminiSettings modules (mirroring ClaudeSettings), ellipsize helper for long operator-supplied strings (model_name/git_branch/worktree_path), adaptive metric_badge_line width handling for narrow terminals. Also a housekeeping round opportunity for the per-task review carryovers: Task 3 ctx() helper hoist + Provider::Unknown comment; Task 4 skip_next_plain_identifier declaration-site comment + STATUS_LINE_NEWEST_UNKNOWN_MODEL assertion extension; Task 7 push_badge DRY + context-only-row test; Task 8 cost tolerance tightening; Pricing/ClaudeSettingsError::NotFound dead-variant cleanup."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

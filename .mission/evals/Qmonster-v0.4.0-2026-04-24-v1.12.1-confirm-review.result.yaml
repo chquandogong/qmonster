@@ -1,0 +1,18 @@
+evaluation:
+  timestamp: "2026-04-24T00:00:00Z"
+  target: "v1.12.1 remediation patch confirm review"
+  evaluated_by: "llm-codex"
+  source: "Static confirm review of commit `9d07cf3` via GitHub connector because local shell access failed with a sandbox wrapper error and the repository's GitHub code-search index is disabled. Code, tests, clippy, and fmt were not re-run locally in this session; the review relies on the author-reported green verification (332 tests, clippy + fmt clean)."
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "Verified closure of codex-v1.12.0-1 in `src/adapters/codex.rs`: `parse_codex_reasoning_effort()` now requires both the box-draw glyph `│` and the literal `Model:` on the same line before extracting `reasoning ...`, eliminating the false-positive prose match described in the v1.12.0 review."
+    - "Verified newest-line-authoritative behavior remains intact: the helper still scans `tail.lines().rev()`, so among multiple `/status` box lines the newest matching line still wins."
+    - "Verified existing reasoning-effort fixtures still satisfy the new anchor: `STATUS_BOX_SNIPPET`, `STATUS_LINE_WITH_BOX_ABOVE`, the unknown-value regression, and the multiple-status-box regression all use `│  Model: ... │` lines, so the v1.12.0 Task-5 contract is preserved."
+    - "Verified the new regression test `codex_adapter_reasoning_effort_does_not_match_arbitrary_prose` is representative of the prior warning: prose lines containing `reasoning high` / `reasoning low` above a valid status bar leave `reasoning_effort` as `None` while `context_pressure`, `token_count`, and `model_name` still populate."
+    - "Verified closure of codex-v1.12.0-2 in `config/claude-settings.example.json`: the comment now points operators at `~/.claude/settings.json`, states that the file under `config/` is only a reference template, and explicitly warns that Qmonster will not read `config/claude-settings.json`."
+    - "Verified the example text matches runtime truth in `src/policy/claude_settings.rs`, where `ClaudeSettings::default_path()` resolves `$HOME/.claude/settings.json`; `src/main.rs` also loads that path and audit-logs parse failures."
+    - "Spot-check of active operator-facing docs found the same live path in `docs/superpowers/specs/2026-04-24-slice-2-observability-fields-design.md`; no conflicting active path reference was found in the files reviewed. Full repo-wide grep was not possible in this session because local shell access failed and GitHub code search is disabled for this repository."
+    - "A future Codex CLI `/status` format change that drops either `│` or `Model:` would cause `reasoning_effort` to degrade to `None`, but that is an honest blanking failure mode rather than a false ProviderOfficial stamp and is not a must-fix for v1.12.1."
+  gate_decision: "Approve v1.12.1. Both prior Codex warnings are closed, no new must-fix regressions were introduced by the remediation, and the project can proceed to the v1.12.2 confirm-archive round for the deferred ledger catch-up and meta bump."

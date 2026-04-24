@@ -1,0 +1,8 @@
+schema: "1.0"
+target: "v1.12.1"
+phase: "confirm-review"
+model: "gemini"
+date: "2026-04-24"
+verdict: "approve"
+summary: "Remediation patch successfully closes the two warnings from v1.12.0. Structural anchor for Codex reasoning parsing is robust against prose; config template comment correctly directs operators to the proper path. No new issues introduced."
+findings: []
