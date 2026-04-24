@@ -1,0 +1,45 @@
+evaluation:
+  timestamp: "2026-04-24T00:00:00Z"
+  target: "v1.11.0 + v1.11.1 Slice 1 provider usage-hint parsing review"
+  evaluated_by: "llm-gemini"
+  source: "Review via `gemini --approval-mode plan` (read-only). Shell/script execution blocked by plan-mode policy; static read of the commit range bc5722c..0107793 and slice spec/plan docs only."
+  verdict: "approve-with-fixes"
+  remediation_round: "before Slice 2"
+  findings:
+    - id: "gemini-v1.11.0-1"
+      severity: "must-fix"
+      title: "`PricingTable::insert_for_test` exposes testing capability to public API without feature gates"
+      location: "src/policy/pricing.rs"
+      issue: >-
+        `pub fn insert_for_test` is a public production-API symbol with no
+        cfg gate, used only by integration tests. It leaks a test-only
+        construction hook into the crate's external surface.
+      fix: >-
+        Remove `insert_for_test` and rewrite the integration tests to load
+        their pricing fixture via `tempfile` + `PricingTable::load_from_toml`.
+        If the helper must remain, at minimum hide it behind
+        `#[cfg(feature = "testkit")]` or `#[doc(hidden)]`.
+    - id: "gemini-v1.11.0-2"
+      severity: "must-fix"
+      title: "Pricing-table parse-error `eprintln!` is ephemeral and may be swallowed by the TUI alternate screen"
+      location: "src/main.rs:105-120"
+      issue: >-
+        The eprintln breadcrumb emitted when `PricingTable::load_from_toml`
+        fails (for reasons other than file-absent) writes to stderr before
+        the ratatui alternate screen engages. In an interactive TUI run that
+        message can be wiped from the terminal by the alternate-screen
+        enter/leave cycle, leaving the operator with silently-missing cost
+        badges and no durable breadcrumb.
+      fix: >-
+        Route the pricing load error to `SystemNotice` (visible in the TUI
+        alert surface) or to the `SqliteAuditSink` as a startup audit event,
+        so operators can reliably inspect misconfigurations after the TUI
+        renders.
+  notes:
+    - "Honesty framing (ProviderOfficial + Estimated label split, zero-rate-as-unset) is strong."
+    - "Tested-absence pattern (`claude_adapter_never_populates_model_name_or_cost_in_slice_1`) is an excellent defensive precedent."
+    - "Codex all-or-nothing gating defended as 'failing closed is safer than misaligned partial metrics' — differs from Codex reviewer which calls the same rule a must-fix. See codex-v1.11.0-1 for the opposing view."
+    - "Trait surface acceptable for Slice 1 as flat `&PricingTable`; Slice 2's additional args (git_branch, reasoning_effort) should promote to a `ParserContext` struct."
+    - "Provider abstraction, doc separation, and pricing-as-operator-config discipline all clean."
+    - "One concrete TODO beyond must-fix: a Claude end-to-end integration test (token parser has no integration coverage yet)."
+  gate_decision: "Approve once `insert_for_test` visibility is tightened and the pricing-load error path routes through SystemNotice or the audit sink. Claude integration test and ParserContext migration are Slice 2 prep, not blockers."

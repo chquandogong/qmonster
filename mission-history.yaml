@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — bullet hanging indent v1.10.8 (HELP_CONTINUATION_PREFIX deepened to 20 spaces + `· ` so bullet markers hang under the `:` of the summary row; annotated tag v1.10.8 at HEAD)"
+  mission_title: "Qmonster v0.4.0 — v1.11.0 Slice 1 provider usage-hint parsing + v1.11.1 spec/operator-UX cleanup; both reviewers approve-with-fixes awaiting v1.11.2 remediation"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 43
-  latest_version: "1.10.8"
+  total_revisions: 44
+  latest_version: "1.11.1"
 
 timeline:
   - change_id: "initial"
@@ -5209,9 +5209,109 @@ timeline:
       - "Existing carry-forwards unchanged (proposal_id producer-identity, structured slash_command field, is_strong producer flag, send_keys live-tmux-session whitebox test)."
       - "Open Phase 6 per operator's next slice preference; Phase 5 has zero outstanding debt."
 
+  - change_id: "v1.11.0-slice-1-review-round"
+    semantic_version: "1.11.1"
+    change_sequence: 44
+    date: "2026-04-24"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex CLI v0.122.0 (gpt-5.4, reasoning xhigh) — via `codex exec` headless, static review through GitHub connector"
+      - "Gemini CLI (--approval-mode plan, read-only) — static review of commit range bc5722c..0107793"
+    change_type: "review-round"
+    motivation_type: "gate-check"
+    persistence: "permanent"
+    intent: >
+      Run the Codex + Gemini cross-check on the v1.11.0 Slice 1
+      arc (P0-1 provider usage-hint parsing) + the v1.11.1
+      spec/operator-UX cleanup so the gate status on the slice
+      is on the shared record before Slice 2 opens.
+    intent_ko: >
+      P0-1 Slice 1 (v1.11.0 provider usage-hint parsing) + v1.11.1
+      cleanup 범위에 대해 Codex + Gemini 교차 리뷰를 실행, Slice 2
+      진입 전 공식 게이트 상태를 공유 레코드에 기록.
+    decision: >
+      Both reviewers returned `approve-with-fixes`. Must-fix set
+      (3 items) to close in a v1.11.2 remediation round before
+      Slice 2 opens: (1) Codex parser latest-line authority — if
+      the newest Codex status bar line has a model token outside
+      the gpt-/claude-/gemini- allowlist, the parser must still
+      emit context/tokens for that newest line instead of
+      falling back to an older stale line; model_name stays
+      None and cost_usd stays None for that case (Codex
+      codex-v1.11.0-1 warning). (2) `PricingTable::insert_for_test`
+      public-API surface — remove in favor of integration tests
+      using `tempfile` + `load_from_toml`, or at minimum gate
+      behind `#[doc(hidden)]` / `#[cfg(feature = "testkit")]`
+      (Gemini gemini-v1.11.0-1 must-fix). (3) pricing-load error
+      breadcrumb — `eprintln!` in main.rs is ephemeral and can
+      be wiped by the TUI alternate-screen cycle; route through
+      `SystemNotice` or startup `SqliteAuditSink` event so
+      operators have a durable signal (Gemini gemini-v1.11.0-2
+      must-fix, Codex Q5 concurs). Four artifacts materialized
+      per `docs/ai/REVIEW_GUIDE.md §4`: narratives in
+      `.docs/codex/` + `.docs/gemini/` (gitignored), structured
+      mirrors in `.mission/evals/` (tracked).
+    decision_ko: >
+      두 리뷰어 모두 `approve-with-fixes`. Slice 2 진입 전
+      v1.11.2 remediation 라운드에서 마감해야 할 must-fix 3개:
+      (1) Codex 파서의 newest-line authority — 최신 상태 바
+      라인의 모델 토큰이 `gpt-/claude-/gemini-` allowlist 밖
+      (예: `o1`, `o5`, `codex-mini`)이면 old 라인으로 fallback
+      하지 말 것. 그 라인의 context/tokens는 official로 emit,
+      model_name은 None, cost_usd도 None으로 두기 (Codex
+      warning). (2) `PricingTable::insert_for_test` 공개 API
+      surface — 제거 후 integration 테스트를 `tempfile`로
+      전환, 또는 최소 `#[doc(hidden)]` / `testkit` feature
+      gate. (3) pricing 로드 에러 breadcrumb — `eprintln!`은
+      TUI alternate-screen에 묻힐 수 있음. `SystemNotice` 또는
+      `SqliteAuditSink` startup 이벤트로 라우팅. 4개 아티팩트
+      생성 (narratives 2 gitignored, structured mirrors 2
+      tracked).
+    triggered_by: "Operator request: 'b로 진행' after v1.11.0 final review, i.e. run the cross-model review cycle on the shipped slice"
+    issue_or_context: >
+      v1.11.0 (8 commits `bc5722c..bf47eb9`) + v1.11.1 cleanup
+      (`0107793`) shipped the P0-1 observability gap closure
+      (Codex status-line parser populates 4 metrics incl. cost
+      via operator-curated PricingTable; Claude working-line
+      parser populates output tokens; Claude model/cost + Gemini
+      kept honest-None). In-session per-task reviews passed but
+      the project's confirm-archive convention requires the
+      Codex/Gemini cross-check to complete before the slice is
+      considered gate-approved. This round provides that.
+    changes:
+      added:
+        - ".docs/codex/Qmonster-v0.4.0-2026-04-24-v1.11.0-review.md (gitignored)"
+        - ".docs/gemini/Qmonster-v0.4.0-2026-04-24-v1.11.0-review.md (gitignored)"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-24-v1.11.0-review.result.yaml"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-24-v1.11.0-gemini-review.result.yaml"
+      modified:
+        - "mission-history.yaml (this entry + meta bump)"
+      removed: []
+    changed_sections:
+      - "mission-history.meta — latest_version 1.10.8 → 1.11.1, total_revisions 43 → 44"
+      - ".mission/evals — two v1.11.0 review result yamls (Codex + Gemini) added for shared ledger visibility"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      code: "none — review-round-only commit; no runtime change"
+      ledger: "meta bump + one new timeline entry + two eval mirrors; code/config untouched"
+      review_gate: "v1.11.0 slice status transitions from 'shipped, internally reviewed' to 'external cross-check complete, approve-with-fixes' — must-fix closure required before Slice 2 opens"
+      follow_up_carryover: "Codex non-blocking doc drift (pricing example COST label `[Est]` vs live UI `[Estimate]`; spec §4.2 says startup audit on pricing load fail but shipped v1.11.1 does eprintln) — fold into the v1.11.2 remediation or a separate doc-sync round"
+    breaking: false
+    risk: "negligible — review-round artifacts + ledger only; no source or runtime change"
+    related_commits: []
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Open a v1.11.2 remediation slice covering the 3 must-fix items (Codex parser latest-line authority + per-field independence, `insert_for_test` API gating, pricing-load error routing). Target a single small TDD slice with a Codex re-review + Gemini confirm."
+      - "Ledger catch-up is deferred: v1.10.9 (pre-wrap), v1.11.0 (8 Slice 1 commits), and v1.11.1 (cleanup) do not yet have individual change_sequence entries. Either backfill them in a ledger-only commit before Slice 2 opens, or fold a combined 'v1.11.x Slice 1 arc' entry into the v1.11.2 confirm-archive."
+      - "After v1.11.2 closes must-fix items and both reviewers re-approve, open Slice 2 (SignalSet `git_branch` / `reasoning_effort` / `worktree_path` fields + `ParserContext` struct migration as previewed in the spec's §3.1 OUT section)."
+
 evolution_summary:
-  current_phase: "Bullet hanging indent shipped (v1.10.8) — closes operator follow-up on v1.10.7's shallow 4-space bullets. HELP_CONTINUATION_PREFIX deepened from `    · ` (4-space) to `                    · ` (20-space), placing the `·` marker at column 20 (same col as the summary row's `:`) so bullet text at col 22 hangs directly under the value column of the `p` entry. New alignment-invariant test locks the column math against future drift. 249 lib + 6 drift + 22 integration = 277 tests green (+1 net); clippy + fmt clean. Pure UX polish — no runtime, audit schema, gate, or actuation surface change. Annotated tag `v1.10.8` created at HEAD (continuing the v1.10.7 per-ledger-version tagging convention) so the footer renders the release label. Phase 5 + audit-vocab arcs both remain closed. Layered on v1.10.7; everything below untouched."
-  next_phase: "Phase 5 + audit-vocab both closed; v1.10.8 ships bullet hang-indent with a tag; operator to choose Phase 6 scope, an optional confirm review on v1.10.7/v1.10.8, or pause"
+  current_phase: "v1.11.0 Slice 1 (P0-1 provider usage-hint parsing) + v1.11.1 cleanup shipped; cross-model review round completed 2026-04-24 with both Codex and Gemini returning `approve-with-fixes`. Three must-fix items queued for v1.11.2 remediation: Codex parser latest-line authority + per-field independence so model-token drift (`o1`/`o5`/`codex-mini`) doesn't blank or stale-fallback the official metrics; `PricingTable::insert_for_test` public-API gating so test-only hooks don't leak to the external surface; pricing-load error breadcrumb promotion from ephemeral `eprintln!` to durable `SystemNotice` or startup audit event. 305 tests green on v1.11.1; clippy + fmt clean. No code changes in this review round — artifacts + ledger only."
+  next_phase: "v1.11.2 remediation slice (3 must-fix items) → Codex/Gemini confirm round → v1.11.3 confirm-archive (ledger-only) → Slice 2 brainstorming (SignalSet git_branch / reasoning_effort / worktree_path + ParserContext trait struct + second attempt at Claude model via session banner)"
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

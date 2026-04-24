@@ -1,0 +1,41 @@
+evaluation:
+  timestamp: "2026-04-24T00:00:00Z"
+  target: "v1.11.0 + v1.11.1 Slice 1 provider usage-hint parsing review"
+  evaluated_by: "llm-codex"
+  source: "Static review of the inclusive Slice 1 arc (8-commit diff `bc5722c..0107793` plus base commit `bc5722c`) via GitHub connector because local shell access failed with a sandbox wrapper error. Code, tests, clippy, and fmt were not re-run locally in this session."
+  verdict: "approve-with-fixes"
+  remediation_round: "before Slice 2 / the next provider-usage phase"
+  findings:
+    - id: "codex-v1.11.0-1"
+      severity: "warning"
+      title: "Codex status-line parser can reuse stale older lines when the newest line partially drifts"
+      location: "src/adapters/codex.rs:59-129"
+      issue: >-
+        The parser scans the tail bottom-up and accepts the first line that
+        yields all of context_pct, total/input/output tokens, and an allowlisted
+        model prefix. If the newest status bar line is only partially parseable,
+        for example because the model token changes from `gpt-*` to `o1`,
+        `o5`, or `codex-mini`, the parser does not stop. It keeps scanning
+        upward and may accept an older `/status` snapshot or older frame still
+        present in the captured tail. That can surface stale values as
+        `ProviderOfficial`, which is worse than an honest blank.
+      fix: >-
+        Treat the first status-line-shaped line as authoritative. After the
+        newest candidate is inspected, do not fall back to older lines. Also
+        split line identification from per-field extraction: emit official
+        context/token metrics when those fields parse, emit model_name only
+        when the model token parses, and compute cost only when both model and
+        pricing lookup succeed. Add a regression test with an unknown newest
+        model token and an older fully-parseable line above it; the parser
+        should not reuse the older line.
+  notes:
+    - "Q1: Codex cost framing is honest enough for v1.11.x: provider-official token counts x operator-curated pricing table -> `Estimated` + confidence 0.7 is the right label split."
+    - "Q1: The zero-rate-as-unset contract is understandable because `PricingTable::lookup` filters all-zero entries and `config/pricing.example.toml` tells the operator to leave `0.00` placeholders in place to disable estimation."
+    - "Q2: The Claude `model_name` / `cost_usd` intentional `None` contract is good. The regression test makes absence explicit instead of accidental."
+    - "Q4: Keeping `ProviderParser::parse(.., pricing: &PricingTable)` flat is acceptable for now. Promote to `ParserContext` only when a second real adapter input arrives."
+    - 'Q5: `paths.root().join("config/pricing.toml")` is clearly correct. The current `eprintln!` breadcrumb is sufficient for this slice but ephemeral; if pricing errors become more important, add a startup notice or audit event.'
+    - "Q6: `PricingTable::insert_for_test` as a public helper is acceptable for an application crate. If external API surface ever matters, hide it from docs or move it behind a testkit feature."
+    - "Q7: Test coverage is appropriately unit-heavy for a parser slice. A Claude integration fixture would be nice but is not required before the next phase."
+    - "Doc drift remains: the spec still describes pricing parse failure as a startup audit record, while the shipped code now does `eprintln!` + empty table fallback."
+    - "Minor wording drift remains: the example config says `COST [Est]`, but the live UI label is `[Estimate]`."
+  gate_decision: "Codex review is structurally positive but not fully green for the next phase yet. Fix the Codex latest-line handling so model-token drift cannot blank or stale-fallback the official metrics, then promote the small doc wording/spec drift in the author round."
