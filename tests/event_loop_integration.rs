@@ -1248,3 +1248,140 @@ fn codex_status_line_end_to_end_without_pricing_populates_three_metrics() {
     assert!(signals.model_name.is_some());
     assert!(signals.cost_usd.is_none());
 }
+
+#[path = "fixtures/codex.rs"]
+mod codex_fixtures;
+
+#[test]
+fn codex_status_line_end_to_end_populates_seven_metrics() {
+    use qmonster::adapters::{ParserContext, parse_for};
+    use qmonster::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
+    use qmonster::domain::origin::SourceKind;
+    use qmonster::policy::claude_settings::ClaudeSettings;
+    use qmonster::policy::pricing::PricingTable;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    let identity = ResolvedIdentity {
+        identity: PaneIdentity {
+            provider: Provider::Codex,
+            instance: 1,
+            role: Role::Review,
+            pane_id: "%9".into(),
+        },
+        confidence: IdentityConfidence::High,
+    };
+
+    // Tail has the /status box AND the status bar (newest line at bottom).
+    let tail = format!(
+        "{}\n{}",
+        codex_fixtures::CODEX_STATUS_BOX_FIXTURE,
+        codex_fixtures::CODEX_STATUS_FIXTURE_V0_122_0
+    );
+
+    // Pricing: operator-supplied $1/M input, $10/M output for gpt-5.4.
+    let mut pricing_toml = NamedTempFile::new().unwrap();
+    write!(
+        pricing_toml,
+        r#"
+[[entries]]
+provider = "codex"
+model = "gpt-5.4"
+input_per_1m = 1.00
+output_per_1m = 10.00
+"#
+    )
+    .unwrap();
+    let pricing = PricingTable::load_from_toml(pricing_toml.path()).unwrap();
+    let claude_settings = ClaudeSettings::empty();
+
+    let ctx = ParserContext {
+        identity: &identity,
+        tail: &tail,
+        pricing: &pricing,
+        claude_settings: &claude_settings,
+    };
+
+    let signals = parse_for(&ctx);
+
+    // Slice 1 fields (still populated, provider-official)
+    assert_eq!(
+        signals.context_pressure.as_ref().unwrap().source_kind,
+        SourceKind::ProviderOfficial
+    );
+    assert_eq!(signals.token_count.as_ref().unwrap().value, 1_530_000);
+    assert_eq!(signals.model_name.as_ref().unwrap().value, "gpt-5.4");
+    let cost = signals.cost_usd.as_ref().unwrap();
+    assert!((cost.value - 1.714).abs() < 0.01);
+    assert_eq!(cost.source_kind, SourceKind::Estimated);
+
+    // Slice 2 fields — the new three
+    let branch = signals.git_branch.as_ref().expect("branch populated");
+    assert_eq!(branch.value, "main");
+    assert_eq!(branch.source_kind, SourceKind::ProviderOfficial);
+
+    let worktree = signals.worktree_path.as_ref().expect("worktree populated");
+    assert_eq!(worktree.value, "~/Qmonster");
+    assert_eq!(worktree.source_kind, SourceKind::ProviderOfficial);
+
+    let effort = signals.reasoning_effort.as_ref().expect("effort populated");
+    assert_eq!(effort.value, "xhigh");
+    assert_eq!(effort.source_kind, SourceKind::ProviderOfficial);
+    assert_eq!(effort.confidence, Some(0.6));
+}
+
+#[test]
+fn claude_adapter_end_to_end_reads_model_from_claude_settings() {
+    use qmonster::adapters::{ParserContext, parse_for};
+    use qmonster::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
+    use qmonster::domain::origin::SourceKind;
+    use qmonster::policy::claude_settings::ClaudeSettings;
+    use qmonster::policy::pricing::PricingTable;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    let identity = ResolvedIdentity {
+        identity: PaneIdentity {
+            provider: Provider::Claude,
+            instance: 1,
+            role: Role::Main,
+            pane_id: "%1".into(),
+        },
+        confidence: IdentityConfidence::High,
+    };
+
+    let mut settings_json = NamedTempFile::new().unwrap();
+    write!(settings_json, r#"{{"model": "claude-sonnet-4-6"}}"#).unwrap();
+    let claude_settings = ClaudeSettings::load_from_path(settings_json.path()).unwrap();
+    let pricing = PricingTable::empty();
+
+    let tail = "✶ Working… (1m · ↓ 500 tokens · thought for 1s)";
+    let ctx = ParserContext {
+        identity: &identity,
+        tail,
+        pricing: &pricing,
+        claude_settings: &claude_settings,
+    };
+
+    let signals = parse_for(&ctx);
+
+    // Slice 2: model comes from settings, not tail.
+    let model = signals
+        .model_name
+        .as_ref()
+        .expect("model populated from settings");
+    assert_eq!(model.value, "claude-sonnet-4-6");
+    assert_eq!(model.source_kind, SourceKind::ProviderOfficial);
+    assert_eq!(model.confidence, Some(0.9));
+    assert_eq!(model.provider, Some(Provider::Claude));
+
+    // Claude tail still populates token_count (Slice 1 behavior).
+    assert_eq!(signals.token_count.as_ref().unwrap().value, 500);
+
+    // Honesty: cost stays None (no input tokens on Claude tail).
+    assert!(signals.cost_usd.is_none());
+}
