@@ -1,9 +1,8 @@
 use crate::adapters::ProviderParser;
 use crate::adapters::common::{parse_common_signals, parse_count_with_suffix};
-use crate::domain::identity::{Provider, ResolvedIdentity};
+use crate::domain::identity::Provider;
 use crate::domain::origin::SourceKind;
 use crate::domain::signal::{MetricValue, SignalSet};
-use crate::policy::pricing::PricingTable;
 
 pub struct CodexAdapter;
 
@@ -22,7 +21,9 @@ struct CodexStatus {
 }
 
 impl ProviderParser for CodexAdapter {
-    fn parse(&self, _identity: &ResolvedIdentity, tail: &str, pricing: &PricingTable) -> SignalSet {
+    fn parse(&self, ctx: &crate::adapters::ParserContext) -> SignalSet {
+        let tail = ctx.tail;
+        let pricing = ctx.pricing;
         let mut set = parse_common_signals(tail);
         let Some(status) = parse_codex_status_line(tail) else {
             return set;
@@ -147,8 +148,12 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, Role};
+    use crate::adapters::ParserContext;
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
     use crate::domain::origin::SourceKind;
+    use crate::policy::claude_settings::ClaudeSettings;
     use crate::policy::pricing::PricingTable;
     use std::io::Write;
     use tempfile::NamedTempFile;
@@ -162,6 +167,20 @@ mod tests {
                 pane_id: "%2".into(),
             },
             confidence: IdentityConfidence::High,
+        }
+    }
+
+    fn ctx<'a>(
+        id: &'a ResolvedIdentity,
+        tail: &'a str,
+        pricing: &'a PricingTable,
+        settings: &'a ClaudeSettings,
+    ) -> ParserContext<'a> {
+        ParserContext {
+            identity: id,
+            tail,
+            pricing,
+            claude_settings: settings,
         }
     }
 
@@ -194,22 +213,25 @@ output_per_1m = 10.00
 
     #[test]
     fn codex_adapter_detects_permission_prompt() {
-        let set = CodexAdapter.parse(
-            &id(),
-            "This action requires approval",
-            &PricingTable::empty(),
-        );
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, "This action requires approval", &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
         assert!(set.permission_prompt);
     }
 
     #[test]
     fn codex_adapter_extracts_four_metrics_from_status_line_with_pricing() {
+        let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
-        let set = CodexAdapter.parse(&id(), STATUS_LINE, &pricing);
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, STATUS_LINE, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
 
-        let ctx = set.context_pressure.as_ref().expect("context parsed");
-        assert!((ctx.value - 0.27).abs() < 0.001);
-        assert_eq!(ctx.source_kind, SourceKind::ProviderOfficial);
+        let cx = set.context_pressure.as_ref().expect("context parsed");
+        assert!((cx.value - 0.27).abs() < 0.001);
+        assert_eq!(cx.source_kind, SourceKind::ProviderOfficial);
 
         let tokens = set.token_count.as_ref().expect("tokens parsed");
         assert_eq!(tokens.value, 1_530_000);
@@ -228,7 +250,11 @@ output_per_1m = 10.00
 
     #[test]
     fn codex_adapter_leaves_cost_none_when_pricing_table_empty() {
-        let set = CodexAdapter.parse(&id(), STATUS_LINE, &PricingTable::empty());
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, STATUS_LINE, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
         assert!(set.context_pressure.is_some());
         assert!(set.token_count.is_some());
         assert!(set.model_name.is_some());
@@ -237,8 +263,12 @@ output_per_1m = 10.00
 
     #[test]
     fn codex_adapter_falls_back_to_common_when_status_line_absent() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
         let tail = "Press ENTER to continue\nno status bar here";
-        let set = CodexAdapter.parse(&id(), tail, &PricingTable::empty());
+        let c = ctx(&id, tail, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
         assert!(set.waiting_for_input);
         assert!(set.context_pressure.is_none());
         assert!(set.token_count.is_none());
@@ -255,16 +285,19 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
 
     #[test]
     fn codex_adapter_newest_line_authoritative_even_with_unknown_model() {
+        let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
-        let set = CodexAdapter.parse(&id(), STATUS_LINE_NEWEST_UNKNOWN_MODEL, &pricing);
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, STATUS_LINE_NEWEST_UNKNOWN_MODEL, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
 
         // context_pressure must come from the NEWEST line (70% used), not
         // the older one (50% used).
-        let ctx = set.context_pressure.as_ref().expect("context from newest");
+        let cx = set.context_pressure.as_ref().expect("context from newest");
         assert!(
-            (ctx.value - 0.70).abs() < 0.001,
+            (cx.value - 0.70).abs() < 0.001,
             "context {} should come from newest line",
-            ctx.value
+            cx.value
         );
 
         // token_count must come from the NEWEST line (2M used), not the older (500K used).

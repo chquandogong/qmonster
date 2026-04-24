@@ -1154,11 +1154,12 @@ fn capturing_source_propagates_configured_error() {
 
 #[test]
 fn codex_status_line_end_to_end_populates_four_metrics() {
-    use qmonster::adapters::parse_for;
+    use qmonster::adapters::{ParserContext, parse_for};
     use qmonster::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use qmonster::domain::origin::SourceKind;
+    use qmonster::policy::claude_settings::ClaudeSettings;
     use qmonster::policy::pricing::PricingTable;
     use std::io::Write;
 
@@ -1192,7 +1193,14 @@ output_per_1m = 10.00
     let pricing = PricingTable::load_from_toml(f.path()).unwrap();
     let _f = f;
 
-    let signals = parse_for(&identity, tail, &pricing);
+    let settings = ClaudeSettings::empty();
+    let ctx = ParserContext {
+        identity: &identity,
+        tail,
+        pricing: &pricing,
+        claude_settings: &settings,
+    };
+    let signals = parse_for(&ctx);
 
     assert_eq!(
         signals.context_pressure.as_ref().unwrap().source_kind,
@@ -1207,10 +1215,11 @@ output_per_1m = 10.00
 
 #[test]
 fn codex_status_line_end_to_end_without_pricing_populates_three_metrics() {
-    use qmonster::adapters::parse_for;
+    use qmonster::adapters::{ParserContext, parse_for};
     use qmonster::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
+    use qmonster::policy::claude_settings::ClaudeSettings;
     use qmonster::policy::pricing::PricingTable;
 
     let identity = ResolvedIdentity {
@@ -1224,7 +1233,15 @@ fn codex_status_line_end_to_end_without_pricing_populates_three_metrics() {
     };
     let tail = "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp";
 
-    let signals = parse_for(&identity, tail, &PricingTable::empty());
+    let pricing = PricingTable::empty();
+    let settings = ClaudeSettings::empty();
+    let ctx = ParserContext {
+        identity: &identity,
+        tail,
+        pricing: &pricing,
+        claude_settings: &settings,
+    };
+    let signals = parse_for(&ctx);
 
     assert!(signals.context_pressure.is_some());
     assert!(signals.token_count.is_some());

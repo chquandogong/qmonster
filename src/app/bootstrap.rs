@@ -3,6 +3,7 @@ use crate::domain::identity::IdentityResolver;
 use crate::domain::lifecycle::PaneLifecycle;
 use crate::notify::desktop::NotifyBackend;
 use crate::notify::rate_limit::RateLimiter;
+use crate::policy::claude_settings::ClaudeSettings;
 use crate::policy::engine::Engine;
 use crate::policy::pricing::PricingTable;
 use crate::store::archive_fs::ArchiveWriter;
@@ -23,6 +24,7 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     pub lifecycle: PaneLifecycle,
     pub rate_limiter: RateLimiter,
     pub pricing: PricingTable,
+    pub claude_settings: ClaudeSettings,
     known_pane_ids: Vec<String>,
 }
 
@@ -39,6 +41,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             lifecycle: PaneLifecycle::new(),
             rate_limiter: RateLimiter::new(),
             pricing: PricingTable::empty(),
+            claude_settings: ClaudeSettings::empty(),
             known_pane_ids: Vec::new(),
         }
     }
@@ -50,6 +53,11 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
 
     pub fn with_pricing(mut self, pricing: PricingTable) -> Self {
         self.pricing = pricing;
+        self
+    }
+
+    pub fn with_claude_settings(mut self, settings: ClaudeSettings) -> Self {
+        self.claude_settings = settings;
         self
     }
 

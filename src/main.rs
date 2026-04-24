@@ -34,6 +34,7 @@ use qmonster::domain::audit::{AuditEvent, AuditEventKind};
 use qmonster::domain::origin::SourceKind;
 use qmonster::domain::recommendation::Severity;
 use qmonster::notify::desktop::DesktopNotifier;
+use qmonster::policy::claude_settings::{ClaudeSettings, ClaudeSettingsError};
 use qmonster::policy::gates::{PromptSendGate, check_send_gate};
 use qmonster::policy::pricing::PricingTable;
 use qmonster::store::{
@@ -136,9 +137,35 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
+    let claude_settings = match ClaudeSettings::default_path() {
+        Some(path) => match ClaudeSettings::load_from_path(&path) {
+            Ok(s) => s,
+            Err(ClaudeSettingsError::Io(io)) if io.kind() == std::io::ErrorKind::NotFound => {
+                ClaudeSettings::empty()
+            }
+            Err(e) => {
+                sink.record(qmonster::domain::audit::AuditEvent {
+                    kind: qmonster::domain::audit::AuditEventKind::ClaudeSettingsLoadFailed,
+                    pane_id: "n/a".into(),
+                    severity: qmonster::domain::recommendation::Severity::Warning,
+                    summary: format!("claude settings load failed at {}: {}", path.display(), e),
+                    provider: None,
+                    role: None,
+                });
+                eprintln!(
+                    "qmonster: failed to load claude settings at {}: {e}; claude model badge disabled this session",
+                    path.display()
+                );
+                ClaudeSettings::empty()
+            }
+        },
+        None => ClaudeSettings::empty(),
+    };
+
     let mut ctx = Context::new(config, source, notifier, sink)
         .with_archive(archive)
-        .with_pricing(pricing);
+        .with_pricing(pricing)
+        .with_claude_settings(claude_settings);
 
     if !pairs.is_empty() {
         let refs: Vec<(&str, &str)> = pairs

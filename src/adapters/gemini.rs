@@ -1,26 +1,23 @@
 use crate::adapters::ProviderParser;
 use crate::adapters::common::parse_common_signals;
-use crate::domain::identity::ResolvedIdentity;
 use crate::domain::signal::SignalSet;
-use crate::policy::pricing::PricingTable;
 
 pub struct GeminiAdapter;
 
 impl ProviderParser for GeminiAdapter {
-    fn parse(
-        &self,
-        _identity: &ResolvedIdentity,
-        tail: &str,
-        _pricing: &PricingTable,
-    ) -> SignalSet {
-        parse_common_signals(tail)
+    fn parse(&self, ctx: &crate::adapters::ParserContext) -> SignalSet {
+        parse_common_signals(ctx.tail)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, Role};
+    use crate::adapters::ParserContext;
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
+    use crate::policy::claude_settings::ClaudeSettings;
     use crate::policy::pricing::PricingTable;
 
     fn id() -> ResolvedIdentity {
@@ -35,13 +32,27 @@ mod tests {
         }
     }
 
+    fn ctx<'a>(
+        id: &'a ResolvedIdentity,
+        tail: &'a str,
+        pricing: &'a PricingTable,
+        settings: &'a ClaudeSettings,
+    ) -> ParserContext<'a> {
+        ParserContext {
+            identity: id,
+            tail,
+            pricing,
+            claude_settings: settings,
+        }
+    }
+
     #[test]
     fn gemini_adapter_inherits_subagent_hint() {
-        let set = GeminiAdapter.parse(
-            &id(),
-            "Starting subagent: web-explorer",
-            &PricingTable::empty(),
-        );
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, "Starting subagent: web-explorer", &pricing, &settings);
+        let set = GeminiAdapter.parse(&c);
         assert!(set.subagent_hint);
     }
 }

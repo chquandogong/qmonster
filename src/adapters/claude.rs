@@ -1,19 +1,14 @@
 use crate::adapters::ProviderParser;
 use crate::adapters::common::{parse_common_signals, parse_count_with_suffix};
-use crate::domain::identity::{Provider, ResolvedIdentity};
+use crate::domain::identity::Provider;
 use crate::domain::origin::SourceKind;
 use crate::domain::signal::{MetricValue, SignalSet};
-use crate::policy::pricing::PricingTable;
 
 pub struct ClaudeAdapter;
 
 impl ProviderParser for ClaudeAdapter {
-    fn parse(
-        &self,
-        _identity: &ResolvedIdentity,
-        tail: &str,
-        _pricing: &PricingTable,
-    ) -> SignalSet {
+    fn parse(&self, ctx: &crate::adapters::ParserContext) -> SignalSet {
+        let tail = ctx.tail;
         let mut set = parse_common_signals(tail);
         let lower = tail.to_lowercase();
 
@@ -121,8 +116,12 @@ fn extract_tokens_substring(s: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, Role};
+    use crate::adapters::ParserContext;
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
     use crate::domain::origin::SourceKind;
+    use crate::policy::claude_settings::ClaudeSettings;
     use crate::policy::pricing::PricingTable;
 
     fn id() -> ResolvedIdentity {
@@ -137,17 +136,37 @@ mod tests {
         }
     }
 
+    fn ctx<'a>(
+        id: &'a ResolvedIdentity,
+        tail: &'a str,
+        pricing: &'a PricingTable,
+        settings: &'a ClaudeSettings,
+    ) -> ParserContext<'a> {
+        ParserContext {
+            identity: id,
+            tail,
+            pricing,
+            claude_settings: settings,
+        }
+    }
+
     #[test]
     fn claude_adapter_inherits_common_signals() {
-        let tail = "Press ENTER to continue";
-        let set = ClaudeAdapter.parse(&id(), tail, &PricingTable::empty());
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, "Press ENTER to continue", &pricing, &settings);
+        let set = ClaudeAdapter.parse(&c);
         assert!(set.waiting_for_input);
     }
 
     #[test]
     fn claude_adapter_parses_claude_specific_percent() {
-        let tail = "claude context 88%";
-        let set = ClaudeAdapter.parse(&id(), tail, &PricingTable::empty());
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, "claude context 88%", &pricing, &settings);
+        let set = ClaudeAdapter.parse(&c);
         let m = set.context_pressure.expect("parsed");
         assert!((m.value - 0.88).abs() < 0.01);
         assert_eq!(m.source_kind, SourceKind::Estimated);
@@ -157,9 +176,13 @@ mod tests {
 
     #[test]
     fn claude_adapter_extracts_output_tokens_from_working_line() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
         let tail =
             "✶ Exploring adapter parsing surface… (1m 34s · ↓ 4.3k tokens · thought for 11s)";
-        let set = ClaudeAdapter.parse(&id(), tail, &PricingTable::empty());
+        let c = ctx(&id, tail, &pricing, &settings);
+        let set = ClaudeAdapter.parse(&c);
         let m = set.token_count.expect("output tokens parsed");
         assert_eq!(m.value, 4_300);
         assert_eq!(m.source_kind, SourceKind::ProviderOfficial);
@@ -168,25 +191,40 @@ mod tests {
 
     #[test]
     fn claude_adapter_prefers_subagent_done_line_over_working_line() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
         let tail = "\
 ✽ Exploring… (2m · ↓ 8.6k tokens)
   ⎿  Done (27 tool uses · 95.1k tokens · 1m 21s)";
-        let set = ClaudeAdapter.parse(&id(), tail, &PricingTable::empty());
+        let c = ctx(&id, tail, &pricing, &settings);
+        let set = ClaudeAdapter.parse(&c);
         let m = set.token_count.expect("tokens parsed");
         assert_eq!(m.value, 95_100);
     }
 
     #[test]
     fn claude_adapter_returns_none_token_count_when_no_marker() {
-        let tail = "regular claude output with no token marker";
-        let set = ClaudeAdapter.parse(&id(), tail, &PricingTable::empty());
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(
+            &id,
+            "regular claude output with no token marker",
+            &pricing,
+            &settings,
+        );
+        let set = ClaudeAdapter.parse(&c);
         assert!(set.token_count.is_none());
     }
 
     #[test]
-    fn claude_adapter_never_populates_model_name_or_cost_in_slice_1() {
-        let tail = "✶ Working… (↓ 100 tokens)";
-        let set = ClaudeAdapter.parse(&id(), tail, &PricingTable::empty());
+    fn claude_adapter_never_populates_model_name_from_tail() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, "✶ Working… (↓ 100 tokens)", &pricing, &settings);
+        let set = ClaudeAdapter.parse(&c);
         assert!(
             set.model_name.is_none(),
             "Claude model is not parseable in Slice 1"

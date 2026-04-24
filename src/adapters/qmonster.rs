@@ -1,7 +1,5 @@
 use crate::adapters::ProviderParser;
-use crate::domain::identity::ResolvedIdentity;
 use crate::domain::signal::SignalSet;
-use crate::policy::pricing::PricingTable;
 
 pub struct QmonsterAdapter;
 
@@ -9,12 +7,7 @@ impl ProviderParser for QmonsterAdapter {
     /// The monitor pane is its own pane — we do not run the generic
     /// parser over its heartbeat output. Phase 1 returns an empty
     /// signal set; Phase 2+ will surface self-heartbeat metrics.
-    fn parse(
-        &self,
-        _identity: &ResolvedIdentity,
-        _tail: &str,
-        _pricing: &PricingTable,
-    ) -> SignalSet {
+    fn parse(&self, _ctx: &crate::adapters::ParserContext) -> SignalSet {
         SignalSet::default()
     }
 }
@@ -22,12 +15,15 @@ impl ProviderParser for QmonsterAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, Role};
+    use crate::adapters::ParserContext;
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
+    use crate::policy::claude_settings::ClaudeSettings;
     use crate::policy::pricing::PricingTable;
 
-    #[test]
-    fn qmonster_adapter_returns_empty_signals() {
-        let id = ResolvedIdentity {
+    fn id() -> ResolvedIdentity {
+        ResolvedIdentity {
             identity: PaneIdentity {
                 provider: Provider::Qmonster,
                 instance: 1,
@@ -35,8 +31,30 @@ mod tests {
                 pane_id: "%4".into(),
             },
             confidence: IdentityConfidence::High,
-        };
-        let set = QmonsterAdapter.parse(&id, "heartbeat tick 42", &PricingTable::empty());
+        }
+    }
+
+    fn ctx<'a>(
+        id: &'a ResolvedIdentity,
+        tail: &'a str,
+        pricing: &'a PricingTable,
+        settings: &'a ClaudeSettings,
+    ) -> ParserContext<'a> {
+        ParserContext {
+            identity: id,
+            tail,
+            pricing,
+            claude_settings: settings,
+        }
+    }
+
+    #[test]
+    fn qmonster_adapter_returns_empty_signals() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, "heartbeat tick 42", &pricing, &settings);
+        let set = QmonsterAdapter.parse(&c);
         assert!(!set.waiting_for_input);
         assert!(!set.log_storm);
     }
