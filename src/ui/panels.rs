@@ -6,7 +6,7 @@ use crate::app::event_loop::PaneReport;
 use crate::domain::identity::{IdentityConfidence, Provider, Role};
 use crate::domain::recommendation::Recommendation;
 use crate::domain::signal::SignalSet;
-use crate::ui::labels::source_kind_label;
+use crate::ui::labels::{format_count_with_suffix, source_kind_label};
 use crate::ui::theme;
 
 /// Codex v1.8.1 (Phase 4 P4-1 remediation): shared renderer for the
@@ -350,13 +350,20 @@ pub fn metric_row(s: &SignalSet) -> String {
     if let Some(m) = s.token_count.as_ref() {
         parts.push(format!(
             "tokens {} [{}]",
-            m.value,
+            format_count_with_suffix(m.value),
             source_kind_label(m.source_kind)
         ));
     }
     if let Some(m) = s.cost_usd.as_ref() {
         parts.push(format!(
             "cost ${:.2} [{}]",
+            m.value,
+            source_kind_label(m.source_kind)
+        ));
+    }
+    if let Some(m) = s.model_name.as_ref() {
+        parts.push(format!(
+            "model {} [{}]",
             m.value,
             source_kind_label(m.source_kind)
         ));
@@ -441,7 +448,7 @@ fn metric_badge_line(signals: &SignalSet) -> Option<Line<'static>> {
         spans.push(Span::styled(
             format!(
                 " TOKENS {} [{}] ",
-                metric.value,
+                format_count_with_suffix(metric.value),
                 source_kind_label(metric.source_kind)
             ),
             theme::label_style(),
@@ -455,6 +462,20 @@ fn metric_badge_line(signals: &SignalSet) -> Option<Line<'static>> {
         spans.push(Span::styled(
             format!(
                 " COST ${:.2} [{}] ",
+                metric.value,
+                source_kind_label(metric.source_kind)
+            ),
+            theme::label_style(),
+        ));
+    }
+    if let Some(metric) = signals.model_name.as_ref() {
+        if has_any {
+            spans.push(Span::raw(" "));
+        }
+        has_any = true;
+        spans.push(Span::styled(
+            format!(
+                " MODEL {} [{}] ",
                 metric.value,
                 source_kind_label(metric.source_kind)
             ),
@@ -834,5 +855,32 @@ mod tests {
             "empty side_effects → no section rendered. lines: {:?}",
             lines
         );
+    }
+
+    #[test]
+    fn metric_row_renders_model_name_line_when_populated() {
+        let s = crate::domain::signal::SignalSet {
+            model_name: Some(crate::domain::signal::MetricValue::new(
+                "gpt-5.4".to_string(),
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
+            ..crate::domain::signal::SignalSet::default()
+        };
+        let row = metric_row(&s);
+        assert!(row.contains("model gpt-5.4"), "row: {row}");
+        assert!(row.contains("Official"), "row: {row}");
+    }
+
+    #[test]
+    fn metric_row_uses_count_suffix_for_tokens() {
+        let s = crate::domain::signal::SignalSet {
+            token_count: Some(crate::domain::signal::MetricValue::new(
+                1_530_000,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
+            ..crate::domain::signal::SignalSet::default()
+        };
+        let row = metric_row(&s);
+        assert!(row.contains("tokens 1.53M"), "got: {row}");
     }
 }
