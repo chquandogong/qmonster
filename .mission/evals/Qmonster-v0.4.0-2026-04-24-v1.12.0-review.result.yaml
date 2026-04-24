@@ -1,0 +1,50 @@
+evaluation:
+  timestamp: "2026-04-24T00:00:00Z"
+  target: "v1.12.0 Slice 2 observability field expansion review"
+  evaluated_by: "llm-codex"
+  source: "Static review of `bd36995..cf258f7` via GitHub connector because local shell access failed with a sandbox wrapper error. Code, tests, clippy, and fmt were not re-run locally in this session; the review relies on the author-reported green verification (331 tests, clippy + fmt clean)."
+  verdict: "approve-with-fixes"
+  remediation_round: "before confirm-archive / before Slice 3"
+  findings:
+    - id: "codex-v1.12.0-1"
+      severity: "warning"
+      title: "Codex reasoning-effort parser over-matches arbitrary prose lines"
+      location: "src/adapters/codex.rs:82-100"
+      issue: >-
+        `parse_codex_reasoning_effort()` scans the reversed tail for any line
+        containing `reasoning ` and a whitelisted token, without anchoring to
+        Codex `/status` box structure. If normal transcript text contains
+        `reasoning high`, `reasoning low`, etc., the parser can stamp that text
+        as `ProviderOfficial` whenever a valid Codex status bar also exists in
+        the tail.
+      fix: >-
+        Require actual `/status` box structure before extracting the value, for
+        example `Model:` plus the box glyphs or the nearest parsed `/status`
+        block associated with the authoritative status bar. Add a regression
+        test with a normal prose line containing `reasoning high`; the field
+        must stay `None`.
+    - id: "codex-v1.12.0-2"
+      severity: "warning"
+      title: "Claude settings example points operators at a path the runtime never reads"
+      location: "config/claude-settings.example.json:2"
+      issue: >-
+        The example comment tells operators to copy the file to
+        `config/claude-settings.json`, but runtime only reads
+        `$HOME/.claude/settings.json` in `src/policy/claude_settings.rs`.
+        Following the example leaves Claude `model_name` blank and makes the
+        new feature appear broken.
+      fix: >-
+        Update the example and surrounding ignore/docs text to point at
+        `~/.claude/settings.json`. If repo-local config was intended instead,
+        support that path in the loader and test it explicitly.
+  notes:
+    - "ParserContext is the right trade-off for this slice. A flat 4-field struct is cheaper and clearer than typestate or associated-type layering at the current scale."
+    - "The current `claude_settings` asymmetry is acceptable because the input is still app-owned and cross-cutting even if only the Claude adapter consumes it today."
+    - "The `skip_next_plain_identifier` branch heuristic is tolerable for the current Codex 0.122.0 fixture, but I would treat it as a short-term positional heuristic rather than long-term 0.95-confidence structure."
+    - "Confidence 0.6 is sufficient as a temporary stale-risk proxy for a display-focused slice. If future policy needs freshness as a first-class concept, add an explicit staleness field instead of overloading confidence further."
+    - "Reading `~/.claude/settings.json` stays within the observe-first boundary. It is an operator-owned provider config surface, not hidden provider runtime state."
+    - "Startup-only load with durable `ClaudeSettingsLoadFailed` audit logging is enough for Slice 2. A separate `ClaudeSettingsStale` audit kind is not needed until the product starts surfacing freshness semantics."
+    - "The 2-row `metric_badge_line` split is structurally sound. Adaptive wide-vs-narrow layout is optional polish, not a blocker for this slice."
+    - "The outstanding `mission-history.yaml` catch-up from v1.10.9 / v1.11.0 / v1.11.1 does not block the code slice itself, but the next confirm-archive round should backfill it before calling the slice archive-ready."
+    - "Test coverage is sufficient once the Codex reasoning-parser false-positive case is added. The public `parse_for` integration tests are the right end-to-end boundary for this feature."
+  gate_decision: "The slice direction is sound but not fully green. Fix the Codex reasoning-effort parser anchor and the Claude settings example-path mismatch, then re-check before treating v1.12.0 as confirm-archive-ready or opening Slice 3."

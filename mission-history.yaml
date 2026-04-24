@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.11.0 Slice 1 (P0-1 provider usage-hint parsing) + v1.11.1 pre-review cleanup + v1.11.2 remediation (codex+gemini approve-with-fixes → approve) + v1.11.3 confirm-archive (ledger-only) — Slice 1 gate fully green, Slice 2 unblocked"
+  mission_title: "Qmonster v0.4.0 — v1.12.0 Slice 2 (observability field expansion) shipped; Codex + Gemini cross-check returned approve-with-fixes (2 Codex warnings + Gemini ledger catch-up must-fix); v1.12.1 remediation pending, v1.12.2 confirm-archive pending"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 45
-  latest_version: "1.11.3"
+  total_revisions: 46
+  latest_version: "1.12.0"
 
 timeline:
   - change_id: "initial"
@@ -5401,9 +5401,88 @@ timeline:
       - "Optional small doc follow-up: add a one-line note to `docs/superpowers/specs/2026-04-23-p0-1-slice-1-usage-hint-parsing-design.md` §4.2 noting v1.11.2 replaced v1.11.1's eprintln with an audit-sink-primary path (historical drift already captured in the sequence 44 / 45 narratives)."
       - "Annotated tag `v1.11.3` at this commit (ledger-only) so operators can pin to the sealed-gate baseline. build.rs will pick up the new tag and render `v1.11.3` in the footer on the next rebuild."
 
+  - change_id: "v1.12.0-slice-2-review-round"
+    semantic_version: "1.12.0"
+    change_sequence: 46
+    date: "2026-04-24"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex CLI v0.122.0 (gpt-5.4, reasoning xhigh) — static review through GitHub connector"
+      - "Gemini CLI (--approval-mode plan, read-only) — static review of commit range bd36995..cf258f7"
+    change_type: "review-round"
+    motivation_type: "gate-check"
+    persistence: "permanent"
+    intent: >
+      Run the Codex + Gemini cross-check on the v1.12.0 Slice 2
+      arc (observability field expansion: SignalSet git_branch/
+      worktree_path/reasoning_effort + Claude model from
+      ClaudeSettings + ParserContext trait migration + 2-row
+      metric_badge_line) so the gate status on the slice is on
+      the shared record before v1.12.1 remediation opens.
+    decision: >
+      Both reviewers returned `approve-with-fixes`. Must-fix
+      items to close in v1.12.1: (1) codex-v1.12.0-1 (Codex
+      warning) — `parse_codex_reasoning_effort` over-matches
+      arbitrary prose lines containing `reasoning <whitelisted>`;
+      must be anchored to real `/status` box structure before
+      extracting, plus a regression test with a prose `reasoning
+      high` line that must NOT stamp ProviderOfficial;
+      (2) codex-v1.12.0-2 (Codex warning) — `config/claude-
+      settings.example.json` tells operators to copy the file to
+      `config/claude-settings.json`, but runtime only reads
+      `~/.claude/settings.json`. Example must be corrected to
+      point at the actual runtime path; (3) Gemini flagged
+      `mission-history.yaml` ledger catch-up (v1.10.9, v1.11.0,
+      v1.11.1 individual entries still missing) as must-fix
+      before confirm-archive — will be bundled into v1.12.2
+      confirm-archive per both reviewers' scope guidance.
+      Four artifacts materialized per REVIEW_GUIDE.md §4 (2
+      narratives gitignored in .docs/{codex,gemini}/, 2
+      structured mirrors tracked in .mission/evals/).
+    triggered_by: "Operator request: proceed with reviewer round after v1.12.0 ship"
+    issue_or_context: >
+      v1.12.0 (11 commits `bd36995..cf258f7`) shipped the Slice 2
+      observability expansion — the second of the P0-1 slices
+      (Slice 1 = v1.11.x usage-hint parsing, sealed at v1.11.3).
+      Per project confirm-archive convention, shared gate status
+      requires both Codex and Gemini cross-check before
+      remediation/archive rounds can legitimately open. This
+      round provides that ledger.
+    changes:
+      added:
+        - ".docs/codex/Qmonster-v0.4.0-2026-04-24-v1.12.0-review.md (gitignored)"
+        - ".docs/gemini/Qmonster-v0.4.0-2026-04-24-v1.12.0-review.md (gitignored)"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-24-v1.12.0-review.result.yaml"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-24-v1.12.0-gemini-review.result.yaml"
+      modified:
+        - "mission-history.yaml (this entry)"
+      removed: []
+    changed_sections:
+      - ".mission/evals — two v1.12.0 review result yamls (Codex + Gemini) added for shared ledger visibility"
+      - "mission-history — change_sequence 46 added"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      code: "none — review-round-only commit"
+      ledger: "one new timeline entry + two eval mirrors; code/config untouched"
+      review_gate: "v1.12.0 Slice 2 transitions from 'shipped, internally reviewed' to 'external cross-check complete, approve-with-fixes' — 3 must-fix items queued for v1.12.1/v1.12.2 closure"
+      follow_up_carryover: "Gemini explicitly requires mission-history ledger catch-up before calling the slice archive-ready; Codex agrees it blocks confirm-archive. Per both reviewers' scope guidance, v1.12.1 remediation focuses on the 2 Codex warnings (narrow scope), and v1.12.2 confirm-archive bundles (a) confirm-round approval, (b) ledger backfill for v1.10.9/v1.11.0/v1.11.1/v1.12.0, (c) meta bump."
+    breaking: false
+    risk: "negligible — review-round artifacts + ledger only; no source or runtime change"
+    related_commits: []
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Open v1.12.1 remediation: fix codex-v1.12.0-1 (anchor parse_codex_reasoning_effort to real /status box structure + false-positive regression test) and codex-v1.12.0-2 (correct claude-settings.example.json path to ~/.claude/settings.json). Target a single small TDD slice."
+      - "After v1.12.1 closes the 2 Codex warnings, request Codex + Gemini confirm round."
+      - "v1.12.2 confirm-archive: ledger-only, bundles confirm approval + ledger catch-up (individual change_sequence entries for v1.10.9 / v1.11.0 / v1.11.1 / v1.12.0 via the v1.12.0-1..-8 sub-slices OR at Slice-arc granularity, author's choice)."
+      - "Deferred optional follow-ups carried over into slice-arc cleanup round: Task 3 ctx() test helper hoist + Provider::Unknown comment; Task 4 skip_next_plain_identifier declaration-site comment + STATUS_LINE_NEWEST_UNKNOWN_MODEL extension; Task 6/7 ellipsize helper for long operator-supplied strings; Task 7 push_badge DRY + context-only-row test; Task 8 tighten cost tolerance; PricingError/ClaudeSettingsError::NotFound dead-variant cleanup."
+
 evolution_summary:
-  current_phase: "v1.11.0 Slice 1 arc fully sealed (P0-1 provider usage-hint parsing). v1.11.0 shipped the Codex + Claude parsers + PricingTable foundation; v1.11.1 closed spec-drift on Claude context stamps and moved pricing load from CWD to QMONSTER_ROOT-relative; v1.11.2 closed all 3 must-fix items from the cross-model review round (Codex parser newest-line authority + per-field independence, `insert_for_test` public-API removed, pricing-load error routed to SqliteAuditSink via new `AuditEventKind::PricingLoadFailed`); v1.11.3 is this confirm-archive commit (ledger-only, both reviewers approve on 0b4911a). 307 tests green on v1.11.2; clippy + fmt clean. No code changes in the confirm-archive — artifacts + meta + ledger only."
-  next_phase: "Slice 2 brainstorming — SignalSet field expansion (`git_branch`, `reasoning_effort`, `worktree_path`), `ParserContext` struct migration (both reviewers endorsed deferral until a second cross-cutting input arrives; Slice 2's field expansion is that trigger), optional second attempt at Claude model via session banner / settings.json. Ledger catch-up for v1.10.9 / v1.11.0 / v1.11.1 individual entries remains open as optional follow-up."
+  current_phase: "v1.12.0 Slice 2 shipped (observability field expansion: SignalSet git_branch/worktree_path/reasoning_effort + Claude model from ~/.claude/settings.json via new ClaudeSettings module + ParserContext trait migration + 2-row metric_badge_line + 2 integration tests). 331 tests green on cf258f7. Cross-check round completed 2026-04-24: both Codex and Gemini returned `approve-with-fixes`. Three must-fix items queued: (1) Codex parser over-match regression on `parse_codex_reasoning_effort` — must anchor to real /status box structure; (2) claude-settings.example.json wrong-path mismatch — must point at ~/.claude/settings.json; (3) Gemini-flagged mission-history ledger catch-up (v1.10.9/v1.11.0/v1.11.1 missing individual entries) before confirm-archive. v1.12.1 remediation will narrow to the 2 Codex warnings; v1.12.2 confirm-archive will bundle the ledger backfill."
+  next_phase: "v1.12.1 remediation slice (2 Codex warnings) → Codex/Gemini confirm round → v1.12.2 confirm-archive (ledger-only with catch-up for v1.10.9/v1.11.0/v1.11.1/v1.12.0 individual entries + meta bump). After v1.12.2, Slice 3 brainstorming opens (Gemini observability fields, reasoning_effort session cache, optional CodexSettings/GeminiSettings modules, ellipsize helper for long operator strings, adaptive metric_badge_line width handling)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

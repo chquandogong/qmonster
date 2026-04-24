@@ -1,0 +1,15 @@
+verdict: approve-with-fixes
+reviewer: gemini
+target: v1.12.0
+date: 2026-04-24
+must_fix:
+  - file: mission-history.yaml
+    severity: warning
+    description: "Ledger catch-up deferral requires backfilling missing change_sequence entries before phase gate closure."
+todos:
+  - "Incorporate Task 3 follow-ups: hoist duplicated ctx() test helper, comment Provider::Unknown asymmetry."
+  - "Incorporate Task 4 follow-ups: comment skip_next_plain_identifier assumption, extend STATUS_LINE_NEWEST_UNKNOWN_MODEL test."
+  - "Incorporate Task 6/7 follow-ups: width-bounding for long strings in UI."
+  - "Incorporate Task 8 follow-ups: tighten cost tolerance to < 1e-9."
+  - "Clean up dead PricingError::NotFound and ClaudeSettingsError::NotFound variants."
+  - "Update mission-history.yaml in the confirm-archive commit."
