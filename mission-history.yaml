@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.11.0 Slice 1 provider usage-hint parsing + v1.11.1 spec/operator-UX cleanup; both reviewers approve-with-fixes awaiting v1.11.2 remediation"
+  mission_title: "Qmonster v0.4.0 — v1.11.0 Slice 1 (P0-1 provider usage-hint parsing) + v1.11.1 pre-review cleanup + v1.11.2 remediation (codex+gemini approve-with-fixes → approve) + v1.11.3 confirm-archive (ledger-only) — Slice 1 gate fully green, Slice 2 unblocked"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 44
-  latest_version: "1.11.1"
+  total_revisions: 45
+  latest_version: "1.11.3"
 
 timeline:
   - change_id: "initial"
@@ -5309,9 +5309,101 @@ timeline:
       - "Ledger catch-up is deferred: v1.10.9 (pre-wrap), v1.11.0 (8 Slice 1 commits), and v1.11.1 (cleanup) do not yet have individual change_sequence entries. Either backfill them in a ledger-only commit before Slice 2 opens, or fold a combined 'v1.11.x Slice 1 arc' entry into the v1.11.2 confirm-archive."
       - "After v1.11.2 closes must-fix items and both reviewers re-approve, open Slice 2 (SignalSet `git_branch` / `reasoning_effort` / `worktree_path` fields + `ParserContext` struct migration as previewed in the spec's §3.1 OUT section)."
 
+  - change_id: "v1.11.2-remediation-confirm-archive"
+    semantic_version: "1.11.3"
+    change_sequence: 45
+    date: "2026-04-24"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Codex CLI v0.122.0 (gpt-5.4, reasoning xhigh) — confirm review of remediation patch 0b4911a (v1.11.2); verdict `approve`, no new must-fix"
+      - "Gemini CLI (--approval-mode plan, read-only) — confirm review of 0b4911a (v1.11.2); verdict `approve`, no new must-fix"
+    change_type: "confirm-archive"
+    motivation_type: "gate-seal"
+    persistence: "permanent"
+    intent: >
+      Record the cross-model confirm round on v1.11.2 and seal the
+      v1.11.0 Slice 1 arc with a ledger-only micro-version bump so
+      Slice 2 can open cleanly. No code change in this commit — just
+      the two eval mirrors + mission meta + ledger entry, following
+      the confirm-archive convention established in prior P4/P5
+      remediation rounds.
+    intent_ko: >
+      v1.11.2 remediation에 대한 교차 리뷰 confirm 라운드 결과를
+      공유 ledger에 기록하고, Slice 2 opens 전에 v1.11.0 Slice 1
+      arc를 ledger-only 마이크로 버전 bump(v1.11.3)로 봉인.
+      이전 P4/P5 remediation 라운드에서 확립된 confirm-archive
+      관례를 따름. 코드 변경 없음.
+    decision: >
+      Both Codex and Gemini returned `approve` on commit 0b4911a
+      (v1.11.2) with no new must-fix findings and no regressions.
+      All three v1.11.0-round must-fix items confirmed closed:
+      (1) Codex parser newest-line authority + per-field
+      independence — closed with the new regression test
+      `codex_adapter_newest_line_authoritative_even_with_unknown_model`
+      pinning the behaviour; (2) `PricingTable::insert_for_test`
+      removed from public API, tests refactored to tempfile +
+      `load_from_toml`; (3) pricing-load error routed to
+      `SqliteAuditSink` via new `AuditEventKind::PricingLoadFailed`
+      variant with durable summary (path + error), eprintln kept
+      as belt-and-suspenders dev/non-TUI signal. Doc-drift cleanup
+      on `config/pricing.example.toml` ([Est] → [Estimate])
+      bundled. Codex notes the parser false-positive surface is
+      "slightly broader because model is now optional, but still
+      narrow enough for approval and preferable to stale
+      fallback." Gemini notes "no new regressions." v1.11.3 tag
+      is ledger-only at this confirm-archive commit — no source
+      changes since v1.11.2 (0b4911a).
+    decision_ko: >
+      Codex + Gemini 모두 0b4911a(v1.11.2)에 `approve`. 새로운
+      must-fix 없음, regression 없음. v1.11.0 라운드의 3개
+      must-fix 전부 confirmed closed. 코드 불변, ledger-only
+      마이크로 bump(v1.11.3)로 Slice 1 arc 마감.
+    triggered_by: "Operator request: proceed to v1.11.3 confirm-archive after both confirm reviews return `approve`"
+    issue_or_context: >
+      After v1.11.2 remediation shipped and cleared both Codex
+      and Gemini confirm rounds, the project's confirm-archive
+      convention calls for a ledger-only micro-version bump that
+      (a) makes the gate decision permanent in the shared ledger
+      and (b) anchors the next slice on a clean reviewed baseline.
+      This commit is that seal.
+    changes:
+      added:
+        - ".docs/codex/Qmonster-v0.4.0-2026-04-24-v1.11.2-confirm-review.md (gitignored)"
+        - ".docs/gemini/Qmonster-v0.4.0-2026-04-24-v1.11.2-confirm-review.md (gitignored)"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-24-v1.11.2-confirm-review.result.yaml"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-24-v1.11.2-confirm-gemini-review.result.yaml"
+      modified:
+        - "mission.yaml (meta: version 1.10.8 → 1.11.3; title updated for Slice 1 arc + confirm-archive)"
+        - "mission-history.yaml (this entry; meta: latest_version 1.11.1 → 1.11.3, total_revisions 44 → 45)"
+      removed: []
+    changed_sections:
+      - "mission.yaml.meta — version + title aligned with post-Slice-1-arc reality"
+      - "mission-history.meta — latest_version + total_revisions bump; title updated"
+      - ".mission/evals — two v1.11.2 confirm review result yamls added to shared ledger"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      code: "none — ledger-only micro-version bump per confirm-archive convention"
+      ledger: "meta bump across mission.yaml + mission-history.yaml; two new evals + one new timeline entry"
+      review_gate: "v1.11.0 Slice 1 arc transitions from `approve-with-fixes awaiting remediation` (sequence 44) to `fully green, approve sealed, Slice 2 unblocked` (this sequence 45)"
+      follow_up_carryover: "Slice 2 brainstorming can begin now. Ledger catch-up for v1.10.9 / v1.11.0 / v1.11.1 individual entries remains open (flagged in sequence 44's follow_up) — defer to a separate ledger-only backfill or fold into the Slice 2 round."
+    breaking: false
+    risk: "negligible — confirm-archive commit is ledger-only; the reviewed code baseline (0b4911a) does not change."
+    related_commits:
+      - "0b4911a"
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Open Slice 2 brainstorming: SignalSet `git_branch` / `reasoning_effort` / `worktree_path` fields + `ParserContext` struct migration (Codex/Gemini both endorsed deferral of ParserContext until a second real cross-cutting input arrives — Slice 2's field expansion is that trigger)."
+      - "Optional ledger catch-up round (ledger-only): backfill individual change_sequence entries for v1.10.9, v1.11.0-1..8, v1.11.1. Low priority — the arc is already described at the Slice-1-arc granularity in sequence 44 + 45."
+      - "Optional small doc follow-up: add a one-line note to `docs/superpowers/specs/2026-04-23-p0-1-slice-1-usage-hint-parsing-design.md` §4.2 noting v1.11.2 replaced v1.11.1's eprintln with an audit-sink-primary path (historical drift already captured in the sequence 44 / 45 narratives)."
+      - "Annotated tag `v1.11.3` at this commit (ledger-only) so operators can pin to the sealed-gate baseline. build.rs will pick up the new tag and render `v1.11.3` in the footer on the next rebuild."
+
 evolution_summary:
-  current_phase: "v1.11.0 Slice 1 (P0-1 provider usage-hint parsing) + v1.11.1 cleanup shipped; cross-model review round completed 2026-04-24 with both Codex and Gemini returning `approve-with-fixes`. Three must-fix items queued for v1.11.2 remediation: Codex parser latest-line authority + per-field independence so model-token drift (`o1`/`o5`/`codex-mini`) doesn't blank or stale-fallback the official metrics; `PricingTable::insert_for_test` public-API gating so test-only hooks don't leak to the external surface; pricing-load error breadcrumb promotion from ephemeral `eprintln!` to durable `SystemNotice` or startup audit event. 305 tests green on v1.11.1; clippy + fmt clean. No code changes in this review round — artifacts + ledger only."
-  next_phase: "v1.11.2 remediation slice (3 must-fix items) → Codex/Gemini confirm round → v1.11.3 confirm-archive (ledger-only) → Slice 2 brainstorming (SignalSet git_branch / reasoning_effort / worktree_path + ParserContext trait struct + second attempt at Claude model via session banner)"
+  current_phase: "v1.11.0 Slice 1 arc fully sealed (P0-1 provider usage-hint parsing). v1.11.0 shipped the Codex + Claude parsers + PricingTable foundation; v1.11.1 closed spec-drift on Claude context stamps and moved pricing load from CWD to QMONSTER_ROOT-relative; v1.11.2 closed all 3 must-fix items from the cross-model review round (Codex parser newest-line authority + per-field independence, `insert_for_test` public-API removed, pricing-load error routed to SqliteAuditSink via new `AuditEventKind::PricingLoadFailed`); v1.11.3 is this confirm-archive commit (ledger-only, both reviewers approve on 0b4911a). 307 tests green on v1.11.2; clippy + fmt clean. No code changes in the confirm-archive — artifacts + meta + ledger only."
+  next_phase: "Slice 2 brainstorming — SignalSet field expansion (`git_branch`, `reasoning_effort`, `worktree_path`), `ParserContext` struct migration (both reviewers endorsed deferral until a second cross-cutting input arrives; Slice 2's field expansion is that trigger), optional second attempt at Claude model via session banner / settings.json. Ledger catch-up for v1.10.9 / v1.11.0 / v1.11.1 individual entries remains open as optional follow-up."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

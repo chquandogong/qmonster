@@ -1,0 +1,15 @@
+evaluation:
+  timestamp: "2026-04-24T00:00:00Z"
+  target: "v1.11.2 remediation patch confirm review"
+  evaluated_by: "llm-gemini"
+  source: "Review via `gemini --approval-mode plan` (read-only). Shell/script execution blocked by plan-mode policy; static read of commit `0b4911a`, spec/plan docs, and v1.11.0 review artifacts."
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "All three prior must-fix items (codex-v1.11.0-1, gemini-v1.11.0-1, gemini-v1.11.0-2) are fully addressed in v1.11.2."
+    - "Codex parser correctly treats the newest status-line-shaped line as authoritative; partial-parse (model-unknown) populates context/tokens honestly while leaving model_name/cost_usd None."
+    - "`PricingTable::insert_for_test` was removed; Codex unit tests and v1.11.0 integration tests now use `tempfile` + `PricingTable::load_from_toml`."
+    - "`PricingLoadFailed` audit event emits via `src/main.rs` to the SqliteAuditSink with severity Warning; summary includes resolved path + error text — sufficient for post-exit diagnosis."
+    - "No new must-fix regressions or follow-up items flagged in this confirm round."
+  gate_decision: "Approve v1.11.2. Project cleared to proceed to v1.11.3 confirm-archive (ledger-only) and then Slice 2."

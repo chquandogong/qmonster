@@ -1,6 +1,6 @@
 mission:
-  version: "1.10.8"
-  title: "Qmonster v0.4.0 — bullet hanging indent v1.10.8 (HELP_CONTINUATION_PREFIX deepened to 20 spaces + `· ` so bullet markers hang under the `:` of the summary row; bullet text now aligns with the value column; annotated tag v1.10.8 at HEAD so footer renders the release label)"
+  version: "1.11.3"
+  title: "Qmonster v0.4.0 — v1.11.0 Slice 1 (P0-1 provider usage-hint parsing) shipped, v1.11.1 spec/UX cleanup, v1.11.2 remediation (codex+gemini approve-with-fixes → approve), v1.11.3 confirm-archive (ledger-only micro-bump) — both reviewers approve, Slice 1 gate fully green, Slice 2 unblocked"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

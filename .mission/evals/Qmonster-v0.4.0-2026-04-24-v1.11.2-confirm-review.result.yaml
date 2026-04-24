@@ -1,0 +1,16 @@
+evaluation:
+  timestamp: "2026-04-24T00:00:00Z"
+  target: "v1.11.2 remediation patch confirm review"
+  evaluated_by: "llm-codex"
+  source: "Static confirm review of commit `0b4911a` via GitHub connector because local shell access failed with a sandbox wrapper error. Code, tests, clippy, and fmt were not re-run locally in this session; the review relies on the author-reported green verification (307 tests, clippy + fmt clean)."
+  verdict: "approve"
+  remediation_round: ""
+  findings: []
+  notes:
+    - "Verified closure of codex-v1.11.0-1 in `src/adapters/codex.rs`: the first status-line-shaped line is now authoritative, `model` is optional, and `parse()` only emits `model_name`/`cost_usd` when a known model exists."
+    - "Verified fallback semantics: `CodexAdapter::parse()` still starts from `parse_common_signals(tail)` and returns that baseline when no status line parses; when the newest line is semantically valid but model-unknown, official context/token metrics still populate honestly while `model_name` and `cost_usd` stay `None`."
+    - "Tracked-repo search for `insert_for_test` returned no matches; `PricingTable` public API in `src/policy/pricing.rs` no longer exposes a test-only mutation hook."
+    - "Verified durable breadcrumb closure: `src/main.rs` records `AuditEventKind::PricingLoadFailed` with path + error in the summary, `src/domain/audit.rs` and `src/store/audit.rs` wire the kind through write/read symmetry, and the new SQLite round-trip test proves the event survives query/readback."
+    - "The Codex parser false-positive surface is only slightly broader because model is now optional, but the line still must satisfy the exact `Context N% used` + `<count> used` + `<count> in` + `<count> out` token quartet on a middot-delimited line. That is narrow enough for approval and preferable to stale fallback."
+    - "Verified `config/pricing.example.toml` now matches the live UI label with `COST [Estimate]`."
+  gate_decision: "Approve v1.11.2. The three prior must-fix items are closed, no new must-fix regressions were introduced, and the project can proceed to the v1.11.3 confirm-archive ledger round."
