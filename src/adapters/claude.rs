@@ -28,6 +28,17 @@ impl ProviderParser for ClaudeAdapter {
             );
         }
 
+        // Slice 2: model from external ~/.claude/settings.json (not tail).
+        // Confidence 0.9 (< Codex's 0.95) because CLI flags can override
+        // the settings value at invocation time.
+        if let Some(m) = ctx.claude_settings.model() {
+            set.model_name = Some(
+                MetricValue::new(m.to_string(), SourceKind::ProviderOfficial)
+                    .with_confidence(0.9)
+                    .with_provider(Provider::Claude),
+            );
+        }
+
         set
     }
 }
@@ -220,6 +231,10 @@ mod tests {
 
     #[test]
     fn claude_adapter_never_populates_model_name_from_tail() {
+        // Honesty regression: with EMPTY settings, the Claude adapter
+        // must not populate model_name from the tail alone. Claude's
+        // tail does not expose the model; only the settings-read path
+        // (tested separately) may populate this field.
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
@@ -227,11 +242,57 @@ mod tests {
         let set = ClaudeAdapter.parse(&c);
         assert!(
             set.model_name.is_none(),
-            "Claude model is not parseable in Slice 1"
+            "Claude tail must not surface model_name without a ClaudeSettings source"
         );
+    }
+
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn settings_with_model(m: &str) -> (ClaudeSettings, NamedTempFile) {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, r#"{{"model": "{}"}}"#, m).unwrap();
+        let s = ClaudeSettings::load_from_path(f.path()).unwrap();
+        (s, f)
+    }
+
+    #[test]
+    fn claude_adapter_populates_model_name_when_settings_has_model() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let (settings, _f) = settings_with_model("claude-sonnet-4-6");
+        let c = ctx(&id, "any tail", &pricing, &settings);
+        let set = ClaudeAdapter.parse(&c);
+
+        let m = set
+            .model_name
+            .as_ref()
+            .expect("model populated from settings");
+        assert_eq!(m.value, "claude-sonnet-4-6");
+        assert_eq!(m.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(m.provider, Some(Provider::Claude));
+        assert_eq!(
+            m.confidence,
+            Some(0.9),
+            "confidence 0.9 < Codex's 0.95 because CLI flags can override settings"
+        );
+    }
+
+    #[test]
+    fn claude_adapter_leaves_cost_usd_none_regardless_of_settings() {
+        // Honesty regression: Claude cost requires input-token data
+        // which Claude's tail does not expose. Settings presence must
+        // not accidentally unlock cost computation.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let (settings, _f) = settings_with_model("claude-sonnet-4-6");
+        let c = ctx(&id, "✶ Working… (↓ 100 tokens)", &pricing, &settings);
+        let set = ClaudeAdapter.parse(&c);
+
+        assert!(set.model_name.is_some(), "model populates from settings");
         assert!(
             set.cost_usd.is_none(),
-            "Claude cost requires input tokens which Claude tail does not expose"
+            "cost must stay None — no input-token source on Claude tail"
         );
     }
 }
