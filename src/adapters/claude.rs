@@ -17,10 +17,12 @@ impl ProviderParser for ClaudeAdapter {
         let mut set = parse_common_signals(tail);
         let lower = tail.to_lowercase();
 
-        if set.context_pressure.is_none()
-            && let Some(p) = parse_context_percent_claude(&lower)
-        {
-            set.context_pressure = Some(MetricValue::new(p / 100.0, SourceKind::Estimated));
+        if let Some(p) = parse_context_percent_claude(&lower) {
+            set.context_pressure = Some(
+                MetricValue::new(p / 100.0, SourceKind::Estimated)
+                    .with_confidence(0.6)
+                    .with_provider(Provider::Claude),
+            );
         }
 
         if let Some(n) = parse_claude_output_tokens(tail) {
@@ -148,6 +150,9 @@ mod tests {
         let set = ClaudeAdapter.parse(&id(), tail, &PricingTable::empty());
         let m = set.context_pressure.expect("parsed");
         assert!((m.value - 0.88).abs() < 0.01);
+        assert_eq!(m.source_kind, SourceKind::Estimated);
+        assert_eq!(m.confidence, Some(0.6));
+        assert_eq!(m.provider, Some(Provider::Claude));
     }
 
     #[test]

@@ -104,11 +104,28 @@ fn main() -> anyhow::Result<()> {
     let source = PollingSource::new(config.tmux.capture_lines);
     let notifier = DesktopNotifier;
     let archive = ArchiveWriter::new(paths.clone(), config.logging.big_output_chars);
+
+    let pricing_path = paths.root().join("config/pricing.toml");
+    let pricing = match PricingTable::load_from_toml(&pricing_path) {
+        Ok(table) => table,
+        Err(qmonster::policy::pricing::PricingError::Io(io_err))
+            if io_err.kind() == std::io::ErrorKind::NotFound =>
+        {
+            // absent by default — silent fallback is the documented behaviour
+            PricingTable::empty()
+        }
+        Err(e) => {
+            eprintln!(
+                "qmonster: failed to load pricing table at {}: {e}; cost badges disabled this session",
+                pricing_path.display()
+            );
+            PricingTable::empty()
+        }
+    };
+
     let mut ctx = Context::new(config, source, notifier, sink)
         .with_archive(archive)
-        .with_pricing(PricingTable::load_from_toml_or_empty(std::path::Path::new(
-            "config/pricing.toml",
-        )));
+        .with_pricing(pricing);
 
     if !pairs.is_empty() {
         let refs: Vec<(&str, &str)> = pairs
