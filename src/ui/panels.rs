@@ -167,8 +167,8 @@ fn pane_list_lines(
         lines.push(line);
     }
 
-    if let Some(line) = metric_badge_line(&report.signals) {
-        lines.push(line);
+    for row in metric_badge_line(&report.signals) {
+        lines.push(row);
     }
 
     if expanded {
@@ -279,8 +279,8 @@ pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
         items.push(ListItem::new(line));
     }
 
-    if let Some(line) = metric_badge_line(&report.signals) {
-        items.push(ListItem::new(line));
+    for row in metric_badge_line(&report.signals) {
+        items.push(ListItem::new(row));
     }
 
     for rec in report.recommendations.iter().take(6) {
@@ -368,6 +368,27 @@ pub fn metric_row(s: &SignalSet) -> String {
             source_kind_label(m.source_kind)
         ));
     }
+    if let Some(m) = s.git_branch.as_ref() {
+        parts.push(format!(
+            "branch {} [{}]",
+            m.value,
+            source_kind_label(m.source_kind)
+        ));
+    }
+    if let Some(m) = s.worktree_path.as_ref() {
+        parts.push(format!(
+            "path {} [{}]",
+            m.value,
+            source_kind_label(m.source_kind)
+        ));
+    }
+    if let Some(m) = s.reasoning_effort.as_ref() {
+        parts.push(format!(
+            "effort {} [{}]",
+            m.value,
+            source_kind_label(m.source_kind)
+        ));
+    }
     parts.join("  ")
 }
 
@@ -429,7 +450,18 @@ fn severity_label(severity: crate::domain::recommendation::Severity) -> &'static
     }
 }
 
-fn metric_badge_line(signals: &SignalSet) -> Option<Line<'static>> {
+fn metric_badge_line(signals: &SignalSet) -> Vec<Line<'static>> {
+    let mut rows = Vec::with_capacity(2);
+    if let Some(line) = primary_metric_row(signals) {
+        rows.push(line);
+    }
+    if let Some(line) = context_metric_row(signals) {
+        rows.push(line);
+    }
+    rows
+}
+
+fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
     let mut spans = vec![Span::raw(format!("{:<8}: ", "metrics"))];
     let mut has_any = false;
 
@@ -476,6 +508,53 @@ fn metric_badge_line(signals: &SignalSet) -> Option<Line<'static>> {
         spans.push(Span::styled(
             format!(
                 " MODEL {} [{}] ",
+                metric.value,
+                source_kind_label(metric.source_kind)
+            ),
+            theme::label_style(),
+        ));
+    }
+
+    has_any.then(|| Line::from(spans))
+}
+
+fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
+    let mut spans = vec![Span::raw(format!("{:<8}: ", "context"))];
+    let mut has_any = false;
+
+    if let Some(metric) = signals.git_branch.as_ref() {
+        has_any = true;
+        spans.push(Span::styled(
+            format!(
+                " BRANCH {} [{}] ",
+                metric.value,
+                source_kind_label(metric.source_kind)
+            ),
+            theme::label_style(),
+        ));
+    }
+    if let Some(metric) = signals.worktree_path.as_ref() {
+        if has_any {
+            spans.push(Span::raw(" "));
+        }
+        has_any = true;
+        spans.push(Span::styled(
+            format!(
+                " PATH {} [{}] ",
+                metric.value,
+                source_kind_label(metric.source_kind)
+            ),
+            theme::label_style(),
+        ));
+    }
+    if let Some(metric) = signals.reasoning_effort.as_ref() {
+        if has_any {
+            spans.push(Span::raw(" "));
+        }
+        has_any = true;
+        spans.push(Span::styled(
+            format!(
+                " EFFORT {} [{}] ",
                 metric.value,
                 source_kind_label(metric.source_kind)
             ),
@@ -882,5 +961,71 @@ mod tests {
         };
         let row = metric_row(&s);
         assert!(row.contains("tokens 1.53M"), "got: {row}");
+    }
+
+    #[test]
+    fn metric_row_renders_git_branch_and_worktree_and_effort() {
+        let s = crate::domain::signal::SignalSet {
+            git_branch: Some(crate::domain::signal::MetricValue::new(
+                "main".to_string(),
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
+            worktree_path: Some(crate::domain::signal::MetricValue::new(
+                "~/Qmonster".to_string(),
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
+            reasoning_effort: Some(crate::domain::signal::MetricValue::new(
+                "xhigh".to_string(),
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
+            ..crate::domain::signal::SignalSet::default()
+        };
+        let row = metric_row(&s);
+        assert!(row.contains("branch main"), "row: {row}");
+        assert!(row.contains("path ~/Qmonster"), "row: {row}");
+        assert!(row.contains("effort xhigh"), "row: {row}");
+    }
+
+    #[test]
+    fn metric_badge_line_returns_two_rows_when_context_fields_present() {
+        let s = crate::domain::signal::SignalSet {
+            token_count: Some(crate::domain::signal::MetricValue::new(
+                1_530_000_u64,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
+            git_branch: Some(crate::domain::signal::MetricValue::new(
+                "main".to_string(),
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
+            ..crate::domain::signal::SignalSet::default()
+        };
+        let rows = metric_badge_line(&s);
+        assert_eq!(
+            rows.len(),
+            2,
+            "TOKENS on row 1 + BRANCH on row 2 → exactly two rows"
+        );
+    }
+
+    #[test]
+    fn metric_badge_line_returns_single_row_when_only_primary_fields_present() {
+        let s = crate::domain::signal::SignalSet {
+            token_count: Some(crate::domain::signal::MetricValue::new(
+                1_530_000_u64,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
+            ..crate::domain::signal::SignalSet::default()
+        };
+        let rows = metric_badge_line(&s);
+        assert_eq!(rows.len(), 1, "primary fields only → one row");
+    }
+
+    #[test]
+    fn metric_badge_line_returns_empty_vec_when_no_fields() {
+        let rows = metric_badge_line(&crate::domain::signal::SignalSet::default());
+        assert!(
+            rows.is_empty(),
+            "no fields populated → empty Vec (not a single empty Line)"
+        );
     }
 }
