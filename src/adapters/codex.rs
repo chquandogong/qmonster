@@ -20,7 +20,6 @@ struct CodexStatus {
     model: Option<String>,
     worktree_path: Option<String>,
     git_branch: Option<String>,
-    #[allow(dead_code)] // populated + consumed in Task 5
     reasoning_effort: Option<String>,
 }
 
@@ -71,10 +70,35 @@ impl ProviderParser for CodexAdapter {
                 .with_confidence(0.95)
                 .with_provider(Provider::Codex)
         });
-        // reasoning_effort set in Task 5
+        set.reasoning_effort = status.reasoning_effort.map(|e| {
+            MetricValue::new(e, SourceKind::ProviderOfficial)
+                .with_confidence(0.6) // stale-risk from /status box tail retention
+                .with_provider(Provider::Codex)
+        });
 
         set
     }
+}
+
+/// Scan `tail` for a Codex `/status` box line matching
+/// `reasoning (xhigh|high|medium|low|auto)`. Return the captured
+/// effort value on the first match; None otherwise. Called by
+/// parse_codex_status_line's success path (only after the status
+/// bar itself matches the shape heuristic).
+fn parse_codex_reasoning_effort(tail: &str) -> Option<String> {
+    for line in tail.lines() {
+        if let Some(idx) = line.find("reasoning ") {
+            let after = &line[idx + "reasoning ".len()..];
+            let effort = after
+                .split(|c: char| !c.is_ascii_alphabetic())
+                .next()
+                .unwrap_or("");
+            if matches!(effort, "xhigh" | "high" | "medium" | "low" | "auto") {
+                return Some(effort.to_string());
+            }
+        }
+    }
+    None
 }
 
 fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
@@ -164,6 +188,7 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
         if let (Some(c), Some(tot), Some(inp), Some(out)) =
             (context_pct, total_tokens, input_tokens, output_tokens)
         {
+            let reasoning_effort = parse_codex_reasoning_effort(tail);
             return Some(CodexStatus {
                 context_pct: c,
                 total_tokens: tot,
@@ -172,7 +197,7 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
                 model,
                 worktree_path,
                 git_branch,
-                reasoning_effort: None, // populated in Task 5
+                reasoning_effort,
             });
         }
         return None;
@@ -418,5 +443,65 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         assert!(set.context_pressure.is_some());
         assert!(set.token_count.is_some());
         assert!(set.model_name.is_some());
+    }
+
+    const STATUS_BOX_SNIPPET: &str = "│  Model:                       gpt-5.4 (reasoning xhigh, summaries auto)                 │";
+
+    const STATUS_LINE_WITH_BOX_ABOVE: &str = concat!(
+        "│  Model:                       gpt-5.4 (reasoning xhigh, summaries auto)                 │\n",
+        "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp"
+    );
+
+    #[test]
+    fn codex_adapter_reasoning_effort_reads_xhigh_from_status_box() {
+        let id = id();
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, STATUS_LINE_WITH_BOX_ABOVE, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
+
+        let effort = set.reasoning_effort.as_ref().expect("effort parsed");
+        assert_eq!(effort.value, "xhigh");
+        assert_eq!(effort.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(effort.provider, Some(Provider::Codex));
+        assert_eq!(
+            effort.confidence,
+            Some(0.6),
+            "confidence 0.6 encodes the stale-risk of /status box tail retention"
+        );
+    }
+
+    #[test]
+    fn codex_adapter_reasoning_effort_falls_through_when_pattern_absent() {
+        // Status bar present (so the line parses) but no `reasoning ...` text.
+        let id = id();
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, STATUS_LINE, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
+
+        assert!(
+            set.reasoning_effort.is_none(),
+            "no /status box snippet -> reasoning_effort stays None"
+        );
+        // status bar fields still populate
+        assert!(set.context_pressure.is_some());
+        assert!(set.token_count.is_some());
+    }
+
+    #[test]
+    fn codex_adapter_reasoning_effort_absent_when_status_bar_missing() {
+        // /status snippet present, but no status bar matches the shape.
+        // Because reasoning_effort is populated inside parse_codex_status_line's
+        // success path, the whole CodexStatus returns None and no field —
+        // reasoning_effort included — is set.
+        let id = id();
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let settings = ClaudeSettings::empty();
+        let c = ctx(&id, STATUS_BOX_SNIPPET, &pricing, &settings);
+        let set = CodexAdapter.parse(&c);
+
+        assert!(set.reasoning_effort.is_none());
+        assert!(set.context_pressure.is_none());
     }
 }
