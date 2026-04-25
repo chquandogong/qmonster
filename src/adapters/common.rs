@@ -500,7 +500,7 @@ mod tests {
         // integration tests; not present in real CLI output).
         let set = parse_common_signals("context window usage 82%");
         let m = set.context_pressure.expect("test marker matches");
-        assert!((m.value - 0.82).abs() < 0.01);
+        assert!((m.value - 0.82).abs() < 1e-9);
         assert_eq!(m.source_kind, crate::domain::origin::SourceKind::Estimated);
     }
 

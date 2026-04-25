@@ -558,7 +558,7 @@ output_per_1m = 10.00
         let cost = set.cost_usd.as_ref().expect("cost computed");
         // 1.51M in × $1.00 / 1M + 20.4K out × $10.00 / 1M
         //   = 1.51 + 0.204 = 1.714
-        assert!((cost.value - 1.714).abs() < 0.01, "got {}", cost.value);
+        assert!((cost.value - 1.714).abs() < 1e-9, "got {}", cost.value);
         assert_eq!(cost.source_kind, SourceKind::Estimated);
     }
 

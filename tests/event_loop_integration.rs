@@ -209,7 +209,7 @@ fn run_once_report_exposes_metric_values_when_present() {
         .context_pressure
         .as_ref()
         .expect("context_pressure should be present");
-    assert!((metric.value - 0.82).abs() < 0.01);
+    assert!((metric.value - 0.82).abs() < 1e-9);
     assert_eq!(
         metric.source_kind,
         qmonster::domain::origin::SourceKind::Estimated
@@ -1216,7 +1216,7 @@ output_per_1m = 10.00
     assert_eq!(signals.token_count.as_ref().unwrap().value, 1_530_000);
     assert_eq!(signals.model_name.as_ref().unwrap().value, "gpt-5.4");
     let cost = signals.cost_usd.as_ref().unwrap();
-    assert!((cost.value - 1.714).abs() < 0.01);
+    assert!((cost.value - 1.714).abs() < 1e-9);
     assert_eq!(cost.source_kind, SourceKind::Estimated);
 }
 
@@ -1325,7 +1325,7 @@ output_per_1m = 10.00
     assert_eq!(signals.token_count.as_ref().unwrap().value, 1_530_000);
     assert_eq!(signals.model_name.as_ref().unwrap().value, "gpt-5.4");
     let cost = signals.cost_usd.as_ref().unwrap();
-    assert!((cost.value - 1.714).abs() < 0.01);
+    assert!((cost.value - 1.714).abs() < 1e-9);
     assert_eq!(cost.source_kind, SourceKind::Estimated);
 
     // Slice 2 fields — the new three
