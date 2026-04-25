@@ -80,6 +80,7 @@ where
         if matches!(lc, L::BecameDead | L::Reappeared) {
             ctx.tail_history.remove(&pane.pane_id);
             ctx.idle_transition.remove(&pane.pane_id);
+            ctx.idle_entered_at.remove(&pane.pane_id);
         }
 
         if pane.dead {
@@ -95,6 +96,8 @@ where
                 dead: true,
                 current_path: pane.current_path.clone(),
                 cross_pane_findings: vec![],
+                idle_state: None,
+                idle_state_entered_at: None,
             });
             continue;
         }
@@ -123,7 +126,24 @@ where
         // detect transitions (None→Some, Some(X)→Some(Y)). Update AFTER.
         let last_idle = ctx.idle_transition.get(&pane.pane_id).copied().flatten();
         let out: EvalOutput = ctx.policy.evaluate(&resolved, &signals, &gates, last_idle);
+
+        // Update idle_entered_at only on cause transitions, not on every poll.
+        match (last_idle, signals.idle_state) {
+            (None, Some(_)) => {
+                ctx.idle_entered_at.insert(pane.pane_id.clone(), now);
+            }
+            (Some(a), Some(b)) if a != b => {
+                ctx.idle_entered_at.insert(pane.pane_id.clone(), now);
+            }
+            (Some(_), None) => {
+                ctx.idle_entered_at.remove(&pane.pane_id);
+            }
+            _ => {} // Some→Same or None→None: preserve existing entered_at
+        }
         ctx.idle_transition.insert(pane.pane_id.clone(), signals.idle_state);
+
+        let idle_state = signals.idle_state;
+        let entered_at = ctx.idle_entered_at.get(&pane.pane_id).copied();
 
         deliver_effects(permits, &out, &pane.pane_id, &pane.tail, now, ctx);
 
@@ -144,6 +164,8 @@ where
             dead: false,
             current_path: pane.current_path.clone(),
             cross_pane_findings: vec![],
+            idle_state,
+            idle_state_entered_at: entered_at,
         });
     }
 
@@ -311,4 +333,11 @@ pub struct PaneReport {
     pub dead: bool,
     pub current_path: String,
     pub cross_pane_findings: Vec<crate::domain::recommendation::CrossPaneFinding>,
+    /// Current idle cause, if any. Mirrors `signals.idle_state` but
+    /// co-located with `idle_state_entered_at` so the UI can render
+    /// the elapsed-time badge without extra lookups.
+    pub idle_state: Option<crate::domain::signal::IdleCause>,
+    /// Instant at which the pane entered its current `idle_state`.
+    /// `None` when `idle_state` is `None` (pane is active).
+    pub idle_state_entered_at: Option<std::time::Instant>,
 }

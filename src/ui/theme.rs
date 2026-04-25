@@ -31,6 +31,31 @@ pub fn label_style() -> Style {
     Style::default().fg(TEXT_DIM).bg(BADGE_BG)
 }
 
+/// Styled for a pane that has cleanly finished its work (dim gray — non-urgent).
+pub fn idle_work_complete() -> Style {
+    Style::default().fg(TEXT_DIM)
+}
+
+/// Styled for a pane that is stale / cause unknown (dimmer gray).
+pub fn idle_stale() -> Style {
+    Style::default().fg(Color::Rgb(90, 100, 120))
+}
+
+/// Styled for a pane awaiting user input (yellow — needs attention).
+pub fn idle_input_wait() -> Style {
+    Style::default().fg(Color::Yellow)
+}
+
+/// Styled for a pane awaiting operator permission (light yellow — elevated urgency).
+pub fn idle_permission_wait() -> Style {
+    Style::default().fg(Color::LightYellow)
+}
+
+/// Styled for a pane that has hit a resource limit (red — action required).
+pub fn idle_limit_hit() -> Style {
+    Style::default().fg(Color::Red)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

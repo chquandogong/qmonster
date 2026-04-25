@@ -30,6 +30,10 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
         std::collections::HashMap<String, crate::adapters::common::PaneTailHistory>,
     pub idle_transition:
         std::collections::HashMap<String, Option<crate::domain::signal::IdleCause>>,
+    /// Records the `Instant` when each pane entered its current idle cause.
+    /// Updated on transitions (None→Some, Some(X)→Some(Y)) and cleared on
+    /// Some→None or lifecycle reset so the UI can display accurate elapsed time.
+    pub idle_entered_at: std::collections::HashMap<String, std::time::Instant>,
     known_pane_ids: Vec<String>,
 }
 
@@ -49,6 +53,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             claude_settings: ClaudeSettings::empty(),
             tail_history: std::collections::HashMap::new(),
             idle_transition: std::collections::HashMap::new(),
+            idle_entered_at: std::collections::HashMap::new(),
             known_pane_ids: Vec::new(),
         }
     }

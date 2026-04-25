@@ -2218,6 +2218,8 @@ mod tests {
             recommendations: recs,
             current_path: "/repo".into(),
             cross_pane_findings: vec![],
+            idle_state: None,
+            idle_state_entered_at: None,
         }
     }
 

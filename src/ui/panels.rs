@@ -157,8 +157,11 @@ fn pane_list_lines(
                 .add_modifier(Modifier::BOLD),
         ),
         Line::from(aligned_field("path", &display_path(&report.current_path))),
-        Line::from(aligned_field("status", &state_summary_line(report))),
     ];
+    for row in render_pane_state_row(report) {
+        lines.push(row);
+    }
+    lines.push(Line::from(aligned_field("status", &state_summary_line(report))));
 
     if let Some(line) = blocking_signal_line(&report.signals) {
         lines.push(line);
@@ -578,6 +581,46 @@ fn context_metric_severity(value: f32) -> crate::domain::recommendation::Severit
     }
 }
 
+/// Produces a single styled line carrying glyph + label + elapsed time for
+/// a pane that is currently in an idle cause. Callers are responsible for
+/// only calling this when `idle_state.is_some()`.
+fn format_state_row(cause: IdleCause, entered_at: std::time::Instant) -> Line<'static> {
+    let (glyph, label, style) = match cause {
+        IdleCause::WorkComplete => ("⏹", "IDLE (done)", theme::idle_work_complete()),
+        IdleCause::Stale => ("⏸", "IDLE (?)", theme::idle_stale()),
+        IdleCause::InputWait => ("⏸", "WAIT (input)", theme::idle_input_wait()),
+        IdleCause::PermissionWait => ("⚠", "WAIT (approval)", theme::idle_permission_wait()),
+        IdleCause::LimitHit => ("⛔", "LIMIT", theme::idle_limit_hit()),
+    };
+    let elapsed_str = format_elapsed(entered_at.elapsed());
+    Line::styled(
+        format!("  {:<8}: {glyph} {label} · {elapsed_str}", "state"),
+        style,
+    )
+}
+
+fn format_elapsed(d: std::time::Duration) -> String {
+    let secs = d.as_secs();
+    if secs < 60 {
+        format!("{}s", secs)
+    } else if secs < 3600 {
+        format!("{}m {}s", secs / 60, secs % 60)
+    } else {
+        format!("{}h {}m", secs / 3600, (secs % 3600) / 60)
+    }
+}
+
+/// Returns a one-element vec with the state row when the report carries an
+/// active idle cause, or an empty vec when the pane is running normally.
+/// Used by the pane card and directly in tests.
+fn render_pane_state_row(report: &PaneReport) -> Vec<Line<'static>> {
+    if let (Some(cause), Some(entered_at)) = (report.idle_state, report.idle_state_entered_at) {
+        vec![format_state_row(cause, entered_at)]
+    } else {
+        vec![]
+    }
+}
+
 fn blocking_signal_line(signals: &SignalSet) -> Option<Line<'static>> {
     let chips = blocking_signal_chips(signals);
     if chips.is_empty() {
@@ -654,6 +697,8 @@ mod tests {
             dead: false,
             current_path: "/repo".into(),
             cross_pane_findings: vec![],
+            idle_state: None,
+            idle_state_entered_at: None,
         }
     }
 
@@ -1027,5 +1072,21 @@ mod tests {
             rows.is_empty(),
             "no fields populated → empty Vec (not a single empty Line)"
         );
+    }
+
+    #[test]
+    fn state_row_renders_input_wait_with_yellow_glyph_and_label() {
+        let entered_at = std::time::Instant::now();
+        let line = format_state_row(IdleCause::InputWait, entered_at);
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(text.contains("⏸"), "glyph missing: {text}");
+        assert!(text.contains("WAIT (input)"), "label missing: {text}");
+    }
+
+    #[test]
+    fn state_row_omitted_for_idle_state_none() {
+        let rep = base_report();
+        let lines = render_pane_state_row(&rep);
+        assert!(lines.is_empty(), "no state row when idle_state is None");
     }
 }
