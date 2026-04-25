@@ -1,5 +1,5 @@
 use crate::domain::origin::SourceKind;
-use crate::domain::signal::{MetricValue, SignalSet, TaskType};
+use crate::domain::signal::{IdleCause, MetricValue, SignalSet, TaskType};
 
 const LOG_STORM_LINE_THRESHOLD: usize = 8;
 
@@ -193,10 +193,20 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
     let log_like = lines.iter().filter(|line| is_log_like(line)).count();
     let log_storm = log_like >= LOG_STORM_LINE_THRESHOLD;
 
+    let pp = PERMISSION_PROMPT_MARKERS.iter().any(|m| lower.contains(m));
+    let wi = WAITING_PROMPT_MARKERS.iter().any(|m| lower.contains(m));
+    let idle_state = if pp {
+        Some(IdleCause::PermissionWait)
+    } else if wi {
+        Some(IdleCause::InputWait)
+    } else {
+        None
+    };
+
     SignalSet {
-        idle_state: None,
-        waiting_for_input: WAITING_PROMPT_MARKERS.iter().any(|m| lower.contains(m)),
-        permission_prompt: PERMISSION_PROMPT_MARKERS.iter().any(|m| lower.contains(m)),
+        idle_state,
+        waiting_for_input: wi,
+        permission_prompt: pp,
         log_storm,
         repeated_output: false,
         verbose_answer,
@@ -372,6 +382,7 @@ fn detect_task_type(lower: &str) -> TaskType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::signal::IdleCause;
 
     #[test]
     fn pane_tail_history_pushes_and_caps_at_capacity() {
@@ -529,5 +540,25 @@ mod tests {
     fn parse_count_with_suffix_returns_none_for_garbage() {
         assert_eq!(parse_count_with_suffix(""), None);
         assert_eq!(parse_count_with_suffix("xyz"), None);
+    }
+
+    #[test]
+    fn permission_marker_populates_idle_state_permission_wait() {
+        let set = parse_common_signals("This action requires approval (y/n)");
+        assert_eq!(set.idle_state, Some(IdleCause::PermissionWait));
+        assert!(set.permission_prompt);
+    }
+
+    #[test]
+    fn waiting_marker_populates_idle_state_input_wait() {
+        let set = parse_common_signals("...\nPress ENTER to continue\n");
+        assert_eq!(set.idle_state, Some(IdleCause::InputWait));
+        assert!(set.waiting_for_input);
+    }
+
+    #[test]
+    fn no_markers_no_history_yields_idle_state_none() {
+        let set = parse_common_signals("normal output");
+        assert_eq!(set.idle_state, None);
     }
 }
