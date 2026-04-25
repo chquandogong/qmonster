@@ -1,8 +1,8 @@
 use crate::adapters::ProviderParser;
-use crate::adapters::common::{parse_common_signals, parse_count_with_suffix};
+use crate::adapters::common::{parse_common_signals, parse_count_with_suffix, PaneTailHistory, STILLNESS_WINDOW};
 use crate::domain::identity::Provider;
 use crate::domain::origin::SourceKind;
-use crate::domain::signal::{MetricValue, SignalSet};
+use crate::domain::signal::{IdleCause, MetricValue, SignalSet};
 
 pub struct ClaudeAdapter;
 
@@ -38,8 +38,69 @@ impl ProviderParser for ClaudeAdapter {
             );
         }
 
+        // Slice 4: classify idle state. parse_common_signals already
+        // populated PermissionWait/InputWait from markers. We refine
+        // with Claude-specific cursor + limit detection, then fall back
+        // to stillness if history shows the tail unchanged.
+        if set.idle_state.is_none() {
+            set.idle_state = classify_idle_claude(tail, ctx.history);
+        }
+
         set
     }
+}
+
+fn classify_idle_claude(tail: &str, history: &PaneTailHistory) -> Option<IdleCause> {
+    // Step 2 — limit-hit text (Claude /status panel patterns).
+    if claude_limit_hit(tail) {
+        return Some(IdleCause::LimitHit);
+    }
+    // Step 3 — idle cursor at last non-empty line.
+    if claude_idle_cursor(tail) {
+        return Some(IdleCause::WorkComplete);
+    }
+    // Step 4 — stillness fallback.
+    if history.is_still(STILLNESS_WINDOW) {
+        return Some(IdleCause::Stale);
+    }
+    None
+}
+
+fn claude_idle_cursor(tail: &str) -> bool {
+    // The last non-empty line starts with `❯ ` (Claude prompt-ready
+    // glyph + space). The space distinguishes from `❯/status`-style
+    // command echoes which have no trailing whitespace before content.
+    let last = tail.lines().rev().find(|l| !l.trim().is_empty());
+    last.is_some_and(|l| {
+        let t = l.trim_start();
+        t.starts_with("❯ ")
+    })
+}
+
+fn claude_limit_hit(tail: &str) -> bool {
+    // Pattern A: two-line `Current session\n... 100% used` from /status.
+    // Pattern B: same-line `Current week (...) 100% used`.
+    let lines: Vec<&str> = tail.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        let lower = line.to_lowercase();
+        if lower.contains("current session") {
+            // Look at next non-empty line for "100% used"
+            for next_line in lines.iter().skip(i + 1) {
+                let next = next_line.trim();
+                if next.is_empty() {
+                    continue;
+                }
+                if next.to_lowercase().contains("100% used") {
+                    return true;
+                }
+                break;
+            }
+        }
+        if lower.contains("current week") && lower.contains("100% used") {
+            return true;
+        }
+    }
+    false
 }
 
 fn parse_claude_output_tokens(tail: &str) -> Option<u64> {
@@ -100,7 +161,8 @@ fn extract_tokens_substring(s: &str) -> Option<u64> {
 mod tests {
     use super::*;
     use crate::adapters::ParserContext;
-    use crate::adapters::common::PaneTailHistory;
+    use crate::adapters::common::{PaneTailHistory, STILLNESS_WINDOW};
+    use crate::domain::signal::IdleCause;
     use crate::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
@@ -282,5 +344,81 @@ mod tests {
             set.cost_usd.is_none(),
             "cost must stay None — no input-token source on Claude tail"
         );
+    }
+
+    #[test]
+    fn claude_idle_cursor_at_last_line_yields_work_complete() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "previous output\n\n❯ ";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        assert_eq!(set.idle_state, Some(IdleCause::WorkComplete));
+    }
+
+    #[test]
+    fn claude_current_session_100_used_yields_limit_hit() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "  Current session\n  ██████████ 100% used\n  Resets 3:40pm\n";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        assert_eq!(set.idle_state, Some(IdleCause::LimitHit));
+    }
+
+    #[test]
+    fn claude_current_week_100_used_yields_limit_hit() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Current week (all models) 100% used (resets Apr 30)";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        assert_eq!(set.idle_state, Some(IdleCause::LimitHit));
+    }
+
+    #[test]
+    fn claude_active_output_no_cursor_no_history_yields_none() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "✶ Working… (↓ 4.3k tokens)";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        assert_eq!(set.idle_state, None);
+    }
+
+    #[test]
+    fn claude_permission_marker_beats_cursor_in_priority() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "❯ this action requires approval (y/n)";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        assert_eq!(set.idle_state, Some(IdleCause::PermissionWait),
+            "explicit marker must win over cursor pattern");
+    }
+
+    #[test]
+    fn claude_stillness_fallback_yields_stale_when_history_full() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let mut history = PaneTailHistory::empty();
+        let tail = "stable output without markers or cursor";
+        for _ in 0..STILLNESS_WINDOW {
+            history.push(tail.into());
+        }
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        assert_eq!(set.idle_state, Some(IdleCause::Stale));
     }
 }
