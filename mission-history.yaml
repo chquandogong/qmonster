@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.14.0 Slice 4: halted/idle state detection (IdleCause hybrid). v1.14.1 Codex cursor fix: codex_idle_cursor skips bottom-status-line when scanning from end."
+  mission_title: "Qmonster v0.4.0 — v1.15.0 runtime observability: active-safe manual `u`-key refresh, Gemini status-table parsing with column-parity guard, SourceKind honesty (prose facts demoted to Heuristic), modes/access/loaded/restrict pane rows, false-IDLE lag fix. Builds on v1.14.0 + v1.14.1 idle-state baseline."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 55
-  latest_version: "1.14.1"
+  total_revisions: 56
+  latest_version: "1.15.0"
 
 timeline:
   - change_id: "initial"
@@ -6141,9 +6141,126 @@ timeline:
       - "v1.14.2 confirm-archive seal after Codex+Gemini cross-check of v1.14.x."
       - "After v1.14.x sealed: queue Slice 3 (S3-1..S3-6) per the existing backlog."
 
+  - change_id: "v1.15.0-runtime-observability"
+    semantic_version: "1.15.0"
+    change_sequence: 56
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "operator-pain-point-resolution + reviewer-must-fix-remediation"
+    persistence: "permanent"
+    intent: >
+      Add operator-driven manual runtime fact refresh (`u` key) plus
+      adapter parsers for permission/yolo/auto mode, sandbox, allowed
+      dirs, loaded tools/skills/plugins, restricted tools, and
+      Gemini status-table CTX/model/path. Fix false-IDLE persistence
+      after new requests with bare prompt-glyph cursor anchors.
+      Broaden Claude usage-limit banners so USAGE LIMIT beats IDLE.
+      Close the v1.15.0 review-1 must-fix findings (CFX-1, CFX-2,
+      CFX-3) by tightening SourceKind labelling and the Gemini
+      status-table parser; the v1.15.0 row ordering already matched
+      the docs (metrics-then-runtime).
+    decision: >
+      4 commits past v1.14.1 land in this version (043980d..5b48103):
+      4da7d6c idle limit + context metrics docs sync; aa3baa6 baseline
+      runtime fact display; 2025bbb four-command Claude refresh;
+      5b48103 active-safe command split (Claude /status only while
+      active/Stale; full /status + /context + /config + /stats +
+      /usage when explicitly idle/waiting/limited) PLUS the CFX-1 /
+      CFX-2 must-fix remediations (push_provider_fact threads
+      SourceKind, prose-derived facts demoted to Heuristic, Codex
+      requires the `│` welcome-box border anchor for ProviderOfficial,
+      Gemini status-table parser asserts header_cols.len() ==
+      data_cols.len() before populating). v1.15.0 ships with the
+      review-1 verdict (approve-with-fixes) on file plus the explicit
+      operator decision to skip the confirm re-review and tag
+      directly because the must-fixes were addressed inline and the
+      new active-safe behaviour is straightforward to back out if the
+      next round of operator usage flags problems.
+    triggered_by: "Operator request for `u`-key manual provider runtime fact refresh (2026-04-25); v1.15.0 review-1 by Codex + Gemini returning approve-with-fixes."
+    issue_or_context: >
+      v1.14.1 surfaced halt/idle state but had no way to refresh
+      provider-emitted runtime facts (model, branch, worktree, quota,
+      permission mode, sandbox, etc.) once they scrolled offscreen,
+      and false-IDLE persisted across new requests because the cursor
+      anchor matched prompt-echo text. Reviewers also flagged that
+      shared push_provider_fact always emitted ProviderOfficial even
+      for prose-derived facts (CFX-1), and that Gemini's
+      2+-whitespace status-table column splitter could misalign
+      blank columns and stamp wrong cells ProviderOfficial (CFX-2).
+    changes:
+      added:
+        - "src/adapters/runtime.rs::push_provider_fact (now takes SourceKind)"
+        - "src/adapters/runtime.rs::push_provider_fact body (clean_runtime_value + dedupe + new SourceKind threading)"
+        - "src/adapters/{claude,codex,gemini}.rs::runtime fact extraction paths (settings/box-anchored = ProviderOfficial; tail-prose = Heuristic)"
+        - "src/adapters/gemini.rs::header_cols.len() == data_cols.len() guard in gemini_status_from_columns (CFX-2)"
+        - "src/main.rs::runtime_refresh_uses_active_safe_only + runtime_refresh_full_commands + runtime_refresh_active_commands (active-safe split)"
+        - "src/main.rs::u-key dispatcher with 4 audit kinds (RuntimeRefreshRequested / Completed / Failed / Blocked)"
+        - "src/ui/panels.rs::modes / access / loaded / restrict pane rows + render_runtime_badge_lines"
+        - "tests: gemini_status_table_blank_column_does_not_misalign_official_facts (CFX-2 regression)"
+        - "tests: claude_prose_with_runtime_labels_does_not_emit_provider_official_facts (CFX-1 regression)"
+        - "tests: codex_prose_with_runtime_label_does_not_emit_provider_official_facts (CFX-1 regression)"
+        - "tests: SourceKind assertions on existing claude/codex/gemini runtime fact tests (lock CFX-1 contract)"
+        - ".docs/codex/Qmonster-v0.4.0-2026-04-25-v1.15.0-review.md (Codex review-1 narrative)"
+        - ".docs/gemini/Qmonster-v0.4.0-2026-04-25-v1.15.0-review.md (Gemini review-1 narrative)"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-25-v1.15.0-review.result.yaml (Codex review-1 mirror)"
+        - ".mission/evals/Qmonster-v0.4.0-2026-04-25-v1.15.0-gemini-review.result.yaml (Gemini review-1 mirror)"
+      modified:
+        - "src/domain/audit.rs (4 RuntimeRefresh* AuditEventKind variants + display)"
+        - "src/domain/signal.rs (RuntimeFactKind + RuntimeFact public types)"
+        - "src/store/audit.rs (SQLite mapping for new audit kinds)"
+        - "src/ui/{theme,dashboard,alerts}.rs (runtime fact tints, 20s alert auto-hide reservation)"
+        - "src/policy/claude_settings.rs (runtime fact accessors)"
+        - "src/policy/rules/{idle,concurrent}.rs (idle_state-aware paths)"
+        - "src/app/{config,bootstrap,event_loop}.rs (runtime fact threading)"
+        - "tests/{event_loop_integration,false_positive_regression,idle_state_regression,sim}.rs (runtime fact + idle lag fixtures)"
+        - "tests/fixtures/real/* (idle / limit / quota fixtures)"
+        - "docs/ai/{ARCHITECTURE,VALIDATION,PROJECT_BRIEF,UI_MANUAL,WORKFLOWS}.md + README.md (v1.15.0 sync; runtime fact rows; date labels)"
+        - "mission.yaml (meta: version 1.14.1 → 1.15.0; title)"
+        - "mission-history.yaml (sequence 56; meta: latest_version 1.15.0, total_revisions 55 → 56)"
+      removed: []
+    changed_sections:
+      - "src/adapters/runtime.rs::push_provider_fact (SourceKind threaded)"
+      - "src/adapters/{claude,codex,gemini}.rs::append_*_runtime_facts + Gemini gemini_status_from_columns guard"
+      - "src/main.rs::u-key handler + active-safe command split"
+      - "src/ui/panels.rs::pane card row layout + runtime_badge_lines"
+      - "src/domain/{audit,signal}.rs::new public types"
+    done_when_delta:
+      added:
+        - "Operator can press `u` to refresh provider runtime facts; observe-only mode blocks with audit + SystemNotice"
+        - "Active-safe split: Claude active or Stale → /status only; explicit idle/waiting/limited → /status + /context + /config + /stats + /usage"
+        - "Codex/Gemini receive provider-canonical /status (Codex) or /stats triplet (Gemini) regardless of state"
+        - "Pane card surfaces modes / access / loaded / restrict rows when provider exposes the fields"
+        - "push_provider_fact carries SourceKind; tail-prose facts demoted to Heuristic"
+        - "Gemini status-table parser asserts column count parity before populating"
+        - "Codex tail facts only stamp ProviderOfficial when the line carries the `│` welcome-box border"
+      modified:
+        - "Claude usage-limit banners now classify as IdleCause::LimitHit ahead of WorkComplete"
+        - "Idle cursor anchor requires the bare prompt glyph (`❯` / `›`); prompt-echo text after the glyph no longer counts as idle"
+        - "Stillness fallback uses configured PaneTailHistory.capacity() (was hard-coded 4-poll window)"
+      removed: []
+    impact_scope:
+      code: "+~600/-~50 LoC across adapters/ui/main + new src/adapters/runtime.rs (52 LoC); +5 lib + 2 main tests"
+      tests: "426 total (was 397 at v1.14.1) — 359 lib + 10 main + 33 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 56); meta bump"
+      review_gate: "review-1 verdict approve-with-fixes (Codex CFX-1/2/3 + Gemini gemini-v1.15.0-1); CFX-1 + CFX-2 closed in 5b48103; CFX-3 row ordering already aligned in code+UI_MANUAL; confirm re-review skipped per operator decision (must-fixes addressed inline; cost considered against operator-driven backlog priorities)."
+      follow_up_carryover: "Slice 3 (S3-1..S3-5 per the backlog) and operator priorities (B/C/D/E/A) remain queued; CURRENT_STATE.md `Next first action` updated to point at Slice 3."
+    breaking: false
+    risk: "low — runtime refresh is operator-triggered + observe-only-gated; SourceKind demotion is conservative (false-positive avoidance); Gemini column-parity guard fails closed (returns empty status). New main.rs idle-state-aware refresh logic was not in v1.15.0 review-1 scope; if the next round of operator usage shows partial-progress or surface-mismatch issues, back out via per-pane override or revert to the v1.14.1 single-/status path."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits; range 043980d..5b48103
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.0 at this commit."
+      - "If operator usage on the active-safe split surfaces issues, queue v1.15.1 patch."
+      - "Slice 3 (S3-1..S3-5) per .docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-3-backlog.md is the next major arc; S3-6 closed by Slice 4."
+      - "Slice 3 housekeeping bundle (ctx() helper hoist, push_badge DRY, ellipsize helper, cost tolerance tightening, dead PricingError::NotFound / ClaudeSettingsError::NotFound variants) bundled into next S3-* round."
+
 evolution_summary:
-  current_phase: "v1.14.1 Codex cursor bottom-status-line skip fix. codex_idle_cursor now skips the bottom-status-line (anchored on `Context ` + ` · ` + `% used`) when scanning from end; WorkComplete correctly detected on real Codex tails. Same class of fix as T15 for Gemini in v1.14.0. 397 tests green; clippy clean. Remediation follows v1.10.x..v1.12.x release pattern post-ship fix on tagged version."
-  next_phase: "v1.14.2 confirm-archive seal (Codex+Gemini cross-check on v1.14.x). Then Slice 3 (S3-1..S3-6 per-provider parser work) plus operator priorities B/C/D/E/A queued."
+  current_phase: "v1.15.0 runtime observability follow-up. Active-safe manual `u`-key refresh; Claude active/Stale → /status only; explicit idle/waiting/limited → /status + /context + /config + /stats + /usage; Codex /status; Gemini /stats session + /stats model + /stats tools. SourceKind honesty (prose-derived → Heuristic; settings file + box-anchored + status-table-validated → ProviderOfficial). Gemini status-table column-parity guard. Pane card modes/access/loaded/restrict rows. Bare prompt-glyph cursor anchor + Claude usage-limit banner precedence. Review-1 approve-with-fixes; CFX-1+2 closed inline; CFX-3 already aligned. 426 tests green; clippy + fmt clean."
+  next_phase: "Slice 3 (S3-1..S3-5 from .docs/claude/...slice-3-backlog.md) + operator priorities B/C/D/E/A. Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round. v1.15.x patch line if operator usage on the active-safe split surfaces issues."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

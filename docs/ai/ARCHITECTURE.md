@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-25 (implementation sync through v1.14.1 + local doc/idle consistency follow-up)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-25 (implementation sync through v1.15.0 runtime observability follow-up)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)

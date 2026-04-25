@@ -1,0 +1,70 @@
+schema_version: "qmonster.review.result.v1"
+project: "Qmonster"
+reviewer: "codex"
+date: "2026-04-25"
+target_version: "v1.15.0"
+reviewed_range: "043980d..2025bbb"
+reviewed_head: "2025bbb"
+verdict: "approve-with-fixes"
+
+verification:
+  local_shell:
+    status: "blocked"
+    reason: "exec_command failed before shell startup with: bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted"
+  method:
+    - "Reviewed commits and files through GitHub connector at 2025bbb."
+    - "Did not re-run cargo fmt, clippy, or tests locally."
+  test_claim_cross_check:
+    status: "documented-not-rerun"
+    value: "421 tests claimed in docs/ai/VALIDATION.md and review brief."
+
+must_fix:
+  - id: "CFX-1"
+    severity: "high"
+    title: "Runtime facts over-claim ProviderOfficial"
+    files:
+      - "src/adapters/runtime.rs"
+      - "src/adapters/claude.rs"
+      - "src/adapters/codex.rs"
+    finding: "Shared runtime fact helper always emits ProviderOfficial while Claude/Codex parse broad tail prose and inferred call-like lines."
+    proposed_change: "Bound official extraction to recognized provider status/config surfaces, or pass SourceKind through the helper and mark inferred facts Heuristic."
+
+  - id: "CFX-2"
+    severity: "high"
+    title: "Gemini status-table parser can misalign blank columns"
+    files:
+      - "src/adapters/gemini.rs"
+    finding: "2+-whitespace splitting drops empty cells and maps by index without requiring header/data column count match."
+    proposed_change: "Require structural match or parse by header spans; add blank-cell fixture."
+
+  - id: "CFX-3"
+    severity: "medium"
+    title: "Runtime row ordering and v1.15 docs are inconsistent"
+    files:
+      - "src/ui/panels.rs"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "README.md"
+    finding: "Brief describes state/runtime/metrics ordering, while implementation and UI manual render metrics before runtime rows; some top-level doc descriptors still read v1.14.1."
+    proposed_change: "Choose one row order, align docs and implementation, and update stale v1.14.1 descriptors before tagging."
+
+specific_questions:
+  runtime_refresh_multi_command:
+    answer: "Acceptable for v1.15.0. Completion is only recorded after all commands succeed; failure records the failed command. Per-command completion events are optional forensic polish."
+  idle_cursor_anchor:
+    answer: "Bare-glyph anchoring is worth it. The current trim-equals-glyph check already allows surrounding whitespace; future decorated prompts should be broadened only with fixtures."
+  gemini_status_table_split:
+    answer: "Require structural validation before populating provider-official fields. Best-effort misaligned official data is too risky."
+  claude_usage_limit_precedence:
+    answer: "LimitHit over WorkComplete is correct. Dismissal, if needed, belongs in alert UI rather than classification."
+  observe_only_u_key:
+    answer: "Blocking is consistent with KD-009 because the operation injects provider commands into an interactive pane even if the intent is read-only."
+  pane_row_ordering:
+    answer: "Either safety-first or metrics-first is defensible; do not make it configurable now. Align implementation and docs."
+  runtime_rs_placement:
+    answer: "adapters/runtime.rs is acceptable for shared adapter helpers. Move only a real provider-agnostic contract to domain if one emerges."
+  doc_consistency_closure:
+    answer: "Mostly closed: validation count and .claude ignore block are consistent. Remaining cleanup: stale v1.14.1 descriptors and row-order/README wording."
+
+final_verdict: "approve-with-fixes"

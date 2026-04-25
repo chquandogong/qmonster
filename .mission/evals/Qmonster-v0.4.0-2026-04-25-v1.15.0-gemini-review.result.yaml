@@ -1,0 +1,22 @@
+evaluation:
+  timestamp: "2026-04-25T00:00:00Z"
+  target: "v1.15.0 (043980d..2025bbb) runtime observability follow-up"
+  evaluated_by: "llm-gemini"
+  source: "Review via `gemini --approval-mode plan` (read-only)."
+  verdict: "approve-with-fixes"
+  remediation_round: "before v1.15.0 tag"
+  findings:
+    - id: "gemini-v1.15.0-1"
+      severity: "must-fix"
+      title: "Gemini status-table column misalignment on empty fields"
+      location: "src/adapters/gemini.rs"
+      issue: >-
+        `split_gemini_status_columns` uses 2+ whitespace to delimit columns. If a data column is completely empty, the whitespace run will swallow the column. This causes `data_cols.len() < header_cols.len()`, shifting all subsequent fields to the left (e.g., `workspace` string parsed into `quota`, or `context` parsed into `memory`).
+      fix: >-
+        Assert column length match before population, or reject the parse if mismatched (e.g., `if header_cols.len() != data_cols.len() { return GeminiStatus::default(); }` in `gemini_status_from_columns`).
+  notes:
+    - "Safety-First `observe_only` enforcement: Correctly blocking the `u` (runtime refresh) key when in `observe_only` mode."
+    - "Safety Context Placement: Rendering `modes`, `access`, `loaded`, and `restrict` rows before quantitative metrics on the pane card perfectly aligns with Qmonster's 'Safety First' design axis."
+    - "`LimitHit` Priority: Elevating usage limits above `WorkComplete` ensures the alert queue and state rows accurately reflect operational blocks."
+    - "Bare Glyph Anchor: The decision to require bare `❯` / `›` glyphs is the correct tradeoff. False positives fire the actuation loop prematurely; false negatives simply fall back to the safe `Stillness` state."
+  gate_decision: "Approve once the Gemini column-length parity check is implemented."
