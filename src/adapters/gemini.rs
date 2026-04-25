@@ -96,6 +96,15 @@ fn parse_gemini_status(tail: &str) -> Option<GeminiStatus> {
 
 fn gemini_status_from_columns(header_cols: &[&str], data_cols: &[&str]) -> GeminiStatus {
     let mut status = GeminiStatus::default();
+    // CFX-2 / gemini-v1.15.0-1: `split_gemini_status_columns` skips
+    // empty cells, so a blank data column collapses the row by one and
+    // shifts every following field one header to the left. Without
+    // this guard the parser would populate `/model` from the
+    // workspace path or `context` from a memory string and stamp them
+    // ProviderOfficial. Refuse the row entirely instead.
+    if header_cols.len() != data_cols.len() {
+        return status;
+    }
     for (idx, header) in header_cols.iter().enumerate() {
         let Some(value) = data_cols
             .get(idx)
@@ -125,15 +134,20 @@ fn parse_gemini_context_pressure(tail: &str) -> Option<f32> {
 fn append_gemini_runtime_facts(set: &mut SignalSet, tail: &str) {
     let lower = tail.to_lowercase();
     if lower.contains("yolo ctrl+y") {
+        // CFX-1: prose-substring match — could appear in transcripts /
+        // docs / chat — demote to Heuristic.
         push_provider_fact(
             &mut set.runtime_facts,
             Provider::Gemini,
             RuntimeFactKind::AutoMode,
             "YOLO Ctrl+Y",
             0.75,
+            SourceKind::Heuristic,
         );
     }
     if let Some(status) = parse_gemini_status(tail) {
+        // Status table only populates after the column-parity check
+        // (CFX-2) — safe to label ProviderOfficial.
         if let Some(sandbox) = status.sandbox {
             push_provider_fact(
                 &mut set.runtime_facts,
@@ -141,6 +155,7 @@ fn append_gemini_runtime_facts(set: &mut SignalSet, tail: &str) {
                 RuntimeFactKind::Sandbox,
                 sandbox,
                 0.95,
+                SourceKind::ProviderOfficial,
             );
         }
         if let Some(workspace) = status.workspace {
@@ -150,6 +165,7 @@ fn append_gemini_runtime_facts(set: &mut SignalSet, tail: &str) {
                 RuntimeFactKind::AllowedDirectory,
                 workspace,
                 0.95,
+                SourceKind::ProviderOfficial,
             );
         }
     }
@@ -425,6 +441,18 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
         assert!(set.runtime_facts.iter().any(|f| {
             f.kind == RuntimeFactKind::AllowedDirectory && f.value == "~/projects/mission-spec"
         }));
+        // CFX-1: status table validated by column-parity guard (CFX-2)
+        // — facts derived from it are ProviderOfficial.
+        assert!(
+            set.runtime_facts
+                .iter()
+                .all(|f| f.source_kind == SourceKind::ProviderOfficial),
+            "all status-table-validated runtime facts must be ProviderOfficial, got: {:?}",
+            set.runtime_facts
+                .iter()
+                .map(|f| (f.kind, f.source_kind))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -481,6 +509,50 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
     }
 
     #[test]
+    fn gemini_status_table_blank_column_does_not_misalign_official_facts() {
+        // CFX-2 / gemini-v1.15.0-1 regression: when a data column is
+        // blank (here `sandbox`), the 2+-whitespace splitter swallows
+        // the empty cell and shifts subsequent cells left. Without a
+        // header/data column-count parity guard, the parser would
+        // populate `/model` from the workspace path and `workspace`
+        // from `47% used` — provider-official labelled but obviously
+        // wrong. The parser must instead refuse the misaligned row.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
+main                        gemini-3.1-pro-preview     ~/projects/mission-spec      47% used      0% used      118.8 MB     cdf3f5ed      user@example.com";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        assert!(
+            set.model_name.is_none(),
+            "model must not be populated from a misaligned row"
+        );
+        assert!(
+            set.worktree_path.is_none(),
+            "worktree path must not be populated from a misaligned row"
+        );
+        assert!(
+            set.context_pressure.is_none(),
+            "context pressure must not be populated from a misaligned row"
+        );
+        assert!(
+            !set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::Sandbox),
+            "sandbox runtime fact must not be populated from a misaligned row"
+        );
+        assert!(
+            !set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::AllowedDirectory),
+            "allowed-directory runtime fact must not be populated from a misaligned row"
+        );
+    }
+
+    #[test]
     fn gemini_yolo_hint_populates_runtime_auto_mode() {
         let id = id();
         let pricing = PricingTable::empty();
@@ -488,11 +560,14 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
         let history = PaneTailHistory::empty();
         let c = ctx(&id, "YOLO Ctrl+Y", &pricing, &settings, &history);
         let set = GeminiAdapter.parse(&c);
-        assert!(
-            set.runtime_facts
-                .iter()
-                .any(|f| f.kind == RuntimeFactKind::AutoMode && f.value == "YOLO Ctrl+Y")
-        );
+        let fact = set
+            .runtime_facts
+            .iter()
+            .find(|f| f.kind == RuntimeFactKind::AutoMode && f.value == "YOLO Ctrl+Y")
+            .expect("YOLO Ctrl+Y auto-mode fact emitted");
+        // CFX-1: substring match in prose without the structural
+        // gemini-status table — Heuristic, not ProviderOfficial.
+        assert_eq!(fact.source_kind, SourceKind::Heuristic);
     }
 
     #[test]

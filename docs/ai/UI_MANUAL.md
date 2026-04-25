@@ -70,10 +70,15 @@ session:window · Provider role · %pane_id
   usage/rate limit이므로 `CTX`로 표시하지 않습니다.
 - `modes` / `access` / `loaded` / `restrict` 줄은 provider runtime fact를
   표시합니다. Qmonster는 선택된 pane에서 `u`를 누르면 provider의
-  read-only runtime slash command를 보냅니다. Claude에는 `/status`,
-  `/config`, `/stats`, `/usage`를 순서대로 보내고, Codex/Gemini에는
-  `/status`와 실행 Enter를 보냅니다. 다음 poll에서 그 공식 출력과 읽을 수
-  있는 로컬 provider 설정을 `RuntimeFact`로 파싱합니다.
+  read-only runtime slash command를 Enter와 함께 보냅니다. pane이 active이거나
+  휴리스틱 `Stale`뿐이면 대기 없이 실행 가능한 것으로 확인된 명령만
+  보냅니다: Claude `/status`, Codex `/status`, Gemini `/stats session`,
+  `/stats model`, `/stats tools`. Claude가 명시적으로 idle/wait/limit 상태면
+  전체 확인용으로 `/status`, `/context`, `/config`, `/stats`, `/usage`를
+  순서대로 보냅니다. 다음 poll에서 그 공식 출력과 읽을 수 있는 로컬 provider
+  설정을 `RuntimeFact`로 파싱합니다. Claude `/btw`는 작업 중에도 즉시 실행되지만
+  도구/내부 상태 접근이 없는 side question이라 runtime fact source로
+  쓰지 않습니다.
   예: `PERM`, `MODE`, `SANDBOX`, `DIR`, `AGENTS`, `TOOL`, `SKILL`,
   `PLUGIN`.
 - 이 줄들은 “보였다”가 아니라 “provider status/config source에서 확인된”

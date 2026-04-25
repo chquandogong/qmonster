@@ -33,6 +33,7 @@ use qmonster::app::version_drift::{
 use qmonster::domain::audit::{AuditEvent, AuditEventKind};
 use qmonster::domain::origin::SourceKind;
 use qmonster::domain::recommendation::Severity;
+use qmonster::domain::signal::IdleCause;
 use qmonster::notify::desktop::DesktopNotifier;
 use qmonster::policy::claude_settings::{ClaudeSettings, ClaudeSettingsError};
 use qmonster::policy::gates::{PromptSendGate, check_send_gate};
@@ -1043,7 +1044,11 @@ where
                                     Some(report) => {
                                         let pane_id = report.pane_id.clone();
                                         let provider = report.identity.identity.provider;
-                                        let commands = runtime_refresh_commands(provider);
+                                        let active_only = runtime_refresh_uses_active_safe_only(
+                                            report.idle_state,
+                                        );
+                                        let commands =
+                                            runtime_refresh_commands(provider, report.idle_state);
                                         if commands.is_empty() {
                                             notices.insert(
                                                 0,
@@ -1061,7 +1066,8 @@ where
                                             ctx.config.actions.mode,
                                             ActionsMode::ObserveOnly
                                         ) {
-                                            let command_label = runtime_refresh_command_label(commands);
+                                            let command_label =
+                                                runtime_refresh_command_label(commands);
                                             ctx.sink.record(AuditEvent {
                                                 kind: AuditEventKind::RuntimeRefreshBlocked,
                                                 pane_id: pane_id.clone(),
@@ -1090,7 +1096,8 @@ where
                                                 pane_id: pane_id.clone(),
                                                 severity: Severity::Concern,
                                                 summary: format!(
-                                                    "{pane_id} {command_label} (operator-requested runtime refresh)"
+                                                    "{pane_id} {command_label} ({})",
+                                                    runtime_refresh_request_label(active_only)
                                                 ),
                                                 provider: Some(provider),
                                                 role: Some(report.identity.identity.role),
@@ -1118,8 +1125,10 @@ where
                                                         0,
                                                         SystemNotice {
                                                             title: "runtime refresh sent".into(),
-                                                            body: format!(
-                                                                "{pane_id} → `{command_label}` sent with Enter; next poll will parse provider status output"
+                                                            body: runtime_refresh_notice_body(
+                                                                &pane_id,
+                                                                &command_label,
+                                                                active_only,
                                                             ),
                                                             severity: Severity::Good,
                                                             source_kind: SourceKind::ProjectCanonical,
@@ -2070,11 +2079,51 @@ fn runtime_refresh_provider_label(provider: qmonster::domain::identity::Provider
 
 fn runtime_refresh_commands(
     provider: qmonster::domain::identity::Provider,
+    idle_state: Option<IdleCause>,
 ) -> &'static [&'static str] {
+    if runtime_refresh_uses_active_safe_only(idle_state) {
+        return runtime_refresh_active_commands(provider);
+    }
+    runtime_refresh_full_commands(provider)
+}
+
+fn runtime_refresh_uses_active_safe_only(idle_state: Option<IdleCause>) -> bool {
+    matches!(idle_state, None | Some(IdleCause::Stale))
+}
+
+fn runtime_refresh_full_commands(
+    provider: qmonster::domain::identity::Provider,
+) -> &'static [&'static str] {
+    // Keep this list to provider-owned control/status surfaces.
     match provider {
-        qmonster::domain::identity::Provider::Claude => &["/status", "/config", "/stats", "/usage"],
-        qmonster::domain::identity::Provider::Codex
-        | qmonster::domain::identity::Provider::Gemini => &["/status"],
+        qmonster::domain::identity::Provider::Claude => {
+            &["/status", "/context", "/config", "/stats", "/usage"]
+        }
+        qmonster::domain::identity::Provider::Codex => &["/status"],
+        qmonster::domain::identity::Provider::Gemini => {
+            &["/stats session", "/stats model", "/stats tools"]
+        }
+        qmonster::domain::identity::Provider::Qmonster
+        | qmonster::domain::identity::Provider::Unknown => &[],
+    }
+}
+
+fn runtime_refresh_active_commands(
+    provider: qmonster::domain::identity::Provider,
+) -> &'static [&'static str] {
+    // These are the provider commands verified to run while a task is
+    // active. Claude's `/btw` is intentionally not used here: it is
+    // immediate while Claude is working, but it has no tool or
+    // internal-state access, so it cannot be a truthful runtime fact
+    // source. Claude `/status` is the documented no-wait status surface;
+    // Gemini `/stats ...` commands are marked `isSafeConcurrent` in the
+    // installed CLI; Codex `/status` is marked available during tasks.
+    match provider {
+        qmonster::domain::identity::Provider::Claude => &["/status"],
+        qmonster::domain::identity::Provider::Codex => &["/status"],
+        qmonster::domain::identity::Provider::Gemini => {
+            &["/stats session", "/stats model", "/stats tools"]
+        }
         qmonster::domain::identity::Provider::Qmonster
         | qmonster::domain::identity::Provider::Unknown => &[],
     }
@@ -2082,6 +2131,26 @@ fn runtime_refresh_commands(
 
 fn runtime_refresh_command_label(commands: &[&str]) -> String {
     commands.join(", ")
+}
+
+fn runtime_refresh_request_label(active_only: bool) -> &'static str {
+    if active_only {
+        "operator-requested active-safe runtime refresh"
+    } else {
+        "operator-requested full runtime refresh"
+    }
+}
+
+fn runtime_refresh_notice_body(pane_id: &str, command_label: &str, active_only: bool) -> String {
+    if active_only {
+        format!(
+            "{pane_id} → `{command_label}` sent with Enter; active or uncertain pane uses only provider commands verified to run without waiting, and the next poll will parse provider output"
+        )
+    } else {
+        format!(
+            "{pane_id} → `{command_label}` sent with Enter; full provider runtime refresh requested, and the next poll will parse provider output"
+        )
+    }
 }
 
 fn sync_pane_selection(state: &mut ListState, pane_count: usize) {
@@ -2362,7 +2431,7 @@ mod tests {
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use qmonster::domain::recommendation::Recommendation;
-    use qmonster::domain::signal::SignalSet;
+    use qmonster::domain::signal::{IdleCause, SignalSet};
 
     // P5-3 execution gate tests relocated to
     // `src/policy/gates.rs` in v1.10.1 remediation (Gemini v1.10.0
@@ -2436,24 +2505,54 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_commands_for_claude_check_all_status_surfaces() {
+    fn runtime_refresh_commands_for_claude_check_all_status_surfaces_when_idle() {
         assert_eq!(
-            runtime_refresh_commands(Provider::Claude),
-            ["/status", "/config", "/stats", "/usage"]
+            runtime_refresh_commands(Provider::Claude, Some(IdleCause::WorkComplete)),
+            ["/status", "/context", "/config", "/stats", "/usage"]
         );
         assert_eq!(
-            runtime_refresh_command_label(runtime_refresh_commands(Provider::Claude)),
-            "/status, /config, /stats, /usage"
+            runtime_refresh_command_label(runtime_refresh_commands(
+                Provider::Claude,
+                Some(IdleCause::LimitHit)
+            )),
+            "/status, /context, /config, /stats, /usage"
         );
     }
 
     #[test]
-    fn runtime_refresh_commands_for_codex_and_gemini_use_status_slash() {
+    fn runtime_refresh_commands_for_claude_active_use_no_wait_status_only() {
+        assert_eq!(
+            runtime_refresh_commands(Provider::Claude, None),
+            ["/status"]
+        );
+        assert_eq!(
+            runtime_refresh_commands(Provider::Claude, Some(IdleCause::Stale)),
+            ["/status"]
+        );
+    }
+
+    #[test]
+    fn runtime_refresh_commands_for_codex_use_status_slash_active_or_idle() {
         // `PaneSource::send_keys` appends Enter after the literal slash
-        // command, so Codex/Gemini status UIs execute instead of just
-        // leaving the slash command typed in the prompt.
-        assert_eq!(runtime_refresh_commands(Provider::Codex), ["/status"]);
-        assert_eq!(runtime_refresh_commands(Provider::Gemini), ["/status"]);
+        // command, so Codex status UI executes instead of just leaving
+        // the slash command typed in the prompt.
+        assert_eq!(runtime_refresh_commands(Provider::Codex, None), ["/status"]);
+        assert_eq!(
+            runtime_refresh_commands(Provider::Codex, Some(IdleCause::WorkComplete)),
+            ["/status"]
+        );
+    }
+
+    #[test]
+    fn runtime_refresh_commands_for_gemini_use_safe_concurrent_stats_slashes_active_or_idle() {
+        assert_eq!(
+            runtime_refresh_commands(Provider::Gemini, None),
+            ["/stats session", "/stats model", "/stats tools"]
+        );
+        assert_eq!(
+            runtime_refresh_commands(Provider::Gemini, Some(IdleCause::WorkComplete)),
+            ["/stats session", "/stats model", "/stats tools"]
+        );
     }
 
     #[test]

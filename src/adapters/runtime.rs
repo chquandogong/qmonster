@@ -8,13 +8,14 @@ pub(crate) fn push_provider_fact(
     kind: RuntimeFactKind,
     value: impl AsRef<str>,
     confidence: f32,
+    source_kind: SourceKind,
 ) {
     let value = clean_runtime_value(value.as_ref());
     if value.is_empty() {
         return;
     }
 
-    let fact = RuntimeFact::new(kind, value, SourceKind::ProviderOfficial)
+    let fact = RuntimeFact::new(kind, value, source_kind)
         .with_confidence(confidence)
         .with_provider(provider);
     if !facts.iter().any(|existing| {

@@ -254,8 +254,18 @@ fn append_codex_status_fact(facts: &mut Vec<crate::domain::signal::RuntimeFact>,
         return;
     };
 
+    // CFX-1: Codex's welcome / `/status` boxes draw `│ ... │` borders.
+    // Lines inside the box are an authoritative status surface; lines
+    // without the border are ordinary tail prose that happen to contain
+    // a `key: value` shape and must not over-claim ProviderOfficial.
+    let source_kind = if line.trim_start().starts_with('│') {
+        SourceKind::ProviderOfficial
+    } else {
+        SourceKind::Heuristic
+    };
+
     for item in split_runtime_list(value) {
-        push_provider_fact(facts, Provider::Codex, kind, item, 0.9);
+        push_provider_fact(facts, Provider::Codex, kind, item, 0.9, source_kind);
     }
 
     if label == "permissions" && value.to_lowercase().contains("yolo") {
@@ -265,6 +275,7 @@ fn append_codex_status_fact(facts: &mut Vec<crate::domain::signal::RuntimeFact>,
             RuntimeFactKind::AutoMode,
             "YOLO mode",
             0.9,
+            source_kind,
         );
     }
 }
@@ -561,6 +572,19 @@ output_per_1m = 10.00
                 .iter()
                 .any(|f| f.kind == RuntimeFactKind::RestrictedTool && f.value == "WebFetch")
         );
+        // CFX-1: every line above has the `│` border anchor — the
+        // structural Codex `/status` panel — so each emitted fact MUST
+        // be ProviderOfficial.
+        assert!(
+            set.runtime_facts
+                .iter()
+                .all(|f| f.source_kind == SourceKind::ProviderOfficial),
+            "all box-bordered runtime facts must be ProviderOfficial, got: {:?}",
+            set.runtime_facts
+                .iter()
+                .map(|f| (f.kind, f.source_kind))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -571,11 +595,41 @@ output_per_1m = 10.00
         let history = PaneTailHistory::empty();
         let c = ctx(&id, "permissions: YOLO mode", &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
-        assert!(
-            set.runtime_facts
-                .iter()
-                .any(|f| f.kind == RuntimeFactKind::AutoMode && f.value == "YOLO mode")
-        );
+        let fact = set
+            .runtime_facts
+            .iter()
+            .find(|f| f.kind == RuntimeFactKind::AutoMode && f.value == "YOLO mode")
+            .expect("YOLO auto-mode fact emitted");
+        // CFX-1: bare `permissions: YOLO mode` line lacks the `│`
+        // border anchor — could be transcript prose — so the fact is
+        // Heuristic, not ProviderOfficial.
+        assert_eq!(fact.source_kind, SourceKind::Heuristic);
+    }
+
+    #[test]
+    fn codex_prose_with_runtime_label_does_not_emit_provider_official_facts() {
+        // CFX-1 regression: a chat line without the `│` welcome-box
+        // border like "Tools: Read, Edit" or "permissions: ..." that
+        // appears in transcript prose must not be labelled as a
+        // provider-official runtime fact.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+The user asked: Tools: Read, Edit
+Then said: permissions: full access please";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+        for fact in &set.runtime_facts {
+            assert_ne!(
+                fact.source_kind,
+                SourceKind::ProviderOfficial,
+                "prose-derived fact {:?}={} must not be ProviderOfficial",
+                fact.kind,
+                fact.value
+            );
+        }
     }
 
     // v1.11.2 regression: unknown newest model token must NOT cause

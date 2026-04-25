@@ -158,6 +158,7 @@ fn append_claude_runtime_facts(
     tail: &str,
     settings: &crate::policy::claude_settings::ClaudeSettings,
 ) {
+    // Settings file is operator-curated provider config — ProviderOfficial.
     if let Some(mode) = settings.permission_mode() {
         push_provider_fact(
             &mut set.runtime_facts,
@@ -165,6 +166,7 @@ fn append_claude_runtime_facts(
             RuntimeFactKind::PermissionMode,
             mode,
             0.85,
+            SourceKind::ProviderOfficial,
         );
     }
     for dir in settings.additional_directories() {
@@ -174,6 +176,7 @@ fn append_claude_runtime_facts(
             RuntimeFactKind::AllowedDirectory,
             dir,
             0.85,
+            SourceKind::ProviderOfficial,
         );
     }
     for tool in settings.allowed_tools() {
@@ -183,6 +186,7 @@ fn append_claude_runtime_facts(
             RuntimeFactKind::LoadedTool,
             tool,
             0.85,
+            SourceKind::ProviderOfficial,
         );
     }
     for tool in settings.disallowed_tools() {
@@ -192,6 +196,7 @@ fn append_claude_runtime_facts(
             RuntimeFactKind::RestrictedTool,
             tool,
             0.85,
+            SourceKind::ProviderOfficial,
         );
     }
 
@@ -207,6 +212,12 @@ fn append_claude_tail_runtime_facts(
         let trimmed = line.trim();
         let lower = trimmed.to_lowercase();
 
+        // CFX-1: Claude's tail does not have a structural panel
+        // anchor (no `│` borders like Codex) so any prose line that
+        // mentions "Tools:" / "Working directory:" / "bypass
+        // permissions on" looks identical to a real status surface.
+        // Demote tail-derived facts to Heuristic; only the settings
+        // file path stays ProviderOfficial.
         if lower.contains("bypass permissions on") {
             push_provider_fact(
                 facts,
@@ -214,6 +225,7 @@ fn append_claude_tail_runtime_facts(
                 RuntimeFactKind::PermissionMode,
                 "bypass permissions on",
                 0.95,
+                SourceKind::Heuristic,
             );
         } else if lower.contains("bypass permissions off") {
             push_provider_fact(
@@ -222,6 +234,7 @@ fn append_claude_tail_runtime_facts(
                 RuntimeFactKind::PermissionMode,
                 "bypass permissions off",
                 0.95,
+                SourceKind::Heuristic,
             );
         }
 
@@ -236,6 +249,7 @@ fn append_claude_tail_runtime_facts(
                 RuntimeFactKind::LoadedSkill,
                 skill,
                 0.9,
+                SourceKind::Heuristic,
             );
         }
 
@@ -246,6 +260,7 @@ fn append_claude_tail_runtime_facts(
                 RuntimeFactKind::LoadedTool,
                 format!("{tool} (observed)"),
                 0.7,
+                SourceKind::Heuristic,
             );
         }
     }
@@ -283,7 +298,16 @@ fn append_claude_labeled_runtime_fact(
         return;
     };
     for item in split_runtime_list(value) {
-        push_provider_fact(facts, Provider::Claude, kind, item, 0.9);
+        // Tail-prose `key: value` matches are too liberal to label
+        // ProviderOfficial; demote (CFX-1).
+        push_provider_fact(
+            facts,
+            Provider::Claude,
+            kind,
+            item,
+            0.9,
+            SourceKind::Heuristic,
+        );
     }
 }
 
@@ -591,6 +615,48 @@ mod tests {
                 .iter()
                 .any(|f| f.kind == RuntimeFactKind::RestrictedTool && f.value == "Bash(rm *)")
         );
+        // CFX-1: settings file is operator-curated provider config —
+        // these facts MUST stay ProviderOfficial. Test guards against
+        // accidental demotion in future refactors.
+        assert!(
+            set.runtime_facts
+                .iter()
+                .all(|f| f.source_kind == SourceKind::ProviderOfficial),
+            "all settings-derived runtime facts must be ProviderOfficial, got: {:?}",
+            set.runtime_facts
+                .iter()
+                .map(|f| (f.kind, f.source_kind))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn claude_prose_with_runtime_labels_does_not_emit_provider_official_facts() {
+        // CFX-1 regression: a transcript line such as
+        // "Working directory: /tmp" or "Tools: foo, bar" is NOT a
+        // structural Claude `/status` panel — it is ordinary chat
+        // prose that happens to contain a `key: value` shape. Such
+        // lines may still emit a fact for observability, but never
+        // labelled ProviderOfficial.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+The agent says: Working directory: /tmp/example
+Then it lists: Tools: Read, Edit
+And asks about bypass permissions on macOS";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        for fact in &set.runtime_facts {
+            assert_ne!(
+                fact.source_kind,
+                SourceKind::ProviderOfficial,
+                "prose-derived fact {:?}={} must not be ProviderOfficial",
+                fact.kind,
+                fact.value
+            );
+        }
     }
 
     #[test]
@@ -746,6 +812,18 @@ Plugins: github
         assert!(set.runtime_facts.iter().any(|f| {
             f.kind == RuntimeFactKind::LoadedSkill && f.value == "superpowers:executing-plans"
         }));
+        // CFX-1: tail-prose facts have no structural panel anchor on
+        // Claude — they must label as Heuristic, not ProviderOfficial.
+        assert!(
+            set.runtime_facts
+                .iter()
+                .all(|f| f.source_kind == SourceKind::Heuristic),
+            "all tail-derived runtime facts must be Heuristic, got: {:?}",
+            set.runtime_facts
+                .iter()
+                .map(|f| (f.kind, f.source_kind))
+                .collect::<Vec<_>>()
+        );
         assert!(
             set.runtime_facts
                 .iter()

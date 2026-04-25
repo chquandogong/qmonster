@@ -152,9 +152,15 @@ UI consumes already-classified signals; it never re-parses tails.
 Provider runtime facts are produced by adapter-local parsers from
 provider status/slash output and readable provider config sources. The
 TUI key `u` sends the selected provider's read-only runtime slash
-commands (Claude: `/status`, `/config`, `/stats`, `/usage`; Codex/Gemini:
-`/status` plus Enter) and the next poll parses the resulting official
-output. Unknown or unexposed fields stay absent rather than inferred.
+commands with Enter. If the pane is active or only heuristically stale,
+Qmonster uses only commands verified to run without waiting: Claude
+`/status`, Codex `/status`, and Gemini `/stats session`, `/stats model`,
+`/stats tools`. If Claude is explicitly idle, waiting, or limited,
+Qmonster sends the fuller Claude set: `/status`, `/context`, `/config`,
+`/stats`, `/usage`. The next poll parses the resulting official output.
+Claude `/btw` is not used as a runtime fact source because it has no
+tool or internal-state access. Unknown or unexposed fields stay absent
+rather than inferred.
 
 ### `notify/`
 
