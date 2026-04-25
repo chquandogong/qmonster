@@ -1,6 +1,6 @@
 mission:
-  version: "1.13.0"
-  title: "Qmonster v0.4.0 — v1.13.0 emergency false-positive suppression: PERMISSION_MARKERS + WAITING_MARKERS + log_storm + verbose_answer narrowed against real Claude v2.1.120 / Codex v0.122 / Gemini v0.39 fixtures (~250K daily false positives closed); confirm-archive deferred to Slice 3 plan (Codex new bottom-status-line parser, full Gemini status-line parser, Claude settings model honesty, identity resolver title fallbacks)"
+  version: "1.13.1"
+  title: "Qmonster v0.4.0 — v1.13.1 follow-up emergency suppression: ERROR_MARKERS line-start structural patterns + drop generic context_pressure parsers (common.rs + Claude tail-prose) — closes residual ~82K daily false positives that v1.13.0 left behind (audit measurement showed -64% AlertFired vs -95% target). Production context_pressure now exclusively from per-provider structured parsers; sentinel test marker `context window usage X%` for end-to-end integration tests"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
