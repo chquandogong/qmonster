@@ -1,6 +1,6 @@
 mission:
-  version: "1.14.0"
-  title: "Qmonster v0.4.0 — v1.14.0 Slice 4: halted/idle state detection (IdleCause hybrid: marker → limit → cursor → stillness fallback). New `state` row on pane cards; alert-queue transitions on entry into a non-None idle state. Per-adapter classify_idle for Claude/Codex/Gemini; Qmonster monitor pane silent. ~396 tests green; STILLNESS_WINDOW=4 (≈5s @ 1.25s polling) configurable via [idle] stillness_polls. Returns to v1.10.x..v1.12.x release pattern: confirm-archive (Codex+Gemini cross-check) is the next step."
+  version: "1.14.1"
+  title: "Qmonster v0.4.0 — v1.14.1 Codex cursor bottom-status-line skip fix. codex_idle_cursor now skips the Codex bottom-status-line (anchored on `Context ` + ` · ` + `% used`) when scanning from end, enabling WorkComplete detection on real tails where the status line sits below the `› ` cursor. New is_codex_bottom_status_line helper. 397 tests green; clippy clean."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

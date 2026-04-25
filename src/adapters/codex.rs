@@ -252,12 +252,36 @@ fn classify_idle_codex(
 }
 
 fn codex_idle_cursor(tail: &str) -> bool {
-    // Codex prompt glyph: `› ` at last non-empty line.
-    let last = tail.lines().rev().find(|l| !l.trim().is_empty());
-    last.is_some_and(|l| {
-        let t = l.trim_start();
-        t.starts_with("› ")
-    })
+    // v1.14.1: skip Codex's bottom-status-line when scanning from end.
+    // Real Codex tails render the bottom-status-line below the `› `
+    // cursor; checking only the last non-empty line therefore misses
+    // the idle state. The bottom-status-line has a known structural
+    // shape (Context + " · " + "% used"); skip it (and empties) and
+    // check the first substantive line above for the prompt glyph.
+    for line in tail.lines().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if is_codex_bottom_status_line(line) {
+            continue;
+        }
+        return line.trim_start().starts_with("› ");
+    }
+    false
+}
+
+/// Returns true if `line` is Codex's bottom-status-line.
+///
+/// The bottom-status-line sits below the `› ` idle cursor in real
+/// Codex tails and would cause the original last-non-empty-line check
+/// to miss the cursor entirely. The structural anchor — all three of
+/// `"Context "`, `" · "`, and `"% used"` present — is identical to
+/// the one used by `parse_codex_status_line` (Slice 1/2). Defensive
+/// against UI drift: a future variant lacking any of the three is not
+/// skipped, degrading gracefully to existing last-line behavior.
+fn is_codex_bottom_status_line(line: &str) -> bool {
+    line.contains("Context ") && line.contains("% used") && line.contains(" · ")
 }
 
 fn codex_limit_hit(tail: &str) -> bool {
@@ -664,6 +688,20 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let settings = ClaudeSettings::empty();
         let history = PaneTailHistory::empty();
         let tail = "previous response text\n\n› ";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+        assert_eq!(set.idle_state, Some(IdleCause::WorkComplete));
+    }
+
+    #[test]
+    fn codex_idle_cursor_with_bottom_status_line_trailing_yields_work_complete() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        // Real Codex tails always render the bottom-status-line BELOW
+        // the `› ` cursor. The detector must skip that line.
+        let tail = "some previous output\n\n› \n\nContext 100% left · ~/Qmonster · gpt-5.4 · proj · main · Context 0% used · 0.122.0 · 0 in · 0 out";
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
         assert_eq!(set.idle_state, Some(IdleCause::WorkComplete));

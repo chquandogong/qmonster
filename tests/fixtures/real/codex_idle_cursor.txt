@@ -12,3 +12,5 @@ Token usage: total=210,058 input=189,703 output=20,355 (reasoning 7,992)
 To continue this session, run codex resume <session-redacted>
 
 › 
+
+Context 100% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 0% used · 0.122.0 · 0 in · 0 out · <session-redacted> · gpt-5…

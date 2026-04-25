@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.14.0 Slice 4: halted/idle state detection (IdleCause hybrid). Returns to v1.10.x..v1.12.x release pattern; Codex+Gemini confirm-review is the next step."
+  mission_title: "Qmonster v0.4.0 — v1.14.0 Slice 4: halted/idle state detection (IdleCause hybrid). v1.14.1 Codex cursor fix: codex_idle_cursor skips bottom-status-line when scanning from end."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 54
-  latest_version: "1.14.0"
+  total_revisions: 55
+  latest_version: "1.14.1"
 
 timeline:
   - change_id: "initial"
@@ -6077,9 +6077,73 @@ timeline:
       - "After v1.14.x sealed: queue Slice 3 (S3-1..S3-6) per the existing backlog."
       - "Annotated tag v1.14.0 at this commit."
 
+  - change_id: "v1.14.1-codex-cursor-fix"
+    semantic_version: "1.14.1"
+    change_sequence: 55
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Sonnet 4.6)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "remediation"
+    motivation_type: "production-smoke-test-finding"
+    persistence: "permanent"
+    intent: >
+      Fix codex_idle_cursor unreachable-on-real-tails bug analogous to v1.14.0 T15 Gemini fix.
+      Bottom-status-line was always last; cursor scan must skip it.
+    decision: >
+      Skip the bottom-status-line (anchored on `Context ` + ` · ` + `% used`) when scanning
+      from end, then check the first substantive line above for `› ` cursor. New
+      is_codex_bottom_status_line helper uses the same structural anchor as
+      parse_codex_status_line. Degrades gracefully if Codex changes the anchor
+      (non-matching line is not skipped; falls back to existing last-line behavior).
+    triggered_by: "v1.14.0 production smoke test 2026-04-25 — Codex pane showed Stale fallback instead of WorkComplete, indicating cursor detector unreachable"
+    issue_or_context: >
+      v1.14.0 smoke test against running Codex pane (qmonster:0.1) showed
+      `⏸ IDLE (?) · 10s` (Stale fallback) instead of `⏹ IDLE (done)`.
+      Root cause: codex_idle_cursor checked `last non-empty line starts with "› "`,
+      but real Codex tails always render the bottom-status-line BELOW the cursor,
+      so the cursor is never the actual last non-empty line in production.
+      Unlike Gemini's "Type your message" placeholder (unique to idle), Codex's `›`
+      glyph also appears in scrollback (previous user messages), so blanket
+      "scan all lines" would over-fire. The structural bottom-status-line skip
+      is the safe approach.
+    changes:
+      modified:
+        - "src/adapters/codex.rs (codex_idle_cursor + is_codex_bottom_status_line)"
+        - "tests/fixtures/real/codex_idle_cursor.txt"
+        - "mission.yaml"
+        - "mission-history.yaml"
+      added: []
+      removed: []
+    changed_sections:
+      - "src/adapters/codex.rs::codex_idle_cursor (bottom-status-line skip logic)"
+      - "src/adapters/codex.rs::is_codex_bottom_status_line (new helper)"
+      - "tests/fixtures/real/codex_idle_cursor.txt (realistic trailing bottom-status-line added)"
+    done_when_delta:
+      added:
+        - "codex_idle_cursor skips bottom-status-line before checking cursor line"
+        - "is_codex_bottom_status_line helper with WHY-focused doc comment"
+        - "Unit test codex_idle_cursor_with_bottom_status_line_trailing_yields_work_complete pins the structural case"
+        - "Fixture updated with realistic trailing bottom-status-line"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "~20 LOC modified in src/adapters/codex.rs"
+      tests: "397 total (396 + 1 new unit test); idle_state_regression codex_idle_cursor passes"
+      clippy: "--all-targets -D warnings clean"
+      runtime: "WorkComplete now correctly detected when Codex is idle with bottom-status-line trailing"
+    breaking: false
+    risk: "low — same class fix as T15; structural anchor on bottom-status-line shape; degrades gracefully if Codex changes the anchor"
+    related_commits: []
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "v1.14.2 confirm-archive seal after Codex+Gemini cross-check of v1.14.x."
+      - "After v1.14.x sealed: queue Slice 3 (S3-1..S3-6) per the existing backlog."
+
 evolution_summary:
-  current_phase: "v1.14.0 Slice 4 halted/idle state detection shipped. IdleCause hybrid classifier (marker → limit → cursor → stillness fallback) per adapter; new state row on pane cards; eval_idle_transition rule fires alerts on entry into non-None idle states. SignalSet.permission_prompt + waiting_for_input bools removed; auto_memory advisory effectively disabled (detect_task_type now CLI-anchored only). 396 tests green; clippy + fmt clean. Returns to v1.10.x..v1.12.x release pattern: Codex+Gemini confirm-review is the next step (NOT a single-version emergency like v1.13.0/v1.13.1)."
-  next_phase: "Codex confirm-review + Gemini confirm-review on v1.14.0 → v1.14.1 remediation if needed → v1.14.2 confirm-archive seal. Then Slice 3 (S3-1..S3-6 per-provider parser work) plus operator priorities B/C/D/E/A queued."
+  current_phase: "v1.14.1 Codex cursor bottom-status-line skip fix. codex_idle_cursor now skips the bottom-status-line (anchored on `Context ` + ` · ` + `% used`) when scanning from end; WorkComplete correctly detected on real Codex tails. Same class of fix as T15 for Gemini in v1.14.0. 397 tests green; clippy clean. Remediation follows v1.10.x..v1.12.x release pattern post-ship fix on tagged version."
+  next_phase: "v1.14.2 confirm-archive seal (Codex+Gemini cross-check on v1.14.x). Then Slice 3 (S3-1..S3-6 per-provider parser work) plus operator priorities B/C/D/E/A queued."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
