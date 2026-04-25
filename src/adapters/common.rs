@@ -97,6 +97,76 @@ const SUBAGENT_MARKERS: &[&str] = &[
     "subagent complete",
 ];
 
+/// Slice 4: per-pane tail history for stillness-fallback idle detection.
+/// `app::event_loop` maintains one of these per pane_id; threaded into
+/// adapters via `ParserContext.history`. Capacity defaults to
+/// `STILLNESS_WINDOW`; pushes evict from the front on overflow.
+#[derive(Debug, Clone)]
+pub struct PaneTailHistory {
+    snapshots: std::collections::VecDeque<String>,
+    capacity: usize,
+}
+
+pub const STILLNESS_WINDOW: usize = 4;
+const STILLNESS_WINDOW_MIN: usize = 2;
+const STILLNESS_WINDOW_MAX: usize = 12;
+
+impl PaneTailHistory {
+    pub fn new(capacity: usize) -> Self {
+        let capped = capacity.clamp(STILLNESS_WINDOW_MIN, STILLNESS_WINDOW_MAX);
+        Self {
+            snapshots: std::collections::VecDeque::with_capacity(capped),
+            capacity: capped,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self::new(STILLNESS_WINDOW)
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    pub fn len(&self) -> usize {
+        self.snapshots.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.snapshots.is_empty()
+    }
+
+    pub fn push(&mut self, tail: String) {
+        if self.snapshots.len() == self.capacity {
+            self.snapshots.pop_front();
+        }
+        self.snapshots.push_back(tail);
+    }
+
+    /// True iff the last `window` snapshots exist AND are byte-equal
+    /// after trailing-whitespace + trailing-empty-line normalization.
+    pub fn is_still(&self, window: usize) -> bool {
+        if self.snapshots.len() < window {
+            return false;
+        }
+        let mut iter = self
+            .snapshots
+            .iter()
+            .skip(self.snapshots.len() - window)
+            .map(|s| Self::normalize(s));
+        let Some(first) = iter.next() else { return false };
+        iter.all(|s| s == first)
+    }
+
+    fn normalize(s: &str) -> String {
+        let mut lines: Vec<&str> = s.lines().map(|l| l.trim_end()).collect();
+        while lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+        }
+        lines.join("\n")
+    }
+}
+
 /// Cross-provider parser used by every adapter as a base layer. Each
 /// per-provider file layers its own patterns on top and returns the
 /// final `SignalSet` (r2 rule: no cross-provider logic in a provider
@@ -302,6 +372,59 @@ fn detect_task_type(lower: &str) -> TaskType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pane_tail_history_pushes_and_caps_at_capacity() {
+        let mut h = PaneTailHistory::new(3);
+        h.push("a".into());
+        h.push("b".into());
+        h.push("c".into());
+        h.push("d".into());
+        assert_eq!(h.len(), 3, "old entry dropped on overflow");
+    }
+
+    #[test]
+    fn pane_tail_history_is_still_returns_true_when_last_n_identical() {
+        let mut h = PaneTailHistory::new(4);
+        h.push("idle".into());
+        h.push("idle".into());
+        h.push("idle".into());
+        h.push("idle".into());
+        assert!(h.is_still(4));
+    }
+
+    #[test]
+    fn pane_tail_history_is_still_returns_false_when_history_too_short() {
+        let mut h = PaneTailHistory::new(4);
+        h.push("idle".into());
+        h.push("idle".into());
+        assert!(!h.is_still(4), "must require >= window snapshots");
+    }
+
+    #[test]
+    fn pane_tail_history_is_still_returns_false_when_changing() {
+        let mut h = PaneTailHistory::new(4);
+        h.push("a".into());
+        h.push("b".into());
+        h.push("c".into());
+        h.push("d".into());
+        assert!(!h.is_still(4));
+    }
+
+    #[test]
+    fn pane_tail_history_normalizes_trailing_whitespace() {
+        let mut h = PaneTailHistory::new(3);
+        h.push("hello\n  ".into());
+        h.push("hello".into());
+        h.push("hello\n".into());
+        assert!(h.is_still(3), "trailing whitespace must not break stillness");
+    }
+
+    #[test]
+    fn pane_tail_history_empty_helper_constructs_default_capacity() {
+        let h = PaneTailHistory::empty();
+        assert_eq!(h.capacity(), STILLNESS_WINDOW);
+    }
 
     #[test]
     fn log_storm_triggers_on_many_log_like_lines() {
