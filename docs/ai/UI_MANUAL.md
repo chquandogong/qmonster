@@ -67,14 +67,27 @@ session:window · Provider role · %pane_id
   `log storm`, `repeated output`, `verbose output`, `error hint`,
   `subagent activity`
 - `metrics` 줄은 badge 형태로 표시됩니다.
-  `CTX 90%`, `TOKENS 12345 [Official]`, `COST $0.42 [Estimate]`
+  `CTX 90%`, `QUOTA 47%`, `TOKENS 12345 [Official]`, `COST $0.42 [Estimate]`,
+  `MODEL gpt-5.4 [Official]`
 - `CTX` badge는 수치가 높을수록 더 강한 severity 색을 사용합니다.
   85% 이상은 `Risk`, 75% 이상은 `Warning`, 60% 이상은 `Concern`으로
-  취급됩니다.
+  취급됩니다. `QUOTA` badge는 Gemini 전용으로 같은 severity 임계치를
+  공유합니다 (Slice 3 S3-3).
 - 현재 `CTX`는 구조적으로 확인 가능한 provider status에서만 채웁니다.
   Codex는 bottom status line, Gemini는 status table의 `context` 컬럼을
   사용합니다. Claude의 `/status` 사용량 막대는 context window가 아니라
   usage/rate limit이므로 `CTX`로 표시하지 않습니다.
+- `MODEL` badge는 source가 있을 때만 표시합니다. Claude pane은
+  `~/.claude/settings.json`에 `"model"` 키가 있을 때만 채워지므로,
+  사용자 환경이 그 키를 비워둔 상태(=Claude Code가 기본 모델
+  선택을 동적으로 하는 상태)에서는 의도적으로 빈칸으로 둡니다.
+  허위 표시(예: `claude --version` 결과를 모델 이름으로 둔갑)
+  대신 부재가 곧 honesty라는 전제입니다 (S3-4 design decision (b)).
+  Codex / Gemini는 status surface에서 직접 `gpt-…` / `gemini-…`
+  토큰을 읽을 수 있으면 채웁니다.
+- 긴 경로/브랜치/모델 문자열은 PATH badge에 한해 40자에서 자동
+  ellipsize됩니다 (Slice 3 housekeeping). 잘린 부분은 `…` 한 글자로
+  표시되어 badge 한 줄이 pane card 폭을 넘기지 않습니다.
 - `modes` / `access` / `loaded` / `restrict` 줄은 provider runtime fact를
   표시합니다. Qmonster는 선택된 pane에서 `u`를 누르면 provider의
   read-only runtime slash command와 terminal submit(`C-m`, Enter-equivalent)을
