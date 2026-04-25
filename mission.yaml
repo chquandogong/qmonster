@@ -1,6 +1,6 @@
 mission:
-  version: "1.12.2"
-  title: "Qmonster v0.4.0 — v1.12.0 Slice 2 (observability field expansion: git_branch + worktree_path + reasoning_effort + Claude model from settings.json + ParserContext struct + 2-row TUI) shipped; v1.12.1 remediation (Codex reasoning-parser anchor + settings example path); v1.12.2 confirm-archive (codex+gemini approve + ledger catch-up for v1.10.9/v1.11.0/v1.11.1/v1.12.0) — Slice 2 gate fully green, Slice 3 unblocked"
+  version: "1.13.0"
+  title: "Qmonster v0.4.0 — v1.13.0 emergency false-positive suppression: PERMISSION_MARKERS + WAITING_MARKERS + log_storm + verbose_answer narrowed against real Claude v2.1.120 / Codex v0.122 / Gemini v0.39 fixtures (~250K daily false positives closed); confirm-archive deferred to Slice 3 plan (Codex new bottom-status-line parser, full Gemini status-line parser, Claude settings model honesty, identity resolver title fallbacks)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

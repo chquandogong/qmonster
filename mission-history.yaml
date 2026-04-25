@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.12.0 Slice 2 (observability field expansion) + v1.12.1 remediation (Codex warnings closed) + v1.12.2 confirm-archive (ledger catch-up for v1.10.9/v1.11.0/v1.11.1/v1.12.0 + confirm approval seal) — Slice 2 gate fully green, Slice 3 unblocked"
+  mission_title: "Qmonster v0.4.0 — v1.13.0 emergency false-positive suppression: PERMISSION_MARKERS + WAITING_MARKERS + log_storm + verbose_answer narrowed against real Claude v2.1.120 / Codex v0.122 / Gemini v0.39 fixtures (~250K daily false positives closed); confirm-archive deferred to Slice 3"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 51
-  latest_version: "1.12.2"
+  total_revisions: 52
+  latest_version: "1.13.0"
 
 timeline:
   - change_id: "initial"
@@ -5796,9 +5796,104 @@ timeline:
       - "Open Slice 3 brainstorming when operator is ready: Gemini observability fields (requires archive sample collection), reasoning_effort session-level cache, optional CodexSettings/GeminiSettings modules mirroring ClaudeSettings, ellipsize helper for long operator-supplied strings, adaptive metric_badge_line width handling."
       - "Annotated tag v1.12.2 at this commit (ledger-only) so operators can pin to the sealed-gate baseline."
 
+  - change_id: "v1.13.0-emergency-suppression"
+    semantic_version: "1.13.0"
+    change_sequence: 52
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Claude Code (main pane) — diagnosis, plan authoring, TDD execution"
+    change_type: "emergency-fix"
+    motivation_type: "operational-noise"
+    persistence: "permanent"
+    intent: >
+      Eliminate the ~250,000/day false-positive RISK/Warning/Concern
+      alerts that parse_common_signals had been emitting against the
+      operator's running Claude Code v2.1.120 / Codex v0.122 / Gemini
+      v0.39 panes, by capturing real-world tails as test fixtures and
+      tightening four marker classes against them under TDD.
+    decision: >
+      Diagnostic phase (Phase 1 of systematic-debugging skill) revealed
+      that PERMISSION_MARKERS, WAITING_MARKERS, log_storm fallback, and
+      verbose_answer fallback all matched ordinary CLI UI text and prose
+      content rather than the interactive prompts they were intended to
+      detect. Audit DB measurement (2026-04-24..2026-04-25) showed:
+      ~93K/day RISK permission-wait, ~33K/day Warning input-wait,
+      ~55K/day Warning log_storm, ~127K/day Concern verbose-output —
+      saturating the alert queue and rendering Qmonster's central
+      observe-first surface useless. Decision: ship a single-version
+      emergency release (v1.13.0) that captures real fixtures, adds a
+      regression test asserting no false positives on idle/status views,
+      and tightens the four markers minimally. Confirm-archive
+      (Codex+Gemini cross-check) deferred to Slice 3 plan because
+      audit-DB volume was actively saturating local storage; emergency
+      release skips one round of cross-check by design and the deferral
+      is documented inline.
+    triggered_by: "Operator report (chquan@dogu.xyz, 2026-04-24): 'claude code pane에서 사용자 입력/판단을 대기하고 있는 것을 이벤트로 못 보여주는 것 같고, claude/codex/gemini 상태 정보들이 제대로 보여지는 것 같지는 않습니다.'"
+    issue_or_context: >
+      All 332 pre-existing tests passed against synthetic fixtures
+      (e.g. 'Press ENTER to continue', 'this action requires approval
+      (y/n)') that did not match the actual idle/status output of any
+      shipping CLI as of 2026-04-25. Real Claude Code displays
+      `⏵⏵ bypass permissions on (shift+tab to cycle)` as a passive
+      keyboard hint; Codex v0.122 displays `│ permissions: YOLO mode`
+      as a config row in its welcome box; Gemini v0.39 displays
+      `45% used  0% used` in a sandbox/quota status line — none of
+      these are interactive asks but all matched the bare-noun marker
+      contract. Result: Qmonster's audit DB had grown to 374MB with
+      1.5M event rows over four days, dominated by these false fires.
+    changes:
+      added:
+        - "tests/fixtures/real/claude_status.txt (real Claude v2.1.120 conversation tail; emails+UUIDs redacted)"
+        - "tests/fixtures/real/codex_welcome_v0_122.txt (real Codex v0.122 welcome box with permissions: YOLO mode row)"
+        - "tests/fixtures/real/codex_bottom_status_v0_122.txt (real Codex v0.122 /status box)"
+        - "tests/fixtures/real/gemini_idle_v0_39.txt (real Gemini v0.39 idle status line columns)"
+        - "tests/false_positive_regression.rs (5 assertions: each fixture must not raise PERMISSION/WAITING/LOG_STORM/VERBOSE)"
+        - ".docs/claude/Qmonster-v0.4.0-2026-04-25-claude-v1.13.0-emergency-suppression-plan.md (writing-plans skill output)"
+        - ".docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-3-backlog.md (S3-1..S3-6 deferred items)"
+        - ".docs/claude/v1.13.0-baseline.txt (audit-DB volume baseline pre-patch; gitignored working note)"
+      modified:
+        - "src/adapters/common.rs: PERMISSION_MARKERS → PERMISSION_PROMPT_MARKERS (phrase-only); WAITING_MARKERS → WAITING_PROMPT_MARKERS (phrase-only); log_storm fallback dropped + is_log_like tightened to bracketed-level / level-prefix / ISO-timestamp shape; verbose_answer fallback dropped"
+        - "mission.yaml (meta: version 1.12.2 → 1.13.0; title updated to v1.13.0 emergency suppression)"
+        - "mission-history.yaml (sequence 52 added; meta: latest_version → 1.13.0, total_revisions 51 → 52)"
+        - ".mission/CURRENT_STATE.md (v1.13.0 status header)"
+      removed:
+        - "BIG_OUTPUT_CHARS / LOG_STORM_LARGE_LINES constants (now-dead after fallback drop)"
+    changed_sections:
+      - "src/adapters/common.rs::PERMISSION_PROMPT_MARKERS — phrase-only contract"
+      - "src/adapters/common.rs::WAITING_PROMPT_MARKERS — phrase-only contract"
+      - "src/adapters/common.rs::is_log_like — structural-pattern contract (bracket level / level prefix / ISO timestamp)"
+      - "src/adapters/common.rs::parse_common_signals — log_storm + verbose_answer fallback fields removed"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      code: "single file (src/adapters/common.rs) with surgical narrowing of four marker classes; constant renames thread to one consumer site each; ~80 lines net change"
+      tests: "337 total — added 5 new tests/false_positive_regression.rs cases against real fixtures; existing 332 unchanged (300 lib + 6 + 26 + 5)"
+      ledger: "1 new timeline entry + 4 new fixture files + 1 new regression test + 2 new .docs/claude/ working-doc files; meta bump"
+      review_gate: "single-version emergency release; confirm-archive (Codex+Gemini cross-check) deferred to next regular Slice 3 plan because audit-DB saturation made operational latency the dominant cost"
+      follow_up_carryover: "Slice 3 backlog (S3-1..S3-6) documented in .docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-3-backlog.md: Codex new bottom-status-line parser; Codex welcome-box lowercase model: variant; full Gemini status-line parser; Claude settings model honesty when settings.json lacks 'model' field; identity resolver title fallback for new provider title formats; honest waiting-state detection (text markers fundamentally limited)"
+    breaking: false
+    risk: "low — narrows positive-case detection; existing unit tests for the positive cases (permission_prompt_on_approval_word with '(y/n)' + 'requires approval', waiting_for_input_on_prompt_text with 'press enter to continue', log_storm_triggers_on_many_log_like_lines with ISO-timestamped fixtures, verbose_marker_triggers_verbose_answer with 'I'd be happy to help') all remain green. The only behavior change is suppression of false positives on real-world idle/status content."
+    related_commits:
+      - "816cec0" # fixture(v1.13.0-1)
+      - "66b7b37" # test(v1.13.0-2)
+      - "835c812" # fix(v1.13.0-3) PERMISSION
+      - "4fddbae" # fix(v1.13.0-4) WAITING
+      - "fd08715" # fix(v1.13.0-5) log_storm + is_log_like
+      - "1ec2b95" # fix(v1.13.0-6) verbose_answer
+    related_decisions:
+      - "KD-005 (Official vs heuristic vs estimated labeling) reinforced — PERMISSION_PROMPT_MARKERS contract makes the Heuristic detector explicit about what 'interactive ask' means"
+    snapshot_after: ""
+    follow_up:
+      - "Slice 3 plan (separate document): wire S3-1..S3-6 against the same tests/fixtures/real/ corpus — Codex bottom-status-line parser must populate context_pressure / model_name / git_branch / worktree_path from the new unboxed format; Gemini parser must replace the current 58-LoC stub with a real status-line reader; identity resolver must recognize ✳ Claude Code / ◇ Ready (X) / unboxed Codex titles."
+      - "Re-measure audit-DB volume after one operating session at this baseline; expect AlertFired/RecommendationEmitted volume to drop ~95% vs the 2026-04-24 baseline. If not, return to systematic-debugging Phase 1."
+      - "Annotated tag v1.13.0 at this commit so operators can pin to the post-suppression baseline."
+
 evolution_summary:
-  current_phase: "v1.12.0 Slice 2 arc fully sealed (observability field expansion). v1.12.0 shipped 3 new SignalSet fields (git_branch/worktree_path/reasoning_effort) + ClaudeSettings module for Claude model + ParserContext trait migration + 2-row TUI; v1.12.1 closed the 2 Codex warnings from cross-check (parse_codex_reasoning_effort anchor + claude-settings.example.json path correction); v1.12.2 is this confirm-archive commit (ledger-only, both reviewers approve on 9d07cf3). 332 tests green on v1.12.1; clippy + fmt clean. Ledger catch-up backfilled in this round: sequences 47-50 document v1.10.9 / v1.11.0 / v1.11.1 / v1.12.0 shipments. No code changes in the confirm-archive — artifacts + meta + ledger only."
-  next_phase: "Slice 3 brainstorming — candidates: Gemini observability fields (requires stable archive samples), reasoning_effort session-level cache, optional CodexSettings/GeminiSettings modules (mirroring ClaudeSettings), ellipsize helper for long operator-supplied strings (model_name/git_branch/worktree_path), adaptive metric_badge_line width handling for narrow terminals. Also a housekeeping round opportunity for the per-task review carryovers: Task 3 ctx() helper hoist + Provider::Unknown comment; Task 4 skip_next_plain_identifier declaration-site comment + STATUS_LINE_NEWEST_UNKNOWN_MODEL assertion extension; Task 7 push_badge DRY + context-only-row test; Task 8 cost tolerance tightening; Pricing/ClaudeSettingsError::NotFound dead-variant cleanup."
+  current_phase: "v1.13.0 emergency false-positive suppression shipped. parse_common_signals tightened against four marker classes (PERMISSION_PROMPT_MARKERS phrase-only, WAITING_PROMPT_MARKERS phrase-only, log_storm structural-pattern is_log_like + dropped chars/lines fallback, verbose_answer marker-required + dropped line-count fallback) measured against real Claude v2.1.120 / Codex v0.122 / Gemini v0.39 tails captured in tests/fixtures/real/. 337 tests green (332 prior + 5 new false_positive_regression); clippy + fmt clean. Audit-DB volume reduction expected ~95% vs the 2026-04-24 baseline that drove this release. Confirm-archive (Codex+Gemini cross-check) deferred to Slice 3 plan because operational saturation (1.5M alerts in 4 days) demanded immediate ship. Slice 3 backlog (S3-1..S3-6) recorded in .docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-3-backlog.md."
+  next_phase: "Slice 3 plan — separate document. Sequenced items: S3-1 Codex v0.122 bottom-status-line parser (Context X% left / Context Y% used / 0 in 0 out unboxed format); S3-2 Codex welcome-box lowercase model: variant; S3-3 full Gemini v0.39 status-line parser (replace 58-LoC stub; extract model_name / git_branch / worktree_path / quota / context); S3-4 Claude settings model honesty when ~/.claude/settings.json lacks 'model' field; S3-5 identity resolver title fallback for ✳ Claude Code / ◇ Ready (X) / unboxed Codex titles; S3-6 honest waiting-state detection (text markers fundamentally limited — design decision needed between tail-stillness, provider-cursor-pattern, or rule-removal). Each S3-* gets its own design+plan+confirm-archive cycle."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
