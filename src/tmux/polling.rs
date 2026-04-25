@@ -1,4 +1,6 @@
 use std::process::Command;
+use std::thread;
+use std::time::Duration;
 use thiserror::Error;
 
 use crate::tmux::types::{
@@ -26,16 +28,25 @@ pub trait PaneSource {
     fn current_target(&self) -> Result<Option<WindowTarget>, PollingError>;
     fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError>;
     fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError>;
-    /// Phase 5 P5-3 (v1.10.0): send `text` followed by `Enter` to the
+    /// Phase 5 P5-3 (v1.10.0): send `text` followed by submit to the
     /// pane identified by `pane_id`. The implementation calls
-    /// `tmux send-keys -t <pane_id> <text> Enter` — literal text only,
-    /// no shell expansion, no raw tail. `tmux/` knows nothing about
+    /// `tmux send-keys -t <pane_id> -l <text>`, pauses briefly, then
+    /// sends terminal submit (`C-m`, the Enter carriage return) —
+    /// literal text only, no shell expansion, no raw tail. `tmux/`
+    /// knows nothing about
     /// providers or slash-command semantics; the caller supplies the
     /// already-validated slash command string.
     fn send_keys(&self, pane_id: &str, text: &str) -> Result<(), PollingError>;
+
+    /// Send a single tmux key name such as `Escape` or `C-m`.
+    fn send_key(&self, _pane_id: &str, _key: &str) -> Result<(), PollingError> {
+        Ok(())
+    }
 }
 
 const DEFAULT_CAPTURE_LINES: usize = 24;
+const SUBMIT_KEY: &str = "C-m";
+const KEY_SETTLE_DELAY: Duration = Duration::from_millis(80);
 
 /// Production implementation that shells out to the `tmux` CLI.
 #[derive(Debug, Clone, Copy)]
@@ -147,8 +158,10 @@ impl PaneSource for PollingSource {
         //      following argument to be literal text (no key-name
         //      lookup). This means `Enter` would ALSO be literal if
         //      we kept it in the same invocation — hence the split.
-        //   2. `send-keys -t {pane} Enter` — a separate invocation
-        //      whose only positional is the `Enter` key name.
+        //   2. wait briefly, then `send-keys -t {pane} C-m` — a
+        //      separate invocation whose only positional is the
+        //      terminal submit key name. The pause gives React/Ink
+        //      CLIs time to process the literal text before submit.
         //
         // Failure on either invocation surfaces as `PollingError`; the
         // caller (`PromptSendGate::Execute` path) records the error
@@ -162,15 +175,23 @@ impl PaneSource for PollingSource {
                 String::from_utf8_lossy(&literal.stderr).trim().to_string(),
             ));
         }
-        let enter = Command::new("tmux")
-            .args(["send-keys", "-t", pane_id, "Enter"])
+        thread::sleep(KEY_SETTLE_DELAY);
+        self.send_key(pane_id, SUBMIT_KEY)?;
+        thread::sleep(KEY_SETTLE_DELAY);
+        Ok(())
+    }
+
+    fn send_key(&self, pane_id: &str, key: &str) -> Result<(), PollingError> {
+        let output = Command::new("tmux")
+            .args(["send-keys", "-t", pane_id, key])
             .output()
             .map_err(|e| PollingError::Command(e.to_string()))?;
-        if !enter.status.success() {
+        if !output.status.success() {
             return Err(PollingError::NonZero(
-                String::from_utf8_lossy(&enter.stderr).trim().to_string(),
+                String::from_utf8_lossy(&output.stderr).trim().to_string(),
             ));
         }
+        thread::sleep(KEY_SETTLE_DELAY);
         Ok(())
     }
 }
@@ -271,12 +292,12 @@ mod tests {
     }
 
     #[test]
-    fn send_keys_splits_literal_payload_from_enter_keystroke() {
+    fn send_keys_splits_literal_payload_from_terminal_submit_keystroke() {
         // v1.10.1 remediation (Gemini v1.10.0 finding #2): the
         // PollingSource MUST emit two tmux invocations — the first
         // with `-l` so `text` is always literal (no key-name lookup
-        // can surprise the caller), the second with `Enter` alone so
-        // it is still interpreted as the terminating keystroke.
+        // can surprise the caller), the second with `C-m` alone so it
+        // is still interpreted as the terminating keystroke.
         // Whitebox contract on the argument vectors.
         let pane_id = "%5";
         let text = "/compact";
@@ -293,16 +314,16 @@ mod tests {
         assert_eq!(
             literal_args.len(),
             5,
-            "Enter must NOT ride on the -l invocation or it would be sent as literal E/n/t/e/r"
+            "submit must NOT ride on the -l invocation or it would be sent as literal text"
         );
 
-        let enter_args = ["send-keys", "-t", pane_id, "Enter"];
-        assert_eq!(enter_args[0], "send-keys");
-        assert_eq!(enter_args[1], "-t");
-        assert_eq!(enter_args[2], pane_id);
+        let submit_args = ["send-keys", "-t", pane_id, SUBMIT_KEY];
+        assert_eq!(submit_args[0], "send-keys");
+        assert_eq!(submit_args[1], "-t");
+        assert_eq!(submit_args[2], pane_id);
         assert_eq!(
-            enter_args[3], "Enter",
-            "second invocation passes Enter as a key name (no -l)"
+            submit_args[3], SUBMIT_KEY,
+            "second invocation passes terminal submit as a key name (no -l)"
         );
     }
 

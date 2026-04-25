@@ -435,6 +435,7 @@ where
     let mut alert_times: HashMap<String, String> = HashMap::new();
     let mut alert_hide_deadlines: HashMap<String, Instant> = HashMap::new();
     let mut last_alert_click: Option<AlertMouseClick> = None;
+    let mut runtime_refresh_offsets: HashMap<String, usize> = HashMap::new();
     refresh_alert_state(
         &notices,
         &last_reports,
@@ -1047,9 +1048,9 @@ where
                                         let active_only = runtime_refresh_uses_active_safe_only(
                                             report.idle_state,
                                         );
-                                        let commands =
+                                        let available_commands =
                                             runtime_refresh_commands(provider, report.idle_state);
-                                        if commands.is_empty() {
+                                        if available_commands.is_empty() {
                                             notices.insert(
                                                 0,
                                                 SystemNotice {
@@ -1067,7 +1068,7 @@ where
                                             ActionsMode::ObserveOnly
                                         ) {
                                             let command_label =
-                                                runtime_refresh_command_label(commands);
+                                                runtime_refresh_command_label(available_commands);
                                             ctx.sink.record(AuditEvent {
                                                 kind: AuditEventKind::RuntimeRefreshBlocked,
                                                 pane_id: pane_id.clone(),
@@ -1090,7 +1091,14 @@ where
                                                 },
                                             );
                                         } else {
-                                            let command_label = runtime_refresh_command_label(commands);
+                                            let commands = runtime_refresh_dispatch_commands(
+                                                provider,
+                                                report.idle_state,
+                                                &pane_id,
+                                                &mut runtime_refresh_offsets,
+                                            );
+                                            let command_label =
+                                                runtime_refresh_command_label(&commands);
                                             ctx.sink.record(AuditEvent {
                                                 kind: AuditEventKind::RuntimeRefreshRequested,
                                                 pane_id: pane_id.clone(),
@@ -1102,11 +1110,23 @@ where
                                                 provider: Some(provider),
                                                 role: Some(report.identity.identity.role),
                                             });
-                                            let mut failed: Option<(&str, String)> = None;
-                                            for cmd in commands {
-                                                if let Err(e) = ctx.source.send_keys(&pane_id, cmd) {
-                                                    failed = Some((cmd, e.to_string()));
-                                                    break;
+                                            let mut failed: Option<(String, String)> = None;
+                                            if runtime_refresh_sends_escape_first(
+                                                provider,
+                                                report.idle_state,
+                                            ) && let Err(e) =
+                                                ctx.source.send_key(&pane_id, "Escape")
+                                            {
+                                                failed = Some(("Escape".into(), e.to_string()));
+                                            }
+                                            if failed.is_none() {
+                                                for cmd in &commands {
+                                                    if let Err(e) =
+                                                        ctx.source.send_keys(&pane_id, cmd)
+                                                    {
+                                                        failed = Some((cmd.to_string(), e.to_string()));
+                                                        break;
+                                                    }
                                                 }
                                             }
                                             match failed {
@@ -1116,7 +1136,7 @@ where
                                                         pane_id: pane_id.clone(),
                                                         severity: Severity::Safe,
                                                         summary: format!(
-                                                            "{pane_id} {command_label} (sent with Enter)"
+                                                            "{pane_id} {command_label} (sent with terminal submit)"
                                                         ),
                                                         provider: Some(provider),
                                                         role: Some(report.identity.identity.role),
@@ -1129,6 +1149,10 @@ where
                                                                 &pane_id,
                                                                 &command_label,
                                                                 active_only,
+                                                                runtime_refresh_sends_one_command_at_a_time(
+                                                                    provider,
+                                                                    report.idle_state,
+                                                                ),
                                                             ),
                                                             severity: Severity::Good,
                                                             source_kind: SourceKind::ProjectCanonical,
@@ -2091,6 +2115,41 @@ fn runtime_refresh_uses_active_safe_only(idle_state: Option<IdleCause>) -> bool 
     matches!(idle_state, None | Some(IdleCause::Stale))
 }
 
+fn runtime_refresh_dispatch_commands(
+    provider: qmonster::domain::identity::Provider,
+    idle_state: Option<IdleCause>,
+    pane_id: &str,
+    offsets: &mut HashMap<String, usize>,
+) -> Vec<&'static str> {
+    let commands = runtime_refresh_commands(provider, idle_state);
+    if commands.is_empty() {
+        return Vec::new();
+    }
+    if runtime_refresh_sends_one_command_at_a_time(provider, idle_state) {
+        let key = format!("{pane_id}:claude-runtime");
+        let idx = offsets.entry(key).or_insert(0);
+        let command = commands[*idx % commands.len()];
+        *idx = (*idx + 1) % commands.len();
+        return vec![command];
+    }
+    commands.to_vec()
+}
+
+fn runtime_refresh_sends_one_command_at_a_time(
+    provider: qmonster::domain::identity::Provider,
+    idle_state: Option<IdleCause>,
+) -> bool {
+    matches!(provider, qmonster::domain::identity::Provider::Claude)
+        && !runtime_refresh_uses_active_safe_only(idle_state)
+}
+
+fn runtime_refresh_sends_escape_first(
+    provider: qmonster::domain::identity::Provider,
+    idle_state: Option<IdleCause>,
+) -> bool {
+    runtime_refresh_sends_one_command_at_a_time(provider, idle_state)
+}
+
 fn runtime_refresh_full_commands(
     provider: qmonster::domain::identity::Provider,
 ) -> &'static [&'static str] {
@@ -2141,14 +2200,23 @@ fn runtime_refresh_request_label(active_only: bool) -> &'static str {
     }
 }
 
-fn runtime_refresh_notice_body(pane_id: &str, command_label: &str, active_only: bool) -> String {
-    if active_only {
+fn runtime_refresh_notice_body(
+    pane_id: &str,
+    command_label: &str,
+    active_only: bool,
+    one_at_a_time: bool,
+) -> String {
+    if one_at_a_time {
         format!(
-            "{pane_id} → `{command_label}` sent with Enter; active or uncertain pane uses only provider commands verified to run without waiting, and the next poll will parse provider output"
+            "{pane_id} → `{command_label}` sent with terminal submit; Claude fullscreen status surfaces are sent one at a time, so press `u` again to cycle the next source"
+        )
+    } else if active_only {
+        format!(
+            "{pane_id} → `{command_label}` sent with terminal submit; active or uncertain pane uses only provider commands verified to run without waiting, and the next poll will parse provider output"
         )
     } else {
         format!(
-            "{pane_id} → `{command_label}` sent with Enter; full provider runtime refresh requested, and the next poll will parse provider output"
+            "{pane_id} → `{command_label}` sent with terminal submit; full provider runtime refresh requested, and the next poll will parse provider output"
         )
     }
 }
@@ -2553,6 +2621,43 @@ mod tests {
             runtime_refresh_commands(Provider::Gemini, Some(IdleCause::WorkComplete)),
             ["/stats session", "/stats model", "/stats tools"]
         );
+    }
+
+    #[test]
+    fn runtime_refresh_dispatch_cycles_claude_fullscreen_surfaces_one_at_a_time() {
+        let mut offsets = HashMap::new();
+        assert_eq!(
+            runtime_refresh_dispatch_commands(
+                Provider::Claude,
+                Some(IdleCause::WorkComplete),
+                "%1",
+                &mut offsets,
+            ),
+            vec!["/status"]
+        );
+        assert_eq!(
+            runtime_refresh_dispatch_commands(
+                Provider::Claude,
+                Some(IdleCause::WorkComplete),
+                "%1",
+                &mut offsets,
+            ),
+            vec!["/context"]
+        );
+        assert!(runtime_refresh_sends_escape_first(
+            Provider::Claude,
+            Some(IdleCause::WorkComplete)
+        ));
+    }
+
+    #[test]
+    fn runtime_refresh_dispatch_batches_safe_concurrent_gemini_commands() {
+        let mut offsets = HashMap::new();
+        assert_eq!(
+            runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
+            vec!["/stats session", "/stats model", "/stats tools"]
+        );
+        assert!(!runtime_refresh_sends_escape_first(Provider::Gemini, None));
     }
 
     #[test]
