@@ -40,6 +40,13 @@ impl ProviderParser for GeminiAdapter {
                         .with_provider(Provider::Gemini),
                 );
             }
+            if let Some(quota) = status.quota_pressure {
+                set.quota_pressure = Some(
+                    MetricValue::new(quota, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Gemini),
+                );
+            }
         } else if let Some(context) = parse_gemini_context_pressure(ctx.tail) {
             set.context_pressure = Some(
                 MetricValue::new(context, SourceKind::ProviderOfficial)
@@ -57,6 +64,7 @@ impl ProviderParser for GeminiAdapter {
 #[derive(Default)]
 struct GeminiStatus {
     context_pressure: Option<f32>,
+    quota_pressure: Option<f32>,
     branch: Option<String>,
     sandbox: Option<String>,
     model: Option<String>,
@@ -81,6 +89,7 @@ fn parse_gemini_status(tail: &str) -> Option<GeminiStatus> {
             let data_cols = split_gemini_status_columns(data_line);
             let status = gemini_status_from_columns(&header_cols, &data_cols);
             if status.context_pressure.is_some()
+                || status.quota_pressure.is_some()
                 || status.branch.is_some()
                 || status.sandbox.is_some()
                 || status.model.is_some()
@@ -121,6 +130,7 @@ fn gemini_status_from_columns(header_cols: &[&str], data_cols: &[&str]) -> Gemin
                 status.workspace = Some(value.to_string())
             }
             "context" => status.context_pressure = parse_used_percent(value),
+            "quota" => status.quota_pressure = parse_used_percent(value),
             _ => {}
         }
     }
@@ -453,6 +463,58 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
                 .map(|f| (f.kind, f.source_kind))
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn gemini_status_table_populates_quota_pressure_from_quota_column() {
+        // S3-3: Gemini's status table carries `quota` and `context` as
+        // distinct columns. v1.15.0 surfaced `context` as
+        // SignalSet.context_pressure; quota stayed only as a limit-hit
+        // signal at 100%. This test pins the gradient: a 47% quota
+        // value populates `quota_pressure = Some(0.47)` with
+        // ProviderOfficial source. The new field is Gemini-only —
+        // Codex/Claude have different quota surfaces and stay None
+        // until they get a parser.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
+main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec      47% used      63% used     118.8 MB     cdf3f5ed      user@example.com";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        let metric = set
+            .quota_pressure
+            .as_ref()
+            .expect("quota pressure parsed from quota column");
+        assert!((metric.value - 0.47).abs() < f32::EPSILON);
+        assert_eq!(metric.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(metric.provider, Some(Provider::Gemini));
+        // context_pressure stays accurate too (separate column).
+        let ctx_metric = set.context_pressure.as_ref().expect("context parsed");
+        assert!((ctx_metric.value - 0.63).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn gemini_quota_pressure_absent_when_status_table_does_not_carry_it() {
+        // Honesty: Gemini panes without the quota column (e.g., older
+        // CLI build, partial capture) leave quota_pressure as None.
+        // The existing prose-only fixture (no structural status block)
+        // is the cleanest case.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(
+            &id,
+            "the quota was 100% used yesterday",
+            &pricing,
+            &settings,
+            &history,
+        );
+        let set = GeminiAdapter.parse(&c);
+        assert!(set.quota_pressure.is_none());
     }
 
     #[test]

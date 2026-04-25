@@ -482,6 +482,13 @@ pub fn metric_row(s: &SignalSet) -> String {
             source_kind_label(m.source_kind)
         ));
     }
+    if let Some(m) = s.quota_pressure.as_ref() {
+        parts.push(format!(
+            "quota {:.0}% [{}]",
+            m.value * 100.0,
+            source_kind_label(m.source_kind)
+        ));
+    }
     if let Some(m) = s.token_count.as_ref() {
         parts.push(format!(
             "tokens {} [{}]",
@@ -612,6 +619,16 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
         has_any = true;
         spans.push(Span::styled(
             format!(" CTX {:.0}% ", metric.value * 100.0),
+            theme::severity_badge_style(context_metric_severity(metric.value)),
+        ));
+    }
+    if let Some(metric) = signals.quota_pressure.as_ref() {
+        if has_any {
+            spans.push(Span::raw(" "));
+        }
+        has_any = true;
+        spans.push(Span::styled(
+            format!(" QUOTA {:.0}% ", metric.value * 100.0),
             theme::severity_badge_style(context_metric_severity(metric.value)),
         ));
     }
@@ -1070,6 +1087,22 @@ mod tests {
         let row = metric_row(&s);
         assert!(row.contains("context 71%"));
         assert!(row.contains("[Estimate]"));
+    }
+
+    #[test]
+    fn metric_row_renders_quota_pressure_when_populated() {
+        // S3-3: Gemini quota_pressure surfaces in the --once metric
+        // row alongside context_pressure. Same percent + source-kind
+        // shape as context.
+        let s = SignalSet {
+            quota_pressure: Some(
+                MetricValue::new(0.47, SourceKind::ProviderOfficial).with_confidence(0.95),
+            ),
+            ..SignalSet::default()
+        };
+        let row = metric_row(&s);
+        assert!(row.contains("quota 47%"));
+        assert!(row.contains("[Official]"));
     }
 
     #[test]

@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.7 S3-5 identity title fallback."
+  mission_title: "Qmonster v0.4.0 — v1.15.8 S3-3 Gemini quota_pressure metric."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 63
-  latest_version: "1.15.7"
+  total_revisions: 64
+  latest_version: "1.15.8"
 
 timeline:
   - change_id: "initial"
@@ -6758,9 +6758,87 @@ timeline:
       - "Remaining Slice 3 backlog: S3-1 (Codex bottom-status-line full token-in/token-out), S3-3 (Gemini quota/memory columns), S3-4 (Claude settings model honesty)."
       - "Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance) in the next S3-* round; dead PricingError/ClaudeSettingsError NotFound variants were removed by post-tag housekeeping commit d6f595c."
 
+  - change_id: "v1.15.8-s3-3-gemini-quota-pressure"
+    semantic_version: "1.15.8"
+    change_sequence: 64
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "backlog-resolution"
+    persistence: "permanent"
+    intent: >
+      Close Slice 3 backlog item S3-3 (partial — `quota` column).
+      Gemini's status table carries `quota` and `context` as
+      distinct columns; v1.15.0 surfaced `context` as
+      SignalSet.context_pressure but quota only triggered LimitHit
+      at 100%. v1.15.8 surfaces the gradient (e.g. `47% used`) so
+      the operator sees quota pressure approaching the limit, not
+      only after it hits.
+    decision: >
+      Add a new `SignalSet.quota_pressure: Option<MetricValue<f32>>`
+      field, parallel to `context_pressure` but Gemini-specific.
+      `gemini_status_from_columns` now matches the `quota` header
+      label and parses the value with the existing `parse_used_percent`
+      helper. The Gemini adapter's parse() populates
+      `set.quota_pressure` from the validated status table. The
+      pre-existing 100%-only LimitHit detection (Gemini idle-state
+      classifier) carries forward unchanged. UI: `primary_metric_row`
+      and `metric_row` add a `QUOTA Y%` badge between `CTX` and
+      `TOKENS`, sharing CTX's severity coloring (>=85% Risk, >=75%
+      Warning, >=60% Concern).
+    triggered_by: "Slice 3 backlog S3-3 (.docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-3-backlog.md)."
+    issue_or_context: >
+      The Gemini v0.39 status table parses six observable columns
+      (branch, sandbox, /model, workspace, context, quota) but only
+      five surfaced. Operators relied on watching the alert queue for
+      a 100% quota LimitHit instead of seeing the trajectory.
+    changes:
+      added:
+        - "src/domain/signal.rs::SignalSet.quota_pressure field"
+        - "src/adapters/gemini.rs::GeminiStatus.quota_pressure field"
+        - "src/adapters/gemini.rs::gemini_status_from_columns `quota` label match"
+        - "src/adapters/gemini.rs::GeminiAdapter::parse populates set.quota_pressure"
+        - "src/ui/panels.rs::primary_metric_row QUOTA badge (TUI)"
+        - "src/ui/panels.rs::metric_row quota line (--once)"
+        - "2 Gemini adapter tests (gradient populates / absence stays None)"
+        - "1 panel test (metric_row renders quota line with [Official])"
+      modified:
+        - "src/adapters/common.rs::parse_common_signals default-fills quota_pressure: None"
+        - "mission.yaml (meta: version 1.15.7 → 1.15.8; title)"
+        - "mission-history.yaml (sequence 64; meta: latest_version 1.15.8, total_revisions 63 → 64)"
+      removed: []
+    changed_sections:
+      - "src/domain/signal.rs::SignalSet"
+      - "src/adapters/gemini.rs::status table column matcher + adapter populate"
+      - "src/ui/panels.rs::metric row rendering"
+    done_when_delta:
+      added:
+        - "Gemini panes with `47% used` quota show `QUOTA 47%` badge in metric row"
+        - "Gemini status-table-validated quota stays ProviderOfficial (CFX-1 + CFX-2 carry forward)"
+        - "Other providers (Claude/Codex) keep quota_pressure = None"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "+~30 LoC in adapter/parser + ~10 LoC in UI + 3 tests"
+      tests: "446 total — 374 lib + 14 main + 34 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 443 at v1.15.7; +3 tests)"
+      ledger: "1 new timeline entry (sequence 64); meta bump"
+      review_gate: "backlog item closed; local fmt/test/clippy pass."
+      follow_up_carryover: "S3-3 has remaining work — `memory` column display (currently absent), `session` / `/auth` not surfaced. S3-1 (Codex bottom-status-line token-in/token-out) and S3-4 (Claude settings model honesty) still open."
+    breaking: false
+    risk: "low — quota_pressure is opt-in (Option); other adapters get a None default via parse_common_signals; UI badge is additive (does not displace existing CTX/TOKENS/COST/MODEL spans); column-parity guard from CFX-2 already protects against misalignment."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.8 at this commit."
+      - "Remaining Slice 3 backlog: S3-1 (Codex bottom-status-line full token-in/token-out), S3-3 partial (Gemini memory column display deferred), S3-4 (Claude settings model honesty)."
+      - "Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance) in the next S3-* round."
+
 evolution_summary:
-  current_phase: "v1.15.7 Slice 3 backlog item S3-5 closed. Identity resolver now recognises Claude Code spinner-prefixed activity titles (`⠂ ...`) and Gemini idle titles (`◇  Ready (...)`) at IdentityConfidence::Medium. v1.15.6 selected-pane state-change text fallback, v1.15.5 runtime-refresh cycling + Codex welcome-box model fallback (S3-2), and v1.15.4 selected-pane flash carry forward unchanged. Post-tag housekeeping commit d6f595c removed dead PricingError/ClaudeSettingsError NotFound variants. 443 tests green; clippy + fmt clean."
-  next_phase: "Remaining Slice 3 backlog: S3-1 (Codex bottom-status-line full token-in/token-out parsing), S3-3 (Gemini quota/memory columns), S3-4 (Claude settings model honesty — design decision pending). Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance) in the next S3-* round. v1.15.x patch line remains open for runtime-refresh UX issues found during operator use."
+  current_phase: "v1.15.8 Slice 3 backlog item S3-3 closed (quota column). Gemini status table now populates the new SignalSet.quota_pressure field; UI renders QUOTA Y% badge in the metric row alongside CTX. v1.15.7 S3-5 identity title fallback, v1.15.6 selected-pane state-change text fallback, v1.15.5 runtime-refresh cycling, and the post-tag housekeeping commit d6f595c carry forward unchanged. 446 tests green; clippy + fmt clean."
+  next_phase: "Remaining Slice 3 backlog: S3-1 (Codex bottom-status-line full token-in/token-out parsing), S3-3 partial (Gemini memory column display deferred), S3-4 (Claude settings model honesty — design decision pending). Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance) in the next S3-* round. v1.15.x patch line remains open for runtime-refresh UX issues found during operator use."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

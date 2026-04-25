@@ -129,6 +129,11 @@ pub struct SignalSet {
     pub output_chars: usize,
     pub task_type: TaskType,
     pub context_pressure: Option<MetricValue<f32>>,
+    /// S3-3: Gemini-specific quota usage from the status table's
+    /// `quota` column. Independent from `context_pressure`. None on
+    /// providers that do not expose quota or when the status table
+    /// is absent / mis-aligned.
+    pub quota_pressure: Option<MetricValue<f32>>,
     pub token_count: Option<MetricValue<u64>>,
     pub cost_usd: Option<MetricValue<f64>>,
     pub model_name: Option<MetricValue<String>>,

@@ -227,6 +227,7 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         // deliberately narrow synthetic phrase used by end-to-end
         // integration tests; it does not match any real CLI output.
         context_pressure: parse_context_pressure_test_marker(&lower),
+        quota_pressure: None,
         token_count: None,
         cost_usd: None,
         model_name: None,
