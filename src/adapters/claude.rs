@@ -10,15 +10,14 @@ impl ProviderParser for ClaudeAdapter {
     fn parse(&self, ctx: &crate::adapters::ParserContext) -> SignalSet {
         let tail = ctx.tail;
         let mut set = parse_common_signals(tail);
-        let lower = tail.to_lowercase();
 
-        if let Some(p) = parse_context_percent_claude(&lower) {
-            set.context_pressure = Some(
-                MetricValue::new(p / 100.0, SourceKind::Estimated)
-                    .with_confidence(0.6)
-                    .with_provider(Provider::Claude),
-            );
-        }
+        // v1.13.1: parse_context_percent_claude dropped — its substring
+        // matching of `claude` + `%` fired on operator prose mentioning
+        // Claude's percent share, and on Claude's own /status panel
+        // bars (`Current week 9% used`) which are rate-limit windows,
+        // not context-window pressure. context_pressure for Claude is
+        // S3-4 territory (read from ~/.claude/state when shipped, or
+        // leave None — honest).
 
         if let Some(n) = parse_claude_output_tokens(tail) {
             set.token_count = Some(
@@ -41,33 +40,6 @@ impl ProviderParser for ClaudeAdapter {
 
         set
     }
-}
-
-fn parse_context_percent_claude(lower: &str) -> Option<f32> {
-    for line in lower.lines() {
-        if line.contains("claude") && line.contains('%') {
-            let mut digits = String::new();
-            let mut seen_dot = false;
-            for ch in line.chars() {
-                if ch.is_ascii_digit() {
-                    digits.push(ch);
-                } else if ch == '.' && !seen_dot {
-                    digits.push(ch);
-                    seen_dot = true;
-                } else if ch == '%' {
-                    if let Ok(v) = digits.parse::<f32>() {
-                        return Some(v);
-                    }
-                    digits.clear();
-                    seen_dot = false;
-                } else {
-                    digits.clear();
-                    seen_dot = false;
-                }
-            }
-        }
-    }
-    None
 }
 
 fn parse_claude_output_tokens(tail: &str) -> Option<u64> {
@@ -172,17 +144,21 @@ mod tests {
     }
 
     #[test]
-    fn claude_adapter_parses_claude_specific_percent() {
+    fn claude_adapter_does_not_populate_context_pressure_from_prose_v1_13_1() {
+        // v1.13.1: parse_context_percent_claude was dropped — its
+        // substring matching of `claude` + `%` fired on operator prose
+        // and on Claude's /status rate-limit bars. The Claude adapter
+        // now leaves context_pressure None until S3-4 ships a
+        // structured ~/.claude/ state reader.
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
         let c = ctx(&id, "claude context 88%", &pricing, &settings);
         let set = ClaudeAdapter.parse(&c);
-        let m = set.context_pressure.expect("parsed");
-        assert!((m.value - 0.88).abs() < 0.01);
-        assert_eq!(m.source_kind, SourceKind::Estimated);
-        assert_eq!(m.confidence, Some(0.6));
-        assert_eq!(m.provider, Some(Provider::Claude));
+        assert!(
+            set.context_pressure.is_none(),
+            "Claude adapter must not parse context_pressure from tail prose (v1.13.1)"
+        );
     }
 
     #[test]
