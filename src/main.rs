@@ -1043,8 +1043,9 @@ where
                                     Some(report) => {
                                         let pane_id = report.pane_id.clone();
                                         let provider = report.identity.identity.provider;
-                                        match runtime_refresh_command(provider) {
-                                            None => notices.insert(
+                                        let commands = runtime_refresh_commands(provider);
+                                        if commands.is_empty() {
+                                            notices.insert(
                                                 0,
                                                 SystemNotice {
                                                     title: "runtime refresh unavailable".into(),
@@ -1055,75 +1056,99 @@ where
                                                     severity: Severity::Concern,
                                                     source_kind: SourceKind::ProjectCanonical,
                                                 },
-                                            ),
-                                            Some(cmd) if ctx.config.actions.mode == ActionsMode::ObserveOnly => {
-                                                ctx.sink.record(AuditEvent {
-                                                    kind: AuditEventKind::RuntimeRefreshBlocked,
-                                                    pane_id: pane_id.clone(),
+                                            );
+                                        } else if matches!(
+                                            ctx.config.actions.mode,
+                                            ActionsMode::ObserveOnly
+                                        ) {
+                                            let command_label = runtime_refresh_command_label(commands);
+                                            ctx.sink.record(AuditEvent {
+                                                kind: AuditEventKind::RuntimeRefreshBlocked,
+                                                pane_id: pane_id.clone(),
+                                                severity: Severity::Warning,
+                                                summary: format!(
+                                                    "{pane_id} {command_label} (blocked; observe_only mode)"
+                                                ),
+                                                provider: Some(provider),
+                                                role: Some(report.identity.identity.role),
+                                            });
+                                            notices.insert(
+                                                0,
+                                                SystemNotice {
+                                                    title: "runtime refresh blocked".into(),
+                                                    body: format!(
+                                                        "{pane_id} → `{command_label}` blocked by observe_only mode"
+                                                    ),
                                                     severity: Severity::Warning,
-                                                    summary: format!("{pane_id} {cmd} (blocked; observe_only mode)"),
-                                                    provider: Some(provider),
-                                                    role: Some(report.identity.identity.role),
-                                                });
-                                                notices.insert(
-                                                    0,
-                                                    SystemNotice {
-                                                        title: "runtime refresh blocked".into(),
-                                                        body: format!("{pane_id} → `{cmd}` blocked by observe_only mode"),
-                                                        severity: Severity::Warning,
-                                                        source_kind: SourceKind::ProjectCanonical,
-                                                    },
-                                                );
+                                                    source_kind: SourceKind::ProjectCanonical,
+                                                },
+                                            );
+                                        } else {
+                                            let command_label = runtime_refresh_command_label(commands);
+                                            ctx.sink.record(AuditEvent {
+                                                kind: AuditEventKind::RuntimeRefreshRequested,
+                                                pane_id: pane_id.clone(),
+                                                severity: Severity::Concern,
+                                                summary: format!(
+                                                    "{pane_id} {command_label} (operator-requested runtime refresh)"
+                                                ),
+                                                provider: Some(provider),
+                                                role: Some(report.identity.identity.role),
+                                            });
+                                            let mut failed: Option<(&str, String)> = None;
+                                            for cmd in commands {
+                                                if let Err(e) = ctx.source.send_keys(&pane_id, cmd) {
+                                                    failed = Some((cmd, e.to_string()));
+                                                    break;
+                                                }
                                             }
-                                            Some(cmd) => {
-                                                ctx.sink.record(AuditEvent {
-                                                    kind: AuditEventKind::RuntimeRefreshRequested,
-                                                    pane_id: pane_id.clone(),
-                                                    severity: Severity::Concern,
-                                                    summary: format!("{pane_id} {cmd} (operator-requested runtime refresh)"),
-                                                    provider: Some(provider),
-                                                    role: Some(report.identity.identity.role),
-                                                });
-                                                match ctx.source.send_keys(&pane_id, cmd) {
-                                                    Ok(()) => {
-                                                        ctx.sink.record(AuditEvent {
-                                                            kind: AuditEventKind::RuntimeRefreshCompleted,
-                                                            pane_id: pane_id.clone(),
-                                                            severity: Severity::Safe,
-                                                            summary: format!("{pane_id} {cmd} (sent)"),
-                                                            provider: Some(provider),
-                                                            role: Some(report.identity.identity.role),
-                                                        });
-                                                        notices.insert(
-                                                            0,
-                                                            SystemNotice {
-                                                                title: "runtime refresh sent".into(),
-                                                                body: format!("{pane_id} → `{cmd}`; next poll will parse provider status output"),
-                                                                severity: Severity::Good,
-                                                                source_kind: SourceKind::ProjectCanonical,
-                                                            },
-                                                        );
-                                                        last_poll = Instant::now() - poll;
-                                                    }
-                                                    Err(e) => {
-                                                        ctx.sink.record(AuditEvent {
-                                                            kind: AuditEventKind::RuntimeRefreshFailed,
-                                                            pane_id: pane_id.clone(),
+                                            match failed {
+                                                None => {
+                                                    ctx.sink.record(AuditEvent {
+                                                        kind: AuditEventKind::RuntimeRefreshCompleted,
+                                                        pane_id: pane_id.clone(),
+                                                        severity: Severity::Safe,
+                                                        summary: format!(
+                                                            "{pane_id} {command_label} (sent with Enter)"
+                                                        ),
+                                                        provider: Some(provider),
+                                                        role: Some(report.identity.identity.role),
+                                                    });
+                                                    notices.insert(
+                                                        0,
+                                                        SystemNotice {
+                                                            title: "runtime refresh sent".into(),
+                                                            body: format!(
+                                                                "{pane_id} → `{command_label}` sent with Enter; next poll will parse provider status output"
+                                                            ),
+                                                            severity: Severity::Good,
+                                                            source_kind: SourceKind::ProjectCanonical,
+                                                        },
+                                                    );
+                                                    last_poll = Instant::now() - poll;
+                                                }
+                                                Some((failed_cmd, e)) => {
+                                                    ctx.sink.record(AuditEvent {
+                                                        kind: AuditEventKind::RuntimeRefreshFailed,
+                                                        pane_id: pane_id.clone(),
+                                                        severity: Severity::Warning,
+                                                        summary: format!(
+                                                            "{pane_id} {failed_cmd} (send failed: {e})"
+                                                        ),
+                                                        provider: Some(provider),
+                                                        role: Some(report.identity.identity.role),
+                                                    });
+                                                    notices.insert(
+                                                        0,
+                                                        SystemNotice {
+                                                            title: "runtime refresh failed".into(),
+                                                            body: format!(
+                                                                "{pane_id} → `{failed_cmd}`: tmux error — {e}"
+                                                            ),
                                                             severity: Severity::Warning,
-                                                            summary: format!("{pane_id} {cmd} (send failed: {e})"),
-                                                            provider: Some(provider),
-                                                            role: Some(report.identity.identity.role),
-                                                        });
-                                                        notices.insert(
-                                                            0,
-                                                            SystemNotice {
-                                                                title: "runtime refresh failed".into(),
-                                                                body: format!("{pane_id} → `{cmd}`: tmux error — {e}"),
-                                                                severity: Severity::Warning,
-                                                                source_kind: SourceKind::ProjectCanonical,
-                                                            },
-                                                        );
-                                                    }
+                                                            source_kind: SourceKind::ProjectCanonical,
+                                                        },
+                                                    );
                                                 }
                                             }
                                         }
@@ -2033,16 +2058,6 @@ fn target_switched_notice(label: &str) -> SystemNotice {
     }
 }
 
-fn runtime_refresh_command(provider: qmonster::domain::identity::Provider) -> Option<&'static str> {
-    match provider {
-        qmonster::domain::identity::Provider::Claude
-        | qmonster::domain::identity::Provider::Codex
-        | qmonster::domain::identity::Provider::Gemini => Some("/status"),
-        qmonster::domain::identity::Provider::Qmonster
-        | qmonster::domain::identity::Provider::Unknown => None,
-    }
-}
-
 fn runtime_refresh_provider_label(provider: qmonster::domain::identity::Provider) -> &'static str {
     match provider {
         qmonster::domain::identity::Provider::Claude => "Claude",
@@ -2051,6 +2066,22 @@ fn runtime_refresh_provider_label(provider: qmonster::domain::identity::Provider
         qmonster::domain::identity::Provider::Qmonster => "Qmonster",
         qmonster::domain::identity::Provider::Unknown => "Unknown provider",
     }
+}
+
+fn runtime_refresh_commands(
+    provider: qmonster::domain::identity::Provider,
+) -> &'static [&'static str] {
+    match provider {
+        qmonster::domain::identity::Provider::Claude => &["/status", "/config", "/stats", "/usage"],
+        qmonster::domain::identity::Provider::Codex
+        | qmonster::domain::identity::Provider::Gemini => &["/status"],
+        qmonster::domain::identity::Provider::Qmonster
+        | qmonster::domain::identity::Provider::Unknown => &[],
+    }
+}
+
+fn runtime_refresh_command_label(commands: &[&str]) -> String {
+    commands.join(", ")
 }
 
 fn sync_pane_selection(state: &mut ListState, pane_count: usize) {
@@ -2402,6 +2433,27 @@ mod tests {
         assert!(rect_contains(rect, 5, 7));
         assert!(!rect_contains(rect, 6, 7));
         assert!(!rect_contains(rect, 5, 8));
+    }
+
+    #[test]
+    fn runtime_refresh_commands_for_claude_check_all_status_surfaces() {
+        assert_eq!(
+            runtime_refresh_commands(Provider::Claude),
+            ["/status", "/config", "/stats", "/usage"]
+        );
+        assert_eq!(
+            runtime_refresh_command_label(runtime_refresh_commands(Provider::Claude)),
+            "/status, /config, /stats, /usage"
+        );
+    }
+
+    #[test]
+    fn runtime_refresh_commands_for_codex_and_gemini_use_status_slash() {
+        // `PaneSource::send_keys` appends Enter after the literal slash
+        // command, so Codex/Gemini status UIs execute instead of just
+        // leaving the slash command typed in the prompt.
+        assert_eq!(runtime_refresh_commands(Provider::Codex), ["/status"]);
+        assert_eq!(runtime_refresh_commands(Provider::Gemini), ["/status"]);
     }
 
     #[test]

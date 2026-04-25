@@ -3,8 +3,8 @@
 Observe-first TUI for multi-CLI tmux development — watches Claude Code /
 Codex / Gemini panes (plus itself), surfaces alerts, token-pressure
 metrics, runtime facts, and recommendations. It does not touch observed
-panes automatically; the operator can press `u` to send a read-only
-provider status slash command to the selected pane.
+panes automatically; the operator can press `u` to send read-only
+provider status/config slash commands to the selected pane.
 
 - Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag: `v1.14.1`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
@@ -42,7 +42,7 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 | P0-1    | Provider usage-hint parsing + observability field expansion — `PricingTable` + `ClaudeSettings` operator-config readers, `ProviderParser` → `&ParserContext` struct, 7-metric Codex populate (context / tokens / model / cost / branch / path / reasoning effort), Claude `↓ Nk tokens` + `settings.json` model, 2-row TUI metric badge line, honesty regression tests locking tail-based absence | **Shipped** — Slice 1 (v1.11.0–v1.11.3) + Slice 2 (v1.12.0–v1.12.2) fully gate-approved                                                                 |
 | v1.13.x | Emergency false-positive suppression — `PERMISSION_PROMPT_MARKERS` / `WAITING_PROMPT_MARKERS` phrase-only contracts, `is_log_like` structural patterns, drop loose `verbose_answer` / `parse_context_pressure` / `ERROR_MARKERS` / `detect_task_type` substring fallbacks, real-tail regression suite                                                                                             | **Shipped** — v1.13.0 (4 markers) + v1.13.1 (error_hint + context_pressure); single-version pattern, confirm-archive deferred to Slice 4                |
 | Slice 4 | Halted/idle state detection — `IdleCause` hybrid classifier (marker → limit → cursor → stillness fallback), per-adapter `classify_idle` for Claude/Codex/Gemini/Qmonster, `PaneTailHistory` + `IdleTransitionTracker` per-pane caches, `eval_idle_transition` rule with transition-only firing, new `state` row on pane cards, `[idle] stillness_polls` config knob                               | **Shipped** — v1.14.0 (16-commit chain) + v1.14.1 cursor-fix (Codex bottom-status-line skip); latest tag `v1.14.1`; Codex+Gemini confirm-review pending |
-| Runtime facts | Provider runtime fact display — manual `u` key sends `/status` to the selected provider pane, adapter parsers surface permission/yolo/auto mode, sandbox, allowed dirs, loaded tools/skills/plugins, restricted tools, and Gemini status-table context/model/path fields when exposed by provider status/config sources | **In tree** — display-only facts with `SourceKind`; unknown fields stay blank rather than inferred |
+| Runtime facts | Provider runtime fact display — manual `u` key sends Claude `/status` + `/config` + `/stats` + `/usage`, and Codex/Gemini `/status` with Enter, then adapter parsers surface permission/yolo/auto mode, sandbox, allowed dirs, loaded tools/skills/plugins, restricted tools, and Gemini status-table context/model/path fields when exposed by provider status/config sources | **In tree** — display-only facts with `SourceKind`; unknown fields stay blank rather than inferred |
 
 Recent post-Phase-4 TUI follow-ups are already shipped in-tree:
 scrollable alerts/panes/help/target picker, mouse interaction, severity
@@ -75,7 +75,7 @@ cargo run --release
 #   ?        — open help / legend overlay
 #   r        — re-capture CLI versions; drift appears as a warning alert
 #   s        — write a runtime snapshot to ~/.qmonster/snapshots/
-#   u        — request provider runtime status for the selected pane
+#   u        — request provider runtime status/config for the selected pane
 #   c        — clear system notices
 #   p        — accept pending prompt-send proposal on the selected pane (P5-3
 #               safer-actuation; audit: PromptSendAccepted → Completed/Failed,

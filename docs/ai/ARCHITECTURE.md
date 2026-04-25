@@ -151,8 +151,9 @@ transitions, always paired with a numeric % or severity letter.
 UI consumes already-classified signals; it never re-parses tails.
 Provider runtime facts are produced by adapter-local parsers from
 provider status/slash output and readable provider config sources. The
-TUI key `u` sends the selected provider's read-only runtime status slash
-command (`/status` today) and the next poll parses the resulting official
+TUI key `u` sends the selected provider's read-only runtime slash
+commands (Claude: `/status`, `/config`, `/stats`, `/usage`; Codex/Gemini:
+`/status` plus Enter) and the next poll parses the resulting official
 output. Unknown or unexposed fields stay absent rather than inferred.
 
 ### `notify/`

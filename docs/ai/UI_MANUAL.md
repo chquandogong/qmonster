@@ -70,8 +70,10 @@ session:window · Provider role · %pane_id
   usage/rate limit이므로 `CTX`로 표시하지 않습니다.
 - `modes` / `access` / `loaded` / `restrict` 줄은 provider runtime fact를
   표시합니다. Qmonster는 선택된 pane에서 `u`를 누르면 provider의
-  read-only status slash command(현재 `/status`)를 보내고, 다음 poll에서
-  그 공식 출력과 읽을 수 있는 로컬 provider 설정을 `RuntimeFact`로 파싱합니다.
+  read-only runtime slash command를 보냅니다. Claude에는 `/status`,
+  `/config`, `/stats`, `/usage`를 순서대로 보내고, Codex/Gemini에는
+  `/status`와 실행 Enter를 보냅니다. 다음 poll에서 그 공식 출력과 읽을 수
+  있는 로컬 provider 설정을 `RuntimeFact`로 파싱합니다.
   예: `PERM`, `MODE`, `SANDBOX`, `DIR`, `AGENTS`, `TOOL`, `SKILL`,
   `PLUGIN`.
 - 이 줄들은 “보였다”가 아니라 “provider status/config source에서 확인된”
@@ -134,8 +136,8 @@ side_effects (N):
 - `?`: help/legend overlay
 - `r`: version drift 재확인
 - `s`: snapshot 저장
-- `u`: 선택된 pane에 provider runtime status slash command를 보내 상태 갱신
-  요청. `observe_only`에서는 pane 입력을 바꾸지 않기 위해 차단하고
+- `u`: 선택된 pane에 provider runtime status/config slash command를 보내 상태
+  갱신 요청. `observe_only`에서는 pane 입력을 바꾸지 않기 위해 차단하고
   `RuntimeRefreshBlocked`를 기록합니다. 성공/실패는
   `RuntimeRefreshRequested`, `RuntimeRefreshCompleted`,
   `RuntimeRefreshFailed`로 audit log에 남습니다.
