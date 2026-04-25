@@ -2,8 +2,6 @@ use crate::domain::origin::SourceKind;
 use crate::domain::signal::{MetricValue, SignalSet, TaskType};
 
 const LOG_STORM_LINE_THRESHOLD: usize = 8;
-const BIG_OUTPUT_CHARS: usize = 2200;
-const LOG_STORM_LARGE_LINES: usize = 16;
 
 /// Waiting-for-input detection: phrase-level only. Bare "press enter"
 /// matches docstrings ("press enter to continue with default..."),
@@ -80,9 +78,14 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
     let verbose_answer =
         VERBOSE_MARKERS.iter().any(|m| lower.contains(m)) || (lines.len() >= 10 && long_lines >= 4);
 
+    // v1.13.0: drop the chars/lines fallback. Long-but-not-loggy outputs
+    // (Claude /status, Codex welcome box, normal long-form replies) were
+    // generating tens of thousands of daily Warning log_storm false
+    // positives. Real log storms always show >=8 log-like lines; the
+    // fallback was a premature 'lots of output' proxy that did not
+    // survive contact with real CLIs.
     let log_like = lines.iter().filter(|line| is_log_like(line)).count();
-    let log_storm = log_like >= LOG_STORM_LINE_THRESHOLD
-        || (output_chars >= BIG_OUTPUT_CHARS && lines.len() >= LOG_STORM_LARGE_LINES);
+    let log_storm = log_like >= LOG_STORM_LINE_THRESHOLD;
 
     SignalSet {
         waiting_for_input: WAITING_PROMPT_MARKERS.iter().any(|m| lower.contains(m)),
@@ -105,15 +108,58 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
 }
 
 pub fn is_log_like(line: &str) -> bool {
+    // v1.13.0: tighten from substring-or-loose-punctuation to structural
+    // patterns. The previous contract treated any line containing `:` +
+    // `-`, or `[` + `]`, or any of {info, debug, warn, warning, error,
+    // trace, fatal, stderr, stdout} as a substring as log-like. That
+    // matched ordinary prose, markdown tables (`│ … │`), URLs, code
+    // references (`foo.rs:42`), and assistant chat output containing
+    // the word 'error' in any context — generating tens of thousands
+    // of daily Warning log_storm false positives.
+    //
+    // True log-line shape requires either:
+    //   (a) a bracketed log level   — `[info]`, `[error]`, etc.
+    //   (b) a level word at line start — `INFO …`, `ERROR …`
+    //   (c) an ISO-8601 timestamp prefix — `2026-04-25T12:34:56` or
+    //       `2026-04-25 12:34:56`.
     let lower = line.to_lowercase();
-    const LEVELS: &[&str] = &[
-        "info", "debug", "warn", "warning", "error", "trace", "fatal", "stderr", "stdout",
+    const BRACKET_LEVELS: &[&str] = &[
+        "[info]",
+        "[debug]",
+        "[warn]",
+        "[warning]",
+        "[error]",
+        "[trace]",
+        "[fatal]",
     ];
-    let has_level = LEVELS.iter().any(|m| lower.contains(m));
-    let has_timestamp = line.contains("202")
-        || (line.contains(':') && line.contains('-'))
-        || (line.contains('[') && line.contains(']'));
-    has_level || has_timestamp
+    if BRACKET_LEVELS.iter().any(|m| lower.contains(m)) {
+        return true;
+    }
+
+    let trimmed = lower.trim_start();
+    if trimmed.starts_with("info ")
+        || trimmed.starts_with("debug ")
+        || trimmed.starts_with("warn ")
+        || trimmed.starts_with("warning ")
+        || trimmed.starts_with("error ")
+        || trimmed.starts_with("trace ")
+        || trimmed.starts_with("fatal ")
+    {
+        return true;
+    }
+
+    // ISO-8601 timestamp prefix: `YYYY-MM-DDTHH:MM` or `YYYY-MM-DD HH:MM`.
+    let bytes = line.as_bytes();
+    bytes.len() >= 16
+        && bytes[0..4].iter().all(|b| b.is_ascii_digit())
+        && bytes[4] == b'-'
+        && bytes[5..7].iter().all(|b| b.is_ascii_digit())
+        && bytes[7] == b'-'
+        && bytes[8..10].iter().all(|b| b.is_ascii_digit())
+        && (bytes[10] == b'T' || bytes[10] == b' ')
+        && bytes[11..13].iter().all(|b| b.is_ascii_digit())
+        && bytes[13] == b':'
+        && bytes[14..16].iter().all(|b| b.is_ascii_digit())
 }
 
 fn parse_context_pressure(lower: &str) -> Option<MetricValue<f32>> {
