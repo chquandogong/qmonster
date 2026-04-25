@@ -104,7 +104,7 @@ where
         let history_for_pane = ctx
             .tail_history
             .entry(pane.pane_id.clone())
-            .or_insert_with(crate::adapters::common::PaneTailHistory::empty);
+            .or_insert_with(|| crate::adapters::common::PaneTailHistory::new(ctx.config.idle.stillness_polls));
         history_for_pane.push(pane.tail.clone());
 
         let parse_ctx = crate::adapters::ParserContext {

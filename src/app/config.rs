@@ -20,6 +20,8 @@ pub struct QmonsterConfig {
     pub token: TokenConfig,
     #[serde(default)]
     pub storage: StorageConfig,
+    #[serde(default)]
+    pub idle: IdleConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,6 +156,23 @@ pub struct StorageConfig {
     pub root: Option<String>,
 }
 
+/// Tuning knobs for the idle-stillness detector. Operators can set these
+/// in `~/.qmonster/config.toml` or `config/qmonster.toml`; out-of-range
+/// values are clamped inside `PaneTailHistory::new`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct IdleConfig {
+    /// Number of consecutive identical tail snapshots required before a pane
+    /// is declared still. Clamped to [2, 12] by `PaneTailHistory::new`.
+    pub stillness_polls: usize,
+}
+
+impl Default for IdleConfig {
+    fn default() -> Self {
+        Self { stillness_polls: 4 }
+    }
+}
+
 impl QmonsterConfig {
     pub fn defaults() -> Self {
         Self {
@@ -163,6 +182,7 @@ impl QmonsterConfig {
             logging: LoggingConfig::default(),
             token: TokenConfig::default(),
             storage: StorageConfig::default(),
+            idle: IdleConfig::default(),
         }
     }
 }
@@ -351,5 +371,21 @@ mod tests {
         let mut c = base();
         let res = apply_safety_override(&mut c, "unknown.key", "x");
         assert!(matches!(res, SafetyOverride::UnknownKey));
+    }
+
+    #[test]
+    fn idle_config_default_stillness_polls_is_4() {
+        let cfg = QmonsterConfig::defaults();
+        assert_eq!(cfg.idle.stillness_polls, 4);
+    }
+
+    #[test]
+    fn idle_config_loads_explicit_value_from_toml() {
+        let toml = r#"
+[idle]
+stillness_polls = 6
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.idle.stillness_polls, 6);
     }
 }
