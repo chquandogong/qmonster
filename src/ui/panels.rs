@@ -611,68 +611,75 @@ fn metric_badge_line(signals: &SignalSet) -> Vec<Line<'static>> {
     rows
 }
 
+/// DRY helper for the metric/context-row badge placement.
+///
+/// First call: `has_any` is `false`, no leading separator added.
+/// Subsequent calls: pushes a single-space separator before the badge.
+/// Always sets `*has_any = true` so the next caller knows a badge is
+/// already present.
+fn push_badge(spans: &mut Vec<Span<'static>>, has_any: &mut bool, content: String, style: Style) {
+    if *has_any {
+        spans.push(Span::raw(" "));
+    }
+    *has_any = true;
+    spans.push(Span::styled(content, style));
+}
+
 fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
     let mut spans = vec![Span::raw(format!("{:<8}: ", "metrics"))];
     let mut has_any = false;
 
     if let Some(metric) = signals.context_pressure.as_ref() {
-        has_any = true;
-        spans.push(Span::styled(
+        push_badge(
+            &mut spans,
+            &mut has_any,
             format!(" CTX {:.0}% ", metric.value * 100.0),
             theme::severity_badge_style(context_metric_severity(metric.value)),
-        ));
+        );
     }
     if let Some(metric) = signals.quota_pressure.as_ref() {
-        if has_any {
-            spans.push(Span::raw(" "));
-        }
-        has_any = true;
-        spans.push(Span::styled(
+        push_badge(
+            &mut spans,
+            &mut has_any,
             format!(" QUOTA {:.0}% ", metric.value * 100.0),
             theme::severity_badge_style(context_metric_severity(metric.value)),
-        ));
+        );
     }
     if let Some(metric) = signals.token_count.as_ref() {
-        if has_any {
-            spans.push(Span::raw(" "));
-        }
-        has_any = true;
-        spans.push(Span::styled(
+        push_badge(
+            &mut spans,
+            &mut has_any,
             format!(
                 " TOKENS {} [{}] ",
                 format_count_with_suffix(metric.value),
                 source_kind_label(metric.source_kind)
             ),
             theme::label_style(),
-        ));
+        );
     }
     if let Some(metric) = signals.cost_usd.as_ref() {
-        if has_any {
-            spans.push(Span::raw(" "));
-        }
-        has_any = true;
-        spans.push(Span::styled(
+        push_badge(
+            &mut spans,
+            &mut has_any,
             format!(
                 " COST ${:.2} [{}] ",
                 metric.value,
                 source_kind_label(metric.source_kind)
             ),
             theme::label_style(),
-        ));
+        );
     }
     if let Some(metric) = signals.model_name.as_ref() {
-        if has_any {
-            spans.push(Span::raw(" "));
-        }
-        has_any = true;
-        spans.push(Span::styled(
+        push_badge(
+            &mut spans,
+            &mut has_any,
             format!(
                 " MODEL {} [{}] ",
                 metric.value,
                 source_kind_label(metric.source_kind)
             ),
             theme::label_style(),
-        ));
+        );
     }
 
     has_any.then(|| Line::from(spans))
@@ -683,43 +690,40 @@ fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
     let mut has_any = false;
 
     if let Some(metric) = signals.git_branch.as_ref() {
-        has_any = true;
-        spans.push(Span::styled(
+        push_badge(
+            &mut spans,
+            &mut has_any,
             format!(
                 " BRANCH {} [{}] ",
                 metric.value,
                 source_kind_label(metric.source_kind)
             ),
             theme::label_style(),
-        ));
+        );
     }
     if let Some(metric) = signals.worktree_path.as_ref() {
-        if has_any {
-            spans.push(Span::raw(" "));
-        }
-        has_any = true;
-        spans.push(Span::styled(
+        push_badge(
+            &mut spans,
+            &mut has_any,
             format!(
                 " PATH {} [{}] ",
                 metric.value,
                 source_kind_label(metric.source_kind)
             ),
             theme::label_style(),
-        ));
+        );
     }
     if let Some(metric) = signals.reasoning_effort.as_ref() {
-        if has_any {
-            spans.push(Span::raw(" "));
-        }
-        has_any = true;
-        spans.push(Span::styled(
+        push_badge(
+            &mut spans,
+            &mut has_any,
             format!(
                 " EFFORT {} [{}] ",
                 metric.value,
                 source_kind_label(metric.source_kind)
             ),
             theme::label_style(),
-        ));
+        );
     }
 
     has_any.then(|| Line::from(spans))
