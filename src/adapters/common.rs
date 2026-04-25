@@ -40,14 +40,46 @@ const PERMISSION_PROMPT_MARKERS: &[&str] = &[
     "press enter to approve",
 ];
 
-const ERROR_MARKERS: &[&str] = &[
-    "traceback",
-    "panic",
-    "exception",
-    "fatal",
-    "error:",
-    "failed",
-];
+/// Error-detection markers — v1.13.1: structural shape only.
+///
+/// The previous substring contract (`["traceback","panic","exception",
+/// "fatal","error:","failed"]`) matched ordinary prose containing any
+/// of those words anywhere on any line, plus shell hook output lines
+/// like `Stop hook error: Failed with non-blocking status code` that
+/// repeat every poll on Claude Code's tail. v1.13.0 audit measurement
+/// (2026-04-25) showed ~38K daily Warning false positives just from
+/// `error_hint`. These patterns require:
+///
+///   (a) traceback header at line start (`traceback (most recent`)
+///   (b) Rust panic anywhere (`panicked at`) — line-start unreliable
+///       because panic lines often nest inside box borders
+///   (c) explicit `error: ` / `fatal: ` / `panic: ` line-start prefixes
+///       (CLI tool convention)
+///   (d) Rust-compiler `error[E…]` line start
+///   (e) JVM-style `Exception in thread`
+///
+/// The bare `failed` substring is dropped — too generic; appears in
+/// docstrings, commit messages, code review prose, and shell hook
+/// output. CLI tools that print fatal failure use `fatal: ` or `error:`
+/// prefixes, which the new contract still catches.
+fn detect_error_hint(tail: &str) -> bool {
+    for line in tail.lines() {
+        let trimmed = line.trim_start();
+        let lower = trimmed.to_lowercase();
+        if lower.starts_with("traceback (most recent")
+            || lower.starts_with("exception in thread")
+            || lower.contains("panicked at ")
+            || lower.starts_with("panic: ")
+            || lower.starts_with("error[")
+            || lower.starts_with("error: ")
+            || lower.starts_with("fatal: ")
+            || lower.starts_with("fatal error:")
+        {
+            return true;
+        }
+    }
+    false
+}
 
 const VERBOSE_MARKERS: &[&str] = &[
     "i'd be happy to help",
@@ -97,7 +129,7 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         log_storm,
         repeated_output: false,
         verbose_answer,
-        error_hint: ERROR_MARKERS.iter().any(|m| lower.contains(m)),
+        error_hint: detect_error_hint(tail),
         subagent_hint: SUBAGENT_MARKERS.iter().any(|m| lower.contains(m)),
         output_chars,
         task_type: detect_task_type(&lower),
