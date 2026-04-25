@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.10 Gemini quota LimitHit honesty review fix."
+  mission_title: "Qmonster v0.4.0 — v1.15.11 quota_pressure gradient advisories."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 66
-  latest_version: "1.15.10"
+  total_revisions: 67
+  latest_version: "1.15.11"
 
 timeline:
   - change_id: "initial"
@@ -6974,8 +6974,87 @@ timeline:
       - "Annotated tag v1.15.10 at this commit."
       - "Keep using v1.15.x patch pattern for runtime-refresh / UI UX issues."
 
+  - change_id: "v1.15.11-quota-pressure-gradient-advisories"
+    semantic_version: "1.15.11"
+    change_sequence: 67
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "operator-visibility"
+    persistence: "permanent"
+    intent: >
+      Bridge the gap between v1.15.8's quota_pressure metric (silent
+      gradient surface) and v1.15.10's binary 100% LimitHit detection.
+      Operators need to see quota pressure approach the limit before
+      they hit it; currently nothing fires between the visible CTX/QUOTA
+      badges (display-only) and the IdleCause::LimitHit alert at 100%.
+    decision: >
+      Add `quota_pressure_warning` (0.75..0.85, Warning) and
+      `quota_pressure_critical` (>=0.85, Risk, is_strong) advisory
+      rules in `policy/rules/advisories.rs::eval_advisories`,
+      mirroring the existing `context_pressure_*` rule pair. Both
+      respect the `allow_provider_specific` IdentityConfidence gate
+      (KD-007) and surface ProviderOfficial source (the metric
+      itself is ProviderOfficial when it exists, since v1.15.8
+      requires the column-parity-validated status table).
+      Suggested_command stays None for both — rate-limited quotas
+      reset on the provider's own schedule, not by a slash command,
+      so operator must change behaviour (wait, pace prompts, or
+      switch account/model). next_step carries the operator-facing
+      wording; the critical variant is is_strong so the CHECKPOINT
+      slot surfaces it. No aggressive variants because quota_tight
+      mode is already an opt-in operator state where the operator
+      knows the situation; piling on at quota-tight + quota-pressure
+      adds noise without new information.
+    triggered_by: "Operator-visibility gap between v1.15.8 quota_pressure metric (silent) and v1.15.10 LimitHit (binary 100%). Continuing autonomous Slice 3 follow-up work per operator delegation."
+    issue_or_context: >
+      v1.15.8 plumbed Gemini's `quota` column into a
+      SignalSet.quota_pressure metric and a UI badge with severity
+      coloring. v1.15.10 fixed `gemini_limit_hit` to key on the
+      parsed quota column at 100%. Between display (passive) and
+      LimitHit (binary at 100%), there was no explicit advisory the
+      operator could see in the alert queue when quota crept toward
+      the limit.
+    changes:
+      added:
+        - "src/policy/rules/advisories.rs::quota_pressure_warning rule (0.75..0.85, Warning, ProviderOfficial)"
+        - "src/policy/rules/advisories.rs::quota_pressure_critical rule (>=0.85, Risk, ProviderOfficial, is_strong)"
+        - "src/policy/rules/advisories.rs::eval_advisories dispatches the new rule pair (else-if pattern parallel to context_pressure_*)"
+        - "5 new tests: warning at 0.78, critical at 0.88, below-threshold absence at 0.50, absent-metric absence (None), low-confidence suppression"
+      modified:
+        - "src/policy/rules/advisories.rs::quota helper test fixture (mirrors `pressure` helper) added to the test module"
+        - "mission.yaml (meta: version 1.15.10 → 1.15.11; title; lineage.total_revisions 66 → 67)"
+        - "mission-history.yaml (sequence 67; meta: latest_version 1.15.11, total_revisions 66 → 67)"
+      removed: []
+    changed_sections:
+      - "src/policy/rules/advisories.rs::eval_advisories quota_pressure dispatcher"
+      - "src/policy/rules/advisories.rs::quota_pressure_warning + quota_pressure_critical functions"
+    done_when_delta:
+      added:
+        - "Gemini panes with quota_pressure in [0.75, 0.85) raise a Warning advisory in the alert queue"
+        - "Gemini panes with quota_pressure >= 0.85 raise a Risk advisory in the CHECKPOINT slot (is_strong)"
+        - "Bare quota_pressure < 0.75 stays silent (no advisory noise)"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "+~70 LoC across rule pair + dispatcher hook + 5 tests"
+      tests: "456 total — 384 lib + 14 main + 34 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 451 at v1.15.10; +5 from the 5 quota_pressure advisory tests)"
+      ledger: "1 new timeline entry (sequence 67); meta bump"
+      review_gate: "operator-visibility gradient advisory; local fmt/test/clippy pass."
+      follow_up_carryover: "S3-1 (Codex token-in/out) and S3-3 memory column display still deferred; no new follow-ups created by this round."
+    breaking: false
+    risk: "low — additive advisory rule, identical fire-condition shape as existing context_pressure_*, gated on IdentityConfidence + quota_pressure presence (None on Claude/Codex panes today, so they cannot accidentally trigger)."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.11 at this commit."
+      - "If a future provider populates quota_pressure on Claude or Codex panes, the same advisory pair fires automatically — no per-provider gating change needed."
+
 evolution_summary:
-  current_phase: "v1.15.10 Codex review remediation after Claude v1.15.8/v1.15.9. Gemini LimitHit now keys on the parsed quota column at 100%, not any row-wide `100% used` cell; context 100% remains context_pressure only. UI_MANUAL PATH ellipsize wording clarified, and mission.yaml execution hints / lineage are synced to v1.15.10/66. Slice 3 remains effectively complete; S3-1 and S3-3 memory display are deferred."
+  current_phase: "v1.15.11 quota_pressure gradient advisories. quota_pressure_warning (0.75..0.85, Warning) and quota_pressure_critical (>=0.85, Risk, is_strong) bridge the gap between v1.15.8's silent QUOTA badge and v1.15.10's binary LimitHit at 100%. Both rules respect IdentityConfidence gating, carry ProviderOfficial source, and surface no `suggested_command` because rate-limited quotas reset on the provider schedule (not by a slash command). 456 tests green; clippy + fmt clean."
   next_phase: "Operator-deferred S3-1 (Codex bottom-status-line cumulative-vs-delta token semantics), low-value S3-3 memory column display, or any fresh v1.15.x runtime-refresh / UI UX patch found during operator use."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

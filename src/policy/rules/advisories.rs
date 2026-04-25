@@ -39,6 +39,12 @@ pub fn eval_advisories(
         }
     }
 
+    if let Some(rec) = quota_pressure_critical(id, signals, gates) {
+        out.push(rec);
+    } else if let Some(rec) = quota_pressure_warning(id, signals, gates) {
+        out.push(rec);
+    }
+
     if let Some(rec) = verbose_review(id, signals, gates) {
         out.push(rec);
         if gates.quota_tight {
@@ -211,6 +217,76 @@ fn aggressive_context_pressure_critical() -> Recommendation {
         next_step: None,
         profile: None,
     }
+}
+
+/// quota_pressure gradient advisory (post-v1.15.10). Built on the
+/// quota_pressure metric shipped in v1.15.8 and the v1.15.10 honesty
+/// fix that limits LimitHit to the validated quota column. Operators
+/// should be aware before quota hits 100% so they can pace work or
+/// switch model; rate-limited quotas reset on the provider's schedule
+/// and cannot be addressed by `/compact` (unlike context_pressure).
+fn quota_pressure_warning(
+    _id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    let v = signals.quota_pressure.as_ref()?.value;
+    if !(0.75..0.85).contains(&v) {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    Some(Recommendation {
+        action: "quota-pressure: pace",
+        reason:
+            "provider quota approaching limit — pace work and prepare to checkpoint before LimitHit"
+                .into(),
+        severity: Severity::Warning,
+        source_kind: SourceKind::ProviderOfficial,
+        // No single runnable command: rate-limited quotas reset on the
+        // provider's schedule, not by a slash command. Operator picks
+        // between waiting, switching account/model, or pausing the pane.
+        suggested_command: None,
+        side_effects: vec![],
+        is_strong: false,
+        next_step: Some(
+            "press 's' to snapshot now, then pace prompts or switch to a less rate-limited model"
+                .into(),
+        ),
+        profile: None,
+    })
+}
+
+fn quota_pressure_critical(
+    _id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    let v = signals.quota_pressure.as_ref()?.value;
+    if v < 0.85 {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    Some(Recommendation {
+        action: "quota-pressure: act now",
+        reason: "provider quota near critical — checkpoint and stop new prompts before LimitHit"
+            .into(),
+        severity: Severity::Risk,
+        source_kind: SourceKind::ProviderOfficial,
+        // Same constraint as the warning variant: no single runnable
+        // command resolves a rate-limit; operator must change behaviour.
+        suggested_command: None,
+        side_effects: vec![],
+        is_strong: true,
+        next_step: Some(
+            "press 's' to snapshot + archive, then stop or switch account/model before quota hits 100%"
+                .into(),
+        ),
+        profile: None,
+    })
 }
 
 fn verbose_review(
@@ -415,6 +491,72 @@ mod tests {
             context_pressure: Some(MetricValue::new(v, SK::Estimated)),
             ..SignalSet::default()
         }
+    }
+
+    fn quota(v: f32) -> SignalSet {
+        SignalSet {
+            quota_pressure: Some(MetricValue::new(v, SK::ProviderOfficial)),
+            ..SignalSet::default()
+        }
+    }
+
+    #[test]
+    fn quota_pressure_warning_at_0_75() {
+        let id = id_high(Role::Main);
+        let s = quota(0.78);
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(recs.iter().any(|r| r.action == "quota-pressure: pace"));
+        assert!(!recs.iter().any(|r| r.action == "quota-pressure: act now"));
+        let warn = recs
+            .iter()
+            .find(|r| r.action == "quota-pressure: pace")
+            .unwrap();
+        assert_eq!(warn.severity, Severity::Warning);
+    }
+
+    #[test]
+    fn quota_pressure_critical_at_0_85() {
+        let id = id_high(Role::Main);
+        let s = quota(0.88);
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(recs.iter().any(|r| r.action == "quota-pressure: act now"));
+        assert!(!recs.iter().any(|r| r.action == "quota-pressure: pace"));
+        let crit = recs
+            .iter()
+            .find(|r| r.action == "quota-pressure: act now")
+            .unwrap();
+        assert_eq!(crit.severity, Severity::Risk);
+    }
+
+    #[test]
+    fn quota_pressure_below_threshold_does_not_fire() {
+        let id = id_high(Role::Main);
+        let s = quota(0.50);
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(!recs.iter().any(|r| r.action.starts_with("quota-pressure")));
+    }
+
+    #[test]
+    fn quota_pressure_absent_does_not_fire() {
+        let id = id_high(Role::Main);
+        let s = SignalSet::default();
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(!recs.iter().any(|r| r.action.starts_with("quota-pressure")));
+    }
+
+    #[test]
+    fn quota_pressure_suppressed_on_low_identity_confidence() {
+        let id = id_low(Role::Main);
+        let s = quota(0.92);
+        let gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::Low,
+        };
+        let recs = eval_advisories(&id, &s, &gates);
+        assert!(
+            !recs.iter().any(|r| r.action.starts_with("quota-pressure")),
+            "quota_pressure_* must respect the IdentityConfidence gate"
+        );
     }
 
     #[test]

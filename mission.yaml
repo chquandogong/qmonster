@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.10"
-  title: 'Qmonster v0.4.0 — v1.15.10 Codex review follow-up after Claude v1.15.8/v1.15.9. Fixes Gemini LimitHit honesty so only the status-table `quota` column at 100% yields `IdleCause::LimitHit`; a `context 100% used` cell now remains context_pressure only. Also tightens UI_MANUAL wording for PATH-only ellipsize and syncs stale mission.yaml execution hints / lineage from v1.15.7/63 to v1.15.10/66. Slice 3 remains effectively complete: S3-2 / S3-4 / S3-5 / S3-6 closed, S3-3 quota closed with memory display deferred, S3-1 remains operator-deferred. 451 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed.'
+  version: "1.15.11"
+  title: "Qmonster v0.4.0 — v1.15.11 quota_pressure gradient advisories. Adds `quota_pressure_warning` (0.75..0.85, Warning, ProviderOfficial) and `quota_pressure_critical` (>=0.85, Risk, ProviderOfficial, is_strong) rules to `eval_advisories`, mirroring the context_pressure pattern but with rate-limit-aware action wording — no `/compact` (rate-limited quotas reset on the provider schedule, not by a slash command); operator picks between waiting, pacing prompts, or switching account/model. Both rules respect the IdentityConfidence gate per KD-007. The v1.15.10 LimitHit fix carries forward unchanged: 100%-quota still triggers `IdleCause::LimitHit`; gradient warning/critical bridges the gap between 75% and 100%. 456 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1199,5 +1199,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 66
+    total_revisions: 67
     history: "mission-history.yaml"
