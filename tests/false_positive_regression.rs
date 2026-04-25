@@ -84,3 +84,87 @@ fn gemini_idle_v0_39_status_line_does_not_false_fire_anything() {
     assert!(!s.log_storm);
     assert!(!s.verbose_answer);
 }
+
+// ───────────────────────────────────────────────────────────────────────
+// v1.13.1 follow-up — close residual error_hint + context_pressure noise
+// ───────────────────────────────────────────────────────────────────────
+
+#[test]
+fn claude_status_does_not_false_fire_error_hint() {
+    let s = parse_common_signals(CLAUDE_STATUS);
+    assert!(
+        !s.error_hint,
+        "Claude conversation tail contains `Stop hook error: Failed with...` \
+         hook-output lines plus prose like `[\"traceback\", ..., \"failed\"]` — \
+         these are not stack traces and must not raise error_hint. v1.13.1 \
+         tightens ERROR_MARKERS from substring to line-start structural patterns."
+    );
+}
+
+#[test]
+fn codex_welcome_v0_122_does_not_false_fire_error_hint() {
+    let s = parse_common_signals(CODEX_WELCOME_V0_122);
+    assert!(
+        !s.error_hint,
+        "Codex welcome box has no errors — must not raise error_hint"
+    );
+}
+
+#[test]
+fn gemini_idle_v0_39_does_not_false_fire_error_hint() {
+    let s = parse_common_signals(GEMINI_IDLE_V0_39);
+    assert!(
+        !s.error_hint,
+        "Gemini idle status line has no errors — must not raise error_hint"
+    );
+}
+
+#[test]
+fn claude_status_does_not_false_fire_context_pressure() {
+    let s = parse_common_signals(CLAUDE_STATUS);
+    assert!(
+        s.context_pressure.is_none(),
+        "Claude conversation tail contains prose like `Context 100% left` (a \
+         quoted Codex status line in the operator's analysis) — common.rs \
+         substring matching of `context|window|usage|compact` + `%` is \
+         fundamentally unreliable on prose. v1.13.1 drops the generic \
+         parser; per-provider structured parsing belongs in S3-1/S3-3/S3-4."
+    );
+}
+
+#[test]
+fn codex_welcome_v0_122_does_not_false_fire_context_pressure_in_common() {
+    // The Codex welcome box has no `Context X% used · ... · 0 in · 0 out`
+    // status line, so Codex's structured parser correctly fails. Without
+    // v1.13.1, common.rs's loose `parse_context_pressure` would substring-
+    // match anything containing "context" + "%". Welcome box text doesn't
+    // happen to trigger that, but this test pins the contract: common.rs
+    // never populates context_pressure.
+    let s = parse_common_signals(CODEX_WELCOME_V0_122);
+    assert!(
+        s.context_pressure.is_none(),
+        "common.rs must not populate context_pressure; per-provider only"
+    );
+}
+
+#[test]
+fn codex_bottom_status_v0_122_does_not_false_fire_context_pressure_in_common() {
+    let s = parse_common_signals(CODEX_BOTTOM_STATUS_V0_122);
+    assert!(
+        s.context_pressure.is_none(),
+        "common.rs must not populate context_pressure even when tail \
+         contains `Context X% used` — that is Codex adapter's responsibility"
+    );
+}
+
+#[test]
+fn gemini_idle_v0_39_does_not_false_fire_context_pressure_in_common() {
+    let s = parse_common_signals(GEMINI_IDLE_V0_39);
+    assert!(
+        s.context_pressure.is_none(),
+        "Gemini status line columns include a `context` header word and \
+         `0% used` data; common.rs substring matching incorrectly bridged \
+         them. context_pressure for Gemini is S3-3 territory (full status-\
+         line parser); until then, leave None."
+    );
+}
