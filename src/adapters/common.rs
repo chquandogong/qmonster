@@ -74,9 +74,13 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
     let lines: Vec<&str> = tail.lines().collect();
     let output_chars = tail.chars().count();
 
-    let long_lines = lines.iter().filter(|l| l.chars().count() > 100).count();
-    let verbose_answer =
-        VERBOSE_MARKERS.iter().any(|m| lower.contains(m)) || (lines.len() >= 10 && long_lines >= 4);
+    // v1.13.0: drop the (lines >= 10 && long_lines >= 4) fallback. Every
+    // non-trivial code display tripped it — tens of thousands of daily
+    // Concern verbose-output false positives on Claude/Gemini and Codex
+    // panes. Verbose_answer now requires an explicit hedge phrase from
+    // VERBOSE_MARKERS; those are the actually-verbose patterns we want
+    // to nudge against.
+    let verbose_answer = VERBOSE_MARKERS.iter().any(|m| lower.contains(m));
 
     // v1.13.0: drop the chars/lines fallback. Long-but-not-loggy outputs
     // (Claude /status, Codex welcome box, normal long-form replies) were
