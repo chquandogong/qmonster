@@ -1,0 +1,38 @@
+
+ ▝▜▄     Gemini CLI v0.39.0-preview.0
+   ▝▜▄
+  ▗▟▀    Signed in with Google /auth
+ ▝▀      Plan: Gemini Code Assist in Google One AI Pro /upgrade
+
+
+
+                                                                                                                                              ? for shortcuts
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ YOLO Ctrl+Y
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ *   Type your message or @path/to/file
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
+ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec      47% used      0% used      118.8 MB     cdf3f5ed      <email-redacted>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

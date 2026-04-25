@@ -1,0 +1,59 @@
+│  Agents.md:            <none>                                        │
+│  Account:              <email-redacted> (Pro)                      │
+│  Collaboration mode:   Default                                       │
+│  Session:              <session-redacted>          │
+│                                                                      │
+│  Limits:               refresh requested; run /status again shortly. │
+╰──────────────────────────────────────────────────────────────────────╯
+
+/status
+
+╭─────────────────────────────────────────────────────────────────────────────────────────╮
+│  >_ OpenAI Codex (v0.122.0)                                                             │
+│                                                                                         │
+│ Visit https://chatgpt.com/codex/settings/usage for up-to-date                           │
+│ information on rate limits and credits                                                  │
+│                                                                                         │
+│  Model:                       gpt-5.4 (reasoning xhigh, summaries auto)                 │
+│  Directory:                   ~/projects/mission-spec                                   │
+│  Permissions:                 Full Access                                               │
+│  Agents.md:                   <none>                                                    │
+│  Account:                     <email-redacted> (Pro)                                  │
+│  Collaboration mode:          Default                                                   │
+│  Session:                     <session-redacted>                      │
+│                                                                                         │
+│  5h limit:                    [████████████████████] 100% left (resets 07:59)           │
+│  Weekly limit:                [███████████████████░] 96% left (resets 11:14 on 28 Apr)  │
+│  GPT-5.3-Codex-Spark limit:                                                             │
+│  5h limit:                    [████████████████████] 100% left (resets 08:03)           │
+│  Weekly limit:                [████████████████████] 100% left (resets 03:03 on 29 Apr) │
+╰─────────────────────────────────────────────────────────────────────────────────────────╯
+
+/status
+
+╭─────────────────────────────────────────────────────────────────────────────────────────╮
+│  >_ OpenAI Codex (v0.122.0)                                                             │
+│                                                                                         │
+│ Visit https://chatgpt.com/codex/settings/usage for up-to-date                           │
+│ information on rate limits and credits                                                  │
+│                                                                                         │
+│  Model:                       gpt-5.4 (reasoning xhigh, summaries auto)                 │
+│  Directory:                   ~/projects/mission-spec                                   │
+│  Permissions:                 Full Access                                               │
+│  Agents.md:                   <none>                                                    │
+│  Account:                     <email-redacted> (Pro)                                  │
+│  Collaboration mode:          Default                                                   │
+│  Session:                     <session-redacted>                      │
+│                                                                                         │
+│  5h limit:                    [████████████████████] 100% left (resets 07:59)           │
+│  Weekly limit:                [███████████████████░] 96% left (resets 11:14 on 28 Apr)  │
+│  GPT-5.3-Codex-Spark limit:                                                             │
+│  5h limit:                    [████████████████████] 100% left (resets 08:04)           │
+│  Weekly limit:                [████████████████████] 100% left (resets 03:04 on 29 Apr) │
+│  Warning:                     limits may be stale - run /status again shortly.          │
+╰─────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+› Write tests for @filename
+
+  Context 100% left · ~/projects/mission-spec · gpt-5.4 · mission-spec · main · Context 0% used · 5h 100% · weekly 100% · 0.122.0 · 0 in · 0 out · 019db102-2…

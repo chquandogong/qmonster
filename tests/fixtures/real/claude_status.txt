@@ -1,0 +1,94 @@
+
+  작업 9개 (TDD 순서):
+
+  ┌─────┬─────────────────────────────────────────┬───────────────────────────────────────────────┬─────────────────────────────────────────────┐
+  │  #  │                  작업                   │                    산출물                     │                    근거                     │
+  ├─────┼─────────────────────────────────────────┼───────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │   0 │ audit DB 베이스라인 저장                │ .docs/claude/v1.13.0-baseline.txt             │ 효과 정량 비교                              │
+  ├─────┼─────────────────────────────────────────┼───────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │   1 │ 실 tmux 4개 pane tail을                 │ .txt × 4                                      │ Claude v2.1.119, Codex v0.122               │
+  │     │ tests/fixtures/real/에 캡처             │                                               │ (welcome+status), Gemini v0.39              │
+  ├─────┼─────────────────────────────────────────┼───────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │   2 │ 5개 회귀 테스트 작성 (현재 RED)         │ tests/false_positive_regression.rs            │ "TDD: 실패하는 테스트 먼저"                 │
+  ├─────┼─────────────────────────────────────────┼───────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │   3 │ PERMISSION_MARKERS → 상호작용 phrase    │ src/adapters/common.rs:18-25                  │ 25K/일 RISK 오탐 차단                       │
+  │     │ 전용                                    │                                               │                                             │
+  ├─────┼─────────────────────────────────────────┼───────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │   4 │ WAITING_MARKERS → 명시적 prompt phrase  │ 위 파일:8-16                                  │ docstring 매치 차단                         │
+  │     │ 전용                                    │                                               │                                             │
+  ├─────┼─────────────────────────────────────────┼───────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │   5 │ log_storm chars/lines fallback 제거     │ 위 파일:65-67                                 │ 21K/일 Warning 오탐 차단                    │
+  ├─────┼─────────────────────────────────────────┼───────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │   6 │ verbose_answer line-count fallback 제거 │ 위 파일:62-63                                 │ 60K/일 Concern 오탐 차단                    │
+  ├─────┼─────────────────────────────────────────┼───────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │   7 │ 빌드·테스트·clippy + 15분 실측 + 버전   │ mission.yaml, mission-history.yaml,           │ 단일 버전 emergency release                 │
+  │     │ 1.13.0 + 태그                           │ CURRENT_STATE.md                              │                                             │
+  ├─────┼─────────────────────────────────────────┼───────────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │   8 │ Slice 3 백로그 6항목 문서화             │ .docs/claude/...-slice-3-backlog.md           │ S3-1..S3-6                                  │
+  └─────┴─────────────────────────────────────────┴───────────────────────────────────────────────┴─────────────────────────────────────────────┘
+
+  의도적으로 범위 밖 (= Slice 3로 분리):
+  - Codex 새 bottom-status-line 파서 (Context X% left · ... · Context Y% used)
+  - Codex 소문자 │ model: 환영 박스 변형
+  - Gemini 본격 status-line 파서 (현재 58줄 스텁)
+  - ~/.claude/settings.json에 model 필드 없을 때의 honesty
+  - IdentityResolver 제목 fallback 강화
+  - "wait" 정직 탐지 (텍스트 마커는 근본 한계)
+
+  리뷰 패턴: 본 emergency 릴리스는 confirm-archive(Codex+Gemini 양쪽 approve) 한 라운드를 건너뜁니다 — audit DB가 매일 1.5M 이벤트를 쌓고 있어 시간
+  다툼이 있고, 변경 범위가 한 파일 내 4 곳으로 좁기 때문. 이는 commit 메시지에 명시합니다. Slice 3는 정상 confirm-archive 패턴 복귀.
+
+  실행 권장: inline executing-plans (단일 세션, 9개 task 순차 + Task 7 체크포인트 1번).
+
+  이 계획대로 실행할까요? 수정/축소/확장 의견 있으시면 알려 주시고, 아니면 "go"라고 답해 주세요. (한 번 더 명시적 승인 받은 뒤 코드 수정 시작합니다 —
+   디버깅 스킬의 Phase 4 "테스트 먼저" 원칙 때문에)
+
+● Ran 3 stop hooks (ctrl+o to expand)
+  ⎿  Stop hook error: Failed with non-blocking status code: /bin/sh: 1: .claude/hooks/auto-commit.sh: not found
+
+✻ Brewed for 5m 36s
+
+❯ ok
+
+● go 받았습니다. executing-plans 스킬로 실행합니다.
+
+● Skill(superpowers:executing-plans)
+  ⎿  Successfully loaded skill
+
+● 계획 검토 완료. 한 가지 주의사항을 짚어드리고 진행합니다.
+
+  주의 — main 브랜치 직접 커밋: 프로젝트가 single-user/local-first로 운영돼 v1.10..v1.12 모든 릴리스가 main에 직접 커밋됐습니다(git log 확인). 본
+  v1.13.0도 그 관행을 따릅니다. 별도 feature 브랜치 / worktree를 원하시면 지금 알려 주세요. 진행하겠습니다.
+
+● Bash(python3 -c "
+      import sqlite3…)
+  ⎿  PreToolUse:Bash hook error                                              ⎿  Failed with non-blocking status code: /bin/sh: 1:
+                                                                                .claude/hooks/block-dangerous.sh: not found
+  ⎿  PreToolUse:Bash hook error                                              ⎿  Failed with non-blocking status code: /bin/sh: 1:
+                                                                                .claude/hooks/log-commands.sh: not found
+  ⎿  ('AlertFired', 'Warning', 'Claude', 'archive-preview-suggested: log storm pattern: consider keepi', 55213)
+     ('RecommendationEmitted', 'Concern', 'Claude', 'verbose-output: long/boilerplate output detected; terse prof', 55213)
+     ('RecommendationEmitted', 'Concern', 'Gemini', 'verbose-output: long/boilerplate output detected; terse prof', 55213)
+     … +12 lines (ctrl+o to expand)
+
+● Baseline 저장 완료 — 더 충격적입니다: 24시간 동안 Claude pane에서 RISK permission 55,205건, Warning input_wait 33,295건, RISK context-pressure
+  33,292건. Task 0 완료.
+
+● Bash(mkdir -p /home/chquan/Qmonster/tests/fixtures/real && tmux capture-pane -t qmonster:0.0 -pS -60 >
+      /home/chquan/Qmonster/tests/fixtures/real/claude_status.txt &&…)
+  ⎿  Running…
+
+✶ Task 1 — Capture real-world fixtures… (1m 38s · ↓ 4.3k tokens · thought for 13s)
+  ⎿  ✔ Task 0 — Save audit DB baseline
+     ◼ Task 1 — Capture real-world fixtures
+     ◻ Task 2 — Failing regression tests
+     ◻ Task 3 — Tighten PERMISSION_MARKERS
+     ◻ Task 4 — Tighten WAITING_MARKERS
+      … +4 pending
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  chquan@chquan-17ZD90SP-GX56K:/home/chquan/Qmonster
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+
