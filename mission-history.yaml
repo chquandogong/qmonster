@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.13.1 follow-up emergency suppression closes residual ~82K daily false positives (ERROR_MARKERS structural patterns + drop generic context_pressure parsers). v1.13.0 closed its 4 targeted classes 99–100% but new dominant noise (error_hint + context_pressure substring matching) was unmasked; v1.13.1 closes those. Confirm-archive deferred to Slice 3."
+  mission_title: "Qmonster v0.4.0 — v1.14.0 Slice 4: halted/idle state detection (IdleCause hybrid). Returns to v1.10.x..v1.12.x release pattern; Codex+Gemini confirm-review is the next step."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 53
-  latest_version: "1.13.1"
+  total_revisions: 54
+  latest_version: "1.14.0"
 
 timeline:
   - change_id: "initial"
@@ -5989,9 +5989,97 @@ timeline:
       - "Slice 4 (halted/idle state detection — IdleCause hybrid: marker primary, stillness fallback) brainstorming was approved through sections 1-6 immediately before this v1.13.1 ship; design doc is the next deliverable."
       - "Annotated tag v1.13.1 at this commit."
 
+  - change_id: "v1.14.0-slice-4-idle-state"
+    semantic_version: "1.14.0"
+    change_sequence: 54
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "Claude Code (main pane) — design, plan, subagent-driven TDD execution"
+    change_type: "feature"
+    motivation_type: "operator-pain-point-resolution"
+    persistence: "permanent"
+    intent: >
+      Surface pane halt/wait state regardless of cause (work end /
+      input wait / permission ask / limit hit). Operator pain point
+      (2026-04-25): "화면이 멈춰서 대기하고 있는데 ... 이러한 현재 상태가 안 보입니다."
+      v1.13.x cleaned up false positives; this slice adds the missing
+      true-positive detection.
+    decision: >
+      4-step priority classifier per adapter: explicit markers
+      (PERMISSION_PROMPT/WAITING_PROMPT) → provider-specific limit
+      text → idle-cursor pattern at last non-empty line → tail-
+      stillness fallback over PaneTailHistory. Unified IdleCause
+      enum replaces ad-hoc booleans. New eval_idle_transition rule
+      fires alerts on transitions only. UI: state row on pane card
+      when idle_state.is_some().
+    triggered_by: "Operator clarification 2026-04-25 selecting halted/waiting state detection as Slice 4 priority"
+    issue_or_context: >
+      v1.13.0 + v1.13.1 closed false-positive marker noise but in
+      doing so removed almost all waiting_for_input / permission_prompt
+      fires (the new contract requires explicit interactive-prompt
+      phrasing real Claude/Codex/Gemini idle states do not emit).
+      Alert queue was honest but underpowered.
+    changes:
+      added:
+        - "src/domain/signal.rs::IdleCause enum (5 variants)"
+        - "src/domain/signal.rs::SignalSet.idle_state field"
+        - "src/adapters/common.rs::PaneTailHistory + STILLNESS_WINDOW"
+        - "src/adapters/common.rs::idle_state population from PROMPT markers"
+        - "src/adapters/{claude,codex,gemini,qmonster}.rs::classify_idle helpers"
+        - "src/policy/rules/idle.rs::eval_idle_transition (new file)"
+        - "src/app/event_loop.rs::tail_history + idle_transition + idle_entered_at caches"
+        - "src/app/config.rs::IdleConfig (stillness_polls)"
+        - "src/ui/panels.rs::format_state_row + render integration"
+        - "src/ui/theme.rs::5 idle-state styles"
+        - "tests/sim.rs::PollSim multi-poll test harness"
+        - "tests/idle_state_regression.rs (6 real-fixture tests)"
+        - "tests/fixtures/real/{claude,codex,gemini}_{idle_cursor,limit_hit,quota_full,idle}.txt (6 new fixtures)"
+      modified:
+        - "src/adapters/mod.rs::ParserContext.history field"
+        - "src/policy/engine.rs::Engine::evaluate(last_idle_state) param"
+        - "src/policy/rules/alerts.rs (notify-input-wait + notify-permission-wait removed)"
+        - "src/policy/rules/{advisories,auto_memory,profiles,concurrent}.rs (read idle_state instead of bools)"
+        - "src/adapters/common.rs::detect_task_type (substring → CLI-anchored only — closes v1.13.x residual ~91.5% gap)"
+        - "tests/event_loop_integration.rs (~6 new transition tests; ParserContext history threading; pane-state action migration)"
+        - "tests/false_positive_regression.rs (12 bool assertions converted + 6 task_type tests)"
+        - "mission.yaml (meta: version 1.13.1 → 1.14.0; title)"
+        - "mission-history.yaml (sequence 54; meta: latest_version 1.14.0, total_revisions 53 → 54)"
+      removed:
+        - "SignalSet.permission_prompt + waiting_for_input bools"
+        - "src/policy/rules/alerts.rs::notify-input-wait + notify-permission-wait rules"
+        - "src/adapters/common.rs::detect_task_type Review/Summary/CodeExploration/LogTriage branches"
+    changed_sections:
+      - "src/domain/signal.rs::IdleCause + SignalSet"
+      - "src/adapters/common.rs::PaneTailHistory + parse_common_signals.idle_state + detect_task_type"
+      - "src/adapters/{claude,codex,gemini,qmonster}.rs::classify_idle"
+      - "src/policy/rules/idle.rs::eval_idle_transition"
+      - "src/app/event_loop.rs::caches + lifecycle reset hooks"
+      - "src/ui/panels.rs::format_state_row"
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      code: "+~750 / -~90 LoC across 14 files; 6 new test fixtures (~600 LoC text); +1 task_type tightening commit"
+      tests: "396 total — 6 PaneTailHistory unit + ~24 per-adapter classify_idle + 7 idle::eval_idle_transition + 6 PollSim integration + 6 real-fixture regression + 6 task_type prose-rejection"
+      ledger: "1 new timeline entry; meta bump"
+      review_gate: "feature slice; returns to v1.10.x..v1.12.x release pattern with confirm-archive (Codex+Gemini cross-check) as the next step (NOT deferred this time)"
+      follow_up_carryover: "Slice 3 (S3-1..S3-6) and operator priorities (B/C/D/E/A) remain queued; this slice opened the door for them by establishing the per-adapter classify_idle pattern."
+    breaking: false
+    risk: "low — new field is opt-in (Option<IdleCause>); rules that read it are new; legacy bool consumers exhaustively migrated under rustc guidance; PaneTailHistory does not affect adapters that ignore it; Qmonster monitor pane explicitly silent; auto_memory advisory effectively disabled until task_type can be honestly detected (future Slice — local state files, not tail prose)."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Codex confirm-review on v1.14.0; Gemini confirm-review on v1.14.0; results in .mission/evals/."
+      - "v1.14.1 remediation if either reviewer raises must-fix; v1.14.2 confirm-archive seal."
+      - "After v1.14.x sealed: queue Slice 3 (S3-1..S3-6) per the existing backlog."
+      - "Annotated tag v1.14.0 at this commit."
+
 evolution_summary:
-  current_phase: "v1.13.1 follow-up emergency suppression shipped. Closes residual ~82K daily false positives that v1.13.0 left unaddressed (audit measurement showed -64% AlertFired vs -95% target — error_hint substring matching + parse_context_pressure substring matching unmasked when v1.13.0's 4 targeted classes went to ~0). v1.13.1: ERROR_MARKERS → detect_error_hint with line-start structural patterns (traceback (most recent / panicked at / error: / error[ / fatal: / panic: / exception in thread); parse_context_pressure (common.rs) and parse_context_percent_claude (claude.rs) removed entirely; production context_pressure now exclusively from per-provider structured parsers; integration-test sentinel `parse_context_pressure_test_marker` retains the synthetic 4-word phrase `context window usage X%` for end-to-end pipeline tests. 345 tests green (301 lib + 6 + 26 + 12 false_positive_regression); clippy + fmt clean. Slice 4 brainstorming sections 1-6 approved immediately before this ship — design doc is the next deliverable."
-  next_phase: "Slice 4 design doc — IdleCause hybrid: per-adapter marker classification (PermissionWait / InputWait / LimitHit / WorkComplete) with stillness fallback (Stale) over per-pane PaneTailHistory in app::event_loop. New `state` row on pane card; alert-queue transitions; STILLNESS_WINDOW=4 polls (~5s) configurable. Then Slice 3 (S3-1..S3-6 per-provider parser work) + the v1.13.x targets that surface from Slice 4 (e.g. Codex bottom-status sign reversal where `Context X% left` is parsed as X% used)."
+  current_phase: "v1.14.0 Slice 4 halted/idle state detection shipped. IdleCause hybrid classifier (marker → limit → cursor → stillness fallback) per adapter; new state row on pane cards; eval_idle_transition rule fires alerts on entry into non-None idle states. SignalSet.permission_prompt + waiting_for_input bools removed; auto_memory advisory effectively disabled (detect_task_type now CLI-anchored only). 396 tests green; clippy + fmt clean. Returns to v1.10.x..v1.12.x release pattern: Codex+Gemini confirm-review is the next step (NOT a single-version emergency like v1.13.0/v1.13.1)."
+  next_phase: "Codex confirm-review + Gemini confirm-review on v1.14.0 → v1.14.1 remediation if needed → v1.14.2 confirm-archive seal. Then Slice 3 (S3-1..S3-6 per-provider parser work) plus operator priorities B/C/D/E/A queued."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

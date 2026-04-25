@@ -1,6 +1,6 @@
 mission:
-  version: "1.13.1"
-  title: "Qmonster v0.4.0 — v1.13.1 follow-up emergency suppression: ERROR_MARKERS line-start structural patterns + drop generic context_pressure parsers (common.rs + Claude tail-prose) — closes residual ~82K daily false positives that v1.13.0 left behind (audit measurement showed -64% AlertFired vs -95% target). Production context_pressure now exclusively from per-provider structured parsers; sentinel test marker `context window usage X%` for end-to-end integration tests"
+  version: "1.14.0"
+  title: "Qmonster v0.4.0 — v1.14.0 Slice 4: halted/idle state detection (IdleCause hybrid: marker → limit → cursor → stillness fallback). New `state` row on pane cards; alert-queue transitions on entry into a non-None idle state. Per-adapter classify_idle for Claude/Codex/Gemini; Qmonster monitor pane silent. ~396 tests green; STILLNESS_WINDOW=4 (≈5s @ 1.25s polling) configurable via [idle] stillness_polls. Returns to v1.10.x..v1.12.x release pattern: confirm-archive (Codex+Gemini cross-check) is the next step."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
