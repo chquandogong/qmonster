@@ -1,6 +1,6 @@
 use crate::domain::identity::ResolvedIdentity;
 use crate::domain::recommendation::{Recommendation, RequestedEffect};
-use crate::domain::signal::SignalSet;
+use crate::domain::signal::{IdleCause, SignalSet};
 use crate::policy::gates::PolicyGates;
 use crate::policy::rules::eval_alerts;
 
@@ -19,6 +19,7 @@ impl Engine {
         id: &ResolvedIdentity,
         signals: &SignalSet,
         gates: &PolicyGates,
+        last_idle_state: Option<IdleCause>,
     ) -> EvalOutput {
         let mut recs = eval_alerts(id, signals);
         recs.extend(crate::policy::rules::advisories::eval_advisories(
@@ -29,6 +30,11 @@ impl Engine {
         ));
         recs.extend(crate::policy::rules::auto_memory::eval_auto_memory(
             id, signals, gates,
+        ));
+        recs.extend(crate::policy::rules::idle::eval_idle_transition(
+            id,
+            signals,
+            last_idle_state,
         ));
         let mut effects = Vec::new();
         // Notify fires only when at least one rec is urgent (Warning or Risk).
@@ -122,23 +128,26 @@ mod tests {
 
     #[test]
     fn engine_runs_alert_rules() {
+        // idle::eval_idle_transition fires a Warning rec on None→InputWait.
         let s = SignalSet {
-            waiting_for_input: true,
+            idle_state: Some(crate::domain::signal::IdleCause::InputWait),
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None);
         assert!(!out.recommendations.is_empty());
     }
 
     #[test]
     fn engine_produces_notify_effect_for_input_wait() {
+        // idle::eval_idle_transition fires Warning on None→InputWait;
+        // engine promotes Warning+ recs to the Notify effect.
         let s = SignalSet {
-            waiting_for_input: true,
+            idle_state: Some(crate::domain::signal::IdleCause::InputWait),
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None);
         assert!(
             out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::Notify)
@@ -162,7 +171,7 @@ mod tests {
             ..SignalSet::default()
         };
         let id = id(IdentityConfidence::High);
-        let out = Engine.evaluate(&id, &s, &gates());
+        let out = Engine.evaluate(&id, &s, &gates(), None);
 
         let strong_rec = out
             .recommendations
@@ -204,13 +213,13 @@ mod tests {
         // Any rec emitting `/…` as a copy-pasteable hint but NOT marked
         // is_strong stays in the UI hint channel only. Only the
         // strong/checkpoint-class recs graduate to proposals.
-        // `waiting_for_input` fires `notify-input-wait` at Warning
-        // severity with is_strong=false — no proposal should appear.
+        // idle::eval_idle_transition fires `pane-state` at Warning severity
+        // with is_strong=false — no proposal should appear.
         let s = SignalSet {
-            waiting_for_input: true,
+            idle_state: Some(crate::domain::signal::IdleCause::InputWait),
             ..SignalSet::default()
         };
-        let out = Engine.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        let out = Engine.evaluate(&id(IdentityConfidence::High), &s, &gates(), None);
         let any_proposal = out.effects.iter().any(|e| {
             matches!(
                 e,
@@ -228,7 +237,7 @@ mod tests {
         // Negative baseline: a healthy pane (Severity::Good profile
         // rec only) has no strong rec and therefore no proposal.
         let s = SignalSet::default();
-        let out = Engine.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        let out = Engine.evaluate(&id(IdentityConfidence::High), &s, &gates(), None);
         let any_proposal = out.effects.iter().any(|e| {
             matches!(
                 e,
@@ -248,7 +257,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None);
         assert!(
             out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::ArchiveLocal)
@@ -262,7 +271,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None);
         assert!(
             !out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::ArchiveLocal)
@@ -278,7 +287,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None);
         assert!(
             !out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::SensitiveNotImplemented)
@@ -287,12 +296,14 @@ mod tests {
 
     #[test]
     fn notify_effect_fires_only_for_warning_or_higher() {
+        // idle::eval_idle_transition fires Warning on None→InputWait, which
+        // triggers the Notify effect gate (Warning+ threshold).
         let s = SignalSet {
-            waiting_for_input: true, // produces a Warning-severity rec
+            idle_state: Some(crate::domain::signal::IdleCause::InputWait),
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None);
         assert!(
             out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::Notify),
@@ -308,7 +319,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates());
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None);
         assert!(
             !out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::Notify),

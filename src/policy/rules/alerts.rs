@@ -8,34 +8,6 @@ use crate::domain::signal::SignalSet;
 pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation> {
     let mut out = Vec::new();
 
-    if s.waiting_for_input {
-        out.push(Recommendation {
-            action: "notify-input-wait",
-            reason: "pane appears to be waiting for user input".into(),
-            severity: Severity::Warning,
-            source_kind: SourceKind::ProjectCanonical,
-            suggested_command: None, // interactive: operator responds inside the pane
-            side_effects: vec![],
-            is_strong: false,
-            next_step: None,
-            profile: None,
-        });
-    }
-
-    if s.permission_prompt {
-        out.push(Recommendation {
-            action: "notify-permission-wait",
-            reason: "pane appears to require an approval".into(),
-            severity: Severity::Risk,
-            source_kind: SourceKind::ProjectCanonical,
-            suggested_command: None, // interactive: operator responds inside the pane
-            side_effects: vec![],
-            is_strong: false,
-            next_step: None,
-            profile: None,
-        });
-    }
-
     if s.log_storm {
         out.push(Recommendation {
             action: "archive-preview-suggested",
@@ -135,26 +107,6 @@ mod tests {
             },
             confidence: IdentityConfidence::High,
         }
-    }
-
-    #[test]
-    fn input_wait_fires_high_severity() {
-        let s = SignalSet {
-            waiting_for_input: true,
-            ..SignalSet::default()
-        };
-        let recs = eval_alerts(&id(), &s);
-        assert!(recs.iter().any(|r| r.action == "notify-input-wait"));
-    }
-
-    #[test]
-    fn permission_prompt_fires_high_severity() {
-        let s = SignalSet {
-            permission_prompt: true,
-            ..SignalSet::default()
-        };
-        let recs = eval_alerts(&id(), &s);
-        assert!(recs.iter().any(|r| r.action == "notify-permission-wait"));
     }
 
     #[test]

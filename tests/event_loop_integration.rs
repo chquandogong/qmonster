@@ -144,19 +144,20 @@ fn run_once_emits_recommendations_and_audit_events() {
 
     let reports = run_once(&mut ctx, Instant::now()).expect("ok");
     assert_eq!(reports.len(), 2);
-    // The first pane had a WAIT_INPUT tail — at least one recommendation.
+    // The first pane had a WAIT_INPUT tail — idle::eval_idle_transition fires
+    // a "pane-state" rec (replaces the old notify-input-wait alert rule).
     assert!(
         reports[0]
             .recommendations
             .iter()
-            .any(|r| r.action == "notify-input-wait")
+            .any(|r| r.action == "pane-state")
     );
     // The notify backend should have seen a call for that alert.
     let calls = seen.lock().unwrap();
     assert!(
         calls
             .iter()
-            .any(|(_, body, _)| body.contains("notify-input-wait"))
+            .any(|(_, body, _)| body.contains("pane-state"))
     );
 }
 
@@ -664,8 +665,8 @@ fn concern_severity_recommendation_does_not_trigger_desktop_notification() {
 #[test]
 fn dispatch_notify_filters_concern_when_warning_coexists() {
     // Tail contains BOTH:
-    //   "Press ENTER to continue" → waiting_for_input → Warning → notify-input-wait
-    //   "I'd be happy to help"   → verbose_answer     → Concern → verbose-output
+    //   "Press ENTER to continue" → idle_state=InputWait → Warning → pane-state
+    //   "I'd be happy to help"   → verbose_answer        → Concern → verbose-output
     // The policy engine emits RequestedEffect::Notify (because Warning rec exists).
     // dispatch_notify must fire the notifier ONLY for the Warning-severity rec,
     // NOT for the Concern-severity rec (Codex Phase-3A finding #1).
@@ -681,12 +682,13 @@ fn dispatch_notify_filters_concern_when_warning_coexists() {
     let reports = run_once(&mut ctx, Instant::now()).expect("ok");
 
     // Sanity: both recommendations must be present in the report.
+    // idle::eval_idle_transition fires "pane-state" (replaces notify-input-wait).
     assert!(
         reports[0]
             .recommendations
             .iter()
-            .any(|r| r.action == "notify-input-wait"),
-        "notify-input-wait (Warning) rec must be present"
+            .any(|r| r.action == "pane-state"),
+        "pane-state (Warning) rec must be present"
     );
     assert!(
         reports[0]
@@ -760,8 +762,8 @@ fn concern_severity_rec_audit_logged_as_recommendation_emitted() {
 
 #[test]
 fn warning_severity_rec_audit_logged_as_alert_fired() {
-    // Pane tail triggers ONLY waiting_for_input (Warning-severity, "notify-input-wait" action).
-    // alert_event must log it as AlertFired (Codex Phase-3A finding #2).
+    // Pane tail triggers idle_state=InputWait (Warning-severity, "pane-state" action via
+    // idle::eval_idle_transition). alert_event must log it as AlertFired (Codex Phase-3A #2).
     let tail = "Press ENTER to continue";
     let source = FixturePaneSource {
         panes: vec![pane("%1", "claude:1:main", "claude", tail, false)],
@@ -777,22 +779,22 @@ fn warning_severity_rec_audit_logged_as_alert_fired() {
 
     let reports = run_once(&mut ctx, Instant::now()).expect("ok");
 
-    // Sanity: notify-input-wait rec must be present.
+    // Sanity: pane-state rec must be present (replaces notify-input-wait).
     assert!(
         reports[0]
             .recommendations
             .iter()
-            .any(|r| r.action == "notify-input-wait"),
-        "notify-input-wait (Warning) rec must be present"
+            .any(|r| r.action == "pane-state"),
+        "pane-state (Warning) rec must be present"
     );
 
     let events = capture.snapshot();
-    // The notify-input-wait rec must be logged as AlertFired.
+    // The pane-state rec must be logged as AlertFired.
     assert!(
         events.iter().any(
-            |e| e.kind == AuditEventKind::AlertFired && e.summary.contains("notify-input-wait")
+            |e| e.kind == AuditEventKind::AlertFired && e.summary.contains("pane-state")
         ),
-        "notify-input-wait (Warning) rec must be audit-logged as AlertFired"
+        "pane-state (Warning) rec must be audit-logged as AlertFired"
     );
 }
 

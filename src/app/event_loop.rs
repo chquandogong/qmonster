@@ -119,7 +119,11 @@ where
             &ctx.config.token,
             resolved.confidence,
         );
-        let out: EvalOutput = ctx.policy.evaluate(&resolved, &signals, &gates);
+        // Read last idle state BEFORE calling evaluate so the engine can
+        // detect transitions (None→Some, Some(X)→Some(Y)). Update AFTER.
+        let last_idle = ctx.idle_transition.get(&pane.pane_id).copied().flatten();
+        let out: EvalOutput = ctx.policy.evaluate(&resolved, &signals, &gates, last_idle);
+        ctx.idle_transition.insert(pane.pane_id.clone(), signals.idle_state);
 
         deliver_effects(permits, &out, &pane.pane_id, &pane.tail, now, ctx);
 
