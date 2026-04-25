@@ -25,6 +25,11 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     pub rate_limiter: RateLimiter,
     pub pricing: PricingTable,
     pub claude_settings: ClaudeSettings,
+    // Slice 4: per-pane tail history + idle-transition cache. Reset on PaneLifecycle::{Dead, Reappeared}.
+    pub tail_history:
+        std::collections::HashMap<String, crate::adapters::common::PaneTailHistory>,
+    pub idle_transition:
+        std::collections::HashMap<String, Option<crate::domain::signal::IdleCause>>,
     known_pane_ids: Vec<String>,
 }
 
@@ -42,6 +47,8 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             rate_limiter: RateLimiter::new(),
             pricing: PricingTable::empty(),
             claude_settings: ClaudeSettings::empty(),
+            tail_history: std::collections::HashMap::new(),
+            idle_transition: std::collections::HashMap::new(),
             known_pane_ids: Vec::new(),
         }
     }

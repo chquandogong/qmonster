@@ -74,6 +74,14 @@ where
         let lc = ctx.lifecycle.observe(&pane.pane_id, pane.dead);
         record_lifecycle(&*ctx.sink, &pane.pane_id, lc, resolved.identity.provider);
 
+        // Reset per-pane caches when the pane dies or re-attaches so stale
+        // tail history doesn't bleed into the new pane lifetime.
+        use crate::domain::lifecycle::PaneLifecycleEvent as L;
+        if matches!(lc, L::BecameDead | L::Reappeared) {
+            ctx.tail_history.remove(&pane.pane_id);
+            ctx.idle_transition.remove(&pane.pane_id);
+        }
+
         if pane.dead {
             reports.push(PaneReport {
                 pane_id: pane.pane_id,
@@ -91,13 +99,20 @@ where
             continue;
         }
 
-        let history = crate::adapters::common::PaneTailHistory::empty();
+        // Maintain a rolling tail history per pane so adapters can detect
+        // stillness across consecutive snapshots (Slice 4, Task 9).
+        let history_for_pane = ctx
+            .tail_history
+            .entry(pane.pane_id.clone())
+            .or_insert_with(crate::adapters::common::PaneTailHistory::empty);
+        history_for_pane.push(pane.tail.clone());
+
         let parse_ctx = crate::adapters::ParserContext {
             identity: &resolved,
             tail: &pane.tail,
             pricing: &ctx.pricing,
             claude_settings: &ctx.claude_settings,
-            history: &history,
+            history: history_for_pane,
         };
         let signals = crate::adapters::parse_for(&parse_ctx);
         let gates = crate::policy::gates::PolicyGates::from_config_and_identity(
