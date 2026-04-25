@@ -45,11 +45,33 @@ pub enum TaskType {
     Automation,
 }
 
+/// Slice 4: unified halt-state signal. Replaces ad-hoc booleans
+/// (`permission_prompt`, `waiting_for_input`) with a single labeled
+/// classification. None means the pane is producing output / not idle.
+/// See `.docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-4-*` for
+/// the full taxonomy and detection priority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum IdleCause {
+    /// Adapter detected an explicit interactive permission/approval ask.
+    PermissionWait,
+    /// Adapter detected an explicit waiting-for-user-input phrase.
+    InputWait,
+    /// Adapter detected provider-specific rate-limit-hit text.
+    LimitHit,
+    /// Adapter detected its provider's idle-cursor pattern at the
+    /// last visible non-empty line — assistant has finished.
+    WorkComplete,
+    /// Stillness fallback: tail unchanged across last K polls; cause
+    /// not classifiable from markers alone (Heuristic source).
+    Stale,
+}
+
 /// Boolean + metric signals extracted by an adapter from a pane tail.
 /// Phase 1 treats `context_pressure` / `token_count` / `cost_usd` as
 /// display-only; they never gate recommendations (Codex CS-2).
 #[derive(Debug, Clone, Default)]
 pub struct SignalSet {
+    pub idle_state: Option<IdleCause>,
     pub waiting_for_input: bool,
     pub permission_prompt: bool,
     pub log_storm: bool,

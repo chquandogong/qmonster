@@ -124,6 +124,7 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
     let log_storm = log_like >= LOG_STORM_LINE_THRESHOLD;
 
     SignalSet {
+        idle_state: None,
         waiting_for_input: WAITING_PROMPT_MARKERS.iter().any(|m| lower.contains(m)),
         permission_prompt: PERMISSION_PROMPT_MARKERS.iter().any(|m| lower.contains(m)),
         log_storm,
