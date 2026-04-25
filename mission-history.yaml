@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — v1.15.0 runtime observability: active-safe manual `u`-key refresh, Gemini status-table parsing with column-parity guard, SourceKind honesty (prose facts demoted to Heuristic), modes/access/loaded/restrict pane rows, false-IDLE lag fix. Builds on v1.14.0 + v1.14.1 idle-state baseline."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 56
-  latest_version: "1.15.0"
+  total_revisions: 57
+  latest_version: "1.15.1"
 
 timeline:
   - change_id: "initial"
@@ -6258,9 +6258,98 @@ timeline:
       - "Slice 3 (S3-1..S3-5) per .docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-3-backlog.md is the next major arc; S3-6 closed by Slice 4."
       - "Slice 3 housekeeping bundle (ctx() helper hoist, push_badge DRY, ellipsize helper, cost tolerance tightening, dead PricingError::NotFound / ClaudeSettingsError::NotFound variants) bundled into next S3-* round."
 
+  - change_id: "v1.15.1-runtime-refresh-terminal-submission"
+    semantic_version: "1.15.1"
+    change_sequence: 57
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — operator-usage finding + parallel implementation/doc edits"
+    change_type: "patch"
+    motivation_type: "operator-usage-finding"
+    persistence: "permanent"
+    intent: >
+      Patch the v1.15.0 active-safe runtime refresh to actually deliver
+      every Claude command the docs promised. v1.15.0 batched
+      `/status` + `/config` + `/stats` + `/usage` with Enter between
+      each, but Claude's fullscreen `/status` surface intercepts the
+      following keystrokes and discards the rest of the batch, so only
+      the first slash command actually ran. The patch (a) cycles the
+      Claude full set one command per `u` press while the pane is
+      explicitly idle/waiting/limited, (b) switches the tmux send path
+      to the terminal submit keystroke (`C-m`) instead of plain Enter
+      so the submission is a real terminal carriage-return, and (c)
+      keeps Claude active or only heuristically stale on a single
+      `/status` (which does not block the prompt). Codex `/status` and
+      Gemini `/stats session` + `/stats model` + `/stats tools` paths
+      keep the pre-patch behaviour because their surfaces do not block.
+    decision: >
+      Single-commit patch (`7a09c7e Fix runtime refresh terminal
+      submission`) at HEAD, materialised via the operator's parallel
+      edits to src/main.rs, src/tmux/polling.rs, and the canonical
+      docs. v1.15.0 baseline (active-safe split design, CFX-1+2
+      remediation, modes/access/loaded/restrict rows, false-IDLE lag
+      fix, Claude usage-limit precedence) carries forward unchanged.
+      Confirm re-review skipped — single-surface operator-driven fix
+      whose runtime contract change is documented in README /
+      ARCHITECTURE / UI_MANUAL / PROJECT_BRIEF and visible from a
+      single live-fixture smoke test.
+    triggered_by: "Operator usage on v1.15.0 active-safe split (2026-04-25): Claude /status fullscreen surface absorbs the following slash commands of a batched `u` send, leaving the cycle short."
+    issue_or_context: >
+      v1.15.0's `runtime_refresh_full_commands(Provider::Claude)`
+      returned `[/status, /config, /stats, /usage]` and dispatched
+      them in a single tmux `send-keys` loop separated by `Enter`.
+      In production the first command (`/status`) opens a Claude
+      fullscreen surface that consumes subsequent keystrokes for
+      navigation, so /config / /stats / /usage never executed. The
+      operator surfaced this almost immediately after v1.15.0 tag.
+    changes:
+      added:
+        - "src/main.rs::Claude one-command-per-`u` cycling state + dispatcher (cycles /status → /context → /config → /stats → /usage)"
+        - "src/main.rs::two new bin tests covering the cycling shape (per-provider, per-press)"
+        - "src/tmux/polling.rs::terminal submit (`C-m`) send path replacing plain Enter for the runtime-refresh keystroke"
+      modified:
+        - "src/main.rs (+~133 LoC; cycling state, per-press selector, audit summary updated to cite the cycled command)"
+        - "src/tmux/polling.rs (+~43 LoC; terminal submit keystroke + send-keys plumbing)"
+        - "README.md (latest tag line; Slice 4 row references; Runtime facts row text)"
+        - "docs/ai/ARCHITECTURE.md (UI section: `u`-key behaviour rewritten to describe `C-m` + cycling + Claude /btw NOT used as runtime fact source)"
+        - "docs/ai/PROJECT_BRIEF.md (Phase line: cycling + `C-m` + 428 tests)"
+        - "docs/ai/UI_MANUAL.md (`u`-key section rewrite to match cycling + active-safe split)"
+        - "docs/ai/VALIDATION.md (test count 426 → 428)"
+        - "mission.yaml (meta: version 1.15.0 → 1.15.1; title)"
+        - "mission-history.yaml (sequence 57; meta: latest_version 1.15.1, total_revisions 56 → 57)"
+      removed: []
+    changed_sections:
+      - "src/main.rs::runtime_refresh_full_commands → per-press cursor"
+      - "src/tmux/polling.rs::send-keys terminal-submit path"
+      - "docs/ai/UI_MANUAL.md::`u`-key documentation"
+      - "docs/ai/ARCHITECTURE.md::ui section runtime-refresh paragraph"
+    done_when_delta:
+      added:
+        - "Each `u` press on an explicitly idle/waiting/limited Claude pane sends exactly one command from the cycle; cycle index advances per press"
+        - "tmux send path uses terminal submit (`C-m`) so all providers see a real carriage-return on the slash command"
+      modified:
+        - "v1.15.0 done_when item that promised `/status` + `/config` + `/stats` + `/usage` in a single send is replaced by the cycled-per-press contract"
+      removed: []
+    impact_scope:
+      code: "+~176/-~52 LoC across src/main.rs + src/tmux/polling.rs; +2 main bin tests"
+      tests: "428 total — 359 lib + 12 main + 33 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 426 at v1.15.0; +2 from new bin tests)"
+      ledger: "1 new timeline entry (sequence 57); meta bump"
+      review_gate: "operator-driven; v1.15.0 review-1 evidence still applies to baseline architecture; confirm re-review skipped per operator decision."
+      follow_up_carryover: "Slice 3 (S3-1..S3-5 per the backlog) and operator priorities (B/C/D/E/A) remain queued. CURRENT_STATE.md `Next first action` already pointed at Slice 3 after v1.15.0 seal."
+    breaking: false
+    risk: "low — narrow runtime-refresh keystroke fix; cycle state lives entirely in the main-loop selection cursor with no persistence; reverting back to the v1.15.0 batched send would be a one-function rollback if operator usage finds problems with cycling."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits; range 21fc39f..7a09c7e
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.1 at the v1.15.1 release commit."
+      - "Slice 3 (S3-1..S3-5) per .docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-3-backlog.md remains the next major arc."
+      - "If operator usage finds further edge cases in the active-safe runtime refresh (e.g. Codex or Gemini equivalents of Claude's fullscreen blocking), queue v1.15.2 patch."
+
 evolution_summary:
-  current_phase: "v1.15.0 runtime observability follow-up. Active-safe manual `u`-key refresh; Claude active/Stale → /status only; explicit idle/waiting/limited → /status + /context + /config + /stats + /usage; Codex /status; Gemini /stats session + /stats model + /stats tools. SourceKind honesty (prose-derived → Heuristic; settings file + box-anchored + status-table-validated → ProviderOfficial). Gemini status-table column-parity guard. Pane card modes/access/loaded/restrict rows. Bare prompt-glyph cursor anchor + Claude usage-limit banner precedence. Review-1 approve-with-fixes; CFX-1+2 closed inline; CFX-3 already aligned. 426 tests green; clippy + fmt clean."
-  next_phase: "Slice 3 (S3-1..S3-5 from .docs/claude/...slice-3-backlog.md) + operator priorities B/C/D/E/A. Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round. v1.15.x patch line if operator usage on the active-safe split surfaces issues."
+  current_phase: "v1.15.1 runtime refresh terminal-submission patch. Fixes the v1.15.0 batched-Claude-send issue by cycling the Claude full set one command per `u` press and switching tmux send to terminal submit (`C-m`). v1.15.0 baseline architecture (active-safe split, CFX-1+2 SourceKind/column-parity remediation, modes/access/loaded/restrict rows, false-IDLE lag fix, Claude usage-limit precedence) carries forward unchanged. 428 tests green; clippy + fmt clean."
+  next_phase: "Slice 3 (S3-1..S3-5 from .docs/claude/...slice-3-backlog.md) + operator priorities B/C/D/E/A. Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round. v1.15.x patch line if operator usage on the active-safe split surfaces further issues."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
