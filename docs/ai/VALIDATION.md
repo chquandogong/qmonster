@@ -111,6 +111,10 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
       `quota_tight = true` in config.
 - [x] Every rule carries a `SourceKind`; for `Heuristic` rules, a
       pointer to the community source is recorded.
+- [x] Quota-pressure gradient advisories keep authority split honest:
+      the Gemini `quota_pressure` metric remains `ProviderOfficial`,
+      but the 75% / 85% advisory recommendations are `Estimated`
+      Qmonster thresholds.
 - [x] Recommendations may carry a `suggested_command: Option<String>`
       for copy-paste ergonomics. The value must be runnable on a single
       surface (shell command, in-pane slash-command, or `# config-edit …`

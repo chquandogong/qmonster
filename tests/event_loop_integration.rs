@@ -6,6 +6,7 @@ use qmonster::app::config::QmonsterConfig;
 use qmonster::app::event_loop::run_once;
 use qmonster::domain::audit::{AuditEvent, AuditEventKind};
 use qmonster::domain::identity::{IdentityConfidence, Provider, Role};
+use qmonster::domain::origin::SourceKind;
 use qmonster::domain::recommendation::Severity;
 use qmonster::notify::desktop::NotifyBackend;
 use qmonster::store::sink::{EventSink, InMemorySink};
@@ -457,8 +458,9 @@ fn quota_pressure_critical_rec_fires_end_to_end_on_gemini_pane() {
     // v1.15.11 integration: a Gemini pane whose validated status
     // table reports quota at 92% must surface
     // `quota-pressure: act now` (Risk severity, is_strong true,
-    // ProviderOfficial source, suggested_command = None) through
-    // run_once, even before the 100% LimitHit fires. This is the
+    // Estimated advisory source, suggested_command = None) through
+    // run_once, even before the 100% LimitHit fires. The metric remains
+    // ProviderOfficial; the 85% threshold is Qmonster policy. This is the
     // gap the v1.15.11 advisory rule pair was designed to bridge.
     let tail = "\
 branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
@@ -480,6 +482,7 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
         .as_ref()
         .expect("quota_pressure must be populated from the validated status table");
     assert!((quota.value - 0.92).abs() < 1e-6);
+    assert_eq!(quota.source_kind, SourceKind::ProviderOfficial);
 
     // Sanity: 92% must NOT trigger the binary 100% LimitHit. The
     // gradient advisory replaces that gap.
@@ -493,6 +496,7 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
         .expect("quota_pressure_critical must fire for 92% quota");
 
     assert_eq!(rec.severity, Severity::Risk);
+    assert_eq!(rec.source_kind, SourceKind::Estimated);
     assert!(
         rec.is_strong,
         "quota-pressure: act now must be marked is_strong (CHECKPOINT slot)"

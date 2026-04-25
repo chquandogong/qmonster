@@ -243,7 +243,7 @@ fn quota_pressure_warning(
             "provider quota approaching limit — pace work and prepare to checkpoint before LimitHit"
                 .into(),
         severity: Severity::Warning,
-        source_kind: SourceKind::ProviderOfficial,
+        source_kind: SourceKind::Estimated,
         // No single runnable command: rate-limited quotas reset on the
         // provider's schedule, not by a slash command. Operator picks
         // between waiting, switching account/model, or pausing the pane.
@@ -275,7 +275,7 @@ fn quota_pressure_critical(
         reason: "provider quota near critical — checkpoint and stop new prompts before LimitHit"
             .into(),
         severity: Severity::Risk,
-        source_kind: SourceKind::ProviderOfficial,
+        source_kind: SourceKind::Estimated,
         // Same constraint as the warning variant: no single runnable
         // command resolves a rate-limit; operator must change behaviour.
         suggested_command: None,
@@ -512,6 +512,11 @@ mod tests {
             .find(|r| r.action == "quota-pressure: pace")
             .unwrap();
         assert_eq!(warn.severity, Severity::Warning);
+        assert_eq!(
+            warn.source_kind,
+            SourceKind::Estimated,
+            "the quota metric is ProviderOfficial, but the 75% advisory threshold is a Qmonster estimate"
+        );
     }
 
     #[test]
@@ -526,6 +531,11 @@ mod tests {
             .find(|r| r.action == "quota-pressure: act now")
             .unwrap();
         assert_eq!(crit.severity, Severity::Risk);
+        assert_eq!(
+            crit.source_kind,
+            SourceKind::Estimated,
+            "the quota metric is ProviderOfficial, but the 85% advisory threshold is a Qmonster estimate"
+        );
     }
 
     #[test]
