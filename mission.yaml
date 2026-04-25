@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.6"
-  title: "Qmonster v0.4.0 — v1.15.6 selected-pane state-change visibility patch on top of v1.15.5. When the changed pane is selected, the selection marker expands to repeated `◆ CHANGED ◆` across selected lines and the selected card title starts with `STATE CHANGED`, so selection styling cannot hide the transition cue. v1.15.5 runtime-refresh cycling and Codex welcome-box model fallback carry forward unchanged. 439 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
+  version: "1.15.7"
+  title: "Qmonster v0.4.0 — v1.15.7 Slice 3 backlog item S3-5 closed: identity resolver title fallback for Claude Code spinner-prefixed activity titles (`⠂ Analyze project ...`) and Gemini idle titles (`◇  Ready (project)`). Both yield IdentityConfidence::Medium when the canonical `{provider}:{instance}:{role}` title is absent and the underlying command is `node`. Honesty regressions lock the patterns: bare braille glyph alone or bare diamond without `Ready (` opener stay Unknown. v1.15.6 selected-pane state-change text fallback and v1.15.5 runtime-refresh cycling carry forward unchanged. 443 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

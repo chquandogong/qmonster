@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v0.4.0 — v1.15.6 selected-pane state-change text fallback."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 62
-  latest_version: "1.15.6"
+  total_revisions: 63
+  latest_version: "1.15.7"
 
 timeline:
   - change_id: "initial"
@@ -6684,9 +6684,83 @@ timeline:
     follow_up:
       - "If the repeated selected marker takes too much width on narrow terminals, shorten the marker text while keeping an explicit `CHANGED` word."
 
+  - change_id: "v1.15.7-s3-5-identity-title-fallback"
+    semantic_version: "1.15.7"
+    change_sequence: 63
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "feature"
+    motivation_type: "backlog-resolution"
+    persistence: "permanent"
+    intent: >
+      Close Slice 3 backlog item S3-5: identity resolver title
+      fallback so Qmonster recognises real Claude Code working-state
+      titles (`⠂ Analyze project ...`) and Gemini idle titles
+      (`◇  Ready (project)`) even when the canonical
+      `{provider}:{instance}:{role}` title is absent and the
+      underlying `pane_current_command` is `node`.
+    decision: >
+      Extend `domain::identity::detect_provider_title` with two
+      structurally-anchored fallback patterns. Claude: title leads
+      with a Braille Pattern character (U+2800..=U+28FF) followed by
+      ≥2 trailing whitespace-separated tokens (the activity
+      description). Gemini: title contains both the diamond glyph
+      `◇` and the literal `Ready (` opener. Both yield
+      IdentityConfidence::Medium per the existing title-fallback
+      tier. Codex's title-anchor question (real Codex titles like
+      `Qmonster` carry no glyph and no provider word) stays deferred
+      per the backlog; the existing `looks_like_codex_transcript`
+      tail anchor still resolves Codex panes from their content.
+    triggered_by: "Slice 3 backlog S3-5 (.docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-3-backlog.md)."
+    issue_or_context: >
+      The previous resolver only matched substring `claude` /
+      `codex` / `gemini` words. Real Claude Code working-state
+      titles begin with a single braille spinner glyph followed by
+      activity text; real Gemini idle titles use a diamond glyph and
+      a `Ready (project-name)` form. Neither carries a provider word,
+      so the resolver fell through to `pane_current_command`, found
+      `node` (the executable running both Claude Code and Gemini
+      under the hood), and returned Provider::Unknown.
+    changes:
+      added:
+        - "src/domain/identity.rs::detect_provider_title fallback for Claude braille spinner titles"
+        - "src/domain/identity.rs::detect_provider_title fallback for Gemini `◇  Ready (...)` titles"
+        - "4 new tests: 2 positive (Claude / Gemini) + 2 honesty regressions (bare braille glyph alone / bare diamond without `Ready (` opener stay Unknown)"
+      modified:
+        - "src/domain/identity.rs::detect_provider_title shape (early-return chain instead of single if/else)"
+        - "mission.yaml (meta: version 1.15.6 → 1.15.7; title)"
+        - "mission-history.yaml (sequence 63; meta: latest_version 1.15.7, total_revisions 62 → 63)"
+      removed: []
+    changed_sections:
+      - "src/domain/identity.rs::detect_provider_title"
+    done_when_delta:
+      added:
+        - "Claude Code working-state titles like `⠂ Analyze project implementation` resolve to Provider::Claude / IdentityConfidence::Medium"
+        - "Gemini idle titles like `◇  Ready (mission-spec)` resolve to Provider::Gemini / IdentityConfidence::Medium"
+        - "Bare braille glyph or bare `◇` without `Ready (` stay Provider::Unknown (honesty)"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "+~30 LoC in detect_provider_title + 4 tests"
+      tests: "443 total — 371 lib + 14 main + 34 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 439 at v1.15.6; +4 tests)"
+      ledger: "1 new timeline entry (sequence 63); meta bump"
+      review_gate: "backlog item closed; local fmt/test/clippy pass."
+      follow_up_carryover: "Slice 3 (S3-1, S3-3, S3-4) and operator priorities remain queued. S3-5 closed. S3-6 closed by Slice 4. S3-2 closed by v1.15.5."
+    breaking: false
+    risk: "low — pure title-pattern detection; structurally anchored on glyph + non-empty description suffix or `Ready (` opener; no parser, policy, tmux, audit, or UI behaviour changes."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits; expected range 6619b71..<this-commit>
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.7 at this commit."
+      - "Remaining Slice 3 backlog: S3-1 (Codex bottom-status-line full token-in/token-out), S3-3 (Gemini quota/memory columns), S3-4 (Claude settings model honesty)."
+      - "Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round."
+
 evolution_summary:
-  current_phase: "v1.15.6 selected-pane state-change text fallback. Builds on v1.15.5 runtime-refresh cycling and v1.15.4 selected-pane flash by adding explicit `◆ CHANGED ◆` repeated selected markers plus `STATE CHANGED` in the selected card title. 439 tests green; clippy + fmt clean."
-  next_phase: "Slice 3 (S3-1..S3-5 from .docs/claude/...slice-3-backlog.md) + operator priorities B/C/D/E/A. Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round. v1.15.x patch line remains open for runtime-refresh UX issues found during operator use."
+  current_phase: "v1.15.7 Slice 3 backlog item S3-5 closed. Identity resolver now recognises Claude Code spinner-prefixed activity titles (`⠂ ...`) and Gemini idle titles (`◇  Ready (...)`) at IdentityConfidence::Medium. v1.15.6 selected-pane state-change text fallback, v1.15.5 runtime-refresh cycling + Codex welcome-box model fallback (S3-2), and v1.15.4 selected-pane flash carry forward unchanged. 443 tests green; clippy + fmt clean."
+  next_phase: "Remaining Slice 3 backlog: S3-1 (Codex bottom-status-line full token-in/token-out parsing), S3-3 (Gemini quota/memory columns), S3-4 (Claude settings model honesty — design decision pending). Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round. v1.15.x patch line remains open for runtime-refresh UX issues found during operator use."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
