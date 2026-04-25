@@ -1,8 +1,8 @@
 use crate::adapters::ProviderParser;
-use crate::adapters::common::{parse_common_signals, parse_count_with_suffix};
+use crate::adapters::common::{parse_common_signals, parse_count_with_suffix, PaneTailHistory, STILLNESS_WINDOW};
 use crate::domain::identity::Provider;
 use crate::domain::origin::SourceKind;
-use crate::domain::signal::{MetricValue, SignalSet};
+use crate::domain::signal::{IdleCause, MetricValue, SignalSet};
 
 pub struct CodexAdapter;
 
@@ -29,6 +29,12 @@ impl ProviderParser for CodexAdapter {
         let pricing = ctx.pricing;
         let mut set = parse_common_signals(tail);
         let Some(status) = parse_codex_status_line(tail) else {
+            // Slice 4: classify idle state. Common-tier markers populated
+            // PermissionWait/InputWait if applicable; layer Codex-specific
+            // cursor + 5h-limit detection, then stillness fallback.
+            if set.idle_state.is_none() {
+                set.idle_state = classify_idle_codex(tail, ctx.history);
+            }
             return set;
         };
 
@@ -75,6 +81,13 @@ impl ProviderParser for CodexAdapter {
                 .with_confidence(0.6) // stale-risk from /status box tail retention
                 .with_provider(Provider::Codex)
         });
+
+        // Slice 4: classify idle state. Common-tier markers populated
+        // PermissionWait/InputWait if applicable; layer Codex-specific
+        // cursor + 5h-limit detection, then stillness fallback.
+        if set.idle_state.is_none() {
+            set.idle_state = classify_idle_codex(tail, ctx.history);
+        }
 
         set
     }
@@ -222,6 +235,42 @@ fn is_plain_identifier(s: &str) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '_' || c == '.' || c == '-')
 }
 
+fn classify_idle_codex(
+    tail: &str,
+    history: &PaneTailHistory,
+) -> Option<IdleCause> {
+    if codex_limit_hit(tail) {
+        return Some(IdleCause::LimitHit);
+    }
+    if codex_idle_cursor(tail) {
+        return Some(IdleCause::WorkComplete);
+    }
+    if history.is_still(STILLNESS_WINDOW) {
+        return Some(IdleCause::Stale);
+    }
+    None
+}
+
+fn codex_idle_cursor(tail: &str) -> bool {
+    // Codex prompt glyph: `› ` at last non-empty line.
+    let last = tail.lines().rev().find(|l| !l.trim().is_empty());
+    last.is_some_and(|l| {
+        let t = l.trim_start();
+        t.starts_with("› ")
+    })
+}
+
+fn codex_limit_hit(tail: &str) -> bool {
+    // Pattern: `5h limit:` followed by `100% used` or `0% left` on same line.
+    for line in tail.lines() {
+        let lower = line.to_lowercase();
+        if lower.contains("5h limit:") && (lower.contains("100% used") || lower.contains("0% left")) {
+            return true;
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,6 +280,7 @@ mod tests {
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use crate::domain::origin::SourceKind;
+    use crate::domain::signal::IdleCause;
     use crate::policy::claude_settings::ClaudeSettings;
     use crate::policy::pricing::PricingTable;
     use std::io::Write;
@@ -605,5 +655,53 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
             effort.value, "xhigh",
             "parser must return newest /status box value (xhigh), not oldest (low)"
         );
+    }
+
+    #[test]
+    fn codex_idle_cursor_at_last_line_yields_work_complete() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "previous response text\n\n› ";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+        assert_eq!(set.idle_state, Some(IdleCause::WorkComplete));
+    }
+
+    #[test]
+    fn codex_5h_limit_100_used_yields_limit_hit() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "│  5h limit:    [████████████████████] 100% used (resets 07:59)  │";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+        assert_eq!(set.idle_state, Some(IdleCause::LimitHit));
+    }
+
+    #[test]
+    fn codex_5h_limit_0_left_yields_limit_hit() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "│  5h limit:    [                    ] 0% left  │";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+        assert_eq!(set.idle_state, Some(IdleCause::LimitHit));
+    }
+
+    #[test]
+    fn codex_active_status_line_no_cursor_yields_none() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Context 73% left · ~/proj · gpt-5.4 · proj · main · Context 27% used · 0.122.0 · 100K used · 50K in · 50K out";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+        assert_eq!(set.idle_state, None);
     }
 }
