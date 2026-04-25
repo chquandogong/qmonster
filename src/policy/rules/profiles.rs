@@ -2,7 +2,7 @@ use crate::domain::identity::{Provider, ResolvedIdentity, Role};
 use crate::domain::origin::SourceKind;
 use crate::domain::profile::{ProfileLever, ProviderProfile};
 use crate::domain::recommendation::{Recommendation, Severity};
-use crate::domain::signal::SignalSet;
+use crate::domain::signal::{IdleCause, SignalSet};
 use crate::policy::gates::{PolicyGates, allow_provider_specific};
 
 /// Phase 4 provider-profile recommender. Each rule is a pure function
@@ -92,9 +92,10 @@ fn recommend_claude_default(
         // later Phase 4 slice.
         return None;
     }
-    if signals.waiting_for_input
-        || signals.permission_prompt
-        || signals.log_storm
+    if matches!(
+        signals.idle_state,
+        Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+    ) || signals.log_storm
         || signals.error_hint
     {
         // Any active alert signal means the pane is NOT in a healthy
@@ -202,9 +203,10 @@ fn recommend_claude_script_low_token(
         // Aggressive profile — opt-in only.
         return None;
     }
-    if signals.waiting_for_input
-        || signals.permission_prompt
-        || signals.log_storm
+    if matches!(
+        signals.idle_state,
+        Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+    ) || signals.log_storm
         || signals.error_hint
     {
         // Don't pile onto a pane that's already blocked on operator
@@ -358,9 +360,10 @@ fn recommend_codex_default(
         // own the quota_tight path.
         return None;
     }
-    if signals.waiting_for_input
-        || signals.permission_prompt
-        || signals.log_storm
+    if matches!(
+        signals.idle_state,
+        Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+    ) || signals.log_storm
         || signals.error_hint
     {
         return None;
@@ -492,9 +495,10 @@ fn recommend_codex_script_low_token(
         // constraint; same rule as claude-script-low-token).
         return None;
     }
-    if signals.waiting_for_input
-        || signals.permission_prompt
-        || signals.log_storm
+    if matches!(
+        signals.idle_state,
+        Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+    ) || signals.log_storm
         || signals.error_hint
     {
         // Don't pile onto a pane that's already blocking on operator
@@ -661,9 +665,10 @@ fn recommend_gemini_default(
         // own the quota_tight path.
         return None;
     }
-    if signals.waiting_for_input
-        || signals.permission_prompt
-        || signals.log_storm
+    if matches!(
+        signals.idle_state,
+        Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+    ) || signals.log_storm
         || signals.error_hint
     {
         return None;
@@ -806,9 +811,10 @@ fn recommend_gemini_script_low_token(
         // constraint; same rule as the Claude and Codex pairs).
         return None;
     }
-    if signals.waiting_for_input
-        || signals.permission_prompt
-        || signals.log_storm
+    if matches!(
+        signals.idle_state,
+        Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+    ) || signals.log_storm
         || signals.error_hint
     {
         return None;

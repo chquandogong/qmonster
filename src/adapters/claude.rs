@@ -206,7 +206,7 @@ mod tests {
         let history = PaneTailHistory::empty();
         let c = ctx(&id, "Press ENTER to continue", &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
-        assert!(set.waiting_for_input);
+        assert!(matches!(set.idle_state, Some(IdleCause::InputWait)));
     }
 
     #[test]

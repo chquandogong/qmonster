@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 use crate::app::event_loop::PaneReport;
 use crate::domain::identity::{IdentityConfidence, Provider, Role};
 use crate::domain::recommendation::Recommendation;
-use crate::domain::signal::SignalSet;
+use crate::domain::signal::{IdleCause, SignalSet};
 use crate::ui::labels::{format_count_with_suffix, source_kind_label};
 use crate::ui::theme;
 
@@ -309,10 +309,10 @@ pub fn signal_chips(s: &SignalSet) -> Vec<&'static str> {
 
 fn blocking_signal_chips(s: &SignalSet) -> Vec<&'static str> {
     let mut chips = Vec::new();
-    if s.waiting_for_input {
+    if matches!(s.idle_state, Some(IdleCause::InputWait)) {
         chips.push("waiting for input");
     }
-    if s.permission_prompt {
+    if matches!(s.idle_state, Some(IdleCause::PermissionWait)) {
         chips.push("approval needed");
     }
     chips
@@ -673,7 +673,7 @@ mod tests {
     #[test]
     fn signal_chips_reflect_booleans() {
         let s = SignalSet {
-            waiting_for_input: true,
+            idle_state: Some(IdleCause::InputWait),
             log_storm: true,
             ..SignalSet::default()
         };
@@ -697,7 +697,7 @@ mod tests {
     fn state_summary_line_uses_full_words_instead_of_chips() {
         let mut rep = base_report();
         rep.signals = SignalSet {
-            waiting_for_input: true,
+            idle_state: Some(IdleCause::InputWait),
             repeated_output: true,
             ..SignalSet::default()
         };

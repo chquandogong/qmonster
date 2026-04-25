@@ -1,7 +1,7 @@
 use crate::domain::identity::ResolvedIdentity;
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::{Recommendation, Severity};
-use crate::domain::signal::{SignalSet, TaskType};
+use crate::domain::signal::{IdleCause, SignalSet, TaskType};
 use crate::policy::gates::{PolicyGates, allow_provider_specific};
 
 /// Phase 4 G-5 auto-memory guide. Pure function over
@@ -60,7 +60,10 @@ fn recommend_mdr_over_auto_memory(
     // Suppress when the operator's attention is already elsewhere —
     // a permission prompt or input wait is the more pressing signal,
     // and the memory guide would be noise.
-    if signals.waiting_for_input || signals.permission_prompt {
+    if matches!(
+        signals.idle_state,
+        Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+    ) {
         return None;
     }
 
@@ -246,21 +249,21 @@ mod tests {
         // to the input-wait / permission-prompt alert.
         let s_input = SignalSet {
             task_type: TaskType::Review,
-            waiting_for_input: true,
+            idle_state: Some(IdleCause::InputWait),
             ..SignalSet::default()
         };
         assert!(
             eval_auto_memory(&id_high(), &s_input, &gates_default()).is_empty(),
-            "waiting_for_input takes priority over G-5"
+            "InputWait takes priority over G-5"
         );
         let s_perm = SignalSet {
             task_type: TaskType::SessionResume,
-            permission_prompt: true,
+            idle_state: Some(IdleCause::PermissionWait),
             ..SignalSet::default()
         };
         assert!(
             eval_auto_memory(&id_high(), &s_perm, &gates_default()).is_empty(),
-            "permission_prompt takes priority over G-5"
+            "PermissionWait takes priority over G-5"
         );
     }
 }

@@ -182,7 +182,10 @@ fn run_once_report_carries_identity_and_signals() {
     assert_eq!(rep.identity.identity.role, Role::Main);
     assert_eq!(rep.identity.identity.instance, 1);
     assert_eq!(rep.identity.confidence, IdentityConfidence::High);
-    assert!(rep.signals.waiting_for_input);
+    assert!(matches!(
+        rep.signals.idle_state,
+        Some(qmonster::domain::signal::IdleCause::InputWait)
+    ));
 }
 
 #[test]

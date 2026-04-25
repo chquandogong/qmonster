@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn non_storm_signal_does_not_request_archive() {
         let s = SignalSet {
-            waiting_for_input: true,
+            idle_state: Some(IdleCause::InputWait),
             ..SignalSet::default()
         };
         let eng = Engine;

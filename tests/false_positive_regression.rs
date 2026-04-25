@@ -11,6 +11,7 @@
 //! exercise the synthetic positive-case fixtures.
 
 use qmonster::adapters::common::parse_common_signals;
+use qmonster::domain::signal::IdleCause;
 
 const CLAUDE_STATUS: &str = include_str!("fixtures/real/claude_status.txt");
 const CODEX_WELCOME_V0_122: &str = include_str!("fixtures/real/codex_welcome_v0_122.txt");
@@ -22,14 +23,14 @@ const GEMINI_IDLE_V0_39: &str = include_str!("fixtures/real/gemini_idle_v0_39.tx
 fn claude_status_view_does_not_false_fire_permission_or_waiting() {
     let s = parse_common_signals(CLAUDE_STATUS);
     assert!(
-        !s.permission_prompt,
+        s.idle_state != Some(IdleCause::PermissionWait),
         "Claude tail with `⏵⏵ bypass permissions on` keyboard-hint must \
-         not raise permission_prompt — it is a passive UI hint, not an \
+         not raise PermissionWait — it is a passive UI hint, not an \
          interactive ask"
     );
     assert!(
-        !s.waiting_for_input,
-        "Claude active-conversation tail must not raise waiting_for_input \
+        s.idle_state != Some(IdleCause::InputWait),
+        "Claude active-conversation tail must not raise InputWait \
          — bare 'press enter' / 'continue?' substrings appear in normal \
          prose, not as live prompts"
     );
@@ -54,7 +55,7 @@ fn claude_status_view_does_not_false_fire_log_storm_or_verbose() {
 fn codex_welcome_v0_122_does_not_false_fire_permission() {
     let s = parse_common_signals(CODEX_WELCOME_V0_122);
     assert!(
-        !s.permission_prompt,
+        s.idle_state != Some(IdleCause::PermissionWait),
         "Codex welcome box displays `│ permissions: YOLO mode` as config \
          — must not be confused with an interactive approval ask"
     );
@@ -64,11 +65,11 @@ fn codex_welcome_v0_122_does_not_false_fire_permission() {
 fn codex_bottom_status_v0_122_is_inert_for_alerts() {
     let s = parse_common_signals(CODEX_BOTTOM_STATUS_V0_122);
     assert!(
-        !s.permission_prompt,
+        s.idle_state != Some(IdleCause::PermissionWait),
         "Codex /status box has `Permissions: Full Access` as a config \
          row, not an interactive ask"
     );
-    assert!(!s.waiting_for_input);
+    assert!(s.idle_state != Some(IdleCause::InputWait));
     assert!(!s.log_storm);
     assert!(!s.verbose_answer);
 }
@@ -77,10 +78,10 @@ fn codex_bottom_status_v0_122_is_inert_for_alerts() {
 fn gemini_idle_v0_39_status_line_does_not_false_fire_anything() {
     let s = parse_common_signals(GEMINI_IDLE_V0_39);
     assert!(
-        !s.permission_prompt,
+        s.idle_state != Some(IdleCause::PermissionWait),
         "Gemini status line shows sandbox/quota fields, no interactive ask"
     );
-    assert!(!s.waiting_for_input);
+    assert!(s.idle_state != Some(IdleCause::InputWait));
     assert!(!s.log_storm);
     assert!(!s.verbose_answer);
 }

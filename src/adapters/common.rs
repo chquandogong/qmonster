@@ -205,8 +205,6 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
 
     SignalSet {
         idle_state,
-        waiting_for_input: wi,
-        permission_prompt: pp,
         log_storm,
         repeated_output: false,
         verbose_answer,
@@ -459,14 +457,14 @@ mod tests {
     fn waiting_for_input_on_prompt_text() {
         let tail = "...\nPress ENTER to continue\n";
         let set = parse_common_signals(tail);
-        assert!(set.waiting_for_input);
+        assert!(matches!(set.idle_state, Some(IdleCause::InputWait)));
     }
 
     #[test]
     fn permission_prompt_on_approval_word() {
         let tail = "This action requires approval (y/n)";
         let set = parse_common_signals(tail);
-        assert!(set.permission_prompt);
+        assert!(matches!(set.idle_state, Some(IdleCause::PermissionWait)));
     }
 
     #[test]
@@ -546,14 +544,12 @@ mod tests {
     fn permission_marker_populates_idle_state_permission_wait() {
         let set = parse_common_signals("This action requires approval (y/n)");
         assert_eq!(set.idle_state, Some(IdleCause::PermissionWait));
-        assert!(set.permission_prompt);
     }
 
     #[test]
     fn waiting_marker_populates_idle_state_input_wait() {
         let set = parse_common_signals("...\nPress ENTER to continue\n");
         assert_eq!(set.idle_state, Some(IdleCause::InputWait));
-        assert!(set.waiting_for_input);
     }
 
     #[test]

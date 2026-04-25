@@ -61,7 +61,7 @@ mod tests {
         let history = PaneTailHistory::empty();
         let c = ctx(&id, "heartbeat tick 42", &pricing, &settings, &history);
         let set = QmonsterAdapter.parse(&c);
-        assert!(!set.waiting_for_input);
+        assert!(set.idle_state.is_none());
         assert!(!set.log_storm);
     }
 

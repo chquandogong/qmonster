@@ -45,9 +45,9 @@ pub enum TaskType {
     Automation,
 }
 
-/// Slice 4: unified halt-state signal. Replaces ad-hoc booleans
-/// (`permission_prompt`, `waiting_for_input`) with a single labeled
-/// classification. None means the pane is producing output / not idle.
+/// Slice 4: unified halt-state signal. A single labeled classification
+/// for the pane's idle cause. None means the pane is producing output /
+/// not idle.
 /// See `.docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-4-*` for
 /// the full taxonomy and detection priority.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -71,9 +71,8 @@ pub enum IdleCause {
 /// display-only; they never gate recommendations (Codex CS-2).
 #[derive(Debug, Clone, Default)]
 pub struct SignalSet {
+    // v1.14.0: idle_state owns the markers; permission_prompt/waiting_for_input bools are gone.
     pub idle_state: Option<IdleCause>,
-    pub waiting_for_input: bool,
-    pub permission_prompt: bool,
     pub log_storm: bool,
     pub repeated_output: bool,
     pub verbose_answer: bool,
@@ -112,8 +111,7 @@ mod tests {
     #[test]
     fn default_signal_set_has_no_alerts() {
         let s = SignalSet::default();
-        assert!(!s.waiting_for_input);
-        assert!(!s.permission_prompt);
+        assert!(s.idle_state.is_none());
         assert!(!s.log_storm);
         assert!(!s.repeated_output);
         assert!(!s.verbose_answer);

@@ -1,5 +1,6 @@
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::{CrossPaneFinding, CrossPaneKind, Severity};
+use crate::domain::signal::IdleCause;
 use crate::policy::engine::PaneView;
 
 /// Canonical contract (`docs/ai/VALIDATION.md:95-96`): concurrent-work
@@ -13,7 +14,7 @@ pub fn eval_concurrent(panes: &[PaneView<'_>]) -> Vec<CrossPaneFinding> {
     let qualifying: Vec<(&PaneView<'_>, String)> = panes
         .iter()
         .filter(|v| matches!(v.identity.identity.role, Role::Main | Role::Review))
-        .filter(|v| !v.signals.waiting_for_input)
+        .filter(|v| !matches!(v.signals.idle_state, Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)))
         .filter(|v| v.signals.output_chars >= 500)
         .filter(|v| !v.current_path.is_empty())
         .map(|v| (v, v.identity.identity.pane_id.clone()))
@@ -175,7 +176,7 @@ mod tests {
         let id_b = mk_id(Role::Main, "%2");
         let busy = busy_signals();
         let waiting = SignalSet {
-            waiting_for_input: true,
+            idle_state: Some(IdleCause::InputWait),
             output_chars: 800,
             ..SignalSet::default()
         };

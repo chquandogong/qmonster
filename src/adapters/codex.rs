@@ -349,7 +349,7 @@ output_per_1m = 10.00
         let history = PaneTailHistory::empty();
         let c = ctx(&id, "This action requires approval", &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
-        assert!(set.permission_prompt);
+        assert!(matches!(set.idle_state, Some(IdleCause::PermissionWait)));
     }
 
     #[test]
@@ -403,7 +403,7 @@ output_per_1m = 10.00
         let tail = "Press ENTER to continue\nno status bar here";
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
-        assert!(set.waiting_for_input);
+        assert!(matches!(set.idle_state, Some(IdleCause::InputWait)));
         assert!(set.context_pressure.is_none());
         assert!(set.token_count.is_none());
         assert!(set.model_name.is_none());
