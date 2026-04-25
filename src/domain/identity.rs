@@ -131,16 +131,41 @@ fn parse_canonical_title(title: &str) -> Option<(Provider, u32, Role)> {
 }
 
 fn detect_provider_title(s: &str) -> Provider {
+    let trimmed = s.trim_start();
     let lower = s.to_lowercase();
     if lower.contains("claude code") || contains_word(&lower, "claude") {
-        Provider::Claude
-    } else if contains_word(&lower, "codex") {
-        Provider::Codex
-    } else if contains_word(&lower, "gemini") {
-        Provider::Gemini
-    } else {
-        Provider::Unknown
+        return Provider::Claude;
     }
+    if contains_word(&lower, "codex") {
+        return Provider::Codex;
+    }
+    if contains_word(&lower, "gemini") {
+        return Provider::Gemini;
+    }
+
+    // S3-5 fallback: Claude Code's working-state title leads with a
+    // braille spinner glyph (U+2800..=U+28FF) and follows with the
+    // activity description, e.g. `⠂ Analyze project implementation`.
+    // The glyph alone is not enough; we require a non-empty
+    // description suffix of at least 2 whitespace-separated tokens
+    // so unrelated single-glyph titles do not get claimed for Claude.
+    if let Some(first) = trimmed.chars().next()
+        && ('\u{2800}'..='\u{28FF}').contains(&first)
+    {
+        let after = trimmed[first.len_utf8()..].trim_start();
+        if !after.is_empty() && after.split_whitespace().count() >= 2 {
+            return Provider::Claude;
+        }
+    }
+
+    // S3-5 fallback: Gemini's idle title is `◇  Ready (project-name)`.
+    // Both the diamond glyph AND the literal `Ready (` opener must
+    // appear; the diamond alone shows up in unrelated UI contexts.
+    if trimmed.contains('◇') && lower.contains("ready (") {
+        return Provider::Gemini;
+    }
+
+    Provider::Unknown
 }
 
 fn detect_provider_command(s: &str) -> Provider {
@@ -364,5 +389,59 @@ mod tests {
         let r = IdentityResolver::new();
         let out = r.resolve(&raw("qmonster:1:monitor", "qmonster", "claude:1:main idle"));
         assert_eq!(out.identity.provider, Provider::Qmonster);
+    }
+
+    #[test]
+    fn claude_code_spinner_prefixed_activity_title_resolves_to_claude() {
+        // S3-5: real Claude Code pane title (qmonster:0.0):
+        //   `⠂ Analyze project implementation vs initial design`
+        // Braille spinner glyph + activity description is Claude's
+        // working-state title. Without a `claude` word-token, the
+        // prior resolver fell through to `pane_current_command = node`
+        // and returned Unknown.
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw(
+            "⠂ Analyze project implementation vs initial design",
+            "node",
+            "",
+        ));
+        assert_eq!(out.identity.provider, Provider::Claude);
+        assert_eq!(out.confidence, IdentityConfidence::Medium);
+    }
+
+    #[test]
+    fn gemini_diamond_ready_title_resolves_to_gemini() {
+        // S3-5: real Gemini pane title (mission-spec:0.2):
+        //   `◇  Ready (mission-spec)`
+        // Diamond glyph + literal `Ready (` opener + parenthesized
+        // project name is Gemini's idle title format. Without
+        // `gemini` substring, the prior resolver fell through to
+        // `pane_current_command = node` and returned Unknown.
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("◇  Ready (mission-spec)", "node", ""));
+        assert_eq!(out.identity.provider, Provider::Gemini);
+        assert_eq!(out.confidence, IdentityConfidence::Medium);
+    }
+
+    #[test]
+    fn arbitrary_braille_glyph_alone_does_not_resolve_to_claude() {
+        // Honesty regression: a bare braille character without an
+        // activity description (≥ 2 trailing words) must NOT claim
+        // Claude. The leading glyph + description suffix together
+        // anchor the pattern; the glyph alone could appear in
+        // unrelated contexts.
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("⠂", "bash", ""));
+        assert_eq!(out.identity.provider, Provider::Unknown);
+    }
+
+    #[test]
+    fn diamond_alone_without_ready_does_not_resolve_to_gemini() {
+        // Honesty regression: a bare `◇` glyph without the literal
+        // `Ready (` opener is not enough to claim Gemini. The
+        // diamond glyph appears in other UI contexts too.
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("◇  something else", "bash", ""));
+        assert_eq!(out.identity.provider, Provider::Unknown);
     }
 }
