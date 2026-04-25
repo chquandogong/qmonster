@@ -1,14 +1,16 @@
+use crate::adapters::common::parse_common_signals;
 use crate::adapters::ProviderParser;
 use crate::domain::signal::SignalSet;
 
 pub struct QmonsterAdapter;
 
 impl ProviderParser for QmonsterAdapter {
-    /// The monitor pane is its own pane — we do not run the generic
-    /// parser over its heartbeat output. Phase 1 returns an empty
-    /// signal set; Phase 2+ will surface self-heartbeat metrics.
-    fn parse(&self, _ctx: &crate::adapters::ParserContext) -> SignalSet {
-        SignalSet::default()
+    fn parse(&self, ctx: &crate::adapters::ParserContext) -> SignalSet {
+        let mut set = parse_common_signals(ctx.tail);
+        // Slice 4: self-monitor pane does not fire idle alerts on itself.
+        // Override any common-tier marker hit.
+        set.idle_state = None;
+        set
     }
 }
 
@@ -61,5 +63,19 @@ mod tests {
         let set = QmonsterAdapter.parse(&c);
         assert!(!set.waiting_for_input);
         assert!(!set.log_storm);
+    }
+
+    #[test]
+    fn qmonster_adapter_never_emits_idle_state_even_with_markers() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        // Even if tail has prompt markers, qmonster pane (self-monitor)
+        // should not fire an idle state — we don't alert ourselves.
+        let tail = "this action requires approval (y/n)\n*  Type your message";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = QmonsterAdapter.parse(&c);
+        assert_eq!(set.idle_state, None);
     }
 }
