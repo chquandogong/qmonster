@@ -1,0 +1,12 @@
+╭─────────────────────────────────────────────────────────────────────────────────────────╮
+│  >_ OpenAI Codex (v0.122.0)                                                             │
+│                                                                                         │
+│  Model:                       gpt-5.4 (reasoning xhigh, summaries auto)                 │
+│  Directory:                   ~/Qmonster                                                │
+│  Permissions:                 Full Access                                               │
+│  Account:                     <email-redacted> (Pro)                                    │
+│  Collaboration mode:          Default                                                   │
+│  Session:                     <session-redacted>                                        │
+│                                                                                         │
+│  5h limit:                    [████████████████████] 100% used (resets 07:59)           │
+╰─────────────────────────────────────────────────────────────────────────────────────────╯

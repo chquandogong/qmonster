@@ -1,0 +1,2 @@
+ branch    sandbox        /model                    workspace                quota         context     memory      session                    /auth
+ main      no sandbox     gemini-3.1-pro-preview    ~/Qmonster               100% used     0% used     119.3 MB    <session-redacted>     <email-redacted>

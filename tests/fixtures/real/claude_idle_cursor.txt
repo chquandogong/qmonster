@@ -1,0 +1,11 @@
+● T14 APPROVED. T15 (real fixture + regression) 디스패치.
+
+✶ S4-T15: Real-tail fixtures + idle_state regression… (1h 6m 20s · ↓ 171.8k tokens · almost done thinking with max effort)
+  ⎿  ◼ S4-T15: Real-tail fixtures + idle_state regression
+     ◻ S4-T16: Neutralize detect_task_type substring
+     ◻ S4-T17: Verify + version bump 1.14.0 + tag
+     ✔ S4-T1: Add IdleCause enum + idle_state field
+     ✔ S4-T2: PaneTailHistory + STILLNESS_WINDOW
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 

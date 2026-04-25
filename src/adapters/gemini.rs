@@ -30,13 +30,18 @@ fn classify_idle_gemini(
     None
 }
 
-/// True when the last non-empty line is Gemini's input placeholder.
+/// True when any line in the tail is Gemini's input placeholder.
 /// The `*  ` prefix (asterisk + 2 spaces) is the prompt glyph Gemini
 /// CLI renders when it is waiting for the next user message.
+///
+/// We scan the whole tail rather than checking the last non-empty line
+/// because in production Gemini always renders a 2-row status bar
+/// (column headers + data row) below the placeholder, pushing the
+/// placeholder out of last-line position.  The placeholder appears
+/// ONLY in idle state, so scanning all lines is safe.
 fn gemini_idle_cursor(tail: &str) -> bool {
-    let last = tail.lines().rev().find(|l| !l.trim().is_empty());
-    last.is_some_and(|l| {
-        let t = l.trim_start();
+    tail.lines().any(|line| {
+        let t = line.trim_start();
         t.starts_with("*  ") && t.contains("Type your message")
     })
 }

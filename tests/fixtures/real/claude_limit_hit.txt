@@ -1,0 +1,20 @@
+  Status   Config   Usage   Stats
+
+  Session
+  Total cost:            $3.4215
+  Tokens in:             18,432,109
+  Tokens out:            1,847,230
+
+  Current session
+  ██████████████████████████████████████████████████ 100% used
+  Resets 3:40pm (Asia/Seoul)
+
+  Current week (all models)
+  ██████████████████████████████████████████████████ 100% used
+  Resets Apr 30, 3am (Asia/Seoul)
+
+  Current week (Sonnet only)
+  ████████████████████████████████████                41% used
+  Resets Apr 30, 3am (Asia/Seoul)
+
+  Esc to cancel

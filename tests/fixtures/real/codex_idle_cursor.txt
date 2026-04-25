@@ -1,0 +1,14 @@
+╭───────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.122.0)                    │
+│                                               │
+│ model:       gpt-5.4 xhigh   /model to change │
+│ directory:   ~/Qmonster                       │
+│ permissions: YOLO mode                        │
+╰───────────────────────────────────────────────╯
+
+  Tip: Use /fast to enable our fastest inference with increased plan usage.
+
+Token usage: total=210,058 input=189,703 output=20,355 (reasoning 7,992)
+To continue this session, run codex resume <session-redacted>
+
+› 
