@@ -12,7 +12,7 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-25): `cargo fmt --check`,
-`cargo test --all-targets` (428 tests), and
+`cargo test --all-targets` (434 tests), and
 `cargo clippy --all-targets -- -D warnings` pass; `mission-spec
 validate .` is blocked because `mission-spec` is not installed.
 
@@ -237,7 +237,8 @@ profile_lines` in `src/ui/panels.rs`; emits a
 - [x] `logging.sensitivity` honors `balanced` by default.
 - [x] Color usage follows the low-saturation palette rule. No
       color-only state indication. Every color is accompanied by a
-      numeric % or severity letter.
+      numeric % or severity letter, and pane state transitions pair the
+      pulse highlight with a `CHANGED` text badge.
 - [x] `SourceKind` labels visible next to every metric and every
       recommendation — in the UI, not just in docs.
 - [x] Provider runtime facts are visible when sourced from provider

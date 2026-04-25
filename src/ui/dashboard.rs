@@ -26,6 +26,7 @@ pub struct DashboardView<'a> {
     pub fresh_alerts: &'a HashSet<String>,
     pub alert_times: &'a HashMap<String, String>,
     pub hidden_until: &'a HashMap<String, Instant>,
+    pub state_flashes: &'a HashMap<String, panels::PaneStateFlash>,
     pub now: Instant,
     pub target_label: &'a str,
     pub alerts_focused: bool,
@@ -106,6 +107,10 @@ pub fn render_dashboard(
         pane_state,
         view.target_label,
         view.panes_focused,
+        panels::PaneStateFlashView {
+            now: view.now,
+            state_flashes: view.state_flashes,
+        },
     );
 
     render_footer(

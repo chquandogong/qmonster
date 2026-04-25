@@ -1469,3 +1469,31 @@ fn returning_to_active_clears_idle_state_no_new_alert() {
     let alerts = sim.alerts_emitted_with_action("pane-state");
     assert_eq!(alerts.len(), 1, "only the entry into idle fires");
 }
+
+#[test]
+fn runtime_refresh_tail_overlay_is_parsed_once_then_consumed() {
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%9",
+            "claude:1:main",
+            "claude",
+            "previous output\n\n❯ ",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+    ctx.runtime_refresh_tail_overlays.insert(
+        "%9".into(),
+        "Current session\n████████████████████ 100% used".into(),
+    );
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+
+    assert_eq!(reports[0].idle_state, Some(IdleCause::LimitHit));
+    assert!(
+        ctx.runtime_refresh_tail_overlays.is_empty(),
+        "runtime refresh capture should be a one-shot parser overlay"
+    );
+}

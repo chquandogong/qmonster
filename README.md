@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to send read-only
 provider status/config slash commands to the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag: `v1.15.0`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag: `v1.15.1`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -42,7 +42,7 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 | P0-1          | Provider usage-hint parsing + observability field expansion — `PricingTable` + `ClaudeSettings` operator-config readers, `ProviderParser` → `&ParserContext` struct, 7-metric Codex populate (context / tokens / model / cost / branch / path / reasoning effort), Claude `↓ Nk tokens` + `settings.json` model, 2-row TUI metric badge line, honesty regression tests locking tail-based absence                                                                                                                                                                                                    | **Shipped** — Slice 1 (v1.11.0–v1.11.3) + Slice 2 (v1.12.0–v1.12.2) fully gate-approved                                                                             |
 | v1.13.x       | Emergency false-positive suppression — `PERMISSION_PROMPT_MARKERS` / `WAITING_PROMPT_MARKERS` phrase-only contracts, `is_log_like` structural patterns, drop loose `verbose_answer` / `parse_context_pressure` / `ERROR_MARKERS` / `detect_task_type` substring fallbacks, real-tail regression suite                                                                                                                                                                                                                                                                                                | **Shipped** — v1.13.0 (4 markers) + v1.13.1 (error_hint + context_pressure); single-version pattern, confirm-archive deferred to Slice 4                            |
 | Slice 4       | Halted/idle state detection — `IdleCause` hybrid classifier (marker → limit → cursor → stillness fallback), per-adapter `classify_idle` for Claude/Codex/Gemini/Qmonster, `PaneTailHistory` + `IdleTransitionTracker` per-pane caches, `eval_idle_transition` rule with transition-only firing, new `state` row on pane cards, `[idle] stillness_polls` config knob                                                                                                                                                                                                                                  | **Shipped** — v1.14.0 (16-commit chain) + v1.14.1 cursor-fix (Codex bottom-status-line skip); rolled forward into v1.15.0                                           |
-| Runtime facts | Provider runtime fact display — manual `u` key sends no-wait slash commands with terminal submit (`C-m`, Enter-equivalent) while a pane is active or only heuristically stale (Claude `/status`, Codex `/status`, Gemini `/stats session` + `/stats model` + `/stats tools`); when Claude is explicitly idle/waiting/limited it cycles the fuller `/status` + `/context` + `/config` + `/stats` + `/usage` set one command per `u` because Claude fullscreen status surfaces block following slash commands. Adapter parsers surface permission/yolo/auto mode, sandbox, allowed dirs, loaded tools/skills/plugins, restricted tools, and Gemini status-table context/model/path fields when exposed by provider status/config sources | **Shipped** — v1.15.0; display-only facts with `SourceKind` (prose-derived → Heuristic, settings/box/table-validated → ProviderOfficial); unknown fields stay blank |
+| Runtime facts | Provider runtime fact display — manual `u` key sends no-wait slash commands with terminal submit (`C-m`, Enter-equivalent) while a pane is active or only heuristically stale (Claude `/status`, Codex `/status`, Gemini `/stats session` + `/stats model` + `/stats tools`); when Claude is explicitly idle/waiting/limited it cycles the fuller `/status` + `/context` + `/config` + `/stats` + `/usage` set one command per `u` because Claude fullscreen status surfaces block following slash commands. Claude `/status` output is captured before Qmonster sends `Escape`, then parsed once from an in-memory overlay so the pane is ready for the next slash command. Adapter parsers surface permission/yolo/auto mode, sandbox, allowed dirs, loaded tools/skills/plugins, restricted tools, and Gemini status-table context/model/path fields when exposed by provider status/config sources | **Shipped** — v1.15.x; display-only facts with `SourceKind` (prose-derived → Heuristic, settings/box/table-validated → ProviderOfficial); unknown fields stay blank |
 
 Recent post-Phase-4 TUI follow-ups are already shipped in-tree:
 scrollable alerts/panes/help/target picker, mouse interaction, severity
@@ -50,7 +50,10 @@ bulk hide, session/window filtering, and a bottom-right version badge
 that opens a Git status overlay. The Slice 4 `state` row appears on
 each pane card when the pane is halted, with glyph + cause label +
 elapsed time (`⏹ IDLE (done)` / `⏸ WAIT (input)` / `⚠ WAIT (approval)`
-/ `⛔ USAGE LIMIT` / `⏸ IDLE (?)` for the stillness fallback).
+/ `⛔ USAGE LIMIT` / `⏸ IDLE (?)` for the stillness fallback). State
+transitions now add a short `CHANGED` pulse on the pane header and
+`state` row; a return to active briefly renders `▶ ACTIVE` before the
+row disappears again.
 
 ## Quick start
 

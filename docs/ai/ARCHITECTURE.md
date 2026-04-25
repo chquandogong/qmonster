@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-25 (implementation sync through v1.15.0 runtime observability follow-up)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-25 (implementation sync through v1.15.3 Claude status-capture follow-up)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -159,10 +159,12 @@ to run without waiting: Claude `/status`, Codex `/status`, and Gemini
 explicitly idle, waiting, or limited, Qmonster cycles the fuller Claude
 set one command per `u`: `/status`, `/context`, `/config`, `/stats`,
 `/usage`. Claude fullscreen status surfaces block following slash
-commands, so they are not batched. The next poll parses the resulting
-official output. Claude `/btw` is not used as a runtime fact source
-because it has no tool or internal-state access. Unknown or unexposed
-fields stay absent rather than inferred.
+commands, so they are not batched. Claude `/status` output is captured
+before Qmonster sends `Escape` to close the fullscreen surface; the
+captured tail is consumed once as an in-memory parser overlay on the
+next poll. Claude `/btw` is not used as a runtime fact source because it
+has no tool or internal-state access. Unknown or unexposed fields stay
+absent rather than inferred.
 
 ### `notify/`
 

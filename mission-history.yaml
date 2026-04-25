@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.0 runtime observability: active-safe manual `u`-key refresh, Gemini status-table parsing with column-parity guard, SourceKind honesty (prose facts demoted to Heuristic), modes/access/loaded/restrict pane rows, false-IDLE lag fix. Builds on v1.14.0 + v1.14.1 idle-state baseline."
+  mission_title: "Qmonster v0.4.0 — v1.15.3 Claude status-capture: capture `/status`, parse once, then Escape the fullscreen surface."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 57
-  latest_version: "1.15.1"
+  total_revisions: 59
+  latest_version: "1.15.3"
 
 timeline:
   - change_id: "initial"
@@ -6347,8 +6347,145 @@ timeline:
       - "Slice 3 (S3-1..S3-5) per .docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-3-backlog.md remains the next major arc."
       - "If operator usage finds further edge cases in the active-safe runtime refresh (e.g. Codex or Gemini equivalents of Claude's fullscreen blocking), queue v1.15.2 patch."
 
+  - change_id: "v1.15.2-pane-state-change-visibility"
+    semantic_version: "1.15.2"
+    change_sequence: 58
+    date: "2026-04-25"
+    author: "Codex (codex:review, GPT-5)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — UX request: make state changes immediately recognizable in panes"
+    change_type: "patch"
+    motivation_type: "operator-ux-finding"
+    persistence: "permanent"
+    intent: >
+      Make pane state transitions visible at the moment they happen, not
+      only after the operator notices a changed label. The operator asked
+      for a flashing state row and invited better alternatives; the patch
+      implements a short transition cue instead of continuous flashing.
+    decision: >
+      Track the last observed `idle_state` per pane in the main TUI loop
+      and record a temporary `PaneStateFlash` when the value changes.
+      Render active flashes for about 3 seconds with a `CHANGED` badge
+      and pulse highlight on both the pane header and `state` row. When a
+      pane returns to active (`idle_state: None`), render a temporary
+      `state: ▶ ACTIVE CHANGED` row, then let the state row disappear
+      after the flash expires.
+    triggered_by: "Operator request on 2026-04-25: state changes should be noticeable, e.g. by flashing the state row."
+    issue_or_context: >
+      The existing `state` row accurately reflected the current pane
+      idle/limit/wait state, but an operator watching several panes could
+      miss a transition, especially the return from a halted state back
+      to active because the row vanished immediately.
+    changes:
+      added:
+        - "src/ui/panels.rs::PaneStateFlash + PaneStateFlashView"
+        - "src/main.rs::update_pane_state_flashes in-memory transition tracker"
+        - "UI render path for `CHANGED` badge, pulse style, and temporary `▶ ACTIVE` state row"
+        - "4 regression tests covering idle transition flash, active-return flash, flash expiry, and main-loop tracker state"
+      modified:
+        - "src/main.rs (poll loop retains active flashes and passes them into the dashboard renderer)"
+        - "src/ui/dashboard.rs (DashboardView carries state flash context)"
+        - "src/ui/panels.rs (pane header/state row rendering accepts transition flash context)"
+        - "README.md + docs/ai/{PROJECT_BRIEF,UI_MANUAL,VALIDATION}.md (state-change visibility and 432-test evidence)"
+        - "mission.yaml + mission-history.yaml (v1.15.2 ledger sync)"
+      removed: []
+    changed_sections:
+      - "src/main.rs::update_pane_state_flashes"
+      - "src/ui/panels.rs::state row rendering"
+      - "src/ui/dashboard.rs::DashboardView"
+      - "docs/ai/UI_MANUAL.md::Panes reading guide"
+    done_when_delta:
+      added:
+        - "Every detected pane `idle_state` transition creates a short operator-visible pulse"
+        - "State changes are not color-only; `CHANGED` text accompanies the highlight"
+        - "Transitions back to active remain visible briefly via `▶ ACTIVE CHANGED`"
+      modified:
+        - "The `state` row is no longer strictly absent for active panes during the transition flash window"
+      removed: []
+    impact_scope:
+      code: "+~300/-~20 LoC across main loop + pane renderer + dashboard glue"
+      tests: "432 total — 362 lib + 13 main + 33 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 428 at v1.15.1; +4 tests)"
+      ledger: "1 new timeline entry (sequence 58); meta bump"
+      review_gate: "operator-driven UX patch; no external provider contract change; local fmt/test/clippy pass."
+      follow_up_carryover: "Slice 3 (S3-1..S3-5 per the backlog) and operator priorities remain queued."
+    breaking: false
+    risk: "low — flash state is in-memory, bounded to 3 seconds, and does not alter alert policy, provider parsing, or tmux send behaviour."
+    related_commits: []
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "If the pulse is too subtle in a real terminal theme, tune the pulse colors or duration without changing the state contract."
+      - "Keep future state-change cues text-backed; do not rely on color alone."
+
+  - change_id: "v1.15.3-claude-status-capture-escape"
+    semantic_version: "1.15.3"
+    change_sequence: 59
+    date: "2026-04-25"
+    author: "Codex (codex:review, GPT-5)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — production finding: Claude `/status` remains fullscreen and blocks the next command"
+    change_type: "patch"
+    motivation_type: "operator-usage-finding"
+    persistence: "permanent"
+    intent: >
+      Preserve Claude `/status` runtime-fact parsing without leaving the
+      Claude fullscreen status surface open. The operator needs Qmonster
+      to capture the status output and then send Escape so the pane can
+      accept the next slash command immediately.
+    decision: >
+      After any Claude `/status` runtime-refresh send, Qmonster captures
+      the selected pane tail, stores it in an in-memory one-shot parser
+      overlay keyed by pane id, then sends `Escape`. The next poll merges
+      that captured tail into the parser input once and consumes it, so
+      runtime facts can be parsed even though the fullscreen surface has
+      already been closed. Raw captured output remains in memory only and
+      is not written to audit events.
+    triggered_by: "Operator request on 2026-04-25: Claude `/status` keeps the screen open; capture output and send Escape after execution."
+    issue_or_context: >
+      v1.15.1 fixed batched command delivery by cycling Claude fullscreen
+      surfaces one command per `u`, but `/status` still remained on
+      screen after the send. That made the next runtime-refresh command
+      depend on a later pre-send Escape and could leave the operator in a
+      blocked fullscreen UI between refreshes.
+    changes:
+      added:
+        - "src/app/bootstrap.rs::runtime_refresh_tail_overlays one-shot in-memory captured-tail store"
+        - "src/app/event_loop.rs::merge_runtime_refresh_tail parser overlay consumption"
+        - "src/main.rs::send_runtime_refresh_commands helper that captures Claude `/status` then sends `Escape`"
+        - "2 regression tests covering capture→Escape send order and one-shot parser overlay consumption"
+      modified:
+        - "README.md + docs/ai/{ARCHITECTURE,PROJECT_BRIEF,UI_MANUAL,VALIDATION}.md (Claude status-capture contract and 434-test evidence)"
+        - "mission.yaml + mission-history.yaml (v1.15.3 ledger sync)"
+      removed: []
+    changed_sections:
+      - "src/main.rs::runtime refresh dispatch"
+      - "src/app/event_loop.rs::run_once_with_target parser input"
+      - "src/app/bootstrap.rs::Context"
+      - "docs/ai/UI_MANUAL.md::runtime facts section"
+    done_when_delta:
+      added:
+        - "Claude `/status` output is captured before closing the fullscreen surface"
+        - "Qmonster sends `Escape` after the capture so the pane is immediately ready for the next command"
+        - "Captured `/status` output is parsed once on the next poll via an in-memory overlay"
+      modified:
+        - "The v1.15.1 pre-send Escape remains a defensive cleanup, but `/status` no longer depends on it for the normal next-command path"
+      removed: []
+    impact_scope:
+      code: "+~110/-~20 LoC across main loop dispatch, app context, event-loop parser input, and tests"
+      tests: "434 total — 362 lib + 14 main + 34 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 432 at v1.15.2; +2 tests)"
+      ledger: "1 new timeline entry (sequence 59); meta bump"
+      review_gate: "operator-driven runtime UX patch; local fmt/test/clippy pass."
+      follow_up_carryover: "Slice 3 (S3-1..S3-5 per the backlog) and operator priorities remain queued."
+    breaking: false
+    risk: "low — affects only operator-triggered runtime refresh; captured status text is one-shot in memory and not persisted to audit."
+    related_commits: []
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "If Claude `/context`, `/config`, `/stats`, or `/usage` are also confirmed to leave blocking fullscreen surfaces, extend the same capture-then-Escape post hook to those commands."
+
 evolution_summary:
-  current_phase: "v1.15.1 runtime refresh terminal-submission patch. Fixes the v1.15.0 batched-Claude-send issue by cycling the Claude full set one command per `u` press and switching tmux send to terminal submit (`C-m`). v1.15.0 baseline architecture (active-safe split, CFX-1+2 SourceKind/column-parity remediation, modes/access/loaded/restrict rows, false-IDLE lag fix, Claude usage-limit precedence) carries forward unchanged. 428 tests green; clippy + fmt clean."
+  current_phase: "v1.15.3 Claude status-capture patch. Builds on v1.15.2 state-change visibility by capturing Claude `/status` fullscreen output, feeding it once into the parser, and sending Escape immediately so the pane can accept the next slash command. v1.15.2 state-change pulse behaviour and v1.15.1 runtime-refresh cycling carry forward unchanged. 434 tests green; clippy + fmt clean."
   next_phase: "Slice 3 (S3-1..S3-5 from .docs/claude/...slice-3-backlog.md) + operator priorities B/C/D/E/A. Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round. v1.15.x patch line if operator usage on the active-safe split surfaces further issues."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

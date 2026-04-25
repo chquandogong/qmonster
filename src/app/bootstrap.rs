@@ -33,6 +33,11 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// Updated on transitions (None→Some, Some(X)→Some(Y)) and cleared on
     /// Some→None or lifecycle reset so the UI can display accurate elapsed time.
     pub idle_entered_at: std::collections::HashMap<String, std::time::Instant>,
+    /// One-shot pane tails captured from provider fullscreen status surfaces.
+    /// Runtime refresh may need to close the surface immediately with Escape;
+    /// this keeps the captured output available to the next parser pass without
+    /// persisting raw pane text in the audit log.
+    pub runtime_refresh_tail_overlays: std::collections::HashMap<String, String>,
     known_pane_ids: Vec<String>,
 }
 
@@ -53,6 +58,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             tail_history: std::collections::HashMap::new(),
             idle_transition: std::collections::HashMap::new(),
             idle_entered_at: std::collections::HashMap::new(),
+            runtime_refresh_tail_overlays: std::collections::HashMap::new(),
             known_pane_ids: Vec::new(),
         }
     }

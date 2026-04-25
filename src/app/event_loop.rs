@@ -63,11 +63,16 @@ where
     };
 
     for pane in panes {
+        let parse_tail = ctx
+            .runtime_refresh_tail_overlays
+            .remove(&pane.pane_id)
+            .map(|overlay| merge_runtime_refresh_tail(&pane.tail, &overlay))
+            .unwrap_or_else(|| pane.tail.clone());
         let raw = crate::domain::identity::RawPaneInput {
             pane_id: pane.pane_id.clone(),
             title: pane.title.clone(),
             current_command: pane.current_command.clone(),
-            tail: pane.tail.clone(),
+            tail: parse_tail.clone(),
         };
         let resolved = ctx.resolver.resolve(&raw);
 
@@ -110,11 +115,11 @@ where
             .or_insert_with(|| {
                 crate::adapters::common::PaneTailHistory::new(ctx.config.idle.stillness_polls)
             });
-        history_for_pane.push(pane.tail.clone());
+        history_for_pane.push(parse_tail.clone());
 
         let parse_ctx = crate::adapters::ParserContext {
             identity: &resolved,
-            tail: &pane.tail,
+            tail: &parse_tail,
             pricing: &ctx.pricing,
             claude_settings: &ctx.claude_settings,
             history: history_for_pane,
@@ -192,6 +197,16 @@ where
     }
 
     Ok(reports)
+}
+
+fn merge_runtime_refresh_tail(live_tail: &str, captured_tail: &str) -> String {
+    if captured_tail.trim().is_empty() {
+        return live_tail.to_string();
+    }
+    if live_tail.trim().is_empty() {
+        return captured_tail.to_string();
+    }
+    format!("{live_tail}\n{captured_tail}")
 }
 
 fn deliver_effects<N: NotifyBackend>(

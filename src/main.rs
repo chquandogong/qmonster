@@ -435,6 +435,9 @@ where
     let mut alert_times: HashMap<String, String> = HashMap::new();
     let mut alert_hide_deadlines: HashMap<String, Instant> = HashMap::new();
     let mut last_alert_click: Option<AlertMouseClick> = None;
+    let mut last_pane_idle_states: HashMap<String, Option<IdleCause>> = HashMap::new();
+    let mut pane_state_flashes: HashMap<String, qmonster::ui::panels::PaneStateFlash> =
+        HashMap::new();
     let mut runtime_refresh_offsets: HashMap<String, usize> = HashMap::new();
     refresh_alert_state(
         &notices,
@@ -463,6 +466,12 @@ where
                         if let Some(notice) = route_polling_recovered(&mut last_poll_error) {
                             notices.insert(0, notice);
                         }
+                        update_pane_state_flashes(
+                            &reports,
+                            &mut last_pane_idle_states,
+                            &mut pane_state_flashes,
+                            now,
+                        );
                         last_reports = reports;
                         sync_dashboard_state(
                             &notices,
@@ -501,6 +510,7 @@ where
                 }
             }
 
+            pane_state_flashes.retain(|_, flash| flash.is_active(now));
             sync_alert_selection(
                 &mut alert_state,
                 &notices,
@@ -520,6 +530,7 @@ where
                         fresh_alerts: &fresh_alerts,
                         alert_times: &alert_times,
                         hidden_until: &alert_hide_deadlines,
+                        state_flashes: &pane_state_flashes,
                         now,
                         target_label: &target,
                         alerts_focused: !target_picker_open
@@ -1110,33 +1121,26 @@ where
                                                 provider: Some(provider),
                                                 role: Some(report.identity.identity.role),
                                             });
-                                            let mut failed: Option<(String, String)> = None;
-                                            if runtime_refresh_sends_escape_first(
+                                            let send_outcome = send_runtime_refresh_commands(
+                                                &ctx.source,
+                                                &pane_id,
                                                 provider,
                                                 report.idle_state,
-                                            ) && let Err(e) =
-                                                ctx.source.send_key(&pane_id, "Escape")
-                                            {
-                                                failed = Some(("Escape".into(), e.to_string()));
-                                            }
-                                            if failed.is_none() {
-                                                for cmd in &commands {
-                                                    if let Err(e) =
-                                                        ctx.source.send_keys(&pane_id, cmd)
-                                                    {
-                                                        failed = Some((cmd.to_string(), e.to_string()));
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            match failed {
+                                                &commands,
+                                                ctx.config.tmux.capture_lines,
+                                                &mut ctx.runtime_refresh_tail_overlays,
+                                            );
+                                            match send_outcome.failed {
                                                 None => {
                                                     ctx.sink.record(AuditEvent {
                                                         kind: AuditEventKind::RuntimeRefreshCompleted,
                                                         pane_id: pane_id.clone(),
                                                         severity: Severity::Safe,
                                                         summary: format!(
-                                                            "{pane_id} {command_label} (sent with terminal submit)"
+                                                            "{pane_id} {command_label} ({})",
+                                                            runtime_refresh_completion_label(
+                                                                send_outcome.captured_and_closed,
+                                                            )
                                                         ),
                                                         provider: Some(provider),
                                                         role: Some(report.identity.identity.role),
@@ -1153,6 +1157,7 @@ where
                                                                     provider,
                                                                     report.idle_state,
                                                                 ),
+                                                                send_outcome.captured_and_closed,
                                                             ),
                                                             severity: Severity::Good,
                                                             source_kind: SourceKind::ProjectCanonical,
@@ -2150,6 +2155,68 @@ fn runtime_refresh_sends_escape_first(
     runtime_refresh_sends_one_command_at_a_time(provider, idle_state)
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+struct RuntimeRefreshSendOutcome {
+    failed: Option<(String, String)>,
+    captured_and_closed: bool,
+}
+
+fn send_runtime_refresh_commands<P: PaneSource>(
+    source: &P,
+    pane_id: &str,
+    provider: qmonster::domain::identity::Provider,
+    idle_state: Option<IdleCause>,
+    commands: &[&str],
+    capture_lines: usize,
+    tail_overlays: &mut HashMap<String, String>,
+) -> RuntimeRefreshSendOutcome {
+    let mut outcome = RuntimeRefreshSendOutcome::default();
+    if runtime_refresh_sends_escape_first(provider, idle_state)
+        && let Err(e) = source.send_key(pane_id, "Escape")
+    {
+        outcome.failed = Some(("Escape".into(), e.to_string()));
+        return outcome;
+    }
+
+    for cmd in commands {
+        if let Err(e) = source.send_keys(pane_id, cmd) {
+            outcome.failed = Some(((*cmd).to_string(), e.to_string()));
+            break;
+        }
+        if runtime_refresh_captures_then_closes(provider, cmd) {
+            match source.capture_tail(pane_id, capture_lines) {
+                Ok(tail) => {
+                    if !tail.trim().is_empty() {
+                        tail_overlays.insert(pane_id.to_string(), tail);
+                    }
+                }
+                Err(e) => {
+                    outcome.failed = Some((format!("{cmd} capture"), e.to_string()));
+                }
+            }
+            if let Err(e) = source.send_key(pane_id, "Escape") {
+                if outcome.failed.is_none() {
+                    outcome.failed = Some(("Escape".into(), e.to_string()));
+                }
+            } else if outcome.failed.is_none() {
+                outcome.captured_and_closed = true;
+            }
+            if outcome.failed.is_some() {
+                break;
+            }
+        }
+    }
+
+    outcome
+}
+
+fn runtime_refresh_captures_then_closes(
+    provider: qmonster::domain::identity::Provider,
+    command: &str,
+) -> bool {
+    matches!(provider, qmonster::domain::identity::Provider::Claude) && command == "/status"
+}
+
 fn runtime_refresh_full_commands(
     provider: qmonster::domain::identity::Provider,
 ) -> &'static [&'static str] {
@@ -2200,13 +2267,30 @@ fn runtime_refresh_request_label(active_only: bool) -> &'static str {
     }
 }
 
+fn runtime_refresh_completion_label(captured_and_closed: bool) -> &'static str {
+    if captured_and_closed {
+        "sent with terminal submit; captured then closed with Escape"
+    } else {
+        "sent with terminal submit"
+    }
+}
+
 fn runtime_refresh_notice_body(
     pane_id: &str,
     command_label: &str,
     active_only: bool,
     one_at_a_time: bool,
+    captured_and_closed: bool,
 ) -> String {
-    if one_at_a_time {
+    if captured_and_closed && one_at_a_time {
+        format!(
+            "{pane_id} → `{command_label}` sent with terminal submit; Claude `/status` was captured, then Escape closed the fullscreen surface so the next `u` can run immediately"
+        )
+    } else if captured_and_closed {
+        format!(
+            "{pane_id} → `{command_label}` sent with terminal submit; Claude `/status` was captured, then Escape closed the fullscreen surface and the next poll will parse the captured output"
+        )
+    } else if one_at_a_time {
         format!(
             "{pane_id} → `{command_label}` sent with terminal submit; Claude fullscreen status surfaces are sent one at a time, so press `u` again to cycle the next source"
         )
@@ -2444,6 +2528,34 @@ fn sync_dashboard_state(
     );
 }
 
+fn update_pane_state_flashes(
+    reports: &[PaneReport],
+    last_states: &mut HashMap<String, Option<IdleCause>>,
+    flashes: &mut HashMap<String, qmonster::ui::panels::PaneStateFlash>,
+    now: Instant,
+) {
+    let current_panes: HashSet<&str> = reports
+        .iter()
+        .map(|report| report.pane_id.as_str())
+        .collect();
+    last_states.retain(|pane_id, _| current_panes.contains(pane_id.as_str()));
+    flashes
+        .retain(|pane_id, flash| current_panes.contains(pane_id.as_str()) && flash.is_active(now));
+
+    for report in reports {
+        let current = report.idle_state;
+        match last_states.insert(report.pane_id.clone(), current) {
+            Some(previous) if previous != current => {
+                flashes.insert(
+                    report.pane_id.clone(),
+                    qmonster::ui::panels::PaneStateFlash::new(current, now),
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
 fn refresh_alert_state(
     notices: &[SystemNotice],
     reports: &[PaneReport],
@@ -2500,10 +2612,78 @@ mod tests {
     };
     use qmonster::domain::recommendation::Recommendation;
     use qmonster::domain::signal::{IdleCause, SignalSet};
+    use std::cell::RefCell;
 
     // P5-3 execution gate tests relocated to
     // `src/policy/gates.rs` in v1.10.1 remediation (Gemini v1.10.0
     // finding #1). See `check_send_gate_*` tests there.
+
+    #[derive(Default)]
+    struct RecordingRefreshSource {
+        calls: RefCell<Vec<String>>,
+        capture: String,
+    }
+
+    impl RecordingRefreshSource {
+        fn with_capture(capture: &str) -> Self {
+            Self {
+                calls: RefCell::new(Vec::new()),
+                capture: capture.into(),
+            }
+        }
+
+        fn calls(&self) -> Vec<String> {
+            self.calls.borrow().clone()
+        }
+    }
+
+    impl PaneSource for RecordingRefreshSource {
+        fn list_panes(
+            &self,
+            _target: Option<&WindowTarget>,
+        ) -> Result<Vec<RawPaneSnapshot>, qmonster::tmux::polling::PollingError> {
+            Ok(Vec::new())
+        }
+
+        fn current_target(
+            &self,
+        ) -> Result<Option<WindowTarget>, qmonster::tmux::polling::PollingError> {
+            Ok(None)
+        }
+
+        fn available_targets(
+            &self,
+        ) -> Result<Vec<WindowTarget>, qmonster::tmux::polling::PollingError> {
+            Ok(Vec::new())
+        }
+
+        fn capture_tail(
+            &self,
+            _pane_id: &str,
+            lines: usize,
+        ) -> Result<String, qmonster::tmux::polling::PollingError> {
+            self.calls.borrow_mut().push(format!("capture:{lines}"));
+            Ok(self.capture.clone())
+        }
+
+        fn send_keys(
+            &self,
+            _pane_id: &str,
+            text: &str,
+        ) -> Result<(), qmonster::tmux::polling::PollingError> {
+            self.calls.borrow_mut().push(format!("send:{text}"));
+            Ok(())
+        }
+
+        fn send_key(
+            &self,
+            _pane_id: &str,
+            key: &str,
+        ) -> Result<(), qmonster::tmux::polling::PollingError> {
+            self.calls.borrow_mut().push(format!("key:{key}"));
+            Ok(())
+        }
+    }
 
     fn base_report(recs: Vec<Recommendation>) -> PaneReport {
         PaneReport {
@@ -2529,6 +2709,41 @@ mod tests {
             idle_state: None,
             idle_state_entered_at: None,
         }
+    }
+
+    #[test]
+    fn update_pane_state_flashes_tracks_idle_and_active_transitions() {
+        let now = Instant::now();
+        let mut last_states = HashMap::new();
+        let mut flashes = HashMap::new();
+        let mut report = base_report(vec![]);
+
+        update_pane_state_flashes(&[report.clone()], &mut last_states, &mut flashes, now);
+        assert!(
+            flashes.is_empty(),
+            "initial observation should establish baseline without flashing"
+        );
+
+        report.idle_state = Some(IdleCause::InputWait);
+        update_pane_state_flashes(
+            &[report.clone()],
+            &mut last_states,
+            &mut flashes,
+            now + std::time::Duration::from_millis(10),
+        );
+        assert_eq!(
+            flashes.get("%1").map(|flash| flash.state),
+            Some(Some(IdleCause::InputWait))
+        );
+
+        report.idle_state = None;
+        update_pane_state_flashes(
+            &[report],
+            &mut last_states,
+            &mut flashes,
+            now + std::time::Duration::from_millis(20),
+        );
+        assert_eq!(flashes.get("%1").map(|flash| flash.state), Some(None));
     }
 
     #[test]
@@ -2648,6 +2863,32 @@ mod tests {
             Provider::Claude,
             Some(IdleCause::WorkComplete)
         ));
+    }
+
+    #[test]
+    fn runtime_refresh_claude_status_captures_then_closes_surface() {
+        let source = RecordingRefreshSource::with_capture("Permission mode: bypass permissions on");
+        let mut overlays = HashMap::new();
+        let outcome = send_runtime_refresh_commands(
+            &source,
+            "%1",
+            Provider::Claude,
+            Some(IdleCause::WorkComplete),
+            &["/status"],
+            24,
+            &mut overlays,
+        );
+
+        assert_eq!(
+            source.calls(),
+            vec!["key:Escape", "send:/status", "capture:24", "key:Escape"]
+        );
+        assert_eq!(
+            overlays.get("%1").map(String::as_str),
+            Some("Permission mode: bypass permissions on")
+        );
+        assert!(outcome.captured_and_closed);
+        assert_eq!(outcome.failed, None);
     }
 
     #[test]

@@ -50,8 +50,12 @@ session:window · Provider role · %pane_id
 - 각 pane에는 보통 다음 줄들이 붙습니다.
   `state`, `path`, `status`, `blocked`, `signals`, `metrics`,
   `modes`, `access`, `loaded`, `restrict`
-- `state` 줄은 pane가 멈춤/대기 상태일 때만 보입니다.
-  상태 배지(`IDLE`, `WAIT`, `USAGE LIMIT`)와 경과 시간 배지(`⏱ MM:SS` 또는 `H:MM:SS`)가 함께 표시됩니다.
+- `state` 줄은 pane가 멈춤/대기 상태일 때 보입니다. 상태가 바뀐 직후에는
+  약 3초 동안 `CHANGED` 배지와 pulse highlight가 붙고, active로 돌아온
+  경우에도 짧게 `▶ ACTIVE` state 줄을 보여줍니다. 색만으로 상태 변화를
+  알리지 않기 위해 텍스트 배지를 함께 사용합니다.
+  멈춤/대기 상태 배지(`IDLE`, `WAIT`, `USAGE LIMIT`)에는 경과 시간
+  배지(`⏱ MM:SS` 또는 `H:MM:SS`)가 함께 표시됩니다.
 - `status`는 현재 `high confidence`, `medium confidence`,
   `low confidence`, `unknown confidence`처럼 텍스트로 표시됩니다.
 - `blocked` 줄은 가장 중요한 대기 상태만 따로 보여줍니다.
@@ -77,10 +81,12 @@ session:window · Provider role · %pane_id
   idle/wait/limit 상태면 전체 확인용 `/status`, `/context`, `/config`,
   `/stats`, `/usage`를 `u`를 누를 때마다 하나씩 순환 실행합니다. Claude
   fullscreen status surface는 뒤따르는 slash command를 막으므로 batch로
-  보내지 않습니다. 다음 poll에서 그 공식 출력과 읽을 수 있는 로컬 provider
-  설정을 `RuntimeFact`로 파싱합니다. Claude `/btw`는 작업 중에도 즉시 실행되지만
-  도구/내부 상태 접근이 없는 side question이라 runtime fact source로
-  쓰지 않습니다.
+  보내지 않습니다. Claude `/status`는 실행 후 화면이 계속 남기 때문에
+  Qmonster가 먼저 그 출력을 캡처해 one-shot parser overlay로 저장하고,
+  이어서 `Escape`를 보내 pane이 다음 명령을 받을 수 있게 되돌립니다.
+  다음 poll에서 그 캡처와 읽을 수 있는 로컬 provider 설정을 `RuntimeFact`로
+  파싱합니다. Claude `/btw`는 작업 중에도 즉시 실행되지만 도구/내부 상태
+  접근이 없는 side question이라 runtime fact source로 쓰지 않습니다.
   예: `PERM`, `MODE`, `SANDBOX`, `DIR`, `AGENTS`, `TOOL`, `SKILL`,
   `PLUGIN`.
 - 이 줄들은 “보였다”가 아니라 “provider status/config source에서 확인된”

@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
 use ratatui::prelude::*;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
@@ -8,6 +11,30 @@ use crate::domain::recommendation::Recommendation;
 use crate::domain::signal::{IdleCause, RuntimeFact, RuntimeFactKind, SignalSet};
 use crate::ui::labels::{format_count_with_suffix, source_kind_label};
 use crate::ui::theme;
+
+pub const STATE_FLASH_DURATION: Duration = Duration::from_secs(3);
+const STATE_FLASH_PULSE_MS: u128 = 350;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaneStateFlash {
+    pub state: Option<IdleCause>,
+    pub changed_at: Instant,
+}
+
+pub struct PaneStateFlashView<'a> {
+    pub now: Instant,
+    pub state_flashes: &'a HashMap<String, PaneStateFlash>,
+}
+
+impl PaneStateFlash {
+    pub fn new(state: Option<IdleCause>, changed_at: Instant) -> Self {
+        Self { state, changed_at }
+    }
+
+    pub fn is_active(self, now: Instant) -> bool {
+        now.saturating_duration_since(self.changed_at) < STATE_FLASH_DURATION
+    }
+}
 
 /// Codex v1.8.1 (Phase 4 P4-1 remediation): shared renderer for the
 /// structured `ProviderProfile` payload carried by provider-profile
@@ -67,6 +94,7 @@ pub fn render_pane_list(
     state: &mut ListState,
     target_label: &str,
     focused: bool,
+    flash_view: PaneStateFlashView<'_>,
 ) {
     let title = format!(
         "Panes · target {target_label} · selected pane expands below || counts panes:{}",
@@ -98,7 +126,15 @@ pub fn render_pane_list(
     let items: Vec<ListItem<'static>> = reports
         .iter()
         .enumerate()
-        .map(|(idx, report)| pane_list_item(report, idx == selected, idx + 1 < reports.len()))
+        .map(|(idx, report)| {
+            pane_list_item(
+                report,
+                idx == selected,
+                idx + 1 < reports.len(),
+                flash_view.now,
+                flash_view.state_flashes.get(&report.pane_id),
+            )
+        })
         .collect();
 
     StatefulWidget::render(
@@ -140,8 +176,20 @@ fn highlight_style(focused: bool) -> Style {
     }
 }
 
-fn pane_list_item(report: &PaneReport, expanded: bool, with_separator: bool) -> ListItem<'static> {
-    ListItem::new(pane_list_lines(report, expanded, with_separator))
+fn pane_list_item(
+    report: &PaneReport,
+    expanded: bool,
+    with_separator: bool,
+    now: Instant,
+    flash: Option<&PaneStateFlash>,
+) -> ListItem<'static> {
+    ListItem::new(pane_list_lines_with_flash(
+        report,
+        expanded,
+        with_separator,
+        now,
+        flash,
+    ))
 }
 
 fn pane_list_lines(
@@ -149,13 +197,22 @@ fn pane_list_lines(
     expanded: bool,
     with_separator: bool,
 ) -> Vec<Line<'static>> {
+    pane_list_lines_with_flash(report, expanded, with_separator, Instant::now(), None)
+}
+
+fn pane_list_lines_with_flash(
+    report: &PaneReport,
+    expanded: bool,
+    with_separator: bool,
+    now: Instant,
+    flash: Option<&PaneStateFlash>,
+) -> Vec<Line<'static>> {
+    let flash = matching_state_flash(report, now, flash);
     let mut lines = vec![Line::styled(
         pane_panel_title(report),
-        Style::default()
-            .fg(pane_header_color(report))
-            .add_modifier(Modifier::BOLD),
+        pane_header_style(report, now, flash),
     )];
-    for row in render_pane_state_row(report) {
+    for row in render_pane_state_row_with_flash(report, now, flash) {
         lines.push(row);
     }
     lines.push(Line::from(aligned_field(
@@ -221,6 +278,19 @@ fn pane_header_color(report: &PaneReport) -> Color {
         .map(theme::severity_color)
         .or_else(|| report.idle_state.map(idle_header_color))
         .unwrap_or_else(|| provider_color(report.identity.identity.provider))
+}
+
+fn pane_header_style(report: &PaneReport, now: Instant, flash: Option<&PaneStateFlash>) -> Style {
+    let mut style = Style::default()
+        .fg(pane_header_color(report))
+        .add_modifier(Modifier::BOLD);
+    if state_flash_pulse_on(flash, now) {
+        style = style
+            .fg(Color::Rgb(255, 244, 170))
+            .bg(Color::Rgb(70, 60, 28))
+            .add_modifier(Modifier::BOLD);
+    }
+    style
 }
 
 fn idle_header_color(cause: IdleCause) -> Color {
@@ -694,7 +764,17 @@ fn context_metric_severity(value: f32) -> crate::domain::recommendation::Severit
 /// Produces a single styled line carrying glyph + label + elapsed time for
 /// a pane that is currently in an idle cause. Callers are responsible for
 /// only calling this when `idle_state.is_some()`.
-fn format_state_row(cause: IdleCause, entered_at: std::time::Instant) -> Line<'static> {
+#[cfg(test)]
+fn format_state_row(cause: IdleCause, entered_at: Instant) -> Line<'static> {
+    format_state_row_with_flash(cause, entered_at, Instant::now(), None)
+}
+
+fn format_state_row_with_flash(
+    cause: IdleCause,
+    entered_at: Instant,
+    now: Instant,
+    flash: Option<&PaneStateFlash>,
+) -> Line<'static> {
     let (glyph, label, badge_style) = match cause {
         IdleCause::WorkComplete => ("⏹", "IDLE (done)", theme::idle_work_complete()),
         IdleCause::Stale => ("⏸", "IDLE (?)", theme::idle_stale()),
@@ -702,15 +782,41 @@ fn format_state_row(cause: IdleCause, entered_at: std::time::Instant) -> Line<'s
         IdleCause::PermissionWait => ("⚠", "WAIT (approval)", theme::idle_permission_wait()),
         IdleCause::LimitHit => ("⛔", "USAGE LIMIT", theme::idle_limit_hit()),
     };
-    let elapsed_str = format_elapsed(entered_at.elapsed());
-    Line::from(vec![
+    let pulse_on = state_flash_pulse_on(flash, now);
+    let changed = flash.is_some_and(|flash| flash.is_active(now));
+    let elapsed_str = format_elapsed(now.saturating_duration_since(entered_at));
+    let mut spans = vec![
+        Span::styled(format!("{:<8}: ", "state"), state_label_style(pulse_on)),
         Span::styled(
-            format!("{:<8}: ", "state"),
-            Style::default().fg(theme::TEXT_DIM),
+            format!(" {glyph} {label} "),
+            flashable_badge_style(badge_style, pulse_on),
         ),
-        Span::styled(format!(" {glyph} {label} "), badge_style),
         Span::raw(" "),
-        Span::styled(format!(" ⏱ {elapsed_str} "), theme::idle_elapsed_badge()),
+        Span::styled(
+            format!(" ⏱ {elapsed_str} "),
+            flashable_badge_style(theme::idle_elapsed_badge(), pulse_on),
+        ),
+    ];
+    if changed {
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            " CHANGED ",
+            state_changed_badge_style(pulse_on),
+        ));
+    }
+    Line::from(spans)
+}
+
+fn format_active_state_row(now: Instant, flash: &PaneStateFlash) -> Line<'static> {
+    let pulse_on = state_flash_pulse_on(Some(flash), now);
+    Line::from(vec![
+        Span::styled(format!("{:<8}: ", "state"), state_label_style(pulse_on)),
+        Span::styled(
+            " ▶ ACTIVE ",
+            flashable_badge_style(active_state_badge_style(), pulse_on),
+        ),
+        Span::raw(" "),
+        Span::styled(" CHANGED ", state_changed_badge_style(pulse_on)),
     ])
 }
 
@@ -729,11 +835,83 @@ fn format_elapsed(d: std::time::Duration) -> String {
 /// active idle cause, or an empty vec when the pane is running normally.
 /// Used by the pane card and directly in tests.
 fn render_pane_state_row(report: &PaneReport) -> Vec<Line<'static>> {
+    render_pane_state_row_with_flash(report, Instant::now(), None)
+}
+
+fn render_pane_state_row_with_flash(
+    report: &PaneReport,
+    now: Instant,
+    flash: Option<&PaneStateFlash>,
+) -> Vec<Line<'static>> {
+    let flash = matching_state_flash(report, now, flash);
     if let (Some(cause), Some(entered_at)) = (report.idle_state, report.idle_state_entered_at) {
-        vec![format_state_row(cause, entered_at)]
+        vec![format_state_row_with_flash(cause, entered_at, now, flash)]
+    } else if report.idle_state.is_none() {
+        flash
+            .map(|flash| vec![format_active_state_row(now, flash)])
+            .unwrap_or_default()
     } else {
         vec![]
     }
+}
+
+fn matching_state_flash<'a>(
+    report: &PaneReport,
+    now: Instant,
+    flash: Option<&'a PaneStateFlash>,
+) -> Option<&'a PaneStateFlash> {
+    flash.filter(|flash| flash.state == report.idle_state && flash.is_active(now))
+}
+
+fn state_flash_pulse_on(flash: Option<&PaneStateFlash>, now: Instant) -> bool {
+    flash.is_some_and(|flash| {
+        flash.is_active(now)
+            && (now.saturating_duration_since(flash.changed_at).as_millis() / STATE_FLASH_PULSE_MS)
+                .is_multiple_of(2)
+    })
+}
+
+fn state_label_style(pulse_on: bool) -> Style {
+    if pulse_on {
+        Style::default()
+            .fg(Color::Rgb(28, 24, 12))
+            .bg(Color::Rgb(245, 226, 120))
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme::TEXT_DIM)
+    }
+}
+
+fn flashable_badge_style(style: Style, pulse_on: bool) -> Style {
+    if pulse_on {
+        Style::default()
+            .fg(Color::Rgb(28, 24, 12))
+            .bg(Color::Rgb(245, 226, 120))
+            .add_modifier(Modifier::BOLD)
+    } else {
+        style
+    }
+}
+
+fn state_changed_badge_style(pulse_on: bool) -> Style {
+    if pulse_on {
+        Style::default()
+            .fg(Color::Rgb(28, 24, 12))
+            .bg(Color::Rgb(255, 240, 150))
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(Color::Rgb(246, 232, 150))
+            .bg(Color::Rgb(76, 66, 34))
+            .add_modifier(Modifier::BOLD)
+    }
+}
+
+fn active_state_badge_style() -> Style {
+    Style::default()
+        .fg(Color::Rgb(18, 34, 28))
+        .bg(Color::Rgb(112, 192, 156))
+        .add_modifier(Modifier::BOLD)
 }
 
 fn blocking_signal_line(signals: &SignalSet) -> Option<Line<'static>> {
@@ -1294,6 +1472,41 @@ mod tests {
         assert!(
             text.contains("USAGE LIMIT"),
             "limit state must be distinct from normal idle: {text}"
+        );
+    }
+
+    #[test]
+    fn state_row_marks_recent_transition_as_changed() {
+        let now = std::time::Instant::now();
+        let flash = PaneStateFlash::new(Some(IdleCause::InputWait), now);
+        let line = format_state_row_with_flash(IdleCause::InputWait, now, now, Some(&flash));
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(text.contains("WAIT (input)"), "label missing: {text}");
+        assert!(text.contains("CHANGED"), "changed badge missing: {text}");
+    }
+
+    #[test]
+    fn active_transition_renders_temporary_state_row() {
+        let rep = base_report();
+        let now = std::time::Instant::now();
+        let flash = PaneStateFlash::new(None, now);
+        let lines = render_pane_state_row_with_flash(&rep, now, Some(&flash));
+        assert_eq!(lines.len(), 1);
+        let text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(text.contains("ACTIVE"), "active badge missing: {text}");
+        assert!(text.contains("CHANGED"), "changed badge missing: {text}");
+    }
+
+    #[test]
+    fn expired_active_transition_flash_removes_state_row() {
+        let rep = base_report();
+        let now = std::time::Instant::now();
+        let flash =
+            PaneStateFlash::new(None, now - STATE_FLASH_DURATION - Duration::from_millis(1));
+        let lines = render_pane_state_row_with_flash(&rep, now, Some(&flash));
+        assert!(
+            lines.is_empty(),
+            "expired flash should not render state row"
         );
     }
 
