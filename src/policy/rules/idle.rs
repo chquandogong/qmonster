@@ -36,7 +36,7 @@ fn cause_label(c: IdleCause) -> &'static str {
     match c {
         IdleCause::PermissionWait => "WAIT (approval)",
         IdleCause::InputWait => "WAIT (input)",
-        IdleCause::LimitHit => "LIMIT",
+        IdleCause::LimitHit => "USAGE LIMIT",
         IdleCause::WorkComplete => "IDLE (done)",
         IdleCause::Stale => "IDLE (?)",
     }
@@ -61,18 +61,28 @@ fn source_kind_for(c: IdleCause) -> SourceKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role};
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
 
     fn id() -> ResolvedIdentity {
         ResolvedIdentity {
-            identity: PaneIdentity { provider: Provider::Claude, instance: 1, role: Role::Main, pane_id: "%1".into() },
+            identity: PaneIdentity {
+                provider: Provider::Claude,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
             confidence: IdentityConfidence::High,
         }
     }
 
     #[test]
     fn none_to_some_input_wait_fires_warning() {
-        let s = SignalSet { idle_state: Some(IdleCause::InputWait), ..SignalSet::default() };
+        let s = SignalSet {
+            idle_state: Some(IdleCause::InputWait),
+            ..SignalSet::default()
+        };
         let recs = eval_idle_transition(&id(), &s, None);
         assert_eq!(recs.len(), 1);
         assert_eq!(recs[0].action, "pane-state");
@@ -81,36 +91,55 @@ mod tests {
 
     #[test]
     fn same_cause_repeat_fires_no_new_alert() {
-        let s = SignalSet { idle_state: Some(IdleCause::WorkComplete), ..SignalSet::default() };
+        let s = SignalSet {
+            idle_state: Some(IdleCause::WorkComplete),
+            ..SignalSet::default()
+        };
         let recs = eval_idle_transition(&id(), &s, Some(IdleCause::WorkComplete));
         assert!(recs.is_empty());
     }
 
     #[test]
     fn distinct_cause_transition_fires_new_alert() {
-        let s = SignalSet { idle_state: Some(IdleCause::PermissionWait), ..SignalSet::default() };
+        let s = SignalSet {
+            idle_state: Some(IdleCause::PermissionWait),
+            ..SignalSet::default()
+        };
         let recs = eval_idle_transition(&id(), &s, Some(IdleCause::InputWait));
         assert_eq!(recs.len(), 1);
     }
 
     #[test]
     fn limit_hit_fires_risk_severity() {
-        let s = SignalSet { idle_state: Some(IdleCause::LimitHit), ..SignalSet::default() };
+        let s = SignalSet {
+            idle_state: Some(IdleCause::LimitHit),
+            ..SignalSet::default()
+        };
         let recs = eval_idle_transition(&id(), &s, None);
         assert_eq!(recs[0].severity, Severity::Risk);
         assert_eq!(recs[0].source_kind, SourceKind::ProviderOfficial);
+        assert!(
+            recs[0].reason.contains("USAGE LIMIT"),
+            "operator-facing alert must distinguish usage limits from normal idle"
+        );
     }
 
     #[test]
     fn work_complete_fires_concern_severity() {
-        let s = SignalSet { idle_state: Some(IdleCause::WorkComplete), ..SignalSet::default() };
+        let s = SignalSet {
+            idle_state: Some(IdleCause::WorkComplete),
+            ..SignalSet::default()
+        };
         let recs = eval_idle_transition(&id(), &s, None);
         assert_eq!(recs[0].severity, Severity::Concern);
     }
 
     #[test]
     fn stale_fires_concern_severity_with_heuristic_source() {
-        let s = SignalSet { idle_state: Some(IdleCause::Stale), ..SignalSet::default() };
+        let s = SignalSet {
+            idle_state: Some(IdleCause::Stale),
+            ..SignalSet::default()
+        };
         let recs = eval_idle_transition(&id(), &s, None);
         assert_eq!(recs[0].severity, Severity::Concern);
         assert_eq!(recs[0].source_kind, SourceKind::Heuristic);
@@ -118,7 +147,10 @@ mod tests {
 
     #[test]
     fn idle_state_none_fires_no_alert() {
-        let s = SignalSet { idle_state: None, ..SignalSet::default() };
+        let s = SignalSet {
+            idle_state: None,
+            ..SignalSet::default()
+        };
         let recs = eval_idle_transition(&id(), &s, Some(IdleCause::WorkComplete));
         assert!(recs.is_empty());
     }

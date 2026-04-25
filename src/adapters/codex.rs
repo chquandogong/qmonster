@@ -1,5 +1,5 @@
 use crate::adapters::ProviderParser;
-use crate::adapters::common::{parse_common_signals, parse_count_with_suffix, PaneTailHistory, STILLNESS_WINDOW};
+use crate::adapters::common::{PaneTailHistory, parse_common_signals, parse_count_with_suffix};
 use crate::domain::identity::Provider;
 use crate::domain::origin::SourceKind;
 use crate::domain::signal::{IdleCause, MetricValue, SignalSet};
@@ -235,17 +235,14 @@ fn is_plain_identifier(s: &str) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '_' || c == '.' || c == '-')
 }
 
-fn classify_idle_codex(
-    tail: &str,
-    history: &PaneTailHistory,
-) -> Option<IdleCause> {
+fn classify_idle_codex(tail: &str, history: &PaneTailHistory) -> Option<IdleCause> {
     if codex_limit_hit(tail) {
         return Some(IdleCause::LimitHit);
     }
     if codex_idle_cursor(tail) {
         return Some(IdleCause::WorkComplete);
     }
-    if history.is_still(STILLNESS_WINDOW) {
+    if history.is_still(history.capacity()) {
         return Some(IdleCause::Stale);
     }
     None
@@ -266,7 +263,7 @@ fn codex_idle_cursor(tail: &str) -> bool {
         if is_codex_bottom_status_line(line) {
             continue;
         }
-        return line.trim_start().starts_with("› ");
+        return line.trim() == "›";
     }
     false
 }
@@ -288,11 +285,19 @@ fn codex_limit_hit(tail: &str) -> bool {
     // Pattern: `5h limit:` followed by `100% used` or `0% left` on same line.
     for line in tail.lines() {
         let lower = line.to_lowercase();
-        if lower.contains("5h limit:") && (lower.contains("100% used") || lower.contains("0% left")) {
+        if lower.contains("5h limit:")
+            && (contains_percent_phrase(&lower, "100% used")
+                || contains_percent_phrase(&lower, "0% left"))
+        {
             return true;
         }
     }
     false
+}
+
+fn contains_percent_phrase(line: &str, phrase: &str) -> bool {
+    line.match_indices(phrase)
+        .any(|(idx, _)| idx == 0 || !line.as_bytes()[idx - 1].is_ascii_digit())
 }
 
 #[cfg(test)]
@@ -371,7 +376,13 @@ output_per_1m = 10.00
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
         let history = PaneTailHistory::empty();
-        let c = ctx(&id, "This action requires approval", &pricing, &settings, &history);
+        let c = ctx(
+            &id,
+            "This action requires approval",
+            &pricing,
+            &settings,
+            &history,
+        );
         let set = CodexAdapter.parse(&c);
         assert!(matches!(set.idle_state, Some(IdleCause::PermissionWait)));
     }
@@ -447,7 +458,13 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
         let history = PaneTailHistory::empty();
-        let c = ctx(&id, STATUS_LINE_NEWEST_UNKNOWN_MODEL, &pricing, &settings, &history);
+        let c = ctx(
+            &id,
+            STATUS_LINE_NEWEST_UNKNOWN_MODEL,
+            &pricing,
+            &settings,
+            &history,
+        );
         let set = CodexAdapter.parse(&c);
 
         // context_pressure must come from the NEWEST line (70% used), not
@@ -552,7 +569,13 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
         let history = PaneTailHistory::empty();
-        let c = ctx(&id, STATUS_LINE_WITH_BOX_ABOVE, &pricing, &settings, &history);
+        let c = ctx(
+            &id,
+            STATUS_LINE_WITH_BOX_ABOVE,
+            &pricing,
+            &settings,
+            &history,
+        );
         let set = CodexAdapter.parse(&c);
 
         let effort = set.reasoning_effort.as_ref().expect("effort parsed");
@@ -708,6 +731,18 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
     }
 
     #[test]
+    fn codex_prompt_echo_with_request_text_above_status_line_is_not_idle_cursor() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\n› write tests\n\nContext 100% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 0% used · 0.122.0 · 0 in · 0 out · <redacted> · gp";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+        assert_eq!(set.idle_state, None);
+    }
+
+    #[test]
     fn codex_5h_limit_100_used_yields_limit_hit() {
         let id = id();
         let pricing = PricingTable::empty();
@@ -729,6 +764,18 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
         assert_eq!(set.idle_state, Some(IdleCause::LimitHit));
+    }
+
+    #[test]
+    fn codex_5h_limit_100_left_does_not_false_fire_limit_hit() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "│  5h limit:    [████████████████████] 100% left (resets 07:59)  │";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+        assert_ne!(set.idle_state, Some(IdleCause::LimitHit));
     }
 
     #[test]

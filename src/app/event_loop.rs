@@ -107,7 +107,9 @@ where
         let history_for_pane = ctx
             .tail_history
             .entry(pane.pane_id.clone())
-            .or_insert_with(|| crate::adapters::common::PaneTailHistory::new(ctx.config.idle.stillness_polls));
+            .or_insert_with(|| {
+                crate::adapters::common::PaneTailHistory::new(ctx.config.idle.stillness_polls)
+            });
         history_for_pane.push(pane.tail.clone());
 
         let parse_ctx = crate::adapters::ParserContext {
@@ -140,7 +142,8 @@ where
             }
             _ => {} // Some→Same or None→None: preserve existing entered_at
         }
-        ctx.idle_transition.insert(pane.pane_id.clone(), signals.idle_state);
+        ctx.idle_transition
+            .insert(pane.pane_id.clone(), signals.idle_state);
 
         let idle_state = signals.idle_state;
         let entered_at = ctx.idle_entered_at.get(&pane.pane_id).copied();

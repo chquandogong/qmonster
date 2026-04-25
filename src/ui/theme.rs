@@ -1,4 +1,4 @@
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 
 use crate::domain::recommendation::Severity;
 
@@ -33,27 +33,50 @@ pub fn label_style() -> Style {
 
 /// Styled for a pane that has cleanly finished its work (dim gray — non-urgent).
 pub fn idle_work_complete() -> Style {
-    Style::default().fg(TEXT_DIM)
+    Style::default()
+        .fg(Color::Rgb(236, 241, 247))
+        .bg(Color::Rgb(74, 88, 108))
+        .add_modifier(Modifier::BOLD)
 }
 
 /// Styled for a pane that is stale / cause unknown (dimmer gray).
 pub fn idle_stale() -> Style {
-    Style::default().fg(Color::Rgb(90, 100, 120))
+    Style::default()
+        .fg(Color::Rgb(228, 234, 242))
+        .bg(Color::Rgb(58, 68, 84))
+        .add_modifier(Modifier::BOLD)
 }
 
 /// Styled for a pane awaiting user input (yellow — needs attention).
 pub fn idle_input_wait() -> Style {
-    Style::default().fg(Color::Yellow)
+    Style::default()
+        .fg(Color::Rgb(28, 24, 16))
+        .bg(Color::Rgb(236, 198, 98))
+        .add_modifier(Modifier::BOLD)
 }
 
 /// Styled for a pane awaiting operator permission (light yellow — elevated urgency).
 pub fn idle_permission_wait() -> Style {
-    Style::default().fg(Color::LightYellow)
+    Style::default()
+        .fg(Color::Rgb(28, 20, 12))
+        .bg(Color::Rgb(245, 176, 82))
+        .add_modifier(Modifier::BOLD)
 }
 
 /// Styled for a pane that has hit a resource limit (red — action required).
 pub fn idle_limit_hit() -> Style {
-    Style::default().fg(Color::Red)
+    Style::default()
+        .fg(Color::Rgb(248, 244, 244))
+        .bg(Color::Rgb(188, 72, 72))
+        .add_modifier(Modifier::BOLD)
+}
+
+/// High-contrast badge for the elapsed timer shown next to an idle state.
+pub fn idle_elapsed_badge() -> Style {
+    Style::default()
+        .fg(Color::Rgb(232, 238, 248))
+        .bg(Color::Rgb(54, 66, 86))
+        .add_modifier(Modifier::BOLD)
 }
 
 #[cfg(test)]

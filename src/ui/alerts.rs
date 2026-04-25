@@ -81,7 +81,7 @@ pub fn format_prompt_send_proposal(
 }
 
 const DETAIL_LABEL_WIDTH: usize = 8;
-pub const ALERT_AUTO_HIDE_DELAY: Duration = Duration::from_secs(12);
+pub const ALERT_AUTO_HIDE_DELAY: Duration = Duration::from_secs(20);
 const BULK_HIDE_PREFIX: &str = "bulk hide : ";
 
 pub struct AlertView<'a> {

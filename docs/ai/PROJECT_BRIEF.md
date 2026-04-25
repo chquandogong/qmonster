@@ -2,9 +2,9 @@
 
 - Project: **Qmonster** — Dr. QUAN's Q + monitoring/master
 - Version: v0.4.0
-- Date: 2026-04-20 (initial) / 2026-04-25 (current — Slice 4 idle-state detection v1.14.0 + v1.14.1 cursor fix; Codex+Gemini confirm-review pending)
+- Date: 2026-04-20 (initial) / 2026-04-25 (current — v1.14.1 baseline + local doc/idle consistency follow-up)
 - Target env: Ubuntu + tmux + Rust TUI
-- Phase: **Phases 1–5 + P0-1 Slice 1+2 + v1.13.x emergency suppression + Slice 4 (halted/idle state) shipped.** P0-1 Slices 1+2 (v1.11.0..v1.12.2) closed the honest-gap audit that v1.10.9's TUI showed blanks for "who used how much + which model" via new `PricingTable` + `ClaudeSettings` operator-config readers, `&ParserContext` migration, Codex status-line parser, Claude `↓ Nk tokens` parser, 2-row TUI badge. v1.13.x (v1.13.0 + v1.13.1) closed ~250–330K daily false-positive alerts that production audit-DB measurement (2026-04-24) revealed: `PERMISSION_PROMPT_MARKERS` / `WAITING_PROMPT_MARKERS` phrase-only contracts; `is_log_like` structural patterns; dropped loose `verbose_answer` / `parse_context_pressure` / `ERROR_MARKERS` / `detect_task_type` substring fallbacks; real-tail regression suite. Slice 4 (v1.14.0 + v1.14.1) ships unified halt-state detection: `IdleCause` enum (PermissionWait / InputWait / LimitHit / WorkComplete / Stale), per-adapter `classify_idle` with 4-step priority (markers → limit → cursor → stillness fallback), `PaneTailHistory` + `IdleTransitionTracker` per-pane caches, `eval_idle_transition` rule fires alerts only on transitions, new `state` row on pane cards (`⏹ IDLE (done)` / `⏸ WAIT (input)` / `⚠ WAIT (approval)` / `⛔ LIMIT` / `⏸ IDLE (?)`), `[idle] stillness_polls` config knob. v1.14.1 cursor-fix lands the same fix-class as Slice 4's Gemini placeholder — `codex_idle_cursor` skips the bottom-status-line when scanning from end. 397 tests green; clippy + fmt clean; mission-history change_sequence 44–55 documents the v1.11–v1.14 arc. Phases 1–5 + P0-1 Slices 1–2 all gate-approved; v1.13.x deferred confirm-archive (single-version emergency); v1.14.x Codex+Gemini confirm-review is the next step before Slice 3 (S3-1..S3-6) backlog or operator-priority items (B/C/D/E/A).
+- Phase: **Phases 1–5 + P0-1 Slice 1+2 + v1.13.x emergency suppression + Slice 4 (halted/idle state) shipped; local doc/idle follow-up applied.** P0-1 Slices 1+2 (v1.11.0..v1.12.2) closed the honest-gap audit that v1.10.9's TUI showed blanks for "who used how much + which model" via new `PricingTable` + `ClaudeSettings` operator-config readers, `&ParserContext` migration, Codex status-line parser, Claude `↓ Nk tokens` parser, 2-row TUI badge. v1.13.x (v1.13.0 + v1.13.1) closed ~250–330K daily false-positive alerts that production audit-DB measurement (2026-04-24) revealed: `PERMISSION_PROMPT_MARKERS` / `WAITING_PROMPT_MARKERS` phrase-only contracts; `is_log_like` structural patterns; dropped loose `verbose_answer` / `parse_context_pressure` / `ERROR_MARKERS` / `detect_task_type` substring fallbacks; real-tail regression suite. Slice 4 (v1.14.0 + v1.14.1) ships unified halt-state detection: `IdleCause` enum (PermissionWait / InputWait / LimitHit / WorkComplete / Stale), per-adapter `classify_idle` with 4-step priority (markers → limit → cursor → stillness fallback), `PaneTailHistory` + `IdleTransitionTracker` per-pane caches, `eval_idle_transition` rule fires alerts only on transitions, new `state` row on pane cards (`⏹ IDLE (done)` / `⏸ WAIT (input)` / `⚠ WAIT (approval)` / `⛔ USAGE LIMIT` / `⏸ IDLE (?)`), and `[idle] stillness_polls`. The 2026-04-25 local follow-up fixes the remaining false-IDLE persistence after new requests: Claude/Codex prompt echoes no longer match idle cursors, Gemini old placeholders in scrollback no longer match after active output, stillness fallback honors the configured history capacity, Claude usage-limit banners are distinct from normal idle, and Gemini status-table `context` populates pane `CTX`. 409 tests green; clippy + fmt clean; `mission-spec validate .` is blocked locally because `mission-spec` is not installed.
 
 ## What Qmonster is
 
@@ -34,9 +34,9 @@ security and audit events, and task observability.
 3. **Recommendation-first**. Automation is kept narrow and auditable.
    Qmonster recommends; the human (or another explicit approval gate)
    acts.
-4. **Official vs heuristic**. Every number and every lever is labeled
-   either `(official)` (citing the provider's own doc) or `(heuristic)` /
-   `(estimated)` (from community tools or Qmonster inference).
+4. **Source-labeled evidence**. Every number and every lever carries
+   a `SourceKind`: `ProviderOfficial`, `ProjectCanonical`,
+   `Heuristic`, or `Estimated`.
 5. **Token optimization is architectural**. It is a design axis, not a
    feature. It shapes the observe → classify → recommend → archive →
    checkpoint loop.

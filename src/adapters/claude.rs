@@ -1,5 +1,5 @@
 use crate::adapters::ProviderParser;
-use crate::adapters::common::{parse_common_signals, parse_count_with_suffix, PaneTailHistory, STILLNESS_WINDOW};
+use crate::adapters::common::{PaneTailHistory, parse_common_signals, parse_count_with_suffix};
 use crate::domain::identity::Provider;
 use crate::domain::origin::SourceKind;
 use crate::domain::signal::{IdleCause, MetricValue, SignalSet};
@@ -60,29 +60,33 @@ fn classify_idle_claude(tail: &str, history: &PaneTailHistory) -> Option<IdleCau
         return Some(IdleCause::WorkComplete);
     }
     // Step 4 — stillness fallback.
-    if history.is_still(STILLNESS_WINDOW) {
+    if history.is_still(history.capacity()) {
         return Some(IdleCause::Stale);
     }
     None
 }
 
 fn claude_idle_cursor(tail: &str) -> bool {
-    // The last non-empty line starts with `❯ ` (Claude prompt-ready
-    // glyph + space). The space distinguishes from `❯/status`-style
-    // command echoes which have no trailing whitespace before content.
+    // The last non-empty line is the bare `❯` prompt-ready glyph.
+    // Do not match `❯ do work`: once the user submits a request, many
+    // panes keep that echo visible until the provider's first output.
+    // Treating any `❯ ...` prefix as idle keeps stale IDLE state alive.
     let last = tail.lines().rev().find(|l| !l.trim().is_empty());
-    last.is_some_and(|l| {
-        let t = l.trim_start();
-        t.starts_with("❯ ")
-    })
+    last.is_some_and(|l| l.trim() == "❯")
 }
 
 fn claude_limit_hit(tail: &str) -> bool {
     // Pattern A: two-line `Current session\n... 100% used` from /status.
     // Pattern B: same-line `Current week (...) 100% used`.
+    // Pattern C: runtime limit banner (`usage limit reached` plus a
+    // reset / retry hint). The reset anchor keeps ordinary prose about
+    // usage limits from becoming a fake LIMIT state.
     let lines: Vec<&str> = tail.lines().collect();
     for (i, line) in lines.iter().enumerate() {
         let lower = line.to_lowercase();
+        if claude_usage_limit_banner(&lines, i) {
+            return true;
+        }
         if lower.contains("current session") {
             // Look at next non-empty line for "100% used"
             for next_line in lines.iter().skip(i + 1) {
@@ -101,6 +105,34 @@ fn claude_limit_hit(tail: &str) -> bool {
         }
     }
     false
+}
+
+fn claude_usage_limit_banner(lines: &[&str], idx: usize) -> bool {
+    let line = lines[idx].to_lowercase();
+    let has_limit_phrase = (line.contains("usage limit")
+        || line.contains("rate limit")
+        || line.contains("billing limit"))
+        && (line.contains("reached")
+            || line.contains("exceeded")
+            || line.contains("hit")
+            || line.contains("blocked"));
+    if !has_limit_phrase {
+        return false;
+    }
+
+    lines
+        .iter()
+        .skip(idx)
+        .take(4)
+        .any(|window_line| has_limit_recovery_hint(&window_line.to_lowercase()))
+}
+
+fn has_limit_recovery_hint(line: &str) -> bool {
+    line.contains("reset")
+        || line.contains("resets")
+        || line.contains("try again")
+        || line.contains("upgrade")
+        || line.contains("later")
 }
 
 fn parse_claude_output_tokens(tail: &str) -> Option<u64> {
@@ -162,11 +194,11 @@ mod tests {
     use super::*;
     use crate::adapters::ParserContext;
     use crate::adapters::common::{PaneTailHistory, STILLNESS_WINDOW};
-    use crate::domain::signal::IdleCause;
     use crate::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use crate::domain::origin::SourceKind;
+    use crate::domain::signal::IdleCause;
     use crate::policy::claude_settings::ClaudeSettings;
     use crate::policy::pricing::PricingTable;
 
@@ -204,7 +236,13 @@ mod tests {
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
         let history = PaneTailHistory::empty();
-        let c = ctx(&id, "Press ENTER to continue", &pricing, &settings, &history);
+        let c = ctx(
+            &id,
+            "Press ENTER to continue",
+            &pricing,
+            &settings,
+            &history,
+        );
         let set = ClaudeAdapter.parse(&c);
         assert!(matches!(set.idle_state, Some(IdleCause::InputWait)));
     }
@@ -286,7 +324,13 @@ mod tests {
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
         let history = PaneTailHistory::empty();
-        let c = ctx(&id, "✶ Working… (↓ 100 tokens)", &pricing, &settings, &history);
+        let c = ctx(
+            &id,
+            "✶ Working… (↓ 100 tokens)",
+            &pricing,
+            &settings,
+            &history,
+        );
         let set = ClaudeAdapter.parse(&c);
         assert!(
             set.model_name.is_none(),
@@ -336,7 +380,13 @@ mod tests {
         let pricing = PricingTable::empty();
         let (settings, _f) = settings_with_model("claude-sonnet-4-6");
         let history = PaneTailHistory::empty();
-        let c = ctx(&id, "✶ Working… (↓ 100 tokens)", &pricing, &settings, &history);
+        let c = ctx(
+            &id,
+            "✶ Working… (↓ 100 tokens)",
+            &pricing,
+            &settings,
+            &history,
+        );
         let set = ClaudeAdapter.parse(&c);
 
         assert!(set.model_name.is_some(), "model populates from settings");
@@ -356,6 +406,17 @@ mod tests {
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
         assert_eq!(set.idle_state, Some(IdleCause::WorkComplete));
+    }
+
+    #[test]
+    fn claude_prompt_echo_with_request_text_is_not_idle_cursor() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, "❯ run the tests", &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        assert_eq!(set.idle_state, None);
     }
 
     #[test]
@@ -383,6 +444,33 @@ mod tests {
     }
 
     #[test]
+    fn claude_usage_limit_banner_beats_idle_cursor() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+Claude usage limit reached. Your limit will reset at 3:40pm.
+
+❯ ";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        assert_eq!(set.idle_state, Some(IdleCause::LimitHit));
+    }
+
+    #[test]
+    fn claude_usage_limit_prose_without_recovery_hint_does_not_fire_limit_hit() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Please explain what a usage limit reached message means.";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        assert_eq!(set.idle_state, None);
+    }
+
+    #[test]
     fn claude_active_output_no_cursor_no_history_yields_none() {
         let id = id();
         let pricing = PricingTable::empty();
@@ -403,8 +491,11 @@ mod tests {
         let tail = "❯ this action requires approval (y/n)";
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
-        assert_eq!(set.idle_state, Some(IdleCause::PermissionWait),
-            "explicit marker must win over cursor pattern");
+        assert_eq!(
+            set.idle_state,
+            Some(IdleCause::PermissionWait),
+            "explicit marker must win over cursor pattern"
+        );
     }
 
     #[test]

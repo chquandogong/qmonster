@@ -31,7 +31,10 @@ struct SharedPaneSource {
 }
 
 impl PaneSource for SharedPaneSource {
-    fn list_panes(&self, _target: Option<&WindowTarget>) -> Result<Vec<RawPaneSnapshot>, PollingError> {
+    fn list_panes(
+        &self,
+        _target: Option<&WindowTarget>,
+    ) -> Result<Vec<RawPaneSnapshot>, PollingError> {
         Ok(vec![RawPaneSnapshot {
             session_name: "qwork".into(),
             window_index: "1".into(),
@@ -139,6 +142,9 @@ impl PollSim {
 
     /// All recommendations whose `action == action` emitted across every feed.
     pub fn alerts_emitted_with_action(&self, action: &str) -> Vec<&Recommendation> {
-        self.emitted_alerts.iter().filter(|r| r.action == action).collect()
+        self.emitted_alerts
+            .iter()
+            .filter(|r| r.action == action)
+            .collect()
     }
 }

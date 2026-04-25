@@ -1,8 +1,8 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled)
-- Status: planning draft (not an implementation spec yet).
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-25 (implementation sync through v1.14.1 + local doc/idle consistency follow-up)
+- Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
 
@@ -34,8 +34,8 @@ observe → classify → recommend → archive → checkpoint → limited actuat
 
 No step silently skips another. `limited actuation` is restricted to
 the allow-list in `mission.yaml` constraints and `config [actions]`.
-Archive and checkpoint land in Phase 2; Phase 1 keeps only an
-in-memory `EventSink`.
+Phase 1 kept only an in-memory `EventSink`; Phase 2 added archive,
+checkpoint, retention, and durable audit storage.
 
 ## Module layout (Rust crate)
 
@@ -160,15 +160,22 @@ bell. Severity-aware rate limiting so log storms do not spam.
 
 - `observe_only` — no outbound actions at all.
 - `recommend_only` — **default**. Allowed auto actions: notifications,
-  runtime-local archive writes to `~/.qmonster/`. Disallowed: prompt
+  runtime-local archive writes under the resolved Qmonster root, and
+  display-layer prompt-send proposals. Disallowed: unconfirmed prompt
   send, `/compact`, `/clear`, memory mutation, provider
   reconfiguration, any destructive mutation.
-- `safe_auto` — reserved for a later phase. Not implemented now.
+- `safe_auto` — accepted as a non-`observe_only` mode, but it does not
+  create autonomous destructive behavior. Real prompt send still
+  requires the operator `p` confirmation path plus
+  `allow_auto_prompt_send = true`.
 
 ### Safety precedence (resolves the r1 contradiction)
 
-Standard precedence for most config: `env > CLI > user TOML
-(~/.qmonster/config.toml) > project TOML > defaults`.
+Current runtime config loading is explicit: `--config PATH` or
+defaults. Safer-only runtime overrides may be passed with `--set
+KEY=VALUE`. Storage-root resolution has its own implemented
+precedence: `QMONSTER_ROOT > --root > config.storage.root > default
+(~/.qmonster/)`.
 
 Asymmetry for these four flags — env/CLI may only move them TOWARD
 safer behavior; any attempt to move them toward more permissive is
@@ -192,11 +199,11 @@ config + safer-only env/CLI overrides.
 
 ### Storage split
 
-- `qmonster.db` = `~/.qmonster/qmonster.db` (Phase 2+; audit metadata
-  - indices + summaries). **Never contains raw tail bytes.**
-- `archive_dir = ~/.qmonster/archive/` (Phase 2+; raw tails with
+- `qmonster.db` = `<qmonster-root>/qmonster.db` (Phase 2+; audit
+  metadata - indices + summaries). **Never contains raw tail bytes.**
+- `archive_dir = <qmonster-root>/archive/` (Phase 2+; raw tails with
   preview/full split).
-- `snapshot_dir = ~/.qmonster/snapshots/` (Phase 2+; runtime
+- `snapshot_dir = <qmonster-root>/snapshots/` (Phase 2+; runtime
   checkpoints before a user-requested compact). **Never overlaps with
   `.mission/CURRENT_STATE.md`.**
 - `.mission/CURRENT_STATE.md` is a **day-end handoff document** written
@@ -205,10 +212,12 @@ config + safer-only env/CLI overrides.
 
 ### Filesystem write boundary
 
-Qmonster runtime writes only within `~/.qmonster/`. Project-directory
-files (`CURRENT_STATE.md`, `mission.yaml`, `mission-history.yaml`,
-`docs/ai/*`, provider config files, source files) are read-only to
-Qmonster across Phases 1–4. Any write elsewhere is a bug.
+Qmonster runtime writes only within the resolved Qmonster root
+(default `~/.qmonster/`, or the configured `QMONSTER_ROOT` / `--root`
+/ `storage.root`). Project-directory files (`CURRENT_STATE.md`,
+`mission.yaml`, `mission-history.yaml`, `docs/ai/*`, provider config
+files, source files) are read-only to Qmonster across Phases 1–5. Any
+runtime write elsewhere is a bug.
 
 ### Abstraction boundaries (do not violate)
 
@@ -253,7 +262,7 @@ value. Color is never used alone.
    signals.**
 3. **Archive + checkpoint** (Phase 2). Raw tails → archive;
    preview/full split on screen; runtime snapshots pre-compact →
-   `~/.qmonster/snapshots/`. Never `.mission/CURRENT_STATE.md`.
+   `<qmonster-root>/snapshots/`. Never `.mission/CURRENT_STATE.md`.
 4. **Policy + recommendation** (Phase 1 = alerts only; Phase 3 =
    A–G situations; Phase 4 = profile recommendations). Aggressive mode
    gated by `quota_tight` flag.

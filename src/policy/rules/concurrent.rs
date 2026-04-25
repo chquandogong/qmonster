@@ -14,7 +14,12 @@ pub fn eval_concurrent(panes: &[PaneView<'_>]) -> Vec<CrossPaneFinding> {
     let qualifying: Vec<(&PaneView<'_>, String)> = panes
         .iter()
         .filter(|v| matches!(v.identity.identity.role, Role::Main | Role::Review))
-        .filter(|v| !matches!(v.signals.idle_state, Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)))
+        .filter(|v| {
+            !matches!(
+                v.signals.idle_state,
+                Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+            )
+        })
         .filter(|v| v.signals.output_chars >= 500)
         .filter(|v| !v.current_path.is_empty())
         .map(|v| (v, v.identity.identity.pane_id.clone()))

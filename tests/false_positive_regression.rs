@@ -165,8 +165,8 @@ fn gemini_idle_v0_39_does_not_false_fire_context_pressure_in_common() {
         s.context_pressure.is_none(),
         "Gemini status line columns include a `context` header word and \
          `0% used` data; common.rs substring matching incorrectly bridged \
-         them. context_pressure for Gemini is S3-3 territory (full status-\
-         line parser); until then, leave None."
+         them. GeminiAdapter owns the structured status-table parser; \
+         common.rs must still leave context_pressure unset."
     );
 }
 

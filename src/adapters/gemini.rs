@@ -1,17 +1,107 @@
 use crate::adapters::ProviderParser;
 use crate::adapters::common::parse_common_signals;
-use crate::domain::signal::{IdleCause, SignalSet};
+use crate::domain::identity::Provider;
+use crate::domain::origin::SourceKind;
+use crate::domain::signal::{IdleCause, MetricValue, SignalSet};
 
 pub struct GeminiAdapter;
 
 impl ProviderParser for GeminiAdapter {
     fn parse(&self, ctx: &crate::adapters::ParserContext) -> SignalSet {
         let mut set = parse_common_signals(ctx.tail);
+        if let Some(context) = parse_gemini_context_pressure(ctx.tail) {
+            set.context_pressure = Some(
+                MetricValue::new(context, SourceKind::ProviderOfficial)
+                    .with_confidence(0.95)
+                    .with_provider(Provider::Gemini),
+            );
+        }
         if set.idle_state.is_none() {
             set.idle_state = classify_idle_gemini(ctx.tail, ctx.history);
         }
         set
     }
+}
+
+fn parse_gemini_context_pressure(tail: &str) -> Option<f32> {
+    let lines: Vec<&str> = tail.lines().collect();
+    for (idx, line) in lines.iter().enumerate() {
+        if !is_gemini_status_header(line) {
+            continue;
+        }
+
+        let header_cols = split_gemini_status_columns(line);
+        let Some(context_idx) = header_cols
+            .iter()
+            .position(|col| col.trim().eq_ignore_ascii_case("context"))
+        else {
+            continue;
+        };
+
+        for data_line in lines.iter().skip(idx + 1) {
+            let trimmed = data_line.trim();
+            if trimmed.is_empty() || is_gemini_separator(trimmed) {
+                continue;
+            }
+
+            let data_cols = split_gemini_status_columns(data_line);
+            if let Some(context) = data_cols
+                .get(context_idx)
+                .and_then(|context_col| parse_used_percent(context_col))
+            {
+                return Some(context);
+            }
+            break;
+        }
+    }
+    None
+}
+
+fn split_gemini_status_columns(line: &str) -> Vec<&str> {
+    let mut cols = Vec::new();
+    let mut start = 0;
+    let mut whitespace_start = None;
+    let mut whitespace_count = 0;
+
+    for (idx, ch) in line.char_indices() {
+        if ch.is_whitespace() {
+            if whitespace_count == 0 {
+                whitespace_start = Some(idx);
+            }
+            whitespace_count += 1;
+            continue;
+        }
+
+        if whitespace_count >= 2 {
+            if let Some(end) = whitespace_start {
+                let col = line[start..end].trim();
+                if !col.is_empty() {
+                    cols.push(col);
+                }
+            }
+            start = idx;
+        }
+        whitespace_start = None;
+        whitespace_count = 0;
+    }
+
+    let col = line[start..].trim();
+    if !col.is_empty() {
+        cols.push(col);
+    }
+    cols
+}
+
+fn parse_used_percent(cell: &str) -> Option<f32> {
+    let (num, rest) = cell.trim().split_once('%')?;
+    if !rest.trim_start().starts_with("used") {
+        return None;
+    }
+    let pct = num.trim().parse::<u8>().ok()?;
+    if pct > 100 {
+        return None;
+    }
+    Some(pct as f32 / 100.0)
 }
 
 fn classify_idle_gemini(
@@ -24,26 +114,80 @@ fn classify_idle_gemini(
     if gemini_idle_cursor(tail) {
         return Some(IdleCause::WorkComplete);
     }
-    if history.is_still(crate::adapters::common::STILLNESS_WINDOW) {
+    if history.is_still(history.capacity()) {
         return Some(IdleCause::Stale);
     }
     None
 }
 
-/// True when any line in the tail is Gemini's input placeholder.
+/// True when the tail contains Gemini's input placeholder in the live
+/// idle area.
+///
 /// The `*  ` prefix (asterisk + 2 spaces) is the prompt glyph Gemini
 /// CLI renders when it is waiting for the next user message.
 ///
-/// We scan the whole tail rather than checking the last non-empty line
-/// because in production Gemini always renders a 2-row status bar
-/// (column headers + data row) below the placeholder, pushing the
-/// placeholder out of last-line position.  The placeholder appears
-/// ONLY in idle state, so scanning all lines is safe.
+/// We cannot just check the last non-empty line because production
+/// Gemini renders a status table below the placeholder. We also cannot
+/// scan the whole tail blindly: an old placeholder can stay in scrollback
+/// after a new request has started, keeping the pane falsely IDLE until
+/// enough output pushes it out. The suffix after the placeholder must
+/// therefore be empty or only Gemini UI chrome/status rows.
 fn gemini_idle_cursor(tail: &str) -> bool {
-    tail.lines().any(|line| {
+    let lines: Vec<&str> = tail.lines().collect();
+    lines.iter().enumerate().any(|(idx, line)| {
         let t = line.trim_start();
-        t.starts_with("*  ") && t.contains("Type your message")
+        t.starts_with("*  ")
+            && t.contains("Type your message")
+            && gemini_suffix_is_idle_chrome(&lines[idx + 1..])
     })
+}
+
+fn gemini_suffix_is_idle_chrome(lines: &[&str]) -> bool {
+    let mut saw_status_header = false;
+    let mut saw_status_data = false;
+
+    for raw in lines {
+        let line = raw.trim();
+        if line.is_empty() || is_gemini_separator(line) {
+            continue;
+        }
+
+        if !saw_status_header && is_gemini_status_header(line) {
+            saw_status_header = true;
+            continue;
+        }
+
+        if saw_status_header && !saw_status_data && is_gemini_status_data(line) {
+            saw_status_data = true;
+            continue;
+        }
+
+        return false;
+    }
+
+    true
+}
+
+fn is_gemini_separator(line: &str) -> bool {
+    !line.is_empty()
+        && line
+            .chars()
+            .all(|c| c.is_whitespace() || matches!(c, '-' | '─' | '━' | '═'))
+}
+
+fn is_gemini_status_header(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    lower.contains("branch")
+        && lower.contains("sandbox")
+        && lower.contains("/model")
+        && lower.contains("quota")
+        && lower.contains("context")
+        && lower.contains("memory")
+}
+
+fn is_gemini_status_data(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    lower.contains("% used") && lower.contains("sandbox")
 }
 
 /// True when the Gemini status block reports quota exhaustion.
@@ -82,6 +226,7 @@ mod tests {
     use crate::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
+    use crate::domain::origin::SourceKind;
     use crate::domain::signal::IdleCause;
     use crate::policy::claude_settings::ClaudeSettings;
     use crate::policy::pricing::PricingTable;
@@ -120,7 +265,13 @@ mod tests {
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
         let history = PaneTailHistory::empty();
-        let c = ctx(&id, "Starting subagent: web-explorer", &pricing, &settings, &history);
+        let c = ctx(
+            &id,
+            "Starting subagent: web-explorer",
+            &pricing,
+            &settings,
+            &history,
+        );
         let set = GeminiAdapter.parse(&c);
         assert!(set.subagent_hint);
     }
@@ -135,6 +286,50 @@ mod tests {
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = GeminiAdapter.parse(&c);
         assert_eq!(set.idle_state, Some(IdleCause::WorkComplete));
+    }
+
+    #[test]
+    fn gemini_status_table_populates_context_pressure_from_context_column() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
+main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec      47% used      63% used     118.8 MB     cdf3f5ed      user@example.com";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        let metric = set
+            .context_pressure
+            .as_ref()
+            .expect("context pressure parsed");
+        assert!((metric.value - 0.63).abs() < f32::EPSILON);
+        assert_eq!(metric.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(metric.provider, Some(Provider::Gemini));
+        assert_eq!(metric.confidence, Some(0.95));
+    }
+
+    #[test]
+    fn gemini_context_pressure_reads_context_not_quota_column() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
+main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec      100% used     12% used     118.8 MB     cdf3f5ed      user@example.com";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        let metric = set
+            .context_pressure
+            .as_ref()
+            .expect("context pressure parsed");
+        assert!((metric.value - 0.12).abs() < f32::EPSILON);
+        assert_eq!(
+            set.idle_state,
+            Some(IdleCause::LimitHit),
+            "quota remains a separate limit signal"
+        );
     }
 
     #[test]
@@ -174,6 +369,24 @@ mod tests {
         let settings = ClaudeSettings::empty();
         let history = PaneTailHistory::empty();
         let tail = "✓  ReadFile foo.rs\n  5 lines";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        assert_eq!(set.idle_state, None);
+    }
+
+    #[test]
+    fn gemini_old_placeholder_in_scrollback_with_following_output_is_not_idle_cursor() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+*  Type your message or @path/to/file
+──────────────────────────────────────
+branch sandbox /model quota context memory
+main no sandbox gemini-3.1 ~/proj 47% used 0% used 119 MB
+
+Working on the new request now";
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = GeminiAdapter.parse(&c);
         assert_eq!(set.idle_state, None);

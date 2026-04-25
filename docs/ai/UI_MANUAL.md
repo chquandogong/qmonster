@@ -28,6 +28,7 @@
   평소에는 `[ ] click hide · Enter/Space hide`,
   숨김 예약 상태에서는 `[x] auto-hide in Ns · click undo · Enter/Space undo`
   로 보입니다.
+- 현재 숨김 예약 유지 시간은 기본 **20초**입니다.
 - 그 아래에는 `summary`, 필요하면 `next`, `run`이 `label : value`
   정렬로 붙습니다.
 - Alert 종류 제목은 현재 다음과 같이 나뉩니다.
@@ -47,7 +48,9 @@ session:window · Provider role · %pane_id
 - 예:
   `qmonster:0 · Codex review · %57`
 - 각 pane에는 보통 다음 줄들이 붙습니다.
-  `path`, `status`, `blocked`, `signals`, `metrics`
+  `state`, `path`, `status`, `blocked`, `signals`, `metrics`
+- `state` 줄은 pane가 멈춤/대기 상태일 때만 보입니다.
+  상태 배지(`IDLE`, `WAIT`, `USAGE LIMIT`)와 경과 시간 배지(`⏱ MM:SS` 또는 `H:MM:SS`)가 함께 표시됩니다.
 - `status`는 현재 `high confidence`, `medium confidence`,
   `low confidence`, `unknown confidence`처럼 텍스트로 표시됩니다.
 - `blocked` 줄은 가장 중요한 대기 상태만 따로 보여줍니다.
@@ -60,6 +63,10 @@ session:window · Provider role · %pane_id
 - `CTX` badge는 수치가 높을수록 더 강한 severity 색을 사용합니다.
   85% 이상은 `Risk`, 75% 이상은 `Warning`, 60% 이상은 `Concern`으로
   취급됩니다.
+- 현재 `CTX`는 구조적으로 확인 가능한 provider status에서만 채웁니다.
+  Codex는 bottom status line, Gemini는 status table의 `context` 컬럼을
+  사용합니다. Claude의 `/status` 사용량 막대는 context window가 아니라
+  usage/rate limit이므로 `CTX`로 표시하지 않습니다.
 - 선택된 pane는 recommendation과 provider profile payload를 아래로
   펼쳐서 보여줍니다.
 

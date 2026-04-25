@@ -154,7 +154,9 @@ impl PaneTailHistory {
             .iter()
             .skip(self.snapshots.len() - window)
             .map(|s| Self::normalize(s));
-        let Some(first) = iter.next() else { return false };
+        let Some(first) = iter.next() else {
+            return false;
+        };
         iter.all(|s| s == first)
     }
 
@@ -258,7 +260,9 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
 fn parse_context_pressure_test_marker(lower: &str) -> Option<MetricValue<f32>> {
     const PHRASE: &str = "context window usage ";
     for line in lower.lines() {
-        let Some(idx) = line.find(PHRASE) else { continue };
+        let Some(idx) = line.find(PHRASE) else {
+            continue;
+        };
         let rest = &line[idx + PHRASE.len()..];
         let bytes = rest.as_bytes();
         let mut end = 0;
@@ -268,7 +272,10 @@ fn parse_context_pressure_test_marker(lower: &str) -> Option<MetricValue<f32>> {
         if end == 0 || end >= bytes.len() || bytes[end] != b'%' {
             continue;
         }
-        if let Ok(n) = std::str::from_utf8(&bytes[..end]).unwrap_or("").parse::<f32>() {
+        if let Ok(n) = std::str::from_utf8(&bytes[..end])
+            .unwrap_or("")
+            .parse::<f32>()
+        {
             return Some(MetricValue::new(n / 100.0, SourceKind::Estimated));
         }
     }
@@ -420,7 +427,10 @@ mod tests {
         h.push("hello\n  ".into());
         h.push("hello".into());
         h.push("hello\n".into());
-        assert!(h.is_still(3), "trailing whitespace must not break stillness");
+        assert!(
+            h.is_still(3),
+            "trailing whitespace must not break stillness"
+        );
     }
 
     #[test]

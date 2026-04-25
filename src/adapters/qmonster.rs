@@ -1,5 +1,5 @@
-use crate::adapters::common::parse_common_signals;
 use crate::adapters::ProviderParser;
+use crate::adapters::common::parse_common_signals;
 use crate::domain::signal::SignalSet;
 
 pub struct QmonsterAdapter;

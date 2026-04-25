@@ -132,7 +132,7 @@ Ignored locally:
 /.mission/templates/
 /.mission-spec/
 CLAUDE.local.md
-.claude/settings.local.json
+/.claude/
 /logs/
 /*.sqlite
 ```

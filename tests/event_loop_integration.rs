@@ -13,8 +13,8 @@ use qmonster::tmux::polling::{PaneSource, PollingError};
 use qmonster::tmux::types::{RawPaneSnapshot, WindowTarget};
 
 mod sim;
-use sim::PollSim;
 use qmonster::domain::signal::IdleCause;
+use sim::PollSim;
 
 /// Audit sink that captures events into a shared buffer for test inspection.
 #[derive(Clone)]
@@ -158,11 +158,7 @@ fn run_once_emits_recommendations_and_audit_events() {
     );
     // The notify backend should have seen a call for that alert.
     let calls = seen.lock().unwrap();
-    assert!(
-        calls
-            .iter()
-            .any(|(_, body, _)| body.contains("pane-state"))
-    );
+    assert!(calls.iter().any(|(_, body, _)| body.contains("pane-state")));
 }
 
 #[test]
@@ -798,9 +794,9 @@ fn warning_severity_rec_audit_logged_as_alert_fired() {
     let events = capture.snapshot();
     // The pane-state rec must be logged as AlertFired.
     assert!(
-        events.iter().any(
-            |e| e.kind == AuditEventKind::AlertFired && e.summary.contains("pane-state")
-        ),
+        events
+            .iter()
+            .any(|e| e.kind == AuditEventKind::AlertFired && e.summary.contains("pane-state")),
         "pane-state (Warning) rec must be audit-logged as AlertFired"
     );
 }
@@ -1413,6 +1409,15 @@ fn five_polls_with_same_tail_produces_stale_idle_state() {
     for _ in 0..5 {
         sim.feed("idle Claude tail without markers or cursor");
     }
+    assert_eq!(sim.last_signal_set().idle_state, Some(IdleCause::Stale));
+}
+
+#[test]
+fn stillness_polls_config_controls_stale_window() {
+    let mut sim = PollSim::new(2);
+    sim.feed("same quiet tail");
+    assert_ne!(sim.last_signal_set().idle_state, Some(IdleCause::Stale));
+    sim.feed("same quiet tail");
     assert_eq!(sim.last_signal_set().idle_state, Some(IdleCause::Stale));
 }
 

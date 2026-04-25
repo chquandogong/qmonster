@@ -1,6 +1,6 @@
 mission:
   version: "1.14.1"
-  title: "Qmonster v0.4.0 — v1.14.1 Codex cursor bottom-status-line skip fix. codex_idle_cursor now skips the Codex bottom-status-line (anchored on `Context ` + ` · ` + `% used`) when scanning from end, enabling WorkComplete detection on real tails where the status line sits below the `› ` cursor. New is_codex_bottom_status_line helper. 397 tests green; clippy clean."
+  title: "Qmonster v0.4.0 — v1.14.1 plus local doc/idle consistency follow-up. Codex cursor bottom-status-line skip remains the tagged baseline; local cleanup fixes false IDLE persistence after new requests, distinguishes Claude usage-limit banners as USAGE LIMIT, adds Gemini context-window CTX parsing from the status table, and honors idle.stillness_polls for stale detection. 409 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

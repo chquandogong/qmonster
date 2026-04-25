@@ -26,8 +26,7 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     pub pricing: PricingTable,
     pub claude_settings: ClaudeSettings,
     // Slice 4: per-pane tail history + idle-transition cache. Reset on PaneLifecycle::{Dead, Reappeared}.
-    pub tail_history:
-        std::collections::HashMap<String, crate::adapters::common::PaneTailHistory>,
+    pub tail_history: std::collections::HashMap<String, crate::adapters::common::PaneTailHistory>,
     pub idle_transition:
         std::collections::HashMap<String, Option<crate::domain::signal::IdleCause>>,
     /// Records the `Instant` when each pane entered its current idle cause.

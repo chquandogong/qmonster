@@ -156,9 +156,9 @@ pub struct StorageConfig {
     pub root: Option<String>,
 }
 
-/// Tuning knobs for the idle-stillness detector. Operators can set these
-/// in `~/.qmonster/config.toml` or `config/qmonster.toml`; out-of-range
-/// values are clamped inside `PaneTailHistory::new`.
+/// Tuning knobs for the idle-stillness detector. Operators can set
+/// these in the TOML passed with `--config PATH`; out-of-range values
+/// are clamped inside `PaneTailHistory::new`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct IdleConfig {

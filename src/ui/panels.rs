@@ -149,19 +149,23 @@ fn pane_list_lines(
     expanded: bool,
     with_separator: bool,
 ) -> Vec<Line<'static>> {
-    let mut lines = vec![
-        Line::styled(
-            pane_panel_title(report),
-            Style::default()
-                .fg(pane_header_color(report))
-                .add_modifier(Modifier::BOLD),
-        ),
-        Line::from(aligned_field("path", &display_path(&report.current_path))),
-    ];
+    let mut lines = vec![Line::styled(
+        pane_panel_title(report),
+        Style::default()
+            .fg(pane_header_color(report))
+            .add_modifier(Modifier::BOLD),
+    )];
     for row in render_pane_state_row(report) {
         lines.push(row);
     }
-    lines.push(Line::from(aligned_field("status", &state_summary_line(report))));
+    lines.push(Line::from(aligned_field(
+        "path",
+        &display_path(&report.current_path),
+    )));
+    lines.push(Line::from(aligned_field(
+        "status",
+        &state_summary_line(report),
+    )));
 
     if let Some(line) = blocking_signal_line(&report.signals) {
         lines.push(line);
@@ -212,7 +216,18 @@ fn pane_header_color(report: &PaneReport) -> Color {
         .map(|rec| rec.severity)
         .max()
         .map(theme::severity_color)
+        .or_else(|| report.idle_state.map(idle_header_color))
         .unwrap_or_else(|| provider_color(report.identity.identity.provider))
+}
+
+fn idle_header_color(cause: IdleCause) -> Color {
+    match cause {
+        IdleCause::WorkComplete => Color::Rgb(176, 192, 214),
+        IdleCause::Stale => Color::Rgb(152, 168, 190),
+        IdleCause::InputWait => Color::Rgb(236, 198, 98),
+        IdleCause::PermissionWait => Color::Rgb(245, 176, 82),
+        IdleCause::LimitHit => theme::severity_color(crate::domain::recommendation::Severity::Risk),
+    }
 }
 
 fn provider_color(provider: Provider) -> Color {
@@ -271,6 +286,9 @@ pub fn pane_panel_title(report: &PaneReport) -> String {
 
 pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
     let mut items = Vec::new();
+    for row in render_pane_state_row(report) {
+        items.push(ListItem::new(row));
+    }
     items.push(ListItem::new(aligned_field(
         "status",
         &state_summary_line(report),
@@ -585,28 +603,33 @@ fn context_metric_severity(value: f32) -> crate::domain::recommendation::Severit
 /// a pane that is currently in an idle cause. Callers are responsible for
 /// only calling this when `idle_state.is_some()`.
 fn format_state_row(cause: IdleCause, entered_at: std::time::Instant) -> Line<'static> {
-    let (glyph, label, style) = match cause {
+    let (glyph, label, badge_style) = match cause {
         IdleCause::WorkComplete => ("⏹", "IDLE (done)", theme::idle_work_complete()),
         IdleCause::Stale => ("⏸", "IDLE (?)", theme::idle_stale()),
         IdleCause::InputWait => ("⏸", "WAIT (input)", theme::idle_input_wait()),
         IdleCause::PermissionWait => ("⚠", "WAIT (approval)", theme::idle_permission_wait()),
-        IdleCause::LimitHit => ("⛔", "LIMIT", theme::idle_limit_hit()),
+        IdleCause::LimitHit => ("⛔", "USAGE LIMIT", theme::idle_limit_hit()),
     };
     let elapsed_str = format_elapsed(entered_at.elapsed());
-    Line::styled(
-        format!("  {:<8}: {glyph} {label} · {elapsed_str}", "state"),
-        style,
-    )
+    Line::from(vec![
+        Span::styled(
+            format!("{:<8}: ", "state"),
+            Style::default().fg(theme::TEXT_DIM),
+        ),
+        Span::styled(format!(" {glyph} {label} "), badge_style),
+        Span::raw(" "),
+        Span::styled(format!(" ⏱ {elapsed_str} "), theme::idle_elapsed_badge()),
+    ])
 }
 
 fn format_elapsed(d: std::time::Duration) -> String {
     let secs = d.as_secs();
-    if secs < 60 {
-        format!("{}s", secs)
-    } else if secs < 3600 {
-        format!("{}m {}s", secs / 60, secs % 60)
+    let minutes = (secs % 3600) / 60;
+    let seconds = secs % 60;
+    if secs < 3600 {
+        format!("{minutes:02}:{seconds:02}")
     } else {
-        format!("{}h {}m", secs / 3600, (secs % 3600) / 60)
+        format!("{}:{minutes:02}:{seconds:02}", secs / 3600)
     }
 }
 
@@ -1079,8 +1102,45 @@ mod tests {
         let entered_at = std::time::Instant::now();
         let line = format_state_row(IdleCause::InputWait, entered_at);
         let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(
+            text.starts_with("state   : "),
+            "field alignment missing: {text}"
+        );
         assert!(text.contains("⏸"), "glyph missing: {text}");
         assert!(text.contains("WAIT (input)"), "label missing: {text}");
+        assert!(text.contains("⏱"), "elapsed badge missing: {text}");
+    }
+
+    #[test]
+    fn state_row_renders_limit_hit_as_usage_limit() {
+        let entered_at = std::time::Instant::now();
+        let line = format_state_row(IdleCause::LimitHit, entered_at);
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(text.contains("⛔"), "glyph missing: {text}");
+        assert!(
+            text.contains("USAGE LIMIT"),
+            "limit state must be distinct from normal idle: {text}"
+        );
+    }
+
+    #[test]
+    fn format_elapsed_uses_clock_style_for_fast_scanning() {
+        assert_eq!(format_elapsed(std::time::Duration::from_secs(5)), "00:05");
+        assert_eq!(format_elapsed(std::time::Duration::from_secs(65)), "01:05");
+        assert_eq!(
+            format_elapsed(std::time::Duration::from_secs(3_665)),
+            "1:01:05"
+        );
+    }
+
+    #[test]
+    fn idle_state_tints_header_when_no_recommendations_are_active() {
+        let mut rep = base_report();
+        rep.idle_state = Some(IdleCause::PermissionWait);
+        assert_eq!(
+            pane_header_color(&rep),
+            idle_header_color(IdleCause::PermissionWait)
+        );
     }
 
     #[test]
