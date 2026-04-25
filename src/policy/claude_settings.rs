@@ -24,8 +24,9 @@ pub struct ClaudeSettings {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClaudeSettingsError {
-    #[error("claude settings not found at {0}")]
-    NotFound(PathBuf),
+    // Note: `Io(NotFound)` already covers the missing-file case via
+    // `std::io::ErrorKind::NotFound`, so a separate `NotFound` variant
+    // would be dead — never constructed by the code.
     #[error("failed to read claude settings: {0}")]
     Io(#[from] std::io::Error),
     #[error("failed to parse claude settings: {0}")]

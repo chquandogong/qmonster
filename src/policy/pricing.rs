@@ -12,8 +12,9 @@ pub struct PricingRates {
 
 #[derive(Debug, thiserror::Error)]
 pub enum PricingError {
-    #[error("pricing config not found at {0}")]
-    NotFound(String),
+    // Note: `Io(NotFound)` already covers the missing-file case via
+    // `std::io::ErrorKind::NotFound`, so a separate `NotFound` variant
+    // would be dead — never constructed by the code.
     #[error("failed to read pricing config: {0}")]
     Io(#[from] std::io::Error),
     #[error("failed to parse pricing config: {0}")]
