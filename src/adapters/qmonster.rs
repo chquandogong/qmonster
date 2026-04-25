@@ -17,7 +17,6 @@ impl ProviderParser for QmonsterAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::ParserContext;
     use crate::adapters::common::PaneTailHistory;
     use crate::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
@@ -37,21 +36,7 @@ mod tests {
         }
     }
 
-    fn ctx<'a>(
-        id: &'a ResolvedIdentity,
-        tail: &'a str,
-        pricing: &'a PricingTable,
-        settings: &'a ClaudeSettings,
-        history: &'a PaneTailHistory,
-    ) -> ParserContext<'a> {
-        ParserContext {
-            identity: id,
-            tail,
-            pricing,
-            claude_settings: settings,
-            history,
-        }
-    }
+    use crate::adapters::ctx;
 
     #[test]
     fn qmonster_adapter_returns_empty_signals() {

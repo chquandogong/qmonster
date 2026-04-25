@@ -403,7 +403,6 @@ fn extract_tokens_substring(s: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::ParserContext;
     use crate::adapters::common::{PaneTailHistory, STILLNESS_WINDOW};
     use crate::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
@@ -425,21 +424,7 @@ mod tests {
         }
     }
 
-    fn ctx<'a>(
-        id: &'a ResolvedIdentity,
-        tail: &'a str,
-        pricing: &'a PricingTable,
-        settings: &'a ClaudeSettings,
-        history: &'a PaneTailHistory,
-    ) -> ParserContext<'a> {
-        ParserContext {
-            identity: id,
-            tail,
-            pricing,
-            claude_settings: settings,
-            history,
-        }
-    }
+    use crate::adapters::ctx;
 
     #[test]
     fn claude_adapter_inherits_common_signals() {

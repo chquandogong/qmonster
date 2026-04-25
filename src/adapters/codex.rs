@@ -450,7 +450,6 @@ fn contains_percent_phrase(line: &str, phrase: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::ParserContext;
     use crate::adapters::common::PaneTailHistory;
     use crate::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
@@ -474,21 +473,7 @@ mod tests {
         }
     }
 
-    fn ctx<'a>(
-        id: &'a ResolvedIdentity,
-        tail: &'a str,
-        pricing: &'a PricingTable,
-        settings: &'a ClaudeSettings,
-        history: &'a PaneTailHistory,
-    ) -> ParserContext<'a> {
-        ParserContext {
-            identity: id,
-            tail,
-            pricing,
-            claude_settings: settings,
-            history,
-        }
-    }
+    use crate::adapters::ctx;
 
     // Redacted sample taken from ~/.qmonster/archive/2026-04-23/_65/
     // Codex CLI 0.122.0 status bar.

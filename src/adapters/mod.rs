@@ -41,3 +41,23 @@ pub fn parse_for(ctx: &ParserContext) -> SignalSet {
 }
 
 pub use common::parse_common_signals;
+
+/// Test-only constructor for `ParserContext`. Hoisted out of each
+/// adapter's `mod tests` to remove the 4-way duplication that the
+/// Slice 3 housekeeping bundle flagged.
+#[cfg(test)]
+pub(crate) fn ctx<'a>(
+    id: &'a ResolvedIdentity,
+    tail: &'a str,
+    pricing: &'a PricingTable,
+    settings: &'a ClaudeSettings,
+    history: &'a PaneTailHistory,
+) -> ParserContext<'a> {
+    ParserContext {
+        identity: id,
+        tail,
+        pricing,
+        claude_settings: settings,
+        history,
+    }
+}
