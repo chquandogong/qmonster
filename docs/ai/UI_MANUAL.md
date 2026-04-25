@@ -54,8 +54,9 @@ session:window · Provider role · %pane_id
   약 3초 동안 `CHANGED` 배지와 pulse highlight가 붙고, active로 돌아온
   경우에도 짧게 `▶ ACTIVE` state 줄을 보여줍니다. 색만으로 상태 변화를
   알리지 않기 위해 텍스트 배지를 함께 사용합니다. 변경된 pane가 현재
-  선택된 항목이면 선택 highlight 자체도 pulse하고 선택 기호가 `▶`에서
-  `◆`로 바뀌어, 선택 배경이 state row 색을 덮어도 변화를 볼 수 있습니다.
+  선택된 항목이면 선택 highlight 자체도 pulse하고 선택 기호가 모든 선택 줄에서
+  `◆ CHANGED ◆`로 반복됩니다. 카드 첫 줄도 `STATE CHANGED`로 시작하므로,
+  선택 배경이 state row 색을 덮어도 텍스트로 변화를 볼 수 있습니다.
   멈춤/대기 상태 배지(`IDLE`, `WAIT`, `USAGE LIMIT`)에는 경과 시간
   배지(`⏱ MM:SS` 또는 `H:MM:SS`)가 함께 표시됩니다.
 - `status`는 현재 `high confidence`, `medium confidence`,

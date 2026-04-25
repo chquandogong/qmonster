@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.5"
-  title: "Qmonster v0.4.0 — v1.15.5 runtime-refresh cycling patch on top of v1.15.4. The `u` key now cycles Claude `/status` → `/usage` → `/stats` and Gemini `/stats session` → `/stats model` → `/stats tools`, one command per press, while Codex keeps `/status`. Claude `/status` capture/close remains in place and Claude receives a defensive pre-command `Escape`; Gemini cycles without pre-`Escape`. Codex welcome-box `model:` fallback now fills model/reasoning before the bottom status line appears. v1.15.4 selected-pane state-flash behaviour carries forward unchanged. 438 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
+  version: "1.15.6"
+  title: "Qmonster v0.4.0 — v1.15.6 selected-pane state-change visibility patch on top of v1.15.5. When the changed pane is selected, the selection marker expands to repeated `◆ CHANGED ◆` across selected lines and the selected card title starts with `STATE CHANGED`, so selection styling cannot hide the transition cue. v1.15.5 runtime-refresh cycling and Codex welcome-box model fallback carry forward unchanged. 439 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

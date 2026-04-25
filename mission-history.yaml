@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.5 runtime-refresh cycling + Codex welcome-box model fallback."
+  mission_title: "Qmonster v0.4.0 — v1.15.6 selected-pane state-change text fallback."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 61
-  latest_version: "1.15.5"
+  total_revisions: 62
+  latest_version: "1.15.6"
 
 timeline:
   - change_id: "initial"
@@ -6621,8 +6621,71 @@ timeline:
     follow_up:
       - "If Claude `/usage` or `/stats` are confirmed to leave blocking fullscreen surfaces that should also feed parser overlays, extend the capture-then-`Escape` hook beyond `/status`."
 
+  - change_id: "v1.15.6-selected-pane-state-change-text-fallback"
+    semantic_version: "1.15.6"
+    change_sequence: 62
+    date: "2026-04-25"
+    author: "Codex (codex:review, GPT-5)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — UX finding: state changes are still hard to notice while the pane is selected"
+    change_type: "patch"
+    motivation_type: "operator-ux-finding"
+    persistence: "permanent"
+    intent: >
+      Make selected-pane state changes visible even when terminal color
+      rendering or Ratatui selection styling makes the pulse too subtle.
+      The cue must not rely on color alone.
+    decision: >
+      Keep the existing selected-row pulse, but add text-backed cues on
+      the selected row itself: while the selected pane has an active
+      `PaneStateFlash`, the highlight symbol expands from `◆` to
+      `◆ CHANGED ◆`, repeats on every selected line, and the pane card
+      header starts with `STATE CHANGED`. These cues disappear when the
+      flash expires.
+    triggered_by: "Operator report on 2026-04-25: selected-state changes still are not noticeable."
+    issue_or_context: >
+      v1.15.4 made the selected highlight pulse and changed the selector
+      symbol, but a single symbol plus color change was not strong enough
+      in actual terminal use.
+    changes:
+      added:
+        - "src/ui/panels.rs::repeat_highlight_symbol helper for active selected flashes"
+        - "src/ui/panels.rs::pane_panel_title_with_flash title text fallback"
+        - "1 panel test proving the selected flash header starts with `STATE CHANGED`"
+      modified:
+        - "src/ui/panels.rs::render_pane_list repeats the selected flash highlight symbol across selected lines"
+        - "src/ui/panels.rs::highlight_symbol now returns `◆ CHANGED ◆` for selected flashes"
+        - "README.md + docs/ai/{PROJECT_BRIEF,UI_MANUAL,VALIDATION}.md (selected-state text fallback and 439-test evidence)"
+        - "mission.yaml + mission-history.yaml (v1.15.6 ledger sync)"
+      removed: []
+    changed_sections:
+      - "src/ui/panels.rs::render_pane_list selected flash rendering"
+      - "src/ui/panels.rs::pane_list_lines_with_flash header line"
+      - "docs/ai/UI_MANUAL.md::Panes reading guide"
+    done_when_delta:
+      added:
+        - "Selected changed panes show `◆ CHANGED ◆` in the selection column"
+        - "The changed marker repeats across selected item lines during the flash"
+        - "The selected card title starts with `STATE CHANGED` during the flash"
+      modified:
+        - "Selected-pane transition visibility now has a text fallback, not only color and symbol shape"
+      removed: []
+    impact_scope:
+      code: "~20 LoC touched in pane renderer and tests"
+      tests: "439 total — 367 lib + 14 main + 34 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 62); meta bump"
+      review_gate: "operator-driven UI patch; local fmt/test/clippy pass."
+      follow_up_carryover: "Slice 3 (S3-1..S3-5 per the backlog) and operator priorities remain queued."
+    breaking: false
+    risk: "low — visual-only selected-item rendering change; no parser, policy, tmux, or audit behaviour changes."
+    related_commits: []
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "If the repeated selected marker takes too much width on narrow terminals, shorten the marker text while keeping an explicit `CHANGED` word."
+
 evolution_summary:
-  current_phase: "v1.15.5 runtime-refresh cycling patch + Codex welcome-box model fallback. Builds on v1.15.4 selected-pane flash and v1.15.3 Claude status-capture by making repeated `u` presses rotate Claude `/status` → `/usage` → `/stats` and Gemini `/stats session` → `/stats model` → `/stats tools`, one command per press. Codex startup welcome-box `model:` can now populate model/reasoning before the bottom status line appears. 438 tests green; clippy + fmt clean."
+  current_phase: "v1.15.6 selected-pane state-change text fallback. Builds on v1.15.5 runtime-refresh cycling and v1.15.4 selected-pane flash by adding explicit `◆ CHANGED ◆` repeated selected markers plus `STATE CHANGED` in the selected card title. 439 tests green; clippy + fmt clean."
   next_phase: "Slice 3 (S3-1..S3-5 from .docs/claude/...slice-3-backlog.md) + operator priorities B/C/D/E/A. Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round. v1.15.x patch line remains open for runtime-refresh UX issues found during operator use."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

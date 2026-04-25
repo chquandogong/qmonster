@@ -53,7 +53,9 @@ elapsed time (`⏹ IDLE (done)` / `⏸ WAIT (input)` / `⚠ WAIT (approval)`
 / `⛔ USAGE LIMIT` / `⏸ IDLE (?)` for the stillness fallback). State
 transitions now add a short `CHANGED` pulse on the pane header and
 `state` row; a return to active briefly renders `▶ ACTIVE` before the
-row disappears again.
+row disappears again. If the changed pane is selected, the selection
+marker expands to `◆ CHANGED ◆` on every selected line and the card
+header starts with `STATE CHANGED` during the flash.
 
 ## Quick start
 

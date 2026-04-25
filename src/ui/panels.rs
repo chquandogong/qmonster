@@ -148,7 +148,8 @@ pub fn render_pane_list(
         List::new(items)
             .block(block)
             .highlight_style(highlight_style(focused, flash_view.now, selected_flash))
-            .highlight_symbol(highlight_symbol(selected_flash)),
+            .highlight_symbol(highlight_symbol(selected_flash))
+            .repeat_highlight_symbol(repeat_highlight_symbol(selected_flash)),
         area,
         buf,
         state,
@@ -196,7 +197,15 @@ fn highlight_style(focused: bool, now: Instant, flash: Option<&PaneStateFlash>) 
 }
 
 fn highlight_symbol(flash: Option<&PaneStateFlash>) -> &'static str {
-    if flash.is_some() { "◆ " } else { "▶ " }
+    if flash.is_some() {
+        "◆ CHANGED ◆ "
+    } else {
+        "▶ "
+    }
+}
+
+fn repeat_highlight_symbol(flash: Option<&PaneStateFlash>) -> bool {
+    flash.is_some()
 }
 
 fn pane_list_item(
@@ -232,7 +241,7 @@ fn pane_list_lines_with_flash(
 ) -> Vec<Line<'static>> {
     let flash = matching_state_flash(report, now, flash);
     let mut lines = vec![Line::styled(
-        pane_panel_title(report),
+        pane_panel_title_with_flash(report, flash),
         pane_header_style(report, now, flash),
     )];
     for row in render_pane_state_row_with_flash(report, now, flash) {
@@ -377,6 +386,15 @@ pub fn pane_panel_title(report: &PaneReport) -> String {
             role_label(id.role),
             report.pane_id,
         )
+    }
+}
+
+fn pane_panel_title_with_flash(report: &PaneReport, flash: Option<&PaneStateFlash>) -> String {
+    let title = pane_panel_title(report);
+    if flash.is_some() {
+        format!("STATE CHANGED · {title}")
+    } else {
+        title
     }
 }
 
@@ -1522,8 +1540,24 @@ mod tests {
     fn selected_flash_highlight_symbol_marks_changed_selection() {
         let now = std::time::Instant::now();
         let flash = PaneStateFlash::new(Some(IdleCause::InputWait), now);
-        assert_eq!(highlight_symbol(Some(&flash)), "◆ ");
+        assert_eq!(highlight_symbol(Some(&flash)), "◆ CHANGED ◆ ");
         assert_eq!(highlight_symbol(None), "▶ ");
+        assert!(repeat_highlight_symbol(Some(&flash)));
+        assert!(!repeat_highlight_symbol(None));
+    }
+
+    #[test]
+    fn selected_flash_header_names_state_changed_even_when_highlight_overrides_colors() {
+        let rep = base_report();
+        let now = std::time::Instant::now();
+        let flash = PaneStateFlash::new(None, now);
+        let lines = pane_list_lines_with_flash(&rep, true, false, now, Some(&flash));
+        let text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+
+        assert!(
+            text.starts_with("STATE CHANGED · qwork:1"),
+            "selected flash header needs text fallback: {text}"
+        );
     }
 
     #[test]

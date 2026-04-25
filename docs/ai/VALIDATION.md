@@ -12,7 +12,7 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-25): `cargo fmt --check`,
-`cargo test --all-targets` (438 tests), and
+`cargo test --all-targets` (439 tests), and
 `cargo clippy --all-targets -- -D warnings` pass; `mission-spec
 validate .` is blocked because `mission-spec` is not installed.
 
