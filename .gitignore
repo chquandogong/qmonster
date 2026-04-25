@@ -5,7 +5,9 @@
 .env
 .env.*
 CLAUDE.local.md
-.claude/settings.local.json
+# Claude Code per-project local state (settings, scheduled-task locks,
+# rules cache). All contents are local-machine state, not project-shared.
+/.claude/
 
 # Local logs and databases (never tracked in any phase)
 /logs/
