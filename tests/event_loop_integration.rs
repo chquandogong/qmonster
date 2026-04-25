@@ -12,6 +12,10 @@ use qmonster::store::sink::{EventSink, InMemorySink};
 use qmonster::tmux::polling::{PaneSource, PollingError};
 use qmonster::tmux::types::{RawPaneSnapshot, WindowTarget};
 
+mod sim;
+use sim::PollSim;
+use qmonster::domain::signal::IdleCause;
+
 /// Audit sink that captures events into a shared buffer for test inspection.
 #[derive(Clone)]
 struct CaptureSink(Arc<Mutex<Vec<AuditEvent>>>);
@@ -1397,4 +1401,66 @@ fn claude_adapter_end_to_end_reads_model_from_claude_settings() {
 
     // Honesty: cost stays None (no input tokens on Claude tail).
     assert!(signals.cost_usd.is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Slice 4 Task 14: multi-poll PollSim idle-state transition tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn five_polls_with_same_tail_produces_stale_idle_state() {
+    let mut sim = PollSim::new(4);
+    for _ in 0..5 {
+        sim.feed("idle Claude tail without markers or cursor");
+    }
+    assert_eq!(sim.last_signal_set().idle_state, Some(IdleCause::Stale));
+}
+
+#[test]
+fn changing_tails_never_produce_stale_idle_state() {
+    let mut sim = PollSim::new(4);
+    for i in 0..5 {
+        sim.feed(&format!("changing tail iteration {i}"));
+    }
+    assert_ne!(sim.last_signal_set().idle_state, Some(IdleCause::Stale));
+}
+
+#[test]
+fn transition_into_input_wait_fires_one_alert_only() {
+    let mut sim = PollSim::new(4);
+    sim.feed("normal output");
+    sim.feed("needs your input now");
+    sim.feed("needs your input now");
+    sim.feed("needs your input now");
+    let alerts = sim.alerts_emitted_with_action("pane-state");
+    assert_eq!(alerts.len(), 1);
+}
+
+#[test]
+fn distinct_cause_transition_fires_new_alert() {
+    let mut sim = PollSim::new(4);
+    sim.feed("needs your input now"); // None → InputWait
+    sim.feed("this action requires approval (y/n)"); // → PermissionWait
+    let alerts = sim.alerts_emitted_with_action("pane-state");
+    assert_eq!(alerts.len(), 2);
+}
+
+#[test]
+fn limit_hit_transition_fires_risk_severity() {
+    let mut sim = PollSim::new_codex(4);
+    sim.feed("active output");
+    sim.feed("│  5h limit:    [████████████████████] 100% used  │");
+    let alerts = sim.alerts_emitted_with_action("pane-state");
+    assert_eq!(alerts.len(), 1);
+    use qmonster::domain::recommendation::Severity;
+    assert_eq!(alerts[0].severity, Severity::Risk);
+}
+
+#[test]
+fn returning_to_active_clears_idle_state_no_new_alert() {
+    let mut sim = PollSim::new(4);
+    sim.feed("needs your input now");
+    sim.feed("normal output");
+    let alerts = sim.alerts_emitted_with_action("pane-state");
+    assert_eq!(alerts.len(), 1, "only the entry into idle fires");
 }
