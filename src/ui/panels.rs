@@ -9,7 +9,7 @@ use crate::app::event_loop::PaneReport;
 use crate::domain::identity::{IdentityConfidence, Provider, Role};
 use crate::domain::recommendation::Recommendation;
 use crate::domain::signal::{IdleCause, RuntimeFact, RuntimeFactKind, SignalSet};
-use crate::ui::labels::{format_count_with_suffix, source_kind_label};
+use crate::ui::labels::{ellipsize, format_count_with_suffix, source_kind_label};
 use crate::ui::theme;
 
 pub const STATE_FLASH_DURATION: Duration = Duration::from_secs(3);
@@ -707,7 +707,7 @@ fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
             &mut has_any,
             format!(
                 " PATH {} [{}] ",
-                metric.value,
+                ellipsize(&metric.value, 40),
                 source_kind_label(metric.source_kind)
             ),
             theme::label_style(),
