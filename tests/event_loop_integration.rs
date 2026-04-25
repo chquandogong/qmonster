@@ -453,6 +453,69 @@ fn context_pressure_rec_is_marked_strong_end_to_end() {
 }
 
 #[test]
+fn quota_pressure_critical_rec_fires_end_to_end_on_gemini_pane() {
+    // v1.15.11 integration: a Gemini pane whose validated status
+    // table reports quota at 92% must surface
+    // `quota-pressure: act now` (Risk severity, is_strong true,
+    // ProviderOfficial source, suggested_command = None) through
+    // run_once, even before the 100% LimitHit fires. This is the
+    // gap the v1.15.11 advisory rule pair was designed to bridge.
+    let tail = "\
+branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
+main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec      92% used      10% used     118.8 MB     cdf3f5ed      user@example.com";
+    let source = FixturePaneSource {
+        panes: vec![pane("%3", "gemini:1:research", "node", tail, false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert_eq!(reports.len(), 1);
+
+    // Sanity: quota_pressure populated as ProviderOfficial.
+    let quota = reports[0]
+        .signals
+        .quota_pressure
+        .as_ref()
+        .expect("quota_pressure must be populated from the validated status table");
+    assert!((quota.value - 0.92).abs() < 1e-6);
+
+    // Sanity: 92% must NOT trigger the binary 100% LimitHit. The
+    // gradient advisory replaces that gap.
+    assert_ne!(reports[0].signals.idle_state, Some(IdleCause::LimitHit));
+
+    // The advisory rule must fire on this pane.
+    let rec = reports[0]
+        .recommendations
+        .iter()
+        .find(|r| r.action == "quota-pressure: act now")
+        .expect("quota_pressure_critical must fire for 92% quota");
+
+    assert_eq!(rec.severity, Severity::Risk);
+    assert!(
+        rec.is_strong,
+        "quota-pressure: act now must be marked is_strong (CHECKPOINT slot)"
+    );
+    assert_eq!(
+        rec.suggested_command, None,
+        "rate-limited quota cannot be resolved by a slash command"
+    );
+    let step = rec
+        .next_step
+        .as_deref()
+        .expect("next_step must describe the operator's options");
+    assert!(
+        step.contains("snapshot"),
+        "next_step should mention the snapshot precondition. got: {step}"
+    );
+    assert!(
+        step.contains("switch") || step.contains("model") || step.contains("account"),
+        "next_step should mention pacing / model-switch alternatives. got: {step}"
+    );
+}
+
+#[test]
 fn strong_context_pressure_rec_emits_prompt_send_proposal_end_to_end() {
     // Phase 5 P5-2 (v1.9.2) integration: when context_pressure_warning
     // fires (is_strong + suggested_command = `/compact`), the engine
