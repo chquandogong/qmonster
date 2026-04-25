@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.8 S3-3 Gemini quota_pressure metric."
+  mission_title: "Qmonster v0.4.0 — v1.15.9 Slice 3 housekeeping bundle + S3-4 closure."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 64
-  latest_version: "1.15.8"
+  total_revisions: 65
+  latest_version: "1.15.9"
 
 timeline:
   - change_id: "initial"
@@ -6836,9 +6836,84 @@ timeline:
       - "Remaining Slice 3 backlog: S3-1 (Codex bottom-status-line full token-in/token-out), S3-3 partial (Gemini memory column display deferred), S3-4 (Claude settings model honesty)."
       - "Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance) in the next S3-* round."
 
+  - change_id: "v1.15.9-slice3-housekeeping-and-s3-4-closure"
+    semantic_version: "1.15.9"
+    change_sequence: 65
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "patch"
+    motivation_type: "backlog-resolution"
+    persistence: "permanent"
+    intent: >
+      Ledger seal capturing the 5 post-v1.15.8 commits that close
+      the Slice 3 housekeeping bundle and Slice 3 backlog item S3-4.
+      No new operator-visible behaviour beyond the listed commits;
+      this entry exists so reviewers can find the Slice 3 closure
+      via the tag history rather than only via git log.
+    decision: >
+      Bundle the housekeeping cleanups + S3-4 design-decision (b)
+      docs note under one v1.15.9 tag because each constituent
+      commit is too small for its own version (similar to the
+      d6f595c post-v1.15.7 housekeeping pattern), but together they
+      represent a meaningful Slice 3 wrap-up that deserves a
+      browsable tag.
+    triggered_by: "Slice 3 housekeeping bundle closure + Slice 3 backlog item S3-4 (Claude settings model honesty)."
+    issue_or_context: >
+      v1.15.8 left 5 housekeeping items open per CURRENT_STATE.md
+      and the Slice 3 backlog: dead PricingError/ClaudeSettingsError
+      NotFound variants (already removed in d6f595c, attributed to
+      this round); cost / context-pressure test tolerances loose at
+      0.01; metric-row badge plumbing duplicated 8 ways; ctx() test
+      helper duplicated 4 ways; long worktree paths could overflow
+      pane card width; Claude pane MODEL absence undocumented for
+      operators inspecting blank cells.
+    changes:
+      added:
+        - "src/ui/labels.rs::ellipsize helper + 4 tests (3a7bf62)"
+        - "src/ui/panels.rs::push_badge helper for metric/context row DRY (84ab61e)"
+        - "src/adapters/mod.rs::#[cfg(test)] pub(crate) fn ctx — single test helper for all four adapter test modules (4ebae0c)"
+        - "docs/ai/UI_MANUAL.md::S3-4 design-decision (b) note — MODEL stays blank when ~/.claude/settings.json lacks `model` key (b221c74)"
+      modified:
+        - "src/adapters/{codex,common}.rs + tests/event_loop_integration.rs::cost / context-pressure tolerances 0.01 → 1e-9 (9744fea)"
+        - "src/ui/panels.rs::primary/context_metric_row use push_badge + worktree_path PATH badge auto-truncates at 40 chars (84ab61e + 3a7bf62)"
+        - "src/adapters/{claude,codex,gemini,qmonster}.rs::removed local ctx() definitions and unused ParserContext imports (4ebae0c)"
+        - "docs/ai/UI_MANUAL.md::added QUOTA badge to metrics example, MODEL absence note, PATH ellipsize note (b221c74)"
+        - "mission.yaml (meta: version 1.15.8 → 1.15.9; title)"
+        - "mission-history.yaml (sequence 65; meta: latest_version 1.15.9, total_revisions 64 → 65)"
+      removed: []
+    changed_sections:
+      - "src/ui/labels.rs::ellipsize"
+      - "src/ui/panels.rs::push_badge + worktree_path PATH badge"
+      - "src/adapters/mod.rs::ctx test helper"
+      - "docs/ai/UI_MANUAL.md::Panes reading guide (metrics row + S3-4 caveat)"
+    done_when_delta:
+      added:
+        - "All Slice 3 housekeeping bundle items closed (cost tolerance / push_badge / ctx hoist / ellipsize / dead-variant cleanup from d6f595c)"
+        - "S3-4 closed via design-decision (b): MODEL absence is honest, documented in UI_MANUAL.md"
+        - "Slice 3 backlog status: only S3-1 (operator-deferred) and S3-3 memory column (low-value deferral) remain open"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "+~70/-~50 LoC across helpers and call sites; +4 tests on ellipsize"
+      tests: "450 total — 378 lib + 14 main + 34 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 446 at v1.15.8; +4 tests from ellipsize)"
+      ledger: "1 new timeline entry (sequence 65); meta bump"
+      review_gate: "housekeeping + docs round; local fmt/test/clippy pass."
+      follow_up_carryover: "S3-1 (Codex bottom-status-line cumulative-vs-delta token semantics — needs operator decision) and S3-3 partial (Gemini memory column display, low operator value) remain open. v1.15.x patch line stays available for runtime-refresh UX issues."
+    breaking: false
+    risk: "low — pure refactors and a docs note; no policy / parser / tmux / audit behaviour changes; ellipsize is opt-in (only PATH badge uses it currently)."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits; range 808b151..b221c74
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.9 at this commit."
+      - "Slice 3 effectively complete except for the operator-deferred S3-1 cumulative-token-semantics decision."
+      - "v1.15.x patch line remains open for runtime-refresh / UI UX issues found during operator use."
+
 evolution_summary:
-  current_phase: "v1.15.8 Slice 3 backlog item S3-3 closed (quota column). Gemini status table now populates the new SignalSet.quota_pressure field; UI renders QUOTA Y% badge in the metric row alongside CTX. v1.15.7 S3-5 identity title fallback, v1.15.6 selected-pane state-change text fallback, v1.15.5 runtime-refresh cycling, and the post-tag housekeeping commit d6f595c carry forward unchanged. 446 tests green; clippy + fmt clean."
-  next_phase: "Remaining Slice 3 backlog: S3-1 (Codex bottom-status-line full token-in/token-out parsing), S3-3 partial (Gemini memory column display deferred), S3-4 (Claude settings model honesty — design decision pending). Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance) in the next S3-* round. v1.15.x patch line remains open for runtime-refresh UX issues found during operator use."
+  current_phase: "v1.15.9 Slice 3 housekeeping bundle + S3-4 closure ledger seal. Cost / context-pressure test tolerances tightened (9744fea); push_badge helper extracted (84ab61e); ctx() test helper hoisted (4ebae0c); ellipsize helper added + worktree_path PATH badge truncated at 40 chars (3a7bf62); UI_MANUAL.md S3-4 design-decision (b) documented (b221c74). All Slice 3 housekeeping items now closed; S3-2 / S3-4 / S3-5 / S3-6 closed and S3-3 quota closed (memory column deferred). 450 tests green; clippy + fmt clean."
+  next_phase: "Slice 3 effectively complete except for operator-deferred S3-1 (Codex bottom-status-line cumulative-vs-delta token semantics) and the low-value S3-3 memory column deferral. Operator priorities (B/C/D/E/A) and v1.15.x patch line for runtime-refresh / UI UX issues remain available. Consider Slice 4+ planning when the next operator-visible direction is set."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

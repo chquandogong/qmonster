@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.8"
-  title: "Qmonster v0.4.0 — v1.15.8 Slice 3 backlog item S3-3 closed: Gemini status-table `quota` column now populates a new `SignalSet.quota_pressure: Option<MetricValue<f32>>` field independently from `context_pressure`. UI `metrics` row gains a `QUOTA Y%` badge with the same severity coloring as `CTX`. v1.15.7 S3-5 identity title fallback, v1.15.6 selected-pane state-change text fallback, and v1.15.5 runtime-refresh cycling carry forward unchanged. 446 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
+  version: "1.15.9"
+  title: 'Qmonster v0.4.0 — v1.15.9 Slice 3 housekeeping bundle + S3-4 closure ledger seal. Captures 5 post-v1.15.8 commits: cost / context-pressure test tolerance 0.01 → 1e-9 (9744fea); push_badge helper extracted across primary/context metric rows (84ab61e); `ctx()` test helper hoisted to adapters/mod.rs (4ebae0c); ellipsize helper + worktree_path PATH badge truncation at 40 chars (3a7bf62); UI_MANUAL.md S3-4 design-decision (b) documentation — MODEL stays blank when `~/.claude/settings.json` lacks `"model"` (b221c74). All Slice 3 housekeeping items now closed. Slice 3 backlog: S3-2 / S3-4 / S3-5 / S3-6 closed; S3-3 quota closed (memory column display deferred); S3-1 (Codex bottom-status-line token-in/token-out cumulative semantics) remains operator-deferred per the backlog. 450 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed.'
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
