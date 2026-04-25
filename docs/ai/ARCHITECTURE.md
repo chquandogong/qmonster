@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-25 (implementation sync through v1.15.3 Claude status-capture follow-up)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-25 (implementation sync through v1.15.7 S3-5 identity-title fallback)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -77,7 +77,10 @@ Pure types, no IO:
 - `PaneIdentity = { provider, instance, role, pane_id }`
 - `IdentityConfidence = High | Medium | Low | Unknown`
 - `ResolvedIdentity = { identity, confidence }`
-- `IdentityResolver` — maps `RawPaneSnapshot` → `ResolvedIdentity`.
+- `IdentityResolver` — maps `RawPaneSnapshot` → `ResolvedIdentity`;
+  canonical `{provider}:{instance}:{role}` titles win, with medium-
+  confidence fallbacks for provider title/command hints and the S3-5
+  Claude spinner / Gemini `◇  Ready (...)` title patterns.
 - `SourceKind = ProviderOfficial | ProjectCanonical | Heuristic | Estimated`
 - `MetricValue<T> = { value, source_kind, confidence, provider }`
 - `Signal`, `SignalSet`, `TaskType`, `Severity`,
@@ -149,6 +152,9 @@ Ratatui widgets. Current operator surfaces:
 Palette: low-saturation, grey/navy/blue. Color only on state
 transitions, always paired with a numeric % or severity letter.
 UI consumes already-classified signals; it never re-parses tails.
+Pane state transitions include text-backed visibility cues (`CHANGED`,
+temporary `▶ ACTIVE`, selected `◆ CHANGED ◆`, and `STATE CHANGED`) so
+selection styling or terminal color themes cannot hide a transition.
 Provider runtime facts are produced by adapter-local parsers from
 provider status/slash output and readable provider config sources. The
 TUI key `u` sends the selected provider's read-only runtime slash

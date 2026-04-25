@@ -120,6 +120,7 @@ Tracked in shared repo:
 mission.yaml
 mission-history.yaml
 docs/ai/*
+.mission/decisions/
 .mission/evals/
 ```
 

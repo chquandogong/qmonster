@@ -7,6 +7,7 @@ Authoritative shared docs:
 - docs/ai/VALIDATION.md
 - docs/ai/WORKFLOWS.md
 - docs/ai/REVIEW_GUIDE.md
+- docs/ai/UI_MANUAL.md
 
 Local contract / ledger:
 - mission.yaml

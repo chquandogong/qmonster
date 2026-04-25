@@ -1,6 +1,6 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.6 selected-pane state-change text fallback."
+  mission_title: "Qmonster v0.4.0 — v1.15.7 S3-5 identity title fallback."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
   total_revisions: 63
@@ -6756,11 +6756,11 @@ timeline:
     follow_up:
       - "Annotated tag v1.15.7 at this commit."
       - "Remaining Slice 3 backlog: S3-1 (Codex bottom-status-line full token-in/token-out), S3-3 (Gemini quota/memory columns), S3-4 (Claude settings model honesty)."
-      - "Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round."
+      - "Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance) in the next S3-* round; dead PricingError/ClaudeSettingsError NotFound variants were removed by post-tag housekeeping commit d6f595c."
 
 evolution_summary:
-  current_phase: "v1.15.7 Slice 3 backlog item S3-5 closed. Identity resolver now recognises Claude Code spinner-prefixed activity titles (`⠂ ...`) and Gemini idle titles (`◇  Ready (...)`) at IdentityConfidence::Medium. v1.15.6 selected-pane state-change text fallback, v1.15.5 runtime-refresh cycling + Codex welcome-box model fallback (S3-2), and v1.15.4 selected-pane flash carry forward unchanged. 443 tests green; clippy + fmt clean."
-  next_phase: "Remaining Slice 3 backlog: S3-1 (Codex bottom-status-line full token-in/token-out parsing), S3-3 (Gemini quota/memory columns), S3-4 (Claude settings model honesty — design decision pending). Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round. v1.15.x patch line remains open for runtime-refresh UX issues found during operator use."
+  current_phase: "v1.15.7 Slice 3 backlog item S3-5 closed. Identity resolver now recognises Claude Code spinner-prefixed activity titles (`⠂ ...`) and Gemini idle titles (`◇  Ready (...)`) at IdentityConfidence::Medium. v1.15.6 selected-pane state-change text fallback, v1.15.5 runtime-refresh cycling + Codex welcome-box model fallback (S3-2), and v1.15.4 selected-pane flash carry forward unchanged. Post-tag housekeeping commit d6f595c removed dead PricingError/ClaudeSettingsError NotFound variants. 443 tests green; clippy + fmt clean."
+  next_phase: "Remaining Slice 3 backlog: S3-1 (Codex bottom-status-line full token-in/token-out parsing), S3-3 (Gemini quota/memory columns), S3-4 (Claude settings model honesty — design decision pending). Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance) in the next S3-* round. v1.15.x patch line remains open for runtime-refresh UX issues found during operator use."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

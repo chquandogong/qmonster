@@ -1075,7 +1075,7 @@ mission:
     - "Source-of-number rule: every displayed metric must be labeled (official) if the provider reported it, or (estimated) if Qmonster derived it from tail/state/docs surface."
     - "SourceKind taxonomy (r2): Qmonster replaces the two-way official/estimated split with a four-way SourceKind = ProviderOfficial | ProjectCanonical | Heuristic | Estimated. Every metric, threshold, recommendation, and doc citation must carry one. ProviderOfficial requires a direct provider-doc citation. See docs/ai/ARCHITECTURE.md §SourceKind taxonomy."
     - "Safety precedence asymmetry (r2, resolves Codex C-6): env/CLI may only move actions.mode, allow_auto_prompt_send, allow_destructive_actions, and refresh.policy TOWARD safer behavior. Upward overrides are ignored at startup and logged as risk-severity audit events. Runtime code never toggles these flags."
-    - "Runtime FS write boundary (r2, Codex CSF-1 + Gemini G-9): Qmonster runtime writes only within ~/.qmonster/ (default) or the operator-specified --root. Project-directory files (CURRENT_STATE.md, mission.yaml, mission-history.yaml, docs/ai/*, provider configs, source files) remain read-only to Qmonster across Phases 2-4."
+    - "Runtime FS write boundary (r2, Codex CSF-1 + Gemini G-9): Qmonster runtime writes only within ~/.qmonster/ (default) or the operator-specified --root. Project-directory files (CURRENT_STATE.md, mission.yaml, mission-history.yaml, docs/ai/*, provider configs, source files) remain read-only to Qmonster runtime across all shipped phases."
     - "Runtime checkpoint location (r2, Codex C-4 + Gemini Doc-hierarchy): runtime snapshots go to ~/.qmonster/snapshots/. .mission/CURRENT_STATE.md is a day-end handoff document written by the human day-end routine — never by Qmonster runtime."
     - "Contract vs runtime split (r2, Codex CD-2): mission.yaml defines the design envelope and approval gates. Runtime actuation flags (actions.mode, allow_auto_*) live in config/qmonster.example.toml. Do not duplicate runtime flags into mission.yaml."
     - "Audit-log isolation (r2, Codex CSF-2 + Gemini G-8): the audit-log writer cannot accept raw bytes. Type-level enforcement, not comment-level. Raw tails live only in ~/.qmonster/archive/."
@@ -1140,33 +1140,18 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Phase 3A shipped via 22 single-responsibility TDD commits; Phase 3B shipped via 2 focused TDD commits (suggested_command + strong-rec UX); Phase 3B retry-remediation shipped in 2 commits (v1.7.1); Phase 3B strong-rec cmd refinement shipped in 1 commit (v1.7.2); Phase 3B strong-rec contract cleanup shipped in 2 commits (v1.7.3); Phase 3B ledger normalization shipped in 1 ledger-only commit (v1.7.4); Phase 3B Gemini review artifact backfill shipped in 1 ledger-only commit (v1.7.5); Phase 3B Gemini review artifact template compliance shipped in 1 docs-only commit (v1.7.6). Phase 4 opens: P4-1 (provider-profile recommender foundation) shipped in 1 TDD commit (v1.8.0); P4-1 remediation (structured profile payload to renderer) shipped in 1 TDD commit (v1.8.1); P4-2 (Gemini G-5 auto-memory guide rule) shipped in 1 TDD commit (v1.8.2); P4-3 (Gemini G-6 side_effects + claude-script-low-token aggressive profile) shipped in 1 TDD commit (v1.8.3); P4-4 (codex-default baseline profile) shipped in 1 TDD commit (v1.8.4); P4-4 remediation (commit_attribution + tool_output_token_limit authority labels) shipped in 1 TDD commit (v1.8.5); P4-4 confirm-remediation (reason summary + doc-comment drift cleanup) shipped in 1 TDD commit (v1.8.6); P4-5 (codex-script-low-token aggressive profile + Gemini G-6 parity for Codex) shipped in 1 TDD commit (v1.8.7); P4-6 (gemini-default baseline — first Gemini provider entry) shipped in 1 TDD commit (v1.8.8); P4-7 (gemini-script-low-token aggressive + Gemini G-6 parity for Gemini; completes 3 x 2 profile grid) shipped in 1 TDD commit (v1.8.9); P4-7 remediation (save_memory → experimental.autoMemory surface fix + stale-prose sync) shipped in 1 TDD commit (v1.8.10); P4-7 follow-up (2 additional profiles.rs prose drifts from Codex v1.8.10 confirm) shipped in 1 docs-only commit (v1.8.11)."
+    topology: "Current tagged state is v1.15.7, with post-tag housekeeping d6f595c removing dead PricingError/ClaudeSettingsError NotFound variants. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, and Slice 3 S3-5 identity-title fallback are shipped. Remaining Slice 3 backlog is S3-1, S3-3, S3-4 plus partial housekeeping."
     suggested_approach: >
-      Phase 4 P4-7 remediation shipped (v1.8.10). Codex v1.8.9
-      P4-7 findings closed: (#1, risk) `save_memory = disabled`
-      lever replaced with `experimental.autoMemory = false` per
-      actual Gemini CLI config surface (docs show save_memory is
-      a tool name, not a config key; experimental.autoMemory is
-      the documented Auto Memory feature toggle). Lever graduates
-      to ProviderOfficial — aggressive Gemini bundle authority
-      split is now 1 PO + 2 PC. (#2, warning) three stale-prose
-      spots in profiles.rs updated to reflect the shipped 3x2
-      grid (module doc-comment, gemini-default --yolo lever
-      comment, gemini-default suppression test comment). Gate
-      status: Gemini v1.8.9 pass (최종 승인 + Phase 4 완료
-      선언) stands; Codex v1.8.9 findings both closed by this
-      v1.8.10 round. v1.8.11 follow-up closed the Codex v1.8.10
-      confirm warning; Codex v1.8.11 confirm2 returned `approve`
-      (no findings) — Phase 4 is now fully gate-approved by both
-      reviewers. Canonical docs synced in the same hygiene round
-      (PROJECT_BRIEF.md phase line, VALIDATION.md Phase-4
-      checkboxes ticked where shipped evidence exists, UI_MANUAL.md
-      section 6 Provider Profile render format). Ready to proceed
-      to P4-8+ (the single remaining VALIDATION.md item —
-      `token.thresholds` per-provider split decision — plus any
-      deferred non-blockers including the Codex v1.8.8-P4-6
-      `--approval-mode = default` suggestion) or Phase 5 opening
-      (manual prompt-send helper with user confirmation).
+      v1.15.7 closes Slice 3 backlog item S3-5. IdentityResolver now
+      recognizes Claude Code spinner-prefixed activity titles and Gemini
+      `◇  Ready (...)` idle titles at medium confidence when canonical
+      pane titles are absent; bare glyph-only titles remain Unknown.
+      v1.15.6 selected-pane state-change text fallback and v1.15.5
+      runtime-refresh cycling remain current. Post-tag housekeeping commit
+      d6f595c removed the dead PricingError/ClaudeSettingsError NotFound
+      variants. Next work should pick from the remaining Slice 3 backlog:
+      S3-1 Codex bottom-status-line token parsing, S3-3 Gemini quota/memory
+      columns, S3-4 Claude model honesty, or the remaining housekeeping bundle.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1195,21 +1180,21 @@ mission:
     - "docs/ai/VALIDATION.md"
     - "docs/ai/WORKFLOWS.md"
     - "docs/ai/REVIEW_GUIDE.md"
+    - "docs/ai/UI_MANUAL.md"
     - "CLAUDE.md"
     - "AGENTS.md"
     - "GEMINI.md"
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "planning-only; no implementation this round"
-    estimated_sessions: 4
-    scope: "claude r1 -> codex r1 -> gemini r1 -> claude r2"
+    priority: "post-v1.15.7 Slice 3 follow-up"
+    estimated_sessions: 1
+    scope: "choose one remaining S3 item or the remaining housekeeping bundle"
     followups:
-      - "Phase 1: observe-first MVP (tmux polling, pane discovery, signal extraction, basic text dashboard)"
-      - "Phase 2: archive + checkpoint"
-      - "Phase 3: policy engine (log storm / code exploration / context pressure / verbose output / permission wait / quota-tight)"
-      - "Phase 4: provider profile recommender"
-      - "Phase 5: safer actuation (manual prompt-send helper with user confirmation)"
+      - "S3-1: Codex v0.122 bottom-status-line full token-in/token-out parsing"
+      - "S3-3: Gemini quota/memory column parsing beyond context/model/path"
+      - "S3-4: Claude settings model honesty when settings.json lacks model"
+      - "Slice 3 housekeeping: helper hoists, DRY, ellipsize, cost tolerance"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
   created: "2026-04-20"
@@ -1217,5 +1202,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 43
+    total_revisions: 63
     history: "mission-history.yaml"

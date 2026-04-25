@@ -10,6 +10,7 @@
 # - [actions] mode, allow_auto_*
 # - [refresh] policy
 # - [storage] root
+# - [idle]    stillness_polls
 #
 # Everything else belongs in docs/ai/* or tmux launcher conventions,
 # not in runtime TOML.
@@ -27,6 +28,11 @@ big_output_chars = 2200
 quota_tight = false
 # Reference only: context/log/repeat thresholds are still code defaults.
 # `logging.big_output_chars` above is the only threshold wired from TOML.
+
+[idle]
+# Consecutive identical tail snapshots before stillness fallback marks a
+# pane idle/stale. Runtime clamps out-of-range values to [2, 12].
+stillness_polls = 4
 
 [actions]
 mode = "recommend_only"          # observe_only | recommend_only | safe_auto
