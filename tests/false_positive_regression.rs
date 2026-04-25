@@ -11,7 +11,7 @@
 //! exercise the synthetic positive-case fixtures.
 
 use qmonster::adapters::common::parse_common_signals;
-use qmonster::domain::signal::IdleCause;
+use qmonster::domain::signal::{IdleCause, TaskType};
 
 const CLAUDE_STATUS: &str = include_str!("fixtures/real/claude_status.txt");
 const CODEX_WELCOME_V0_122: &str = include_str!("fixtures/real/codex_welcome_v0_122.txt");
@@ -168,4 +168,52 @@ fn gemini_idle_v0_39_does_not_false_fire_context_pressure_in_common() {
          them. context_pressure for Gemini is S3-3 territory (full status-\
          line parser); until then, leave None."
     );
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// v1.14.0 (Slice 4, Task 16) — neutralize detect_task_type substring
+// matching on prose. v1.13.x measurement (2026-04-25) showed
+// RecommendationEmitted/min stuck at 91.5% reduction (vs 95% target)
+// because detect_task_type matched `review` / `search` / `summary` / etc
+// against agent/operator prose. These tests pin the new contract: only
+// CLI-command-anchored patterns → non-Unknown; everything else → Unknown.
+// ───────────────────────────────────────────────────────────────────────
+
+#[test]
+fn task_type_does_not_match_review_word_in_prose() {
+    let s = parse_common_signals("Let me review this implementation plan.");
+    assert!(!matches!(s.task_type, TaskType::Review));
+}
+
+#[test]
+fn task_type_does_not_match_search_in_prose() {
+    let s = parse_common_signals("I'll search the codebase for similar patterns.");
+    assert!(!matches!(s.task_type, TaskType::CodeExploration));
+}
+
+#[test]
+fn task_type_does_not_match_summary_in_prose() {
+    let s = parse_common_signals("Here's a summary of what changed.");
+    assert!(!matches!(s.task_type, TaskType::Summary));
+}
+
+#[test]
+fn task_type_real_claude_status_fixture_yields_unknown() {
+    let s = parse_common_signals(CLAUDE_STATUS);
+    assert!(
+        matches!(s.task_type, TaskType::Unknown),
+        "Real Claude conversation tail must not classify as Review/Summary/etc"
+    );
+}
+
+#[test]
+fn task_type_codex_exec_command_still_matches_automation() {
+    let s = parse_common_signals("codex exec scripted-task.sh");
+    assert!(matches!(s.task_type, TaskType::Automation));
+}
+
+#[test]
+fn task_type_explicit_resume_command_matches_session_resume() {
+    let s = parse_common_signals("$ codex resume 019db0ff-cf26-79d0-84ca-8be9b63f1c39");
+    assert!(matches!(s.task_type, TaskType::SessionResume));
 }

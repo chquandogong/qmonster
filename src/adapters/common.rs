@@ -348,33 +348,27 @@ pub fn parse_count_with_suffix(s: &str) -> Option<u64> {
 }
 
 fn detect_task_type(lower: &str) -> TaskType {
-    if lower.contains("resume")
-        || lower.contains("continue previous")
-        || lower.contains("last session")
-    {
-        TaskType::SessionResume
-    } else if lower.contains("review") || lower.contains("pull request") {
-        TaskType::Review
-    } else if lower.contains("codex exec") || lower.contains("scripted") {
-        TaskType::Automation
-    } else if lower.contains("summary") || lower.contains("summarize") || lower.contains("tl;dr") {
-        TaskType::Summary
-    } else if lower.contains("grep")
-        || lower.contains("find ")
-        || lower.contains("search")
-        || lower.contains("symbol")
-        || lower.contains("callers")
-        || lower.contains("references")
-    {
-        TaskType::CodeExploration
-    } else if lower.contains("traceback")
-        || lower.contains("stack trace")
-        || lower.contains("panic")
-    {
-        TaskType::LogTriage
-    } else {
-        TaskType::Unknown
+    // v1.14.0 (Slice 4): tighten from substring matching to explicit
+    // CLI command patterns. v1.13.x measurement (2026-04-25) showed
+    // bare `lower.contains("review")` was the third architectural
+    // false-positive source after v1.13.0 (PERMISSION/WAITING/log_storm/
+    // verbose) and v1.13.1 (ERROR_MARKERS/context_pressure). Most
+    // task_type values cannot be honestly distinguished from prose;
+    // honest default is Unknown.
+    //
+    // Preserved patterns (CLI command shapes only):
+    //   - `codex exec ` followed by anything → Automation
+    //   - `<provider> resume` CLI invocations → SessionResume
+    if lower.contains("codex exec ") {
+        return TaskType::Automation;
     }
+    if lower.contains("claude resume")
+        || lower.contains("codex resume")
+        || lower.contains("gemini resume")
+    {
+        return TaskType::SessionResume;
+    }
+    TaskType::Unknown
 }
 
 #[cfg(test)]
