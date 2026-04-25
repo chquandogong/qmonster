@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.9"
-  title: 'Qmonster v0.4.0 — v1.15.9 Slice 3 housekeeping bundle + S3-4 closure ledger seal. Captures 5 post-v1.15.8 commits: cost / context-pressure test tolerance 0.01 → 1e-9 (9744fea); push_badge helper extracted across primary/context metric rows (84ab61e); `ctx()` test helper hoisted to adapters/mod.rs (4ebae0c); ellipsize helper + worktree_path PATH badge truncation at 40 chars (3a7bf62); UI_MANUAL.md S3-4 design-decision (b) documentation — MODEL stays blank when `~/.claude/settings.json` lacks `"model"` (b221c74). All Slice 3 housekeeping items now closed. Slice 3 backlog: S3-2 / S3-4 / S3-5 / S3-6 closed; S3-3 quota closed (memory column display deferred); S3-1 (Codex bottom-status-line token-in/token-out cumulative semantics) remains operator-deferred per the backlog. 450 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed.'
+  version: "1.15.10"
+  title: 'Qmonster v0.4.0 — v1.15.10 Codex review follow-up after Claude v1.15.8/v1.15.9. Fixes Gemini LimitHit honesty so only the status-table `quota` column at 100% yields `IdleCause::LimitHit`; a `context 100% used` cell now remains context_pressure only. Also tightens UI_MANUAL wording for PATH-only ellipsize and syncs stale mission.yaml execution hints / lineage from v1.15.7/63 to v1.15.10/66. Slice 3 remains effectively complete: S3-2 / S3-4 / S3-5 / S3-6 closed, S3-3 quota closed with memory display deferred, S3-1 remains operator-deferred. 451 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed.'
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1140,18 +1140,16 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current tagged state is v1.15.7, with post-tag housekeeping d6f595c removing dead PricingError/ClaudeSettingsError NotFound variants. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, and Slice 3 S3-5 identity-title fallback are shipped. Remaining Slice 3 backlog is S3-1, S3-3, S3-4 plus partial housekeeping."
+    topology: "Current tagged state is v1.15.10. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, Slice 3 S3-2/S3-4/S3-5/S3-6, S3-3 Gemini quota_pressure, and the Slice 3 housekeeping bundle are shipped."
     suggested_approach: >
-      v1.15.7 closes Slice 3 backlog item S3-5. IdentityResolver now
-      recognizes Claude Code spinner-prefixed activity titles and Gemini
-      `◇  Ready (...)` idle titles at medium confidence when canonical
-      pane titles are absent; bare glyph-only titles remain Unknown.
-      v1.15.6 selected-pane state-change text fallback and v1.15.5
-      runtime-refresh cycling remain current. Post-tag housekeeping commit
-      d6f595c removed the dead PricingError/ClaudeSettingsError NotFound
-      variants. Next work should pick from the remaining Slice 3 backlog:
-      S3-1 Codex bottom-status-line token parsing, S3-3 Gemini quota/memory
-      columns, S3-4 Claude model honesty, or the remaining housekeeping bundle.
+      v1.15.10 is a Codex review follow-up on Claude's v1.15.8/v1.15.9
+      work. It keeps Gemini quota and context semantics separate:
+      quota 100% yields LimitHit, but context 100% is only
+      context_pressure. The mission ledger is synced to v1.15.10/66.
+      Remaining work is operator-deferred S3-1 (Codex bottom-status-line
+      cumulative-vs-delta token semantics) plus the low-value S3-3
+      Gemini memory display deferral, or a fresh v1.15.x UX patch if
+      operator usage surfaces one.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1187,14 +1185,13 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.15.7 Slice 3 follow-up"
+    priority: "post-v1.15.10 operator-directed follow-up"
     estimated_sessions: 1
-    scope: "choose one remaining S3 item or the remaining housekeeping bundle"
+    scope: "choose operator-deferred S3-1, the low-value S3-3 memory display, or the next runtime-refresh/UI UX patch"
     followups:
-      - "S3-1: Codex v0.122 bottom-status-line full token-in/token-out parsing"
-      - "S3-3: Gemini quota/memory column parsing beyond context/model/path"
-      - "S3-4: Claude settings model honesty when settings.json lacks model"
-      - "Slice 3 housekeeping: helper hoists, DRY, ellipsize, cost tolerance"
+      - "S3-1: Codex v0.122 bottom-status-line token-in/token-out cumulative-vs-delta semantics"
+      - "S3-3 partial: Gemini status-table memory column display"
+      - "v1.15.x patch line: runtime-refresh / UI UX issues found during operator use"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
   created: "2026-04-20"
@@ -1202,5 +1199,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 63
+    total_revisions: 66
     history: "mission-history.yaml"

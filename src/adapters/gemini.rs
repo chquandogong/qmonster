@@ -314,32 +314,11 @@ fn is_gemini_status_data(line: &str) -> bool {
     lower.contains("% used") && lower.contains("sandbox")
 }
 
-/// True when the Gemini status block reports quota exhaustion.
-///
-/// The detection is intentionally narrow: a header row must contain ALL
-/// of `quota`, `context`, and `memory` (the three Gemini status column
-/// titles) AND the very next non-empty row must contain `100% used`.
-/// Without all three header words the signal does not fire, which
-/// prevents bare prose like "the quota was 100% used yesterday" from
-/// triggering a spurious LimitHit.
+/// True only when Gemini's validated status table reports quota exhaustion.
 fn gemini_limit_hit(tail: &str) -> bool {
-    let lines: Vec<&str> = tail.lines().collect();
-    for (i, line) in lines.iter().enumerate() {
-        let lower = line.to_lowercase();
-        if lower.contains("quota") && lower.contains("context") && lower.contains("memory") {
-            for next in lines.iter().skip(i + 1) {
-                let trimmed = next.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                if trimmed.contains("100% used") {
-                    return true;
-                }
-                break;
-            }
-        }
-    }
-    false
+    parse_gemini_status(tail)
+        .and_then(|status| status.quota_pressure)
+        .is_some_and(|quota| (quota - 1.0).abs() < f32::EPSILON)
 }
 
 #[cfg(test)]
@@ -523,6 +502,26 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
             Some(IdleCause::LimitHit),
             "quota remains a separate limit signal"
         );
+    }
+
+    #[test]
+    fn gemini_context_100_used_does_not_trigger_quota_limit_hit() {
+        // v1.15.10: LimitHit tracks the quota column, not any
+        // `100% used` cell in the row. A full context window is
+        // surfaced through context_pressure, while quota stays below
+        // the usage-limit threshold.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
+main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec      47% used      100% used    118.8 MB     cdf3f5ed      user@example.com";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        assert_eq!(set.idle_state, None);
+        assert!((set.quota_pressure.as_ref().unwrap().value - 0.47).abs() < f32::EPSILON);
+        assert!((set.context_pressure.as_ref().unwrap().value - 1.0).abs() < f32::EPSILON);
     }
 
     #[test]

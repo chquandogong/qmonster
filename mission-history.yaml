@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.9 Slice 3 housekeeping bundle + S3-4 closure."
+  mission_title: "Qmonster v0.4.0 — v1.15.10 Gemini quota LimitHit honesty review fix."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 65
-  latest_version: "1.15.9"
+  total_revisions: 66
+  latest_version: "1.15.10"
 
 timeline:
   - change_id: "initial"
@@ -6911,9 +6911,72 @@ timeline:
       - "Slice 3 effectively complete except for the operator-deferred S3-1 cumulative-token-semantics decision."
       - "v1.15.x patch line remains open for runtime-refresh / UI UX issues found during operator use."
 
+  - change_id: "v1.15.10-gemini-quota-limithit-review-fix"
+    semantic_version: "1.15.10"
+    change_sequence: 66
+    date: "2026-04-25"
+    author: "Codex (review pane)"
+    contributors:
+      - "Claude Code (claude:1:main, v1.15.8/v1.15.9 author)"
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "patch"
+    motivation_type: "review-remediation"
+    persistence: "permanent"
+    intent: >
+      Review Claude's v1.15.8/v1.15.9 Slice 3 work and close the one
+      behavioral issue found: Gemini LimitHit still matched any
+      `100% used` status-table cell even after quota_pressure became a
+      distinct metric.
+    decision: >
+      Rebase Gemini LimitHit on the parsed `quota` column from the
+      same column-parity-guarded status table used by quota_pressure.
+      A full context column now remains context_pressure only; quota
+      must be exactly 100% to produce `IdleCause::LimitHit`.
+    triggered_by: "Codex review requested after Claude pane completed and pushed v1.15.9."
+    issue_or_context: >
+      v1.15.8 correctly separated `quota_pressure` from
+      `context_pressure`, but `gemini_limit_hit` kept the older row-wide
+      string scan. A row with `quota 47% used` and `context 100% used`
+      would have been treated as a quota limit hit.
+    changes:
+      added:
+        - "src/adapters/gemini.rs::gemini_context_100_used_does_not_trigger_quota_limit_hit regression test"
+        - ".docs/codex/Qmonster-v0.4.0-2026-04-25-v1.15.9-review.md local review artifact (ignored working doc)"
+      modified:
+        - "src/adapters/gemini.rs::gemini_limit_hit uses parsed quota_pressure == 1.0 instead of row-wide `100% used` scan"
+        - "docs/ai/UI_MANUAL.md::PATH-only ellipsize wording clarified"
+        - "mission.yaml execution_hints / budget_hint / lineage synced to v1.15.10"
+        - "mission-history.yaml meta + sequence 66"
+      removed: []
+    changed_sections:
+      - "src/adapters/gemini.rs::gemini_limit_hit"
+      - "docs/ai/UI_MANUAL.md::Panes reading guide"
+      - "mission.yaml::execution_hints"
+      - "mission-history.yaml::timeline/evolution_summary"
+    done_when_delta:
+      added:
+        - "Gemini context 100% with quota below 100% no longer emits LimitHit"
+        - "Mission ledger no longer reports stale v1.15.7/63 execution hints"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "Small Gemini adapter logic change + 1 regression test"
+      tests: "451 total verified — 379 lib + 14 main + 34 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 66); meta bump"
+      review_gate: "Codex review remediation; fmt/test/clippy pass required before tag."
+      follow_up_carryover: "S3-1 remains operator-deferred; S3-3 memory column display remains low-value deferred."
+    breaking: false
+    risk: "low — narrows an over-broad LimitHit classifier to the already validated quota column; no tmux, policy, actuation, or storage behavior changes."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.10 at this commit."
+      - "Keep using v1.15.x patch pattern for runtime-refresh / UI UX issues."
+
 evolution_summary:
-  current_phase: "v1.15.9 Slice 3 housekeeping bundle + S3-4 closure ledger seal. Cost / context-pressure test tolerances tightened (9744fea); push_badge helper extracted (84ab61e); ctx() test helper hoisted (4ebae0c); ellipsize helper added + worktree_path PATH badge truncated at 40 chars (3a7bf62); UI_MANUAL.md S3-4 design-decision (b) documented (b221c74). All Slice 3 housekeeping items now closed; S3-2 / S3-4 / S3-5 / S3-6 closed and S3-3 quota closed (memory column deferred). 450 tests green; clippy + fmt clean."
-  next_phase: "Slice 3 effectively complete except for operator-deferred S3-1 (Codex bottom-status-line cumulative-vs-delta token semantics) and the low-value S3-3 memory column deferral. Operator priorities (B/C/D/E/A) and v1.15.x patch line for runtime-refresh / UI UX issues remain available. Consider Slice 4+ planning when the next operator-visible direction is set."
+  current_phase: "v1.15.10 Codex review remediation after Claude v1.15.8/v1.15.9. Gemini LimitHit now keys on the parsed quota column at 100%, not any row-wide `100% used` cell; context 100% remains context_pressure only. UI_MANUAL PATH ellipsize wording clarified, and mission.yaml execution hints / lineage are synced to v1.15.10/66. Slice 3 remains effectively complete; S3-1 and S3-3 memory display are deferred."
+  next_phase: "Operator-deferred S3-1 (Codex bottom-status-line cumulative-vs-delta token semantics), low-value S3-3 memory column display, or any fresh v1.15.x runtime-refresh / UI UX patch found during operator use."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

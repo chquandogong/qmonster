@@ -85,7 +85,7 @@ session:window · Provider role · %pane_id
   대신 부재가 곧 honesty라는 전제입니다 (S3-4 design decision (b)).
   Codex / Gemini는 status surface에서 직접 `gpt-…` / `gemini-…`
   토큰을 읽을 수 있으면 채웁니다.
-- 긴 경로/브랜치/모델 문자열은 PATH badge에 한해 40자에서 자동
+- 긴 worktree 경로 문자열은 PATH badge에서 40자까지 자동
   ellipsize됩니다 (Slice 3 housekeeping). 잘린 부분은 `…` 한 글자로
   표시되어 badge 한 줄이 pane card 폭을 넘기지 않습니다.
 - `modes` / `access` / `loaded` / `restrict` 줄은 provider runtime fact를
