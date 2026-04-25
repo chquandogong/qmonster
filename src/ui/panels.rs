@@ -122,6 +122,13 @@ pub fn render_pane_list(
         .unwrap_or(0)
         .min(reports.len().saturating_sub(1));
     state.select(Some(selected));
+    let selected_flash = reports.get(selected).and_then(|report| {
+        matching_state_flash(
+            report,
+            flash_view.now,
+            flash_view.state_flashes.get(&report.pane_id),
+        )
+    });
 
     let items: Vec<ListItem<'static>> = reports
         .iter()
@@ -140,8 +147,8 @@ pub fn render_pane_list(
     StatefulWidget::render(
         List::new(items)
             .block(block)
-            .highlight_style(highlight_style(focused))
-            .highlight_symbol("▶ "),
+            .highlight_style(highlight_style(focused, flash_view.now, selected_flash))
+            .highlight_symbol(highlight_symbol(selected_flash)),
         area,
         buf,
         state,
@@ -167,13 +174,29 @@ pub fn pane_index_at_row(reports: &[PaneReport], state: &ListState, row: u16) ->
     None
 }
 
-fn highlight_style(focused: bool) -> Style {
+fn highlight_style(focused: bool, now: Instant, flash: Option<&PaneStateFlash>) -> Style {
+    if state_flash_pulse_on(flash, now) {
+        return Style::default()
+            .fg(Color::Rgb(28, 24, 12))
+            .bg(Color::Rgb(245, 226, 120))
+            .add_modifier(Modifier::BOLD);
+    }
+    if flash.is_some_and(|flash| flash.is_active(now)) {
+        return Style::default()
+            .fg(Color::Rgb(246, 232, 150))
+            .bg(Color::Rgb(76, 66, 34))
+            .add_modifier(Modifier::BOLD);
+    }
     let style = Style::default().fg(theme::TEXT_PRIMARY);
     if focused {
         style.bg(theme::BADGE_BG).add_modifier(Modifier::BOLD)
     } else {
         style.add_modifier(Modifier::BOLD)
     }
+}
+
+fn highlight_symbol(flash: Option<&PaneStateFlash>) -> &'static str {
+    if flash.is_some() { "◆ " } else { "▶ " }
 }
 
 fn pane_list_item(
@@ -1483,6 +1506,24 @@ mod tests {
         let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(text.contains("WAIT (input)"), "label missing: {text}");
         assert!(text.contains("CHANGED"), "changed badge missing: {text}");
+    }
+
+    #[test]
+    fn selected_flash_highlight_uses_pulse_colors() {
+        let now = std::time::Instant::now();
+        let flash = PaneStateFlash::new(Some(IdleCause::InputWait), now);
+        let style = highlight_style(true, now, Some(&flash));
+        assert_eq!(style.fg, Some(Color::Rgb(28, 24, 12)));
+        assert_eq!(style.bg, Some(Color::Rgb(245, 226, 120)));
+        assert!(style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn selected_flash_highlight_symbol_marks_changed_selection() {
+        let now = std::time::Instant::now();
+        let flash = PaneStateFlash::new(Some(IdleCause::InputWait), now);
+        assert_eq!(highlight_symbol(Some(&flash)), "◆ ");
+        assert_eq!(highlight_symbol(None), "▶ ");
     }
 
     #[test]

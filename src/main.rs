@@ -1110,13 +1110,21 @@ where
                                             );
                                             let command_label =
                                                 runtime_refresh_command_label(&commands);
+                                            let one_at_a_time =
+                                                runtime_refresh_sends_one_command_at_a_time(
+                                                    provider,
+                                                    report.idle_state,
+                                                );
                                             ctx.sink.record(AuditEvent {
                                                 kind: AuditEventKind::RuntimeRefreshRequested,
                                                 pane_id: pane_id.clone(),
                                                 severity: Severity::Concern,
                                                 summary: format!(
                                                     "{pane_id} {command_label} ({})",
-                                                    runtime_refresh_request_label(active_only)
+                                                    runtime_refresh_request_label(
+                                                        active_only,
+                                                        one_at_a_time,
+                                                    )
                                                 ),
                                                 provider: Some(provider),
                                                 role: Some(report.identity.identity.role),
@@ -1153,10 +1161,7 @@ where
                                                                 &pane_id,
                                                                 &command_label,
                                                                 active_only,
-                                                                runtime_refresh_sends_one_command_at_a_time(
-                                                                    provider,
-                                                                    report.idle_state,
-                                                                ),
+                                                                one_at_a_time,
                                                                 send_outcome.captured_and_closed,
                                                             ),
                                                             severity: Severity::Good,
@@ -2108,12 +2113,9 @@ fn runtime_refresh_provider_label(provider: qmonster::domain::identity::Provider
 
 fn runtime_refresh_commands(
     provider: qmonster::domain::identity::Provider,
-    idle_state: Option<IdleCause>,
+    _idle_state: Option<IdleCause>,
 ) -> &'static [&'static str] {
-    if runtime_refresh_uses_active_safe_only(idle_state) {
-        return runtime_refresh_active_commands(provider);
-    }
-    runtime_refresh_full_commands(provider)
+    runtime_refresh_provider_commands(provider)
 }
 
 fn runtime_refresh_uses_active_safe_only(idle_state: Option<IdleCause>) -> bool {
@@ -2131,7 +2133,10 @@ fn runtime_refresh_dispatch_commands(
         return Vec::new();
     }
     if runtime_refresh_sends_one_command_at_a_time(provider, idle_state) {
-        let key = format!("{pane_id}:claude-runtime");
+        let key = format!(
+            "{pane_id}:{}-runtime",
+            runtime_refresh_provider_key(provider)
+        );
         let idx = offsets.entry(key).or_insert(0);
         let command = commands[*idx % commands.len()];
         *idx = (*idx + 1) % commands.len();
@@ -2142,17 +2147,19 @@ fn runtime_refresh_dispatch_commands(
 
 fn runtime_refresh_sends_one_command_at_a_time(
     provider: qmonster::domain::identity::Provider,
-    idle_state: Option<IdleCause>,
+    _idle_state: Option<IdleCause>,
 ) -> bool {
-    matches!(provider, qmonster::domain::identity::Provider::Claude)
-        && !runtime_refresh_uses_active_safe_only(idle_state)
+    matches!(
+        provider,
+        qmonster::domain::identity::Provider::Claude | qmonster::domain::identity::Provider::Gemini
+    )
 }
 
 fn runtime_refresh_sends_escape_first(
     provider: qmonster::domain::identity::Provider,
-    idle_state: Option<IdleCause>,
+    _idle_state: Option<IdleCause>,
 ) -> bool {
-    runtime_refresh_sends_one_command_at_a_time(provider, idle_state)
+    matches!(provider, qmonster::domain::identity::Provider::Claude)
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -2217,14 +2224,12 @@ fn runtime_refresh_captures_then_closes(
     matches!(provider, qmonster::domain::identity::Provider::Claude) && command == "/status"
 }
 
-fn runtime_refresh_full_commands(
+fn runtime_refresh_provider_commands(
     provider: qmonster::domain::identity::Provider,
 ) -> &'static [&'static str] {
     // Keep this list to provider-owned control/status surfaces.
     match provider {
-        qmonster::domain::identity::Provider::Claude => {
-            &["/status", "/context", "/config", "/stats", "/usage"]
-        }
+        qmonster::domain::identity::Provider::Claude => &["/status", "/usage", "/stats"],
         qmonster::domain::identity::Provider::Codex => &["/status"],
         qmonster::domain::identity::Provider::Gemini => {
             &["/stats session", "/stats model", "/stats tools"]
@@ -2234,24 +2239,13 @@ fn runtime_refresh_full_commands(
     }
 }
 
-fn runtime_refresh_active_commands(
-    provider: qmonster::domain::identity::Provider,
-) -> &'static [&'static str] {
-    // These are the provider commands verified to run while a task is
-    // active. Claude's `/btw` is intentionally not used here: it is
-    // immediate while Claude is working, but it has no tool or
-    // internal-state access, so it cannot be a truthful runtime fact
-    // source. Claude `/status` is the documented no-wait status surface;
-    // Gemini `/stats ...` commands are marked `isSafeConcurrent` in the
-    // installed CLI; Codex `/status` is marked available during tasks.
+fn runtime_refresh_provider_key(provider: qmonster::domain::identity::Provider) -> &'static str {
     match provider {
-        qmonster::domain::identity::Provider::Claude => &["/status"],
-        qmonster::domain::identity::Provider::Codex => &["/status"],
-        qmonster::domain::identity::Provider::Gemini => {
-            &["/stats session", "/stats model", "/stats tools"]
-        }
-        qmonster::domain::identity::Provider::Qmonster
-        | qmonster::domain::identity::Provider::Unknown => &[],
+        qmonster::domain::identity::Provider::Claude => "claude",
+        qmonster::domain::identity::Provider::Codex => "codex",
+        qmonster::domain::identity::Provider::Gemini => "gemini",
+        qmonster::domain::identity::Provider::Qmonster => "qmonster",
+        qmonster::domain::identity::Provider::Unknown => "unknown",
     }
 }
 
@@ -2259,8 +2253,10 @@ fn runtime_refresh_command_label(commands: &[&str]) -> String {
     commands.join(", ")
 }
 
-fn runtime_refresh_request_label(active_only: bool) -> &'static str {
-    if active_only {
+fn runtime_refresh_request_label(active_only: bool, one_at_a_time: bool) -> &'static str {
+    if one_at_a_time {
+        "operator-requested cycled runtime refresh"
+    } else if active_only {
         "operator-requested active-safe runtime refresh"
     } else {
         "operator-requested full runtime refresh"
@@ -2292,7 +2288,7 @@ fn runtime_refresh_notice_body(
         )
     } else if one_at_a_time {
         format!(
-            "{pane_id} → `{command_label}` sent with terminal submit; Claude fullscreen status surfaces are sent one at a time, so press `u` again to cycle the next source"
+            "{pane_id} → `{command_label}` sent with terminal submit; provider runtime sources are sent one at a time, so press `u` again to cycle the next source"
         )
     } else if active_only {
         format!(
@@ -2788,29 +2784,29 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_commands_for_claude_check_all_status_surfaces_when_idle() {
+    fn runtime_refresh_commands_for_claude_cycle_status_usage_stats_when_idle() {
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, Some(IdleCause::WorkComplete)),
-            ["/status", "/context", "/config", "/stats", "/usage"]
+            ["/status", "/usage", "/stats"]
         );
         assert_eq!(
             runtime_refresh_command_label(runtime_refresh_commands(
                 Provider::Claude,
                 Some(IdleCause::LimitHit)
             )),
-            "/status, /context, /config, /stats, /usage"
+            "/status, /usage, /stats"
         );
     }
 
     #[test]
-    fn runtime_refresh_commands_for_claude_active_use_no_wait_status_only() {
+    fn runtime_refresh_commands_for_claude_active_cycle_same_runtime_sources() {
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, None),
-            ["/status"]
+            ["/status", "/usage", "/stats"]
         );
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, Some(IdleCause::Stale)),
-            ["/status"]
+            ["/status", "/usage", "/stats"]
         );
     }
 
@@ -2827,7 +2823,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_commands_for_gemini_use_safe_concurrent_stats_slashes_active_or_idle() {
+    fn runtime_refresh_commands_for_gemini_use_stats_slashes_active_or_idle() {
         assert_eq!(
             runtime_refresh_commands(Provider::Gemini, None),
             ["/stats session", "/stats model", "/stats tools"]
@@ -2839,7 +2835,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_dispatch_cycles_claude_fullscreen_surfaces_one_at_a_time() {
+    fn runtime_refresh_dispatch_cycles_claude_runtime_sources_one_at_a_time() {
         let mut offsets = HashMap::new();
         assert_eq!(
             runtime_refresh_dispatch_commands(
@@ -2857,7 +2853,25 @@ mod tests {
                 "%1",
                 &mut offsets,
             ),
-            vec!["/context"]
+            vec!["/usage"]
+        );
+        assert_eq!(
+            runtime_refresh_dispatch_commands(
+                Provider::Claude,
+                Some(IdleCause::WorkComplete),
+                "%1",
+                &mut offsets,
+            ),
+            vec!["/stats"]
+        );
+        assert_eq!(
+            runtime_refresh_dispatch_commands(
+                Provider::Claude,
+                Some(IdleCause::WorkComplete),
+                "%1",
+                &mut offsets,
+            ),
+            vec!["/status"]
         );
         assert!(runtime_refresh_sends_escape_first(
             Provider::Claude,
@@ -2892,11 +2906,23 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_dispatch_batches_safe_concurrent_gemini_commands() {
+    fn runtime_refresh_dispatch_cycles_gemini_stats_sources_one_at_a_time() {
         let mut offsets = HashMap::new();
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
-            vec!["/stats session", "/stats model", "/stats tools"]
+            vec!["/stats session"]
+        );
+        assert_eq!(
+            runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
+            vec!["/stats model"]
+        );
+        assert_eq!(
+            runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
+            vec!["/stats tools"]
+        );
+        assert_eq!(
+            runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
+            vec!["/stats session"]
         );
         assert!(!runtime_refresh_sends_escape_first(Provider::Gemini, None));
     }

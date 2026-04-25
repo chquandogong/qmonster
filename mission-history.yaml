@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.3 Claude status-capture: capture `/status`, parse once, then Escape the fullscreen surface."
+  mission_title: "Qmonster v0.4.0 — v1.15.5 runtime-refresh cycling + Codex welcome-box model fallback."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 59
-  latest_version: "1.15.3"
+  total_revisions: 61
+  latest_version: "1.15.5"
 
 timeline:
   - change_id: "initial"
@@ -6484,9 +6484,146 @@ timeline:
     follow_up:
       - "If Claude `/context`, `/config`, `/stats`, or `/usage` are also confirmed to leave blocking fullscreen surfaces, extend the same capture-then-Escape post hook to those commands."
 
+  - change_id: "v1.15.4-selected-pane-state-flash"
+    semantic_version: "1.15.4"
+    change_sequence: 60
+    date: "2026-04-25"
+    author: "Codex (codex:review, GPT-5)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — UX finding: state changes are visible only when the pane is not selected"
+    change_type: "patch"
+    motivation_type: "operator-ux-finding"
+    persistence: "permanent"
+    intent: >
+      Keep state-change cues visible when the changed pane is the selected
+      item. The previous v1.15.2 pulse worked for non-selected panes, but
+      Ratatui's selected-row highlight could visually dominate the row and
+      make the change harder to notice.
+    decision: >
+      When the selected pane has an active `PaneStateFlash`, Qmonster now
+      applies the flash pulse to the selected item highlight itself and
+      changes the selector symbol from `▶` to `◆`. This keeps the cue
+      visible even if the selection background overrides inner span
+      colors. The `CHANGED` badge remains the text-backed signal.
+    triggered_by: "Operator request on 2026-04-25: make state changes easy to see while the item is selected."
+    issue_or_context: >
+      List highlight styling is applied to the selected item as a whole,
+      so selected panes could hide or flatten the state-row/header flash
+      that was obvious on unselected panes.
+    changes:
+      added:
+        - "src/ui/panels.rs::selected-flash highlight style branch"
+        - "src/ui/panels.rs::highlight_symbol helper (`◆` while selected pane has active flash)"
+        - "2 panel tests covering selected-flash pulse colors and selector symbol"
+      modified:
+        - "docs/ai/{PROJECT_BRIEF,UI_MANUAL,VALIDATION}.md (selected-pane state-flash contract and 436-test evidence)"
+        - "mission.yaml + mission-history.yaml (v1.15.4 ledger sync)"
+      removed: []
+    changed_sections:
+      - "src/ui/panels.rs::render_pane_list selected highlight"
+      - "docs/ai/UI_MANUAL.md::Panes reading guide"
+    done_when_delta:
+      added:
+        - "Selected panes pulse the selected item highlight during active state-change flashes"
+        - "Selected panes use `◆` instead of `▶` while the state-change flash is active"
+      modified:
+        - "State-change visibility no longer depends on whether the pane is selected"
+      removed: []
+    impact_scope:
+      code: "+~40/-~5 LoC in pane renderer and tests"
+      tests: "436 total — 364 lib + 14 main + 34 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 434 at v1.15.3; +2 panel tests)"
+      ledger: "1 new timeline entry (sequence 60); meta bump"
+      review_gate: "operator-driven UI patch; local fmt/test/clippy pass."
+      follow_up_carryover: "Slice 3 (S3-1..S3-5 per the backlog) and operator priorities remain queued."
+    breaking: false
+    risk: "low — visual-only selected-item styling change; no parser, policy, tmux, or audit behaviour changes."
+    related_commits: []
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "If the selected-row flash is too strong in a terminal theme, tune the selected flash colors without changing the `CHANGED` text-backed contract."
+
+  - change_id: "v1.15.5-runtime-refresh-cycled-provider-stats"
+    semantic_version: "1.15.5"
+    change_sequence: 61
+    date: "2026-04-25"
+    author: "Codex (codex:review, GPT-5)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — operator-usage finding: Claude `/status` works; Claude/Gemini runtime sources should rotate on each `u` press"
+    change_type: "patch"
+    motivation_type: "operator-usage-finding"
+    persistence: "permanent"
+    intent: >
+      Make manual runtime refresh predictable for provider slash
+      surfaces that should be inspected one at a time. Claude should
+      rotate through `/status`, `/usage`, and `/stats`; Gemini should
+      rotate through `/stats session`, `/stats model`, and `/stats
+      tools`; Codex remains a single `/status` source. Also preserve a
+      Codex observability fallback that reads model/reasoning from the
+      startup welcome box before the bottom status line renders.
+    decision: >
+      Replace the idle-state-dependent Claude command split with a
+      provider-owned command list. Claude and Gemini dispatch exactly
+      one command per `u` press, with cycle offsets scoped by pane and
+      provider. Claude keeps the `/status` capture-then-`Escape` hook
+      and receives a defensive pre-command `Escape` to close any prior
+      fullscreen runtime surface. Gemini cycles without pre-`Escape`.
+      Codex now treats the structural welcome-box `│ model:` line as a
+      ProviderOfficial model/reasoning source, while prose containing
+      `model:` remains ignored.
+    triggered_by: "Operator request on 2026-04-25: `/status` now works; cycle Claude `/status`, `/usage`, `/stats` and Gemini `/stats session`, `/stats model`, `/stats tools` on repeated `u` presses."
+    issue_or_context: >
+      The previous contract still used Claude `/context` and `/config`
+      in the idle-only full set, while Gemini dispatched all three
+      stats commands in one batch. That did not match the operator's
+      desired inspection workflow.
+    changes:
+      added:
+        - "src/main.rs::runtime_refresh_provider_key (pane/provider-scoped cycle offsets)"
+        - "src/adapters/codex.rs::parse_codex_welcome_model fallback for Codex welcome-box model/reasoning"
+        - "2 Codex adapter tests covering welcome-box extraction and prose false-positive rejection"
+      modified:
+        - "src/adapters/codex.rs::parse now fills model_name/reasoning_effort from welcome-box `│ model:` when no bottom status line exists"
+        - "src/main.rs::runtime_refresh_commands now uses provider-owned command lists"
+        - "src/main.rs::runtime_refresh_sends_one_command_at_a_time cycles both Claude and Gemini"
+        - "src/main.rs::runtime_refresh_sends_escape_first is Claude-only"
+        - "src/main.rs runtime-refresh tests updated for Claude `/status` → `/usage` → `/stats` and Gemini stats-source cycling"
+        - "README.md + docs/ai/{ARCHITECTURE,PROJECT_BRIEF,UI_MANUAL,VALIDATION}.md (runtime-refresh cycling contract and 438-test evidence)"
+        - "mission.yaml + mission-history.yaml (v1.15.5 ledger sync)"
+      removed:
+        - "Claude `/context` and `/config` from the runtime-refresh `u` cycle"
+        - "Gemini batched stats dispatch"
+    changed_sections:
+      - "src/main.rs::runtime_refresh_commands + runtime_refresh_dispatch_commands"
+      - "docs/ai/UI_MANUAL.md::provider runtime fact section"
+      - "docs/ai/ARCHITECTURE.md::UI runtime-refresh paragraph"
+    done_when_delta:
+      added:
+        - "Repeated `u` on Claude cycles `/status`, `/usage`, `/stats`, then wraps"
+        - "Repeated `u` on Gemini cycles `/stats session`, `/stats model`, `/stats tools`, then wraps"
+        - "Cycle offsets are scoped by pane and provider"
+        - "Codex startup welcome box can populate model/reasoning before the bottom status line appears"
+      modified:
+        - "Claude runtime refresh no longer includes `/context` or `/config` in the operator cycle"
+        - "Gemini runtime refresh no longer sends all stats commands in a single batch"
+      removed: []
+    impact_scope:
+      code: "~160 LoC touched across src/main.rs + src/adapters/codex.rs plus test expectation updates"
+      tests: "438 total — 366 lib + 14 main + 34 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 61); meta bump"
+      review_gate: "operator-driven runtime UX patch; local fmt/test/clippy pass."
+      follow_up_carryover: "Slice 3 (S3-1..S3-5 per the backlog) and operator priorities remain queued."
+    breaking: false
+    risk: "low — operator-triggered refresh changes are narrow; Codex welcome-box parsing is structurally anchored on the box border and covered by a prose false-positive regression."
+    related_commits: []
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "If Claude `/usage` or `/stats` are confirmed to leave blocking fullscreen surfaces that should also feed parser overlays, extend the capture-then-`Escape` hook beyond `/status`."
+
 evolution_summary:
-  current_phase: "v1.15.3 Claude status-capture patch. Builds on v1.15.2 state-change visibility by capturing Claude `/status` fullscreen output, feeding it once into the parser, and sending Escape immediately so the pane can accept the next slash command. v1.15.2 state-change pulse behaviour and v1.15.1 runtime-refresh cycling carry forward unchanged. 434 tests green; clippy + fmt clean."
-  next_phase: "Slice 3 (S3-1..S3-5 from .docs/claude/...slice-3-backlog.md) + operator priorities B/C/D/E/A. Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round. v1.15.x patch line if operator usage on the active-safe split surfaces further issues."
+  current_phase: "v1.15.5 runtime-refresh cycling patch + Codex welcome-box model fallback. Builds on v1.15.4 selected-pane flash and v1.15.3 Claude status-capture by making repeated `u` presses rotate Claude `/status` → `/usage` → `/stats` and Gemini `/stats session` → `/stats model` → `/stats tools`, one command per press. Codex startup welcome-box `model:` can now populate model/reasoning before the bottom status line appears. 438 tests green; clippy + fmt clean."
+  next_phase: "Slice 3 (S3-1..S3-5 from .docs/claude/...slice-3-backlog.md) + operator priorities B/C/D/E/A. Slice 3 housekeeping bundle (helper hoists / DRY / ellipsize / cost tolerance / dead variants) in the next S3-* round. v1.15.x patch line remains open for runtime-refresh UX issues found during operator use."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

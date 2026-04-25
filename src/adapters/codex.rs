@@ -31,6 +31,26 @@ impl ProviderParser for CodexAdapter {
         let mut set = parse_common_signals(tail);
         append_codex_runtime_facts(&mut set, tail);
         let Some(status) = parse_codex_status_line(tail) else {
+            // S3-2 fallback: when the bottom status line is absent
+            // (right after Codex startup, before the first prompt
+            // renders the bottom line), surface model_name +
+            // reasoning_effort from the welcome-box `│ model:` line so
+            // the pane card does not stay blank for the entire startup
+            // window.
+            if let Some((model, effort)) = parse_codex_welcome_model(tail) {
+                set.model_name = Some(
+                    MetricValue::new(model, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Codex),
+                );
+                if let Some(e) = effort {
+                    set.reasoning_effort = Some(
+                        MetricValue::new(e, SourceKind::ProviderOfficial)
+                            .with_confidence(0.6) // stale-risk parity with /status box read
+                            .with_provider(Provider::Codex),
+                    );
+                }
+            }
             // Slice 4: classify idle state. Common-tier markers populated
             // PermissionWait/InputWait if applicable; layer Codex-specific
             // cursor + 5h-limit detection, then stillness fallback.
@@ -121,6 +141,58 @@ fn parse_codex_reasoning_effort(tail: &str) -> Option<String> {
                 return Some(effort.to_string());
             }
         }
+    }
+    None
+}
+
+/// S3-2: parse the Codex v0.122 welcome-box `│ model: <name> [<effort>] ...│`
+/// line into (model_name, reasoning_effort).
+///
+/// The welcome box uses lowercase `model:` (vs the /status sub-command
+/// box's capital `Model:`). Both formats coexist in the same Codex
+/// binary; this helper covers the welcome-box layout so model_name +
+/// reasoning_effort populate even before any bottom status line has
+/// rendered.
+///
+/// Anchors on the `│` border like `parse_codex_reasoning_effort` so
+/// arbitrary transcript prose containing `model:` is not promoted to a
+/// ProviderOfficial fact.
+///
+/// Match shape (case-insensitive `model:`):
+///   `│ model:       gpt-5.4 xhigh   /model to change │`
+///                   ^^^^^^^ ^^^^^
+///                   model   reasoning_effort (optional bare token)
+///
+/// The first token after `model:` must be a known provider prefix
+/// (`gpt-`, `claude-`, `gemini-`); the second token, if present, must
+/// match the same `xhigh|high|medium|low|auto` whitelist used by the
+/// /status box parser.
+fn parse_codex_welcome_model(tail: &str) -> Option<(String, Option<String>)> {
+    for line in tail.lines() {
+        if !line.contains('│') {
+            continue;
+        }
+        let lower = line.to_ascii_lowercase();
+        let Some(idx) = lower.find("model:") else {
+            continue;
+        };
+        let after = &line[idx + "model:".len()..];
+        let mut tokens = after.split_whitespace();
+        let model = tokens.next()?;
+        if !(model.starts_with("gpt-")
+            || model.starts_with("claude-")
+            || model.starts_with("gemini-"))
+        {
+            continue;
+        }
+        let effort = tokens
+            .next()
+            .map(|t| {
+                t.trim_end_matches(|c: char| !c.is_ascii_alphabetic())
+                    .to_string()
+            })
+            .filter(|t| matches!(t.as_str(), "xhigh" | "high" | "medium" | "low" | "auto"));
+        return Some((model.to_string(), effort));
     }
     None
 }
@@ -890,6 +962,66 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
             effort.value, "xhigh",
             "parser must return newest /status box value (xhigh), not oldest (low)"
         );
+    }
+
+    #[test]
+    fn codex_adapter_populates_model_name_from_welcome_box_lowercase_label() {
+        // S3-2: the Codex v0.122 welcome box uses lowercase `│ model:`
+        // (the /status sub-command renders `│ Model:` with capital M
+        // inside a separate panel). When the bottom status line is
+        // absent (e.g., right after Codex startup, before any prompt
+        // has rendered the bottom line), Qmonster should still surface
+        // the model name + reasoning effort from the welcome-box layout
+        // instead of leaving both blank.
+        let tail = "\
+╭───────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.122.0)                    │
+│                                               │
+│ model:       gpt-5.4 xhigh   /model to change │
+│ directory:   ~/Qmonster                       │
+│ permissions: YOLO mode                        │
+╰───────────────────────────────────────────────╯";
+        let id = id();
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+
+        let model = set
+            .model_name
+            .as_ref()
+            .expect("model parsed from welcome box");
+        assert_eq!(model.value, "gpt-5.4");
+        assert_eq!(model.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(model.provider, Some(Provider::Codex));
+
+        let effort = set
+            .reasoning_effort
+            .as_ref()
+            .expect("reasoning effort parsed from welcome box bare token");
+        assert_eq!(effort.value, "xhigh");
+        assert_eq!(effort.source_kind, SourceKind::ProviderOfficial);
+    }
+
+    #[test]
+    fn codex_adapter_welcome_box_does_not_match_prose_with_lowercase_model_word() {
+        // Honesty regression: prose like "I want to use a different
+        // model: gpt-5.4 with xhigh effort" is NOT a structural Codex
+        // welcome box and must not surface `model_name` /
+        // `reasoning_effort` as ProviderOfficial. The welcome-box
+        // parser anchors on the `│` border like the /status box parser,
+        // so plain prose stays untouched.
+        let tail = "I want to use a different model: gpt-5.4 with xhigh effort";
+        let id = id();
+        let (pricing, _f) = pricing_with_gpt_5_4();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+
+        assert!(set.model_name.is_none());
+        assert!(set.reasoning_effort.is_none());
     }
 
     #[test]

@@ -152,19 +152,18 @@ UI consumes already-classified signals; it never re-parses tails.
 Provider runtime facts are produced by adapter-local parsers from
 provider status/slash output and readable provider config sources. The
 TUI key `u` sends the selected provider's read-only runtime slash
-commands with terminal submit (`C-m`, Enter-equivalent). If the pane is
-active or only heuristically stale, Qmonster uses only commands verified
-to run without waiting: Claude `/status`, Codex `/status`, and Gemini
-`/stats session`, `/stats model`, `/stats tools`. If Claude is
-explicitly idle, waiting, or limited, Qmonster cycles the fuller Claude
-set one command per `u`: `/status`, `/context`, `/config`, `/stats`,
-`/usage`. Claude fullscreen status surfaces block following slash
-commands, so they are not batched. Claude `/status` output is captured
-before Qmonster sends `Escape` to close the fullscreen surface; the
-captured tail is consumed once as an in-memory parser overlay on the
-next poll. Claude `/btw` is not used as a runtime fact source because it
-has no tool or internal-state access. Unknown or unexposed fields stay
-absent rather than inferred.
+commands with terminal submit (`C-m`, Enter-equivalent), one command per
+press when a provider exposes multiple runtime surfaces. Claude cycles
+`/status`, `/usage`, `/stats`; Codex sends `/status`; Gemini cycles
+`/stats session`, `/stats model`, `/stats tools`. Claude `/status`
+output is captured before Qmonster sends `Escape` to close the
+fullscreen surface; the captured tail is consumed once as an in-memory
+parser overlay on the next poll. Claude also gets a defensive `Escape`
+before each cycled runtime command so any prior fullscreen surface is
+closed before the next slash command is submitted. Gemini stats surfaces
+are cycled without a pre-`Escape`. Claude `/btw` is not used as a
+runtime fact source because it has no tool or internal-state access.
+Unknown or unexposed fields stay absent rather than inferred.
 
 ### `notify/`
 

@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.3"
-  title: "Qmonster v0.4.0 — v1.15.3 Claude status-capture patch on top of v1.15.2. Claude `/status` fullscreen output is now captured immediately after terminal submit, stored as a one-shot in-memory parser overlay, and then closed with `Escape` so the pane can accept the next slash command. This preserves runtime-fact parsing while preventing Claude's status surface from blocking subsequent commands. v1.15.2 state-change pulse behaviour and v1.15.1 runtime-refresh cycling carry forward unchanged. 434 tests green (+1 main +1 event_loop); fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
+  version: "1.15.5"
+  title: "Qmonster v0.4.0 — v1.15.5 runtime-refresh cycling patch on top of v1.15.4. The `u` key now cycles Claude `/status` → `/usage` → `/stats` and Gemini `/stats session` → `/stats model` → `/stats tools`, one command per press, while Codex keeps `/status`. Claude `/status` capture/close remains in place and Claude receives a defensive pre-command `Escape`; Gemini cycles without pre-`Escape`. Codex welcome-box `model:` fallback now fills model/reasoning before the bottom status line appears. v1.15.4 selected-pane state-flash behaviour carries forward unchanged. 438 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
