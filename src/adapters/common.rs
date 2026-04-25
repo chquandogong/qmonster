@@ -15,13 +15,26 @@ const WAITING_MARKERS: &[&str] = &[
     "yes/no",
 ];
 
-const PERMISSION_MARKERS: &[&str] = &[
-    "permission",
-    "allow",
-    "approve",
-    "approval",
-    "dangerous",
+/// Permission-prompt detection: only fire on phrases that imply an
+/// interactive ask is in progress. Bare nouns like "permission" /
+/// "allow" / "approve" / "dangerous" match config-display text such
+/// as Codex's `│ permissions: YOLO mode` welcome row, Claude Code's
+/// `⏵⏵ bypass permissions on` keyboard hint, or `Permissions: Full
+/// Access` config rows — generating tens of thousands of false-
+/// positive RISK alerts per day. (v1.13.0 emergency tightening,
+/// measured against real captured tails on 2026-04-25.)
+const PERMISSION_PROMPT_MARKERS: &[&str] = &[
+    "(y/n)",
+    "[y/n]",
+    "(yes/no)",
     "requires approval",
+    "approve this action",
+    "approve the patch",
+    "approve this command",
+    "do you want to",
+    "press y to allow",
+    "press enter to allow",
+    "press enter to approve",
 ];
 
 const ERROR_MARKERS: &[&str] = &[
@@ -68,7 +81,7 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
 
     SignalSet {
         waiting_for_input: WAITING_MARKERS.iter().any(|m| lower.contains(m)),
-        permission_prompt: PERMISSION_MARKERS.iter().any(|m| lower.contains(m)),
+        permission_prompt: PERMISSION_PROMPT_MARKERS.iter().any(|m| lower.contains(m)),
         log_storm,
         repeated_output: false,
         verbose_answer,
