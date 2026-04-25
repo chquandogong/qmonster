@@ -12,7 +12,7 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-25): `cargo fmt --check`,
-`cargo test --all-targets` (409 tests), and
+`cargo test --all-targets` (419 tests), and
 `cargo clippy --all-targets -- -D warnings` pass; `mission-spec
 validate .` is blocked because `mission-spec` is not installed.
 
@@ -240,6 +240,10 @@ profile_lines` in `src/ui/panels.rs`; emits a
       numeric % or severity letter.
 - [x] `SourceKind` labels visible next to every metric and every
       recommendation — in the UI, not just in docs.
+- [x] Provider runtime facts are visible when sourced from provider
+      status/slash output or readable local provider settings. Unknown
+      values stay blank; Qmonster does not infer hidden tools, skills,
+      plugins, sandbox, or permission state from prose.
 - [x] Qmonster runtime never writes outside the resolved Qmonster root.
 - [x] Audit log and raw archive are separated at the writer level
       (type-level enforcement, not policy).

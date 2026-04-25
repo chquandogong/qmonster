@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 use crate::app::event_loop::PaneReport;
 use crate::domain::identity::{IdentityConfidence, Provider, Role};
 use crate::domain::recommendation::Recommendation;
-use crate::domain::signal::{IdleCause, SignalSet};
+use crate::domain::signal::{IdleCause, RuntimeFact, RuntimeFactKind, SignalSet};
 use crate::ui::labels::{format_count_with_suffix, source_kind_label};
 use crate::ui::theme;
 
@@ -175,6 +175,9 @@ fn pane_list_lines(
     }
 
     for row in metric_badge_line(&report.signals) {
+        lines.push(row);
+    }
+    for row in runtime_badge_lines(&report.signals) {
         lines.push(row);
     }
 
@@ -413,6 +416,14 @@ pub fn metric_row(s: &SignalSet) -> String {
     parts.join("  ")
 }
 
+pub fn runtime_row(s: &SignalSet) -> String {
+    runtime_text_groups(s)
+        .into_iter()
+        .map(|(label, facts)| format!("{label}: {}", facts.join("  ")))
+        .collect::<Vec<_>>()
+        .join("  ")
+}
+
 fn aligned_field(label: &str, value: &str) -> String {
     format!("{label:<8}: {value}")
 }
@@ -586,6 +597,87 @@ fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
     has_any.then(|| Line::from(spans))
 }
 
+fn runtime_badge_lines(signals: &SignalSet) -> Vec<Line<'static>> {
+    runtime_text_groups(signals)
+        .into_iter()
+        .map(|(label, facts)| {
+            let mut spans = vec![Span::raw(format!("{label:<8}: "))];
+            for (idx, fact) in facts.into_iter().enumerate() {
+                if idx > 0 {
+                    spans.push(Span::raw(" "));
+                }
+                spans.push(Span::styled(format!(" {fact} "), theme::label_style()));
+            }
+            Line::from(spans)
+        })
+        .collect()
+}
+
+fn runtime_text_groups(signals: &SignalSet) -> Vec<(&'static str, Vec<String>)> {
+    const GROUPS: &[(&str, &[RuntimeFactKind])] = &[
+        (
+            "modes",
+            &[
+                RuntimeFactKind::PermissionMode,
+                RuntimeFactKind::AutoMode,
+                RuntimeFactKind::Sandbox,
+            ],
+        ),
+        (
+            "access",
+            &[
+                RuntimeFactKind::AllowedDirectory,
+                RuntimeFactKind::AgentConfig,
+            ],
+        ),
+        (
+            "loaded",
+            &[
+                RuntimeFactKind::LoadedTool,
+                RuntimeFactKind::LoadedSkill,
+                RuntimeFactKind::LoadedPlugin,
+            ],
+        ),
+        ("restrict", &[RuntimeFactKind::RestrictedTool]),
+    ];
+
+    GROUPS
+        .iter()
+        .filter_map(|(label, kinds)| {
+            let facts: Vec<String> = signals
+                .runtime_facts
+                .iter()
+                .filter(|fact| kinds.contains(&fact.kind))
+                .map(format_runtime_fact)
+                .collect();
+            (!facts.is_empty()).then_some((*label, facts))
+        })
+        .collect()
+}
+
+fn format_runtime_fact(fact: &RuntimeFact) -> String {
+    format!(
+        "{} {} [{}]",
+        runtime_fact_label(fact.kind),
+        fact.value,
+        source_kind_label(fact.source_kind)
+    )
+}
+
+fn runtime_fact_label(kind: RuntimeFactKind) -> &'static str {
+    match kind {
+        RuntimeFactKind::PermissionMode => "PERM",
+        RuntimeFactKind::AutoMode => "MODE",
+        RuntimeFactKind::Sandbox => "SANDBOX",
+        RuntimeFactKind::AllowedDirectory => "DIR",
+        RuntimeFactKind::AgentConfig => "AGENTS",
+        RuntimeFactKind::LoadedTool => "TOOL",
+        RuntimeFactKind::LoadedSkill => "SKILL",
+        RuntimeFactKind::LoadedPlugin => "PLUGIN",
+        RuntimeFactKind::RestrictedTool => "TOOL",
+    }
+}
+
 fn context_metric_severity(value: f32) -> crate::domain::recommendation::Severity {
     use crate::domain::recommendation::Severity;
     if value >= 0.85 {
@@ -697,7 +789,7 @@ mod tests {
     use super::*;
     use crate::domain::identity::{PaneIdentity, Provider, ResolvedIdentity, Role};
     use crate::domain::origin::SourceKind;
-    use crate::domain::signal::{MetricValue, SignalSet};
+    use crate::domain::signal::{MetricValue, RuntimeFact, RuntimeFactKind, SignalSet};
 
     fn base_report() -> PaneReport {
         PaneReport {
@@ -1052,6 +1144,88 @@ mod tests {
         assert!(row.contains("branch main"), "row: {row}");
         assert!(row.contains("path ~/Qmonster"), "row: {row}");
         assert!(row.contains("effort xhigh"), "row: {row}");
+    }
+
+    #[test]
+    fn runtime_row_groups_modes_access_loaded_and_restricted_facts() {
+        let s = crate::domain::signal::SignalSet {
+            runtime_facts: vec![
+                RuntimeFact::new(
+                    RuntimeFactKind::PermissionMode,
+                    "Full Access",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::Sandbox,
+                    "danger-full-access",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::AllowedDirectory,
+                    "~/Qmonster",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::LoadedSkill,
+                    "superpowers:executing-plans",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::RestrictedTool,
+                    "Bash(rm *)",
+                    SourceKind::ProviderOfficial,
+                ),
+            ],
+            ..crate::domain::signal::SignalSet::default()
+        };
+        let row = runtime_row(&s);
+        assert!(row.contains("modes:"), "row: {row}");
+        assert!(row.contains("PERM Full Access [Official]"), "row: {row}");
+        assert!(
+            row.contains("SANDBOX danger-full-access [Official]"),
+            "row: {row}"
+        );
+        assert!(row.contains("access:"), "row: {row}");
+        assert!(row.contains("DIR ~/Qmonster [Official]"), "row: {row}");
+        assert!(row.contains("loaded:"), "row: {row}");
+        assert!(
+            row.contains("SKILL superpowers:executing-plans [Official]"),
+            "row: {row}"
+        );
+        assert!(row.contains("restrict:"), "row: {row}");
+        assert!(row.contains("TOOL Bash(rm *) [Official]"), "row: {row}");
+    }
+
+    #[test]
+    fn runtime_badge_lines_returns_one_row_per_populated_group() {
+        let s = crate::domain::signal::SignalSet {
+            runtime_facts: vec![
+                RuntimeFact::new(
+                    RuntimeFactKind::AutoMode,
+                    "YOLO mode",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::LoadedTool,
+                    "Bash",
+                    SourceKind::ProviderOfficial,
+                ),
+            ],
+            ..crate::domain::signal::SignalSet::default()
+        };
+        let rows = runtime_badge_lines(&s);
+        assert_eq!(rows.len(), 2);
+        let text: Vec<String> = rows
+            .into_iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+        assert!(text.iter().any(|line| line.starts_with("modes")));
+        assert!(text.iter().any(|line| line.starts_with("loaded")));
     }
 
     #[test]

@@ -4,8 +4,22 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct ClaudeSettings {
+    #[serde(default)]
     model: Option<String>,
-    // Other settings.json keys are ignored — Slice 2 only surfaces `model`.
+    #[serde(default, rename = "permissionMode", alias = "permission_mode")]
+    permission_mode: Option<String>,
+    #[serde(default, rename = "allowedTools", alias = "allowed_tools")]
+    allowed_tools: Option<Vec<String>>,
+    #[serde(default, rename = "disallowedTools", alias = "disallowed_tools")]
+    disallowed_tools: Option<Vec<String>>,
+    #[serde(
+        default,
+        rename = "additionalDirectories",
+        alias = "additional_directories",
+        alias = "addDirs"
+    )]
+    additional_directories: Option<Vec<String>>,
+    // Other settings.json keys are ignored.
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -38,6 +52,22 @@ impl ClaudeSettings {
     pub fn model(&self) -> Option<&str> {
         self.model.as_deref()
     }
+
+    pub fn permission_mode(&self) -> Option<&str> {
+        self.permission_mode.as_deref()
+    }
+
+    pub fn allowed_tools(&self) -> &[String] {
+        self.allowed_tools.as_deref().unwrap_or(&[])
+    }
+
+    pub fn disallowed_tools(&self) -> &[String] {
+        self.disallowed_tools.as_deref().unwrap_or(&[])
+    }
+
+    pub fn additional_directories(&self) -> &[String] {
+        self.additional_directories.as_deref().unwrap_or(&[])
+    }
 }
 
 #[cfg(test)]
@@ -62,6 +92,23 @@ mod tests {
         let f = write_json(r#"{"model": "claude-sonnet-4-6"}"#);
         let s = ClaudeSettings::load_from_path(f.path()).unwrap();
         assert_eq!(s.model(), Some("claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn claude_settings_loads_runtime_fields_from_json() {
+        let f = write_json(
+            r#"{
+                "permissionMode": "bypassPermissions",
+                "allowedTools": ["Bash(git *)", "Read"],
+                "disallowedTools": ["Bash(rm *)"],
+                "additionalDirectories": ["/tmp/shared"]
+            }"#,
+        );
+        let s = ClaudeSettings::load_from_path(f.path()).unwrap();
+        assert_eq!(s.permission_mode(), Some("bypassPermissions"));
+        assert_eq!(s.allowed_tools(), &["Bash(git *)", "Read"]);
+        assert_eq!(s.disallowed_tools(), &["Bash(rm *)"]);
+        assert_eq!(s.additional_directories(), &["/tmp/shared"]);
     }
 
     #[test]

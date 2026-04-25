@@ -139,7 +139,8 @@ Ratatui widgets. Current operator surfaces:
 1. Severity-first alert queue with timestamps, `NEW` highlighting,
    per-alert auto-hide toggles, and severity bulk-hide chips.
 2. Per-pane list with inline expansion for the selected pane's
-   recommendations and provider-profile payload.
+   recommendations, provider-profile payload, metrics, and runtime
+   facts (`modes`, `access`, `loaded`, `restrict`).
 3. Overlays for target selection (session -> window), help/legend, and
    Git status from the bottom-right version badge.
 4. Source labels rendered in long form (`[Official]`, `[Qmonster]`,
@@ -148,6 +149,11 @@ Ratatui widgets. Current operator surfaces:
 Palette: low-saturation, grey/navy/blue. Color only on state
 transitions, always paired with a numeric % or severity letter.
 UI consumes already-classified signals; it never re-parses tails.
+Provider runtime facts are produced by adapter-local parsers from
+provider status/slash output and readable provider config sources. The
+TUI key `u` sends the selected provider's read-only runtime status slash
+command (`/status` today) and the next poll parses the resulting official
+output. Unknown or unexposed fields stay absent rather than inferred.
 
 ### `notify/`
 
@@ -257,8 +263,11 @@ value. Color is never used alone.
    project-local (`ProjectCanonical`).
 2. **Observation** (Phase 1). Polling pane tail, provider parsers,
    repeated-output / log-storm / verbose-answer / context-pressure /
-   token / cost signal extraction. **Phase 1 surfaces these as
-   display-only metrics (each with `SourceKind`), not as gating
+   token / cost signal extraction, plus provider runtime facts for
+   permission mode, auto/yolo mode, sandbox, allowed directories,
+   loaded tools/skills/plugins, and restricted tools when exposed by
+   provider status/config sources. **Phase 1 surfaces these as
+   display-only metrics/facts (each with `SourceKind`), not as gating
    signals.**
 3. **Archive + checkpoint** (Phase 2). Raw tails → archive;
    preview/full split on screen; runtime snapshots pre-compact →

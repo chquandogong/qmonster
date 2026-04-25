@@ -48,7 +48,8 @@ session:window · Provider role · %pane_id
 - 예:
   `qmonster:0 · Codex review · %57`
 - 각 pane에는 보통 다음 줄들이 붙습니다.
-  `state`, `path`, `status`, `blocked`, `signals`, `metrics`
+  `state`, `path`, `status`, `blocked`, `signals`, `metrics`,
+  `modes`, `access`, `loaded`, `restrict`
 - `state` 줄은 pane가 멈춤/대기 상태일 때만 보입니다.
   상태 배지(`IDLE`, `WAIT`, `USAGE LIMIT`)와 경과 시간 배지(`⏱ MM:SS` 또는 `H:MM:SS`)가 함께 표시됩니다.
 - `status`는 현재 `high confidence`, `medium confidence`,
@@ -67,6 +68,16 @@ session:window · Provider role · %pane_id
   Codex는 bottom status line, Gemini는 status table의 `context` 컬럼을
   사용합니다. Claude의 `/status` 사용량 막대는 context window가 아니라
   usage/rate limit이므로 `CTX`로 표시하지 않습니다.
+- `modes` / `access` / `loaded` / `restrict` 줄은 provider runtime fact를
+  표시합니다. Qmonster는 선택된 pane에서 `u`를 누르면 provider의
+  read-only status slash command(현재 `/status`)를 보내고, 다음 poll에서
+  그 공식 출력과 읽을 수 있는 로컬 provider 설정을 `RuntimeFact`로 파싱합니다.
+  예: `PERM`, `MODE`, `SANDBOX`, `DIR`, `AGENTS`, `TOOL`, `SKILL`,
+  `PLUGIN`.
+- 이 줄들은 “보였다”가 아니라 “provider status/config source에서 확인된”
+  값만 보여줍니다. 해당 provider가 특정 값(예: 전체 tool registry나
+  active skill list)을 slash/status로 노출하지 않으면 Qmonster는 값을
+  꾸며내지 않고 빈 줄로 둡니다.
 - 선택된 pane는 recommendation과 provider profile payload를 아래로
   펼쳐서 보여줍니다.
 
@@ -123,6 +134,11 @@ side_effects (N):
 - `?`: help/legend overlay
 - `r`: version drift 재확인
 - `s`: snapshot 저장
+- `u`: 선택된 pane에 provider runtime status slash command를 보내 상태 갱신
+  요청. `observe_only`에서는 pane 입력을 바꾸지 않기 위해 차단하고
+  `RuntimeRefreshBlocked`를 기록합니다. 성공/실패는
+  `RuntimeRefreshRequested`, `RuntimeRefreshCompleted`,
+  `RuntimeRefreshFailed`로 audit log에 남습니다.
 - `c`: system notice clear
 - `p`: 선택된 pane의 pending prompt-send proposal 수락 (Phase 5 safer-actuation). audit chain은 actuation mode에 따라 달라짐:
   - Execute (`allow_auto_prompt_send=true`, 비 observe_only) → `PromptSendAccepted → PromptSendCompleted` 또는 `PromptSendFailed`

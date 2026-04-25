@@ -1,8 +1,9 @@
 use crate::adapters::ProviderParser;
 use crate::adapters::common::{PaneTailHistory, parse_common_signals, parse_count_with_suffix};
+use crate::adapters::runtime::{push_provider_fact, split_runtime_list};
 use crate::domain::identity::Provider;
 use crate::domain::origin::SourceKind;
-use crate::domain::signal::{IdleCause, MetricValue, SignalSet};
+use crate::domain::signal::{IdleCause, MetricValue, RuntimeFactKind, SignalSet};
 
 pub struct ClaudeAdapter;
 
@@ -10,6 +11,7 @@ impl ProviderParser for ClaudeAdapter {
     fn parse(&self, ctx: &crate::adapters::ParserContext) -> SignalSet {
         let tail = ctx.tail;
         let mut set = parse_common_signals(tail);
+        append_claude_runtime_facts(&mut set, tail, ctx.claude_settings);
 
         // v1.13.1: parse_context_percent_claude dropped — its substring
         // matching of `claude` + `%` fired on operator prose mentioning
@@ -109,13 +111,7 @@ fn claude_limit_hit(tail: &str) -> bool {
 
 fn claude_usage_limit_banner(lines: &[&str], idx: usize) -> bool {
     let line = lines[idx].to_lowercase();
-    let has_limit_phrase = (line.contains("usage limit")
-        || line.contains("rate limit")
-        || line.contains("billing limit"))
-        && (line.contains("reached")
-            || line.contains("exceeded")
-            || line.contains("hit")
-            || line.contains("blocked"));
+    let has_limit_phrase = claude_limit_phrase(&line);
     if !has_limit_phrase {
         return false;
     }
@@ -123,16 +119,207 @@ fn claude_usage_limit_banner(lines: &[&str], idx: usize) -> bool {
     lines
         .iter()
         .skip(idx)
-        .take(4)
+        .take(8)
         .any(|window_line| has_limit_recovery_hint(&window_line.to_lowercase()))
+}
+
+fn claude_limit_phrase(line: &str) -> bool {
+    let mentions_limit = line.contains("usage limit")
+        || line.contains("rate limit")
+        || line.contains("billing limit")
+        || line.contains("limit reached")
+        || (line.contains("claude") && line.contains("limit"))
+        || (line.contains("you have reached") && line.contains("limit"));
+    let terminal = line.contains("reached")
+        || line.contains("exceeded")
+        || line.contains("hit")
+        || line.contains("blocked")
+        || line.contains("stopped")
+        || line.contains("unavailable")
+        || line.contains("limit reached");
+    mentions_limit && terminal
 }
 
 fn has_limit_recovery_hint(line: &str) -> bool {
     line.contains("reset")
         || line.contains("resets")
+        || line.contains("retry")
+        || line.contains("retry after")
         || line.contains("try again")
         || line.contains("upgrade")
         || line.contains("later")
+        || line.contains("until")
+        || line.contains("tomorrow")
+        || line.contains("available")
+}
+
+fn append_claude_runtime_facts(
+    set: &mut SignalSet,
+    tail: &str,
+    settings: &crate::policy::claude_settings::ClaudeSettings,
+) {
+    if let Some(mode) = settings.permission_mode() {
+        push_provider_fact(
+            &mut set.runtime_facts,
+            Provider::Claude,
+            RuntimeFactKind::PermissionMode,
+            mode,
+            0.85,
+        );
+    }
+    for dir in settings.additional_directories() {
+        push_provider_fact(
+            &mut set.runtime_facts,
+            Provider::Claude,
+            RuntimeFactKind::AllowedDirectory,
+            dir,
+            0.85,
+        );
+    }
+    for tool in settings.allowed_tools() {
+        push_provider_fact(
+            &mut set.runtime_facts,
+            Provider::Claude,
+            RuntimeFactKind::LoadedTool,
+            tool,
+            0.85,
+        );
+    }
+    for tool in settings.disallowed_tools() {
+        push_provider_fact(
+            &mut set.runtime_facts,
+            Provider::Claude,
+            RuntimeFactKind::RestrictedTool,
+            tool,
+            0.85,
+        );
+    }
+
+    append_claude_tail_runtime_facts(&mut set.runtime_facts, tail);
+}
+
+fn append_claude_tail_runtime_facts(
+    facts: &mut Vec<crate::domain::signal::RuntimeFact>,
+    tail: &str,
+) {
+    let lines: Vec<&str> = tail.lines().collect();
+    for (idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        let lower = trimmed.to_lowercase();
+
+        if lower.contains("bypass permissions on") {
+            push_provider_fact(
+                facts,
+                Provider::Claude,
+                RuntimeFactKind::PermissionMode,
+                "bypass permissions on",
+                0.95,
+            );
+        } else if lower.contains("bypass permissions off") {
+            push_provider_fact(
+                facts,
+                Provider::Claude,
+                RuntimeFactKind::PermissionMode,
+                "bypass permissions off",
+                0.95,
+            );
+        }
+
+        append_claude_labeled_runtime_fact(facts, trimmed);
+
+        if let Some(skill) = extract_named_call(trimmed, "Skill")
+            && claude_skill_window_loaded(&lines, idx)
+        {
+            push_provider_fact(
+                facts,
+                Provider::Claude,
+                RuntimeFactKind::LoadedSkill,
+                skill,
+                0.9,
+            );
+        }
+
+        if let Some(tool) = extract_observed_tool_call(trimmed) {
+            push_provider_fact(
+                facts,
+                Provider::Claude,
+                RuntimeFactKind::LoadedTool,
+                format!("{tool} (observed)"),
+                0.7,
+            );
+        }
+    }
+}
+
+fn append_claude_labeled_runtime_fact(
+    facts: &mut Vec<crate::domain::signal::RuntimeFact>,
+    line: &str,
+) {
+    let Some((raw_label, raw_value)) = line.split_once(':') else {
+        return;
+    };
+    let label = raw_label
+        .trim()
+        .trim_matches('│')
+        .trim()
+        .to_ascii_lowercase();
+    let value = raw_value.trim().trim_matches('│').trim();
+
+    let kind = match label.as_str() {
+        "permission mode" | "permissions" => Some(RuntimeFactKind::PermissionMode),
+        "allowed directories" | "additional directories" | "add dirs" | "working directory" => {
+            Some(RuntimeFactKind::AllowedDirectory)
+        }
+        "allowed tools" | "available tools" | "tools" => Some(RuntimeFactKind::LoadedTool),
+        "disallowed tools" | "disabled tools" | "restricted tools" => {
+            Some(RuntimeFactKind::RestrictedTool)
+        }
+        "loaded skills" | "skills" => Some(RuntimeFactKind::LoadedSkill),
+        "loaded plugins" | "plugins" | "mcp servers" => Some(RuntimeFactKind::LoadedPlugin),
+        _ => None,
+    };
+
+    let Some(kind) = kind else {
+        return;
+    };
+    for item in split_runtime_list(value) {
+        push_provider_fact(facts, Provider::Claude, kind, item, 0.9);
+    }
+}
+
+fn claude_skill_window_loaded(lines: &[&str], idx: usize) -> bool {
+    lines
+        .iter()
+        .skip(idx)
+        .take(4)
+        .any(|line| line.to_lowercase().contains("successfully loaded skill"))
+}
+
+fn extract_named_call(line: &str, name: &str) -> Option<String> {
+    let marker = format!("{name}(");
+    let start = line.find(&marker)?;
+    let rest = &line[start + marker.len()..];
+    let end = rest.find(')')?;
+    let value = rest[..end].trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+fn extract_observed_tool_call(line: &str) -> Option<String> {
+    let trimmed = line
+        .trim_start_matches(|c: char| c.is_whitespace() || matches!(c, '●' | '⏺' | '⎿' | '-'))
+        .trim_start();
+    let open = trimmed.find('(')?;
+    let name = trimmed[..open].trim();
+    if name == "Skill"
+        || name.is_empty()
+        || !name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return None;
+    }
+    Some(name.to_string())
 }
 
 fn parse_claude_output_tokens(tail: &str) -> Option<u64> {
@@ -198,7 +385,7 @@ mod tests {
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use crate::domain::origin::SourceKind;
-    use crate::domain::signal::IdleCause;
+    use crate::domain::signal::{IdleCause, RuntimeFactKind};
     use crate::policy::claude_settings::ClaudeSettings;
     use crate::policy::pricing::PricingTable;
 
@@ -372,6 +559,41 @@ mod tests {
     }
 
     #[test]
+    fn claude_adapter_populates_runtime_facts_from_settings() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"{{"permissionMode":"bypassPermissions","allowedTools":["Read"],"disallowedTools":["Bash(rm *)"],"additionalDirectories":["/tmp/shared"]}}"#
+        )
+        .unwrap();
+        let settings = ClaudeSettings::load_from_path(f.path()).unwrap();
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, "any tail", &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+
+        assert!(set.runtime_facts.iter().any(|f| {
+            f.kind == RuntimeFactKind::PermissionMode && f.value == "bypassPermissions"
+        }));
+        assert!(
+            set.runtime_facts.iter().any(|f| {
+                f.kind == RuntimeFactKind::AllowedDirectory && f.value == "/tmp/shared"
+            })
+        );
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::LoadedTool && f.value == "Read")
+        );
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::RestrictedTool && f.value == "Bash(rm *)")
+        );
+    }
+
+    #[test]
     fn claude_adapter_leaves_cost_usd_none_regardless_of_settings() {
         // Honesty regression: Claude cost requires input-token data
         // which Claude's tail does not expose. Settings presence must
@@ -459,6 +681,22 @@ Claude usage limit reached. Your limit will reset at 3:40pm.
     }
 
     #[test]
+    fn claude_limit_reached_retry_after_beats_idle_cursor() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+Claude AI limit reached for this account.
+Retry after 3 hours.
+
+❯ ";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        assert_eq!(set.idle_state, Some(IdleCause::LimitHit));
+    }
+
+    #[test]
     fn claude_usage_limit_prose_without_recovery_hint_does_not_fire_limit_hit() {
         let id = id();
         let pricing = PricingTable::empty();
@@ -468,6 +706,51 @@ Claude usage limit reached. Your limit will reset at 3:40pm.
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
         assert_eq!(set.idle_state, None);
+    }
+
+    #[test]
+    fn claude_tail_runtime_facts_include_permissions_tools_skills_and_plugins() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+⏵⏵ bypass permissions on
+Allowed tools: Read, Edit
+Disallowed tools: Bash(rm *)
+Plugins: github
+● Skill(superpowers:executing-plans)
+  ⎿ Successfully loaded skill
+● Bash(command: \"git status\")";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+
+        assert!(set.runtime_facts.iter().any(|f| {
+            f.kind == RuntimeFactKind::PermissionMode && f.value == "bypass permissions on"
+        }));
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::LoadedTool && f.value == "Read")
+        );
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::RestrictedTool && f.value == "Bash(rm *)")
+        );
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::LoadedPlugin && f.value == "github")
+        );
+        assert!(set.runtime_facts.iter().any(|f| {
+            f.kind == RuntimeFactKind::LoadedSkill && f.value == "superpowers:executing-plans"
+        }));
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::LoadedTool && f.value == "Bash (observed)")
+        );
     }
 
     #[test]

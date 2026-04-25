@@ -66,6 +66,54 @@ pub enum IdleCause {
     Stale,
 }
 
+/// Provider runtime/config facts observed from provider status/slash
+/// output or readable provider-local configuration. These are
+/// display-only. Absence means "not observed from an available source",
+/// not "disabled".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeFactKind {
+    PermissionMode,
+    AutoMode,
+    Sandbox,
+    AllowedDirectory,
+    AgentConfig,
+    LoadedTool,
+    LoadedSkill,
+    LoadedPlugin,
+    RestrictedTool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeFact {
+    pub kind: RuntimeFactKind,
+    pub value: String,
+    pub source_kind: SourceKind,
+    pub confidence: Option<f32>,
+    pub provider: Option<Provider>,
+}
+
+impl RuntimeFact {
+    pub fn new(kind: RuntimeFactKind, value: impl Into<String>, source_kind: SourceKind) -> Self {
+        Self {
+            kind,
+            value: value.into(),
+            source_kind,
+            confidence: None,
+            provider: None,
+        }
+    }
+
+    pub fn with_confidence(mut self, c: f32) -> Self {
+        self.confidence = Some(c);
+        self
+    }
+
+    pub fn with_provider(mut self, p: Provider) -> Self {
+        self.provider = Some(p);
+        self
+    }
+}
+
 /// Boolean + metric signals extracted by an adapter from a pane tail.
 /// Phase 1 treats `context_pressure` / `token_count` / `cost_usd` as
 /// display-only; they never gate recommendations (Codex CS-2).
@@ -87,6 +135,7 @@ pub struct SignalSet {
     pub git_branch: Option<MetricValue<String>>,
     pub worktree_path: Option<MetricValue<String>>,
     pub reasoning_effort: Option<MetricValue<String>>,
+    pub runtime_facts: Vec<RuntimeFact>,
 }
 
 #[cfg(test)]
@@ -146,6 +195,7 @@ mod tests {
         assert!(s.git_branch.is_none());
         assert!(s.worktree_path.is_none());
         assert!(s.reasoning_effort.is_none());
+        assert!(s.runtime_facts.is_empty());
     }
 
     #[test]
@@ -171,5 +221,22 @@ mod tests {
         assert_eq!(s.worktree_path.as_ref().unwrap().value, "~/Qmonster");
         assert_eq!(s.reasoning_effort.as_ref().unwrap().value, "xhigh");
         assert_eq!(s.reasoning_effort.as_ref().unwrap().confidence, Some(0.6));
+    }
+
+    #[test]
+    fn runtime_fact_carries_kind_value_source_and_provider() {
+        let fact = RuntimeFact::new(
+            RuntimeFactKind::PermissionMode,
+            "bypass permissions on",
+            SourceKind::ProviderOfficial,
+        )
+        .with_confidence(0.9)
+        .with_provider(Provider::Claude);
+
+        assert_eq!(fact.kind, RuntimeFactKind::PermissionMode);
+        assert_eq!(fact.value, "bypass permissions on");
+        assert_eq!(fact.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(fact.confidence, Some(0.9));
+        assert_eq!(fact.provider, Some(Provider::Claude));
     }
 }

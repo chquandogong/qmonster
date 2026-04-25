@@ -392,7 +392,7 @@ fn render_footer(area: Rect, buf: &mut Buffer, alerts_focused: bool, panes_focus
 /// `"focus: alerts"`) decided by the caller.
 fn footer_text(focus: &str) -> String {
     format!(
-        "{focus} · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · p accept · d dismiss · ? help · q quit"
+        "{focus} · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · p accept · d dismiss · ? help · q quit"
     )
 }
 
@@ -462,6 +462,10 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         ("s", "write a runtime snapshot"),
         ("r", "refresh version drift check"),
+        (
+            "u",
+            "request provider runtime status for the selected pane via its read-only slash command",
+        ),
         ("c", "clear system notices"),
     ] {
         lines.extend(help_wrapped_detail_lines(label, value, total_width));
@@ -860,6 +864,10 @@ mod tests {
             text.contains("d dismiss"),
             "footer must advertise `d dismiss`: {text}"
         );
+        assert!(
+            text.contains("u runtime"),
+            "footer must advertise `u runtime`: {text}"
+        );
         // Sanity: existing anchors still present.
         assert!(text.starts_with("focus: alerts"));
         assert!(text.contains("? help"));
@@ -869,6 +877,9 @@ mod tests {
             .find("t target")
             .expect("footer must keep the `t target` anchor");
         let p_pos = text.find("p accept").expect("footer must carry `p accept`");
+        let u_pos = text
+            .find("u runtime")
+            .expect("footer must carry `u runtime`");
         let d_pos = text
             .find("d dismiss")
             .expect("footer must carry `d dismiss`");
@@ -876,8 +887,12 @@ mod tests {
             .find("? help")
             .expect("footer must keep the `? help` anchor");
         assert!(
-            target_pos < p_pos,
-            "`p accept` must come after `t target` (actuation keys adjacent to target selection)"
+            target_pos < u_pos,
+            "`u runtime` must come after `t target` (provider refresh near target selection)"
+        );
+        assert!(
+            u_pos < p_pos,
+            "`u runtime` must precede prompt-send actuation keys"
         );
         assert!(
             p_pos < d_pos,

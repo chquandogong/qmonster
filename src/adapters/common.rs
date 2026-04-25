@@ -233,6 +233,7 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         git_branch: None,
         worktree_path: None,
         reasoning_effort: None,
+        runtime_facts: Vec::new(),
     }
 }
 

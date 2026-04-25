@@ -18,7 +18,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::ListState;
 
 use qmonster::app::bootstrap::Context;
-use qmonster::app::config::{QmonsterConfig, load_from_path};
+use qmonster::app::config::{ActionsMode, QmonsterConfig, load_from_path};
 use qmonster::app::event_loop::{PaneReport, run_once, run_once_with_target};
 use qmonster::app::git_info::capture_repo_panel;
 use qmonster::app::path_resolution::pick_root;
@@ -329,6 +329,10 @@ fn print_reports(reports: &[PaneReport], config: &qmonster::app::config::Qmonste
         let metrics = qmonster::ui::panels::metric_row(&r.signals);
         if !metrics.is_empty() {
             println!("  metrics: {metrics}");
+        }
+        let runtime = qmonster::ui::panels::runtime_row(&r.signals);
+        if !runtime.is_empty() {
+            println!("  runtime: {runtime}");
         }
         if !r.effects.is_empty() {
             let names: Vec<String> = r.effects.iter().map(|e| format!("{e:?}")).collect();
@@ -1009,6 +1013,122 @@ where
                             }
                             KeyCode::Char('c') => {
                                 notices.clear();
+                                sync_dashboard_state(
+                                    &notices,
+                                    &last_reports,
+                                    DashboardSyncState {
+                                        alert_state: &mut alert_state,
+                                        pane_state: &mut pane_state,
+                                        previous_alerts: &mut previous_alerts,
+                                        fresh_alerts: &mut fresh_alerts,
+                                        alert_times: &mut alert_times,
+                                        alert_hide_deadlines: &mut alert_hide_deadlines,
+                                    },
+                                    Instant::now(),
+                                );
+                            }
+                            KeyCode::Char('u') if focus == FocusedPanel::Panes => {
+                                let selected =
+                                    pane_state.selected().and_then(|i| last_reports.get(i));
+                                match selected {
+                                    None => notices.insert(
+                                        0,
+                                        SystemNotice {
+                                            title: "no pane selected".into(),
+                                            body: "select a provider pane before requesting runtime refresh".into(),
+                                            severity: Severity::Concern,
+                                            source_kind: SourceKind::ProjectCanonical,
+                                        },
+                                    ),
+                                    Some(report) => {
+                                        let pane_id = report.pane_id.clone();
+                                        let provider = report.identity.identity.provider;
+                                        match runtime_refresh_command(provider) {
+                                            None => notices.insert(
+                                                0,
+                                                SystemNotice {
+                                                    title: "runtime refresh unavailable".into(),
+                                                    body: format!(
+                                                        "{} has no known read-only runtime slash command",
+                                                        runtime_refresh_provider_label(provider)
+                                                    ),
+                                                    severity: Severity::Concern,
+                                                    source_kind: SourceKind::ProjectCanonical,
+                                                },
+                                            ),
+                                            Some(cmd) if ctx.config.actions.mode == ActionsMode::ObserveOnly => {
+                                                ctx.sink.record(AuditEvent {
+                                                    kind: AuditEventKind::RuntimeRefreshBlocked,
+                                                    pane_id: pane_id.clone(),
+                                                    severity: Severity::Warning,
+                                                    summary: format!("{pane_id} {cmd} (blocked; observe_only mode)"),
+                                                    provider: Some(provider),
+                                                    role: Some(report.identity.identity.role),
+                                                });
+                                                notices.insert(
+                                                    0,
+                                                    SystemNotice {
+                                                        title: "runtime refresh blocked".into(),
+                                                        body: format!("{pane_id} → `{cmd}` blocked by observe_only mode"),
+                                                        severity: Severity::Warning,
+                                                        source_kind: SourceKind::ProjectCanonical,
+                                                    },
+                                                );
+                                            }
+                                            Some(cmd) => {
+                                                ctx.sink.record(AuditEvent {
+                                                    kind: AuditEventKind::RuntimeRefreshRequested,
+                                                    pane_id: pane_id.clone(),
+                                                    severity: Severity::Concern,
+                                                    summary: format!("{pane_id} {cmd} (operator-requested runtime refresh)"),
+                                                    provider: Some(provider),
+                                                    role: Some(report.identity.identity.role),
+                                                });
+                                                match ctx.source.send_keys(&pane_id, cmd) {
+                                                    Ok(()) => {
+                                                        ctx.sink.record(AuditEvent {
+                                                            kind: AuditEventKind::RuntimeRefreshCompleted,
+                                                            pane_id: pane_id.clone(),
+                                                            severity: Severity::Safe,
+                                                            summary: format!("{pane_id} {cmd} (sent)"),
+                                                            provider: Some(provider),
+                                                            role: Some(report.identity.identity.role),
+                                                        });
+                                                        notices.insert(
+                                                            0,
+                                                            SystemNotice {
+                                                                title: "runtime refresh sent".into(),
+                                                                body: format!("{pane_id} → `{cmd}`; next poll will parse provider status output"),
+                                                                severity: Severity::Good,
+                                                                source_kind: SourceKind::ProjectCanonical,
+                                                            },
+                                                        );
+                                                        last_poll = Instant::now() - poll;
+                                                    }
+                                                    Err(e) => {
+                                                        ctx.sink.record(AuditEvent {
+                                                            kind: AuditEventKind::RuntimeRefreshFailed,
+                                                            pane_id: pane_id.clone(),
+                                                            severity: Severity::Warning,
+                                                            summary: format!("{pane_id} {cmd} (send failed: {e})"),
+                                                            provider: Some(provider),
+                                                            role: Some(report.identity.identity.role),
+                                                        });
+                                                        notices.insert(
+                                                            0,
+                                                            SystemNotice {
+                                                                title: "runtime refresh failed".into(),
+                                                                body: format!("{pane_id} → `{cmd}`: tmux error — {e}"),
+                                                                severity: Severity::Warning,
+                                                                source_kind: SourceKind::ProjectCanonical,
+                                                            },
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 sync_dashboard_state(
                                     &notices,
                                     &last_reports,
@@ -1910,6 +2030,26 @@ fn target_switched_notice(label: &str) -> SystemNotice {
         body: format!("now watching {label}"),
         severity: Severity::Good,
         source_kind: SourceKind::ProjectCanonical,
+    }
+}
+
+fn runtime_refresh_command(provider: qmonster::domain::identity::Provider) -> Option<&'static str> {
+    match provider {
+        qmonster::domain::identity::Provider::Claude
+        | qmonster::domain::identity::Provider::Codex
+        | qmonster::domain::identity::Provider::Gemini => Some("/status"),
+        qmonster::domain::identity::Provider::Qmonster
+        | qmonster::domain::identity::Provider::Unknown => None,
+    }
+}
+
+fn runtime_refresh_provider_label(provider: qmonster::domain::identity::Provider) -> &'static str {
+    match provider {
+        qmonster::domain::identity::Provider::Claude => "Claude",
+        qmonster::domain::identity::Provider::Codex => "Codex",
+        qmonster::domain::identity::Provider::Gemini => "Gemini",
+        qmonster::domain::identity::Provider::Qmonster => "Qmonster",
+        qmonster::domain::identity::Provider::Unknown => "Unknown provider",
     }
 }
 

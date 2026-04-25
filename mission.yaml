@@ -1,6 +1,6 @@
 mission:
   version: "1.14.1"
-  title: "Qmonster v0.4.0 — v1.14.1 plus local doc/idle consistency follow-up. Codex cursor bottom-status-line skip remains the tagged baseline; local cleanup fixes false IDLE persistence after new requests, distinguishes Claude usage-limit banners as USAGE LIMIT, adds Gemini context-window CTX parsing from the status table, and honors idle.stillness_polls for stale detection. 409 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
+  title: "Qmonster v0.4.0 — v1.14.1 plus local runtime observability follow-up. Codex cursor bottom-status-line skip remains the tagged baseline; local cleanup fixes false IDLE persistence after new requests, broadens Claude usage-limit banners so USAGE LIMIT beats IDLE, adds Gemini status-table CTX/model/path parsing, and adds manual provider runtime refresh (`u` sends `/status`) plus modes/access/loaded/restrict pane rows for permission/yolo/auto mode, sandbox, allowed dirs, loaded tools/skills/plugins, and restricted tools when provider status/config sources expose them. 419 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

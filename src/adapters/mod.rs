@@ -3,6 +3,7 @@ pub mod codex;
 pub mod common;
 pub mod gemini;
 pub mod qmonster;
+mod runtime;
 
 use crate::adapters::common::PaneTailHistory;
 use crate::domain::identity::{Provider, ResolvedIdentity};

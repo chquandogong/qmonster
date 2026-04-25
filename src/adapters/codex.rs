@@ -1,8 +1,9 @@
 use crate::adapters::ProviderParser;
 use crate::adapters::common::{PaneTailHistory, parse_common_signals, parse_count_with_suffix};
+use crate::adapters::runtime::{push_provider_fact, split_runtime_list};
 use crate::domain::identity::Provider;
 use crate::domain::origin::SourceKind;
-use crate::domain::signal::{IdleCause, MetricValue, SignalSet};
+use crate::domain::signal::{IdleCause, MetricValue, RuntimeFactKind, SignalSet};
 
 pub struct CodexAdapter;
 
@@ -28,6 +29,7 @@ impl ProviderParser for CodexAdapter {
         let tail = ctx.tail;
         let pricing = ctx.pricing;
         let mut set = parse_common_signals(tail);
+        append_codex_runtime_facts(&mut set, tail);
         let Some(status) = parse_codex_status_line(tail) else {
             // Slice 4: classify idle state. Common-tier markers populated
             // PermissionWait/InputWait if applicable; layer Codex-specific
@@ -235,6 +237,68 @@ fn is_plain_identifier(s: &str) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '_' || c == '.' || c == '-')
 }
 
+fn append_codex_runtime_facts(set: &mut SignalSet, tail: &str) {
+    for line in tail.lines() {
+        append_codex_status_fact(&mut set.runtime_facts, line);
+    }
+}
+
+fn append_codex_status_fact(facts: &mut Vec<crate::domain::signal::RuntimeFact>, line: &str) {
+    let cleaned = clean_codex_status_line(line);
+    let Some((raw_label, raw_value)) = cleaned.split_once(':') else {
+        return;
+    };
+    let label = raw_label.trim().to_ascii_lowercase();
+    let value = raw_value.trim();
+    let Some(kind) = codex_runtime_kind_for_label(&label) else {
+        return;
+    };
+
+    for item in split_runtime_list(value) {
+        push_provider_fact(facts, Provider::Codex, kind, item, 0.9);
+    }
+
+    if label == "permissions" && value.to_lowercase().contains("yolo") {
+        push_provider_fact(
+            facts,
+            Provider::Codex,
+            RuntimeFactKind::AutoMode,
+            "YOLO mode",
+            0.9,
+        );
+    }
+}
+
+fn codex_runtime_kind_for_label(label: &str) -> Option<RuntimeFactKind> {
+    match label {
+        "permissions" | "approval mode" | "ask for approval" => {
+            Some(RuntimeFactKind::PermissionMode)
+        }
+        "collaboration mode" | "auto mode" | "mode" => Some(RuntimeFactKind::AutoMode),
+        "sandbox" | "sandbox mode" => Some(RuntimeFactKind::Sandbox),
+        "directory" | "worktree" | "cwd" | "additional directories" | "writable roots" => {
+            Some(RuntimeFactKind::AllowedDirectory)
+        }
+        "agents.md" | "agents" => Some(RuntimeFactKind::AgentConfig),
+        "tools" | "available tools" | "allowed tools" => Some(RuntimeFactKind::LoadedTool),
+        "skills" | "loaded skills" => Some(RuntimeFactKind::LoadedSkill),
+        "plugins" | "mcp servers" | "mcp" => Some(RuntimeFactKind::LoadedPlugin),
+        "restricted tools" | "disabled tools" | "disallowed tools" => {
+            Some(RuntimeFactKind::RestrictedTool)
+        }
+        _ => None,
+    }
+}
+
+fn clean_codex_status_line(line: &str) -> String {
+    line.trim()
+        .trim_matches('│')
+        .trim()
+        .trim_matches('─')
+        .trim()
+        .to_string()
+}
+
 fn classify_idle_codex(tail: &str, history: &PaneTailHistory) -> Option<IdleCause> {
     if codex_limit_hit(tail) {
         return Some(IdleCause::LimitHit);
@@ -309,7 +373,7 @@ mod tests {
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use crate::domain::origin::SourceKind;
-    use crate::domain::signal::IdleCause;
+    use crate::domain::signal::{IdleCause, RuntimeFactKind};
     use crate::policy::claude_settings::ClaudeSettings;
     use crate::policy::pricing::PricingTable;
     use std::io::Write;
@@ -442,6 +506,76 @@ output_per_1m = 10.00
         assert!(set.context_pressure.is_none());
         assert!(set.token_count.is_none());
         assert!(set.model_name.is_none());
+    }
+
+    #[test]
+    fn codex_status_box_populates_runtime_facts_without_bottom_status_line() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+│  Permissions:                Full Access              │
+│  Collaboration mode:         Default                  │
+│  Sandbox:                    danger-full-access       │
+│  Directory:                  ~/Qmonster               │
+│  Agents.md:                  AGENTS.md                │
+│  Tools:                      Bash, Read               │
+│  Restricted tools:           WebFetch                 │";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+
+        assert!(set.context_pressure.is_none());
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| { f.kind == RuntimeFactKind::PermissionMode && f.value == "Full Access" })
+        );
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::AutoMode && f.value == "Default")
+        );
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::Sandbox && f.value == "danger-full-access")
+        );
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::AllowedDirectory && f.value == "~/Qmonster")
+        );
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::AgentConfig && f.value == "AGENTS.md")
+        );
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::LoadedTool && f.value == "Bash")
+        );
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::RestrictedTool && f.value == "WebFetch")
+        );
+    }
+
+    #[test]
+    fn codex_yolo_permissions_also_populates_auto_mode() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, "permissions: YOLO mode", &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::AutoMode && f.value == "YOLO mode")
+        );
     }
 
     // v1.11.2 regression: unknown newest model token must NOT cause

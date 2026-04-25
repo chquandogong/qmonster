@@ -1,15 +1,46 @@
 use crate::adapters::ProviderParser;
 use crate::adapters::common::parse_common_signals;
+use crate::adapters::runtime::push_provider_fact;
 use crate::domain::identity::Provider;
 use crate::domain::origin::SourceKind;
-use crate::domain::signal::{IdleCause, MetricValue, SignalSet};
+use crate::domain::signal::{IdleCause, MetricValue, RuntimeFactKind, SignalSet};
 
 pub struct GeminiAdapter;
 
 impl ProviderParser for GeminiAdapter {
     fn parse(&self, ctx: &crate::adapters::ParserContext) -> SignalSet {
         let mut set = parse_common_signals(ctx.tail);
-        if let Some(context) = parse_gemini_context_pressure(ctx.tail) {
+        append_gemini_runtime_facts(&mut set, ctx.tail);
+        if let Some(status) = parse_gemini_status(ctx.tail) {
+            if let Some(model) = status.model {
+                set.model_name = Some(
+                    MetricValue::new(model, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Gemini),
+                );
+            }
+            if let Some(branch) = status.branch {
+                set.git_branch = Some(
+                    MetricValue::new(branch, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Gemini),
+                );
+            }
+            if let Some(workspace) = status.workspace {
+                set.worktree_path = Some(
+                    MetricValue::new(workspace, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Gemini),
+                );
+            }
+            if let Some(context) = status.context_pressure {
+                set.context_pressure = Some(
+                    MetricValue::new(context, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Gemini),
+                );
+            }
+        } else if let Some(context) = parse_gemini_context_pressure(ctx.tail) {
             set.context_pressure = Some(
                 MetricValue::new(context, SourceKind::ProviderOfficial)
                     .with_confidence(0.95)
@@ -23,21 +54,24 @@ impl ProviderParser for GeminiAdapter {
     }
 }
 
-fn parse_gemini_context_pressure(tail: &str) -> Option<f32> {
+#[derive(Default)]
+struct GeminiStatus {
+    context_pressure: Option<f32>,
+    branch: Option<String>,
+    sandbox: Option<String>,
+    model: Option<String>,
+    workspace: Option<String>,
+}
+
+fn parse_gemini_status(tail: &str) -> Option<GeminiStatus> {
     let lines: Vec<&str> = tail.lines().collect();
-    for (idx, line) in lines.iter().enumerate() {
+    for idx in (0..lines.len()).rev() {
+        let line = lines[idx];
         if !is_gemini_status_header(line) {
             continue;
         }
 
         let header_cols = split_gemini_status_columns(line);
-        let Some(context_idx) = header_cols
-            .iter()
-            .position(|col| col.trim().eq_ignore_ascii_case("context"))
-        else {
-            continue;
-        };
-
         for data_line in lines.iter().skip(idx + 1) {
             let trimmed = data_line.trim();
             if trimmed.is_empty() || is_gemini_separator(trimmed) {
@@ -45,16 +79,80 @@ fn parse_gemini_context_pressure(tail: &str) -> Option<f32> {
             }
 
             let data_cols = split_gemini_status_columns(data_line);
-            if let Some(context) = data_cols
-                .get(context_idx)
-                .and_then(|context_col| parse_used_percent(context_col))
+            let status = gemini_status_from_columns(&header_cols, &data_cols);
+            if status.context_pressure.is_some()
+                || status.branch.is_some()
+                || status.sandbox.is_some()
+                || status.model.is_some()
+                || status.workspace.is_some()
             {
-                return Some(context);
+                return Some(status);
             }
             break;
         }
     }
     None
+}
+
+fn gemini_status_from_columns(header_cols: &[&str], data_cols: &[&str]) -> GeminiStatus {
+    let mut status = GeminiStatus::default();
+    for (idx, header) in header_cols.iter().enumerate() {
+        let Some(value) = data_cols
+            .get(idx)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+        else {
+            continue;
+        };
+        match header.trim().to_lowercase().as_str() {
+            "branch" => status.branch = Some(value.to_string()),
+            "sandbox" => status.sandbox = Some(value.to_string()),
+            "/model" | "model" => status.model = Some(value.to_string()),
+            "workspace (/directory)" | "workspace" | "directory" => {
+                status.workspace = Some(value.to_string())
+            }
+            "context" => status.context_pressure = parse_used_percent(value),
+            _ => {}
+        }
+    }
+    status
+}
+
+fn parse_gemini_context_pressure(tail: &str) -> Option<f32> {
+    parse_gemini_status(tail).and_then(|status| status.context_pressure)
+}
+
+fn append_gemini_runtime_facts(set: &mut SignalSet, tail: &str) {
+    let lower = tail.to_lowercase();
+    if lower.contains("yolo ctrl+y") {
+        push_provider_fact(
+            &mut set.runtime_facts,
+            Provider::Gemini,
+            RuntimeFactKind::AutoMode,
+            "YOLO Ctrl+Y",
+            0.75,
+        );
+    }
+    if let Some(status) = parse_gemini_status(tail) {
+        if let Some(sandbox) = status.sandbox {
+            push_provider_fact(
+                &mut set.runtime_facts,
+                Provider::Gemini,
+                RuntimeFactKind::Sandbox,
+                sandbox,
+                0.95,
+            );
+        }
+        if let Some(workspace) = status.workspace {
+            push_provider_fact(
+                &mut set.runtime_facts,
+                Provider::Gemini,
+                RuntimeFactKind::AllowedDirectory,
+                workspace,
+                0.95,
+            );
+        }
+    }
 }
 
 fn split_gemini_status_columns(line: &str) -> Vec<&str> {
@@ -227,7 +325,7 @@ mod tests {
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use crate::domain::origin::SourceKind;
-    use crate::domain::signal::IdleCause;
+    use crate::domain::signal::{IdleCause, RuntimeFactKind};
     use crate::policy::claude_settings::ClaudeSettings;
     use crate::policy::pricing::PricingTable;
 
@@ -307,6 +405,26 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
         assert_eq!(metric.source_kind, SourceKind::ProviderOfficial);
         assert_eq!(metric.provider, Some(Provider::Gemini));
         assert_eq!(metric.confidence, Some(0.95));
+        assert_eq!(
+            set.model_name.as_ref().expect("model parsed").value,
+            "gemini-3.1-pro-preview"
+        );
+        assert_eq!(
+            set.git_branch.as_ref().expect("branch parsed").value,
+            "main"
+        );
+        assert_eq!(
+            set.worktree_path.as_ref().expect("workspace parsed").value,
+            "~/projects/mission-spec"
+        );
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::Sandbox && f.value == "no sandbox")
+        );
+        assert!(set.runtime_facts.iter().any(|f| {
+            f.kind == RuntimeFactKind::AllowedDirectory && f.value == "~/projects/mission-spec"
+        }));
     }
 
     #[test]
@@ -360,6 +478,21 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = GeminiAdapter.parse(&c);
         assert_eq!(set.idle_state, None);
+    }
+
+    #[test]
+    fn gemini_yolo_hint_populates_runtime_auto_mode() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, "YOLO Ctrl+Y", &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        assert!(
+            set.runtime_facts
+                .iter()
+                .any(|f| f.kind == RuntimeFactKind::AutoMode && f.value == "YOLO Ctrl+Y")
+        );
     }
 
     #[test]

@@ -150,6 +150,10 @@ fn parse_kind(s: &str) -> Option<AuditEventKind> {
         "PromptSendCompleted" => Some(AuditEventKind::PromptSendCompleted),
         "PromptSendFailed" => Some(AuditEventKind::PromptSendFailed),
         "PromptSendBlocked" => Some(AuditEventKind::PromptSendBlocked),
+        "RuntimeRefreshRequested" => Some(AuditEventKind::RuntimeRefreshRequested),
+        "RuntimeRefreshCompleted" => Some(AuditEventKind::RuntimeRefreshCompleted),
+        "RuntimeRefreshFailed" => Some(AuditEventKind::RuntimeRefreshFailed),
+        "RuntimeRefreshBlocked" => Some(AuditEventKind::RuntimeRefreshBlocked),
         _ => None,
     }
 }
@@ -297,6 +301,10 @@ mod tests {
             AuditEventKind::PromptSendCompleted,
             AuditEventKind::PromptSendFailed,
             AuditEventKind::PromptSendBlocked,
+            AuditEventKind::RuntimeRefreshRequested,
+            AuditEventKind::RuntimeRefreshCompleted,
+            AuditEventKind::RuntimeRefreshFailed,
+            AuditEventKind::RuntimeRefreshBlocked,
         ];
         for kind in variants {
             let s = kind.as_str();

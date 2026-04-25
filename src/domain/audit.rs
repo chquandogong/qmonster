@@ -85,6 +85,13 @@ pub enum AuditEventKind {
     /// blocked" from "no action was taken at all"; the summary string
     /// names which of the two gate reasons fired.
     PromptSendBlocked,
+    /// Operator-triggered provider runtime refresh, normally a read-only
+    /// slash command such as `/status` sent to the selected pane.
+    /// Metadata only; raw pane tails are not recorded.
+    RuntimeRefreshRequested,
+    RuntimeRefreshCompleted,
+    RuntimeRefreshFailed,
+    RuntimeRefreshBlocked,
 }
 
 impl AuditEventKind {
@@ -117,6 +124,10 @@ impl AuditEventKind {
             AuditEventKind::PromptSendCompleted => "PromptSendCompleted",
             AuditEventKind::PromptSendFailed => "PromptSendFailed",
             AuditEventKind::PromptSendBlocked => "PromptSendBlocked",
+            AuditEventKind::RuntimeRefreshRequested => "RuntimeRefreshRequested",
+            AuditEventKind::RuntimeRefreshCompleted => "RuntimeRefreshCompleted",
+            AuditEventKind::RuntimeRefreshFailed => "RuntimeRefreshFailed",
+            AuditEventKind::RuntimeRefreshBlocked => "RuntimeRefreshBlocked",
         }
     }
 }
@@ -277,6 +288,19 @@ mod tests {
             (AuditEventKind::PromptSendCompleted, "PromptSendCompleted"),
             (AuditEventKind::PromptSendFailed, "PromptSendFailed"),
             (AuditEventKind::PromptSendBlocked, "PromptSendBlocked"),
+            (
+                AuditEventKind::RuntimeRefreshRequested,
+                "RuntimeRefreshRequested",
+            ),
+            (
+                AuditEventKind::RuntimeRefreshCompleted,
+                "RuntimeRefreshCompleted",
+            ),
+            (AuditEventKind::RuntimeRefreshFailed, "RuntimeRefreshFailed"),
+            (
+                AuditEventKind::RuntimeRefreshBlocked,
+                "RuntimeRefreshBlocked",
+            ),
         ];
         for (kind, expected) in cases {
             assert_eq!(
