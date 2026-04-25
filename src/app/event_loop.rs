@@ -91,11 +91,13 @@ where
             continue;
         }
 
+        let history = crate::adapters::common::PaneTailHistory::empty();
         let parse_ctx = crate::adapters::ParserContext {
             identity: &resolved,
             tail: &pane.tail,
             pricing: &ctx.pricing,
             claude_settings: &ctx.claude_settings,
+            history: &history,
         };
         let signals = crate::adapters::parse_for(&parse_ctx);
         let gates = crate::policy::gates::PolicyGates::from_config_and_identity(

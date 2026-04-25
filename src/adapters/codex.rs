@@ -226,6 +226,7 @@ fn is_plain_identifier(s: &str) -> bool {
 mod tests {
     use super::*;
     use crate::adapters::ParserContext;
+    use crate::adapters::common::PaneTailHistory;
     use crate::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
@@ -252,12 +253,14 @@ mod tests {
         tail: &'a str,
         pricing: &'a PricingTable,
         settings: &'a ClaudeSettings,
+        history: &'a PaneTailHistory,
     ) -> ParserContext<'a> {
         ParserContext {
             identity: id,
             tail,
             pricing,
             claude_settings: settings,
+            history,
         }
     }
 
@@ -293,7 +296,8 @@ output_per_1m = 10.00
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, "This action requires approval", &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, "This action requires approval", &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
         assert!(set.permission_prompt);
     }
@@ -303,7 +307,8 @@ output_per_1m = 10.00
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, STATUS_LINE, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, STATUS_LINE, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
         let cx = set.context_pressure.as_ref().expect("context parsed");
@@ -330,7 +335,8 @@ output_per_1m = 10.00
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, STATUS_LINE, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, STATUS_LINE, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
         assert!(set.context_pressure.is_some());
         assert!(set.token_count.is_some());
@@ -343,8 +349,9 @@ output_per_1m = 10.00
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
         let tail = "Press ENTER to continue\nno status bar here";
-        let c = ctx(&id, tail, &pricing, &settings);
+        let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
         assert!(set.waiting_for_input);
         assert!(set.context_pressure.is_none());
@@ -365,7 +372,8 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, STATUS_LINE_NEWEST_UNKNOWN_MODEL, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, STATUS_LINE_NEWEST_UNKNOWN_MODEL, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
         // context_pressure must come from the NEWEST line (70% used), not
@@ -397,7 +405,8 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, STATUS_LINE, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, STATUS_LINE, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
         let worktree = set.worktree_path.as_ref().expect("worktree parsed");
@@ -422,7 +431,8 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, STATUS_LINE, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, STATUS_LINE, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
         let branch = set.git_branch.as_ref().expect("branch parsed");
@@ -441,7 +451,8 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, tail, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
         assert!(
@@ -466,7 +477,8 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, STATUS_LINE_WITH_BOX_ABOVE, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, STATUS_LINE_WITH_BOX_ABOVE, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
         let effort = set.reasoning_effort.as_ref().expect("effort parsed");
@@ -486,7 +498,8 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, STATUS_LINE, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, STATUS_LINE, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
         assert!(
@@ -507,7 +520,8 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, STATUS_BOX_SNIPPET, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, STATUS_BOX_SNIPPET, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
         assert!(set.reasoning_effort.is_none());
@@ -528,7 +542,8 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, tail, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
         assert!(
@@ -554,7 +569,8 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, tail, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
         assert!(
@@ -580,7 +596,8 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, tail, &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
         let effort = set.reasoning_effort.as_ref().expect("effort parsed");

@@ -1194,11 +1194,13 @@ output_per_1m = 10.00
     let _f = f;
 
     let settings = ClaudeSettings::empty();
+    let history = qmonster::adapters::common::PaneTailHistory::empty();
     let ctx = ParserContext {
         identity: &identity,
         tail,
         pricing: &pricing,
         claude_settings: &settings,
+        history: &history,
     };
     let signals = parse_for(&ctx);
 
@@ -1235,11 +1237,13 @@ fn codex_status_line_end_to_end_without_pricing_populates_three_metrics() {
 
     let pricing = PricingTable::empty();
     let settings = ClaudeSettings::empty();
+    let history = qmonster::adapters::common::PaneTailHistory::empty();
     let ctx = ParserContext {
         identity: &identity,
         tail,
         pricing: &pricing,
         claude_settings: &settings,
+        history: &history,
     };
     let signals = parse_for(&ctx);
 
@@ -1296,12 +1300,14 @@ output_per_1m = 10.00
     .unwrap();
     let pricing = PricingTable::load_from_toml(pricing_toml.path()).unwrap();
     let claude_settings = ClaudeSettings::empty();
+    let history = qmonster::adapters::common::PaneTailHistory::empty();
 
     let ctx = ParserContext {
         identity: &identity,
         tail: &tail,
         pricing: &pricing,
         claude_settings: &claude_settings,
+        history: &history,
     };
 
     let signals = parse_for(&ctx);
@@ -1360,11 +1366,13 @@ fn claude_adapter_end_to_end_reads_model_from_claude_settings() {
     let pricing = PricingTable::empty();
 
     let tail = "✶ Working… (1m · ↓ 500 tokens · thought for 1s)";
+    let history = qmonster::adapters::common::PaneTailHistory::empty();
     let ctx = ParserContext {
         identity: &identity,
         tail,
         pricing: &pricing,
         claude_settings: &claude_settings,
+        history: &history,
     };
 
     let signals = parse_for(&ctx);

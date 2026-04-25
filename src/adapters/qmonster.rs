@@ -16,6 +16,7 @@ impl ProviderParser for QmonsterAdapter {
 mod tests {
     use super::*;
     use crate::adapters::ParserContext;
+    use crate::adapters::common::PaneTailHistory;
     use crate::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
@@ -39,12 +40,14 @@ mod tests {
         tail: &'a str,
         pricing: &'a PricingTable,
         settings: &'a ClaudeSettings,
+        history: &'a PaneTailHistory,
     ) -> ParserContext<'a> {
         ParserContext {
             identity: id,
             tail,
             pricing,
             claude_settings: settings,
+            history,
         }
     }
 
@@ -53,7 +56,8 @@ mod tests {
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, "heartbeat tick 42", &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, "heartbeat tick 42", &pricing, &settings, &history);
         let set = QmonsterAdapter.parse(&c);
         assert!(!set.waiting_for_input);
         assert!(!set.log_storm);

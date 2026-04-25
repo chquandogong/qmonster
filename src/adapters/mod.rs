@@ -4,6 +4,7 @@ pub mod common;
 pub mod gemini;
 pub mod qmonster;
 
+use crate::adapters::common::PaneTailHistory;
 use crate::domain::identity::{Provider, ResolvedIdentity};
 use crate::domain::signal::SignalSet;
 use crate::policy::claude_settings::ClaudeSettings;
@@ -17,6 +18,7 @@ pub struct ParserContext<'a> {
     pub tail: &'a str,
     pub pricing: &'a PricingTable,
     pub claude_settings: &'a ClaudeSettings,
+    pub history: &'a PaneTailHistory,
 }
 
 /// Provider-specific parser. Each adapter receives a ParserContext

@@ -100,6 +100,7 @@ fn extract_tokens_substring(s: &str) -> Option<u64> {
 mod tests {
     use super::*;
     use crate::adapters::ParserContext;
+    use crate::adapters::common::PaneTailHistory;
     use crate::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
@@ -124,12 +125,14 @@ mod tests {
         tail: &'a str,
         pricing: &'a PricingTable,
         settings: &'a ClaudeSettings,
+        history: &'a PaneTailHistory,
     ) -> ParserContext<'a> {
         ParserContext {
             identity: id,
             tail,
             pricing,
             claude_settings: settings,
+            history,
         }
     }
 
@@ -138,7 +141,8 @@ mod tests {
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, "Press ENTER to continue", &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, "Press ENTER to continue", &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
         assert!(set.waiting_for_input);
     }
@@ -153,7 +157,8 @@ mod tests {
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, "claude context 88%", &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, "claude context 88%", &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
         assert!(
             set.context_pressure.is_none(),
@@ -166,9 +171,10 @@ mod tests {
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
         let tail =
             "✶ Exploring adapter parsing surface… (1m 34s · ↓ 4.3k tokens · thought for 11s)";
-        let c = ctx(&id, tail, &pricing, &settings);
+        let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
         let m = set.token_count.expect("output tokens parsed");
         assert_eq!(m.value, 4_300);
@@ -181,10 +187,11 @@ mod tests {
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
         let tail = "\
 ✽ Exploring… (2m · ↓ 8.6k tokens)
   ⎿  Done (27 tool uses · 95.1k tokens · 1m 21s)";
-        let c = ctx(&id, tail, &pricing, &settings);
+        let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
         let m = set.token_count.expect("tokens parsed");
         assert_eq!(m.value, 95_100);
@@ -195,11 +202,13 @@ mod tests {
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
         let c = ctx(
             &id,
             "regular claude output with no token marker",
             &pricing,
             &settings,
+            &history,
         );
         let set = ClaudeAdapter.parse(&c);
         assert!(set.token_count.is_none());
@@ -214,7 +223,8 @@ mod tests {
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
-        let c = ctx(&id, "✶ Working… (↓ 100 tokens)", &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, "✶ Working… (↓ 100 tokens)", &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
         assert!(
             set.model_name.is_none(),
@@ -237,7 +247,8 @@ mod tests {
         let id = id();
         let pricing = PricingTable::empty();
         let (settings, _f) = settings_with_model("claude-sonnet-4-6");
-        let c = ctx(&id, "any tail", &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, "any tail", &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
 
         let m = set
@@ -262,7 +273,8 @@ mod tests {
         let id = id();
         let pricing = PricingTable::empty();
         let (settings, _f) = settings_with_model("claude-sonnet-4-6");
-        let c = ctx(&id, "✶ Working… (↓ 100 tokens)", &pricing, &settings);
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, "✶ Working… (↓ 100 tokens)", &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
 
         assert!(set.model_name.is_some(), "model populates from settings");
