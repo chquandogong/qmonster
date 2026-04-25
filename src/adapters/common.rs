@@ -5,14 +5,19 @@ const LOG_STORM_LINE_THRESHOLD: usize = 8;
 const BIG_OUTPUT_CHARS: usize = 2200;
 const LOG_STORM_LARGE_LINES: usize = 16;
 
-const WAITING_MARKERS: &[&str] = &[
+/// Waiting-for-input detection: phrase-level only. Bare "press enter"
+/// matches docstrings ("press enter to continue with default..."),
+/// "continue?" matches code review prose, "y/n" / "yes/no" match
+/// `[y/n]` config rows. (v1.13.0 emergency tightening.) The (y/n)-
+/// class permission prompts are owned by PERMISSION_PROMPT_MARKERS;
+/// not duplicated here.
+const WAITING_PROMPT_MARKERS: &[&str] = &[
     "needs your input",
     "waiting for input",
-    "press enter",
-    "continue?",
-    "select an option",
-    "y/n",
-    "yes/no",
+    "press enter to continue",
+    "press enter to retry",
+    "select an option:",
+    "what would you like to do",
 ];
 
 /// Permission-prompt detection: only fire on phrases that imply an
@@ -80,7 +85,7 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         || (output_chars >= BIG_OUTPUT_CHARS && lines.len() >= LOG_STORM_LARGE_LINES);
 
     SignalSet {
-        waiting_for_input: WAITING_MARKERS.iter().any(|m| lower.contains(m)),
+        waiting_for_input: WAITING_PROMPT_MARKERS.iter().any(|m| lower.contains(m)),
         permission_prompt: PERMISSION_PROMPT_MARKERS.iter().any(|m| lower.contains(m)),
         log_storm,
         repeated_output: false,
