@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.28 live tmux-source parity validation)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.29 target-scoped tmux-source parity validation)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -109,6 +109,9 @@ v1.16.28 adds `tmux::parity`, the `qmonster-tmux-parity` helper binary,
 and `scripts/check-tmux-source-parity.sh` so the active tmux session can
 be checked for polling-vs-control-mode target, pane, metadata, and
 optional strict-tail parity before any default-source switch.
+v1.16.29 adds target-scoped parity mode (`--all-targets`) so each
+discovered tmux window can be compared independently instead of relying
+only on all-session aggregation.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

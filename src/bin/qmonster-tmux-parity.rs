@@ -1,6 +1,8 @@
 use clap::Parser;
 
-use qmonster::tmux::parity::{TmuxSourceParityReport, compare_pane_sources};
+use qmonster::tmux::parity::{
+    TmuxSourceParityReport, compare_all_pane_source_targets, compare_pane_sources,
+};
 use qmonster::tmux::types::WindowTarget;
 use qmonster::tmux::{ControlModeSource, PollingSource};
 
@@ -15,8 +17,12 @@ struct Cli {
     capture_lines: usize,
 
     /// Restrict pane comparison to one tmux window, formatted as session:index.
-    #[arg(long, value_name = "SESSION:WINDOW")]
+    #[arg(long, value_name = "SESSION:WINDOW", conflicts_with = "all_targets")]
     target: Option<String>,
+
+    /// Compare each discovered tmux window target separately.
+    #[arg(long)]
+    all_targets: bool,
 
     /// Treat live tail differences as failures. By default they are warnings.
     #[arg(long)]
@@ -29,10 +35,19 @@ fn main() -> anyhow::Result<()> {
     let polling = PollingSource::new(cli.capture_lines);
     let control_mode = ControlModeSource::attach_current(cli.capture_lines)
         .map_err(|e| anyhow::anyhow!("attach tmux control-mode source: {e}"))?;
-    let report = compare_pane_sources(&polling, &control_mode, target.as_ref(), cli.capture_lines)?;
+    let reports = if cli.all_targets {
+        compare_all_pane_source_targets(&polling, &control_mode, cli.capture_lines)?
+    } else {
+        vec![compare_pane_sources(
+            &polling,
+            &control_mode,
+            target.as_ref(),
+            cli.capture_lines,
+        )?]
+    };
 
-    print_report(&report, cli.strict_tail);
-    if report.passes(cli.strict_tail) {
+    print_reports(&reports, cli.strict_tail);
+    if reports.iter().all(|report| report.passes(cli.strict_tail)) {
         Ok(())
     } else {
         anyhow::bail!("tmux source parity check failed")
@@ -52,6 +67,34 @@ fn parse_target(raw: &str) -> anyhow::Result<WindowTarget> {
         session_name: session_name.into(),
         window_index: window_index.into(),
     })
+}
+
+fn print_reports(reports: &[TmuxSourceParityReport], strict_tail: bool) {
+    if reports.is_empty() {
+        println!("tmux source parity: no tmux targets discovered");
+        println!("status: ok");
+        return;
+    }
+    if reports.len() > 1 {
+        println!("tmux source parity targets checked: {}", reports.len());
+    }
+    for (index, report) in reports.iter().enumerate() {
+        if index > 0 {
+            println!();
+        }
+        print_report(report, strict_tail);
+    }
+    if reports.len() > 1 {
+        println!();
+        println!(
+            "overall status: {}",
+            if reports.iter().all(|report| report.passes(strict_tail)) {
+                "ok"
+            } else {
+                "mismatch"
+            }
+        );
+    }
 }
 
 fn print_report(report: &TmuxSourceParityReport, strict_tail: bool) {

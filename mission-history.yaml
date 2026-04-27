@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.28 live tmux-source parity validation."
+  mission_title: "Qmonster v0.5.0 — v1.16.29 target-scoped tmux-source parity validation."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 110
-  latest_version: "1.16.28"
+  total_revisions: 111
+  latest_version: "1.16.29"
 
 timeline:
   - change_id: "initial"
@@ -10260,9 +10260,75 @@ timeline:
     follow_up:
       - "Continue C2: harden control-mode behavior around target-scoped parity and lifecycle events before any default-source switch."
 
+  - change_id: "qmonster-v1.16.29-target-scoped-tmux-source-parity-validation"
+    semantic_version: "1.16.29"
+    change_sequence: 111
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: keep progressing C2 and close each work item with commit/push/tag"
+    change_type: "feature"
+    motivation_type: "Phase C C2 control-mode default-readiness validation"
+    persistence: "permanent"
+    intent: >
+      Extend live tmux-source parity validation from aggregate all-session
+      checks to target-scoped checks for every discovered tmux window.
+    intent_ko: >
+      live tmux-source parity validation을 전체 세션 집계 비교에서 각 tmux
+      window target별 비교로 확장한다.
+    decision: >
+      Add `compare_all_pane_source_targets` to build the union of polling and
+      control-mode targets, then compare each target independently. Add
+      `qmonster-tmux-parity --all-targets`; keep `--target` mutually exclusive
+      with `--all-targets`.
+    decision_ko: >
+      polling/control-mode target union을 만든 뒤 각 target을 독립 비교하는
+      `compare_all_pane_source_targets`를 추가한다.
+      `qmonster-tmux-parity --all-targets`를 추가하고 `--target`과
+      `--all-targets`는 동시에 쓸 수 없게 한다.
+    triggered_by: "Follow-up after v1.16.28 added the first live parity checker."
+    issue_or_context: >
+      Aggregate all-session parity can hide window-scoping mistakes. The
+      control-mode source needs target-scoped evidence before any default-source
+      switch.
+    changes:
+      added:
+        - "src/tmux/parity.rs: compare_all_pane_source_targets plus union-target unit test"
+        - "src/bin/qmonster-tmux-parity.rs: --all-targets mode and multi-report output"
+      modified:
+        - "README documents --all-targets in C2 validation and development commands"
+        - "ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.29"
+      removed: []
+    changed_sections:
+      - "src/tmux/parity.rs"
+      - "src/bin/qmonster-tmux-parity.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "`scripts/check-tmux-source-parity.sh --all-targets` validates every discovered tmux window"
+        - "unit test locks union-of-targets behavior"
+      modified:
+        - "all-target test count increases to 582"
+      removed: []
+    impact_scope:
+      code: "validation helper enhancement; no change to default TUI source or runtime polling behavior"
+      tests: "582 total passed — 522 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; live all-targets smoke reports mission-spec:0 and qmonster:0 both at 4:4 panes"
+      ledger: "1 new timeline entry (sequence 111); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh, ./scripts/check-tmux-source-parity.sh --all-targets, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with additional control-mode hardening now that aggregate and target-scoped parity can be smoke-tested."
+    breaking: false
+    risk: "low — helper is additive and default `[tmux] source = \"polling\"` is unchanged."
+    related_commits: []
+    follow_up:
+      - "Continue C2: harden control-mode lifecycle behavior under repeated all-target parity runs."
+
 evolution_summary:
-  current_phase: "v1.16.28 live tmux-source parity validation — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
-  next_phase: "Continue Phase C C2 with additional control-mode hardening informed by live parity checks. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.29 target-scoped tmux-source parity validation — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  next_phase: "Continue Phase C C2 with additional control-mode hardening informed by aggregate and target-scoped live parity checks. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

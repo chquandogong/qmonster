@@ -179,6 +179,37 @@ where
     })
 }
 
+pub fn compare_all_pane_source_targets<P, C>(
+    polling: &P,
+    control_mode: &C,
+    capture_lines: usize,
+) -> Result<Vec<TmuxSourceParityReport>, PollingError>
+where
+    P: PaneSource,
+    C: PaneSource,
+{
+    let targets = all_targets(
+        polling.available_targets()?,
+        control_mode.available_targets()?,
+    );
+    targets
+        .iter()
+        .map(|target| compare_pane_sources(polling, control_mode, Some(target), capture_lines))
+        .collect()
+}
+
+fn all_targets(
+    polling_targets: Vec<WindowTarget>,
+    control_mode_targets: Vec<WindowTarget>,
+) -> Vec<WindowTarget> {
+    polling_targets
+        .into_iter()
+        .chain(control_mode_targets)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 fn sorted_targets(mut targets: Vec<WindowTarget>) -> Vec<WindowTarget> {
     targets.sort();
     targets.dedup();
@@ -251,6 +282,12 @@ mod tests {
                 panes,
             }
         }
+
+        fn with_targets(mut self, targets: Vec<WindowTarget>) -> Self {
+            self.current_target = targets.first().cloned();
+            self.targets = sorted_targets(targets);
+            self
+        }
     }
 
     impl PaneSource for TestSource {
@@ -311,6 +348,26 @@ mod tests {
         assert_eq!(report.structural_mismatch_count(), 3);
     }
 
+    #[test]
+    fn compare_all_targets_runs_the_union_of_available_targets() {
+        let qmonster = target("qmonster", "0");
+        let scratch = target("scratch", "1");
+        let polling = TestSource::new(vec![pane("%1", "claude", "tail")])
+            .with_targets(vec![qmonster.clone()]);
+        let control_mode =
+            TestSource::new(vec![pane("%1", "claude", "tail")]).with_targets(vec![scratch]);
+
+        let reports = compare_all_pane_source_targets(&polling, &control_mode, 24).unwrap();
+
+        assert_eq!(reports.len(), 2);
+        assert_eq!(reports[0].target, Some(qmonster));
+        assert!(
+            reports
+                .iter()
+                .all(|report| report.structural_mismatch_count() > 0)
+        );
+    }
+
     fn pane(pane_id: &str, command: &str, tail: &str) -> RawPaneSnapshot {
         RawPaneSnapshot {
             session_name: "qmonster".into(),
@@ -322,6 +379,13 @@ mod tests {
             active: true,
             dead: false,
             tail: tail.into(),
+        }
+    }
+
+    fn target(session_name: &str, window_index: &str) -> WindowTarget {
+        WindowTarget {
+            session_name: session_name.into(),
+            window_index: window_index.into(),
         }
     }
 }
