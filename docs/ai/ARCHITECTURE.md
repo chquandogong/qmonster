@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.5 clear shortcut restoration)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.6 scroll modal state extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -42,7 +42,7 @@ checkpoint, retention, and durable audit storage.
 ```
 src/
   main.rs      # CLI entry + current TUI event loop (still too large)
-  app/         # bootstrap, config+safety-precedence, event loop, keymap/target-picker/runtime-refresh/dashboard-state helpers, effect gate
+  app/         # bootstrap, config+safety-precedence, event loop, keymap/target-picker/runtime-refresh/dashboard-state/modal-state helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # polling first; control-mode-capable PaneSource trait
   adapters/    # per-provider tail parsers (no identity inference)
@@ -64,11 +64,12 @@ cycling, send/capture, and operator-facing label helpers into
 `app::runtime_refresh`; v1.16.3 moves alert selection, hide/defer,
 double-click tracking, and pane-state flash synchronization into
 `app::dashboard_state`. The current implementation still keeps the live
-TUI event loop and modal orchestration in `main.rs`.
+TUI event loop and modal render orchestration in `main.rs`.
 v1.16.4 fixed Git overlay title consistency by using the same
 `QMONSTER_GIT_VERSION` value as the footer badge. v1.16.5 restores `c`
 to its original system-notice clear role; alert command copy remains on
-`y`.
+`y`. v1.16.6 moves shared git/help scroll modal open/close/scroll state
+and key/mouse handling into `app::modal_state`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

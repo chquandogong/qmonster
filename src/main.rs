@@ -29,6 +29,9 @@ use qmonster::app::keymap::{
     FocusedPanel, ScrollDir, list_row_at, move_selection, page_selection, rect_contains,
     select_first, select_last, toggle_focus,
 };
+use qmonster::app::modal_state::{
+    ScrollModalState, handle_scroll_modal_key, handle_scroll_modal_mouse,
+};
 use qmonster::app::path_resolution::pick_root;
 use qmonster::app::runtime_refresh::{
     runtime_refresh_command_label, runtime_refresh_commands, runtime_refresh_completion_label,
@@ -447,12 +450,8 @@ where
     let mut target_choices: Vec<TargetChoice> = Vec::new();
     let mut target_preview_title = "Panes".to_string();
     let mut target_preview_lines: Vec<String> = Vec::new();
-    let mut git_modal_open = false;
-    let mut git_modal_title = String::new();
-    let mut git_modal_lines: Vec<String> = Vec::new();
-    let mut git_scroll = 0usize;
-    let mut help_open = false;
-    let mut help_scroll = 0usize;
+    let mut git_modal = ScrollModalState::default();
+    let mut help_modal = ScrollModalState::default();
     let mut settings_overlay = qmonster::ui::settings::SettingsOverlay::new();
     let mut previous_alerts: HashSet<String> = HashSet::new();
     let mut fresh_alerts: HashSet<String> = HashSet::new();
@@ -559,11 +558,11 @@ where
                         target_label: &target,
                         split: dashboard_split,
                         alerts_focused: !target_picker_open
-                            && !help_open
+                            && !help_modal.is_open()
                             && !settings_overlay.is_open()
                             && focus == FocusedPanel::Alerts,
                         panes_focused: !target_picker_open
-                            && !help_open
+                            && !help_modal.is_open()
                             && !settings_overlay.is_open()
                             && focus == FocusedPanel::Panes,
                     },
@@ -588,16 +587,16 @@ where
                         },
                     );
                 }
-                if git_modal_open {
+                if git_modal.is_open() {
                     qmonster::ui::dashboard::render_git_modal(
                         frame,
-                        &git_modal_title,
-                        &git_modal_lines,
-                        git_scroll as u16,
+                        git_modal.title(),
+                        git_modal.lines(),
+                        git_modal.scroll() as u16,
                     );
                 }
-                if help_open {
-                    qmonster::ui::dashboard::render_help_modal(frame, help_scroll as u16);
+                if help_modal.is_open() {
+                    qmonster::ui::dashboard::render_help_modal(frame, help_modal.scroll() as u16);
                 }
                 if settings_overlay.is_open() {
                     qmonster::ui::settings::render_settings_modal(
@@ -611,37 +610,17 @@ where
             if event::poll(Duration::from_millis(100))? {
                 match event::read()? {
                     Event::Key(k) if k.kind == KeyEventKind::Press => {
-                        if git_modal_open {
+                        if git_modal.is_open() {
                             let size = terminal.size()?;
                             let max_scroll = qmonster::ui::dashboard::max_git_scroll(
                                 Rect::new(0, 0, size.width, size.height),
-                                git_modal_lines.len(),
+                                git_modal.line_count(),
                             );
-                            match k.code {
-                                KeyCode::Esc => {
-                                    git_modal_open = false;
-                                    git_scroll = 0;
-                                }
-                                KeyCode::Up | KeyCode::Char('k') => {
-                                    git_scroll = git_scroll.saturating_sub(1);
-                                }
-                                KeyCode::Down | KeyCode::Char('j') => {
-                                    git_scroll = git_scroll.saturating_add(1).min(max_scroll);
-                                }
-                                KeyCode::PageUp => {
-                                    git_scroll = git_scroll.saturating_sub(8);
-                                }
-                                KeyCode::PageDown => {
-                                    git_scroll = git_scroll.saturating_add(8).min(max_scroll);
-                                }
-                                KeyCode::Home => git_scroll = 0,
-                                KeyCode::End => git_scroll = max_scroll,
-                                _ => {}
-                            }
+                            handle_scroll_modal_key(&mut git_modal, k.code, max_scroll, None);
                             continue;
                         }
 
-                        if help_open {
+                        if help_modal.is_open() {
                             let size = terminal.size()?;
                             let max_scroll = qmonster::ui::dashboard::max_help_scroll(Rect::new(
                                 0,
@@ -649,27 +628,12 @@ where
                                 size.width,
                                 size.height,
                             ));
-                            match k.code {
-                                KeyCode::Esc | KeyCode::Char('?') => {
-                                    help_open = false;
-                                    help_scroll = 0;
-                                }
-                                KeyCode::Up | KeyCode::Char('k') => {
-                                    help_scroll = help_scroll.saturating_sub(1);
-                                }
-                                KeyCode::Down | KeyCode::Char('j') => {
-                                    help_scroll = help_scroll.saturating_add(1).min(max_scroll);
-                                }
-                                KeyCode::PageUp => {
-                                    help_scroll = help_scroll.saturating_sub(8);
-                                }
-                                KeyCode::PageDown => {
-                                    help_scroll = help_scroll.saturating_add(8).min(max_scroll);
-                                }
-                                KeyCode::Home => help_scroll = 0,
-                                KeyCode::End => help_scroll = max_scroll,
-                                _ => {}
-                            }
+                            handle_scroll_modal_key(
+                                &mut help_modal,
+                                k.code,
+                                max_scroll,
+                                Some(KeyCode::Char('?')),
+                            );
                             continue;
                         }
 
@@ -887,8 +851,7 @@ where
                             KeyCode::Char('/') => dashboard_split.cycle_alerts(),
                             KeyCode::Char('=') => dashboard_split.reset(),
                             KeyCode::Char('?') => {
-                                help_open = true;
-                                help_scroll = 0;
+                                help_modal.open("", Vec::new());
                             }
                             KeyCode::Char('S') => settings_overlay.open(),
                             KeyCode::Up | KeyCode::Char('k') => match focus {
@@ -1610,56 +1573,34 @@ where
                             continue;
                         }
 
-                        if git_modal_open {
+                        if git_modal.is_open() {
                             dashboard_split_dragging = false;
                             let rects = git_modal_rects(viewport);
-                            if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
-                                && rect_contains(close_button_rect(rects.body), m.column, m.row)
-                            {
-                                git_modal_open = false;
-                                git_scroll = 0;
-                                continue;
-                            }
-                            if rect_contains(rects.body, m.column, m.row) {
-                                let max_scroll = qmonster::ui::dashboard::max_git_scroll(
-                                    viewport,
-                                    git_modal_lines.len(),
-                                );
-                                match m.kind {
-                                    MouseEventKind::ScrollUp => {
-                                        git_scroll = git_scroll.saturating_sub(1);
-                                    }
-                                    MouseEventKind::ScrollDown => {
-                                        git_scroll = git_scroll.saturating_add(1).min(max_scroll);
-                                    }
-                                    _ => {}
-                                }
-                            }
+                            let max_scroll = qmonster::ui::dashboard::max_git_scroll(
+                                viewport,
+                                git_modal.line_count(),
+                            );
+                            handle_scroll_modal_mouse(
+                                &mut git_modal,
+                                m,
+                                rects.body,
+                                close_button_rect(rects.body),
+                                max_scroll,
+                            );
                             continue;
                         }
 
-                        if help_open {
+                        if help_modal.is_open() {
                             dashboard_split_dragging = false;
                             let rects = help_modal_rects(viewport);
-                            if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
-                                && rect_contains(close_button_rect(rects.body), m.column, m.row)
-                            {
-                                help_open = false;
-                                help_scroll = 0;
-                                continue;
-                            }
-                            if rect_contains(rects.body, m.column, m.row) {
-                                let max_scroll = qmonster::ui::dashboard::max_help_scroll(viewport);
-                                match m.kind {
-                                    MouseEventKind::ScrollUp => {
-                                        help_scroll = help_scroll.saturating_sub(1);
-                                    }
-                                    MouseEventKind::ScrollDown => {
-                                        help_scroll = help_scroll.saturating_add(1).min(max_scroll);
-                                    }
-                                    _ => {}
-                                }
-                            }
+                            let max_scroll = qmonster::ui::dashboard::max_help_scroll(viewport);
+                            handle_scroll_modal_mouse(
+                                &mut help_modal,
+                                m,
+                                rects.body,
+                                close_button_rect(rects.body),
+                                max_scroll,
+                            );
                             continue;
                         }
 
@@ -1829,10 +1770,7 @@ where
                                     m.row,
                                 ) {
                                     let panel = capture_repo_panel();
-                                    git_modal_title = panel.title;
-                                    git_modal_lines = panel.lines;
-                                    git_scroll = 0;
-                                    git_modal_open = true;
+                                    git_modal.open(panel.title, panel.lines);
                                 } else if let Some(row) = list_row_at(rects.alerts, m) {
                                     focus = FocusedPanel::Alerts;
                                     let alerts_inner = rects.alerts.inner(Margin {

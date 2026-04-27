@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.5 clear shortcut restoration."
+  mission_title: "Qmonster v0.5.0 — v1.16.6 scroll modal state extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 87
-  latest_version: "1.16.5"
+  total_revisions: 88
+  latest_version: "1.16.6"
 
 timeline:
   - change_id: "initial"
@@ -8639,8 +8639,77 @@ timeline:
     follow_up:
       - "Continue C1: split remaining modal/event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.6-scroll-modal-state-extraction"
+    semantic_version: "1.16.6"
+    change_sequence: 88
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving reusable git/help scroll modal state
+      out of `src/main.rs` without changing operator-facing behavior.
+    intent_ko: >
+      운영자 동작은 유지하면서 git/help scroll modal 상태를 `src/main.rs`
+      밖으로 옮겨 Phase C C1의 main.rs 분해를 계속한다.
+    decision: >
+      Add `src/app/modal_state.rs` with `ScrollModalState` plus shared
+      key and mouse handlers for open scroll modals. Keep rendering
+      ownership in `ui::dashboard` and keep the live TUI loop in
+      `src/main.rs`.
+    decision_ko: >
+      `src/app/modal_state.rs`를 추가해 `ScrollModalState`와 scroll modal
+      key/mouse handler를 공유한다. 렌더링은 `ui::dashboard`에, live TUI
+      loop는 `src/main.rs`에 그대로 둔다.
+    triggered_by: "Continuation after the v1.16.5 operator shortcut correction."
+    issue_or_context: >
+      `src/main.rs` still carried separate git/help modal booleans,
+      title/line/scroll variables, and duplicated close/scroll handling
+      in both keyboard and mouse branches. This made the event loop harder
+      to read before the later control-mode adapter work.
+    changes:
+      added:
+        - "src/app/modal_state.rs: ScrollModalState plus shared key/mouse handlers and 4 unit tests"
+      modified:
+        - "src/app/mod.rs exports the modal_state module"
+        - "src/main.rs uses ScrollModalState for git/help overlay open/close/scroll state"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.6"
+      removed:
+        - "duplicated git/help modal key scroll and mouse scroll/close branches from src/main.rs"
+    changed_sections:
+      - "src/app/modal_state.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Fifth Phase C C1 code slice exists outside main.rs"
+        - "git/help modal scroll behavior is covered by direct unit tests"
+      modified:
+        - "main.rs no longer owns separate git/help modal state variables"
+      removed:
+        - "copy-pasted git/help scroll key and mouse handling in the live event loop"
+    impact_scope:
+      code: "internal refactor only; no shortcut, rendering, tmux, audit, or policy behavior change intended"
+      tests: "531 total expected — 469 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+4 lib tests vs v1.16.5)"
+      ledger: "1 new timeline entry (sequence 88); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — state extraction preserves existing key/mouse modal behavior and adds direct unit coverage."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.5 clear shortcut restoration — Phase C C1 remains active with keymap, target_picker, runtime_refresh, and dashboard_state helper modules already extracted."
+  current_phase: "v1.16.6 scroll modal state extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, and modal_state helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
