@@ -61,13 +61,15 @@ session:window · Provider role · %pane_id
   `CHANGED` 배지가 붙습니다. 선택 highlight 자체는 상태 변화 표시로
   쓰지 않으므로 선택된 카드와 선택되지 않은 카드의 변화 표시 규칙이 같습니다.
   선택된 카드에서도 상태 badge 색이 묻히지 않도록 selection highlight는
-  상태 span 색/배경을 덮어쓰지 않습니다.
+  상태 span 색/배경을 덮어쓰지 않고, 선택 표시는 첫 줄의 `▶` marker로만
+  합니다. 따라서 펼쳐진 pane의 모든 줄에 underline이나 강조선을 반복해서
+  그리지 않습니다.
   멈춤/대기 상태 배지(`IDLE`, `WAIT`, `USAGE LIMIT`)에는 경과 시간
   배지(`⏱ MM:SS` 또는 `H:MM:SS`)가 함께 표시됩니다. 또한 상태가 유지되는
   동안 pane 제목 앞에는 `IDLE DONE`, `IDLE STALE`, `WAIT INPUT`,
-  `WAIT APPROVAL`, `USAGE LIMIT` 같은 지속 prefix가 남고, state 줄에는
-  `COMPLETE`, `STILL IDLE`, `INPUT NEEDED`, `APPROVAL NEEDED`,
-  `ACTION REQUIRED` 같은 지속 marker가 붙습니다.
+  `WAIT APPROVAL`, `USAGE LIMIT` 같은 지속 prefix가 high-contrast badge로
+  남고, state 줄에는 `COMPLETE`, `STILL IDLE`, `INPUT NEEDED`,
+  `APPROVAL NEEDED`, `ACTION REQUIRED` 같은 지속 marker가 붙습니다.
 - `status`는 현재 `high confidence`, `medium confidence`,
   `low confidence`, `unknown confidence`처럼 텍스트로 표시됩니다.
 - `blocked` 줄은 가장 중요한 대기 상태만 따로 보여줍니다.

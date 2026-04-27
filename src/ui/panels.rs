@@ -167,13 +167,8 @@ pub fn pane_index_at_row(reports: &[PaneReport], state: &ListState, row: u16) ->
     None
 }
 
-fn highlight_style(focused: bool) -> Style {
-    let style = Style::default().add_modifier(Modifier::BOLD);
-    if focused {
-        style.add_modifier(Modifier::UNDERLINED)
-    } else {
-        style
-    }
+fn highlight_style(_focused: bool) -> Style {
+    Style::default()
 }
 
 fn highlight_symbol() -> &'static str {
@@ -216,10 +211,7 @@ fn pane_list_lines_with_flash(
     flash: Option<&PaneStateFlash>,
 ) -> Vec<Line<'static>> {
     let flash = matching_state_flash(report, now, flash);
-    let mut lines = vec![Line::styled(
-        pane_panel_title_with_flash(report, flash),
-        pane_header_style(report, now, flash),
-    )];
+    let mut lines = vec![pane_panel_title_line(report, now, flash)];
     for row in render_pane_state_row_with_flash(report, now, flash) {
         lines.push(row);
     }
@@ -365,29 +357,42 @@ pub fn pane_panel_title(report: &PaneReport) -> String {
     }
 }
 
-fn pane_panel_title_with_flash(report: &PaneReport, flash: Option<&PaneStateFlash>) -> String {
-    let title = pane_panel_title(report);
-    let mut parts = Vec::new();
+fn pane_panel_title_line(
+    report: &PaneReport,
+    now: Instant,
+    flash: Option<&PaneStateFlash>,
+) -> Line<'static> {
+    let mut spans = Vec::new();
+    let pulse_on = state_flash_pulse_on(flash, now);
     if flash.is_some() {
-        parts.push("STATE CHANGED");
+        spans.push(Span::styled(
+            " STATE CHANGED ",
+            state_changed_badge_style(pulse_on),
+        ));
     }
-    if let Some(state) = pane_title_state_label(report, flash) {
-        parts.push(state);
+    if let Some((state, style)) = pane_title_state_badge(report, flash) {
+        if !spans.is_empty() {
+            spans.push(Span::raw(" "));
+        }
+        spans.push(Span::styled(format!(" {state} "), style));
     }
-    if parts.is_empty() {
-        title
-    } else {
-        format!("{} · {title}", parts.join(" · "))
+    if !spans.is_empty() {
+        spans.push(Span::raw(" "));
     }
+    spans.push(Span::styled(
+        pane_panel_title(report),
+        pane_header_style(report, now, flash),
+    ));
+    Line::from(spans)
 }
 
-fn pane_title_state_label(
+fn pane_title_state_badge(
     report: &PaneReport,
     flash: Option<&PaneStateFlash>,
-) -> Option<&'static str> {
+) -> Option<(&'static str, Style)> {
     match report.idle_state {
-        Some(cause) => Some(idle_title_state_label(cause)),
-        None if flash.is_some() => Some("ACTIVE"),
+        Some(cause) => Some((idle_title_state_label(cause), idle_title_state_style(cause))),
+        None if flash.is_some() => Some(("ACTIVE", active_state_badge_style())),
         None => None,
     }
 }
@@ -399,6 +404,16 @@ fn idle_title_state_label(cause: IdleCause) -> &'static str {
         IdleCause::InputWait => "WAIT INPUT",
         IdleCause::PermissionWait => "WAIT APPROVAL",
         IdleCause::LimitHit => "USAGE LIMIT",
+    }
+}
+
+fn idle_title_state_style(cause: IdleCause) -> Style {
+    match cause {
+        IdleCause::WorkComplete => theme::idle_work_complete(),
+        IdleCause::Stale => theme::idle_stale(),
+        IdleCause::InputWait => theme::idle_input_wait(),
+        IdleCause::PermissionWait => theme::idle_permission_wait(),
+        IdleCause::LimitHit => theme::idle_limit_hit(),
     }
 }
 
@@ -1637,8 +1652,14 @@ mod tests {
             style.bg, None,
             "selected panes must not override state flash backgrounds"
         );
-        assert!(style.add_modifier.contains(Modifier::BOLD));
-        assert!(style.add_modifier.contains(Modifier::UNDERLINED));
+        assert!(
+            !style.add_modifier.contains(Modifier::BOLD),
+            "selection should not bold every row in an expanded pane"
+        );
+        assert!(
+            !style.add_modifier.contains(Modifier::UNDERLINED),
+            "selection should not underline every row in an expanded pane"
+        );
     }
 
     #[test]
@@ -1665,13 +1686,18 @@ mod tests {
             .map(|s| s.content.as_ref())
             .collect();
 
+        for text in [&expanded_text, &collapsed_text] {
+            assert!(text.contains("STATE CHANGED"), "flash missing: {text}");
+            assert!(text.contains("ACTIVE"), "active badge missing: {text}");
+            assert!(text.contains("qwork:1"), "pane title missing: {text}");
+        }
         assert!(
-            expanded_text.starts_with("STATE CHANGED · ACTIVE · qwork:1"),
-            "expanded card flash header missing: {expanded_text}"
+            expanded_lines[0].spans[0].style.bg.is_some(),
+            "STATE CHANGED title prefix must be a visible badge"
         );
         assert!(
-            collapsed_text.starts_with("STATE CHANGED · ACTIVE · qwork:1"),
-            "collapsed card flash header missing: {collapsed_text}"
+            expanded_lines[0].spans[2].style.bg.is_some(),
+            "ACTIVE title prefix must be a visible badge"
         );
     }
 
@@ -1686,13 +1712,15 @@ mod tests {
         let lines = pane_list_lines_with_flash(&rep, true, false, now, Some(&expired_flash));
         let title: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
 
-        assert!(
-            title.starts_with("WAIT INPUT · qwork:1"),
-            "current idle state must persist in the title even after flash expires: {title}"
-        );
+        assert!(title.contains("WAIT INPUT"), "idle title missing: {title}");
+        assert!(title.contains("qwork:1"), "pane title missing: {title}");
         assert!(
             !title.contains("STATE CHANGED"),
             "expired flash must not keep transition wording: {title}"
+        );
+        assert!(
+            lines[0].spans[0].style.bg.is_some(),
+            "persistent idle title prefix must be rendered as a visible badge"
         );
     }
 
@@ -1714,8 +1742,18 @@ mod tests {
             .map(|s| s.content.as_ref())
             .collect();
 
-        assert!(expanded_title.starts_with("WAIT APPROVAL · qwork:1"));
-        assert!(collapsed_title.starts_with("WAIT APPROVAL · qwork:1"));
+        assert!(expanded_title.contains("WAIT APPROVAL"));
+        assert!(expanded_title.contains("qwork:1"));
+        assert!(collapsed_title.contains("WAIT APPROVAL"));
+        assert!(collapsed_title.contains("qwork:1"));
+        assert!(
+            expanded[0].spans[0].style.bg.is_some(),
+            "expanded selected title prefix must be badge-styled"
+        );
+        assert!(
+            collapsed[0].spans[0].style.bg.is_some(),
+            "collapsed unselected title prefix must be badge-styled"
+        );
     }
 
     #[test]

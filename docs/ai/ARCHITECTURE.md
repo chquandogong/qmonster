@@ -160,8 +160,10 @@ temporary `▶ ACTIVE`, and `STATE CHANGED`) so selection styling or
 terminal color themes cannot hide a transition. Selected and unselected
 pane cards use the same state-change content; selection highlight itself
 does not encode state-change semantics, and it does not override state
-badge foreground/background colors. Current idle/wait/limit states also
-carry persistent title prefixes (`IDLE DONE`, `WAIT INPUT`,
+badge foreground/background colors. Selection itself is only the first
+line marker (`▶`), not a full-item underline/background pass across
+every expanded row. Current idle/wait/limit states also carry persistent
+high-contrast title-prefix badges (`IDLE DONE`, `WAIT INPUT`,
 `WAIT APPROVAL`, `USAGE LIMIT`, etc.) and persistent state-row markers
 (`COMPLETE`, `INPUT NEEDED`, `ACTION REQUIRED`, etc.) so the operator
 does not have to catch the 3-second transition pulse to notice a pane
