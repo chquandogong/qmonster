@@ -256,7 +256,9 @@ side_effects (N):
 - 표준 config path는 `~/.qmonster/config/qmonster.toml`입니다.
   `scripts/run-qmonster.sh`는 없으면 `config/qmonster.example.toml`에서
   복사하고, Qmonster를 항상 `--config`와 함께 실행합니다.
-- control-mode trial은 `scripts/run-qmonster-control-mode-once.sh`로
+- 기본 tmux source는 `auto`입니다. startup 때 control-mode attach를 먼저
+  시도하고 실패하면 polling으로 내려가며 startup notice를 남깁니다.
+- forced control-mode smoke는 `scripts/run-qmonster-control-mode-once.sh`로
   수행합니다. 이 helper는 임시 config에만 `source = "control_mode"`를
   쓰고 `--once`로 종료하므로 표준 config를 수정하지 않습니다.
   helper가 `--config`/`--once`를 소유하므로 passthrough 인자는

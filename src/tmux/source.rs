@@ -8,6 +8,15 @@ pub enum TmuxSource {
     ControlMode(ControlModeSource),
 }
 
+impl TmuxSource {
+    pub fn transport_label(&self) -> &'static str {
+        match self {
+            Self::Polling(_) => "polling",
+            Self::ControlMode(_) => "control_mode",
+        }
+    }
+}
+
 impl PaneSource for TmuxSource {
     fn list_panes(
         &self,

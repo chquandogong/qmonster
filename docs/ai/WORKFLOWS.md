@@ -83,15 +83,17 @@ writes any of these files:
    `config/qmonster.example.toml` when missing, creates
    `~/.qmonster/config/pricing.toml` from `config/pricing.example.toml`
    when missing, then launches Qmonster with `--config`.
-3. For a control-mode transport trial, run
+3. The default tmux source is `auto`: Qmonster tries control-mode first
+   and falls back to polling during startup if attach fails.
+4. For a forced control-mode transport smoke, run
    `./scripts/run-qmonster-control-mode-once.sh`. It uses a temporary
    config with `source = "control_mode"` and exits after `--once`,
    leaving the standard config unchanged. Confirm the run selected
    control-mode by checking the `tmux source: control_mode` startup line.
-4. Fill non-zero pricing rates manually in
+5. Fill non-zero pricing rates manually in
    `~/.qmonster/config/pricing.toml` to enable COST badges. Qmonster
    never fetches provider pricing pages.
-5. In tmux, `tmux/qmonster.tmux.conf.example` provides a `Q` binding
+6. In tmux, `tmux/qmonster.tmux.conf.example` provides a `Q` binding
    that calls the same launcher. Canonical pane titles remain the best
    way to mark roles exactly.
 

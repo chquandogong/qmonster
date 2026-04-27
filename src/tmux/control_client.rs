@@ -11,10 +11,17 @@ pub(crate) struct ControlModeClient {
 
 impl ControlModeClient {
     pub(crate) fn attach_current() -> Result<Self, PollingError> {
-        let mut client = Self {
-            process: ControlModeProcess::attach_current()?,
-        };
-        let _ = client.read_response()?;
+        attach_with_legacy_fallback(
+            || Self::attach_with_process(ControlModeProcess::attach_current()?),
+            || Self::attach_with_process(ControlModeProcess::attach_current_legacy()?),
+        )
+    }
+
+    fn attach_with_process(process: ControlModeProcess) -> Result<Self, PollingError> {
+        let mut client = Self { process };
+        if let Err(err) = client.read_response() {
+            return Err(client.process.attach_error(err));
+        }
         Ok(client)
     }
 
@@ -31,6 +38,32 @@ impl ControlModeClient {
     fn read_response(&mut self) -> Result<Vec<String>, PollingError> {
         read_control_block(&mut self.process.stdout)
     }
+}
+
+fn attach_with_legacy_fallback<T, P, L>(preferred: P, legacy: L) -> Result<T, PollingError>
+where
+    P: FnOnce() -> Result<T, PollingError>,
+    L: FnOnce() -> Result<T, PollingError>,
+{
+    match preferred() {
+        Ok(client) => Ok(client),
+        Err(first) if should_retry_attach_without_client_flags(&first) => legacy().map_err(
+            |fallback| {
+                PollingError::Command(format!(
+                    "tmux control-mode preferred attach failed: {first}; legacy attach failed: {fallback}"
+                ))
+            },
+        ),
+        Err(first) => Err(first),
+    }
+}
+
+fn should_retry_attach_without_client_flags(err: &PollingError) -> bool {
+    let message = err.to_string().to_ascii_lowercase();
+    message.contains("unknown client flag")
+        || message.contains("unknown option")
+        || message.contains("invalid option")
+        || message.contains("bad option")
 }
 
 pub(crate) fn run_client_with_reconnect(
@@ -168,6 +201,53 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "tmux command failed: control-mode reconnect after tmux command failed: Broken pipe: tmux command failed: tmux missing"
+        );
+    }
+
+    #[test]
+    fn attach_fallback_uses_legacy_when_preferred_rejects_client_flag() {
+        let attached = attach_with_legacy_fallback(
+            || {
+                Err(PollingError::Command(
+                    "tmux control-mode attach failed: stderr: unknown client flag: no-output"
+                        .into(),
+                ))
+            },
+            || Ok("legacy"),
+        )
+        .unwrap();
+
+        assert_eq!(attached, "legacy");
+    }
+
+    #[test]
+    fn attach_fallback_preserves_non_flag_attach_error() {
+        let legacy_calls = Arc::new(AtomicUsize::new(0));
+        let legacy_calls_for_closure = legacy_calls.clone();
+        let err: PollingError = attach_with_legacy_fallback(
+            || Err(PollingError::NonZero("%exit no sessions".into())),
+            || {
+                legacy_calls_for_closure.fetch_add(1, Ordering::SeqCst);
+                Ok("legacy")
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(err.to_string(), "tmux returned non-zero: %exit no sessions");
+        assert_eq!(legacy_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn attach_fallback_reports_both_errors_when_legacy_fails() {
+        let err: PollingError = attach_with_legacy_fallback(
+            || Err::<&str, _>(PollingError::Command("unknown option -- f".into())),
+            || Err(PollingError::Command("legacy attach failed".into())),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "tmux command failed: tmux control-mode preferred attach failed: tmux command failed: unknown option -- f; legacy attach failed: tmux command failed: legacy attach failed"
         );
     }
 }

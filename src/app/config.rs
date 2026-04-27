@@ -43,7 +43,7 @@ pub struct TmuxConfig {
 impl Default for TmuxConfig {
     fn default() -> Self {
         Self {
-            source: TmuxSourceMode::Polling,
+            source: TmuxSourceMode::Auto,
             poll_interval_ms: 2000,
             capture_lines: 24,
         }
@@ -59,6 +59,7 @@ impl TmuxConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TmuxSourceMode {
+    Auto,
     Polling,
     ControlMode,
 }
@@ -66,6 +67,7 @@ pub enum TmuxSourceMode {
 impl TmuxSourceMode {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Auto => "auto",
             Self::Polling => "polling",
             Self::ControlMode => "control_mode",
         }
@@ -568,7 +570,7 @@ mod tests {
     #[test]
     fn defaults_are_safe() {
         let c = base();
-        assert_eq!(c.tmux.source, TmuxSourceMode::Polling);
+        assert_eq!(c.tmux.source, TmuxSourceMode::Auto);
         assert_eq!(c.actions.mode, ActionsMode::RecommendOnly);
         assert!(!c.actions.allow_auto_prompt_send);
         assert!(!c.actions.allow_destructive_actions);
@@ -641,7 +643,7 @@ mod tests {
     }
 
     #[test]
-    fn tmux_source_mode_loads_from_toml() {
+    fn tmux_source_mode_loads_control_mode_from_toml() {
         let toml = r#"
 [tmux]
 source = "control_mode"
@@ -651,7 +653,18 @@ source = "control_mode"
     }
 
     #[test]
+    fn tmux_source_mode_loads_auto_from_toml() {
+        let toml = r#"
+[tmux]
+source = "auto"
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.tmux.source, TmuxSourceMode::Auto);
+    }
+
+    #[test]
     fn tmux_source_mode_as_str_matches_config_spelling() {
+        assert_eq!(TmuxSourceMode::Auto.as_str(), "auto");
         assert_eq!(TmuxSourceMode::Polling.as_str(), "polling");
         assert_eq!(TmuxSourceMode::ControlMode.as_str(), "control_mode");
     }

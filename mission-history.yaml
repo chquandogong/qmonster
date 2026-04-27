@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.46 control-mode helper arg guard."
+  mission_title: "Qmonster v0.5.0 — v1.16.50 control-mode auto default."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 128
-  latest_version: "1.16.46"
+  total_revisions: 132
+  latest_version: "1.16.50"
 
 timeline:
   - change_id: "initial"
@@ -11504,9 +11504,311 @@ timeline:
     follow_up:
       - "Continue C2: add remaining transport-readiness hardening before any default switch."
 
+  - change_id: "qmonster-v1.16.47-control-mode-client-flags"
+    semantic_version: "1.16.47"
+    change_sequence: 129
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C2 control-mode tmux adapter hardening"
+    change_type: "fix"
+    motivation_type: "Phase C C2 control-mode default-readiness hardening"
+    persistence: "permanent"
+    intent: >
+      Make the hidden tmux control-mode client less invasive and less
+      chatty before any default-source switch.
+    intent_ko: >
+      기본 source 전환 전, 숨은 tmux control-mode client가 pane size에
+      영향을 주거나 불필요한 pane output stream을 받지 않도록 줄인다.
+    decision: >
+      Change the control-mode attach argv contract to
+      `tmux -C attach-session -f ignore-size,no-output`. `ignore-size`
+      keeps the background control client from influencing pane sizing;
+      `no-output` prevents delivery of pane output notifications Qmonster
+      does not consume because snapshots are still captured on demand.
+    decision_ko: >
+      control-mode attach argv 계약을
+      `tmux -C attach-session -f ignore-size,no-output`로 변경한다.
+      `ignore-size`는 background control client가 pane size에 영향을
+      주지 않게 하고, `no-output`은 Qmonster가 사용하지 않는 pane output
+      notification 전달을 막는다. snapshot은 여전히 필요할 때 명령으로
+      capture한다.
+    triggered_by: "C2 follow-up after the control-mode helper argument contract was tightened."
+    issue_or_context: >
+      Local tmux 3.4 documentation confirms `attach-session -f flags`,
+      `ignore-size`, and `no-output`. Because control-mode notifications
+      never occur inside command output blocks, the existing response
+      parser remains valid while the control client can be made quieter.
+    changes:
+      added:
+        - ".docs/codex implementation note documenting the local tmux 3.4 check and attach smoke"
+        - "`ignore-size,no-output` flags in the control-mode attach argv contract"
+      modified:
+        - "`src/tmux/control_process.rs` attach argv helper and contract test"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.47"
+      removed: []
+    changed_sections:
+      - ".docs/codex/Qmonster-v0.4.0-2026-04-27-v1.16.47-control-mode-client-flags.md"
+      - "src/tmux/control_process.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "hidden control-mode clients no longer receive pane output by default"
+        - "hidden control-mode clients no longer influence pane sizing"
+      modified:
+        - "all-target test count remains 596"
+      removed: []
+    impact_scope:
+      runtime: "control-mode only; polling remains the default"
+      tests: "596 total passed — 536 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; attach-flag smoke and repeated default/all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 129); meta bump"
+      review_gate: "local tmux 3.4 man-page check, `tmux -C attach-session -f ignore-size,no-output` smoke, cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining transport-readiness hardening before any source default switch."
+    breaking: false
+    risk: "low — narrows the control-mode client flags without changing the PaneSource command surface."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add remaining transport-readiness hardening before any default switch."
+
+  - change_id: "qmonster-v1.16.48-control-mode-attach-diagnostics"
+    semantic_version: "1.16.48"
+    change_sequence: 130
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue C2 if control-mode is not default-ready yet"
+    change_type: "fix"
+    motivation_type: "Phase C C2 control-mode default-readiness hardening"
+    persistence: "permanent"
+    intent: >
+      Improve initial control-mode attach diagnostics without changing
+      the PaneSource command surface.
+    intent_ko: >
+      PaneSource command surface는 바꾸지 않고 초기 control-mode attach
+      실패 진단 정보를 개선한다.
+    decision: >
+      Keep the control-mode process stderr pipe and, when the first
+      control-mode response read fails during attach, decorate the error
+      with child exit status and trimmed stderr if `try_wait()` confirms
+      the child has already exited. Healthy long-lived control clients do
+      not read stderr, so the path cannot block during normal operation.
+    decision_ko: >
+      control-mode process stderr pipe를 유지하고, attach 중 첫 response
+      read가 실패했을 때 `try_wait()`로 child 종료가 확인되면 exit status와
+      trim된 stderr를 error에 붙인다. 정상 long-lived control client는
+      stderr를 읽지 않으므로 정상 경로에서 block되지 않는다.
+    triggered_by: "Follow-up after v1.16.47 added control-mode client flags; unsupported flags or missing sessions should be diagnosable from the attach error."
+    issue_or_context: >
+      The previous attach path failed safely on `%exit` / EOF, but the
+      error often omitted stderr diagnostics that tmux writes for startup
+      and flag failures. C2 default-readiness needs operator-visible
+      failure causes before any default-source switch.
+    changes:
+      added:
+        - ".docs/codex implementation note for control-mode attach diagnostics"
+        - "`ControlModeProcess::attach_error()` diagnostic decoration"
+        - "unit tests for attach error formatting with and without status/stderr"
+      modified:
+        - "`ControlModeClient::attach_current()` now decorates initial response-read failures"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / VALIDATION / mission ledger updated for v1.16.48"
+      removed: []
+    changed_sections:
+      - ".docs/codex/Qmonster-v0.4.0-2026-04-27-v1.16.48-control-mode-attach-diagnostics.md"
+      - "src/tmux/control_process.rs"
+      - "src/tmux/control_client.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "initial attach failures include original protocol error plus exited child status/stderr when available"
+        - "attach diagnostics are unit-covered without requiring a live tmux failure"
+      modified:
+        - "all-target test count increases to 598"
+      removed: []
+    impact_scope:
+      runtime: "control-mode error reporting only; polling remains the default"
+      tests: "598 total passed — 538 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; attach-flag smoke and repeated default/all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 130); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, `tmux -C attach-session -f ignore-size,no-output` smoke, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining transport-readiness hardening before any source default switch."
+    breaking: false
+    risk: "low — error-decoration path only; normal control-mode command behavior is unchanged."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add remaining transport-readiness hardening before any default switch."
+
+  - change_id: "qmonster-v1.16.49-control-mode-attach-legacy-fallback"
+    semantic_version: "1.16.49"
+    change_sequence: 131
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue C2 if control-mode is not complete"
+    change_type: "fix"
+    motivation_type: "Phase C C2 control-mode default-readiness hardening"
+    persistence: "permanent"
+    intent: >
+      Preserve opt-in control-mode compatibility on tmux versions that
+      reject the preferred quiet client flags.
+    intent_ko: >
+      preferred quiet client flag를 거부하는 tmux 버전에서도 opt-in
+      control-mode 호환성을 유지한다.
+    decision: >
+      Keep `tmux -C attach-session -f ignore-size,no-output` as the
+      preferred attach path. If the initial attach failure indicates an
+      unsupported client flag or option, retry once with legacy
+      `tmux -C attach-session`. Non-flag attach failures still return the
+      original diagnostic without retrying.
+    decision_ko: >
+      `tmux -C attach-session -f ignore-size,no-output`를 preferred attach
+      경로로 유지한다. 초기 attach 실패가 unsupported client flag/option을
+      가리킬 때만 legacy `tmux -C attach-session`으로 한 번 재시도한다.
+      flag와 무관한 attach 실패는 원래 diagnostic을 유지하고 재시도하지
+      않는다.
+    triggered_by: "Follow-up after v1.16.47-v1.16.48 made the preferred control-mode attach path quieter and diagnosable."
+    issue_or_context: >
+      The preferred client flags are correct on local tmux 3.4, but
+      older tmux builds can reject `-f` or specific client flags. C2
+      default-readiness should not make opt-in control-mode unusable on
+      such systems when legacy control-mode attach would still work.
+    changes:
+      added:
+        - ".docs/codex implementation note for legacy attach fallback"
+        - "`ControlModeProcess::attach_current_legacy()`"
+        - "generic attach fallback helper with unsupported-flag detection"
+        - "unit tests for fallback, no-fallback, and both-error reporting"
+      modified:
+        - "`ControlModeClient::attach_current()` now tries preferred attach first and legacy attach only for flag/option rejection"
+        - "`src/tmux/control_process.rs` attach argv test now locks both preferred and legacy contracts"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / VALIDATION / mission ledger updated for v1.16.49"
+      removed: []
+    changed_sections:
+      - ".docs/codex/Qmonster-v0.4.0-2026-04-27-v1.16.49-control-mode-attach-legacy-fallback.md"
+      - "src/tmux/control_client.rs"
+      - "src/tmux/control_process.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "older tmux versions that reject preferred client flags can still attach through the legacy control-mode path"
+        - "non-flag attach failures keep their original diagnostics and avoid unnecessary retries"
+      modified:
+        - "all-target test count increases to 601"
+      removed: []
+    impact_scope:
+      runtime: "control-mode startup compatibility only; polling remains the default"
+      tests: "601 total passed — 541 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; attach-flag smoke and repeated default/all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 131); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, `tmux -C attach-session -f ignore-size,no-output` smoke, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining transport-readiness hardening before any source default switch."
+    breaking: false
+    risk: "low — startup fallback only, and only for preferred client flag/option rejection."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add remaining transport-readiness hardening before any default switch."
+
+  - change_id: "qmonster-v1.16.50-control-mode-auto-default"
+    semantic_version: "1.16.50"
+    change_sequence: 132
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue without stopping until C2 is finished"
+    change_type: "feature"
+    motivation_type: "Phase C C2 completion"
+    persistence: "permanent"
+    intent: >
+      Complete Phase C C2 by making control-mode the preferred default
+      transport while preserving a polling escape hatch.
+    intent_ko: >
+      control-mode를 preferred default transport로 올리되 polling escape
+      hatch를 유지해 Phase C C2를 완료한다.
+    decision: >
+      Add `[tmux] source = "auto"` and make it the default. Auto mode
+      attaches control-mode first and falls back to polling during startup
+      if attach fails, emitting a startup notice. Explicit
+      `source = "control_mode"` remains strict and returns attach errors;
+      explicit `source = "polling"` remains available.
+    decision_ko: >
+      `[tmux] source = "auto"`를 추가하고 기본값으로 삼는다. auto mode는
+      startup 때 control-mode attach를 먼저 시도하고 실패하면 startup
+      notice를 남긴 뒤 polling으로 내려간다. 명시적인
+      `source = "control_mode"`는 strict하게 attach error를 반환하며,
+      명시적인 `source = "polling"`도 계속 지원한다.
+    triggered_by: "The operator asked to continue until C2 is complete."
+    issue_or_context: >
+      The adapter, parity checks, lifecycle reconnects, attach flags,
+      diagnostics, and compatibility fallback were in place, but polling
+      was still the default. C2's drop-in replacement goal requires
+      moving the standard path to control-mode without making startup
+      brittle on systems where control-mode attach is unavailable.
+    changes:
+      added:
+        - "`TmuxSourceMode::Auto` with config spelling `auto`"
+        - "auto source factory path: control-mode first, polling fallback with startup notice"
+        - "`TmuxSource::transport_label()` for active transport reporting"
+        - "unit coverage for auto success, auto fallback, and strict explicit control_mode"
+        - ".docs/codex implementation note for C2 completion"
+      modified:
+        - "`Cargo.toml` sets `default-run = \"qmonster\"` so documented `cargo run -- --once` smoke commands target the main binary despite the parity helper binary"
+        - "`TmuxConfig::default()` now uses `Auto`"
+        - "`config/qmonster.example.toml` now sets `source = \"auto\"`"
+        - "`--once` prints the active transport, not only the configured mode"
+        - "startup carries auto fallback notices into the dashboard/startup output"
+        - "README / docs/ai / mission ledger updated for v1.16.50 and C2 completion"
+      removed: []
+    changed_sections:
+      - ".docs/codex/Qmonster-v0.4.0-2026-04-27-v1.16.50-control-mode-auto-default.md"
+      - "Cargo.toml"
+      - "config/qmonster.example.toml"
+      - "src/app/config.rs"
+      - "src/app/tmux_source.rs"
+      - "src/app/startup.rs"
+      - "src/main.rs"
+      - "src/tmux/source.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/VALIDATION.md"
+      - "docs/ai/WORKFLOWS.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "standard config/default path prefers control-mode"
+        - "startup remains resilient by falling back to polling in auto mode"
+      modified:
+        - "all-target test count increases to 605"
+      removed:
+        - "C2 follow-up carryover as the active phase"
+    impact_scope:
+      runtime: "default tmux source selection changes from polling to auto (control-mode preferred, polling fallback)"
+      tests: "605 total passed — 545 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; default --once smoke displays `tmux source: control_mode`; forced control-mode helper smoke and repeated default/all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 132); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, default --once smoke, forced control-mode helper smoke, `tmux -C attach-session -f ignore-size,no-output` smoke, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Phase C C2 complete. Continue with C3 review-tier profiles when Phase C resumes."
+    breaking: false
+    risk: "medium-low — default source selection changes, but auto mode preserves polling fallback and explicit polling override."
+    related_commits: []
+    follow_up:
+      - "Continue Phase C with C3 review-tier profiles."
+
 evolution_summary:
-  current_phase: "v1.16.46 control-mode helper arg guard — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
-  next_phase: "Continue Phase C C2 with additional control-mode default-readiness hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.50 control-mode auto default — Phase C C2 is complete with auto preferring control_mode and falling back to polling."
+  next_phase: "Continue Phase C with C3 review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

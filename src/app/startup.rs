@@ -76,13 +76,13 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
         }
     };
 
-    let source = build_tmux_source(&config)?;
+    let source_build = build_tmux_source(&config)?;
     let notifier = DesktopNotifier;
     let archive = ArchiveWriter::new(paths.clone(), config.logging.big_output_chars);
     let pricing = load_pricing(&paths, &*sink);
     let claude_settings = load_claude_settings(&*sink);
 
-    let mut ctx = Context::new(config, source, notifier, sink)
+    let mut ctx = Context::new(config, source_build.source, notifier, sink)
         .with_archive(archive)
         .with_pricing(pricing)
         .with_claude_settings(claude_settings)
@@ -103,7 +103,10 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
     }
 
     sweep_retention(&paths, &ctx);
-    let (versions, startup_notices) = capture_startup_versions(&paths, &ctx);
+    let (versions, mut startup_notices) = capture_startup_versions(&paths, &ctx);
+    if let Some(notice) = source_build.startup_notice {
+        startup_notices.insert(0, notice);
+    }
     let snapshot_writer = SnapshotWriter::new(paths.clone());
 
     Ok(StartupRuntime {

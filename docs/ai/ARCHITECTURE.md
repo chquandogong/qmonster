@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.46 control-mode helper arg guard)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.50 control-mode auto default)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -98,7 +98,7 @@ loop into `app::tui_loop`, leaving `main.rs` as the thin CLI/startup/
 v1.16.25 starts Phase C C2 by adding `tmux::ControlModeSource`, an
 opt-in `[tmux] source = "control_mode"` transport that runs the same raw
 tmux commands behind the existing `PaneSource` contract while keeping
-`polling` as the default.
+`polling` available as an explicit transport.
 v1.16.26 adds one-shot reconnect on control-mode transport lifecycle
 errors (`%exit`, EOF, broken pipe) and explicitly keeps command-level tmux
 errors as caller-visible failures.
@@ -157,6 +157,19 @@ v1.16.45 moves `TMUX_PANE` current-pane normalization into
 same current-target environment gate.
 v1.16.46 tightens the temporary-config control-mode once helper so it owns
 `--config`/`--once` explicitly and only passes through `--root`/`--set`.
+v1.16.47 tightens the control-mode attach argv to
+`tmux -C attach-session -f ignore-size,no-output`, keeping the hidden
+control client from influencing pane sizing or receiving unused pane output.
+v1.16.48 decorates initial control-mode attach failures with exited child
+status and stderr when available, improving diagnosis for unsupported
+client flags, missing sessions, and startup diagnostics.
+v1.16.49 adds a legacy `tmux -C attach-session` fallback when the
+preferred `ignore-size,no-output` client flags are rejected, keeping the
+non-invasive attach path first while preserving opt-in control-mode
+compatibility on older tmux versions.
+v1.16.50 completes Phase C C2 by making `[tmux] source = "auto"` the
+default. Auto mode attaches control-mode first and falls back to polling
+only when startup attach fails; explicit `control_mode` remains strict.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -208,8 +221,13 @@ The `tmux::targets` helper centralizes available-window sorting/dedup
 and the current-target first-row contract.
 The `tmux::control_protocol` helper owns protocol-only parsing/quoting
 for the control-mode client.
+The `tmux::control_process` helper owns the control-mode attach argv,
+including the `ignore-size,no-output` client flags, legacy attach fallback
+support, and attach-failure diagnostic decoration.
+The startup tmux source factory owns `auto` mode: preferred control-mode
+attach first, polling fallback with an operator-visible startup notice.
 The parity helper can repeat checks against one control-mode client to
-expose lifecycle regressions before default-source changes.
+expose lifecycle regressions after transport changes.
 It also keeps volatile pane-title drift out of the default failure path
 while leaving strict title checks opt-in.
 `[ProviderOfficial: tmux wiki / Formats / Control Mode]` informs the

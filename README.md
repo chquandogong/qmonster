@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.46`; current canonical ledger: `v1.16.46`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.46`; current canonical ledger: `v1.16.50`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -109,7 +109,8 @@ thin CLI/startup/`--once`/TUI-entry wrapper. This completes the
 pre-control-mode C1 split target enough for C2 adapter work to begin.
 v1.16.25 starts C2 with an opt-in `[tmux] source = "control_mode"`
 transport that implements the existing `PaneSource` contract through one
-tmux control-mode client; default config remains `source = "polling"`.
+tmux control-mode client; `polling` remains available as an explicit
+transport.
 v1.16.26 hardens that opt-in path by reconnecting the control-mode
 client once on transport lifecycle errors such as `%exit`, EOF, or
 broken pipe while leaving command-level tmux errors unchanged. v1.16.27
@@ -158,6 +159,18 @@ current-target environment gate.
 v1.16.46 hardens `scripts/run-qmonster-control-mode-once.sh` so the
 temporary-config helper rejects unsupported arguments early and accepts only
 `--root` / `--set` passthroughs.
+v1.16.47 tightens the control-mode attach argv to
+`tmux -C attach-session -f ignore-size,no-output`, keeping the hidden
+control client from influencing pane sizing or receiving unused pane output.
+v1.16.48 decorates initial control-mode attach failures with exited child
+status and stderr when available, improving diagnosis without changing the
+PaneSource command surface.
+v1.16.49 adds a legacy attach fallback for tmux versions that reject the
+preferred `ignore-size,no-output` client flags, preserving opt-in
+control-mode compatibility while keeping the quiet attach path first.
+v1.16.50 completes C2 by making `[tmux] source = "auto"` the default:
+auto tries control-mode first and falls back to polling at startup, while
+explicit `source = "control_mode"` remains strict.
 
 ## Quick start
 
@@ -204,7 +217,7 @@ cargo run --release
 ./scripts/check-tmux-source-parity.sh --all-targets --repeat 3 --delay-ms 100
 ./scripts/check-tmux-source-parity.sh --all-targets --strict-title
 
-# C2 operator trial: one control-mode run without editing ~/.qmonster/config/qmonster.toml.
+# Forced control-mode smoke without editing ~/.qmonster/config/qmonster.toml.
 # The helper owns --config/--once and accepts only optional --root/--set passthroughs.
 ./scripts/run-qmonster-control-mode-once.sh
 
@@ -264,8 +277,8 @@ src/
                recommendation, audit, lifecycle
   tmux/        PaneSource trait + polling/control-mode sources, shared
                tmux command, target parsing, snapshot hydration,
-               polling process boundary, control-mode protocol, and
-               parity helpers
+               polling process boundary, control-mode process flags,
+               attach diagnostics/fallback, protocol, and parity helpers
   adapters/    claude / codex / gemini / qmonster tail parsers
   policy/      pure engine + rules (alert + advisory + concurrent + profile)
   store/       paths, sink (EventSink + NoopSink + InMemorySink),

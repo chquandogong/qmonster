@@ -53,7 +53,7 @@ fn main() -> anyhow::Result<()> {
             paths.root().display(),
             root_source
         );
-        println!("tmux source: {}", ctx.config.tmux.source.as_str());
+        println!("tmux source: {}", ctx.source.transport_label());
         println!("qmonster versions captured:");
         for (k, v) in &versions.tools {
             println!("  {k}: {v}");

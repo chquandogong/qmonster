@@ -23,9 +23,10 @@
 # not in runtime TOML.
 
 [tmux]
-# polling (default) shells out per refresh; control_mode keeps one tmux
-# control client and runs the same raw tmux commands through that transport.
-source = "polling"                 # polling | control_mode
+# auto (default) tries control_mode first and falls back to polling if tmux
+# control-mode cannot attach at startup. Set polling or control_mode to force
+# one transport; explicit control_mode attach failures stay visible.
+source = "auto"                    # auto | polling | control_mode
 poll_interval_ms = 2000
 capture_lines = 24
 

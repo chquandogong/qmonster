@@ -12,11 +12,14 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-27): `cargo fmt --check`,
-`cargo test --all-targets` (520 tests),
-`cargo clippy --all-targets -- -D warnings`, and
-`scripts/verify-shared.sh` pass; official `mission-spec validate .`
-is still unavailable locally because `mission-spec` is not installed,
-so `verify-shared.sh` used its lite ledger-structure fallback.
+`git diff --check`, `cargo test --all-targets` (605 tests),
+`cargo clippy --all-targets -- -D warnings`,
+`tmux -C attach-session -f ignore-size,no-output` smoke, control-mode attach diagnostic and legacy-fallback unit coverage,
+auto-source fallback unit coverage, default `--once` smoke showing
+`tmux source: control_mode`, repeated default/all-target live tmux source parity checks, and
+`scripts/verify-shared.sh` pass; official `mission-spec validate .` is
+still unavailable locally because `mission-spec` is not installed, so
+`verify-shared.sh` used its lite ledger-structure fallback.
 
 ## Planning-phase gates (Phase 0)
 
