@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.2 Phase-C C1 runtime-refresh extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.3 Phase-C C1 dashboard-state extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 84
-  latest_version: "1.16.2"
+  total_revisions: 85
+  latest_version: "1.16.3"
 
 timeline:
   - change_id: "initial"
@@ -8416,8 +8416,82 @@ timeline:
     follow_up:
       - "Continue C1: split alert-state helper cluster or pane-state helper cluster from main.rs."
 
+  - change_id: "qmonster-v1.16.3-phase-c-c1-dashboard-state-extraction"
+    semantic_version: "1.16.3"
+    change_sequence: 85
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: tag pushed versions and continue Phase C"
+    change_type: "architecture/refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue C1 by moving alert and pane dashboard-state helpers out
+      of `src/main.rs` without changing the TUI event semantics.
+    intent_ko: >
+      TUI 이벤트 의미를 바꾸지 않고 alert/pane dashboard-state helper를
+      `src/main.rs` 밖으로 옮겨 C1을 계속 진행한다.
+    decision: >
+      Add `src/app/dashboard_state.rs` for alert selection synchronization,
+      hide/defer toggles, severity bulk-hide, visible alert key lookup,
+      alert double-click tracking, dashboard list synchronization, and
+      pane-state flash updates. Keep top-level keyboard/mouse event
+      routing in `src/main.rs`.
+    decision_ko: >
+      `src/app/dashboard_state.rs`를 추가해 alert selection 동기화,
+      hide/defer toggle, severity bulk-hide, visible alert key lookup,
+      alert double-click tracking, dashboard list 동기화, pane-state flash
+      update를 담당하게 한다. 최상위 keyboard/mouse event routing은
+      `src/main.rs`에 유지한다.
+    triggered_by: "Continuation after v1.16.2 Phase C C1 runtime-refresh extraction."
+    issue_or_context: >
+      Alert selection/hide behavior and pane-state flash maintenance were a
+      cohesive state-management cluster inside `main.rs`. Moving them
+      reduces the live event loop surface before control-mode adapter work.
+    changes:
+      added:
+        - "src/app/dashboard_state.rs with alert/pane dashboard state helpers and module-level tests"
+      modified:
+        - "src/app/mod.rs exports dashboard_state"
+        - "src/main.rs imports dashboard_state helpers and removes inline alert/pane state support code"
+        - "Four alert/pane state tests moved from main.rs to app::dashboard_state"
+        - "README / PROJECT_BRIEF / ARCHITECTURE / mission ledger updated for v1.16.3 Phase C C1"
+      removed:
+        - "inline AlertMouseClick, DashboardSyncState, alert selection/hide, double-click, pane flash, and alert refresh helpers from src/main.rs"
+    changed_sections:
+      - "src/app/dashboard_state.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Fourth Phase C C1 code slice exists outside main.rs"
+        - "Alert/pane dashboard state behavior has module-level tests"
+      modified:
+        - "main.rs line count drops from 2361 to 2023 after extraction"
+      removed: []
+    impact_scope:
+      code: "refactor only; no intended runtime behavior change"
+      tests: "526 total — 464 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (no net count change vs v1.16.2)"
+      ledger: "1 new timeline entry (sequence 85); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining main.rs splits before control-mode adapter work."
+    breaking: false
+    risk: "low to moderate — mechanical extraction of dashboard state helpers; moved tests cover alert hide/double-click and pane flash behavior."
+    related_commits: []
+    related_decisions:
+      - "Decision: move dashboard state support as the fourth C1 slice while leaving the TUI event handler in main.rs."
+    snapshot_after: ""
+    follow_up:
+      - "Continue C1: split remaining modal/event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.2 Phase-C C1 runtime-refresh extraction — main.rs decomposition now has keymap, target_picker, and runtime_refresh helper modules."
+  current_phase: "v1.16.3 Phase-C C1 dashboard-state extraction — main.rs decomposition now has keymap, target_picker, runtime_refresh, and dashboard_state helper modules."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

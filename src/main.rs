@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
-use chrono::Local;
 use clap::Parser;
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
@@ -19,6 +18,11 @@ use ratatui::widgets::ListState;
 
 use qmonster::app::bootstrap::Context;
 use qmonster::app::config::{ActionsMode, QmonsterConfig, load_from_path};
+use qmonster::app::dashboard_state::{
+    AlertMouseClick, DashboardSyncState, alert_key_at_index, refresh_alert_state,
+    register_alert_double_click, sync_alert_selection, sync_dashboard_state, sync_pane_selection,
+    toggle_alert_severity_hide, toggle_selected_alert_hide, update_pane_state_flashes,
+};
 use qmonster::app::event_loop::{PaneReport, run_once, run_once_with_target};
 use qmonster::app::git_info::capture_repo_panel;
 use qmonster::app::keymap::{
@@ -403,14 +407,6 @@ fn print_reports(reports: &[PaneReport], config: &qmonster::app::config::Qmonste
         }
     }
 }
-
-#[derive(Debug, Clone)]
-struct AlertMouseClick {
-    key: String,
-    at: Instant,
-}
-
-const ALERT_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(450);
 
 // Phase 5 P5-3 second gate types (`PromptSendGate` + `check_send_gate`)
 // were moved to `qmonster::policy::gates` in v1.10.1 remediation
@@ -2003,213 +1999,9 @@ fn initial_target<P: PaneSource>(source: &P) -> Option<WindowTarget> {
         .or_else(|| source.available_targets().ok()?.into_iter().next())
 }
 
-fn sync_pane_selection(state: &mut ListState, pane_count: usize) {
-    match pane_count {
-        0 => state.select(None),
-        count => {
-            let selected = state.selected().unwrap_or(0).min(count.saturating_sub(1));
-            state.select(Some(selected));
-        }
-    }
-}
-
-struct DashboardSyncState<'a> {
-    alert_state: &'a mut ListState,
-    pane_state: &'a mut ListState,
-    previous_alerts: &'a mut HashSet<String>,
-    fresh_alerts: &'a mut HashSet<String>,
-    alert_times: &'a mut HashMap<String, String>,
-    alert_hide_deadlines: &'a mut HashMap<String, Instant>,
-}
-
-fn sync_alert_selection(
-    state: &mut ListState,
-    notices: &[SystemNotice],
-    reports: &[PaneReport],
-    alert_hide_deadlines: &HashMap<String, Instant>,
-    now: Instant,
-) {
-    let count = qmonster::ui::alerts::alert_count(notices, reports, alert_hide_deadlines, now);
-    match count {
-        0 => state.select(None),
-        total => {
-            let selected = state.selected().unwrap_or(0).min(total.saturating_sub(1));
-            state.select(Some(selected));
-        }
-    }
-}
-
-fn toggle_selected_alert_hide(
-    alert_hide_deadlines: &mut HashMap<String, Instant>,
-    alert_state: &ListState,
-    notices: &[SystemNotice],
-    reports: &[PaneReport],
-    now: Instant,
-) {
-    let Some(selected_idx) = alert_state.selected() else {
-        return;
-    };
-    let keys =
-        qmonster::ui::alerts::visible_alert_keys(notices, reports, alert_hide_deadlines, now);
-    let Some(key) = keys.get(selected_idx) else {
-        return;
-    };
-    if alert_hide_deadlines.remove(key).is_none() {
-        alert_hide_deadlines.insert(
-            key.clone(),
-            now + qmonster::ui::alerts::ALERT_AUTO_HIDE_DELAY,
-        );
-    }
-}
-
-fn toggle_alert_severity_hide(
-    alert_hide_deadlines: &mut HashMap<String, Instant>,
-    notices: &[SystemNotice],
-    reports: &[PaneReport],
-    now: Instant,
-    severity: Severity,
-) {
-    let keys = qmonster::ui::alerts::actionable_alert_keys_for_severity(
-        notices,
-        reports,
-        alert_hide_deadlines,
-        now,
-        severity,
-    );
-    if keys.is_empty() {
-        return;
-    }
-    let all_pending = keys.iter().all(|key| {
-        alert_hide_deadlines
-            .get(key)
-            .is_some_and(|deadline| *deadline > now)
-    });
-    if all_pending {
-        for key in keys {
-            alert_hide_deadlines.remove(&key);
-        }
-        return;
-    }
-    for key in keys {
-        alert_hide_deadlines.insert(key, now + qmonster::ui::alerts::ALERT_AUTO_HIDE_DELAY);
-    }
-}
-
-fn alert_key_at_index(
-    notices: &[SystemNotice],
-    reports: &[PaneReport],
-    alert_hide_deadlines: &HashMap<String, Instant>,
-    now: Instant,
-    idx: usize,
-) -> Option<String> {
-    qmonster::ui::alerts::visible_alert_keys(notices, reports, alert_hide_deadlines, now)
-        .get(idx)
-        .cloned()
-}
-
-fn register_alert_double_click(
-    last_click: &mut Option<AlertMouseClick>,
-    key: &str,
-    now: Instant,
-) -> bool {
-    if last_click.as_ref().is_some_and(|previous| {
-        previous.key == key
-            && now.saturating_duration_since(previous.at) <= ALERT_DOUBLE_CLICK_WINDOW
-    }) {
-        *last_click = None;
-        return true;
-    }
-
-    *last_click = Some(AlertMouseClick {
-        key: key.to_string(),
-        at: now,
-    });
-    false
-}
-
-fn sync_dashboard_state(
-    notices: &[SystemNotice],
-    reports: &[PaneReport],
-    state: DashboardSyncState<'_>,
-    now: Instant,
-) {
-    sync_pane_selection(state.pane_state, reports.len());
-    refresh_alert_state(
-        notices,
-        reports,
-        state.previous_alerts,
-        state.fresh_alerts,
-        state.alert_times,
-        state.alert_hide_deadlines,
-    );
-    sync_alert_selection(
-        state.alert_state,
-        notices,
-        reports,
-        state.alert_hide_deadlines,
-        now,
-    );
-}
-
-fn update_pane_state_flashes(
-    reports: &[PaneReport],
-    last_states: &mut HashMap<String, Option<IdleCause>>,
-    flashes: &mut HashMap<String, qmonster::ui::panels::PaneStateFlash>,
-    now: Instant,
-) {
-    let current_panes: HashSet<&str> = reports
-        .iter()
-        .map(|report| report.pane_id.as_str())
-        .collect();
-    last_states.retain(|pane_id, _| current_panes.contains(pane_id.as_str()));
-    flashes
-        .retain(|pane_id, flash| current_panes.contains(pane_id.as_str()) && flash.is_active(now));
-
-    for report in reports {
-        let current = report.idle_state;
-        match last_states.insert(report.pane_id.clone(), current) {
-            Some(previous) if previous != current => {
-                flashes.insert(
-                    report.pane_id.clone(),
-                    qmonster::ui::panels::PaneStateFlash::new(current, now),
-                );
-            }
-            _ => {}
-        }
-    }
-}
-
-fn refresh_alert_state(
-    notices: &[SystemNotice],
-    reports: &[PaneReport],
-    previous_alerts: &mut HashSet<String>,
-    fresh_alerts: &mut HashSet<String>,
-    alert_times: &mut HashMap<String, String>,
-    alert_hide_deadlines: &mut HashMap<String, Instant>,
-) {
-    let current = qmonster::ui::alerts::alert_fingerprints(notices, reports);
-    let timestamp = Local::now().format("%H:%M:%S").to_string();
-    let disappeared: Vec<String> = previous_alerts.difference(&current).cloned().collect();
-    for key in disappeared {
-        alert_times.remove(&key);
-    }
-    alert_hide_deadlines.retain(|key, _| current.contains(key));
-
-    *fresh_alerts = current.difference(previous_alerts).cloned().collect();
-    for key in fresh_alerts.iter() {
-        alert_times.insert(key.clone(), timestamp.clone());
-    }
-    *previous_alerts = current;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use qmonster::domain::identity::{
-        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
-    };
-    use qmonster::domain::recommendation::Recommendation;
-    use qmonster::domain::signal::{IdleCause, SignalSet};
 
     // P5-3 execution gate tests relocated to
     // `src/policy/gates.rs` in v1.10.1 remediation (Gemini v1.10.0
@@ -2227,135 +2019,5 @@ mod tests {
         let cli_root = PathBuf::from("/cli-qmonster");
         let path = default_config_path(Some(&cli_root), None);
         assert_eq!(path, PathBuf::from("/cli-qmonster/config/qmonster.toml"));
-    }
-
-    fn base_report(recs: Vec<Recommendation>) -> PaneReport {
-        PaneReport {
-            pane_id: "%1".into(),
-            session_name: "qwork".into(),
-            window_index: "1".into(),
-            provider: Provider::Claude,
-            identity: ResolvedIdentity {
-                identity: PaneIdentity {
-                    provider: Provider::Claude,
-                    instance: 1,
-                    role: Role::Main,
-                    pane_id: "%1".into(),
-                },
-                confidence: IdentityConfidence::High,
-            },
-            signals: SignalSet::default(),
-            effects: vec![],
-            dead: false,
-            recommendations: recs,
-            current_path: "/repo".into(),
-            current_command: "claude".into(),
-            cross_pane_findings: vec![],
-            idle_state: None,
-            idle_state_entered_at: None,
-        }
-    }
-
-    #[test]
-    fn update_pane_state_flashes_tracks_idle_and_active_transitions() {
-        let now = Instant::now();
-        let mut last_states = HashMap::new();
-        let mut flashes = HashMap::new();
-        let mut report = base_report(vec![]);
-
-        update_pane_state_flashes(&[report.clone()], &mut last_states, &mut flashes, now);
-        assert!(
-            flashes.is_empty(),
-            "initial observation should establish baseline without flashing"
-        );
-
-        report.idle_state = Some(IdleCause::InputWait);
-        update_pane_state_flashes(
-            &[report.clone()],
-            &mut last_states,
-            &mut flashes,
-            now + std::time::Duration::from_millis(10),
-        );
-        assert_eq!(
-            flashes.get("%1").map(|flash| flash.state),
-            Some(Some(IdleCause::InputWait))
-        );
-
-        report.idle_state = None;
-        update_pane_state_flashes(
-            &[report],
-            &mut last_states,
-            &mut flashes,
-            now + std::time::Duration::from_millis(20),
-        );
-        assert_eq!(flashes.get("%1").map(|flash| flash.state), Some(None));
-    }
-
-    #[test]
-    fn register_alert_double_click_requires_same_key_within_window() {
-        let now = Instant::now();
-        let mut tracker = None;
-
-        assert!(!register_alert_double_click(&mut tracker, "a", now));
-        assert!(register_alert_double_click(
-            &mut tracker,
-            "a",
-            now + Duration::from_millis(200)
-        ));
-        assert!(tracker.is_none());
-    }
-
-    #[test]
-    fn register_alert_double_click_ignores_stale_or_different_clicks() {
-        let now = Instant::now();
-        let mut tracker = None;
-
-        assert!(!register_alert_double_click(&mut tracker, "a", now));
-        assert!(!register_alert_double_click(
-            &mut tracker,
-            "b",
-            now + Duration::from_millis(200)
-        ));
-        assert!(!register_alert_double_click(
-            &mut tracker,
-            "b",
-            now + Duration::from_millis(700)
-        ));
-    }
-
-    #[test]
-    fn toggle_alert_severity_hide_only_targets_actionable_alerts() {
-        let notice = SystemNotice {
-            title: "snapshot saved".into(),
-            body: "/tmp/x".into(),
-            severity: Severity::Good,
-            source_kind: SourceKind::ProjectCanonical,
-        };
-        let rec = Recommendation {
-            action: "notify-input-wait",
-            reason: "waiting".into(),
-            severity: Severity::Good,
-            source_kind: SourceKind::ProjectCanonical,
-            suggested_command: None,
-            side_effects: vec![],
-            is_strong: false,
-            next_step: None,
-            profile: None,
-        };
-        let reports = vec![base_report(vec![rec.clone()])];
-        let now = Instant::now();
-        let mut hidden = HashMap::new();
-
-        toggle_alert_severity_hide(&mut hidden, &[notice], &reports, now, Severity::Good);
-
-        let actionable = qmonster::ui::alerts::actionable_alert_keys_for_severity(
-            &[],
-            &reports,
-            &HashMap::new(),
-            now,
-            Severity::Good,
-        );
-        assert_eq!(hidden.len(), actionable.len());
-        assert!(actionable.iter().all(|key| hidden.contains_key(key)));
     }
 }

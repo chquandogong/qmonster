@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.2`; current canonical ledger: `v1.16.2`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.3`; current canonical ledger: `v1.16.3`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -75,9 +75,10 @@ list hit-test helpers from `src/main.rs` into `src/app/keymap.rs`;
 v1.16.1 moves the session/window target picker model, preview, and
 choice logic into `src/app/target_picker.rs`; v1.16.2 moves provider
 runtime-refresh command selection, cycling, send/capture, and notice
-label helpers into `src/app/runtime_refresh.rs`. The next C1 slices
-should keep thinning event-loop/modal orchestration before control-mode
-adapter work.
+label helpers into `src/app/runtime_refresh.rs`; v1.16.3 moves alert
+selection/hide/double-click and pane-state flash synchronization into
+`src/app/dashboard_state.rs`. The next C1 slices should keep thinning
+event-loop/modal orchestration before control-mode adapter work.
 
 ## Quick start
 
