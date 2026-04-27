@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.21.1`; current mission ledger `v1.21.1`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.21.2`; current mission ledger `v1.21.2`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,10 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current line: `v1.21.1` keeps Codex `/clear` sessions observable by
+Current line: `v1.21.2` keeps Claude statusline placeholders honest:
+`CTX —`, `5h —`, or `7d —` stay absent instead of borrowing the next
+visible percent, while model/path and the other present percentages
+remain visible. `v1.21.1` keeps Codex `/clear` sessions observable by
 showing visible bottom-status `CTX`, `5h`, `weekly`, model/path/branch,
 and token fields even when Codex omits the `N used` total immediately
 after the clear. `v1.21.0` finishes Phase E by parsing the Gemini status

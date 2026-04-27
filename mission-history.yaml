@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.21.1 — Codex /clear status-line partial metrics."
+  mission_title: "Qmonster v1.21.2 — Claude statusline placeholder-safe metrics."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 148
-  latest_version: "1.21.1"
+  total_revisions: 149
+  latest_version: "1.21.2"
 
 timeline:
   - change_id: "initial"
@@ -13277,8 +13277,89 @@ timeline:
       - "0037de1 codex: relax status line tokens to optional fields"
     follow_up: []
 
+  - change_id: "v1.21.2-claude-statusline-placeholder-safe-metrics"
+    semantic_version: "1.21.2"
+    change_sequence: 149
+    date: "2026-04-28"
+    author: "Codex"
+    contributors:
+      - "Operator directive: commit, push, tag, and npm publish current fix"
+    change_type: "bugfix"
+    motivation_type: "operator-reported observability gap"
+    persistence: "permanent"
+    intent: >
+      Prevent Claude statusline placeholder columns (`CTX —`, `5h —`,
+      `7d —`) from borrowing the next visible percentage while still
+      surfacing model/path and any metrics that are actually present.
+    intent_ko: >
+      Claude statusline placeholder 컬럼(`CTX —`, `5h —`, `7d —`)이
+      다음에 보이는 percent 값을 훔쳐 오지 않도록 하고, 실제로 보이는
+      model/path와 metric은 계속 표시한다.
+    decision: >
+      Make Claude statusline context, 5-hour quota, and weekly quota
+      fields optional. Parse each percentage only inside the range
+      bounded by its own label and the next label, so an em-dash
+      placeholder remains absent. Extract the worktree path after the
+      `7d` label rather than after a required percent so path remains
+      visible even when `7d` is absent. Keep legacy `/context` fallback
+      available only when the statusline does not provide context.
+    decision_ko: >
+      Claude statusline의 context, 5-hour quota, weekly quota 필드를
+      optional로 바꾼다. 각 percent는 자신의 label과 다음 label 사이의
+      범위에서만 파싱하여 em-dash placeholder를 absent로 유지한다.
+      `7d` percent가 없어도 path가 보이도록 worktree path는 required
+      percent 이후가 아니라 `7d` label 이후에서 추출한다. legacy
+      `/context` fallback은 statusline context가 없을 때만 유지한다.
+    triggered_by: "A local Claude adapter patch was present after v1.21.1; operator requested commit/push/tag/npm publish."
+    issue_or_context: >
+      statusline.sh can render missing JSON fields as an em-dash. The
+      previous parser searched for the next `%` after each label, so
+      `CTX — 5h 88%` could incorrectly populate CTX as 88%, and
+      `5h — 7d 1%` could incorrectly populate 5h as 1%.
+    changes:
+      added:
+        - "`claude_statusline_em_dash_ctx_does_not_steal_5h_value` regression test"
+        - "`claude_statusline_em_dash_5h_does_not_steal_7d_value` regression test"
+        - "`claude_statusline_em_dash_7d_keeps_other_fields` regression test"
+        - "`claude_statusline_all_em_dashes_keeps_model_and_path` regression test"
+      modified:
+        - "`ClaudeStatusLine` pressure fields are optional"
+        - "`ClaudeAdapter` populates each Claude pressure metric only when its bounded statusline field is present"
+        - "`percent_after_label` replaced by bounded `percent_in_range` parsing"
+        - "`path_after_label` preserves worktree path when `7d` is an em-dash"
+        - "`README.md`, `VERSION.md`, `package.json`, `mission.yaml`, `mission-history.yaml`, `docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md` bumped to v1.21.2"
+      removed: []
+    changed_sections:
+      - "src/adapters/claude.rs"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - "package.json"
+    observable_effects:
+      added:
+        - "Claude panes with `CTX — 5h 88% 7d 43%` show no CTX badge, plus correct `QUOTA 5H 88%` and `QUOTA WEEK 43%`"
+        - "Claude panes with all three pressure placeholders still show model/effort/path"
+      modified:
+        - "Legacy Claude `/context` capture can fill context only if statusline context is absent"
+      removed: []
+    impact_scope:
+      runtime: "Claude adapter parsing only; no tmux, policy, storage, or actuation behavior change."
+      tests: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, scripts/verify-shared.sh"
+      ledger: "1 new timeline entry (sequence 149); meta bump; patch version bump v1.21.1 → v1.21.2 for Claude statusline placeholder bugfix"
+      npm: "package.json version set to 1.21.2"
+      review_gate: "release validation passes locally before publish"
+      follow_up_carryover: "No new follow-up."
+    breaking: false
+    risk: "low — parser remains label-anchored and conservative; missing provider fields stay absent rather than inferred."
+    related_commits:
+      - "e4c67d6 claude: handle partial statusline percentages"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.21.1 keeps Codex CTX/quota visible after `/clear` by surfacing partial bottom-status fields when the total token field is absent. v1.21.0 closed Phase E by parsing the Gemini status-table `memory` column into `SignalSet.process_memory_mb`."
+  current_phase: "v1.21.2 keeps Claude statusline placeholder metrics honest by treating `CTX —`, `5h —`, and `7d —` as absent instead of borrowing adjacent percentages. v1.21.1 keeps Codex CTX/quota visible after `/clear` by surfacing partial bottom-status fields when the total token field is absent."
   next_phase: "Phase E is fully shipped. No outstanding housekeeping items remain in the deferred ledger besides confirm-archive review (permanently closed per operator decision 2026-04-27). Awaiting new operator-directed work."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

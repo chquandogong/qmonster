@@ -1,6 +1,6 @@
 mission:
-  version: "1.21.1"
-  title: "Qmonster v1.21.1 — Codex /clear status-line partial metrics."
+  version: "1.21.2"
+  title: "Qmonster v1.21.2 — Claude statusline placeholder-safe metrics."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
