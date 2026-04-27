@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.15.21 Phase-B pane visibility."
+  mission_title: "Qmonster v0.5.0 — v1.15.22 Phase-B opt-in security posture advisory."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 77
-  latest_version: "1.15.21"
+  total_revisions: 78
+  latest_version: "1.15.22"
 
 timeline:
   - change_id: "initial"
@@ -7878,9 +7878,92 @@ timeline:
     follow_up:
       - "Implement B3 opt-in security posture advisory next."
 
+  - change_id: "qmonster-v1.15.22-phase-b-security-posture-advisory"
+    semantic_version: "1.15.22"
+    change_sequence: 78
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase B after commit/push"
+    change_type: "implementation"
+    motivation_type: "operator-directed follow-up"
+    persistence: "permanent"
+    intent: >
+      Implement Phase B3 from the synthesized update plan: allow the
+      operator to promote permissive runtime posture observations from
+      display-only badges into passive recommendations without making
+      the advisory default-on.
+    intent_ko: >
+      종합 업데이트 계획의 Phase B3를 구현한다. YOLO / bypass /
+      no-sandbox / Full Access 같은 permissive runtime posture는 기본
+      동작에서는 badge로만 유지하고, 운영자가 명시적으로 켰을 때만
+      Concern recommendation으로 승격한다.
+    decision: >
+      Add `[security] posture_advisories = false` to runtime config. The
+      policy gate carries this opt-in flag. When true and identity
+      confidence is Medium or higher, runtime facts matching YOLO,
+      bypass permissions, Full Access, danger-full-access, or no sandbox
+      produce `security-posture: review permissive runtime`
+      (`Severity::Concern`, `SourceKind::ProjectCanonical`). The rec has
+      no suggested command because provider-specific reversal differs
+      across Claude/Codex/Gemini.
+    decision_ko: >
+      런타임 config에 `[security] posture_advisories = false`를 추가한다.
+      policy gate가 이 opt-in 값을 전달한다. true이고 identity confidence가
+      Medium 이상이면 YOLO, bypass permissions, Full Access,
+      danger-full-access, no sandbox runtime fact가
+      `security-posture: review permissive runtime`
+      (`Severity::Concern`, `SourceKind::ProjectCanonical`) recommendation을
+      만든다. provider별 해제 방법이 달라 단일 suggested_command는 두지 않는다.
+    triggered_by: "Operator instruction (2026-04-27): commit/push completed work and continue the next task."
+    issue_or_context: >
+      Runtime facts already showed permissive modes in the pane detail,
+      but Codex's synthesis flagged that the project needed an explicit
+      policy decision: leave them as badges, make advisories opt-in, or
+      make advisories default-on. The selected default is opt-in Concern
+      to preserve observe-first operator intent.
+    changes:
+      added:
+        - "app::config::SecurityConfig with `posture_advisories: bool` defaulting false"
+        - "PolicyGates.security_posture_advisories"
+        - "security_posture_advisory rule in policy/rules/advisories.rs"
+        - "Config/policy tests for opt-in, low-confidence suppression, and safe runtime facts"
+      modified:
+        - "app::event_loop — threads `[security]` config into PolicyGates"
+        - "config/qmonster.example.toml — documents `[security] posture_advisories`"
+        - "docs/ai/UI_MANUAL.md / PROJECT_BRIEF.md / VALIDATION.md and mission ledger — v1.15.22 sync"
+      removed: []
+    changed_sections:
+      - "runtime config"
+      - "policy gates"
+      - "advisory rules"
+      - "operator docs / ledger"
+    done_when_delta:
+      added:
+        - "Default security posture behavior remains badge-only"
+        - "Opt-in config can promote permissive runtime posture to Concern recommendations"
+        - "Low-confidence panes do not receive the security posture advisory"
+        - "No single provider-specific mitigation command is advertised as universal"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "small config/gate/policy addition plus tests"
+      tests: "514 total — 438 lib + 16 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 508 at v1.15.21; +6 = 2 config + 4 advisory; gates assertion extended in place)"
+      ledger: "1 new timeline entry (sequence 78); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and scripts/verify-shared.sh all pass. Official mission-spec validation remains unavailable locally, but verify-shared's lite ledger check passed."
+      follow_up_carryover: "Remaining Phase B: file/branch-level concurrent-work narrowing and copyable suggested commands."
+    breaking: false
+    risk: "low — default-off behavior preserves current badge-only posture. When enabled, the rec is passive Concern and does not trigger Notify."
+    related_commits: []
+    related_decisions:
+      - "Decision: opt-in Concern advisory, not default-on, for permissive runtime posture."
+    snapshot_after: ""
+    follow_up:
+      - "Implement B4 file/branch-level concurrent-work narrowing next."
+
 evolution_summary:
-  current_phase: "v1.15.21 Phase-B pane visibility — Phase A activation is in place, pane cards/details/--once now expose tmux current_command, and selected pane detail shows Codex input/output token breakdown when ProviderOfficial token data exists."
-  next_phase: "Remaining Phase B: opt-in security posture advisory, file/branch-level concurrent-work narrowing, and copyable suggested commands. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.15.22 Phase-B opt-in security posture advisory — Phase A activation and v1.15.21 pane visibility are in place; `[security] posture_advisories = true` now promotes permissive runtime facts into passive Concern recommendations."
+  next_phase: "Remaining Phase B: file/branch-level concurrent-work narrowing and copyable suggested commands. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

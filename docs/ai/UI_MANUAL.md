@@ -145,6 +145,12 @@ session:window · Provider role · %pane_id
   값만 보여줍니다. 해당 provider가 특정 값(예: 전체 tool registry나
   active skill list)을 slash/status로 노출하지 않으면 Qmonster는 값을
   꾸며내지 않고 빈 줄로 둡니다.
+- 기본값에서는 YOLO / bypass permissions / Full Access /
+  `danger-full-access` / `no sandbox`도 위 runtime badge로만 표시합니다.
+  운영자가 `~/.qmonster/config/qmonster.toml`의
+  `[security] posture_advisories = true`를 켜면 같은 관측값이
+  `security-posture: review permissive runtime` Concern recommendation으로
+  승격됩니다. 이 advisory는 passive이며 Notify를 울리지 않습니다.
 - 선택된 pane는 recommendation과 provider profile payload를 아래로
   펼쳐서 보여줍니다.
 

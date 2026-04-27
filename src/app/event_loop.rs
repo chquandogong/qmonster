@@ -131,6 +131,7 @@ where
             &ctx.config.cost,
             &ctx.config.context,
             &ctx.config.quota,
+            &ctx.config.security,
             resolved.identity.provider,
             resolved.confidence,
         );

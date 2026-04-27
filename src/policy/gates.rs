@@ -31,6 +31,7 @@ pub fn allow_aggressive(quota_tight: bool) -> bool {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PolicyGates {
     pub quota_tight: bool,
+    pub security_posture_advisories: bool,
     pub identity_confidence: IdentityConfidence,
     pub cost_warning_usd: f64,
     pub cost_critical_usd: f64,
@@ -44,6 +45,7 @@ impl Default for PolicyGates {
     fn default() -> Self {
         Self {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Unknown,
             // Mirror Cost/Context/QuotaConfig::default() top-level
             // defaults so unit tests that build a default PolicyGates
@@ -65,11 +67,13 @@ impl PolicyGates {
         cost: &crate::app::config::CostConfig,
         context: &crate::app::config::ContextConfig,
         quota: &crate::app::config::QuotaConfig,
+        security: &crate::app::config::SecurityConfig,
         provider: crate::domain::identity::Provider,
         conf: IdentityConfidence,
     ) -> Self {
         Self {
             quota_tight: token.quota_tight,
+            security_posture_advisories: security.posture_advisories,
             identity_confidence: conf,
             cost_warning_usd: cost.warning_for(provider),
             cost_critical_usd: cost.critical_for(provider),
@@ -158,6 +162,7 @@ mod tests {
     fn quota_tight_gate_reads_from_config_true() {
         let gates = PolicyGates {
             quota_tight: true,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -185,21 +190,28 @@ mod tests {
 
     #[test]
     fn policy_gates_from_config_and_identity_reads_both() {
-        use crate::app::config::{ContextConfig, CostConfig, QuotaConfig, TokenConfig};
+        use crate::app::config::{
+            ContextConfig, CostConfig, QuotaConfig, SecurityConfig, TokenConfig,
+        };
         use crate::domain::identity::Provider;
         let cfg = TokenConfig { quota_tight: true };
         let cost = CostConfig::default();
         let context = ContextConfig::default();
         let quota = QuotaConfig::default();
+        let security = SecurityConfig {
+            posture_advisories: true,
+        };
         let gates = PolicyGates::from_config_and_identity(
             &cfg,
             &cost,
             &context,
             &quota,
+            &security,
             Provider::Codex,
             IdentityConfidence::Medium,
         );
         assert!(gates.quota_tight);
+        assert!(gates.security_posture_advisories);
         assert_eq!(gates.identity_confidence, IdentityConfidence::Medium);
         // Codex falls through to top-level CostConfig defaults ($5 / $20).
         assert!((gates.cost_warning_usd - 5.0).abs() < f64::EPSILON);
@@ -216,17 +228,21 @@ mod tests {
         // v1.15.16: CostConfig::default() ships per-provider overrides.
         // Claude → $10 / $30, Gemini → $3 / $10, Codex falls through to
         // the top-level $5 / $20.
-        use crate::app::config::{ContextConfig, CostConfig, QuotaConfig, TokenConfig};
+        use crate::app::config::{
+            ContextConfig, CostConfig, QuotaConfig, SecurityConfig, TokenConfig,
+        };
         use crate::domain::identity::Provider;
         let cfg = TokenConfig { quota_tight: false };
         let cost = CostConfig::default();
         let context = ContextConfig::default();
         let quota = QuotaConfig::default();
+        let security = SecurityConfig::default();
         let claude = PolicyGates::from_config_and_identity(
             &cfg,
             &cost,
             &context,
             &quota,
+            &security,
             Provider::Claude,
             IdentityConfidence::High,
         );
@@ -237,6 +253,7 @@ mod tests {
             &cost,
             &context,
             &quota,
+            &security,
             Provider::Codex,
             IdentityConfidence::High,
         );
@@ -247,6 +264,7 @@ mod tests {
             &cost,
             &context,
             &quota,
+            &security,
             Provider::Gemini,
             IdentityConfidence::High,
         );
@@ -263,7 +281,8 @@ mod tests {
         // values for that provider only. Other providers still see
         // the top-level defaults.
         use crate::app::config::{
-            ContextConfig, CostConfig, PressureProviderConfig, QuotaConfig, TokenConfig,
+            ContextConfig, CostConfig, PressureProviderConfig, QuotaConfig, SecurityConfig,
+            TokenConfig,
         };
         use crate::domain::identity::Provider;
         let cfg = TokenConfig { quota_tight: false };
@@ -282,6 +301,7 @@ mod tests {
             }),
             ..QuotaConfig::default()
         };
+        let security = SecurityConfig::default();
 
         // Gemini sees the [context.gemini] override; quota falls
         // through to the top-level QuotaConfig default.
@@ -290,6 +310,7 @@ mod tests {
             &cost,
             &context,
             &quota,
+            &security,
             Provider::Gemini,
             IdentityConfidence::High,
         );
@@ -305,6 +326,7 @@ mod tests {
             &cost,
             &context,
             &quota,
+            &security,
             Provider::Claude,
             IdentityConfidence::High,
         );
@@ -319,6 +341,7 @@ mod tests {
             &cost,
             &context,
             &quota,
+            &security,
             Provider::Codex,
             IdentityConfidence::High,
         );

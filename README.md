@@ -61,7 +61,10 @@ header starts with `STATE CHANGED` during the flash.
 The Phase-B visibility slice adds a `cmd` row sourced from tmux
 `pane_current_command` on pane cards/detail/`--once`, plus selected-pane
 Codex input/output token breakdown when the bottom status line exposes
-ProviderOfficial `in`/`out` counts.
+ProviderOfficial `in`/`out` counts. The security posture slice keeps
+YOLO / bypass / no-sandbox facts badge-only by default; set
+`[security] posture_advisories = true` to promote them into passive
+Concern recommendations.
 
 ## Quick start
 

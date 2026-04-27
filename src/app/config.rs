@@ -28,6 +28,8 @@ pub struct QmonsterConfig {
     pub context: ContextConfig,
     #[serde(default)]
     pub quota: QuotaConfig,
+    #[serde(default)]
+    pub security: SecurityConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -160,6 +162,15 @@ pub struct TokenConfig {
 pub struct StorageConfig {
     /// `~/.qmonster/` by default; tests override via env `QMONSTER_ROOT`.
     pub root: Option<String>,
+}
+
+/// Operator-controlled security posture surfacing. Runtime facts remain
+/// visible as badges regardless of this setting; enabling this flag
+/// promotes permissive modes into passive Concern recommendations.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SecurityConfig {
+    pub posture_advisories: bool,
 }
 
 /// Tuning knobs for the idle-stillness detector. Operators can set
@@ -413,6 +424,7 @@ impl QmonsterConfig {
             cost: CostConfig::default(),
             context: ContextConfig::default(),
             quota: QuotaConfig::default(),
+            security: SecurityConfig::default(),
         }
     }
 }
@@ -607,6 +619,22 @@ mod tests {
     fn idle_config_default_stillness_polls_is_4() {
         let cfg = QmonsterConfig::defaults();
         assert_eq!(cfg.idle.stillness_polls, 4);
+    }
+
+    #[test]
+    fn security_posture_advisories_default_to_off() {
+        let cfg = QmonsterConfig::defaults();
+        assert!(!cfg.security.posture_advisories);
+    }
+
+    #[test]
+    fn security_posture_advisories_load_from_toml() {
+        let toml = r#"
+[security]
+posture_advisories = true
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
+        assert!(cfg.security.posture_advisories);
     }
 
     #[test]

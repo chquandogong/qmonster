@@ -125,6 +125,12 @@ a provider-profile recommender that bundles ProviderOfficial CLI
 flags / settings / env vars into named `ProjectCanonical` profiles
 (e.g. `claude-default`) with per-lever citations, consumed via
 `Engine::evaluate` alongside alerts and advisories.
+v1.15.22 adds a separate opt-in security posture gate:
+`[security] posture_advisories = true` promotes permissive runtime
+facts (YOLO, bypass permissions, Full Access, `danger-full-access`,
+`no sandbox`) into passive `Severity::Concern` recommendations. The
+default is false, so runtime facts remain badge-only unless the
+operator explicitly asks for policy surfacing.
 
 ### `store/`
 

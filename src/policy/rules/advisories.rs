@@ -1,7 +1,7 @@
 use crate::domain::identity::{ResolvedIdentity, Role};
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::{Recommendation, Severity};
-use crate::domain::signal::SignalSet;
+use crate::domain::signal::{RuntimeFact, RuntimeFactKind, SignalSet};
 use crate::policy::gates::{PolicyGates, allow_provider_specific};
 
 /// Phase 3A advisory rules. Each rule is a pure function over
@@ -48,6 +48,10 @@ pub fn eval_advisories(
     if let Some(rec) = cost_pressure_critical(id, signals, gates) {
         out.push(rec);
     } else if let Some(rec) = cost_pressure_warning(id, signals, gates) {
+        out.push(rec);
+    }
+
+    if let Some(rec) = security_posture_advisory(id, signals, gates) {
         out.push(rec);
     }
 
@@ -468,6 +472,86 @@ fn repeated_cache_suggest(
     })
 }
 
+fn security_posture_advisory(
+    _id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    if !gates.security_posture_advisories {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+
+    let risky: Vec<&RuntimeFact> = signals
+        .runtime_facts
+        .iter()
+        .filter(|fact| is_permissive_runtime_fact(fact))
+        .collect();
+    if risky.is_empty() {
+        return None;
+    }
+
+    let summary = risky
+        .iter()
+        .map(|fact| {
+            format!(
+                "{}={} [{}]",
+                runtime_fact_kind_label(fact.kind),
+                fact.value,
+                fact.source_kind
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    Some(Recommendation {
+        action: "security-posture: review permissive runtime",
+        reason: format!(
+            "permissive runtime posture observed: {summary}; keep it only when intentional"
+        ),
+        severity: Severity::Concern,
+        source_kind: SourceKind::ProjectCanonical,
+        suggested_command: None, // provider-specific toggle; no single safe command spans all CLIs
+        side_effects: vec![],
+        is_strong: false,
+        next_step: Some(
+            "review YOLO / bypass / sandbox settings; disable permissive mode unless this pane is intentionally trusted"
+                .into(),
+        ),
+        profile: None,
+    })
+}
+
+fn is_permissive_runtime_fact(fact: &RuntimeFact) -> bool {
+    let value = fact.value.to_ascii_lowercase();
+    match fact.kind {
+        RuntimeFactKind::PermissionMode => {
+            value.contains("bypass") || value.contains("full access")
+        }
+        RuntimeFactKind::AutoMode => value.contains("yolo"),
+        RuntimeFactKind::Sandbox => {
+            value.contains("danger-full-access") || value.contains("no sandbox")
+        }
+        _ => false,
+    }
+}
+
+fn runtime_fact_kind_label(kind: RuntimeFactKind) -> &'static str {
+    match kind {
+        RuntimeFactKind::PermissionMode => "permission",
+        RuntimeFactKind::AutoMode => "mode",
+        RuntimeFactKind::Sandbox => "sandbox",
+        RuntimeFactKind::AllowedDirectory => "dir",
+        RuntimeFactKind::AgentConfig => "agents",
+        RuntimeFactKind::LoadedTool => "tool",
+        RuntimeFactKind::LoadedSkill => "skill",
+        RuntimeFactKind::LoadedPlugin => "plugin",
+        RuntimeFactKind::RestrictedTool => "restricted-tool",
+    }
+}
+
 fn aggressive_repeated_cache_suggest() -> Recommendation {
     Recommendation {
         action: "aggressive: dedupe + hash",
@@ -489,7 +573,7 @@ mod tests {
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use crate::domain::origin::SourceKind as SK;
-    use crate::domain::signal::MetricValue;
+    use crate::domain::signal::{MetricValue, RuntimeFact, RuntimeFactKind};
 
     fn id_high(role: Role) -> ResolvedIdentity {
         ResolvedIdentity {
@@ -518,6 +602,7 @@ mod tests {
     fn gates_default() -> PolicyGates {
         PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -525,6 +610,13 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+        }
+    }
+
+    fn gates_security_posture() -> PolicyGates {
+        PolicyGates {
+            security_posture_advisories: true,
+            ..gates_default()
         }
     }
 
@@ -542,6 +634,127 @@ mod tests {
             .expect("log_storm_advisory must fire");
         assert_eq!(adv.source_kind, SourceKind::Heuristic);
         assert_eq!(adv.severity, Severity::Concern);
+    }
+
+    #[test]
+    fn security_posture_advisory_is_opt_in_only() {
+        let id = id_high(Role::Main);
+        let s = SignalSet {
+            runtime_facts: vec![RuntimeFact::new(
+                RuntimeFactKind::AutoMode,
+                "YOLO mode",
+                SourceKind::ProviderOfficial,
+            )],
+            ..SignalSet::default()
+        };
+
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "security-posture: review permissive runtime"),
+            "security posture advisory must stay badge-only until explicitly enabled"
+        );
+    }
+
+    #[test]
+    fn security_posture_advisory_fires_on_permissive_runtime_facts_when_enabled() {
+        let id = id_high(Role::Main);
+        let s = SignalSet {
+            runtime_facts: vec![
+                RuntimeFact::new(
+                    RuntimeFactKind::PermissionMode,
+                    "Full Access",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::AutoMode,
+                    "YOLO Ctrl+Y",
+                    SourceKind::Heuristic,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::Sandbox,
+                    "danger-full-access",
+                    SourceKind::ProviderOfficial,
+                ),
+            ],
+            ..SignalSet::default()
+        };
+
+        let recs = eval_advisories(&id, &s, &gates_security_posture());
+        let adv = recs
+            .iter()
+            .find(|r| r.action == "security-posture: review permissive runtime")
+            .expect("opt-in security posture advisory must fire");
+        assert_eq!(adv.severity, Severity::Concern);
+        assert_eq!(adv.source_kind, SourceKind::ProjectCanonical);
+        assert!(adv.suggested_command.is_none());
+        assert!(
+            adv.reason
+                .contains("permission=Full Access [ProviderOfficial]")
+        );
+        assert!(adv.reason.contains("mode=YOLO Ctrl+Y [Heuristic]"));
+        assert!(
+            adv.reason
+                .contains("sandbox=danger-full-access [ProviderOfficial]")
+        );
+        assert!(
+            adv.next_step
+                .as_deref()
+                .unwrap_or_default()
+                .contains("disable permissive mode")
+        );
+    }
+
+    #[test]
+    fn security_posture_advisory_suppressed_on_low_identity_confidence() {
+        let id = id_low(Role::Main);
+        let s = SignalSet {
+            runtime_facts: vec![RuntimeFact::new(
+                RuntimeFactKind::Sandbox,
+                "no sandbox",
+                SourceKind::ProviderOfficial,
+            )],
+            ..SignalSet::default()
+        };
+
+        let gates = PolicyGates {
+            identity_confidence: IdentityConfidence::Low,
+            ..gates_security_posture()
+        };
+        let recs = eval_advisories(&id, &s, &gates);
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "security-posture: review permissive runtime")
+        );
+    }
+
+    #[test]
+    fn security_posture_advisory_ignores_non_permissive_runtime_facts() {
+        let id = id_high(Role::Main);
+        let s = SignalSet {
+            runtime_facts: vec![
+                RuntimeFact::new(
+                    RuntimeFactKind::PermissionMode,
+                    "Default",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::Sandbox,
+                    "workspace-write",
+                    SourceKind::ProviderOfficial,
+                ),
+            ],
+            ..SignalSet::default()
+        };
+
+        let recs = eval_advisories(&id, &s, &gates_security_posture());
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "security-posture: review permissive runtime")
+        );
     }
 
     #[test]
@@ -567,6 +780,7 @@ mod tests {
         };
         let gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -657,6 +871,7 @@ mod tests {
         let s = quota(0.92);
         let gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -703,6 +918,7 @@ mod tests {
         let s = pressure(0.92);
         let gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -762,6 +978,7 @@ mod tests {
         let s = pressure(0.92);
         let gates = PolicyGates {
             quota_tight: true,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -784,6 +1001,7 @@ mod tests {
         let s = pressure(0.92);
         let gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -826,6 +1044,7 @@ mod tests {
         };
         let gates = PolicyGates {
             quota_tight: true,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -857,6 +1076,7 @@ mod tests {
         };
         let gates = PolicyGates {
             quota_tight: true,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -886,6 +1106,7 @@ mod tests {
         };
         let gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -992,6 +1213,7 @@ mod tests {
         };
         let gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -1022,6 +1244,7 @@ mod tests {
         };
         let gates = PolicyGates {
             quota_tight: true,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -1118,6 +1341,7 @@ mod tests {
         let s = cost(50.00);
         let gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -1147,6 +1371,7 @@ mod tests {
         // Codex-style thresholds → $25 is past critical ($20).
         let codex_gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -1167,6 +1392,7 @@ mod tests {
         // critical ($30); only Warning fires.
         let claude_gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 10.0,
             cost_critical_usd: 30.0,
@@ -1192,6 +1418,7 @@ mod tests {
         // Gemini-style thresholds → $25 is past critical ($10).
         let gemini_gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 3.0,
             cost_critical_usd: 10.0,
@@ -1221,6 +1448,7 @@ mod tests {
         // Default 0.75/0.85 → 0.78 is in [warning, critical) → Warning only.
         let default_gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
@@ -1284,6 +1512,7 @@ mod tests {
         // Default 0.75/0.85 → 0.78 is in [warning, critical) → Warning only.
         let default_gates = PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,

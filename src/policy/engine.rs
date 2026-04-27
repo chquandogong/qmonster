@@ -122,6 +122,7 @@ mod tests {
     fn gates() -> PolicyGates {
         PolicyGates {
             quota_tight: false,
+            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,

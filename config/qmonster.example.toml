@@ -14,6 +14,7 @@
 # - [refresh] policy
 # - [storage] root
 # - [idle]    stillness_polls
+# - [security] posture_advisories
 # - [cost]    warning_usd, critical_usd, [.claude|.codex|.gemini]
 # - [context] warning_pct, critical_pct, [.claude|.codex|.gemini]
 # - [quota]   warning_pct, critical_pct, [.claude|.codex|.gemini]
@@ -39,6 +40,12 @@ quota_tight = false
 # Consecutive identical tail snapshots before stillness fallback marks a
 # pane idle/stale. Runtime clamps out-of-range values to [2, 12].
 stillness_polls = 4
+
+[security]
+# Default false: permissive runtime posture remains visible as badges only.
+# Set true to also emit Concern advisories when provider runtime facts expose
+# YOLO / bypass permissions / Full Access / danger-full-access / no sandbox.
+posture_advisories = false
 
 # v1.15.16 — per-provider USD thresholds for the cost_pressure_warning /
 # cost_pressure_critical advisory rules (see src/policy/rules/advisories.rs).

@@ -12,7 +12,7 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-27): `cargo fmt --check`,
-`cargo test --all-targets` (508 tests),
+`cargo test --all-targets` (514 tests),
 `cargo clippy --all-targets -- -D warnings`, and
 `scripts/verify-shared.sh` pass; official `mission-spec validate .`
 is still unavailable locally because `mission-spec` is not installed,
@@ -124,6 +124,10 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
       the Gemini `quota_pressure` metric remains `ProviderOfficial`,
       but the 75% / 85% advisory recommendations are `Estimated`
       Qmonster thresholds.
+- [x] Security posture advisories are opt-in: permissive runtime facts
+      (YOLO / bypass / Full Access / `danger-full-access` / no sandbox)
+      stay badge-only by default and become passive `Concern`
+      recommendations only when `[security] posture_advisories = true`.
 - [x] Recommendations may carry a `suggested_command: Option<String>`
       for copy-paste ergonomics. The value must be runnable on a single
       surface (shell command, in-pane slash-command, or `# config-edit …`
