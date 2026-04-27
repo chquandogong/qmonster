@@ -40,6 +40,7 @@ use qmonster::app::runtime_refresh::{
     runtime_refresh_uses_active_safe_only, send_runtime_refresh_commands,
 };
 use qmonster::app::safety_audit::apply_override_with_audit;
+use qmonster::app::settings_overlay::{handle_settings_overlay_key, handle_settings_overlay_mouse};
 use qmonster::app::system_notice::{
     SystemNotice, record_startup_snapshot, route_polling_failure, route_polling_recovered,
     route_version_drift,
@@ -795,51 +796,13 @@ where
                         }
 
                         if settings_overlay.is_open() {
-                            let editing = settings_overlay.edit_buffer().is_some();
-                            match k.code {
-                                KeyCode::Esc => {
-                                    if editing {
-                                        settings_overlay.cancel_edit();
-                                    } else {
-                                        settings_overlay.close();
-                                    }
-                                }
-                                KeyCode::Char('q') if !editing => settings_overlay.close(),
-                                KeyCode::Up if !editing => settings_overlay.prev_field(),
-                                KeyCode::Down if !editing => settings_overlay.next_field(),
-                                KeyCode::Left if !editing => settings_overlay.prev_field(),
-                                KeyCode::Right if !editing => settings_overlay.next_field(),
-                                KeyCode::Char('e') if !editing => {
-                                    settings_overlay.start_edit(&ctx.config);
-                                }
-                                KeyCode::Char('c') if !editing => {
-                                    settings_overlay.clear_override(&mut ctx.config);
-                                }
-                                KeyCode::Char('w') if !editing => {
-                                    if let Some(path) = ctx.config_path.clone() {
-                                        let _ = settings_overlay.save(&ctx.config, &path);
-                                    } else {
-                                        // No --config path was provided at startup;
-                                        // there is nothing to write back. Surface the
-                                        // explanation in the status banner so the
-                                        // operator knows the precondition for 'w'.
-                                        settings_overlay.set_save_error(
-                                            "no config path — restart with `--config PATH` to enable save"
-                                                .to_string(),
-                                        );
-                                    }
-                                }
-                                KeyCode::Enter => {
-                                    if editing {
-                                        let _ = settings_overlay.commit_edit(&mut ctx.config);
-                                    } else {
-                                        settings_overlay.start_edit(&ctx.config);
-                                    }
-                                }
-                                KeyCode::Backspace if editing => settings_overlay.backspace(),
-                                KeyCode::Char(c) if editing => settings_overlay.type_char(c),
-                                _ => {}
-                            }
+                            let config_path = ctx.config_path.clone();
+                            handle_settings_overlay_key(
+                                &mut settings_overlay,
+                                &mut ctx.config,
+                                config_path.as_deref(),
+                                k.code,
+                            );
                             continue;
                         }
 
@@ -1555,21 +1518,7 @@ where
 
                         if settings_overlay.is_open() {
                             dashboard_split_dragging = false;
-                            // Click on the modal's [x] closes the overlay so
-                            // mouse-only operators can dismiss it without
-                            // reaching for `Esc`/`q`. Other mouse events are
-                            // swallowed so a stray click underneath the modal
-                            // does not race with the open overlay.
-                            let rects = qmonster::ui::settings::settings_modal_rects(viewport);
-                            if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
-                                && rect_contains(
-                                    qmonster::ui::settings::settings_close_button_rect(rects.body),
-                                    m.column,
-                                    m.row,
-                                )
-                            {
-                                settings_overlay.close();
-                            }
+                            handle_settings_overlay_mouse(&mut settings_overlay, viewport, m);
                             continue;
                         }
 

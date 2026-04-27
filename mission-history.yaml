@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.6 scroll modal state extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.7 settings overlay dispatch extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 88
-  latest_version: "1.16.6"
+  total_revisions: 89
+  latest_version: "1.16.7"
 
 timeline:
   - change_id: "initial"
@@ -8708,8 +8708,78 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.7-settings-overlay-dispatch-extraction"
+    semantic_version: "1.16.7"
+    change_sequence: 89
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving settings overlay keyboard and mouse
+      dispatch out of `src/main.rs` without changing the settings overlay
+      state machine or renderer.
+    intent_ko: >
+      settings overlay의 상태 머신이나 렌더러는 바꾸지 않고 keyboard/mouse
+      dispatch만 `src/main.rs` 밖으로 옮겨 Phase C C1 분해를 계속한다.
+    decision: >
+      Add `src/app/settings_overlay.rs` with small handlers that delegate
+      to the existing `ui::settings::SettingsOverlay` methods. Preserve the
+      save-without-config-path status message and the mouse `[x]` close
+      behavior.
+    decision_ko: >
+      기존 `ui::settings::SettingsOverlay` 메서드에 위임하는 작은 handler를
+      `src/app/settings_overlay.rs`에 추가한다. config path 없이 저장할 때의
+      status message와 `[x]` mouse close 동작은 유지한다.
+    triggered_by: "Continuation after the v1.16.6 scroll modal state extraction."
+    issue_or_context: >
+      `src/main.rs` still carried the full settings overlay key match and
+      mouse-close branch even though the overlay's field/edit/save logic
+      already lived in `ui::settings`. Extracting this dispatch keeps the
+      live event loop closer to orchestration only.
+    changes:
+      added:
+        - "src/app/settings_overlay.rs: settings overlay key/mouse handlers and 4 unit tests"
+      modified:
+        - "src/app/mod.rs exports the settings_overlay module"
+        - "src/main.rs delegates settings overlay key and mouse handling to app::settings_overlay"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.7"
+      removed:
+        - "settings overlay key-match body and mouse-close body from src/main.rs"
+    changed_sections:
+      - "src/app/settings_overlay.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Sixth Phase C C1 code slice exists outside main.rs"
+        - "settings overlay dispatch behavior is covered by direct unit tests"
+      modified:
+        - "main.rs no longer owns the settings overlay key/mouse dispatch internals"
+      removed:
+        - "inline settings overlay save/edit/navigation key handling from the live event loop"
+    impact_scope:
+      code: "internal refactor only; no settings field, save format, rendering, shortcut, tmux, audit, or policy behavior change intended"
+      tests: "535 total expected — 473 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+4 lib tests vs v1.16.6)"
+      ledger: "1 new timeline entry (sequence 89); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — dispatch extraction delegates to existing SettingsOverlay methods and adds direct unit coverage."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.6 scroll modal state extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, and modal_state helper modules already extracted."
+  current_phase: "v1.16.7 settings overlay dispatch extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, and settings_overlay helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

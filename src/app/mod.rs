@@ -9,6 +9,7 @@ pub mod modal_state;
 pub mod path_resolution;
 pub mod runtime_refresh;
 pub mod safety_audit;
+pub mod settings_overlay;
 pub mod system_notice;
 pub mod target_picker;
 pub mod version_drift;
