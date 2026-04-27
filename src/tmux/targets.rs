@@ -1,5 +1,15 @@
 use crate::tmux::types::{WindowTarget, parse_list_windows_row};
 
+pub(crate) fn current_tmux_pane_from_env() -> Option<String> {
+    normalize_tmux_pane(std::env::var("TMUX_PANE").ok())
+}
+
+fn normalize_tmux_pane(value: Option<String>) -> Option<String> {
+    value
+        .map(|pane| pane.trim().to_string())
+        .filter(|pane| !pane.is_empty())
+}
+
 pub(crate) fn parse_window_targets<I, S>(lines: I) -> Vec<WindowTarget>
 where
     I: IntoIterator<Item = S>,
@@ -66,5 +76,19 @@ mod tests {
                 window_index: "1".into(),
             })
         );
+    }
+
+    #[test]
+    fn normalize_tmux_pane_trims_present_value() {
+        assert_eq!(
+            normalize_tmux_pane(Some("  %7  ".into())),
+            Some("%7".into())
+        );
+    }
+
+    #[test]
+    fn normalize_tmux_pane_treats_missing_or_blank_as_absent() {
+        assert_eq!(normalize_tmux_pane(None), None);
+        assert_eq!(normalize_tmux_pane(Some(" \t ".into())), None);
     }
 }

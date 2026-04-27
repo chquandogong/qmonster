@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.44 control-mode client boundary."
+  mission_title: "Qmonster v0.5.0 — v1.16.45 current-pane env helper."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 126
-  latest_version: "1.16.44"
+  total_revisions: 127
+  latest_version: "1.16.45"
 
 timeline:
   - change_id: "initial"
@@ -11363,8 +11363,79 @@ timeline:
     follow_up:
       - "Continue C2: add remaining transport-readiness hardening before any default switch."
 
+  - change_id: "qmonster-v1.16.45-current-pane-env-helper"
+    semantic_version: "1.16.45"
+    change_sequence: 127
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C separation before C2 default switch and close every work item with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C2 current-target parity hardening"
+    persistence: "permanent"
+    intent: >
+      Ensure polling and control-mode use the same current-pane
+      environment gate when deriving the current tmux window target.
+    intent_ko: >
+      current tmux window target을 도출할 때 polling과 control-mode가 같은
+      current-pane environment gate를 사용하도록 한다.
+    decision: >
+      Move `TMUX_PANE` trimming/blank handling into
+      `src/tmux/targets.rs::current_tmux_pane_from_env()`. Both
+      `PollingSource::current_target()` and
+      `ControlModeSource::current_target()` now call that helper before
+      running their transport-specific current-target command.
+    decision_ko: >
+      `TMUX_PANE` trim/blank handling을
+      `src/tmux/targets.rs::current_tmux_pane_from_env()`로 옮긴다.
+      `PollingSource::current_target()`와
+      `ControlModeSource::current_target()`는 transport-specific
+      current-target command를 실행하기 전에 이 helper를 호출한다.
+    triggered_by: "Follow-up after v1.16.44 separated the control-mode command client."
+    issue_or_context: >
+      Current-target behavior still had duplicated environment probing
+      in polling and control-mode. Sharing that gate reduces drift before
+      any source-default switch.
+    changes:
+      added:
+        - "`current_tmux_pane_from_env()` helper in `src/tmux/targets.rs`"
+        - "unit coverage for trimming present values and treating missing/blank values as absent"
+      modified:
+        - "`src/tmux/polling.rs` current-target path now calls the shared helper"
+        - "`src/tmux/control_mode.rs` current-target path now calls the shared helper"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.45"
+      removed:
+        - "duplicated `TMUX_PANE` env probing from both transport modules"
+    changed_sections:
+      - "src/tmux/targets.rs"
+      - "src/tmux/polling.rs"
+      - "src/tmux/control_mode.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "polling and control-mode share current-pane environment normalization"
+        - "blank and whitespace-only `TMUX_PANE` values are unit-covered"
+      modified:
+        - "all-target test count increases to 596"
+      removed: []
+    impact_scope:
+      runtime: "none intended — same env behavior, moved behind shared helper"
+      tests: "596 total passed — 536 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; repeated default and all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 127); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining transport-readiness hardening before any source default switch."
+    breaking: false
+    risk: "low — helper extraction with retained live parity coverage."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add remaining transport-readiness hardening before any default switch."
+
 evolution_summary:
-  current_phase: "v1.16.44 control-mode client boundary — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  current_phase: "v1.16.45 current-pane env helper — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
   next_phase: "Continue Phase C C2 with additional control-mode default-readiness hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

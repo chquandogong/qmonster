@@ -7,7 +7,9 @@ use crate::tmux::commands::{
 };
 use crate::tmux::polling_process::run_tmux;
 use crate::tmux::snapshots::hydrate_pane_snapshots;
-use crate::tmux::targets::{parse_current_target, parse_window_targets};
+use crate::tmux::targets::{
+    current_tmux_pane_from_env, parse_current_target, parse_window_targets,
+};
 use crate::tmux::types::{PANE_LIST_FORMAT, RawPaneSnapshot, WINDOW_LIST_FORMAT, WindowTarget};
 
 #[derive(Debug, Error)]
@@ -142,12 +144,9 @@ impl PaneSource for PollingSource {
 }
 
 fn current_window_target() -> Result<Option<WindowTarget>, PollingError> {
-    let Ok(tmux_pane) = std::env::var("TMUX_PANE") else {
+    let Some(tmux_pane) = current_tmux_pane_from_env() else {
         return Ok(None);
     };
-    if tmux_pane.trim().is_empty() {
-        return Ok(None);
-    }
     let fmt = WINDOW_LIST_FORMAT.replace("\\t", "\t");
     let line = run_tmux(&current_target_args(&tmux_pane, &fmt))?;
     Ok(parse_current_target(line.lines()))

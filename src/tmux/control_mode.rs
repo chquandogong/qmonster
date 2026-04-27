@@ -8,7 +8,9 @@ use crate::tmux::commands::{
 use crate::tmux::control_client::{ControlModeClient, run_client_with_reconnect};
 use crate::tmux::polling::{PaneSource, PollingError};
 use crate::tmux::snapshots::hydrate_pane_snapshots;
-use crate::tmux::targets::{parse_current_target, parse_window_targets};
+use crate::tmux::targets::{
+    current_tmux_pane_from_env, parse_current_target, parse_window_targets,
+};
 use crate::tmux::types::{PANE_LIST_FORMAT, RawPaneSnapshot, WINDOW_LIST_FORMAT, WindowTarget};
 
 const DEFAULT_CAPTURE_LINES: usize = 24;
@@ -54,12 +56,9 @@ impl PaneSource for ControlModeSource {
     }
 
     fn current_target(&self) -> Result<Option<WindowTarget>, PollingError> {
-        let Ok(tmux_pane) = std::env::var("TMUX_PANE") else {
+        let Some(tmux_pane) = current_tmux_pane_from_env() else {
             return Ok(None);
         };
-        if tmux_pane.trim().is_empty() {
-            return Ok(None);
-        }
         let fmt = WINDOW_LIST_FORMAT.replace("\\t", "\t");
         let output = self.run(&current_target_args(&tmux_pane, &fmt))?;
         Ok(parse_current_target(output.iter()))
