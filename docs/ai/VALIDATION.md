@@ -12,7 +12,7 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-27): `cargo fmt --check`,
-`cargo test --all-targets` (516 tests),
+`cargo test --all-targets` (520 tests),
 `cargo clippy --all-targets -- -D warnings`, and
 `scripts/verify-shared.sh` pass; official `mission-spec validate .`
 is still unavailable locally because `mission-spec` is not installed,
@@ -135,6 +135,11 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
       comment pointer) — mixed-mode prose (e.g. TUI keybinding prose
       plus a slash-command) belongs in `next_step`, not here. Rendered
       by both the alert queue and `--once` with a ``run: `…``` prefix.
+- [x] v1.15.24 makes `suggested_command` copyable in the interactive
+      TUI: when Alerts are focused, `y` copies the selected alert's
+      non-empty `run:` command to the system clipboard via `arboard`.
+      Missing commands and clipboard backend failures surface as
+      `SystemNotice` rows instead of silently failing.
 - [x] Recommendations may carry a `next_step: Option<String>` — prose
       precondition that precedes the runnable `suggested_command`.
       Required for strong recs whose safe execution depends on a step

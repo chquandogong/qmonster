@@ -216,6 +216,9 @@ side_effects (N):
   `RuntimeRefreshBlocked`를 기록합니다. 성공/실패는
   `RuntimeRefreshRequested`, `RuntimeRefreshCompleted`,
   `RuntimeRefreshFailed`로 audit log에 남습니다.
+- `y`: Alerts focus에서 선택된 alert의 `run` command를 system clipboard에
+  복사합니다. 선택 항목에 `suggested_command`가 없거나 clipboard backend를
+  열 수 없으면 `SystemNotice`로 이유를 표시합니다.
 - `c`: system notice clear
 - `p`: 선택된 pane의 pending prompt-send proposal 수락 (Phase 5 safer-actuation). audit chain은 actuation mode에 따라 달라짐:
   - Execute (`allow_auto_prompt_send=true`, 비 observe_only) → `PromptSendAccepted → PromptSendCompleted` 또는 `PromptSendFailed`

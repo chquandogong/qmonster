@@ -250,6 +250,28 @@ pub fn visible_alert_keys(
     .collect()
 }
 
+pub fn selected_alert_suggested_command(
+    state: &ListState,
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    fresh_alerts: &HashSet<String>,
+    alert_times: &HashMap<String, String>,
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> Option<String> {
+    let idx = state.selected()?;
+    collect_items(
+        notices,
+        reports,
+        fresh_alerts,
+        alert_times,
+        hidden_until,
+        now,
+    )
+    .get(idx)
+    .and_then(|item| item.suggested_command.clone())
+}
+
 pub fn actionable_alert_keys_for_severity(
     notices: &[SystemNotice],
     reports: &[PaneReport],
@@ -327,6 +349,7 @@ struct AlertItem {
     title: String,
     headline: String,
     details: Vec<String>,
+    suggested_command: Option<String>,
     color: Color,
     is_new: bool,
     hide_deadline: Option<Instant>,
@@ -377,6 +400,7 @@ fn collect_items(
             title: format!("System Notice · {}", n.title),
             headline: format!("[{badge}] {}", n.body),
             details: vec![],
+            suggested_command: None,
             color,
             is_new,
             hide_deadline,
@@ -401,6 +425,7 @@ fn collect_items(
                 title: format!("Checkpoint · {}", rep.pane_id),
                 headline: format!("[{}] {}", source_kind_label(rec.source_kind), rec.reason),
                 details: recommendation_detail_lines(rec),
+                suggested_command: non_empty_command(rec.suggested_command.as_deref()),
                 color,
                 is_new,
                 hide_deadline,
@@ -417,6 +442,14 @@ fn collect_items(
             let timestamp = alert_timestamp(&key, alert_times);
             let timestamp_sort_key = sortable_timestamp(&timestamp);
             let is_new = fresh_alerts.contains(&key);
+            let suggested_command = non_empty_command(f.suggested_command.as_deref());
+            let mut details = vec![
+                aligned_detail("anchor", &f.anchor_pane_id),
+                aligned_detail("others", &f.other_pane_ids.join(", ")),
+            ];
+            if let Some(cmd) = suggested_command.as_deref() {
+                details.push(aligned_detail("run", &format!("`{cmd}`")));
+            }
             out.push(AlertItem {
                 key,
                 timestamp,
@@ -429,10 +462,8 @@ fn collect_items(
                     source_kind_label(f.source_kind),
                     f.reason,
                 ),
-                details: vec![
-                    aligned_detail("anchor", &f.anchor_pane_id),
-                    aligned_detail("others", &f.other_pane_ids.join(", ")),
-                ],
+                details,
+                suggested_command,
                 color,
                 is_new,
                 hide_deadline,
@@ -458,6 +489,7 @@ fn collect_items(
                 title: format!("Recommendation · {}", rep.pane_id),
                 headline: format!("[{}] {}", source_kind_label(rec.source_kind), rec.reason),
                 details: recommendation_detail_lines(rec),
+                suggested_command: non_empty_command(rec.suggested_command.as_deref()),
                 color,
                 is_new,
                 hide_deadline,
@@ -473,6 +505,13 @@ fn collect_items(
             .then_with(|| a.key.cmp(&b.key))
     });
     out
+}
+
+fn non_empty_command(command: Option<&str>) -> Option<String> {
+    command
+        .map(str::trim)
+        .filter(|cmd| !cmd.is_empty())
+        .map(str::to_string)
 }
 
 fn bulk_hide_line(items: &[AlertItem]) -> Line<'static> {
@@ -915,7 +954,7 @@ mod tests {
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
     use crate::domain::origin::SourceKind;
-    use crate::domain::recommendation::Recommendation;
+    use crate::domain::recommendation::{CrossPaneFinding, CrossPaneKind, Recommendation};
     use crate::domain::signal::SignalSet;
 
     fn base_report(recs: Vec<Recommendation>) -> PaneReport {
@@ -1142,6 +1181,144 @@ mod tests {
             .expect("next segment");
         let run_idx = body.find("run: `# config-edit ...`").expect("run segment");
         assert!(next_idx < run_idx, "next must precede run. body: {body}");
+    }
+
+    #[test]
+    fn selected_alert_suggested_command_returns_selected_run_command() {
+        let rep = base_report(vec![Recommendation {
+            action: "context-pressure",
+            reason: "context near threshold".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Estimated,
+            suggested_command: Some(" /compact ".into()),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        }]);
+        let mut state = ListState::default();
+        state.select(Some(0));
+
+        let cmd = selected_alert_suggested_command(
+            &state,
+            &[],
+            &[rep],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(cmd.as_deref(), Some("/compact"));
+    }
+
+    #[test]
+    fn selected_alert_suggested_command_returns_none_without_run_command() {
+        let rep = base_report(vec![Recommendation {
+            action: "notify-input-wait",
+            reason: "waiting for input".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        }]);
+        let mut state = ListState::default();
+        state.select(Some(0));
+
+        let cmd = selected_alert_suggested_command(
+            &state,
+            &[],
+            &[rep],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(cmd, None);
+    }
+
+    #[test]
+    fn selected_alert_suggested_command_uses_render_sort_inputs() {
+        let old = Recommendation {
+            action: "a-old",
+            reason: "older warning".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: Some("/old".into()),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let new = Recommendation {
+            action: "z-new",
+            reason: "newer warning".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: Some("/new".into()),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![old.clone(), new.clone()]);
+        let times = HashMap::from([
+            (recommendation_key("%1", &old), "14:32:10".into()),
+            (recommendation_key("%1", &new), "14:33:45".into()),
+        ]);
+        let mut state = ListState::default();
+        state.select(Some(0));
+
+        let cmd = selected_alert_suggested_command(
+            &state,
+            &[],
+            &[rep],
+            &HashSet::new(),
+            &times,
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(cmd.as_deref(), Some("/new"));
+    }
+
+    #[test]
+    fn cross_pane_finding_details_surface_run_command() {
+        let mut rep = base_report(vec![]);
+        rep.cross_pane_findings.push(CrossPaneFinding {
+            kind: CrossPaneKind::ConcurrentMutatingWork,
+            anchor_pane_id: "%1".into(),
+            other_pane_ids: vec!["%2".into()],
+            reason: "coordinate edits".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Estimated,
+            suggested_command: Some("# coordinate via research pane".into()),
+        });
+        let items = collect_items(
+            &[],
+            &[rep],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(
+            items[0].suggested_command.as_deref(),
+            Some("# coordinate via research pane")
+        );
+        assert!(
+            items[0]
+                .details
+                .iter()
+                .any(|line| line.contains("run") && line.contains("coordinate via research pane")),
+            "cross-pane alert details must render copyable run command: {:?}",
+            items[0].details
+        );
     }
 
     #[test]
@@ -1373,6 +1550,7 @@ mod tests {
             title: "Recommendation · %1".into(),
             headline: "[Heur] waiting".into(),
             details: vec![],
+            suggested_command: None,
             color: Color::Yellow,
             is_new: false,
             hide_deadline: Some(Instant::now() + Duration::from_secs(9)),
@@ -1394,6 +1572,7 @@ mod tests {
             title: "Recommendation · %1".into(),
             headline: "[Heur] waiting".into(),
             details: vec![],
+            suggested_command: None,
             color: Color::Yellow,
             is_new: false,
             hide_deadline: None,

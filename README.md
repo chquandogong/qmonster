@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.15.19`; current working tree ledger: `v1.15.21`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.15.19`; current working tree ledger: `v1.15.24`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -67,6 +67,9 @@ YOLO / bypass / no-sandbox facts badge-only by default; set
 Concern recommendations.
 Concurrent-work warnings are also quieter after v1.15.23: same path
 alone is no longer enough; panes must expose the same git branch too.
+The selected alert's `run:` command is copyable with `y` when Alerts
+are focused; clipboard failure or a no-command selection is reported as
+a visible system notice.
 
 ## Quick start
 
@@ -92,6 +95,7 @@ cargo run --release
 #   r        — re-capture CLI versions; drift appears as a warning alert
 #   s        — write a runtime snapshot to ~/.qmonster/snapshots/
 #   u        — cycle provider runtime slash sources for the selected pane
+#   y        — copy the selected alert's run command to the clipboard
 #   c        — clear system notices
 #   p        — accept pending prompt-send proposal on the selected pane (P5-3
 #               safer-actuation; audit: PromptSendAccepted → Completed/Failed,

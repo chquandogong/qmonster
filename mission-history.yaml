@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.15.23 Phase-B branch-narrowed concurrent-work detection."
+  mission_title: "Qmonster v0.5.0 — v1.15.24 Phase-B copyable suggested commands."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 79
-  latest_version: "1.15.23"
+  total_revisions: 80
+  latest_version: "1.15.24"
 
 timeline:
   - change_id: "initial"
@@ -8036,9 +8036,86 @@ timeline:
     follow_up:
       - "Implement B5 copy suggested_command from TUI next."
 
+  - change_id: "qmonster-v1.15.24-phase-b-copyable-suggested-commands"
+    semantic_version: "1.15.24"
+    change_sequence: 80
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase B sequentially"
+    change_type: "implementation"
+    motivation_type: "operator ergonomics"
+    persistence: "permanent"
+    intent: >
+      Finish Phase B5 by making already-rendered recommendation
+      commands copyable from the interactive TUI. Operators should not
+      have to retype `run:` commands from Alerts by hand.
+    intent_ko: >
+      Phase B5를 완료해 interactive TUI에서 이미 표시되는 recommendation
+      command를 복사 가능하게 만든다. 운영자가 Alerts의 `run:` command를
+      손으로 다시 입력하지 않아도 되어야 한다.
+    decision: >
+      Add a `y` shortcut while Alerts are focused. The selected alert's
+      non-empty `suggested_command` is copied to the system clipboard
+      through `arboard`; missing commands and clipboard backend failures
+      become explicit `SystemNotice` rows. `c` remains reserved for
+      clearing system notices.
+    decision_ko: >
+      Alerts에 focus가 있을 때 `y` shortcut을 추가한다. 선택된 alert의
+      non-empty `suggested_command`는 `arboard`를 통해 system clipboard에
+      복사된다. command가 없거나 clipboard backend가 실패하면 조용히
+      실패하지 않고 `SystemNotice`로 표시한다. `c`는 기존 system notice
+      clear 동작으로 유지한다.
+    triggered_by: "Operator instruction (2026-04-27): continue next task after commit/push."
+    issue_or_context: >
+      Phase 3 populated `suggested_command` and the alert renderers
+      already show `run:` lines, but the interactive workflow still
+      required manual transcription. Phase B5 closes that usability gap.
+    changes:
+      added:
+        - "`arboard` dependency for system clipboard writes"
+        - "`selected_alert_suggested_command` helper in ui/alerts.rs"
+        - "`y copy` footer/help entry and TUI key handler"
+        - "Unit coverage for selected-alert command lookup and cross-pane run-detail rendering"
+      modified:
+        - "AlertItem retains a trimmed copyable command alongside rendered details"
+        - "Cross-pane alert details now show `run:` when the finding carries a suggested command"
+        - "docs/ai/UI_MANUAL.md and docs/ai/VALIDATION.md document the copy path"
+      removed: []
+    changed_sections:
+      - "src/main.rs"
+      - "src/ui/alerts.rs"
+      - "src/ui/dashboard.rs"
+      - "Cargo.toml / Cargo.lock"
+      - "canonical docs / mission ledger"
+    done_when_delta:
+      added:
+        - "Alerts focus + `y` copies the selected alert's non-empty run command"
+        - "No-command selection produces a visible Concern notice"
+        - "Clipboard backend failure produces a visible Warning notice"
+        - "Cross-pane findings with suggested commands expose those commands in alert detail rows"
+      modified:
+        - "Phase B followups are complete; next planned track is Phase C"
+      removed:
+        - "B5 follow-up from active backlog"
+    impact_scope:
+      code: "small TUI event-handler addition plus alert item metadata"
+      tests: "520 total — 444 lib + 16 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+4 alert tests vs v1.15.23; dashboard assertions updated in place)"
+      ledger: "1 new timeline entry (sequence 80); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and scripts/verify-shared.sh all pass. Official mission-spec validation remains unavailable locally, but verify-shared's lite ledger check passed."
+      follow_up_carryover: "Phase B complete. Phase C remains: main.rs decomposition, control-mode tmux adapter, review-tier profiles."
+    breaking: false
+    risk: "low — key is additive; `c` keeps its existing clear-notices behavior. Clipboard availability varies by desktop/session, so failure is surfaced visibly instead of assumed."
+    related_commits: []
+    related_decisions:
+      - "Decision: use `y` for copy because `c` is already clear-notices."
+    snapshot_after: ""
+    follow_up:
+      - "Begin Phase C with main.rs decomposition before control-mode adapter work."
+
 evolution_summary:
-  current_phase: "v1.15.23 Phase-B branch-narrowed concurrent-work detection — Phase A activation, pane visibility, and opt-in security posture are in place; concurrent-work warnings now require same current_path + same git_branch."
-  next_phase: "Remaining Phase B: copyable suggested commands. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.15.24 Phase-B copyable suggested commands — Phase A activation, pane visibility, opt-in security posture, branch-narrowed concurrent-work detection, and selected-alert command copy are in place."
+  next_phase: "Phase B is complete. Next planned track is Phase C: main.rs decomposition, control-mode tmux adapter, and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

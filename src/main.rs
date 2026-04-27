@@ -285,6 +285,13 @@ fn default_config_path(cli_root: Option<&Path>, env_root: Option<&str>) -> PathB
     QmonsterPaths::at(root).config_path()
 }
 
+fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard
+        .set_text(text.to_string())
+        .map_err(|e| e.to_string())
+}
+
 fn print_reports(reports: &[PaneReport], config: &qmonster::app::config::QmonsterConfig) {
     // 1. Cross-pane findings.
     for rep in reports {
@@ -1304,6 +1311,57 @@ where
                                         alert_hide_deadlines: &mut alert_hide_deadlines,
                                     },
                                     Instant::now(),
+                                );
+                            }
+                            KeyCode::Char('y') if focus == FocusedPanel::Alerts => {
+                                let now = Instant::now();
+                                let command =
+                                    qmonster::ui::alerts::selected_alert_suggested_command(
+                                        &alert_state,
+                                        &notices,
+                                        &last_reports,
+                                        &fresh_alerts,
+                                        &alert_times,
+                                        &alert_hide_deadlines,
+                                        now,
+                                    );
+                                let notice = match command {
+                                    Some(cmd) => match copy_text_to_clipboard(&cmd) {
+                                        Ok(()) => SystemNotice {
+                                            title: "command copied".into(),
+                                            body: format!("`{cmd}`"),
+                                            severity: Severity::Good,
+                                            source_kind: SourceKind::ProjectCanonical,
+                                        },
+                                        Err(e) => SystemNotice {
+                                            title: "clipboard unavailable".into(),
+                                            body: format!("could not copy command: {e}"),
+                                            severity: Severity::Warning,
+                                            source_kind: SourceKind::ProjectCanonical,
+                                        },
+                                    },
+                                    None => SystemNotice {
+                                        title: "no command selected".into(),
+                                        body:
+                                            "select an alert with a run command before pressing y"
+                                                .into(),
+                                        severity: Severity::Concern,
+                                        source_kind: SourceKind::ProjectCanonical,
+                                    },
+                                };
+                                notices.insert(0, notice);
+                                sync_dashboard_state(
+                                    &notices,
+                                    &last_reports,
+                                    DashboardSyncState {
+                                        alert_state: &mut alert_state,
+                                        pane_state: &mut pane_state,
+                                        previous_alerts: &mut previous_alerts,
+                                        fresh_alerts: &mut fresh_alerts,
+                                        alert_times: &mut alert_times,
+                                        alert_hide_deadlines: &mut alert_hide_deadlines,
+                                    },
+                                    now,
                                 );
                             }
                             KeyCode::Char('p') | KeyCode::Char('d') => {
