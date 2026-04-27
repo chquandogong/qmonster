@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.3 Phase-C C1 dashboard-state extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.4 copy shortcut + Git overlay version fix."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 85
-  latest_version: "1.16.3"
+  total_revisions: 86
+  latest_version: "1.16.4"
 
 timeline:
   - change_id: "initial"
@@ -8490,8 +8490,88 @@ timeline:
     follow_up:
       - "Continue C1: split remaining modal/event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.4-copy-shortcut-git-version-title-fix"
+    semantic_version: "1.16.4"
+    change_sequence: 86
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator report: `c` shortcut no longer behaved as expected; Git overlay title showed the package version instead of the footer version."
+    change_type: "fix"
+    motivation_type: "operator-reported regression"
+    persistence: "permanent"
+    intent: >
+      Fix two operator-facing inconsistencies before continuing Phase C:
+      restore `c` as a copy shortcut when Alerts are focused and make the
+      Git overlay title match the footer version badge.
+    intent_ko: >
+      Phase C를 계속 진행하기 전에 운영자가 본 두 UI 불일치를 고친다.
+      Alerts focus에서는 `c`를 copy shortcut으로 복구하고, Git overlay
+      title은 footer version badge와 같은 버전을 표시하게 한다.
+    decision: >
+      Treat `c` as an Alerts-focus alias for `y copy`; outside Alerts
+      focus, keep the existing `c` system-notice clear behavior. Replace
+      Git overlay title construction from `CARGO_PKG_VERSION` to
+      `QMONSTER_GIT_VERSION`, the same build-time value used by the
+      footer badge.
+    decision_ko: >
+      Alerts focus에서는 `c`를 `y copy`의 alias로 처리하고, Alerts focus가
+      아닐 때는 기존 `c` system-notice clear 동작을 유지한다. Git overlay
+      title은 `CARGO_PKG_VERSION` 대신 footer badge와 같은 build-time
+      `QMONSTER_GIT_VERSION`을 사용한다.
+    triggered_by: "Operator pre-Phase-C-next check request on 2026-04-27."
+    issue_or_context: >
+      The v1.15.24 copy surface shipped only `y`; the operator expected
+      the previously useful `c` copy path. Separately, the version badge
+      used `git describe` while the Git overlay title still used the
+      Cargo package version (`0.1.0`), causing a stale-looking title.
+    changes:
+      added:
+        - "git_info unit test locking Git overlay title to QMONSTER_GIT_VERSION"
+      modified:
+        - "src/main.rs accepts `c` or `y` for selected-alert command copy when Alerts are focused"
+        - "src/ui/dashboard.rs footer/help advertise `c/y copy` and document `c` clear fallback outside Alerts focus"
+        - "src/app/git_info.rs uses QMONSTER_GIT_VERSION for Git overlay title"
+        - "README / UI_MANUAL / ARCHITECTURE / VALIDATION / PROJECT_BRIEF / mission ledger updated for v1.16.4"
+      removed:
+        - "Git overlay title dependency on CARGO_PKG_VERSION"
+    changed_sections:
+      - "src/main.rs"
+      - "src/app/git_info.rs"
+      - "src/ui/dashboard.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/VALIDATION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "`c` copies selected alert run commands when Alerts are focused; `y` remains supported"
+        - "Git overlay title uses the same build-time git version as the footer badge"
+      modified:
+        - "interactive copy docs now say `c` / `y` instead of `y` only"
+      removed:
+        - "stale package-version title in Git overlay"
+    impact_scope:
+      code: "UI behavior fix only; no policy/parser/storage changes"
+      tests: "527 total — 465 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+1 lib test vs v1.16.3)"
+      ledger: "1 new timeline entry (sequence 86); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 after this operator-facing fix."
+    breaking: false
+    risk: "low — narrow keybinding alias and title-source change. `c` notice-clear remains available outside Alerts focus."
+    related_commits: []
+    related_decisions:
+      - "Decision: prefer backward-compatible `c` copy alias over documenting the regression as intentional."
+      - "Decision: unify Git overlay title with footer version instead of removing the title."
+    snapshot_after: ""
+    follow_up:
+      - "Continue C1: split remaining modal/event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.3 Phase-C C1 dashboard-state extraction — main.rs decomposition now has keymap, target_picker, runtime_refresh, and dashboard_state helper modules."
+  current_phase: "v1.16.4 copy shortcut + Git overlay version fix — Phase C C1 remains active with keymap, target_picker, runtime_refresh, and dashboard_state helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

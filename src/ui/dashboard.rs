@@ -531,7 +531,7 @@ fn render_footer(
 /// `"focus: alerts"`) decided by the caller.
 fn footer_text(focus: &str, split: DashboardSplit) -> String {
     format!(
-        "{focus} · split {}% · [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · y copy · p accept · d dismiss · S settings · ? help · q quit",
+        "{focus} · split {}% · [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · c/y copy · p accept · d dismiss · S settings · ? help · q quit",
         split.alerts_percent()
     )
 }
@@ -616,8 +616,11 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
             "u",
             "request provider runtime status for the selected pane via its read-only slash command",
         ),
+        (
+            "c",
+            "copy the selected alert run command to the clipboard when Alerts is focused; otherwise clear system notices",
+        ),
         ("y", "copy the selected alert run command to the clipboard"),
-        ("c", "clear system notices"),
     ] {
         lines.extend(help_wrapped_detail_lines(label, value, total_width));
     }
@@ -1091,8 +1094,8 @@ mod tests {
             "footer must advertise `u runtime`: {text}"
         );
         assert!(
-            text.contains("y copy"),
-            "footer must advertise `y copy`: {text}"
+            text.contains("c/y copy"),
+            "footer must advertise `c/y copy`: {text}"
         );
         assert!(
             text.contains("split 36%"),
@@ -1119,7 +1122,7 @@ mod tests {
         assert!(text.starts_with("focus: alerts"));
         assert!(text.contains("? help"));
         assert!(text.contains("q quit"));
-        // Placement contract: t target → y copy → p accept → d dismiss → S settings → ? help.
+        // Placement contract: t target → c/y copy → p accept → d dismiss → S settings → ? help.
         let target_pos = text
             .find("t target")
             .expect("footer must keep the `t target` anchor");
@@ -1127,7 +1130,7 @@ mod tests {
         let u_pos = text
             .find("u runtime")
             .expect("footer must carry `u runtime`");
-        let y_pos = text.find("y copy").expect("footer must carry `y copy`");
+        let copy_pos = text.find("c/y copy").expect("footer must carry `c/y copy`");
         let d_pos = text
             .find("d dismiss")
             .expect("footer must carry `d dismiss`");
@@ -1146,8 +1149,8 @@ mod tests {
             "`u runtime` must precede command copy + prompt-send actuation keys"
         );
         assert!(
-            y_pos > u_pos && y_pos < p_pos,
-            "`y copy` must sit between runtime refresh and prompt-send actuation"
+            copy_pos > u_pos && copy_pos < p_pos,
+            "`c/y copy` must sit between runtime refresh and prompt-send actuation"
         );
         assert!(
             p_pos < d_pos,
@@ -1222,7 +1225,14 @@ mod tests {
         // help text rather than a single row. `d` stays single-line.
         let p_entry = entry_for("p").expect("help overlay must carry a `p` summary row");
         let d_entry = entry_for("d").expect("help overlay must carry a `d` entry");
+        let c_entry = entry_for("c").expect("help overlay must carry a `c` copy entry");
         let y_entry = entry_for("y").expect("help overlay must carry a `y` copy entry");
+        assert!(
+            c_entry.contains("clipboard")
+                && c_entry.contains("run command")
+                && c_entry.contains("clear system notices"),
+            "the `c` entry must describe copy alias and fallback clear behavior. got: {c_entry}"
+        );
         assert!(
             y_entry.contains("clipboard") && y_entry.contains("run command"),
             "the `y` entry must describe suggested-command clipboard copy. got: {y_entry}"

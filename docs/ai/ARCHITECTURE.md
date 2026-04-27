@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.3 Phase-C C1 dashboard-state extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.4 copy shortcut + Git overlay version fix)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -65,6 +65,9 @@ cycling, send/capture, and operator-facing label helpers into
 double-click tracking, and pane-state flash synchronization into
 `app::dashboard_state`. The current implementation still keeps the live
 TUI event loop and modal orchestration in `main.rs`.
+v1.16.4 fixes two operator-facing regressions in that surface: `c` is
+again an Alerts-focus copy shortcut alias for `y`, and the Git overlay
+title uses the same `QMONSTER_GIT_VERSION` value as the footer badge.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -168,9 +171,9 @@ Ratatui widgets. Current operator surfaces:
    facts (`modes`, `access`, `loaded`, `restrict`).
 4. Alert command ergonomics: recommendation and cross-pane alert
    `suggested_command` values render as `run:` lines; when Alerts are
-   focused, `y` copies the selected alert's command to the system
+   focused, `c` or `y` copies the selected alert's command to the system
    clipboard and reports missing-command/backend-failure cases as system
-   notices.
+   notices. Outside Alerts focus, `c` keeps the system-notice clear path.
 5. Overlays for target selection (session -> window), help/legend, and
    Git status from the bottom-right version badge.
 6. Source labels rendered in long form (`[Official]`, `[Qmonster]`,

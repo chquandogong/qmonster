@@ -32,7 +32,7 @@ pub fn capture_repo_panel() -> GitPanel {
     match capture_snapshot(repo_hint) {
         Ok(snapshot) => panel_from_snapshot(snapshot),
         Err(err) => GitPanel {
-            title: format!("Git · qmonster v{}", env!("CARGO_PKG_VERSION")),
+            title: git_panel_title(),
             lines: vec![
                 detail_line("repo", repo_hint.display().to_string()),
                 detail_line("status", "unavailable"),
@@ -146,9 +146,13 @@ fn panel_from_snapshot(snapshot: GitSnapshot) -> GitPanel {
     }
 
     GitPanel {
-        title: format!("Git · qmonster v{}", env!("CARGO_PKG_VERSION")),
+        title: git_panel_title(),
         lines,
     }
+}
+
+fn git_panel_title() -> String {
+    format!("Git · qmonster {}", env!("QMONSTER_GIT_VERSION"))
 }
 
 fn detail_line(label: &str, value: impl Into<String>) -> String {
@@ -242,5 +246,13 @@ mod tests {
             "?? notes.txt".to_string(),
         ];
         assert_eq!(summarize_status_lines(&lines), (2, 2, 1));
+    }
+
+    #[test]
+    fn git_panel_title_uses_footer_git_version() {
+        assert_eq!(
+            git_panel_title(),
+            format!("Git · qmonster {}", env!("QMONSTER_GIT_VERSION"))
+        );
     }
 }

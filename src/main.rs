@@ -1112,7 +1112,7 @@ where
                                     }
                                 }
                             }
-                            KeyCode::Char('c') => {
+                            KeyCode::Char('c') if focus != FocusedPanel::Alerts => {
                                 notices.clear();
                                 sync_dashboard_state(
                                     &notices,
@@ -1299,7 +1299,9 @@ where
                                     Instant::now(),
                                 );
                             }
-                            KeyCode::Char('y') if focus == FocusedPanel::Alerts => {
+                            KeyCode::Char('c') | KeyCode::Char('y')
+                                if focus == FocusedPanel::Alerts =>
+                            {
                                 let now = Instant::now();
                                 let command =
                                     qmonster::ui::alerts::selected_alert_suggested_command(
@@ -1329,7 +1331,7 @@ where
                                     None => SystemNotice {
                                         title: "no command selected".into(),
                                         body:
-                                            "select an alert with a run command before pressing y"
+                                            "select an alert with a run command before pressing c/y"
                                                 .into(),
                                         severity: Severity::Concern,
                                         source_kind: SourceKind::ProjectCanonical,
