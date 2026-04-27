@@ -17,7 +17,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::ListState;
 
 use qmonster::app::bootstrap::Context;
-use qmonster::app::config::{ActionsMode, QmonsterConfig, load_from_path};
+use qmonster::app::config::{QmonsterConfig, load_from_path};
 use qmonster::app::dashboard_state::{
     AlertMouseClick, DashboardSyncState, alert_key_at_index, refresh_alert_state,
     register_alert_double_click, sync_alert_selection, sync_dashboard_state, sync_pane_selection,
@@ -36,12 +36,7 @@ use qmonster::app::once_report::print_once_reports;
 use qmonster::app::operator_actions::{version_refresh_notices, write_operator_snapshot};
 use qmonster::app::path_resolution::pick_root;
 use qmonster::app::prompt_send_actions::handle_prompt_send_action;
-use qmonster::app::runtime_refresh::{
-    runtime_refresh_command_label, runtime_refresh_commands, runtime_refresh_completion_label,
-    runtime_refresh_dispatch_commands, runtime_refresh_notice_body, runtime_refresh_provider_label,
-    runtime_refresh_request_label, runtime_refresh_sends_one_command_at_a_time,
-    runtime_refresh_uses_active_safe_only, send_runtime_refresh_commands,
-};
+use qmonster::app::runtime_refresh::handle_runtime_refresh_action;
 use qmonster::app::safety_audit::apply_override_with_audit;
 use qmonster::app::settings_overlay::{handle_settings_overlay_key, handle_settings_overlay_mouse};
 use qmonster::app::system_notice::{
@@ -922,159 +917,18 @@ where
                             KeyCode::Char('u') if focus == FocusedPanel::Panes => {
                                 let selected =
                                     pane_state.selected().and_then(|i| last_reports.get(i));
-                                match selected {
-                                    None => notices.insert(
-                                        0,
-                                        SystemNotice {
-                                            title: "no pane selected".into(),
-                                            body: "select a provider pane before requesting runtime refresh".into(),
-                                            severity: Severity::Concern,
-                                            source_kind: SourceKind::ProjectCanonical,
-                                        },
-                                    ),
-                                    Some(report) => {
-                                        let pane_id = report.pane_id.clone();
-                                        let provider = report.identity.identity.provider;
-                                        let active_only = runtime_refresh_uses_active_safe_only(
-                                            report.idle_state,
-                                        );
-                                        let available_commands =
-                                            runtime_refresh_commands(provider, report.idle_state);
-                                        if available_commands.is_empty() {
-                                            notices.insert(
-                                                0,
-                                                SystemNotice {
-                                                    title: "runtime refresh unavailable".into(),
-                                                    body: format!(
-                                                        "{} has no known read-only runtime slash command",
-                                                        runtime_refresh_provider_label(provider)
-                                                    ),
-                                                    severity: Severity::Concern,
-                                                    source_kind: SourceKind::ProjectCanonical,
-                                                },
-                                            );
-                                        } else if matches!(
-                                            ctx.config.actions.mode,
-                                            ActionsMode::ObserveOnly
-                                        ) {
-                                            let command_label =
-                                                runtime_refresh_command_label(available_commands);
-                                            ctx.sink.record(AuditEvent {
-                                                kind: AuditEventKind::RuntimeRefreshBlocked,
-                                                pane_id: pane_id.clone(),
-                                                severity: Severity::Warning,
-                                                summary: format!(
-                                                    "{pane_id} {command_label} (blocked; observe_only mode)"
-                                                ),
-                                                provider: Some(provider),
-                                                role: Some(report.identity.identity.role),
-                                            });
-                                            notices.insert(
-                                                0,
-                                                SystemNotice {
-                                                    title: "runtime refresh blocked".into(),
-                                                    body: format!(
-                                                        "{pane_id} → `{command_label}` blocked by observe_only mode"
-                                                    ),
-                                                    severity: Severity::Warning,
-                                                    source_kind: SourceKind::ProjectCanonical,
-                                                },
-                                            );
-                                        } else {
-                                            let commands = runtime_refresh_dispatch_commands(
-                                                provider,
-                                                report.idle_state,
-                                                &pane_id,
-                                                &mut runtime_refresh_offsets,
-                                            );
-                                            let command_label =
-                                                runtime_refresh_command_label(&commands);
-                                            let one_at_a_time =
-                                                runtime_refresh_sends_one_command_at_a_time(
-                                                    provider,
-                                                    report.idle_state,
-                                                );
-                                            ctx.sink.record(AuditEvent {
-                                                kind: AuditEventKind::RuntimeRefreshRequested,
-                                                pane_id: pane_id.clone(),
-                                                severity: Severity::Concern,
-                                                summary: format!(
-                                                    "{pane_id} {command_label} ({})",
-                                                    runtime_refresh_request_label(
-                                                        active_only,
-                                                        one_at_a_time,
-                                                    )
-                                                ),
-                                                provider: Some(provider),
-                                                role: Some(report.identity.identity.role),
-                                            });
-                                            let send_outcome = send_runtime_refresh_commands(
-                                                &ctx.source,
-                                                &pane_id,
-                                                provider,
-                                                report.idle_state,
-                                                &commands,
-                                                ctx.config.tmux.capture_lines,
-                                                &mut ctx.runtime_refresh_tail_overlays,
-                                            );
-                                            match send_outcome.failed {
-                                                None => {
-                                                    ctx.sink.record(AuditEvent {
-                                                        kind: AuditEventKind::RuntimeRefreshCompleted,
-                                                        pane_id: pane_id.clone(),
-                                                        severity: Severity::Safe,
-                                                        summary: format!(
-                                                            "{pane_id} {command_label} ({})",
-                                                            runtime_refresh_completion_label(
-                                                                send_outcome.captured_and_closed,
-                                                            )
-                                                        ),
-                                                        provider: Some(provider),
-                                                        role: Some(report.identity.identity.role),
-                                                    });
-                                                    notices.insert(
-                                                        0,
-                                                        SystemNotice {
-                                                            title: "runtime refresh sent".into(),
-                                                            body: runtime_refresh_notice_body(
-                                                                &pane_id,
-                                                                &command_label,
-                                                                active_only,
-                                                                one_at_a_time,
-                                                                send_outcome.captured_and_closed,
-                                                            ),
-                                                            severity: Severity::Good,
-                                                            source_kind: SourceKind::ProjectCanonical,
-                                                        },
-                                                    );
-                                                    last_poll = Instant::now() - poll;
-                                                }
-                                                Some((failed_cmd, e)) => {
-                                                    ctx.sink.record(AuditEvent {
-                                                        kind: AuditEventKind::RuntimeRefreshFailed,
-                                                        pane_id: pane_id.clone(),
-                                                        severity: Severity::Warning,
-                                                        summary: format!(
-                                                            "{pane_id} {failed_cmd} (send failed: {e})"
-                                                        ),
-                                                        provider: Some(provider),
-                                                        role: Some(report.identity.identity.role),
-                                                    });
-                                                    notices.insert(
-                                                        0,
-                                                        SystemNotice {
-                                                            title: "runtime refresh failed".into(),
-                                                            body: format!(
-                                                                "{pane_id} → `{failed_cmd}`: tmux error — {e}"
-                                                            ),
-                                                            severity: Severity::Warning,
-                                                            source_kind: SourceKind::ProjectCanonical,
-                                                        },
-                                                    );
-                                                }
-                                            }
-                                        }
-                                    }
+                                let outcome = handle_runtime_refresh_action(
+                                    &ctx.source,
+                                    &*ctx.sink,
+                                    selected,
+                                    ctx.config.actions.mode,
+                                    ctx.config.tmux.capture_lines,
+                                    &mut runtime_refresh_offsets,
+                                    &mut ctx.runtime_refresh_tail_overlays,
+                                );
+                                notices.insert(0, outcome.notice);
+                                if outcome.force_poll {
+                                    last_poll = Instant::now() - poll;
                                 }
                                 sync_dashboard_state(
                                     &notices,

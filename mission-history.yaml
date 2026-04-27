@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.10 prompt-send action extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.11 runtime-refresh action extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 92
-  latest_version: "1.16.10"
+  total_revisions: 93
+  latest_version: "1.16.11"
 
 timeline:
   - change_id: "initial"
@@ -8994,8 +8994,83 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.11-runtime-refresh-action-extraction"
+    semantic_version: "1.16.11"
+    change_sequence: 93
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving runtime-refresh TUI action
+      orchestration out of `src/main.rs`.
+    intent_ko: >
+      runtime-refresh TUI action orchestration을 `src/main.rs` 밖으로
+      옮겨 Phase C C1 분해를 계속한다.
+    decision: >
+      Expand `src/app/runtime_refresh.rs` beyond command/send/label
+      helpers with a TUI-facing action helper that handles selected-pane
+      validation, unavailable-provider notices, observe_only blocking,
+      request/completion/failure audit events, send/capture delegation,
+      and the force-poll signal returned to the live event loop. Keep
+      dashboard resynchronization and poll timestamp mutation in
+      `src/main.rs` because those remain local TUI-loop state.
+    decision_ko: >
+      command/send/label helper만 있던 `src/app/runtime_refresh.rs`에
+      TUI-facing action helper를 추가해 selected-pane validation,
+      unavailable-provider notice, observe_only blocking,
+      request/completion/failure audit event, send/capture delegation,
+      live event loop에 돌려주는 force-poll signal을 처리한다.
+      dashboard resync와 poll timestamp mutation은 local TUI-loop state라
+      `src/main.rs`에 남긴다.
+    triggered_by: "Continuation after the v1.16.10 prompt-send action extraction."
+    issue_or_context: >
+      The `u` key handler still contained the runtime-refresh orchestration
+      block: selected pane lookup, command availability checks, observe-only
+      audit, dispatch cycling, tmux send/capture, success/failure notices,
+      and poll forcing. The underlying command/send helpers already lived
+      in `app::runtime_refresh`, making this the next low-risk split.
+    changes:
+      added:
+        - "src/app/runtime_refresh.rs: `RuntimeRefreshActionOutcome`, `handle_runtime_refresh_action`, and 5 unit tests"
+      modified:
+        - "src/main.rs delegates `u` runtime-refresh handling to app::runtime_refresh"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.11"
+      removed:
+        - "inline runtime-refresh selected-pane / audit / send / notice block from src/main.rs"
+    changed_sections:
+      - "src/app/runtime_refresh.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Tenth Phase C C1 code slice exists outside main.rs"
+        - "runtime-refresh action paths are covered by direct unit tests"
+      modified:
+        - "main.rs no longer owns runtime-refresh notice/audit construction"
+      removed:
+        - "large inline `u` runtime-refresh key-handler block from the live event-loop module"
+    impact_scope:
+      code: "internal refactor only; no runtime-refresh keybinding, command list, cycling, send/capture, audit kind, notice wording, or poll-forcing behavior change intended"
+      tests: "552 total passed — 490 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+5 lib tests vs v1.16.10)"
+      ledger: "1 new timeline entry (sequence 93); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — the extracted helper preserves the existing `u` semantics and directly covers no selection, unavailable provider, observe_only blocked, success, and send failure paths."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.10 prompt-send action extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, once_report, and prompt_send_actions helper modules already extracted."
+  current_phase: "v1.16.11 runtime-refresh action extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, once_report, and prompt_send_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
