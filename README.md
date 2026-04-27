@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.14`; current canonical ledger: `v1.16.14`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.15`; current canonical ledger: `v1.16.15`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -90,7 +90,8 @@ v1.16.12 moves selected-alert command copy notices into
 `src/app/clipboard_actions.rs`; v1.16.13 moves target-picker
 open/key/mouse dispatch into `src/app/target_picker.rs`; v1.16.14
 moves dashboard Alerts/Panes selection key dispatch into
-`src/app/dashboard_state.rs`. The next C1 slices should keep thinning
+`src/app/dashboard_state.rs`; v1.16.15 moves dashboard mouse dispatch
+into `src/app/dashboard_state.rs`. The next C1 slices should keep thinning
 event-loop orchestration before control-mode adapter work.
 
 ## Quick start

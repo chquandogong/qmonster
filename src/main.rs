@@ -6,8 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::Context as _;
 use clap::Parser;
 use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
-    MouseEventKind,
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind,
 };
 use crossterm::{
     execute,
@@ -22,16 +21,14 @@ use qmonster::app::clipboard_actions::{
 };
 use qmonster::app::config::{QmonsterConfig, load_from_path};
 use qmonster::app::dashboard_state::{
-    AlertMouseClick, DashboardSelectionKeyView, DashboardSyncState, alert_key_at_index,
-    handle_dashboard_selection_key, refresh_alert_state, register_alert_double_click,
-    sync_alert_selection, sync_dashboard_state, sync_pane_selection, toggle_alert_severity_hide,
-    toggle_selected_alert_hide, update_pane_state_flashes,
+    AlertMouseClick, DashboardMouseAction, DashboardMouseView, DashboardSelectionKeyView,
+    DashboardSyncState, handle_dashboard_mouse, handle_dashboard_selection_key,
+    refresh_alert_state, sync_alert_selection, sync_dashboard_state, sync_pane_selection,
+    update_pane_state_flashes,
 };
 use qmonster::app::event_loop::{PaneReport, run_once, run_once_with_target};
 use qmonster::app::git_info::capture_repo_panel;
-use qmonster::app::keymap::{
-    FocusedPanel, list_row_at, move_selection, rect_contains, toggle_focus,
-};
+use qmonster::app::keymap::{FocusedPanel, toggle_focus};
 use qmonster::app::modal_state::{
     ScrollModalState, handle_scroll_modal_key, handle_scroll_modal_mouse,
 };
@@ -67,9 +64,8 @@ use qmonster::store::{
 use qmonster::tmux::polling::{PaneSource, PollingSource};
 use qmonster::tmux::types::WindowTarget;
 use qmonster::ui::dashboard::{
-    DashboardSplit, DashboardView, TargetPickerView, close_button_rect, dashboard_rects,
-    dashboard_split_from_row, git_modal_rects, help_modal_rects, render_dashboard,
-    version_badge_rect,
+    DashboardSplit, DashboardView, TargetPickerView, close_button_rect, git_modal_rects,
+    help_modal_rects, render_dashboard,
 };
 
 #[derive(Debug, Parser)]
@@ -847,180 +843,28 @@ where
                             continue;
                         }
 
-                        let rects = dashboard_rects(viewport, dashboard_split);
-                        match m.kind {
-                            MouseEventKind::ScrollUp => {
-                                if rect_contains(rects.alerts, m.column, m.row) {
-                                    focus = FocusedPanel::Alerts;
-                                    last_alert_click = None;
-                                    move_selection(
-                                        &mut alert_state,
-                                        qmonster::ui::alerts::alert_count(
-                                            &notices,
-                                            &last_reports,
-                                            &alert_hide_deadlines,
-                                            now,
-                                        ),
-                                        -1,
-                                    );
-                                } else if rect_contains(rects.panes, m.column, m.row) {
-                                    focus = FocusedPanel::Panes;
-                                    move_selection(&mut pane_state, last_reports.len(), -1);
-                                }
-                            }
-                            MouseEventKind::ScrollDown => {
-                                if rect_contains(rects.alerts, m.column, m.row) {
-                                    focus = FocusedPanel::Alerts;
-                                    move_selection(
-                                        &mut alert_state,
-                                        qmonster::ui::alerts::alert_count(
-                                            &notices,
-                                            &last_reports,
-                                            &alert_hide_deadlines,
-                                            now,
-                                        ),
-                                        1,
-                                    );
-                                } else if rect_contains(rects.panes, m.column, m.row) {
-                                    focus = FocusedPanel::Panes;
-                                    last_alert_click = None;
-                                    move_selection(&mut pane_state, last_reports.len(), 1);
-                                }
-                            }
-                            MouseEventKind::Down(MouseButton::Left) => {
-                                dashboard_split_dragging = false;
-                                if rect_contains(rects.divider, m.column, m.row) {
-                                    dashboard_split = dashboard_split_from_row(viewport, m.row);
-                                    dashboard_split_dragging = true;
-                                    last_alert_click = None;
-                                } else if rect_contains(
-                                    version_badge_rect(rects.footer),
-                                    m.column,
-                                    m.row,
-                                ) {
-                                    let panel = capture_repo_panel();
-                                    git_modal.open(panel.title, panel.lines);
-                                } else if let Some(row) = list_row_at(rects.alerts, m) {
-                                    focus = FocusedPanel::Alerts;
-                                    let alerts_inner = rects.alerts.inner(Margin {
-                                        vertical: 1,
-                                        horizontal: 1,
-                                    });
-                                    if row == 0 {
-                                        last_alert_click = None;
-                                        if let Some(severity) =
-                                            qmonster::ui::alerts::bulk_hide_severity_at_column(
-                                                qmonster::ui::alerts::AlertView {
-                                                    notices: &notices,
-                                                    reports: &last_reports,
-                                                    fresh_alerts: &fresh_alerts,
-                                                    alert_times: &alert_times,
-                                                    hidden_until: &alert_hide_deadlines,
-                                                    now,
-                                                    target_label: &target,
-                                                    focused: true,
-                                                },
-                                                m.column.saturating_sub(alerts_inner.x),
-                                            )
-                                        {
-                                            toggle_alert_severity_hide(
-                                                &mut alert_hide_deadlines,
-                                                &notices,
-                                                &last_reports,
-                                                now,
-                                                severity,
-                                            );
-                                            sync_alert_selection(
-                                                &mut alert_state,
-                                                &notices,
-                                                &last_reports,
-                                                &alert_hide_deadlines,
-                                                now,
-                                            );
-                                        }
-                                    } else if let Some(hit) = qmonster::ui::alerts::alert_hit_at_row(
-                                        &alert_state,
-                                        qmonster::ui::alerts::AlertView {
-                                            notices: &notices,
-                                            reports: &last_reports,
-                                            fresh_alerts: &fresh_alerts,
-                                            alert_times: &alert_times,
-                                            hidden_until: &alert_hide_deadlines,
-                                            now,
-                                            target_label: &target,
-                                            focused: true,
-                                        },
-                                        alerts_inner.width.saturating_sub(3) as usize,
-                                        row.saturating_sub(1),
-                                    ) {
-                                        alert_state.select(Some(hit.index));
-                                        if hit.dismiss {
-                                            last_alert_click = None;
-                                            toggle_selected_alert_hide(
-                                                &mut alert_hide_deadlines,
-                                                &alert_state,
-                                                &notices,
-                                                &last_reports,
-                                                now,
-                                            );
-                                            sync_alert_selection(
-                                                &mut alert_state,
-                                                &notices,
-                                                &last_reports,
-                                                &alert_hide_deadlines,
-                                                now,
-                                            );
-                                        } else if let Some(key) = alert_key_at_index(
-                                            &notices,
-                                            &last_reports,
-                                            &alert_hide_deadlines,
-                                            now,
-                                            hit.index,
-                                        ) && register_alert_double_click(
-                                            &mut last_alert_click,
-                                            &key,
-                                            now,
-                                        ) {
-                                            toggle_selected_alert_hide(
-                                                &mut alert_hide_deadlines,
-                                                &alert_state,
-                                                &notices,
-                                                &last_reports,
-                                                now,
-                                            );
-                                            sync_alert_selection(
-                                                &mut alert_state,
-                                                &notices,
-                                                &last_reports,
-                                                &alert_hide_deadlines,
-                                                now,
-                                            );
-                                        }
-                                    }
-                                } else if let Some(row) = list_row_at(rects.panes, m) {
-                                    focus = FocusedPanel::Panes;
-                                    last_alert_click = None;
-                                    if let Some(idx) = qmonster::ui::panels::pane_index_at_row(
-                                        &last_reports,
-                                        &pane_state,
-                                        row,
-                                    ) {
-                                        pane_state.select(Some(idx));
-                                    }
-                                } else {
-                                    last_alert_click = None;
-                                }
-                            }
-                            MouseEventKind::Drag(MouseButton::Left) if dashboard_split_dragging => {
-                                dashboard_split = dashboard_split_from_row(viewport, m.row);
-                                last_alert_click = None;
-                            }
-                            MouseEventKind::Up(MouseButton::Left) if dashboard_split_dragging => {
-                                dashboard_split = dashboard_split_from_row(viewport, m.row);
-                                dashboard_split_dragging = false;
-                                last_alert_click = None;
-                            }
-                            _ => {}
+                        let action = handle_dashboard_mouse(
+                            viewport,
+                            m,
+                            DashboardMouseView {
+                                focus: &mut focus,
+                                split: &mut dashboard_split,
+                                split_dragging: &mut dashboard_split_dragging,
+                                alert_state: &mut alert_state,
+                                pane_state: &mut pane_state,
+                                last_alert_click: &mut last_alert_click,
+                                alert_hide_deadlines: &mut alert_hide_deadlines,
+                                notices: &notices,
+                                reports: &last_reports,
+                                fresh_alerts: &fresh_alerts,
+                                alert_times: &alert_times,
+                                target_label: &target,
+                                now,
+                            },
+                        );
+                        if action == DashboardMouseAction::OpenGitModal {
+                            let panel = capture_repo_panel();
+                            git_modal.open(panel.title, panel.lines);
                         }
                     }
                     _ => {}

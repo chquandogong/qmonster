@@ -2,16 +2,21 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use chrono::Local;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::Margin;
 use ratatui::widgets::ListState;
 
 use crate::app::event_loop::PaneReport;
 use crate::app::keymap::{
-    FocusedPanel, ScrollDir, move_selection, page_selection, select_first, select_last,
+    FocusedPanel, ScrollDir, list_row_at, move_selection, page_selection, rect_contains,
+    select_first, select_last,
 };
 use crate::app::system_notice::SystemNotice;
 use crate::domain::recommendation::Severity;
 use crate::domain::signal::IdleCause;
+use crate::ui::dashboard::{
+    DashboardSplit, dashboard_rects, dashboard_split_from_row, version_badge_rect,
+};
 
 #[derive(Debug, Clone)]
 pub struct AlertMouseClick {
@@ -38,6 +43,28 @@ pub struct DashboardSelectionKeyView<'a> {
     pub reports: &'a [PaneReport],
     pub alert_hide_deadlines: &'a mut HashMap<String, Instant>,
     pub now: Instant,
+}
+
+pub struct DashboardMouseView<'a> {
+    pub focus: &'a mut FocusedPanel,
+    pub split: &'a mut DashboardSplit,
+    pub split_dragging: &'a mut bool,
+    pub alert_state: &'a mut ListState,
+    pub pane_state: &'a mut ListState,
+    pub last_alert_click: &'a mut Option<AlertMouseClick>,
+    pub alert_hide_deadlines: &'a mut HashMap<String, Instant>,
+    pub notices: &'a [SystemNotice],
+    pub reports: &'a [PaneReport],
+    pub fresh_alerts: &'a HashSet<String>,
+    pub alert_times: &'a HashMap<String, String>,
+    pub target_label: &'a str,
+    pub now: Instant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DashboardMouseAction {
+    None,
+    OpenGitModal,
 }
 
 pub fn handle_dashboard_selection_key(view: DashboardSelectionKeyView<'_>, key: KeyCode) -> bool {
@@ -158,6 +185,181 @@ pub fn handle_dashboard_selection_key(view: DashboardSelectionKeyView<'_>, key: 
             true
         }
         _ => false,
+    }
+}
+
+pub fn handle_dashboard_mouse(
+    viewport: ratatui::layout::Rect,
+    event: MouseEvent,
+    view: DashboardMouseView<'_>,
+) -> DashboardMouseAction {
+    let rects = dashboard_rects(viewport, *view.split);
+    match event.kind {
+        MouseEventKind::ScrollUp => {
+            if rect_contains(rects.alerts, event.column, event.row) {
+                *view.focus = FocusedPanel::Alerts;
+                *view.last_alert_click = None;
+                let total = crate::ui::alerts::alert_count(
+                    view.notices,
+                    view.reports,
+                    view.alert_hide_deadlines,
+                    view.now,
+                );
+                move_selection(view.alert_state, total, -1);
+            } else if rect_contains(rects.panes, event.column, event.row) {
+                *view.focus = FocusedPanel::Panes;
+                move_selection(view.pane_state, view.reports.len(), -1);
+            }
+            DashboardMouseAction::None
+        }
+        MouseEventKind::ScrollDown => {
+            if rect_contains(rects.alerts, event.column, event.row) {
+                *view.focus = FocusedPanel::Alerts;
+                let total = crate::ui::alerts::alert_count(
+                    view.notices,
+                    view.reports,
+                    view.alert_hide_deadlines,
+                    view.now,
+                );
+                move_selection(view.alert_state, total, 1);
+            } else if rect_contains(rects.panes, event.column, event.row) {
+                *view.focus = FocusedPanel::Panes;
+                *view.last_alert_click = None;
+                move_selection(view.pane_state, view.reports.len(), 1);
+            }
+            DashboardMouseAction::None
+        }
+        MouseEventKind::Down(MouseButton::Left) => {
+            *view.split_dragging = false;
+            if rect_contains(rects.divider, event.column, event.row) {
+                *view.split = dashboard_split_from_row(viewport, event.row);
+                *view.split_dragging = true;
+                *view.last_alert_click = None;
+                return DashboardMouseAction::None;
+            }
+            if rect_contains(version_badge_rect(rects.footer), event.column, event.row) {
+                return DashboardMouseAction::OpenGitModal;
+            }
+            if let Some(row) = list_row_at(rects.alerts, event) {
+                *view.focus = FocusedPanel::Alerts;
+                let alerts_inner = rects.alerts.inner(Margin {
+                    vertical: 1,
+                    horizontal: 1,
+                });
+                if row == 0 {
+                    *view.last_alert_click = None;
+                    if let Some(severity) = crate::ui::alerts::bulk_hide_severity_at_column(
+                        crate::ui::alerts::AlertView {
+                            notices: view.notices,
+                            reports: view.reports,
+                            fresh_alerts: view.fresh_alerts,
+                            alert_times: view.alert_times,
+                            hidden_until: view.alert_hide_deadlines,
+                            now: view.now,
+                            target_label: view.target_label,
+                            focused: true,
+                        },
+                        event.column.saturating_sub(alerts_inner.x),
+                    ) {
+                        toggle_alert_severity_hide(
+                            view.alert_hide_deadlines,
+                            view.notices,
+                            view.reports,
+                            view.now,
+                            severity,
+                        );
+                        sync_alert_selection(
+                            view.alert_state,
+                            view.notices,
+                            view.reports,
+                            view.alert_hide_deadlines,
+                            view.now,
+                        );
+                    }
+                } else if let Some(hit) = crate::ui::alerts::alert_hit_at_row(
+                    view.alert_state,
+                    crate::ui::alerts::AlertView {
+                        notices: view.notices,
+                        reports: view.reports,
+                        fresh_alerts: view.fresh_alerts,
+                        alert_times: view.alert_times,
+                        hidden_until: view.alert_hide_deadlines,
+                        now: view.now,
+                        target_label: view.target_label,
+                        focused: true,
+                    },
+                    alerts_inner.width.saturating_sub(3) as usize,
+                    row.saturating_sub(1),
+                ) {
+                    view.alert_state.select(Some(hit.index));
+                    if hit.dismiss {
+                        *view.last_alert_click = None;
+                        toggle_selected_alert_hide(
+                            view.alert_hide_deadlines,
+                            view.alert_state,
+                            view.notices,
+                            view.reports,
+                            view.now,
+                        );
+                        sync_alert_selection(
+                            view.alert_state,
+                            view.notices,
+                            view.reports,
+                            view.alert_hide_deadlines,
+                            view.now,
+                        );
+                    } else if let Some(key) = alert_key_at_index(
+                        view.notices,
+                        view.reports,
+                        view.alert_hide_deadlines,
+                        view.now,
+                        hit.index,
+                    ) && register_alert_double_click(
+                        view.last_alert_click,
+                        &key,
+                        view.now,
+                    ) {
+                        toggle_selected_alert_hide(
+                            view.alert_hide_deadlines,
+                            view.alert_state,
+                            view.notices,
+                            view.reports,
+                            view.now,
+                        );
+                        sync_alert_selection(
+                            view.alert_state,
+                            view.notices,
+                            view.reports,
+                            view.alert_hide_deadlines,
+                            view.now,
+                        );
+                    }
+                }
+            } else if let Some(row) = list_row_at(rects.panes, event) {
+                *view.focus = FocusedPanel::Panes;
+                *view.last_alert_click = None;
+                if let Some(idx) =
+                    crate::ui::panels::pane_index_at_row(view.reports, view.pane_state, row)
+                {
+                    view.pane_state.select(Some(idx));
+                }
+            } else {
+                *view.last_alert_click = None;
+            }
+            DashboardMouseAction::None
+        }
+        MouseEventKind::Drag(MouseButton::Left) if *view.split_dragging => {
+            *view.split = dashboard_split_from_row(viewport, event.row);
+            *view.last_alert_click = None;
+            DashboardMouseAction::None
+        }
+        MouseEventKind::Up(MouseButton::Left) if *view.split_dragging => {
+            *view.split = dashboard_split_from_row(viewport, event.row);
+            *view.split_dragging = false;
+            *view.last_alert_click = None;
+            DashboardMouseAction::None
+        }
+        _ => DashboardMouseAction::None,
     }
 }
 
@@ -356,6 +558,8 @@ mod tests {
     use crate::domain::origin::SourceKind;
     use crate::domain::recommendation::Recommendation;
     use crate::domain::signal::SignalSet;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::layout::Rect;
 
     fn base_report(recs: Vec<Recommendation>) -> PaneReport {
         PaneReport {
@@ -443,6 +647,102 @@ mod tests {
 
         assert!(handled);
         assert!(!hidden.is_empty());
+    }
+
+    #[test]
+    fn dashboard_mouse_pane_click_selects_pane() {
+        let reports = vec![base_report(vec![]), base_report(vec![])];
+        let mut focus = FocusedPanel::Alerts;
+        let mut split = DashboardSplit::default();
+        let mut dragging = false;
+        let mut alert_state = ListState::default();
+        let mut pane_state = ListState::default();
+        let mut last_click = None;
+        let mut hidden = HashMap::new();
+        let fresh = HashSet::new();
+        let times = HashMap::new();
+        pane_state.select(Some(1));
+        let viewport = Rect::new(0, 0, 100, 40);
+        let rects = dashboard_rects(viewport, split);
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: rects.panes.x + 1,
+            row: rects.panes.y + 1,
+            modifiers: KeyModifiers::empty(),
+        };
+
+        let action = handle_dashboard_mouse(
+            viewport,
+            event,
+            DashboardMouseView {
+                focus: &mut focus,
+                split: &mut split,
+                split_dragging: &mut dragging,
+                alert_state: &mut alert_state,
+                pane_state: &mut pane_state,
+                last_alert_click: &mut last_click,
+                alert_hide_deadlines: &mut hidden,
+                notices: &[],
+                reports: &reports,
+                fresh_alerts: &fresh,
+                alert_times: &times,
+                target_label: "all sessions",
+                now: Instant::now(),
+            },
+        );
+
+        assert_eq!(action, DashboardMouseAction::None);
+        assert_eq!(focus, FocusedPanel::Panes);
+        assert_eq!(pane_state.selected(), Some(0));
+    }
+
+    #[test]
+    fn dashboard_mouse_divider_drag_starts_resize() {
+        let reports = vec![base_report(vec![])];
+        let mut focus = FocusedPanel::Alerts;
+        let mut split = DashboardSplit::default();
+        let mut dragging = false;
+        let mut alert_state = ListState::default();
+        let mut pane_state = ListState::default();
+        let mut last_click = Some(AlertMouseClick {
+            key: "alert".into(),
+            at: Instant::now(),
+        });
+        let mut hidden = HashMap::new();
+        let fresh = HashSet::new();
+        let times = HashMap::new();
+        let viewport = Rect::new(0, 0, 100, 40);
+        let rects = dashboard_rects(viewport, split);
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: rects.divider.x,
+            row: rects.divider.y,
+            modifiers: KeyModifiers::empty(),
+        };
+
+        let action = handle_dashboard_mouse(
+            viewport,
+            event,
+            DashboardMouseView {
+                focus: &mut focus,
+                split: &mut split,
+                split_dragging: &mut dragging,
+                alert_state: &mut alert_state,
+                pane_state: &mut pane_state,
+                last_alert_click: &mut last_click,
+                alert_hide_deadlines: &mut hidden,
+                notices: &[],
+                reports: &reports,
+                fresh_alerts: &fresh,
+                alert_times: &times,
+                target_label: "all sessions",
+                now: Instant::now(),
+            },
+        );
+
+        assert_eq!(action, DashboardMouseAction::None);
+        assert!(dragging);
+        assert!(last_click.is_none());
     }
 
     #[test]
