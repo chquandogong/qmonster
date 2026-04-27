@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.40 tmux source module split)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.41 startup source factory)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -142,6 +142,8 @@ v1.16.39 prints the active tmux source mode in `--once` startup output,
 using the same `polling` / `control_mode` spelling accepted by config.
 v1.16.40 moves the `TmuxSource` dispatch enum into `src/tmux/source.rs`,
 leaving `tmux/mod.rs` as module wiring and re-exports.
+v1.16.41 moves startup tmux source construction into
+`src/app/tmux_source.rs`, keeping `startup.rs` focused on runtime assembly.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

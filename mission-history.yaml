@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.40 tmux source module split."
+  mission_title: "Qmonster v0.5.0 — v1.16.41 startup source factory."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 122
-  latest_version: "1.16.40"
+  total_revisions: 123
+  latest_version: "1.16.41"
 
 timeline:
   - change_id: "initial"
@@ -11092,8 +11092,79 @@ timeline:
     follow_up:
       - "Continue C2: add remaining transport-readiness hardening before any default switch."
 
+  - change_id: "qmonster-v1.16.41-startup-source-factory"
+    semantic_version: "1.16.41"
+    change_sequence: 123
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: keep progressing C2 and close each work item with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C2 startup decomposition"
+    persistence: "permanent"
+    intent: >
+      Move tmux transport construction out of startup so startup only
+      assembles runtime dependencies.
+    intent_ko: >
+      startup이 runtime dependency 조립에 집중하도록 tmux transport 생성을
+      별도 factory로 분리한다.
+    decision: >
+      Add `src/app/tmux_source.rs` with `build_tmux_source(config)`. The
+      factory maps `[tmux] source = "polling"` to `PollingSource` and
+      `"control_mode"` to `ControlModeSource`, preserving the existing
+      control-mode attach error message. Startup imports and calls this
+      factory instead of owning source selection directly.
+    decision_ko: >
+      `src/app/tmux_source.rs`에 `build_tmux_source(config)`를 추가한다.
+      factory는 `[tmux] source = "polling"`을 `PollingSource`로,
+      `"control_mode"`를 `ControlModeSource`로 매핑하고 기존 control-mode
+      attach 오류 메시지를 유지한다. startup은 source selection을 직접
+      소유하지 않고 이 factory를 호출한다.
+    triggered_by: "Follow-up after v1.16.40 moved `TmuxSource` dispatch into its own tmux module."
+    issue_or_context: >
+      C2 default-readiness work benefits from a visible app-layer source
+      factory boundary, separate from config/root/audit/pricing/version
+      startup assembly.
+    changes:
+      added:
+        - "src/app/tmux_source.rs"
+        - "unit test covering polling config -> polling source factory path"
+      modified:
+        - "src/app/startup.rs now imports and calls the factory"
+        - "src/app/mod.rs exports the new app module"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.41"
+      removed:
+        - "private `build_tmux_source` function from `src/app/startup.rs`"
+    changed_sections:
+      - "src/app/tmux_source.rs"
+      - "src/app/startup.rs"
+      - "src/app/mod.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "tmux source construction has a dedicated app-layer factory"
+        - "factory's polling path is unit-covered without touching control-mode"
+      modified:
+        - "all-target test count increases to 593"
+      removed: []
+    impact_scope:
+      runtime: "none intended — same config mapping and error text, moved behind factory"
+      tests: "593 total passed — 533 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; repeated default and all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 123); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining default-readiness checks before any source default switch."
+    breaking: false
+    risk: "low — function move with one polling-path unit test and unchanged public behavior."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add remaining transport-readiness hardening before any default switch."
+
 evolution_summary:
-  current_phase: "v1.16.40 tmux source module split — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  current_phase: "v1.16.41 startup source factory — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
   next_phase: "Continue Phase C C2 with additional control-mode default-readiness hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
