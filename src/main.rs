@@ -22,15 +22,15 @@ use qmonster::app::clipboard_actions::{
 };
 use qmonster::app::config::{QmonsterConfig, load_from_path};
 use qmonster::app::dashboard_state::{
-    AlertMouseClick, DashboardSyncState, alert_key_at_index, refresh_alert_state,
-    register_alert_double_click, sync_alert_selection, sync_dashboard_state, sync_pane_selection,
-    toggle_alert_severity_hide, toggle_selected_alert_hide, update_pane_state_flashes,
+    AlertMouseClick, DashboardSelectionKeyView, DashboardSyncState, alert_key_at_index,
+    handle_dashboard_selection_key, refresh_alert_state, register_alert_double_click,
+    sync_alert_selection, sync_dashboard_state, sync_pane_selection, toggle_alert_severity_hide,
+    toggle_selected_alert_hide, update_pane_state_flashes,
 };
 use qmonster::app::event_loop::{PaneReport, run_once, run_once_with_target};
 use qmonster::app::git_info::capture_repo_panel;
 use qmonster::app::keymap::{
-    FocusedPanel, ScrollDir, list_row_at, move_selection, page_selection, rect_contains,
-    select_first, select_last, toggle_focus,
+    FocusedPanel, list_row_at, move_selection, rect_contains, toggle_focus,
 };
 use qmonster::app::modal_state::{
     ScrollModalState, handle_scroll_modal_key, handle_scroll_modal_mouse,
@@ -580,6 +580,22 @@ where
                             continue;
                         }
 
+                        let now = Instant::now();
+                        if handle_dashboard_selection_key(
+                            DashboardSelectionKeyView {
+                                focus,
+                                alert_state: &mut alert_state,
+                                pane_state: &mut pane_state,
+                                notices: &notices,
+                                reports: &last_reports,
+                                alert_hide_deadlines: &mut alert_hide_deadlines,
+                                now,
+                            },
+                            k.code,
+                        ) {
+                            continue;
+                        }
+
                         match k.code {
                             KeyCode::Char('q') | KeyCode::Esc => break,
                             KeyCode::Tab => focus = toggle_focus(focus),
@@ -591,124 +607,6 @@ where
                                 help_modal.open("", Vec::new());
                             }
                             KeyCode::Char('S') => settings_overlay.open(),
-                            KeyCode::Up | KeyCode::Char('k') => match focus {
-                                FocusedPanel::Alerts => move_selection(
-                                    &mut alert_state,
-                                    qmonster::ui::alerts::alert_count(
-                                        &notices,
-                                        &last_reports,
-                                        &alert_hide_deadlines,
-                                        Instant::now(),
-                                    ),
-                                    -1,
-                                ),
-                                FocusedPanel::Panes => {
-                                    move_selection(&mut pane_state, last_reports.len(), -1);
-                                }
-                            },
-                            KeyCode::Down | KeyCode::Char('j') => match focus {
-                                FocusedPanel::Alerts => move_selection(
-                                    &mut alert_state,
-                                    qmonster::ui::alerts::alert_count(
-                                        &notices,
-                                        &last_reports,
-                                        &alert_hide_deadlines,
-                                        Instant::now(),
-                                    ),
-                                    1,
-                                ),
-                                FocusedPanel::Panes => {
-                                    move_selection(&mut pane_state, last_reports.len(), 1);
-                                }
-                            },
-                            KeyCode::PageUp => match focus {
-                                FocusedPanel::Alerts => page_selection(
-                                    &mut alert_state,
-                                    qmonster::ui::alerts::alert_count(
-                                        &notices,
-                                        &last_reports,
-                                        &alert_hide_deadlines,
-                                        Instant::now(),
-                                    ),
-                                    6,
-                                    ScrollDir::Up,
-                                ),
-                                FocusedPanel::Panes => {
-                                    page_selection(
-                                        &mut pane_state,
-                                        last_reports.len(),
-                                        3,
-                                        ScrollDir::Up,
-                                    );
-                                }
-                            },
-                            KeyCode::PageDown => match focus {
-                                FocusedPanel::Alerts => page_selection(
-                                    &mut alert_state,
-                                    qmonster::ui::alerts::alert_count(
-                                        &notices,
-                                        &last_reports,
-                                        &alert_hide_deadlines,
-                                        Instant::now(),
-                                    ),
-                                    6,
-                                    ScrollDir::Down,
-                                ),
-                                FocusedPanel::Panes => {
-                                    page_selection(
-                                        &mut pane_state,
-                                        last_reports.len(),
-                                        3,
-                                        ScrollDir::Down,
-                                    );
-                                }
-                            },
-                            KeyCode::Home => match focus {
-                                FocusedPanel::Alerts => select_first(
-                                    &mut alert_state,
-                                    qmonster::ui::alerts::alert_count(
-                                        &notices,
-                                        &last_reports,
-                                        &alert_hide_deadlines,
-                                        Instant::now(),
-                                    ),
-                                ),
-                                FocusedPanel::Panes => {
-                                    select_first(&mut pane_state, last_reports.len())
-                                }
-                            },
-                            KeyCode::End => match focus {
-                                FocusedPanel::Alerts => select_last(
-                                    &mut alert_state,
-                                    qmonster::ui::alerts::alert_count(
-                                        &notices,
-                                        &last_reports,
-                                        &alert_hide_deadlines,
-                                        Instant::now(),
-                                    ),
-                                ),
-                                FocusedPanel::Panes => {
-                                    select_last(&mut pane_state, last_reports.len())
-                                }
-                            },
-                            KeyCode::Enter | KeyCode::Char(' ')
-                                if focus == FocusedPanel::Alerts =>
-                            {
-                                toggle_selected_alert_hide(
-                                    &mut alert_hide_deadlines,
-                                    &alert_state,
-                                    &notices,
-                                    &last_reports,
-                                    Instant::now(),
-                                );
-                                sync_alert_selection(
-                                    &mut alert_state,
-                                    &notices,
-                                    &last_reports,
-                                    &alert_hide_deadlines,
-                                    Instant::now(),
-                                );
-                            }
                             KeyCode::Char('t') => {
                                 open_target_picker(
                                     &ctx.source,

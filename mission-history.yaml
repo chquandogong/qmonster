@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.13 target-picker action extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.14 dashboard selection key extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 95
-  latest_version: "1.16.13"
+  total_revisions: 96
+  latest_version: "1.16.14"
 
 timeline:
   - change_id: "initial"
@@ -9211,8 +9211,77 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.14-dashboard-selection-key-extraction"
+    semantic_version: "1.16.14"
+    change_sequence: 96
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving dashboard Alerts/Panes selection key
+      dispatch out of `src/main.rs`.
+    intent_ko: >
+      dashboard Alerts/Panes selection key dispatch를 `src/main.rs` 밖으로
+      옮겨 Phase C C1 분해를 계속한다.
+    decision: >
+      Expand `src/app/dashboard_state.rs` with `DashboardSelectionKeyView`
+      and `handle_dashboard_selection_key` for Up/Down, PgUp/PgDn,
+      Home/End, and selected-alert Enter/Space hide toggling. Keep global
+      commands (`q`, `t`, `r`, `s`, `c`, `u`, `y`, `p`, `d`) and modal
+      routing in `src/main.rs`.
+    decision_ko: >
+      Up/Down, PgUp/PgDn, Home/End, selected-alert Enter/Space hide toggle을
+      처리하는 `DashboardSelectionKeyView`와
+      `handle_dashboard_selection_key`를 `src/app/dashboard_state.rs`에
+      추가한다. global command와 modal routing은 `src/main.rs`에 남긴다.
+    triggered_by: "Continuation after the v1.16.13 target-picker action extraction."
+    issue_or_context: >
+      After target-picker dispatch moved out, the main event-loop key
+      match still carried a long Alerts/Panes selection block that only
+      mutated list selection or selected-alert hide state.
+    changes:
+      added:
+        - "src/app/dashboard_state.rs: DashboardSelectionKeyView and handle_dashboard_selection_key"
+        - "src/app/dashboard_state.rs: 2 direct unit tests for pane selection movement and selected-alert hide toggle"
+      modified:
+        - "src/main.rs delegates dashboard selection keys to app::dashboard_state before global command dispatch"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.14"
+      removed:
+        - "inline Alerts/Panes selection key dispatch branches from src/main.rs"
+    changed_sections:
+      - "src/app/dashboard_state.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Thirteenth Phase C C1 code slice exists outside main.rs"
+        - "dashboard selection key paths are covered by direct unit tests"
+      modified:
+        - "main.rs no longer owns Up/Down, PgUp/PgDn, Home/End, or selected-alert Enter/Space dispatch"
+      removed:
+        - "roughly 100 lines of dashboard selection key handling from the live entry module"
+    impact_scope:
+      code: "internal refactor only; no dashboard navigation keybinding, selection clamping, alert hide toggle, or global command behavior change intended"
+      tests: "561 total passed — 499 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+2 lib tests vs v1.16.13)"
+      ledger: "1 new timeline entry (sequence 96); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — helper preserves existing dashboard selection semantics and directly covers pane movement plus selected-alert hide toggling."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.13 target-picker action extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
+  current_phase: "v1.16.14 dashboard selection key extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

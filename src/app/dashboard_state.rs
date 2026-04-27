@@ -2,9 +2,13 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use chrono::Local;
+use crossterm::event::KeyCode;
 use ratatui::widgets::ListState;
 
 use crate::app::event_loop::PaneReport;
+use crate::app::keymap::{
+    FocusedPanel, ScrollDir, move_selection, page_selection, select_first, select_last,
+};
 use crate::app::system_notice::SystemNotice;
 use crate::domain::recommendation::Severity;
 use crate::domain::signal::IdleCause;
@@ -24,6 +28,137 @@ pub struct DashboardSyncState<'a> {
     pub fresh_alerts: &'a mut HashSet<String>,
     pub alert_times: &'a mut HashMap<String, String>,
     pub alert_hide_deadlines: &'a mut HashMap<String, Instant>,
+}
+
+pub struct DashboardSelectionKeyView<'a> {
+    pub focus: FocusedPanel,
+    pub alert_state: &'a mut ListState,
+    pub pane_state: &'a mut ListState,
+    pub notices: &'a [SystemNotice],
+    pub reports: &'a [PaneReport],
+    pub alert_hide_deadlines: &'a mut HashMap<String, Instant>,
+    pub now: Instant,
+}
+
+pub fn handle_dashboard_selection_key(view: DashboardSelectionKeyView<'_>, key: KeyCode) -> bool {
+    match key {
+        KeyCode::Up | KeyCode::Char('k') => {
+            match view.focus {
+                FocusedPanel::Alerts => {
+                    let total = crate::ui::alerts::alert_count(
+                        view.notices,
+                        view.reports,
+                        view.alert_hide_deadlines,
+                        view.now,
+                    );
+                    move_selection(view.alert_state, total, -1);
+                }
+                FocusedPanel::Panes => {
+                    move_selection(view.pane_state, view.reports.len(), -1);
+                }
+            }
+            true
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            match view.focus {
+                FocusedPanel::Alerts => {
+                    let total = crate::ui::alerts::alert_count(
+                        view.notices,
+                        view.reports,
+                        view.alert_hide_deadlines,
+                        view.now,
+                    );
+                    move_selection(view.alert_state, total, 1);
+                }
+                FocusedPanel::Panes => {
+                    move_selection(view.pane_state, view.reports.len(), 1);
+                }
+            }
+            true
+        }
+        KeyCode::PageUp => {
+            match view.focus {
+                FocusedPanel::Alerts => {
+                    let total = crate::ui::alerts::alert_count(
+                        view.notices,
+                        view.reports,
+                        view.alert_hide_deadlines,
+                        view.now,
+                    );
+                    page_selection(view.alert_state, total, 6, ScrollDir::Up);
+                }
+                FocusedPanel::Panes => {
+                    page_selection(view.pane_state, view.reports.len(), 3, ScrollDir::Up);
+                }
+            }
+            true
+        }
+        KeyCode::PageDown => {
+            match view.focus {
+                FocusedPanel::Alerts => {
+                    let total = crate::ui::alerts::alert_count(
+                        view.notices,
+                        view.reports,
+                        view.alert_hide_deadlines,
+                        view.now,
+                    );
+                    page_selection(view.alert_state, total, 6, ScrollDir::Down);
+                }
+                FocusedPanel::Panes => {
+                    page_selection(view.pane_state, view.reports.len(), 3, ScrollDir::Down);
+                }
+            }
+            true
+        }
+        KeyCode::Home => {
+            match view.focus {
+                FocusedPanel::Alerts => {
+                    let total = crate::ui::alerts::alert_count(
+                        view.notices,
+                        view.reports,
+                        view.alert_hide_deadlines,
+                        view.now,
+                    );
+                    select_first(view.alert_state, total);
+                }
+                FocusedPanel::Panes => select_first(view.pane_state, view.reports.len()),
+            }
+            true
+        }
+        KeyCode::End => {
+            match view.focus {
+                FocusedPanel::Alerts => {
+                    let total = crate::ui::alerts::alert_count(
+                        view.notices,
+                        view.reports,
+                        view.alert_hide_deadlines,
+                        view.now,
+                    );
+                    select_last(view.alert_state, total);
+                }
+                FocusedPanel::Panes => select_last(view.pane_state, view.reports.len()),
+            }
+            true
+        }
+        KeyCode::Enter | KeyCode::Char(' ') if view.focus == FocusedPanel::Alerts => {
+            toggle_selected_alert_hide(
+                view.alert_hide_deadlines,
+                view.alert_state,
+                view.notices,
+                view.reports,
+                view.now,
+            );
+            sync_alert_selection(
+                view.alert_state,
+                view.notices,
+                view.reports,
+                view.alert_hide_deadlines,
+                view.now,
+            );
+            true
+        }
+        _ => false,
+    }
 }
 
 pub fn sync_pane_selection(state: &mut ListState, pane_count: usize) {
@@ -247,6 +382,67 @@ mod tests {
             idle_state: None,
             idle_state_entered_at: None,
         }
+    }
+
+    #[test]
+    fn dashboard_selection_key_moves_pane_selection() {
+        let reports = vec![base_report(vec![]), base_report(vec![])];
+        let mut alert_state = ListState::default();
+        let mut pane_state = ListState::default();
+        let mut hidden = HashMap::new();
+        pane_state.select(Some(0));
+
+        let handled = handle_dashboard_selection_key(
+            DashboardSelectionKeyView {
+                focus: FocusedPanel::Panes,
+                alert_state: &mut alert_state,
+                pane_state: &mut pane_state,
+                notices: &[],
+                reports: &reports,
+                alert_hide_deadlines: &mut hidden,
+                now: Instant::now(),
+            },
+            KeyCode::Down,
+        );
+
+        assert!(handled);
+        assert_eq!(pane_state.selected(), Some(1));
+    }
+
+    #[test]
+    fn dashboard_selection_key_toggles_selected_alert_hide() {
+        let rec = Recommendation {
+            action: "notify-input-wait",
+            reason: "waiting".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let reports = vec![base_report(vec![rec])];
+        let mut alert_state = ListState::default();
+        let mut pane_state = ListState::default();
+        let mut hidden = HashMap::new();
+        alert_state.select(Some(0));
+
+        let handled = handle_dashboard_selection_key(
+            DashboardSelectionKeyView {
+                focus: FocusedPanel::Alerts,
+                alert_state: &mut alert_state,
+                pane_state: &mut pane_state,
+                notices: &[],
+                reports: &reports,
+                alert_hide_deadlines: &mut hidden,
+                now: Instant::now(),
+            },
+            KeyCode::Enter,
+        );
+
+        assert!(handled);
+        assert!(!hidden.is_empty());
     }
 
     #[test]

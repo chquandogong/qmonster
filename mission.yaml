@@ -1,6 +1,6 @@
 mission:
-  version: "1.16.13"
-  title: "Qmonster v0.5.0 — v1.16.13 target-picker action extraction. Continues Phase C C1 by moving target-picker open/key/mouse dispatch from `src/main.rs` into `src/app/target_picker.rs`, while preserving the v1.16.12 clipboard split."
+  version: "1.16.14"
+  title: "Qmonster v0.5.0 — v1.16.14 dashboard selection key extraction. Continues Phase C C1 by moving dashboard Alerts/Panes selection key dispatch from `src/main.rs` into `src/app/dashboard_state.rs`, while preserving the v1.16.13 target-picker split."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1140,7 +1140,7 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.16.13 target-picker action extraction on top of the pushed v1.16.12 clipboard action extraction. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped. Phase C C1 has extracted dashboard keymap/list helpers into `src/app/keymap.rs`, target-picker model/preview/choice/action helpers into `src/app/target_picker.rs`, runtime-refresh command/send/label/action helpers into `src/app/runtime_refresh.rs`, alert/pane dashboard state helpers into `src/app/dashboard_state.rs`, shared git/help scroll modal state into `src/app/modal_state.rs`, settings overlay dispatch into `src/app/settings_overlay.rs`, operator version/snapshot helpers into `src/app/operator_actions.rs`, `--once` report formatting into `src/app/once_report.rs`, prompt-send accept/dismiss handling into `src/app/prompt_send_actions.rs`, and selected-alert command copy notices into `src/app/clipboard_actions.rs`. v1.16.4 fixed Git overlay title consistency; v1.16.5 restores `c` to system-notice clear while leaving selected-alert command copy on `y`."
+    topology: "Current working state is v1.16.14 dashboard selection key extraction on top of the pushed v1.16.13 target-picker action extraction. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped. Phase C C1 has extracted dashboard keymap/list helpers into `src/app/keymap.rs`, target-picker model/preview/choice/action helpers into `src/app/target_picker.rs`, runtime-refresh command/send/label/action helpers into `src/app/runtime_refresh.rs`, alert/pane dashboard state/key helpers into `src/app/dashboard_state.rs`, shared git/help scroll modal state into `src/app/modal_state.rs`, settings overlay dispatch into `src/app/settings_overlay.rs`, operator version/snapshot helpers into `src/app/operator_actions.rs`, `--once` report formatting into `src/app/once_report.rs`, prompt-send accept/dismiss handling into `src/app/prompt_send_actions.rs`, and selected-alert command copy notices into `src/app/clipboard_actions.rs`. v1.16.4 fixed Git overlay title consistency; v1.16.5 restores `c` to system-notice clear while leaving selected-alert command copy on `y`."
     suggested_approach: >
       Continue the operator-directed synthesis in order. Phase A chose
       the conservative defaults and activated config/pricing/profile
@@ -1168,7 +1168,9 @@ mission:
       runtime-refresh TUI action helper; v1.16.12 adds
       `src/app/clipboard_actions.rs` for selected-alert command copy
       notices; v1.16.13 expands `src/app/target_picker.rs` with
-      target-picker open/key/mouse dispatch helpers.
+      target-picker open/key/mouse dispatch helpers; v1.16.14 expands
+      `src/app/dashboard_state.rs` with dashboard Alerts/Panes selection
+      key dispatch.
       Continue with similarly conservative `src/main.rs` splits before
       control-mode adapter work.
     note: >
@@ -1206,7 +1208,7 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.16.13 operator-directed Phase-C follow-up"
+    priority: "post-v1.16.14 operator-directed Phase-C follow-up"
     estimated_sessions: 1
     scope: "Phase B complete; Phase C C1 main.rs decomposition in progress"
     followups:
@@ -1218,5 +1220,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 95
+    total_revisions: 96
     history: "mission-history.yaml"
