@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.36`; current canonical ledger: `v1.16.36`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.37`; current canonical ledger: `v1.16.37`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -132,6 +132,9 @@ v1.16.36 extracts polling tmux CLI execution into
 `src/tmux/polling_process.rs`, so the polling source has a single
 stdout/stderr/error mapping boundary before any control-mode default
 decision.
+v1.16.37 generalizes poll-tick failure/recovery notices from `tmux polling`
+to `tmux source` so an opt-in control-mode runtime is not mislabeled in
+the alert queue.
 
 ## Quick start
 

@@ -57,7 +57,7 @@ where
     let startup_now = Instant::now();
     let mut dashboard = DashboardRuntimeState::new(startup_notices, startup_now);
     let mut last_poll = startup_now - poll;
-    let mut last_poll_error: Option<String> = None;
+    let mut last_tmux_source_error: Option<String> = None;
     let mut target_picker = TargetPickerRuntimeState::new(&ctx.source);
     let mut focus = FocusedPanel::Alerts;
     let mut dashboard_split = DashboardSplit::default();
@@ -81,7 +81,7 @@ where
                         now,
                         target_picker.selected_target.as_ref(),
                         PollTickState {
-                            last_poll_error: &mut last_poll_error,
+                            last_source_error: &mut last_tmux_source_error,
                             last_pane_idle_states: &mut last_pane_idle_states,
                             pane_state_flashes: &mut pane_state_flashes,
                         },
