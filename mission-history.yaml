@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.13 S3-1 input/output tokens + /statusline /footer documentation."
+  mission_title: "Qmonster v0.4.0 — v1.15.14 cost_pressure gradient advisories."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 69
-  latest_version: "1.15.13"
+  total_revisions: 70
+  latest_version: "1.15.14"
 
 timeline:
   - change_id: "initial"
@@ -7216,9 +7216,86 @@ timeline:
       - "Annotated tag v1.15.13 at this commit."
       - "Slice 3 backlog: S3-1 / S3-2 / S3-3 (quota) / S3-4 / S3-5 / S3-6 closed; only S3-3 memory column display remains as a low-value deferral."
 
+  - change_id: "v1.15.14-cost-pressure-gradient-advisories"
+    semantic_version: "1.15.14"
+    change_sequence: 70
+    date: "2026-04-27"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — autonomous follow-up authorisation"
+    change_type: "feature"
+    motivation_type: "operator-visibility"
+    persistence: "permanent"
+    intent: >
+      Add cost-side gradient advisories so operators see USD spend
+      approaching uncomfortable levels before a session ends, paralleling
+      the v1.15.11 quota_pressure pair on the cost_usd metric. Cost has
+      no provider-emitted "100% LimitHit" trigger; the gradient warnings
+      are the only surface for cost awareness today.
+    decision: >
+      Add `cost_pressure_warning` (>= $5.00 USD, < $20.00 USD, Warning,
+      Estimated, suggested_command=None) and `cost_pressure_critical`
+      (>= $20.00 USD, Risk, is_strong, Estimated, suggested_command=None)
+      rules in `policy/rules/advisories.rs::eval_advisories`. The
+      thresholds live as `const COST_PRESSURE_*_USD` so a future config
+      knob can read/override them; for v1.15.14 they are baked-in
+      Qmonster picks. Both rules respect `allow_provider_specific`
+      identity-confidence gating (KD-007) and carry Estimated source —
+      the underlying cost_usd metric is itself Estimated (derived from
+      input/output tokens × pricing rates), and the threshold values
+      are Qmonster policy, not provider docs. `suggested_command` stays
+      None because no slash command reduces accumulated session cost;
+      `next_step` describes the operator's options (pace prompts, switch
+      to a cheaper model, archive long outputs, end the session).
+    triggered_by: "Operator instruction (2026-04-27): 'continue, close out the review'. Autonomous selection of cost-tracking gradient as the natural extension of v1.15.11 quota_pressure pattern."
+    issue_or_context: >
+      v1.15.8 surfaced the Gemini quota_pressure metric and v1.15.11
+      added gradient advisories on it. cost_usd has been a SignalSet
+      metric since Phase 0 (Codex pane only — Claude has no input-token
+      tail signal; Gemini's status table does not expose cost) but no
+      gradient advisory existed. Operators see the COST badge on the
+      pane card but had no alert-queue surface for spending approaching
+      uncomfortable levels.
+    changes:
+      added:
+        - "src/policy/rules/advisories.rs::cost_pressure_warning rule (>= $5.00, < $20.00, Warning, Estimated)"
+        - "src/policy/rules/advisories.rs::cost_pressure_critical rule (>= $20.00, Risk, is_strong, Estimated)"
+        - "src/policy/rules/advisories.rs::eval_advisories dispatches the new rule pair (else-if pattern parallel to context_pressure_* and quota_pressure_*)"
+        - "src/policy/rules/advisories.rs::COST_PRESSURE_WARNING_USD / COST_PRESSURE_CRITICAL_USD constants ($5.00 / $20.00)"
+        - "5 new tests: warning at $7.50, critical at $25.00, below-threshold absence at $2.50, absent-metric absence (None), low-confidence suppression"
+      modified:
+        - "mission.yaml (meta: version 1.15.13 → 1.15.14; title)"
+        - "mission-history.yaml (sequence 70; meta: latest_version 1.15.14, total_revisions 69 → 70)"
+      removed: []
+    changed_sections:
+      - "src/policy/rules/advisories.rs::eval_advisories cost_pressure dispatcher"
+      - "src/policy/rules/advisories.rs::cost_pressure_warning + cost_pressure_critical functions"
+    done_when_delta:
+      added:
+        - "Codex panes with cost_usd in [$5.00, $20.00) raise a Warning advisory"
+        - "Codex panes with cost_usd >= $20.00 raise a Risk advisory in the CHECKPOINT slot (is_strong)"
+        - "cost_usd < $5.00 stays silent (no advisory noise)"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "+~80 LoC across rule pair + dispatcher hook + 5 tests"
+      tests: "462 total — 389 lib + 14 main + 35 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 457 at v1.15.13; +5 from the 5 cost_pressure advisory tests)"
+      ledger: "1 new timeline entry (sequence 70); meta bump"
+      review_gate: "operator-visibility gradient advisory; confirm-archive review path closed by operator decision per v1.15.x pattern; local fmt/test/clippy pass."
+      follow_up_carryover: "Optional config knob (`[cost] warning_threshold_usd` / `critical_threshold_usd`) deferred; today's hardcoded $5 / $20 are Qmonster picks per the precedent of context_pressure_* (0.75 / 0.85) and quota_pressure_* (0.75 / 0.85)."
+    breaking: false
+    risk: "low — additive advisory rule, identical fire-condition shape as existing context_pressure_* / quota_pressure_*, gated on IdentityConfidence + cost_usd presence (None on Claude/Gemini panes today, so they cannot accidentally trigger). Threshold values are bake-in constants; a future config-knob round can lift them out without changing rule semantics."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.14 at this commit."
+      - "If operator finds the $5 / $20 thresholds wrong for their workflow, lift them into a `[cost]` config section (TomlConfig + PolicyGates plumbing) — the const constants serve as the obvious migration target."
+      - "Confirm-archive review remains permanently closed for the v1.15.x patch line per operator decision."
+
 evolution_summary:
-  current_phase: "v1.15.13 closes Slice 3 backlog item S3-1 (Codex token in/out cumulative semantics, verified via the bundled Codex TokenUsage struct). New SignalSet.input_tokens / output_tokens surface the already-extracted values from parse_codex_status_line. UI_MANUAL gains an explicit operator-configurability note for Codex `/statusline` and Gemini `/footer` (alias `/statusline`). v1.15.12's quota_pressure SourceKind honesty, v1.15.11's gradient advisories, v1.15.10's LimitHit fix, and v1.15.8's quota_pressure metric all carry forward unchanged. 457 tests green; clippy + fmt clean."
-  next_phase: "Slice 3 effectively complete — only the low-value S3-3 memory column display remains deferred. v1.15.x patch line stays open for runtime-refresh / UI UX issues found during operator use. The 'operator priorities (B/C/D/E/A)' placeholder that was copied forward through Slice 4 / v1.15.x follow_up_carryover lines was never defined — historical entries kept as-is for archival fidelity, but the active reference in this evolution_summary drops the unresolved placeholder. Direction question for the next major arc: Slice 4+ thematic scoping (operator-defined when the next workstream opens)."
+  current_phase: "v1.15.14 cost_pressure gradient advisories. cost_pressure_warning (>= $5.00 USD, Warning) and cost_pressure_critical (>= $20.00 USD, Risk, is_strong) bridge the gap between v1.15.13's silent COST badge and the (operator-defined) end of session. Both rules carry Estimated source (threshold is a Qmonster pick), suggested_command=None (no slash command reduces accumulated cost), and respect IdentityConfidence gating. Today the rules fire only on Codex panes (only provider with cost_usd populated). v1.15.13's S3-1 input/output token closure, v1.15.12's quota_pressure SourceKind honesty, v1.15.11's quota_pressure gradient, v1.15.10's LimitHit fix, and v1.15.8's quota_pressure metric all carry forward unchanged. 462 tests green; clippy + fmt clean."
+  next_phase: "Slice 3 effectively complete; v1.15.x patch line continues for operator-driven UX iteration. The confirm-archive review path is permanently closed per operator decision (2026-04-27) — patches ship with self-verified fmt/test/clippy plus the v1.15.0 review-1 evidence on file. Direction question for the next major arc: Slice 4+ thematic scoping (operator-defined when the next workstream opens)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

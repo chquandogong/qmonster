@@ -45,6 +45,12 @@ pub fn eval_advisories(
         out.push(rec);
     }
 
+    if let Some(rec) = cost_pressure_critical(id, signals, gates) {
+        out.push(rec);
+    } else if let Some(rec) = cost_pressure_warning(id, signals, gates) {
+        out.push(rec);
+    }
+
     if let Some(rec) = verbose_review(id, signals, gates) {
         out.push(rec);
         if gates.quota_tight {
@@ -283,6 +289,86 @@ fn quota_pressure_critical(
         is_strong: true,
         next_step: Some(
             "press 's' to snapshot + archive, then stop or switch account/model before quota hits 100%"
+                .into(),
+        ),
+        profile: None,
+    })
+}
+
+/// v1.15.14: cost_pressure gradient advisories. Mirrors the
+/// quota_pressure pattern but for the operator-visible USD spend
+/// per session. Cost has no provider-emitted "100% threshold" to
+/// trigger LimitHit on, so the gradient warnings are the only
+/// surface for cost awareness today.
+///
+/// Default thresholds are Qmonster picks (Estimated source):
+/// - Warning at $5.00 USD per session — heavy but recoverable.
+/// - Risk    at $20.00 USD per session — operator should pause /
+///   switch model / end session.
+///
+/// `cost_usd` is currently populated only on Codex panes (Claude
+/// has no input-token source on tail; Gemini's status table does
+/// not expose cost). When a future provider populates `cost_usd`,
+/// these rules fire automatically — no per-provider gating change.
+const COST_PRESSURE_WARNING_USD: f64 = 5.0;
+const COST_PRESSURE_CRITICAL_USD: f64 = 20.0;
+
+fn cost_pressure_warning(
+    _id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    let v = signals.cost_usd.as_ref()?.value;
+    if !(COST_PRESSURE_WARNING_USD..COST_PRESSURE_CRITICAL_USD).contains(&v) {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    Some(Recommendation {
+        action: "cost-pressure: pace",
+        reason:
+            "session cost is climbing — pace prompts and consider archiving large outputs"
+                .into(),
+        severity: Severity::Warning,
+        source_kind: SourceKind::Estimated,
+        // No single runnable command reduces accumulated session
+        // cost. Operator picks between pacing prompts, switching to
+        // a cheaper model, or ending the session.
+        suggested_command: None,
+        side_effects: vec![],
+        is_strong: false,
+        next_step: Some(
+            "consider switching to a cheaper model, archiving long outputs, or wrapping up the session"
+                .into(),
+        ),
+        profile: None,
+    })
+}
+
+fn cost_pressure_critical(
+    _id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    let v = signals.cost_usd.as_ref()?.value;
+    if v < COST_PRESSURE_CRITICAL_USD {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    Some(Recommendation {
+        action: "cost-pressure: act now",
+        reason: "session cost crossed the critical threshold — pause new prompts and decide whether to continue"
+            .into(),
+        severity: Severity::Risk,
+        source_kind: SourceKind::Estimated,
+        suggested_command: None,
+        side_effects: vec![],
+        is_strong: true,
+        next_step: Some(
+            "press 's' to snapshot + archive, then pause or switch model before cost climbs further"
                 .into(),
         ),
         profile: None,
@@ -889,5 +975,90 @@ mod tests {
             .as_deref()
             .expect("populated in v1.7.1");
         assert!(cmd.contains("attribution"), "got: {cmd}");
+    }
+
+    fn cost(v: f64) -> SignalSet {
+        SignalSet {
+            cost_usd: Some(MetricValue::new(v, SK::Estimated)),
+            ..SignalSet::default()
+        }
+    }
+
+    #[test]
+    fn cost_pressure_warning_at_5_usd() {
+        // v1.15.14: when accumulated session cost reaches the warning
+        // threshold (default $5), surface a Warning-severity advisory.
+        // Source is Estimated because the threshold is a Qmonster pick
+        // (cost_usd itself is also Estimated — derived from token
+        // counts × pricing).
+        let id = id_high(Role::Main);
+        let s = cost(7.50);
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(recs.iter().any(|r| r.action == "cost-pressure: pace"));
+        assert!(!recs.iter().any(|r| r.action == "cost-pressure: act now"));
+        let warn = recs
+            .iter()
+            .find(|r| r.action == "cost-pressure: pace")
+            .unwrap();
+        assert_eq!(warn.severity, Severity::Warning);
+        assert_eq!(warn.source_kind, SourceKind::Estimated);
+        assert!(
+            warn.suggested_command.is_none(),
+            "session cost cannot be reduced by a slash command"
+        );
+    }
+
+    #[test]
+    fn cost_pressure_critical_at_20_usd() {
+        let id = id_high(Role::Main);
+        let s = cost(25.00);
+        let recs = eval_advisories(&id, &s, &gates_default());
+        let crit = recs
+            .iter()
+            .find(|r| r.action == "cost-pressure: act now")
+            .expect("cost_pressure_critical must fire at $25");
+        assert_eq!(crit.severity, Severity::Risk);
+        assert!(
+            crit.is_strong,
+            "critical cost-pressure surfaces in CHECKPOINT slot"
+        );
+        assert!(crit.suggested_command.is_none());
+        // Below-warning bound (cost-pressure: pace) must NOT also fire
+        // since the critical rule consumes the same metric.
+        assert!(
+            !recs.iter().any(|r| r.action == "cost-pressure: pace"),
+            "critical and warning are mutually exclusive on the same metric"
+        );
+    }
+
+    #[test]
+    fn cost_pressure_below_threshold_does_not_fire() {
+        let id = id_high(Role::Main);
+        let s = cost(2.50);
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(!recs.iter().any(|r| r.action.starts_with("cost-pressure")));
+    }
+
+    #[test]
+    fn cost_pressure_absent_does_not_fire() {
+        let id = id_high(Role::Main);
+        let s = SignalSet::default();
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(!recs.iter().any(|r| r.action.starts_with("cost-pressure")));
+    }
+
+    #[test]
+    fn cost_pressure_suppressed_on_low_identity_confidence() {
+        let id = id_low(Role::Main);
+        let s = cost(50.00);
+        let gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::Low,
+        };
+        let recs = eval_advisories(&id, &s, &gates);
+        assert!(
+            !recs.iter().any(|r| r.action.starts_with("cost-pressure")),
+            "cost_pressure_* must respect the IdentityConfidence gate"
+        );
     }
 }
