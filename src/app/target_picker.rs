@@ -49,6 +49,45 @@ pub struct TargetPickerController<'a> {
     pub selected_target: &'a mut Option<WindowTarget>,
 }
 
+pub struct TargetPickerRuntimeState {
+    pub open: bool,
+    pub stage: TargetPickerStage,
+    pub session: Option<String>,
+    pub state: ListState,
+    pub choices: Vec<TargetChoice>,
+    pub preview_title: String,
+    pub preview_lines: Vec<String>,
+    pub selected_target: Option<WindowTarget>,
+}
+
+impl TargetPickerRuntimeState {
+    pub fn new<P: PaneSource>(source: &P) -> Self {
+        Self {
+            open: false,
+            stage: TargetPickerStage::Session,
+            session: None,
+            state: ListState::default(),
+            choices: Vec::new(),
+            preview_title: "Panes".into(),
+            preview_lines: Vec::new(),
+            selected_target: initial_target(source),
+        }
+    }
+
+    pub fn controller(&mut self) -> TargetPickerController<'_> {
+        TargetPickerController {
+            open: &mut self.open,
+            stage: &mut self.stage,
+            session: &mut self.session,
+            state: &mut self.state,
+            choices: &mut self.choices,
+            preview_title: &mut self.preview_title,
+            preview_lines: &mut self.preview_lines,
+            selected_target: &mut self.selected_target,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TargetPickerAction {
     None,
@@ -674,6 +713,18 @@ mod tests {
         let source = PickerSource::new();
 
         assert_eq!(initial_target(&source), Some(target("a", "0")));
+    }
+
+    #[test]
+    fn runtime_state_initializes_from_current_target_without_opening_picker() {
+        let source = PickerSource::new().with_current(target("b", "0"));
+
+        let state = TargetPickerRuntimeState::new(&source);
+
+        assert!(!state.open);
+        assert_eq!(state.stage, TargetPickerStage::Session);
+        assert_eq!(state.preview_title, "Panes");
+        assert_eq!(state.selected_target, Some(target("b", "0")));
     }
 
     #[test]

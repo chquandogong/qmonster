@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.22 startup assembly extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.23 target-picker runtime-state extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -91,7 +91,8 @@ tick's success/failure notice routing and pane-state flash updates into
 list-selection, and alert freshness resync bookkeeping into
 `app::dashboard_runtime`. v1.16.22 moves startup config/root, audit
 sink, pricing, Claude settings, retention, and version snapshot assembly
-into `app::startup`.
+into `app::startup`. v1.16.23 moves target-picker runtime state
+ownership into `app::target_picker`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

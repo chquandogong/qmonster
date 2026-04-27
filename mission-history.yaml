@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.22 startup assembly extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.23 target-picker runtime-state extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 104
-  latest_version: "1.16.22"
+  total_revisions: 105
+  latest_version: "1.16.23"
 
 timeline:
   - change_id: "initial"
@@ -9838,8 +9838,77 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.23-target-picker-runtime-state-extraction"
+    semantic_version: "1.16.23"
+    change_sequence: 105
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving target-picker open/stage/session/list/
+      preview/selected-target runtime state ownership out of `src/main.rs`.
+    intent_ko: >
+      target-picker open/stage/session/list/preview/selected-target runtime
+      state ownership을 `src/main.rs` 밖으로 옮겨 Phase C C1 분해를 계속한다.
+    decision: >
+      Add `TargetPickerRuntimeState` to `src/app/target_picker.rs`. The
+      runtime state owns the picker open flag, stage, selected session, list
+      state, choices, preview text, and selected `WindowTarget`, and exposes
+      `controller()` so existing key/mouse/open helpers keep the same borrowed
+      controller contract.
+    decision_ko: >
+      `TargetPickerRuntimeState`를 `src/app/target_picker.rs`에 추가한다.
+      이 runtime state는 picker open flag, stage, selected session, list
+      state, choices, preview text, selected `WindowTarget`을 소유하고,
+      기존 key/mouse/open helper가 같은 borrowed controller contract를
+      유지하도록 `controller()`를 제공한다.
+    triggered_by: "Continuation after the v1.16.22 startup assembly extraction."
+    issue_or_context: >
+      After startup assembly moved out, `run_tui` still carried the target
+      picker as eight parallel locals and repeatedly rebuilt
+      `TargetPickerController` literals in key, mouse, and open paths.
+    changes:
+      added:
+        - "src/app/target_picker.rs: TargetPickerRuntimeState and runtime-state initialization test"
+      modified:
+        - "src/main.rs uses TargetPickerRuntimeState for selected target, render fields, open/key/mouse dispatch, and target switching"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.23"
+      removed:
+        - "parallel target-picker locals and repeated TargetPickerController literals from main.rs"
+    changed_sections:
+      - "src/app/target_picker.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Twenty-second Phase C C1 code slice exists outside main.rs"
+        - "target-picker runtime state has a named app-level owner"
+      modified:
+        - "main.rs line count drops from 489 at v1.16.22 to 451"
+      removed:
+        - "target-picker controller construction boilerplate from the live event-loop body"
+    impact_scope:
+      code: "internal refactor only; no target picker open, navigation, preview, selection, target switch notice, or polling-target behavior change intended"
+      tests: "570 total passed — 510 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 105); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — the new owner uses the same TargetPickerController helpers and adds focused initialization coverage."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.22 startup assembly extraction — Phase C C1 remains active with startup, dashboard_runtime, polling_tick, terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
+  current_phase: "v1.16.23 target-picker runtime-state extraction — Phase C C1 remains active with startup, dashboard_runtime, polling_tick, terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

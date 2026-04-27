@@ -31,9 +31,8 @@ use qmonster::app::settings_overlay::{handle_settings_overlay_key, handle_settin
 use qmonster::app::startup::{StartupOptions, build_startup_runtime};
 use qmonster::app::system_notice::SystemNotice;
 use qmonster::app::target_picker::{
-    TargetChoice, TargetPickerAction, TargetPickerController, TargetPickerStage,
-    handle_target_picker_key, handle_target_picker_mouse, initial_target, open_target_picker,
-    target_label, target_switched_notice,
+    TargetPickerAction, TargetPickerRuntimeState, handle_target_picker_key,
+    handle_target_picker_mouse, open_target_picker, target_label, target_switched_notice,
 };
 use qmonster::app::terminal_session::{enter_terminal_session, leave_terminal_session};
 use qmonster::app::version_drift::{VersionSnapshot, capture_versions};
@@ -131,17 +130,10 @@ where
     let mut dashboard = DashboardRuntimeState::new(startup_notices, startup_now);
     let mut last_poll = startup_now - poll;
     let mut last_poll_error: Option<String> = None;
-    let mut selected_target = initial_target(&ctx.source);
+    let mut target_picker = TargetPickerRuntimeState::new(&ctx.source);
     let mut focus = FocusedPanel::Alerts;
     let mut dashboard_split = DashboardSplit::default();
     let mut dashboard_split_dragging = false;
-    let mut target_picker_open = false;
-    let mut target_picker_stage = TargetPickerStage::Session;
-    let mut target_picker_session: Option<String> = None;
-    let mut target_picker_state = ratatui::widgets::ListState::default();
-    let mut target_choices: Vec<TargetChoice> = Vec::new();
-    let mut target_preview_title = "Panes".to_string();
-    let mut target_preview_lines: Vec<String> = Vec::new();
     let mut git_modal = ScrollModalState::default();
     let mut help_modal = ScrollModalState::default();
     let mut settings_overlay = qmonster::ui::settings::SettingsOverlay::new();
@@ -160,7 +152,7 @@ where
                     let outcome = handle_poll_tick(
                         ctx,
                         now,
-                        selected_target.as_ref(),
+                        target_picker.selected_target.as_ref(),
                         PollTickState {
                             last_poll_error: &mut last_poll_error,
                             last_pane_idle_states: &mut last_pane_idle_states,
@@ -180,7 +172,7 @@ where
 
                 pane_state_flashes.retain(|_, flash| flash.is_active(now));
                 dashboard.sync_alert_selection(now);
-                let target = target_label(selected_target.as_ref());
+                let target = target_label(target_picker.selected_target.as_ref());
                 terminal.draw(|frame| {
                     render_dashboard_frame(
                         frame,
@@ -197,13 +189,13 @@ where
                             target_label: &target,
                             split: dashboard_split,
                             focus,
-                            target_picker_open,
-                            target_picker_stage,
-                            target_picker_session: target_picker_session.as_deref(),
-                            target_picker_state: &mut target_picker_state,
-                            target_choices: &target_choices,
-                            target_preview_title: &target_preview_title,
-                            target_preview_lines: &target_preview_lines,
+                            target_picker_open: target_picker.open,
+                            target_picker_stage: target_picker.stage,
+                            target_picker_session: target_picker.session.as_deref(),
+                            target_picker_state: &mut target_picker.state,
+                            target_choices: &target_picker.choices,
+                            target_preview_title: &target_picker.preview_title,
+                            target_preview_lines: &target_picker.preview_lines,
                             git_modal: &git_modal,
                             help_modal: &help_modal,
                             settings_overlay: &settings_overlay,
@@ -239,19 +231,10 @@ where
                                 continue;
                             }
 
-                            if target_picker_open {
+                            if target_picker.open {
                                 let action = handle_target_picker_key(
                                     &ctx.source,
-                                    TargetPickerController {
-                                        open: &mut target_picker_open,
-                                        stage: &mut target_picker_stage,
-                                        session: &mut target_picker_session,
-                                        state: &mut target_picker_state,
-                                        choices: &mut target_choices,
-                                        preview_title: &mut target_preview_title,
-                                        preview_lines: &mut target_preview_lines,
-                                        selected_target: &mut selected_target,
-                                    },
+                                    target_picker.controller(),
                                     k.code,
                                 );
                                 if let TargetPickerAction::TargetSwitched(label) = action {
@@ -301,19 +284,7 @@ where
                                 }
                                 KeyCode::Char('S') => settings_overlay.open(),
                                 KeyCode::Char('t') => {
-                                    open_target_picker(
-                                        &ctx.source,
-                                        TargetPickerController {
-                                            open: &mut target_picker_open,
-                                            stage: &mut target_picker_stage,
-                                            session: &mut target_picker_session,
-                                            state: &mut target_picker_state,
-                                            choices: &mut target_choices,
-                                            preview_title: &mut target_preview_title,
-                                            preview_lines: &mut target_preview_lines,
-                                            selected_target: &mut selected_target,
-                                        },
-                                    );
+                                    open_target_picker(&ctx.source, target_picker.controller());
                                 }
                                 KeyCode::Char('r') => {
                                     let fresh = capture_versions();
@@ -427,20 +398,11 @@ where
                                 continue;
                             }
 
-                            if target_picker_open {
+                            if target_picker.open {
                                 dashboard_split_dragging = false;
                                 let action = handle_target_picker_mouse(
                                     &ctx.source,
-                                    TargetPickerController {
-                                        open: &mut target_picker_open,
-                                        stage: &mut target_picker_stage,
-                                        session: &mut target_picker_session,
-                                        state: &mut target_picker_state,
-                                        choices: &mut target_choices,
-                                        preview_title: &mut target_preview_title,
-                                        preview_lines: &mut target_preview_lines,
-                                        selected_target: &mut selected_target,
-                                    },
+                                    target_picker.controller(),
                                     viewport,
                                     m,
                                 );
