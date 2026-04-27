@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.21.0 — Phase E E1 Gemini status-table memory column."
+  mission_title: "Qmonster v1.21.1 — Codex /clear status-line partial metrics."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 147
-  latest_version: "1.21.0"
+  total_revisions: 148
+  latest_version: "1.21.1"
 
 timeline:
   - change_id: "initial"
@@ -13198,9 +13198,88 @@ timeline:
       - "If a future Gemini release exposes this in MiB or KiB units, extend `parse_memory_mb` accordingly. PB / TB suffixes stay unsupported unless a real fixture appears."
       - "If Claude or Codex ever surface a comparable counter, populate `process_memory_mb` from those adapters too — the SignalSet field is provider-agnostic by design."
 
+  - change_id: "v1.21.1-codex-clear-partial-status-line"
+    semantic_version: "1.21.1"
+    change_sequence: 148
+    date: "2026-04-28"
+    author: "Codex"
+    contributors:
+      - "Operator directive: show whatever Codex status-line information is available after `/clear`"
+    change_type: "bugfix"
+    motivation_type: "operator-reported observability gap"
+    persistence: "permanent"
+    intent: >
+      Keep Codex CTX and split quota badges visible immediately after
+      `/clear`, even when Codex omits the `N used` total token field
+      from the bottom status line.
+    intent_ko: >
+      Codex `/clear` 직후 bottom status line에서 `N used` 총합 token
+      필드가 빠져도 CTX와 split quota badge가 계속 보이도록 한다.
+    decision: >
+      Relax `CodexStatus` token fields to `Option<u64>` and keep the
+      newest bottom status line authoritative when `Context N% used`
+      is visible. Parse and surface each visible field independently:
+      context, 5h remaining quota, weekly remaining quota, model,
+      worktree, branch, input tokens, and output tokens. Derive
+      `token_count` from visible input+output tokens when the total
+      field is absent; only compute estimated cost when both input and
+      output token counters are present.
+    decision_ko: >
+      `CodexStatus` token 필드를 `Option<u64>`로 완화하고,
+      `Context N% used`가 보이는 최신 bottom status line을 계속
+      authoritative로 취급한다. context, 5h remaining quota, weekly
+      remaining quota, model, worktree, branch, input token, output
+      token을 각각 독립적으로 파싱해 표시한다. total field가 없으면
+      보이는 input+output token 합으로 `token_count`를 채우고,
+      estimated cost는 input/output 둘 다 있을 때만 계산한다.
+    triggered_by: "Operator asked why CTX/QUOTA disappear in Codex after `/clear`, then requested that available information still be displayed."
+    issue_or_context: >
+      Codex can render a post-clear line like `Context 100% left ...
+      Context 0% used · 5h 100% · weekly 100% · ... · 0 in · 0 out`
+      without the `0 used` total token item. The previous parser gated
+      the entire status result on context + total + input + output
+      token fields, so it discarded visible CTX/quota values.
+    changes:
+      added:
+        - "`codex_adapter_surfaces_clear_status_line_without_total_tokens` regression test"
+      modified:
+        - "`src/adapters/codex.rs::CodexStatus` token fields are optional"
+        - "`parse_codex_status_line` now accepts the newest status-shaped line when `Context N% used` is present, even if optional token fields are missing"
+        - "`token_count` derives from visible input/output counters when the total token field is absent"
+        - "`cost_usd` computation is gated on both input and output counters being present"
+        - "`README.md`, `VERSION.md`, `package.json`, `mission.yaml`, `mission-history.yaml`, `docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md` bumped to v1.21.1"
+      removed: []
+    changed_sections:
+      - "src/adapters/codex.rs"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - "package.json"
+    observable_effects:
+      added:
+        - "Codex panes after `/clear` show `CTX 0%`, `QUOTA 5H 0%`, `QUOTA WEEK 0%`, model/path/branch, and `TOKENS 0` when those values are visible in the provider status line"
+      modified:
+        - "Codex cost remains absent when token counters are insufficient for a defensible estimate"
+      removed: []
+    impact_scope:
+      runtime: "Codex adapter parsing only; no tmux, policy, storage, or actuation behavior change."
+      tests: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, scripts/verify-shared.sh"
+      ledger: "1 new timeline entry (sequence 148); meta bump; patch version bump v1.21.0 → v1.21.1 for Codex observability bugfix"
+      npm: "package.json version set to 1.21.1"
+      review_gate: "release validation passes locally before publish"
+      follow_up_carryover: "No new follow-up."
+    breaking: false
+    risk: "low — the status-line shape still requires `Context` + `% used` + separators, newest-line authority is preserved, and missing fields stay absent rather than inferred except for exact input+output token summation."
+    related_commits:
+      - "0037de1 codex: relax status line tokens to optional fields"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.21.0 closes Phase E by parsing the Gemini status-table `memory` column into `SignalSet.process_memory_mb`. Renders as a `MEM` badge on Gemini pane cards (adaptive MB/GB unit) and a `memory <value>` entry in the `--once` metrics row. Claude / Codex stay None — absence is honesty."
-  next_phase: "Phase E is now fully shipped. No outstanding housekeeping items remain in the deferred ledger besides confirm-archive review (permanently closed per operator decision 2026-04-27). Awaiting new operator-directed work."
+  current_phase: "v1.21.1 keeps Codex CTX/quota visible after `/clear` by surfacing partial bottom-status fields when the total token field is absent. v1.21.0 closed Phase E by parsing the Gemini status-table `memory` column into `SignalSet.process_memory_mb`."
+  next_phase: "Phase E is fully shipped. No outstanding housekeeping items remain in the deferred ledger besides confirm-archive review (permanently closed per operator decision 2026-04-27). Awaiting new operator-directed work."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

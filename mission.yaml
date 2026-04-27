@@ -1,6 +1,6 @@
 mission:
-  version: "1.21.0"
-  title: "Qmonster v1.21.0 — Phase E E1 Gemini status-table memory column."
+  version: "1.21.1"
+  title: "Qmonster v1.21.1 — Codex /clear status-line partial metrics."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
