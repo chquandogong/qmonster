@@ -45,8 +45,8 @@ use qmonster::app::system_notice::{
 };
 use qmonster::app::target_picker::{
     TargetChoice, TargetPickerAction, TargetPickerController, TargetPickerStage,
-    handle_target_picker_key, handle_target_picker_mouse, open_target_picker, target_label,
-    target_picker_hint, target_picker_title, target_switched_notice,
+    handle_target_picker_key, handle_target_picker_mouse, initial_target, open_target_picker,
+    target_label, target_picker_hint, target_picker_title, target_switched_notice,
 };
 use qmonster::app::version_drift::{
     StartupLoad, VersionSnapshot, capture_versions, load_startup_snapshot,
@@ -62,7 +62,6 @@ use qmonster::store::{
     ArchiveWriter, EventSink, InMemorySink, SnapshotWriter, SqliteAuditSink, sweep,
 };
 use qmonster::tmux::polling::{PaneSource, PollingSource};
-use qmonster::tmux::types::WindowTarget;
 use qmonster::ui::dashboard::{
     DashboardSplit, DashboardView, TargetPickerView, close_button_rect, git_modal_rects,
     help_modal_rects, render_dashboard,
@@ -864,12 +863,4 @@ where
     disable_raw_mode().ok();
     execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture).ok();
     result
-}
-
-fn initial_target<P: PaneSource>(source: &P) -> Option<WindowTarget> {
-    source
-        .current_target()
-        .ok()
-        .flatten()
-        .or_else(|| source.available_targets().ok()?.into_iter().next())
 }

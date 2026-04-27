@@ -330,6 +330,14 @@ pub fn target_label(target: Option<&WindowTarget>) -> String {
         .unwrap_or_else(|| "all sessions".into())
 }
 
+pub fn initial_target<P: PaneSource>(source: &P) -> Option<WindowTarget> {
+    source
+        .current_target()
+        .ok()
+        .flatten()
+        .or_else(|| source.available_targets().ok()?.into_iter().next())
+}
+
 pub fn target_switched_notice(label: &str) -> SystemNotice {
     SystemNotice {
         title: "target switched".into(),
@@ -526,6 +534,7 @@ mod tests {
 
     struct PickerSource {
         panes: Vec<RawPaneSnapshot>,
+        current: Option<WindowTarget>,
     }
 
     impl PickerSource {
@@ -536,7 +545,13 @@ mod tests {
                     pane("a", "1", "%2"),
                     pane("b", "0", "%3"),
                 ],
+                current: None,
             }
+        }
+
+        fn with_current(mut self, current: WindowTarget) -> Self {
+            self.current = Some(current);
+            self
         }
     }
 
@@ -559,7 +574,7 @@ mod tests {
         }
 
         fn current_target(&self) -> Result<Option<WindowTarget>, PollingError> {
-            Ok(self.available_targets()?.into_iter().next())
+            Ok(self.current.clone())
         }
 
         fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
@@ -645,6 +660,20 @@ mod tests {
             dead: false,
             tail: String::new(),
         }
+    }
+
+    #[test]
+    fn initial_target_prefers_current_window_target() {
+        let source = PickerSource::new().with_current(target("b", "0"));
+
+        assert_eq!(initial_target(&source), Some(target("b", "0")));
+    }
+
+    #[test]
+    fn initial_target_falls_back_to_first_available_target() {
+        let source = PickerSource::new();
+
+        assert_eq!(initial_target(&source), Some(target("a", "0")));
     }
 
     #[test]

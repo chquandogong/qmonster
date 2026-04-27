@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.16 config-path helper extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.17 initial target helper extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -81,7 +81,8 @@ target-picker open/key/mouse dispatch into `app::target_picker`.
 v1.16.14 moves dashboard Alerts/Panes selection key dispatch into
 `app::dashboard_state`. v1.16.15 moves dashboard mouse dispatch into
 `app::dashboard_state`. v1.16.16 moves default config-path resolution and
-its tests into `app::path_resolution`.
+its tests into `app::path_resolution`. v1.16.17 moves initial target
+selection and its tests into `app::target_picker`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

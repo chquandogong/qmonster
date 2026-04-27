@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.16 config-path helper extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.17 initial target helper extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 98
-  latest_version: "1.16.16"
+  total_revisions: 99
+  latest_version: "1.16.17"
 
 timeline:
   - change_id: "initial"
@@ -9419,8 +9419,74 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.17-initial-target-helper-extraction"
+    semantic_version: "1.16.17"
+    change_sequence: 99
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving initial target selection out of
+      `src/main.rs`.
+    intent_ko: >
+      initial target selection을 `src/main.rs` 밖으로 옮겨 Phase C C1 분해를
+      계속한다.
+    decision: >
+      Move `initial_target` into `src/app/target_picker.rs`, where session and
+      window target selection already lives, and cover both current-window
+      priority and available-target fallback with direct unit tests.
+    decision_ko: >
+      session/window target selection을 이미 담당하는 `src/app/target_picker.rs`로
+      `initial_target`를 옮기고, current-window 우선순위와 available-target
+      fallback을 직접 unit test로 고정한다.
+    triggered_by: "Continuation after the v1.16.16 config-path helper extraction."
+    issue_or_context: >
+      `src/main.rs` still had the initial tmux target choice helper below the
+      event loop even though later target picker behavior had already moved to
+      `app::target_picker`.
+    changes:
+      added:
+        - "src/app/target_picker.rs: initial_target"
+        - "src/app/target_picker.rs: 2 direct unit tests for current-target priority and available-target fallback"
+      modified:
+        - "src/main.rs imports initial_target from app::target_picker"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.17"
+      removed:
+        - "src/main.rs inline initial_target helper and direct WindowTarget import"
+    changed_sections:
+      - "src/app/target_picker.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Sixteenth Phase C C1 code slice exists outside main.rs"
+        - "initial target selection is covered by target-picker module tests"
+      modified:
+        - "main.rs no longer owns initial tmux target selection"
+      removed:
+        - "the last target-selection helper below the live event loop"
+    impact_scope:
+      code: "internal refactor only; no initial target precedence, target picker behavior, or tmux target filtering change intended"
+      tests: "565 total passed — 505 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+2 lib tests vs v1.16.16)"
+      ledger: "1 new timeline entry (sequence 99); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — pure helper moved to the target-picker module and direct tests lock both branches."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.16 config-path helper extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
+  current_phase: "v1.16.17 initial target helper extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
