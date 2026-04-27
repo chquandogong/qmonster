@@ -45,8 +45,9 @@ use qmonster::store::{
 use qmonster::tmux::polling::{PaneSource, PollingSource};
 use qmonster::tmux::types::{RawPaneSnapshot, WindowTarget};
 use qmonster::ui::dashboard::{
-    DashboardView, TargetPickerView, close_button_rect, dashboard_rects, git_modal_rects,
-    help_modal_rects, render_dashboard, target_picker_rects, version_badge_rect,
+    DashboardSplit, DashboardView, TargetPickerView, close_button_rect, dashboard_rects,
+    dashboard_split_from_row, git_modal_rects, help_modal_rects, render_dashboard,
+    target_picker_rects, version_badge_rect,
 };
 
 #[derive(Debug, Parser)]
@@ -415,6 +416,8 @@ where
     let mut last_poll_error: Option<String> = None;
     let mut selected_target = initial_target(&ctx.source);
     let mut focus = FocusedPanel::Alerts;
+    let mut dashboard_split = DashboardSplit::default();
+    let mut dashboard_split_dragging = false;
     let mut alert_state = ListState::default();
     let mut pane_state = ListState::default();
     let mut target_picker_open = false;
@@ -533,6 +536,7 @@ where
                         state_flashes: &pane_state_flashes,
                         now,
                         target_label: &target,
+                        split: dashboard_split,
                         alerts_focused: !target_picker_open
                             && !help_open
                             && focus == FocusedPanel::Alerts,
@@ -799,6 +803,9 @@ where
                         match k.code {
                             KeyCode::Char('q') | KeyCode::Esc => break,
                             KeyCode::Tab => focus = toggle_focus(focus),
+                            KeyCode::Char('[') => dashboard_split.shrink_alerts(),
+                            KeyCode::Char(']') => dashboard_split.grow_alerts(),
+                            KeyCode::Char('=') => dashboard_split.reset(),
                             KeyCode::Char('?') => {
                                 help_open = true;
                                 help_scroll = 0;
@@ -1452,6 +1459,7 @@ where
                         let now = Instant::now();
 
                         if git_modal_open {
+                            dashboard_split_dragging = false;
                             let rects = git_modal_rects(viewport);
                             if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
                                 && rect_contains(close_button_rect(rects.body), m.column, m.row)
@@ -1479,6 +1487,7 @@ where
                         }
 
                         if help_open {
+                            dashboard_split_dragging = false;
                             let rects = help_modal_rects(viewport);
                             if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
                                 && rect_contains(close_button_rect(rects.body), m.column, m.row)
@@ -1503,6 +1512,7 @@ where
                         }
 
                         if target_picker_open {
+                            dashboard_split_dragging = false;
                             let rects = target_picker_rects(viewport);
                             if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
                                 && rect_contains(close_button_rect(rects.list), m.column, m.row)
@@ -1615,7 +1625,7 @@ where
                             continue;
                         }
 
-                        let rects = dashboard_rects(viewport);
+                        let rects = dashboard_rects(viewport, dashboard_split);
                         match m.kind {
                             MouseEventKind::ScrollUp => {
                                 if rect_contains(rects.alerts, m.column, m.row) {
@@ -1656,8 +1666,16 @@ where
                                 }
                             }
                             MouseEventKind::Down(MouseButton::Left) => {
-                                if rect_contains(version_badge_rect(rects.footer), m.column, m.row)
-                                {
+                                dashboard_split_dragging = false;
+                                if rect_contains(rects.divider, m.column, m.row) {
+                                    dashboard_split = dashboard_split_from_row(viewport, m.row);
+                                    dashboard_split_dragging = true;
+                                    last_alert_click = None;
+                                } else if rect_contains(
+                                    version_badge_rect(rects.footer),
+                                    m.column,
+                                    m.row,
+                                ) {
                                     let panel = capture_repo_panel();
                                     git_modal_title = panel.title;
                                     git_modal_lines = panel.lines;
@@ -1773,6 +1791,15 @@ where
                                 } else {
                                     last_alert_click = None;
                                 }
+                            }
+                            MouseEventKind::Drag(MouseButton::Left) if dashboard_split_dragging => {
+                                dashboard_split = dashboard_split_from_row(viewport, m.row);
+                                last_alert_click = None;
+                            }
+                            MouseEventKind::Up(MouseButton::Left) if dashboard_split_dragging => {
+                                dashboard_split = dashboard_split_from_row(viewport, m.row);
+                                dashboard_split_dragging = false;
+                                last_alert_click = None;
                             }
                             _ => {}
                         }

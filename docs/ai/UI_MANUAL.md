@@ -10,7 +10,10 @@
   `visible`, `new`, `auto-hide` 개수가 표시됩니다.
 - **Panes**: 선택된 session/window 안의 pane 목록입니다. 현재 선택된
   pane는 같은 리스트 안에서 상세 내용이 아래로 펼쳐집니다.
-- **Footer**: 현재 focus와 주요 조작 키를 보여줍니다.
+- **Alerts/Panes divider**: Alerts와 Panes 사이의 한 줄 divider를
+  드래그해 두 영역의 높이를 조절할 수 있습니다. 키보드에서는 `[` / `]`
+  로 Alerts 영역을 줄이거나 키우고, `=`로 기본 비율로 되돌립니다.
+- **Footer**: 현재 focus, Alerts/Panes split 비율, 주요 조작 키를 보여줍니다.
 - **Overlay**: `t`로 target picker, `?`로 help, footer 오른쪽 아래
   버전 배지를 클릭하면 Git overlay가 열립니다.
 
@@ -168,6 +171,9 @@ side_effects (N):
 - `Mouse wheel`: 포인터 아래 리스트나 modal 스크롤
 - `Mouse left`: alert, pane, target 선택
 - `Mouse double`: alert hide 토글
+- `Mouse drag`: Alerts/Panes divider 드래그로 두 창 높이 조절
+- `[` / `]`: Alerts 창 높이 줄이기 / 키우기 (Panes는 남은 높이 사용)
+- `=`: Alerts/Panes split 기본값으로 reset
 - `Enter/Space`: 선택된 alert hide 토글
 - `Tab`: alerts / panes focus 전환
 - `↑/↓`, `j/k`: 현재 focus된 리스트 한 칸 이동

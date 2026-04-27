@@ -17,6 +17,14 @@ const GIT_HEIGHT_PERCENT: u16 = 68;
 const HELP_WIDTH_PERCENT: u16 = 76;
 const HELP_HEIGHT_PERCENT: u16 = 76;
 const HELP_LABEL_WIDTH: usize = 18;
+const DASHBOARD_FOOTER_HEIGHT: u16 = 2;
+const DASHBOARD_SPLIT_HANDLE_HEIGHT: u16 = 1;
+const DEFAULT_ALERTS_PERCENT: u16 = 36;
+const MIN_ALERTS_PERCENT: u16 = 20;
+const MAX_ALERTS_PERCENT: u16 = 80;
+const RESIZE_STEP_PERCENT: u16 = 5;
+const MIN_ALERTS_HEIGHT: u16 = 5;
+const MIN_PANES_HEIGHT: u16 = 6;
 
 /// Top-level dashboard layout: alerts on top, pane list below, and a
 /// persistent control footer to keep navigation discoverable.
@@ -29,6 +37,7 @@ pub struct DashboardView<'a> {
     pub state_flashes: &'a HashMap<String, panels::PaneStateFlash>,
     pub now: Instant,
     pub target_label: &'a str,
+    pub split: DashboardSplit,
     pub alerts_focused: bool,
     pub panes_focused: bool,
 }
@@ -44,8 +53,50 @@ pub struct TargetPickerView<'a> {
 
 pub struct DashboardRects {
     pub alerts: Rect,
+    pub divider: Rect,
     pub panes: Rect,
     pub footer: Rect,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DashboardSplit {
+    alerts_percent: u16,
+}
+
+impl Default for DashboardSplit {
+    fn default() -> Self {
+        Self::new(DEFAULT_ALERTS_PERCENT)
+    }
+}
+
+impl DashboardSplit {
+    pub fn new(alerts_percent: u16) -> Self {
+        Self {
+            alerts_percent: alerts_percent.clamp(MIN_ALERTS_PERCENT, MAX_ALERTS_PERCENT),
+        }
+    }
+
+    pub fn alerts_percent(self) -> u16 {
+        self.alerts_percent
+    }
+
+    pub fn shrink_alerts(&mut self) {
+        self.nudge_alerts(-(RESIZE_STEP_PERCENT as i16));
+    }
+
+    pub fn grow_alerts(&mut self) {
+        self.nudge_alerts(RESIZE_STEP_PERCENT as i16);
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    fn nudge_alerts(&mut self, delta: i16) {
+        let next = (self.alerts_percent as i16 + delta)
+            .clamp(MIN_ALERTS_PERCENT as i16, MAX_ALERTS_PERCENT as i16);
+        self.alerts_percent = next as u16;
+    }
 }
 
 pub struct TargetPickerRects {
@@ -82,7 +133,7 @@ pub fn render_dashboard(
     pane_state: &mut ListState,
     view: DashboardView<'_>,
 ) {
-    let rects = dashboard_rects(frame.area());
+    let rects = dashboard_rects(frame.area(), view.split);
 
     alerts::render_alerts(
         rects.alerts,
@@ -99,6 +150,8 @@ pub fn render_dashboard(
             focused: view.alerts_focused,
         },
     );
+
+    render_split_divider(rects.divider, frame.buffer_mut(), view.split);
 
     panels::render_pane_list(
         rects.panes,
@@ -118,6 +171,7 @@ pub fn render_dashboard(
         frame.buffer_mut(),
         view.alerts_focused,
         view.panes_focused,
+        view.split,
     );
 }
 
@@ -284,20 +338,72 @@ pub fn max_git_scroll(viewport: Rect, line_count: usize) -> usize {
     line_count.saturating_sub(visible_lines)
 }
 
-pub fn dashboard_rects(area: Rect) -> DashboardRects {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage(36),
-            Constraint::Min(10),
-            Constraint::Length(2),
-        ])
-        .split(area);
+pub fn dashboard_rects(area: Rect, split: DashboardSplit) -> DashboardRects {
+    let (footer_height, divider_height, body_height) = dashboard_layout_heights(area);
+    let alerts_height = alerts_height_for(body_height, split);
+    let panes_height = body_height.saturating_sub(alerts_height);
+    let alerts = Rect::new(area.x, area.y, area.width, alerts_height);
+    let divider = Rect::new(
+        area.x,
+        alerts.y.saturating_add(alerts.height),
+        area.width,
+        divider_height,
+    );
+    let panes = Rect::new(
+        area.x,
+        divider.y.saturating_add(divider.height),
+        area.width,
+        panes_height,
+    );
+    let footer = Rect::new(
+        area.x,
+        area.y
+            .saturating_add(area.height)
+            .saturating_sub(footer_height),
+        area.width,
+        footer_height,
+    );
     DashboardRects {
-        alerts: chunks[0],
-        panes: chunks[1],
-        footer: chunks[2],
+        alerts,
+        divider,
+        panes,
+        footer,
     }
+}
+
+pub fn dashboard_split_from_row(area: Rect, row: u16) -> DashboardSplit {
+    let (_, _, body_height) = dashboard_layout_heights(area);
+    if body_height == 0 {
+        return DashboardSplit::default();
+    }
+    let relative_row = row.saturating_sub(area.y).min(body_height);
+    let percent =
+        ((relative_row as u32 * 100 + body_height as u32 / 2) / body_height as u32) as u16;
+    DashboardSplit::new(percent)
+}
+
+fn dashboard_layout_heights(area: Rect) -> (u16, u16, u16) {
+    let footer_height = DASHBOARD_FOOTER_HEIGHT.min(area.height);
+    let content_height = area.height.saturating_sub(footer_height);
+    let divider_height =
+        if content_height >= MIN_ALERTS_HEIGHT + MIN_PANES_HEIGHT + DASHBOARD_SPLIT_HANDLE_HEIGHT {
+            DASHBOARD_SPLIT_HANDLE_HEIGHT
+        } else {
+            0
+        };
+    let body_height = content_height.saturating_sub(divider_height);
+    (footer_height, divider_height, body_height)
+}
+
+fn alerts_height_for(body_height: u16, split: DashboardSplit) -> u16 {
+    if body_height == 0 {
+        return 0;
+    }
+    let desired = ((body_height as u32 * split.alerts_percent() as u32 + 50) / 100) as u16;
+    let min_alerts = MIN_ALERTS_HEIGHT.min(body_height);
+    let min_panes = MIN_PANES_HEIGHT.min(body_height.saturating_sub(min_alerts));
+    let max_alerts = body_height.saturating_sub(min_panes);
+    desired.clamp(min_alerts, max_alerts)
 }
 
 pub fn target_picker_rects(viewport: Rect) -> TargetPickerRects {
@@ -366,7 +472,26 @@ pub fn version_badge_rect(area: Rect) -> Rect {
     )
 }
 
-fn render_footer(area: Rect, buf: &mut Buffer, alerts_focused: bool, panes_focused: bool) {
+fn render_split_divider(area: Rect, buf: &mut Buffer, split: DashboardSplit) {
+    if area.height == 0 {
+        return;
+    }
+    Paragraph::new(format!(
+        "drag resize alerts/panes · alerts {}% · [/] resize · = reset",
+        split.alerts_percent()
+    ))
+    .style(Style::default().fg(theme::TEXT_DIM).bg(theme::BADGE_BG))
+    .alignment(Alignment::Center)
+    .render(area, buf);
+}
+
+fn render_footer(
+    area: Rect,
+    buf: &mut Buffer,
+    alerts_focused: bool,
+    panes_focused: bool,
+    split: DashboardSplit,
+) {
     let focus = if alerts_focused {
         "focus: alerts"
     } else if panes_focused {
@@ -377,7 +502,7 @@ fn render_footer(area: Rect, buf: &mut Buffer, alerts_focused: bool, panes_focus
     let badge = version_badge_rect(area);
     let text_width = area.width.saturating_sub(badge.width).saturating_sub(1);
     let text_area = Rect::new(area.x, area.y, text_width, area.height);
-    Paragraph::new(footer_text(focus))
+    Paragraph::new(footer_text(focus, split))
         .style(Style::default().fg(theme::TEXT_DIM))
         .wrap(Wrap { trim: false })
         .render(text_area, buf);
@@ -395,9 +520,10 @@ fn render_footer(area: Rect, buf: &mut Buffer, alerts_focused: bool, panes_focus
 /// so the list of advertised keybindings can be unit-tested without
 /// spinning up a buffer. The `focus` argument is the prefix (e.g.
 /// `"focus: alerts"`) decided by the caller.
-fn footer_text(focus: &str) -> String {
+fn footer_text(focus: &str, split: DashboardSplit) -> String {
     format!(
-        "{focus} · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · p accept · d dismiss · ? help · q quit"
+        "{focus} · split {}% · [/] resize · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · p accept · d dismiss · ? help · q quit",
+        split.alerts_percent()
     )
 }
 
@@ -444,6 +570,10 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("Mouse left", "select the clicked alert, pane, or target"),
         ("Mouse double", "toggle hide on the clicked alert"),
         (
+            "Mouse drag",
+            "drag the divider between Alerts and Panes to resize them",
+        ),
+        (
             "Severity chip",
             "click a bulk chip in Alerts to toggle auto-hide for that severity",
         ),
@@ -456,6 +586,11 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("j / k", "alternate list scroll keys"),
         ("PgUp / PgDn", "scroll one page in the focused list"),
         ("Home / End", "jump to the first or last item"),
+        (
+            "[ / ]",
+            "shrink or grow Alerts; Panes use the remaining height",
+        ),
+        ("=", "reset the Alerts/Panes split"),
         ("t", "open tmux target picker (session -> window)"),
         (
             "Enter",
@@ -851,6 +986,57 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_rects_include_draggable_divider_between_lists() {
+        let area = Rect::new(0, 0, 120, 32);
+        let rects = dashboard_rects(area, DashboardSplit::default());
+
+        assert_eq!(rects.footer.height, DASHBOARD_FOOTER_HEIGHT);
+        assert_eq!(rects.divider.height, DASHBOARD_SPLIT_HANDLE_HEIGHT);
+        assert_eq!(rects.divider.y, rects.alerts.y + rects.alerts.height);
+        assert_eq!(rects.panes.y, rects.divider.y + rects.divider.height);
+        assert_eq!(rects.footer.y + rects.footer.height, area.y + area.height);
+        assert!(rects.alerts.height >= MIN_ALERTS_HEIGHT);
+        assert!(rects.panes.height >= MIN_PANES_HEIGHT);
+    }
+
+    #[test]
+    fn dashboard_split_from_row_maps_drag_position_to_percent() {
+        let area = Rect::new(0, 0, 120, 42);
+        let high_alerts = dashboard_split_from_row(area, 30);
+        let low_alerts = dashboard_split_from_row(area, 8);
+
+        assert!(high_alerts.alerts_percent() > low_alerts.alerts_percent());
+        assert_eq!(
+            dashboard_split_from_row(area, 0).alerts_percent(),
+            MIN_ALERTS_PERCENT
+        );
+        assert_eq!(
+            dashboard_split_from_row(area, 100).alerts_percent(),
+            MAX_ALERTS_PERCENT
+        );
+    }
+
+    #[test]
+    fn dashboard_split_keys_step_and_clamp() {
+        let mut split = DashboardSplit::new(DEFAULT_ALERTS_PERCENT);
+        split.grow_alerts();
+        assert_eq!(
+            split.alerts_percent(),
+            DEFAULT_ALERTS_PERCENT + RESIZE_STEP_PERCENT
+        );
+        split.shrink_alerts();
+        assert_eq!(split.alerts_percent(), DEFAULT_ALERTS_PERCENT);
+
+        for _ in 0..20 {
+            split.shrink_alerts();
+        }
+        assert_eq!(split.alerts_percent(), MIN_ALERTS_PERCENT);
+
+        split.reset();
+        assert_eq!(split, DashboardSplit::default());
+    }
+
+    #[test]
     fn footer_text_advertises_prompt_send_keys() {
         // v1.10.2 polish (Codex v1.9.2 / v1.10.0 follow-up): the
         // global footer must advertise `p` (accept) and `d` (dismiss)
@@ -860,7 +1046,7 @@ mod tests {
         // ordering — the two actuation keys should sit between
         // `t target` and `? help` so they stay adjacent to target
         // selection and immediately before the generic help/quit tail.
-        let text = footer_text("focus: alerts");
+        let text = footer_text("focus: alerts", DashboardSplit::default());
         assert!(
             text.contains("p accept"),
             "footer must advertise `p accept`: {text}"
@@ -872,6 +1058,18 @@ mod tests {
         assert!(
             text.contains("u runtime"),
             "footer must advertise `u runtime`: {text}"
+        );
+        assert!(
+            text.contains("split 36%"),
+            "footer must show current dashboard split: {text}"
+        );
+        assert!(
+            text.contains("[/] resize"),
+            "footer must advertise split resize keys: {text}"
+        );
+        assert!(
+            text.contains("= reset"),
+            "footer must advertise split reset key: {text}"
         );
         // Sanity: existing anchors still present.
         assert!(text.starts_with("focus: alerts"));
@@ -907,6 +1105,32 @@ mod tests {
             d_pos < help_pos,
             "actuation keys must precede `? help` (generic tail)"
         );
+    }
+
+    #[test]
+    fn help_overlay_documents_dashboard_resize_controls() {
+        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
+        let entry_for = |key: &str| -> Option<String> {
+            lines.iter().find_map(|line| {
+                let (label, value) = line.split_once(':')?;
+                if label.trim() == key {
+                    Some(value.trim().to_string())
+                } else {
+                    None
+                }
+            })
+        };
+
+        let drag = entry_for("Mouse drag").expect("help must document divider drag");
+        let resize_keys = entry_for("[ / ]").expect("help must document resize keys");
+        let reset_key = entry_for("=").expect("help must document split reset");
+
+        assert!(drag.contains("divider"), "got: {drag}");
+        assert!(
+            resize_keys.contains("shrink or grow Alerts"),
+            "got: {resize_keys}"
+        );
+        assert!(reset_key.contains("reset"), "got: {reset_key}");
     }
 
     #[test]

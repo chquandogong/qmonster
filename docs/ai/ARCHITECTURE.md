@@ -141,12 +141,15 @@ Ratatui widgets. Current operator surfaces:
 
 1. Severity-first alert queue with timestamps, `NEW` highlighting,
    per-alert auto-hide toggles, and severity bulk-hide chips.
-2. Per-pane list with inline expansion for the selected pane's
+2. Resizable Alerts/Panes dashboard split. Operators can drag the
+   divider with the mouse or use `[` / `]` plus `=` reset from the
+   keyboard; the footer shows the current Alerts percentage.
+3. Per-pane list with inline expansion for the selected pane's
    recommendations, provider-profile payload, metrics, and runtime
    facts (`modes`, `access`, `loaded`, `restrict`).
-3. Overlays for target selection (session -> window), help/legend, and
+4. Overlays for target selection (session -> window), help/legend, and
    Git status from the bottom-right version badge.
-4. Source labels rendered in long form (`[Official]`, `[Qmonster]`,
+5. Source labels rendered in long form (`[Official]`, `[Qmonster]`,
    `[Heur]`, `[Estimate]`) rather than two-letter abbreviations.
 
 Palette: low-saturation, grey/navy/blue. Color only on state
