@@ -11,6 +11,7 @@ pub mod modal_state;
 pub mod once_report;
 pub mod operator_actions;
 pub mod path_resolution;
+pub mod polling_tick;
 pub mod prompt_send_actions;
 pub mod runtime_refresh;
 pub mod safety_audit;

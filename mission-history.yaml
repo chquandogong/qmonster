@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.19 terminal session extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.20 poll tick extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 101
-  latest_version: "1.16.19"
+  total_revisions: 102
+  latest_version: "1.16.20"
 
 timeline:
   - change_id: "initial"
@@ -9623,8 +9623,79 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.20-poll-tick-extraction"
+    semantic_version: "1.16.20"
+    change_sequence: 102
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving one poll tick's success/failure routing
+      and pane-state flash updates out of `src/main.rs`.
+    intent_ko: >
+      poll tick 단위의 success/failure routing과 pane-state flash 갱신을
+      `src/main.rs` 밖으로 옮겨 Phase C C1 분해를 계속한다.
+    decision: >
+      Add `src/app/polling_tick.rs` with `PollTickState`,
+      `PollTickOutcome`, and `handle_poll_tick`. The helper wraps
+      `run_once_with_target`, polling failure/recovery notice dedupe, and
+      pane-state flash updates while `src/main.rs` keeps ownership of the
+      live report list and dashboard resync.
+    decision_ko: >
+      `PollTickState`, `PollTickOutcome`, `handle_poll_tick`를 담은
+      `src/app/polling_tick.rs`를 추가한다. 이 helper는
+      `run_once_with_target`, polling failure/recovery notice dedupe,
+      pane-state flash 갱신을 감싸고, `src/main.rs`는 live report list와
+      dashboard resync 소유권을 유지한다.
+    triggered_by: "Continuation after the v1.16.19 terminal session extraction."
+    issue_or_context: >
+      After terminal lifecycle moved out, the live loop still directly owned
+      the poll success/error match, polling recovery/failure notice routing,
+      and pane-state flash updates.
+    changes:
+      added:
+        - "src/app/polling_tick.rs: PollTickState, PollTickOutcome, and handle_poll_tick"
+      modified:
+        - "src/main.rs delegates one poll tick's run/error/recovery/flash handling to app::polling_tick"
+        - "src/app/mod.rs exports polling_tick"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.20"
+      removed:
+        - "src/main.rs direct route_polling_failure / route_polling_recovered / update_pane_state_flashes imports"
+    changed_sections:
+      - "src/app/polling_tick.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Nineteenth Phase C C1 code slice exists outside main.rs"
+        - "poll tick success/failure routing has a named app-level boundary"
+      modified:
+        - "main.rs no longer owns polling recovery/failure notice routing or pane-state flash updates"
+      removed:
+        - "polling match boilerplate from the live event-loop body"
+    impact_scope:
+      code: "internal refactor only; no poll cadence, notice dedupe, report update, pane-state flash, target filtering, or dashboard resync behavior change intended"
+      tests: "565 total passed — 505 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (same as v1.16.19)"
+      ledger: "1 new timeline entry (sequence 102); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — the helper preserves the old run-once success/error branches and existing event-loop integration tests stay green."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.19 terminal session extraction — Phase C C1 remains active with terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
+  current_phase: "v1.16.20 poll tick extraction — Phase C C1 remains active with polling_tick, terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

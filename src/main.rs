@@ -18,9 +18,8 @@ use qmonster::app::dashboard_state::{
     AlertMouseClick, DashboardMouseAction, DashboardMouseView, DashboardSelectionKeyView,
     DashboardSyncState, handle_dashboard_mouse, handle_dashboard_selection_key,
     refresh_alert_state, sync_alert_selection, sync_dashboard_state, sync_pane_selection,
-    update_pane_state_flashes,
 };
-use qmonster::app::event_loop::{PaneReport, run_once, run_once_with_target};
+use qmonster::app::event_loop::{PaneReport, run_once};
 use qmonster::app::git_info::capture_repo_panel;
 use qmonster::app::keymap::{FocusedPanel, toggle_focus};
 use qmonster::app::modal_state::{
@@ -29,14 +28,12 @@ use qmonster::app::modal_state::{
 use qmonster::app::once_report::print_once_reports;
 use qmonster::app::operator_actions::{version_refresh_notices, write_operator_snapshot};
 use qmonster::app::path_resolution::{default_config_path, pick_root};
+use qmonster::app::polling_tick::{PollTickState, handle_poll_tick};
 use qmonster::app::prompt_send_actions::handle_prompt_send_action;
 use qmonster::app::runtime_refresh::handle_runtime_refresh_action;
 use qmonster::app::safety_audit::apply_override_with_audit;
 use qmonster::app::settings_overlay::{handle_settings_overlay_key, handle_settings_overlay_mouse};
-use qmonster::app::system_notice::{
-    SystemNotice, record_startup_snapshot, route_polling_failure, route_polling_recovered,
-    route_version_drift,
-};
+use qmonster::app::system_notice::{SystemNotice, record_startup_snapshot, route_version_drift};
 use qmonster::app::target_picker::{
     TargetChoice, TargetPickerAction, TargetPickerController, TargetPickerStage,
     handle_target_picker_key, handle_target_picker_mouse, initial_target, open_target_picker,
@@ -353,52 +350,36 @@ where
                 let now = Instant::now();
                 if now.saturating_duration_since(last_poll) >= poll {
                     last_poll = now;
-                    match run_once_with_target(ctx, now, selected_target.as_ref()) {
-                        Ok(reports) => {
-                            if let Some(notice) = route_polling_recovered(&mut last_poll_error) {
-                                notices.insert(0, notice);
-                            }
-                            update_pane_state_flashes(
-                                &reports,
-                                &mut last_pane_idle_states,
-                                &mut pane_state_flashes,
-                                now,
-                            );
-                            last_reports = reports;
-                            sync_dashboard_state(
-                                &notices,
-                                &last_reports,
-                                DashboardSyncState {
-                                    alert_state: &mut alert_state,
-                                    pane_state: &mut pane_state,
-                                    previous_alerts: &mut previous_alerts,
-                                    fresh_alerts: &mut fresh_alerts,
-                                    alert_times: &mut alert_times,
-                                    alert_hide_deadlines: &mut alert_hide_deadlines,
-                                },
-                                now,
-                            );
-                        }
-                        Err(e) => {
-                            if let Some(notice) =
-                                route_polling_failure(&mut last_poll_error, e.to_string())
-                            {
-                                notices.insert(0, notice);
-                                sync_dashboard_state(
-                                    &notices,
-                                    &last_reports,
-                                    DashboardSyncState {
-                                        alert_state: &mut alert_state,
-                                        pane_state: &mut pane_state,
-                                        previous_alerts: &mut previous_alerts,
-                                        fresh_alerts: &mut fresh_alerts,
-                                        alert_times: &mut alert_times,
-                                        alert_hide_deadlines: &mut alert_hide_deadlines,
-                                    },
-                                    now,
-                                );
-                            }
-                        }
+                    let outcome = handle_poll_tick(
+                        ctx,
+                        now,
+                        selected_target.as_ref(),
+                        PollTickState {
+                            last_poll_error: &mut last_poll_error,
+                            last_pane_idle_states: &mut last_pane_idle_states,
+                            pane_state_flashes: &mut pane_state_flashes,
+                        },
+                    );
+                    if let Some(notice) = outcome.notice {
+                        notices.insert(0, notice);
+                    }
+                    if let Some(reports) = outcome.reports {
+                        last_reports = reports;
+                    }
+                    if outcome.resync_dashboard {
+                        sync_dashboard_state(
+                            &notices,
+                            &last_reports,
+                            DashboardSyncState {
+                                alert_state: &mut alert_state,
+                                pane_state: &mut pane_state,
+                                previous_alerts: &mut previous_alerts,
+                                fresh_alerts: &mut fresh_alerts,
+                                alert_times: &mut alert_times,
+                                alert_hide_deadlines: &mut alert_hide_deadlines,
+                            },
+                            now,
+                        );
                     }
                 }
 

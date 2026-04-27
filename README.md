@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.19`; current canonical ledger: `v1.16.19`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.20`; current canonical ledger: `v1.16.20`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -96,8 +96,10 @@ resolution into `src/app/path_resolution.rs`; v1.16.17 moves initial target
 selection into `src/app/target_picker.rs`; v1.16.18 moves dashboard
 frame/overlay render composition into `src/app/dashboard_render.rs`;
 v1.16.19 moves terminal raw-mode/alternate-screen/mouse-capture lifecycle
-into `src/app/terminal_session.rs`. The next C1 slices should keep
-thinning event-loop orchestration before control-mode adapter work.
+into `src/app/terminal_session.rs`; v1.16.20 moves poll tick
+success/failure routing and pane-state flash updates into
+`src/app/polling_tick.rs`. The next C1 slices should keep thinning
+event-loop orchestration before control-mode adapter work.
 
 ## Quick start
 
