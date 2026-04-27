@@ -520,6 +520,87 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
 }
 
 #[test]
+fn cost_pressure_critical_rec_fires_end_to_end_on_codex_pane() {
+    // v1.15.14 + v1.15.15 integration: a Codex pane whose bottom
+    // status line carries token counts that compute (with the
+    // pricing table) to >= $20 USD must surface
+    // `cost-pressure: act now` (Risk severity, is_strong true,
+    // Estimated source, suggested_command = None) through run_once.
+    // The fixture uses 25M input tokens × $1.00 / 1M = $25.00,
+    // crossing the cost_pressure_critical threshold.
+    use qmonster::policy::pricing::PricingTable;
+    use std::io::Write;
+    let mut f = tempfile::NamedTempFile::new().unwrap();
+    write!(
+        f,
+        r#"
+[[entries]]
+provider = "codex"
+model = "gpt-5.4"
+input_per_1m = 1.0
+output_per_1m = 10.0
+"#
+    )
+    .unwrap();
+    let pricing = PricingTable::load_from_toml(f.path()).unwrap();
+
+    let tail = "Context 5% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 95% used · 5h 90% · weekly 90% · 0.122.0 · 258K window · 25M used · 25M in · 0 out · <redacted> · gp";
+    let source = FixturePaneSource {
+        panes: vec![pane("%1", "codex:1:main", "codex", tail, false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx =
+        Context::new(QmonsterConfig::defaults(), source, notifier, sink).with_pricing(pricing);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert_eq!(reports.len(), 1);
+
+    // Sanity: cost_usd populated as Estimated, value crosses $20.
+    let cost = reports[0]
+        .signals
+        .cost_usd
+        .as_ref()
+        .expect("cost_usd must populate from token counts × pricing");
+    assert!(
+        cost.value >= 20.0,
+        "fixture must cross the cost_pressure_critical threshold; got {}",
+        cost.value
+    );
+    assert_eq!(cost.source_kind, SourceKind::Estimated);
+
+    // The advisory rule must fire on this pane.
+    let rec = reports[0]
+        .recommendations
+        .iter()
+        .find(|r| r.action == "cost-pressure: act now")
+        .expect("cost_pressure_critical must fire when cost_usd >= $20");
+
+    assert_eq!(rec.severity, Severity::Risk);
+    assert!(
+        rec.is_strong,
+        "cost-pressure: act now must be marked is_strong (CHECKPOINT slot)"
+    );
+    assert_eq!(rec.source_kind, SourceKind::Estimated);
+    assert_eq!(
+        rec.suggested_command, None,
+        "session cost cannot be resolved by a slash command"
+    );
+    let step = rec
+        .next_step
+        .as_deref()
+        .expect("next_step must describe the operator's options");
+    assert!(
+        step.contains("snapshot"),
+        "next_step should mention the snapshot precondition. got: {step}"
+    );
+    assert!(
+        step.contains("model") || step.contains("pause") || step.contains("switch"),
+        "next_step should mention pause / model-switch alternatives. got: {step}"
+    );
+}
+
+#[test]
 fn strong_context_pressure_rec_emits_prompt_send_proposal_end_to_end() {
     // Phase 5 P5-2 (v1.9.2) integration: when context_pressure_warning
     // fires (is_strong + suggested_command = `/compact`), the engine
