@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.38 control-mode trial helper."
+  mission_title: "Qmonster v0.5.0 — v1.16.39 once source visibility."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 120
-  latest_version: "1.16.38"
+  total_revisions: 121
+  latest_version: "1.16.39"
 
 timeline:
   - change_id: "initial"
@@ -10959,8 +10959,77 @@ timeline:
     follow_up:
       - "Continue C2: collect more operator-trial evidence before any default-source switch."
 
+  - change_id: "qmonster-v1.16.39-once-source-visibility"
+    semantic_version: "1.16.39"
+    change_sequence: 121
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: keep progressing C2 and close each work item with commit/push/tag"
+    change_type: "feature"
+    motivation_type: "Phase C C2 operator trial visibility"
+    persistence: "permanent"
+    intent: >
+      Make `--once` runs report which tmux transport they are using, so
+      control-mode trials can be verified from stdout.
+    intent_ko: >
+      `--once` 실행이 어떤 tmux transport를 사용하는지 stdout에서 바로
+      확인할 수 있게 하여 control-mode trial 검증을 쉽게 만든다.
+    decision: >
+      Add `TmuxSourceMode::as_str()` with config-spelled values
+      (`polling`, `control_mode`) and print `tmux source: <mode>` in the
+      `--once` startup header after the root path line. This avoids Debug
+      spelling drift and keeps the live TUI unchanged.
+    decision_ko: >
+      config 표기와 같은 값(`polling`, `control_mode`)을 반환하는
+      `TmuxSourceMode::as_str()`를 추가하고, `--once` 시작 헤더의 root
+      path 줄 다음에 `tmux source: <mode>`를 출력한다. Debug 표기 drift를
+      피하면서 live TUI 동작은 바꾸지 않는다.
+    triggered_by: "v1.16.38 added a control-mode once helper whose output did not explicitly confirm the selected tmux source."
+    issue_or_context: >
+      Before any default-source switch, operator trial commands should make
+      source selection auditable without inspecting config files or code paths.
+    changes:
+      added:
+        - "TmuxSourceMode::as_str()"
+        - "`--once` startup line: `tmux source: polling|control_mode`"
+        - "unit coverage for config-spelled tmux source strings"
+      modified:
+        - "main `--once` startup header"
+        - "README and docs/ai operator docs"
+        - "mission ledger updated for v1.16.39"
+      removed: []
+    changed_sections:
+      - "src/app/config.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/WORKFLOWS.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "operator can confirm control-mode trial selection from stdout"
+        - "tmux source display uses stable config spelling rather than Debug spelling"
+      modified:
+        - "all-target test count increases to 592"
+      removed: []
+    impact_scope:
+      runtime: "`--once` stdout only; live TUI and default source remain unchanged"
+      tests: "592 total passed — 532 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; control-mode once helper smoke displays `tmux source: control_mode`; repeated default and all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 121); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, helper control-mode --once smoke, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining default-readiness checks before any source default switch."
+    breaking: false
+    risk: "low — adds one stdout line and a config enum helper."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add remaining transport-readiness hardening before any default switch."
+
 evolution_summary:
-  current_phase: "v1.16.38 control-mode trial helper — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  current_phase: "v1.16.39 once source visibility — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
   next_phase: "Continue Phase C C2 with additional control-mode default-readiness hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

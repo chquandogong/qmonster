@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.38 control-mode trial helper)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.39 once source visibility)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -138,6 +138,8 @@ operator-facing failure vocabulary.
 v1.16.38 adds `scripts/run-qmonster-control-mode-once.sh`, a
 temporary-config `--once` launcher for operator control-mode trials that
 does not mutate the standard config file.
+v1.16.39 prints the active tmux source mode in `--once` startup output,
+using the same `polling` / `control_mode` spelling accepted by config.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

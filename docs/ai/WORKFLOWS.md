@@ -86,7 +86,8 @@ writes any of these files:
 3. For a control-mode transport trial, run
    `./scripts/run-qmonster-control-mode-once.sh`. It uses a temporary
    config with `source = "control_mode"` and exits after `--once`,
-   leaving the standard config unchanged.
+   leaving the standard config unchanged. Confirm the run selected
+   control-mode by checking the `tmux source: control_mode` startup line.
 4. Fill non-zero pricing rates manually in
    `~/.qmonster/config/pricing.toml` to enable COST badges. Qmonster
    never fetches provider pricing pages.

@@ -63,6 +63,15 @@ pub enum TmuxSourceMode {
     ControlMode,
 }
 
+impl TmuxSourceMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Polling => "polling",
+            Self::ControlMode => "control_mode",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionsMode {
@@ -639,6 +648,12 @@ source = "control_mode"
 "#;
         let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
         assert_eq!(cfg.tmux.source, TmuxSourceMode::ControlMode);
+    }
+
+    #[test]
+    fn tmux_source_mode_as_str_matches_config_spelling() {
+        assert_eq!(TmuxSourceMode::Polling.as_str(), "polling");
+        assert_eq!(TmuxSourceMode::ControlMode.as_str(), "control_mode");
     }
 
     #[test]

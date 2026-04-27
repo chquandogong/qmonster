@@ -259,6 +259,8 @@ side_effects (N):
 - control-mode trial은 `scripts/run-qmonster-control-mode-once.sh`로
   수행합니다. 이 helper는 임시 config에만 `source = "control_mode"`를
   쓰고 `--once`로 종료하므로 표준 config를 수정하지 않습니다.
+  `--once` 시작 출력의 `tmux source: control_mode` 줄로 실제 transport
+  선택을 확인할 수 있습니다.
 - 표준 pricing path는 `~/.qmonster/config/pricing.toml`입니다.
   없으면 `config/pricing.example.toml`이 복사됩니다. provider 가격은
   자주 바뀌므로 Qmonster가 자동 조회하지 않습니다. 운영자가 non-zero
