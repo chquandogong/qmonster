@@ -34,11 +34,9 @@ impl ProviderParser for CodexAdapter {
         append_codex_runtime_facts(&mut set, tail);
         let Some(status) = parse_codex_status_line(tail) else {
             // S3-2 fallback: when the bottom status line is absent
-            // (right after Codex startup, before the first prompt
-            // renders the bottom line), surface model_name +
-            // reasoning_effort from the welcome-box `│ model:` line so
-            // the pane card does not stay blank for the entire startup
-            // window.
+            // (right after Codex startup, or when the status box is the
+            // only retained runtime surface), surface model_name +
+            // reasoning_effort from the boxed `Model:` / `model:` line.
             if let Some((model, effort)) = parse_codex_welcome_model(tail) {
                 set.model_name = Some(
                     MetricValue::new(model, SourceKind::ProviderOfficial)
@@ -209,19 +207,10 @@ fn parse_codex_welcome_model(tail: &str) -> Option<(String, Option<String>)> {
         let after = &line[idx + "model:".len()..];
         let mut tokens = after.split_whitespace();
         let model = tokens.next()?;
-        if !(model.starts_with("gpt-")
-            || model.starts_with("claude-")
-            || model.starts_with("gemini-"))
-        {
+        if !is_provider_model_token(model) {
             continue;
         }
-        let effort = tokens
-            .next()
-            .map(|t| {
-                t.trim_end_matches(|c: char| !c.is_ascii_alphabetic())
-                    .to_string()
-            })
-            .filter(|t| matches!(t.as_str(), "xhigh" | "high" | "medium" | "low" | "auto"));
+        let effort = tokens.find_map(parse_reasoning_effort_token);
         return Some((model.to_string(), effort));
     }
     None
@@ -249,6 +238,7 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
         let mut input_tokens: Option<u64> = None;
         let mut output_tokens: Option<u64> = None;
         let mut model: Option<String> = None;
+        let mut status_line_reasoning_effort: Option<String> = None;
         let mut worktree_path: Option<String> = None;
         let mut git_branch: Option<String> = None;
         let mut skip_next_plain_identifier = false;
@@ -261,11 +251,12 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
             }
             // model: provider-known prefix
             if model.is_none()
-                && (token.starts_with("gpt-")
-                    || token.starts_with("claude-")
-                    || token.starts_with("gemini-"))
+                && let Some((parsed_model, parsed_effort)) = parse_codex_model_status_token(token)
             {
-                model = Some(token.to_string());
+                model = Some(parsed_model);
+                if status_line_reasoning_effort.is_none() {
+                    status_line_reasoning_effort = parsed_effort;
+                }
                 // Project name token sits immediately after model. Skip it.
                 skip_next_plain_identifier = true;
                 continue;
@@ -328,7 +319,8 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
         if let (Some(c), Some(tot), Some(inp), Some(out)) =
             (context_pct, total_tokens, input_tokens, output_tokens)
         {
-            let reasoning_effort = parse_codex_reasoning_effort(tail);
+            let reasoning_effort =
+                status_line_reasoning_effort.or_else(|| parse_codex_reasoning_effort(tail));
             return Some(CodexStatus {
                 context_pct: c,
                 total_tokens: tot,
@@ -345,6 +337,31 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
         return None;
     }
     None
+}
+
+fn parse_codex_model_status_token(token: &str) -> Option<(String, Option<String>)> {
+    let mut parts = token.split_whitespace();
+    let model = parts.next()?;
+    if !is_provider_model_token(model) {
+        return None;
+    }
+    let effort = parts.find_map(parse_reasoning_effort_token);
+    Some((model.to_string(), effort))
+}
+
+fn is_provider_model_token(token: &str) -> bool {
+    token.starts_with("gpt-") || token.starts_with("claude-") || token.starts_with("gemini-")
+}
+
+fn parse_reasoning_effort_token(token: &str) -> Option<String> {
+    let cleaned = token
+        .trim_matches(|c: char| !c.is_ascii_alphabetic())
+        .to_ascii_lowercase();
+    matches!(
+        cleaned.as_str(),
+        "xhigh" | "high" | "medium" | "low" | "auto"
+    )
+    .then_some(cleaned)
 }
 
 fn parse_named_percent_token(token: &str, label: &str) -> Option<u8> {
@@ -534,6 +551,7 @@ mod tests {
     // Redacted sample taken from ~/.qmonster/archive/2026-04-23/_65/
     // Codex CLI 0.122.0 status bar.
     const STATUS_LINE: &str = "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp";
+    const STATUS_LINE_WITH_REASONING: &str = "Context 60% left · ~/Qmonster · gpt-5.5 xhigh · Qmonster · main · Context 40% used · 5h 96% · weekly 82% · 0.125.0 · 258K window · 1.30M used · 1.29M in · 8.31K out · <redacted>";
 
     // v1.11.2 remediation (Gemini v1.11.0 must-fix #1 — remove the
     // `insert_for_test` public API surface): build the pricing
@@ -647,6 +665,51 @@ output_per_1m = 10.00
         assert!(set.token_count.is_some());
         assert!(set.model_name.is_some());
         assert!(set.cost_usd.is_none());
+    }
+
+    #[test]
+    fn codex_adapter_extracts_reasoning_effort_from_model_with_reasoning_status_line() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(
+            &id,
+            STATUS_LINE_WITH_REASONING,
+            &pricing,
+            &settings,
+            &history,
+        );
+        let set = CodexAdapter.parse(&c);
+
+        let model = set.model_name.as_ref().expect("model parsed");
+        assert_eq!(model.value, "gpt-5.5");
+        assert_eq!(model.source_kind, SourceKind::ProviderOfficial);
+
+        let effort = set.reasoning_effort.as_ref().expect("effort parsed");
+        assert_eq!(effort.value, "xhigh");
+        assert_eq!(effort.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(effort.provider, Some(Provider::Codex));
+    }
+
+    #[test]
+    fn codex_adapter_prefers_fresh_status_line_effort_over_stale_status_box() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = format!(
+            "│  Model:                       gpt-5.5 (reasoning low, summaries auto)                  │\n{}",
+            STATUS_LINE_WITH_REASONING
+        );
+        let c = ctx(&id, &tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+
+        let effort = set.reasoning_effort.as_ref().expect("effort parsed");
+        assert_eq!(
+            effort.value, "xhigh",
+            "bottom status line is fresher than retained /status box output"
+        );
     }
 
     #[test]
@@ -942,11 +1005,11 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
     }
 
     #[test]
-    fn codex_adapter_reasoning_effort_absent_when_status_bar_missing() {
-        // /status snippet present, but no status bar matches the shape.
-        // Because reasoning_effort is populated inside parse_codex_status_line's
-        // success path, the whole CodexStatus returns None and no field —
-        // reasoning_effort included — is set.
+    fn codex_adapter_status_box_without_status_bar_populates_model_and_effort() {
+        // /status snippet present, but no bottom status bar matches the
+        // Context/tokens shape. The boxed Model line is still a provider
+        // status surface, so model + effort should remain visible even
+        // when ctx/quota/token fields are absent.
         let id = id();
         let (pricing, _f) = pricing_with_gpt_5_4();
         let settings = ClaudeSettings::empty();
@@ -954,7 +1017,11 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let c = ctx(&id, STATUS_BOX_SNIPPET, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
 
-        assert!(set.reasoning_effort.is_none());
+        let model = set.model_name.as_ref().expect("model parsed");
+        assert_eq!(model.value, "gpt-5.4");
+
+        let effort = set.reasoning_effort.as_ref().expect("effort parsed");
+        assert_eq!(effort.value, "xhigh");
         assert!(set.context_pressure.is_none());
     }
 

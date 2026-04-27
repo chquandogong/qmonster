@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-28 (implementation sync through v1.17.1 Claude statusline observability)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-28 (implementation sync through v1.18.0 Phase D D2 identity-drift anomaly detection)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -191,6 +191,18 @@ is still changing. v1.17.1 replaces Claude slash-command refresh with
 statusline parsing: Claude `CTX`, `5h`, `7d`, model, effort, path, and
 permission mode are read from the live tail, and `u` no longer sends
 Claude provider input.
+v1.18.0 closes the long-deferred Phase D D2 identity-drift detection.
+`policy/rules/identity_drift.rs` is a pure rule that compares each
+pane's stored `IdentitySnapshot { provider, current_path }` against
+the just-resolved identity and returns up to two `DriftFinding`s
+(provider drift, worktree drift) with stable dedup keys. The event
+loop (`app/event_loop.rs`) owns the per-session history map
+(`Context.identity_history`) and the dedup hashset
+(`Context.reported_drifts`); both are evicted on
+`PaneLifecycleEvent::{BecameDead, Reappeared}` so a re-spawned pane
+can fire its own drifts. The rule is gated behind
+`PolicyGates.identity_drift_findings` (operator opts in via
+`[security] identity_drift_findings = true`); default off.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -514,7 +526,6 @@ module shape.
   detection only — same `current_path` + `git_branch` across 2+ tmux
   windows fires `CrossWindowConcurrentWork` behind the
   `[security] cross_window_findings` opt-in gate).
-- Anomaly detection on pane identity drift (Phase 1 logs transitions).
 - Concurrent-work warning across panes (v1.15.23 requires
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).

@@ -122,6 +122,7 @@ mod tests {
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
             cross_window_findings: false,
+            identity_drift_findings: false,
         }
     }
 
@@ -252,6 +253,7 @@ mod tests {
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
             cross_window_findings: false,
+            identity_drift_findings: false,
         };
         let s = SignalSet {
             task_type: TaskType::Review,

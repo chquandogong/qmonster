@@ -57,6 +57,18 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// `/context` and `/usage` are separate screens; caching lets the UI show
     /// CTX and quota windows together after both have been observed.
     pub pressure_metric_cache: std::collections::HashMap<String, PanePressureCache>,
+    /// Phase D D2 (v1.18.0): last observed `Provider` + `current_path`
+    /// per pane. Drift detection compares this snapshot against the
+    /// just-resolved identity each tick. Cleared on
+    /// `PaneLifecycleEvent::{BecameDead, Reappeared}` so a re-spawned
+    /// pane starts fresh.
+    pub identity_history:
+        std::collections::HashMap<String, crate::policy::rules::identity_drift::IdentitySnapshot>,
+    /// Phase D D2: per-session dedup of drift findings. Keys are
+    /// `(pane_id, "<kind>:<from>→<to>")` so the same drift fires once
+    /// per session even if the comparison stays true for multiple
+    /// polls. Evicted alongside `identity_history` on lifecycle reset.
+    pub reported_drifts: std::collections::HashSet<(String, String)>,
     known_pane_ids: Vec<String>,
 }
 
@@ -80,6 +92,8 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             idle_entered_at: std::collections::HashMap::new(),
             runtime_refresh_tail_overlays: std::collections::HashMap::new(),
             pressure_metric_cache: std::collections::HashMap::new(),
+            identity_history: std::collections::HashMap::new(),
+            reported_drifts: std::collections::HashSet::new(),
             known_pane_ids: Vec::new(),
         }
     }

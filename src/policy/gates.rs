@@ -53,6 +53,13 @@ pub struct PolicyGates {
     /// windows (e.g. a scratch session next to a main implementation
     /// session).
     pub cross_window_findings: bool,
+    /// Phase D D2 (v1.18.0): opt-in identity-drift detection. When
+    /// `true`, `policy::rules::identity_drift` compares each pane's
+    /// resolved provider + `current_path` against the last observed
+    /// snapshot and emits a passive `Concern` recommendation on
+    /// transition. Stays `false` by default — most operators accept
+    /// CLI swaps as routine, and the resolver already tolerates them.
+    pub identity_drift_findings: bool,
 }
 
 impl Default for PolicyGates {
@@ -76,6 +83,7 @@ impl Default for PolicyGates {
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
             cross_window_findings: false,
+            identity_drift_findings: false,
         }
     }
 }
@@ -109,6 +117,7 @@ impl PolicyGates {
             quota_weekly_critical_pct: quota
                 .critical_for_window(provider, crate::app::config::QuotaWindow::Weekly),
             cross_window_findings: security.cross_window_findings,
+            identity_drift_findings: security.identity_drift_findings,
         }
     }
 }
@@ -203,6 +212,7 @@ mod tests {
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
             cross_window_findings: false,
+            identity_drift_findings: false,
         };
         assert!(gates.quota_tight);
     }
@@ -234,6 +244,7 @@ mod tests {
         let security = SecurityConfig {
             posture_advisories: true,
             cross_window_findings: false,
+            identity_drift_findings: false,
         };
         let gates = PolicyGates::from_config_and_identity(
             &cfg,

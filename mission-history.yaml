@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.17.1 — Claude statusline observability without slash refresh."
+  mission_title: "Qmonster v1.18.0 — Phase D D2 identity-drift anomaly detection."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 143
-  latest_version: "1.17.1"
+  total_revisions: 144
+  latest_version: "1.18.0"
 
 timeline:
   - change_id: "initial"
@@ -12764,9 +12764,114 @@ timeline:
     follow_up:
       - "If Claude lets operators hide one of CTX/5h/7d from the statusline, keep missing values absent rather than inferring from older slash captures."
 
+  - change_id: "v1.18.0-identity-drift-detection"
+    semantic_version: "1.18.0"
+    change_sequence: 144
+    date: "2026-04-28"
+    author: "Claude (Opus 4.7)"
+    contributors:
+      - "Operator directive: continue Phase D after D1 / v1.17.1 with proposed defaults"
+    change_type: "feature"
+    motivation_type: "phase entry"
+    persistence: "permanent"
+    intent: >
+      Close Phase D D2 by surfacing pane-level identity drift — the
+      operator-visible event of a pane silently swapping its CLI
+      provider or worktree path between polls.
+    intent_ko: >
+      Phase D D2를 닫기 위해, 같은 pane 안에서 CLI provider 또는
+      worktree path가 poll 사이에 바뀌는 순간을 운영자에게 surface한다.
+    decision: >
+      Add `policy::rules::identity_drift` as a pure rule returning
+      `Vec<DriftFinding>` with stable dedup keys. The event loop owns
+      `Context.identity_history` (last `IdentitySnapshot` per pane)
+      and `Context.reported_drifts` (per-session dedup hashset);
+      both are cleared on `PaneLifecycleEvent::{BecameDead,
+      Reappeared}`. Rule is gated behind
+      `PolicyGates.identity_drift_findings` (driven by
+      `[security] identity_drift_findings`, default off). Findings
+      are `Severity::Concern` so they stay below the desktop-notify
+      gate. `Provider::Unknown → known` and empty-path → present-path
+      transitions are treated as identity catch-up, not drift.
+    decision_ko: >
+      `policy::rules::identity_drift`을 dedup key를 갖는
+      `Vec<DriftFinding>` 반환의 pure rule로 추가한다. event loop가
+      pane별 마지막 `IdentitySnapshot`을 보관하는
+      `Context.identity_history`와 per-session dedup hashset인
+      `Context.reported_drifts`를 소유하고, 두 자료구조 모두
+      `PaneLifecycleEvent::{BecameDead, Reappeared}`에서 evict한다.
+      `[security] identity_drift_findings = true` opt-in 시에만
+      발화하며 default는 off. `Severity::Concern`이라 desktop notify
+      gate를 건드리지 않는다. `Provider::Unknown → 알려진 provider`,
+      빈 경로 → 채워진 경로는 identity catch-up으로 보고 drift로 보지
+      않는다.
+    triggered_by: "Operator approved the proposed-default Phase D2 plan after the v1.17.0 (cross-window) and v1.17.1 (Claude statusline observability) commits."
+    issue_or_context: >
+      Until v1.18.0, the identity resolver produced a fresh
+      `ResolvedIdentity` per poll and never compared it against the
+      prior tick. ARCHITECTURE.md listed "Anomaly detection on pane
+      identity drift (Phase 1 logs transitions)" in deferred work,
+      but no surface ever logged the transitions either. An operator
+      who quit Claude in a pane and started Codex would see no
+      visible signal that the pane's authority had changed.
+    changes:
+      added:
+        - "`policy/rules/identity_drift.rs` with `IdentitySnapshot`, `DriftFinding`, and `detect_identity_drift` (gated, dedup-keyed)"
+        - "`Context.identity_history: HashMap<String, IdentitySnapshot>` and `Context.reported_drifts: HashSet<(String, String)>`"
+        - "`SecurityConfig.identity_drift_findings: bool` (default false)"
+        - "`PolicyGates.identity_drift_findings: bool` plumbed through `from_config_and_identity`"
+        - "Seven unit tests in `policy/rules/identity_drift.rs` covering positive provider drift, positive worktree drift, simultaneous drift, gate-disabled silence, no-drift baseline, Unknown→known catch-up, and empty→present path catch-up"
+        - "Two integration tests in `tests/event_loop_integration.rs` walking the full pipeline through three polls (baseline → drift → dedup) plus a default-config silence test"
+      modified:
+        - "`event_loop.rs` evicts `identity_history` + per-pane `reported_drifts` keys on `BecameDead`/`Reappeared`; computes drift findings before pushing the report"
+        - "`policy/rules/mod.rs` exposes the new `identity_drift` module"
+        - "`docs/ai/{ARCHITECTURE,PROJECT_BRIEF,VALIDATION}.md`, `README.md`, `VERSION.md`, `package.json`, `mission.yaml`, `mission-history.yaml`"
+      removed:
+        - "Anomaly detection on pane identity drift removed from `docs/ai/ARCHITECTURE.md` deferred list"
+    changed_sections:
+      - "src/policy/rules/identity_drift.rs"
+      - "src/policy/rules/mod.rs"
+      - "src/policy/gates.rs"
+      - "src/policy/engine.rs"
+      - "src/policy/rules/advisories.rs"
+      - "src/policy/rules/auto_memory.rs"
+      - "src/policy/rules/concurrent.rs"
+      - "src/policy/rules/profiles.rs"
+      - "src/app/bootstrap.rs"
+      - "src/app/event_loop.rs"
+      - "src/app/config.rs"
+      - "tests/event_loop_integration.rs"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - "package.json"
+    observable_effects:
+      added:
+        - "Operators with `[security] identity_drift_findings = true` see one passive `Concern` recommendation when a pane's resolved provider or worktree path changes between polls; same drift only fires once per session per pane"
+      modified:
+        - "all-target test count rises to 646 (+11 from D2 plumbing + unit + integration; baseline before D2 was 635)"
+      removed: []
+    impact_scope:
+      runtime: "Pure policy rule extension; per-session in-memory state for history + dedup. No tmux, adapter, storage, or actuation behavior change. Default configuration preserves the v1.17.1 alert volume exactly."
+      tests: "646 total passed across lib + main + event_loop + false_positive + idle_state targets"
+      ledger: "1 new timeline entry (sequence 144); meta bump; minor version bump v1.17.x → v1.18.0 because Phase D advances by one slice"
+      npm: "package.json version set to 1.18.0"
+      review_gate: "cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, scripts/verify-shared.sh, and live --once smoke pass"
+      follow_up_carryover: "Phase D D3 (precise subagent token accounting) remains deferred. Phase E housekeeping (Gemini memory column, comment-preserving toml_edit save) also unchanged."
+    breaking: false
+    risk: "low — opt-in rule; default config silent. New finding is `Severity::Concern` so it stays below the desktop-notify gate; per-session dedup prevents re-firing on subsequent polls."
+    related_commits: []
+    follow_up:
+      - "If operators ask for drift to also notify, add a sub-flag to promote the rec from Concern to Warning rather than flipping the default."
+      - "Phase D D3 (precise subagent token accounting) is the next slice candidate."
+
 evolution_summary:
-  current_phase: "v1.17.1 keeps Phase D D1 in place and changes Claude observability to statusline-first: Claude CTX/5h/7d/model/effort/path/permission mode are parsed from the live tail, and Claude `u` sends no provider input."
-  next_phase: "Phase D D2 (identity drift anomaly detection) and D3 (precise subagent token accounting) remain deferred. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.18.0 closes Phase D D2: per-pane identity-drift detection surfaces a passive Concern when a pane's resolved provider or worktree path changes between polls, gated behind `[security] identity_drift_findings`, deduped per session, evicted on lifecycle reset."
+  next_phase: "Phase D D3 (precise subagent token accounting) remains deferred. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

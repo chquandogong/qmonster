@@ -199,6 +199,15 @@ pub struct SecurityConfig {
     /// main-implementation window is a normal pattern, not a default
     /// alarm.
     pub cross_window_findings: bool,
+    /// Phase D D2 (v1.18.0): when `true`, identity-drift rules emit a
+    /// passive `Concern` recommendation when a pane's resolved
+    /// `Provider` or `current_path` changes between polls (e.g. the
+    /// operator quits Claude in a pane and starts Codex in its
+    /// place, or `cd`s into a different worktree). Stays `false` by
+    /// default — the identity resolver intentionally accepts whatever
+    /// the operator runs, so a drift is not a problem unless the
+    /// operator wants visibility.
+    pub identity_drift_findings: bool,
 }
 
 /// Tuning knobs for the idle-stillness detector. Operators can set

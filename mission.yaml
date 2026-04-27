@@ -1,6 +1,6 @@
 mission:
-  version: "1.17.1"
-  title: "Qmonster v1.17.1 — Claude statusline observability without slash refresh."
+  version: "1.18.0"
+  title: "Qmonster v1.18.0 — Phase D D2 identity-drift anomaly detection."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

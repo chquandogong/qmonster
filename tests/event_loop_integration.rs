@@ -829,6 +829,7 @@ fn cross_window_concurrent_work_fires_end_to_end_when_security_gate_enabled() {
     config.security = SecurityConfig {
         posture_advisories: false,
         cross_window_findings: true,
+        identity_drift_findings: false,
     };
     let mut ctx = Context::new(config, source, notifier, sink);
 
@@ -854,6 +855,189 @@ fn cross_window_concurrent_work_fires_end_to_end_when_security_gate_enabled() {
     );
     assert!(finding.reason.contains("qmonster:0"));
     assert!(finding.reason.contains("scratch:0"));
+}
+
+#[test]
+fn provider_drift_fires_once_when_security_gate_enabled_and_dedups_on_repeat_polls() {
+    // Phase D D2 (v1.18.0): pane %1 starts as Claude, then the
+    // operator quits Claude and starts Codex in the same pane. The
+    // first poll establishes the baseline, the second poll fires the
+    // drift Concern, and the third poll (still Codex) must stay
+    // silent because the dedup table already saw this transition.
+    use qmonster::app::config::SecurityConfig;
+    use std::cell::RefCell;
+
+    struct DriftSource {
+        panes: RefCell<Vec<RawPaneSnapshot>>,
+    }
+    impl PaneSource for DriftSource {
+        fn list_panes(
+            &self,
+            _target: Option<&WindowTarget>,
+        ) -> Result<Vec<RawPaneSnapshot>, PollingError> {
+            Ok(self.panes.borrow().clone())
+        }
+        fn current_target(&self) -> Result<Option<WindowTarget>, PollingError> {
+            Ok(self.available_targets()?.into_iter().next())
+        }
+        fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
+            let mut t: Vec<WindowTarget> = self
+                .panes
+                .borrow()
+                .iter()
+                .map(|p| WindowTarget {
+                    session_name: p.session_name.clone(),
+                    window_index: p.window_index.clone(),
+                })
+                .collect();
+            t.sort();
+            t.dedup();
+            Ok(t)
+        }
+        fn capture_tail(&self, pane_id: &str, _lines: usize) -> Result<String, PollingError> {
+            Ok(self
+                .panes
+                .borrow()
+                .iter()
+                .find(|p| p.pane_id == pane_id)
+                .map(|p| p.tail.clone())
+                .unwrap_or_default())
+        }
+        fn send_keys(&self, _pane_id: &str, _text: &str) -> Result<(), PollingError> {
+            Ok(())
+        }
+    }
+
+    let claude_pane = pane_with_path("%1", "claude:1:main", "claude", "ready", false, "/tmp/repo");
+    let codex_pane = pane_with_path("%1", "codex:1:main", "node", "ready", false, "/tmp/repo");
+
+    let source = DriftSource {
+        panes: RefCell::new(vec![claude_pane]),
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut config = QmonsterConfig::defaults();
+    config.security = SecurityConfig {
+        posture_advisories: false,
+        cross_window_findings: false,
+        identity_drift_findings: true,
+    };
+    let mut ctx = Context::new(config, source, notifier, sink);
+
+    // Poll 1: baseline Claude. No prior snapshot → no drift.
+    let r1 = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert!(
+        !r1[0]
+            .recommendations
+            .iter()
+            .any(|r| r.action.starts_with("identity-drift")),
+        "first poll establishes baseline; no drift yet"
+    );
+
+    // Operator swaps Claude for Codex in the same pane.
+    *ctx.source.panes.borrow_mut() = vec![codex_pane];
+
+    // Poll 2: provider drift fires.
+    let r2 = run_once(&mut ctx, Instant::now()).expect("ok");
+    let drift_recs: Vec<_> = r2[0]
+        .recommendations
+        .iter()
+        .filter(|r| r.action.starts_with("identity-drift"))
+        .collect();
+    assert_eq!(
+        drift_recs.len(),
+        1,
+        "second poll surfaces exactly one drift recommendation, got {drift_recs:?}"
+    );
+    assert_eq!(drift_recs[0].action, "identity-drift: provider changed");
+    assert!(
+        drift_recs[0].reason.contains("Claude") && drift_recs[0].reason.contains("Codex"),
+        "drift reason names both endpoints: {:?}",
+        drift_recs[0].reason
+    );
+
+    // Poll 3: same Codex pane. Dedup table must keep this silent.
+    let r3 = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert!(
+        !r3[0]
+            .recommendations
+            .iter()
+            .any(|r| r.action.starts_with("identity-drift")),
+        "third poll must dedup the same drift transition"
+    );
+}
+
+#[test]
+fn identity_drift_stays_silent_when_security_gate_off_by_default() {
+    // Same Claude→Codex swap as the test above, but with default
+    // config — `[security] identity_drift_findings = false`. The
+    // drift rule must stay silent so default operators don't see new
+    // alerts after a v1.18.0 upgrade.
+    use std::cell::RefCell;
+
+    struct DriftSource {
+        panes: RefCell<Vec<RawPaneSnapshot>>,
+    }
+    impl PaneSource for DriftSource {
+        fn list_panes(
+            &self,
+            _target: Option<&WindowTarget>,
+        ) -> Result<Vec<RawPaneSnapshot>, PollingError> {
+            Ok(self.panes.borrow().clone())
+        }
+        fn current_target(&self) -> Result<Option<WindowTarget>, PollingError> {
+            Ok(self.available_targets()?.into_iter().next())
+        }
+        fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
+            let mut t: Vec<WindowTarget> = self
+                .panes
+                .borrow()
+                .iter()
+                .map(|p| WindowTarget {
+                    session_name: p.session_name.clone(),
+                    window_index: p.window_index.clone(),
+                })
+                .collect();
+            t.sort();
+            t.dedup();
+            Ok(t)
+        }
+        fn capture_tail(&self, pane_id: &str, _lines: usize) -> Result<String, PollingError> {
+            Ok(self
+                .panes
+                .borrow()
+                .iter()
+                .find(|p| p.pane_id == pane_id)
+                .map(|p| p.tail.clone())
+                .unwrap_or_default())
+        }
+        fn send_keys(&self, _pane_id: &str, _text: &str) -> Result<(), PollingError> {
+            Ok(())
+        }
+    }
+
+    let claude_pane = pane_with_path("%1", "claude:1:main", "claude", "ready", false, "/tmp/repo");
+    let codex_pane = pane_with_path("%1", "codex:1:main", "node", "ready", false, "/tmp/repo");
+
+    let source = DriftSource {
+        panes: RefCell::new(vec![claude_pane]),
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    // Default config — drift gate stays off.
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let _ = run_once(&mut ctx, Instant::now()).expect("ok");
+    *ctx.source.panes.borrow_mut() = vec![codex_pane];
+    let r2 = run_once(&mut ctx, Instant::now()).expect("ok");
+
+    assert!(
+        !r2[0]
+            .recommendations
+            .iter()
+            .any(|r| r.action.starts_with("identity-drift")),
+        "default config must keep identity drift silent"
+    );
 }
 
 #[test]

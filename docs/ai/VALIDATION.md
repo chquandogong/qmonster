@@ -12,10 +12,10 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-28): `cargo fmt --check`,
-`git diff --check`, `cargo test --all-targets` (635 tests),
+`git diff --check`, `cargo test --all-targets` (646 tests),
 `cargo clippy --all-targets -- -D warnings`, `cargo build --release`,
-`npm pack --dry-run`, and `scripts/verify-shared.sh` pass for v1.17.1.
-Official `mission-spec validate .` is still unavailable locally because
+and `scripts/verify-shared.sh` pass for v1.18.0. Official
+`mission-spec validate .` is still unavailable locally because
 `mission-spec` is not installed, so `scripts/verify-shared.sh` falls
 back to the lite ledger-structure check after cargo checks.
 
@@ -121,7 +121,7 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
       group by tmux window: same-window groups still emit the existing
       `ConcurrentMutatingWork` Warning; cross-window groups emit a new
       `CrossWindowConcurrentWork` Concern when `[security]
-    cross_window_findings = true`. Default config preserves the
+cross_window_findings = true`. Default config preserves the
       v1.15.23 behavior exactly.
 - [x] `aggressive_mode` only surfaces recommendations when
       `quota_tight = true` in config.
@@ -136,6 +136,16 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
       (YOLO / bypass / Full Access / `danger-full-access` / no sandbox)
       stay badge-only by default and become passive `Concern`
       recommendations only when `[security] posture_advisories = true`.
+- [x] Identity-drift anomaly detection is opt-in (Phase D D2 v1.18.0):
+      when `[security] identity_drift_findings = true`, a passive
+      `Concern` recommendation fires the first time a pane's resolved
+      provider or `current_path` changes between polls. Per-session
+      dedup by `(pane_id, "<kind>:<from>→<to>")` keeps the same drift
+      from re-firing every poll. `Provider::Unknown → known` and empty
+      → present path transitions are treated as identity catch-up
+      rather than drift, so initial sightings stay quiet. Lifecycle
+      reset (`PaneLifecycleEvent::{BecameDead, Reappeared}`) clears
+      both the per-pane history and the dedup keys for that pane.
 - [x] Recommendations may carry a `suggested_command: Option<String>`
       for copy-paste ergonomics. The value must be runnable on a single
       surface (shell command, in-pane slash-command, or `# config-edit …`

@@ -88,6 +88,13 @@ where
             ctx.idle_transition.remove(&pane.pane_id);
             ctx.idle_entered_at.remove(&pane.pane_id);
             ctx.pressure_metric_cache.remove(&pane.pane_id);
+            // Phase D D2 (v1.18.0): a re-spawned pane is a fresh
+            // identity history. Drop the stored snapshot and any
+            // dedup keys for that pane so a CLI swap inside the new
+            // lifetime can fire its own drift finding.
+            ctx.identity_history.remove(&pane.pane_id);
+            let pane_id_owned = pane.pane_id.clone();
+            ctx.reported_drifts.retain(|(p, _)| p != &pane_id_owned);
         }
 
         if pane.dead {
@@ -146,7 +153,31 @@ where
         // Read last idle state BEFORE calling evaluate so the engine can
         // detect transitions (None→Some, Some(X)→Some(Y)). Update AFTER.
         let last_idle = ctx.idle_transition.get(&pane.pane_id).copied().flatten();
-        let out: EvalOutput = ctx.policy.evaluate(&resolved, &signals, &gates, last_idle);
+        let mut out: EvalOutput = ctx.policy.evaluate(&resolved, &signals, &gates, last_idle);
+
+        // Phase D D2 (v1.18.0): identity-drift detection. Pure rule;
+        // the caller owns the per-session history map and the dedup
+        // hashset. Skip when the pane just appeared (no prev snapshot)
+        // or just re-spawned (history was cleared above).
+        let current_snapshot = crate::policy::rules::identity_drift::IdentitySnapshot {
+            provider: resolved.identity.provider,
+            current_path: pane.current_path.clone(),
+        };
+        if let Some(prev_snapshot) = ctx.identity_history.get(&pane.pane_id).cloned() {
+            for finding in crate::policy::rules::identity_drift::detect_identity_drift(
+                &pane.pane_id,
+                &prev_snapshot,
+                &current_snapshot,
+                &gates,
+            ) {
+                let key = (pane.pane_id.clone(), finding.dedup_key);
+                if ctx.reported_drifts.insert(key) {
+                    out.recommendations.push(finding.recommendation);
+                }
+            }
+        }
+        ctx.identity_history
+            .insert(pane.pane_id.clone(), current_snapshot);
 
         // Update idle_entered_at only on cause transitions, not on every poll.
         match (last_idle, signals.idle_state) {
