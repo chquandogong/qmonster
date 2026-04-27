@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.35 control-mode reconnect tests)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.36 polling process boundary)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -130,6 +130,8 @@ pane titles can change between sequential polling/control-mode captures;
 v1.16.35 extracts the reconnect decision into a scripted-testable helper
 inside `tmux::control_mode`, locking the contract that lifecycle errors
 retry once after reconnect while command-level tmux errors do not.
+v1.16.36 extracts `tmux::polling_process` so polling shells out to tmux
+through one process boundary with centralized stdout/stderr/error mapping.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

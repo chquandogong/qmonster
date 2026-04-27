@@ -1,6 +1,6 @@
 mission:
-  version: "1.16.35"
-  title: "Qmonster v0.5.0 — v1.16.35 control-mode reconnect tests. Continues Phase C C2 by locking reconnect semantics with scripted unit coverage."
+  version: "1.16.36"
+  title: "Qmonster v0.5.0 — v1.16.36 polling process boundary. Continues Phase C C2 by isolating polling tmux CLI execution before any default-source switch."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1140,7 +1140,7 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.16.35 control-mode reconnect tests on top of the pushed v1.16.34 volatile-title parity handling. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped. Phase C C1 extracted the live TUI event loop into `src/app/tui_loop.rs` and left `src/main.rs` as a thin CLI/startup/`--once`/TUI-entry wrapper. Phase C C2 has `src/tmux/control_mode.rs`, `tmux::ControlModeSource`, `tmux::TmuxSource`, and `[tmux] source = \"control_mode\"` as an opt-in transport behind the existing `PaneSource` contract. v1.16.26 reconnects that client once after transport lifecycle errors (`%exit`, EOF, broken pipe) while keeping command-level tmux errors visible. v1.16.27 adds `src/tmux/commands.rs` so polling and control-mode share list/capture/send argument builders. v1.16.28 adds `src/tmux/parity.rs`, `src/bin/qmonster-tmux-parity.rs`, and `scripts/check-tmux-source-parity.sh` so live sessions can be checked for source parity. v1.16.29 extends that helper with `--all-targets` target-scoped tmux window coverage. v1.16.30 adds `src/tmux/snapshots.rs` so both transports share list-panes row parsing and tail hydration. v1.16.31 adds `src/tmux/targets.rs` so both transports share current/available tmux window target parsing. v1.16.32 adds `--repeat` and `--delay-ms` parity controls so one control-mode client is reused across consecutive comparisons. v1.16.33 adds `src/tmux/control_protocol.rs` so protocol-only parsing, quoting, and transport-error classification are separated from the process-owning client. v1.16.34 separates pane title mismatches from structural metadata mismatches; titles warn by default and `--strict-title` opts into failure. v1.16.35 adds a scripted-testable reconnect helper so lifecycle errors retry once while command-level tmux errors do not reconnect. The default remains `[tmux] source = \"polling\"`."
+    topology: "Current working state is v1.16.36 polling process boundary on top of the pushed v1.16.35 control-mode reconnect tests. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped. Phase C C1 extracted the live TUI event loop into `src/app/tui_loop.rs` and left `src/main.rs` as a thin CLI/startup/`--once`/TUI-entry wrapper. Phase C C2 has `src/tmux/control_mode.rs`, `tmux::ControlModeSource`, `tmux::TmuxSource`, and `[tmux] source = \"control_mode\"` as an opt-in transport behind the existing `PaneSource` contract. v1.16.26 reconnects that client once after transport lifecycle errors (`%exit`, EOF, broken pipe) while keeping command-level tmux errors visible. v1.16.27 adds `src/tmux/commands.rs` so polling and control-mode share list/capture/send argument builders. v1.16.28 adds `src/tmux/parity.rs`, `src/bin/qmonster-tmux-parity.rs`, and `scripts/check-tmux-source-parity.sh` so live sessions can be checked for source parity. v1.16.29 extends that helper with `--all-targets` target-scoped tmux window coverage. v1.16.30 adds `src/tmux/snapshots.rs` so both transports share list-panes row parsing and tail hydration. v1.16.31 adds `src/tmux/targets.rs` so both transports share current/available tmux window target parsing. v1.16.32 adds `--repeat` and `--delay-ms` parity controls so one control-mode client is reused across consecutive comparisons. v1.16.33 adds `src/tmux/control_protocol.rs` so protocol-only parsing, quoting, and transport-error classification are separated from the process-owning client. v1.16.34 separates pane title mismatches from structural metadata mismatches; titles warn by default and `--strict-title` opts into failure. v1.16.35 adds a scripted-testable reconnect helper so lifecycle errors retry once while command-level tmux errors do not reconnect. v1.16.36 adds `src/tmux/polling_process.rs` so polling shells out through one tmux CLI stdout/stderr/error mapping boundary. The default remains `[tmux] source = \"polling\"`."
     suggested_approach: >
       Continue the operator-directed synthesis in order. Phase A chose
       the conservative defaults and activated config/pricing/profile
@@ -1211,7 +1211,9 @@ mission:
       default and adds `--strict-title` for failure semantics. v1.16.35
       adds scripted unit tests around the reconnect boundary so lifecycle
       errors retry once after reconnect while command-level tmux errors
-      do not reconnect.
+      do not reconnect. v1.16.36 adds `src/tmux/polling_process.rs` so
+      polling has one tmux CLI process boundary with centralized stdout,
+      stderr, and non-zero status mapping.
       Continue hardening the control-mode path before considering it as
       the default.
     note: >
@@ -1249,7 +1251,7 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.16.35 operator-directed Phase-C follow-up"
+    priority: "post-v1.16.36 operator-directed Phase-C follow-up"
     estimated_sessions: 1
     scope: "Phase B complete; Phase C C2 control-mode tmux adapter in progress"
     followups:
@@ -1261,5 +1263,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 117
+    total_revisions: 118
     history: "mission-history.yaml"

@@ -3,6 +3,7 @@ pub mod control_mode;
 pub(crate) mod control_protocol;
 pub mod parity;
 pub mod polling;
+pub(crate) mod polling_process;
 pub(crate) mod snapshots;
 pub(crate) mod targets;
 pub mod types;

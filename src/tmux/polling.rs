@@ -1,4 +1,3 @@
-use std::process::Command;
 use std::thread;
 use thiserror::Error;
 
@@ -6,6 +5,7 @@ use crate::tmux::commands::{
     KEY_SETTLE_DELAY, SUBMIT_KEY, capture_tail_args, current_target_args, list_panes_args,
     list_windows_args, send_key_args, send_keys_literal_args,
 };
+use crate::tmux::polling_process::run_tmux;
 use crate::tmux::snapshots::hydrate_pane_snapshots;
 use crate::tmux::targets::{parse_current_target, parse_window_targets};
 use crate::tmux::types::{PANE_LIST_FORMAT, RawPaneSnapshot, WINDOW_LIST_FORMAT, WindowTarget};
@@ -81,16 +81,7 @@ impl PaneSource for PollingSource {
         // current window here, or the All Sessions picker becomes a
         // lie.
         let args = list_panes_args(&fmt, target);
-        let output = Command::new("tmux")
-            .args(&args)
-            .output()
-            .map_err(|e| PollingError::Command(e.to_string()))?;
-        if !output.status.success() {
-            return Err(PollingError::NonZero(
-                String::from_utf8_lossy(&output.stderr).trim().to_string(),
-            ));
-        }
-        let text = String::from_utf8_lossy(&output.stdout).to_string();
+        let text = run_tmux(&args)?;
         Ok(hydrate_pane_snapshots(text.lines(), |pane_id| {
             self.capture_tail(pane_id, self.capture_lines).ok()
         }))
@@ -102,30 +93,12 @@ impl PaneSource for PollingSource {
 
     fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
         let fmt = WINDOW_LIST_FORMAT.replace("\\t", "\t");
-        let output = Command::new("tmux")
-            .args(list_windows_args(&fmt))
-            .output()
-            .map_err(|e| PollingError::Command(e.to_string()))?;
-        if !output.status.success() {
-            return Err(PollingError::NonZero(
-                String::from_utf8_lossy(&output.stderr).trim().to_string(),
-            ));
-        }
-        let text = String::from_utf8_lossy(&output.stdout);
+        let text = run_tmux(&list_windows_args(&fmt))?;
         Ok(parse_window_targets(text.lines()))
     }
 
     fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError> {
-        let output = Command::new("tmux")
-            .args(capture_tail_args(pane_id, lines))
-            .output()
-            .map_err(|e| PollingError::Command(e.to_string()))?;
-        if !output.status.success() {
-            return Err(PollingError::NonZero(
-                String::from_utf8_lossy(&output.stderr).trim().to_string(),
-            ));
-        }
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        run_tmux(&capture_tail_args(pane_id, lines))
     }
 
     fn send_keys(&self, pane_id: &str, text: &str) -> Result<(), PollingError> {
@@ -154,15 +127,7 @@ impl PaneSource for PollingSource {
         // Failure on either invocation surfaces as `PollingError`; the
         // caller (`PromptSendGate::Execute` path) records the error
         // text in a `PromptSendFailed` audit event.
-        let literal = Command::new("tmux")
-            .args(send_keys_literal_args(pane_id, text))
-            .output()
-            .map_err(|e| PollingError::Command(e.to_string()))?;
-        if !literal.status.success() {
-            return Err(PollingError::NonZero(
-                String::from_utf8_lossy(&literal.stderr).trim().to_string(),
-            ));
-        }
+        run_tmux(&send_keys_literal_args(pane_id, text))?;
         thread::sleep(KEY_SETTLE_DELAY);
         self.send_key(pane_id, SUBMIT_KEY)?;
         thread::sleep(KEY_SETTLE_DELAY);
@@ -170,15 +135,7 @@ impl PaneSource for PollingSource {
     }
 
     fn send_key(&self, pane_id: &str, key: &str) -> Result<(), PollingError> {
-        let output = Command::new("tmux")
-            .args(send_key_args(pane_id, key))
-            .output()
-            .map_err(|e| PollingError::Command(e.to_string()))?;
-        if !output.status.success() {
-            return Err(PollingError::NonZero(
-                String::from_utf8_lossy(&output.stderr).trim().to_string(),
-            ));
-        }
+        run_tmux(&send_key_args(pane_id, key))?;
         thread::sleep(KEY_SETTLE_DELAY);
         Ok(())
     }
@@ -192,16 +149,7 @@ fn current_window_target() -> Result<Option<WindowTarget>, PollingError> {
         return Ok(None);
     }
     let fmt = WINDOW_LIST_FORMAT.replace("\\t", "\t");
-    let output = Command::new("tmux")
-        .args(current_target_args(&tmux_pane, &fmt))
-        .output()
-        .map_err(|e| PollingError::Command(e.to_string()))?;
-    if !output.status.success() {
-        return Err(PollingError::NonZero(
-            String::from_utf8_lossy(&output.stderr).trim().to_string(),
-        ));
-    }
-    let line = String::from_utf8_lossy(&output.stdout);
+    let line = run_tmux(&current_target_args(&tmux_pane, &fmt))?;
     Ok(parse_current_target(line.lines()))
 }
 
