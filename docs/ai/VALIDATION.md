@@ -12,7 +12,7 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-25): `cargo fmt --check`,
-`cargo test --all-targets` (457 tests), and
+`cargo test --all-targets` (468 tests), and
 `cargo clippy --all-targets -- -D warnings` pass; `mission-spec
 validate .` is blocked because `mission-spec` is not installed.
 
@@ -220,9 +220,9 @@ profile_lines` in `src/ui/panels.rs`; emits a
       (P5-3 v1.10.0: `PromptSendCompleted` on successful send,
       `PromptSendFailed` on post-confirmation error, `PromptSendBlocked`
       on ObserveOnly accept-block; prose summary `"{pane} {cmd}
-    (verb; ...)"` — no raw bytes per audit-isolation rule.
+  (verb; ...)"` — no raw bytes per audit-isolation rule.
       SQLite roundtrip locked by `p5_3_prompt_send_kinds_roundtrip_
-    through_sqlite` test in `src/store/audit.rs`)
+  through_sqlite` test in `src/store/audit.rs`)
 - [x] Destructive actions remain outside the automation surface. No
       code path exists for auto `/compact`, `/clear`, `/memory`
       mutation, provider reconfiguration.
