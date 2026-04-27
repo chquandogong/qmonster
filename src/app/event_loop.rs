@@ -1,10 +1,11 @@
 use std::time::Instant;
 
-use crate::app::bootstrap::Context;
+use crate::app::bootstrap::{Context, PanePressureCache};
 use crate::app::effects::EffectRunner;
 use crate::domain::audit::{AuditEvent, AuditEventKind};
 use crate::domain::identity::Provider;
 use crate::domain::recommendation::{Recommendation, RequestedEffect, Severity};
+use crate::domain::signal::SignalSet;
 use crate::notify::desktop::{NotifyBackend, summarize};
 use crate::policy::engine::EvalOutput;
 use crate::store::sink::EventSink;
@@ -86,6 +87,7 @@ where
             ctx.tail_history.remove(&pane.pane_id);
             ctx.idle_transition.remove(&pane.pane_id);
             ctx.idle_entered_at.remove(&pane.pane_id);
+            ctx.pressure_metric_cache.remove(&pane.pane_id);
         }
 
         if pane.dead {
@@ -125,7 +127,13 @@ where
             claude_settings: &ctx.claude_settings,
             history: history_for_pane,
         };
-        let signals = crate::adapters::parse_for(&parse_ctx);
+        let mut signals = crate::adapters::parse_for(&parse_ctx);
+        apply_pressure_metric_cache(
+            &mut ctx.pressure_metric_cache,
+            &pane.pane_id,
+            resolved.identity.provider,
+            &mut signals,
+        );
         let gates = crate::policy::gates::PolicyGates::from_config_and_identity(
             &ctx.config.token,
             &ctx.config.cost,
@@ -214,6 +222,47 @@ fn merge_runtime_refresh_tail(live_tail: &str, captured_tail: &str) -> String {
         return captured_tail.to_string();
     }
     format!("{live_tail}\n{captured_tail}")
+}
+
+fn apply_pressure_metric_cache(
+    cache_by_pane: &mut std::collections::HashMap<String, PanePressureCache>,
+    pane_id: &str,
+    provider: Provider,
+    signals: &mut SignalSet,
+) {
+    if provider != Provider::Claude {
+        cache_by_pane.remove(pane_id);
+        return;
+    }
+
+    let cache = cache_by_pane.entry(pane_id.to_string()).or_default();
+    if cache.provider != Some(provider) {
+        *cache = PanePressureCache {
+            provider: Some(provider),
+            ..PanePressureCache::default()
+        };
+    }
+
+    if let Some(metric) = signals.context_pressure {
+        cache.context_pressure = Some(metric);
+    } else {
+        signals.context_pressure = cache.context_pressure;
+    }
+    if let Some(metric) = signals.quota_pressure {
+        cache.quota_pressure = Some(metric);
+    } else {
+        signals.quota_pressure = cache.quota_pressure;
+    }
+    if let Some(metric) = signals.quota_5h_pressure {
+        cache.quota_5h_pressure = Some(metric);
+    } else {
+        signals.quota_5h_pressure = cache.quota_5h_pressure;
+    }
+    if let Some(metric) = signals.quota_weekly_pressure {
+        cache.quota_weekly_pressure = Some(metric);
+    } else {
+        signals.quota_weekly_pressure = cache.quota_weekly_pressure;
+    }
 }
 
 fn deliver_effects<N: NotifyBackend>(

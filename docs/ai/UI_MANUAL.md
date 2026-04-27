@@ -93,9 +93,10 @@ session:window · Provider role · %pane_id
   임계치를 공유합니다.
 - 현재 `CTX`는 구조적으로 확인 가능한 provider status에서만 채웁니다.
   Claude는 `/context`, Codex는 bottom status line, Gemini는 status
-  table의 `context` 컬럼을 사용합니다. Claude의 `/usage` Current session
-  / Current week 막대는 context window가 아니라 rate-limit quota이므로
-  `CTX`로 표시하지 않습니다.
+  table의 `context` 컬럼을 사용합니다. Claude `/context`의 current
+  `Context Usage` 화면은 total token line의 percent를 CTX로 읽습니다.
+  Claude의 `/usage` Current session / Current week 막대는 context window가
+  아니라 rate-limit quota이므로 `CTX`로 표시하지 않습니다.
 - `QUOTA 5H`와 `QUOTA WEEK`는 Claude/Codex 전용 split quota입니다.
   Claude는 `/usage`의 `Current session`을 5시간 한도, `Current week
   (all models)`를 주간 한도로 읽습니다. Codex는 bottom status line의
@@ -136,11 +137,14 @@ session:window · Provider role · %pane_id
   표시합니다. Qmonster는 선택된 pane에서 `u`를 누르면 provider의
   read-only runtime slash command와 terminal submit(`C-m`, Enter-equivalent)을
   보냅니다. 여러 runtime surface가 있는 provider는 `u`를 누를 때마다 하나씩
-  순환 실행합니다: Claude `/status` → `/context` → `/usage` → `/stats`,
+  순환 실행합니다: Claude `/usage` → `/context` → `/status` → `/stats`,
   Codex `/status`, Gemini `/stats session` → `/stats model` → `/stats tools`.
   Claude `/status`, `/context`, `/usage`는 실행 후 화면이 계속 남기 때문에
-  Qmonster가 먼저 그 출력을 캡처해 one-shot parser overlay로 저장하고,
-  이어서 `Escape`를 보내 pane이 다음 명령을 받을 수 있게 되돌립니다.
+  Qmonster가 짧게 준비 상태를 기다린 뒤 일반 pane tail보다 깊게 출력을
+  캡처해 one-shot parser overlay로 저장하고, 이어서 `Escape`를 보내 pane이
+  다음 명령을 받을 수 있게 되돌립니다. Claude의 `/context`와 `/usage`는 서로 다른 화면이므로
+  마지막으로 확인된 CTX/5H/WEEK pressure 값은 같은 pane 안에서 보존되어
+  다음 poll에서도 함께 표시됩니다.
   Claude는 다음 순환 명령을
   보내기 전에도 방어적으로 `Escape`를 보내 이전 fullscreen runtime surface를
   닫습니다. Gemini는 pre-`Escape` 없이 stats 명령만 순환합니다. 다음 poll에서

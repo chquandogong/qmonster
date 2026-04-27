@@ -2,9 +2,9 @@
 
 - Project: **Qmonster** — Dr. QUAN's Q + monitoring/master
 - Version: v0.4.0
-- Date: 2026-04-20 (initial) / 2026-04-27 (current — v1.16.51 Claude context + split quota)
+- Date: 2026-04-20 (initial) / 2026-04-27 (current — v1.16.52 Claude live CTX/quota visibility)
 - Target env: Ubuntu + tmux + Rust TUI
-- Phase: **Phases 1–5 + Phase B + Phase C C1/C2 are complete; v1.16.51 is a provider-pressure and packaging follow-up before C3.** Phase C C2 made `[tmux] source = "auto"` the default: auto attaches control-mode first, falls back to polling with a startup notice if attach fails, and keeps explicit `control_mode` strict. v1.16.51 updates observability semantics: Claude CTX is populated from `/context`; Claude quota is split from `/usage` Current session (5h) and Current week (all models); Codex quota is split from bottom-status `5h` and `weekly`; and the `S` settings overlay persists separate 5h/weekly quota thresholds for Claude and Codex. The same round adds README phase-status cleanup, `VERSION.md`, `CONTRIBUTING.md`, and npm package metadata for `qmonster@0.5.0`.
+- Phase: **Phases 1–5 + Phase B + Phase C C1/C2 are complete; v1.16.52 is a live Claude visibility follow-up before C3.** Phase C C2 made `[tmux] source = "auto"` the default: auto attaches control-mode first, falls back to polling with a startup notice if attach fails, and keeps explicit `control_mode` strict. v1.16.51 updates observability semantics: Claude CTX is populated from `/context`; Claude quota is split from `/usage` Current session (5h) and Current week (all models); Codex quota is split from bottom-status `5h` and `weekly`; and the `S` settings overlay persists separate 5h/weekly quota thresholds for Claude and Codex. The same round adds README phase-status cleanup, `VERSION.md`, `CONTRIBUTING.md`, and npm package metadata for `qmonster@0.5.0`. v1.16.52 makes the live TUI match that contract by parsing Claude's current `Context Usage` output, deepening Claude fullscreen runtime captures, waiting for render/pre-`Escape` settle, and caching Claude CTX + quota metrics per pane so they display together.
 
 ## What Qmonster is
 

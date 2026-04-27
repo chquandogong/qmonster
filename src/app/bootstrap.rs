@@ -10,6 +10,15 @@ use crate::store::archive_fs::ArchiveWriter;
 use crate::store::sink::EventSink;
 use crate::tmux::polling::PaneSource;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PanePressureCache {
+    pub provider: Option<crate::domain::identity::Provider>,
+    pub context_pressure: Option<crate::domain::signal::MetricValue<f32>>,
+    pub quota_pressure: Option<crate::domain::signal::MetricValue<f32>>,
+    pub quota_5h_pressure: Option<crate::domain::signal::MetricValue<f32>>,
+    pub quota_weekly_pressure: Option<crate::domain::signal::MetricValue<f32>>,
+}
+
 /// Runtime bag carried by the event loop. Exists as a single struct so
 /// tests can build a `Context` with a `FixtureSource` + in-memory
 /// sink + a fake `NotifyBackend` and exercise one iteration.
@@ -43,6 +52,11 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// this keeps the captured output available to the next parser pass without
     /// persisting raw pane text in the audit log.
     pub runtime_refresh_tail_overlays: std::collections::HashMap<String, String>,
+    /// Last provider-confirmed pressure metrics for panes whose provider
+    /// exposes those facts on transient fullscreen surfaces. Claude's
+    /// `/context` and `/usage` are separate screens; caching lets the UI show
+    /// CTX and quota windows together after both have been observed.
+    pub pressure_metric_cache: std::collections::HashMap<String, PanePressureCache>,
     known_pane_ids: Vec<String>,
 }
 
@@ -65,6 +79,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             idle_transition: std::collections::HashMap::new(),
             idle_entered_at: std::collections::HashMap::new(),
             runtime_refresh_tail_overlays: std::collections::HashMap::new(),
+            pressure_metric_cache: std::collections::HashMap::new(),
             known_pane_ids: Vec::new(),
         }
     }

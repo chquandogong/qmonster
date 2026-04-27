@@ -168,6 +168,9 @@ fn parse_claude_context_pressure(tail: &str) -> Option<f32> {
     // Claude's `/context` output is not box-bordered like Codex, so keep
     // this anchored to context-labeled percent lines and explicitly avoid
     // `/usage` quota labels. Prefer "used" when both used/left appear.
+    if let Some(pct) = parse_claude_context_usage_block(tail) {
+        return Some(pct);
+    }
     for line in tail.lines().rev() {
         let lower = line.to_lowercase();
         if !lower.contains("context") {
@@ -187,6 +190,20 @@ fn parse_claude_context_pressure(tail: &str) -> Option<f32> {
         }
     }
     None
+}
+
+fn parse_claude_context_usage_block(tail: &str) -> Option<f32> {
+    let lower_tail = tail.to_lowercase();
+    if !lower_tail.contains("context usage") {
+        return None;
+    }
+
+    lower_tail.lines().find_map(|line| {
+        if line.contains(':') || !line.contains('/') || !line.contains("tokens") {
+            return None;
+        }
+        percent_inside_parens(line)
+    })
 }
 
 fn parse_claude_usage_quotas(tail: &str) -> (Option<f32>, Option<f32>) {
@@ -225,6 +242,17 @@ fn percent_followed_by_any(line: &str, words: &[&str]) -> Option<f32> {
         if words.iter().any(|word| after.starts_with(word)) {
             return Some(pct);
         }
+    }
+    None
+}
+
+fn percent_inside_parens(line: &str) -> Option<f32> {
+    for (idx, _) in line.match_indices('%') {
+        let before = &line[..idx];
+        if before.rsplit_once('(').is_none() {
+            continue;
+        }
+        return parse_percent_before(line, idx);
     }
     None
 }
@@ -572,6 +600,34 @@ Esc to cancel";
             .context_pressure
             .expect("/context usage percent should populate CTX");
         assert!((m.value - 0.82).abs() < f32::EPSILON);
+        assert_eq!(m.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(m.provider, Some(Provider::Claude));
+    }
+
+    #[test]
+    fn claude_context_usage_block_populates_context_pressure() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+Context Usage
+
+Opus 4.7 (1M context)
+claude-opus-4-7[1m]
+
+143.3k/1m tokens (14%)
+
+Estimated usage by category
+System prompt: 8.6k tokens (0.9%)
+Messages: 165.5k tokens (16.5%)
+Free space: 776.5k (77.6%)";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        let m = set
+            .context_pressure
+            .expect("real Claude /context usage block should populate CTX");
+        assert!((m.value - 0.14).abs() < f32::EPSILON);
         assert_eq!(m.source_kind, SourceKind::ProviderOfficial);
         assert_eq!(m.provider, Some(Provider::Claude));
     }

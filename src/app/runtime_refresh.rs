@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::thread;
+use std::time::Duration;
 
 use crate::app::config::ActionsMode;
 use crate::app::event_loop::PaneReport;
@@ -10,6 +12,12 @@ use crate::domain::recommendation::Severity;
 use crate::domain::signal::IdleCause;
 use crate::store::EventSink;
 use crate::tmux::polling::PaneSource;
+
+const CLAUDE_RUNTIME_CAPTURE_FIRST_DELAY: Duration = Duration::from_millis(550);
+const CLAUDE_RUNTIME_CAPTURE_RETRY_DELAY: Duration = Duration::from_millis(250);
+const CLAUDE_RUNTIME_CAPTURE_MAX_ATTEMPTS: usize = 8;
+const CLAUDE_RUNTIME_CAPTURE_MIN_LINES: usize = 300;
+const CLAUDE_RUNTIME_PRE_ESCAPE_SETTLE_DELAY: Duration = Duration::from_millis(400);
 
 pub fn runtime_refresh_provider_label(provider: Provider) -> &'static str {
     match provider {
@@ -91,6 +99,9 @@ pub fn send_runtime_refresh_commands<P: PaneSource>(
         outcome.failed = Some(("Escape".into(), e.to_string()));
         return outcome;
     }
+    if runtime_refresh_sends_escape_first(provider, idle_state) {
+        thread::sleep(CLAUDE_RUNTIME_PRE_ESCAPE_SETTLE_DELAY);
+    }
 
     for cmd in commands {
         if let Err(e) = source.send_keys(pane_id, cmd) {
@@ -98,7 +109,7 @@ pub fn send_runtime_refresh_commands<P: PaneSource>(
             break;
         }
         if runtime_refresh_captures_then_closes(provider, cmd) {
-            match source.capture_tail(pane_id, capture_lines) {
+            match capture_runtime_refresh_tail(source, pane_id, provider, cmd, capture_lines) {
                 Ok(tail) => {
                     if !tail.trim().is_empty() {
                         tail_overlays.insert(pane_id.to_string(), tail);
@@ -321,10 +332,97 @@ fn runtime_refresh_captures_then_closes(provider: Provider, command: &str) -> bo
     matches!(provider, Provider::Claude) && matches!(command, "/status" | "/context" | "/usage")
 }
 
+fn capture_runtime_refresh_tail<P: PaneSource>(
+    source: &P,
+    pane_id: &str,
+    provider: Provider,
+    command: &str,
+    capture_lines: usize,
+) -> Result<String, crate::tmux::polling::PollingError> {
+    if provider != Provider::Claude {
+        return source.capture_tail(pane_id, capture_lines);
+    }
+
+    let capture_lines = capture_lines.max(CLAUDE_RUNTIME_CAPTURE_MIN_LINES);
+    let mut last = String::new();
+    for attempt in 0..CLAUDE_RUNTIME_CAPTURE_MAX_ATTEMPTS {
+        thread::sleep(if attempt == 0 {
+            CLAUDE_RUNTIME_CAPTURE_FIRST_DELAY
+        } else {
+            CLAUDE_RUNTIME_CAPTURE_RETRY_DELAY
+        });
+        last = source.capture_tail(pane_id, capture_lines)?;
+        if runtime_refresh_capture_ready(provider, command, &last)
+            || !claude_runtime_tail_still_loading(&last)
+        {
+            break;
+        }
+    }
+    Ok(last)
+}
+
+fn runtime_refresh_capture_ready(provider: Provider, command: &str, tail: &str) -> bool {
+    if provider != Provider::Claude {
+        return true;
+    }
+
+    let lower = tail.to_lowercase();
+    match command {
+        "/context" => claude_context_capture_ready(&lower),
+        "/usage" => claude_usage_capture_ready(&lower),
+        "/status" => {
+            lower.contains("status")
+                || lower.contains("model")
+                || lower.contains("version")
+                || lower.contains("dialog dismissed")
+        }
+        _ => true,
+    }
+}
+
+fn claude_context_capture_ready(lower: &str) -> bool {
+    if lower.contains("context usage")
+        && lower.lines().any(|line| {
+            line.contains('/')
+                && line.contains("tokens")
+                && line.contains('%')
+                && !line.contains(':')
+        })
+    {
+        return true;
+    }
+
+    lower.lines().any(|line| {
+        line.contains("context")
+            && line.contains('%')
+            && (line.contains("used")
+                || line.contains("full")
+                || line.contains("left")
+                || line.contains("remaining")
+                || line.contains("available"))
+    })
+}
+
+fn claude_usage_capture_ready(lower: &str) -> bool {
+    lower.contains("% used")
+        && (lower.contains("current session") || lower.contains("current week"))
+}
+
+fn claude_runtime_tail_still_loading(tail: &str) -> bool {
+    tail.lines().rev().take(10).any(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with('✶')
+            || trimmed.starts_with('✽')
+            || trimmed.starts_with('✻')
+            || trimmed.starts_with('✳')
+            || trimmed.starts_with('✢')
+    })
+}
+
 fn runtime_refresh_provider_commands(provider: Provider) -> &'static [&'static str] {
     // Keep this list to provider-owned control/status surfaces.
     match provider {
-        Provider::Claude => &["/status", "/context", "/usage", "/stats"],
+        Provider::Claude => &["/usage", "/context", "/status", "/stats"],
         Provider::Codex => &["/status"],
         Provider::Gemini => &["/stats session", "/stats model", "/stats tools"],
         Provider::Qmonster | Provider::Unknown => &[],
@@ -351,6 +449,7 @@ mod tests {
     use crate::tmux::polling::PollingError;
     use crate::tmux::types::{RawPaneSnapshot, WindowTarget};
     use std::cell::RefCell;
+    use std::collections::VecDeque;
 
     #[derive(Default)]
     struct RecordingRefreshSource {
@@ -404,9 +503,65 @@ mod tests {
             Ok(())
         }
 
-        fn capture_tail(&self, pane_id: &str, _lines: usize) -> Result<String, PollingError> {
-            self.calls.borrow_mut().push(format!("capture:{pane_id}"));
+        fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError> {
+            self.calls
+                .borrow_mut()
+                .push(format!("capture:{pane_id}:{lines}"));
             Ok(self.capture.clone())
+        }
+    }
+
+    struct SequencedCaptureSource {
+        calls: RefCell<Vec<String>>,
+        captures: RefCell<VecDeque<String>>,
+    }
+
+    impl SequencedCaptureSource {
+        fn new(captures: &[&str]) -> Self {
+            Self {
+                calls: RefCell::new(Vec::new()),
+                captures: RefCell::new(captures.iter().map(|s| (*s).to_string()).collect()),
+            }
+        }
+
+        fn calls(&self) -> Vec<String> {
+            self.calls.borrow().clone()
+        }
+    }
+
+    impl PaneSource for SequencedCaptureSource {
+        fn list_panes(
+            &self,
+            _target: Option<&WindowTarget>,
+        ) -> Result<Vec<RawPaneSnapshot>, PollingError> {
+            Ok(vec![])
+        }
+
+        fn current_target(&self) -> Result<Option<WindowTarget>, PollingError> {
+            Ok(None)
+        }
+
+        fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
+            Ok(vec![])
+        }
+
+        fn send_keys(&self, pane_id: &str, keys: &str) -> Result<(), PollingError> {
+            self.calls
+                .borrow_mut()
+                .push(format!("keys:{pane_id}:{keys}"));
+            Ok(())
+        }
+
+        fn send_key(&self, pane_id: &str, key: &str) -> Result<(), PollingError> {
+            self.calls.borrow_mut().push(format!("key:{pane_id}:{key}"));
+            Ok(())
+        }
+
+        fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError> {
+            self.calls
+                .borrow_mut()
+                .push(format!("capture:{pane_id}:{lines}"));
+            Ok(self.captures.borrow_mut().pop_front().unwrap_or_default())
         }
     }
 
@@ -569,17 +724,17 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_commands_for_claude_cycle_status_context_usage_stats_when_idle() {
+    fn runtime_refresh_commands_for_claude_cycle_usage_context_status_stats_when_idle() {
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, Some(IdleCause::WorkComplete)),
-            ["/status", "/context", "/usage", "/stats"]
+            ["/usage", "/context", "/status", "/stats"]
         );
         assert_eq!(
             runtime_refresh_command_label(runtime_refresh_commands(
                 Provider::Claude,
                 Some(IdleCause::LimitHit)
             )),
-            "/status, /context, /usage, /stats"
+            "/usage, /context, /status, /stats"
         );
     }
 
@@ -587,11 +742,11 @@ mod tests {
     fn runtime_refresh_commands_for_claude_active_cycle_same_runtime_sources() {
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, None),
-            ["/status", "/context", "/usage", "/stats"]
+            ["/usage", "/context", "/status", "/stats"]
         );
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, Some(IdleCause::Stale)),
-            ["/status", "/context", "/usage", "/stats"]
+            ["/usage", "/context", "/status", "/stats"]
         );
     }
 
@@ -625,7 +780,7 @@ mod tests {
         let mut offsets = HashMap::new();
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
-            ["/status"]
+            ["/usage"]
         );
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
@@ -633,7 +788,7 @@ mod tests {
         );
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
-            ["/usage"]
+            ["/status"]
         );
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
@@ -641,7 +796,7 @@ mod tests {
         );
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
-            ["/status"]
+            ["/usage"]
         );
         assert!(runtime_refresh_sends_escape_first(Provider::Claude, None));
     }
@@ -665,7 +820,7 @@ mod tests {
             vec![
                 "key:%1:Escape",
                 "keys:%1:/status",
-                "capture:%1",
+                "capture:%1:300",
                 "key:%1:Escape"
             ]
         );
@@ -702,7 +857,7 @@ mod tests {
                 vec![
                     "key:%1:Escape".to_string(),
                     format!("keys:%1:{command}"),
-                    "capture:%1".to_string(),
+                    "capture:%1:300".to_string(),
                     "key:%1:Escape".to_string(),
                 ]
             );
@@ -718,6 +873,63 @@ mod tests {
                 }
             );
         }
+    }
+
+    #[test]
+    fn runtime_refresh_retries_claude_capture_while_runtime_surface_is_loading() {
+        let source = SequencedCaptureSource::new(&[
+            "/usage\n\n✶ Doodling…",
+            "Current session\n0% used\n\nCurrent week (all models)\n36% used",
+        ]);
+        let mut overlays = HashMap::new();
+
+        let outcome = send_runtime_refresh_commands(
+            &source,
+            "%1",
+            Provider::Claude,
+            None,
+            &["/usage"],
+            40,
+            &mut overlays,
+        );
+
+        assert_eq!(
+            source.calls(),
+            vec![
+                "key:%1:Escape",
+                "keys:%1:/usage",
+                "capture:%1:300",
+                "capture:%1:300",
+                "key:%1:Escape",
+            ]
+        );
+        assert_eq!(
+            overlays.get("%1").map(String::as_str),
+            Some("Current session\n0% used\n\nCurrent week (all models)\n36% used")
+        );
+        assert_eq!(
+            outcome,
+            RuntimeRefreshSendOutcome {
+                failed: None,
+                captured_and_closed: true
+            }
+        );
+    }
+
+    #[test]
+    fn claude_context_capture_ready_accepts_current_usage_block() {
+        let tail = "\
+Context Usage
+
+Opus 4.7 (1M context)
+claude-opus-4-7[1m]
+
+143.3k/1m tokens (14%)
+
+Estimated usage by category
+System prompt: 8.6k tokens (0.9%)";
+
+        assert!(claude_context_capture_ready(&tail.to_lowercase()));
     }
 
     #[test]

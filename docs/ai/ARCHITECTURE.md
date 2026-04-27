@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.51 Claude context + split quota)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.52 Claude live CTX/quota visibility)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -171,11 +171,16 @@ v1.16.50 completes Phase C C2 by making `[tmux] source = "auto"` the
 default. Auto mode attaches control-mode first and falls back to polling
 only when startup attach fails; explicit `control_mode` remains strict.
 v1.16.51 updates provider pressure semantics without changing the
-PaneSource contract: Claude CTX is read from `/context`, Claude quota is
-split from `/usage` Current session (5h) and Current week (all models),
-Codex quota is split from bottom-status `5h` and `weekly`, and the
-settings overlay persists separate 5h/weekly quota thresholds for Claude
-and Codex.
+PaneSource contract: Claude CTX is read from `/context` including the
+current `Context Usage` total token line, Claude quota is split from
+`/usage` Current session (5h) and Current week (all models), Codex quota
+is split from bottom-status `5h` and `weekly`, and the settings overlay
+persists separate 5h/weekly quota thresholds for Claude and Codex.
+v1.16.52 closes the live Claude visibility gap: runtime refresh captures
+Claude fullscreen surfaces with a deeper provider-specific tail, waits
+for render/pre-`Escape` settle, and caches last observed Claude pressure
+metrics per pane so CTX, QUOTA 5H, and QUOTA WEEK can display together
+after `/usage` and `/context` have both been observed.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -325,12 +330,16 @@ provider status/slash output and readable provider config sources. The
 TUI key `u` sends the selected provider's read-only runtime slash
 commands with terminal submit (`C-m`, Enter-equivalent), one command per
 press when a provider exposes multiple runtime surfaces. Claude cycles
-`/status`, `/context`, `/usage`, `/stats`; Codex sends `/status`;
+`/usage`, `/context`, `/status`, `/stats`; Codex sends `/status`;
 Gemini cycles `/stats session`, `/stats model`, `/stats tools`. Claude
 fullscreen surfaces (`/status`, `/context`, `/usage`) are captured
-before Qmonster sends `Escape` to close them; the captured tail is
-consumed once as an in-memory parser overlay on the next poll. Claude
-also gets a defensive `Escape` before each cycled runtime command so any
+with a Claude-specific minimum depth after a short readiness wait before
+Qmonster sends `Escape` to close them; the captured tail is consumed once
+as an in-memory parser overlay on the next poll. Claude pressure metrics
+observed from these transient surfaces are cached per pane so `/context`
+CTX and `/usage` quota windows can remain visible together until the
+pane/provider lifecycle resets. Claude also gets a defensive `Escape`
+before each cycled runtime command so any
 prior fullscreen surface is closed before the next slash command is
 submitted. Gemini stats surfaces are cycled without a pre-`Escape`.
 Claude `/btw` is not used as a runtime fact source because it has no
@@ -340,7 +349,8 @@ rather than inferred.
 Pressure metrics intentionally mirror provider surfaces:
 
 - `context_pressure`: Claude `/context`, Codex bottom status, Gemini
-  status table `context`.
+  status table `context`. Claude's current `/context` `Context Usage`
+  screen contributes the total token percent, not category rows.
 - `quota_pressure`: provider exposes only one quota surface, currently
   Gemini.
 - `quota_5h_pressure`: Claude `/usage` Current session; Codex bottom

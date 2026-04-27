@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.51 Claude context + split quota."
+  mission_title: "Qmonster v0.5.0 — v1.16.52 Claude live CTX/quota visibility."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 133
-  latest_version: "1.16.51"
+  total_revisions: 134
+  latest_version: "1.16.52"
 
 timeline:
   - change_id: "initial"
@@ -11902,8 +11902,87 @@ timeline:
       - "Complete npm registry publication after `npm adduser` or token configuration."
       - "Continue Phase C with C3 review-tier profiles."
 
+  - change_id: "qmonster-v1.16.52-claude-live-pressure-visibility"
+    semantic_version: "1.16.52"
+    change_sequence: 134
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator report: Claude still did not show both CTX and QUOTA in the live TUI"
+    change_type: "fix"
+    motivation_type: "operator observability"
+    persistence: "permanent"
+    intent: >
+      Make Claude CTX and split quota badges visible together in the live
+      Qmonster TUI after operator-triggered runtime refresh.
+    intent_ko: >
+      operator가 runtime refresh를 실행한 뒤 live Qmonster TUI에서 Claude
+      CTX와 split quota badge가 함께 보이도록 한다.
+    decision: >
+      Keep Claude pressure parsing provider-owned, but adapt it to the
+      current Claude `/context` `Context Usage` block. Runtime refresh now
+      cycles Claude pressure sources first (`/usage`, `/context`), waits for
+      fullscreen runtime surfaces to render, captures those surfaces with a
+      deeper Claude-specific tail, waits after the defensive pre-`Escape`,
+      and caches the last confirmed Claude pressure metrics per pane so the
+      separate `/usage` and `/context` surfaces can be displayed together.
+    decision_ko: >
+      Claude pressure parsing은 provider adapter 안에 유지하되, 현재 Claude
+      `/context`의 `Context Usage` block 형식을 읽도록 맞춘다. Runtime
+      refresh는 Claude pressure source(`/usage`, `/context`)를 먼저 순환하고,
+      fullscreen runtime surface가 렌더링될 때까지 기다리며, Claude 전용으로
+      더 깊게 tail을 캡처하고, 방어적 pre-`Escape` 이후에도 짧게 기다린다.
+      또한 `/usage`와 `/context`가 별도 화면이어도 함께 표시되도록 pane별
+      Claude pressure metric cache를 둔다.
+    triggered_by: "The operator reported that Claude still did not show the CTX and QUOTA pair."
+    issue_or_context: >
+      Live Claude `/context` output used a `Context Usage` block whose total
+      token line differed from the earlier synthetic parser fixture. The
+      default 24-line runtime capture could also cut off that line, and a
+      pre-`Escape` race could dismiss a previous surface without giving the
+      next slash command enough settle time.
+    changes:
+      added:
+        - "Claude `/context` `Context Usage` total-token parser"
+        - "Claude runtime capture readiness/retry helpers"
+        - "Claude-specific 300-line minimum runtime surface capture"
+        - "per-pane Claude pressure metric cache"
+        - "regression tests for current Claude `/context` output and separate `/usage`/`/context` surfaces"
+      modified:
+        - "Claude runtime refresh cycle now starts with `/usage` then `/context`"
+        - "docs/ai UI and architecture notes describe live Claude pressure capture/cache behavior"
+      removed: []
+    changed_sections:
+      - "src/adapters/claude.rs"
+      - "src/app/bootstrap.rs"
+      - "src/app/event_loop.rs"
+      - "src/app/runtime_refresh.rs"
+      - "tests/event_loop_integration.rs"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Live qmonster:0 Claude row shows CTX, QUOTA 5H, and QUOTA WEEK together after `u` refresh"
+      modified:
+        - "all-target test count increases to 617"
+      removed: []
+    impact_scope:
+      runtime: "Claude runtime refresh, transient pressure metric caching, and CTX/quota badge visibility"
+      tests: "617 total passed — 556 lib + 0 main + 0 qmonster-tmux-parity + 37 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 134); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, and live TUI confirmation pass."
+      follow_up_carryover: "Complete npm registry publication after npm auth; continue Phase C with C3 review-tier profiles."
+    breaking: false
+    risk: "low — limited to Claude runtime refresh capture timing, parser coverage, and in-memory pressure metric retention."
+    related_commits: []
+    follow_up:
+      - "Complete npm registry publication after `npm adduser` or token configuration."
+      - "Continue Phase C with C3 review-tier profiles."
+
 evolution_summary:
-  current_phase: "v1.16.51 Claude context + split quota — Claude CTX uses /context, Claude/Codex quota windows are split into 5h and weekly, and npm packaging exists."
+  current_phase: "v1.16.52 Claude live CTX/quota visibility — live Claude runtime refresh shows CTX, QUOTA 5H, and QUOTA WEEK together."
   next_phase: "Complete npm registry publication after npm auth, then continue Phase C with C3 review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

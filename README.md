@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: npm package `0.5.0`; current mission ledger `v1.16.51`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `0.5.0`; current mission ledger `v1.16.52`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,8 +31,9 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current line: `v1.16.51` updates provider pressure semantics and prepares the
-first npm package (`qmonster@0.5.0`). Phase C C2 is already complete:
+Current line: `v1.16.52` fixes live Claude CTX/quota visibility after
+runtime refresh, on top of the `v1.16.51` provider-pressure split and first
+npm package (`qmonster@0.5.0`). Phase C C2 is already complete:
 `[tmux] source = "auto"` prefers control-mode and falls back to polling at
 startup when attach is unavailable.
 

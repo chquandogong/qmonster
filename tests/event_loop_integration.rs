@@ -1657,3 +1657,64 @@ fn runtime_refresh_tail_overlay_is_parsed_once_then_consumed() {
         "runtime refresh capture should be a one-shot parser overlay"
     );
 }
+
+#[test]
+fn claude_pressure_metrics_survive_separate_runtime_surfaces() {
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%9",
+            "claude:1:main",
+            "claude",
+            "previous output\n\n❯ ",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    ctx.runtime_refresh_tail_overlays.insert(
+        "%9".into(),
+        "Context\nContext window: 82% used\nEsc to cancel".into(),
+    );
+    let reports = run_once(&mut ctx, Instant::now()).expect("context ok");
+    assert!((reports[0].signals.context_pressure.as_ref().unwrap().value - 0.82).abs() < 1e-6);
+    assert!(reports[0].signals.quota_5h_pressure.is_none());
+
+    ctx.runtime_refresh_tail_overlays.insert(
+        "%9".into(),
+        "Current session\n0% used\n\nCurrent week (all models)\n████████ 36% used".into(),
+    );
+    let reports = run_once(&mut ctx, Instant::now()).expect("usage ok");
+    assert!(
+        (reports[0].signals.context_pressure.as_ref().unwrap().value - 0.82).abs() < 1e-6,
+        "Claude /usage should retain the last /context metric"
+    );
+    assert!((reports[0].signals.quota_5h_pressure.as_ref().unwrap().value - 0.0).abs() < 1e-6);
+    assert!(
+        (reports[0]
+            .signals
+            .quota_weekly_pressure
+            .as_ref()
+            .unwrap()
+            .value
+            - 0.36)
+            .abs()
+            < 1e-6
+    );
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("cached ok");
+    assert!((reports[0].signals.context_pressure.as_ref().unwrap().value - 0.82).abs() < 1e-6);
+    assert!((reports[0].signals.quota_5h_pressure.as_ref().unwrap().value - 0.0).abs() < 1e-6);
+    assert!(
+        (reports[0]
+            .signals
+            .quota_weekly_pressure
+            .as_ref()
+            .unwrap()
+            .value
+            - 0.36)
+            .abs()
+            < 1e-6
+    );
+}
