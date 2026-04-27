@@ -1,5 +1,6 @@
 pub(crate) mod commands;
 pub mod control_mode;
+pub(crate) mod control_process;
 pub(crate) mod control_protocol;
 pub mod parity;
 pub mod polling;

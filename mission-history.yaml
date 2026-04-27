@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.41 startup source factory."
+  mission_title: "Qmonster v0.5.0 — v1.16.42 control-mode process boundary."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 123
-  latest_version: "1.16.41"
+  total_revisions: 124
+  latest_version: "1.16.42"
 
 timeline:
   - change_id: "initial"
@@ -11163,8 +11163,76 @@ timeline:
     follow_up:
       - "Continue C2: add remaining transport-readiness hardening before any default switch."
 
+  - change_id: "qmonster-v1.16.42-control-mode-process-boundary"
+    semantic_version: "1.16.42"
+    change_sequence: 124
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: keep progressing C2 and close each work item with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C2 process-boundary separation"
+    persistence: "permanent"
+    intent: >
+      Give control-mode the same explicit process boundary shape that
+      polling already has.
+    intent_ko: >
+      polling에 이미 있는 명시적 process boundary 형태를 control-mode에도
+      부여한다.
+    decision: >
+      Add `src/tmux/control_process.rs` with `ControlModeProcess`, which
+      owns `tmux -C attach-session`, stdin/stdout pipes, and child cleanup.
+      `ControlModeClient` now owns that process wrapper and keeps command
+      writing, response parsing, and reconnect semantics in `control_mode.rs`.
+    decision_ko: >
+      `src/tmux/control_process.rs`에 `ControlModeProcess`를 추가하여
+      `tmux -C attach-session`, stdin/stdout pipe, child cleanup을 소유하게
+      한다. `ControlModeClient`는 이 process wrapper를 보유하고 command
+      write, response parse, reconnect semantics는 `control_mode.rs`에 유지한다.
+    triggered_by: "Follow-up after v1.16.41 created an app-layer source factory."
+    issue_or_context: >
+      Before any default-source switch, both tmux transports should have
+      clear process boundaries: polling through `polling_process.rs`,
+      control-mode through `control_process.rs`.
+    changes:
+      added:
+        - "src/tmux/control_process.rs"
+      modified:
+        - "src/tmux/control_mode.rs now delegates process ownership to `ControlModeProcess`"
+        - "src/tmux/mod.rs wires the new internal module"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.42"
+      removed:
+        - "direct child/stdin/stdout ownership from `ControlModeClient`"
+    changed_sections:
+      - "src/tmux/control_process.rs"
+      - "src/tmux/control_mode.rs"
+      - "src/tmux/mod.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "control-mode process ownership has a dedicated module"
+        - "polling/control-mode process boundaries are now symmetric"
+      modified:
+        - "all-target test count remains 593"
+      removed: []
+    impact_scope:
+      runtime: "none intended — control-mode attach/drop behavior preserved behind a process wrapper"
+      tests: "593 total passed — 533 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; repeated default and all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 124); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining default-readiness checks before any source default switch."
+    breaking: false
+    risk: "low — ownership move with live parity coverage."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add remaining transport-readiness hardening before any default switch."
+
 evolution_summary:
-  current_phase: "v1.16.41 startup source factory — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  current_phase: "v1.16.42 control-mode process boundary — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
   next_phase: "Continue Phase C C2 with additional control-mode default-readiness hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

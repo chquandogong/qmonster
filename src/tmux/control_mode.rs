@@ -1,5 +1,4 @@
-use std::io::{BufReader, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::io::Write;
 use std::sync::Mutex;
 use std::thread;
 
@@ -7,6 +6,7 @@ use crate::tmux::commands::{
     KEY_SETTLE_DELAY, SUBMIT_KEY, capture_tail_args, current_target_args, list_panes_args,
     list_windows_args, send_key_args, send_keys_literal_args,
 };
+use crate::tmux::control_process::ControlModeProcess;
 use crate::tmux::control_protocol::{command_line, is_control_transport_error, read_control_block};
 use crate::tmux::polling::{PaneSource, PollingError};
 use crate::tmux::snapshots::hydrate_pane_snapshots;
@@ -102,55 +102,30 @@ impl Default for ControlModeSource {
 
 #[derive(Debug)]
 struct ControlModeClient {
-    child: Child,
-    stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    process: ControlModeProcess,
 }
 
 impl ControlModeClient {
     fn attach_current() -> Result<Self, PollingError> {
-        let mut child = Command::new("tmux")
-            .args(["-C", "attach-session"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| PollingError::Command(e.to_string()))?;
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| PollingError::Command("tmux control-mode stdin missing".into()))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| PollingError::Command("tmux control-mode stdout missing".into()))?;
         let mut client = Self {
-            child,
-            stdin,
-            stdout: BufReader::new(stdout),
+            process: ControlModeProcess::attach_current()?,
         };
         let _ = client.read_response()?;
         Ok(client)
     }
 
     fn run_command(&mut self, args: &[String]) -> Result<Vec<String>, PollingError> {
-        writeln!(self.stdin, "{}", command_line(args))
+        writeln!(self.process.stdin, "{}", command_line(args))
             .map_err(|e| PollingError::Command(e.to_string()))?;
-        self.stdin
+        self.process
+            .stdin
             .flush()
             .map_err(|e| PollingError::Command(e.to_string()))?;
         self.read_response()
     }
 
     fn read_response(&mut self) -> Result<Vec<String>, PollingError> {
-        read_control_block(&mut self.stdout)
-    }
-}
-
-impl Drop for ControlModeClient {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        read_control_block(&mut self.process.stdout)
     }
 }
 

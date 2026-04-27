@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.41`; current canonical ledger: `v1.16.41`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.42`; current canonical ledger: `v1.16.42`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -145,6 +145,8 @@ the polling/control-mode dispatch boundary out of `tmux/mod.rs`.
 v1.16.41 extracts startup tmux source construction into
 `src/app/tmux_source.rs`, so startup calls a factory instead of owning
 transport selection.
+v1.16.42 extracts control-mode process ownership into
+`src/tmux/control_process.rs`, matching the polling process-boundary split.
 
 ## Quick start
 

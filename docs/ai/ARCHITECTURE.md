@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.41 startup source factory)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.42 control-mode process boundary)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -144,6 +144,9 @@ v1.16.40 moves the `TmuxSource` dispatch enum into `src/tmux/source.rs`,
 leaving `tmux/mod.rs` as module wiring and re-exports.
 v1.16.41 moves startup tmux source construction into
 `src/app/tmux_source.rs`, keeping `startup.rs` focused on runtime assembly.
+v1.16.42 moves `tmux -C attach-session` process ownership into
+`src/tmux/control_process.rs`, making control-mode's process boundary
+match the earlier polling CLI boundary split.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
