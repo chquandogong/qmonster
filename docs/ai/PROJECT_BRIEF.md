@@ -2,9 +2,9 @@
 
 - Project: **Qmonster** — Dr. QUAN's Q + monitoring/master
 - Version: v0.4.0
-- Date: 2026-04-20 (initial) / 2026-04-27 (current — v1.15.22 Phase-B opt-in security posture advisory)
+- Date: 2026-04-20 (initial) / 2026-04-27 (current — v1.15.23 Phase-B branch-narrowed concurrent-work detection)
 - Target env: Ubuntu + tmux + Rust TUI
-- Phase: **Phases 1–5 + v1.15.x runtime observability/settings/cost line shipped; v1.15.20 activates shipped surfaces; v1.15.21 starts Phase B visibility; v1.15.22 adds opt-in security posture advisories.** v1.15.20 standardizes `~/.qmonster/config/qmonster.toml` and `~/.qmonster/config/pricing.toml`; v1.15.21 threads tmux `pane_current_command` into pane cards/detail/`--once` and shows selected-pane Codex input/output token breakdown. v1.15.22 adds `[security] posture_advisories = false`; when enabled, YOLO / bypass permissions / Full Access / danger-full-access / no sandbox runtime facts produce passive Concern recommendations. Verification: 514 tests green; clippy + fmt clean; `scripts/verify-shared.sh` passes with a lite ledger fallback because `mission-spec` is not installed locally.
+- Phase: **Phases 1–5 + v1.15.x runtime observability/settings/cost line shipped; v1.15.20 activates shipped surfaces; v1.15.21 starts Phase B visibility; v1.15.22 adds opt-in security posture advisories; v1.15.23 narrows concurrent-work warnings to same path + same branch.** v1.15.20 standardizes `~/.qmonster/config/qmonster.toml` and `~/.qmonster/config/pricing.toml`; v1.15.21 threads tmux `pane_current_command` into pane cards/detail/`--once` and shows selected-pane Codex input/output token breakdown. v1.15.22 adds `[security] posture_advisories = false`; when enabled, YOLO / bypass permissions / Full Access / danger-full-access / no sandbox runtime facts produce passive Concern recommendations. v1.15.23 removes path-only concurrent warnings; panes need matching `current_path` and `git_branch`. Verification: 516 tests green; clippy + fmt clean; `scripts/verify-shared.sh` passes with a lite ledger fallback because `mission-spec` is not installed locally.
 
 ## What Qmonster is
 

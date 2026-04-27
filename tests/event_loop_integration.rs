@@ -676,15 +676,22 @@ fn busy_tail() -> String {
     "doing some work on the task.\n".repeat(20)
 }
 
+fn busy_codex_tail(path: &str, branch: &str) -> String {
+    format!(
+        "{}\nContext 50% left · {path} · gpt-5.4 · Qmonster · {branch} · Context 50% used · 0.122.0 · 500K used · 400K in · 100K out",
+        busy_tail()
+    )
+}
+
 #[test]
 fn concurrent_mutating_work_surfaces_in_cross_pane_findings() {
     use qmonster::domain::recommendation::CrossPaneKind;
 
-    let tail = busy_tail();
+    let tail = busy_codex_tail("/tmp/repo", "main");
     let source = FixturePaneSource {
         panes: vec![
-            pane_with_path("%1", "claude:1:main", "claude", &tail, false, "/tmp/repo"),
-            pane_with_path("%2", "claude:2:main", "claude", &tail, false, "/tmp/repo"),
+            pane_with_path("%1", "codex:1:main", "node", &tail, false, "/tmp/repo"),
+            pane_with_path("%2", "codex:2:main", "node", &tail, false, "/tmp/repo"),
         ],
     };
     let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
@@ -714,11 +721,12 @@ fn concurrent_mutating_work_surfaces_in_cross_pane_findings() {
 
 #[test]
 fn concurrent_does_not_trigger_across_different_current_paths() {
-    let tail = busy_tail();
+    let tail_a = busy_codex_tail("/tmp/repo-a", "main");
+    let tail_b = busy_codex_tail("/tmp/repo-b", "main");
     let source = FixturePaneSource {
         panes: vec![
-            pane_with_path("%1", "claude:1:main", "claude", &tail, false, "/tmp/repo-a"),
-            pane_with_path("%2", "claude:2:main", "claude", &tail, false, "/tmp/repo-b"),
+            pane_with_path("%1", "codex:1:main", "node", &tail_a, false, "/tmp/repo-a"),
+            pane_with_path("%2", "codex:2:main", "node", &tail_b, false, "/tmp/repo-b"),
         ],
     };
     let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
@@ -741,13 +749,13 @@ fn concurrent_does_not_trigger_across_different_current_paths() {
 fn cross_pane_finding_attaches_to_correct_anchor() {
     use qmonster::domain::recommendation::CrossPaneKind;
 
-    let tail = busy_tail();
+    let tail = busy_codex_tail("/repo", "main");
     // Three panes in the same directory, IDs out of lex order.
     let source = FixturePaneSource {
         panes: vec![
-            pane_with_path("%9", "claude:9:main", "claude", &tail, false, "/repo"),
-            pane_with_path("%1", "claude:1:main", "claude", &tail, false, "/repo"),
-            pane_with_path("%5", "claude:5:main", "claude", &tail, false, "/repo"),
+            pane_with_path("%9", "codex:9:main", "node", &tail, false, "/repo"),
+            pane_with_path("%1", "codex:1:main", "node", &tail, false, "/repo"),
+            pane_with_path("%5", "codex:5:main", "node", &tail, false, "/repo"),
         ],
     };
     let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));

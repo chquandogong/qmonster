@@ -12,7 +12,7 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-27): `cargo fmt --check`,
-`cargo test --all-targets` (514 tests),
+`cargo test --all-targets` (516 tests),
 `cargo clippy --all-targets -- -D warnings`, and
 `scripts/verify-shared.sh` pass; official `mission-spec validate .`
 is still unavailable locally because `mission-spec` is not installed,
@@ -111,11 +111,12 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
 - [x] A–G canonical rules each fire in a reproducible test fixture:
       log-storm, code-exploration, context-pressure, verbose-output,
       permission-wait, quota-tight, repeated-output.
-- [x] **Concurrent-work warning** across panes (Gemini G-11). Phase 3A
-      ships a **project-level proxy**: fires when two or more Main/Review
-      panes operate in the same `current_path` with recent output. The
-      stricter "same file or git branch" trigger is deferred to Phase 3B
-      or a later round (file-level) and Phase 4+ (git-branch-level).
+- [x] **Concurrent-work warning** across panes (Gemini G-11). v1.15.23
+      narrows the old project-level proxy: fires only when two or more
+      busy Main/Review panes share both `current_path` and
+      `signals.git_branch`. Path-only overlap is no longer enough.
+      File-level detection remains deferred until a trustworthy
+      active-file signal exists.
 - [x] `aggressive_mode` only surfaces recommendations when
       `quota_tight = true` in config.
 - [x] Every rule carries a `SourceKind`; for `Heuristic` rules, a

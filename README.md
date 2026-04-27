@@ -65,6 +65,8 @@ ProviderOfficial `in`/`out` counts. The security posture slice keeps
 YOLO / bypass / no-sandbox facts badge-only by default; set
 `[security] posture_advisories = true` to promote them into passive
 Concern recommendations.
+Concurrent-work warnings are also quieter after v1.15.23: same path
+alone is no longer enough; panes must expose the same git branch too.
 
 ## Quick start
 

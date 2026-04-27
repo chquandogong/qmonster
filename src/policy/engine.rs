@@ -381,6 +381,10 @@ mod tests {
         };
         let s = SignalSet {
             output_chars: 800,
+            git_branch: Some(crate::domain::signal::MetricValue::new(
+                "main".to_string(),
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
             ..SignalSet::default()
         };
         let views = vec![

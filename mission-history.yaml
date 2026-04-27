@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.15.22 Phase-B opt-in security posture advisory."
+  mission_title: "Qmonster v0.5.0 — v1.15.23 Phase-B branch-narrowed concurrent-work detection."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 78
-  latest_version: "1.15.22"
+  total_revisions: 79
+  latest_version: "1.15.23"
 
 timeline:
   - change_id: "initial"
@@ -7961,9 +7961,84 @@ timeline:
     follow_up:
       - "Implement B4 file/branch-level concurrent-work narrowing next."
 
+  - change_id: "qmonster-v1.15.23-phase-b-branch-narrowed-concurrent-work"
+    semantic_version: "1.15.23"
+    change_sequence: 79
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase B sequentially"
+    change_type: "implementation"
+    motivation_type: "false-positive reduction"
+    persistence: "permanent"
+    intent: >
+      Implement Phase B4's branch-level narrowing for concurrent-work
+      detection. The old same-current_path proxy was useful but too
+      noisy in normal multi-pane operation; branch data is now available
+      from Codex/Gemini status surfaces, so use it before warning.
+    intent_ko: >
+      Phase B4의 branch-level concurrent-work narrowing을 구현한다. 기존
+      same-current_path proxy는 일반적인 다중 pane 운영에서 false positive가
+      많았다. Codex/Gemini status surface에서 branch 정보가 이미 수집되므로
+      경고 전 조건에 포함한다.
+    decision: >
+      Cross-pane concurrent mutating work now requires busy Main/Review
+      panes to share both `current_path` and `signals.git_branch`.
+      Branchless panes no longer trigger the warning. The reason text
+      names both path and branch. File-level detection remains deferred
+      until providers expose a trustworthy active-file signal.
+    decision_ko: >
+      cross-pane concurrent mutating work는 이제 busy Main/Review pane들이
+      `current_path`와 `signals.git_branch`를 모두 공유해야 발화한다.
+      branch가 없는 pane은 더 이상 이 경고를 만들지 않는다. reason에는
+      path와 branch를 함께 표시한다. File-level detection은 신뢰 가능한
+      active-file signal이 생길 때까지 유지 보류한다.
+    triggered_by: "Operator instruction (2026-04-27): continue next task after commit/push."
+    issue_or_context: >
+      The v1.15.20 role fallback intentionally woke profile and
+      concurrent-work rules on non-canonical panes. Smoke output showed
+      path-only concurrent warnings across normal same-project panes.
+      Phase B4 narrows that surface to branch-correlated panes.
+    changes:
+      added:
+        - "ConcurrentKey { path, branch } in policy/rules/concurrent.rs"
+        - "Tests for path+branch positive fire, path-only suppression, and same-path different-branch suppression"
+      modified:
+        - "eval_concurrent now groups by current_path + git_branch instead of current_path only"
+        - "Cross-pane finding reason now includes branch"
+        - "Engine and event-loop integration fixtures now provide branch-bearing Codex signals where the concurrent rule is expected to fire"
+        - "docs/ai/VALIDATION.md and mission ledger describe branch-narrowed behavior"
+      removed: []
+    changed_sections:
+      - "policy/rules/concurrent.rs"
+      - "policy engine / event-loop integration tests"
+      - "validation docs / mission ledger"
+    done_when_delta:
+      added:
+        - "Same path alone no longer triggers concurrent-work warnings"
+        - "Same path + same branch still triggers, with stable lexicographic anchor selection"
+        - "Same path + different branches does not trigger"
+      modified:
+        - "VALIDATION concurrent-work acceptance now reflects branch-level narrowing and explicit file-level deferral"
+      removed: []
+    impact_scope:
+      code: "small pure-policy narrowing plus test fixture updates"
+      tests: "516 total — 440 lib + 16 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+2 concurrent policy tests vs v1.15.22)"
+      ledger: "1 new timeline entry (sequence 79); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and scripts/verify-shared.sh all pass. Official mission-spec validation remains unavailable locally, but verify-shared's lite ledger check passed."
+      follow_up_carryover: "Remaining Phase B: copyable suggested commands."
+    breaking: false
+    risk: "medium-low — warnings become quieter because branchless panes no longer trigger. This is intentional to reduce path-only false positives; providers without branch signals need a future file-level signal before they can participate."
+    related_commits: []
+    related_decisions:
+      - "Decision: prefer quieter branch-correlated warnings over noisy path-only warnings."
+    snapshot_after: ""
+    follow_up:
+      - "Implement B5 copy suggested_command from TUI next."
+
 evolution_summary:
-  current_phase: "v1.15.22 Phase-B opt-in security posture advisory — Phase A activation and v1.15.21 pane visibility are in place; `[security] posture_advisories = true` now promotes permissive runtime facts into passive Concern recommendations."
-  next_phase: "Remaining Phase B: file/branch-level concurrent-work narrowing and copyable suggested commands. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.15.23 Phase-B branch-narrowed concurrent-work detection — Phase A activation, pane visibility, and opt-in security posture are in place; concurrent-work warnings now require same current_path + same git_branch."
+  next_phase: "Remaining Phase B: copyable suggested commands. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

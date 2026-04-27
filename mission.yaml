@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.22"
-  title: "Qmonster v0.5.0 — v1.15.22 Phase-B opt-in security posture advisory. Builds on v1.15.21 pane visibility: runtime facts for permissive posture still render as badges by default, and the new `[security] posture_advisories = true` flag promotes YOLO / bypass permissions / Full Access / danger-full-access / no sandbox observations into passive `Severity::Concern` recommendations. Default remains off to preserve observe-first operator intent."
+  version: "1.15.23"
+  title: "Qmonster v0.5.0 — v1.15.23 Phase-B branch-narrowed concurrent-work detection. Builds on v1.15.22 security posture: cross-pane concurrent mutating work no longer fires on path-only overlap. Panes must now be busy Main/Review panes in the same `current_path` and expose the same `git_branch`; branchless panes are excluded until file-level signals exist. This reduces same-project false positives while keeping real same-branch collision warnings."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1140,15 +1140,15 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.15.22 Phase-B opt-in security posture advisory on top of the pushed v1.15.21 pane-visibility commit. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, and the Slice 3 housekeeping bundle are shipped."
+    topology: "Current working state is v1.15.23 Phase-B branch-narrowed concurrent-work detection on top of the pushed v1.15.22 security-posture commit. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, and the Slice 3 housekeeping bundle are shipped."
     suggested_approach: >
       Continue the operator-directed synthesis in order. Phase A chose
       the conservative defaults and activated config/pricing/profile
       visibility. Phase B has now surfaced already-collected
       `pane_current_command`, selected-pane Codex input/output tokens,
-      and an opt-in security posture advisory. Keep the next items
-      scoped: branch/file-level concurrent-work narrowing, then copyable
-      recommendation commands.
+      added an opt-in security posture advisory, and narrowed concurrent
+      work detection from path-only to same path + same branch. Keep the
+      next item scoped: copyable recommendation commands.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1184,11 +1184,10 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.15.22 operator-directed follow-up"
+    priority: "post-v1.15.23 operator-directed follow-up"
     estimated_sessions: 1
-    scope: "continue with remaining Phase B: branch/file-level concurrent detection or copyable recommendation commands"
+    scope: "continue with remaining Phase B: copyable recommendation commands"
     followups:
-      - "B4: file/branch-level concurrent-work narrowing"
       - "B5: copy suggested_command from TUI"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
@@ -1197,5 +1196,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 78
+    total_revisions: 79
     history: "mission-history.yaml"
