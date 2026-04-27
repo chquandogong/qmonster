@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.24`; current canonical ledger: `v1.16.24`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.25`; current canonical ledger: `v1.16.25`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -107,6 +107,9 @@ state ownership into `src/app/target_picker.rs`; v1.16.24 moves the live
 TUI event loop into `src/app/tui_loop.rs`, leaving `src/main.rs` as a
 thin CLI/startup/`--once`/TUI-entry wrapper. This completes the
 pre-control-mode C1 split target enough for C2 adapter work to begin.
+v1.16.25 starts C2 with an opt-in `[tmux] source = "control_mode"`
+transport that implements the existing `PaneSource` contract through one
+tmux control-mode client; default config remains `source = "polling"`.
 
 ## Quick start
 
@@ -200,7 +203,7 @@ src/
                audit logging
   domain/      pure types: identity, origin (SourceKind), signal,
                recommendation, audit, lifecycle
-  tmux/        PaneSource trait + polling implementation
+  tmux/        PaneSource trait + polling and opt-in control-mode sources
   adapters/    claude / codex / gemini / qmonster tail parsers
   policy/      pure engine + rules (alert + advisory + concurrent + profile)
   store/       paths, sink (EventSink + NoopSink + InMemorySink),

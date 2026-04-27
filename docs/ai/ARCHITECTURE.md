@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.24 live TUI loop extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.25 opt-in control-mode tmux source)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -44,7 +44,7 @@ src/
   main.rs      # thin CLI/startup/--once/TUI-entry wrapper
   app/         # bootstrap/startup, config+safety-precedence, path resolution, event loop, tui-loop/dashboard-runtime/polling-tick/terminal-session/dashboard-render/keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
-  tmux/        # polling first; control-mode-capable PaneSource trait
+  tmux/        # PaneSource trait; polling default plus opt-in control-mode source
   adapters/    # per-provider tail parsers (no identity inference)
   policy/      # pure rules; Phase 1 = rules/alerts.rs;
                # Phase 3 adds rules/{advisories,concurrent}.rs;
@@ -95,6 +95,10 @@ into `app::startup`. v1.16.23 moves target-picker runtime state
 ownership into `app::target_picker`. v1.16.24 moves the live TUI event
 loop into `app::tui_loop`, leaving `main.rs` as the thin CLI/startup/
 `--once`/TUI-entry wrapper.
+v1.16.25 starts Phase C C2 by adding `tmux::ControlModeSource`, an
+opt-in `[tmux] source = "control_mode"` transport that runs the same raw
+tmux commands behind the existing `PaneSource` contract while keeping
+`polling` as the default.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

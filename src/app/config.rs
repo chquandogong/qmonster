@@ -35,6 +35,7 @@ pub struct QmonsterConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TmuxConfig {
+    pub source: TmuxSourceMode,
     pub poll_interval_ms: u64,
     pub capture_lines: usize,
 }
@@ -42,6 +43,7 @@ pub struct TmuxConfig {
 impl Default for TmuxConfig {
     fn default() -> Self {
         Self {
+            source: TmuxSourceMode::Polling,
             poll_interval_ms: 2000,
             capture_lines: 24,
         }
@@ -52,6 +54,13 @@ impl TmuxConfig {
     pub fn poll_interval(&self) -> Duration {
         Duration::from_millis(self.poll_interval_ms)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TmuxSourceMode {
+    Polling,
+    ControlMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -550,6 +559,7 @@ mod tests {
     #[test]
     fn defaults_are_safe() {
         let c = base();
+        assert_eq!(c.tmux.source, TmuxSourceMode::Polling);
         assert_eq!(c.actions.mode, ActionsMode::RecommendOnly);
         assert!(!c.actions.allow_auto_prompt_send);
         assert!(!c.actions.allow_destructive_actions);
@@ -619,6 +629,16 @@ mod tests {
     fn idle_config_default_stillness_polls_is_4() {
         let cfg = QmonsterConfig::defaults();
         assert_eq!(cfg.idle.stillness_polls, 4);
+    }
+
+    #[test]
+    fn tmux_source_mode_loads_from_toml() {
+        let toml = r#"
+[tmux]
+source = "control_mode"
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.tmux.source, TmuxSourceMode::ControlMode);
     }
 
     #[test]

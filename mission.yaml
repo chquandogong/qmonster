@@ -1,6 +1,6 @@
 mission:
-  version: "1.16.24"
-  title: "Qmonster v0.5.0 — v1.16.24 live TUI loop extraction. Completes the pre-C2 Phase C C1 split target by moving the live event loop from `src/main.rs` into `src/app/tui_loop.rs`."
+  version: "1.16.25"
+  title: "Qmonster v0.5.0 — v1.16.25 opt-in control-mode tmux source. Starts Phase C C2 by adding `tmux::ControlModeSource` behind the existing `PaneSource` abstraction while keeping polling as the default."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1140,7 +1140,7 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.16.24 live TUI loop extraction on top of the pushed v1.16.23 target-picker runtime-state extraction. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped. Phase C C1 has extracted the live TUI event loop into `src/app/tui_loop.rs`, startup config/root, audit sink, pricing, Claude settings, retention, and version snapshot assembly into `src/app/startup.rs`, dashboard notices/reports, list-selection, and alert freshness resync bookkeeping into `src/app/dashboard_runtime.rs`, poll tick success/failure routing and pane-state flash updates into `src/app/polling_tick.rs`, terminal raw-mode/alternate-screen/mouse-capture lifecycle into `src/app/terminal_session.rs`, dashboard frame/overlay render composition into `src/app/dashboard_render.rs`, dashboard keymap/list helpers into `src/app/keymap.rs`, target-picker model/preview/choice/action/initial-target/runtime-state helpers into `src/app/target_picker.rs`, runtime-refresh command/send/label/action helpers into `src/app/runtime_refresh.rs`, alert/pane dashboard state/key/mouse helpers into `src/app/dashboard_state.rs`, shared git/help scroll modal state into `src/app/modal_state.rs`, settings overlay dispatch into `src/app/settings_overlay.rs`, operator version/snapshot helpers into `src/app/operator_actions.rs`, default config-path resolution into `src/app/path_resolution.rs`, `--once` report formatting into `src/app/once_report.rs`, prompt-send accept/dismiss handling into `src/app/prompt_send_actions.rs`, and selected-alert command copy notices into `src/app/clipboard_actions.rs`. `src/main.rs` is now a thin CLI/startup/`--once`/TUI-entry wrapper. v1.16.4 fixed Git overlay title consistency; v1.16.5 restores `c` to system-notice clear while leaving selected-alert command copy on `y`."
+    topology: "Current working state is v1.16.25 opt-in control-mode tmux source on top of the pushed v1.16.24 live TUI loop extraction. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped. Phase C C1 extracted the live TUI event loop into `src/app/tui_loop.rs` and left `src/main.rs` as a thin CLI/startup/`--once`/TUI-entry wrapper. Phase C C2 has started with `src/tmux/control_mode.rs`, `tmux::ControlModeSource`, `tmux::TmuxSource`, and `[tmux] source = \"control_mode\"` as an opt-in transport behind the existing `PaneSource` contract. The default remains `[tmux] source = \"polling\"`. v1.16.4 fixed Git overlay title consistency; v1.16.5 restores `c` to system-notice clear while leaving selected-alert command copy on `y`."
     suggested_approach: >
       Continue the operator-directed synthesis in order. Phase A chose
       the conservative defaults and activated config/pricing/profile
@@ -1187,9 +1187,10 @@ mission:
       v1.16.23 expands `src/app/target_picker.rs` with target-picker
       runtime state ownership; v1.16.24 adds `src/app/tui_loop.rs` for
       the live TUI event loop and leaves `src/main.rs` as a thin entry
-      wrapper.
-      C1 is now structurally complete enough to begin C2 control-mode
-      adapter work.
+      wrapper. v1.16.25 starts C2 by adding `src/tmux/control_mode.rs`,
+      a `TmuxSource` enum, and opt-in `[tmux] source = "control_mode"`.
+      Continue hardening the control-mode path before considering it as
+      the default.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1225,11 +1226,11 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.16.24 operator-directed Phase-C follow-up"
+    priority: "post-v1.16.25 operator-directed Phase-C follow-up"
     estimated_sessions: 1
-    scope: "Phase B complete; Phase C C1 main.rs decomposition structurally complete enough for C2"
+    scope: "Phase B complete; Phase C C2 control-mode tmux adapter in progress"
     followups:
-      - "C2: begin control-mode tmux adapter work"
+      - "C2: harden and validate the control-mode tmux adapter"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
   created: "2026-04-20"
@@ -1237,5 +1238,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 106
+    total_revisions: 107
     history: "mission-history.yaml"

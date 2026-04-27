@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.24 live TUI loop extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.25 opt-in control-mode tmux source."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 106
-  latest_version: "1.16.24"
+  total_revisions: 107
+  latest_version: "1.16.25"
 
 timeline:
   - change_id: "initial"
@@ -9978,9 +9978,84 @@ timeline:
     follow_up:
       - "Begin C2: implement and validate the control-mode tmux adapter behind the existing PaneSource abstraction."
 
+  - change_id: "qmonster-v1.16.25-opt-in-control-mode-tmux-source"
+    semantic_version: "1.16.25"
+    change_sequence: 107
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C after enough C1 decomposition, closing each work item with commit/push/tag"
+    change_type: "feature"
+    motivation_type: "Phase C C2 control-mode tmux adapter"
+    persistence: "permanent"
+    intent: >
+      Start Phase C C2 by adding an opt-in tmux control-mode transport behind
+      the existing `PaneSource` abstraction without changing the default source.
+    intent_ko: >
+      기본 source는 바꾸지 않고, 기존 `PaneSource` 추상화 뒤에 opt-in tmux
+      control-mode transport를 추가해 Phase C C2를 시작한다.
+    decision: >
+      Add `tmux::ControlModeSource`, a small control-mode response block
+      parser, command quoting tests, and `tmux::TmuxSource` so startup can
+      choose between `polling` and `control_mode`. `config/qmonster.example.toml`
+      documents `[tmux] source = "polling" | "control_mode"` and keeps polling
+      as the default.
+    decision_ko: >
+      `tmux::ControlModeSource`, control-mode response block parser, command
+      quoting tests, `tmux::TmuxSource`를 추가해 startup이 `polling`과
+      `control_mode` 중 하나를 선택하게 한다. `config/qmonster.example.toml`에는
+      `[tmux] source = "polling" | "control_mode"`를 문서화하되 기본값은
+      polling으로 유지한다.
+    triggered_by: "Phase C C2 begins after v1.16.24 moved the live TUI loop out of main.rs."
+    issue_or_context: >
+      The architecture already depended on a `PaneSource` abstraction, but the
+      only production implementation shelled out through polling. C2 needs a
+      control-mode implementation that can be enabled and validated without
+      disturbing the shipped polling path.
+    changes:
+      added:
+        - "src/tmux/control_mode.rs: ControlModeSource, control-mode block parser, command quoting, and tests"
+        - "src/tmux/mod.rs: TmuxSource enum implementing PaneSource"
+        - "src/app/config.rs: TmuxSourceMode with serde support and tests"
+      modified:
+        - "src/app/startup.rs chooses PollingSource or ControlModeSource from config"
+        - "config/qmonster.example.toml documents [tmux] source"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.25"
+      removed: []
+    changed_sections:
+      - "src/tmux/control_mode.rs"
+      - "src/tmux/mod.rs"
+      - "src/app/config.rs"
+      - "src/app/startup.rs"
+      - "config/qmonster.example.toml"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "First Phase C C2 code slice exists"
+        - "Operator can opt into tmux control-mode transport via [tmux] source = \"control_mode\""
+        - "Control-mode parser and command quoting are covered by unit tests"
+      modified:
+        - "startup runtime source type changes from PollingSource to TmuxSource"
+      removed: []
+    impact_scope:
+      code: "new opt-in transport only; default polling behavior remains unchanged"
+      tests: "576 total passed — 516 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; additional manual smoke: control-mode --once against live tmux session"
+      ledger: "1 new timeline entry (sequence 107); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, control-mode --once smoke, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Harden control-mode behavior, especially lifecycle/error recovery and parity checks, before considering any default switch."
+    breaking: false
+    risk: "medium-low — the new transport is opt-in and smoke-tested, but control-mode client lifecycle recovery still needs hardening before default use."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add recovery/parity safeguards for control-mode transport."
+
 evolution_summary:
-  current_phase: "v1.16.24 live TUI loop extraction — Phase C C1 is structurally complete enough for C2 with startup, tui_loop, dashboard_runtime, polling_tick, terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
-  next_phase: "Begin Phase C C2 control-mode tmux adapter work. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.25 opt-in control-mode tmux source — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  next_phase: "Continue Phase C C2 by hardening control-mode lifecycle/error recovery and parity checks. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

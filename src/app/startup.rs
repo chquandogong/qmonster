@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Context as _;
 
 use crate::app::bootstrap::Context;
-use crate::app::config::{QmonsterConfig, load_from_path};
+use crate::app::config::{QmonsterConfig, TmuxSourceMode, load_from_path};
 use crate::app::path_resolution::{RootSource, default_config_path, pick_root};
 use crate::app::safety_audit::apply_override_with_audit;
 use crate::app::system_notice::{SystemNotice, record_startup_snapshot, route_version_drift};
@@ -19,7 +19,7 @@ use crate::policy::pricing::PricingTable;
 use crate::store::{
     ArchiveWriter, EventSink, InMemorySink, QmonsterPaths, SnapshotWriter, SqliteAuditSink, sweep,
 };
-use crate::tmux::polling::PollingSource;
+use crate::tmux::{ControlModeSource, TmuxSource};
 
 pub struct StartupOptions<'a> {
     pub config_path: Option<&'a Path>,
@@ -29,7 +29,7 @@ pub struct StartupOptions<'a> {
 }
 
 pub struct StartupRuntime {
-    pub ctx: Context<PollingSource, DesktopNotifier>,
+    pub ctx: Context<TmuxSource, DesktopNotifier>,
     pub paths: QmonsterPaths,
     pub root_source: RootSource,
     pub versions: VersionSnapshot,
@@ -75,7 +75,7 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
         }
     };
 
-    let source = PollingSource::new(config.tmux.capture_lines);
+    let source = build_tmux_source(&config)?;
     let notifier = DesktopNotifier;
     let archive = ArchiveWriter::new(paths.clone(), config.logging.big_output_chars);
     let pricing = load_pricing(&paths, &*sink);
@@ -113,6 +113,18 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
         startup_notices,
         snapshot_writer,
     })
+}
+
+fn build_tmux_source(config: &QmonsterConfig) -> anyhow::Result<TmuxSource> {
+    match config.tmux.source {
+        TmuxSourceMode::Polling => Ok(TmuxSource::Polling(crate::tmux::PollingSource::new(
+            config.tmux.capture_lines,
+        ))),
+        TmuxSourceMode::ControlMode => Ok(TmuxSource::ControlMode(
+            ControlModeSource::attach_current(config.tmux.capture_lines)
+                .map_err(|e| anyhow::anyhow!("attach tmux control-mode source: {e}"))?,
+        )),
+    }
 }
 
 fn parse_set_pairs(set: &[String]) -> anyhow::Result<Vec<(String, String)>> {
@@ -180,7 +192,7 @@ fn load_claude_settings(sink: &dyn EventSink) -> ClaudeSettings {
     }
 }
 
-fn sweep_retention(paths: &QmonsterPaths, ctx: &Context<PollingSource, DesktopNotifier>) {
+fn sweep_retention(paths: &QmonsterPaths, ctx: &Context<TmuxSource, DesktopNotifier>) {
     match sweep(paths, ctx.config.logging.retention_days) {
         Ok(report) => {
             if report.files_removed > 0 {
@@ -203,7 +215,7 @@ fn sweep_retention(paths: &QmonsterPaths, ctx: &Context<PollingSource, DesktopNo
 
 fn capture_startup_versions(
     paths: &QmonsterPaths,
-    ctx: &Context<PollingSource, DesktopNotifier>,
+    ctx: &Context<TmuxSource, DesktopNotifier>,
 ) -> (VersionSnapshot, Vec<SystemNotice>) {
     let startup = load_startup_snapshot(&*ctx.sink, &paths.versions_path());
     let may_save_fresh = startup.may_save_fresh();
