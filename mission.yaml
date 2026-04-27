@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.14"
-  title: "Qmonster v0.4.0 — v1.15.14 cost_pressure gradient advisories. Mirrors the v1.15.11 quota_pressure rule pair on the cost_usd metric. `cost_pressure_warning` fires at >= $5.00 USD (Warning), `cost_pressure_critical` fires at >= $20.00 USD (Risk, is_strong, CHECKPOINT slot). Both rules are Estimated source (cost_usd itself is Estimated; thresholds are Qmonster picks); both leave `suggested_command: None` because no slash command reduces accumulated session cost — operator picks between pacing prompts, switching to a cheaper model, or ending the session. Today the rules fire only on Codex panes (only provider with cost_usd populated); future providers that populate cost_usd inherit the gradient automatically. 462 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
+  version: "1.15.15"
+  title: "Qmonster v0.4.0 — v1.15.15 COST badge severity coloring. Pairs the v1.15.14 cost_pressure_* advisory thresholds with a `cost_metric_severity` helper that tints the pane-card COST badge (>= $20.00 → Risk, >= $5.00 → Warning, >= $2.00 → Concern, else Good). Thresholds are kept in sync with the advisory rule constants; the early Concern band at $2.00 starts the visual cue before the Warning advisory fires. CTX/QUOTA/COST badges now share the same severity-tinting contract — no more silent neutral-colored COST when the value is climbing. v1.15.14's advisory pair behavior is unchanged. 467 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1200,5 +1200,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 68
+    total_revisions: 71
     history: "mission-history.yaml"

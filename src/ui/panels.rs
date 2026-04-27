@@ -642,7 +642,7 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
                 metric.value,
                 source_kind_label(metric.source_kind)
             ),
-            theme::label_style(),
+            theme::severity_badge_style(cost_metric_severity(metric.value)),
         );
     }
     if let Some(metric) = signals.model_name.as_ref() {
@@ -793,6 +793,28 @@ fn context_metric_severity(value: f32) -> crate::domain::recommendation::Severit
     } else if value >= 0.75 {
         Severity::Warning
     } else if value >= 0.60 {
+        Severity::Concern
+    } else {
+        Severity::Good
+    }
+}
+
+/// v1.15.15: cost-side severity coloring on the COST badge mirrors the
+/// v1.15.14 cost_pressure_* advisory thresholds:
+///   - >= $20.00 USD → Risk    (matches cost_pressure_critical)
+///   - >= $5.00  USD → Warning (matches cost_pressure_warning)
+///   - >= $2.00  USD → Concern (early warning before the advisory fires)
+///   - else            Good   (no spend pressure)
+///
+/// The numeric thresholds are kept in sync with the advisory rule
+/// constants in `policy/rules/advisories.rs`.
+fn cost_metric_severity(value: f64) -> crate::domain::recommendation::Severity {
+    use crate::domain::recommendation::Severity;
+    if value >= 20.0 {
+        Severity::Risk
+    } else if value >= 5.0 {
+        Severity::Warning
+    } else if value >= 2.0 {
         Severity::Concern
     } else {
         Severity::Good
@@ -1083,6 +1105,24 @@ mod tests {
         let row = metric_row(&s);
         assert!(row.contains("quota 47%"));
         assert!(row.contains("[Official]"));
+    }
+
+    #[test]
+    fn cost_metric_severity_thresholds_match_advisory_rule_pair() {
+        // v1.15.15: cost severity thresholds must stay in sync with
+        // the v1.15.14 cost_pressure_warning ($5.00) and
+        // cost_pressure_critical ($20.00) advisory thresholds, plus
+        // an early Concern band at $2.00 so the COST badge starts
+        // tinting before the advisory fires.
+        use crate::domain::recommendation::Severity;
+        assert_eq!(cost_metric_severity(0.0), Severity::Good);
+        assert_eq!(cost_metric_severity(1.99), Severity::Good);
+        assert_eq!(cost_metric_severity(2.0), Severity::Concern);
+        assert_eq!(cost_metric_severity(4.99), Severity::Concern);
+        assert_eq!(cost_metric_severity(5.0), Severity::Warning);
+        assert_eq!(cost_metric_severity(19.99), Severity::Warning);
+        assert_eq!(cost_metric_severity(20.0), Severity::Risk);
+        assert_eq!(cost_metric_severity(100.0), Severity::Risk);
     }
 
     #[test]

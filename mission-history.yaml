@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.14 cost_pressure gradient advisories."
+  mission_title: "Qmonster v0.4.0 — v1.15.15 COST badge severity coloring."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 70
-  latest_version: "1.15.14"
+  total_revisions: 71
+  latest_version: "1.15.15"
 
 timeline:
   - change_id: "initial"
@@ -7293,8 +7293,81 @@ timeline:
       - "If operator finds the $5 / $20 thresholds wrong for their workflow, lift them into a `[cost]` config section (TomlConfig + PolicyGates plumbing) — the const constants serve as the obvious migration target."
       - "Confirm-archive review remains permanently closed for the v1.15.x patch line per operator decision."
 
+  - change_id: "v1.15.15-cost-badge-severity-coloring"
+    semantic_version: "1.15.15"
+    change_sequence: 71
+    date: "2026-04-27"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — autonomous follow-up authorisation"
+    change_type: "patch"
+    motivation_type: "ui-consistency"
+    persistence: "permanent"
+    intent: >
+      Pair the v1.15.14 cost_pressure_* advisory thresholds with a
+      severity-tinted COST badge so the pane card visually mirrors
+      what the alert queue is about to surface. Before this patch,
+      the COST badge stayed neutral-colored regardless of the spend
+      level, while CTX and QUOTA already used severity coloring; the
+      inconsistency made it harder to scan a row of panes for
+      cost-runaway risk.
+    decision: >
+      Add `cost_metric_severity(value: f64) -> Severity` in
+      `src/ui/panels.rs` mirroring `context_metric_severity` /
+      `quota_metric_severity` patterns. Thresholds:
+      `>= $20.00` → Risk (matches `cost_pressure_critical`);
+      `>= $5.00` → Warning (matches `cost_pressure_warning`);
+      `>= $2.00` → Concern (early visual cue before any advisory
+      fires); else Good. The Concern band starts the tint earlier
+      than the advisory rule pair so operators see cost climbing
+      visually before a recommendation lands in the alert queue.
+      `primary_metric_row` swaps `theme::label_style()` for
+      `theme::severity_badge_style(cost_metric_severity(value))`
+      on the COST badge — same call shape as CTX and QUOTA.
+    triggered_by: "Operator instruction (2026-04-27): autonomous follow-up authorised. Selected cost-badge severity coloring as the natural UI polish that pairs with v1.15.14's cost_pressure_* advisories."
+    issue_or_context: >
+      v1.15.14 added cost_pressure_warning / cost_pressure_critical
+      to the alert queue but the pane-card COST badge stayed
+      neutral-colored regardless of value. This created an
+      inconsistency: CTX and QUOTA badges are severity-tinted, but
+      COST was not. Operators scanning multiple Codex panes had to
+      read the dollar value on every pane rather than spotting the
+      red badge that would otherwise identify the runaway one.
+    changes:
+      added:
+        - "src/ui/panels.rs::cost_metric_severity helper (Risk >= $20, Warning >= $5, Concern >= $2, else Good)"
+        - "src/ui/panels.rs::primary_metric_row COST badge now tinted via severity_badge_style"
+        - "1 new test: cost_metric_severity_thresholds_match_advisory_rule_pair (locks the threshold ↔ advisory-rule contract)"
+      modified:
+        - "mission.yaml (meta: version 1.15.14 → 1.15.15; title; lineage.total_revisions 68 → 71 — also catches up the lineage that was stale by 2)"
+        - "mission-history.yaml (sequence 71; meta: latest_version 1.15.15, total_revisions 70 → 71)"
+      removed: []
+    changed_sections:
+      - "src/ui/panels.rs::primary_metric_row COST badge style"
+      - "src/ui/panels.rs::cost_metric_severity (new helper)"
+    done_when_delta:
+      added:
+        - "COST badge tints by severity on Codex panes (Risk >= $20, Warning >= $5, Concern >= $2)"
+        - "CTX / QUOTA / COST badges share a uniform severity-tinting contract"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "+~25 LoC (helper + 1 test); 1 LoC change at the call site"
+      tests: "467 total — 394 lib + 14 main + 35 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 462 at v1.15.14; +5 = +1 mine + +4 from the parallel split-pane resize commit 8d0764a that landed between the two tags)"
+      ledger: "1 new timeline entry (sequence 71); meta bump"
+      review_gate: "UI polish round; confirm-archive remains closed; local fmt/test/clippy pass."
+      follow_up_carryover: "Optional config knob for cost thresholds still deferred."
+    breaking: false
+    risk: "low — visual-only change on the COST badge; thresholds bake-in to a single helper that can be lifted into config later; no policy / parser / tmux / audit behaviour changes."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.15 at this commit."
+      - "Parallel commit 8d0764a (alerts/panes split-pane resize) is captured in the v1.15.15 test bucket but did not bump version itself; if it had, this entry's sequence/version would shift. Operator can decide whether to back-fill an entry for it later."
+
 evolution_summary:
-  current_phase: "v1.15.14 cost_pressure gradient advisories. cost_pressure_warning (>= $5.00 USD, Warning) and cost_pressure_critical (>= $20.00 USD, Risk, is_strong) bridge the gap between v1.15.13's silent COST badge and the (operator-defined) end of session. Both rules carry Estimated source (threshold is a Qmonster pick), suggested_command=None (no slash command reduces accumulated cost), and respect IdentityConfidence gating. Today the rules fire only on Codex panes (only provider with cost_usd populated). v1.15.13's S3-1 input/output token closure, v1.15.12's quota_pressure SourceKind honesty, v1.15.11's quota_pressure gradient, v1.15.10's LimitHit fix, and v1.15.8's quota_pressure metric all carry forward unchanged. 462 tests green; clippy + fmt clean."
+  current_phase: "v1.15.15 COST badge severity coloring. cost_metric_severity helper tints the pane-card COST badge using the same thresholds as v1.15.14's cost_pressure_* advisories ($20/$5) plus an early Concern band at $2; CTX / QUOTA / COST now share a uniform severity-tinting contract. Parallel commit 8d0764a (alerts/panes split-pane resize via mouse drag + `[`/`]`/`=` keys) ships in the same v1.15.15 test bucket. v1.15.14's cost_pressure_* advisory pair, v1.15.13's S3-1 input/output token closure, v1.15.12's quota_pressure SourceKind honesty, and the v1.15.11 / v1.15.10 / v1.15.8 quota_pressure stack all carry forward unchanged. 467 tests green; clippy + fmt clean."
   next_phase: "Slice 3 effectively complete; v1.15.x patch line continues for operator-driven UX iteration. The confirm-archive review path is permanently closed per operator decision (2026-04-27) — patches ship with self-verified fmt/test/clippy plus the v1.15.0 review-1 evidence on file. Direction question for the next major arc: Slice 4+ thematic scoping (operator-defined when the next workstream opens)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
