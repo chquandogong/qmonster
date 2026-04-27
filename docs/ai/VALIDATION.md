@@ -12,9 +12,9 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-28): `cargo fmt --check`,
-`git diff --check`, `cargo test --all-targets` (655 tests),
+`git diff --check`, `cargo test --all-targets` (660 tests),
 `cargo clippy --all-targets -- -D warnings`, `cargo build --release`,
-and `scripts/verify-shared.sh` pass for v1.20.0. Official
+and `scripts/verify-shared.sh` pass for v1.21.0. Official
 `mission-spec validate .` is still unavailable locally because
 `mission-spec` is not installed, so `scripts/verify-shared.sh` falls
 back to the lite ledger-structure check after cargo checks.

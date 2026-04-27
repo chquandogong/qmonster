@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.20.0`; current mission ledger `v1.20.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.21.0`; current mission ledger `v1.21.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,12 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current line: `v1.20.0` opens Phase E with comment-preserving settings
+Current line: `v1.21.0` finishes Phase E by parsing the Gemini status
+table's `memory` column (`118.8 MB` / `1.2 GB`) into a new
+`process_memory_mb` SignalSet field, surfaced as a `MEM` badge on
+Gemini pane cards (and a `memory` entry in the `--once` metrics row).
+Claude / Codex still leave the field `None` because their status
+surfaces don't expose process memory. `v1.20.0` opened Phase E with comment-preserving settings
 save: when the operator presses `w` in the `S` overlay, Qmonster now
 reads the existing `qmonster.toml` via `toml_edit` and surgically
 updates only the 28 cost/context/quota threshold keys, leaving every

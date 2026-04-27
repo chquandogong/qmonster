@@ -47,6 +47,17 @@ impl ProviderParser for GeminiAdapter {
                         .with_provider(Provider::Gemini),
                 );
             }
+            // Phase E E1 (v1.21.0): surface the status-table `memory`
+            // column as a ProviderOfficial fact. Stays None when the
+            // column is absent (operators can hide it via Gemini's
+            // `/footer` settings) — absence is honesty.
+            if let Some(mem_mb) = status.memory_mb {
+                set.process_memory_mb = Some(
+                    MetricValue::new(mem_mb, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Gemini),
+                );
+            }
         } else if let Some(context) = parse_gemini_context_pressure(ctx.tail) {
             set.context_pressure = Some(
                 MetricValue::new(context, SourceKind::ProviderOfficial)
@@ -69,6 +80,10 @@ struct GeminiStatus {
     sandbox: Option<String>,
     model: Option<String>,
     workspace: Option<String>,
+    /// Phase E E1 (v1.21.0): Gemini status-table `memory` column,
+    /// canonicalized to MiB at parse time. `None` when the column is
+    /// absent or the cell value cannot be unit-parsed.
+    memory_mb: Option<f64>,
 }
 
 fn parse_gemini_status(tail: &str) -> Option<GeminiStatus> {
@@ -94,6 +109,7 @@ fn parse_gemini_status(tail: &str) -> Option<GeminiStatus> {
                 || status.sandbox.is_some()
                 || status.model.is_some()
                 || status.workspace.is_some()
+                || status.memory_mb.is_some()
             {
                 return Some(status);
             }
@@ -131,10 +147,28 @@ fn gemini_status_from_columns(header_cols: &[&str], data_cols: &[&str]) -> Gemin
             }
             "context" => status.context_pressure = parse_used_percent(value),
             "quota" => status.quota_pressure = parse_used_percent(value),
+            "memory" => status.memory_mb = parse_memory_mb(value),
             _ => {}
         }
     }
     status
+}
+
+/// Phase E E1 (v1.21.0): parse the Gemini status-table `memory`
+/// column into MiB. Accepts `<float> MB` and `<float> GB` (the two
+/// units the Gemini CLI is observed to render); returns `None` when
+/// the suffix is missing or the number is unparseable. Other unit
+/// suffixes (`KB`, `PB`, ...) are not assumed — fall through to None.
+fn parse_memory_mb(cell: &str) -> Option<f64> {
+    let trimmed = cell.trim();
+    let (num_str, multiplier) = if let Some(n) = trimmed.strip_suffix(" MB") {
+        (n.trim_end(), 1.0_f64)
+    } else if let Some(n) = trimmed.strip_suffix(" GB") {
+        (n.trim_end(), 1024.0_f64)
+    } else {
+        return None;
+    };
+    num_str.trim().parse::<f64>().ok().map(|v| v * multiplier)
 }
 
 fn parse_gemini_context_pressure(tail: &str) -> Option<f32> {
@@ -711,5 +745,77 @@ Thinking...";
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = GeminiAdapter.parse(&c);
         assert_eq!(set.idle_state, None);
+    }
+
+    // -----------------------------------------------------------------
+    // Phase E E1 (v1.21.0) — Gemini status table memory column
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn parse_memory_mb_accepts_gemini_status_table_format() {
+        // The Gemini CLI status table renders process memory as
+        // `<float> MB` (occasional `GB` for long-running sessions).
+        // Both must round-trip as MiB for downstream rendering.
+        assert!((parse_memory_mb("118.8 MB").unwrap() - 118.8).abs() < f64::EPSILON);
+        assert!((parse_memory_mb("47 MB").unwrap() - 47.0).abs() < f64::EPSILON);
+        assert!((parse_memory_mb("1.2 GB").unwrap() - (1.2 * 1024.0)).abs() < f64::EPSILON);
+        assert!((parse_memory_mb(" 256 MB ").unwrap() - 256.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_memory_mb_rejects_unitless_or_garbage_values() {
+        // Without a `MB` / `GB` suffix the value is ambiguous (could
+        // be bytes, kilobytes, percent, ...) — return None rather
+        // than guessing.
+        assert!(parse_memory_mb("118.8").is_none());
+        assert!(parse_memory_mb("abc").is_none());
+        assert!(parse_memory_mb("").is_none());
+        assert!(parse_memory_mb("1 PB").is_none());
+    }
+
+    #[test]
+    fn gemini_adapter_extracts_memory_from_real_status_table() {
+        // End-to-end: a real Gemini v0.39 idle tail (from the
+        // `tests/fixtures/real/` corpus shape) must surface the
+        // memory column as `process_memory_mb` with
+        // ProviderOfficial source.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let tail = " branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth\n main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec      47% used      0% used      118.8 MB     cdf3f5ed      <email-redacted>";
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+
+        let mem = set
+            .process_memory_mb
+            .as_ref()
+            .expect("Gemini status table memory column must populate process_memory_mb");
+        assert!(
+            (mem.value - 118.8).abs() < f64::EPSILON,
+            "got: {}",
+            mem.value
+        );
+        assert_eq!(mem.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(mem.provider, Some(Provider::Gemini));
+    }
+
+    #[test]
+    fn gemini_adapter_leaves_memory_none_when_status_table_absent() {
+        // Pre-render Gemini tail (welcome only, no status table) must
+        // not synthesize a memory value — absence is honesty.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let tail =
+            " ▝▜▄     Gemini CLI v0.39.0-preview.0\n   ▝▜▄\n  ▗▟▀    Signed in with Google /auth\n";
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+
+        assert!(
+            set.process_memory_mb.is_none(),
+            "no status table → no memory value"
+        );
     }
 }

@@ -1,6 +1,6 @@
 mission:
-  version: "1.20.0"
-  title: "Qmonster v1.20.0 — Phase E E2 comment-preserving settings save via toml_edit."
+  version: "1.21.0"
+  title: "Qmonster v1.21.0 — Phase E E1 Gemini status-table memory column."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

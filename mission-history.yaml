@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.20.0 — Phase E E2 comment-preserving settings save via toml_edit."
+  mission_title: "Qmonster v1.21.0 — Phase E E1 Gemini status-table memory column."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 146
-  latest_version: "1.20.0"
+  total_revisions: 147
+  latest_version: "1.21.0"
 
 timeline:
   - change_id: "initial"
@@ -13105,9 +13105,102 @@ timeline:
       - "If operator requests inline-comment preservation INSIDE `[cost]` / `[context]` / `[quota]` blocks, current behavior already supports that — toml_edit preserves comments adjacent to keys."
       - "E1 (Gemini memory column display) stays deferred until an operator explicitly asks for it."
 
+  - change_id: "v1.21.0-gemini-memory-column"
+    semantic_version: "1.21.0"
+    change_sequence: 147
+    date: "2026-04-28"
+    author: "Claude (Opus 4.7)"
+    contributors:
+      - "Operator directive: take E1 even though 3-model consensus called it low-value"
+    change_type: "feature"
+    motivation_type: "operator-directed follow-up"
+    persistence: "permanent"
+    intent: >
+      Surface Gemini's status-table `memory` column as a
+      ProviderOfficial fact so operators can see CLI process memory
+      usage on Gemini panes without leaving Qmonster.
+    intent_ko: >
+      Gemini status-table의 `memory` 컬럼을 ProviderOfficial fact로
+      surface해서 운영자가 Qmonster 화면에서 Gemini CLI 프로세스
+      메모리 사용량을 확인할 수 있게 한다.
+    decision: >
+      Add `SignalSet.process_memory_mb: Option<MetricValue<f64>>`
+      with the unit canonicalized to MiB at parse time. Extend
+      `GeminiStatus` and `gemini_status_from_columns` to capture the
+      `memory` column, parsing both `<float> MB` and `<float> GB`
+      cells via a new `parse_memory_mb` helper. Render the value as
+      a `MEM` badge in the primary pane-card metric row (adapting to
+      `MB` or `GB` at display time) and as `memory <value>` in the
+      `--once` metrics row. Claude / Codex leave the field `None`
+      because their status surfaces don't expose process memory —
+      absence is honesty.
+    decision_ko: >
+      `SignalSet.process_memory_mb: Option<MetricValue<f64>>`을 추가
+      (parse 시점에 MiB로 정규화). `GeminiStatus`와
+      `gemini_status_from_columns`를 확장하여 `memory` 컬럼을 캡처하고
+      신규 `parse_memory_mb` 헬퍼로 `<float> MB` / `<float> GB` 두
+      형식 모두 파싱. pane-card primary metric row에 `MEM` 뱃지를
+      적응형 단위(MB/GB)로 렌더링하고 `--once` metrics row에는
+      `memory <value>` 형식으로 출력. Claude / Codex는 status surface
+      가 process memory를 노출하지 않으므로 None 유지 — 부재가 honesty.
+    triggered_by: "Operator selected `E1` after the v1.20.0 Phase E E2 commit, overriding the prior 3-model `low-value` consensus."
+    issue_or_context: >
+      Gemini's status table renders eight columns: branch / sandbox /
+      /model / workspace (/directory) / quota / context / memory /
+      session. Qmonster has been parsing every column except `memory`
+      since v1.15.x. With this change the operator can see Gemini's
+      process memory live, which matters when the CLI starts ballooning
+      under long-running sessions or large context loads.
+    changes:
+      added:
+        - "`SignalSet.process_memory_mb: Option<MetricValue<f64>>` field"
+        - "`GeminiStatus.memory_mb: Option<f64>` field"
+        - "`parse_memory_mb(cell) -> Option<f64>` helper in `src/adapters/gemini.rs` (handles `MB` and `GB` suffixes; returns None on unitless / unsupported suffixes)"
+        - "Memory `MEM <value>` badge in the primary metric row (`src/ui/panels.rs::primary_metric_row`)"
+        - "`memory <value> [<source>]` entry in the `--once` metrics row (`src/ui/panels.rs::metric_row`)"
+        - "`format_memory_mb(mb)` adaptive-unit formatter (MB under 1024, GB at or above)"
+        - "Four unit tests in `src/adapters/gemini.rs`: positive `parse_memory_mb` formats, negative unitless / unknown-suffix, end-to-end Gemini status-table extraction, absent-status honesty"
+      modified:
+        - "`gemini_status_from_columns` matches the `memory` header → `parse_memory_mb`"
+        - "`parse_gemini_status` returns `Some` when only the memory column populated"
+        - "`README.md`, `VERSION.md`, `package.json`, `mission.yaml`, `mission-history.yaml`, `docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md` bumped to v1.21.0"
+      removed: []
+    changed_sections:
+      - "src/adapters/gemini.rs"
+      - "src/adapters/common.rs"
+      - "src/domain/signal.rs"
+      - "src/ui/panels.rs"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - "package.json"
+    observable_effects:
+      added:
+        - "Gemini pane card now carries a `MEM 118.8 MB [Official]` (or `MEM 1.20 GB [Official]`) badge alongside CTX / QUOTA / TOKENS / MODEL"
+        - "`--once` Gemini metric row includes `memory 192.9 MB [Official]` after path / branch"
+      modified:
+        - "all-target test count rises to 660 (+5 from E1 unit + integration tests; baseline before E1 was 655)"
+      removed: []
+    impact_scope:
+      runtime: "Pure additive parser + render extension; no policy, tmux, storage, or actuation behavior change. Claude / Codex panes unaffected (the field stays None on those providers)."
+      tests: "660 total passed across lib + main + event_loop + false_positive + idle_state + qmonster_tmux_parity targets"
+      ledger: "1 new timeline entry (sequence 147); meta bump; minor version bump v1.20.x → v1.21.0 because Phase E E1 closes"
+      npm: "package.json version set to 1.21.0"
+      review_gate: "cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, scripts/verify-shared.sh, and live --once smoke pass"
+      follow_up_carryover: "Phase E is now fully shipped. No housekeeping items remain in the deferred ledger besides confirm-archive review (permanently closed) and any new operator-directed work."
+    breaking: false
+    risk: "low — additive parser column; absence honest (Claude / Codex stay None); rendering only adds a badge / line, never reorders or removes existing fields."
+    related_commits: []
+    follow_up:
+      - "If a future Gemini release exposes this in MiB or KiB units, extend `parse_memory_mb` accordingly. PB / TB suffixes stay unsupported unless a real fixture appears."
+      - "If Claude or Codex ever surface a comparable counter, populate `process_memory_mb` from those adapters too — the SignalSet field is provider-agnostic by design."
+
 evolution_summary:
-  current_phase: "v1.20.0 opens Phase E with comment-preserving settings save: `SettingsOverlay::save()` now uses `toml_edit::DocumentMut` to surgically update the 28 cost/context/quota threshold keys while leaving operator-authored comments, unrelated sections, and key order untouched."
-  next_phase: "Phase E E1 (Gemini memory column display) remains the only outstanding housekeeping item and is low-value per 3-model consensus — deferred until an operator explicitly requests it. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.21.0 closes Phase E by parsing the Gemini status-table `memory` column into `SignalSet.process_memory_mb`. Renders as a `MEM` badge on Gemini pane cards (adaptive MB/GB unit) and a `memory <value>` entry in the `--once` metrics row. Claude / Codex stay None — absence is honesty."
+  next_phase: "Phase E is now fully shipped. No outstanding housekeeping items remain in the deferred ledger besides confirm-archive review (permanently closed per operator decision 2026-04-27). Awaiting new operator-directed work."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

@@ -156,6 +156,13 @@ pub struct SignalSet {
     pub git_branch: Option<MetricValue<String>>,
     pub worktree_path: Option<MetricValue<String>>,
     pub reasoning_effort: Option<MetricValue<String>>,
+    /// Phase E E1 (v1.21.0): provider process memory usage in MiB.
+    /// Currently populated only by the Gemini status table's `memory`
+    /// column (`118.8 MB`); Claude / Codex do not surface this fact
+    /// today, so the field stays None for those providers. The unit is
+    /// canonicalized to MiB at parse time so downstream renders never
+    /// have to disambiguate MB vs GB.
+    pub process_memory_mb: Option<MetricValue<f64>>,
     pub runtime_facts: Vec<RuntimeFact>,
 }
 

@@ -579,6 +579,13 @@ pub fn metric_row(s: &SignalSet) -> String {
             source_kind_label(m.source_kind)
         ));
     }
+    if let Some(m) = s.process_memory_mb.as_ref() {
+        parts.push(format!(
+            "memory {} [{}]",
+            format_memory_mb(m.value),
+            source_kind_label(m.source_kind)
+        ));
+    }
     parts.join("  ")
 }
 
@@ -753,8 +760,35 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
             theme::label_style(),
         );
     }
+    // Phase E E1 (v1.21.0): Gemini-only process memory badge.
+    // `process_memory_mb` is canonicalized to MiB at parse time;
+    // adapt the unit at render time so values >= 1024 MiB render
+    // as `GB` for readability.
+    if let Some(metric) = signals.process_memory_mb.as_ref() {
+        push_badge(
+            &mut spans,
+            &mut has_any,
+            format!(
+                " MEM {} [{}] ",
+                format_memory_mb(metric.value),
+                source_kind_label(metric.source_kind)
+            ),
+            theme::label_style(),
+        );
+    }
 
     has_any.then(|| Line::from(spans))
+}
+
+/// Format a `process_memory_mb` value (always MiB) for the operator
+/// badge. Switches to GiB at 1024 MiB so 1.2 GB renders cleanly
+/// instead of 1228.8 MB.
+fn format_memory_mb(mb: f64) -> String {
+    if mb >= 1024.0 {
+        format!("{:.2} GB", mb / 1024.0)
+    } else {
+        format!("{:.1} MB", mb)
+    }
 }
 
 fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {

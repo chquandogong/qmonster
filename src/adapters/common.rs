@@ -263,6 +263,7 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         git_branch: None,
         worktree_path: None,
         reasoning_effort: None,
+        process_memory_mb: None,
         runtime_facts: Vec::new(),
     }
 }
