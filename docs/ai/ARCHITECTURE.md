@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.31 shared tmux target parsing)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.32 repeated tmux parity checks)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -116,6 +116,10 @@ v1.16.30 adds `tmux::snapshots` so polling and control-mode share
 list-panes row parsing and tail hydration.
 v1.16.31 adds `tmux::targets` so current/available window target parsing
 and sorting/dedup rules are shared by both transports.
+v1.16.32 adds repeated live parity runs (`--repeat`, optional
+`--delay-ms`) so the same control-mode client is exercised across
+consecutive polling/control-mode comparisons before any default-source
+switch.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -165,6 +169,8 @@ The `tmux::snapshots` helper hydrates raw pane rows for both transports
 so parsing and tail-fill behavior cannot drift independently.
 The `tmux::targets` helper centralizes available-window sorting/dedup
 and the current-target first-row contract.
+The parity helper can repeat checks against one control-mode client to
+expose lifecycle regressions before default-source changes.
 `[ProviderOfficial: tmux wiki / Formats / Control Mode]` informs the
 format strings and lifecycle assumptions.
 

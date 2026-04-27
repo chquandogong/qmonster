@@ -1,3 +1,6 @@
+use std::thread;
+use std::time::Duration;
+
 use clap::Parser;
 
 use qmonster::tmux::parity::{
@@ -27,30 +30,67 @@ struct Cli {
     /// Treat live tail differences as failures. By default they are warnings.
     #[arg(long)]
     strict_tail: bool,
+
+    /// Repeat the parity check using the same control-mode client.
+    #[arg(long, default_value_t = 1)]
+    repeat: usize,
+
+    /// Delay between repeated parity checks.
+    #[arg(long, default_value_t = 0)]
+    delay_ms: u64,
 }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    if cli.repeat == 0 {
+        anyhow::bail!("--repeat must be at least 1");
+    }
     let target = cli.target.as_deref().map(parse_target).transpose()?;
     let polling = PollingSource::new(cli.capture_lines);
     let control_mode = ControlModeSource::attach_current(cli.capture_lines)
         .map_err(|e| anyhow::anyhow!("attach tmux control-mode source: {e}"))?;
-    let reports = if cli.all_targets {
-        compare_all_pane_source_targets(&polling, &control_mode, cli.capture_lines)?
+    let mut failed = false;
+    for iteration in 1..=cli.repeat {
+        if cli.repeat > 1 {
+            println!("tmux source parity run {iteration}/{}", cli.repeat);
+        }
+        let reports = collect_reports(&polling, &control_mode, &target, &cli)?;
+        print_reports(&reports, cli.strict_tail);
+        failed |= reports.iter().any(|report| !report.passes(cli.strict_tail));
+        if iteration < cli.repeat && cli.delay_ms > 0 {
+            thread::sleep(Duration::from_millis(cli.delay_ms));
+        }
+        if iteration < cli.repeat {
+            println!();
+        }
+    }
+
+    if failed {
+        anyhow::bail!("tmux source parity check failed")
     } else {
-        vec![compare_pane_sources(
-            &polling,
-            &control_mode,
+        Ok(())
+    }
+}
+
+fn collect_reports(
+    polling: &PollingSource,
+    control_mode: &ControlModeSource,
+    target: &Option<WindowTarget>,
+    cli: &Cli,
+) -> anyhow::Result<Vec<TmuxSourceParityReport>> {
+    if cli.all_targets {
+        Ok(compare_all_pane_source_targets(
+            polling,
+            control_mode,
+            cli.capture_lines,
+        )?)
+    } else {
+        Ok(vec![compare_pane_sources(
+            polling,
+            control_mode,
             target.as_ref(),
             cli.capture_lines,
-        )?]
-    };
-
-    print_reports(&reports, cli.strict_tail);
-    if reports.iter().all(|report| report.passes(cli.strict_tail)) {
-        Ok(())
-    } else {
-        anyhow::bail!("tmux source parity check failed")
+        )?])
     }
 }
 

@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.31`; current canonical ledger: `v1.16.31`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.32`; current canonical ledger: `v1.16.32`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -120,7 +120,9 @@ v1.16.29 extends that checker with `--all-targets` to validate each
 discovered tmux window separately. v1.16.30 extracts shared pane
 snapshot hydration so polling and control-mode parse list-panes rows and
 attach tails through the same helper. v1.16.31 extracts shared tmux
-window-target parsing for current/available target queries.
+window-target parsing for current/available target queries. v1.16.32
+adds repeated parity runs so the same control-mode client can be checked
+across consecutive commands.
 
 ## Quick start
 
@@ -164,6 +166,7 @@ cargo run --release
 # C2 validation: compare polling and control-mode against the active tmux session.
 ./scripts/check-tmux-source-parity.sh
 ./scripts/check-tmux-source-parity.sh --all-targets
+./scripts/check-tmux-source-parity.sh --all-targets --repeat 3 --delay-ms 100
 
 # Override the storage root (useful for tests / sandbox runs)
 QMONSTER_ROOT=/tmp/q cargo run -- --once
@@ -252,6 +255,7 @@ cargo clippy --all-targets -- -D warnings
 cargo build
 ./scripts/check-tmux-source-parity.sh
 ./scripts/check-tmux-source-parity.sh --all-targets
+./scripts/check-tmux-source-parity.sh --all-targets --repeat 3
 mission-spec validate .
 mission-spec eval --shared .
 MISSION_SPEC_CLI=/abs/path/to/mission-spec.js ./scripts/verify-shared.sh
