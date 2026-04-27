@@ -5799,7 +5799,7 @@ timeline:
   - change_id: "v1.13.0-emergency-suppression"
     semantic_version: "1.13.0"
     change_sequence: 52
-    date: "2026-04-27"
+    date: "2026-04-25"
     author: "Claude Code (claude:1:main, Opus 4.7 1M)"
     contributors:
       - "Claude Code (main pane) — diagnosis, plan authoring, TDD execution"
@@ -7456,7 +7456,7 @@ timeline:
   - change_id: "qmonster-v1.15.17-per-provider-context-quota-thresholds"
     semantic_version: "1.15.17"
     change_sequence: 73
-    date: "2026-04-25"
+    date: "2026-04-27"
     author: "Claude Code (claude:1:main, Opus 4.7 1M)"
     contributors:
       - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — '잔여 패턴도 같은 방식으로 적용'"
