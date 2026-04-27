@@ -249,6 +249,17 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
                 worktree_path = Some(token.to_string());
                 continue;
             }
+            if status_line_reasoning_effort.is_none()
+                && let Some((parsed_model, parsed_effort)) = parse_codex_model_status_token(token)
+                && parsed_effort.is_some()
+            {
+                status_line_reasoning_effort = parsed_effort;
+                if model.is_none() {
+                    model = Some(parsed_model);
+                    skip_next_plain_identifier = true;
+                }
+                continue;
+            }
             // model: provider-known prefix
             if model.is_none()
                 && let Some((parsed_model, parsed_effort)) = parse_codex_model_status_token(token)
@@ -552,6 +563,7 @@ mod tests {
     // Codex CLI 0.122.0 status bar.
     const STATUS_LINE: &str = "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp";
     const STATUS_LINE_WITH_REASONING: &str = "Context 60% left · ~/Qmonster · gpt-5.5 xhigh · Qmonster · main · Context 40% used · 5h 96% · weekly 82% · 0.125.0 · 258K window · 1.30M used · 1.29M in · 8.31K out · <redacted>";
+    const STATUS_LINE_WITH_TRAILING_MODEL_WITH_REASONING: &str = "Context 24% left · ~/Qmonster · gpt-5.5 · Qmonster · main · Context 76% used · 5h 96% · weekly 82% · 0.125.0 · 258K window · 6.33M used · 6.31M in · 21.4K out · gpt-5.5 xhigh";
 
     // v1.11.2 remediation (Gemini v1.11.0 must-fix #1 — remove the
     // `insert_for_test` public API surface): build the pricing
@@ -690,6 +702,41 @@ output_per_1m = 10.00
         assert_eq!(effort.value, "xhigh");
         assert_eq!(effort.source_kind, SourceKind::ProviderOfficial);
         assert_eq!(effort.provider, Some(Provider::Codex));
+    }
+
+    #[test]
+    fn codex_adapter_extracts_trailing_model_with_reasoning_status_item() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(
+            &id,
+            STATUS_LINE_WITH_TRAILING_MODEL_WITH_REASONING,
+            &pricing,
+            &settings,
+            &history,
+        );
+        let set = CodexAdapter.parse(&c);
+
+        let cx = set.context_pressure.as_ref().expect("context parsed");
+        assert!((cx.value - 0.76).abs() < 0.001);
+
+        let quota_5h = set.quota_5h_pressure.as_ref().expect("5h parsed");
+        assert!((quota_5h.value - 0.04).abs() < 0.001);
+
+        let quota_weekly = set.quota_weekly_pressure.as_ref().expect("weekly parsed");
+        assert!((quota_weekly.value - 0.18).abs() < 0.001);
+
+        let model = set.model_name.as_ref().expect("model parsed");
+        assert_eq!(model.value, "gpt-5.5");
+
+        let effort = set.reasoning_effort.as_ref().expect("effort parsed");
+        assert_eq!(effort.value, "xhigh");
+        assert_eq!(effort.source_kind, SourceKind::ProviderOfficial);
+
+        let branch = set.git_branch.as_ref().expect("branch parsed");
+        assert_eq!(branch.value, "main");
     }
 
     #[test]
