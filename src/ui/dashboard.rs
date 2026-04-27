@@ -531,7 +531,7 @@ fn render_footer(
 /// `"focus: alerts"`) decided by the caller.
 fn footer_text(focus: &str, split: DashboardSplit) -> String {
     format!(
-        "{focus} · split {}% · [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · p accept · d dismiss · ? help · q quit",
+        "{focus} · split {}% · [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · p accept · d dismiss · S settings · ? help · q quit",
         split.alerts_percent()
     )
 }
@@ -646,6 +646,12 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
     lines.extend(help_wrapped_detail_lines(
         "d",
         &format!("dismiss pending prompt-send proposal (audit: {rejected}; every actuation mode)"),
+        total_width,
+    ));
+
+    lines.extend(help_wrapped_detail_lines(
+        "S",
+        "open the settings overlay to view + edit cost / context / quota thresholds; press 'w' inside the overlay to write back to the loaded TOML",
         total_width,
     ));
 
@@ -1099,11 +1105,16 @@ mod tests {
             text.contains("= reset"),
             "footer must advertise split reset key: {text}"
         );
+        // v1.15.18: settings overlay key.
+        assert!(
+            text.contains("S settings"),
+            "footer must advertise the `S settings` overlay key: {text}"
+        );
         // Sanity: existing anchors still present.
         assert!(text.starts_with("focus: alerts"));
         assert!(text.contains("? help"));
         assert!(text.contains("q quit"));
-        // Placement contract: t target → p accept → d dismiss → ? help.
+        // Placement contract: t target → p accept → d dismiss → S settings → ? help.
         let target_pos = text
             .find("t target")
             .expect("footer must keep the `t target` anchor");
@@ -1114,6 +1125,9 @@ mod tests {
         let d_pos = text
             .find("d dismiss")
             .expect("footer must carry `d dismiss`");
+        let s_pos = text
+            .find("S settings")
+            .expect("footer must carry `S settings`");
         let help_pos = text
             .find("? help")
             .expect("footer must keep the `? help` anchor");
@@ -1130,8 +1144,12 @@ mod tests {
             "`p accept` must precede `d dismiss` (alphabetical / accept-before-dismiss)"
         );
         assert!(
-            d_pos < help_pos,
-            "actuation keys must precede `? help` (generic tail)"
+            d_pos < s_pos,
+            "`S settings` must follow the prompt-send actuation pair"
+        );
+        assert!(
+            s_pos < help_pos,
+            "actuation + settings keys must precede `? help` (generic tail)"
         );
     }
 

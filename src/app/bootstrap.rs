@@ -15,6 +15,11 @@ use crate::tmux::polling::PaneSource;
 /// sink + a fake `NotifyBackend` and exercise one iteration.
 pub struct Context<P: PaneSource, N: NotifyBackend> {
     pub config: QmonsterConfig,
+    /// v1.15.18: path the live config was loaded from, threaded so the
+    /// settings overlay can write edits back to the same file. `None`
+    /// when the operator did not pass `--config` (defaults are in use)
+    /// — in that case the overlay's save action is gated off.
+    pub config_path: Option<std::path::PathBuf>,
     pub source: P,
     pub notifier: N,
     pub sink: Box<dyn EventSink>,
@@ -45,6 +50,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
     pub fn new(config: QmonsterConfig, source: P, notifier: N, sink: Box<dyn EventSink>) -> Self {
         Self {
             config,
+            config_path: None,
             source,
             notifier,
             sink,
@@ -61,6 +67,11 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             runtime_refresh_tail_overlays: std::collections::HashMap::new(),
             known_pane_ids: Vec::new(),
         }
+    }
+
+    pub fn with_config_path(mut self, path: std::path::PathBuf) -> Self {
+        self.config_path = Some(path);
+        self
     }
 
     pub fn with_archive(mut self, writer: ArchiveWriter) -> Self {

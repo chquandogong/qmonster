@@ -168,6 +168,9 @@ fn main() -> anyhow::Result<()> {
         .with_archive(archive)
         .with_pricing(pricing)
         .with_claude_settings(claude_settings);
+    if let Some(path) = cli.config.as_ref() {
+        ctx = ctx.with_config_path(path.clone());
+    }
 
     if !pairs.is_empty() {
         let refs: Vec<(&str, &str)> = pairs
@@ -433,6 +436,7 @@ where
     let mut git_scroll = 0usize;
     let mut help_open = false;
     let mut help_scroll = 0usize;
+    let mut settings_overlay = qmonster::ui::settings::SettingsOverlay::new();
     let mut previous_alerts: HashSet<String> = HashSet::new();
     let mut fresh_alerts: HashSet<String> = HashSet::new();
     let mut alert_times: HashMap<String, String> = HashMap::new();
@@ -539,9 +543,11 @@ where
                         split: dashboard_split,
                         alerts_focused: !target_picker_open
                             && !help_open
+                            && !settings_overlay.is_open()
                             && focus == FocusedPanel::Alerts,
                         panes_focused: !target_picker_open
                             && !help_open
+                            && !settings_overlay.is_open()
                             && focus == FocusedPanel::Panes,
                     },
                 );
@@ -575,6 +581,13 @@ where
                 }
                 if help_open {
                     qmonster::ui::dashboard::render_help_modal(frame, help_scroll as u16);
+                }
+                if settings_overlay.is_open() {
+                    qmonster::ui::settings::render_settings_modal(
+                        frame,
+                        &settings_overlay,
+                        &ctx.config,
+                    );
                 }
             })?;
 
@@ -800,6 +813,55 @@ where
                             continue;
                         }
 
+                        if settings_overlay.is_open() {
+                            let editing = settings_overlay.edit_buffer().is_some();
+                            match k.code {
+                                KeyCode::Esc => {
+                                    if editing {
+                                        settings_overlay.cancel_edit();
+                                    } else {
+                                        settings_overlay.close();
+                                    }
+                                }
+                                KeyCode::Char('q') if !editing => settings_overlay.close(),
+                                KeyCode::Up if !editing => settings_overlay.prev_field(),
+                                KeyCode::Down if !editing => settings_overlay.next_field(),
+                                KeyCode::Left if !editing => settings_overlay.prev_field(),
+                                KeyCode::Right if !editing => settings_overlay.next_field(),
+                                KeyCode::Char('e') if !editing => {
+                                    settings_overlay.start_edit(&ctx.config);
+                                }
+                                KeyCode::Char('c') if !editing => {
+                                    settings_overlay.clear_override(&mut ctx.config);
+                                }
+                                KeyCode::Char('w') if !editing => {
+                                    if let Some(path) = ctx.config_path.clone() {
+                                        let _ = settings_overlay.save(&ctx.config, &path);
+                                    } else {
+                                        // No --config path was provided at startup;
+                                        // there is nothing to write back. Surface the
+                                        // explanation in the status banner so the
+                                        // operator knows the precondition for 'w'.
+                                        settings_overlay.set_save_error(
+                                            "no config path — restart with `--config PATH` to enable save"
+                                                .to_string(),
+                                        );
+                                    }
+                                }
+                                KeyCode::Enter => {
+                                    if editing {
+                                        let _ = settings_overlay.commit_edit(&mut ctx.config);
+                                    } else {
+                                        settings_overlay.start_edit(&ctx.config);
+                                    }
+                                }
+                                KeyCode::Backspace if editing => settings_overlay.backspace(),
+                                KeyCode::Char(c) if editing => settings_overlay.type_char(c),
+                                _ => {}
+                            }
+                            continue;
+                        }
+
                         match k.code {
                             KeyCode::Char('q') | KeyCode::Esc => break,
                             KeyCode::Tab => focus = toggle_focus(focus),
@@ -811,6 +873,7 @@ where
                                 help_open = true;
                                 help_scroll = 0;
                             }
+                            KeyCode::Char('S') => settings_overlay.open(),
                             KeyCode::Up | KeyCode::Char('k') => match focus {
                                 FocusedPanel::Alerts => move_selection(
                                     &mut alert_state,
@@ -1458,6 +1521,15 @@ where
                         let size = terminal.size()?;
                         let viewport = Rect::new(0, 0, size.width, size.height);
                         let now = Instant::now();
+
+                        if settings_overlay.is_open() {
+                            // The settings overlay is keyboard-only; swallow
+                            // mouse events so a stray click underneath the
+                            // modal does not race with the open overlay.
+                            let _ = m;
+                            dashboard_split_dragging = false;
+                            continue;
+                        }
 
                         if git_modal_open {
                             dashboard_split_dragging = false;

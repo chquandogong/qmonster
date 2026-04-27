@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.15.17 per-provider context+quota threshold config."
+  mission_title: "Qmonster v0.5.0 — v1.15.18 in-TUI settings overlay for cost/context/quota thresholds."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 73
-  latest_version: "1.15.17"
+  total_revisions: 74
+  latest_version: "1.15.18"
 
 timeline:
   - change_id: "initial"
@@ -7552,9 +7552,97 @@ timeline:
       - "Annotated tag v1.15.17 at this commit."
       - "Lift-out series complete for the three known gradient advisory metrics. If a future advisory introduces a new threshold-bearing rule, mirror the CostConfig / ContextConfig pattern (top-level + per-provider override + PolicyGates field + advisory rule reads from gates)."
 
+  - change_id: "qmonster-v1.15.18-settings-overlay"
+    semantic_version: "1.15.18"
+    change_sequence: 74
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — '방금 업데이트 된 threshold 값 등 설정은 창을 띄워 default값을 수정, 변경할 수 있도록 해줘'"
+    change_type: "feature"
+    motivation_type: "operator-configurability"
+    persistence: "permanent"
+    intent: >
+      The v1.15.16 / v1.15.17 lift-out work made cost / context / quota
+      advisory thresholds operator-configurable, but the only edit
+      surface was hand-editing `config/qmonster.toml` outside the TUI
+      and restarting. The operator's instruction was to put a window
+      inside the dashboard so the same defaults can be modified live,
+      removing the round-trip through an external editor.
+    decision: >
+      Add a keyboard-driven settings overlay (`S` key from the main
+      dashboard) that renders a centered modal listing the 24 numeric
+      threshold fields (3 sections × 4 scopes × 2 bounds = cost /
+      context / quota × default + claude + codex + gemini × warning +
+      critical). State machine lives in a new `src/ui/settings.rs`
+      module; rendering is driven from the same module so the dashboard
+      only carries the focus-gate + the render-modal call. Edits apply
+      to the in-memory `QmonsterConfig` immediately so the next policy
+      pass sees them, with per-field validation on commit (cost ≥ 0;
+      pct ∈ [0.0, 1.0]; warning < critical on the same row). `w`
+      writes the full config back to the loaded TOML path via
+      `toml::to_string_pretty` after a second-pass full-config validate.
+      `c` clears a per-provider override (revert to section default).
+      `Esc` cancels an in-flight edit; `Esc` again or `q` closes the
+      overlay. The overlay is keyboard-only and swallows mouse events
+      so a stray click underneath does not race with the modal. Save
+      requires `--config PATH` to be set at startup; without one the
+      status banner explains the precondition instead of silently
+      failing. Saving via `to_string_pretty` is comment-lossy on the
+      operator's source TOML — accepted tradeoff for this round; a
+      future round can switch to `toml_edit` for format-preserving
+      writes if operators ask.
+    triggered_by: "Operator instruction (2026-04-25): '방금 업데이트 된 threshold 값 등 설정은 창을 띄워 default값을 수정, 변경할 수 있도록 해줘'."
+    issue_or_context: >
+      Operator-configurability is only useful if the surface is reachable
+      from where the operator already is. After v1.15.17 the threshold
+      defaults were configurable but practically frozen at the boot-time
+      `--config PATH` parse — operators had to leave the dashboard,
+      hand-edit TOML, and restart the binary just to retune a single
+      value. The v1.15.18 overlay closes that loop.
+    changes:
+      added:
+        - "src/ui/settings.rs (new module): Section / Scope / Bound enums + FieldId + SettingsOverlay state machine + render_settings_modal + 23 mutation-verified state-machine tests."
+        - "src/app/bootstrap.rs::Context.config_path field + with_config_path builder so the runtime knows where to write back."
+        - "src/main.rs: settings_overlay state, focus-gate update, render hook (modal + status banner + hint line), keyboard dispatch (Esc/q/↑↓←→/e/Enter/c/w/Backspace/digit input), `S` opens the overlay from the main dashboard, mouse-event swallow when overlay is open."
+        - "src/ui/dashboard.rs: footer text gains `S settings` between `d dismiss` and `? help` (placement assertion in footer test); help overlay gains a new `S` row with the overlay description."
+      modified:
+        - "src/main.rs: Context::new + with_config_path threading at startup (uses cli.config when present)."
+        - "src/ui/mod.rs: re-exports the new settings module."
+      removed: []
+    changed_sections:
+      - "src/ui/settings.rs (state machine + render)"
+      - "src/main.rs (event loop + render hook + key dispatch)"
+      - "src/app/bootstrap.rs (config_path threading)"
+      - "src/ui/dashboard.rs (footer + help overlay rows)"
+    done_when_delta:
+      added:
+        - "Operator can press `S` from the dashboard to open a modal listing the live values of all 24 threshold fields"
+        - "Operator can navigate with arrow keys, press `e` or Enter to edit a field, type a number, press Enter to commit, Esc to cancel"
+        - "Operator can press `c` on a per-provider row to clear the override (revert to section default)"
+        - "Operator can press `w` to write the in-memory config back to the loaded TOML path; status banner reports success or surfaces a validation / IO error"
+        - "Footer + help overlay advertise the `S settings` key alongside the existing single-letter keys"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "+~700 LoC (settings.rs ~480 with tests + ~70 in main.rs key dispatch + ~30 in dashboard footer/help + ~20 in bootstrap)"
+      tests: "499 total — 425 lib + 14 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 476 at v1.15.17; +23 = the new settings state-machine suite)"
+      ledger: "1 new timeline entry (sequence 74); meta bump"
+      review_gate: "operator-configurability feature; confirm-archive remains closed; local fmt/test/clippy pass; mission-spec validation blocked locally because the binary is not installed."
+      follow_up_carryover: "Save path uses `toml::to_string_pretty` which strips comments from the operator's source config on write. If operators report comment loss as friction, swap to `toml_edit` for format-preserving writes. Overlay does not currently expose non-threshold settings ([actions], [refresh], etc.) — adding those is mechanical work in the same state-machine pattern when an operator asks."
+    breaking: false
+    risk: "low — overlay is opt-in (closed by default; only `S` key opens it); no advisory rule semantics change; in-memory edits reach `Engine::evaluate` via the same `&mut ctx.config` already exposed to the safety-override path. Save action is gated on a known config path so a no-`--config` startup cannot accidentally write anywhere; fmt + clippy + 499 tests pass. State-machine TDD: the 23 settings tests passed on first write because the implementation landed alongside them, so two critical paths (pair-validation + clear_override) were mutation-tested by temporarily breaking the impl and confirming the tests fail in the expected way before restoring."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.18 at this commit."
+      - "If operator wants comment-preserving saves on the source TOML, switch the save path from `toml::to_string_pretty` to `toml_edit` (only the body of `SettingsOverlay::save` changes; the state machine is unchanged)."
+      - "If operator wants the overlay to also edit other config sections (actions, refresh, logging, etc.), the FieldId / Section / Scope / Bound model extends naturally."
+
 evolution_summary:
-  current_phase: "v1.15.17 per-provider context+quota threshold config. New `[context]` and `[quota]` TOML sections with top-level warning_pct / critical_pct (fraction 0..=1.0) defaults plus optional per-provider overrides for Claude / Codex / Gemini, completing the lift-out series begun by v1.15.16's `[cost]` section. PolicyGates resolves all four threshold pairs per-pane (cost_warning_usd / cost_critical_usd / context_warning_pct / context_critical_pct / quota_warning_pct / quota_critical_pct); advisory rules read from gates instead of hardcoded literals. Recommended defaults uniform 0.75/0.85 across providers (workflow remediation is identical regardless of which CLI emits the pressure metric). v1.15.16's per-provider cost thresholds, v1.15.15's COST badge severity coloring, v1.15.14's cost_pressure_* advisory pair, and the v1.15.13 / v1.15.12 / v1.15.11 / v1.15.10 / v1.15.8 stack all carry forward unchanged. 476 tests green; clippy + fmt clean."
-  next_phase: "Same direction; v1.15.x patch line continues for operator-driven UX iteration. All known gradient advisory thresholds (cost / context / quota) are now operator-configurable; no remaining hardcoded threshold pairs in advisory rule bodies. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.15.18 in-TUI settings overlay. New `S` key opens a modal that lets the operator view + edit the 24 cost / context / quota threshold fields shipped in v1.15.16 + v1.15.17, with per-field validation, override clear, and a `w` write-back to the loaded TOML config path. Live edits apply immediately to the in-memory `QmonsterConfig` so the next policy pass uses them. v1.15.17's per-provider context+quota lift-out, v1.15.16's per-provider cost lift-out, v1.15.15's COST badge severity coloring, v1.15.14's cost_pressure_* advisory pair, and the v1.15.13 / v1.15.12 / v1.15.11 / v1.15.10 / v1.15.8 stack all carry forward unchanged. 499 tests green; clippy + fmt clean."
+  next_phase: "Same direction; v1.15.x patch line continues for operator-driven UX iteration. Save path is currently comment-lossy via `toml::to_string_pretty`; swap to `toml_edit` if operators ask for format-preserving writes. The settings overlay covers thresholds today; extending to other config sections (actions / refresh / logging / etc.) is mechanical follow-up. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.17"
-  title: "Qmonster v0.5.0 — v1.15.17 extends the v1.15.16 per-provider config pattern to context_pressure and quota_pressure thresholds. New `[context]` and `[quota]` TOML sections with top-level `warning_pct` / `critical_pct` (fraction in 0..=1.0, not %) defaults plus optional `[context.claude]` / `[context.codex]` / `[context.gemini]` and `[quota.claude]` / `[quota.codex]` / `[quota.gemini]` per-provider overrides. PolicyGates gains four new f32 fields (context_warning_pct, context_critical_pct, quota_warning_pct, quota_critical_pct) resolved per-pane from the operator's ContextConfig + QuotaConfig + the resolved provider. The four advisory rules (context_pressure_warning/critical, quota_pressure_warning/critical) now read thresholds directly from gates instead of hardcoded 0.75/0.85. Recommended defaults are uniform 0.75/0.85 across all providers because the workflow advice (/compact + checkpoint, or quota pacing) is identical across CLIs; operator overrides are present for noisy-pressure-metric edge cases. Behavior is backward compatible — operators not setting `[context]` / `[quota]` get the v1.15.14 hardcoded 0.75/0.85 baseline. 476 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
+  version: "1.15.18"
+  title: "Qmonster v0.5.0 — v1.15.18 ships an in-TUI settings overlay (`S` key) that lets the operator view and edit the v1.15.16+v1.15.17 advisory thresholds (cost / context / quota × default + Claude + Codex + Gemini, 24 numeric fields) without leaving the dashboard. Edits are applied to the in-memory `QmonsterConfig` immediately and validated per-field (cost ≥ 0; pct ∈ [0, 1]; warning < critical on the same row); `w` writes the full config back to the loaded `--config` TOML path via `toml::to_string_pretty`. New `src/ui/settings.rs` module carries the state machine + render, with 23 mutation-verified state-machine tests. Mission contract & per-provider lift-out from v1.15.17 carry forward unchanged. 499 tests green; fmt + clippy clean. Mission-spec validation is blocked locally because the binary is not installed."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1200,5 +1200,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 73
+    total_revisions: 74
     history: "mission-history.yaml"
