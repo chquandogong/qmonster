@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.17 initial target helper extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.18 dashboard render extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -42,7 +42,7 @@ checkpoint, retention, and durable audit storage.
 ```
 src/
   main.rs      # CLI entry + current TUI event loop (still too large)
-  app/         # bootstrap, config+safety-precedence, path resolution, event loop, keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
+  app/         # bootstrap, config+safety-precedence, path resolution, event loop, dashboard-render/keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # polling first; control-mode-capable PaneSource trait
   adapters/    # per-provider tail parsers (no identity inference)
@@ -64,7 +64,7 @@ cycling, send/capture, and operator-facing label helpers into
 `app::runtime_refresh`; v1.16.3 moves alert selection, hide/defer,
 double-click tracking, and pane-state flash synchronization into
 `app::dashboard_state`. The current implementation still keeps the live
-TUI event loop and modal render orchestration in `main.rs`.
+TUI event loop in `main.rs`.
 v1.16.4 fixed Git overlay title consistency by using the same
 `QMONSTER_GIT_VERSION` value as the footer badge. v1.16.5 restores `c`
 to its original system-notice clear role; alert command copy remains on
@@ -82,7 +82,8 @@ v1.16.14 moves dashboard Alerts/Panes selection key dispatch into
 `app::dashboard_state`. v1.16.15 moves dashboard mouse dispatch into
 `app::dashboard_state`. v1.16.16 moves default config-path resolution and
 its tests into `app::path_resolution`. v1.16.17 moves initial target
-selection and its tests into `app::target_picker`.
+selection and its tests into `app::target_picker`. v1.16.18 moves the
+dashboard frame and overlay render composition into `app::dashboard_render`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

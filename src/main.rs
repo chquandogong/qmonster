@@ -20,6 +20,7 @@ use qmonster::app::clipboard_actions::{
     AlertCommandCopyView, copy_selected_alert_command_to_clipboard,
 };
 use qmonster::app::config::{QmonsterConfig, load_from_path};
+use qmonster::app::dashboard_render::{DashboardFrameView, render_dashboard_frame};
 use qmonster::app::dashboard_state::{
     AlertMouseClick, DashboardMouseAction, DashboardMouseView, DashboardSelectionKeyView,
     DashboardSyncState, handle_dashboard_mouse, handle_dashboard_selection_key,
@@ -46,7 +47,7 @@ use qmonster::app::system_notice::{
 use qmonster::app::target_picker::{
     TargetChoice, TargetPickerAction, TargetPickerController, TargetPickerStage,
     handle_target_picker_key, handle_target_picker_mouse, initial_target, open_target_picker,
-    target_label, target_picker_hint, target_picker_title, target_switched_notice,
+    target_label, target_switched_notice,
 };
 use qmonster::app::version_drift::{
     StartupLoad, VersionSnapshot, capture_versions, load_startup_snapshot,
@@ -63,8 +64,7 @@ use qmonster::store::{
 };
 use qmonster::tmux::polling::{PaneSource, PollingSource};
 use qmonster::ui::dashboard::{
-    DashboardSplit, DashboardView, TargetPickerView, close_button_rect, git_modal_rects,
-    help_modal_rects, render_dashboard,
+    DashboardSplit, close_button_rect, git_modal_rects, help_modal_rects,
 };
 
 #[derive(Debug, Parser)]
@@ -357,42 +357,24 @@ where
     );
     sync_pane_selection(&mut pane_state, 0);
 
-    let result = (|| -> anyhow::Result<()> {
-        loop {
-            let now = Instant::now();
-            if now.saturating_duration_since(last_poll) >= poll {
-                last_poll = now;
-                match run_once_with_target(ctx, now, selected_target.as_ref()) {
-                    Ok(reports) => {
-                        if let Some(notice) = route_polling_recovered(&mut last_poll_error) {
-                            notices.insert(0, notice);
-                        }
-                        update_pane_state_flashes(
-                            &reports,
-                            &mut last_pane_idle_states,
-                            &mut pane_state_flashes,
-                            now,
-                        );
-                        last_reports = reports;
-                        sync_dashboard_state(
-                            &notices,
-                            &last_reports,
-                            DashboardSyncState {
-                                alert_state: &mut alert_state,
-                                pane_state: &mut pane_state,
-                                previous_alerts: &mut previous_alerts,
-                                fresh_alerts: &mut fresh_alerts,
-                                alert_times: &mut alert_times,
-                                alert_hide_deadlines: &mut alert_hide_deadlines,
-                            },
-                            now,
-                        );
-                    }
-                    Err(e) => {
-                        if let Some(notice) =
-                            route_polling_failure(&mut last_poll_error, e.to_string())
-                        {
-                            notices.insert(0, notice);
+    let result = {
+        let mut run_loop = || -> anyhow::Result<()> {
+            loop {
+                let now = Instant::now();
+                if now.saturating_duration_since(last_poll) >= poll {
+                    last_poll = now;
+                    match run_once_with_target(ctx, now, selected_target.as_ref()) {
+                        Ok(reports) => {
+                            if let Some(notice) = route_polling_recovered(&mut last_poll_error) {
+                                notices.insert(0, notice);
+                            }
+                            update_pane_state_flashes(
+                                &reports,
+                                &mut last_pane_idle_states,
+                                &mut pane_state_flashes,
+                                now,
+                            );
+                            last_reports = reports;
                             sync_dashboard_state(
                                 &notices,
                                 &last_reports,
@@ -407,132 +389,11 @@ where
                                 now,
                             );
                         }
-                    }
-                }
-            }
-
-            pane_state_flashes.retain(|_, flash| flash.is_active(now));
-            sync_alert_selection(
-                &mut alert_state,
-                &notices,
-                &last_reports,
-                &alert_hide_deadlines,
-                now,
-            );
-            let target = target_label(selected_target.as_ref());
-            terminal.draw(|frame| {
-                render_dashboard(
-                    frame,
-                    &mut alert_state,
-                    &mut pane_state,
-                    DashboardView {
-                        notices: &notices,
-                        reports: &last_reports,
-                        fresh_alerts: &fresh_alerts,
-                        alert_times: &alert_times,
-                        hidden_until: &alert_hide_deadlines,
-                        state_flashes: &pane_state_flashes,
-                        now,
-                        target_label: &target,
-                        split: dashboard_split,
-                        alerts_focused: !target_picker_open
-                            && !help_modal.is_open()
-                            && !settings_overlay.is_open()
-                            && focus == FocusedPanel::Alerts,
-                        panes_focused: !target_picker_open
-                            && !help_modal.is_open()
-                            && !settings_overlay.is_open()
-                            && focus == FocusedPanel::Panes,
-                    },
-                );
-                if target_picker_open {
-                    let labels: Vec<String> = target_choices
-                        .iter()
-                        .map(|choice| choice.label.clone())
-                        .collect();
-                    let picker_title =
-                        target_picker_title(target_picker_stage, target_picker_session.as_deref());
-                    qmonster::ui::dashboard::render_target_picker(
-                        frame,
-                        &mut target_picker_state,
-                        TargetPickerView {
-                            title: &picker_title,
-                            hint: target_picker_hint(target_picker_stage),
-                            labels: &labels,
-                            preview_title: &target_preview_title,
-                            preview_lines: &target_preview_lines,
-                            current_label: &target,
-                        },
-                    );
-                }
-                if git_modal.is_open() {
-                    qmonster::ui::dashboard::render_git_modal(
-                        frame,
-                        git_modal.title(),
-                        git_modal.lines(),
-                        git_modal.scroll() as u16,
-                    );
-                }
-                if help_modal.is_open() {
-                    qmonster::ui::dashboard::render_help_modal(frame, help_modal.scroll() as u16);
-                }
-                if settings_overlay.is_open() {
-                    qmonster::ui::settings::render_settings_modal(
-                        frame,
-                        &settings_overlay,
-                        &ctx.config,
-                    );
-                }
-            })?;
-
-            if event::poll(Duration::from_millis(100))? {
-                match event::read()? {
-                    Event::Key(k) if k.kind == KeyEventKind::Press => {
-                        if git_modal.is_open() {
-                            let size = terminal.size()?;
-                            let max_scroll = qmonster::ui::dashboard::max_git_scroll(
-                                Rect::new(0, 0, size.width, size.height),
-                                git_modal.line_count(),
-                            );
-                            handle_scroll_modal_key(&mut git_modal, k.code, max_scroll, None);
-                            continue;
-                        }
-
-                        if help_modal.is_open() {
-                            let size = terminal.size()?;
-                            let max_scroll = qmonster::ui::dashboard::max_help_scroll(Rect::new(
-                                0,
-                                0,
-                                size.width,
-                                size.height,
-                            ));
-                            handle_scroll_modal_key(
-                                &mut help_modal,
-                                k.code,
-                                max_scroll,
-                                Some(KeyCode::Char('?')),
-                            );
-                            continue;
-                        }
-
-                        if target_picker_open {
-                            let action = handle_target_picker_key(
-                                &ctx.source,
-                                TargetPickerController {
-                                    open: &mut target_picker_open,
-                                    stage: &mut target_picker_stage,
-                                    session: &mut target_picker_session,
-                                    state: &mut target_picker_state,
-                                    choices: &mut target_choices,
-                                    preview_title: &mut target_preview_title,
-                                    preview_lines: &mut target_preview_lines,
-                                    selected_target: &mut selected_target,
-                                },
-                                k.code,
-                            );
-                            if let TargetPickerAction::TargetSwitched(label) = action {
-                                let now = Instant::now();
-                                notices.insert(0, target_switched_notice(&label));
+                        Err(e) => {
+                            if let Some(notice) =
+                                route_polling_failure(&mut last_poll_error, e.to_string())
+                            {
+                                notices.insert(0, notice);
                                 sync_dashboard_state(
                                     &notices,
                                     &last_reports,
@@ -546,51 +407,80 @@ where
                                     },
                                     now,
                                 );
-                                last_poll = now - poll;
                             }
-                            continue;
                         }
+                    }
+                }
 
-                        if settings_overlay.is_open() {
-                            let config_path = ctx.config_path.clone();
-                            handle_settings_overlay_key(
-                                &mut settings_overlay,
-                                &mut ctx.config,
-                                config_path.as_deref(),
-                                k.code,
-                            );
-                            continue;
-                        }
+                pane_state_flashes.retain(|_, flash| flash.is_active(now));
+                sync_alert_selection(
+                    &mut alert_state,
+                    &notices,
+                    &last_reports,
+                    &alert_hide_deadlines,
+                    now,
+                );
+                let target = target_label(selected_target.as_ref());
+                terminal.draw(|frame| {
+                    render_dashboard_frame(
+                        frame,
+                        DashboardFrameView {
+                            alert_state: &mut alert_state,
+                            pane_state: &mut pane_state,
+                            notices: &notices,
+                            reports: &last_reports,
+                            fresh_alerts: &fresh_alerts,
+                            alert_times: &alert_times,
+                            hidden_until: &alert_hide_deadlines,
+                            state_flashes: &pane_state_flashes,
+                            now,
+                            target_label: &target,
+                            split: dashboard_split,
+                            focus,
+                            target_picker_open,
+                            target_picker_stage,
+                            target_picker_session: target_picker_session.as_deref(),
+                            target_picker_state: &mut target_picker_state,
+                            target_choices: &target_choices,
+                            target_preview_title: &target_preview_title,
+                            target_preview_lines: &target_preview_lines,
+                            git_modal: &git_modal,
+                            help_modal: &help_modal,
+                            settings_overlay: &settings_overlay,
+                            config: &ctx.config,
+                        },
+                    );
+                })?;
 
-                        let now = Instant::now();
-                        if handle_dashboard_selection_key(
-                            DashboardSelectionKeyView {
-                                focus,
-                                alert_state: &mut alert_state,
-                                pane_state: &mut pane_state,
-                                notices: &notices,
-                                reports: &last_reports,
-                                alert_hide_deadlines: &mut alert_hide_deadlines,
-                                now,
-                            },
-                            k.code,
-                        ) {
-                            continue;
-                        }
-
-                        match k.code {
-                            KeyCode::Char('q') | KeyCode::Esc => break,
-                            KeyCode::Tab => focus = toggle_focus(focus),
-                            KeyCode::Char('[') => dashboard_split.shrink_alerts(),
-                            KeyCode::Char(']') => dashboard_split.grow_alerts(),
-                            KeyCode::Char('/') => dashboard_split.cycle_alerts(),
-                            KeyCode::Char('=') => dashboard_split.reset(),
-                            KeyCode::Char('?') => {
-                                help_modal.open("", Vec::new());
+                if event::poll(Duration::from_millis(100))? {
+                    match event::read()? {
+                        Event::Key(k) if k.kind == KeyEventKind::Press => {
+                            if git_modal.is_open() {
+                                let size = terminal.size()?;
+                                let max_scroll = qmonster::ui::dashboard::max_git_scroll(
+                                    Rect::new(0, 0, size.width, size.height),
+                                    git_modal.line_count(),
+                                );
+                                handle_scroll_modal_key(&mut git_modal, k.code, max_scroll, None);
+                                continue;
                             }
-                            KeyCode::Char('S') => settings_overlay.open(),
-                            KeyCode::Char('t') => {
-                                open_target_picker(
+
+                            if help_modal.is_open() {
+                                let size = terminal.size()?;
+                                let max_scroll = qmonster::ui::dashboard::max_help_scroll(
+                                    Rect::new(0, 0, size.width, size.height),
+                                );
+                                handle_scroll_modal_key(
+                                    &mut help_modal,
+                                    k.code,
+                                    max_scroll,
+                                    Some(KeyCode::Char('?')),
+                                );
+                                continue;
+                            }
+
+                            if target_picker_open {
+                                let action = handle_target_picker_key(
                                     &ctx.source,
                                     TargetPickerController {
                                         open: &mut target_picker_open,
@@ -602,14 +492,112 @@ where
                                         preview_lines: &mut target_preview_lines,
                                         selected_target: &mut selected_target,
                                     },
+                                    k.code,
                                 );
+                                if let TargetPickerAction::TargetSwitched(label) = action {
+                                    let now = Instant::now();
+                                    notices.insert(0, target_switched_notice(&label));
+                                    sync_dashboard_state(
+                                        &notices,
+                                        &last_reports,
+                                        DashboardSyncState {
+                                            alert_state: &mut alert_state,
+                                            pane_state: &mut pane_state,
+                                            previous_alerts: &mut previous_alerts,
+                                            fresh_alerts: &mut fresh_alerts,
+                                            alert_times: &mut alert_times,
+                                            alert_hide_deadlines: &mut alert_hide_deadlines,
+                                        },
+                                        now,
+                                    );
+                                    last_poll = now - poll;
+                                }
+                                continue;
                             }
-                            KeyCode::Char('r') => {
-                                let fresh = capture_versions();
-                                let new_notices =
-                                    version_refresh_notices(&versions, &fresh, &*ctx.sink);
-                                if !new_notices.is_empty() {
-                                    notices = new_notices;
+
+                            if settings_overlay.is_open() {
+                                let config_path = ctx.config_path.clone();
+                                handle_settings_overlay_key(
+                                    &mut settings_overlay,
+                                    &mut ctx.config,
+                                    config_path.as_deref(),
+                                    k.code,
+                                );
+                                continue;
+                            }
+
+                            let now = Instant::now();
+                            if handle_dashboard_selection_key(
+                                DashboardSelectionKeyView {
+                                    focus,
+                                    alert_state: &mut alert_state,
+                                    pane_state: &mut pane_state,
+                                    notices: &notices,
+                                    reports: &last_reports,
+                                    alert_hide_deadlines: &mut alert_hide_deadlines,
+                                    now,
+                                },
+                                k.code,
+                            ) {
+                                continue;
+                            }
+
+                            match k.code {
+                                KeyCode::Char('q') | KeyCode::Esc => break,
+                                KeyCode::Tab => focus = toggle_focus(focus),
+                                KeyCode::Char('[') => dashboard_split.shrink_alerts(),
+                                KeyCode::Char(']') => dashboard_split.grow_alerts(),
+                                KeyCode::Char('/') => dashboard_split.cycle_alerts(),
+                                KeyCode::Char('=') => dashboard_split.reset(),
+                                KeyCode::Char('?') => {
+                                    help_modal.open("", Vec::new());
+                                }
+                                KeyCode::Char('S') => settings_overlay.open(),
+                                KeyCode::Char('t') => {
+                                    open_target_picker(
+                                        &ctx.source,
+                                        TargetPickerController {
+                                            open: &mut target_picker_open,
+                                            stage: &mut target_picker_stage,
+                                            session: &mut target_picker_session,
+                                            state: &mut target_picker_state,
+                                            choices: &mut target_choices,
+                                            preview_title: &mut target_preview_title,
+                                            preview_lines: &mut target_preview_lines,
+                                            selected_target: &mut selected_target,
+                                        },
+                                    );
+                                }
+                                KeyCode::Char('r') => {
+                                    let fresh = capture_versions();
+                                    let new_notices =
+                                        version_refresh_notices(&versions, &fresh, &*ctx.sink);
+                                    if !new_notices.is_empty() {
+                                        notices = new_notices;
+                                        sync_dashboard_state(
+                                            &notices,
+                                            &last_reports,
+                                            DashboardSyncState {
+                                                alert_state: &mut alert_state,
+                                                pane_state: &mut pane_state,
+                                                previous_alerts: &mut previous_alerts,
+                                                fresh_alerts: &mut fresh_alerts,
+                                                alert_times: &mut alert_times,
+                                                alert_hide_deadlines: &mut alert_hide_deadlines,
+                                            },
+                                            Instant::now(),
+                                        );
+                                    }
+                                    versions = fresh;
+                                }
+                                KeyCode::Char('s') => {
+                                    let notice = write_operator_snapshot(
+                                        &snapshot_writer,
+                                        &*ctx.sink,
+                                        &last_reports,
+                                        &notices,
+                                    );
+                                    notices.insert(0, notice);
                                     sync_dashboard_state(
                                         &notices,
                                         &last_reports,
@@ -624,241 +612,219 @@ where
                                         Instant::now(),
                                     );
                                 }
-                                versions = fresh;
-                            }
-                            KeyCode::Char('s') => {
-                                let notice = write_operator_snapshot(
-                                    &snapshot_writer,
-                                    &*ctx.sink,
-                                    &last_reports,
-                                    &notices,
-                                );
-                                notices.insert(0, notice);
-                                sync_dashboard_state(
-                                    &notices,
-                                    &last_reports,
-                                    DashboardSyncState {
-                                        alert_state: &mut alert_state,
-                                        pane_state: &mut pane_state,
-                                        previous_alerts: &mut previous_alerts,
-                                        fresh_alerts: &mut fresh_alerts,
-                                        alert_times: &mut alert_times,
-                                        alert_hide_deadlines: &mut alert_hide_deadlines,
-                                    },
-                                    Instant::now(),
-                                );
-                            }
-                            KeyCode::Char('c') => {
-                                notices.clear();
-                                sync_dashboard_state(
-                                    &notices,
-                                    &last_reports,
-                                    DashboardSyncState {
-                                        alert_state: &mut alert_state,
-                                        pane_state: &mut pane_state,
-                                        previous_alerts: &mut previous_alerts,
-                                        fresh_alerts: &mut fresh_alerts,
-                                        alert_times: &mut alert_times,
-                                        alert_hide_deadlines: &mut alert_hide_deadlines,
-                                    },
-                                    Instant::now(),
-                                );
-                            }
-                            KeyCode::Char('u') if focus == FocusedPanel::Panes => {
-                                let selected =
-                                    pane_state.selected().and_then(|i| last_reports.get(i));
-                                let outcome = handle_runtime_refresh_action(
-                                    &ctx.source,
-                                    &*ctx.sink,
-                                    selected,
-                                    ctx.config.actions.mode,
-                                    ctx.config.tmux.capture_lines,
-                                    &mut runtime_refresh_offsets,
-                                    &mut ctx.runtime_refresh_tail_overlays,
-                                );
-                                notices.insert(0, outcome.notice);
-                                if outcome.force_poll {
-                                    last_poll = Instant::now() - poll;
+                                KeyCode::Char('c') => {
+                                    notices.clear();
+                                    sync_dashboard_state(
+                                        &notices,
+                                        &last_reports,
+                                        DashboardSyncState {
+                                            alert_state: &mut alert_state,
+                                            pane_state: &mut pane_state,
+                                            previous_alerts: &mut previous_alerts,
+                                            fresh_alerts: &mut fresh_alerts,
+                                            alert_times: &mut alert_times,
+                                            alert_hide_deadlines: &mut alert_hide_deadlines,
+                                        },
+                                        Instant::now(),
+                                    );
                                 }
-                                sync_dashboard_state(
-                                    &notices,
-                                    &last_reports,
-                                    DashboardSyncState {
-                                        alert_state: &mut alert_state,
-                                        pane_state: &mut pane_state,
-                                        previous_alerts: &mut previous_alerts,
-                                        fresh_alerts: &mut fresh_alerts,
-                                        alert_times: &mut alert_times,
-                                        alert_hide_deadlines: &mut alert_hide_deadlines,
-                                    },
-                                    Instant::now(),
-                                );
-                            }
-                            KeyCode::Char('y') if focus == FocusedPanel::Alerts => {
-                                let now = Instant::now();
-                                let notice = copy_selected_alert_command_to_clipboard(
-                                    AlertCommandCopyView {
-                                        alert_state: &alert_state,
-                                        notices: &notices,
-                                        reports: &last_reports,
-                                        fresh_alerts: &fresh_alerts,
-                                        alert_times: &alert_times,
-                                        hidden_until: &alert_hide_deadlines,
+                                KeyCode::Char('u') if focus == FocusedPanel::Panes => {
+                                    let selected =
+                                        pane_state.selected().and_then(|i| last_reports.get(i));
+                                    let outcome = handle_runtime_refresh_action(
+                                        &ctx.source,
+                                        &*ctx.sink,
+                                        selected,
+                                        ctx.config.actions.mode,
+                                        ctx.config.tmux.capture_lines,
+                                        &mut runtime_refresh_offsets,
+                                        &mut ctx.runtime_refresh_tail_overlays,
+                                    );
+                                    notices.insert(0, outcome.notice);
+                                    if outcome.force_poll {
+                                        last_poll = Instant::now() - poll;
+                                    }
+                                    sync_dashboard_state(
+                                        &notices,
+                                        &last_reports,
+                                        DashboardSyncState {
+                                            alert_state: &mut alert_state,
+                                            pane_state: &mut pane_state,
+                                            previous_alerts: &mut previous_alerts,
+                                            fresh_alerts: &mut fresh_alerts,
+                                            alert_times: &mut alert_times,
+                                            alert_hide_deadlines: &mut alert_hide_deadlines,
+                                        },
+                                        Instant::now(),
+                                    );
+                                }
+                                KeyCode::Char('y') if focus == FocusedPanel::Alerts => {
+                                    let now = Instant::now();
+                                    let notice = copy_selected_alert_command_to_clipboard(
+                                        AlertCommandCopyView {
+                                            alert_state: &alert_state,
+                                            notices: &notices,
+                                            reports: &last_reports,
+                                            fresh_alerts: &fresh_alerts,
+                                            alert_times: &alert_times,
+                                            hidden_until: &alert_hide_deadlines,
+                                            now,
+                                        },
+                                    );
+                                    notices.insert(0, notice);
+                                    sync_dashboard_state(
+                                        &notices,
+                                        &last_reports,
+                                        DashboardSyncState {
+                                            alert_state: &mut alert_state,
+                                            pane_state: &mut pane_state,
+                                            previous_alerts: &mut previous_alerts,
+                                            fresh_alerts: &mut fresh_alerts,
+                                            alert_times: &mut alert_times,
+                                            alert_hide_deadlines: &mut alert_hide_deadlines,
+                                        },
                                         now,
-                                    },
-                                );
-                                notices.insert(0, notice);
-                                sync_dashboard_state(
-                                    &notices,
-                                    &last_reports,
-                                    DashboardSyncState {
-                                        alert_state: &mut alert_state,
-                                        pane_state: &mut pane_state,
-                                        previous_alerts: &mut previous_alerts,
-                                        fresh_alerts: &mut fresh_alerts,
-                                        alert_times: &mut alert_times,
-                                        alert_hide_deadlines: &mut alert_hide_deadlines,
-                                    },
-                                    now,
-                                );
+                                    );
+                                }
+                                KeyCode::Char('p') | KeyCode::Char('d') => {
+                                    let notice = handle_prompt_send_action(
+                                        &ctx.source,
+                                        &*ctx.sink,
+                                        &last_reports,
+                                        pane_state.selected(),
+                                        k.code == KeyCode::Char('p'),
+                                        ctx.config.actions.mode,
+                                        ctx.config.actions.allow_auto_prompt_send,
+                                    );
+                                    notices.insert(0, notice);
+                                    sync_dashboard_state(
+                                        &notices,
+                                        &last_reports,
+                                        DashboardSyncState {
+                                            alert_state: &mut alert_state,
+                                            pane_state: &mut pane_state,
+                                            previous_alerts: &mut previous_alerts,
+                                            fresh_alerts: &mut fresh_alerts,
+                                            alert_times: &mut alert_times,
+                                            alert_hide_deadlines: &mut alert_hide_deadlines,
+                                        },
+                                        Instant::now(),
+                                    );
+                                }
+                                _ => {}
                             }
-                            KeyCode::Char('p') | KeyCode::Char('d') => {
-                                let notice = handle_prompt_send_action(
+                        }
+                        Event::Mouse(m) => {
+                            let size = terminal.size()?;
+                            let viewport = Rect::new(0, 0, size.width, size.height);
+                            let now = Instant::now();
+
+                            if settings_overlay.is_open() {
+                                dashboard_split_dragging = false;
+                                handle_settings_overlay_mouse(&mut settings_overlay, viewport, m);
+                                continue;
+                            }
+
+                            if git_modal.is_open() {
+                                dashboard_split_dragging = false;
+                                let rects = git_modal_rects(viewport);
+                                let max_scroll = qmonster::ui::dashboard::max_git_scroll(
+                                    viewport,
+                                    git_modal.line_count(),
+                                );
+                                handle_scroll_modal_mouse(
+                                    &mut git_modal,
+                                    m,
+                                    rects.body,
+                                    close_button_rect(rects.body),
+                                    max_scroll,
+                                );
+                                continue;
+                            }
+
+                            if help_modal.is_open() {
+                                dashboard_split_dragging = false;
+                                let rects = help_modal_rects(viewport);
+                                let max_scroll = qmonster::ui::dashboard::max_help_scroll(viewport);
+                                handle_scroll_modal_mouse(
+                                    &mut help_modal,
+                                    m,
+                                    rects.body,
+                                    close_button_rect(rects.body),
+                                    max_scroll,
+                                );
+                                continue;
+                            }
+
+                            if target_picker_open {
+                                dashboard_split_dragging = false;
+                                let action = handle_target_picker_mouse(
                                     &ctx.source,
-                                    &*ctx.sink,
-                                    &last_reports,
-                                    pane_state.selected(),
-                                    k.code == KeyCode::Char('p'),
-                                    ctx.config.actions.mode,
-                                    ctx.config.actions.allow_auto_prompt_send,
-                                );
-                                notices.insert(0, notice);
-                                sync_dashboard_state(
-                                    &notices,
-                                    &last_reports,
-                                    DashboardSyncState {
-                                        alert_state: &mut alert_state,
-                                        pane_state: &mut pane_state,
-                                        previous_alerts: &mut previous_alerts,
-                                        fresh_alerts: &mut fresh_alerts,
-                                        alert_times: &mut alert_times,
-                                        alert_hide_deadlines: &mut alert_hide_deadlines,
+                                    TargetPickerController {
+                                        open: &mut target_picker_open,
+                                        stage: &mut target_picker_stage,
+                                        session: &mut target_picker_session,
+                                        state: &mut target_picker_state,
+                                        choices: &mut target_choices,
+                                        preview_title: &mut target_preview_title,
+                                        preview_lines: &mut target_preview_lines,
+                                        selected_target: &mut selected_target,
                                     },
-                                    Instant::now(),
+                                    viewport,
+                                    m,
                                 );
+                                if let TargetPickerAction::TargetSwitched(label) = action {
+                                    notices.insert(0, target_switched_notice(&label));
+                                    sync_dashboard_state(
+                                        &notices,
+                                        &last_reports,
+                                        DashboardSyncState {
+                                            alert_state: &mut alert_state,
+                                            pane_state: &mut pane_state,
+                                            previous_alerts: &mut previous_alerts,
+                                            fresh_alerts: &mut fresh_alerts,
+                                            alert_times: &mut alert_times,
+                                            alert_hide_deadlines: &mut alert_hide_deadlines,
+                                        },
+                                        now,
+                                    );
+                                    last_poll = now - poll;
+                                }
+                                continue;
                             }
-                            _ => {}
-                        }
-                    }
-                    Event::Mouse(m) => {
-                        let size = terminal.size()?;
-                        let viewport = Rect::new(0, 0, size.width, size.height);
-                        let now = Instant::now();
 
-                        if settings_overlay.is_open() {
-                            dashboard_split_dragging = false;
-                            handle_settings_overlay_mouse(&mut settings_overlay, viewport, m);
-                            continue;
-                        }
-
-                        if git_modal.is_open() {
-                            dashboard_split_dragging = false;
-                            let rects = git_modal_rects(viewport);
-                            let max_scroll = qmonster::ui::dashboard::max_git_scroll(
-                                viewport,
-                                git_modal.line_count(),
-                            );
-                            handle_scroll_modal_mouse(
-                                &mut git_modal,
-                                m,
-                                rects.body,
-                                close_button_rect(rects.body),
-                                max_scroll,
-                            );
-                            continue;
-                        }
-
-                        if help_modal.is_open() {
-                            dashboard_split_dragging = false;
-                            let rects = help_modal_rects(viewport);
-                            let max_scroll = qmonster::ui::dashboard::max_help_scroll(viewport);
-                            handle_scroll_modal_mouse(
-                                &mut help_modal,
-                                m,
-                                rects.body,
-                                close_button_rect(rects.body),
-                                max_scroll,
-                            );
-                            continue;
-                        }
-
-                        if target_picker_open {
-                            dashboard_split_dragging = false;
-                            let action = handle_target_picker_mouse(
-                                &ctx.source,
-                                TargetPickerController {
-                                    open: &mut target_picker_open,
-                                    stage: &mut target_picker_stage,
-                                    session: &mut target_picker_session,
-                                    state: &mut target_picker_state,
-                                    choices: &mut target_choices,
-                                    preview_title: &mut target_preview_title,
-                                    preview_lines: &mut target_preview_lines,
-                                    selected_target: &mut selected_target,
-                                },
+                            let action = handle_dashboard_mouse(
                                 viewport,
                                 m,
-                            );
-                            if let TargetPickerAction::TargetSwitched(label) = action {
-                                notices.insert(0, target_switched_notice(&label));
-                                sync_dashboard_state(
-                                    &notices,
-                                    &last_reports,
-                                    DashboardSyncState {
-                                        alert_state: &mut alert_state,
-                                        pane_state: &mut pane_state,
-                                        previous_alerts: &mut previous_alerts,
-                                        fresh_alerts: &mut fresh_alerts,
-                                        alert_times: &mut alert_times,
-                                        alert_hide_deadlines: &mut alert_hide_deadlines,
-                                    },
+                                DashboardMouseView {
+                                    focus: &mut focus,
+                                    split: &mut dashboard_split,
+                                    split_dragging: &mut dashboard_split_dragging,
+                                    alert_state: &mut alert_state,
+                                    pane_state: &mut pane_state,
+                                    last_alert_click: &mut last_alert_click,
+                                    alert_hide_deadlines: &mut alert_hide_deadlines,
+                                    notices: &notices,
+                                    reports: &last_reports,
+                                    fresh_alerts: &fresh_alerts,
+                                    alert_times: &alert_times,
+                                    target_label: &target,
                                     now,
-                                );
-                                last_poll = now - poll;
+                                },
+                            );
+                            if action == DashboardMouseAction::OpenGitModal {
+                                let panel = capture_repo_panel();
+                                git_modal.open(panel.title, panel.lines);
                             }
-                            continue;
                         }
-
-                        let action = handle_dashboard_mouse(
-                            viewport,
-                            m,
-                            DashboardMouseView {
-                                focus: &mut focus,
-                                split: &mut dashboard_split,
-                                split_dragging: &mut dashboard_split_dragging,
-                                alert_state: &mut alert_state,
-                                pane_state: &mut pane_state,
-                                last_alert_click: &mut last_alert_click,
-                                alert_hide_deadlines: &mut alert_hide_deadlines,
-                                notices: &notices,
-                                reports: &last_reports,
-                                fresh_alerts: &fresh_alerts,
-                                alert_times: &alert_times,
-                                target_label: &target,
-                                now,
-                            },
-                        );
-                        if action == DashboardMouseAction::OpenGitModal {
-                            let panel = capture_repo_panel();
-                            git_modal.open(panel.title, panel.lines);
-                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
-        }
-        Ok(())
-    })();
+            Ok(())
+        };
+        run_loop()
+    };
 
     disable_raw_mode().ok();
     execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture).ok();

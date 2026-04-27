@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.17 initial target helper extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.18 dashboard render extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 99
-  latest_version: "1.16.17"
+  total_revisions: 100
+  latest_version: "1.16.18"
 
 timeline:
   - change_id: "initial"
@@ -9485,8 +9485,77 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.18-dashboard-render-extraction"
+    semantic_version: "1.16.18"
+    change_sequence: 100
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving dashboard frame and overlay render
+      composition out of `src/main.rs`.
+    intent_ko: >
+      dashboard frame 및 overlay render composition을 `src/main.rs` 밖으로
+      옮겨 Phase C C1 분해를 계속한다.
+    decision: >
+      Add `src/app/dashboard_render.rs` with `DashboardFrameView` and
+      `render_dashboard_frame`, wrapping the base dashboard, target picker
+      overlay, Git/help modals, and settings overlay. Keep event polling,
+      state mutation, and modal input routing in `src/main.rs`.
+    decision_ko: >
+      `DashboardFrameView`와 `render_dashboard_frame`를 담은
+      `src/app/dashboard_render.rs`를 추가해 기본 dashboard, target picker
+      overlay, Git/help modal, settings overlay 렌더 조합을 감싼다. event
+      polling, state mutation, modal input routing은 `src/main.rs`에 남긴다.
+    triggered_by: "Continuation after the v1.16.17 initial target helper extraction."
+    issue_or_context: >
+      `src/main.rs` still owned the large `terminal.draw` closure and all
+      overlay render ordering even after key, mouse, target-picker, modal,
+      settings, and runtime-refresh interaction helpers had moved out.
+    changes:
+      added:
+        - "src/app/dashboard_render.rs: DashboardFrameView and render_dashboard_frame"
+      modified:
+        - "src/main.rs delegates dashboard frame and overlay rendering to app::dashboard_render"
+        - "src/app/mod.rs exports dashboard_render"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.18"
+      removed:
+        - "src/main.rs inline base dashboard, target picker, Git/help modal, and settings overlay render composition"
+    changed_sections:
+      - "src/app/dashboard_render.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Seventeenth Phase C C1 code slice exists outside main.rs"
+        - "dashboard frame/overlay render composition has a named app-level boundary"
+      modified:
+        - "main.rs no longer owns the terminal.draw render composition body"
+      removed:
+        - "inline overlay render ordering from the live event-loop body"
+    impact_scope:
+      code: "internal refactor only; no dashboard, target-picker, Git/help modal, settings overlay, focus, or selection behavior change intended"
+      tests: "565 total passed — 505 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (same as v1.16.17)"
+      ledger: "1 new timeline entry (sequence 100); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — render ordering is preserved behind a single wrapper and the existing UI/integration tests stay green."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.17 initial target helper extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
+  current_phase: "v1.16.18 dashboard render extraction — Phase C C1 remains active with dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
