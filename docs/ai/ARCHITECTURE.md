@@ -142,8 +142,8 @@ Ratatui widgets. Current operator surfaces:
 1. Severity-first alert queue with timestamps, `NEW` highlighting,
    per-alert auto-hide toggles, and severity bulk-hide chips.
 2. Resizable Alerts/Panes dashboard split. Operators can drag the
-   divider with the mouse or use `[` / `]` plus `=` reset from the
-   keyboard; the footer shows the current Alerts percentage.
+   divider with the mouse or use `[` / `]`, `/` cycle, and `=` reset
+   from the keyboard; the footer shows the current Alerts percentage.
 3. Per-pane list with inline expansion for the selected pane's
    recommendations, provider-profile payload, metrics, and runtime
    facts (`modes`, `access`, `loaded`, `restrict`).

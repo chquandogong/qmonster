@@ -805,6 +805,7 @@ where
                             KeyCode::Tab => focus = toggle_focus(focus),
                             KeyCode::Char('[') => dashboard_split.shrink_alerts(),
                             KeyCode::Char(']') => dashboard_split.grow_alerts(),
+                            KeyCode::Char('/') => dashboard_split.cycle_alerts(),
                             KeyCode::Char('=') => dashboard_split.reset(),
                             KeyCode::Char('?') => {
                                 help_open = true;

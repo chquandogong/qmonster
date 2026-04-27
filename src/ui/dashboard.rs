@@ -88,6 +88,15 @@ impl DashboardSplit {
         self.nudge_alerts(RESIZE_STEP_PERCENT as i16);
     }
 
+    pub fn cycle_alerts(&mut self) {
+        let next = self.alerts_percent.saturating_add(RESIZE_STEP_PERCENT);
+        self.alerts_percent = if next > MAX_ALERTS_PERCENT {
+            MIN_ALERTS_PERCENT
+        } else {
+            next
+        };
+    }
+
     pub fn reset(&mut self) {
         *self = Self::default();
     }
@@ -477,7 +486,7 @@ fn render_split_divider(area: Rect, buf: &mut Buffer, split: DashboardSplit) {
         return;
     }
     Paragraph::new(format!(
-        "drag resize alerts/panes · alerts {}% · [/] resize · = reset",
+        "drag resize alerts/panes · alerts {}% · [ ] resize · / cycle · = reset",
         split.alerts_percent()
     ))
     .style(Style::default().fg(theme::TEXT_DIM).bg(theme::BADGE_BG))
@@ -522,7 +531,7 @@ fn render_footer(
 /// `"focus: alerts"`) decided by the caller.
 fn footer_text(focus: &str, split: DashboardSplit) -> String {
     format!(
-        "{focus} · split {}% · [/] resize · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · p accept · d dismiss · ? help · q quit",
+        "{focus} · split {}% · [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · p accept · d dismiss · ? help · q quit",
         split.alerts_percent()
     )
 }
@@ -587,9 +596,10 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("PgUp / PgDn", "scroll one page in the focused list"),
         ("Home / End", "jump to the first or last item"),
         (
-            "[ / ]",
+            "[ and ]",
             "shrink or grow Alerts; Panes use the remaining height",
         ),
+        ("/", "cycle the Alerts/Panes split by one resize step"),
         ("=", "reset the Alerts/Panes split"),
         ("t", "open tmux target picker (session -> window)"),
         (
@@ -1037,6 +1047,20 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_split_slash_cycle_advances_and_wraps() {
+        let mut split = DashboardSplit::new(DEFAULT_ALERTS_PERCENT);
+        split.cycle_alerts();
+        assert_eq!(
+            split.alerts_percent(),
+            DEFAULT_ALERTS_PERCENT + RESIZE_STEP_PERCENT
+        );
+
+        let mut split = DashboardSplit::new(MAX_ALERTS_PERCENT);
+        split.cycle_alerts();
+        assert_eq!(split.alerts_percent(), MIN_ALERTS_PERCENT);
+    }
+
+    #[test]
     fn footer_text_advertises_prompt_send_keys() {
         // v1.10.2 polish (Codex v1.9.2 / v1.10.0 follow-up): the
         // global footer must advertise `p` (accept) and `d` (dismiss)
@@ -1064,8 +1088,12 @@ mod tests {
             "footer must show current dashboard split: {text}"
         );
         assert!(
-            text.contains("[/] resize"),
+            text.contains("[ ] resize"),
             "footer must advertise split resize keys: {text}"
+        );
+        assert!(
+            text.contains("/ cycle"),
+            "footer must advertise slash split cycle key: {text}"
         );
         assert!(
             text.contains("= reset"),
@@ -1122,7 +1150,8 @@ mod tests {
         };
 
         let drag = entry_for("Mouse drag").expect("help must document divider drag");
-        let resize_keys = entry_for("[ / ]").expect("help must document resize keys");
+        let resize_keys = entry_for("[ and ]").expect("help must document resize keys");
+        let slash_key = entry_for("/").expect("help must document slash cycle key");
         let reset_key = entry_for("=").expect("help must document split reset");
 
         assert!(drag.contains("divider"), "got: {drag}");
@@ -1130,6 +1159,7 @@ mod tests {
             resize_keys.contains("shrink or grow Alerts"),
             "got: {resize_keys}"
         );
+        assert!(slash_key.contains("cycle"), "got: {slash_key}");
         assert!(reset_key.contains("reset"), "got: {reset_key}");
     }
 
