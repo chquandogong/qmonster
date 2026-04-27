@@ -803,12 +803,38 @@ pub fn render_settings_modal(
         rects.body,
     );
 
+    // Mouse-clickable close button at the top-right of the body, mirroring
+    // the help / git / target overlays. The companion click handler in the
+    // main event loop hit-tests the same rectangle via
+    // `settings_close_button_rect()`.
+    frame.render_widget(
+        Paragraph::new("[x]").style(
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        ),
+        settings_close_button_rect(rects.body),
+    );
+
     frame.render_widget(
         Paragraph::new(hint_lines(overlay))
             .style(Style::default().fg(theme::TEXT_DIM))
             .wrap(Wrap { trim: false }),
         rects.hint,
     );
+}
+
+/// Hit-test rectangle for the modal's `[x]` close button. Pure function
+/// so the event loop can ask "did this click land on close?" without
+/// knowing how the modal renders. Mirrors `dashboard::close_button_rect`
+/// — kept local so the settings module is self-contained.
+pub fn settings_close_button_rect(body: Rect) -> Rect {
+    Rect::new(
+        body.x + body.width.saturating_sub(4),
+        body.y,
+        3.min(body.width),
+        1.min(body.height),
+    )
 }
 
 fn build_body_lines<'a>(overlay: &'a SettingsOverlay, config: &'a QmonsterConfig) -> Vec<Line<'a>> {
@@ -1338,5 +1364,38 @@ mod tests {
         assert!(err.contains("warning"), "got: {err}");
         assert!(err.contains("critical"), "got: {err}");
         assert!(!path.exists(), "save must not write when validation fails");
+    }
+
+    // -----------------------------------------------------------------
+    // Cluster G: close-button hit-test (v1.15.19).
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn close_button_rect_sits_at_top_right_of_body() {
+        // Body of width 80 → close button starts at column 76 (80 - 4).
+        let body = Rect::new(10, 5, 80, 20);
+        let rect = settings_close_button_rect(body);
+        assert_eq!(rect.x, 10 + 80 - 4);
+        assert_eq!(rect.y, 5);
+        assert_eq!(rect.width, 3);
+        assert_eq!(rect.height, 1);
+    }
+
+    #[test]
+    fn close_button_rect_stays_inside_body_bounds() {
+        let body = Rect::new(0, 0, 60, 30);
+        let rect = settings_close_button_rect(body);
+        assert!(rect.x + rect.width <= body.x + body.width);
+        assert!(rect.y + rect.height <= body.y + body.height);
+    }
+
+    #[test]
+    fn close_button_rect_clamps_to_tiny_body() {
+        // Degenerate body smaller than the [x] glyph — the rect must still
+        // fit inside without underflowing.
+        let body = Rect::new(0, 0, 2, 1);
+        let rect = settings_close_button_rect(body);
+        assert!(rect.x + rect.width <= body.x + body.width);
+        assert!(rect.y + rect.height <= body.y + body.height);
     }
 }

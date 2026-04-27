@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.18"
-  title: "Qmonster v0.5.0 — v1.15.18 ships an in-TUI settings overlay (`S` key) that lets the operator view and edit the v1.15.16+v1.15.17 advisory thresholds (cost / context / quota × default + Claude + Codex + Gemini, 24 numeric fields) without leaving the dashboard. Edits are applied to the in-memory `QmonsterConfig` immediately and validated per-field (cost ≥ 0; pct ∈ [0, 1]; warning < critical on the same row); `w` writes the full config back to the loaded `--config` TOML path via `toml::to_string_pretty`. New `src/ui/settings.rs` module carries the state machine + render, with 23 mutation-verified state-machine tests. Mission contract & per-provider lift-out from v1.15.17 carry forward unchanged. 499 tests green; fmt + clippy clean. Mission-spec validation is blocked locally because the binary is not installed."
+  version: "1.15.19"
+  title: "Qmonster v0.5.0 — v1.15.19 polishes the v1.15.18 settings overlay with a mouse-clickable `[x]` close button at the top-right of the modal body, mirroring the help / git / target picker overlays. Click on `[x]` closes the overlay; other mouse events are still swallowed so a stray click underneath the modal does not race with the open overlay. New `settings_close_button_rect()` is a pure helper so the click handler in the event loop can hit-test the same rectangle the renderer uses (3 unit tests cover position + bounds clamping). Mission contract, the v1.15.18 settings overlay, and the v1.15.16+v1.15.17 per-provider threshold lift-outs all carry forward unchanged. 502 tests green; fmt + clippy clean."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1200,5 +1200,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 74
+    total_revisions: 75
     history: "mission-history.yaml"

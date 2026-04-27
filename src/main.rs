@@ -1523,11 +1523,22 @@ where
                         let now = Instant::now();
 
                         if settings_overlay.is_open() {
-                            // The settings overlay is keyboard-only; swallow
-                            // mouse events so a stray click underneath the
-                            // modal does not race with the open overlay.
-                            let _ = m;
                             dashboard_split_dragging = false;
+                            // Click on the modal's [x] closes the overlay so
+                            // mouse-only operators can dismiss it without
+                            // reaching for `Esc`/`q`. Other mouse events are
+                            // swallowed so a stray click underneath the modal
+                            // does not race with the open overlay.
+                            let rects = qmonster::ui::settings::settings_modal_rects(viewport);
+                            if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
+                                && rect_contains(
+                                    qmonster::ui::settings::settings_close_button_rect(rects.body),
+                                    m.column,
+                                    m.row,
+                                )
+                            {
+                                settings_overlay.close();
+                            }
                             continue;
                         }
 

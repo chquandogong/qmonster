@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.15.18 in-TUI settings overlay for cost/context/quota thresholds."
+  mission_title: "Qmonster v0.5.0 — v1.15.19 settings overlay [x] close-button polish."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 74
-  latest_version: "1.15.18"
+  total_revisions: 75
+  latest_version: "1.15.19"
 
 timeline:
   - change_id: "initial"
@@ -7640,9 +7640,74 @@ timeline:
       - "If operator wants comment-preserving saves on the source TOML, switch the save path from `toml::to_string_pretty` to `toml_edit` (only the body of `SettingsOverlay::save` changes; the state machine is unchanged)."
       - "If operator wants the overlay to also edit other config sections (actions, refresh, logging, etc.), the FieldId / Section / Scope / Bound model extends naturally."
 
+  - change_id: "qmonster-v1.15.19-settings-overlay-close-button"
+    semantic_version: "1.15.19"
+    change_sequence: 75
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — '새로 추가된 창에도 [x]를 추가하여, 마우스로 종료할 수 있도록 해줘'"
+    change_type: "polish"
+    motivation_type: "operator-ergonomics"
+    persistence: "permanent"
+    intent: >
+      The v1.15.18 settings overlay was keyboard-only, while every other
+      modal in the dashboard (help, git, target picker) carries a
+      mouse-clickable `[x]` close button at the top-right. The operator
+      asked for parity so the settings modal can also be dismissed with
+      a click instead of reaching for `Esc` / `q`.
+    decision: >
+      Render `[x]` at the top-right of the settings modal body using
+      the same 3-wide × 1-tall hit-test rectangle the help / git /
+      target overlays use, and add a click handler in the main event
+      loop's mouse path that closes the overlay when a left-click lands
+      on that rectangle. The hit-test rect is exposed as a pure helper
+      (`settings_close_button_rect(body)`) so the click handler in
+      main.rs and the renderer in `render_settings_modal` agree on the
+      same rectangle. Other mouse events while the overlay is open are
+      still swallowed (no scroll, no click-through to the dashboard
+      underneath) — only the close-button click does anything.
+    triggered_by: "Operator instruction (2026-04-25): '새로 추가된 창에도 [x]를 추가하여, 마우스로 종료할 수 있도록 해줘'."
+    issue_or_context: >
+      Mouse parity with the existing modals is not just cosmetic — it
+      removes a class of friction where the operator has the cursor
+      hovering the modal but has to switch to keyboard input to dismiss
+      it. Matching the help / git / target pattern keeps the dashboard
+      dismissal contract uniform across overlays.
+    changes:
+      added:
+        - "src/ui/settings.rs::settings_close_button_rect (pub helper) — top-right 3×1 rect computation"
+        - "src/ui/settings.rs::render_settings_modal — `[x]` paragraph rendered at the close-button rect"
+        - "Tests: close_button_rect_sits_at_top_right_of_body + close_button_rect_stays_inside_body_bounds + close_button_rect_clamps_to_tiny_body (3 unit tests covering position, body-bounds containment, and degenerate-tiny-body clamping)"
+      modified:
+        - "src/main.rs Event::Mouse handler for the settings overlay — replaces the unconditional swallow with a check-for-close-button-click + close-on-hit, then continue (other mouse events still swallowed)"
+      removed: []
+    changed_sections:
+      - "src/ui/settings.rs::render_settings_modal + new pub helper"
+      - "src/main.rs::settings_overlay mouse branch"
+    done_when_delta:
+      added:
+        - "Operator can dismiss the settings overlay by left-clicking the `[x]` glyph at the top-right of the modal body"
+      modified:
+        - "Mouse handling for the open settings overlay now distinguishes close-button clicks from incidental clicks instead of swallowing all mouse events"
+      removed: []
+    impact_scope:
+      code: "+~30 LoC (settings.rs render + helper + 3 tests; main.rs mouse branch swap)"
+      tests: "502 total — 428 lib + 14 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 499 at v1.15.18; +3 = the new close-button hit-test tests)"
+      ledger: "1 new timeline entry (sequence 75); meta bump"
+      review_gate: "operator-ergonomics polish; confirm-archive remains closed; local fmt/test/clippy pass."
+      follow_up_carryover: "Settings overlay now matches help / git / target overlays for mouse-dismissal. No further parity gaps in the modal cluster."
+    breaking: false
+    risk: "low — the change is a pure addition: a paragraph is drawn at a previously-empty 3×1 rect, and a mouse-click on that rect closes the overlay. Other mouse events are still swallowed so the dashboard underneath cannot accidentally react to an open overlay's clicks. fmt + clippy clean; 502 tests pass."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.19 at this commit."
+
 evolution_summary:
-  current_phase: "v1.15.18 in-TUI settings overlay. New `S` key opens a modal that lets the operator view + edit the 24 cost / context / quota threshold fields shipped in v1.15.16 + v1.15.17, with per-field validation, override clear, and a `w` write-back to the loaded TOML config path. Live edits apply immediately to the in-memory `QmonsterConfig` so the next policy pass uses them. v1.15.17's per-provider context+quota lift-out, v1.15.16's per-provider cost lift-out, v1.15.15's COST badge severity coloring, v1.15.14's cost_pressure_* advisory pair, and the v1.15.13 / v1.15.12 / v1.15.11 / v1.15.10 / v1.15.8 stack all carry forward unchanged. 499 tests green; clippy + fmt clean."
-  next_phase: "Same direction; v1.15.x patch line continues for operator-driven UX iteration. Save path is currently comment-lossy via `toml::to_string_pretty`; swap to `toml_edit` if operators ask for format-preserving writes. The settings overlay covers thresholds today; extending to other config sections (actions / refresh / logging / etc.) is mechanical follow-up. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.15.19 settings overlay [x] close-button polish — mouse parity with the help / git / target overlays. The v1.15.18 settings overlay still owns the threshold-editing surface; v1.15.19 only adds a click-to-close affordance at the top-right of the modal body. v1.15.17's per-provider context+quota lift-out, v1.15.16's per-provider cost lift-out, v1.15.15's COST badge severity coloring, v1.15.14's cost_pressure_* advisory pair, and the v1.15.13 / v1.15.12 / v1.15.11 / v1.15.10 / v1.15.8 stack all carry forward unchanged. 502 tests green; clippy + fmt clean."
+  next_phase: "Same direction; v1.15.x patch line continues for operator-driven UX iteration. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). The settings overlay still covers thresholds only; extending to other config sections (actions / refresh / logging / etc.) is mechanical follow-up. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
