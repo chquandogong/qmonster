@@ -97,8 +97,10 @@ session:window · Provider role · %pane_id
   임계치를 공유합니다.
 - 현재 `CTX`는 구조적으로 확인 가능한 provider status에서만 채웁니다.
   Claude는 live statusline의 `CTX N%`, Codex는 bottom status line,
-  Gemini는 status table의 `context` 컬럼을 사용합니다. 과거 Claude
-  `/context` capture overlay 파서는 호환용으로 남아 있지만, 운영 경로는
+  Gemini는 status table의 `context` 컬럼을 사용합니다. Claude `/clear`
+  직후 statusline이 `CTX —`를 노출하면 Qmonster는 이전 CTX cache를
+  재사용하지 않고 `CTX 0%`로 표시합니다. 과거 Claude `/context`
+  capture overlay 파서는 호환용으로 남아 있지만, 운영 경로는
   statusline입니다.
 - `QUOTA 5H`와 `QUOTA WEEK`는 Claude/Codex 전용 split quota입니다.
   Claude는 live statusline의 `5h N%`와 `7d N%`를 그대로 pressure로

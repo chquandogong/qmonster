@@ -2078,4 +2078,11 @@ fn claude_pressure_metrics_survive_separate_runtime_surfaces() {
             .abs()
             < 1e-6
     );
+
+    ctx.source.panes[0].tail = "Opus 4.7 (1M context)·max  CTX —  5h 0%  7d 36%  ~/Qmonster".into();
+    let reports = run_once(&mut ctx, Instant::now()).expect("post-clear statusline ok");
+    assert!(
+        (reports[0].signals.context_pressure.as_ref().unwrap().value - 0.0).abs() < 1e-6,
+        "Claude /clear statusline must overwrite the cached pre-clear CTX with 0%"
+    );
 }

@@ -174,7 +174,9 @@ v1.16.51 originally split provider pressure semantics into context,
 5-hour quota, and weekly quota windows. Codex still sources its split
 quota values from bottom-status `5h` and `weekly`; v1.17.1 makes Claude
 source the live values from statusline `CTX`, `5h`, and `7d` instead of
-slash-command runtime captures.
+slash-command runtime captures. v1.21.3 treats Claude statusline
+`CTX —` after `/clear` as a visible 0% reset so the pressure cache does
+not replay the pre-clear CTX.
 v1.16.55 completes Phase C C3 by adding `codex-review` and
 `gemini-policy-review` profile recommendations in `policy/rules/profiles.rs`.
 They fire only for healthy `Role::Review` panes at medium-or-higher

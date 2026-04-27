@@ -1,8 +1,8 @@
 {
   "name": "qmonster",
-  "version": "1.21.2",
+  "version": "1.21.3",
   "description": "Observe-first TUI for multi-CLI tmux development.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/chquandogong/qmonster.git"
@@ -30,6 +30,7 @@
     "config/",
     "docs/ai/",
     "README.md",
+    "LICENSE",
     "VERSION.md",
     "CONTRIBUTING.md"
   ],

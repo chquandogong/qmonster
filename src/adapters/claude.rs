@@ -237,7 +237,8 @@ fn parse_claude_status_line_row(line: &str) -> Option<ClaudeStatusLine> {
     // Each percent search is bounded by the next label so that an em-dash
     // placeholder (statusline.sh renders missing JSON fields as "—") in
     // one column cannot bleed the following column's value into itself.
-    let context_pressure = percent_in_range(trimmed, ctx_idx + "ctx".len(), h5_idx);
+    let context_pressure =
+        percent_or_zero_placeholder_in_range(trimmed, ctx_idx + "ctx".len(), h5_idx);
     let quota_5h_pressure = percent_in_range(trimmed, h5_idx + "5h".len(), d7_idx);
     let quota_weekly_pressure = percent_in_range(trimmed, d7_idx + "7d".len(), trimmed.len());
     let (model, reasoning_effort) = parse_claude_statusline_model(&trimmed[..ctx_idx])?;
@@ -287,6 +288,20 @@ fn percent_in_range(line: &str, start: usize, bound: usize) -> Option<f32> {
     let segment = line.get(start..bound)?;
     let pct_idx = segment.find('%')?;
     parse_percent_before(segment, pct_idx)
+}
+
+fn percent_or_zero_placeholder_in_range(line: &str, start: usize, bound: usize) -> Option<f32> {
+    let segment = line.get(start..bound)?;
+    if let Some(pct_idx) = segment.find('%') {
+        return parse_percent_before(segment, pct_idx);
+    }
+    status_placeholder_token(segment).then_some(0.0)
+}
+
+fn status_placeholder_token(segment: &str) -> bool {
+    segment
+        .split_whitespace()
+        .any(|token| matches!(token, "—" | "–" | "-"))
 }
 
 fn path_after_label(line: &str, idx: usize, label: &str) -> Option<String> {
@@ -895,11 +910,11 @@ Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster
     }
 
     #[test]
-    fn claude_statusline_em_dash_ctx_does_not_steal_5h_value() {
+    fn claude_statusline_em_dash_ctx_resets_to_zero_after_clear() {
         // statusline.sh renders missing JSON fields as a dim em-dash.
         // After /clear, .context_window.used_percentage is absent so the
-        // line shows `CTX —`. The parser must leave context_pressure
-        // unset and not pull 5h's percent into CTX.
+        // line shows `CTX —`. Treat that as a provider-visible reset to
+        // 0% so the event-loop cache cannot replay the pre-clear CTX.
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
@@ -909,8 +924,8 @@ Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster
         let set = ClaudeAdapter.parse(&c);
 
         assert!(
-            set.context_pressure.is_none(),
-            "CTX em-dash must leave context_pressure unset, not bleed 5h's 88%"
+            (set.context_pressure.as_ref().unwrap().value - 0.0).abs() < 1e-6,
+            "CTX em-dash after /clear must render as 0%, not replay the old cached value"
         );
         assert!((set.quota_5h_pressure.as_ref().unwrap().value - 0.88).abs() < 1e-6);
         assert!((set.quota_weekly_pressure.as_ref().unwrap().value - 0.43).abs() < 1e-6);
@@ -979,7 +994,7 @@ Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
 
-        assert!(set.context_pressure.is_none());
+        assert!((set.context_pressure.as_ref().unwrap().value - 0.0).abs() < 1e-6);
         assert!(set.quota_5h_pressure.is_none());
         assert!(set.quota_weekly_pressure.is_none());
         assert_eq!(

@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.21.2 — Claude statusline placeholder-safe metrics."
+  mission_title: "Qmonster v1.21.3 — MIT license and Claude clear CTX reset."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 149
-  latest_version: "1.21.2"
+  total_revisions: 150
+  latest_version: "1.21.3"
 
 timeline:
   - change_id: "initial"
@@ -13358,8 +13358,85 @@ timeline:
       - "e4c67d6 claude: handle partial statusline percentages"
     follow_up: []
 
+  - change_id: "v1.21.3-mit-license-and-claude-clear-ctx-zero"
+    semantic_version: "1.21.3"
+    change_sequence: 150
+    date: "2026-04-28"
+    author: "Codex"
+    contributors:
+      - "Operator directive: add MIT license page, reorganize README phase status, publish release, then assess project completion"
+    change_type: "bugfix"
+    motivation_type: "operator-reported observability gap"
+    persistence: "permanent"
+    intent: >
+      Make the npm/source package explicitly MIT licensed and ensure
+      Claude `/clear` resets CTX display to 0% instead of preserving the
+      previous cached CTX value.
+    intent_ko: >
+      npm/source package를 명시적으로 MIT 라이선스로 전환하고, Claude
+      `/clear` 이후 CTX 표시가 이전 cache 값을 유지하지 않고 0%로
+      재설정되도록 한다.
+    decision: >
+      Add the root LICENSE file and mark package/Cargo metadata as MIT.
+      Rework README phase status into a compact current-state table plus
+      recent release notes. Parse Claude statusline `CTX —` as a
+      provider-official 0% context value so the event-loop pressure cache
+      is overwritten on the next poll; keep `5h` and `7d` placeholders
+      conservative unless a numeric value is visible.
+    decision_ko: >
+      root LICENSE 파일을 추가하고 package/Cargo metadata를 MIT로
+      표시한다. README phase status를 현재 상태 table과 최근 release
+      note 중심으로 재정리한다. Claude statusline `CTX —`는
+      provider-official 0% context 값으로 파싱해 다음 poll에서 event-loop
+      pressure cache가 덮어써지게 한다. `5h`와 `7d` placeholder는 숫자가
+      보일 때만 표시하는 보수적 동작을 유지한다.
+    triggered_by: "Operator requested MIT license page, README phase-status cleanup, and Claude `/clear` CTX reset to 0%."
+    issue_or_context: >
+      v1.21.2 made the adapter avoid stealing adjacent percentages from
+      statusline placeholders, but the live Claude pressure cache could
+      still reuse a previous CTX value when the post-clear statusline
+      exposed `CTX —`. That made the UI look as if context usage had not
+      reset after `/clear`.
+    changes:
+      added:
+        - "`LICENSE` with MIT text"
+        - "`status_placeholder_token` / `percent_or_zero_placeholder_in_range` helpers in `src/adapters/claude.rs`"
+        - "Event-loop regression assertion that a post-clear Claude statusline overwrites cached CTX with 0%"
+      modified:
+        - "`package.json` version 1.21.3, license MIT, package files include LICENSE"
+        - "`Cargo.toml` package license set to MIT"
+        - "`README.md` phase status reorganized into current release, phase table, and recent release notes"
+        - "`docs/ai/PROJECT_BRIEF.md`, `docs/ai/ARCHITECTURE.md`, `docs/ai/UI_MANUAL.md`, `docs/ai/VALIDATION.md` updated for v1.21.3 semantics"
+        - "`mission.yaml`, `mission-history.yaml`, and `VERSION.md` bumped to v1.21.3"
+      removed: []
+    changed_sections:
+      - "license metadata"
+      - "Claude statusline CTX parsing"
+      - "event-loop pressure cache regression coverage"
+      - "README phase status"
+      - "canonical docs and mission ledger"
+    observable_effects:
+      added:
+        - "Claude panes after `/clear` show `CTX 0%` when the visible statusline renders `CTX —`"
+        - "The published npm package advertises MIT licensing and includes the LICENSE file"
+      modified:
+        - "README phase status is table-first instead of a long patch-level paragraph"
+      removed: []
+    impact_scope:
+      runtime: "Claude context metric parsing only; no tmux transport, policy rule, storage, or actuation behavior change."
+      tests: "release validation run before commit/tag/publish"
+      ledger: "1 new timeline entry (sequence 150); meta bump; patch version bump v1.21.2 → v1.21.3"
+      npm: "package.json version set to 1.21.3"
+      review_gate: "local validation before publish"
+      follow_up_carryover: "Post-release project completion assessment requested by operator."
+    breaking: false
+    risk: "low — the 0% reset is limited to explicit Claude `CTX` placeholder tokens; quota placeholders keep the prior conservative absent behavior."
+    related_commits: []
+    follow_up:
+      - "Assess `.docs/init/` goals against actual visible/working UI features and identify remaining work."
+
 evolution_summary:
-  current_phase: "v1.21.2 keeps Claude statusline placeholder metrics honest by treating `CTX —`, `5h —`, and `7d —` as absent instead of borrowing adjacent percentages. v1.21.1 keeps Codex CTX/quota visible after `/clear` by surfacing partial bottom-status fields when the total token field is absent."
+  current_phase: "v1.21.3 adds MIT licensing and makes Claude `/clear` statusline `CTX —` render as `CTX 0%` so the UI does not preserve the pre-clear cached CTX. v1.21.2 keeps Claude statusline placeholder metrics bounded per column, and v1.21.1 keeps Codex CTX/quota visible after `/clear` by surfacing partial bottom-status fields when the total token field is absent."
   next_phase: "Phase E is fully shipped. No outstanding housekeeping items remain in the deferred ledger besides confirm-archive review (permanently closed per operator decision 2026-04-27). Awaiting new operator-directed work."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

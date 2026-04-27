@@ -1,6 +1,6 @@
 mission:
-  version: "1.21.2"
-  title: "Qmonster v1.21.2 — Claude statusline placeholder-safe metrics."
+  version: "1.21.3"
+  title: "Qmonster v1.21.3 — MIT license and Claude clear CTX reset."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1346,5 +1346,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 140
+    total_revisions: 150
     history: "mission-history.yaml"

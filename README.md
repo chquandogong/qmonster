@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.21.2`; current mission ledger `v1.21.2`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.21.3`; current mission ledger `v1.21.3`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,74 +31,45 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current line: `v1.21.2` keeps Claude statusline placeholders honest:
-`CTX —`, `5h —`, or `7d —` stay absent instead of borrowing the next
-visible percent, while model/path and the other present percentages
-remain visible. `v1.21.1` keeps Codex `/clear` sessions observable by
-showing visible bottom-status `CTX`, `5h`, `weekly`, model/path/branch,
-and token fields even when Codex omits the `N used` total immediately
-after the clear. `v1.21.0` finishes Phase E by parsing the Gemini status
-table's `memory` column (`118.8 MB` / `1.2 GB`) into a new
-`process_memory_mb` SignalSet field, surfaced as a `MEM` badge on
-Gemini pane cards (and a `memory` entry in the `--once` metrics row).
-Claude / Codex still leave the field `None` because their status
-surfaces don't expose process memory. `v1.20.0` opened Phase E with comment-preserving settings
-save: when the operator presses `w` in the `S` overlay, Qmonster now
-reads the existing `qmonster.toml` via `toml_edit` and surgically
-updates only the 28 cost/context/quota threshold keys, leaving every
-other section, comment, and key order untouched. Fresh-write fallback
-remains for operators with no prior config file. `v1.19.0` closes Phase D D3 honestly — D3-A refines
-Claude subagent detection so `● Task(` fires `subagent_hint` while
-ordinary tool calls (`● Bash(...)`, `● Read(...)`) and TODO-list prose
-(`Task 1 — ...`) stay silent; D3-C marks per-subagent token
-attribution as permanently deferred since none of Claude/Codex/Gemini
-exposes per-subagent input/output counters today. It also handles
-Codex status lines that expose effort only in a trailing
-model-with-reasoning item such as `gpt-5.5 xhigh`. `v1.18.0` added Phase D D2 identity-drift anomaly
-detection. When the operator opts in via `[security]
-identity_drift_findings = true`, a passive `Concern` recommendation
-fires on the affected pane the first time its resolved provider or
-`current_path` changes between polls (e.g. Claude → Codex inside the
-same pane, or `cd` into a different worktree). Per-session dedup keeps
-the same drift from firing repeatedly. Default config keeps drift
-silent because routine CLI swaps are normal operator behavior.
-`v1.17.1` reads Claude runtime facts directly from the visible
-statusline (`CTX`, `5h`, `7d`, model, effort, path, permission mode)
-and no longer sends Claude slash commands from the `u` key.
-`v1.17.0` opened Phase D with cross-window concurrent-work correlation.
-Two healthy Main/Review panes that share `current_path` +
-`git_branch` but live in different tmux windows now fire a distinct
-`Cross-Window` Concern finding once the operator opts in via
-`[security] cross_window_findings = true`. Same-window panes keep the
-existing `Cross-Pane` Warning behavior unchanged. `v1.16.58` keeps
-Gemini panes active while their tail is still changing even if the live
-prompt placeholder remains visible. `v1.16.57` stopped Gemini `thinking...`
-tails from falling through stillness detection into `IDLE` and removed
-the unconditional active-pane Claude `Escape`. `v1.16.56` narrowed the `code-exploration`
-advisory to drop the bare `output_chars >= 1500` fallback that was
-firing on every healthy Main pane in the 2026-04-28 live audit.
-`v1.16.55` completed Phase C C3 by
-adding the named review-tier profile recommendations for Codex and
-Gemini review panes: `codex-review` and `gemini-policy-review`. Phase
-C C2 remains complete: `[tmux] source = "auto"` prefers control-mode
-and falls back to polling at startup when attach is unavailable.
+Current release: `v1.21.3` / npm `1.21.3`.
 
-| Area                  | Status   | Notes                                                                                                                                                                         |
-| --------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phases 0-5            | Shipped  | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete.                                                |
-| Runtime observability | Shipped  | Pane state, command row, provider facts, copyable `run:` commands, security posture badges, cost/context/quota gradients, and settings overlay are live.                      |
-| Phase B visibility    | Complete | Standard config/pricing paths, command row, Codex in/out token detail, opt-in security advisories, quieter concurrent-work warnings, and Phase-B docs consistency are closed. |
-| Phase C C1            | Complete | `src/main.rs` was split into app modules through `src/app/tui_loop.rs`; main is now a thin CLI/startup/TUI wrapper.                                                           |
-| Phase C C2            | Complete | `PaneSource` supports polling and control-mode; auto source now tries control-mode first with polling fallback.                                                               |
-| Phase C C3            | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled profile payloads.                                      |
-| Phase D D1            | Shipped  | Opt-in `[security] cross_window_findings = true` surfaces a `Cross-Window` Concern when same path+branch panes span 2+ tmux windows; default config preserves prior behavior. |
-| Phase D D2            | Shipped  | Opt-in `[security] identity_drift_findings = true` surfaces a `Concern` when a pane's provider or worktree path changes between polls; per-session dedup; default off.        |
+`v1.21.3` is a small operator-facing cleanup: the package is now MIT
+licensed, and Claude `/clear` statuslines render `CTX —` as `CTX 0%`
+instead of replaying the pre-clear cached CTX value. Quota placeholders
+remain conservative: `5h` / `7d` render only when Claude exposes a
+numeric value.
+
+| Area                  | Status   | Operator-visible result                                                                                                                                 |
+| --------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phases 0-5            | Shipped  | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete.                          |
+| Runtime observability | Shipped  | Pane state, command row, provider facts, copyable `run:` commands, security posture badges, cost/context/quota gradients, and settings overlay are live. |
+| Phase B visibility    | Complete | Standard config/pricing paths, Codex token in/out, opt-in security advisories, branch-aware concurrent-work warnings, and copyable commands are closed.  |
+| Phase C C1            | Complete | `src/main.rs` is a thin CLI/startup wrapper; the live TUI loop and helpers live under `src/app/`.                                                        |
+| Phase C C2            | Complete | `[tmux] source = "auto"` tries control-mode first and falls back to polling when attach is unavailable.                                                  |
+| Phase C C3            | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled payloads.                        |
+| Phase D D1            | Shipped  | Opt-in cross-window concurrent-work findings exist for same path + branch panes across tmux windows.                                                    |
+| Phase D D2            | Shipped  | Opt-in identity-drift findings catch provider or worktree changes in the same pane, with per-session dedup.                                             |
+| Phase D D3            | Closed   | Claude subagent detection is refined; per-subagent token attribution stays permanently deferred because providers do not expose counters.                |
+| Phase E E1            | Shipped  | Gemini status-table memory is parsed into `MEM` badges and `--once` metrics.                                                                            |
+| Phase E E2            | Shipped  | Settings overlay writes preserve existing TOML comments, unrelated sections, and key order.                                                             |
+
+Recent release notes:
+
+- `v1.21.3`: Claude `/clear` `CTX —` becomes `CTX 0%`; package metadata
+  and repo license switch to MIT.
+- `v1.21.2`: Claude statusline percent parsing is bounded per column so
+  placeholders do not steal adjacent values.
+- `v1.21.1`: Codex `/clear` keeps visible CTX/quota/model/path/token
+  fields even when the total token field is absent.
+- `v1.21.0`: Gemini `memory` status-table column surfaces as `MEM`.
+- `v1.20.0`: settings overlay saves only threshold keys without
+  rewriting the rest of `qmonster.toml`.
 
 ### Current Metric Contracts
 
 | Metric     | Claude                                                | Codex                                                  | Gemini                 |
 | ---------- | ----------------------------------------------------- | ------------------------------------------------------ | ---------------------- |
-| CTX        | statusline `CTX`                                      | bottom status line                                     | status table `context` |
+| CTX        | statusline `CTX`; `CTX —` after `/clear` renders `0%` | bottom status line                                     | status table `context` |
 | QUOTA 5H   | statusline `5h`                                       | bottom status `5h` remaining, inverted to pressure     | n/a                    |
 | QUOTA WEEK | statusline `7d`                                       | bottom status `weekly` remaining, inverted to pressure | n/a                    |
 | QUOTA      | n/a                                                   | n/a                                                    | single quota surface   |
@@ -275,6 +246,7 @@ not require a real tmux session.
 - `docs/ai/UI_MANUAL.md` — user manual for TUI badges, severity letters, and metrics
 - `VERSION.md` — version surface map (ledger tag, npm package, Cargo crate)
 - `CONTRIBUTING.md` — local development, documentation, and release rules
+- `LICENSE` — MIT license
 
 ## Status & scope
 
@@ -284,3 +256,7 @@ console. Default action mode is `recommend_only`; refresh policy is
 `manual_only`; logging sensitivity is `balanced`. All four safety flags
 can only move toward safer via env/CLI — attempted upward overrides
 are rejected and audit-logged.
+
+## License
+
+MIT. See `LICENSE`.
