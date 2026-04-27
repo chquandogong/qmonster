@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.8 operator action extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.9 once report extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -42,7 +42,7 @@ checkpoint, retention, and durable audit storage.
 ```
 src/
   main.rs      # CLI entry + current TUI event loop (still too large)
-  app/         # bootstrap, config+safety-precedence, event loop, keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action helpers, effect gate
+  app/         # bootstrap, config+safety-precedence, event loop, keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # polling first; control-mode-capable PaneSource trait
   adapters/    # per-provider tail parsers (no identity inference)
@@ -72,7 +72,8 @@ to its original system-notice clear role; alert command copy remains on
 and key/mouse handling into `app::modal_state`. v1.16.7 moves settings
 overlay key and mouse dispatch into `app::settings_overlay`. v1.16.8
 moves operator version-refresh and snapshot-write helpers into
-`app::operator_actions`.
+`app::operator_actions`. v1.16.9 moves `--once` report formatting into
+`app::once_report`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

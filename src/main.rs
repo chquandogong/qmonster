@@ -32,6 +32,7 @@ use qmonster::app::keymap::{
 use qmonster::app::modal_state::{
     ScrollModalState, handle_scroll_modal_key, handle_scroll_modal_mouse,
 };
+use qmonster::app::once_report::print_once_reports;
 use qmonster::app::operator_actions::{version_refresh_notices, write_operator_snapshot};
 use qmonster::app::path_resolution::pick_root;
 use qmonster::app::runtime_refresh::{
@@ -288,7 +289,7 @@ fn main() -> anyhow::Result<()> {
         }
         println!();
         let reports = run_once(&mut ctx, Instant::now())?;
-        print_reports(&reports, &ctx.config);
+        print_once_reports(&reports, &ctx.config);
         return Ok(());
     }
 
@@ -313,103 +314,6 @@ fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
     clipboard
         .set_text(text.to_string())
         .map_err(|e| e.to_string())
-}
-
-fn print_reports(reports: &[PaneReport], config: &qmonster::app::config::QmonsterConfig) {
-    // 1. Cross-pane findings.
-    for rep in reports {
-        for f in &rep.cross_pane_findings {
-            println!(
-                "[{}] [{}] CROSS-PANE: {} (anchor: {}, others: {})",
-                f.severity.letter(),
-                qmonster::ui::labels::source_kind_label(f.source_kind),
-                f.reason,
-                f.anchor_pane_id,
-                f.other_pane_ids.join(", "),
-            );
-        }
-    }
-    // 2. Strong recommendations (G-7 checkpoint UX).
-    for rep in reports {
-        for rec in rep.recommendations.iter().filter(|r| r.is_strong) {
-            println!(
-                "{}",
-                qmonster::ui::alerts::format_strong_rec_body(rec, &rep.pane_id)
-            );
-        }
-    }
-    // 2b. Pending prompt-send proposals (P5-2 v1.9.2). Emitted
-    // alongside strong recs so the operator sees the structured
-    // proposal immediately below the CHECKPOINT line that generated
-    // it. `--once` mode has no accept keystroke (non-interactive),
-    // but we still reflect the `EffectRunner::permit` gate state so
-    // `observe_only` prints an honest "send disabled" form instead of
-    // advertising keys that would be ignored by the interactive TUI.
-    let runner = qmonster::app::effects::EffectRunner::new(config);
-    for rep in reports {
-        for effect in &rep.effects {
-            if let qmonster::domain::recommendation::RequestedEffect::PromptSendProposed {
-                target_pane_id,
-                slash_command,
-                ..
-            } = effect
-            {
-                let accept_gated = runner.permit(effect);
-                println!(
-                    "{}",
-                    qmonster::ui::alerts::format_prompt_send_proposal(
-                        target_pane_id,
-                        slash_command,
-                        accept_gated,
-                    )
-                );
-            }
-        }
-    }
-    // 3. Per-pane summaries with non-strong recommendations.
-    for r in reports {
-        println!(
-            "{}:{} {} {:?}:{}:{:?} confidence={:?} dead={}",
-            r.session_name,
-            r.window_index,
-            r.pane_id,
-            r.identity.identity.provider,
-            r.identity.identity.instance,
-            r.identity.identity.role,
-            r.identity.confidence,
-            r.dead
-        );
-        println!("  path: {}", r.current_path);
-        println!("  cmd: {}", r.current_command);
-        let chips = qmonster::ui::panels::signal_chips(&r.signals);
-        if !chips.is_empty() {
-            println!("  state: {}", chips.join(" | "));
-        }
-        let metrics = qmonster::ui::panels::metric_row(&r.signals);
-        if !metrics.is_empty() {
-            println!("  metrics: {metrics}");
-        }
-        let runtime = qmonster::ui::panels::runtime_row(&r.signals);
-        if !runtime.is_empty() {
-            println!("  runtime: {runtime}");
-        }
-        if !r.effects.is_empty() {
-            let names: Vec<String> = r.effects.iter().map(|e| format!("{e:?}")).collect();
-            println!("  effects: {}", names.join(" "));
-        }
-        for rec in r.recommendations.iter().filter(|rec| !rec.is_strong) {
-            println!(
-                "  {}",
-                qmonster::ui::alerts::format_recommendation_body(rec, &r.pane_id)
-            );
-            // v1.8.1: surface the structured ProviderProfile payload so
-            // lever key/value/citation/SourceKind are visible in --once
-            // (Codex P4-1 finding #1 closed).
-            for line in qmonster::ui::panels::format_profile_lines(rec) {
-                println!("    {line}");
-            }
-        }
-    }
 }
 
 // Phase 5 P5-3 second gate types (`PromptSendGate` + `check_send_gate`)

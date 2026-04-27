@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.8 operator action extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.9 once report extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 90
-  latest_version: "1.16.8"
+  total_revisions: 91
+  latest_version: "1.16.9"
 
 timeline:
   - change_id: "initial"
@@ -8849,8 +8849,79 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.9-once-report-extraction"
+    semantic_version: "1.16.9"
+    change_sequence: 91
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C and perform enough C1 decomposition before C2"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving `--once` report formatting out of
+      `src/main.rs`.
+    intent_ko: >
+      `--once` report formatting을 `src/main.rs` 밖으로 옮겨 Phase C C1
+      분해를 계속한다.
+    decision: >
+      Add `src/app/once_report.rs` with a line-formatting helper plus a
+      small printing wrapper. Keep live TUI rendering in `src/main.rs`;
+      this slice only moves the non-interactive report surface used by
+      smoke tests and scripted checks.
+    decision_ko: >
+      line-formatting helper와 작은 출력 wrapper를 가진
+      `src/app/once_report.rs`를 추가한다. live TUI rendering은
+      `src/main.rs`에 유지하고, 이번 슬라이스는 smoke test와 scripted
+      check에서 쓰는 non-interactive report surface만 옮긴다.
+    triggered_by: "Continuation after the v1.16.8 operator action extraction."
+    issue_or_context: >
+      `src/main.rs` still owned a 100-line `print_reports` helper that
+      formatted cross-pane findings, strong recommendations,
+      prompt-send proposals, pane summaries, metrics, runtime facts, and
+      profile lines for `--once`. The helper had no dependency on live
+      TUI state.
+    changes:
+      added:
+        - "src/app/once_report.rs: `format_once_report_lines`, `print_once_reports`, and 3 unit tests"
+      modified:
+        - "src/app/mod.rs exports the once_report module"
+        - "src/main.rs delegates `--once` report output to app::once_report"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.9"
+      removed:
+        - "inline `print_reports` helper from src/main.rs"
+    changed_sections:
+      - "src/app/once_report.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Eighth Phase C C1 code slice exists outside main.rs"
+        - "`--once` report formatting is covered by direct unit tests"
+      modified:
+        - "main.rs no longer owns non-interactive report formatting"
+      removed:
+        - "`print_reports` helper from the CLI/TUI entry module"
+    impact_scope:
+      code: "internal refactor only; no report ordering, wording, shortcut, tmux, policy, or TUI behavior change intended"
+      tests: "541 total passed — 479 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+3 lib tests vs v1.16.8)"
+      ledger: "1 new timeline entry (sequence 91); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — output formatting is moved behind an equivalent wrapper and direct unit coverage locks the main report categories."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.8 operator action extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, and operator_actions helper modules already extracted."
+  current_phase: "v1.16.9 once report extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, and once_report helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
