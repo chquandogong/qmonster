@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.16.58 — Restore active-safe runtime refresh."
+  mission_title: "Qmonster v1.16.59 — Restore Claude runtime surface cycle."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 140
-  latest_version: "1.16.58"
+  total_revisions: 141
+  latest_version: "1.16.59"
 
 timeline:
   - change_id: "initial"
@@ -12479,8 +12479,96 @@ timeline:
     follow_up:
       - "If Gemini can remain visually working with a completely still tail and no progress marker, add a provider-title or control-sequence based signal; tail-only parsing cannot observe that state."
 
+  - change_id: "v1.16.59-claude-runtime-cycle"
+    semantic_version: "1.16.59"
+    change_sequence: 141
+    date: "2026-04-28"
+    author: "Codex (GPT-5.5)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "patch"
+    motivation_type: "operator-live-regression"
+    persistence: "permanent"
+    intent: >
+      Restore the operator-requested Claude `u` key contract: repeated
+      presses rotate through the Claude runtime surfaces rather than
+      collapsing active/uncertain panes to `/stats` only.
+    intent_ko: >
+      Claude `u` 키의 운영자 요청 계약을 복구한다. 반복 입력은 active/uncertain
+      pane을 `/stats` 하나로 축소하지 않고 Claude runtime surface를 순환한다.
+    decision: >
+      Claude runtime refresh now uses the same one-command cycle across
+      active, stale, idle, wait, and limit states: `/status`, `/usage`,
+      `/stats`. Qmonster does not send a pre-command Escape. For each
+      Claude command, it submits the slash command, waits/captures a
+      deeper runtime tail, stores the one-shot parser overlay, and then
+      sends Escape to close the fullscreen provider surface so the next
+      `u` press can run the next command.
+    decision_ko: >
+      Claude runtime refresh는 active/stale/idle/wait/limit 상태 모두에서 같은
+      one-command 순환(`/status`, `/usage`, `/stats`)을 사용한다. Qmonster는
+      명령 전에 `Escape`를 보내지 않는다. 각 Claude 명령마다 slash command를
+      전송하고, 깊은 runtime tail을 기다려 캡처한 뒤 one-shot parser overlay로
+      저장하고, 그 다음 `Escape`를 보내 fullscreen provider surface를 닫아 다음
+      `u` 입력이 이어서 동작하게 한다.
+    triggered_by: "operator clarified Claude `u` should alternate `/status`, `/usage`, `/stats`, capture enough screen output, then press Escape to close the surface"
+    issue_or_context: >
+      v1.16.58 restored a non-blocked active Claude path by sending only
+      `/stats`, but the operator wanted the earlier rotating runtime
+      surface behavior. The interrupting part was the pre-command Escape;
+      the requested close step happens after Qmonster has captured the
+      opened runtime surface.
+    changes:
+      added: []
+      modified:
+        - "src/app/runtime_refresh.rs"
+        - "README.md"
+        - "VERSION.md"
+        - "docs/ai/ARCHITECTURE.md"
+        - "docs/ai/PROJECT_BRIEF.md"
+        - "docs/ai/UI_MANUAL.md"
+        - "docs/ai/VALIDATION.md"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - "package.json"
+      removed: []
+    changed_sections:
+      - "Claude runtime refresh command cycle"
+      - "Claude runtime refresh capture-and-close contract"
+      - "operator docs and ledger"
+    done_when_delta:
+      added:
+        - "Claude `u` cycles `/status`, `/usage`, `/stats` for active and idle states"
+        - "Claude runtime refresh sends no pre-command Escape"
+        - "Claude `/status`, `/usage`, and `/stats` are captured with the deeper Claude tail and then closed with Escape"
+        - "Targeted runtime_refresh tests and full release validation pass"
+      modified:
+        - "README/VERSION/docs/mission ledger bumped to v1.16.59"
+      removed:
+        - "v1.16.58 active/uncertain Claude `/stats`-only runtime-refresh selection"
+    observable_effects:
+      added:
+        - "Repeated `u` on Claude rotates `/status` -> `/usage` -> `/stats` -> `/status`"
+        - "Each Claude runtime surface is closed after capture, so the next `u` can run immediately"
+      modified:
+        - "Claude active/uncertain panes now use the same runtime cycle as idle panes"
+      removed:
+        - "Claude `/context` remains outside the operator `u` cycle"
+    impact_scope:
+      runtime: "Claude runtime-refresh command dispatch and capture/close behavior only; Gemini v1.16.58 idle fix remains unchanged"
+      tests: "627 total passed — 565 lib + 38 event_loop + 18 false_positive + 6 idle_state"
+      ledger: "1 new timeline entry (sequence 141); meta bump"
+      npm: "package.json version set to 1.16.59"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, npm pack --dry-run, scripts/verify-shared.sh, and cargo build --release pass"
+      follow_up_carryover: "Phase D remains long-horizon; no D1/D2/D3 implementation in this patch"
+    breaking: false
+    risk: "low to medium — this intentionally sends Claude fullscreen runtime commands on active panes again per operator request, but removes the pre-command Escape that previously interrupted in-flight work."
+    related_commits: []
+    follow_up:
+      - "If post-capture Escape is observed to interrupt a still-running Claude task, gate capture-and-close on a stronger provider-ready marker or add an operator setting for active-pane close behavior."
+
 evolution_summary:
-  current_phase: "v1.16.58 restores active-safe runtime refresh: active/uncertain Claude `u` sends `/stats` without Escape, and Gemini live-prompt panes stay active while recent tail history is changing."
+  current_phase: "v1.16.59 restores the Claude runtime surface cycle: repeated `u` rotates `/status`, `/usage`, `/stats`, captures the fullscreen output, then closes it with Escape; Gemini live-prompt panes still stay active while recent tail history is changing."
   next_phase: "Phase D long-horizon work begins: D1 cross-window/project correlation is the next operator-prioritized slice. D2 identity drift anomaly detection and D3 precise subagent token accounting follow. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

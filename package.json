@@ -1,6 +1,6 @@
 {
   "name": "qmonster",
-  "version": "1.16.58",
+  "version": "1.16.59",
   "description": "Observe-first TUI for multi-CLI tmux development.",
   "license": "UNLICENSED",
   "repository": {

@@ -138,20 +138,17 @@ session:window · Provider role · %pane_id
   표시합니다. Qmonster는 선택된 pane에서 `u`를 누르면 provider의
   read-only runtime slash command와 terminal submit(`C-m`, Enter-equivalent)을
   보냅니다. 여러 runtime surface가 있는 provider는 `u`를 누를 때마다 하나씩
-  순환 실행합니다: Claude `/usage` → `/context` → `/status` → `/stats`,
+  순환 실행합니다: Claude `/status` → `/usage` → `/stats`,
   Codex `/status`, Gemini `/stats session` → `/stats model` → `/stats tools`.
-  Claude pane이 active 또는 uncertain(`IDLE STALE`) 상태이면 진행 중인
-  작업을 끊지 않기 위해 `/stats`만 보내고 `Escape`는 보내지 않습니다.
-  확인된 idle/wait/limit 상태에서는 전체 Claude 순환이 실행됩니다. Claude
-  `/status`, `/context`, `/usage`는 실행 후 화면이 계속 남기 때문에 Qmonster가
+  Claude는 active/idle 구분 없이 같은 순환을 사용하며, 명령을 보내기 전에
+  `Escape`를 보내지 않습니다. Claude `/status`, `/usage`, `/stats`는 실행 후
+  화면이 계속 남기 때문에 Qmonster가
   짧게 준비 상태를 기다린 뒤 일반 pane tail보다 깊게 출력을 캡처해 one-shot
   parser overlay로 저장하고, 이어서 `Escape`를 보내 pane이 다음 명령을 받을
   수 있게 되돌립니다. Claude의 `/context`와 `/usage`는 서로 다른 화면이므로
   마지막으로 확인된 CTX/5H/WEEK pressure 값은 같은 pane 안에서 보존되어
   다음 poll에서도 함께 표시됩니다.
-  Claude는 full-cycle 순환 명령을 보내기 전에도 방어적으로 `Escape`를
-  보내 이전 fullscreen runtime surface를 닫습니다. Gemini는 pre-`Escape`
-  없이 stats 명령만 순환하며, `thinking...` 진행 표시가 있으면 tail이
+  Gemini는 pre-`Escape` 없이 stats 명령만 순환하며, `thinking...` 진행 표시가 있으면 tail이
   몇 poll 동안 같아도 `IDLE`로 떨어지지 않고, live prompt가 남아 있어도
   최근 tail이 변하는 동안은 active로 유지됩니다. 다음 poll에서
   캡처와 읽을 수 있는 로컬 provider 설정을 `RuntimeFact`로 파싱합니다.
@@ -234,8 +231,8 @@ side_effects (N):
 - `s`: snapshot 저장
 - `u`: 선택된 pane의 provider runtime slash source를 하나씩 순환 실행해 상태
   갱신 요청. `observe_only`에서는 pane 입력을 바꾸지 않기 위해 차단하고
-  `RuntimeRefreshBlocked`를 기록합니다. Claude pane이 active 또는 uncertain이면
-  `/stats`만 보내고 `Escape`는 보내지 않습니다. 성공/실패는
+  `RuntimeRefreshBlocked`를 기록합니다. Claude는 `/status` -> `/usage` ->
+  `/stats`를 순환하고, 각 화면을 캡처한 뒤 `Escape`로 닫습니다. 성공/실패는
   `RuntimeRefreshRequested`, `RuntimeRefreshCompleted`,
   `RuntimeRefreshFailed`로 audit log에 남습니다.
 - `y`: Alerts focus에서 선택된 alert의 `run` command를 system clipboard에

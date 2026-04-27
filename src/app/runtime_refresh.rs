@@ -17,7 +17,6 @@ const CLAUDE_RUNTIME_CAPTURE_FIRST_DELAY: Duration = Duration::from_millis(550);
 const CLAUDE_RUNTIME_CAPTURE_RETRY_DELAY: Duration = Duration::from_millis(250);
 const CLAUDE_RUNTIME_CAPTURE_MAX_ATTEMPTS: usize = 8;
 const CLAUDE_RUNTIME_CAPTURE_MIN_LINES: usize = 300;
-const CLAUDE_RUNTIME_PRE_ESCAPE_SETTLE_DELAY: Duration = Duration::from_millis(400);
 
 pub fn runtime_refresh_provider_label(provider: Provider) -> &'static str {
     match provider {
@@ -31,11 +30,8 @@ pub fn runtime_refresh_provider_label(provider: Provider) -> &'static str {
 
 pub fn runtime_refresh_commands(
     provider: Provider,
-    idle_state: Option<IdleCause>,
+    _idle_state: Option<IdleCause>,
 ) -> &'static [&'static str] {
-    if matches!(provider, Provider::Claude) && runtime_refresh_uses_active_safe_only(idle_state) {
-        return &["/stats"];
-    }
     runtime_refresh_provider_commands(provider)
 }
 
@@ -74,10 +70,10 @@ pub fn runtime_refresh_sends_one_command_at_a_time(
 }
 
 pub fn runtime_refresh_sends_escape_first(
-    provider: Provider,
-    idle_state: Option<IdleCause>,
+    _provider: Provider,
+    _idle_state: Option<IdleCause>,
 ) -> bool {
-    matches!(provider, Provider::Claude) && !runtime_refresh_uses_active_safe_only(idle_state)
+    false
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -90,21 +86,12 @@ pub fn send_runtime_refresh_commands<P: PaneSource>(
     source: &P,
     pane_id: &str,
     provider: Provider,
-    idle_state: Option<IdleCause>,
+    _idle_state: Option<IdleCause>,
     commands: &[&str],
     capture_lines: usize,
     tail_overlays: &mut HashMap<String, String>,
 ) -> RuntimeRefreshSendOutcome {
     let mut outcome = RuntimeRefreshSendOutcome::default();
-    if runtime_refresh_sends_escape_first(provider, idle_state)
-        && let Err(e) = source.send_key(pane_id, "Escape")
-    {
-        outcome.failed = Some(("Escape".into(), e.to_string()));
-        return outcome;
-    }
-    if runtime_refresh_sends_escape_first(provider, idle_state) {
-        thread::sleep(CLAUDE_RUNTIME_PRE_ESCAPE_SETTLE_DELAY);
-    }
 
     for cmd in commands {
         if let Err(e) = source.send_keys(pane_id, cmd) {
@@ -336,7 +323,7 @@ pub fn handle_runtime_refresh_action<P: PaneSource>(
 }
 
 fn runtime_refresh_captures_then_closes(provider: Provider, command: &str) -> bool {
-    matches!(provider, Provider::Claude) && matches!(command, "/status" | "/context" | "/usage")
+    matches!(provider, Provider::Claude) && matches!(command, "/status" | "/usage" | "/stats")
 }
 
 fn capture_runtime_refresh_tail<P: PaneSource>(
@@ -429,7 +416,7 @@ fn claude_runtime_tail_still_loading(tail: &str) -> bool {
 fn runtime_refresh_provider_commands(provider: Provider) -> &'static [&'static str] {
     // Keep this list to provider-owned control/status surfaces.
     match provider {
-        Provider::Claude => &["/usage", "/context", "/status", "/stats"],
+        Provider::Claude => &["/status", "/usage", "/stats"],
         Provider::Codex => &["/status"],
         Provider::Gemini => &["/stats session", "/stats model", "/stats tools"],
         Provider::Qmonster | Provider::Unknown => &[],
@@ -703,7 +690,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_action_active_claude_sends_stats_without_escape() {
+    fn runtime_refresh_action_active_claude_cycles_status_and_closes_surface() {
         let source = RecordingRefreshSource::with_capture("Claude status\nmodel: opus");
         let sink = InMemorySink::new();
         let report = base_report(Provider::Claude);
@@ -726,8 +713,14 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].kind, AuditEventKind::RuntimeRefreshRequested);
         assert_eq!(events[1].kind, AuditEventKind::RuntimeRefreshCompleted);
-        assert_eq!(source.calls(), vec!["keys:%1:/stats"]);
-        assert!(overlays.is_empty());
+        assert_eq!(
+            source.calls(),
+            vec!["keys:%1:/status", "capture:%1:300", "key:%1:Escape"]
+        );
+        assert_eq!(
+            overlays.get("%1").map(String::as_str),
+            Some("Claude status\nmodel: opus")
+        );
     }
 
     #[test]
@@ -760,26 +753,29 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_commands_for_claude_cycle_usage_context_status_stats_when_idle() {
+    fn runtime_refresh_commands_for_claude_cycle_status_usage_stats_when_idle() {
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, Some(IdleCause::WorkComplete)),
-            ["/usage", "/context", "/status", "/stats"]
+            ["/status", "/usage", "/stats"]
         );
         assert_eq!(
             runtime_refresh_command_label(runtime_refresh_commands(
                 Provider::Claude,
                 Some(IdleCause::LimitHit)
             )),
-            "/usage, /context, /status, /stats"
+            "/status, /usage, /stats"
         );
     }
 
     #[test]
     fn runtime_refresh_commands_for_claude_active_cycle_same_runtime_sources() {
-        assert_eq!(runtime_refresh_commands(Provider::Claude, None), ["/stats"]);
+        assert_eq!(
+            runtime_refresh_commands(Provider::Claude, None),
+            ["/status", "/usage", "/stats"]
+        );
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, Some(IdleCause::Stale)),
-            ["/stats"]
+            ["/status", "/usage", "/stats"]
         );
     }
 
@@ -818,25 +814,16 @@ mod tests {
                 "%1",
                 &mut offsets
             ),
-            ["/usage"]
-        );
-        assert_eq!(
-            runtime_refresh_dispatch_commands(
-                Provider::Claude,
-                Some(IdleCause::WorkComplete),
-                "%1",
-                &mut offsets
-            ),
-            ["/context"]
-        );
-        assert_eq!(
-            runtime_refresh_dispatch_commands(
-                Provider::Claude,
-                Some(IdleCause::WorkComplete),
-                "%1",
-                &mut offsets
-            ),
             ["/status"]
+        );
+        assert_eq!(
+            runtime_refresh_dispatch_commands(
+                Provider::Claude,
+                Some(IdleCause::WorkComplete),
+                "%1",
+                &mut offsets
+            ),
+            ["/usage"]
         );
         assert_eq!(
             runtime_refresh_dispatch_commands(
@@ -854,14 +841,14 @@ mod tests {
                 "%1",
                 &mut offsets
             ),
-            ["/usage"]
+            ["/status"]
         );
         assert!(!runtime_refresh_sends_escape_first(Provider::Claude, None));
         assert!(!runtime_refresh_sends_escape_first(
             Provider::Claude,
             Some(IdleCause::Stale)
         ));
-        assert!(runtime_refresh_sends_escape_first(
+        assert!(!runtime_refresh_sends_escape_first(
             Provider::Claude,
             Some(IdleCause::WorkComplete)
         ));
@@ -883,12 +870,7 @@ mod tests {
 
         assert_eq!(
             source.calls(),
-            vec![
-                "key:%1:Escape",
-                "keys:%1:/status",
-                "capture:%1:300",
-                "key:%1:Escape"
-            ]
+            vec!["keys:%1:/status", "capture:%1:300", "key:%1:Escape"]
         );
         assert_eq!(
             overlays.get("%1").map(String::as_str),
@@ -904,8 +886,8 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_claude_context_and_usage_capture_then_close_surface() {
-        for command in ["/context", "/usage"] {
+    fn runtime_refresh_claude_usage_and_stats_capture_then_close_surface() {
+        for command in ["/usage", "/stats"] {
             let source = RecordingRefreshSource::with_capture("Claude fullscreen output");
             let mut overlays = HashMap::new();
             let outcome = send_runtime_refresh_commands(
@@ -921,7 +903,6 @@ mod tests {
             assert_eq!(
                 source.calls(),
                 vec![
-                    "key:%1:Escape".to_string(),
                     format!("keys:%1:{command}"),
                     "capture:%1:300".to_string(),
                     "key:%1:Escape".to_string(),
@@ -962,7 +943,6 @@ mod tests {
         assert_eq!(
             source.calls(),
             vec![
-                "key:%1:Escape",
                 "keys:%1:/usage",
                 "capture:%1:300",
                 "capture:%1:300",

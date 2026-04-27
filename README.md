@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: npm package `1.16.58`; current mission ledger `v1.16.58`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.16.59`; current mission ledger `v1.16.59`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,10 +31,11 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current line: `v1.16.58` restores `u` on active/uncertain Claude panes by
-sending only `/stats` without any pre/post `Escape`, and keeps Gemini
-panes active while their tail is still changing even if the live prompt
-placeholder remains visible. `v1.16.57` stopped Gemini `thinking...`
+Current line: `v1.16.59` restores the operator-requested Claude `u`
+cycle: every press rotates `/status` -> `/usage` -> `/stats`, captures
+the fullscreen output deeply enough for parsing, then sends `Escape` to
+close it. `v1.16.58` keeps Gemini panes active while their tail is still
+changing even if the live prompt placeholder remains visible. `v1.16.57` stopped Gemini `thinking...`
 tails from falling through stillness detection into `IDLE` and removed
 the unconditional active-pane Claude `Escape`. `v1.16.56` narrowed the `code-exploration`
 advisory to drop the bare `output_chars >= 1500` fallback that was

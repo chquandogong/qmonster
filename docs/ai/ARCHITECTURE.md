@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-28 (implementation sync through v1.16.58 active-safe runtime refresh)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-28 (implementation sync through v1.16.59 Claude runtime cycle)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -191,10 +191,11 @@ v1.16.56 narrows the `code-exploration` advisory so output volume alone
 does not trigger the graph/symbol recommendation on healthy Main panes.
 v1.16.57 protects active provider work: Gemini `thinking...` progress
 markers suppress stale-IDLE fallback, and Claude active-pane runtime
-refresh stops sending `Escape` into in-flight Claude work. v1.16.58
-restores `u` on active/uncertain Claude panes by sending only `/stats`
-without any pre/post `Escape`, and keeps Gemini live-prompt panes active
-while recent tail history is still changing.
+refresh stops sending defensive pre-`Escape` into in-flight Claude work.
+v1.16.58 keeps Gemini live-prompt panes active while recent tail history
+is still changing. v1.16.59 restores the operator-requested Claude
+runtime cycle across states: `/status`, `/usage`, `/stats`, one command
+per `u` press, captured first and then closed with `Escape`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -344,20 +345,17 @@ provider status/slash output and readable provider config sources. The
 TUI key `u` sends the selected provider's read-only runtime slash
 commands with terminal submit (`C-m`, Enter-equivalent), one command per
 press when a provider exposes multiple runtime surfaces. Claude cycles
-`/usage`, `/context`, `/status`, `/stats`; Codex sends `/status`;
-Gemini cycles `/stats session`, `/stats model`, `/stats tools`. When a
-Claude pane appears active or uncertain (`idle_state == None` or
-`Stale`), `u` uses only Claude's active-safe `/stats` source and sends no
-`Escape`; confirmed idle/wait/limit panes use the full Claude cycle.
-Claude fullscreen surfaces (`/status`, `/context`, `/usage`) are
+`/status`, `/usage`, `/stats`; Codex sends `/status`; Gemini cycles
+`/stats session`, `/stats model`, `/stats tools`. Claude does not send a
+pre-command `Escape`; it waits until after the command output has been
+captured before closing the fullscreen surface.
+Claude fullscreen surfaces (`/status`, `/usage`, `/stats`) are
 captured with a Claude-specific minimum depth after a short readiness
 wait before Qmonster sends `Escape` to close them; the captured tail is
 consumed once as an in-memory parser overlay on the next poll. Claude
 pressure metrics observed from these transient surfaces are cached per
 pane so `/context` CTX and `/usage` quota windows can remain visible
-together until the pane/provider lifecycle resets. Claude also gets a
-defensive `Escape` before each full-cycle runtime command so any prior
-fullscreen surface is closed before the next slash command is submitted.
+together until the pane/provider lifecycle resets.
 Gemini stats surfaces are cycled without a pre-`Escape`; Gemini
 `thinking...` progress markers and recently changing live-prompt tails
 suppress idle classification so a genuinely working Gemini pane does not

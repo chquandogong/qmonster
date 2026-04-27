@@ -1,6 +1,6 @@
 mission:
-  version: "1.16.58"
-  title: "Qmonster v1.16.58 — Restore active-safe runtime refresh."
+  version: "1.16.59"
+  title: "Qmonster v1.16.59 — Restore Claude runtime surface cycle."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1140,7 +1140,7 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: 'Current working state is v1.16.58 active-safe runtime-refresh remediation. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, the Slice 3 housekeeping bundle, and Phase C C1/C2/C3 are shipped. Phase C C1 extracted the live TUI event loop into `src/app/tui_loop.rs` and left `src/main.rs` as a thin CLI/startup/`--once`/TUI-entry wrapper. Phase C C2 is complete: `src/tmux/control_mode.rs`, `tmux::ControlModeSource`, `tmux::TmuxSource`, shared command/snapshot/target helpers, repeated live parity validation, control-mode process/client/protocol boundaries, attach diagnostics, legacy attach fallback, and `[tmux] source = "auto"` are in place behind the existing `PaneSource` contract. Auto mode tries control-mode first and falls back to polling during startup if attach fails; explicit `[tmux] source = "control_mode"` remains strict. Polling remains available through explicit `[tmux] source = "polling"`. v1.16.51 keeps that transport shape and updates provider pressure semantics: Claude CTX uses `/context`, Claude/Codex quota windows are separate 5h and weekly signals. v1.16.52 fixes live Claude visibility by parsing the current `/context` `Context Usage` block, capturing Claude fullscreen runtime surfaces with a deeper tail and render wait, waiting after defensive pre-`Escape`, and caching last observed Claude pressure metrics per pane so CTX, QUOTA 5H, and QUOTA WEEK can display together. v1.16.53 fixes Codex quota semantics by interpreting bottom-status `5h N%` and `weekly N%` as remaining quota and converting them to Qmonster pressure as `100 - N`. v1.16.54 keeps one-shot runtime captures from hiding the live prompt cursor, makes `c`/`C` reliably clear Good/Warning system notices, and aligns npm package semver with the ledger tag. v1.16.55 completes Phase C C3 by adding `codex-review` and `gemini-policy-review` profile recommendations for healthy `Role::Review` panes. v1.16.56 narrows the code-exploration advisory trigger. v1.16.57 keeps Gemini `thinking...` panes active instead of stale-IDLE and removes active-pane Claude `Escape`. v1.16.58 restores `u` on active/uncertain Claude panes by sending only `/stats` with no `Escape`, while Gemini live-prompt panes stay active as long as recent tail history is changing.'
+    topology: 'Current working state is v1.16.59 Claude runtime surface cycle remediation. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, the Slice 3 housekeeping bundle, and Phase C C1/C2/C3 are shipped. Phase C C1 extracted the live TUI event loop into `src/app/tui_loop.rs` and left `src/main.rs` as a thin CLI/startup/`--once`/TUI-entry wrapper. Phase C C2 is complete: `src/tmux/control_mode.rs`, `tmux::ControlModeSource`, `tmux::TmuxSource`, shared command/snapshot/target helpers, repeated live parity validation, control-mode process/client/protocol boundaries, attach diagnostics, legacy attach fallback, and `[tmux] source = "auto"` are in place behind the existing `PaneSource` contract. Auto mode tries control-mode first and falls back to polling during startup if attach fails; explicit `[tmux] source = "control_mode"` remains strict. Polling remains available through explicit `[tmux] source = "polling"`. v1.16.51 keeps that transport shape and updates provider pressure semantics: Claude CTX uses `/context`, Claude/Codex quota windows are separate 5h and weekly signals. v1.16.52 fixes live Claude visibility by parsing the current `/context` `Context Usage` block, capturing Claude fullscreen runtime surfaces with a deeper tail and render wait, waiting after defensive pre-`Escape`, and caching last observed Claude pressure metrics per pane so CTX, QUOTA 5H, and QUOTA WEEK can display together. v1.16.53 fixes Codex quota semantics by interpreting bottom-status `5h N%` and `weekly N%` as remaining quota and converting them to Qmonster pressure as `100 - N`. v1.16.54 keeps one-shot runtime captures from hiding the live prompt cursor, makes `c`/`C` reliably clear Good/Warning system notices, and aligns npm package semver with the ledger tag. v1.16.55 completes Phase C C3 by adding `codex-review` and `gemini-policy-review` profile recommendations for healthy `Role::Review` panes. v1.16.56 narrows the code-exploration advisory trigger. v1.16.57 keeps Gemini `thinking...` panes active instead of stale-IDLE and removes active-pane Claude `Escape`. v1.16.58 keeps Gemini live-prompt panes active as long as recent tail history is changing. v1.16.59 restores the operator-requested Claude `u` cycle across active and idle states: `/status`, `/usage`, `/stats`, one command per keypress, captured first and then closed with `Escape`.'
     suggested_approach: >
       Continue the operator-directed synthesis in order. Phase A chose
       the conservative defaults and activated config/pricing/profile
@@ -1291,6 +1291,10 @@ mission:
       only `/stats` without any pre/post `Escape`, and keeps Gemini
       live-prompt panes active while recent tail history is still
       changing.
+      v1.16.59 restores the operator-requested Claude runtime cycle
+      across active and idle states: `/status`, `/usage`, `/stats`, one
+      command per `u` keypress, captured first and then closed with
+      `Escape`.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1326,7 +1330,7 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.16.58 deferred long-horizon follow-up"
+    priority: "post-v1.16.59 deferred long-horizon follow-up"
     estimated_sessions: 1
     scope: "Phase B complete; Phase C C1/C2/C3 complete; provider-pressure split, live Claude pressure visibility, Codex remaining-quota inversion, TUI keyboard regression fixes, and review-tier profiles are shipped"
     followups:
