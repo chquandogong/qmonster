@@ -38,7 +38,18 @@ impl ControlModeSource {
             .client
             .lock()
             .map_err(|_| PollingError::Command("control-mode client lock poisoned".into()))?;
-        client.run_command(args)
+        match client.run_command(args) {
+            Ok(output) => Ok(output),
+            Err(first) if is_control_transport_error(&first) => {
+                *client = ControlModeClient::attach_current().map_err(|reconnect| {
+                    PollingError::Command(format!(
+                        "control-mode reconnect after {first}: {reconnect}"
+                    ))
+                })?;
+                client.run_command(args)
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -278,6 +289,21 @@ fn list_panes_args(fmt: &str, target: Option<&WindowTarget>) -> Vec<String> {
     args
 }
 
+fn is_control_transport_error(err: &PollingError) -> bool {
+    match err {
+        PollingError::Command(message) => {
+            message.contains("Broken pipe")
+                || message.contains("broken pipe")
+                || message.contains("control-mode")
+        }
+        PollingError::NonZero(message) => {
+            message.starts_with("%exit")
+                || message.contains("control-mode stream ended")
+                || message.contains("control-mode client")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
@@ -298,6 +324,22 @@ mod tests {
         let mut cursor = Cursor::new(raw);
         let err = read_control_block(&mut cursor).unwrap_err();
         assert_eq!(err.to_string(), "tmux returned non-zero: bad target");
+    }
+
+    #[test]
+    fn control_transport_error_detection_targets_client_lifecycle_only() {
+        assert!(is_control_transport_error(&PollingError::NonZero(
+            "%exit detached".into()
+        )));
+        assert!(is_control_transport_error(&PollingError::NonZero(
+            "tmux control-mode stream ended before %begin".into()
+        )));
+        assert!(is_control_transport_error(&PollingError::Command(
+            "Broken pipe".into()
+        )));
+        assert!(!is_control_transport_error(&PollingError::NonZero(
+            "bad target".into()
+        )));
     }
 
     #[test]

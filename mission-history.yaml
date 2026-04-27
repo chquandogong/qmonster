@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.25 opt-in control-mode tmux source."
+  mission_title: "Qmonster v0.5.0 — v1.16.26 control-mode reconnect hardening."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 107
-  latest_version: "1.16.25"
+  total_revisions: 108
+  latest_version: "1.16.26"
 
 timeline:
   - change_id: "initial"
@@ -10053,9 +10053,74 @@ timeline:
     follow_up:
       - "Continue C2: add recovery/parity safeguards for control-mode transport."
 
+  - change_id: "qmonster-v1.16.26-control-mode-reconnect-hardening"
+    semantic_version: "1.16.26"
+    change_sequence: 108
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C2 and close each work item with commit/push/tag"
+    change_type: "fix"
+    motivation_type: "Phase C C2 control-mode tmux adapter hardening"
+    persistence: "permanent"
+    intent: >
+      Reduce long-running TUI risk for the opt-in control-mode transport by
+      recovering from client lifecycle failures without masking real tmux
+      command errors.
+    intent_ko: >
+      opt-in control-mode transport의 장시간 TUI 실행 리스크를 낮추기 위해,
+      실제 tmux command 오류는 숨기지 않으면서 client lifecycle failure만
+      복구한다.
+    decision: >
+      Detect transport-level control-mode failures (`%exit`, control-mode EOF,
+      and broken pipe), reconnect the control-mode client once, and retry the
+      same command. Ordinary command-level tmux failures such as bad targets are
+      returned unchanged.
+    decision_ko: >
+      `%exit`, control-mode EOF, broken pipe 같은 transport-level failure를
+      감지하면 control-mode client를 한 번 재연결하고 같은 command를 재시도한다.
+      bad target 같은 일반 command-level tmux failure는 변경 없이 반환한다.
+    triggered_by: "Follow-up hardening after v1.16.25 introduced the opt-in control-mode source."
+    issue_or_context: >
+      A persistent control-mode client can exit or lose its pipe during a long
+      TUI session. Without a reconnect path, the opt-in transport would surface
+      repeated polling failures until restart.
+    changes:
+      added:
+        - "src/tmux/control_mode.rs: transport-error classifier and reconnect-once retry"
+        - "src/tmux/control_mode.rs: regression test that transport errors are distinct from command errors"
+      modified:
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.26"
+      removed: []
+    changed_sections:
+      - "src/tmux/control_mode.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "control-mode transport reconnects once on lifecycle failures"
+        - "command-level tmux failures remain caller-visible and are not retried as lifecycle faults"
+      modified:
+        - "control-mode unit tests increase by one"
+      removed: []
+    impact_scope:
+      code: "opt-in control_mode transport only; default polling behavior unchanged"
+      tests: "577 total passed — 517 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; additional manual smoke: control-mode --once against live tmux session"
+      ledger: "1 new timeline entry (sequence 108); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, control-mode --once smoke, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with parity checks and additional live-source validation before considering default switch."
+    breaking: false
+    risk: "low — scoped to opt-in transport recovery; command errors still surface normally."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add polling/control-mode parity checks for list panes, targets, and capture-tail behavior."
+
 evolution_summary:
-  current_phase: "v1.16.25 opt-in control-mode tmux source — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
-  next_phase: "Continue Phase C C2 by hardening control-mode lifecycle/error recovery and parity checks. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.26 control-mode reconnect hardening — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  next_phase: "Continue Phase C C2 with polling/control-mode parity checks and additional live-source validation. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

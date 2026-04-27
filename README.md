@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.25`; current canonical ledger: `v1.16.25`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.26`; current canonical ledger: `v1.16.26`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -110,6 +110,9 @@ pre-control-mode C1 split target enough for C2 adapter work to begin.
 v1.16.25 starts C2 with an opt-in `[tmux] source = "control_mode"`
 transport that implements the existing `PaneSource` contract through one
 tmux control-mode client; default config remains `source = "polling"`.
+v1.16.26 hardens that opt-in path by reconnecting the control-mode
+client once on transport lifecycle errors such as `%exit`, EOF, or
+broken pipe while leaving command-level tmux errors unchanged.
 
 ## Quick start
 

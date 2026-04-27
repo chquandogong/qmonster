@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.25 opt-in control-mode tmux source)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.26 control-mode reconnect hardening)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -99,6 +99,9 @@ v1.16.25 starts Phase C C2 by adding `tmux::ControlModeSource`, an
 opt-in `[tmux] source = "control_mode"` transport that runs the same raw
 tmux commands behind the existing `PaneSource` contract while keeping
 `polling` as the default.
+v1.16.26 adds one-shot reconnect on control-mode transport lifecycle
+errors (`%exit`, EOF, broken pipe) and explicitly keeps command-level tmux
+errors as caller-visible failures.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
