@@ -135,6 +135,15 @@ pub struct SignalSet {
     /// is absent / mis-aligned.
     pub quota_pressure: Option<MetricValue<f32>>,
     pub token_count: Option<MetricValue<u64>>,
+    /// S3-1: cumulative session input tokens. Currently populated only
+    /// by the Codex bottom-status-line parser (`1.51M in` token).
+    /// Codex's `/statusline` may hide this item per operator config; if
+    /// hidden, the field stays None. Other providers populate None.
+    pub input_tokens: Option<MetricValue<u64>>,
+    /// S3-1: cumulative session output tokens, paired with
+    /// `input_tokens` (`20.4K out` token on the Codex bottom status
+    /// line). Same operator-configurability + provider notes apply.
+    pub output_tokens: Option<MetricValue<u64>>,
     pub cost_usd: Option<MetricValue<f64>>,
     pub model_name: Option<MetricValue<String>>,
     pub git_branch: Option<MetricValue<String>>,

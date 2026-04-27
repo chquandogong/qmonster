@@ -229,6 +229,8 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         context_pressure: parse_context_pressure_test_marker(&lower),
         quota_pressure: None,
         token_count: None,
+        input_tokens: None,
+        output_tokens: None,
         cost_usd: None,
         model_name: None,
         git_branch: None,

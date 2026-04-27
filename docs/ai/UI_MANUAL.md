@@ -53,10 +53,10 @@ session:window · Provider role · %pane_id
 - `state` 줄은 pane가 멈춤/대기 상태일 때 보입니다. 상태가 바뀐 직후에는
   약 3초 동안 `CHANGED` 배지와 pulse highlight가 붙고, active로 돌아온
   경우에도 짧게 `▶ ACTIVE` state 줄을 보여줍니다. 색만으로 상태 변화를
-  알리지 않기 위해 텍스트 배지를 함께 사용합니다. 변경된 pane가 현재
-  선택된 항목이면 선택 highlight 자체도 pulse하고 선택 기호가 모든 선택 줄에서
-  `◆ CHANGED ◆`로 반복됩니다. 카드 첫 줄도 `STATE CHANGED`로 시작하므로,
-  선택 배경이 state row 색을 덮어도 텍스트로 변화를 볼 수 있습니다.
+  알리지 않기 위해 텍스트 배지를 함께 사용합니다. 선택 여부와 무관하게
+  변경된 카드 첫 줄은 `STATE CHANGED`로 시작하고, `state` 줄에는
+  `CHANGED` 배지가 붙습니다. 선택 highlight 자체는 상태 변화 표시로
+  쓰지 않으므로 선택된 카드와 선택되지 않은 카드의 변화 표시 규칙이 같습니다.
   멈춤/대기 상태 배지(`IDLE`, `WAIT`, `USAGE LIMIT`)에는 경과 시간
   배지(`⏱ MM:SS` 또는 `H:MM:SS`)가 함께 표시됩니다.
 - `status`는 현재 `high confidence`, `medium confidence`,
@@ -77,6 +77,21 @@ session:window · Provider role · %pane_id
   Codex는 bottom status line, Gemini는 status table의 `context` 컬럼을
   사용합니다. Claude의 `/status` 사용량 막대는 context window가 아니라
   usage/rate limit이므로 `CTX`로 표시하지 않습니다.
+- **Provider 측의 status surface는 운영자가 보이는 항목을 끌 수 있음**:
+  Codex의 `/statusline` 슬래시 명령 ("Configure which items appear in
+  the status line")은 bottom status line의 항목(branch / model / input
+  / output / version 등)을 토글합니다. Gemini의 `/footer` (alias
+  `/statusline`) 슬래시 명령은 footer/status table의 컬럼(`ui.footer.*`
+  설정 — `hideCWD` / `hideSandboxStatus` / `hideModelInfo` /
+  `hideContextPercentage` / `hideFooter`)을 토글합니다. 운영자가 항목을
+  숨기면 Qmonster 파서는 해당 필드를 None으로 두며, 거짓 값을 추정해서
+  채우지 않습니다 — 부재가 honesty (S3-4와 같은 원칙).
+- Codex bottom status line의 `1.51M in · 20.4K out` 토큰은 **세션
+  누적값**입니다 (Codex `TokenUsage` 구조에서 `input_tokens` /
+  `output_tokens` 필드 — 검증됨). Qmonster는 이를 `SignalSet.input_tokens`
+  / `output_tokens`로 노출하지만 metric badge는 `TOKENS`(total) 하나만
+  표시합니다. policy / audit가 input vs output 비율을 보고 싶을 때
+  per-필드 접근이 가능합니다 (S3-1 design decision).
 - `MODEL` badge는 source가 있을 때만 표시합니다. Claude pane은
   `~/.claude/settings.json`에 `"model"` 키가 있을 때만 채워지므로,
   사용자 환경이 그 키를 비워둔 상태(=Claude Code가 기본 모델

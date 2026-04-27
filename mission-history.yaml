@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.12 quota_pressure advisory SourceKind honesty."
+  mission_title: "Qmonster v0.4.0 — v1.15.13 S3-1 input/output tokens + /statusline /footer documentation."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 68
-  latest_version: "1.15.12"
+  total_revisions: 69
+  latest_version: "1.15.13"
 
 timeline:
   - change_id: "initial"
@@ -7127,9 +7127,98 @@ timeline:
       - "Annotated tag v1.15.12 at this commit."
       - "Keep using v1.15.x patch pattern for runtime-refresh / UI UX issues."
 
+  - change_id: "v1.15.13-s3-1-input-output-tokens-plus-statusline-footer-docs"
+    semantic_version: "1.15.13"
+    change_sequence: 69
+    date: "2026-04-27"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — directed verification of Codex `/statusline` and Gemini `/footer` semantics"
+    change_type: "feature"
+    motivation_type: "backlog-resolution + operator-directed-research"
+    persistence: "permanent"
+    intent: >
+      Close Slice 3 backlog item S3-1 (Codex bottom-status-line
+      cumulative-vs-delta token semantics) by verifying the
+      semantics directly against the bundled Codex binary, exposing
+      the already-extracted input/output tokens on SignalSet, and
+      documenting the operator-configurability of provider status
+      surfaces (`/statusline` and `/footer`) so future-state
+      decisions about parser robustness have explicit references.
+    decision: >
+      Operator-directed verification: inspected the
+      `/usr/lib/.../codex/codex` binary for `/statusline` references
+      and the `/usr/lib/.../gemini-cli/.../chunk-HF7X35D3.js` for
+      `/footer` definition. Findings: Codex `/statusline` is a
+      built-in slash command "Configure which items appear in the
+      status line" with item ids `branch`, `model`, `input`,
+      `output`, `version`, etc. Codex's `TokenUsage` struct fields
+      (`input_tokens`, `cached_input_tokens`, `output_tokens`,
+      `reasoning_output_tokens`, `total_tokens`) are session
+      cumulative — confirming the `1.51M in · 20.4K out` tokens are
+      cumulative, not deltas. Gemini `/footer` (alias `/statusline`)
+      is built-in with description "Configure which items appear in
+      the footer (statusline)" — opens the FooterConfigDialog;
+      footer items are toggled via `ui.footer.*` settings. Both
+      surfaces are operator-configurable; Qmonster respects
+      `None`-on-absent-field instead of inferring (S3-4 honesty
+      principle generalised). Implementation: SignalSet gains
+      `pub input_tokens: Option<MetricValue<u64>>` and `pub
+      output_tokens: Option<MetricValue<u64>>` (already extracted by
+      the parser for cost_usd derivation; this round just exposes
+      them). UI metric badge stays single (`TOKENS` = total) so the
+      pane card stays compact; policy / audit gain per-direction
+      access. UI_MANUAL gains an explicit configurability note.
+    triggered_by: "Operator instruction (2026-04-27): 'codex는 /statusline 명령을 검색하여 확인하고, gemini는 /footer 명령을 확인하여 반영해줘'."
+    issue_or_context: >
+      S3-1 in `.docs/claude/Qmonster-v0.4.0-2026-04-25-claude-slice-3-backlog.md`
+      asked: "Token in/out: `0 in · 0 out` carries live token deltas
+      — fold into SignalSet.token_count only if a stable cumulative
+      semantic exists; otherwise leave for a later slice." That
+      semantic question was operator-deferred until v1.15.13;
+      direct binary inspection now resolves it.
+    changes:
+      added:
+        - "src/domain/signal.rs::SignalSet.input_tokens / output_tokens fields"
+        - "src/adapters/codex.rs::CodexAdapter populates set.input_tokens / output_tokens from existing parse_codex_status_line extractor"
+        - "src/adapters/codex.rs::regression assertion in codex_adapter_status_line_populates_metrics test (input=1_510_000 / output=20_400 / ProviderOfficial / Codex)"
+        - "docs/ai/UI_MANUAL.md::operator-configurability note for /statusline (Codex) and /footer (Gemini); explicit S3-1 cumulative-tokens contract"
+      modified:
+        - "src/adapters/common.rs::parse_common_signals defaults input_tokens / output_tokens to None for non-Codex adapters"
+        - "mission.yaml (meta: version 1.15.12 → 1.15.13; title)"
+        - "mission-history.yaml (sequence 69; meta: latest_version 1.15.13, total_revisions 68 → 69)"
+      removed: []
+    changed_sections:
+      - "src/domain/signal.rs::SignalSet"
+      - "src/adapters/codex.rs::CodexAdapter::parse"
+      - "src/adapters/common.rs::parse_common_signals defaults"
+      - "docs/ai/UI_MANUAL.md::Panes reading guide (provider configurability)"
+    done_when_delta:
+      added:
+        - "S3-1 backlog item closed: cumulative-vs-delta semantics resolved (cumulative)"
+        - "SignalSet.input_tokens / output_tokens populate on Codex panes when the bottom status line carries `M in · K out`"
+        - "Other providers populate input/output_tokens = None"
+        - "UI_MANUAL documents that Codex `/statusline` and Gemini `/footer` toggle which status-surface items appear"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "+~30 LoC across SignalSet, common, codex parser, plus extended test + docs note"
+      tests: "457 total — 384 lib + 14 main + 35 event_loop + 18 false_positive + 6 idle_state + 0 sim (existing test extended; no new cases needed since the values were already extracted)"
+      ledger: "1 new timeline entry (sequence 69); meta bump"
+      review_gate: "operator-directed binary verification + backlog closure; local fmt/test/clippy pass."
+      follow_up_carryover: "S3-3 memory column display remains low-value deferred. v1.15.x patch line stays open."
+    breaking: false
+    risk: "low — additive SignalSet fields (Option default to None on non-Codex); UI surface unchanged; existing cost_usd computation already reads the same values; operator-configurability is documented behaviour, not new behaviour."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.13 at this commit."
+      - "Slice 3 backlog: S3-1 / S3-2 / S3-3 (quota) / S3-4 / S3-5 / S3-6 closed; only S3-3 memory column display remains as a low-value deferral."
+
 evolution_summary:
-  current_phase: "v1.15.12 quota_pressure advisory SourceKind honesty. v1.15.11's quota_pressure_warning (0.75..0.85, Warning) and quota_pressure_critical (>=0.85, Risk, is_strong) still bridge the gap between v1.15.8's silent QUOTA badge and v1.15.10's binary LimitHit at 100%, but their recommendation SourceKind is now Estimated because 75% / 85% are Qmonster thresholds. The underlying Gemini quota_pressure metric remains ProviderOfficial. 457 tests green; clippy + fmt clean."
-  next_phase: "Operator-deferred S3-1 (Codex bottom-status-line cumulative-vs-delta token semantics), low-value S3-3 memory column display, or any fresh v1.15.x runtime-refresh / UI UX patch found during operator use."
+  current_phase: "v1.15.13 closes Slice 3 backlog item S3-1 (Codex token in/out cumulative semantics, verified via the bundled Codex TokenUsage struct). New SignalSet.input_tokens / output_tokens surface the already-extracted values from parse_codex_status_line. UI_MANUAL gains an explicit operator-configurability note for Codex `/statusline` and Gemini `/footer` (alias `/statusline`). v1.15.12's quota_pressure SourceKind honesty, v1.15.11's gradient advisories, v1.15.10's LimitHit fix, and v1.15.8's quota_pressure metric all carry forward unchanged. 457 tests green; clippy + fmt clean."
+  next_phase: "Slice 3 effectively complete — only the low-value S3-3 memory column display remains deferred. v1.15.x patch line stays open for runtime-refresh / UI UX issues found during operator use. Operator priorities (B/C/D/E/A) cleanup and Slice 4+ thematic planning are the remaining direction questions."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

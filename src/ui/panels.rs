@@ -122,14 +122,6 @@ pub fn render_pane_list(
         .unwrap_or(0)
         .min(reports.len().saturating_sub(1));
     state.select(Some(selected));
-    let selected_flash = reports.get(selected).and_then(|report| {
-        matching_state_flash(
-            report,
-            flash_view.now,
-            flash_view.state_flashes.get(&report.pane_id),
-        )
-    });
-
     let items: Vec<ListItem<'static>> = reports
         .iter()
         .enumerate()
@@ -147,9 +139,9 @@ pub fn render_pane_list(
     StatefulWidget::render(
         List::new(items)
             .block(block)
-            .highlight_style(highlight_style(focused, flash_view.now, selected_flash))
-            .highlight_symbol(highlight_symbol(selected_flash))
-            .repeat_highlight_symbol(repeat_highlight_symbol(selected_flash)),
+            .highlight_style(highlight_style(focused))
+            .highlight_symbol(highlight_symbol())
+            .repeat_highlight_symbol(repeat_highlight_symbol()),
         area,
         buf,
         state,
@@ -175,19 +167,7 @@ pub fn pane_index_at_row(reports: &[PaneReport], state: &ListState, row: u16) ->
     None
 }
 
-fn highlight_style(focused: bool, now: Instant, flash: Option<&PaneStateFlash>) -> Style {
-    if state_flash_pulse_on(flash, now) {
-        return Style::default()
-            .fg(Color::Rgb(28, 24, 12))
-            .bg(Color::Rgb(245, 226, 120))
-            .add_modifier(Modifier::BOLD);
-    }
-    if flash.is_some_and(|flash| flash.is_active(now)) {
-        return Style::default()
-            .fg(Color::Rgb(246, 232, 150))
-            .bg(Color::Rgb(76, 66, 34))
-            .add_modifier(Modifier::BOLD);
-    }
+fn highlight_style(focused: bool) -> Style {
     let style = Style::default().fg(theme::TEXT_PRIMARY);
     if focused {
         style.bg(theme::BADGE_BG).add_modifier(Modifier::BOLD)
@@ -196,16 +176,12 @@ fn highlight_style(focused: bool, now: Instant, flash: Option<&PaneStateFlash>) 
     }
 }
 
-fn highlight_symbol(flash: Option<&PaneStateFlash>) -> &'static str {
-    if flash.is_some() {
-        "◆ CHANGED ◆ "
-    } else {
-        "▶ "
-    }
+fn highlight_symbol() -> &'static str {
+    "▶ "
 }
 
-fn repeat_highlight_symbol(flash: Option<&PaneStateFlash>) -> bool {
-    flash.is_some()
+fn repeat_highlight_symbol() -> bool {
+    false
 }
 
 fn pane_list_item(
@@ -1564,36 +1540,44 @@ mod tests {
     }
 
     #[test]
-    fn selected_flash_highlight_uses_pulse_colors() {
-        let now = std::time::Instant::now();
-        let flash = PaneStateFlash::new(Some(IdleCause::InputWait), now);
-        let style = highlight_style(true, now, Some(&flash));
-        assert_eq!(style.fg, Some(Color::Rgb(28, 24, 12)));
-        assert_eq!(style.bg, Some(Color::Rgb(245, 226, 120)));
+    fn selection_highlight_stays_stable_during_state_flash() {
+        let style = highlight_style(true);
+        assert_eq!(style.fg, Some(theme::TEXT_PRIMARY));
+        assert_eq!(style.bg, Some(theme::BADGE_BG));
         assert!(style.add_modifier.contains(Modifier::BOLD));
     }
 
     #[test]
-    fn selected_flash_highlight_symbol_marks_changed_selection() {
-        let now = std::time::Instant::now();
-        let flash = PaneStateFlash::new(Some(IdleCause::InputWait), now);
-        assert_eq!(highlight_symbol(Some(&flash)), "◆ CHANGED ◆ ");
-        assert_eq!(highlight_symbol(None), "▶ ");
-        assert!(repeat_highlight_symbol(Some(&flash)));
-        assert!(!repeat_highlight_symbol(None));
+    fn selection_marker_does_not_encode_state_flash() {
+        assert_eq!(highlight_symbol(), "▶ ");
+        assert!(!repeat_highlight_symbol());
     }
 
     #[test]
-    fn selected_flash_header_names_state_changed_even_when_highlight_overrides_colors() {
+    fn state_flash_header_names_state_changed_for_all_selection_states() {
         let rep = base_report();
         let now = std::time::Instant::now();
         let flash = PaneStateFlash::new(None, now);
-        let lines = pane_list_lines_with_flash(&rep, true, false, now, Some(&flash));
-        let text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        let expanded_lines = pane_list_lines_with_flash(&rep, true, false, now, Some(&flash));
+        let collapsed_lines = pane_list_lines_with_flash(&rep, false, false, now, Some(&flash));
+        let expanded_text: String = expanded_lines[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        let collapsed_text: String = collapsed_lines[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
 
         assert!(
-            text.starts_with("STATE CHANGED · qwork:1"),
-            "selected flash header needs text fallback: {text}"
+            expanded_text.starts_with("STATE CHANGED · qwork:1"),
+            "expanded card flash header missing: {expanded_text}"
+        );
+        assert!(
+            collapsed_text.starts_with("STATE CHANGED · qwork:1"),
+            "collapsed card flash header missing: {collapsed_text}"
         );
     }
 

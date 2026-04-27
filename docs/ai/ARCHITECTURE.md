@@ -153,8 +153,10 @@ Palette: low-saturation, grey/navy/blue. Color only on state
 transitions, always paired with a numeric % or severity letter.
 UI consumes already-classified signals; it never re-parses tails.
 Pane state transitions include text-backed visibility cues (`CHANGED`,
-temporary `▶ ACTIVE`, selected `◆ CHANGED ◆`, and `STATE CHANGED`) so
-selection styling or terminal color themes cannot hide a transition.
+temporary `▶ ACTIVE`, and `STATE CHANGED`) so selection styling or
+terminal color themes cannot hide a transition. Selected and unselected
+pane cards use the same state-change content; selection highlight itself
+does not encode state-change semantics.
 Provider runtime facts are produced by adapter-local parsers from
 provider status/slash output and readable provider config sources. The
 TUI key `u` sends the selected provider's read-only runtime slash

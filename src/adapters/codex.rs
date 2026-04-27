@@ -73,6 +73,21 @@ impl ProviderParser for CodexAdapter {
                 .with_confidence(0.95)
                 .with_provider(Provider::Codex),
         );
+        // S3-1: surface input/output tokens (session cumulative per
+        // Codex's TokenUsage struct). Already extracted by
+        // parse_codex_status_line for the cost_usd derivation; expose
+        // them on SignalSet so policy/audit can reason about input vs
+        // output share without recomputing.
+        set.input_tokens = Some(
+            MetricValue::new(status.input_tokens, SourceKind::ProviderOfficial)
+                .with_confidence(0.95)
+                .with_provider(Provider::Codex),
+        );
+        set.output_tokens = Some(
+            MetricValue::new(status.output_tokens, SourceKind::ProviderOfficial)
+                .with_confidence(0.95)
+                .with_provider(Provider::Codex),
+        );
         if let Some(model) = status.model.as_ref() {
             set.model_name = Some(
                 MetricValue::new(model.clone(), SourceKind::ProviderOfficial)
@@ -545,6 +560,27 @@ output_per_1m = 10.00
         //   = 1.51 + 0.204 = 1.714
         assert!((cost.value - 1.714).abs() < 1e-9, "got {}", cost.value);
         assert_eq!(cost.source_kind, SourceKind::Estimated);
+
+        // S3-1: input_tokens and output_tokens are session cumulative
+        // values per the Codex `/statusline` config (verified via the
+        // bundled Codex TokenUsage struct: input_tokens /
+        // cached_input_tokens / output_tokens / reasoning_output_tokens
+        // / total_tokens). The bottom status line emits them as
+        // `1.51M in · 20.4K out`. Surface them on SignalSet as
+        // ProviderOfficial so policy/audit can query the granularity.
+        let inp = set
+            .input_tokens
+            .as_ref()
+            .expect("input_tokens populated from `1.51M in`");
+        assert_eq!(inp.value, 1_510_000);
+        assert_eq!(inp.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(inp.provider, Some(Provider::Codex));
+        let out = set
+            .output_tokens
+            .as_ref()
+            .expect("output_tokens populated from `20.4K out`");
+        assert_eq!(out.value, 20_400);
+        assert_eq!(out.source_kind, SourceKind::ProviderOfficial);
     }
 
     #[test]
