@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-25 (implementation sync through v1.15.7 S3-5 identity-title fallback)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.15.25 Phase-C kickoff docs consistency)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -158,9 +158,14 @@ Ratatui widgets. Current operator surfaces:
 3. Per-pane list with inline expansion for the selected pane's
    recommendations, provider-profile payload, metrics, and runtime
    facts (`modes`, `access`, `loaded`, `restrict`).
-4. Overlays for target selection (session -> window), help/legend, and
+4. Alert command ergonomics: recommendation and cross-pane alert
+   `suggested_command` values render as `run:` lines; when Alerts are
+   focused, `y` copies the selected alert's command to the system
+   clipboard and reports missing-command/backend-failure cases as system
+   notices.
+5. Overlays for target selection (session -> window), help/legend, and
    Git status from the bottom-right version badge.
-5. Source labels rendered in long form (`[Official]`, `[Qmonster]`,
+6. Source labels rendered in long form (`[Official]`, `[Qmonster]`,
    `[Heur]`, `[Estimate]`) rather than two-letter abbreviations.
 
 Palette: low-saturation, grey/navy/blue. Color only on state
@@ -337,12 +342,11 @@ module shape.
 ## Deferred for later phases
 
 - Control-mode tmux adapter.
-- Manual prompt-send helper with user confirmation.
 - Subagent token accounting (Phase 1 ships a detection-only warning).
 - Cross-window / cross-project correlation.
 - Anomaly detection on pane identity drift (Phase 1 logs transitions).
 - Concurrent-work warning across panes (v1.15.23 requires
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
-- Copy-pasteable command snippets with recommendations (Phase 3+).
-- Side-effect warnings on high-compression profiles (Phase 4+).
+- Review-tier profiles to restore the intended 3×3 provider/profile
+  grid.

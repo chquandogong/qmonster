@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.15.19`; current working tree ledger: `v1.15.24`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.15.19`; current canonical ledger: `v1.15.25`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -70,6 +70,8 @@ alone is no longer enough; panes must expose the same git branch too.
 The selected alert's `run:` command is copyable with `y` when Alerts
 are focused; clipboard failure or a no-command selection is reported as
 a visible system notice.
+Phase B is complete; the next active track is Phase C architecture work,
+starting with a conservative split of the oversized `src/main.rs`.
 
 ## Quick start
 

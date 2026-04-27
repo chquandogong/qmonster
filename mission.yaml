@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.24"
-  title: "Qmonster v0.5.0 — v1.15.24 Phase-B copyable suggested commands. Builds on v1.15.23 branch-narrowed concurrent detection: selected Alerts that expose a non-empty `suggested_command` can now copy that `run:` command to the system clipboard with `y`. Clipboard success, missing-command, and backend-failure outcomes are surfaced as SystemNotice rows. Phase B is now complete."
+  version: "1.15.25"
+  title: "Qmonster v0.5.0 — v1.15.25 Phase-C kickoff docs consistency. Builds on v1.15.24: Phase B is complete, canonical docs/README/mission ledger now agree on the shipped operator surfaces, and the active next track is Phase C C1 — conservative `src/main.rs` decomposition before control-mode adapter work."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1140,7 +1140,7 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.15.24 Phase-B copyable suggested commands on top of the pushed v1.15.23 branch-narrowed concurrent-work commit. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped."
+    topology: "Current working state is v1.15.25 Phase-C kickoff docs consistency on top of the pushed v1.15.24 copyable-suggested-command commit. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped."
     suggested_approach: >
       Continue the operator-directed synthesis in order. Phase A chose
       the conservative defaults and activated config/pricing/profile
@@ -1149,8 +1149,9 @@ mission:
       added an opt-in security posture advisory, narrowed concurrent
       work detection from path-only to same path + same branch, and made
       selected alert `suggested_command` values copyable via `y`. Phase B
-      is complete; next work should start Phase C only if the operator
-      wants architectural debt work.
+      is complete. The operator has requested Phase C next, so start with
+      C1: split `src/main.rs` conservatively before control-mode adapter
+      work.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1186,7 +1187,7 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.15.24 operator-directed follow-up"
+    priority: "post-v1.15.25 operator-directed Phase-C follow-up"
     estimated_sessions: 1
     scope: "Phase B complete; next planned track is Phase C architecture debt"
     followups:
@@ -1198,5 +1199,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 80
+    total_revisions: 81
     history: "mission-history.yaml"

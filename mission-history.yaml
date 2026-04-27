@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.15.24 Phase-B copyable suggested commands."
+  mission_title: "Qmonster v0.5.0 — v1.15.25 Phase-C kickoff docs consistency."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 80
-  latest_version: "1.15.24"
+  total_revisions: 81
+  latest_version: "1.15.25"
 
 timeline:
   - change_id: "initial"
@@ -8113,9 +8113,84 @@ timeline:
     follow_up:
       - "Begin Phase C with main.rs decomposition before control-mode adapter work."
 
+  - change_id: "qmonster-v1.15.25-phase-c-kickoff-docs-consistency"
+    semantic_version: "1.15.25"
+    change_sequence: 81
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: review git docs consistency, update, then move to Phase C"
+    change_type: "documentation"
+    motivation_type: "consistency checkpoint"
+    persistence: "permanent"
+    intent: >
+      Reconcile canonical docs, README, and mission ledger after the
+      v1.15.20-v1.15.24 operator-directed Phase A/B implementation run.
+      The docs should now state one thing: Phase B is complete and the
+      next active track is Phase C C1.
+    intent_ko: >
+      v1.15.20-v1.15.24의 운영자 지시 Phase A/B 구현 이후 canonical docs,
+      README, mission ledger를 다시 맞춘다. 문서는 이제 한 가지 상태를
+      말해야 한다: Phase B는 완료됐고 다음 active track은 Phase C C1이다.
+    decision: >
+      Keep v1.15.24 as the shipped feature slice and add v1.15.25 as a
+      documentation/ledger consistency checkpoint. README now says
+      "current canonical ledger" instead of "current working tree
+      ledger"; ARCHITECTURE removes already-shipped items from the
+      deferred list and names the `y copy` alert-command surface; mission
+      execution hints point directly at C1.
+    decision_ko: >
+      v1.15.24는 shipped feature slice로 유지하고 v1.15.25를 docs/ledger
+      consistency checkpoint로 추가한다. README는 "current working tree
+      ledger" 대신 "current canonical ledger"라고 표현한다. ARCHITECTURE는
+      이미 shipped된 항목을 deferred list에서 제거하고 `y copy` alert-command
+      surface를 명시한다. mission execution hints는 C1을 직접 가리킨다.
+    triggered_by: "Operator instruction (2026-04-27): review git docs consistency and update before moving to C."
+    issue_or_context: >
+      Core version/test-count docs were already aligned at v1.15.24, but
+      a few prose surfaces still read like Phase C was conditional or
+      omitted the final Phase-B copy command surface from architecture.
+    changes:
+      added:
+        - "ARCHITECTURE.md current UI surface bullet for `y copy`"
+        - "Mission-history sequence 81 docs consistency checkpoint"
+      modified:
+        - "README version wording: current canonical ledger v1.15.25"
+        - "PROJECT_BRIEF current phase: Phase B complete, Phase C active"
+        - "mission.yaml execution hints: C1 main.rs split is next"
+        - "ARCHITECTURE deferred list removes shipped prompt-send and copyable-command items"
+      removed: []
+    changed_sections:
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Canonical docs state Phase B complete and Phase C active"
+        - "Next implementation slice is C1 main.rs decomposition"
+      modified:
+        - "Deferred architecture list now excludes already-shipped Phase 5 and B5 surfaces"
+      removed: []
+    impact_scope:
+      code: "none"
+      tests: "no test-count change; v1.15.24 verification record remains 520 total tests"
+      ledger: "1 new timeline entry (sequence 81); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, and ./scripts/verify-shared.sh pass. Shared verification ran 520 tests and used the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Begin Phase C C1: split main.rs before control-mode adapter work."
+    breaking: false
+    risk: "low — documentation/ledger text only."
+    related_commits: []
+    related_decisions:
+      - "Decision: record docs consistency as v1.15.25 rather than folding it into the v1.15.24 feature commit."
+    snapshot_after: ""
+    follow_up:
+      - "Begin Phase C C1 implementation."
+
 evolution_summary:
-  current_phase: "v1.15.24 Phase-B copyable suggested commands — Phase A activation, pane visibility, opt-in security posture, branch-narrowed concurrent-work detection, and selected-alert command copy are in place."
-  next_phase: "Phase B is complete. Next planned track is Phase C: main.rs decomposition, control-mode tmux adapter, and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.15.25 Phase-C kickoff docs consistency — Phase B is complete and canonical docs/README/mission ledger now point at Phase C C1."
+  next_phase: "Phase C C1: split main.rs conservatively before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
