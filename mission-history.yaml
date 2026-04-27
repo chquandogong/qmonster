@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.0 Phase-C C1 keymap extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.1 Phase-C C1 target-picker extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 82
-  latest_version: "1.16.0"
+  total_revisions: 83
+  latest_version: "1.16.1"
 
 timeline:
   - change_id: "initial"
@@ -8264,8 +8264,85 @@ timeline:
     follow_up:
       - "Continue C1: split additional modal/event-loop state from main.rs."
 
+  - change_id: "qmonster-v1.16.1-phase-c-c1-target-picker-extraction"
+    semantic_version: "1.16.1"
+    change_sequence: 83
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C after the v1.16.0 keymap split"
+    change_type: "architecture/refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue C1 by moving target picker model and helper logic out of
+      `src/main.rs` while keeping the live TUI event loop behavior
+      unchanged.
+    intent_ko: >
+      live TUI event loop 동작은 바꾸지 않고 target picker model/helper
+      logic을 `src/main.rs` 밖으로 옮겨 C1을 계속 진행한다.
+    decision: >
+      Add `src/app/target_picker.rs` for TargetPickerStage,
+      TargetChoice/TargetChoiceValue, TargetPickerOutcome, choice refresh,
+      preview generation, choice application, target label/notice helpers,
+      and multi-line row hit-testing. Keep event dispatch and modal
+      visibility state in `src/main.rs`.
+    decision_ko: >
+      `src/app/target_picker.rs`를 추가해 TargetPickerStage,
+      TargetChoice/TargetChoiceValue, TargetPickerOutcome, choice refresh,
+      preview generation, choice application, target label/notice helper,
+      multi-line row hit-test를 담당하게 한다. event dispatch와 modal
+      visibility state는 `src/main.rs`에 유지한다.
+    triggered_by: "Continuation after v1.16.0 Phase C C1 keymap extraction."
+    issue_or_context: >
+      After keymap extraction, target picker support remained another
+      self-contained modal helper cluster inside `main.rs`. It depends on
+      tmux target listing but not on the broader event loop.
+    changes:
+      added:
+        - "src/app/target_picker.rs with target picker types and helper functions"
+        - "3 target_picker unit tests for multi-line row mapping, sorted/deduped session choices, and wrong-session window rejection"
+      modified:
+        - "src/app/mod.rs exports target_picker"
+        - "src/main.rs imports target_picker helpers and removes inline target picker support code"
+        - "README / PROJECT_BRIEF / ARCHITECTURE / mission ledger updated for v1.16.1 Phase C C1"
+      removed:
+        - "TargetPickerStage / TargetChoice / TargetPickerOutcome definitions from src/main.rs"
+        - "target picker preview/build/apply/label helper functions from src/main.rs"
+        - "target_choice_index_at_row test from main.rs after moving coverage to app::target_picker"
+    changed_sections:
+      - "src/app/target_picker.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Second Phase C C1 code slice exists outside main.rs"
+        - "Target picker choice and row-mapping behavior has module-level tests"
+      modified:
+        - "main.rs line count drops from 3115 to 2768 after extraction"
+      removed: []
+    impact_scope:
+      code: "refactor only; no intended runtime behavior change"
+      tests: "526 total — 453 lib + 13 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (net +2 vs v1.16.0)"
+      ledger: "1 new timeline entry (sequence 83); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with further main.rs splits before control-mode adapter work."
+    breaking: false
+    risk: "low to moderate — larger mechanical extraction, covered by existing event-loop tests plus new target_picker unit tests."
+    related_commits: []
+    related_decisions:
+      - "Decision: move target picker support as the second C1 slice while leaving event dispatch in main.rs."
+    snapshot_after: ""
+    follow_up:
+      - "Continue C1: split additional runtime-refresh or alert-state helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.0 Phase-C C1 keymap extraction — first main.rs decomposition slice is implemented in src/app/keymap.rs."
+  current_phase: "v1.16.1 Phase-C C1 target-picker extraction — main.rs decomposition now has keymap and target_picker helper modules."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

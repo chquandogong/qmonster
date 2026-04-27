@@ -7,6 +7,7 @@ pub mod keymap;
 pub mod path_resolution;
 pub mod safety_audit;
 pub mod system_notice;
+pub mod target_picker;
 pub mod version_drift;
 
 pub use bootstrap::Context;
