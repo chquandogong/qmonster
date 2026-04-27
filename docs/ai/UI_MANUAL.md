@@ -256,6 +256,9 @@ side_effects (N):
 - 표준 config path는 `~/.qmonster/config/qmonster.toml`입니다.
   `scripts/run-qmonster.sh`는 없으면 `config/qmonster.example.toml`에서
   복사하고, Qmonster를 항상 `--config`와 함께 실행합니다.
+- control-mode trial은 `scripts/run-qmonster-control-mode-once.sh`로
+  수행합니다. 이 helper는 임시 config에만 `source = "control_mode"`를
+  쓰고 `--once`로 종료하므로 표준 config를 수정하지 않습니다.
 - 표준 pricing path는 `~/.qmonster/config/pricing.toml`입니다.
   없으면 `config/pricing.example.toml`이 복사됩니다. provider 가격은
   자주 바뀌므로 Qmonster가 자동 조회하지 않습니다. 운영자가 non-zero

@@ -83,10 +83,14 @@ writes any of these files:
    `config/qmonster.example.toml` when missing, creates
    `~/.qmonster/config/pricing.toml` from `config/pricing.example.toml`
    when missing, then launches Qmonster with `--config`.
-3. Fill non-zero pricing rates manually in
+3. For a control-mode transport trial, run
+   `./scripts/run-qmonster-control-mode-once.sh`. It uses a temporary
+   config with `source = "control_mode"` and exits after `--once`,
+   leaving the standard config unchanged.
+4. Fill non-zero pricing rates manually in
    `~/.qmonster/config/pricing.toml` to enable COST badges. Qmonster
    never fetches provider pricing pages.
-4. In tmux, `tmux/qmonster.tmux.conf.example` provides a `Q` binding
+5. In tmux, `tmux/qmonster.tmux.conf.example` provides a `Q` binding
    that calls the same launcher. Canonical pane titles remain the best
    way to mark roles exactly.
 

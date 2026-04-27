@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.37 tmux source notices."
+  mission_title: "Qmonster v0.5.0 — v1.16.38 control-mode trial helper."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 119
-  latest_version: "1.16.37"
+  total_revisions: 120
+  latest_version: "1.16.38"
 
 timeline:
   - change_id: "initial"
@@ -10887,8 +10887,80 @@ timeline:
     follow_up:
       - "Continue C2: add remaining source-selection/operator-trial hardening before any default-source switch."
 
+  - change_id: "qmonster-v1.16.38-control-mode-trial-helper"
+    semantic_version: "1.16.38"
+    change_sequence: 120
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: keep progressing C2 and close each work item with commit/push/tag"
+    change_type: "tooling"
+    motivation_type: "Phase C C2 operator trial path"
+    persistence: "permanent"
+    intent: >
+      Add a one-command control-mode trial path that does not require editing
+      the standard Qmonster config.
+    intent_ko: >
+      표준 Qmonster config를 수정하지 않고 control-mode를 한 번 실행해 볼 수
+      있는 단일 명령 trial 경로를 추가한다.
+    decision: >
+      Add `scripts/run-qmonster-control-mode-once.sh`. The helper writes a
+      temporary TOML containing `[tmux] source = "control_mode"`, runs Qmonster
+      with `--config <temp> --once`, forwards safe extra args such as `--root`,
+      and rejects caller-supplied `--config` because the helper owns that flag.
+      It follows the existing binary-selection pattern from `scripts/run-qmonster.sh`.
+    decision_ko: >
+      `scripts/run-qmonster-control-mode-once.sh`를 추가한다. 이 helper는
+      `[tmux] source = "control_mode"`가 들어간 임시 TOML을 쓰고
+      `--config <temp> --once`로 Qmonster를 실행하며, `--root` 같은 안전한
+      추가 인자는 forward한다. helper가 `--config`를 소유하므로 사용자가
+      넘긴 `--config`는 거부한다. binary 선택 방식은 기존
+      `scripts/run-qmonster.sh` 패턴을 따른다.
+    triggered_by: "Follow-up after v1.16.37 made source failure notices transport-neutral."
+    issue_or_context: >
+      Control-mode can be enabled through config, but default-readiness work
+      benefits from a repeatable operator trial command that leaves
+      `~/.qmonster/config/qmonster.toml` untouched.
+    changes:
+      added:
+        - "scripts/run-qmonster-control-mode-once.sh"
+      modified:
+        - "README quick-start and development commands mention the helper"
+        - "docs/ai/UI_MANUAL.md documents the non-mutating control-mode trial"
+        - "docs/ai/WORKFLOWS.md adds the trial to the launch routine"
+        - "ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.38"
+      removed: []
+    changed_sections:
+      - "scripts/run-qmonster-control-mode-once.sh"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/WORKFLOWS.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "control-mode `--once` trial can run without editing the standard config"
+        - "helper rejects caller-supplied --config to avoid ambiguous source selection"
+        - "operator docs identify the helper as the control-mode trial path"
+      modified:
+        - "all-target test count remains 591"
+      removed: []
+    impact_scope:
+      tooling: "new script only; default source remains polling"
+      tests: "591 total passed — 531 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; helper syntax/rejection/control-mode once smokes pass; repeated default and all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 120); meta bump"
+      review_gate: "bash -n scripts/run-qmonster-control-mode-once.sh, helper --config rejection, helper control-mode --once smoke with temp root, cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining default-readiness checks before any source default switch."
+    breaking: false
+    risk: "low — helper uses an isolated temporary config and does not mutate operator config."
+    related_commits: []
+    follow_up:
+      - "Continue C2: collect more operator-trial evidence before any default-source switch."
+
 evolution_summary:
-  current_phase: "v1.16.37 tmux source notices — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  current_phase: "v1.16.38 control-mode trial helper — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
   next_phase: "Continue Phase C C2 with additional control-mode default-readiness hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

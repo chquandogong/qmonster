@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.37`; current canonical ledger: `v1.16.37`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.38`; current canonical ledger: `v1.16.38`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -135,6 +135,9 @@ decision.
 v1.16.37 generalizes poll-tick failure/recovery notices from `tmux polling`
 to `tmux source` so an opt-in control-mode runtime is not mislabeled in
 the alert queue.
+v1.16.38 adds `scripts/run-qmonster-control-mode-once.sh`, a temporary-config
+operator trial helper that runs `--once` with `source = "control_mode"`
+without editing the standard config.
 
 ## Quick start
 
@@ -180,6 +183,9 @@ cargo run --release
 ./scripts/check-tmux-source-parity.sh --all-targets
 ./scripts/check-tmux-source-parity.sh --all-targets --repeat 3 --delay-ms 100
 ./scripts/check-tmux-source-parity.sh --all-targets --strict-title
+
+# C2 operator trial: one control-mode run without editing ~/.qmonster/config/qmonster.toml.
+./scripts/run-qmonster-control-mode-once.sh
 
 # Override the storage root (useful for tests / sandbox runs)
 QMONSTER_ROOT=/tmp/q cargo run -- --once
@@ -270,6 +276,7 @@ cargo build
 ./scripts/check-tmux-source-parity.sh
 ./scripts/check-tmux-source-parity.sh --all-targets
 ./scripts/check-tmux-source-parity.sh --all-targets --repeat 3
+./scripts/run-qmonster-control-mode-once.sh --root /tmp/qmonster-control-mode-smoke
 mission-spec validate .
 mission-spec eval --shared .
 MISSION_SPEC_CLI=/abs/path/to/mission-spec.js ./scripts/verify-shared.sh
