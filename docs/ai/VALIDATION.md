@@ -12,9 +12,9 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-28): `cargo fmt --check`,
-`git diff --check`, `cargo test --all-targets` (646 tests),
+`git diff --check`, `cargo test --all-targets` (651 tests),
 `cargo clippy --all-targets -- -D warnings`, `cargo build --release`,
-and `scripts/verify-shared.sh` pass for v1.18.0. Official
+and `scripts/verify-shared.sh` pass for v1.19.0. Official
 `mission-spec validate .` is still unavailable locally because
 `mission-spec` is not installed, so `scripts/verify-shared.sh` falls
 back to the lite ledger-structure check after cargo checks.
@@ -65,7 +65,15 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
 - [x] **Subagent detection warning** fires when the tail matches the
       detector vocabulary (provider-specific patterns; initially
       `Heuristic`) and tells the operator "token consumption may be
-      delayed or missing in main stats".
+      delayed or missing in main stats". v1.19.0 (Phase D D3-A) adds
+      `● task(` to the marker set so Claude Code's Task subagent tool
+      tail signature triggers the alert; ordinary tool calls
+      (`● Bash(...)`, `● Read(...)`) and TODO-list prose
+      (`Task 1 — capture fixtures`) stay silent. v1.19.0 also marks
+      per-subagent **token attribution** as permanently deferred (D3-C):
+      no provider exposes structured per-subagent input/output
+      counters, so any "Sub" split would be a delta-window guess that
+      conflates with main-agent activity.
 - [x] **Zombie pane / session re-attach**: on `pane_dead` transition,
       per-pane alert queue is drained and context-pressure warnings
       for that pane are reset. On session re-attach, stale alerts

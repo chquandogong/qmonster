@@ -89,12 +89,32 @@ const VERBOSE_MARKERS: &[&str] = &[
     "great question",
 ];
 
+/// Phrase-level markers for "a subagent is being launched" — narrow
+/// enough to avoid the v1.13.0 false-positive class. Matched
+/// case-insensitively against the lowercased tail.
+///
+/// `● task(` (Phase D D3-A v1.19.0) catches Claude Code's Task tool
+/// tail signature — the universal "● <Tool>(args)" rendering with
+/// `Task` as the tool name. That form spawns a separate sub-agent
+/// LLM call, which is exactly what this signal cares about. Bare
+/// `task` or `Task <number>` (e.g. `Task 1 — capture fixtures` from
+/// a TODO list) never matches because the open-paren disambiguates
+/// tool calls from prose.
+///
+/// Codex and Gemini have no equivalent sub-agent surface today —
+/// their multi-step tools (`update_plan`, `apply_patch`, etc.) run
+/// inside the same agent context — so no per-provider markers are
+/// added beyond the cross-provider phrase set. See
+/// `docs/ai/ARCHITECTURE.md` "Deferred for later phases" for the
+/// permanent honesty note: per-subagent token attribution is
+/// blocked on provider data, not on detection.
 const SUBAGENT_MARKERS: &[&str] = &[
     "starting subagent",
     "spawning subagent",
     "launching subagent",
     "delegating task",
     "subagent complete",
+    "● task(",
 ];
 
 /// Slice 4: per-pane tail history for stillness-fallback idle detection.
@@ -501,6 +521,63 @@ mod tests {
         let tail = "Starting subagent: researcher-1\nDelegating task...";
         let set = parse_common_signals(tail);
         assert!(set.subagent_hint);
+    }
+
+    // -----------------------------------------------------------------
+    // Phase D D3-A (v1.19.0) — Claude Task() tool detection
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn subagent_hint_fires_on_claude_task_tool_call() {
+        // Real Claude Code tail signature for the Task subagent tool.
+        // The bullet + `Task(` pair is what Claude Code prints when an
+        // operator's main agent dispatches a sub-agent.
+        let tail = "● Task(description, prompt, general-purpose)\n  ⎿ working...";
+        let set = parse_common_signals(tail);
+        assert!(
+            set.subagent_hint,
+            "● Task(...) is the canonical Claude subagent tail marker"
+        );
+    }
+
+    #[test]
+    fn subagent_hint_does_not_fire_on_prose_task_words() {
+        // TODO-list / plan prose like `Task 1 — Capture real-world
+        // fixtures` looked like a subagent under any bare-word match.
+        // The v1.19.0 pattern requires an open paren after `task`, so
+        // this kind of prose stays silent.
+        let tail = "Task 0 completed\n  Task 1 — Capture real-world fixtures\n  Task 2 — Failing regression tests";
+        let set = parse_common_signals(tail);
+        assert!(
+            !set.subagent_hint,
+            "TODO-list prose with `Task <n>` must not be treated as a subagent"
+        );
+    }
+
+    #[test]
+    fn subagent_hint_does_not_fire_on_source_code_task_identifier() {
+        // Rust source code that defines or uses a variable / type
+        // named `task` is ordinary code, not a subagent dispatch.
+        let tail = "let task = spawn(async move { work().await });\nlet result = task.await?;";
+        let set = parse_common_signals(tail);
+        assert!(
+            !set.subagent_hint,
+            "source-code `task` identifier must not be treated as a subagent"
+        );
+    }
+
+    #[test]
+    fn subagent_hint_does_not_fire_on_other_claude_tool_calls() {
+        // Other Claude Code tool calls (`● Bash(...)`, `● Read(...)`,
+        // `● Edit(...)`) run inside the main agent, not as sub-agents.
+        // They share the bullet prefix but not the `Task` name, so
+        // the marker must not match.
+        let tail = "● Bash(git status)\n● Read(/etc/hosts)\n● Edit(file: \"foo.rs\")";
+        let set = parse_common_signals(tail);
+        assert!(
+            !set.subagent_hint,
+            "ordinary Claude tool calls (Bash/Read/Edit/...) must not be treated as subagents"
+        );
     }
 
     #[test]

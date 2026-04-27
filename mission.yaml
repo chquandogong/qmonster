@@ -1,6 +1,6 @@
 mission:
-  version: "1.18.0"
-  title: "Qmonster v1.18.0 — Phase D D2 identity-drift anomaly detection."
+  version: "1.19.0"
+  title: "Qmonster v1.19.0 — Phase D D3-A subagent detection refinement; D3-C token attribution permanently deferred."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

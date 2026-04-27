@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.18.0`; current mission ledger `v1.18.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.19.0`; current mission ledger `v1.19.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,12 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current line: `v1.18.0` adds Phase D D2 identity-drift anomaly
+Current line: `v1.19.0` closes Phase D D3 honestly — D3-A refines
+Claude subagent detection so `● Task(` fires `subagent_hint` while
+ordinary tool calls (`● Bash(...)`, `● Read(...)`) and TODO-list prose
+(`Task 1 — ...`) stay silent; D3-C marks per-subagent token
+attribution as permanently deferred since none of Claude/Codex/Gemini
+exposes per-subagent input/output counters today. `v1.18.0` added Phase D D2 identity-drift anomaly
 detection. When the operator opts in via `[security]
 identity_drift_findings = true`, a passive `Concern` recommendation
 fires on the affected pane the first time its resolved provider or

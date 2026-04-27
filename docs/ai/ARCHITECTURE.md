@@ -520,7 +520,20 @@ module shape.
 
 ## Deferred for later phases
 
-- Subagent token accounting (Phase 1 ships a detection-only warning).
+- Subagent token attribution (per-subagent input/output token split).
+  v1.19.0 (Phase D D3-A) refines the _detection_ surface — `● task(`
+  joins the existing phrase markers so Claude Code's Task-tool tail
+  signature fires `subagent_hint` while ordinary tool calls
+  (`● Bash(...)`, `● Read(...)`) and TODO-list prose
+  (`Task 1 — capture fixtures`) stay silent. Per-subagent **token
+  attribution** stays permanently deferred (Phase D D3-C honesty
+  note): none of Claude / Codex / Gemini exposes per-subagent
+  input/output token counters today. The cumulative session token
+  totals already include subagent work, so any "Sub" split would be
+  a delta-window guess that conflates with main-agent activity. The
+  same anti-pattern v1.13.0 already removed for log_storm /
+  verbose_answer fallbacks. Re-open if a future provider release
+  lands a structured per-subagent counter.
 - Cross-project correlation across tmux windows that hold genuinely
   different projects (v1.17.0 ships within-project cross-window
   detection only — same `current_path` + `git_branch` across 2+ tmux

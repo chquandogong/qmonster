@@ -124,8 +124,15 @@ session:window · Provider role · %pane_id
   / `output_tokens`로 노출합니다. metric badge는 여전히 compact summary인
   `TOKENS`(total)를 표시하고, 선택된 pane 상세에는 두 값이 모두 있을 때
   `tokens  : Main 1.51M in / 20.4K out [Official]` 형태의 breakdown을
-  추가로 보여줍니다. Subagent token 분리는 아직 신뢰 가능한 provider
-  signal이 없어 표시하지 않습니다.
+  추가로 보여줍니다. **Subagent token 분리는 영구 deferred**입니다 —
+  Claude / Codex / Gemini 모두 per-subagent input/output 카운터를
+  노출하지 않으므로, 세션 누적값은 subagent 작업까지 이미 포함합니다.
+  Phase D D3-A (v1.19.0)은 *탐지*만 정밀화했습니다: Claude `● Task(`
+  tail signature가 `subagent_hint`를 발화하고, 일반 tool 호출
+  (`● Bash(...)`, `● Read(...)`)나 TODO 프로즈 (`Task 1 — ...`)는
+  발화하지 않습니다. token attribution은 provider가 구조화된 카운터를
+  내놓을 때까지 시도하지 않습니다 (ARCHITECTURE.md "Deferred for later
+  phases" 참고).
 - `MODEL` badge는 source가 있을 때만 표시합니다. Claude pane은
   `~/.claude/settings.json`에 `"model"` 키가 있을 때만 채워지므로,
   사용자 환경이 그 키를 비워둔 상태(=Claude Code가 기본 모델
