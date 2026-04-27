@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-28 (implementation sync through v1.18.0 Phase D D2 identity-drift anomaly detection)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-28 (implementation sync through v1.19.0 Phase D D3 subagent detection refinement + Codex statusline effort parsing)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -203,6 +203,13 @@ loop (`app/event_loop.rs`) owns the per-session history map
 can fire its own drifts. The rule is gated behind
 `PolicyGates.identity_drift_findings` (operator opts in via
 `[security] identity_drift_findings = true`); default off.
+v1.19.0 closes Phase D D3 honestly: subagent detection adds Claude
+Code's `● Task(` tail signature while leaving per-subagent token
+attribution permanently deferred until providers expose structured
+per-subagent counters. The same slice hardens Codex statusline parsing
+for current `model-with-reasoning` output: if effort appears only in a
+trailing item such as `gpt-5.5 xhigh`, the Codex adapter still
+populates `model_name = gpt-5.5` and `reasoning_effort = xhigh`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

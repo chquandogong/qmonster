@@ -12890,26 +12890,30 @@ timeline:
       - "If operators ask for drift to also notify, add a sub-flag to promote the rec from Concern to Warning rather than flipping the default."
       - "Phase D D3 (precise subagent token accounting) is the next slice candidate."
 
-  - change_id: "v1.19.0-subagent-detection-refinement"
+  - change_id: "v1.19.0-subagent-and-codex-statusline-refinement"
     semantic_version: "1.19.0"
     change_sequence: 145
     date: "2026-04-28"
-    author: "Claude (Opus 4.7)"
+    author: "Codex (GPT-5.5)"
     contributors:
       - "Operator directive: D3-A + D3-C combination per the recommended split"
+      - "Operator-provided Codex statusline fixture with trailing `gpt-5.5 xhigh`"
     change_type: "feature+docs"
     motivation_type: "phase wrap"
     persistence: "permanent"
     intent: >
       Close Phase D D3 honestly: refine subagent *detection* with the
-      Claude Task-tool tail signature, and explicitly mark per-
-      subagent *token attribution* as permanently deferred since no
-      provider exposes the structured counters that would justify it.
+      Claude Task-tool tail signature, explicitly mark per-subagent
+      *token attribution* as permanently deferred since no provider
+      exposes the structured counters that would justify it, and
+      harden Codex statusline parsing for the current trailing
+      `model-with-reasoning` item shape.
     intent_ko: >
       Phase D D3을 정직하게 닫는다: Claude Task tool tail signature로
       subagent *탐지*를 정밀화하고, per-subagent *token attribution*은
       provider가 구조화된 카운터를 노출하지 않는다는 사실에 근거하여
-      영구 deferred로 명시한다.
+      영구 deferred로 명시하며, 현재 Codex trailing
+      `model-with-reasoning` status item 형식도 파싱한다.
     decision: >
       D3-A — Add `● task(` to the cross-provider `SUBAGENT_MARKERS`
       array in `src/adapters/common.rs`. The bullet + open-paren pair
@@ -12923,7 +12927,11 @@ timeline:
       detection-only warning)" to a Phase D D3-C honesty note: per-
       subagent input/output token splits are blocked on provider
       data, not on detection. Re-open if a future provider release
-      lands a structured per-subagent counter.
+      lands a structured per-subagent counter. Codex statusline —
+      Accept both the earlier inline `gpt-5.5 xhigh` model token and
+      the current trailing `gpt-5.5 xhigh` model-with-reasoning item,
+      so `model_name` and `reasoning_effort` stay populated when the
+      plain model item appears earlier in the same statusline.
     decision_ko: >
       D3-A — `src/adapters/common.rs`의 cross-provider
       `SUBAGENT_MARKERS` 배열에 `● task(`를 추가. bullet + open-paren
@@ -12934,7 +12942,11 @@ timeline:
       honesty note로 ARCHITECTURE.md "Deferred for later phases"
       엔트리를 갱신: per-subagent input/output 토큰 분리는 provider
       데이터 부재 때문에 영구 deferred. 미래에 provider가 구조화된
-      per-subagent counter를 노출하면 재개.
+      per-subagent counter를 노출하면 재개. Codex statusline —
+      기존 inline `gpt-5.5 xhigh` 모델 토큰과 현재 trailing
+      `gpt-5.5 xhigh` model-with-reasoning item을 모두 허용하여,
+      같은 statusline 앞쪽에 plain model item이 있더라도
+      `model_name`과 `reasoning_effort`를 채운다.
     triggered_by: "Operator approved the D3-A + D3-C combination after the v1.18.0 (D2 identity drift) commit."
     issue_or_context: >
       The pre-v1.19.0 `SUBAGENT_MARKERS` set covered only the five
@@ -12946,19 +12958,27 @@ timeline:
       kept "Subagent token accounting" as deferred without naming
       the underlying data limitation, which left the door open to
       future delta-window heuristics that would re-introduce the
-      v1.13.0 false-positive class.
+      v1.13.0 false-positive class. The operator also supplied a
+      live Codex 0.125.0 statusline where the normal model token
+      (`gpt-5.5`) appears before project/branch fields and the effort
+      appears only in the final `gpt-5.5 xhigh` item; the parser
+      needed to consume that final item even after `model_name` was
+      already set.
     changes:
       added:
         - "`● task(` marker in `src/adapters/common.rs::SUBAGENT_MARKERS`"
         - "Module doc-comment on `SUBAGENT_MARKERS` explaining the bullet+paren disambiguation"
         - "Four new unit tests in `src/adapters/common.rs`: positive Claude `● Task(...)` fire, negative TODO-list `Task 1 — ...` suppression, negative source-code `let task = ...` suppression, negative `● Bash(...)` / `● Read(...)` suppression"
+        - "Codex statusline regression fixture for `Context 24% left ... gpt-5.5 xhigh`"
       modified:
+        - "`src/adapters/codex.rs` now reads `reasoning_effort` from a trailing model-with-reasoning status item even if `model_name` was already populated by an earlier plain model token"
         - "`docs/ai/ARCHITECTURE.md` deferred entry — replaced 'Subagent token accounting (Phase 1 ships a detection-only warning)' with a D3-A/D3-C honesty note"
         - "`docs/ai/UI_MANUAL.md` token-breakdown note now cites Phase D D3-A detection refinement and the permanent token-attribution deferral"
         - "`docs/ai/VALIDATION.md` Phase 1 subagent checkbox now mentions the v1.19.0 marker addition + D3-C deferral"
         - "`README.md`, `VERSION.md`, `package.json`, `mission.yaml`, `mission-history.yaml`, `docs/ai/PROJECT_BRIEF.md` bumped to v1.19.0"
       removed: []
     changed_sections:
+      - "src/adapters/codex.rs"
       - "src/adapters/common.rs"
       - "docs/ai/ARCHITECTURE.md"
       - "docs/ai/PROJECT_BRIEF.md"
@@ -12972,26 +12992,27 @@ timeline:
     observable_effects:
       added:
         - "Operators using Claude Code's Task subagent tool now see the existing `subagent-detected` Concern advisory fire on `● Task(...)` tail lines"
+        - "Codex panes using the current statusline shape show `MODEL gpt-5.5` and `EFFORT xhigh` when the final status item is `gpt-5.5 xhigh`"
       modified:
         - "all-target test count rises to 651 (+5 from D3-A unit tests; baseline before D3 was 646)"
       removed:
         - "TODO-list prose `Task 1 — ...` no longer false-fires `subagent_hint` (negative test locks this)"
     impact_scope:
-      runtime: "Pure adapter marker addition; no policy, tmux, storage, or actuation behavior change. Default configuration preserves the v1.18.0 alert volume on tails that did not contain `● Task(` before."
+      runtime: "Pure adapter parsing additions in common subagent detection and Codex statusline parsing; no policy, tmux, storage, or actuation behavior change. Default configuration preserves the v1.18.0 alert volume on tails that did not contain `● Task(` before."
       tests: "651 total passed across lib + main + event_loop + false_positive + idle_state + qmonster_tmux_parity targets"
       ledger: "1 new timeline entry (sequence 145); meta bump; minor version bump v1.18.x → v1.19.0 because Phase D D3 closes"
       npm: "package.json version set to 1.19.0"
       review_gate: "cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, and scripts/verify-shared.sh all pass"
       follow_up_carryover: "Phase E housekeeping (Gemini memory column, comment-preserving toml_edit save) remains the next available work."
     breaking: false
-    risk: "low — adds one narrow marker that only matches Claude's bullet+Task( tail signature; four negative tests lock the false-positive boundary."
+    risk: "low — adds one narrow marker that only matches Claude's bullet+Task( tail signature; four negative tests lock the false-positive boundary. Codex parser change is additive and anchored on provider-model tokens plus known effort values."
     related_commits: []
     follow_up:
       - "Re-open per-subagent token attribution only if a future provider release lands a structured per-subagent input/output counter."
       - "Phase E housekeeping is the next slice candidate."
 
 evolution_summary:
-  current_phase: "v1.19.0 closes Phase D D3 honestly: D3-A adds `● task(` to subagent detection markers (Claude Task tool tail signature); D3-C marks per-subagent token attribution as permanently deferred — no provider exposes structured per-subagent counters."
+  current_phase: "v1.19.0 closes Phase D D3 honestly: D3-A adds `● task(` to subagent detection markers (Claude Task tool tail signature); D3-C marks per-subagent token attribution as permanently deferred — no provider exposes structured per-subagent counters. Codex statusline parsing also handles trailing `gpt-5.5 xhigh` model-with-reasoning items."
   next_phase: "Phase E housekeeping is the next available work: Gemini memory column display (low-value), comment-preserving settings save via `toml_edit`. Save path remains comment-lossy via `toml::to_string_pretty` until E2 lands. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

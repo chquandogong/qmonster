@@ -140,7 +140,9 @@ session:window · Provider role · %pane_id
   허위 표시(예: `claude --version` 결과를 모델 이름으로 둔갑)
   대신 부재가 곧 honesty라는 전제입니다 (S3-4 design decision (b)).
   Codex / Gemini는 status surface에서 직접 `gpt-…` / `gemini-…`
-  토큰을 읽을 수 있으면 채웁니다.
+  토큰을 읽을 수 있으면 채웁니다. Codex는 `gpt-5.5 xhigh`처럼
+  trailing model-with-reasoning status item에만 effort가 붙는 경우에도
+  `MODEL`과 `EFFORT`를 분리해 채웁니다.
 - 긴 worktree 경로 문자열은 PATH badge에서 40자까지 자동
   ellipsize됩니다 (Slice 3 housekeeping). 잘린 부분은 `…` 한 글자로
   표시되어 badge 한 줄이 pane card 폭을 넘기지 않습니다.
