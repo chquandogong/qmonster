@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.29`; current canonical ledger: `v1.16.29`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.30`; current canonical ledger: `v1.16.30`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -117,7 +117,9 @@ extracts shared tmux command builders so polling and control-mode use
 the same list/capture/send argument contracts. v1.16.28 adds a live
 polling-vs-control-mode parity checker for the active tmux session.
 v1.16.29 extends that checker with `--all-targets` to validate each
-discovered tmux window separately.
+discovered tmux window separately. v1.16.30 extracts shared pane
+snapshot hydration so polling and control-mode parse list-panes rows and
+attach tails through the same helper.
 
 ## Quick start
 
@@ -216,7 +218,8 @@ src/
                audit logging
   domain/      pure types: identity, origin (SourceKind), signal,
                recommendation, audit, lifecycle
-  tmux/        PaneSource trait + polling and opt-in control-mode sources
+  tmux/        PaneSource trait + polling/control-mode sources, shared
+               tmux command, snapshot hydration, and parity helpers
   adapters/    claude / codex / gemini / qmonster tail parsers
   policy/      pure engine + rules (alert + advisory + concurrent + profile)
   store/       paths, sink (EventSink + NoopSink + InMemorySink),

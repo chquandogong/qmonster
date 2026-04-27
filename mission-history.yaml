@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.29 target-scoped tmux-source parity validation."
+  mission_title: "Qmonster v0.5.0 — v1.16.30 shared pane snapshot hydration."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 111
-  latest_version: "1.16.29"
+  total_revisions: 112
+  latest_version: "1.16.30"
 
 timeline:
   - change_id: "initial"
@@ -10326,9 +10326,78 @@ timeline:
     follow_up:
       - "Continue C2: harden control-mode lifecycle behavior under repeated all-target parity runs."
 
+  - change_id: "qmonster-v1.16.30-shared-pane-snapshot-hydration"
+    semantic_version: "1.16.30"
+    change_sequence: 112
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: keep progressing C2 and close each work item with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C2 control-mode transport drift reduction"
+    persistence: "permanent"
+    intent: >
+      Reduce polling/control-mode drift by sharing list-panes row parsing and
+      tail hydration logic.
+    intent_ko: >
+      list-panes row parsing과 tail hydration logic을 공유하여
+      polling/control-mode drift를 줄인다.
+    decision: >
+      Add `src/tmux/snapshots.rs` with `hydrate_pane_snapshots`. Both
+      `PollingSource::list_panes` and `ControlModeSource::list_panes` now call
+      the same helper after their transport-specific command execution.
+    decision_ko: >
+      `hydrate_pane_snapshots`를 담은 `src/tmux/snapshots.rs`를 추가한다.
+      `PollingSource::list_panes`와 `ControlModeSource::list_panes`는
+      transport별 command 실행 후 같은 helper를 호출한다.
+    triggered_by: "Follow-up after v1.16.29 made target-scoped parity easy to run."
+    issue_or_context: >
+      The two transports shared tmux command builders but still duplicated the
+      parse-and-tail-fill loop. Keeping that loop separate made future behavior
+      drift possible.
+    changes:
+      added:
+        - "src/tmux/snapshots.rs: shared pane row hydration helper and tests"
+      modified:
+        - "src/tmux/polling.rs uses hydrate_pane_snapshots"
+        - "src/tmux/control_mode.rs uses hydrate_pane_snapshots"
+        - "src/tmux/mod.rs registers the snapshots helper module"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.30"
+      removed:
+        - "duplicate list-panes parse/tail-fill loops from polling and control-mode"
+    changed_sections:
+      - "src/tmux/snapshots.rs"
+      - "src/tmux/mod.rs"
+      - "src/tmux/polling.rs"
+      - "src/tmux/control_mode.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "shared helper hydrates RawPaneSnapshot rows and fills tails"
+        - "unit tests cover valid-row hydration and tail-capture failure"
+      modified:
+        - "all-target test count increases to 584"
+      removed:
+        - "two duplicated parse/tail-fill loops"
+    impact_scope:
+      code: "internal tmux transport refactor; no intended behavior change"
+      tests: "584 total passed — 524 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; live default and all-target parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 112); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh, ./scripts/check-tmux-source-parity.sh --all-targets, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with additional control-mode lifecycle and parity hardening."
+    breaking: false
+    risk: "low — helper preserves the existing parse/tail-fill behavior and live parity remains green."
+    related_commits: []
+    follow_up:
+      - "Continue C2: reduce remaining transport-specific behavior before considering control-mode as a default."
+
 evolution_summary:
-  current_phase: "v1.16.29 target-scoped tmux-source parity validation — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
-  next_phase: "Continue Phase C C2 with additional control-mode hardening informed by aggregate and target-scoped live parity checks. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.30 shared pane snapshot hydration — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  next_phase: "Continue Phase C C2 with additional control-mode lifecycle and parity hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

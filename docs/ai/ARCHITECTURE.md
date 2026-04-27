@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.29 target-scoped tmux-source parity validation)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.30 shared pane snapshot hydration)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -112,6 +112,8 @@ optional strict-tail parity before any default-source switch.
 v1.16.29 adds target-scoped parity mode (`--all-targets`) so each
 discovered tmux window can be compared independently instead of relying
 only on all-session aggregation.
+v1.16.30 adds `tmux::snapshots` so polling and control-mode share
+list-panes row parsing and tail hydration.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -157,6 +159,8 @@ Format strings for `list-panes` and `capture-pane` live here. Knows
 nothing about providers, roles, or signal semantics.
 The `tmux::parity` helper compares two `PaneSource` implementations using
 only raw tmux fields, keeping validation inside the same boundary.
+The `tmux::snapshots` helper hydrates raw pane rows for both transports
+so parsing and tail-fill behavior cannot drift independently.
 `[ProviderOfficial: tmux wiki / Formats / Control Mode]` informs the
 format strings and lifecycle assumptions.
 
