@@ -7,9 +7,8 @@ use crate::tmux::commands::{
     list_windows_args, send_key_args, send_keys_literal_args,
 };
 use crate::tmux::snapshots::hydrate_pane_snapshots;
-use crate::tmux::types::{
-    PANE_LIST_FORMAT, RawPaneSnapshot, WINDOW_LIST_FORMAT, WindowTarget, parse_list_windows_row,
-};
+use crate::tmux::targets::{parse_current_target, parse_window_targets};
+use crate::tmux::types::{PANE_LIST_FORMAT, RawPaneSnapshot, WINDOW_LIST_FORMAT, WindowTarget};
 
 #[derive(Debug, Error)]
 pub enum PollingError {
@@ -113,11 +112,7 @@ impl PaneSource for PollingSource {
             ));
         }
         let text = String::from_utf8_lossy(&output.stdout);
-        let mut targets: Vec<WindowTarget> =
-            text.lines().filter_map(parse_list_windows_row).collect();
-        targets.sort();
-        targets.dedup();
-        Ok(targets)
+        Ok(parse_window_targets(text.lines()))
     }
 
     fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError> {
@@ -207,7 +202,7 @@ fn current_window_target() -> Result<Option<WindowTarget>, PollingError> {
         ));
     }
     let line = String::from_utf8_lossy(&output.stdout);
-    Ok(line.lines().next().and_then(parse_list_windows_row))
+    Ok(parse_current_target(line.lines()))
 }
 
 /// Test-only in-memory source.

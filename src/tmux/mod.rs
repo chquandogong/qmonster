@@ -3,6 +3,7 @@ pub mod control_mode;
 pub mod parity;
 pub mod polling;
 pub(crate) mod snapshots;
+pub(crate) mod targets;
 pub mod types;
 
 pub use control_mode::ControlModeSource;

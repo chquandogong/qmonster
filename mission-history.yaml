@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.30 shared pane snapshot hydration."
+  mission_title: "Qmonster v0.5.0 — v1.16.31 shared tmux target parsing."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 112
-  latest_version: "1.16.30"
+  total_revisions: 113
+  latest_version: "1.16.31"
 
 timeline:
   - change_id: "initial"
@@ -10395,9 +10395,77 @@ timeline:
     follow_up:
       - "Continue C2: reduce remaining transport-specific behavior before considering control-mode as a default."
 
+  - change_id: "qmonster-v1.16.31-shared-tmux-target-parsing"
+    semantic_version: "1.16.31"
+    change_sequence: 113
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: keep progressing C2 and close each work item with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C2 control-mode transport drift reduction"
+    persistence: "permanent"
+    intent: >
+      Reduce polling/control-mode drift by sharing tmux window target parsing
+      for current-target and available-target queries.
+    intent_ko: >
+      current-target 및 available-target query의 tmux window target parsing을
+      공유하여 polling/control-mode drift를 줄인다.
+    decision: >
+      Add `src/tmux/targets.rs` with helpers for sorted/deduped available
+      targets and the first-row-only current-target contract. Both
+      `PollingSource` and `ControlModeSource` now use these helpers.
+    decision_ko: >
+      sorted/deduped available target과 first-row-only current-target contract
+      helper를 담은 `src/tmux/targets.rs`를 추가한다. `PollingSource`와
+      `ControlModeSource`가 모두 이 helper를 사용한다.
+    triggered_by: "Follow-up after v1.16.30 shared pane snapshot hydration."
+    issue_or_context: >
+      Pane row hydration was shared, but target parsing and target sort/dedup
+      logic still lived separately in both transports.
+    changes:
+      added:
+        - "src/tmux/targets.rs: shared target parsing helpers and tests"
+      modified:
+        - "src/tmux/polling.rs uses parse_window_targets and parse_current_target"
+        - "src/tmux/control_mode.rs uses the same target helpers"
+        - "src/tmux/mod.rs registers the targets helper module"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.31"
+      removed:
+        - "duplicate target sort/dedup and first-row current-target parsing from polling/control-mode"
+    changed_sections:
+      - "src/tmux/targets.rs"
+      - "src/tmux/mod.rs"
+      - "src/tmux/polling.rs"
+      - "src/tmux/control_mode.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "shared helper parses available window targets and current target rows"
+        - "unit tests cover sort/dedup/invalid-row handling and current-target first-row behavior"
+      modified:
+        - "all-target test count increases to 586"
+      removed:
+        - "two duplicated target parsing blocks"
+    impact_scope:
+      code: "internal tmux transport refactor; no intended behavior change"
+      tests: "586 total passed — 526 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; live default and all-target parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 113); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh, ./scripts/check-tmux-source-parity.sh --all-targets, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with additional control-mode lifecycle hardening."
+    breaking: false
+    risk: "low — helper preserves existing target parsing behavior and live parity remains green."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add control-mode lifecycle validation around repeated command execution and reconnect paths."
+
 evolution_summary:
-  current_phase: "v1.16.30 shared pane snapshot hydration — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
-  next_phase: "Continue Phase C C2 with additional control-mode lifecycle and parity hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.31 shared tmux target parsing — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  next_phase: "Continue Phase C C2 with additional control-mode lifecycle hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

@@ -9,9 +9,8 @@ use crate::tmux::commands::{
 };
 use crate::tmux::polling::{PaneSource, PollingError};
 use crate::tmux::snapshots::hydrate_pane_snapshots;
-use crate::tmux::types::{
-    PANE_LIST_FORMAT, RawPaneSnapshot, WINDOW_LIST_FORMAT, WindowTarget, parse_list_windows_row,
-};
+use crate::tmux::targets::{parse_current_target, parse_window_targets};
+use crate::tmux::types::{PANE_LIST_FORMAT, RawPaneSnapshot, WINDOW_LIST_FORMAT, WindowTarget};
 
 const DEFAULT_CAPTURE_LINES: usize = 24;
 
@@ -75,19 +74,13 @@ impl PaneSource for ControlModeSource {
         }
         let fmt = WINDOW_LIST_FORMAT.replace("\\t", "\t");
         let output = self.run(&current_target_args(&tmux_pane, &fmt))?;
-        Ok(output.first().and_then(|line| parse_list_windows_row(line)))
+        Ok(parse_current_target(output.iter()))
     }
 
     fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
         let fmt = WINDOW_LIST_FORMAT.replace("\\t", "\t");
         let output = self.run(&list_windows_args(&fmt))?;
-        let mut targets: Vec<WindowTarget> = output
-            .iter()
-            .filter_map(|line| parse_list_windows_row(line))
-            .collect();
-        targets.sort();
-        targets.dedup();
-        Ok(targets)
+        Ok(parse_window_targets(output.iter()))
     }
 
     fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError> {
