@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.9 once report extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.10 prompt-send action extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 91
-  latest_version: "1.16.9"
+  total_revisions: 92
+  latest_version: "1.16.10"
 
 timeline:
   - change_id: "initial"
@@ -8920,8 +8920,82 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.10-prompt-send-action-extraction"
+    semantic_version: "1.16.10"
+    change_sequence: 92
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving prompt-send accept/dismiss handling
+      out of `src/main.rs`.
+    intent_ko: >
+      prompt-send accept/dismiss 처리를 `src/main.rs` 밖으로 옮겨 Phase C
+      C1 분해를 계속한다.
+    decision: >
+      Add `src/app/prompt_send_actions.rs` with a single TUI-facing
+      helper that selects the deterministic pending proposal, applies
+      the two prompt-send gates, records audit events, sends through
+      `PaneSource::send_keys` only when permitted, and returns the
+      resulting `SystemNotice`. Keep dashboard resynchronization in
+      `src/main.rs` because it still owns the live TUI state.
+    decision_ko: >
+      deterministic pending proposal 선택, 두 prompt-send gate 적용,
+      audit event 기록, 허용된 경우에만 `PaneSource::send_keys` 호출,
+      그리고 결과 `SystemNotice` 생성을 담당하는 단일 TUI-facing helper를
+      `src/app/prompt_send_actions.rs`에 추가한다. dashboard resync는
+      live TUI state를 소유한 `src/main.rs`에 남긴다.
+    triggered_by: "Continuation after the v1.16.9 once report extraction."
+    issue_or_context: >
+      The `p`/`d` key handler still contained a large block of
+      prompt-send proposal selection, audit vocabulary, execution-gate,
+      tmux send, failure, and dismiss behavior. This logic is meaningful
+      app behavior and can be unit-tested without terminal event-loop
+      scaffolding.
+    changes:
+      added:
+        - "src/app/prompt_send_actions.rs: prompt-send action helper plus 6 unit tests"
+      modified:
+        - "src/app/mod.rs exports the prompt_send_actions module"
+        - "src/main.rs delegates `p`/`d` prompt-send accept/dismiss handling to app::prompt_send_actions"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.10"
+      removed:
+        - "inline prompt-send proposal selection / audit / send / dismiss block from src/main.rs"
+    changed_sections:
+      - "src/app/prompt_send_actions.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Ninth Phase C C1 code slice exists outside main.rs"
+        - "prompt-send accept/dismiss paths are covered by direct unit tests"
+      modified:
+        - "main.rs no longer owns prompt-send execution-gate notice/audit construction"
+      removed:
+        - "large inline `p`/`d` prompt-send key-handler block from the live event-loop module"
+    impact_scope:
+      code: "internal refactor only; no prompt-send keybinding, gate, audit kind, tmux send, or notice wording change intended"
+      tests: "547 total passed — 485 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+6 lib tests vs v1.16.9)"
+      ledger: "1 new timeline entry (sequence 92); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — the extracted helper preserves the existing `p`/`d` semantics and directly covers blocked, accepted-without-send, executed, failed, dismissed, and no-pending paths."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.9 once report extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, and once_report helper modules already extracted."
+  current_phase: "v1.16.10 prompt-send action extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, once_report, and prompt_send_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
