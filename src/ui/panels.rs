@@ -168,11 +168,11 @@ pub fn pane_index_at_row(reports: &[PaneReport], state: &ListState, row: u16) ->
 }
 
 fn highlight_style(focused: bool) -> Style {
-    let style = Style::default().fg(theme::TEXT_PRIMARY);
+    let style = Style::default().add_modifier(Modifier::BOLD);
     if focused {
-        style.bg(theme::BADGE_BG).add_modifier(Modifier::BOLD)
+        style.add_modifier(Modifier::UNDERLINED)
     } else {
-        style.add_modifier(Modifier::BOLD)
+        style
     }
 }
 
@@ -367,10 +367,38 @@ pub fn pane_panel_title(report: &PaneReport) -> String {
 
 fn pane_panel_title_with_flash(report: &PaneReport, flash: Option<&PaneStateFlash>) -> String {
     let title = pane_panel_title(report);
+    let mut parts = Vec::new();
     if flash.is_some() {
-        format!("STATE CHANGED · {title}")
-    } else {
+        parts.push("STATE CHANGED");
+    }
+    if let Some(state) = pane_title_state_label(report, flash) {
+        parts.push(state);
+    }
+    if parts.is_empty() {
         title
+    } else {
+        format!("{} · {title}", parts.join(" · "))
+    }
+}
+
+fn pane_title_state_label(
+    report: &PaneReport,
+    flash: Option<&PaneStateFlash>,
+) -> Option<&'static str> {
+    match report.idle_state {
+        Some(cause) => Some(idle_title_state_label(cause)),
+        None if flash.is_some() => Some("ACTIVE"),
+        None => None,
+    }
+}
+
+fn idle_title_state_label(cause: IdleCause) -> &'static str {
+    match cause {
+        IdleCause::WorkComplete => "IDLE DONE",
+        IdleCause::Stale => "IDLE STALE",
+        IdleCause::InputWait => "WAIT INPUT",
+        IdleCause::PermissionWait => "WAIT APPROVAL",
+        IdleCause::LimitHit => "USAGE LIMIT",
     }
 }
 
@@ -853,6 +881,11 @@ fn format_state_row_with_flash(
         ),
         Span::raw(" "),
         Span::styled(
+            format!(" {} ", idle_persistent_effect_label(cause)),
+            flashable_badge_style(badge_style, pulse_on),
+        ),
+        Span::raw(" "),
+        Span::styled(
             format!(" ⏱ {elapsed_str} "),
             flashable_badge_style(theme::idle_elapsed_badge(), pulse_on),
         ),
@@ -865,6 +898,16 @@ fn format_state_row_with_flash(
         ));
     }
     Line::from(spans)
+}
+
+fn idle_persistent_effect_label(cause: IdleCause) -> &'static str {
+    match cause {
+        IdleCause::WorkComplete => "COMPLETE",
+        IdleCause::Stale => "STILL IDLE",
+        IdleCause::InputWait => "INPUT NEEDED",
+        IdleCause::PermissionWait => "APPROVAL NEEDED",
+        IdleCause::LimitHit => "ACTION REQUIRED",
+    }
 }
 
 fn format_active_state_row(now: Instant, flash: &PaneStateFlash) -> Line<'static> {
@@ -1554,6 +1597,10 @@ mod tests {
         );
         assert!(text.contains("⏸"), "glyph missing: {text}");
         assert!(text.contains("WAIT (input)"), "label missing: {text}");
+        assert!(
+            text.contains("INPUT NEEDED"),
+            "persistent action marker missing: {text}"
+        );
         assert!(text.contains("⏱"), "elapsed badge missing: {text}");
     }
 
@@ -1582,9 +1629,16 @@ mod tests {
     #[test]
     fn selection_highlight_stays_stable_during_state_flash() {
         let style = highlight_style(true);
-        assert_eq!(style.fg, Some(theme::TEXT_PRIMARY));
-        assert_eq!(style.bg, Some(theme::BADGE_BG));
+        assert_eq!(
+            style.fg, None,
+            "selected panes must not override state badge foregrounds"
+        );
+        assert_eq!(
+            style.bg, None,
+            "selected panes must not override state flash backgrounds"
+        );
         assert!(style.add_modifier.contains(Modifier::BOLD));
+        assert!(style.add_modifier.contains(Modifier::UNDERLINED));
     }
 
     #[test]
@@ -1612,13 +1666,56 @@ mod tests {
             .collect();
 
         assert!(
-            expanded_text.starts_with("STATE CHANGED · qwork:1"),
+            expanded_text.starts_with("STATE CHANGED · ACTIVE · qwork:1"),
             "expanded card flash header missing: {expanded_text}"
         );
         assert!(
-            collapsed_text.starts_with("STATE CHANGED · qwork:1"),
+            collapsed_text.starts_with("STATE CHANGED · ACTIVE · qwork:1"),
             "collapsed card flash header missing: {collapsed_text}"
         );
+    }
+
+    #[test]
+    fn idle_header_state_label_persists_after_flash_window() {
+        let mut rep = base_report();
+        rep.idle_state = Some(IdleCause::InputWait);
+        rep.idle_state_entered_at = Some(std::time::Instant::now());
+        let now = std::time::Instant::now();
+        let expired_flash =
+            PaneStateFlash::new(Some(IdleCause::InputWait), now - STATE_FLASH_DURATION);
+        let lines = pane_list_lines_with_flash(&rep, true, false, now, Some(&expired_flash));
+        let title: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+
+        assert!(
+            title.starts_with("WAIT INPUT · qwork:1"),
+            "current idle state must persist in the title even after flash expires: {title}"
+        );
+        assert!(
+            !title.contains("STATE CHANGED"),
+            "expired flash must not keep transition wording: {title}"
+        );
+    }
+
+    #[test]
+    fn idle_state_title_prefix_is_same_for_expanded_and_collapsed_cards() {
+        let mut rep = base_report();
+        rep.idle_state = Some(IdleCause::PermissionWait);
+        rep.idle_state_entered_at = Some(std::time::Instant::now());
+        let expanded = pane_list_lines_with_flash(&rep, true, false, Instant::now(), None);
+        let collapsed = pane_list_lines_with_flash(&rep, false, false, Instant::now(), None);
+        let expanded_title: String = expanded[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        let collapsed_title: String = collapsed[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+
+        assert!(expanded_title.starts_with("WAIT APPROVAL · qwork:1"));
+        assert!(collapsed_title.starts_with("WAIT APPROVAL · qwork:1"));
     }
 
     #[test]
