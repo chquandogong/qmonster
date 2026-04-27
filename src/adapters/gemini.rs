@@ -238,6 +238,9 @@ fn classify_idle_gemini(
     if gemini_idle_cursor(tail) {
         return Some(IdleCause::WorkComplete);
     }
+    if gemini_in_progress_marker(tail) {
+        return None;
+    }
     if history.is_still(history.capacity()) {
         return Some(IdleCause::Stale);
     }
@@ -290,6 +293,26 @@ fn gemini_suffix_is_idle_chrome(lines: &[&str]) -> bool {
     }
 
     true
+}
+
+fn gemini_in_progress_marker(tail: &str) -> bool {
+    let mut checked = 0;
+    for raw in tail.lines().rev() {
+        let line = raw.trim();
+        if line.is_empty() || is_gemini_separator(line) {
+            continue;
+        }
+        checked += 1;
+        if checked > 12 {
+            break;
+        }
+
+        let lower = line.to_lowercase();
+        if lower.contains("thinking") && (lower.contains("...") || lower.contains('…')) {
+            return true;
+        }
+    }
+    false
 }
 
 fn is_gemini_separator(line: &str) -> bool {
@@ -641,6 +664,25 @@ branch sandbox /model quota context memory
 main no sandbox gemini-3.1 ~/proj 47% used 0% used 119 MB
 
 Working on the new request now";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        assert_eq!(set.idle_state, None);
+    }
+
+    #[test]
+    fn gemini_thinking_marker_suppresses_stale_idle_fallback() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let tail = "\
+Running tool calls
+
+Thinking...";
+        let mut history = PaneTailHistory::empty();
+        for _ in 0..history.capacity() {
+            history.push(tail.into());
+        }
+
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = GeminiAdapter.parse(&c);
         assert_eq!(set.idle_state, None);

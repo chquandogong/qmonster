@@ -72,9 +72,17 @@ pub fn runtime_refresh_sends_one_command_at_a_time(
 
 pub fn runtime_refresh_sends_escape_first(
     provider: Provider,
-    _idle_state: Option<IdleCause>,
+    idle_state: Option<IdleCause>,
 ) -> bool {
     matches!(provider, Provider::Claude)
+        && !runtime_refresh_blocks_in_flight_work(provider, idle_state)
+}
+
+pub fn runtime_refresh_blocks_in_flight_work(
+    provider: Provider,
+    idle_state: Option<IdleCause>,
+) -> bool {
+    matches!(provider, Provider::Claude) && matches!(idle_state, None | Some(IdleCause::Stale))
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -93,6 +101,13 @@ pub fn send_runtime_refresh_commands<P: PaneSource>(
     tail_overlays: &mut HashMap<String, String>,
 ) -> RuntimeRefreshSendOutcome {
     let mut outcome = RuntimeRefreshSendOutcome::default();
+    if runtime_refresh_blocks_in_flight_work(provider, idle_state) {
+        outcome.failed = Some((
+            "Claude active runtime refresh".into(),
+            "blocked to avoid interrupting in-flight work".into(),
+        ));
+        return outcome;
+    }
     if runtime_refresh_sends_escape_first(provider, idle_state)
         && let Err(e) = source.send_key(pane_id, "Escape")
     {
@@ -246,6 +261,31 @@ pub fn handle_runtime_refresh_action<P: PaneSource>(
             notice: SystemNotice {
                 title: "runtime refresh blocked".into(),
                 body: format!("{pane_id} \u{2192} `{command_label}` blocked by observe_only mode"),
+                severity: Severity::Warning,
+                source_kind: SourceKind::ProjectCanonical,
+            },
+            force_poll: false,
+        };
+    }
+
+    if runtime_refresh_blocks_in_flight_work(provider, report.idle_state) {
+        let command_label = runtime_refresh_command_label(available_commands);
+        sink.record(AuditEvent {
+            kind: AuditEventKind::RuntimeRefreshBlocked,
+            pane_id: pane_id.clone(),
+            severity: Severity::Warning,
+            summary: format!(
+                "{pane_id} {command_label} (blocked; Claude pane appears active or uncertain)"
+            ),
+            provider: Some(provider),
+            role: Some(report.identity.identity.role),
+        });
+        return RuntimeRefreshActionOutcome {
+            notice: SystemNotice {
+                title: "runtime refresh deferred".into(),
+                body: format!(
+                    "{pane_id} appears active or uncertain; not sending Escape or runtime slash commands because they can interrupt Claude work"
+                ),
                 severity: Severity::Warning,
                 source_kind: SourceKind::ProjectCanonical,
             },
@@ -669,7 +709,8 @@ mod tests {
     fn runtime_refresh_action_success_records_request_completion_and_forces_poll() {
         let source = RecordingRefreshSource::with_capture("Claude status\nmodel: opus");
         let sink = InMemorySink::new();
-        let report = base_report(Provider::Claude);
+        let mut report = base_report(Provider::Claude);
+        report.idle_state = Some(IdleCause::WorkComplete);
         let mut offsets = HashMap::new();
         let mut overlays = HashMap::new();
 
@@ -692,6 +733,33 @@ mod tests {
             overlays.get("%1").map(String::as_str),
             Some("Claude status\nmodel: opus")
         );
+    }
+
+    #[test]
+    fn runtime_refresh_action_blocks_active_claude_without_sending_escape() {
+        let source = RecordingRefreshSource::with_capture("Claude status\nmodel: opus");
+        let sink = InMemorySink::new();
+        let report = base_report(Provider::Claude);
+        let mut offsets = HashMap::new();
+        let mut overlays = HashMap::new();
+
+        let outcome = handle_runtime_refresh_action(
+            &source,
+            &sink,
+            Some(&report),
+            ActionsMode::RecommendOnly,
+            40,
+            &mut offsets,
+            &mut overlays,
+        );
+
+        let events = sink.snapshot();
+        assert_eq!(outcome.notice.title, "runtime refresh deferred");
+        assert!(!outcome.force_poll);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, AuditEventKind::RuntimeRefreshBlocked);
+        assert!(source.calls().is_empty());
+        assert!(overlays.is_empty());
     }
 
     #[test]
@@ -798,7 +866,15 @@ mod tests {
             runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
             ["/usage"]
         );
-        assert!(runtime_refresh_sends_escape_first(Provider::Claude, None));
+        assert!(!runtime_refresh_sends_escape_first(Provider::Claude, None));
+        assert!(!runtime_refresh_sends_escape_first(
+            Provider::Claude,
+            Some(IdleCause::Stale)
+        ));
+        assert!(runtime_refresh_sends_escape_first(
+            Provider::Claude,
+            Some(IdleCause::WorkComplete)
+        ));
     }
 
     #[test]
@@ -809,7 +885,7 @@ mod tests {
             &source,
             "%1",
             Provider::Claude,
-            None,
+            Some(IdleCause::WorkComplete),
             &["/status"],
             40,
             &mut overlays,
@@ -846,7 +922,7 @@ mod tests {
                 &source,
                 "%1",
                 Provider::Claude,
-                None,
+                Some(IdleCause::WorkComplete),
                 &[command],
                 40,
                 &mut overlays,
@@ -887,7 +963,7 @@ mod tests {
             &source,
             "%1",
             Provider::Claude,
-            None,
+            Some(IdleCause::WorkComplete),
             &["/usage"],
             40,
             &mut overlays,

@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.16.56 — Narrow code-exploration advisory triggers."
+  mission_title: "Qmonster v1.16.57 — Protect active Claude refresh and Gemini thinking state."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 138
-  latest_version: "1.16.56"
+  total_revisions: 139
+  latest_version: "1.16.57"
 
 timeline:
   - change_id: "initial"
@@ -12302,8 +12302,97 @@ timeline:
       - "If a future TaskType::CodeExploration classifier is added, the advisory will fire on it without further changes."
       - "Phase D1 (cross-window correlation) is the next operator-prioritized work."
 
+  - change_id: "v1.16.57-runtime-refresh-active-guard"
+    semantic_version: "1.16.57"
+    change_sequence: 139
+    date: "2026-04-28"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "CHENGHAO QUAN (operator report)"
+    change_type: "fix"
+    motivation_type: "operator-reported-runtime-ux"
+    persistence: "permanent"
+    intent: >
+      Prevent two live TUI state regressions: Gemini panes that visibly
+      show `thinking...` must not be displayed as IDLE merely because
+      the captured tail is still, and pressing `u` on an active Claude
+      pane must not send `Escape` into in-flight Claude work.
+    intent_ko: >
+      실제 운영 중 확인된 두 가지 상태 표시/조작 문제를 수정한다. Gemini가
+      `thinking...` 상태이면 tail이 잠시 변하지 않아도 IDLE로 표시하지 않고,
+      Claude pane이 작업 중이거나 uncertain 상태일 때 `u`가 `Escape`를 보내
+      진행 중인 Claude 작업을 끊지 않게 한다.
+    decision: >
+      Keep the fix conservative. Gemini gets a provider-local recent-tail
+      progress marker check before stillness fallback. Claude runtime
+      refresh remains available on confirmed idle/wait/limit states, but
+      is deferred on active or Stale states and records
+      RuntimeRefreshBlocked rather than sending any key.
+    decision_ko: >
+      보수적으로 처리한다. Gemini는 provider adapter 안에서 최근 tail의
+      `thinking...` 진행 표시를 stillness fallback보다 먼저 확인한다. Claude
+      runtime refresh는 확인된 idle/wait/limit 상태에서만 허용하고, active 또는
+      Stale 상태에서는 아무 키도 보내지 않고 RuntimeRefreshBlocked로 기록한다.
+    triggered_by: "operator requested push/tag, then reported Gemini thinking->IDLE and Claude `u` interrupting work"
+    issue_or_context: >
+      Prior runtime refresh logic sent a defensive Escape before every
+      Claude runtime slash command, including active panes. On Claude
+      Code this can interrupt the current job and force the operator to
+      manually type "continue". Gemini's generic stillness fallback could
+      also classify a stable `thinking...` screen as stale IDLE.
+    changes:
+      added:
+        - ".docs/codex/Qmonster-v0.4.0-2026-04-28-v1.16.57-runtime-refresh-active-guard.md"
+      modified:
+        - "src/adapters/gemini.rs"
+        - "src/app/runtime_refresh.rs"
+        - "README.md"
+        - "VERSION.md"
+        - "docs/ai/ARCHITECTURE.md"
+        - "docs/ai/PROJECT_BRIEF.md"
+        - "docs/ai/UI_MANUAL.md"
+        - "docs/ai/VALIDATION.md"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - "package.json"
+      removed: []
+    changed_sections:
+      - "Gemini idle-state classifier"
+      - "Claude runtime refresh action gate"
+      - "operator docs and ledger"
+    done_when_delta:
+      added:
+        - "Gemini `thinking...` marker suppresses stale-IDLE fallback"
+        - "Claude `u` runtime refresh is deferred on active/uncertain panes without sending Escape"
+        - "RuntimeRefreshBlocked audit event records the deferred Claude refresh"
+        - "Targeted Gemini adapter/runtime_refresh tests and full release validation pass"
+      modified:
+        - "README/VERSION/docs/mission ledger bumped to v1.16.57"
+      removed:
+        - "Unconditional Claude pre-refresh Escape on active/uncertain panes"
+    observable_effects:
+      added:
+        - "Active Claude panes no longer receive Escape when the operator presses `u`"
+        - "Gemini panes showing `thinking...` remain active rather than showing `IDLE STALE`"
+      modified:
+        - "Claude runtime refresh notice can show `runtime refresh deferred` on active/uncertain panes"
+      removed: []
+    impact_scope:
+      runtime: "Keyboard/runtime-refresh safety and Gemini idle classification only; no policy/advisory trigger broadening"
+      tests: "626 total passed — 564 lib + 38 event_loop + 18 false_positive + 6 idle_state"
+      ledger: "1 new timeline entry (sequence 139); meta bump"
+      npm: "package.json version set to 1.16.57"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, npm pack --dry-run, and scripts/verify-shared.sh pass"
+      follow_up_carryover: "Phase D remains long-horizon; no D1/D2/D3 implementation in this patch"
+    breaking: false
+    risk: "low — removes a harmful active-pane key send and narrows idle classification for a visible provider progress marker."
+    related_commits: []
+    follow_up:
+      - "If Gemini changes the progress text away from `thinking...`, add a new captured fixture and extend the marker under the Gemini adapter only."
+      - "If operators need active Claude metrics, design a non-interrupting provider surface rather than reintroducing active-pane Escape."
+
 evolution_summary:
-  current_phase: "v1.16.56 narrows the code-exploration advisory — drops the bare output_chars >= 1500 fallback that was firing on every healthy Main pane, locked by a new regression test."
+  current_phase: "v1.16.57 protects active provider work: Gemini `thinking...` suppresses stale-IDLE fallback, and Claude `u` runtime refresh defers on active/uncertain panes without sending Escape."
   next_phase: "Phase D long-horizon work begins: D1 cross-window/project correlation is the next operator-prioritized slice. D2 identity drift anomaly detection and D3 precise subagent token accounting follow. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
