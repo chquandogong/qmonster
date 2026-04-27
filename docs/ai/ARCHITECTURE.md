@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.11 runtime-refresh action extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.12 clipboard action extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -42,7 +42,7 @@ checkpoint, retention, and durable audit storage.
 ```
 src/
   main.rs      # CLI entry + current TUI event loop (still too large)
-  app/         # bootstrap, config+safety-precedence, event loop, keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send helpers, effect gate
+  app/         # bootstrap, config+safety-precedence, event loop, keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # polling first; control-mode-capable PaneSource trait
   adapters/    # per-provider tail parsers (no identity inference)
@@ -75,7 +75,8 @@ moves operator version-refresh and snapshot-write helpers into
 `app::operator_actions`. v1.16.9 moves `--once` report formatting into
 `app::once_report`. v1.16.10 moves prompt-send accept/dismiss handling
 into `app::prompt_send_actions`. v1.16.11 moves runtime-refresh action
-orchestration into `app::runtime_refresh`.
+orchestration into `app::runtime_refresh`. v1.16.12 moves selected-alert
+command copy notices into `app::clipboard_actions`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

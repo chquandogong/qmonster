@@ -1,4 +1,5 @@
 pub mod bootstrap;
+pub mod clipboard_actions;
 pub mod config;
 pub mod dashboard_state;
 pub mod effects;

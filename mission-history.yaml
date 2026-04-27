@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.11 runtime-refresh action extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.12 clipboard action extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 93
-  latest_version: "1.16.11"
+  total_revisions: 94
+  latest_version: "1.16.12"
 
 timeline:
   - change_id: "initial"
@@ -9069,8 +9069,78 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.12-clipboard-action-extraction"
+    semantic_version: "1.16.12"
+    change_sequence: 94
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving selected-alert command-copy notice
+      construction out of `src/main.rs`.
+    intent_ko: >
+      selected-alert command-copy notice 생성을 `src/main.rs` 밖으로 옮겨
+      Phase C C1 분해를 계속한다.
+    decision: >
+      Add `src/app/clipboard_actions.rs` with the OS clipboard wrapper
+      and a testable selected-alert command-copy action helper. Keep
+      dashboard resynchronization in `src/main.rs`, because alert/pane
+      selection state is still owned by the live TUI event loop.
+    decision_ko: >
+      OS clipboard wrapper와 testable selected-alert command-copy action
+      helper를 가진 `src/app/clipboard_actions.rs`를 추가한다. alert/pane
+      selection state는 live TUI event loop가 아직 소유하므로 dashboard
+      resync는 `src/main.rs`에 남긴다.
+    triggered_by: "Continuation after the v1.16.11 runtime-refresh action extraction."
+    issue_or_context: >
+      The `y` key handler still selected an alert command, invoked the
+      system clipboard, and built success/failure/no-command notices
+      inline. This is a small but independent operator action that can
+      be unit-tested without terminal event handling.
+    changes:
+      added:
+        - "src/app/clipboard_actions.rs: clipboard wrapper, selected-alert command-copy helper, and 3 unit tests"
+      modified:
+        - "src/app/mod.rs exports the clipboard_actions module"
+        - "src/main.rs delegates `y` selected-alert command copy notice construction to app::clipboard_actions"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.12"
+      removed:
+        - "inline clipboard copy helper and selected-alert copy notice construction from src/main.rs"
+    changed_sections:
+      - "src/app/clipboard_actions.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Eleventh Phase C C1 code slice exists outside main.rs"
+        - "selected-alert command copy paths are covered by direct unit tests"
+      modified:
+        - "main.rs no longer owns clipboard success/failure/no-command notice construction"
+      removed:
+        - "inline `copy_text_to_clipboard` helper from the live entry module"
+    impact_scope:
+      code: "internal refactor only; no `y` keybinding, alert selection, clipboard behavior, or notice wording change intended"
+      tests: "555 total passed — 493 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+3 lib tests vs v1.16.11)"
+      ledger: "1 new timeline entry (sequence 94); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — the helper preserves existing `y` semantics and directly covers copied, clipboard-failed, and no-command paths."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.11 runtime-refresh action extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, once_report, and prompt_send_actions helper modules already extracted."
+  current_phase: "v1.16.12 clipboard action extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
