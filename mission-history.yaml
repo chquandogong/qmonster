@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.20 poll tick extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.21 dashboard runtime-state extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 102
-  latest_version: "1.16.20"
+  total_revisions: 103
+  latest_version: "1.16.21"
 
 timeline:
   - change_id: "initial"
@@ -9694,8 +9694,79 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.21-dashboard-runtime-state-extraction"
+    semantic_version: "1.16.21"
+    change_sequence: 103
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving dashboard notices/reports, list-selection,
+      and alert freshness resync bookkeeping out of `src/main.rs`.
+    intent_ko: >
+      dashboard notices/reports, list-selection, alert freshness resync
+      bookkeeping을 `src/main.rs` 밖으로 옮겨 Phase C C1 분해를 계속한다.
+    decision: >
+      Add `src/app/dashboard_runtime.rs` with `DashboardRuntimeState`. The
+      state object owns the live reports, system notices, alert/pane list
+      state, fresh-alert bookkeeping, timestamps, and hidden-alert deadlines,
+      and exposes small mutators that keep dashboard selection state synced.
+    decision_ko: >
+      `DashboardRuntimeState`를 담은 `src/app/dashboard_runtime.rs`를
+      추가한다. 이 state object는 live reports, system notices,
+      alert/pane list state, fresh-alert bookkeeping, timestamps,
+      hidden-alert deadlines를 소유하고, dashboard selection state를
+      동기화하는 작은 mutator들을 제공한다.
+    triggered_by: "Continuation after the v1.16.20 poll tick extraction."
+    issue_or_context: >
+      After poll tick handling moved out, the live loop still repeatedly
+      assembled `DashboardSyncState` and carried many parallel dashboard
+      state variables directly in `run_tui`.
+    changes:
+      added:
+        - "src/app/dashboard_runtime.rs: DashboardRuntimeState and notice/report resync helpers"
+      modified:
+        - "src/main.rs uses DashboardRuntimeState for reports, notices, list selections, alert freshness, and hidden-alert deadlines"
+        - "src/app/mod.rs exports dashboard_runtime"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.21"
+      removed:
+        - "repeated DashboardSyncState construction from the live event-loop body"
+        - "parallel dashboard notices/reports/list-selection bookkeeping locals from run_tui"
+    changed_sections:
+      - "src/app/dashboard_runtime.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Twentieth Phase C C1 code slice exists outside main.rs"
+        - "dashboard runtime state has a named app-level boundary"
+      modified:
+        - "main.rs line count drops from 802 at v1.16.20 to 659"
+      removed:
+        - "dashboard resync boilerplate from target switching, notices, snapshot, runtime-refresh, copy, and prompt-send paths"
+    impact_scope:
+      code: "internal refactor only; no dashboard rendering, alert selection, pane selection, notice insertion, or hidden-alert behavior change intended"
+      tests: "567 total passed — 507 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 103); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — the new state wrapper delegates to the same dashboard_state sync helpers and adds focused unit coverage for startup and notice mutation selection sync."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.20 poll tick extraction — Phase C C1 remains active with polling_tick, terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
+  current_phase: "v1.16.21 dashboard runtime-state extraction — Phase C C1 remains active with dashboard_runtime, polling_tick, terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

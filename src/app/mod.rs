@@ -2,6 +2,7 @@ pub mod bootstrap;
 pub mod clipboard_actions;
 pub mod config;
 pub mod dashboard_render;
+pub mod dashboard_runtime;
 pub mod dashboard_state;
 pub mod effects;
 pub mod event_loop;
