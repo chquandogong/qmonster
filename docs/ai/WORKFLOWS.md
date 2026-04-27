@@ -76,7 +76,21 @@ writes any of these files:
    shared contract. Only then open `.docs/*` for round-specific
    context.
 
-## 5. Cross-check and version-drift cadence
+## 5. Qmonster launch routine
+
+1. Preferred operator launch is `./scripts/run-qmonster.sh`.
+2. The script creates `~/.qmonster/config/qmonster.toml` from
+   `config/qmonster.example.toml` when missing, creates
+   `~/.qmonster/config/pricing.toml` from `config/pricing.example.toml`
+   when missing, then launches Qmonster with `--config`.
+3. Fill non-zero pricing rates manually in
+   `~/.qmonster/config/pricing.toml` to enable COST badges. Qmonster
+   never fetches provider pricing pages.
+4. In tmux, `tmux/qmonster.tmux.conf.example` provides a `Q` binding
+   that calls the same launcher. Canonical pane titles remain the best
+   way to mark roles exactly.
+
+## 6. Cross-check and version-drift cadence
 
 Re-run the planning loop when any of the following happen:
 
@@ -92,7 +106,7 @@ Re-run the planning loop when any of the following happen:
   `docs/ai/` and profile lever citations"_. The alert is informational;
   no auto-update happens (`refresh.policy = manual_only`).
 
-## 6. `/compact`, `/clear`, `/memory`, cache — operating rules
+## 7. `/compact`, `/clear`, `/memory`, cache — operating rules
 
 - **`/compact`** — never automatic. Before `/compact`:
   1. Qmonster **offers** (does not force) a snapshot of large
@@ -112,7 +126,7 @@ Re-run the planning loop when any of the following happen:
   surfaces cache-friendly structure as guidance `[ProjectCanonical]`;
   it does not toggle provider cache settings.
 
-## 7. local-first with shared repo ledger
+## 8. local-first with shared repo ledger
 
 Tracked in shared repo:
 

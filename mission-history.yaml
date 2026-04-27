@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.15.19 settings overlay [x] close-button polish."
+  mission_title: "Qmonster v0.5.0 — v1.15.21 Phase-B pane visibility."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 75
-  latest_version: "1.15.19"
+  total_revisions: 77
+  latest_version: "1.15.21"
 
 timeline:
   - change_id: "initial"
@@ -7705,9 +7705,182 @@ timeline:
     follow_up:
       - "Annotated tag v1.15.19 at this commit."
 
+  - change_id: "qmonster-v1.15.20-phase-a-operational-activation"
+    semantic_version: "1.15.20"
+    change_sequence: 76
+    date: "2026-04-27"
+    author: "Codex (codex:1:review)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — requested synthesis of Claude/Codex/Gemini update plans and sequential execution"
+    change_type: "feature"
+    motivation_type: "operator-activation"
+    persistence: "permanent"
+    intent: >
+      Execute Phase A from the three-model synthesis: activate already
+      shipped surfaces before adding new large features. The highest-ROI
+      gaps were operational, not architectural: settings overlay save had
+      no standard config path in the running process, COST badges had no
+      standard pricing template path, and profile recommendations were
+      blocked because non-canonical panes resolved as role=Unknown or Low
+      confidence.
+    decision: >
+      Choose the operator defaults directly: `~/.qmonster/config/qmonster.toml`
+      is the standard config path; `~/.qmonster/config/pricing.toml` is
+      the operator-filled pricing table; non-canonical provider/status
+      surfaces may resolve to `Role::Main` at Medium confidence when the
+      provider is structurally identified. Security posture advisories are
+      deferred as an opt-in Concern rule, and review-tier profiles are
+      planned as a later 3x3-grid restoration rather than mixed into this
+      activation slice.
+    triggered_by: "Operator instruction (2026-04-27): choose the best defaults for the three open decisions, include them in the plan, and proceed sequentially."
+    issue_or_context: >
+      v1.15.18/v1.15.19 shipped the settings overlay, but the current
+      monitor pane was started as `target/release/qmonster` without
+      `--config`, so `w` could not persist threshold edits. Likewise,
+      `cost_pressure_*` and COST badges were implemented but dormant
+      without an operator pricing table. Claude's cross-check also found
+      that real non-canonical panes were structurally identifiable but
+      role/confidence gates prevented baseline profile recommendations
+      from surfacing.
+    changes:
+      added:
+        - "scripts/run-qmonster.sh — creates `~/.qmonster/config/qmonster.toml` and `~/.qmonster/config/pricing.toml` from repo templates when missing, then launches Qmonster with `--config`"
+        - "src/store/paths.rs::config_dir / config_path / pricing_path helpers; `ensure()` now creates the config directory"
+        - "src/main.rs::default_config_path helper and tests for env/CLI root precedence"
+        - "IdentityResolver tests for Codex status-surface and Gemini status-table Medium-confidence Main fallback"
+        - ".docs/codex/Qmonster-v0.5.0-2026-04-27-phase-a-synthesis-plan.md"
+      modified:
+        - "src/main.rs — if `--config` is absent, load `~/.qmonster/config/qmonster.toml` when present; otherwise use defaults but let the settings overlay write to that standard path"
+        - "src/main.rs — pricing table path now uses `QmonsterPaths::pricing_path()`"
+        - "src/ui/settings.rs::save — creates the destination parent directory before writing"
+        - "src/domain/identity.rs — structural Codex/Gemini/Claude/Qmonster tail surfaces can resolve at Medium confidence; Medium provider fallbacks assign default roles (Claude/Codex/Gemini => Main, Qmonster => Monitor)"
+        - "scripts/verify-shared.sh — cargo checks now run even when mission-spec is missing; official validation runs when available, otherwise a lite ledger-structure check runs with install guidance"
+        - "tmux/qmonster.tmux.conf.example — adds a `Q` launcher binding using `scripts/run-qmonster.sh` and the standard config path"
+        - "config/qmonster.example.toml + config/pricing.example.toml — document the standard operator paths"
+      removed: []
+    changed_sections:
+      - "src/main.rs startup config path resolution"
+      - "src/store/paths.rs runtime path helpers"
+      - "src/domain/identity.rs provider/role fallback"
+      - "src/ui/settings.rs save path handling"
+      - "scripts/run-qmonster.sh + scripts/verify-shared.sh"
+      - "tmux/qmonster.tmux.conf.example"
+      - "docs/ai/* + mission ledger sync"
+    done_when_delta:
+      added:
+        - "Running without `--config` still gives the settings overlay a standard writable config path under the Qmonster root"
+        - "The standard launcher creates config/pricing templates and starts Qmonster with `--config`"
+        - "Operator-filled pricing table at `~/.qmonster/config/pricing.toml` enables COST badges without fetching provider pricing"
+        - "Real Codex/Gemini structural status surfaces can reach Medium confidence + Main role, waking baseline profile recommendations"
+        - "Shared verification no longer hard-fails before cargo checks solely because mission-spec is absent"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "+~160 LoC across startup/path/identity/settings/scripts/tmux; no policy rule semantics changed"
+      tests: "506 total — 430 lib + 16 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 502 at v1.15.19; +4 = 2 main config-path tests + 2 identity fallback tests)"
+      ledger: "1 new timeline entry (sequence 76); meta bump"
+      review_gate: "operator-directed activation slice; cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and scripts/verify-shared.sh all pass. Official mission-spec validation remains unavailable locally, but verify-shared's lite ledger check passed."
+      follow_up_carryover: "Phase B remains: pane cmd row, selected-pane token breakdown, opt-in security posture advisory, branch/file-level concurrent detection, copyable suggested commands."
+    breaking: false
+    risk: "medium-low — role fallback intentionally wakes profile and concurrent-work rules on non-canonical panes. Canonical pane titles still win with High confidence and exact roles; tail-only prose hints remain Low/Unknown, so provider-specific recommendations stay suppressed unless a structural status surface is present."
+    related_commits: []
+    related_decisions:
+      - "Decision: use `~/.qmonster/config/qmonster.toml`, not XDG, because it matches the existing Qmonster runtime write boundary and snapshot/archive root."
+      - "Decision: security posture advisory will be opt-in Concern, not default-on, to preserve operator intent in permissive modes."
+      - "Decision: restore review-tier profiles later as a 3x3 grid instead of overloading this activation slice."
+    snapshot_after: ""
+    follow_up:
+      - "Start Phase B with B1/B2 unless operator picks the security posture advisory first."
+
+  - change_id: "qmonster-v1.15.21-phase-b-pane-visibility"
+    semantic_version: "1.15.21"
+    change_sequence: 77
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator synthesis directive"
+    change_type: "implementation"
+    motivation_type: "operator-directed follow-up"
+    persistence: "permanent"
+    intent: >
+      Execute the first two Phase-B visibility items from the
+      three-model synthesis: expose the already-collected tmux current
+      command on pane surfaces, and show Codex input/output token
+      breakdown in selected-pane detail without inventing subagent
+      accounting.
+    intent_ko: >
+      세 모델 종합 계획의 Phase B 첫 두 항목을 진행한다. 이미 수집 중인
+      tmux current command를 pane 화면에 표시하고, Codex input/output
+      token breakdown을 선택 pane 상세에 표시하되 subagent token 분리는
+      신뢰 가능한 provider signal이 생길 때까지 만들지 않는다.
+    decision: >
+      Keep B1/B2 as display-only surfacing work. `PaneReport` now carries
+      `current_command` from `RawPaneSnapshot`; TUI pane list, selected
+      pane panel, and `--once` print it as a `cmd` row. The selected pane
+      panel renders `tokens  : Main <input> in / <output> out [Official]`
+      only when both `SignalSet.input_tokens` and `output_tokens` are
+      present. The existing total-token badge remains the compact metric
+      summary.
+    decision_ko: >
+      B1/B2는 표시 계층 작업으로 제한한다. `PaneReport`가
+      `RawPaneSnapshot`의 `current_command`를 들고, TUI pane list,
+      selected pane panel, `--once`가 이를 `cmd` 행으로 보여준다. 선택
+      pane panel은 `SignalSet.input_tokens`와 `output_tokens`가 모두
+      있을 때만 `tokens  : Main <input> in / <output> out [Official]`
+      형태를 표시한다. 기존 total-token badge는 compact summary로 유지한다.
+    triggered_by: "Operator instruction (2026-04-27): proceed sequentially from the synthesized update plan."
+    issue_or_context: >
+      Codex's synthesis noted that tmux already supplies
+      `pane_current_command`, but the pane card did not expose it. Gemini
+      requested selected-pane token breakdown; S3-1 had already populated
+      Codex input/output token fields, but the UI only showed total
+      tokens as a badge.
+    changes:
+      added:
+        - "PaneReport.current_command field"
+        - "TUI pane-list `cmd` row and selected-pane panel `cmd` row"
+        - "`--once` per-pane `cmd:` line"
+        - "Selected-pane token breakdown line using `SignalSet.input_tokens` / `output_tokens`"
+        - "Two ui::panels tests locking current-command and token-breakdown rendering"
+      modified:
+        - "src/app/event_loop.rs — threads tmux current_command into PaneReport for live and dead panes"
+        - "src/ui/panels.rs — renders `cmd` and selected-pane token split; trims long path/command text with existing ellipsize helper"
+        - "src/main.rs and src/ui/alerts.rs test fixtures — include current_command"
+        - "docs/ai/UI_MANUAL.md, docs/ai/PROJECT_BRIEF.md, docs/ai/VALIDATION.md, mission ledger — reflect v1.15.21 visibility slice"
+      removed: []
+    changed_sections:
+      - "PaneReport data model"
+      - "TUI pane list and selected-pane detail"
+      - "`--once` report output"
+      - "docs/ai UI/validation sync"
+      - "mission ledger sync"
+    done_when_delta:
+      added:
+        - "Every pane card/detail can show what tmux reports as the current command"
+        - "`--once` output includes the same command surface"
+        - "Codex input/output token split is visible in selected-pane detail when ProviderOfficial data is present"
+        - "Subagent token separation remains explicitly deferred rather than guessed"
+      modified: []
+      removed: []
+    impact_scope:
+      code: "small UI/data-model surfacing change across event_loop, panels, --once output, and test fixtures"
+      tests: "508 total — 432 lib + 16 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 506 at v1.15.20; +2 ui::panels visibility tests)"
+      ledger: "1 new timeline entry (sequence 77); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and scripts/verify-shared.sh all pass. Official mission-spec validation remains unavailable locally, but verify-shared's lite ledger check passed."
+      follow_up_carryover: "Remaining Phase B: opt-in security posture advisory, branch/file-level concurrent-work narrowing, copyable suggested commands."
+    breaking: false
+    risk: "low — display-only fields sourced from tmux and existing ProviderOfficial Codex token metrics. Long command/path values are bounded via ellipsize."
+    related_commits: []
+    related_decisions:
+      - "Decision: selected-pane token breakdown labels the current pane role (Main/Review/Research/Monitor/Pane) but does not claim subagent separation."
+      - "Decision: total-token metric badge remains compact; input/output split is only in selected-pane detail."
+    snapshot_after: ""
+    follow_up:
+      - "Implement B3 opt-in security posture advisory next."
+
 evolution_summary:
-  current_phase: "v1.15.19 settings overlay [x] close-button polish — mouse parity with the help / git / target overlays. The v1.15.18 settings overlay still owns the threshold-editing surface; v1.15.19 only adds a click-to-close affordance at the top-right of the modal body. v1.15.17's per-provider context+quota lift-out, v1.15.16's per-provider cost lift-out, v1.15.15's COST badge severity coloring, v1.15.14's cost_pressure_* advisory pair, and the v1.15.13 / v1.15.12 / v1.15.11 / v1.15.10 / v1.15.8 stack all carry forward unchanged. 502 tests green; clippy + fmt clean."
-  next_phase: "Same direction; v1.15.x patch line continues for operator-driven UX iteration. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). The settings overlay still covers thresholds only; extending to other config sections (actions / refresh / logging / etc.) is mechanical follow-up. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.15.21 Phase-B pane visibility — Phase A activation is in place, pane cards/details/--once now expose tmux current_command, and selected pane detail shows Codex input/output token breakdown when ProviderOfficial token data exists."
+  next_phase: "Remaining Phase B: opt-in security posture advisory, file/branch-level concurrent-work narrowing, and copyable suggested commands. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

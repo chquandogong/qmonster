@@ -1,7 +1,7 @@
 # VALIDATION
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-25 (current implementation validation sync)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (current implementation validation sync)
 
 This doc defines what "good" looks like for Qmonster at each phase, and
 what reviewers (Codex, Gemini, and the human operator) should
@@ -11,16 +11,20 @@ lives in `REVIEW_GUIDE.md`. Every displayed metric must carry a
 Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
-Current local verification (2026-04-25): `cargo fmt --check`,
-`cargo test --all-targets` (468 tests), and
-`cargo clippy --all-targets -- -D warnings` pass; `mission-spec
-validate .` is blocked because `mission-spec` is not installed.
+Current local verification (2026-04-27): `cargo fmt --check`,
+`cargo test --all-targets` (508 tests),
+`cargo clippy --all-targets -- -D warnings`, and
+`scripts/verify-shared.sh` pass; official `mission-spec validate .`
+is still unavailable locally because `mission-spec` is not installed,
+so `verify-shared.sh` used its lite ledger-structure fallback.
 
 ## Planning-phase gates (Phase 0)
 
 - [ ] `mission.yaml` validates with mission-spec schema.
-      Current 2026-04-25 local check is blocked because the
-      `mission-spec` binary is not installed in this workspace.
+      Current 2026-04-27 local check is blocked because the
+      `mission-spec` binary is not installed in this workspace;
+      `scripts/verify-shared.sh` now runs a lite ledger-structure
+      fallback after cargo checks.
 - [x] `mission-history.yaml` has a `1.0.0` entry and (after r2) a
       `1.1.0` reconciliation entry.
 - [x] `.mission/CURRENT_STATE.md` is filled with real content for today
@@ -48,6 +52,11 @@ validate .` is blocked because `mission-spec` is not installed.
 pane_id)` with an `IdentityConfidence` level. Provider-specific
       recommendations are suppressed when confidence is `Low` or
       `Unknown`.
+      v1.15.20 adds Medium-confidence default-role fallback for
+      structurally identified non-canonical provider/status panes:
+      Claude/Codex/Gemini fall back to `main`, Qmonster to `monitor`;
+      canonical pane titles still win and prose-only tail hints stay
+      Low/Unknown.
 - [x] `adapters/` never performs identity inference.
 - [x] Basic alert extraction in `policy/rules/alerts.rs`: input-wait,
       permission-wait, log-storm, repeated-output, verbose-answer,
@@ -238,6 +247,11 @@ profile_lines` in `src/ui/panels.rs`; emits a
 - [x] Auto memory never holds the only copy of today's state.
 - [x] Refresh remains `manual_only` unless the operator explicitly
       changes policy.
+- [x] Default operator config path is `~/.qmonster/config/qmonster.toml`.
+      Qmonster loads it automatically when present; otherwise defaults
+      remain in memory but the settings overlay can save there.
+- [x] Cost pricing remains operator-curated at
+      `~/.qmonster/config/pricing.toml`; Qmonster does not fetch prices.
 - [x] `logging.sensitivity` honors `balanced` by default.
 - [x] Color usage follows the low-saturation palette rule. No
       color-only state indication. Every color is accompanied by a

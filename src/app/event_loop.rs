@@ -100,6 +100,7 @@ where
                 effects: vec![],
                 dead: true,
                 current_path: pane.current_path.clone(),
+                current_command: pane.current_command.clone(),
                 cross_pane_findings: vec![],
                 idle_state: None,
                 idle_state_entered_at: None,
@@ -175,6 +176,7 @@ where
             effects: out.effects,
             dead: false,
             current_path: pane.current_path.clone(),
+            current_command: pane.current_command.clone(),
             cross_pane_findings: vec![],
             idle_state,
             idle_state_entered_at: entered_at,
@@ -354,6 +356,7 @@ pub struct PaneReport {
     pub effects: Vec<RequestedEffect>,
     pub dead: bool,
     pub current_path: String,
+    pub current_command: String,
     pub cross_pane_findings: Vec<crate::domain::recommendation::CrossPaneFinding>,
     /// Current idle cause, if any. Mirrors `signals.idle_state` but
     /// co-located with `idle_state_entered_at` so the UI can render

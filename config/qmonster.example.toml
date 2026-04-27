@@ -1,7 +1,10 @@
 # qmonster.example.toml
 # Version: v0.5.0
 # Date: 2026-04-27
-# Runtime-consumed example config for the current binary.
+# Runtime-consumed example config for the current binary. The standard
+# operator path is `~/.qmonster/config/qmonster.toml`; `scripts/run-qmonster.sh`
+# creates it from this template when missing, and the in-TUI settings overlay
+# writes threshold edits back there unless `--config PATH` points elsewhere.
 #
 # Parsed today by `src/app/config.rs`:
 # - [tmux]    poll_interval_ms, capture_lines

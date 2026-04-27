@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag: `v1.15.7`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.15.19`; current working tree ledger: `v1.15.21`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -58,6 +58,10 @@ transitions now add a short `CHANGED` pulse on the pane header and
 row disappears again. If the changed pane is selected, the selection
 marker expands to `◆ CHANGED ◆` on every selected line and the card
 header starts with `STATE CHANGED` during the flash.
+The Phase-B visibility slice adds a `cmd` row sourced from tmux
+`pane_current_command` on pane cards/detail/`--once`, plus selected-pane
+Codex input/output token breakdown when the bottom status line exposes
+ProviderOfficial `in`/`out` counts.
 
 ## Quick start
 
@@ -88,8 +92,14 @@ cargo run --release
 #               safer-actuation; audit: PromptSendAccepted → Completed/Failed,
 #               or PromptSendBlocked on observe_only / auto-send-off)
 #   d        — dismiss pending prompt-send proposal (audit: PromptSendRejected)
+#   S        — open cost/context/quota settings overlay
 #   Mouse    — wheel scroll, click select, double-click alert hide
 #   Footer version badge — click bottom-right to open Git status
+
+# Standard operator launch. Creates ~/.qmonster/config/qmonster.toml and
+# ~/.qmonster/config/pricing.toml from templates when missing, then starts
+# Qmonster with --config so the settings overlay can persist edits.
+./scripts/run-qmonster.sh
 
 # Override the storage root (useful for tests / sandbox runs)
 QMONSTER_ROOT=/tmp/q cargo run -- --once
@@ -98,7 +108,9 @@ cargo run -- --root /tmp/q --once
 
 For a tmux layout matching Qmonster's pane-title convention, see
 `tmux/qmonster.tmux.conf.example`. Runtime-consumed config keys are
-documented in `config/qmonster.example.toml`.
+documented in `config/qmonster.example.toml`; operator pricing rates
+live in `~/.qmonster/config/pricing.toml` using
+`config/pricing.example.toml` as the template.
 
 ## Architecture at a glance
 
@@ -175,6 +187,10 @@ mission-spec validate .
 mission-spec eval --shared .
 MISSION_SPEC_CLI=/abs/path/to/mission-spec.js ./scripts/verify-shared.sh
 ```
+
+If `mission-spec` is not installed, `scripts/verify-shared.sh` still
+runs cargo build/test/clippy and falls back to a lite ledger-structure
+check with install guidance.
 
 The event-loop integration tests use a fixture `PaneSource` so they do
 not require a real tmux session.

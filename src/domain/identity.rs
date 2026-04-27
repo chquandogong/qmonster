@@ -79,24 +79,25 @@ impl IdentityResolver {
         // resolved from their visible output.
         let title_provider = detect_provider_title(&raw.title);
         let cmd_provider = detect_provider_command(&raw.current_command);
-        let tail_provider = detect_provider_tail(&raw.tail);
+        let (tail_provider, tail_confidence) = detect_provider_tail(&raw.tail);
 
         let (provider, confidence) = if title_provider != Provider::Unknown {
             (title_provider, IdentityConfidence::Medium)
         } else if cmd_provider != Provider::Unknown {
             (cmd_provider, IdentityConfidence::Medium)
         } else if tail_provider != Provider::Unknown {
-            (tail_provider, IdentityConfidence::Low)
+            (tail_provider, tail_confidence)
         } else {
             (Provider::Unknown, IdentityConfidence::Unknown)
         };
+        let role = fallback_role(provider, confidence);
 
         ResolvedIdentity {
             identity: PaneIdentity {
                 pane_id: raw.pane_id.clone(),
                 provider,
                 instance: 1,
-                role: Role::Unknown,
+                role,
             },
             confidence,
         }
@@ -183,22 +184,39 @@ fn detect_provider_command(s: &str) -> Provider {
     }
 }
 
-fn detect_provider_tail(s: &str) -> Provider {
+fn fallback_role(provider: Provider, confidence: IdentityConfidence) -> Role {
+    if confidence != IdentityConfidence::Medium {
+        return Role::Unknown;
+    }
+    match provider {
+        Provider::Claude | Provider::Codex | Provider::Gemini => Role::Main,
+        Provider::Qmonster => Role::Monitor,
+        Provider::Unknown => Role::Unknown,
+    }
+}
+
+fn detect_provider_tail(s: &str) -> (Provider, IdentityConfidence) {
     let lower = s.to_lowercase();
     if looks_like_qmonster_monitor(&lower) {
-        Provider::Qmonster
+        (Provider::Qmonster, IdentityConfidence::Medium)
+    } else if looks_like_codex_status_surface(s, &lower) {
+        (Provider::Codex, IdentityConfidence::Medium)
+    } else if looks_like_gemini_status_surface(&lower) {
+        (Provider::Gemini, IdentityConfidence::Medium)
+    } else if looks_like_claude_screen(&lower) {
+        (Provider::Claude, IdentityConfidence::Medium)
     } else if looks_like_codex_transcript(s, &lower) {
-        Provider::Codex
+        (Provider::Codex, IdentityConfidence::Low)
     } else if looks_like_gemini_transcript(s, &lower) {
-        Provider::Gemini
-    } else if looks_like_claude_screen(&lower) || contains_word(&lower, "claude") {
-        Provider::Claude
+        (Provider::Gemini, IdentityConfidence::Low)
+    } else if contains_word(&lower, "claude") {
+        (Provider::Claude, IdentityConfidence::Low)
     } else if contains_word(&lower, "codex") {
-        Provider::Codex
+        (Provider::Codex, IdentityConfidence::Low)
     } else if contains_word(&lower, "gemini") {
-        Provider::Gemini
+        (Provider::Gemini, IdentityConfidence::Low)
     } else {
-        Provider::Unknown
+        (Provider::Unknown, IdentityConfidence::Unknown)
     }
 }
 
@@ -227,6 +245,17 @@ fn looks_like_codex_transcript(tail: &str, lower: &str) -> bool {
         })
 }
 
+fn looks_like_codex_status_surface(tail: &str, lower: &str) -> bool {
+    lower.contains(">_ openai codex")
+        || tail.lines().any(|line| {
+            let lower_line = line.to_lowercase();
+            lower_line.contains("context ")
+                && lower_line.contains("gpt-")
+                && lower_line.contains(" in ")
+                && lower_line.contains(" out")
+        })
+}
+
 fn looks_like_gemini_transcript(tail: &str, lower: &str) -> bool {
     let tool_lines = tail
         .lines()
@@ -242,6 +271,16 @@ fn looks_like_gemini_transcript(tail: &str, lower: &str) -> bool {
     tool_lines >= 2
         || lower.contains("output too long and was saved to:")
         || tail.lines().any(|line| line.trim_start().starts_with("✦ "))
+}
+
+fn looks_like_gemini_status_surface(lower: &str) -> bool {
+    lower.contains("gemini cli v")
+        || (lower.contains("/model")
+            && lower.contains("workspace")
+            && lower.contains("quota")
+            && lower.contains("context")
+            && lower.contains("memory")
+            && lower.contains("/auth"))
 }
 
 fn looks_like_claude_screen(lower: &str) -> bool {
@@ -294,12 +333,10 @@ mod tests {
         let r = IdentityResolver::new();
         let out = r.resolve(&raw("bash", "codex", ""));
         assert_eq!(out.identity.provider, Provider::Codex);
-        // Without title convention, role unknown and confidence not High.
-        assert_eq!(out.identity.role, Role::Unknown);
-        assert!(matches!(
-            out.confidence,
-            IdentityConfidence::Medium | IdentityConfidence::Low
-        ));
+        // Non-canonical provider command is enough for the default
+        // main-role fallback, but not enough for High confidence.
+        assert_eq!(out.identity.role, Role::Main);
+        assert_eq!(out.confidence, IdentityConfidence::Medium);
     }
 
     #[test]
@@ -307,6 +344,7 @@ mod tests {
         let r = IdentityResolver::new();
         let out = r.resolve(&raw("Claude Code", "node", ""));
         assert_eq!(out.identity.provider, Provider::Claude);
+        assert_eq!(out.identity.role, Role::Main);
         assert_eq!(out.confidence, IdentityConfidence::Medium);
     }
 
@@ -371,6 +409,7 @@ mod tests {
         let r = IdentityResolver::new();
         let out = r.resolve(&raw("Monitor", "./target/release/qmonster", ""));
         assert_eq!(out.identity.provider, Provider::Qmonster);
+        assert_eq!(out.identity.role, Role::Monitor);
         assert_eq!(out.confidence, IdentityConfidence::Medium);
     }
 
@@ -406,6 +445,7 @@ mod tests {
             "",
         ));
         assert_eq!(out.identity.provider, Provider::Claude);
+        assert_eq!(out.identity.role, Role::Main);
         assert_eq!(out.confidence, IdentityConfidence::Medium);
     }
 
@@ -420,6 +460,33 @@ mod tests {
         let r = IdentityResolver::new();
         let out = r.resolve(&raw("◇  Ready (mission-spec)", "node", ""));
         assert_eq!(out.identity.provider, Provider::Gemini);
+        assert_eq!(out.identity.role, Role::Main);
+        assert_eq!(out.confidence, IdentityConfidence::Medium);
+    }
+
+    #[test]
+    fn codex_status_surface_resolves_medium_with_main_role() {
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw(
+            "⠼ Qmonster",
+            "node",
+            "╭────────────────────────╮\n│ >_ OpenAI Codex (v0.122.0) │\n│ model: gpt-5.5 xhigh │\n╰────────────────────────╯\n",
+        ));
+        assert_eq!(out.identity.provider, Provider::Codex);
+        assert_eq!(out.identity.role, Role::Main);
+        assert_eq!(out.confidence, IdentityConfidence::Medium);
+    }
+
+    #[test]
+    fn gemini_status_table_resolves_medium_with_main_role() {
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw(
+            "✦  Working… (Qmonster)",
+            "node",
+            "branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth\nmain        no sandbox      gemini-3.1-pro-preview     ~/Qmonster                  47% used      2% used      118.8 MB     cdf3f5ed      user@example.com\n",
+        ));
+        assert_eq!(out.identity.provider, Provider::Gemini);
+        assert_eq!(out.identity.role, Role::Main);
         assert_eq!(out.confidence, IdentityConfidence::Medium);
     }
 

@@ -38,6 +38,18 @@ impl QmonsterPaths {
         self.root.join("snapshots")
     }
 
+    pub fn config_dir(&self) -> PathBuf {
+        self.root.join("config")
+    }
+
+    pub fn config_path(&self) -> PathBuf {
+        self.config_dir().join("qmonster.toml")
+    }
+
+    pub fn pricing_path(&self) -> PathBuf {
+        self.config_dir().join("pricing.toml")
+    }
+
     pub fn sqlite_path(&self) -> PathBuf {
         self.root.join("qmonster.db")
     }
@@ -46,10 +58,11 @@ impl QmonsterPaths {
         self.root.join("versions.json")
     }
 
-    /// Create `root`, `archive/`, and `snapshots/` if missing.
+    /// Create the runtime root and standard child directories if missing.
     /// Idempotent; does not touch pre-existing contents.
     pub fn ensure(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.root)?;
+        std::fs::create_dir_all(self.config_dir())?;
         std::fs::create_dir_all(self.archive_dir())?;
         std::fs::create_dir_all(self.snapshot_dir())?;
         Ok(())
@@ -70,6 +83,9 @@ mod tests {
         let td = TempDir::new().unwrap();
         let paths = QmonsterPaths::at(td.path());
         assert_eq!(paths.root(), td.path());
+        assert_eq!(paths.config_dir(), td.path().join("config"));
+        assert_eq!(paths.config_path(), td.path().join("config/qmonster.toml"));
+        assert_eq!(paths.pricing_path(), td.path().join("config/pricing.toml"));
         assert_eq!(paths.archive_dir(), td.path().join("archive"));
         assert_eq!(paths.snapshot_dir(), td.path().join("snapshots"));
         assert_eq!(paths.sqlite_path(), td.path().join("qmonster.db"));
@@ -82,6 +98,7 @@ mod tests {
         let paths = QmonsterPaths::at(td.path());
         paths.ensure().unwrap();
         assert!(paths.root().is_dir());
+        assert!(paths.config_dir().is_dir());
         assert!(paths.archive_dir().is_dir());
         assert!(paths.snapshot_dir().is_dir());
     }

@@ -220,6 +220,10 @@ fn pane_list_lines_with_flash(
         &display_path(&report.current_path),
     )));
     lines.push(Line::from(aligned_field(
+        "cmd",
+        &display_command(&report.current_command),
+    )));
+    lines.push(Line::from(aligned_field(
         "status",
         &state_summary_line(report),
     )));
@@ -423,6 +427,14 @@ pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
         items.push(ListItem::new(row));
     }
     items.push(ListItem::new(aligned_field(
+        "path",
+        &display_path(&report.current_path),
+    )));
+    items.push(ListItem::new(aligned_field(
+        "cmd",
+        &display_command(&report.current_command),
+    )));
+    items.push(ListItem::new(aligned_field(
         "status",
         &state_summary_line(report),
     )));
@@ -435,6 +447,9 @@ pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
 
     for row in metric_badge_line(&report.signals) {
         items.push(ListItem::new(row));
+    }
+    if let Some(line) = token_breakdown_line(report) {
+        items.push(ListItem::new(line));
     }
 
     for rec in report.recommendations.iter().take(6) {
@@ -576,7 +591,15 @@ fn display_path(path: &str) -> String {
     if path.is_empty() {
         "unknown path".into()
     } else {
-        path.into()
+        ellipsize(path, 80)
+    }
+}
+
+fn display_command(command: &str) -> String {
+    if command.is_empty() {
+        "unknown command".into()
+    } else {
+        ellipsize(command, 80)
     }
 }
 
@@ -746,6 +769,40 @@ fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
     }
 
     has_any.then(|| Line::from(spans))
+}
+
+fn token_breakdown_line(report: &PaneReport) -> Option<String> {
+    let input = report.signals.input_tokens.as_ref()?;
+    let output = report.signals.output_tokens.as_ref()?;
+    let source = if input.source_kind == output.source_kind {
+        format!("[{}]", source_kind_label(input.source_kind))
+    } else {
+        format!(
+            "[in {} / out {}]",
+            source_kind_label(input.source_kind),
+            source_kind_label(output.source_kind)
+        )
+    };
+    Some(aligned_field(
+        "tokens",
+        &format!(
+            "{} {} in / {} out {}",
+            token_owner_label(report.identity.identity.role),
+            format_count_with_suffix(input.value),
+            format_count_with_suffix(output.value),
+            source
+        ),
+    ))
+}
+
+fn token_owner_label(role: Role) -> &'static str {
+    match role {
+        Role::Main => "Main",
+        Role::Review => "Review",
+        Role::Research => "Research",
+        Role::Monitor => "Monitor",
+        Role::Unknown => "Pane",
+    }
 }
 
 fn runtime_badge_lines(signals: &SignalSet) -> Vec<Line<'static>> {
@@ -1107,6 +1164,7 @@ mod tests {
             effects: vec![],
             dead: false,
             current_path: "/repo".into(),
+            current_command: "claude".into(),
             cross_pane_findings: vec![],
             idle_state: None,
             idle_state_entered_at: None,
@@ -1124,6 +1182,40 @@ mod tests {
         let mut rep = base_report();
         rep.identity.identity.role = Role::Unknown;
         assert_eq!(pane_panel_title(&rep), "qwork:1 · Claude · %1");
+    }
+
+    #[test]
+    fn pane_cards_render_current_command_row() {
+        let mut rep = base_report();
+        rep.current_command =
+            "target/release/qmonster --config /home/me/.qmonster/config/qmonster.toml".into();
+
+        let lines = pane_list_lines(&rep, true, false);
+        let text: Vec<String> = lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+        assert!(
+            text.iter()
+                .any(|line| line.starts_with("cmd     : target/release/qmonster")),
+            "pane list must expose the tmux current command: {text:?}"
+        );
+
+        let mut buf = Buffer::empty(Rect::new(0, 0, 90, 8));
+        render_pane_panel(Rect::new(0, 0, 90, 8), &mut buf, &rep);
+        let rendered: String = (0..8)
+            .map(|y| (0..90).map(|x| buf[(x, y)].symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            rendered.contains("cmd     : target/release/qmonster"),
+            "selected pane panel must expose the tmux current command: {rendered}"
+        );
     }
 
     #[test]
@@ -1451,6 +1543,31 @@ mod tests {
         };
         let row = metric_row(&s);
         assert!(row.contains("tokens 1.53M"), "got: {row}");
+    }
+
+    #[test]
+    fn selected_pane_panel_renders_token_breakdown_when_available() {
+        let mut rep = base_report();
+        rep.signals.input_tokens = Some(crate::domain::signal::MetricValue::new(
+            1_510_000_u64,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        rep.signals.output_tokens = Some(crate::domain::signal::MetricValue::new(
+            20_400_u64,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+
+        let mut buf = Buffer::empty(Rect::new(0, 0, 100, 10));
+        render_pane_panel(Rect::new(0, 0, 100, 10), &mut buf, &rep);
+        let rendered: String = (0..10)
+            .map(|y| (0..100).map(|x| buf[(x, y)].symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            rendered.contains("tokens : Main 1.51M in / 20.4K out [Official]")
+                || rendered.contains("tokens  : Main 1.51M in / 20.4K out [Official]"),
+            "selected pane panel must show input/output token split: {rendered}"
+        );
     }
 
     #[test]

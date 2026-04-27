@@ -15,8 +15,8 @@
   로 Alerts 영역을 줄이거나 키우고, `/`로 split 비율을 한 단계씩
   순환하며, `=`로 기본 비율로 되돌립니다.
 - **Footer**: 현재 focus, Alerts/Panes split 비율, 주요 조작 키를 보여줍니다.
-- **Overlay**: `t`로 target picker, `?`로 help, footer 오른쪽 아래
-  버전 배지를 클릭하면 Git overlay가 열립니다.
+- **Overlay**: `t`로 target picker, `S`로 settings, `?`로 help,
+  footer 오른쪽 아래 버전 배지를 클릭하면 Git overlay가 열립니다.
 
 ## 2. Alerts 읽는 법
 
@@ -52,7 +52,7 @@ session:window · Provider role · %pane_id
 - 예:
   `qmonster:0 · Codex review · %57`
 - 각 pane에는 보통 다음 줄들이 붙습니다.
-  `state`, `path`, `status`, `blocked`, `signals`, `metrics`,
+  `state`, `path`, `cmd`, `status`, `blocked`, `signals`, `metrics`,
   `modes`, `access`, `loaded`, `restrict`
 - `state` 줄은 pane가 멈춤/대기 상태일 때 보입니다. 상태가 바뀐 직후에는
   약 3초 동안 `CHANGED` 배지와 pulse highlight가 붙고, active로 돌아온
@@ -73,6 +73,11 @@ session:window · Provider role · %pane_id
   `APPROVAL NEEDED`, `ACTION REQUIRED` 같은 지속 marker가 붙습니다.
 - `status`는 현재 `high confidence`, `medium confidence`,
   `low confidence`, `unknown confidence`처럼 텍스트로 표시됩니다.
+  canonical pane title(`{provider}:{instance}:{role}`)은 High confidence로
+  그대로 우선합니다. title이 없더라도 provider status surface가 구조적으로
+  확인되면 Qmonster는 provider를 Medium confidence로 두고 기본 role을
+  `main`으로 채웁니다. 운영자가 `review` / `research` 역할을 정확히
+  구분하려면 pane title convention을 직접 설정해야 합니다.
 - `blocked` 줄은 가장 중요한 대기 상태만 따로 보여줍니다.
   `waiting for input`, `approval needed`
 - `signals` 줄은 그 외 상태를 보여줍니다.
@@ -98,12 +103,17 @@ session:window · Provider role · %pane_id
   `hideContextPercentage` / `hideFooter`)을 토글합니다. 운영자가 항목을
   숨기면 Qmonster 파서는 해당 필드를 None으로 두며, 거짓 값을 추정해서
   채우지 않습니다 — 부재가 honesty (S3-4와 같은 원칙).
+- `cmd` 줄은 tmux `pane_current_command` 값입니다. 예:
+  `target/release/qmonster`, `codex`, `node`. 이 값은 provider/role
+  식별과 별개로 “현재 pane이 무엇을 실행 중인지”를 보여주는 운영 힌트입니다.
 - Codex bottom status line의 `1.51M in · 20.4K out` 토큰은 **세션
   누적값**입니다 (Codex `TokenUsage` 구조에서 `input_tokens` /
   `output_tokens` 필드 — 검증됨). Qmonster는 이를 `SignalSet.input_tokens`
-  / `output_tokens`로 노출하지만 metric badge는 `TOKENS`(total) 하나만
-  표시합니다. policy / audit가 input vs output 비율을 보고 싶을 때
-  per-필드 접근이 가능합니다 (S3-1 design decision).
+  / `output_tokens`로 노출합니다. metric badge는 여전히 compact summary인
+  `TOKENS`(total)를 표시하고, 선택된 pane 상세에는 두 값이 모두 있을 때
+  `tokens  : Main 1.51M in / 20.4K out [Official]` 형태의 breakdown을
+  추가로 보여줍니다. Subagent token 분리는 아직 신뢰 가능한 provider
+  signal이 없어 표시하지 않습니다.
 - `MODEL` badge는 source가 있을 때만 표시합니다. Claude pane은
   `~/.claude/settings.json`에 `"model"` 키가 있을 때만 채워지므로,
   사용자 환경이 그 키를 비워둔 상태(=Claude Code가 기본 모델
@@ -206,6 +216,11 @@ side_effects (N):
   - AutoSendOff (`allow_auto_prompt_send=false`, 비 observe_only) → `PromptSendAccepted + PromptSendBlocked` (2 이벤트)
   - observe_only → `PromptSendBlocked` 단독 (`PromptSendAccepted` 없음)
 - `d`: 선택된 pane의 pending prompt-send proposal 기각 (audit: `PromptSendRejected`; 모든 actuation mode에서 가용)
+- `S`: cost / context / quota threshold settings overlay 열기.
+  화살표로 필드 이동, `e` 또는 `Enter`로 편집 시작, 숫자 입력 후
+  `Enter`로 commit, `Esc`로 편집 취소, provider override row에서 `c`로
+  override 제거, `w`로 loaded TOML에 저장합니다. `--config` 없이 시작해도
+  표준 저장 경로는 `~/.qmonster/config/qmonster.toml`입니다.
 - `q`, `Esc`: 종료 또는 overlay 닫기
 
 ## 8. Overlay
@@ -218,3 +233,22 @@ side_effects (N):
   footer 오른쪽 아래 버전 배지를 클릭하면 열립니다.
   현재 repo root, branch, HEAD, upstream ahead/behind, worktree 변경 요약,
   최근 커밋을 보여줍니다.
+- **Settings**:
+  `S`로 열립니다. cost / context / quota의 default, claude, codex,
+  gemini warning/critical threshold를 한 화면에서 조정합니다. modal
+  오른쪽 위 `[x]`를 클릭하거나 `q` / `Esc`로 닫습니다. `w` 저장은
+  `~/.qmonster/config/qmonster.toml` 또는 명시적 `--config PATH`에
+  `toml::to_string_pretty` 형식으로 씁니다. 이 저장 방식은 현재
+  comment-preserving이 아닙니다.
+
+## 9. 운영 파일
+
+- 표준 runtime root는 `~/.qmonster/`입니다.
+- 표준 config path는 `~/.qmonster/config/qmonster.toml`입니다.
+  `scripts/run-qmonster.sh`는 없으면 `config/qmonster.example.toml`에서
+  복사하고, Qmonster를 항상 `--config`와 함께 실행합니다.
+- 표준 pricing path는 `~/.qmonster/config/pricing.toml`입니다.
+  없으면 `config/pricing.example.toml`이 복사됩니다. provider 가격은
+  자주 바뀌므로 Qmonster가 자동 조회하지 않습니다. 운영자가 non-zero
+  rate를 직접 채우면 Codex 등 cost_usd가 있는 pane에서 COST badge와
+  cost_pressure advisory가 활성화됩니다.

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
@@ -39,8 +39,8 @@ use qmonster::policy::claude_settings::{ClaudeSettings, ClaudeSettingsError};
 use qmonster::policy::gates::{PromptSendGate, check_send_gate};
 use qmonster::policy::pricing::PricingTable;
 use qmonster::store::{
-    ArchiveWriter, EventSink, InMemorySink, PaneSnapshot, SnapshotInput, SnapshotWriter,
-    SqliteAuditSink, sweep,
+    ArchiveWriter, EventSink, InMemorySink, PaneSnapshot, QmonsterPaths, SnapshotInput,
+    SnapshotWriter, SqliteAuditSink, sweep,
 };
 use qmonster::tmux::polling::{PaneSource, PollingSource};
 use qmonster::tmux::types::{RawPaneSnapshot, WindowTarget};
@@ -73,10 +73,23 @@ struct Cli {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let config = match cli.config.as_ref() {
+    let env_root = std::env::var("QMONSTER_ROOT").ok();
+    let default_config_path = default_config_path(cli.root.as_deref(), env_root.as_deref());
+    let loaded_config_path = cli.config.clone().or_else(|| {
+        if default_config_path.exists() {
+            Some(default_config_path.clone())
+        } else {
+            None
+        }
+    });
+    let config = match loaded_config_path.as_ref() {
         Some(path) => load_from_path(path).with_context(|| format!("loading {path:?}"))?,
         None => QmonsterConfig::defaults(),
     };
+    let writable_config_path = cli
+        .config
+        .clone()
+        .unwrap_or_else(|| default_config_path.clone());
     let mut pairs: Vec<(String, String)> = Vec::new();
     for kv in &cli.set {
         let Some((k, v)) = kv.split_once('=') else {
@@ -85,7 +98,6 @@ fn main() -> anyhow::Result<()> {
         pairs.push((k.trim().into(), v.trim().into()));
     }
 
-    let env_root = std::env::var("QMONSTER_ROOT").ok();
     let resolved = pick_root(cli.root.as_deref(), env_root.as_deref(), &config);
     let paths = resolved.clone().into_paths();
     paths.ensure().context("ensure ~/.qmonster layout")?;
@@ -108,7 +120,7 @@ fn main() -> anyhow::Result<()> {
     let notifier = DesktopNotifier;
     let archive = ArchiveWriter::new(paths.clone(), config.logging.big_output_chars);
 
-    let pricing_path = paths.root().join("config/pricing.toml");
+    let pricing_path = paths.pricing_path();
     let pricing = match PricingTable::load_from_toml(&pricing_path) {
         Ok(table) => table,
         Err(qmonster::policy::pricing::PricingError::Io(io_err))
@@ -168,9 +180,7 @@ fn main() -> anyhow::Result<()> {
         .with_archive(archive)
         .with_pricing(pricing)
         .with_claude_settings(claude_settings);
-    if let Some(path) = cli.config.as_ref() {
-        ctx = ctx.with_config_path(path.clone());
-    }
+    ctx = ctx.with_config_path(writable_config_path);
 
     if !pairs.is_empty() {
         let refs: Vec<(&str, &str)> = pairs
@@ -262,6 +272,19 @@ fn main() -> anyhow::Result<()> {
     run_tui(&mut ctx, fresh, snapshot_writer, startup_notices)
 }
 
+fn default_config_path(cli_root: Option<&Path>, env_root: Option<&str>) -> PathBuf {
+    let root = if let Some(env) = env_root
+        && !env.is_empty()
+    {
+        PathBuf::from(env)
+    } else if let Some(cli) = cli_root {
+        cli.to_path_buf()
+    } else {
+        QmonsterPaths::default_root().root().to_path_buf()
+    };
+    QmonsterPaths::at(root).config_path()
+}
+
 fn print_reports(reports: &[PaneReport], config: &qmonster::app::config::QmonsterConfig) {
     // 1. Cross-pane findings.
     for rep in reports {
@@ -327,6 +350,7 @@ fn print_reports(reports: &[PaneReport], config: &qmonster::app::config::Qmonste
             r.dead
         );
         println!("  path: {}", r.current_path);
+        println!("  cmd: {}", r.current_command);
         let chips = qmonster::ui::panels::signal_chips(&r.signals);
         if !chips.is_empty() {
             println!("  state: {}", chips.join(" | "));
@@ -2725,6 +2749,20 @@ mod tests {
     // `src/policy/gates.rs` in v1.10.1 remediation (Gemini v1.10.0
     // finding #1). See `check_send_gate_*` tests there.
 
+    #[test]
+    fn default_config_path_uses_env_root_before_cli_root() {
+        let cli_root = PathBuf::from("/cli-qmonster");
+        let path = default_config_path(Some(&cli_root), Some("/env-qmonster"));
+        assert_eq!(path, PathBuf::from("/env-qmonster/config/qmonster.toml"));
+    }
+
+    #[test]
+    fn default_config_path_uses_cli_root_when_env_absent() {
+        let cli_root = PathBuf::from("/cli-qmonster");
+        let path = default_config_path(Some(&cli_root), None);
+        assert_eq!(path, PathBuf::from("/cli-qmonster/config/qmonster.toml"));
+    }
+
     #[derive(Default)]
     struct RecordingRefreshSource {
         calls: RefCell<Vec<String>>,
@@ -2812,6 +2850,7 @@ mod tests {
             dead: false,
             recommendations: recs,
             current_path: "/repo".into(),
+            current_command: "claude".into(),
             cross_pane_findings: vec![],
             idle_state: None,
             idle_state_entered_at: None,

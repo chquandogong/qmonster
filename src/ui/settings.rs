@@ -332,6 +332,13 @@ impl SettingsOverlay {
                 return Err(msg);
             }
         };
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            let msg = format!("create {}: {e}", parent.display());
+            self.status = SettingsStatus::Error(msg.clone());
+            return Err(msg);
+        }
         if let Err(e) = std::fs::write(path, body) {
             let msg = format!("write {}: {e}", path.display());
             self.status = SettingsStatus::Error(msg.clone());

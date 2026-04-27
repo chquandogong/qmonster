@@ -28,6 +28,13 @@ bind T command-prompt -p "Pane title" "select-pane -T '%%'"
 # Helper: rename current window
 bind W command-prompt -p "Window name" "rename-window '%%'"
 
+# Qmonster launcher. Keep the config under the runtime root so the
+# settings overlay can write threshold edits back with `w`.
+# Override this path before sourcing if you keep the repo elsewhere.
+set -g @qmonster_repo "$HOME/Qmonster"
+set -g @qmonster_config "$HOME/.qmonster/config/qmonster.toml"
+bind Q split-window -h -c "#{pane_current_path}" "cd #{@qmonster_repo} && QMONSTER_CONFIG=#{@qmonster_config} scripts/run-qmonster.sh"
+
 # Navigate panes quickly
 bind -r h select-pane -L
 bind -r j select-pane -D

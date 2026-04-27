@@ -1,5 +1,8 @@
 # Qmonster pricing table (Estimated, operator-curated)
 #
+# Standard operator path: ~/.qmonster/config/pricing.toml.
+# `scripts/run-qmonster.sh` copies this template there when missing.
+#
 # Values are USD per 1 million tokens. Leave placeholders at 0.00 to skip cost
 # estimation for a given (provider, model) pair -- Qmonster will render no
 # "COST [Estimate]" badge for that combination.

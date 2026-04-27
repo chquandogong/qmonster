@@ -938,6 +938,7 @@ mod tests {
             dead: false,
             recommendations: recs,
             current_path: "/repo".into(),
+            current_command: "claude".into(),
             cross_pane_findings: vec![],
             idle_state: None,
             idle_state_entered_at: None,

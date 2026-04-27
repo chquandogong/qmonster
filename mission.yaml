@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.19"
-  title: "Qmonster v0.5.0 — v1.15.19 polishes the v1.15.18 settings overlay with a mouse-clickable `[x]` close button at the top-right of the modal body, mirroring the help / git / target picker overlays. Click on `[x]` closes the overlay; other mouse events are still swallowed so a stray click underneath the modal does not race with the open overlay. New `settings_close_button_rect()` is a pure helper so the click handler in the event loop can hit-test the same rectangle the renderer uses (3 unit tests cover position + bounds clamping). Mission contract, the v1.15.18 settings overlay, and the v1.15.16+v1.15.17 per-provider threshold lift-outs all carry forward unchanged. 502 tests green; fmt + clippy clean."
+  version: "1.15.21"
+  title: "Qmonster v0.5.0 — v1.15.21 Phase-B pane visibility. Builds on v1.15.20 operational activation: `PaneReport` now carries tmux `pane_current_command`; the pane list, selected pane panel, and `--once` output show a `cmd` row so operators can see what each pane is executing. Selected pane detail now renders Codex input/output token breakdown (`Main <in> in / <out> out [Official]`) when the already-populated `SignalSet.input_tokens` / `output_tokens` fields are available. Subagent token separation remains deferred until a trustworthy provider signal exists."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1140,17 +1140,16 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current tagged state is v1.15.12. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, Slice 3 S3-2/S3-4/S3-5/S3-6, S3-3 Gemini quota_pressure (with the v1.15.10 LimitHit honesty fix, v1.15.11 gradient advisories, and v1.15.12 SourceKind honesty follow-up), and the Slice 3 housekeeping bundle are shipped."
+    topology: "Current working state is v1.15.21 Phase-B pane visibility on top of the tagged v1.15.19 settings-overlay close-button release and the v1.15.20 operational-activation working slice. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, and the Slice 3 housekeeping bundle are shipped."
     suggested_approach: >
-      v1.15.12 is the Codex review follow-up on Claude's v1.15.11
-      quota_pressure gradient advisories. The Gemini quota metric keeps
-      ProviderOfficial authority, while the advisory recommendations
-      use Estimated authority because the 75% / 85% thresholds are
-      Qmonster policy. The mission ledger is synced to v1.15.12/68.
-      Remaining work is operator-deferred S3-1 (Codex bottom-status-line
-      cumulative-vs-delta token semantics) plus the low-value S3-3
-      Gemini memory display deferral, or a fresh v1.15.x UX patch if
-      operator usage surfaces one.
+      Continue the operator-directed synthesis in order. Phase A chose
+      the conservative defaults and activated config/pricing/profile
+      visibility. Phase B starts with already-collected data that was not
+      visible enough: tmux `pane_current_command` now reaches the pane
+      card/detail/`--once` surfaces, and selected pane detail renders the
+      Codex input/output token split. Keep the next items scoped:
+      opt-in security posture advisory, then branch/file-level
+      concurrent-work narrowing, then copyable recommendation commands.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1186,13 +1185,13 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.15.12 operator-directed follow-up"
+    priority: "post-v1.15.21 operator-directed follow-up"
     estimated_sessions: 1
-    scope: "choose operator-deferred S3-1, the low-value S3-3 memory display, or the next runtime-refresh/UI UX patch"
+    scope: "continue with remaining Phase B: opt-in security posture advisory, branch/file-level concurrent detection, or copyable recommendation commands"
     followups:
-      - "S3-1: Codex v0.122 bottom-status-line token-in/token-out cumulative-vs-delta semantics"
-      - "S3-3 partial: Gemini status-table memory column display"
-      - "v1.15.x patch line: runtime-refresh / UI UX issues found during operator use"
+      - "B3: opt-in Concern advisory for YOLO / bypass / no-sandbox / Full Access posture"
+      - "B4: file/branch-level concurrent-work narrowing"
+      - "B5: copy suggested_command from TUI"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
   created: "2026-04-20"
@@ -1200,5 +1199,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 75
+    total_revisions: 77
     history: "mission-history.yaml"

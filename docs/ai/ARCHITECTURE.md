@@ -80,7 +80,12 @@ Pure types, no IO:
 - `IdentityResolver` — maps `RawPaneSnapshot` → `ResolvedIdentity`;
   canonical `{provider}:{instance}:{role}` titles win, with medium-
   confidence fallbacks for provider title/command hints and the S3-5
-  Claude spinner / Gemini `◇  Ready (...)` title patterns.
+  Claude spinner / Gemini `◇  Ready (...)` title patterns. v1.15.20
+  also treats structurally anchored provider status surfaces (Codex
+  status/welcome box, Gemini status table, Claude status screen,
+  Qmonster dashboard tail) as Medium-confidence provider evidence and
+  assigns default fallback roles (`Claude|Codex|Gemini => main`,
+  `Qmonster => monitor`). Prose-only tail hints remain Low/Unknown.
 - `SourceKind = ProviderOfficial | ProjectCanonical | Heuristic | Estimated`
 - `MetricValue<T> = { value, source_kind, confidence, provider }`
 - `Signal`, `SignalSet`, `TaskType`, `Severity`,
@@ -206,9 +211,11 @@ bell. Severity-aware rate limiting so log storms do not spam.
 
 ### Safety precedence (resolves the r1 contradiction)
 
-Current runtime config loading is explicit: `--config PATH` or
-defaults. Safer-only runtime overrides may be passed with `--set
-KEY=VALUE`. Storage-root resolution has its own implemented
+Current runtime config loading is explicit via `--config PATH`, or via
+the standard default path `~/.qmonster/config/qmonster.toml` when that
+file exists. If neither exists, in-memory defaults are used while the
+settings overlay still writes to the standard path. Safer-only runtime
+overrides may be passed with `--set KEY=VALUE`. Storage-root resolution has its own implemented
 precedence: `QMONSTER_ROOT > --root > config.storage.root > default
 (~/.qmonster/)`.
 
