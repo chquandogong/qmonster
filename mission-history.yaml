@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.4 copy shortcut + Git overlay version fix."
+  mission_title: "Qmonster v0.5.0 — v1.16.5 clear shortcut restoration."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 86
-  latest_version: "1.16.4"
+  total_revisions: 87
+  latest_version: "1.16.5"
 
 timeline:
   - change_id: "initial"
@@ -8570,8 +8570,77 @@ timeline:
     follow_up:
       - "Continue C1: split remaining modal/event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.5-clear-shortcut-restoration"
+    semantic_version: "1.16.5"
+    change_sequence: 87
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: restore `c` to system notice clear"
+    change_type: "fix"
+    motivation_type: "operator-preference correction"
+    persistence: "permanent"
+    intent: >
+      Restore `c` to its original system-notice clear behavior and leave
+      selected-alert command copy on `y`.
+    intent_ko: >
+      `c`를 원래의 system-notice clear 동작으로 되돌리고, 선택된 alert
+      command copy는 `y`에만 남긴다.
+    decision: >
+      Remove the v1.16.4 `c` copy alias. Keep the v1.16.4 Git overlay
+      title fix, since it is independent and still matches the operator
+      request for footer/title version consistency.
+    decision_ko: >
+      v1.16.4의 `c` copy alias를 제거한다. Git overlay title 수정은
+      독립적인 문제이고 footer/title version 일치 요청에 부합하므로 유지한다.
+    triggered_by: "Operator correction after v1.16.4."
+    issue_or_context: >
+      The operator clarified that `c` should behave as it originally did:
+      clear system notices. The `y` copy shortcut remains the command-copy
+      surface.
+    changes:
+      added: []
+      modified:
+        - "src/main.rs handles `c` as system notice clear and `y` as the Alerts-focus copy key"
+        - "src/ui/dashboard.rs footer/help return to `y copy` plus `c clear`"
+        - "README / UI_MANUAL / ARCHITECTURE / VALIDATION / PROJECT_BRIEF / mission ledger updated for v1.16.5"
+      removed:
+        - "`c` as a selected-alert command-copy alias"
+        - "`c/y copy` footer/help wording"
+    changed_sections:
+      - "src/main.rs"
+      - "src/ui/dashboard.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/VALIDATION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "`c` clears system notices in all dashboard focus states"
+      modified:
+        - "selected-alert command copy is documented and advertised as `y` only"
+      removed:
+        - "`c` copy alias introduced in v1.16.4"
+    impact_scope:
+      code: "UI keybinding behavior correction only; Git overlay version-title fix from v1.16.4 remains"
+      tests: "527 total — 465 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (no net count change vs v1.16.4)"
+      ledger: "1 new timeline entry (sequence 87); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 after this operator-preference correction."
+    breaking: false
+    risk: "low — restores previous `c` behavior and leaves `y` copy intact."
+    related_commits: []
+    related_decisions:
+      - "Decision: operator preference wins; `c` is notice clear, `y` is command copy."
+    snapshot_after: ""
+    follow_up:
+      - "Continue C1: split remaining modal/event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.4 copy shortcut + Git overlay version fix — Phase C C1 remains active with keymap, target_picker, runtime_refresh, and dashboard_state helper modules already extracted."
+  current_phase: "v1.16.5 clear shortcut restoration — Phase C C1 remains active with keymap, target_picker, runtime_refresh, and dashboard_state helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

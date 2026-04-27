@@ -136,7 +136,7 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
       plus a slash-command) belongs in `next_step`, not here. Rendered
       by both the alert queue and `--once` with a ``run: `…``` prefix.
 - [x] v1.15.24 makes `suggested_command` copyable in the interactive
-      TUI: when Alerts are focused, `c` or `y` copies the selected alert's
+      TUI: when Alerts are focused, `y` copies the selected alert's
       non-empty `run:` command to the system clipboard via `arboard`.
       Missing commands and clipboard backend failures surface as
       `SystemNotice` rows instead of silently failing.
