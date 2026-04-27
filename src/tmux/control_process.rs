@@ -13,7 +13,7 @@ pub(crate) struct ControlModeProcess {
 impl ControlModeProcess {
     pub(crate) fn attach_current() -> Result<Self, PollingError> {
         let mut child = Command::new("tmux")
-            .args(["-C", "attach-session"])
+            .args(control_mode_attach_args())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -35,10 +35,24 @@ impl ControlModeProcess {
     }
 }
 
+fn control_mode_attach_args() -> [&'static str; 2] {
+    ["-C", "attach-session"]
+}
+
 impl Drop for ControlModeProcess {
     fn drop(&mut self) {
         let _ = self.stdin.flush();
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attach_args_lock_tmux_control_mode_contract() {
+        assert_eq!(control_mode_attach_args(), ["-C", "attach-session"]);
     }
 }

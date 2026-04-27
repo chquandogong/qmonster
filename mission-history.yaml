@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.42 control-mode process boundary."
+  mission_title: "Qmonster v0.5.0 — v1.16.43 control-mode attach argv contract."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 124
-  latest_version: "1.16.42"
+  total_revisions: 125
+  latest_version: "1.16.43"
 
 timeline:
   - change_id: "initial"
@@ -11231,8 +11231,71 @@ timeline:
     follow_up:
       - "Continue C2: add remaining transport-readiness hardening before any default switch."
 
+  - change_id: "qmonster-v1.16.43-control-mode-attach-contract"
+    semantic_version: "1.16.43"
+    change_sequence: 125
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C separation before C2 default switch and close every work item with commit/push/tag"
+    change_type: "test"
+    motivation_type: "Phase C C2 process-contract hardening"
+    persistence: "permanent"
+    intent: >
+      Lock the tmux control-mode attach argv contract so later refactors
+      cannot silently drift away from the intended `tmux -C attach-session`
+      process boundary.
+    intent_ko: >
+      이후 refactor가 의도한 `tmux -C attach-session` process boundary에서
+      조용히 벗어나지 못하도록 tmux control-mode attach argv 계약을 고정한다.
+    decision: >
+      Add `control_mode_attach_args()` inside `src/tmux/control_process.rs`,
+      make `ControlModeProcess::attach_current()` call it, and cover the
+      exact `["-C", "attach-session"]` argv with a unit test.
+    decision_ko: >
+      `src/tmux/control_process.rs`에 `control_mode_attach_args()`를 추가하고
+      `ControlModeProcess::attach_current()`가 이를 호출하게 하며,
+      정확한 `["-C", "attach-session"]` argv를 unit test로 덮는다.
+    triggered_by: "Follow-up after v1.16.42 moved control-mode process ownership into its own module."
+    issue_or_context: >
+      Before any source-default switch, the live tmux process command
+      should be an explicit, tested contract rather than an inline argv
+      literal inside process setup code.
+    changes:
+      added:
+        - "`control_mode_attach_args()` helper"
+        - "unit test locking `tmux -C attach-session` argv spelling"
+      modified:
+        - "`ControlModeProcess::attach_current()` now uses the attach-argv helper"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.43"
+      removed: []
+    changed_sections:
+      - "src/tmux/control_process.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "control-mode attach argv contract is unit-tested"
+      modified:
+        - "all-target test count increases to 594"
+      removed: []
+    impact_scope:
+      runtime: "none intended — same `tmux -C attach-session` command, now routed through a tested helper"
+      tests: "594 total passed — 534 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; repeated default and all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 125); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining transport-readiness hardening before any source default switch."
+    breaking: false
+    risk: "low — test-only contract extraction with unchanged process command."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add remaining transport-readiness hardening before any default switch."
+
 evolution_summary:
-  current_phase: "v1.16.42 control-mode process boundary — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  current_phase: "v1.16.43 control-mode attach argv contract — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
   next_phase: "Continue Phase C C2 with additional control-mode default-readiness hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
