@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.19.0 — Phase D D3-A subagent detection refinement; D3-C token attribution permanently deferred."
+  mission_title: "Qmonster v1.20.0 — Phase E E2 comment-preserving settings save via toml_edit."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 145
-  latest_version: "1.19.0"
+  total_revisions: 146
+  latest_version: "1.20.0"
 
 timeline:
   - change_id: "initial"
@@ -13011,9 +13011,103 @@ timeline:
       - "Re-open per-subagent token attribution only if a future provider release lands a structured per-subagent input/output counter."
       - "Phase E housekeeping is the next slice candidate."
 
+  - change_id: "v1.20.0-comment-preserving-settings-save"
+    semantic_version: "1.20.0"
+    change_sequence: 146
+    date: "2026-04-28"
+    author: "Claude (Opus 4.7)"
+    contributors:
+      - "Operator directive: Phase E E2 with proposed defaults"
+    change_type: "feature"
+    motivation_type: "phase entry"
+    persistence: "permanent"
+    intent: >
+      Open Phase E by replacing the comment-lossy
+      `toml::to_string_pretty` settings-save path with a
+      `toml_edit::DocumentMut` surgical update so operator-authored
+      comments and unrelated config sections survive every overlay
+      save.
+    intent_ko: >
+      Phase E를 열어, 주석 손실이 일어나던
+      `toml::to_string_pretty` 기반 settings save 경로를
+      `toml_edit::DocumentMut`으로 surgical 갱신하도록 교체하여
+      운영자 작성 주석과 무관 설정 섹션이 매 save마다 보존되도록 한다.
+    decision: >
+      Add `toml_edit = "0.22"` to `Cargo.toml`. Add
+      `FieldId::toml_path()` returning the dotted TOML path for each
+      of the 28 overlay-managed fields. Refactor
+      `SettingsOverlay::save()` to (a) read the existing file,
+      (b) parse it as `DocumentMut`, (c) update each path whose
+      `read_field` returns `Some` (no override → leave the section
+      default alone), and (d) write the document back. When the file
+      does not exist, fall back to the legacy
+      `toml::to_string_pretty` scaffold so a fresh operator setup
+      keeps the same starting file.
+    decision_ko: >
+      `Cargo.toml`에 `toml_edit = "0.22"` 추가. 28개 overlay 관리
+      필드별로 점-경로 TOML path를 반환하는 `FieldId::toml_path()`
+      메서드 추가. `SettingsOverlay::save()`를 (a) 기존 파일 읽고
+      (b) `DocumentMut`로 파싱한 뒤 (c) `read_field`가 `Some`을
+      반환하는 path만 갱신(per-provider override가 없으면 default를
+      override로 격상시키지 않음)하고 (d) 문서를 다시 쓰는 방식으로
+      재작성. 파일이 없으면 기존 `toml::to_string_pretty`로 fresh
+      write를 유지.
+    triggered_by: "Operator approved the proposed Phase E E2 plan after the v1.19.0 (D3 close) commit."
+    issue_or_context: >
+      The pre-v1.20.0 save path serialized the entire `QmonsterConfig`
+      via `toml::to_string_pretty` and overwrote the file. That stripped
+      every operator-authored comment in `qmonster.toml` (top-level
+      explanations, inline rationales for threshold choices,
+      `[security]` / `[tmux]` / `[idle]` notes) and rewrote key order
+      alphabetically. Operators learned to avoid pressing `w` after
+      hand-editing the file, which defeated the whole purpose of the
+      v1.15.18 settings overlay.
+    changes:
+      added:
+        - '`toml_edit = "0.22"` dependency in `Cargo.toml`'
+        - "`FieldId::toml_path() -> Vec<&'static str>` method"
+        - "`SettingsOverlay::merge_overlay_fields()` private helper"
+        - "`set_nested_f64()` private helper for `DocumentMut` walk + insert"
+        - "Four unit tests in `src/ui/settings.rs`: comment preservation, unrelated section preservation, target value update, fresh-write fallback"
+      modified:
+        - "`SettingsOverlay::save()` branches on file existence: existing → toml_edit merge; missing → legacy pretty serialize"
+        - "`docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md`, `README.md`, `VERSION.md`, `package.json`, `mission.yaml`, `mission-history.yaml` bumped to v1.20.0"
+      removed: []
+    changed_sections:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/ui/settings.rs"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - "package.json"
+    observable_effects:
+      added:
+        - "Operator-authored comments in `qmonster.toml` (top-level + section-level + inline) survive an overlay save"
+        - "Unrelated sections (`[tmux]`, `[security]`, `[idle]`, ...) keep their key order and content untouched"
+      modified:
+        - "all-target test count rises to 655 (+4 from E2 comment/section/value/fresh tests; baseline before E2 was 651)"
+      removed: []
+    impact_scope:
+      runtime: "Pure save-path refactor; no policy, tmux, adapter, or actuation behavior change. The on-disk file content is more conservative — only the 28 overlay-managed values change per save instead of the whole document."
+      tests: "655 total passed across lib + main + event_loop + false_positive + idle_state + qmonster_tmux_parity targets"
+      ledger: "1 new timeline entry (sequence 146); meta bump; minor version bump v1.19.x → v1.20.0 because Phase E opens"
+      npm: "package.json version set to 1.20.0"
+      review_gate: "cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, and scripts/verify-shared.sh all pass"
+      follow_up_carryover: "Phase E E1 (Gemini memory column display) remains low-value per 3-model consensus and stays deferred until an operator explicitly requests it."
+    breaking: false
+    risk: "low — fresh-write path unchanged; existing-file path is additive (only writes the 28 known threshold keys); validation gate still runs before any disk write. New `toml_edit` dependency is widely used in the Rust ecosystem (cargo-edit, dprint-toml) and ships at 0.22."
+    related_commits: []
+    follow_up:
+      - "If operator requests inline-comment preservation INSIDE `[cost]` / `[context]` / `[quota]` blocks, current behavior already supports that — toml_edit preserves comments adjacent to keys."
+      - "E1 (Gemini memory column display) stays deferred until an operator explicitly asks for it."
+
 evolution_summary:
-  current_phase: "v1.19.0 closes Phase D D3 honestly: D3-A adds `● task(` to subagent detection markers (Claude Task tool tail signature); D3-C marks per-subagent token attribution as permanently deferred — no provider exposes structured per-subagent counters. Codex statusline parsing also handles trailing `gpt-5.5 xhigh` model-with-reasoning items."
-  next_phase: "Phase E housekeeping is the next available work: Gemini memory column display (low-value), comment-preserving settings save via `toml_edit`. Save path remains comment-lossy via `toml::to_string_pretty` until E2 lands. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.20.0 opens Phase E with comment-preserving settings save: `SettingsOverlay::save()` now uses `toml_edit::DocumentMut` to surgically update the 28 cost/context/quota threshold keys while leaving operator-authored comments, unrelated sections, and key order untouched."
+  next_phase: "Phase E E1 (Gemini memory column display) remains the only outstanding housekeeping item and is low-value per 3-model consensus — deferred until an operator explicitly requests it. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

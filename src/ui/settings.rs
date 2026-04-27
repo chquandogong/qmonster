@@ -75,6 +75,46 @@ impl FieldId {
             bound,
         }
     }
+
+    /// Phase E E2 (v1.20.0): the dotted TOML path that this field
+    /// occupies in `qmonster.toml`. Used by `SettingsOverlay::save()`
+    /// to surgically rewrite individual values via `toml_edit` while
+    /// leaving the rest of the file's comments and structure
+    /// untouched.
+    ///
+    /// Cost section uses `_usd` suffix; context and quota use
+    /// `_pct`. Default scope writes at the section root; per-provider
+    /// scopes nest under a sub-table named after the provider (with
+    /// the `_5h` / `_weekly` window suffix for Claude/Codex quota).
+    pub fn toml_path(self) -> Vec<&'static str> {
+        let leaf = match (self.section, self.bound) {
+            (Section::Cost, Bound::Warning) => "warning_usd",
+            (Section::Cost, Bound::Critical) => "critical_usd",
+            (Section::Context, Bound::Warning) | (Section::Quota, Bound::Warning) => "warning_pct",
+            (Section::Context, Bound::Critical) | (Section::Quota, Bound::Critical) => {
+                "critical_pct"
+            }
+        };
+        let section_key = match self.section {
+            Section::Cost => "cost",
+            Section::Context => "context",
+            Section::Quota => "quota",
+        };
+        let scope_key = match self.scope {
+            Scope::Default => None,
+            Scope::Claude => Some("claude"),
+            Scope::Claude5h => Some("claude_5h"),
+            Scope::ClaudeWeekly => Some("claude_weekly"),
+            Scope::Codex => Some("codex"),
+            Scope::Codex5h => Some("codex_5h"),
+            Scope::CodexWeekly => Some("codex_weekly"),
+            Scope::Gemini => Some("gemini"),
+        };
+        match scope_key {
+            None => vec![section_key, leaf],
+            Some(s) => vec![section_key, s, leaf],
+        }
+    }
 }
 
 /// The fields in the order they appear in the overlay. Iteration
@@ -346,10 +386,33 @@ impl SettingsOverlay {
             self.status = SettingsStatus::Error(msg.clone());
             return Err(msg);
         }
-        let body = match toml::to_string_pretty(config) {
-            Ok(s) => s,
+        // Phase E E2 (v1.20.0): when the file already exists, route
+        // the save through `toml_edit` so operator-authored comments,
+        // unrelated sections, and key order in `qmonster.toml` all
+        // survive a threshold edit. When the file does not yet exist
+        // (fresh operator setup), keep the legacy
+        // `toml::to_string_pretty` scaffold so the first write
+        // produces the same defaults a new operator is used to.
+        let body = match std::fs::read_to_string(path) {
+            Ok(existing) => match self.merge_overlay_fields(&existing, config) {
+                Ok(s) => s,
+                Err(e) => {
+                    self.status = SettingsStatus::Error(e.clone());
+                    return Err(e);
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                match toml::to_string_pretty(config) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let msg = format!("serialize: {e}");
+                        self.status = SettingsStatus::Error(msg.clone());
+                        return Err(msg);
+                    }
+                }
+            }
             Err(e) => {
-                let msg = format!("serialize: {e}");
+                let msg = format!("read {}: {e}", path.display());
                 self.status = SettingsStatus::Error(msg.clone());
                 return Err(msg);
             }
@@ -370,6 +433,64 @@ impl SettingsOverlay {
         self.status = SettingsStatus::Saved(path.display().to_string());
         Ok(())
     }
+
+    /// Phase E E2 (v1.20.0): surgically update each settings-overlay
+    /// field in an existing TOML document while leaving comments,
+    /// unrelated sections, and key order untouched. Per-provider
+    /// scopes whose `read_field` returns `None` (no override set) are
+    /// left as-is — `save` does not promote a default into an
+    /// explicit override.
+    fn merge_overlay_fields(
+        &self,
+        existing: &str,
+        config: &QmonsterConfig,
+    ) -> Result<String, String> {
+        let mut doc: toml_edit::DocumentMut = existing
+            .parse()
+            .map_err(|e: toml_edit::TomlError| format!("parse existing TOML: {e}"))?;
+
+        for field in all_fields() {
+            let Some(v) = self.read_field(config, field) else {
+                continue;
+            };
+            let path = field.toml_path();
+            set_nested_f64(&mut doc, &path, v);
+        }
+
+        Ok(doc.to_string())
+    }
+}
+
+/// Helper for `merge_overlay_fields`. Walks the dotted TOML path,
+/// creating intermediate tables when missing, and assigns the leaf
+/// value. The leaf is always written as a plain `f64`; `toml_edit`
+/// preserves the surrounding line comments.
+fn set_nested_f64(doc: &mut toml_edit::DocumentMut, path: &[&str], v: f64) {
+    use toml_edit::{Item, Table, value};
+    if path.is_empty() {
+        return;
+    }
+    let last = path.len() - 1;
+    let mut current: &mut Table = doc.as_table_mut();
+    for seg in &path[..last] {
+        // Ensure the segment exists AND is a table before we descend.
+        // Overlay validation rules out the "key exists but is a scalar"
+        // case in normal flows; if a malformed file reaches this path
+        // anyway, replacing the scalar with a fresh table keeps the
+        // save from panicking.
+        let needs_replace = current
+            .get(seg)
+            .map(|item| !item.is_table())
+            .unwrap_or(true);
+        if needs_replace {
+            current.insert(seg, Item::Table(Table::new()));
+        }
+        current = current
+            .get_mut(seg)
+            .and_then(|item| item.as_table_mut())
+            .expect("segment is a table after the ensure step above");
+    }
+    current.insert(path[last], value(v));
 }
 
 // -----------------------------------------------------------------
@@ -1482,6 +1603,133 @@ mod tests {
         let raw = std::fs::read_to_string(&path).expect("read back");
         let reloaded: QmonsterConfig = toml::from_str(&raw).expect("parse");
         assert!((reloaded.cost.warning_usd - 6.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn save_preserves_top_level_comments_in_existing_file() {
+        // Phase E E2 (v1.20.0): the operator's hand-written
+        // `qmonster.toml` may begin with explanatory comments that
+        // describe why specific thresholds were chosen. The previous
+        // `toml::to_string_pretty` save path stripped them; this test
+        // locks the new contract — top-level comments must survive
+        // a round-trip through the settings overlay.
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("qmonster.toml");
+        let original = "# Qmonster operator config\n# Edited by ops 2026-04-28\n\n[cost]\nwarning_usd = 5.0\ncritical_usd = 20.0\n";
+        std::fs::File::create(&path)
+            .and_then(|mut f| f.write_all(original.as_bytes()))
+            .expect("write seed");
+
+        let mut s = SettingsOverlay::new();
+        s.open();
+        let mut config = cfg();
+        // Bump the cost warning so save() actually writes a value.
+        s.edit_buffer = Some("7.5".into());
+        s.commit_edit(&mut config).expect("commit ok");
+
+        s.save(&config, &path).expect("save ok");
+
+        let saved = std::fs::read_to_string(&path).expect("read back");
+        assert!(
+            saved.contains("# Qmonster operator config"),
+            "leading comment must survive save: {saved}"
+        );
+        assert!(
+            saved.contains("# Edited by ops 2026-04-28"),
+            "second comment line must survive save: {saved}"
+        );
+    }
+
+    #[test]
+    fn save_preserves_unrelated_section_comments_and_keys() {
+        // Settings overlay only edits `[cost]` / `[context]` /
+        // `[quota]`. Any other section the operator has authored —
+        // `[tmux]`, `[security]`, `[idle]`, custom comments, key
+        // order — must be untouched after save.
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("qmonster.toml");
+        let original = "[cost]\nwarning_usd = 5.0\ncritical_usd = 20.0\n\n# tmux source preference; auto picks control-mode first\n[tmux]\nsource = \"control_mode\"\n\n[security]\n# raise this when a remote pair-programmer joins\nposture_advisories = true\n";
+        std::fs::File::create(&path)
+            .and_then(|mut f| f.write_all(original.as_bytes()))
+            .expect("write seed");
+
+        let mut s = SettingsOverlay::new();
+        s.open();
+        let mut config = cfg();
+        s.edit_buffer = Some("8".into());
+        s.commit_edit(&mut config).expect("commit ok");
+        s.save(&config, &path).expect("save ok");
+
+        let saved = std::fs::read_to_string(&path).expect("read back");
+        assert!(
+            saved.contains("# tmux source preference; auto picks control-mode first"),
+            "section comment must survive: {saved}"
+        );
+        assert!(
+            saved.contains("source = \"control_mode\""),
+            "[tmux] body unrelated to overlay must survive: {saved}"
+        );
+        assert!(
+            saved.contains("# raise this when a remote pair-programmer joins"),
+            "inline section comment must survive: {saved}"
+        );
+        assert!(
+            saved.contains("posture_advisories = true"),
+            "[security] body must survive: {saved}"
+        );
+    }
+
+    #[test]
+    fn save_updates_target_threshold_value_in_existing_file() {
+        // The whole point of preserving the file is to also still
+        // write the operator's edits. Lock the round-trip: the new
+        // value reaches disk under the existing key path.
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("qmonster.toml");
+        let original = "# header\n[cost]\nwarning_usd = 5.0\ncritical_usd = 20.0\n";
+        std::fs::File::create(&path)
+            .and_then(|mut f| f.write_all(original.as_bytes()))
+            .expect("write seed");
+
+        let mut s = SettingsOverlay::new();
+        s.open();
+        let mut config = cfg();
+        s.edit_buffer = Some("9.25".into());
+        s.commit_edit(&mut config).expect("commit ok");
+        s.save(&config, &path).expect("save ok");
+
+        let saved = std::fs::read_to_string(&path).expect("read back");
+        assert!(
+            saved.contains("warning_usd = 9.25") || saved.contains("warning_usd = 9.25"),
+            "new value must be present: {saved}"
+        );
+        let reloaded: QmonsterConfig = toml::from_str(&saved).expect("parse");
+        assert!((reloaded.cost.warning_usd - 9.25).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn save_falls_back_to_pretty_serialize_when_file_does_not_exist() {
+        // Fresh write path — no existing file, no comments to
+        // preserve. The legacy `toml::to_string_pretty` scaffold
+        // continues to work so an operator with no prior config
+        // gets a sensible starting file.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("qmonster.toml");
+        assert!(!path.exists());
+
+        let mut s = SettingsOverlay::new();
+        s.open();
+        let mut config = cfg();
+        s.edit_buffer = Some("11".into());
+        s.commit_edit(&mut config).expect("commit ok");
+        s.save(&config, &path).expect("save ok");
+
+        let saved = std::fs::read_to_string(&path).expect("read back");
+        let reloaded: QmonsterConfig = toml::from_str(&saved).expect("parse");
+        assert!((reloaded.cost.warning_usd - 11.0).abs() < f64::EPSILON);
     }
 
     #[test]
