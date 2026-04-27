@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.39`; current canonical ledger: `v1.16.39`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.40`; current canonical ledger: `v1.16.40`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -140,6 +140,8 @@ operator trial helper that runs `--once` with `source = "control_mode"`
 without editing the standard config.
 v1.16.39 prints `tmux source: polling|control_mode` in `--once` startup
 output, so operator trials can confirm the active transport directly.
+v1.16.40 extracts `tmux::TmuxSource` into `src/tmux/source.rs`, keeping
+the polling/control-mode dispatch boundary out of `tmux/mod.rs`.
 
 ## Quick start
 

@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.39 once source visibility."
+  mission_title: "Qmonster v0.5.0 — v1.16.40 tmux source module split."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 121
-  latest_version: "1.16.39"
+  total_revisions: 122
+  latest_version: "1.16.40"
 
 timeline:
   - change_id: "initial"
@@ -11028,8 +11028,72 @@ timeline:
     follow_up:
       - "Continue C2: add remaining transport-readiness hardening before any default switch."
 
+  - change_id: "qmonster-v1.16.40-tmux-source-module-split"
+    semantic_version: "1.16.40"
+    change_sequence: 122
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: keep progressing C2 and close each work item with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C2 transport dispatch separation"
+    persistence: "permanent"
+    intent: >
+      Keep the tmux module boundary thin by moving polling/control-mode
+      dispatch out of `tmux/mod.rs`.
+    intent_ko: >
+      polling/control-mode dispatch를 `tmux/mod.rs`에서 분리해 tmux 모듈
+      경계를 얇게 유지한다.
+    decision: >
+      Add `src/tmux/source.rs` and move the `TmuxSource` enum plus its
+      `PaneSource` forwarding implementation there. `tmux/mod.rs` now only
+      declares modules and re-exports the public tmux surface.
+    decision_ko: >
+      `src/tmux/source.rs`를 추가하고 `TmuxSource` enum 및 `PaneSource`
+      forwarding 구현을 그 파일로 이동한다. `tmux/mod.rs`는 모듈 선언과
+      public re-export만 담당한다.
+    triggered_by: "Follow-up after v1.16.39 made transport selection visible in --once output."
+    issue_or_context: >
+      Before considering any default-source switch, the transport selection
+      and dispatch layer should have an explicit file boundary rather than
+      living in module wiring.
+    changes:
+      added:
+        - "src/tmux/source.rs"
+      modified:
+        - "src/tmux/mod.rs re-exports `source::TmuxSource`"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.40"
+      removed:
+        - "`TmuxSource` enum and forwarding impl from `src/tmux/mod.rs`"
+    changed_sections:
+      - "src/tmux/source.rs"
+      - "src/tmux/mod.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "transport dispatch has a dedicated module"
+        - "`tmux/mod.rs` is back to wiring/re-exports"
+      modified:
+        - "all-target test count remains 592"
+      removed: []
+    impact_scope:
+      runtime: "none intended — public `qmonster::tmux::TmuxSource` re-export remains stable"
+      tests: "592 total passed — 532 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; repeated default and all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 122); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining default-readiness checks before any source default switch."
+    breaking: false
+    risk: "low — file move with stable re-export and no behavior change."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add remaining transport-readiness hardening before any default switch."
+
 evolution_summary:
-  current_phase: "v1.16.39 once source visibility — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  current_phase: "v1.16.40 tmux source module split — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
   next_phase: "Continue Phase C C2 with additional control-mode default-readiness hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
