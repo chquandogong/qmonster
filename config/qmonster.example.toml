@@ -11,6 +11,7 @@
 # - [refresh] policy
 # - [storage] root
 # - [idle]    stillness_polls
+# - [cost]    warning_usd, critical_usd, [.claude|.codex|.gemini]
 #
 # Everything else belongs in docs/ai/* or tmux launcher conventions,
 # not in runtime TOML.
@@ -33,6 +34,51 @@ quota_tight = false
 # Consecutive identical tail snapshots before stillness fallback marks a
 # pane idle/stale. Runtime clamps out-of-range values to [2, 12].
 stillness_polls = 4
+
+# v1.15.16 — per-provider USD thresholds for the cost_pressure_warning /
+# cost_pressure_critical advisory rules (see src/policy/rules/advisories.rs).
+# `cost_usd` is currently populated only on Codex panes (Claude/Gemini
+# leave it None today); when a future provider populates cost_usd, the
+# advisory rules consume the same thresholds from this table.
+#
+# `warning_usd` / `critical_usd` apply to any provider that does not have
+# a `[cost.<provider>]` override below. Per-provider tables (when present)
+# replace BOTH thresholds for that provider only.
+#
+# Recommended defaults (track empirical 2026-04-27 pricing-tier
+# expectations; tune freely):
+#   - default → \$5 / \$20  (Codex `gpt-5.4` baseline; matches the
+#     v1.15.14 hardcoded constants this section replaces)
+#   - claude  → \$10 / \$30 (Claude Sonnet/Opus pricing is meaningfully
+#     higher per 1M tokens; bands shift up so the same operator workload
+#     does not raise advisories on every session)
+#   - codex   → unset       (Codex uses the top-level defaults)
+#   - gemini  → \$3 / \$10  (Gemini Pro pricing tends lower; raise the
+#     advisory earlier in absolute USD terms)
+#
+# Behaviour invariants:
+#   - cost_pressure_warning fires when warning_usd <= cost_usd < critical_usd.
+#   - cost_pressure_critical fires when cost_usd >= critical_usd.
+#   - Both rules respect the IdentityConfidence gate (KD-007); both
+#     leave `suggested_command: None` (no slash command resolves an
+#     accumulated session cost — operator picks pace / model-switch /
+#     end-session). Source label is `Estimated` because the threshold
+#     is a Qmonster pick, not a provider-documented limit.
+[cost]
+warning_usd = 5.0
+critical_usd = 20.0
+
+[cost.claude]
+warning_usd = 10.0
+critical_usd = 30.0
+
+# [cost.codex]                    # uncomment to pin Codex thresholds
+# warning_usd = 5.0
+# critical_usd = 20.0
+
+[cost.gemini]
+warning_usd = 3.0
+critical_usd = 10.0
 
 [actions]
 mode = "recommend_only"          # observe_only | recommend_only | safe_auto

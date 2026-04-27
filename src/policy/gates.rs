@@ -17,10 +17,19 @@ pub fn allow_aggressive(quota_tight: bool) -> bool {
 /// `app::event_loop` from the current `QmonsterConfig` + per-pane
 /// `ResolvedIdentity`. Pure data — the struct does not read config
 /// or IO at evaluation time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// v1.15.16: `cost_warning_usd` / `cost_critical_usd` are resolved
+/// per-pane from the operator's `[cost]` config section + the pane's
+/// resolved provider. The advisory rules in
+/// `policy::rules::advisories` read these fields directly so per-
+/// provider overrides flow through without each rule re-touching
+/// the config.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PolicyGates {
     pub quota_tight: bool,
     pub identity_confidence: IdentityConfidence,
+    pub cost_warning_usd: f64,
+    pub cost_critical_usd: f64,
 }
 
 impl Default for PolicyGates {
@@ -28,6 +37,12 @@ impl Default for PolicyGates {
         Self {
             quota_tight: false,
             identity_confidence: IdentityConfidence::Unknown,
+            // Mirror CostConfig::default() top-level defaults so unit
+            // tests that build a default PolicyGates inherit the same
+            // baseline thresholds the production engine sees on a
+            // provider that has no override.
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         }
     }
 }
@@ -35,11 +50,15 @@ impl Default for PolicyGates {
 impl PolicyGates {
     pub fn from_config_and_identity(
         token: &crate::app::config::TokenConfig,
+        cost: &crate::app::config::CostConfig,
+        provider: crate::domain::identity::Provider,
         conf: IdentityConfidence,
     ) -> Self {
         Self {
             quota_tight: token.quota_tight,
             identity_confidence: conf,
+            cost_warning_usd: cost.warning_for(provider),
+            cost_critical_usd: cost.critical_for(provider),
         }
     }
 }
@@ -122,6 +141,8 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: true,
             identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         assert!(gates.quota_tight);
     }
@@ -142,11 +163,56 @@ mod tests {
 
     #[test]
     fn policy_gates_from_config_and_identity_reads_both() {
-        use crate::app::config::TokenConfig;
+        use crate::app::config::{CostConfig, TokenConfig};
+        use crate::domain::identity::Provider;
         let cfg = TokenConfig { quota_tight: true };
-        let gates = PolicyGates::from_config_and_identity(&cfg, IdentityConfidence::Medium);
+        let cost = CostConfig::default();
+        let gates = PolicyGates::from_config_and_identity(
+            &cfg,
+            &cost,
+            Provider::Codex,
+            IdentityConfidence::Medium,
+        );
         assert!(gates.quota_tight);
         assert_eq!(gates.identity_confidence, IdentityConfidence::Medium);
+        // Codex falls through to top-level CostConfig defaults ($5 / $20).
+        assert!((gates.cost_warning_usd - 5.0).abs() < f64::EPSILON);
+        assert!((gates.cost_critical_usd - 20.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn policy_gates_resolves_per_provider_cost_overrides() {
+        // v1.15.16: CostConfig::default() ships per-provider overrides.
+        // Claude → $10 / $30, Gemini → $3 / $10, Codex falls through to
+        // the top-level $5 / $20.
+        use crate::app::config::{CostConfig, TokenConfig};
+        use crate::domain::identity::Provider;
+        let cfg = TokenConfig { quota_tight: false };
+        let cost = CostConfig::default();
+        let claude = PolicyGates::from_config_and_identity(
+            &cfg,
+            &cost,
+            Provider::Claude,
+            IdentityConfidence::High,
+        );
+        assert!((claude.cost_warning_usd - 10.0).abs() < f64::EPSILON);
+        assert!((claude.cost_critical_usd - 30.0).abs() < f64::EPSILON);
+        let codex = PolicyGates::from_config_and_identity(
+            &cfg,
+            &cost,
+            Provider::Codex,
+            IdentityConfidence::High,
+        );
+        assert!((codex.cost_warning_usd - 5.0).abs() < f64::EPSILON);
+        assert!((codex.cost_critical_usd - 20.0).abs() < f64::EPSILON);
+        let gemini = PolicyGates::from_config_and_identity(
+            &cfg,
+            &cost,
+            Provider::Gemini,
+            IdentityConfidence::High,
+        );
+        assert!((gemini.cost_warning_usd - 3.0).abs() < f64::EPSILON);
+        assert!((gemini.cost_critical_usd - 10.0).abs() < f64::EPSILON);
     }
 
     // -----------------------------------------------------------------

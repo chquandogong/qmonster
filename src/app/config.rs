@@ -22,6 +22,8 @@ pub struct QmonsterConfig {
     pub storage: StorageConfig,
     #[serde(default)]
     pub idle: IdleConfig,
+    #[serde(default)]
+    pub cost: CostConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,6 +175,101 @@ impl Default for IdleConfig {
     }
 }
 
+/// v1.15.16: per-provider cost-pressure thresholds. Operators with
+/// different pricing tiers (e.g. Anthropic Sonnet/Opus vs OpenAI
+/// gpt-5.4 vs Gemini Pro) can override the default `cost_pressure_*`
+/// advisory bands without rebuilding.
+///
+/// Threshold semantics:
+///
+/// - `warning_usd`: cost_pressure_warning fires when
+///   `cost_usd >= warning_usd && cost_usd < critical_usd`.
+/// - `critical_usd`: cost_pressure_critical fires when
+///   `cost_usd >= critical_usd`.
+///
+/// Defaults track empirical pricing-tier expectations as of 2026-04-27
+/// (operator can tune freely):
+///
+/// - **Default** (Codex / unspecified providers): `$5 / $20` —
+///   matches the v1.15.14 hardcoded baseline. Codex `gpt-5.4`
+///   pricing is ~`$1/M` input + `$10/M` output; a 10M input + 2M
+///   output session lands around `$30`, well into critical.
+/// - **Claude** override: `$10 / $30` — Claude Sonnet 4.x / Opus 4.x
+///   pricing is meaningfully higher per 1M tokens; the same workload
+///   lands at roughly 2x the Codex cost, so the bands shift up.
+/// - **Codex** override: unset (uses the default `$5 / $20`). Listed
+///   explicitly in the config struct so the operator sees the slot.
+/// - **Gemini** override: `$3 / $10` — Gemini Pro pricing tends
+///   lower; the operator wants the warning to fire earlier in
+///   absolute USD terms.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CostConfig {
+    pub warning_usd: f64,
+    pub critical_usd: f64,
+    /// Optional per-provider override for Claude panes. When `Some`,
+    /// replaces the default thresholds for Provider::Claude only.
+    pub claude: Option<CostProviderConfig>,
+    /// Optional per-provider override for Codex panes. The shipping
+    /// default is `None` (Codex uses the top-level defaults), but the
+    /// slot is here so operators can pin Codex-specific values.
+    pub codex: Option<CostProviderConfig>,
+    /// Optional per-provider override for Gemini panes. When `Some`,
+    /// replaces the default thresholds for Provider::Gemini only.
+    pub gemini: Option<CostProviderConfig>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct CostProviderConfig {
+    pub warning_usd: f64,
+    pub critical_usd: f64,
+}
+
+impl Default for CostConfig {
+    fn default() -> Self {
+        Self {
+            warning_usd: 5.0,
+            critical_usd: 20.0,
+            claude: Some(CostProviderConfig {
+                warning_usd: 10.0,
+                critical_usd: 30.0,
+            }),
+            codex: None,
+            gemini: Some(CostProviderConfig {
+                warning_usd: 3.0,
+                critical_usd: 10.0,
+            }),
+        }
+    }
+}
+
+impl CostConfig {
+    pub fn warning_for(&self, provider: crate::domain::identity::Provider) -> f64 {
+        self.override_for(provider)
+            .map(|o| o.warning_usd)
+            .unwrap_or(self.warning_usd)
+    }
+
+    pub fn critical_for(&self, provider: crate::domain::identity::Provider) -> f64 {
+        self.override_for(provider)
+            .map(|o| o.critical_usd)
+            .unwrap_or(self.critical_usd)
+    }
+
+    fn override_for(
+        &self,
+        provider: crate::domain::identity::Provider,
+    ) -> Option<&CostProviderConfig> {
+        use crate::domain::identity::Provider;
+        match provider {
+            Provider::Claude => self.claude.as_ref(),
+            Provider::Codex => self.codex.as_ref(),
+            Provider::Gemini => self.gemini.as_ref(),
+            Provider::Qmonster | Provider::Unknown => None,
+        }
+    }
+}
+
 impl QmonsterConfig {
     pub fn defaults() -> Self {
         Self {
@@ -183,6 +280,7 @@ impl QmonsterConfig {
             token: TokenConfig::default(),
             storage: StorageConfig::default(),
             idle: IdleConfig::default(),
+            cost: CostConfig::default(),
         }
     }
 }

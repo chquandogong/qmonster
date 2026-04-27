@@ -301,25 +301,24 @@ fn quota_pressure_critical(
 /// trigger LimitHit on, so the gradient warnings are the only
 /// surface for cost awareness today.
 ///
-/// Default thresholds are Qmonster picks (Estimated source):
-/// - Warning at $5.00 USD per session — heavy but recoverable.
-/// - Risk    at $20.00 USD per session — operator should pause /
-///   switch model / end session.
+/// v1.15.16: thresholds now live in `[cost]` config (per-provider
+/// overrides supported) and are resolved into `PolicyGates` upstream
+/// by `app::event_loop`. The defaults match the v1.15.14 baseline
+/// when the operator does not override; per-provider overrides let
+/// Claude / Gemini panes use thresholds appropriate to their pricing
+/// tier (see `app::config::CostConfig` for the recommended defaults).
 ///
 /// `cost_usd` is currently populated only on Codex panes (Claude
 /// has no input-token source on tail; Gemini's status table does
 /// not expose cost). When a future provider populates `cost_usd`,
 /// these rules fire automatically — no per-provider gating change.
-const COST_PRESSURE_WARNING_USD: f64 = 5.0;
-const COST_PRESSURE_CRITICAL_USD: f64 = 20.0;
-
 fn cost_pressure_warning(
     _id: &ResolvedIdentity,
     signals: &SignalSet,
     gates: &PolicyGates,
 ) -> Option<Recommendation> {
     let v = signals.cost_usd.as_ref()?.value;
-    if !(COST_PRESSURE_WARNING_USD..COST_PRESSURE_CRITICAL_USD).contains(&v) {
+    if !(gates.cost_warning_usd..gates.cost_critical_usd).contains(&v) {
         return None;
     }
     if !allow_provider_specific(gates.identity_confidence) {
@@ -352,7 +351,7 @@ fn cost_pressure_critical(
     gates: &PolicyGates,
 ) -> Option<Recommendation> {
     let v = signals.cost_usd.as_ref()?.value;
-    if v < COST_PRESSURE_CRITICAL_USD {
+    if v < gates.cost_critical_usd {
         return None;
     }
     if !allow_provider_specific(gates.identity_confidence) {
@@ -520,6 +519,8 @@ mod tests {
         PolicyGates {
             quota_tight: false,
             identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         }
     }
 
@@ -563,6 +564,8 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: false,
             identity_confidence: IdentityConfidence::Low,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -647,6 +650,8 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: false,
             identity_confidence: IdentityConfidence::Low,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -687,6 +692,8 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: false,
             identity_confidence: IdentityConfidence::Low,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -740,6 +747,8 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: true,
             identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -756,6 +765,8 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: false,
             identity_confidence: IdentityConfidence::Low,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -792,6 +803,8 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: true,
             identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let aggressive_actions: Vec<&str> = recs
@@ -817,6 +830,8 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: true,
             identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
@@ -840,6 +855,8 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: false,
             identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let any_aggressive = recs.iter().any(|r| r.action.starts_with("aggressive:"));
@@ -940,6 +957,8 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: false,
             identity_confidence: IdentityConfidence::Low,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
@@ -964,6 +983,8 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: true,
             identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let adv = recs
@@ -1054,11 +1075,77 @@ mod tests {
         let gates = PolicyGates {
             quota_tight: false,
             identity_confidence: IdentityConfidence::Low,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
             !recs.iter().any(|r| r.action.starts_with("cost-pressure")),
             "cost_pressure_* must respect the IdentityConfidence gate"
+        );
+    }
+
+    #[test]
+    fn cost_pressure_thresholds_track_per_provider_overrides() {
+        // v1.15.16: when CostConfig has different thresholds for
+        // different providers (e.g. Claude $10 / $30 vs Codex
+        // $5 / $20), a $25 cost on a Claude pane stays in Warning
+        // territory while the same $25 on a Codex pane is already
+        // critical. The advisory rule reads thresholds from gates;
+        // the gates are built per-pane upstream.
+        let id = id_high(Role::Main);
+        let s = cost(25.00);
+
+        // Codex-style thresholds → $25 is past critical ($20).
+        let codex_gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
+        };
+        let codex_recs = eval_advisories(&id, &s, &codex_gates);
+        assert!(
+            codex_recs
+                .iter()
+                .any(|r| r.action == "cost-pressure: act now"),
+            "Codex threshold ($20) → $25 must trigger critical"
+        );
+
+        // Claude-style thresholds → $25 is between warning ($10) and
+        // critical ($30); only Warning fires.
+        let claude_gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 10.0,
+            cost_critical_usd: 30.0,
+        };
+        let claude_recs = eval_advisories(&id, &s, &claude_gates);
+        assert!(
+            claude_recs
+                .iter()
+                .any(|r| r.action == "cost-pressure: pace"),
+            "Claude threshold ($10..$30) → $25 must trigger warning, not critical"
+        );
+        assert!(
+            !claude_recs
+                .iter()
+                .any(|r| r.action == "cost-pressure: act now"),
+            "Claude threshold ($30 critical) → $25 must NOT trigger critical"
+        );
+
+        // Gemini-style thresholds → $25 is past critical ($10).
+        let gemini_gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 3.0,
+            cost_critical_usd: 10.0,
+        };
+        let gemini_recs = eval_advisories(&id, &s, &gemini_gates);
+        assert!(
+            gemini_recs
+                .iter()
+                .any(|r| r.action == "cost-pressure: act now"),
+            "Gemini threshold ($10 critical) → $25 must trigger critical"
         );
     }
 }

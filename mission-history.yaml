@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.15 COST badge severity coloring."
+  mission_title: "Qmonster v0.4.0 — v1.15.16 per-provider cost threshold config."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 71
-  latest_version: "1.15.15"
+  total_revisions: 72
+  latest_version: "1.15.16"
 
 timeline:
   - change_id: "initial"
@@ -7366,9 +7366,96 @@ timeline:
       - "Annotated tag v1.15.15 at this commit."
       - "Parallel commit 8d0764a (alerts/panes split-pane resize) is captured in the v1.15.15 test bucket but did not bump version itself; if it had, this entry's sequence/version would shift. Operator can decide whether to back-fill an entry for it later."
 
+  - change_id: "v1.15.16-per-provider-cost-threshold-config"
+    semantic_version: "1.15.16"
+    change_sequence: 72
+    date: "2026-04-27"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — 'threshold 등 provider별 값 설정 메뉴 + 권장 default'"
+    change_type: "feature"
+    motivation_type: "operator-configurability"
+    persistence: "permanent"
+    intent: >
+      Lift the v1.15.14 hardcoded `COST_PRESSURE_*_USD` constants into
+      operator-configurable thresholds with optional per-provider
+      overrides. Provider pricing tiers are not uniform (Claude Sonnet/Opus
+      meaningfully more expensive per 1M tokens than gpt-5.4 or Gemini
+      Pro), so a single pair of thresholds cannot serve every operator's
+      budget bands.
+    decision: >
+      Add `[cost]` TOML section with top-level `warning_usd` /
+      `critical_usd` plus optional `[cost.claude]` / `[cost.codex]` /
+      `[cost.gemini]` per-provider overrides. PolicyGates gains
+      `cost_warning_usd` / `cost_critical_usd` fields that
+      `from_config_and_identity` resolves per-pane (provider override
+      if set, else top-level default). Advisory rules read
+      `gates.cost_warning_usd` / `gates.cost_critical_usd` instead of
+      module-level constants. Recommended defaults track 2026-04-27
+      pricing-tier expectations (operator can tune freely):
+      default $5/$20 (Codex `gpt-5.4` baseline; matches the v1.15.14
+      hardcoded values), Claude $10/$30 (higher tier), Gemini $3/$10
+      (lower tier). Codex slot defaults to None so it falls through to
+      the top-level pair without redundant config.
+    triggered_by: "Operator instruction (2026-04-27): 'threshold 등 provider별 값 설정 메뉴를 추가 해주고, default 값을 추천해줘'."
+    issue_or_context: >
+      v1.15.14 introduced cost_pressure_warning ($5) and
+      cost_pressure_critical ($20) as bake-in constants. The Slice 3
+      housekeeping pattern explicitly anticipated config lift-out —
+      the constants were placed as `COST_PRESSURE_*_USD` so a future
+      `[cost]` section could replace them without touching the rule
+      semantics. Operators with different pricing tiers (e.g. Claude
+      Sonnet $3/M input + $15/M output → typical heavy session costs
+      around $60) need higher bands or the warning fires every session.
+    changes:
+      added:
+        - "src/app/config.rs::CostConfig (top-level warning_usd / critical_usd + per-provider Option<CostProviderConfig> for Claude / Codex / Gemini)"
+        - "src/app/config.rs::CostProviderConfig (warning_usd / critical_usd pair)"
+        - "src/app/config.rs::CostConfig::warning_for / critical_for / override_for resolution helpers"
+        - "src/policy/gates.rs::PolicyGates.cost_warning_usd / cost_critical_usd fields + Default impl + from_config_and_identity signature update (now takes &CostConfig + Provider)"
+        - "config/qmonster.example.toml::[cost] section with default + commented per-provider overrides + recommended-defaults rationale block"
+        - "Tests: policy_gates_resolves_per_provider_cost_overrides (Claude $10/$30, Codex falls through, Gemini $3/$10) + cost_pressure_thresholds_track_per_provider_overrides (advisory rule honors per-provider gates)"
+      modified:
+        - "src/policy/rules/advisories.rs::cost_pressure_warning + cost_pressure_critical now read gates.cost_*_usd instead of module-level constants"
+        - "src/policy/rules/advisories.rs::COST_PRESSURE_WARNING_USD / COST_PRESSURE_CRITICAL_USD constants removed (lifted into CostConfig defaults)"
+        - "src/app/event_loop.rs::PolicyGates::from_config_and_identity caller now passes &ctx.config.cost + resolved.identity.provider"
+        - "src/policy/gates.rs::policy_gates_from_config_and_identity_reads_both test updated for new signature"
+        - "src/policy/{engine,gates,rules/{advisories,auto_memory,profiles}}.rs::PolicyGates {} construction sites updated for two new fields (default values 5.0 / 20.0 to preserve existing test behavior)"
+        - "mission.yaml (meta: version 1.15.15 → 1.15.16; title; lineage.total_revisions 71 → 72)"
+        - "mission-history.yaml (sequence 72; meta: latest_version 1.15.16, total_revisions 71 → 72)"
+      removed:
+        - "src/policy/rules/advisories.rs::COST_PRESSURE_WARNING_USD / COST_PRESSURE_CRITICAL_USD constants (replaced by gates fields)"
+    changed_sections:
+      - "src/app/config.rs::CostConfig + CostProviderConfig"
+      - "src/policy/gates.rs::PolicyGates threshold fields"
+      - "src/policy/rules/advisories.rs::cost_pressure_warning / cost_pressure_critical"
+      - "config/qmonster.example.toml::[cost] section"
+    done_when_delta:
+      added:
+        - "Operator can override cost thresholds via TOML `[cost]` section without rebuilding"
+        - "Per-provider overrides apply only to the named provider; absent overrides fall through to the top-level pair"
+        - "Recommended defaults documented in the example TOML with rationale per provider"
+      modified:
+        - "advisory rule fire conditions now key on per-pane resolved gates instead of bake-in constants"
+      removed: []
+    impact_scope:
+      code: "+~150 LoC across config + gates + 5 PolicyGates construction sites; +~70 LoC of tests; +~50 LoC of example TOML doc"
+      tests: "472 total — 398 lib + 14 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 467 at v1.15.15; +5 = +2 mine + +3 from non-counted gates re-tests)"
+      ledger: "1 new timeline entry (sequence 72); meta bump"
+      review_gate: "operator-configurability feature; confirm-archive remains closed; local fmt/test/clippy pass."
+      follow_up_carryover: "context_pressure / quota_pressure threshold pairs are still hardcoded in rule body. Same lift-out pattern is the obvious next step if operator wants per-provider overrides on those too. Keep the v1.15.14-style constants as the migration target."
+    breaking: false
+    risk: "low — backward compatible: operators not setting `[cost]` get the v1.15.14 baseline ($5/$20). PolicyGates default values (5.0 / 20.0) preserve existing test behavior. PolicyGates::from_config_and_identity signature changed (takes &CostConfig + Provider) — this is internal plumbing not used outside event_loop.rs and the gates tests, both of which are updated in this round."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.16 at this commit."
+      - "If operator wants per-provider overrides for context_pressure or quota_pressure too, lift their hardcoded constants the same way (CostConfig sets the precedent)."
+
 evolution_summary:
-  current_phase: "v1.15.15 COST badge severity coloring. cost_metric_severity helper tints the pane-card COST badge using the same thresholds as v1.15.14's cost_pressure_* advisories ($20/$5) plus an early Concern band at $2; CTX / QUOTA / COST now share a uniform severity-tinting contract. Parallel commit 8d0764a (alerts/panes split-pane resize via mouse drag + `[`/`]`/`=` keys) ships in the same v1.15.15 test bucket. v1.15.14's cost_pressure_* advisory pair, v1.15.13's S3-1 input/output token closure, v1.15.12's quota_pressure SourceKind honesty, and the v1.15.11 / v1.15.10 / v1.15.8 quota_pressure stack all carry forward unchanged. 467 tests green; clippy + fmt clean."
-  next_phase: "Slice 3 effectively complete; v1.15.x patch line continues for operator-driven UX iteration. The confirm-archive review path is permanently closed per operator decision (2026-04-27) — patches ship with self-verified fmt/test/clippy plus the v1.15.0 review-1 evidence on file. Direction question for the next major arc: Slice 4+ thematic scoping (operator-defined when the next workstream opens)."
+  current_phase: "v1.15.16 per-provider cost threshold config. New `[cost]` TOML section with top-level warning_usd / critical_usd defaults plus optional per-provider overrides for Claude / Codex / Gemini. PolicyGates resolves the threshold pair per-pane; advisory rules read from gates instead of hardcoded constants. Recommended defaults: $5/$20 (Codex baseline), Claude $10/$30 (higher tier), Gemini $3/$10 (lower tier). v1.15.15's COST badge severity coloring, v1.15.14's cost_pressure_* advisory pair, and the v1.15.13 / v1.15.12 / v1.15.11 / v1.15.10 / v1.15.8 stack all carry forward unchanged. 472 tests green; clippy + fmt clean."
+  next_phase: "Same direction; v1.15.x patch line continues for operator-driven UX iteration. context_pressure and quota_pressure threshold pairs remain hardcoded; lifting them into config follows the v1.15.16 CostConfig precedent if the operator wants per-provider overrides on those too. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

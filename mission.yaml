@@ -1,6 +1,6 @@
 mission:
-  version: "1.15.15"
-  title: "Qmonster v0.4.0 — v1.15.15 COST badge severity coloring. Pairs the v1.15.14 cost_pressure_* advisory thresholds with a `cost_metric_severity` helper that tints the pane-card COST badge (>= $20.00 → Risk, >= $5.00 → Warning, >= $2.00 → Concern, else Good). Thresholds are kept in sync with the advisory rule constants; the early Concern band at $2.00 starts the visual cue before the Warning advisory fires. CTX/QUOTA/COST badges now share the same severity-tinting contract — no more silent neutral-colored COST when the value is climbing. v1.15.14's advisory pair behavior is unchanged. 467 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
+  version: "1.15.16"
+  title: "Qmonster v0.4.0 — v1.15.16 per-provider cost threshold config. New `[cost]` TOML section with top-level `warning_usd` / `critical_usd` defaults plus optional `[cost.claude]` / `[cost.codex]` / `[cost.gemini]` per-provider overrides. PolicyGates resolves the threshold pair per-pane from the operator's CostConfig + the resolved provider, and `cost_pressure_*` advisory rules read directly from gates. Recommended defaults track 2026-04-27 pricing-tier expectations: default $5/$20 (Codex `gpt-5.4` baseline), Claude $10/$30 (Sonnet/Opus higher tier), Gemini $3/$10 (Pro lower tier); operator can tune freely via `--config PATH`. Behavior is backward compatible — operators not setting `[cost]` get the v1.15.14 hardcoded $5/$20 baseline. 472 tests green; fmt + clippy clean. mission-spec validation is blocked locally because the mission-spec binary is not installed."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1200,5 +1200,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 71
+    total_revisions: 72
     history: "mission-history.yaml"

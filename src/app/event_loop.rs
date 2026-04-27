@@ -127,6 +127,8 @@ where
         let signals = crate::adapters::parse_for(&parse_ctx);
         let gates = crate::policy::gates::PolicyGates::from_config_and_identity(
             &ctx.config.token,
+            &ctx.config.cost,
+            resolved.identity.provider,
             resolved.confidence,
         );
         // Read last idle state BEFORE calling evaluate so the engine can
