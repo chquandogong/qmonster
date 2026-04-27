@@ -11,9 +11,9 @@ pub struct ClaudeAdapter;
 struct ClaudeStatusLine {
     model: String,
     reasoning_effort: Option<String>,
-    context_pressure: f32,
-    quota_5h_pressure: f32,
-    quota_weekly_pressure: f32,
+    context_pressure: Option<f32>,
+    quota_5h_pressure: Option<f32>,
+    quota_weekly_pressure: Option<f32>,
     worktree_path: Option<String>,
 }
 
@@ -24,21 +24,27 @@ impl ProviderParser for ClaudeAdapter {
         append_claude_runtime_facts(&mut set, tail, ctx.claude_settings);
 
         if let Some(status) = parse_claude_status_line(tail) {
-            set.context_pressure = Some(
-                MetricValue::new(status.context_pressure, SourceKind::ProviderOfficial)
-                    .with_confidence(0.95)
-                    .with_provider(Provider::Claude),
-            );
-            set.quota_5h_pressure = Some(
-                MetricValue::new(status.quota_5h_pressure, SourceKind::ProviderOfficial)
-                    .with_confidence(0.95)
-                    .with_provider(Provider::Claude),
-            );
-            set.quota_weekly_pressure = Some(
-                MetricValue::new(status.quota_weekly_pressure, SourceKind::ProviderOfficial)
-                    .with_confidence(0.95)
-                    .with_provider(Provider::Claude),
-            );
+            if let Some(pct) = status.context_pressure {
+                set.context_pressure = Some(
+                    MetricValue::new(pct, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Claude),
+                );
+            }
+            if let Some(pct) = status.quota_5h_pressure {
+                set.quota_5h_pressure = Some(
+                    MetricValue::new(pct, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Claude),
+                );
+            }
+            if let Some(pct) = status.quota_weekly_pressure {
+                set.quota_weekly_pressure = Some(
+                    MetricValue::new(pct, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Claude),
+                );
+            }
             set.model_name = Some(
                 MetricValue::new(status.model, SourceKind::ProviderOfficial)
                     .with_confidence(0.95)
@@ -56,7 +62,10 @@ impl ProviderParser for ClaudeAdapter {
                     .with_confidence(0.95)
                     .with_provider(Provider::Claude)
             });
-        } else if let Some(pct) = parse_claude_context_pressure(tail) {
+        }
+        if set.context_pressure.is_none()
+            && let Some(pct) = parse_claude_context_pressure(tail)
+        {
             set.context_pressure = Some(
                 MetricValue::new(pct, SourceKind::ProviderOfficial)
                     .with_confidence(0.9)
@@ -225,11 +234,14 @@ fn parse_claude_status_line_row(line: &str) -> Option<ClaudeStatusLine> {
         return None;
     }
 
-    let context_pressure = percent_after_label(trimmed, ctx_idx, "ctx")?;
-    let quota_5h_pressure = percent_after_label(trimmed, h5_idx, "5h")?;
-    let quota_weekly_pressure = percent_after_label(trimmed, d7_idx, "7d")?;
+    // Each percent search is bounded by the next label so that an em-dash
+    // placeholder (statusline.sh renders missing JSON fields as "—") in
+    // one column cannot bleed the following column's value into itself.
+    let context_pressure = percent_in_range(trimmed, ctx_idx + "ctx".len(), h5_idx);
+    let quota_5h_pressure = percent_in_range(trimmed, h5_idx + "5h".len(), d7_idx);
+    let quota_weekly_pressure = percent_in_range(trimmed, d7_idx + "7d".len(), trimmed.len());
     let (model, reasoning_effort) = parse_claude_statusline_model(&trimmed[..ctx_idx])?;
-    let worktree_path = path_after_percent(trimmed, d7_idx, "7d");
+    let worktree_path = path_after_label(trimmed, d7_idx, "7d");
 
     Some(ClaudeStatusLine {
         model,
@@ -271,19 +283,16 @@ fn find_status_label(line: &str, label: &str) -> Option<usize> {
     })
 }
 
-fn percent_after_label(line: &str, idx: usize, label: &str) -> Option<f32> {
-    let start = idx + label.len();
-    let rest = &line[start..];
-    let pct_idx = rest.find('%')?;
-    parse_percent_before(rest, pct_idx)
+fn percent_in_range(line: &str, start: usize, bound: usize) -> Option<f32> {
+    let segment = line.get(start..bound)?;
+    let pct_idx = segment.find('%')?;
+    parse_percent_before(segment, pct_idx)
 }
 
-fn path_after_percent(line: &str, idx: usize, label: &str) -> Option<String> {
+fn path_after_label(line: &str, idx: usize, label: &str) -> Option<String> {
     let start = idx + label.len();
     let rest = &line[start..];
-    let pct_idx = rest.find('%')?;
-    let after_pct = &rest[pct_idx + 1..];
-    let before_border = after_pct.split('│').next().unwrap_or(after_pct);
+    let before_border = rest.split('│').next().unwrap_or(rest);
     before_border
         .split_whitespace()
         .find(|token| {
@@ -883,6 +892,102 @@ Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster
                 && f.value == "bypass permissions on"
                 && f.source_kind == SourceKind::ProviderOfficial
         }));
+    }
+
+    #[test]
+    fn claude_statusline_em_dash_ctx_does_not_steal_5h_value() {
+        // statusline.sh renders missing JSON fields as a dim em-dash.
+        // After /clear, .context_window.used_percentage is absent so the
+        // line shows `CTX —`. The parser must leave context_pressure
+        // unset and not pull 5h's percent into CTX.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Opus 4.7 (1M context)·max  CTX —  5h 88%  7d 43%  ~/Qmonster";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+
+        assert!(
+            set.context_pressure.is_none(),
+            "CTX em-dash must leave context_pressure unset, not bleed 5h's 88%"
+        );
+        assert!((set.quota_5h_pressure.as_ref().unwrap().value - 0.88).abs() < 1e-6);
+        assert!((set.quota_weekly_pressure.as_ref().unwrap().value - 0.43).abs() < 1e-6);
+        assert_eq!(
+            set.model_name.as_ref().unwrap().value,
+            "Opus 4.7 (1M context)"
+        );
+        assert_eq!(set.reasoning_effort.as_ref().unwrap().value, "max");
+        assert_eq!(set.worktree_path.as_ref().unwrap().value, "~/Qmonster");
+    }
+
+    #[test]
+    fn claude_statusline_em_dash_5h_does_not_steal_7d_value() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Opus 4.7 (1M context)·max  CTX 51%  5h —  7d 1%  ~/Qmonster";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+
+        assert!((set.context_pressure.as_ref().unwrap().value - 0.51).abs() < 1e-6);
+        assert!(
+            set.quota_5h_pressure.is_none(),
+            "5h em-dash must leave quota_5h_pressure unset, not bleed 7d's 1%"
+        );
+        assert!((set.quota_weekly_pressure.as_ref().unwrap().value - 0.01).abs() < 1e-6);
+        assert_eq!(
+            set.model_name.as_ref().unwrap().value,
+            "Opus 4.7 (1M context)"
+        );
+        assert_eq!(set.worktree_path.as_ref().unwrap().value, "~/Qmonster");
+    }
+
+    #[test]
+    fn claude_statusline_em_dash_7d_keeps_other_fields() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d —  ~/Qmonster";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+
+        assert!((set.context_pressure.as_ref().unwrap().value - 0.51).abs() < 1e-6);
+        assert!((set.quota_5h_pressure.as_ref().unwrap().value - 0.09).abs() < 1e-6);
+        assert!(
+            set.quota_weekly_pressure.is_none(),
+            "7d em-dash must leave quota_weekly_pressure unset"
+        );
+        assert_eq!(
+            set.model_name.as_ref().unwrap().value,
+            "Opus 4.7 (1M context)"
+        );
+        assert_eq!(set.reasoning_effort.as_ref().unwrap().value, "max");
+        assert_eq!(set.worktree_path.as_ref().unwrap().value, "~/Qmonster");
+    }
+
+    #[test]
+    fn claude_statusline_all_em_dashes_keeps_model_and_path() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Opus 4.7 (1M context)·max  CTX —  5h —  7d —  ~/Qmonster";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+
+        assert!(set.context_pressure.is_none());
+        assert!(set.quota_5h_pressure.is_none());
+        assert!(set.quota_weekly_pressure.is_none());
+        assert_eq!(
+            set.model_name.as_ref().unwrap().value,
+            "Opus 4.7 (1M context)"
+        );
+        assert_eq!(set.reasoning_effort.as_ref().unwrap().value, "max");
+        assert_eq!(set.worktree_path.as_ref().unwrap().value, "~/Qmonster");
     }
 
     use std::io::Write;
