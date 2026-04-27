@@ -26,7 +26,7 @@ pub use config::{
 pub use effects::EffectRunner;
 pub use event_loop::run_once;
 pub use git_info::capture_repo_panel;
-pub use path_resolution::{ResolvedRoot, pick_root};
+pub use path_resolution::{ResolvedRoot, default_config_path, pick_root};
 pub use safety_audit::{OverrideStats, apply_override_with_audit};
 pub use system_notice::{SystemNotice, record_startup_snapshot, route_version_drift};
 pub use version_drift::{

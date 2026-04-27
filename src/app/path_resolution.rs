@@ -62,6 +62,19 @@ pub fn pick_root(
     }
 }
 
+pub fn default_config_path(cli_root: Option<&Path>, env_root: Option<&str>) -> PathBuf {
+    let root = if let Some(env) = env_root
+        && !env.is_empty()
+    {
+        PathBuf::from(env)
+    } else if let Some(cli) = cli_root {
+        cli.to_path_buf()
+    } else {
+        QmonsterPaths::default_root().root().to_path_buf()
+    };
+    QmonsterPaths::at(root).config_path()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,5 +122,19 @@ mod tests {
             PathBuf::from("/cfg-root"),
             "empty env must fall through per POSIX-ish convention"
         );
+    }
+
+    #[test]
+    fn default_config_path_uses_env_root_before_cli_root() {
+        let cli_root = PathBuf::from("/cli-qmonster");
+        let path = default_config_path(Some(&cli_root), Some("/env-qmonster"));
+        assert_eq!(path, PathBuf::from("/env-qmonster/config/qmonster.toml"));
+    }
+
+    #[test]
+    fn default_config_path_uses_cli_root_when_env_absent() {
+        let cli_root = PathBuf::from("/cli-qmonster");
+        let path = default_config_path(Some(&cli_root), None);
+        assert_eq!(path, PathBuf::from("/cli-qmonster/config/qmonster.toml"));
     }
 }

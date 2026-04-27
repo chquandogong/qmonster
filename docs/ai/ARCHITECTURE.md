@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.15 dashboard mouse extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.16 config-path helper extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -42,7 +42,7 @@ checkpoint, retention, and durable audit storage.
 ```
 src/
   main.rs      # CLI entry + current TUI event loop (still too large)
-  app/         # bootstrap, config+safety-precedence, event loop, keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
+  app/         # bootstrap, config+safety-precedence, path resolution, event loop, keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # polling first; control-mode-capable PaneSource trait
   adapters/    # per-provider tail parsers (no identity inference)
@@ -80,7 +80,8 @@ command copy notices into `app::clipboard_actions`. v1.16.13 moves
 target-picker open/key/mouse dispatch into `app::target_picker`.
 v1.16.14 moves dashboard Alerts/Panes selection key dispatch into
 `app::dashboard_state`. v1.16.15 moves dashboard mouse dispatch into
-`app::dashboard_state`.
+`app::dashboard_state`. v1.16.16 moves default config-path resolution and
+its tests into `app::path_resolution`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

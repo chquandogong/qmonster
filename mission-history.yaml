@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.15 dashboard mouse extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.16 config-path helper extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 97
-  latest_version: "1.16.15"
+  total_revisions: 98
+  latest_version: "1.16.16"
 
 timeline:
   - change_id: "initial"
@@ -9351,8 +9351,76 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.16-config-path-helper-extraction"
+    semantic_version: "1.16.16"
+    change_sequence: 98
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving default config-path resolution out of
+      `src/main.rs`.
+    intent_ko: >
+      default config-path resolution을 `src/main.rs` 밖으로 옮겨 Phase C C1
+      분해를 계속한다.
+    decision: >
+      Move `default_config_path` into `src/app/path_resolution.rs`, next to
+      the existing root-precedence helper, and move its two precedence tests
+      from the binary test module into the library module.
+    decision_ko: >
+      `default_config_path`를 기존 root-precedence helper와 같은
+      `src/app/path_resolution.rs`로 옮기고, 두 precedence 테스트도 binary
+      test module에서 library module로 이동한다.
+    triggered_by: "Continuation after the v1.16.15 dashboard mouse extraction."
+    issue_or_context: >
+      `src/main.rs` still owned a path-resolution helper and two unit tests
+      even though `app::path_resolution` already owns storage-root precedence
+      and related tests.
+    changes:
+      added:
+        - "src/app/path_resolution.rs: default_config_path"
+        - "src/app/path_resolution.rs: 2 moved unit tests for env/CLI config-path precedence"
+      modified:
+        - "src/main.rs imports default_config_path from app::path_resolution and drops the now-empty binary test module"
+        - "src/app/mod.rs re-exports default_config_path"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.16"
+      removed:
+        - "src/main.rs inline default_config_path helper and binary-only tests"
+    changed_sections:
+      - "src/app/path_resolution.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Fifteenth Phase C C1 code slice exists outside main.rs"
+        - "default config-path precedence tests live with path-resolution logic"
+      modified:
+        - "main.rs no longer owns default config-path resolution"
+      removed:
+        - "the empty binary test module left after moving the helper tests"
+    impact_scope:
+      code: "internal refactor only; no config-path precedence, CLI/env behavior, or --once output behavior change intended"
+      tests: "563 total passed — 503 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (same total as v1.16.15; two tests moved from binary to lib)"
+      ledger: "1 new timeline entry (sequence 98); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — pure helper moved to the existing path-resolution module with the same precedence tests."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.15 dashboard mouse extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
+  current_phase: "v1.16.16 config-path helper extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

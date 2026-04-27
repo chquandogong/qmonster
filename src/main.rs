@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
@@ -34,7 +34,7 @@ use qmonster::app::modal_state::{
 };
 use qmonster::app::once_report::print_once_reports;
 use qmonster::app::operator_actions::{version_refresh_notices, write_operator_snapshot};
-use qmonster::app::path_resolution::pick_root;
+use qmonster::app::path_resolution::{default_config_path, pick_root};
 use qmonster::app::prompt_send_actions::handle_prompt_send_action;
 use qmonster::app::runtime_refresh::handle_runtime_refresh_action;
 use qmonster::app::safety_audit::apply_override_with_audit;
@@ -59,7 +59,7 @@ use qmonster::notify::desktop::DesktopNotifier;
 use qmonster::policy::claude_settings::{ClaudeSettings, ClaudeSettingsError};
 use qmonster::policy::pricing::PricingTable;
 use qmonster::store::{
-    ArchiveWriter, EventSink, InMemorySink, QmonsterPaths, SnapshotWriter, SqliteAuditSink, sweep,
+    ArchiveWriter, EventSink, InMemorySink, SnapshotWriter, SqliteAuditSink, sweep,
 };
 use qmonster::tmux::polling::{PaneSource, PollingSource};
 use qmonster::tmux::types::WindowTarget;
@@ -288,19 +288,6 @@ fn main() -> anyhow::Result<()> {
     }
 
     run_tui(&mut ctx, fresh, snapshot_writer, startup_notices)
-}
-
-fn default_config_path(cli_root: Option<&Path>, env_root: Option<&str>) -> PathBuf {
-    let root = if let Some(env) = env_root
-        && !env.is_empty()
-    {
-        PathBuf::from(env)
-    } else if let Some(cli) = cli_root {
-        cli.to_path_buf()
-    } else {
-        QmonsterPaths::default_root().root().to_path_buf()
-    };
-    QmonsterPaths::at(root).config_path()
 }
 
 // Phase 5 P5-3 second gate types (`PromptSendGate` + `check_send_gate`)
@@ -885,27 +872,4 @@ fn initial_target<P: PaneSource>(source: &P) -> Option<WindowTarget> {
         .ok()
         .flatten()
         .or_else(|| source.available_targets().ok()?.into_iter().next())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // P5-3 execution gate tests relocated to
-    // `src/policy/gates.rs` in v1.10.1 remediation (Gemini v1.10.0
-    // finding #1). See `check_send_gate_*` tests there.
-
-    #[test]
-    fn default_config_path_uses_env_root_before_cli_root() {
-        let cli_root = PathBuf::from("/cli-qmonster");
-        let path = default_config_path(Some(&cli_root), Some("/env-qmonster"));
-        assert_eq!(path, PathBuf::from("/env-qmonster/config/qmonster.toml"));
-    }
-
-    #[test]
-    fn default_config_path_uses_cli_root_when_env_absent() {
-        let cli_root = PathBuf::from("/cli-qmonster");
-        let path = default_config_path(Some(&cli_root), None);
-        assert_eq!(path, PathBuf::from("/cli-qmonster/config/qmonster.toml"));
-    }
 }
