@@ -66,7 +66,7 @@ pub fn runtime_refresh_sends_one_command_at_a_time(
     provider: Provider,
     _idle_state: Option<IdleCause>,
 ) -> bool {
-    matches!(provider, Provider::Claude | Provider::Gemini)
+    matches!(provider, Provider::Gemini)
 }
 
 pub fn runtime_refresh_sends_escape_first(
@@ -209,6 +209,27 @@ pub fn handle_runtime_refresh_action<P: PaneSource>(
 
     let pane_id = report.pane_id.clone();
     let provider = report.identity.identity.provider;
+    if matches!(provider, Provider::Claude) {
+        sink.record(AuditEvent {
+            kind: AuditEventKind::RuntimeRefreshCompleted,
+            pane_id: pane_id.clone(),
+            severity: Severity::Safe,
+            summary: format!("{pane_id} Claude statusline poll only (no provider input sent)"),
+            provider: Some(provider),
+            role: Some(report.identity.identity.role),
+        });
+        return RuntimeRefreshActionOutcome {
+            notice: SystemNotice {
+                title: "statusline refresh queued".into(),
+                body: format!(
+                    "{pane_id} → Claude runtime facts are read from the live statusline; no slash command or Escape was sent"
+                ),
+                severity: Severity::Good,
+                source_kind: SourceKind::ProjectCanonical,
+            },
+            force_poll: true,
+        };
+    }
     let active_only = runtime_refresh_uses_active_safe_only(report.idle_state);
     let available_commands = runtime_refresh_commands(provider, report.idle_state);
     if available_commands.is_empty() {
@@ -416,7 +437,7 @@ fn claude_runtime_tail_still_loading(tail: &str) -> bool {
 fn runtime_refresh_provider_commands(provider: Provider) -> &'static [&'static str] {
     // Keep this list to provider-owned control/status surfaces.
     match provider {
-        Provider::Claude => &["/status", "/usage", "/stats"],
+        Provider::Claude => &[],
         Provider::Codex => &["/status"],
         Provider::Gemini => &["/stats session", "/stats model", "/stats tools"],
         Provider::Qmonster | Provider::Unknown => &[],
@@ -661,9 +682,9 @@ mod tests {
 
     #[test]
     fn runtime_refresh_action_success_records_request_completion_and_forces_poll() {
-        let source = RecordingRefreshSource::with_capture("Claude status\nmodel: opus");
+        let source = RecordingRefreshSource::default();
         let sink = InMemorySink::new();
-        let mut report = base_report(Provider::Claude);
+        let mut report = base_report(Provider::Codex);
         report.idle_state = Some(IdleCause::WorkComplete);
         let mut offsets = HashMap::new();
         let mut overlays = HashMap::new();
@@ -683,14 +704,12 @@ mod tests {
         assert!(outcome.force_poll);
         assert_eq!(events[0].kind, AuditEventKind::RuntimeRefreshRequested);
         assert_eq!(events[1].kind, AuditEventKind::RuntimeRefreshCompleted);
-        assert_eq!(
-            overlays.get("%1").map(String::as_str),
-            Some("Claude status\nmodel: opus")
-        );
+        assert_eq!(source.calls(), vec!["keys:%1:/status"]);
+        assert!(overlays.is_empty());
     }
 
     #[test]
-    fn runtime_refresh_action_active_claude_cycles_status_and_closes_surface() {
+    fn runtime_refresh_action_claude_uses_statusline_without_sending_input() {
         let source = RecordingRefreshSource::with_capture("Claude status\nmodel: opus");
         let sink = InMemorySink::new();
         let report = base_report(Provider::Claude);
@@ -708,19 +727,12 @@ mod tests {
         );
 
         let events = sink.snapshot();
-        assert_eq!(outcome.notice.title, "runtime refresh sent");
+        assert_eq!(outcome.notice.title, "statusline refresh queued");
         assert!(outcome.force_poll);
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].kind, AuditEventKind::RuntimeRefreshRequested);
-        assert_eq!(events[1].kind, AuditEventKind::RuntimeRefreshCompleted);
-        assert_eq!(
-            source.calls(),
-            vec!["keys:%1:/status", "capture:%1:300", "key:%1:Escape"]
-        );
-        assert_eq!(
-            overlays.get("%1").map(String::as_str),
-            Some("Claude status\nmodel: opus")
-        );
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, AuditEventKind::RuntimeRefreshCompleted);
+        assert!(source.calls().is_empty());
+        assert!(overlays.is_empty());
     }
 
     #[test]
@@ -753,29 +765,25 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_commands_for_claude_cycle_status_usage_stats_when_idle() {
-        assert_eq!(
-            runtime_refresh_commands(Provider::Claude, Some(IdleCause::WorkComplete)),
-            ["/status", "/usage", "/stats"]
+    fn runtime_refresh_commands_for_claude_are_statusline_only() {
+        assert!(
+            runtime_refresh_commands(Provider::Claude, Some(IdleCause::WorkComplete)).is_empty()
         );
         assert_eq!(
             runtime_refresh_command_label(runtime_refresh_commands(
                 Provider::Claude,
                 Some(IdleCause::LimitHit)
             )),
-            "/status, /usage, /stats"
+            ""
         );
     }
 
     #[test]
-    fn runtime_refresh_commands_for_claude_active_cycle_same_runtime_sources() {
-        assert_eq!(
-            runtime_refresh_commands(Provider::Claude, None),
-            ["/status", "/usage", "/stats"]
-        );
+    fn runtime_refresh_commands_for_claude_active_are_statusline_only() {
+        assert!(runtime_refresh_commands(Provider::Claude, None).is_empty());
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, Some(IdleCause::Stale)),
-            ["/status", "/usage", "/stats"]
+            &[] as &[&str]
         );
     }
 
@@ -805,44 +813,18 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_dispatch_cycles_claude_runtime_sources_one_at_a_time() {
+    fn runtime_refresh_dispatch_for_claude_is_empty() {
         let mut offsets = HashMap::new();
-        assert_eq!(
+        assert!(
             runtime_refresh_dispatch_commands(
                 Provider::Claude,
                 Some(IdleCause::WorkComplete),
                 "%1",
                 &mut offsets
-            ),
-            ["/status"]
+            )
+            .is_empty()
         );
-        assert_eq!(
-            runtime_refresh_dispatch_commands(
-                Provider::Claude,
-                Some(IdleCause::WorkComplete),
-                "%1",
-                &mut offsets
-            ),
-            ["/usage"]
-        );
-        assert_eq!(
-            runtime_refresh_dispatch_commands(
-                Provider::Claude,
-                Some(IdleCause::WorkComplete),
-                "%1",
-                &mut offsets
-            ),
-            ["/stats"]
-        );
-        assert_eq!(
-            runtime_refresh_dispatch_commands(
-                Provider::Claude,
-                Some(IdleCause::WorkComplete),
-                "%1",
-                &mut offsets
-            ),
-            ["/status"]
-        );
+        assert!(offsets.is_empty());
         assert!(!runtime_refresh_sends_escape_first(Provider::Claude, None));
         assert!(!runtime_refresh_sends_escape_first(
             Provider::Claude,

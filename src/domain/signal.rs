@@ -134,12 +134,12 @@ pub struct SignalSet {
     /// `quota_5h_pressure` / `quota_weekly_pressure` below instead.
     pub quota_pressure: Option<MetricValue<f32>>,
     /// Claude/Codex rolling 5-hour usage limit. Claude sources this
-    /// from `/usage` "Current session"; Codex sources it from the
-    /// bottom status line's `5h N%` token.
+    /// from statusline `5h N%`; Codex sources it from the bottom status
+    /// line's `5h N%` token.
     pub quota_5h_pressure: Option<MetricValue<f32>>,
     /// Claude/Codex weekly usage limit. Claude sources this from
-    /// `/usage` "Current week (all models)"; Codex sources it from the
-    /// bottom status line's `weekly N%` token.
+    /// statusline `7d N%`; Codex sources it from the bottom status
+    /// line's `weekly N%` token.
     pub quota_weekly_pressure: Option<MetricValue<f32>>,
     pub token_count: Option<MetricValue<u64>>,
     /// S3-1: cumulative session input tokens. Currently populated only

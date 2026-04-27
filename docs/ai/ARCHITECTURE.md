@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-28 (implementation sync through v1.16.59 Claude runtime cycle)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-28 (implementation sync through v1.17.1 Claude statusline observability)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -170,17 +170,11 @@ compatibility on older tmux versions.
 v1.16.50 completes Phase C C2 by making `[tmux] source = "auto"` the
 default. Auto mode attaches control-mode first and falls back to polling
 only when startup attach fails; explicit `control_mode` remains strict.
-v1.16.51 updates provider pressure semantics without changing the
-PaneSource contract: Claude CTX is read from `/context` including the
-current `Context Usage` total token line, Claude quota is split from
-`/usage` Current session (5h) and Current week (all models), Codex quota
-is split from bottom-status `5h` and `weekly`, and the settings overlay
-persists separate 5h/weekly quota thresholds for Claude and Codex.
-v1.16.52 closes the live Claude visibility gap: runtime refresh captures
-Claude fullscreen surfaces with a deeper provider-specific tail, waits
-for render/pre-`Escape` settle, and caches last observed Claude pressure
-metrics per pane so CTX, QUOTA 5H, and QUOTA WEEK can display together
-after `/usage` and `/context` have both been observed.
+v1.16.51 originally split provider pressure semantics into context,
+5-hour quota, and weekly quota windows. Codex still sources its split
+quota values from bottom-status `5h` and `weekly`; v1.17.1 makes Claude
+source the live values from statusline `CTX`, `5h`, and `7d` instead of
+slash-command runtime captures.
 v1.16.55 completes Phase C C3 by adding `codex-review` and
 `gemini-policy-review` profile recommendations in `policy/rules/profiles.rs`.
 They fire only for healthy `Role::Review` panes at medium-or-higher
@@ -193,9 +187,10 @@ v1.16.57 protects active provider work: Gemini `thinking...` progress
 markers suppress stale-IDLE fallback, and Claude active-pane runtime
 refresh stops sending defensive pre-`Escape` into in-flight Claude work.
 v1.16.58 keeps Gemini live-prompt panes active while recent tail history
-is still changing. v1.16.59 restores the operator-requested Claude
-runtime cycle across states: `/status`, `/usage`, `/stats`, one command
-per `u` press, captured first and then closed with `Escape`.
+is still changing. v1.17.1 replaces Claude slash-command refresh with
+statusline parsing: Claude `CTX`, `5h`, `7d`, model, effort, path, and
+permission mode are read from the live tail, and `u` no longer sends
+Claude provider input.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -343,19 +338,11 @@ that still needs attention.
 Provider runtime facts are produced by adapter-local parsers from
 provider status/slash output and readable provider config sources. The
 TUI key `u` sends the selected provider's read-only runtime slash
-commands with terminal submit (`C-m`, Enter-equivalent), one command per
-press when a provider exposes multiple runtime surfaces. Claude cycles
-`/status`, `/usage`, `/stats`; Codex sends `/status`; Gemini cycles
-`/stats session`, `/stats model`, `/stats tools`. Claude does not send a
-pre-command `Escape`; it waits until after the command output has been
-captured before closing the fullscreen surface.
-Claude fullscreen surfaces (`/status`, `/usage`, `/stats`) are
-captured with a Claude-specific minimum depth after a short readiness
-wait before Qmonster sends `Escape` to close them; the captured tail is
-consumed once as an in-memory parser overlay on the next poll. Claude
-pressure metrics observed from these transient surfaces are cached per
-pane so `/context` CTX and `/usage` quota windows can remain visible
-together until the pane/provider lifecycle resets.
+commands with terminal submit (`C-m`, Enter-equivalent) for Codex and
+Gemini only. Claude is statusline-only: pressing `u` on a Claude pane
+forces the next poll but sends no slash command and no `Escape`. Codex
+sends `/status`; Gemini cycles `/stats session`, `/stats model`,
+`/stats tools`.
 Gemini stats surfaces are cycled without a pre-`Escape`; Gemini
 `thinking...` progress markers and recently changing live-prompt tails
 suppress idle classification so a genuinely working Gemini pane does not
@@ -366,15 +353,15 @@ rather than inferred.
 
 Pressure metrics intentionally mirror provider surfaces:
 
-- `context_pressure`: Claude `/context`, Codex bottom status, Gemini
-  status table `context`. Claude's current `/context` `Context Usage`
-  screen contributes the total token percent, not category rows.
+- `context_pressure`: Claude statusline `CTX`, Codex bottom status,
+  Gemini status table `context`. Historical Claude `/context` capture
+  parsing remains for old overlays, but the live path is statusline.
 - `quota_pressure`: provider exposes only one quota surface, currently
   Gemini.
-- `quota_5h_pressure`: Claude `/usage` Current session; Codex bottom
-  status `5h` converted from remaining quota to pressure.
-- `quota_weekly_pressure`: Claude `/usage` Current week (all models);
-  Codex bottom status `weekly` converted from remaining quota to pressure.
+- `quota_5h_pressure`: Claude statusline `5h`; Codex bottom status `5h`
+  converted from remaining quota to pressure.
+- `quota_weekly_pressure`: Claude statusline `7d`; Codex bottom status
+  `weekly` converted from remaining quota to pressure.
 
 The policy layer keeps these windows distinct so settings and advisory
 actions can pace a rolling 5-hour budget without hiding an exhausted

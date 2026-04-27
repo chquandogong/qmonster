@@ -96,14 +96,13 @@ session:window · Provider role · %pane_id
   취급됩니다. `QUOTA`, `QUOTA 5H`, `QUOTA WEEK` badge도 같은 severity
   임계치를 공유합니다.
 - 현재 `CTX`는 구조적으로 확인 가능한 provider status에서만 채웁니다.
-  Claude는 `/context`, Codex는 bottom status line, Gemini는 status
-  table의 `context` 컬럼을 사용합니다. Claude `/context`의 current
-  `Context Usage` 화면은 total token line의 percent를 CTX로 읽습니다.
-  Claude의 `/usage` Current session / Current week 막대는 context window가
-  아니라 rate-limit quota이므로 `CTX`로 표시하지 않습니다.
+  Claude는 live statusline의 `CTX N%`, Codex는 bottom status line,
+  Gemini는 status table의 `context` 컬럼을 사용합니다. 과거 Claude
+  `/context` capture overlay 파서는 호환용으로 남아 있지만, 운영 경로는
+  statusline입니다.
 - `QUOTA 5H`와 `QUOTA WEEK`는 Claude/Codex 전용 split quota입니다.
-  Claude는 `/usage`의 `Current session`을 5시간 한도, `Current week
-(all models)`를 주간 한도로 읽습니다. Codex는 bottom status line의
+  Claude는 live statusline의 `5h N%`와 `7d N%`를 그대로 pressure로
+  표시합니다. Codex는 bottom status line의
   `5h N%`와 `weekly N%`를 **남은 quota**로 읽고, Qmonster의 pressure
   badge에는 `100 - N` 값을 표시합니다. Gemini처럼 provider가 단일 quota만
   노출하는 경우에는 기존 `QUOTA N%` badge를 사용합니다.
@@ -139,19 +138,12 @@ session:window · Provider role · %pane_id
   ellipsize됩니다 (Slice 3 housekeeping). 잘린 부분은 `…` 한 글자로
   표시되어 badge 한 줄이 pane card 폭을 넘기지 않습니다.
 - `modes` / `access` / `loaded` / `restrict` 줄은 provider runtime fact를
-  표시합니다. Qmonster는 선택된 pane에서 `u`를 누르면 provider의
-  read-only runtime slash command와 terminal submit(`C-m`, Enter-equivalent)을
-  보냅니다. 여러 runtime surface가 있는 provider는 `u`를 누를 때마다 하나씩
-  순환 실행합니다: Claude `/status` → `/usage` → `/stats`,
+  표시합니다. Claude는 statusline에서 모델/effort/path와
+  `⏵⏵ bypass permissions on/off`를 읽습니다. 선택된 Claude pane에서 `u`를
+  눌러도 slash command나 `Escape`를 보내지 않고 다음 poll만 당겨옵니다.
+  Codex와 Gemini는 선택된 pane에서 `u`를 누르면 provider의 read-only runtime
+  slash command와 terminal submit(`C-m`, Enter-equivalent)을 보냅니다:
   Codex `/status`, Gemini `/stats session` → `/stats model` → `/stats tools`.
-  Claude는 active/idle 구분 없이 같은 순환을 사용하며, 명령을 보내기 전에
-  `Escape`를 보내지 않습니다. Claude `/status`, `/usage`, `/stats`는 실행 후
-  화면이 계속 남기 때문에 Qmonster가
-  짧게 준비 상태를 기다린 뒤 일반 pane tail보다 깊게 출력을 캡처해 one-shot
-  parser overlay로 저장하고, 이어서 `Escape`를 보내 pane이 다음 명령을 받을
-  수 있게 되돌립니다. Claude의 `/context`와 `/usage`는 서로 다른 화면이므로
-  마지막으로 확인된 CTX/5H/WEEK pressure 값은 같은 pane 안에서 보존되어
-  다음 poll에서도 함께 표시됩니다.
   Gemini는 pre-`Escape` 없이 stats 명령만 순환하며, `thinking...` 진행 표시가 있으면 tail이
   몇 poll 동안 같아도 `IDLE`로 떨어지지 않고, live prompt가 남아 있어도
   최근 tail이 변하는 동안은 active로 유지됩니다. 다음 poll에서
@@ -233,11 +225,11 @@ side_effects (N):
 - `?`: help/legend overlay
 - `r`: version drift 재확인
 - `s`: snapshot 저장
-- `u`: 선택된 pane의 provider runtime slash source를 하나씩 순환 실행해 상태
-  갱신 요청. `observe_only`에서는 pane 입력을 바꾸지 않기 위해 차단하고
-  `RuntimeRefreshBlocked`를 기록합니다. Claude는 `/status` -> `/usage` ->
-  `/stats`를 순환하고, 각 화면을 캡처한 뒤 `Escape`로 닫습니다. 성공/실패는
-  `RuntimeRefreshRequested`, `RuntimeRefreshCompleted`,
+- `u`: Claude pane에서는 statusline 기반 즉시 poll만 요청하고 provider 입력을
+  보내지 않습니다. Codex/Gemini pane에서는 provider runtime slash source를
+  하나씩 순환 실행해 상태 갱신을 요청합니다. `observe_only`에서는 Codex/Gemini
+  pane 입력을 바꾸지 않기 위해 차단하고 `RuntimeRefreshBlocked`를 기록합니다.
+  성공/실패는 `RuntimeRefreshRequested`, `RuntimeRefreshCompleted`,
   `RuntimeRefreshFailed`로 audit log에 남습니다.
 - `y`: Alerts focus에서 선택된 alert의 `run` command를 system clipboard에
   복사합니다. 선택 항목에 `suggested_command`가 없거나 clipboard backend를

@@ -1746,6 +1746,39 @@ fn returning_to_active_clears_idle_state_no_new_alert() {
 }
 
 #[test]
+fn claude_statusline_end_to_end_populates_runtime_metrics_without_overlay() {
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%9",
+            "claude:1:main",
+            "claude",
+            "Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster\n│› Implement {feature}\n⏵⏵ bypass permissions on (shift+tab to cycle)",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    let signals = &reports[0].signals;
+
+    assert_eq!(
+        signals.model_name.as_ref().unwrap().value,
+        "Opus 4.7 (1M context)"
+    );
+    assert_eq!(signals.reasoning_effort.as_ref().unwrap().value, "max");
+    assert_eq!(signals.worktree_path.as_ref().unwrap().value, "~/Qmonster");
+    assert!((signals.context_pressure.as_ref().unwrap().value - 0.51).abs() < 1e-6);
+    assert!((signals.quota_5h_pressure.as_ref().unwrap().value - 0.09).abs() < 1e-6);
+    assert!((signals.quota_weekly_pressure.as_ref().unwrap().value - 0.01).abs() < 1e-6);
+    assert_eq!(
+        signals.context_pressure.as_ref().unwrap().source_kind,
+        SourceKind::ProviderOfficial
+    );
+}
+
+#[test]
 fn runtime_refresh_tail_overlay_is_parsed_once_then_consumed() {
     let source = FixturePaneSource {
         panes: vec![pane(

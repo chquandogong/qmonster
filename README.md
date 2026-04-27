@@ -4,9 +4,9 @@ Observe-first TUI for multi-CLI tmux development — watches Claude Code /
 Codex / Gemini panes (plus itself), surfaces alerts, token-pressure
 metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
-provider runtime slash commands on the selected pane.
+provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.17.0`; current mission ledger `v1.17.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.17.1`; current mission ledger `v1.17.1`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,16 +31,17 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current line: `v1.17.0` opens Phase D with cross-window concurrent-work
-correlation. Two healthy Main/Review panes that share `current_path` +
+Current line: `v1.17.1` reads Claude runtime facts directly from the
+visible statusline (`CTX`, `5h`, `7d`, model, effort, path, permission
+mode) and no longer sends Claude slash commands from the `u` key.
+`v1.17.0` opened Phase D with cross-window concurrent-work correlation.
+Two healthy Main/Review panes that share `current_path` +
 `git_branch` but live in different tmux windows now fire a distinct
 `Cross-Window` Concern finding once the operator opts in via
 `[security] cross_window_findings = true`. Same-window panes keep the
-existing `Cross-Pane` Warning behavior unchanged. `v1.16.59` restored the operator-requested Claude `u`
-cycle: every press rotates `/status` -> `/usage` -> `/stats`, captures
-the fullscreen output deeply enough for parsing, then sends `Escape` to
-close it. `v1.16.58` keeps Gemini panes active while their tail is still
-changing even if the live prompt placeholder remains visible. `v1.16.57` stopped Gemini `thinking...`
+existing `Cross-Pane` Warning behavior unchanged. `v1.16.58` keeps
+Gemini panes active while their tail is still changing even if the live
+prompt placeholder remains visible. `v1.16.57` stopped Gemini `thinking...`
 tails from falling through stillness detection into `IDLE` and removed
 the unconditional active-pane Claude `Escape`. `v1.16.56` narrowed the `code-exploration`
 advisory to drop the bare `output_chars >= 1500` fallback that was
@@ -65,9 +66,9 @@ and falls back to polling at startup when attach is unavailable.
 
 | Metric     | Claude                                                | Codex                                                  | Gemini                 |
 | ---------- | ----------------------------------------------------- | ------------------------------------------------------ | ---------------------- |
-| CTX        | `/context`                                            | bottom status line                                     | status table `context` |
-| QUOTA 5H   | `/usage` Current session                              | bottom status `5h` remaining, inverted to pressure     | n/a                    |
-| QUOTA WEEK | `/usage` Current week (all models)                    | bottom status `weekly` remaining, inverted to pressure | n/a                    |
+| CTX        | statusline `CTX`                                      | bottom status line                                     | status table `context` |
+| QUOTA 5H   | statusline `5h`                                       | bottom status `5h` remaining, inverted to pressure     | n/a                    |
+| QUOTA WEEK | statusline `7d`                                       | bottom status `weekly` remaining, inverted to pressure | n/a                    |
 | QUOTA      | n/a                                                   | n/a                                                    | single quota surface   |
 | COST       | unset until provider exposes/price config supports it | pricing table + token usage                            | unset today            |
 
@@ -102,7 +103,7 @@ cargo run --release
 #   ?        — open help / legend overlay
 #   r        — re-capture CLI versions; drift appears as a warning alert
 #   s        — write a runtime snapshot to ~/.qmonster/snapshots/
-#   u        — cycle provider runtime slash sources for the selected pane
+#   u        — force-poll Claude statusline; cycle runtime slash sources for Codex/Gemini
 #   y        — copy the selected alert's run command when Alerts are focused
 #   c        — clear system notices
 #   p        — accept pending prompt-send proposal on the selected pane (P5-3

@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.17.0 — Phase D D1 cross-window concurrent-work correlation."
+  mission_title: "Qmonster v1.17.1 — Claude statusline observability without slash refresh."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 142
-  latest_version: "1.17.0"
+  total_revisions: 143
+  latest_version: "1.17.1"
 
 timeline:
   - change_id: "initial"
@@ -12670,8 +12670,102 @@ timeline:
       - "If operators ask for the cross-window finding to also notify, promote `Severity::Concern` → `Severity::Warning` behind a sub-flag rather than flipping the default."
       - "Phase D2 (identity drift) is the next slice candidate."
 
+  - change_id: "v1.17.1-claude-statusline-observability"
+    semantic_version: "1.17.1"
+    change_sequence: 143
+    date: "2026-04-28"
+    author: "Codex (GPT-5.5)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator)"
+    change_type: "patch"
+    motivation_type: "operator-live-regression"
+    persistence: "permanent"
+    intent: >
+      Stop using Claude slash-command runtime refresh for values that
+      are already visible in Claude's statusline, and make the TUI
+      display that statusline data directly.
+    intent_ko: >
+      Claude statusline에 이미 표시되는 값에 대해 slash-command runtime
+      refresh를 사용하지 않고, TUI가 statusline 데이터를 직접 표시하게 한다.
+    decision: >
+      Claude adapter now parses the live statusline shape
+      `Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster`.
+      It populates model_name, reasoning_effort, context_pressure,
+      quota_5h_pressure, quota_weekly_pressure, worktree_path, and the
+      `⏵⏵ bypass permissions on/off` permission-mode fact. Claude is
+      removed from runtime-refresh slash dispatch: pressing `u` on a
+      Claude pane queues an immediate poll only and sends no slash
+      command and no Escape.
+    decision_ko: >
+      Claude adapter는 live statusline 형식
+      `Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster`을
+      파싱한다. model_name, reasoning_effort, context_pressure,
+      quota_5h_pressure, quota_weekly_pressure, worktree_path,
+      `⏵⏵ bypass permissions on/off` permission-mode fact를 채운다.
+      Claude는 runtime-refresh slash dispatch에서 제외한다. Claude pane에서
+      `u`를 누르면 즉시 poll만 예약하며 slash command와 Escape를 보내지 않는다.
+    triggered_by: "operator requested Claude values be read from the visible statusline and explicitly excluded the `u` key send behavior"
+    issue_or_context: >
+      v1.16.59 made Claude `u` rotate `/status`, `/usage`, and `/stats`,
+      but the operator showed that current Claude already displays the
+      needed runtime facts in the statusline. Sending provider input is
+      unnecessary and can disturb in-flight work.
+    changes:
+      added:
+        - "Claude statusline parser for model/effort/path/CTX/5h/7d"
+        - "Claude statusline end-to-end integration test"
+      modified:
+        - "src/adapters/claude.rs"
+        - "src/app/runtime_refresh.rs"
+        - "src/domain/signal.rs"
+        - "tests/event_loop_integration.rs"
+        - "README.md"
+        - "VERSION.md"
+        - "docs/ai/ARCHITECTURE.md"
+        - "docs/ai/PROJECT_BRIEF.md"
+        - "docs/ai/UI_MANUAL.md"
+        - "docs/ai/VALIDATION.md"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - "package.json"
+      removed:
+        - "Claude from runtime-refresh slash command dispatch"
+    changed_sections:
+      - "Claude adapter statusline parsing"
+      - "Claude `u` key runtime-refresh handling"
+      - "operator docs and ledger"
+    done_when_delta:
+      added:
+        - "Claude statusline `CTX`, `5h`, `7d`, model, effort, path, and permission mode display without slash refresh"
+        - "Claude `u` sends no slash command and no Escape"
+        - "Targeted Claude/runtime-refresh/statusline integration tests and full release validation pass"
+      modified:
+        - "README/VERSION/docs/mission ledger bumped to v1.17.1"
+      removed:
+        - "v1.16.59 Claude `/status` -> `/usage` -> `/stats` `u` cycle"
+    observable_effects:
+      added:
+        - "Claude pane cards can show `MODEL Opus 4.7 (1M context)`, `EFFORT max`, `CTX 51%`, `QUOTA 5H 9%`, `QUOTA WEEK 1%`, and `PATH ~/Qmonster` from the live statusline"
+        - "Pressing `u` on Claude only forces a fresh poll notice; provider input remains untouched"
+      modified:
+        - "Claude permission-mode hint starting with `⏵⏵` is ProviderOfficial rather than a prose heuristic"
+      removed:
+        - "Claude slash-command capture-and-close from the operator `u` path"
+    impact_scope:
+      runtime: "Claude adapter parsing and Claude branch of runtime-refresh key handling; Codex/Gemini slash refresh unchanged"
+      tests: "635 total passed — 570 lib + 41 event_loop + 18 false_positive + 6 idle_state"
+      ledger: "1 new timeline entry (sequence 143); patch bump v1.17.0 -> v1.17.1"
+      npm: "package.json version set to 1.17.1"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, npm pack --dry-run, and scripts/verify-shared.sh all pass. Official mission-spec validation remains unavailable locally, but verify-shared's lite ledger check passed."
+      follow_up_carryover: "Phase D D2 identity drift and D3 precise subagent token accounting remain deferred"
+    breaking: false
+    risk: "low — removes Claude provider input from `u`; parser is anchored on the statusline-specific `CTX` + `5h` + `7d` shape to avoid prose promotion."
+    related_commits: []
+    follow_up:
+      - "If Claude lets operators hide one of CTX/5h/7d from the statusline, keep missing values absent rather than inferring from older slash captures."
+
 evolution_summary:
-  current_phase: "v1.17.0 opens Phase D with cross-window concurrent-work correlation: same path+branch panes spread across 2+ tmux windows fire an opt-in `Cross-Window` Concern finding without changing the default same-window Warning behavior."
+  current_phase: "v1.17.1 keeps Phase D D1 in place and changes Claude observability to statusline-first: Claude CTX/5h/7d/model/effort/path/permission mode are parsed from the live tail, and Claude `u` sends no provider input."
   next_phase: "Phase D D2 (identity drift anomaly detection) and D3 (precise subagent token accounting) remain deferred. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

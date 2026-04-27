@@ -7,13 +7,56 @@ use crate::domain::signal::{IdleCause, MetricValue, RuntimeFactKind, SignalSet};
 
 pub struct ClaudeAdapter;
 
+#[derive(Debug, Clone, PartialEq)]
+struct ClaudeStatusLine {
+    model: String,
+    reasoning_effort: Option<String>,
+    context_pressure: f32,
+    quota_5h_pressure: f32,
+    quota_weekly_pressure: f32,
+    worktree_path: Option<String>,
+}
+
 impl ProviderParser for ClaudeAdapter {
     fn parse(&self, ctx: &crate::adapters::ParserContext) -> SignalSet {
         let tail = ctx.tail;
         let mut set = parse_common_signals(tail);
         append_claude_runtime_facts(&mut set, tail, ctx.claude_settings);
 
-        if let Some(pct) = parse_claude_context_pressure(tail) {
+        if let Some(status) = parse_claude_status_line(tail) {
+            set.context_pressure = Some(
+                MetricValue::new(status.context_pressure, SourceKind::ProviderOfficial)
+                    .with_confidence(0.95)
+                    .with_provider(Provider::Claude),
+            );
+            set.quota_5h_pressure = Some(
+                MetricValue::new(status.quota_5h_pressure, SourceKind::ProviderOfficial)
+                    .with_confidence(0.95)
+                    .with_provider(Provider::Claude),
+            );
+            set.quota_weekly_pressure = Some(
+                MetricValue::new(status.quota_weekly_pressure, SourceKind::ProviderOfficial)
+                    .with_confidence(0.95)
+                    .with_provider(Provider::Claude),
+            );
+            set.model_name = Some(
+                MetricValue::new(status.model, SourceKind::ProviderOfficial)
+                    .with_confidence(0.95)
+                    .with_provider(Provider::Claude),
+            );
+            if let Some(effort) = status.reasoning_effort {
+                set.reasoning_effort = Some(
+                    MetricValue::new(effort, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Claude),
+                );
+            }
+            set.worktree_path = status.worktree_path.map(|path| {
+                MetricValue::new(path, SourceKind::ProviderOfficial)
+                    .with_confidence(0.95)
+                    .with_provider(Provider::Claude)
+            });
+        } else if let Some(pct) = parse_claude_context_pressure(tail) {
             set.context_pressure = Some(
                 MetricValue::new(pct, SourceKind::ProviderOfficial)
                     .with_confidence(0.9)
@@ -21,16 +64,20 @@ impl ProviderParser for ClaudeAdapter {
             );
         }
         let (quota_5h, quota_weekly) = parse_claude_usage_quotas(tail);
-        set.quota_5h_pressure = quota_5h.map(|pct| {
-            MetricValue::new(pct, SourceKind::ProviderOfficial)
-                .with_confidence(0.9)
-                .with_provider(Provider::Claude)
-        });
-        set.quota_weekly_pressure = quota_weekly.map(|pct| {
-            MetricValue::new(pct, SourceKind::ProviderOfficial)
-                .with_confidence(0.9)
-                .with_provider(Provider::Claude)
-        });
+        if set.quota_5h_pressure.is_none() {
+            set.quota_5h_pressure = quota_5h.map(|pct| {
+                MetricValue::new(pct, SourceKind::ProviderOfficial)
+                    .with_confidence(0.9)
+                    .with_provider(Provider::Claude)
+            });
+        }
+        if set.quota_weekly_pressure.is_none() {
+            set.quota_weekly_pressure = quota_weekly.map(|pct| {
+                MetricValue::new(pct, SourceKind::ProviderOfficial)
+                    .with_confidence(0.9)
+                    .with_provider(Provider::Claude)
+            });
+        }
 
         if let Some(n) = parse_claude_output_tokens(tail) {
             set.token_count = Some(
@@ -40,10 +87,10 @@ impl ProviderParser for ClaudeAdapter {
             );
         }
 
-        // Slice 2: model from external ~/.claude/settings.json (not tail).
-        // Confidence 0.9 (< Codex's 0.95) because CLI flags can override
-        // the settings value at invocation time.
-        if let Some(m) = ctx.claude_settings.model() {
+        // Settings remain a fallback when the live statusline is absent.
+        if set.model_name.is_none()
+            && let Some(m) = ctx.claude_settings.model()
+        {
             set.model_name = Some(
                 MetricValue::new(m.to_string(), SourceKind::ProviderOfficial)
                     .with_confidence(0.9)
@@ -162,6 +209,87 @@ fn has_limit_recovery_hint(line: &str) -> bool {
         || line.contains("until")
         || line.contains("tomorrow")
         || line.contains("available")
+}
+
+fn parse_claude_status_line(tail: &str) -> Option<ClaudeStatusLine> {
+    tail.lines().rev().find_map(parse_claude_status_line_row)
+}
+
+fn parse_claude_status_line_row(line: &str) -> Option<ClaudeStatusLine> {
+    let trimmed = line.trim().trim_matches('│').trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let ctx_idx = find_status_label(&lower, "ctx")?;
+    let h5_idx = find_status_label(&lower, "5h")?;
+    let d7_idx = find_status_label(&lower, "7d")?;
+    if !(ctx_idx < h5_idx && h5_idx < d7_idx) {
+        return None;
+    }
+
+    let context_pressure = percent_after_label(trimmed, ctx_idx, "ctx")?;
+    let quota_5h_pressure = percent_after_label(trimmed, h5_idx, "5h")?;
+    let quota_weekly_pressure = percent_after_label(trimmed, d7_idx, "7d")?;
+    let (model, reasoning_effort) = parse_claude_statusline_model(&trimmed[..ctx_idx])?;
+    let worktree_path = path_after_percent(trimmed, d7_idx, "7d");
+
+    Some(ClaudeStatusLine {
+        model,
+        reasoning_effort,
+        context_pressure,
+        quota_5h_pressure,
+        quota_weekly_pressure,
+        worktree_path,
+    })
+}
+
+fn parse_claude_statusline_model(prefix: &str) -> Option<(String, Option<String>)> {
+    let cleaned = prefix.trim().trim_matches('│').trim();
+    let (model, effort) = match cleaned.rsplit_once('·') {
+        Some((model, effort)) => {
+            let effort = effort
+                .split_whitespace()
+                .next()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            (model.trim(), effort)
+        }
+        None => (cleaned, None),
+    };
+    let model = model.trim();
+    if model.is_empty() {
+        return None;
+    }
+    Some((model.to_string(), effort))
+}
+
+fn find_status_label(line: &str, label: &str) -> Option<usize> {
+    line.match_indices(label).find_map(|(idx, _)| {
+        let before_ok = idx == 0 || !line.as_bytes()[idx.saturating_sub(1)].is_ascii_alphanumeric();
+        let after_idx = idx + label.len();
+        let after_ok =
+            after_idx >= line.len() || !line.as_bytes()[after_idx].is_ascii_alphanumeric();
+        (before_ok && after_ok).then_some(idx)
+    })
+}
+
+fn percent_after_label(line: &str, idx: usize, label: &str) -> Option<f32> {
+    let start = idx + label.len();
+    let rest = &line[start..];
+    let pct_idx = rest.find('%')?;
+    parse_percent_before(rest, pct_idx)
+}
+
+fn path_after_percent(line: &str, idx: usize, label: &str) -> Option<String> {
+    let start = idx + label.len();
+    let rest = &line[start..];
+    let pct_idx = rest.find('%')?;
+    let after_pct = &rest[pct_idx + 1..];
+    let before_border = after_pct.split('│').next().unwrap_or(after_pct);
+    before_border
+        .split_whitespace()
+        .find(|token| {
+            token.starts_with("~/") || token.starts_with('/') || token.starts_with("$HOME/")
+        })
+        .map(|token| token.trim_matches('│').to_string())
 }
 
 fn parse_claude_context_pressure(tail: &str) -> Option<f32> {
@@ -340,6 +468,12 @@ fn append_claude_tail_runtime_facts(
         // permissions on" looks identical to a real status surface.
         // Demote tail-derived facts to Heuristic; only the settings
         // file path stays ProviderOfficial.
+        let is_statusline_permission_hint = trimmed.starts_with("⏵⏵");
+        let permission_source = if is_statusline_permission_hint {
+            SourceKind::ProviderOfficial
+        } else {
+            SourceKind::Heuristic
+        };
         if lower.contains("bypass permissions on") {
             push_provider_fact(
                 facts,
@@ -347,7 +481,7 @@ fn append_claude_tail_runtime_facts(
                 RuntimeFactKind::PermissionMode,
                 "bypass permissions on",
                 0.95,
-                SourceKind::Heuristic,
+                permission_source,
             );
         } else if lower.contains("bypass permissions off") {
             push_provider_fact(
@@ -356,7 +490,7 @@ fn append_claude_tail_runtime_facts(
                 RuntimeFactKind::PermissionMode,
                 "bypass permissions off",
                 0.95,
-                SourceKind::Heuristic,
+                permission_source,
             );
         }
 
@@ -699,11 +833,10 @@ Free space: 776.5k (77.6%)";
     }
 
     #[test]
-    fn claude_adapter_never_populates_model_name_from_tail() {
+    fn claude_adapter_never_populates_model_name_from_unstructured_tail() {
         // Honesty regression: with EMPTY settings, the Claude adapter
-        // must not populate model_name from the tail alone. Claude's
-        // tail does not expose the model; only the settings-read path
-        // (tested separately) may populate this field.
+        // must not populate model_name from arbitrary prose or working
+        // lines. The structured statusline path is tested separately.
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
@@ -720,6 +853,36 @@ Free space: 776.5k (77.6%)";
             set.model_name.is_none(),
             "Claude tail must not surface model_name without a ClaudeSettings source"
         );
+    }
+
+    #[test]
+    fn claude_statusline_populates_model_context_quotas_effort_path_and_permission() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster
+│› Implement {feature}
+⏵⏵ bypass permissions on (shift+tab to cycle)";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+
+        let model = set.model_name.as_ref().expect("model from statusline");
+        assert_eq!(model.value, "Opus 4.7 (1M context)");
+        assert_eq!(model.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(model.provider, Some(Provider::Claude));
+
+        assert!((set.context_pressure.as_ref().unwrap().value - 0.51).abs() < 1e-6);
+        assert!((set.quota_5h_pressure.as_ref().unwrap().value - 0.09).abs() < 1e-6);
+        assert!((set.quota_weekly_pressure.as_ref().unwrap().value - 0.01).abs() < 1e-6);
+        assert_eq!(set.reasoning_effort.as_ref().unwrap().value, "max");
+        assert_eq!(set.worktree_path.as_ref().unwrap().value, "~/Qmonster");
+        assert!(set.runtime_facts.iter().any(|f| {
+            f.kind == RuntimeFactKind::PermissionMode
+                && f.value == "bypass permissions on"
+                && f.source_kind == SourceKind::ProviderOfficial
+        }));
     }
 
     use std::io::Write;
@@ -995,13 +1158,15 @@ Plugins: github
         assert!(set.runtime_facts.iter().any(|f| {
             f.kind == RuntimeFactKind::LoadedSkill && f.value == "superpowers:executing-plans"
         }));
-        // CFX-1: tail-prose facts have no structural panel anchor on
-        // Claude — they must label as Heuristic, not ProviderOfficial.
+        // CFX-1: free-form labeled tail-prose facts have no structural
+        // panel anchor on Claude. The statusline permission hint is the
+        // only ProviderOfficial value in this fixture.
         assert!(
             set.runtime_facts
                 .iter()
+                .filter(|f| f.kind != RuntimeFactKind::PermissionMode)
                 .all(|f| f.source_kind == SourceKind::Heuristic),
-            "all tail-derived runtime facts must be Heuristic, got: {:?}",
+            "free-form tail-derived runtime facts must be Heuristic, got: {:?}",
             set.runtime_facts
                 .iter()
                 .map(|f| (f.kind, f.source_kind))
