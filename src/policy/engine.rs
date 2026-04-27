@@ -84,19 +84,27 @@ impl Engine {
     pub fn evaluate_cross_pane(
         &self,
         panes: &[PaneView<'_>],
+        gates: &PolicyGates,
     ) -> Vec<crate::domain::recommendation::CrossPaneFinding> {
-        crate::policy::rules::concurrent::eval_concurrent(panes)
+        crate::policy::rules::concurrent::eval_concurrent(panes, gates)
     }
 }
 
 /// Read-only view over one pane's current state, used by cross-pane
 /// rules. Built upstream by `app::event_loop` from the per-pane
 /// report; never constructed inside `policy/`.
+///
+/// `window_label` is the operator-visible `session:window` string the
+/// pane lives in (Phase D D1 v1.17.0). An empty string means "window
+/// unknown" — the cross-window rule treats empty labels as the same
+/// implicit group, so the same-window concurrent-work rule still fires
+/// on legacy tests that omit the field.
 #[derive(Debug, Clone, Copy)]
 pub struct PaneView<'a> {
     pub identity: &'a ResolvedIdentity,
     pub signals: &'a SignalSet,
     pub current_path: &'a str,
+    pub window_label: &'a str,
 }
 
 #[cfg(test)]
@@ -134,6 +142,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         }
     }
 
@@ -346,7 +355,7 @@ mod tests {
     fn evaluate_cross_pane_returns_empty_for_zero_panes() {
         let eng = Engine;
         let views: Vec<PaneView<'_>> = vec![];
-        assert!(eng.evaluate_cross_pane(&views).is_empty());
+        assert!(eng.evaluate_cross_pane(&views, &gates()).is_empty());
     }
 
     #[test]
@@ -358,8 +367,9 @@ mod tests {
             identity: &identity,
             signals: &signals,
             current_path: "/repo",
+            window_label: "",
         }];
-        assert!(eng.evaluate_cross_pane(&views).is_empty());
+        assert!(eng.evaluate_cross_pane(&views, &gates()).is_empty());
     }
 
     #[test]
@@ -396,14 +406,16 @@ mod tests {
                 identity: &id_a,
                 signals: &s,
                 current_path: "/repo",
+                window_label: "",
             },
             PaneView {
                 identity: &id_b,
                 signals: &s,
                 current_path: "/repo",
+                window_label: "",
             },
         ];
-        let findings = Engine.evaluate_cross_pane(&views);
+        let findings = Engine.evaluate_cross_pane(&views, &gates());
         assert_eq!(findings.len(), 1);
     }
 }

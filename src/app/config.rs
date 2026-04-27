@@ -191,6 +191,14 @@ pub struct StorageConfig {
 #[serde(default)]
 pub struct SecurityConfig {
     pub posture_advisories: bool,
+    /// Phase D D1 (v1.17.0): when `true`, the cross-pane rule emits a
+    /// `CrossWindowConcurrentWork` finding when two or more busy
+    /// Main/Review panes share `current_path` + `git_branch` but live
+    /// in different tmux windows. Stays `false` by default — an
+    /// operator running the same repo in a scratch window plus a
+    /// main-implementation window is a normal pattern, not a default
+    /// alarm.
+    pub cross_window_findings: bool,
 }
 
 /// Tuning knobs for the idle-stillness detector. Operators can set

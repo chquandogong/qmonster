@@ -522,7 +522,11 @@ module shape.
 ## Deferred for later phases
 
 - Subagent token accounting (Phase 1 ships a detection-only warning).
-- Cross-window / cross-project correlation.
+- Cross-project correlation across tmux windows that hold genuinely
+  different projects (v1.17.0 ships within-project cross-window
+  detection only — same `current_path` + `git_branch` across 2+ tmux
+  windows fires `CrossWindowConcurrentWork` behind the
+  `[security] cross_window_findings` opt-in gate).
 - Anomaly detection on pane identity drift (Phase 1 logs transitions).
 - Concurrent-work warning across panes (v1.15.23 requires
   `same current_path + same git_branch`; file-level detection remains

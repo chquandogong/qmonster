@@ -193,17 +193,32 @@ where
     }
 
     // Cross-pane pass (Phase 3A). Pure policy call; side-effects below.
+    // Phase D D1 (v1.17.0): pre-compute the `session:window` label so
+    // the cross-window rule can compare panes' window membership.
+    let window_labels: Vec<String> = reports
+        .iter()
+        .map(|r| format!("{}:{}", r.session_name, r.window_index))
+        .collect();
     let views: Vec<crate::policy::PaneView<'_>> = reports
         .iter()
-        .filter(|r| !r.dead)
-        .map(|r| crate::policy::PaneView {
+        .zip(window_labels.iter())
+        .filter(|(r, _)| !r.dead)
+        .map(|(r, label)| crate::policy::PaneView {
             identity: &r.identity,
             signals: &r.signals,
             current_path: &r.current_path,
+            window_label: label.as_str(),
         })
         .collect();
 
-    let findings = ctx.policy.evaluate_cross_pane(&views);
+    // Phase D D1: cross-pane gate is a top-level (non-provider) gate.
+    // Read security.cross_window_findings directly; identity confidence
+    // is irrelevant for the cross-window classification.
+    let cross_pane_gates = crate::policy::PolicyGates {
+        cross_window_findings: ctx.config.security.cross_window_findings,
+        ..Default::default()
+    };
+    let findings = ctx.policy.evaluate_cross_pane(&views, &cross_pane_gates);
 
     for f in findings {
         if let Some(r) = reports.iter_mut().find(|r| r.pane_id == f.anchor_pane_id) {

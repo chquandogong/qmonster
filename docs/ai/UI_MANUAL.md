@@ -36,7 +36,11 @@
 - 그 아래에는 `summary`, 필요하면 `next`, `run`이 `label : value`
   정렬로 붙습니다.
 - Alert 종류 제목은 현재 다음과 같이 나뉩니다.
-  `System Notice`, `Checkpoint`, `Cross-Pane`, 일반 recommendation 제목
+  `System Notice`, `Checkpoint`, `Cross-Pane`, `Cross-Window`, 일반
+  recommendation 제목. `Cross-Window`은 v1.17.0(Phase D D1)에서 추가된
+  새 분류로, 동일 `current_path` + `git_branch` panes가 2개 이상의
+  tmux window에 걸쳐 있을 때 `[security] cross_window_findings = true`
+  opt-in 시 발화합니다.
 - Alerts 맨 위 `bulk hide :` 줄의 severity chip은 **actionable alert만**
   대상으로 합니다. `c`로 지울 수 있는 system notice는 여기에 포함되지
   않습니다.
@@ -99,7 +103,7 @@ session:window · Provider role · %pane_id
   아니라 rate-limit quota이므로 `CTX`로 표시하지 않습니다.
 - `QUOTA 5H`와 `QUOTA WEEK`는 Claude/Codex 전용 split quota입니다.
   Claude는 `/usage`의 `Current session`을 5시간 한도, `Current week
-  (all models)`를 주간 한도로 읽습니다. Codex는 bottom status line의
+(all models)`를 주간 한도로 읽습니다. Codex는 bottom status line의
   `5h N%`와 `weekly N%`를 **남은 quota**로 읽고, Qmonster의 pressure
   badge에는 `100 - N` 값을 표시합니다. Gemini처럼 provider가 단일 quota만
   노출하는 경우에는 기존 `QUOTA N%` badge를 사용합니다.

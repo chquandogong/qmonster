@@ -1,6 +1,6 @@
 mission:
-  version: "1.16.59"
-  title: "Qmonster v1.16.59 — Restore Claude runtime surface cycle."
+  version: "1.17.0"
+  title: "Qmonster v1.17.0 — Phase D D1 cross-window concurrent-work correlation."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

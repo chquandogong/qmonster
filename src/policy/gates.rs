@@ -43,6 +43,16 @@ pub struct PolicyGates {
     pub quota_5h_critical_pct: f32,
     pub quota_weekly_warning_pct: f32,
     pub quota_weekly_critical_pct: f32,
+    /// Phase D D1 (v1.17.0): opt-in cross-window concurrent-work
+    /// detection. When `true`, the cross-pane rule emits
+    /// `CrossPaneKind::CrossWindowConcurrentWork` for groups whose panes
+    /// share `current_path` + `git_branch` but live in two or more tmux
+    /// windows. Stays `false` by default to honor the observe-first /
+    /// recommend-only principle and keep alert volume predictable for
+    /// operators who legitimately keep the same repo open across
+    /// windows (e.g. a scratch session next to a main implementation
+    /// session).
+    pub cross_window_findings: bool,
 }
 
 impl Default for PolicyGates {
@@ -65,6 +75,7 @@ impl Default for PolicyGates {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         }
     }
 }
@@ -97,6 +108,7 @@ impl PolicyGates {
                 .warning_for_window(provider, crate::app::config::QuotaWindow::Weekly),
             quota_weekly_critical_pct: quota
                 .critical_for_window(provider, crate::app::config::QuotaWindow::Weekly),
+            cross_window_findings: security.cross_window_findings,
         }
     }
 }
@@ -190,6 +202,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         assert!(gates.quota_tight);
     }
@@ -220,6 +233,7 @@ mod tests {
         let quota = QuotaConfig::default();
         let security = SecurityConfig {
             posture_advisories: true,
+            cross_window_findings: false,
         };
         let gates = PolicyGates::from_config_and_identity(
             &cfg,

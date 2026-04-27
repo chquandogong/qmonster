@@ -788,6 +788,121 @@ fn cross_pane_finding_attaches_to_correct_anchor() {
 }
 
 #[test]
+fn cross_window_concurrent_work_fires_end_to_end_when_security_gate_enabled() {
+    // Phase D D1 (v1.17.0): two healthy Codex Main panes touching the
+    // same path + branch but living in different tmux windows surface
+    // a CrossWindowConcurrentWork finding (Concern, distinct kind from
+    // the same-window ConcurrentMutatingWork Warning) once the operator
+    // opts into `[security] cross_window_findings = true`.
+    use qmonster::app::config::SecurityConfig;
+    use qmonster::domain::recommendation::CrossPaneKind;
+
+    let tail = busy_codex_tail("/tmp/repo", "main");
+    let pane_a = RawPaneSnapshot {
+        session_name: "qmonster".into(),
+        window_index: "0".into(),
+        pane_id: "%1".into(),
+        title: "codex:1:main".into(),
+        current_command: "node".into(),
+        current_path: "/tmp/repo".into(),
+        active: true,
+        dead: false,
+        tail: tail.clone(),
+    };
+    let pane_b = RawPaneSnapshot {
+        session_name: "scratch".into(),
+        window_index: "0".into(),
+        pane_id: "%2".into(),
+        title: "codex:2:main".into(),
+        current_command: "node".into(),
+        current_path: "/tmp/repo".into(),
+        active: true,
+        dead: false,
+        tail,
+    };
+    let source = FixturePaneSource {
+        panes: vec![pane_a, pane_b],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut config = QmonsterConfig::defaults();
+    config.security = SecurityConfig {
+        posture_advisories: false,
+        cross_window_findings: true,
+    };
+    let mut ctx = Context::new(config, source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert_eq!(reports.len(), 2);
+
+    let with_findings: Vec<_> = reports
+        .iter()
+        .filter(|r| !r.cross_pane_findings.is_empty())
+        .collect();
+    assert_eq!(
+        with_findings.len(),
+        1,
+        "exactly one report should carry the cross-window finding (anchor only)"
+    );
+
+    let finding = &with_findings[0].cross_pane_findings[0];
+    assert_eq!(finding.kind, CrossPaneKind::CrossWindowConcurrentWork);
+    assert!(
+        finding.reason.contains("across windows"),
+        "reason text must surface cross-window scope: {:?}",
+        finding.reason
+    );
+    assert!(finding.reason.contains("qmonster:0"));
+    assert!(finding.reason.contains("scratch:0"));
+}
+
+#[test]
+fn cross_window_concurrent_work_stays_silent_when_gate_off_by_default() {
+    // Same scenario as above but with default config — the gate is
+    // off by default so neither cross-window nor same-window findings
+    // fire (the panes are not in the same window for the legacy
+    // path either).
+    let tail = busy_codex_tail("/tmp/repo", "main");
+    let pane_a = RawPaneSnapshot {
+        session_name: "qmonster".into(),
+        window_index: "0".into(),
+        pane_id: "%1".into(),
+        title: "codex:1:main".into(),
+        current_command: "node".into(),
+        current_path: "/tmp/repo".into(),
+        active: true,
+        dead: false,
+        tail: tail.clone(),
+    };
+    let pane_b = RawPaneSnapshot {
+        session_name: "scratch".into(),
+        window_index: "0".into(),
+        pane_id: "%2".into(),
+        title: "codex:2:main".into(),
+        current_command: "node".into(),
+        current_path: "/tmp/repo".into(),
+        active: true,
+        dead: false,
+        tail,
+    };
+    let source = FixturePaneSource {
+        panes: vec![pane_a, pane_b],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    for r in &reports {
+        assert!(
+            r.cross_pane_findings.is_empty(),
+            "cross-window findings stay opt-in; default config must keep pane {} quiet",
+            r.pane_id
+        );
+    }
+}
+
+#[test]
 fn concern_severity_recommendation_does_not_trigger_desktop_notification() {
     // `verbose_answer` fires on the phrase "I'd be happy to help" and
     // produces a Concern-severity recommendation. The policy engine must

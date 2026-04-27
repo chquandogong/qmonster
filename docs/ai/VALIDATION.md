@@ -11,14 +11,13 @@ lives in `REVIEW_GUIDE.md`. Every displayed metric must carry a
 Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
-Current local verification (2026-04-28): `cargo test app::runtime_refresh --lib`,
-`cargo fmt --check`, `git diff --check`, `cargo test --all-targets`
-(627 tests), `cargo clippy --all-targets -- -D warnings`, `npm pack
---dry-run`, and `scripts/verify-shared.sh` pass for v1.16.59.
-`cargo build --release` also passes for the local TUI binary. Official `mission-spec
+Current local verification (2026-04-28): `cargo fmt --check`,
+`git diff --check`, `cargo test --all-targets` (633 tests),
+`cargo clippy --all-targets -- -D warnings`, `cargo build --release`,
+and live `--once` smoke pass for v1.17.0. Official `mission-spec
 validate .` is still unavailable locally because `mission-spec` is not
-installed, so `verify-shared.sh` used its lite ledger-structure
-fallback.
+installed, so `scripts/verify-shared.sh` falls back to the lite
+ledger-structure check.
 
 ## Planning-phase gates (Phase 0)
 
@@ -118,7 +117,12 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
       busy Main/Review panes share both `current_path` and
       `signals.git_branch`. Path-only overlap is no longer enough.
       File-level detection remains deferred until a trustworthy
-      active-file signal exists.
+      active-file signal exists. v1.17.0 (Phase D D1) splits the same
+      group by tmux window: same-window groups still emit the existing
+      `ConcurrentMutatingWork` Warning; cross-window groups emit a new
+      `CrossWindowConcurrentWork` Concern when `[security]
+    cross_window_findings = true`. Default config preserves the
+      v1.15.23 behavior exactly.
 - [x] `aggressive_mode` only surfaces recommendations when
       `quota_tight = true` in config.
 - [x] Every rule carries a `SourceKind`; for `Heuristic` rules, a

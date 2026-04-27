@@ -128,6 +128,10 @@ pub enum CrossPaneKind {
     /// Gemini G-11: two or more panes producing output in the same
     /// working directory — risk of divergent edits.
     ConcurrentMutatingWork,
+    /// Phase D D1: two or more panes share `current_path` + git_branch but
+    /// live in different tmux windows. The operator may have the same
+    /// repo open across windows by accident.
+    CrossWindowConcurrentWork,
 }
 
 #[cfg(test)]

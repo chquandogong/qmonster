@@ -654,6 +654,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         }
     }
 
@@ -859,6 +860,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -975,6 +977,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1026,6 +1029,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1090,6 +1094,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1117,6 +1122,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1164,6 +1170,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let aggressive_actions: Vec<&str> = recs
@@ -1200,6 +1207,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
@@ -1234,6 +1242,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let any_aggressive = recs.iter().any(|r| r.action.starts_with("aggressive:"));
@@ -1345,6 +1354,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
@@ -1380,6 +1390,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let adv = recs
@@ -1481,6 +1492,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1515,6 +1527,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let codex_recs = eval_advisories(&id, &s, &codex_gates);
         assert!(
@@ -1540,6 +1553,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let claude_recs = eval_advisories(&id, &s, &claude_gates);
         assert!(
@@ -1570,6 +1584,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let gemini_recs = eval_advisories(&id, &s, &gemini_gates);
         assert!(
@@ -1604,6 +1619,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let default_recs = eval_advisories(&id, &s, &default_gates);
         assert!(
@@ -1672,6 +1688,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let default_recs = eval_advisories(&id, &s, &default_gates);
         assert!(

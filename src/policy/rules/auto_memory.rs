@@ -121,6 +121,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         }
     }
 
@@ -250,6 +251,7 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cross_window_findings: false,
         };
         let s = SignalSet {
             task_type: TaskType::Review,

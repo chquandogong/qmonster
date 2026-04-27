@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::app::event_loop::PaneReport;
 use crate::app::system_notice::SystemNotice;
-use crate::domain::recommendation::{CrossPaneFinding, Recommendation, Severity};
+use crate::domain::recommendation::{CrossPaneFinding, CrossPaneKind, Recommendation, Severity};
 use crate::ui::labels::source_kind_label;
 use crate::ui::theme;
 
@@ -450,15 +450,24 @@ fn collect_items(
             if let Some(cmd) = suggested_command.as_deref() {
                 details.push(aligned_detail("run", &format!("`{cmd}`")));
             }
+            // Phase D D1 (v1.17.0): distinguish cross-window from
+            // same-window concurrent-work findings in both the title
+            // and the headline so the operator can tell at a glance
+            // whether the alert is "two panes in this window" vs
+            // "same repo in two different tmux windows".
+            let (title_prefix, headline_kind) = match f.kind {
+                CrossPaneKind::ConcurrentMutatingWork => ("Cross-Pane", "cross-pane"),
+                CrossPaneKind::CrossWindowConcurrentWork => ("Cross-Window", "cross-window"),
+            };
             out.push(AlertItem {
                 key,
                 timestamp,
                 timestamp_sort_key,
                 severity: f.severity,
                 kind: AlertKind::CrossPane,
-                title: format!("Cross-Pane · {}", f.anchor_pane_id),
+                title: format!("{title_prefix} · {}", f.anchor_pane_id),
                 headline: format!(
-                    "[{}] cross-pane — {}",
+                    "[{}] {headline_kind} — {}",
                     source_kind_label(f.source_kind),
                     f.reason,
                 ),

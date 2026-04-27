@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.16.59 — Restore Claude runtime surface cycle."
+  mission_title: "Qmonster v1.17.0 — Phase D D1 cross-window concurrent-work correlation."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 141
-  latest_version: "1.16.59"
+  total_revisions: 142
+  latest_version: "1.17.0"
 
 timeline:
   - change_id: "initial"
@@ -12567,9 +12567,112 @@ timeline:
     follow_up:
       - "If post-capture Escape is observed to interrupt a still-running Claude task, gate capture-and-close on a stronger provider-ready marker or add an operator setting for active-pane close behavior."
 
+  - change_id: "v1.17.0-cross-window-correlation"
+    semantic_version: "1.17.0"
+    change_sequence: 142
+    date: "2026-04-28"
+    author: "Claude (Opus 4.7)"
+    contributors:
+      - "Operator directive: enter Phase D1 with proposed defaults"
+    change_type: "feature"
+    motivation_type: "phase entry"
+    persistence: "permanent"
+    intent: >
+      Open Phase D by detecting when the same repo is being mutated
+      across two or more tmux windows, so the operator notices when
+      they have accidentally split work between windows.
+    intent_ko: >
+      Phase D를 열어 동일 worktree+branch에서 두 개 이상의 tmux window가
+      동시에 작업 중일 때 cross-window finding을 발화하여, 운영자가
+      window를 가로지르는 작업 분할을 인지하도록 한다.
+    decision: >
+      Add `CrossPaneKind::CrossWindowConcurrentWork`, extend
+      `PaneView` with a borrowed `window_label`, gate the new
+      classification behind `[security] cross_window_findings = false`
+      (default) + the existing path/branch + busy-pane filters, and
+      surface the finding with a distinct `Cross-Window · <anchor>`
+      title in the alert queue. Same-window panes still emit the
+      existing `ConcurrentMutatingWork` Warning. Cross-window panes
+      emit `CrossWindowConcurrentWork` at `Severity::Concern`
+      (informational; below the desktop-notify gate) so operators who
+      legitimately keep the same repo open across windows are not
+      bombarded.
+    decision_ko: >
+      `CrossPaneKind::CrossWindowConcurrentWork` 추가, `PaneView`에
+      borrowed `window_label` 필드 추가, `[security]
+      cross_window_findings = false` (default) gate를 통한 opt-in
+      활성화, 기존 path/branch + busy-pane 필터 유지, alert queue에서
+      `Cross-Window · <anchor>` title로 구분 표시. 같은 window 내
+      panes는 기존 `ConcurrentMutatingWork` Warning을 그대로 발화하고,
+      cross-window panes는 `Severity::Concern` (desktop notify gate
+      미충족)으로 발화하여 정상적인 동일 repo 다중 window 사용 패턴을
+      가진 운영자에게 노이즈를 주지 않는다.
+    triggered_by: "Operator approved the proposed-default Phase D1 plan after the v1.16.55 review-tier and v1.16.56 false-positive cleanup commits."
+    issue_or_context: >
+      Phase 3A's concurrent-work rule fires only on panes captured by a
+      single `list-panes -t <window>` call; cross-window correlation
+      was explicitly listed as deferred in `docs/ai/ARCHITECTURE.md`
+      since Phase 0. Without it, two healthy Codex Main panes in
+      different tmux windows mutating the same repo never surfaced an
+      alert even though the underlying contention is identical to the
+      same-window case.
+    changes:
+      added:
+        - "`CrossPaneKind::CrossWindowConcurrentWork` variant"
+        - "`PaneView.window_label: &'a str`"
+        - "`SecurityConfig.cross_window_findings: bool`"
+        - "`PolicyGates.cross_window_findings: bool`"
+        - "`Cross-Window · <anchor>` alert title prefix and `cross-window` headline kind in `src/ui/alerts.rs`"
+        - "Four unit tests in `src/policy/rules/concurrent.rs` covering positive fire, gate-disabled silence, same-window backward compat, and different-paths exclusion"
+        - "Two integration tests in `tests/event_loop_integration.rs` walking the full pipeline with two windows + opt-in gate vs default config"
+      modified:
+        - "`eval_concurrent` signature gains `&PolicyGates`; classifies groups by `window_label` diversity"
+        - "`Engine::evaluate_cross_pane` plumbs gates through to the rule"
+        - '`event_loop` builds `window_label` strings as `"{session_name}:{window_index}"` and passes a security-driven `PolicyGates` to the cross-pane evaluator'
+        - "`docs/ai/{ARCHITECTURE,PROJECT_BRIEF,VALIDATION,UI_MANUAL}.md`, `README.md`, `VERSION.md`, `package.json`, `mission.yaml`, `mission-history.yaml`"
+      removed:
+        - "Cross-window/cross-project correlation removed from `docs/ai/ARCHITECTURE.md` deferred list"
+    changed_sections:
+      - "src/policy/rules/concurrent.rs"
+      - "src/policy/engine.rs"
+      - "src/policy/gates.rs"
+      - "src/domain/recommendation.rs"
+      - "src/app/config.rs"
+      - "src/app/event_loop.rs"
+      - "src/ui/alerts.rs"
+      - "tests/event_loop_integration.rs"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/VALIDATION.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - "package.json"
+    observable_effects:
+      added:
+        - "Operators with `[security] cross_window_findings = true` see a `Cross-Window · <anchor>` Concern alert when two healthy Main/Review panes share path+branch in different windows"
+      modified:
+        - "all-target test count rises to 633 (562 lib + 38 event_loop + 18 false_positive + 6 idle_state, +6 from D1 unit + integration tests; baseline before D1 was 627)"
+      removed: []
+    impact_scope:
+      runtime: "Pure policy rule extension; no tmux, adapter, storage, or actuation behavior change. Default configuration preserves the v1.16.59 alert volume exactly."
+      tests: "633 total passed — 562 lib + 38 event_loop + 18 false_positive + 6 idle_state"
+      ledger: "1 new timeline entry (sequence 142); meta bump; minor version bump v1.16.x → v1.17.0 because Phase D opens"
+      npm: "package.json version set to 1.17.0"
+      review_gate: "cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, scripts/verify-shared.sh, live --once smoke"
+      follow_up_carryover: "Phase D D2 (identity drift anomaly detection) and D3 (precise subagent token accounting) remain deferred. Phase E housekeeping (Gemini memory column, comment-preserving toml_edit save) also unchanged."
+    breaking: false
+    risk: "low — opt-in gate + classification-only change; default config keeps existing alert volume. New finding is `Severity::Concern` so it stays below the desktop-notify gate."
+    related_commits: []
+    follow_up:
+      - "If operators ask for the cross-window finding to also notify, promote `Severity::Concern` → `Severity::Warning` behind a sub-flag rather than flipping the default."
+      - "Phase D2 (identity drift) is the next slice candidate."
+
 evolution_summary:
-  current_phase: "v1.16.59 restores the Claude runtime surface cycle: repeated `u` rotates `/status`, `/usage`, `/stats`, captures the fullscreen output, then closes it with Escape; Gemini live-prompt panes still stay active while recent tail history is changing."
-  next_phase: "Phase D long-horizon work begins: D1 cross-window/project correlation is the next operator-prioritized slice. D2 identity drift anomaly detection and D3 precise subagent token accounting follow. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.17.0 opens Phase D with cross-window concurrent-work correlation: same path+branch panes spread across 2+ tmux windows fire an opt-in `Cross-Window` Concern finding without changing the default same-window Warning behavior."
+  next_phase: "Phase D D2 (identity drift anomaly detection) and D3 (precise subagent token accounting) remain deferred. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
