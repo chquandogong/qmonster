@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.27 tmux command parity)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.28 live tmux-source parity validation)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -105,6 +105,10 @@ errors as caller-visible failures.
 v1.16.27 extracts `tmux::commands` so polling and control-mode share the
 same list-panes, list-windows, current-target, capture-tail, and
 send-keys argument builders.
+v1.16.28 adds `tmux::parity`, the `qmonster-tmux-parity` helper binary,
+and `scripts/check-tmux-source-parity.sh` so the active tmux session can
+be checked for polling-vs-control-mode target, pane, metadata, and
+optional strict-tail parity before any default-source switch.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -148,6 +152,8 @@ Control-mode implementation must be drop-in substitutable. Returns
 `RawPaneSnapshot`, NOT `PaneSnapshot` — identity is resolved downstream.
 Format strings for `list-panes` and `capture-pane` live here. Knows
 nothing about providers, roles, or signal semantics.
+The `tmux::parity` helper compares two `PaneSource` implementations using
+only raw tmux fields, keeping validation inside the same boundary.
 `[ProviderOfficial: tmux wiki / Formats / Control Mode]` informs the
 format strings and lifecycle assumptions.
 

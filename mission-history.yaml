@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.27 tmux command parity."
+  mission_title: "Qmonster v0.5.0 — v1.16.28 live tmux-source parity validation."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 109
-  latest_version: "1.16.27"
+  total_revisions: 110
+  latest_version: "1.16.28"
 
 timeline:
   - change_id: "initial"
@@ -10188,9 +10188,81 @@ timeline:
     follow_up:
       - "Continue C2: add live parity validation for polling vs control_mode on the active tmux session."
 
+  - change_id: "qmonster-v1.16.28-live-tmux-source-parity-validation"
+    semantic_version: "1.16.28"
+    change_sequence: 110
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: keep progressing C2 and close each work item with commit/push/tag"
+    change_type: "feature"
+    motivation_type: "Phase C C2 control-mode default-readiness validation"
+    persistence: "permanent"
+    intent: >
+      Add a repeatable live-session parity check so polling and control-mode
+      can be compared before any default tmux source switch.
+    intent_ko: >
+      기본 tmux source 전환 전에 polling과 control-mode를 반복 검증할 수
+      있도록 live-session parity check를 추가한다.
+    decision: >
+      Add `tmux::parity` for source-agnostic comparison of current target,
+      available targets, pane keys, pane metadata, and normalized tails. Add
+      the `qmonster-tmux-parity` helper binary plus
+      `scripts/check-tmux-source-parity.sh`; tail differences are warnings by
+      default and become failures with `--strict-tail`.
+    decision_ko: >
+      current target, available targets, pane key, pane metadata, normalized
+      tail을 source-agnostic으로 비교하는 `tmux::parity`를 추가한다.
+      `qmonster-tmux-parity` helper binary와
+      `scripts/check-tmux-source-parity.sh`를 추가하며, tail 차이는 기본
+      warning이고 `--strict-tail`에서 실패로 승격된다.
+    triggered_by: "Follow-up after v1.16.27 removed command argument drift between the two transports."
+    issue_or_context: >
+      The control-mode source is still opt-in. Before considering a default
+      switch, operators need a live validation command that compares both
+      sources against the same active tmux session.
+    changes:
+      added:
+        - "src/tmux/parity.rs: polling/control-mode parity report and tests"
+        - "src/bin/qmonster-tmux-parity.rs: helper binary for live tmux-source comparison"
+        - "scripts/check-tmux-source-parity.sh: cargo wrapper for the helper binary"
+      modified:
+        - "src/tmux/mod.rs exports the parity module"
+        - "README documents the C2 parity script and helper binary"
+        - "ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.28"
+      removed: []
+    changed_sections:
+      - "src/tmux/parity.rs"
+      - "src/tmux/mod.rs"
+      - "src/bin/qmonster-tmux-parity.rs"
+      - "scripts/check-tmux-source-parity.sh"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "live command compares polling and control_mode source output on the active tmux session"
+        - "unit tests cover matching parity, structural mismatches, and normalized tail differences"
+      modified:
+        - "all-target test count increases to 581"
+      removed: []
+    impact_scope:
+      code: "new validation helper; no change to default TUI source or runtime polling behavior"
+      tests: "581 total passed — 521 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; additional live parity smoke reports polling=8 and control_mode=8 with current target qmonster:0"
+      ledger: "1 new timeline entry (sequence 110); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with control-mode hardening informed by repeated live parity runs."
+    breaking: false
+    risk: "low — helper is additive and does not affect default `[tmux] source = \"polling\"`."
+    related_commits: []
+    follow_up:
+      - "Continue C2: harden control-mode behavior around target-scoped parity and lifecycle events before any default-source switch."
+
 evolution_summary:
-  current_phase: "v1.16.27 tmux command parity — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
-  next_phase: "Continue Phase C C2 with live polling/control-mode parity validation and additional control-mode hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.28 live tmux-source parity validation — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  next_phase: "Continue Phase C C2 with additional control-mode hardening informed by live parity checks. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

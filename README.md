@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.27`; current canonical ledger: `v1.16.27`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.28`; current canonical ledger: `v1.16.28`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -114,7 +114,8 @@ v1.16.26 hardens that opt-in path by reconnecting the control-mode
 client once on transport lifecycle errors such as `%exit`, EOF, or
 broken pipe while leaving command-level tmux errors unchanged. v1.16.27
 extracts shared tmux command builders so polling and control-mode use
-the same list/capture/send argument contracts.
+the same list/capture/send argument contracts. v1.16.28 adds a live
+polling-vs-control-mode parity checker for the active tmux session.
 
 ## Quick start
 
@@ -154,6 +155,9 @@ cargo run --release
 # ~/.qmonster/config/pricing.toml from templates when missing, then starts
 # Qmonster with --config so the settings overlay can persist edits.
 ./scripts/run-qmonster.sh
+
+# C2 validation: compare polling and control-mode against the active tmux session.
+./scripts/check-tmux-source-parity.sh
 
 # Override the storage root (useful for tests / sandbox runs)
 QMONSTER_ROOT=/tmp/q cargo run -- --once
@@ -203,6 +207,7 @@ Estimated`).
 
 ```
 src/
+  bin/         qmonster-tmux-parity live tmux-source parity checker
   app/         bootstrap, config + safety-precedence, event loop, effect
                runner, version-drift detector, system notices, safety
                audit logging
@@ -237,6 +242,7 @@ See `docs/ai/WORKFLOWS.md` §7 for the exact tracking split.
 cargo test --all-targets
 cargo clippy --all-targets -- -D warnings
 cargo build
+./scripts/check-tmux-source-parity.sh
 mission-spec validate .
 mission-spec eval --shared .
 MISSION_SPEC_CLI=/abs/path/to/mission-spec.js ./scripts/verify-shared.sh
