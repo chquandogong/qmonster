@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.21 dashboard runtime-state extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.22 startup assembly extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 103
-  latest_version: "1.16.21"
+  total_revisions: 104
+  latest_version: "1.16.22"
 
 timeline:
   - change_id: "initial"
@@ -9765,8 +9765,81 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.22-startup-assembly-extraction"
+    semantic_version: "1.16.22"
+    change_sequence: 104
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving startup config/root, audit sink,
+      pricing, Claude settings, retention, and version snapshot assembly
+      out of `src/main.rs`.
+    intent_ko: >
+      startup config/root, audit sink, pricing, Claude settings,
+      retention, version snapshot assembly를 `src/main.rs` 밖으로 옮겨
+      Phase C C1 분해를 계속한다.
+    decision: >
+      Add `src/app/startup.rs` with `StartupOptions`, `StartupRuntime`,
+      and `build_startup_runtime`. The helper owns config loading,
+      safer-only override application, storage-root resolution, audit-sink
+      fallback, pricing and Claude settings loading, retention sweep, startup
+      version snapshot capture, and snapshot-writer construction.
+    decision_ko: >
+      `StartupOptions`, `StartupRuntime`, `build_startup_runtime`를 담은
+      `src/app/startup.rs`를 추가한다. 이 helper는 config loading,
+      safer-only override application, storage-root resolution, audit-sink
+      fallback, pricing/Claude settings loading, retention sweep, startup
+      version snapshot capture, snapshot-writer construction을 소유한다.
+    triggered_by: "Continuation after the v1.16.21 dashboard runtime-state extraction."
+    issue_or_context: >
+      After dashboard runtime state moved out, `main.rs` still owned a large
+      startup assembly block before it could enter `--once` or the live TUI.
+      This kept non-loop concerns mixed with the remaining event loop.
+    changes:
+      added:
+        - "src/app/startup.rs: StartupOptions, StartupRuntime, build_startup_runtime, startup helper functions, and --set parser tests"
+      modified:
+        - "src/main.rs delegates startup assembly to app::startup and keeps only CLI branching plus TUI entry"
+        - "src/app/mod.rs exports startup"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.22"
+      removed:
+        - "config/root/sink/pricing/Claude-settings/retention/version-snapshot assembly from main.rs"
+    changed_sections:
+      - "src/app/startup.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Twenty-first Phase C C1 code slice exists outside main.rs"
+        - "startup assembly has a named app-level boundary"
+      modified:
+        - "main.rs line count drops from 659 at v1.16.21 to 489"
+      removed:
+        - "startup IO and configuration assembly from the live entry module"
+    impact_scope:
+      code: "internal refactor only; no config precedence, safer-only override handling, sink fallback, pricing/Claude settings fallback, retention sweep, version snapshot, --once output, or TUI startup behavior change intended"
+      tests: "569 total passed — 509 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 104); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — startup code preserves the same calls and fallbacks, and adds focused --set parser coverage."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.21 dashboard runtime-state extraction — Phase C C1 remains active with dashboard_runtime, polling_tick, terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
+  current_phase: "v1.16.22 startup assembly extraction — Phase C C1 remains active with startup, dashboard_runtime, polling_tick, terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

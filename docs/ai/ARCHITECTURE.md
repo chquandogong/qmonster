@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.21 dashboard runtime-state extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.22 startup assembly extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -42,7 +42,7 @@ checkpoint, retention, and durable audit storage.
 ```
 src/
   main.rs      # CLI entry + current TUI event loop (still too large)
-  app/         # bootstrap, config+safety-precedence, path resolution, event loop, dashboard-runtime/polling-tick/terminal-session/dashboard-render/keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
+  app/         # bootstrap/startup, config+safety-precedence, path resolution, event loop, dashboard-runtime/polling-tick/terminal-session/dashboard-render/keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # polling first; control-mode-capable PaneSource trait
   adapters/    # per-provider tail parsers (no identity inference)
@@ -89,7 +89,9 @@ lifecycle helpers into `app::terminal_session`. v1.16.20 moves one poll
 tick's success/failure notice routing and pane-state flash updates into
 `app::polling_tick`. v1.16.21 moves dashboard notices/reports,
 list-selection, and alert freshness resync bookkeeping into
-`app::dashboard_runtime`.
+`app::dashboard_runtime`. v1.16.22 moves startup config/root, audit
+sink, pricing, Claude settings, retention, and version snapshot assembly
+into `app::startup`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

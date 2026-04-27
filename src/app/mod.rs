@@ -17,6 +17,7 @@ pub mod prompt_send_actions;
 pub mod runtime_refresh;
 pub mod safety_audit;
 pub mod settings_overlay;
+pub mod startup;
 pub mod system_notice;
 pub mod target_picker;
 pub mod terminal_session;

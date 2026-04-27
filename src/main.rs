@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use anyhow::Context as _;
 use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::layout::Rect;
@@ -11,7 +10,6 @@ use qmonster::app::bootstrap::Context;
 use qmonster::app::clipboard_actions::{
     AlertCommandCopyView, copy_selected_alert_command_to_clipboard,
 };
-use qmonster::app::config::{QmonsterConfig, load_from_path};
 use qmonster::app::dashboard_render::{DashboardFrameView, render_dashboard_frame};
 use qmonster::app::dashboard_runtime::DashboardRuntimeState;
 use qmonster::app::dashboard_state::{
@@ -26,33 +24,22 @@ use qmonster::app::modal_state::{
 };
 use qmonster::app::once_report::print_once_reports;
 use qmonster::app::operator_actions::{version_refresh_notices, write_operator_snapshot};
-use qmonster::app::path_resolution::{default_config_path, pick_root};
 use qmonster::app::polling_tick::{PollTickState, handle_poll_tick};
 use qmonster::app::prompt_send_actions::handle_prompt_send_action;
 use qmonster::app::runtime_refresh::handle_runtime_refresh_action;
-use qmonster::app::safety_audit::apply_override_with_audit;
 use qmonster::app::settings_overlay::{handle_settings_overlay_key, handle_settings_overlay_mouse};
-use qmonster::app::system_notice::{SystemNotice, record_startup_snapshot, route_version_drift};
+use qmonster::app::startup::{StartupOptions, build_startup_runtime};
+use qmonster::app::system_notice::SystemNotice;
 use qmonster::app::target_picker::{
     TargetChoice, TargetPickerAction, TargetPickerController, TargetPickerStage,
     handle_target_picker_key, handle_target_picker_mouse, initial_target, open_target_picker,
     target_label, target_switched_notice,
 };
 use qmonster::app::terminal_session::{enter_terminal_session, leave_terminal_session};
-use qmonster::app::version_drift::{
-    StartupLoad, VersionSnapshot, capture_versions, load_startup_snapshot,
-};
-use qmonster::domain::audit::{AuditEvent, AuditEventKind};
-use qmonster::domain::origin::SourceKind;
-use qmonster::domain::recommendation::Severity;
+use qmonster::app::version_drift::{VersionSnapshot, capture_versions};
 use qmonster::domain::signal::IdleCause;
-use qmonster::notify::desktop::DesktopNotifier;
-use qmonster::policy::claude_settings::{ClaudeSettings, ClaudeSettingsError};
-use qmonster::policy::pricing::PricingTable;
-use qmonster::store::{
-    ArchiveWriter, EventSink, InMemorySink, SnapshotWriter, SqliteAuditSink, sweep,
-};
-use qmonster::tmux::polling::{PaneSource, PollingSource};
+use qmonster::store::SnapshotWriter;
+use qmonster::tmux::polling::PaneSource;
 use qmonster::ui::dashboard::{
     DashboardSplit, close_button_rect, git_modal_rects, help_modal_rects,
 };
@@ -81,186 +68,29 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let env_root = std::env::var("QMONSTER_ROOT").ok();
-    let default_config_path = default_config_path(cli.root.as_deref(), env_root.as_deref());
-    let loaded_config_path = cli.config.clone().or_else(|| {
-        if default_config_path.exists() {
-            Some(default_config_path.clone())
-        } else {
-            None
-        }
-    });
-    let config = match loaded_config_path.as_ref() {
-        Some(path) => load_from_path(path).with_context(|| format!("loading {path:?}"))?,
-        None => QmonsterConfig::defaults(),
-    };
-    let writable_config_path = cli
-        .config
-        .clone()
-        .unwrap_or_else(|| default_config_path.clone());
-    let mut pairs: Vec<(String, String)> = Vec::new();
-    for kv in &cli.set {
-        let Some((k, v)) = kv.split_once('=') else {
-            anyhow::bail!("--set expects key=value, got {kv}");
-        };
-        pairs.push((k.trim().into(), v.trim().into()));
-    }
-
-    let resolved = pick_root(cli.root.as_deref(), env_root.as_deref(), &config);
-    let paths = resolved.clone().into_paths();
-    paths.ensure().context("ensure ~/.qmonster layout")?;
-
-    // Phase-2: open durable audit sink; fall back to in-memory if the
-    // DB can't open (disk full, permission issues, etc.) so the TUI
-    // never silently abandons observe-first behaviour.
-    let sink: Box<dyn EventSink> = match SqliteAuditSink::open(&paths.sqlite_path()) {
-        Ok(db) => Box::new(db),
-        Err(e) => {
-            eprintln!(
-                "qmonster: falling back to in-memory audit sink ({e}); events \
-                 will not survive restart this session"
-            );
-            Box::new(InMemorySink::new())
-        }
-    };
-
-    let source = PollingSource::new(config.tmux.capture_lines);
-    let notifier = DesktopNotifier;
-    let archive = ArchiveWriter::new(paths.clone(), config.logging.big_output_chars);
-
-    let pricing_path = paths.pricing_path();
-    let pricing = match PricingTable::load_from_toml(&pricing_path) {
-        Ok(table) => table,
-        Err(qmonster::policy::pricing::PricingError::Io(io_err))
-            if io_err.kind() == std::io::ErrorKind::NotFound =>
-        {
-            // absent by default — silent fallback is the documented behaviour
-            PricingTable::empty()
-        }
-        Err(e) => {
-            // v1.11.2 remediation (Gemini v1.11.0 must-fix #2 + Codex
-            // Q5): record a durable breadcrumb via the audit sink so
-            // the fallback is visible via SQLite query and survives
-            // the TUI alternate-screen cycle that swallows stderr.
-            // Keep the ephemeral eprintln for dev / non-TUI runs.
-            sink.record(AuditEvent {
-                kind: AuditEventKind::PricingLoadFailed,
-                pane_id: "n/a".into(),
-                severity: Severity::Warning,
-                summary: format!("pricing load failed at {}: {e}", pricing_path.display()),
-                provider: None,
-                role: None,
-            });
-            eprintln!(
-                "qmonster: failed to load pricing table at {}: {e}; cost badges disabled this session",
-                pricing_path.display()
-            );
-            PricingTable::empty()
-        }
-    };
-
-    let claude_settings = match ClaudeSettings::default_path() {
-        Some(path) => match ClaudeSettings::load_from_path(&path) {
-            Ok(s) => s,
-            Err(ClaudeSettingsError::Io(io)) if io.kind() == std::io::ErrorKind::NotFound => {
-                ClaudeSettings::empty()
-            }
-            Err(e) => {
-                sink.record(qmonster::domain::audit::AuditEvent {
-                    kind: qmonster::domain::audit::AuditEventKind::ClaudeSettingsLoadFailed,
-                    pane_id: "n/a".into(),
-                    severity: qmonster::domain::recommendation::Severity::Warning,
-                    summary: format!("claude settings load failed at {}: {}", path.display(), e),
-                    provider: None,
-                    role: None,
-                });
-                eprintln!(
-                    "qmonster: failed to load claude settings at {}: {e}; claude model badge disabled this session",
-                    path.display()
-                );
-                ClaudeSettings::empty()
-            }
-        },
-        None => ClaudeSettings::empty(),
-    };
-
-    let mut ctx = Context::new(config, source, notifier, sink)
-        .with_archive(archive)
-        .with_pricing(pricing)
-        .with_claude_settings(claude_settings);
-    ctx = ctx.with_config_path(writable_config_path);
-
-    if !pairs.is_empty() {
-        let refs: Vec<(&str, &str)> = pairs
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
-        let stats = apply_override_with_audit(&mut ctx.config, &refs, &*ctx.sink);
-        if stats.rejected + stats.unknown > 0 {
-            eprintln!(
-                "qmonster: {} override(s) rejected, {} unknown key(s); see audit log",
-                stats.rejected, stats.unknown
-            );
-        }
-    }
-
-    // Retention sweep (startup-only in Phase 2; Phase 3 may schedule it).
-    match sweep(&paths, ctx.config.logging.retention_days) {
-        Ok(report) => {
-            if report.files_removed > 0 {
-                ctx.sink.record(AuditEvent {
-                    kind: AuditEventKind::RetentionSwept,
-                    pane_id: "n/a".into(),
-                    severity: Severity::Safe,
-                    summary: format!(
-                        "retention: removed {} file(s), {} byte(s); kept {}",
-                        report.files_removed, report.bytes_removed, report.files_kept
-                    ),
-                    provider: None,
-                    role: None,
-                });
-            }
-        }
-        Err(e) => eprintln!("qmonster: retention sweep failed: {e}"),
-    }
-
-    // Load previous version snapshot with error surfacing (Codex Phase-2 #1):
-    // a corrupted file is audit-logged AND preserved (may_save_fresh = false).
-    let startup = load_startup_snapshot(&*ctx.sink, &paths.versions_path());
-    let may_save_fresh = startup.may_save_fresh();
-    let fresh = capture_versions();
-    let mut startup_notices: Vec<SystemNotice> = Vec::new();
-    match &startup {
-        StartupLoad::Previous(prev) => {
-            startup_notices = route_version_drift(prev, &fresh, &*ctx.sink);
-        }
-        StartupLoad::Fresh => {}
-        StartupLoad::Corrupted(_) => {
-            startup_notices.push(SystemNotice {
-                title: "versions.json corrupted".into(),
-                body: format!(
-                    "{} left in place for inspection; drift detection skipped this session",
-                    paths.versions_path().display()
-                ),
-                severity: Severity::Warning,
-                source_kind: SourceKind::ProjectCanonical,
-            });
-        }
-    }
-    record_startup_snapshot(&*ctx.sink, &fresh);
-    if may_save_fresh && let Err(e) = fresh.save_to(&paths.versions_path()) {
-        eprintln!("qmonster: could not persist version snapshot: {e}");
-    }
-
-    let snapshot_writer = SnapshotWriter::new(paths.clone());
+    let runtime = build_startup_runtime(StartupOptions {
+        config_path: cli.config.as_deref(),
+        root: cli.root.as_deref(),
+        set: &cli.set,
+        env_root: env_root.as_deref(),
+    })?;
+    let qmonster::app::startup::StartupRuntime {
+        mut ctx,
+        paths,
+        root_source,
+        versions,
+        startup_notices,
+        snapshot_writer,
+    } = runtime;
 
     if cli.once {
         println!(
             "qmonster paths: {} (source: {:?})",
             paths.root().display(),
-            resolved.source
+            root_source
         );
         println!("qmonster versions captured:");
-        for (k, v) in &fresh.tools {
+        for (k, v) in &versions.tools {
             println!("  {k}: {v}");
         }
         if !startup_notices.is_empty() {
@@ -276,7 +106,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    run_tui(&mut ctx, fresh, snapshot_writer, startup_notices)
+    run_tui(&mut ctx, versions, snapshot_writer, startup_notices)
 }
 
 // Phase 5 P5-3 second gate types (`PromptSendGate` + `check_send_gate`)
