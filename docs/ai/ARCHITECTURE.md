@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.34 volatile-title parity handling)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.35 control-mode reconnect tests)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -127,6 +127,9 @@ v1.16.34 splits parity title differences from structural metadata
 differences. Live title drift is a warning by default because animated
 pane titles can change between sequential polling/control-mode captures;
 `--strict-title` restores failure semantics when needed.
+v1.16.35 extracts the reconnect decision into a scripted-testable helper
+inside `tmux::control_mode`, locking the contract that lifecycle errors
+retry once after reconnect while command-level tmux errors do not.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

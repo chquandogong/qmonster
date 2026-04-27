@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.34 volatile-title parity handling."
+  mission_title: "Qmonster v0.5.0 — v1.16.35 control-mode reconnect tests."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 116
-  latest_version: "1.16.34"
+  total_revisions: 117
+  latest_version: "1.16.35"
 
 timeline:
   - change_id: "initial"
@@ -10665,8 +10665,76 @@ timeline:
     follow_up:
       - "Continue C2: add focused lifecycle/reconnect tests around the process client boundary."
 
+  - change_id: "qmonster-v1.16.35-control-mode-reconnect-tests"
+    semantic_version: "1.16.35"
+    change_sequence: 117
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: keep progressing C2 and close each work item with commit/push/tag"
+    change_type: "test"
+    motivation_type: "Phase C C2 control-mode lifecycle hardening"
+    persistence: "permanent"
+    intent: >
+      Lock the control-mode reconnect contract with unit tests that do not
+      need to spawn tmux.
+    intent_ko: >
+      tmux spawn 없이 control-mode reconnect contract를 unit test로 고정한다.
+    decision: >
+      Extract the reconnect decision into `run_with_reconnect`, backed by a
+      small internal `ControlModeCommandRunner` trait. Production still uses
+      `ControlModeClient`, while tests use scripted clients to prove lifecycle
+      errors retry once, command-level errors do not reconnect, and reconnect
+      failures preserve the original lifecycle error in the message.
+    decision_ko: >
+      reconnect 결정을 `run_with_reconnect`로 추출하고 작은 internal
+      `ControlModeCommandRunner` trait로 받는다. production은 여전히
+      `ControlModeClient`를 사용하고, tests는 scripted client로 lifecycle
+      error는 한 번 retry되고 command-level error는 reconnect하지 않으며
+      reconnect failure message가 original lifecycle error를 보존함을 증명한다.
+    triggered_by: "Follow-up after v1.16.33 separated protocol parsing and v1.16.34 stabilized live parity false positives."
+    issue_or_context: >
+      The reconnect behavior existed, but was only exercised through live tmux
+      smoke tests. Default-readiness needs deterministic unit coverage for the
+      command-vs-lifecycle error split.
+    changes:
+      added:
+        - "src/tmux/control_mode.rs: ControlModeCommandRunner internal trait"
+        - "src/tmux/control_mode.rs: run_with_reconnect helper"
+        - "scripted unit tests for lifecycle retry, command-error no-reconnect, and reconnect failure message"
+      modified:
+        - "ControlModeSource::run delegates to run_with_reconnect"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.35"
+      removed: []
+    changed_sections:
+      - "src/tmux/control_mode.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "control-mode lifecycle errors retry exactly once after reconnect"
+        - "command-level tmux errors remain caller-visible and do not reconnect"
+        - "reconnect failure messages preserve the original lifecycle failure"
+      modified:
+        - "all-target test count increases to 590"
+      removed: []
+    impact_scope:
+      code: "internal reconnect helper and tests; no intended runtime behavior change"
+      tests: "590 total passed — 530 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; repeated default and all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 117); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining default-readiness checks before any source default switch."
+    breaking: false
+    risk: "low — helper preserves the existing reconnect behavior and adds deterministic tests."
+    related_commits: []
+    follow_up:
+      - "Continue C2: decide whether enough default-readiness evidence exists to prepare an opt-in control-mode operator trial."
+
 evolution_summary:
-  current_phase: "v1.16.34 volatile-title parity handling — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  current_phase: "v1.16.35 control-mode reconnect tests — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
   next_phase: "Continue Phase C C2 with additional control-mode default-readiness hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
