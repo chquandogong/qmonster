@@ -17,6 +17,7 @@ pub mod safety_audit;
 pub mod settings_overlay;
 pub mod system_notice;
 pub mod target_picker;
+pub mod terminal_session;
 pub mod version_drift;
 
 pub use bootstrap::Context;

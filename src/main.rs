@@ -1,18 +1,11 @@
 use std::collections::{HashMap, HashSet};
-use std::io;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use clap::Parser;
-use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind,
-};
-use crossterm::{
-    execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
-use ratatui::prelude::*;
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
 
 use qmonster::app::bootstrap::Context;
@@ -49,6 +42,7 @@ use qmonster::app::target_picker::{
     handle_target_picker_key, handle_target_picker_mouse, initial_target, open_target_picker,
     target_label, target_switched_notice,
 };
+use qmonster::app::terminal_session::{enter_terminal_session, leave_terminal_session};
 use qmonster::app::version_drift::{
     StartupLoad, VersionSnapshot, capture_versions, load_startup_snapshot,
 };
@@ -304,11 +298,7 @@ where
     P: PaneSource,
     N: qmonster::notify::desktop::NotifyBackend,
 {
-    let mut stdout = io::stdout();
-    enable_raw_mode().context("enable raw mode")?;
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture).context("enter alt screen")?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend).context("create terminal")?;
+    let mut terminal = enter_terminal_session()?;
 
     let poll = ctx.config.tmux.poll_interval();
     let mut last_reports: Vec<PaneReport> = Vec::new();
@@ -826,7 +816,6 @@ where
         run_loop()
     };
 
-    disable_raw_mode().ok();
-    execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture).ok();
+    leave_terminal_session();
     result
 }

@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.18 dashboard render extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.19 terminal session extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 100
-  latest_version: "1.16.18"
+  total_revisions: 101
+  latest_version: "1.16.19"
 
 timeline:
   - change_id: "initial"
@@ -9554,8 +9554,77 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.19-terminal-session-extraction"
+    semantic_version: "1.16.19"
+    change_sequence: 101
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving terminal raw-mode, alternate-screen, and
+      mouse-capture lifecycle out of `src/main.rs`.
+    intent_ko: >
+      terminal raw-mode, alternate-screen, mouse-capture lifecycle을
+      `src/main.rs` 밖으로 옮겨 Phase C C1 분해를 계속한다.
+    decision: >
+      Add `src/app/terminal_session.rs` with `enter_terminal_session`,
+      `leave_terminal_session`, and the concrete terminal type alias. Keep
+      the live event loop in `src/main.rs`, but remove its direct ownership of
+      crossterm raw-mode and alternate-screen setup/teardown details.
+    decision_ko: >
+      `enter_terminal_session`, `leave_terminal_session`, concrete terminal
+      type alias를 담은 `src/app/terminal_session.rs`를 추가한다. live event
+      loop는 `src/main.rs`에 유지하되, crossterm raw-mode 및 alternate-screen
+      setup/teardown 세부 책임은 제거한다.
+    triggered_by: "Continuation after the v1.16.18 dashboard render extraction."
+    issue_or_context: >
+      `src/main.rs` still directly imported crossterm terminal setup and
+      teardown types even after render composition had moved into
+      `app::dashboard_render`.
+    changes:
+      added:
+        - "src/app/terminal_session.rs: terminal session enter/leave helpers and QmonsterTerminal alias"
+      modified:
+        - "src/main.rs delegates TUI terminal setup and cleanup to app::terminal_session"
+        - "src/app/mod.rs exports terminal_session"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.19"
+      removed:
+        - "src/main.rs direct raw-mode, alternate-screen, mouse-capture, stdout, and terminal-backend setup/teardown imports"
+    changed_sections:
+      - "src/app/terminal_session.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Eighteenth Phase C C1 code slice exists outside main.rs"
+        - "terminal lifecycle has a named app-level boundary"
+      modified:
+        - "main.rs no longer directly owns TUI terminal setup/cleanup details"
+      removed:
+        - "raw-mode and alternate-screen boilerplate from the live entry module"
+    impact_scope:
+      code: "internal refactor only; no terminal event loop, key handling, render, or cleanup behavior change intended"
+      tests: "565 total passed — 505 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (same as v1.16.18)"
+      ledger: "1 new timeline entry (sequence 101); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — terminal setup and cleanup calls are preserved behind a small wrapper and the same integration/unit test set stays green."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.18 dashboard render extraction — Phase C C1 remains active with dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
+  current_phase: "v1.16.19 terminal session extraction — Phase C C1 remains active with terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
