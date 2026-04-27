@@ -21,6 +21,7 @@ pub mod startup;
 pub mod system_notice;
 pub mod target_picker;
 pub mod terminal_session;
+pub mod tui_loop;
 pub mod version_drift;
 
 pub use bootstrap::Context;

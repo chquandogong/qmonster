@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.23`; current canonical ledger: `v1.16.23`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.24`; current canonical ledger: `v1.16.24`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -103,9 +103,10 @@ list-selection, and alert freshness resync bookkeeping into
 `src/app/dashboard_runtime.rs`; v1.16.22 moves startup config/root,
 audit sink, pricing, Claude settings, retention, and version snapshot
 assembly into `src/app/startup.rs`; v1.16.23 moves target-picker runtime
-state ownership into `src/app/target_picker.rs`. The next C1 slices
-should keep thinning event-loop orchestration before control-mode adapter
-work.
+state ownership into `src/app/target_picker.rs`; v1.16.24 moves the live
+TUI event loop into `src/app/tui_loop.rs`, leaving `src/main.rs` as a
+thin CLI/startup/`--once`/TUI-entry wrapper. This completes the
+pre-control-mode C1 split target enough for C2 adapter work to begin.
 
 ## Quick start
 

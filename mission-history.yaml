@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.23 target-picker runtime-state extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.24 live TUI loop extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 105
-  latest_version: "1.16.23"
+  total_revisions: 106
+  latest_version: "1.16.24"
 
 timeline:
   - change_id: "initial"
@@ -9907,9 +9907,80 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.24-live-tui-loop-extraction"
+    semantic_version: "1.16.24"
+    change_sequence: 106
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: complete enough C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Complete the pre-C2 Phase C C1 split target by moving the live TUI
+      event loop out of `src/main.rs`.
+    intent_ko: >
+      live TUI event loop을 `src/main.rs` 밖으로 옮겨 C2 진입 전 Phase C
+      C1 분해 목표를 충분히 마무리한다.
+    decision: >
+      Add `src/app/tui_loop.rs` as the owner of `run_tui`. Keep the
+      existing loop semantics intact and expose it through `app::tui_loop`,
+      leaving `src/main.rs` responsible only for CLI parsing, startup
+      runtime construction, `--once` reporting, and TUI entry.
+    decision_ko: >
+      `src/app/tui_loop.rs`를 추가해 `run_tui`의 소유자로 만든다. 기존 loop
+      동작은 그대로 유지하고 `app::tui_loop`를 통해 노출하여, `src/main.rs`는
+      CLI parsing, startup runtime construction, `--once` reporting, TUI
+      entry만 담당하게 둔다.
+    triggered_by: "Continuation after the v1.16.23 target-picker runtime-state extraction."
+    issue_or_context: >
+      After earlier helper extractions, `main.rs` still owned the live
+      polling/draw/input loop. Control-mode adapter work benefits from that
+      loop being a named app-level orchestration module instead of living in
+      the binary entrypoint.
+    changes:
+      added:
+        - "src/app/tui_loop.rs: live TUI event-loop owner"
+      modified:
+        - "src/app/mod.rs exports app::tui_loop"
+        - "src/main.rs imports app::tui_loop::run_tui and stays as a thin entry wrapper"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.24"
+      removed:
+        - "live TUI event-loop body from src/main.rs"
+    changed_sections:
+      - "src/app/tui_loop.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Twenty-third Phase C C1 code slice exists outside main.rs"
+        - "live TUI loop has a named app-level owner"
+        - "main.rs is a thin CLI/startup/--once/TUI-entry wrapper"
+      modified:
+        - "main.rs line count drops from 451 at v1.16.23 to 74"
+      removed:
+        - "live polling/draw/input loop from the binary entrypoint"
+    impact_scope:
+      code: "internal refactor only; no key binding, polling cadence, render, overlay, target picker, clipboard, prompt-send, runtime-refresh, or notice behavior change intended"
+      tests: "570 total passed — 510 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 106); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Begin Phase C C2 control-mode tmux adapter work."
+    breaking: false
+    risk: "low — the event loop was moved as-is behind the same run_tui signature after prior helper extractions reduced entrypoint coupling."
+    related_commits: []
+    follow_up:
+      - "Begin C2: implement and validate the control-mode tmux adapter behind the existing PaneSource abstraction."
+
 evolution_summary:
-  current_phase: "v1.16.23 target-picker runtime-state extraction — Phase C C1 remains active with startup, dashboard_runtime, polling_tick, terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
-  next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.24 live TUI loop extraction — Phase C C1 is structurally complete enough for C2 with startup, tui_loop, dashboard_runtime, polling_tick, terminal_session, dashboard_render, keymap, target_picker, runtime_refresh, dashboard_state, modal_state, path_resolution, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
+  next_phase: "Begin Phase C C2 control-mode tmux adapter work. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

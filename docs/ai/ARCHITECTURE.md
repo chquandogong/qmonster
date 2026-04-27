@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.23 target-picker runtime-state extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.24 live TUI loop extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -41,8 +41,8 @@ checkpoint, retention, and durable audit storage.
 
 ```
 src/
-  main.rs      # CLI entry + current TUI event loop (still too large)
-  app/         # bootstrap/startup, config+safety-precedence, path resolution, event loop, dashboard-runtime/polling-tick/terminal-session/dashboard-render/keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
+  main.rs      # thin CLI/startup/--once/TUI-entry wrapper
+  app/         # bootstrap/startup, config+safety-precedence, path resolution, event loop, tui-loop/dashboard-runtime/polling-tick/terminal-session/dashboard-render/keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # polling first; control-mode-capable PaneSource trait
   adapters/    # per-provider tail parsers (no identity inference)
@@ -92,7 +92,9 @@ list-selection, and alert freshness resync bookkeeping into
 `app::dashboard_runtime`. v1.16.22 moves startup config/root, audit
 sink, pricing, Claude settings, retention, and version snapshot assembly
 into `app::startup`. v1.16.23 moves target-picker runtime state
-ownership into `app::target_picker`.
+ownership into `app::target_picker`. v1.16.24 moves the live TUI event
+loop into `app::tui_loop`, leaving `main.rs` as the thin CLI/startup/
+`--once`/TUI-entry wrapper.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
