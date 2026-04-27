@@ -7218,7 +7218,7 @@ timeline:
 
 evolution_summary:
   current_phase: "v1.15.13 closes Slice 3 backlog item S3-1 (Codex token in/out cumulative semantics, verified via the bundled Codex TokenUsage struct). New SignalSet.input_tokens / output_tokens surface the already-extracted values from parse_codex_status_line. UI_MANUAL gains an explicit operator-configurability note for Codex `/statusline` and Gemini `/footer` (alias `/statusline`). v1.15.12's quota_pressure SourceKind honesty, v1.15.11's gradient advisories, v1.15.10's LimitHit fix, and v1.15.8's quota_pressure metric all carry forward unchanged. 457 tests green; clippy + fmt clean."
-  next_phase: "Slice 3 effectively complete — only the low-value S3-3 memory column display remains deferred. v1.15.x patch line stays open for runtime-refresh / UI UX issues found during operator use. Operator priorities (B/C/D/E/A) cleanup and Slice 4+ thematic planning are the remaining direction questions."
+  next_phase: "Slice 3 effectively complete — only the low-value S3-3 memory column display remains deferred. v1.15.x patch line stays open for runtime-refresh / UI UX issues found during operator use. The 'operator priorities (B/C/D/E/A)' placeholder that was copied forward through Slice 4 / v1.15.x follow_up_carryover lines was never defined — historical entries kept as-is for archival fidelity, but the active reference in this evolution_summary drops the unresolved placeholder. Direction question for the next major arc: Slice 4+ thematic scoping (operator-defined when the next workstream opens)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
