@@ -24,6 +24,10 @@ pub struct QmonsterConfig {
     pub idle: IdleConfig,
     #[serde(default)]
     pub cost: CostConfig,
+    #[serde(default)]
+    pub context: ContextConfig,
+    #[serde(default)]
+    pub quota: QuotaConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,6 +274,132 @@ impl CostConfig {
     }
 }
 
+/// v1.15.17: per-provider context_pressure thresholds. Mirrors the
+/// CostConfig shape but for the fraction-of-context-window metric
+/// (`signals.context_pressure`, 0..=1.0). The operator workflow at
+/// 75% / 85% is roughly uniform across providers — checkpoint then
+/// `/compact` — but operators with different `/compact` tolerance
+/// (e.g. ones who want to act earlier on Gemini's 1M window vs
+/// Claude's 200K) may want per-provider bands.
+///
+/// The `_pct` suffix on field names disambiguates the threshold's
+/// unit: it's a fraction in 0..=1.0, not a 0..=100 percentage.
+/// Examples: `warning_pct = 0.75` means "fire warning when
+/// context_pressure crosses 75%". An accidental `warning_pct = 75`
+/// would be silently impossible to satisfy (>1.0 always false), so
+/// the example TOML calls this out explicitly.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ContextConfig {
+    pub warning_pct: f32,
+    pub critical_pct: f32,
+    pub claude: Option<PressureProviderConfig>,
+    pub codex: Option<PressureProviderConfig>,
+    pub gemini: Option<PressureProviderConfig>,
+}
+
+impl Default for ContextConfig {
+    fn default() -> Self {
+        Self {
+            warning_pct: 0.75,
+            critical_pct: 0.85,
+            claude: None,
+            codex: None,
+            gemini: None,
+        }
+    }
+}
+
+impl ContextConfig {
+    pub fn warning_for(&self, provider: crate::domain::identity::Provider) -> f32 {
+        self.override_for(provider)
+            .map(|o| o.warning_pct)
+            .unwrap_or(self.warning_pct)
+    }
+
+    pub fn critical_for(&self, provider: crate::domain::identity::Provider) -> f32 {
+        self.override_for(provider)
+            .map(|o| o.critical_pct)
+            .unwrap_or(self.critical_pct)
+    }
+
+    fn override_for(
+        &self,
+        provider: crate::domain::identity::Provider,
+    ) -> Option<&PressureProviderConfig> {
+        use crate::domain::identity::Provider;
+        match provider {
+            Provider::Claude => self.claude.as_ref(),
+            Provider::Codex => self.codex.as_ref(),
+            Provider::Gemini => self.gemini.as_ref(),
+            Provider::Qmonster | Provider::Unknown => None,
+        }
+    }
+}
+
+/// v1.15.17: per-provider quota_pressure thresholds. Same shape as
+/// `ContextConfig`. Today only Gemini populates `quota_pressure` (via
+/// the v0.39 status table `quota` column); the per-provider override
+/// slots are present so a future provider that exposes a quota metric
+/// inherits the same configurability without code change.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
+pub struct QuotaConfig {
+    pub warning_pct: f32,
+    pub critical_pct: f32,
+    pub claude: Option<PressureProviderConfig>,
+    pub codex: Option<PressureProviderConfig>,
+    pub gemini: Option<PressureProviderConfig>,
+}
+
+impl Default for QuotaConfig {
+    fn default() -> Self {
+        Self {
+            warning_pct: 0.75,
+            critical_pct: 0.85,
+            claude: None,
+            codex: None,
+            gemini: None,
+        }
+    }
+}
+
+impl QuotaConfig {
+    pub fn warning_for(&self, provider: crate::domain::identity::Provider) -> f32 {
+        self.override_for(provider)
+            .map(|o| o.warning_pct)
+            .unwrap_or(self.warning_pct)
+    }
+
+    pub fn critical_for(&self, provider: crate::domain::identity::Provider) -> f32 {
+        self.override_for(provider)
+            .map(|o| o.critical_pct)
+            .unwrap_or(self.critical_pct)
+    }
+
+    fn override_for(
+        &self,
+        provider: crate::domain::identity::Provider,
+    ) -> Option<&PressureProviderConfig> {
+        use crate::domain::identity::Provider;
+        match provider {
+            Provider::Claude => self.claude.as_ref(),
+            Provider::Codex => self.codex.as_ref(),
+            Provider::Gemini => self.gemini.as_ref(),
+            Provider::Qmonster | Provider::Unknown => None,
+        }
+    }
+}
+
+/// Shared shape for per-provider context/quota threshold overrides.
+/// `CostConfig` keeps its own provider-override struct because USD
+/// thresholds use a different unit (f64 USD vs f32 fraction).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct PressureProviderConfig {
+    pub warning_pct: f32,
+    pub critical_pct: f32,
+}
+
 impl QmonsterConfig {
     pub fn defaults() -> Self {
         Self {
@@ -281,6 +411,8 @@ impl QmonsterConfig {
             storage: StorageConfig::default(),
             idle: IdleConfig::default(),
             cost: CostConfig::default(),
+            context: ContextConfig::default(),
+            quota: QuotaConfig::default(),
         }
     }
 }

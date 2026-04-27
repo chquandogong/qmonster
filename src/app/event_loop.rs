@@ -128,6 +128,8 @@ where
         let gates = crate::policy::gates::PolicyGates::from_config_and_identity(
             &ctx.config.token,
             &ctx.config.cost,
+            &ctx.config.context,
+            &ctx.config.quota,
             resolved.identity.provider,
             resolved.confidence,
         );

@@ -151,7 +151,7 @@ fn context_pressure_warning(
     gates: &PolicyGates,
 ) -> Option<Recommendation> {
     let v = signals.context_pressure.as_ref()?.value;
-    if !(0.75..0.85).contains(&v) {
+    if !(gates.context_warning_pct..gates.context_critical_pct).contains(&v) {
         return None;
     }
     if !allow_provider_specific(gates.identity_confidence) {
@@ -192,7 +192,7 @@ fn context_pressure_critical(
     gates: &PolicyGates,
 ) -> Option<Recommendation> {
     let v = signals.context_pressure.as_ref()?.value;
-    if v < 0.85 {
+    if v < gates.context_critical_pct {
         return None;
     }
     if !allow_provider_specific(gates.identity_confidence) {
@@ -237,7 +237,7 @@ fn quota_pressure_warning(
     gates: &PolicyGates,
 ) -> Option<Recommendation> {
     let v = signals.quota_pressure.as_ref()?.value;
-    if !(0.75..0.85).contains(&v) {
+    if !(gates.quota_warning_pct..gates.quota_critical_pct).contains(&v) {
         return None;
     }
     if !allow_provider_specific(gates.identity_confidence) {
@@ -270,7 +270,7 @@ fn quota_pressure_critical(
     gates: &PolicyGates,
 ) -> Option<Recommendation> {
     let v = signals.quota_pressure.as_ref()?.value;
-    if v < 0.85 {
+    if v < gates.quota_critical_pct {
         return None;
     }
     if !allow_provider_specific(gates.identity_confidence) {
@@ -521,6 +521,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         }
     }
 
@@ -566,6 +570,10 @@ mod tests {
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -652,6 +660,10 @@ mod tests {
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -694,6 +706,10 @@ mod tests {
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -749,6 +765,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -767,6 +787,10 @@ mod tests {
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -805,6 +829,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let aggressive_actions: Vec<&str> = recs
@@ -832,6 +860,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
@@ -857,6 +889,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let any_aggressive = recs.iter().any(|r| r.action.starts_with("aggressive:"));
@@ -959,6 +995,10 @@ mod tests {
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
@@ -985,6 +1025,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let adv = recs
@@ -1077,6 +1121,10 @@ mod tests {
             identity_confidence: IdentityConfidence::Low,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1102,6 +1150,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let codex_recs = eval_advisories(&id, &s, &codex_gates);
         assert!(
@@ -1118,6 +1170,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 10.0,
             cost_critical_usd: 30.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let claude_recs = eval_advisories(&id, &s, &claude_gates);
         assert!(
@@ -1139,6 +1195,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 3.0,
             cost_critical_usd: 10.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         let gemini_recs = eval_advisories(&id, &s, &gemini_gates);
         assert!(
@@ -1146,6 +1206,132 @@ mod tests {
                 .iter()
                 .any(|r| r.action == "cost-pressure: act now"),
             "Gemini threshold ($10 critical) → $25 must trigger critical"
+        );
+    }
+
+    #[test]
+    fn context_pressure_thresholds_track_per_provider_overrides() {
+        // v1.15.17: per-provider context_pressure thresholds. A
+        // value that is "warning" under default 0.75/0.85 is "critical"
+        // under tighter 0.60/0.75 (Gemini-leaning), and "below threshold"
+        // under looser 0.85/0.95 (a hypothetical Claude override).
+        let id = id_high(Role::Main);
+        let s = pressure(0.78);
+
+        // Default 0.75/0.85 → 0.78 is in [warning, critical) → Warning only.
+        let default_gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
+        };
+        let default_recs = eval_advisories(&id, &s, &default_gates);
+        assert!(
+            default_recs
+                .iter()
+                .any(|r| r.action == "context-pressure: checkpoint"),
+            "default 0.75/0.85 thresholds → 0.78 must trigger warning"
+        );
+        assert!(
+            !default_recs
+                .iter()
+                .any(|r| r.action == "context-pressure: act now"),
+            "default 0.75/0.85 thresholds → 0.78 must NOT trigger critical"
+        );
+
+        // Tighter 0.60/0.75 → 0.78 is past critical (0.75) → Critical fires.
+        let tight_gates = PolicyGates {
+            context_warning_pct: 0.60,
+            context_critical_pct: 0.75,
+            ..default_gates
+        };
+        let tight_recs = eval_advisories(&id, &s, &tight_gates);
+        assert!(
+            tight_recs
+                .iter()
+                .any(|r| r.action == "context-pressure: act now"),
+            "tight 0.60/0.75 thresholds → 0.78 must trigger critical"
+        );
+
+        // Looser 0.85/0.95 → 0.78 is below warning (0.85) → no advisory.
+        let loose_gates = PolicyGates {
+            context_warning_pct: 0.85,
+            context_critical_pct: 0.95,
+            ..default_gates
+        };
+        let loose_recs = eval_advisories(&id, &s, &loose_gates);
+        assert!(
+            !loose_recs
+                .iter()
+                .any(|r| r.action.starts_with("context-pressure")),
+            "loose 0.85/0.95 thresholds → 0.78 must NOT fire any context advisory"
+        );
+    }
+
+    #[test]
+    fn quota_pressure_thresholds_track_per_provider_overrides() {
+        // v1.15.17: same per-provider override pattern for quota_pressure.
+        // Today only Gemini surfaces a populated quota_pressure metric,
+        // but the gating is uniform — any provider whose pane reports
+        // quota_pressure inherits its [quota.<provider>] override.
+        let id = id_high(Role::Main);
+        let s = quota(0.78);
+
+        // Default 0.75/0.85 → 0.78 is in [warning, critical) → Warning only.
+        let default_gates = PolicyGates {
+            quota_tight: false,
+            identity_confidence: IdentityConfidence::High,
+            cost_warning_usd: 5.0,
+            cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
+        };
+        let default_recs = eval_advisories(&id, &s, &default_gates);
+        assert!(
+            default_recs
+                .iter()
+                .any(|r| r.action == "quota-pressure: pace"),
+            "default 0.75/0.85 thresholds → 0.78 must trigger warning"
+        );
+        assert!(
+            !default_recs
+                .iter()
+                .any(|r| r.action == "quota-pressure: act now"),
+            "default 0.75/0.85 thresholds → 0.78 must NOT trigger critical"
+        );
+
+        // Tighter 0.60/0.75 → 0.78 is past critical (0.75) → Critical fires.
+        let tight_gates = PolicyGates {
+            quota_warning_pct: 0.60,
+            quota_critical_pct: 0.75,
+            ..default_gates
+        };
+        let tight_recs = eval_advisories(&id, &s, &tight_gates);
+        assert!(
+            tight_recs
+                .iter()
+                .any(|r| r.action == "quota-pressure: act now"),
+            "tight 0.60/0.75 thresholds → 0.78 must trigger critical"
+        );
+
+        // Looser 0.85/0.95 → 0.78 is below warning (0.85) → no advisory.
+        let loose_gates = PolicyGates {
+            quota_warning_pct: 0.85,
+            quota_critical_pct: 0.95,
+            ..default_gates
+        };
+        let loose_recs = eval_advisories(&id, &s, &loose_gates);
+        assert!(
+            !loose_recs
+                .iter()
+                .any(|r| r.action.starts_with("quota-pressure")),
+            "loose 0.85/0.95 thresholds → 0.78 must NOT fire any quota advisory"
         );
     }
 }

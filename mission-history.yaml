@@ -1,10 +1,10 @@
 meta:
-  mission_id: "qmonster-v0.4.0-planning"
-  mission_title: "Qmonster v0.4.0 — v1.15.16 per-provider cost threshold config."
+  mission_id: "qmonster-v0.5.0-planning"
+  mission_title: "Qmonster v0.5.0 — v1.15.17 per-provider context+quota threshold config."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 72
-  latest_version: "1.15.16"
+  total_revisions: 73
+  latest_version: "1.15.17"
 
 timeline:
   - change_id: "initial"
@@ -5799,7 +5799,7 @@ timeline:
   - change_id: "v1.13.0-emergency-suppression"
     semantic_version: "1.13.0"
     change_sequence: 52
-    date: "2026-04-25"
+    date: "2026-04-27"
     author: "Claude Code (claude:1:main, Opus 4.7 1M)"
     contributors:
       - "Claude Code (main pane) — diagnosis, plan authoring, TDD execution"
@@ -7453,9 +7453,108 @@ timeline:
       - "Annotated tag v1.15.16 at this commit."
       - "If operator wants per-provider overrides for context_pressure or quota_pressure too, lift their hardcoded constants the same way (CostConfig sets the precedent)."
 
+  - change_id: "qmonster-v1.15.17-per-provider-context-quota-thresholds"
+    semantic_version: "1.15.17"
+    change_sequence: 73
+    date: "2026-04-25"
+    author: "Claude Code (claude:1:main, Opus 4.7 1M)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz, operator) — '잔여 패턴도 같은 방식으로 적용'"
+    change_type: "feature"
+    motivation_type: "operator-configurability"
+    persistence: "permanent"
+    intent: >
+      Apply the v1.15.16 per-provider-config pattern to the remaining
+      hardcoded advisory thresholds. context_pressure and quota_pressure
+      were still keyed on `0.75..0.85` literals embedded in the rule
+      body; the operator's instruction was to lift them out the same
+      way CostConfig was, so that any future provider-specific tuning
+      can land in TOML rather than code.
+    decision: >
+      Add `[context]` and `[quota]` TOML sections with top-level
+      `warning_pct` / `critical_pct` (fraction in 0..=1.0, not %) plus
+      optional `[context.claude]` / `[context.codex]` / `[context.gemini]`
+      and `[quota.claude]` / `[quota.codex]` / `[quota.gemini]`
+      per-provider overrides. PolicyGates gains four new f32 fields
+      (`context_warning_pct`, `context_critical_pct`, `quota_warning_pct`,
+      `quota_critical_pct`) that `from_config_and_identity` resolves
+      per-pane (provider override if set, else top-level default). The
+      four advisory rules — `context_pressure_warning`,
+      `context_pressure_critical`, `quota_pressure_warning`,
+      `quota_pressure_critical` — read directly from gates instead of
+      the hardcoded `0.75..0.85` literals. Recommended defaults are
+      uniform 0.75/0.85 across all providers because the workflow
+      remediation (/compact + checkpoint snapshot, or quota pacing) is
+      identical regardless of which CLI emitted the metric — the
+      override slots exist so a provider whose pressure sensor is
+      consistently noisy can be calibrated without code change. Today
+      only Gemini's v0.39 status table populates `quota_pressure`, so
+      Claude/Codex `[quota.<provider>]` slots are commented-out scaffolding
+      until a future provider exposes a quota fraction. ContextConfig
+      and QuotaConfig share `PressureProviderConfig` because the units
+      are identical (f32 fraction); CostConfig keeps its own
+      CostProviderConfig because USD thresholds are f64.
+    triggered_by: "Operator instruction (2026-04-25): '잔여 패턴도 같은 방식으로 적용' (apply the remaining same pattern)."
+    issue_or_context: >
+      v1.15.16 lifted the cost_pressure thresholds into PolicyGates +
+      CostConfig but stopped short of context_pressure and quota_pressure.
+      The follow_up_carryover on sequence 72 explicitly flagged this
+      as the obvious next step. Without lift-out, an operator whose
+      provider pressure metric runs hot or cold (e.g. Claude header
+      reporting context_pressure differently from Codex bottom-status)
+      had no way to recalibrate without touching rule code.
+    changes:
+      added:
+        - "src/app/config.rs::ContextConfig (top-level warning_pct / critical_pct + per-provider Option<PressureProviderConfig> for Claude / Codex / Gemini)"
+        - "src/app/config.rs::QuotaConfig (same shape as ContextConfig; today only Gemini populates the metric)"
+        - "src/app/config.rs::PressureProviderConfig (warning_pct / critical_pct pair; shared between ContextConfig + QuotaConfig)"
+        - "src/app/config.rs::ContextConfig::warning_for / critical_for / override_for resolution helpers"
+        - "src/app/config.rs::QuotaConfig::warning_for / critical_for / override_for resolution helpers"
+        - "src/app/config.rs::QmonsterConfig.context + .quota fields"
+        - "src/policy/gates.rs::PolicyGates.context_warning_pct / context_critical_pct / quota_warning_pct / quota_critical_pct fields + Default impl + from_config_and_identity signature update (now takes &ContextConfig + &QuotaConfig)"
+        - "config/qmonster.example.toml::[context] and [quota] sections with default + commented per-provider overrides + recommended-defaults rationale block"
+        - "Tests: policy_gates_resolves_per_provider_context_and_quota_overrides (Gemini context override 0.60/0.75 + Claude quota override 0.80/0.90 + Codex falls through both) + context_pressure_thresholds_track_per_provider_overrides (advisory rule honors per-provider gates: tight gates promote 0.78 from warning to critical; loose gates suppress) + quota_pressure_thresholds_track_per_provider_overrides (same pattern for quota)"
+      modified:
+        - "src/policy/rules/advisories.rs::context_pressure_warning + context_pressure_critical now read gates.context_*_pct instead of hardcoded 0.75..0.85"
+        - "src/policy/rules/advisories.rs::quota_pressure_warning + quota_pressure_critical now read gates.quota_*_pct instead of hardcoded 0.75..0.85"
+        - "src/app/event_loop.rs::PolicyGates::from_config_and_identity caller now passes &ctx.config.context + &ctx.config.quota in addition to &ctx.config.cost"
+        - "src/policy/gates.rs::policy_gates_from_config_and_identity_reads_both + policy_gates_resolves_per_provider_cost_overrides tests updated for new 6-arg signature"
+        - "src/policy/{engine,gates,rules/{advisories,auto_memory,profiles}}.rs::PolicyGates {} construction sites updated for four new fields (default values 0.75 / 0.85 to preserve existing test behavior)"
+        - "mission.yaml (meta: version 1.15.16 → 1.15.17; title; lineage.total_revisions 72 → 73)"
+        - "mission-history.yaml (sequence 73; meta: latest_version 1.15.17, total_revisions 72 → 73)"
+      removed: []
+    changed_sections:
+      - "src/app/config.rs::ContextConfig + QuotaConfig + PressureProviderConfig"
+      - "src/policy/gates.rs::PolicyGates pressure threshold fields"
+      - "src/policy/rules/advisories.rs::context_pressure_* + quota_pressure_*"
+      - "config/qmonster.example.toml::[context] + [quota] sections"
+    done_when_delta:
+      added:
+        - "Operator can override context_pressure thresholds via TOML `[context]` section without rebuilding"
+        - "Operator can override quota_pressure thresholds via TOML `[quota]` section without rebuilding"
+        - "Per-provider overrides apply only to the named provider; absent overrides fall through to the top-level pair"
+        - "Recommended defaults documented in the example TOML with rationale per section"
+      modified:
+        - "context_pressure / quota_pressure advisory rule fire conditions now key on per-pane resolved gates instead of hardcoded literals"
+      removed: []
+    impact_scope:
+      code: "+~120 LoC across config (two new structs + helpers) + gates (4 new fields) + 5 PolicyGates construction sites; +~140 LoC of tests; +~70 LoC of example TOML doc"
+      tests: "476 total — 402 lib + 14 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (was 472 at v1.15.16; +4 = +1 gates override test + +1 cost test extension + +2 advisory rule per-provider tests)"
+      ledger: "1 new timeline entry (sequence 73); meta bump"
+      review_gate: "operator-configurability feature; confirm-archive remains closed; local fmt/test/clippy pass; mission-spec validation blocked locally because the binary is not installed."
+      follow_up_carryover: "All gradient advisory thresholds (cost / context / quota) are now operator-configurable. No remaining hardcoded threshold pairs in advisory rule bodies; the lift-out series initiated by sequence 72 is complete."
+    breaking: false
+    risk: "low — backward compatible: operators not setting `[context]` / `[quota]` get the v1.15.14 baseline (0.75/0.85). PolicyGates default values (0.75 / 0.85 across all four pct fields) preserve existing test behavior. PolicyGates::from_config_and_identity signature changed (takes &ContextConfig + &QuotaConfig in addition to v1.15.16's &CostConfig) — this is internal plumbing only used by event_loop.rs and the gates tests, both updated in this round. Mutation testing: temporarily reverting ContextConfig::warning_for to ignore the per-provider override and reverting context_pressure_warning to use a hardcoded 0.75..0.85 range each broke the new tests in the expected way (verified before final commit)."
+    related_commits: [] # populated post-tag via mission-spec backfill-commits
+    related_decisions: []
+    snapshot_after: ""
+    follow_up:
+      - "Annotated tag v1.15.17 at this commit."
+      - "Lift-out series complete for the three known gradient advisory metrics. If a future advisory introduces a new threshold-bearing rule, mirror the CostConfig / ContextConfig pattern (top-level + per-provider override + PolicyGates field + advisory rule reads from gates)."
+
 evolution_summary:
-  current_phase: "v1.15.16 per-provider cost threshold config. New `[cost]` TOML section with top-level warning_usd / critical_usd defaults plus optional per-provider overrides for Claude / Codex / Gemini. PolicyGates resolves the threshold pair per-pane; advisory rules read from gates instead of hardcoded constants. Recommended defaults: $5/$20 (Codex baseline), Claude $10/$30 (higher tier), Gemini $3/$10 (lower tier). v1.15.15's COST badge severity coloring, v1.15.14's cost_pressure_* advisory pair, and the v1.15.13 / v1.15.12 / v1.15.11 / v1.15.10 / v1.15.8 stack all carry forward unchanged. 472 tests green; clippy + fmt clean."
-  next_phase: "Same direction; v1.15.x patch line continues for operator-driven UX iteration. context_pressure and quota_pressure threshold pairs remain hardcoded; lifting them into config follows the v1.15.16 CostConfig precedent if the operator wants per-provider overrides on those too. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.15.17 per-provider context+quota threshold config. New `[context]` and `[quota]` TOML sections with top-level warning_pct / critical_pct (fraction 0..=1.0) defaults plus optional per-provider overrides for Claude / Codex / Gemini, completing the lift-out series begun by v1.15.16's `[cost]` section. PolicyGates resolves all four threshold pairs per-pane (cost_warning_usd / cost_critical_usd / context_warning_pct / context_critical_pct / quota_warning_pct / quota_critical_pct); advisory rules read from gates instead of hardcoded literals. Recommended defaults uniform 0.75/0.85 across providers (workflow remediation is identical regardless of which CLI emits the pressure metric). v1.15.16's per-provider cost thresholds, v1.15.15's COST badge severity coloring, v1.15.14's cost_pressure_* advisory pair, and the v1.15.13 / v1.15.12 / v1.15.11 / v1.15.10 / v1.15.8 stack all carry forward unchanged. 476 tests green; clippy + fmt clean."
+  next_phase: "Same direction; v1.15.x patch line continues for operator-driven UX iteration. All known gradient advisory thresholds (cost / context / quota) are now operator-configurable; no remaining hardcoded threshold pairs in advisory rule bodies. Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

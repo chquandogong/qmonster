@@ -951,6 +951,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         }
     }
 
@@ -1082,6 +1086,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         }
     }
 

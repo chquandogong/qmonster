@@ -20,16 +20,24 @@ pub fn allow_aggressive(quota_tight: bool) -> bool {
 ///
 /// v1.15.16: `cost_warning_usd` / `cost_critical_usd` are resolved
 /// per-pane from the operator's `[cost]` config section + the pane's
-/// resolved provider. The advisory rules in
-/// `policy::rules::advisories` read these fields directly so per-
-/// provider overrides flow through without each rule re-touching
-/// the config.
+/// resolved provider.
+///
+/// v1.15.17: `context_warning_pct` / `context_critical_pct` and
+/// `quota_warning_pct` / `quota_critical_pct` follow the same lift-out
+/// pattern from `[context]` and `[quota]` sections respectively. The
+/// advisory rules in `policy::rules::advisories` read these fields
+/// directly so per-provider overrides flow through without each rule
+/// re-touching the config.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PolicyGates {
     pub quota_tight: bool,
     pub identity_confidence: IdentityConfidence,
     pub cost_warning_usd: f64,
     pub cost_critical_usd: f64,
+    pub context_warning_pct: f32,
+    pub context_critical_pct: f32,
+    pub quota_warning_pct: f32,
+    pub quota_critical_pct: f32,
 }
 
 impl Default for PolicyGates {
@@ -37,12 +45,16 @@ impl Default for PolicyGates {
         Self {
             quota_tight: false,
             identity_confidence: IdentityConfidence::Unknown,
-            // Mirror CostConfig::default() top-level defaults so unit
-            // tests that build a default PolicyGates inherit the same
-            // baseline thresholds the production engine sees on a
-            // provider that has no override.
+            // Mirror Cost/Context/QuotaConfig::default() top-level
+            // defaults so unit tests that build a default PolicyGates
+            // inherit the same baseline thresholds the production
+            // engine sees on a provider that has no override.
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         }
     }
 }
@@ -51,6 +63,8 @@ impl PolicyGates {
     pub fn from_config_and_identity(
         token: &crate::app::config::TokenConfig,
         cost: &crate::app::config::CostConfig,
+        context: &crate::app::config::ContextConfig,
+        quota: &crate::app::config::QuotaConfig,
         provider: crate::domain::identity::Provider,
         conf: IdentityConfidence,
     ) -> Self {
@@ -59,6 +73,10 @@ impl PolicyGates {
             identity_confidence: conf,
             cost_warning_usd: cost.warning_for(provider),
             cost_critical_usd: cost.critical_for(provider),
+            context_warning_pct: context.warning_for(provider),
+            context_critical_pct: context.critical_for(provider),
+            quota_warning_pct: quota.warning_for(provider),
+            quota_critical_pct: quota.critical_for(provider),
         }
     }
 }
@@ -143,6 +161,10 @@ mod tests {
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            context_warning_pct: 0.75,
+            context_critical_pct: 0.85,
+            quota_warning_pct: 0.75,
+            quota_critical_pct: 0.85,
         };
         assert!(gates.quota_tight);
     }
@@ -163,13 +185,17 @@ mod tests {
 
     #[test]
     fn policy_gates_from_config_and_identity_reads_both() {
-        use crate::app::config::{CostConfig, TokenConfig};
+        use crate::app::config::{ContextConfig, CostConfig, QuotaConfig, TokenConfig};
         use crate::domain::identity::Provider;
         let cfg = TokenConfig { quota_tight: true };
         let cost = CostConfig::default();
+        let context = ContextConfig::default();
+        let quota = QuotaConfig::default();
         let gates = PolicyGates::from_config_and_identity(
             &cfg,
             &cost,
+            &context,
+            &quota,
             Provider::Codex,
             IdentityConfidence::Medium,
         );
@@ -178,6 +204,11 @@ mod tests {
         // Codex falls through to top-level CostConfig defaults ($5 / $20).
         assert!((gates.cost_warning_usd - 5.0).abs() < f64::EPSILON);
         assert!((gates.cost_critical_usd - 20.0).abs() < f64::EPSILON);
+        // Context + quota fall through to top-level defaults (0.75 / 0.85).
+        assert!((gates.context_warning_pct - 0.75).abs() < f32::EPSILON);
+        assert!((gates.context_critical_pct - 0.85).abs() < f32::EPSILON);
+        assert!((gates.quota_warning_pct - 0.75).abs() < f32::EPSILON);
+        assert!((gates.quota_critical_pct - 0.85).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -185,13 +216,17 @@ mod tests {
         // v1.15.16: CostConfig::default() ships per-provider overrides.
         // Claude → $10 / $30, Gemini → $3 / $10, Codex falls through to
         // the top-level $5 / $20.
-        use crate::app::config::{CostConfig, TokenConfig};
+        use crate::app::config::{ContextConfig, CostConfig, QuotaConfig, TokenConfig};
         use crate::domain::identity::Provider;
         let cfg = TokenConfig { quota_tight: false };
         let cost = CostConfig::default();
+        let context = ContextConfig::default();
+        let quota = QuotaConfig::default();
         let claude = PolicyGates::from_config_and_identity(
             &cfg,
             &cost,
+            &context,
+            &quota,
             Provider::Claude,
             IdentityConfidence::High,
         );
@@ -200,6 +235,8 @@ mod tests {
         let codex = PolicyGates::from_config_and_identity(
             &cfg,
             &cost,
+            &context,
+            &quota,
             Provider::Codex,
             IdentityConfidence::High,
         );
@@ -208,11 +245,87 @@ mod tests {
         let gemini = PolicyGates::from_config_and_identity(
             &cfg,
             &cost,
+            &context,
+            &quota,
             Provider::Gemini,
             IdentityConfidence::High,
         );
         assert!((gemini.cost_warning_usd - 3.0).abs() < f64::EPSILON);
         assert!((gemini.cost_critical_usd - 10.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn policy_gates_resolves_per_provider_context_and_quota_overrides() {
+        // v1.15.17: ContextConfig + QuotaConfig follow the same
+        // per-provider override pattern as CostConfig. The default
+        // top-level threshold is 0.75 / 0.85; an override under
+        // [context.gemini] (or [quota.claude], etc.) replaces both
+        // values for that provider only. Other providers still see
+        // the top-level defaults.
+        use crate::app::config::{
+            ContextConfig, CostConfig, PressureProviderConfig, QuotaConfig, TokenConfig,
+        };
+        use crate::domain::identity::Provider;
+        let cfg = TokenConfig { quota_tight: false };
+        let cost = CostConfig::default();
+        let context = ContextConfig {
+            gemini: Some(PressureProviderConfig {
+                warning_pct: 0.60,
+                critical_pct: 0.75,
+            }),
+            ..ContextConfig::default()
+        };
+        let quota = QuotaConfig {
+            claude: Some(PressureProviderConfig {
+                warning_pct: 0.80,
+                critical_pct: 0.90,
+            }),
+            ..QuotaConfig::default()
+        };
+
+        // Gemini sees the [context.gemini] override; quota falls
+        // through to the top-level QuotaConfig default.
+        let gemini = PolicyGates::from_config_and_identity(
+            &cfg,
+            &cost,
+            &context,
+            &quota,
+            Provider::Gemini,
+            IdentityConfidence::High,
+        );
+        assert!((gemini.context_warning_pct - 0.60).abs() < f32::EPSILON);
+        assert!((gemini.context_critical_pct - 0.75).abs() < f32::EPSILON);
+        assert!((gemini.quota_warning_pct - 0.75).abs() < f32::EPSILON);
+        assert!((gemini.quota_critical_pct - 0.85).abs() < f32::EPSILON);
+
+        // Claude sees the [quota.claude] override; context falls
+        // through to the top-level ContextConfig default.
+        let claude = PolicyGates::from_config_and_identity(
+            &cfg,
+            &cost,
+            &context,
+            &quota,
+            Provider::Claude,
+            IdentityConfidence::High,
+        );
+        assert!((claude.context_warning_pct - 0.75).abs() < f32::EPSILON);
+        assert!((claude.context_critical_pct - 0.85).abs() < f32::EPSILON);
+        assert!((claude.quota_warning_pct - 0.80).abs() < f32::EPSILON);
+        assert!((claude.quota_critical_pct - 0.90).abs() < f32::EPSILON);
+
+        // Codex has no override on either; both fall through.
+        let codex = PolicyGates::from_config_and_identity(
+            &cfg,
+            &cost,
+            &context,
+            &quota,
+            Provider::Codex,
+            IdentityConfidence::High,
+        );
+        assert!((codex.context_warning_pct - 0.75).abs() < f32::EPSILON);
+        assert!((codex.context_critical_pct - 0.85).abs() < f32::EPSILON);
+        assert!((codex.quota_warning_pct - 0.75).abs() < f32::EPSILON);
+        assert!((codex.quota_critical_pct - 0.85).abs() < f32::EPSILON);
     }
 
     // -----------------------------------------------------------------
