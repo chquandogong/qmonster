@@ -32,6 +32,7 @@ use qmonster::app::keymap::{
 use qmonster::app::modal_state::{
     ScrollModalState, handle_scroll_modal_key, handle_scroll_modal_mouse,
 };
+use qmonster::app::operator_actions::{version_refresh_notices, write_operator_snapshot};
 use qmonster::app::path_resolution::pick_root;
 use qmonster::app::runtime_refresh::{
     runtime_refresh_command_label, runtime_refresh_commands, runtime_refresh_completion_label,
@@ -62,8 +63,7 @@ use qmonster::policy::claude_settings::{ClaudeSettings, ClaudeSettingsError};
 use qmonster::policy::gates::{PromptSendGate, check_send_gate};
 use qmonster::policy::pricing::PricingTable;
 use qmonster::store::{
-    ArchiveWriter, EventSink, InMemorySink, PaneSnapshot, QmonsterPaths, SnapshotInput,
-    SnapshotWriter, SqliteAuditSink, sweep,
+    ArchiveWriter, EventSink, InMemorySink, QmonsterPaths, SnapshotWriter, SqliteAuditSink, sweep,
 };
 use qmonster::tmux::polling::{PaneSource, PollingSource};
 use qmonster::tmux::types::WindowTarget;
@@ -958,7 +958,7 @@ where
                             KeyCode::Char('r') => {
                                 let fresh = capture_versions();
                                 let new_notices =
-                                    route_version_drift(&versions, &fresh, &*ctx.sink);
+                                    version_refresh_notices(&versions, &fresh, &*ctx.sink);
                                 if !new_notices.is_empty() {
                                     notices = new_notices;
                                     sync_dashboard_state(
@@ -978,65 +978,26 @@ where
                                 versions = fresh;
                             }
                             KeyCode::Char('s') => {
-                                let input = snapshot_input_from(&last_reports, &notices);
-                                match snapshot_writer.write(&input) {
-                                    Ok(path) => {
-                                        ctx.sink.record(AuditEvent {
-                                            kind: AuditEventKind::SnapshotWritten,
-                                            pane_id: "n/a".into(),
-                                            severity: Severity::Safe,
-                                            summary: format!("snapshot → {}", path.display()),
-                                            provider: None,
-                                            role: None,
-                                        });
-                                        notices.insert(
-                                            0,
-                                            SystemNotice {
-                                                title: "snapshot saved".into(),
-                                                body: path.display().to_string(),
-                                                severity: Severity::Good,
-                                                source_kind: SourceKind::ProjectCanonical,
-                                            },
-                                        );
-                                        sync_dashboard_state(
-                                            &notices,
-                                            &last_reports,
-                                            DashboardSyncState {
-                                                alert_state: &mut alert_state,
-                                                pane_state: &mut pane_state,
-                                                previous_alerts: &mut previous_alerts,
-                                                fresh_alerts: &mut fresh_alerts,
-                                                alert_times: &mut alert_times,
-                                                alert_hide_deadlines: &mut alert_hide_deadlines,
-                                            },
-                                            Instant::now(),
-                                        );
-                                    }
-                                    Err(e) => {
-                                        notices.insert(
-                                            0,
-                                            SystemNotice {
-                                                title: "snapshot failed".into(),
-                                                body: e.to_string(),
-                                                severity: Severity::Warning,
-                                                source_kind: SourceKind::ProjectCanonical,
-                                            },
-                                        );
-                                        sync_dashboard_state(
-                                            &notices,
-                                            &last_reports,
-                                            DashboardSyncState {
-                                                alert_state: &mut alert_state,
-                                                pane_state: &mut pane_state,
-                                                previous_alerts: &mut previous_alerts,
-                                                fresh_alerts: &mut fresh_alerts,
-                                                alert_times: &mut alert_times,
-                                                alert_hide_deadlines: &mut alert_hide_deadlines,
-                                            },
-                                            Instant::now(),
-                                        );
-                                    }
-                                }
+                                let notice = write_operator_snapshot(
+                                    &snapshot_writer,
+                                    &*ctx.sink,
+                                    &last_reports,
+                                    &notices,
+                                );
+                                notices.insert(0, notice);
+                                sync_dashboard_state(
+                                    &notices,
+                                    &last_reports,
+                                    DashboardSyncState {
+                                        alert_state: &mut alert_state,
+                                        pane_state: &mut pane_state,
+                                        previous_alerts: &mut previous_alerts,
+                                        fresh_alerts: &mut fresh_alerts,
+                                        alert_times: &mut alert_times,
+                                        alert_hide_deadlines: &mut alert_hide_deadlines,
+                                    },
+                                    Instant::now(),
+                                );
                             }
                             KeyCode::Char('c') => {
                                 notices.clear();
@@ -1853,29 +1814,6 @@ where
     disable_raw_mode().ok();
     execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture).ok();
     result
-}
-
-fn snapshot_input_from(reports: &[PaneReport], notices: &[SystemNotice]) -> SnapshotInput {
-    SnapshotInput {
-        reason: "operator-requested (key: s)".into(),
-        pane_summaries: reports
-            .iter()
-            .map(|r| PaneSnapshot {
-                pane_id: r.pane_id.clone(),
-                provider: format!("{:?}", r.identity.identity.provider),
-                role: format!("{:?}", r.identity.identity.role),
-                alerts: r
-                    .recommendations
-                    .iter()
-                    .map(|x| x.action.to_string())
-                    .collect(),
-            })
-            .collect(),
-        notices: notices
-            .iter()
-            .map(|n| format!("[{}] {}: {}", n.severity.letter(), n.title, n.body))
-            .collect(),
-    }
 }
 
 fn initial_target<P: PaneSource>(source: &P) -> Option<WindowTarget> {

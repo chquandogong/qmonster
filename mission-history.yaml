@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.7 settings overlay dispatch extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.8 operator action extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 89
-  latest_version: "1.16.7"
+  total_revisions: 90
+  latest_version: "1.16.8"
 
 timeline:
   - change_id: "initial"
@@ -8778,8 +8778,79 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.8-operator-action-extraction"
+    semantic_version: "1.16.8"
+    change_sequence: 90
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving operator-triggered version-refresh and
+      snapshot-write helper logic out of `src/main.rs`.
+    intent_ko: >
+      운영자가 직접 실행하는 version refresh와 snapshot write helper 로직을
+      `src/main.rs` 밖으로 옮겨 Phase C C1 분해를 계속한다.
+    decision: >
+      Add `src/app/operator_actions.rs` with helpers for version-refresh
+      notice routing and snapshot input/write notice generation. Keep
+      dashboard-state synchronization in `src/main.rs`, because that state
+      remains local to the live TUI loop.
+    decision_ko: >
+      version-refresh notice routing과 snapshot input/write notice 생성을
+      담당하는 `src/app/operator_actions.rs`를 추가한다. dashboard-state
+      synchronization은 live TUI loop의 지역 상태에 묶여 있으므로
+      `src/main.rs`에 남긴다.
+    triggered_by: "Continuation after the v1.16.7 settings overlay dispatch extraction."
+    issue_or_context: >
+      `src/main.rs` still built snapshot payloads, wrote snapshots,
+      generated success/failure notices, and directly called version drift
+      routing inside the key handler. These are operator-action helpers,
+      not event-loop structure.
+    changes:
+      added:
+        - "src/app/operator_actions.rs: version-refresh and snapshot-write helpers plus 3 unit tests"
+      modified:
+        - "src/app/mod.rs exports the operator_actions module"
+        - "src/main.rs delegates `r` version-refresh notice routing and `s` snapshot write notice generation to app::operator_actions"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.8"
+      removed:
+        - "snapshot_input_from helper from src/main.rs"
+        - "inline snapshot write success/failure notice construction from the live key handler"
+    changed_sections:
+      - "src/app/operator_actions.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Seventh Phase C C1 code slice exists outside main.rs"
+        - "operator snapshot notice/audit behavior is covered by direct unit tests"
+      modified:
+        - "main.rs no longer owns snapshot payload construction or snapshot success/failure notice construction"
+      removed:
+        - "operator snapshot helper code from the live event-loop module"
+    impact_scope:
+      code: "internal refactor only; no snapshot path, audit kind, version-drift, shortcut, tmux, or policy behavior change intended"
+      tests: "538 total passed — 476 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+3 lib tests vs v1.16.7)"
+      ledger: "1 new timeline entry (sequence 90); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — helper extraction preserves existing notice/audit output and adds direct unit coverage."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.7 settings overlay dispatch extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, and settings_overlay helper modules already extracted."
+  current_phase: "v1.16.8 operator action extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, and operator_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

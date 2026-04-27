@@ -6,6 +6,7 @@ pub mod event_loop;
 pub mod git_info;
 pub mod keymap;
 pub mod modal_state;
+pub mod operator_actions;
 pub mod path_resolution;
 pub mod runtime_refresh;
 pub mod safety_audit;
