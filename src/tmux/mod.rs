@@ -1,3 +1,4 @@
+pub(crate) mod commands;
 pub mod control_mode;
 pub mod polling;
 pub mod types;

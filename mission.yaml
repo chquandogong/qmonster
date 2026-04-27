@@ -1,6 +1,6 @@
 mission:
-  version: "1.16.26"
-  title: "Qmonster v0.5.0 — v1.16.26 control-mode reconnect hardening. Continues Phase C C2 by reconnecting the opt-in tmux control-mode client once on transport lifecycle errors while keeping command-level errors visible."
+  version: "1.16.27"
+  title: "Qmonster v0.5.0 — v1.16.27 tmux command parity. Continues Phase C C2 by extracting shared tmux command builders so polling and control-mode use the same list/capture/send argument contracts."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1140,7 +1140,7 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.16.26 control-mode reconnect hardening on top of the pushed v1.16.25 opt-in control-mode tmux source. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped. Phase C C1 extracted the live TUI event loop into `src/app/tui_loop.rs` and left `src/main.rs` as a thin CLI/startup/`--once`/TUI-entry wrapper. Phase C C2 has `src/tmux/control_mode.rs`, `tmux::ControlModeSource`, `tmux::TmuxSource`, and `[tmux] source = \"control_mode\"` as an opt-in transport behind the existing `PaneSource` contract. v1.16.26 reconnects that client once after transport lifecycle errors (`%exit`, EOF, broken pipe) while keeping command-level tmux errors visible. The default remains `[tmux] source = \"polling\"`."
+    topology: "Current working state is v1.16.27 tmux command parity on top of the pushed v1.16.26 control-mode reconnect hardening. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped. Phase C C1 extracted the live TUI event loop into `src/app/tui_loop.rs` and left `src/main.rs` as a thin CLI/startup/`--once`/TUI-entry wrapper. Phase C C2 has `src/tmux/control_mode.rs`, `tmux::ControlModeSource`, `tmux::TmuxSource`, and `[tmux] source = \"control_mode\"` as an opt-in transport behind the existing `PaneSource` contract. v1.16.26 reconnects that client once after transport lifecycle errors (`%exit`, EOF, broken pipe) while keeping command-level tmux errors visible. v1.16.27 adds `src/tmux/commands.rs` so polling and control-mode share list/capture/send argument builders. The default remains `[tmux] source = \"polling\"`."
     suggested_approach: >
       Continue the operator-directed synthesis in order. Phase A chose
       the conservative defaults and activated config/pricing/profile
@@ -1191,7 +1191,8 @@ mission:
       a `TmuxSource` enum, and opt-in `[tmux] source = "control_mode"`.
       v1.16.26 hardens the control-mode path with one-shot reconnect on
       transport lifecycle errors while leaving command-level failures
-      unchanged.
+      unchanged. v1.16.27 adds `src/tmux/commands.rs` for shared tmux
+      command argument builders used by both polling and control-mode.
       Continue hardening the control-mode path before considering it as
       the default.
     note: >
@@ -1229,11 +1230,11 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.16.26 operator-directed Phase-C follow-up"
+    priority: "post-v1.16.27 operator-directed Phase-C follow-up"
     estimated_sessions: 1
     scope: "Phase B complete; Phase C C2 control-mode tmux adapter in progress"
     followups:
-      - "C2: add parity checks and further validate the control-mode tmux adapter"
+      - "C2: add live parity validation and further harden the control-mode tmux adapter"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
   created: "2026-04-20"
@@ -1241,5 +1242,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 108
+    total_revisions: 109
     history: "mission-history.yaml"

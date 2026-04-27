@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.26 control-mode reconnect hardening."
+  mission_title: "Qmonster v0.5.0 — v1.16.27 tmux command parity."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 108
-  latest_version: "1.16.26"
+  total_revisions: 109
+  latest_version: "1.16.27"
 
 timeline:
   - change_id: "initial"
@@ -10118,9 +10118,79 @@ timeline:
     follow_up:
       - "Continue C2: add polling/control-mode parity checks for list panes, targets, and capture-tail behavior."
 
+  - change_id: "qmonster-v1.16.27-tmux-command-parity"
+    semantic_version: "1.16.27"
+    change_sequence: 109
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C2 and close each work item with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C2 control-mode tmux adapter parity"
+    persistence: "permanent"
+    intent: >
+      Keep polling and control-mode transports aligned by sharing the raw tmux
+      command argument builders they both use.
+    intent_ko: >
+      polling과 control-mode transport가 같은 raw tmux command argument
+      builder를 사용하도록 하여 두 경로의 parity를 유지한다.
+    decision: >
+      Add `src/tmux/commands.rs` with builders for list panes, list windows,
+      current target, capture tail, literal send-keys, and single-key submit.
+      Both `PollingSource` and `ControlModeSource` now use those builders;
+      tests lock the shared argument vectors.
+    decision_ko: >
+      list panes, list windows, current target, capture tail, literal
+      send-keys, single-key submit용 builder를 `src/tmux/commands.rs`에
+      추가한다. `PollingSource`와 `ControlModeSource`가 모두 이 builder를
+      사용하고, 테스트가 공유 argument vector를 고정한다.
+    triggered_by: "Follow-up parity hardening after the v1.16.26 reconnect slice."
+    issue_or_context: >
+      The control-mode source originally duplicated several tmux command
+      shapes from polling. That made future parity drift likely when tmux
+      arguments changed.
+    changes:
+      added:
+        - "src/tmux/commands.rs: shared tmux command argument builders and parity tests"
+      modified:
+        - "src/tmux/polling.rs uses shared builders for list/capture/send/current-target commands"
+        - "src/tmux/control_mode.rs uses the same shared builders"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.27"
+      removed:
+        - "duplicate list-panes argument builder from polling/control-mode modules"
+    changed_sections:
+      - "src/tmux/commands.rs"
+      - "src/tmux/mod.rs"
+      - "src/tmux/polling.rs"
+      - "src/tmux/control_mode.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "polling and control-mode share tmux command argument builders"
+        - "shared parity tests cover list panes, targets, capture tail, and send-keys shapes"
+      modified:
+        - "tmux module tests increase by two net tests"
+      removed:
+        - "duplicated list-panes arg construction"
+    impact_scope:
+      code: "internal tmux transport refactor; default polling behavior and opt-in control_mode behavior should remain semantically unchanged"
+      tests: "579 total passed — 519 lib + 0 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; additional manual smoke: control-mode --once against live tmux session"
+      ledger: "1 new timeline entry (sequence 109); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, control-mode --once smoke, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with live parity validation before considering any default switch."
+    breaking: false
+    risk: "low — both transports now call the same argument builders and existing transport tests remain green."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add live parity validation for polling vs control_mode on the active tmux session."
+
 evolution_summary:
-  current_phase: "v1.16.26 control-mode reconnect hardening — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
-  next_phase: "Continue Phase C C2 with polling/control-mode parity checks and additional live-source validation. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.27 tmux command parity — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  next_phase: "Continue Phase C C2 with live polling/control-mode parity validation and additional control-mode hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

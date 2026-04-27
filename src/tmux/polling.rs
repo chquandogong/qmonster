@@ -1,8 +1,11 @@
 use std::process::Command;
 use std::thread;
-use std::time::Duration;
 use thiserror::Error;
 
+use crate::tmux::commands::{
+    KEY_SETTLE_DELAY, SUBMIT_KEY, capture_tail_args, current_target_args, list_panes_args,
+    list_windows_args, send_key_args, send_keys_literal_args,
+};
 use crate::tmux::types::{
     PANE_LIST_FORMAT, RawPaneSnapshot, WINDOW_LIST_FORMAT, WindowTarget, parse_list_panes_row,
     parse_list_windows_row,
@@ -45,8 +48,6 @@ pub trait PaneSource {
 }
 
 const DEFAULT_CAPTURE_LINES: usize = 24;
-const SUBMIT_KEY: &str = "C-m";
-const KEY_SETTLE_DELAY: Duration = Duration::from_millis(80);
 
 /// Production implementation that shells out to the `tmux` CLI.
 #[derive(Debug, Clone, Copy)]
@@ -110,7 +111,7 @@ impl PaneSource for PollingSource {
     fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
         let fmt = WINDOW_LIST_FORMAT.replace("\\t", "\t");
         let output = Command::new("tmux")
-            .args(["list-windows", "-a", "-F", &fmt])
+            .args(list_windows_args(&fmt))
             .output()
             .map_err(|e| PollingError::Command(e.to_string()))?;
         if !output.status.success() {
@@ -127,9 +128,8 @@ impl PaneSource for PollingSource {
     }
 
     fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError> {
-        let start = format!("-{lines}");
         let output = Command::new("tmux")
-            .args(["capture-pane", "-p", "-J", "-S", &start, "-t", pane_id])
+            .args(capture_tail_args(pane_id, lines))
             .output()
             .map_err(|e| PollingError::Command(e.to_string()))?;
         if !output.status.success() {
@@ -167,7 +167,7 @@ impl PaneSource for PollingSource {
         // caller (`PromptSendGate::Execute` path) records the error
         // text in a `PromptSendFailed` audit event.
         let literal = Command::new("tmux")
-            .args(["send-keys", "-t", pane_id, "-l", text])
+            .args(send_keys_literal_args(pane_id, text))
             .output()
             .map_err(|e| PollingError::Command(e.to_string()))?;
         if !literal.status.success() {
@@ -183,7 +183,7 @@ impl PaneSource for PollingSource {
 
     fn send_key(&self, pane_id: &str, key: &str) -> Result<(), PollingError> {
         let output = Command::new("tmux")
-            .args(["send-keys", "-t", pane_id, key])
+            .args(send_key_args(pane_id, key))
             .output()
             .map_err(|e| PollingError::Command(e.to_string()))?;
         if !output.status.success() {
@@ -205,7 +205,7 @@ fn current_window_target() -> Result<Option<WindowTarget>, PollingError> {
     }
     let fmt = WINDOW_LIST_FORMAT.replace("\\t", "\t");
     let output = Command::new("tmux")
-        .args(["display-message", "-p", "-t", &tmux_pane, &fmt])
+        .args(current_target_args(&tmux_pane, &fmt))
         .output()
         .map_err(|e| PollingError::Command(e.to_string()))?;
     if !output.status.success() {
@@ -215,20 +215,6 @@ fn current_window_target() -> Result<Option<WindowTarget>, PollingError> {
     }
     let line = String::from_utf8_lossy(&output.stdout);
     Ok(line.lines().next().and_then(parse_list_windows_row))
-}
-
-fn list_panes_args(fmt: &str, target: Option<&WindowTarget>) -> Vec<String> {
-    let mut args = vec!["list-panes".to_string()];
-    match target {
-        Some(target_window) => {
-            args.push("-t".to_string());
-            args.push(target_window.label());
-        }
-        None => args.push("-a".to_string()),
-    }
-    args.push("-F".to_string());
-    args.push(fmt.to_string());
-    args
 }
 
 /// Test-only in-memory source.

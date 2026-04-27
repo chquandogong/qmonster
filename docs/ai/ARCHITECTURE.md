@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.26 control-mode reconnect hardening)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.27 tmux command parity)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -102,6 +102,9 @@ tmux commands behind the existing `PaneSource` contract while keeping
 v1.16.26 adds one-shot reconnect on control-mode transport lifecycle
 errors (`%exit`, EOF, broken pipe) and explicitly keeps command-level tmux
 errors as caller-visible failures.
+v1.16.27 extracts `tmux::commands` so polling and control-mode share the
+same list-panes, list-windows, current-target, capture-tail, and
+send-keys argument builders.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

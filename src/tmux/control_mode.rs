@@ -2,8 +2,11 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
-use std::time::Duration;
 
+use crate::tmux::commands::{
+    KEY_SETTLE_DELAY, SUBMIT_KEY, capture_tail_args, current_target_args, list_panes_args,
+    list_windows_args, send_key_args, send_keys_literal_args,
+};
 use crate::tmux::polling::{PaneSource, PollingError};
 use crate::tmux::types::{
     PANE_LIST_FORMAT, RawPaneSnapshot, WINDOW_LIST_FORMAT, WindowTarget, parse_list_panes_row,
@@ -11,8 +14,6 @@ use crate::tmux::types::{
 };
 
 const DEFAULT_CAPTURE_LINES: usize = 24;
-const SUBMIT_KEY: &str = "C-m";
-const KEY_SETTLE_DELAY: Duration = Duration::from_millis(80);
 
 /// Production `PaneSource` backed by one tmux control-mode client.
 ///
@@ -80,19 +81,13 @@ impl PaneSource for ControlModeSource {
             return Ok(None);
         }
         let fmt = WINDOW_LIST_FORMAT.replace("\\t", "\t");
-        let output = self.run(&[
-            "display-message".into(),
-            "-p".into(),
-            "-t".into(),
-            tmux_pane,
-            fmt,
-        ])?;
+        let output = self.run(&current_target_args(&tmux_pane, &fmt))?;
         Ok(output.first().and_then(|line| parse_list_windows_row(line)))
     }
 
     fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
         let fmt = WINDOW_LIST_FORMAT.replace("\\t", "\t");
-        let output = self.run(&["list-windows".into(), "-a".into(), "-F".into(), fmt])?;
+        let output = self.run(&list_windows_args(&fmt))?;
         let mut targets: Vec<WindowTarget> = output
             .iter()
             .filter_map(|line| parse_list_windows_row(line))
@@ -103,27 +98,12 @@ impl PaneSource for ControlModeSource {
     }
 
     fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError> {
-        let start = format!("-{lines}");
-        let output = self.run(&[
-            "capture-pane".into(),
-            "-p".into(),
-            "-J".into(),
-            "-S".into(),
-            start,
-            "-t".into(),
-            pane_id.into(),
-        ])?;
+        let output = self.run(&capture_tail_args(pane_id, lines))?;
         Ok(output.join("\n"))
     }
 
     fn send_keys(&self, pane_id: &str, text: &str) -> Result<(), PollingError> {
-        self.run(&[
-            "send-keys".into(),
-            "-t".into(),
-            pane_id.into(),
-            "-l".into(),
-            text.into(),
-        ])?;
+        self.run(&send_keys_literal_args(pane_id, text))?;
         thread::sleep(KEY_SETTLE_DELAY);
         self.send_key(pane_id, SUBMIT_KEY)?;
         thread::sleep(KEY_SETTLE_DELAY);
@@ -131,7 +111,7 @@ impl PaneSource for ControlModeSource {
     }
 
     fn send_key(&self, pane_id: &str, key: &str) -> Result<(), PollingError> {
-        self.run(&["send-keys".into(), "-t".into(), pane_id.into(), key.into()])?;
+        self.run(&send_key_args(pane_id, key))?;
         thread::sleep(KEY_SETTLE_DELAY);
         Ok(())
     }
@@ -275,20 +255,6 @@ fn quote_tmux_arg(arg: &str) -> String {
     quoted
 }
 
-fn list_panes_args(fmt: &str, target: Option<&WindowTarget>) -> Vec<String> {
-    let mut args = vec!["list-panes".to_string()];
-    match target {
-        Some(target_window) => {
-            args.push("-t".to_string());
-            args.push(target_window.label());
-        }
-        None => args.push("-a".to_string()),
-    }
-    args.push("-F".to_string());
-    args.push(fmt.to_string());
-    args
-}
-
 fn is_control_transport_error(err: &PollingError) -> bool {
     match err {
         PollingError::Command(message) => {
@@ -353,23 +319,5 @@ mod tests {
             command_line(&args),
             "\"display-message\" \"-p\" \"a b; c \\\"d\\\" \\\\ e\""
         );
-    }
-
-    #[test]
-    fn control_list_panes_args_preserve_all_sessions_contract() {
-        let args = list_panes_args("fmt", None);
-        assert_eq!(args, vec!["list-panes", "-a", "-F", "fmt"]);
-    }
-
-    #[test]
-    fn control_list_panes_args_target_current_window_when_requested() {
-        let args = list_panes_args(
-            "fmt",
-            Some(&WindowTarget {
-                session_name: "qmonster".into(),
-                window_index: "0".into(),
-            }),
-        );
-        assert_eq!(args, vec!["list-panes", "-t", "qmonster:0", "-F", "fmt"]);
     }
 }
