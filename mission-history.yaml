@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.53 Codex quota remaining inversion."
+  mission_title: "Qmonster v1.16.54 — TUI runtime-refresh and system-notice clear fixes."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 135
-  latest_version: "1.16.53"
+  total_revisions: 136
+  latest_version: "1.16.54"
 
 timeline:
   - change_id: "initial"
@@ -12053,9 +12053,94 @@ timeline:
       - "Complete npm registry publication after `npm adduser` or token configuration."
       - "Continue Phase C with C3 review-tier profiles."
 
+  - change_id: "qmonster-v1.16.54-tui-keyboard-regression-fixes"
+    semantic_version: "1.16.54"
+    change_sequence: 136
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator report: pressing `u` made the screen flicker continuously"
+      - "Operator report: pressing `c` no longer cleared Good system notices"
+      - "Operator release request: tag and publish npm with package semver aligned to the git tag"
+    change_type: "fix"
+    motivation_type: "operator ergonomics"
+    persistence: "permanent"
+    intent: >
+      Stabilize TUI keyboard behavior after runtime-refresh pressure work and
+      align npm package semver with the ledger tag for publication.
+    intent_ko: >
+      runtime-refresh pressure 작업 이후 TUI 키보드 동작을 안정화하고,
+      npm package semver를 git ledger tag와 맞춰 publish한다.
+    decision: >
+      Merge runtime-refresh one-shot captures before the live pane tail so
+      provider metrics remain parseable but prompt-ready cursor detection uses
+      the real post-refresh tail. Handle `c` / `C` before dashboard selection
+      dispatch so system notices are cleared globally regardless of focus, and
+      test that Good system notices are cleared. Update npm package semver to
+      1.16.54 to match the `v1.16.54` tag semver.
+    decision_ko: >
+      runtime-refresh one-shot capture를 live pane tail 앞에 병합해 provider
+      metric은 유지하되 prompt-ready cursor detection은 실제 post-refresh
+      tail을 보게 한다. `c` / `C`는 dashboard selection dispatch보다 먼저
+      처리해 focus와 무관하게 system notice를 전역 clear하고, Good system
+      notice도 clear되는 테스트를 추가한다. npm package semver는
+      `v1.16.54` tag와 맞춰 1.16.54로 올린다.
+    triggered_by: "The operator reported `u` flicker and `c` clear regression, then requested commit, push, tag, and npm publish with tag-aligned semver."
+    issue_or_context: >
+      Claude runtime refresh captured transient fullscreen provider surfaces
+      and appended them after the live tail. That made adapter cursor checks
+      see the captured informational surface as the newest content, which
+      could toggle pane state around the post-refresh prompt. The system
+      notice clear path was still present, but moving it before dashboard
+      selection handling makes the global command explicit and resilient.
+    changes:
+      added:
+        - "Regression test that runtime-refresh overlays preserve the live Claude idle cursor"
+        - "Regression test that Good system notices are removed by `clear_notices`"
+      modified:
+        - "`merge_runtime_refresh_tail` now keeps live pane tail last"
+        - "`c` and `C` are handled before dashboard selection dispatch"
+        - "package.json npm semver is now 1.16.54"
+        - "README, VERSION.md, docs/ai, config example, and mission ledger updated for v1.16.54"
+      removed: []
+    changed_sections:
+      - "src/app/event_loop.rs"
+      - "src/app/tui_loop.rs"
+      - "src/app/dashboard_runtime.rs"
+      - "tests/event_loop_integration.rs"
+      - "package.json"
+      - "README.md"
+      - "VERSION.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/WORKFLOWS.md"
+      - "config/qmonster.example.toml"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Pressing `u` on a Claude pane no longer hides the live prompt cursor behind a one-shot runtime capture"
+        - "Pressing `c` clears Good and Warning System Notice rows from the live dashboard"
+        - "npm package semver matches git tag semver as `qmonster@1.16.54` / `v1.16.54`"
+      modified:
+        - "all-target test count increases to 618"
+      removed: []
+    impact_scope:
+      runtime: "TUI key handling, Claude runtime-refresh overlay parsing, system notices"
+      tests: "618 total passed — 557 lib + 0 main + 0 qmonster-tmux-parity + 38 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 136); meta bump"
+      npm: "package.json version set to 1.16.54; publish attempted from the tagged release tree"
+      review_gate: "cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and npm pack --dry-run"
+      follow_up_carryover: "Continue Phase C with C3 review-tier profiles."
+    breaking: false
+    risk: "low — narrow TUI key handling and parser-overlay ordering changes, with direct regression tests."
+    related_commits: []
+    follow_up:
+      - "Continue Phase C with C3 review-tier profiles."
+
 evolution_summary:
-  current_phase: "v1.16.53 Codex quota remaining inversion — Codex bottom-status 5h/weekly remaining percentages are displayed as Qmonster pressure."
-  next_phase: "Complete npm registry publication after npm auth, then continue Phase C with C3 review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.54 TUI runtime-refresh and system-notice clear fixes — `u` keeps live cursor detection stable and `c` clears Good/Warning system notices."
+  next_phase: "Continue Phase C with C3 review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

@@ -112,13 +112,17 @@ mod tests {
     use crate::domain::origin::SourceKind;
     use crate::domain::recommendation::Severity;
 
-    fn notice(title: &str) -> SystemNotice {
+    fn notice_with_severity(title: &str, severity: Severity) -> SystemNotice {
         SystemNotice {
             title: title.into(),
             body: "body".into(),
-            severity: Severity::Warning,
+            severity,
             source_kind: SourceKind::ProjectCanonical,
         }
+    }
+
+    fn notice(title: &str) -> SystemNotice {
+        notice_with_severity(title, Severity::Warning)
     }
 
     #[test]
@@ -139,6 +143,23 @@ mod tests {
         assert_eq!(state.alert_state.selected(), Some(0));
 
         state.clear_notices(now);
+        assert_eq!(state.alert_state.selected(), None);
+    }
+
+    #[test]
+    fn clear_notices_removes_good_system_notices_too() {
+        let now = Instant::now();
+        let mut state = DashboardRuntimeState::new(
+            vec![
+                notice_with_severity("runtime refresh sent", Severity::Good),
+                notice_with_severity("tmux source failed", Severity::Warning),
+            ],
+            now,
+        );
+
+        state.clear_notices(now);
+
+        assert!(state.notices.is_empty());
         assert_eq!(state.alert_state.selected(), None);
     }
 }

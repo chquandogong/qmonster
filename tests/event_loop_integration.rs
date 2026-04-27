@@ -1659,6 +1659,35 @@ fn runtime_refresh_tail_overlay_is_parsed_once_then_consumed() {
 }
 
 #[test]
+fn runtime_refresh_tail_overlay_preserves_live_idle_cursor() {
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%9",
+            "claude:1:main",
+            "claude",
+            "previous output\n\n❯ ",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+    ctx.runtime_refresh_tail_overlays.insert(
+        "%9".into(),
+        "Context Usage\n\nOpus 4.7 (1M context)\n143.3k/1m tokens (14%)".into(),
+    );
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+
+    assert_eq!(
+        reports[0].idle_state,
+        Some(IdleCause::WorkComplete),
+        "informational runtime captures must not hide the live prompt-ready cursor"
+    );
+    assert!((reports[0].signals.context_pressure.as_ref().unwrap().value - 0.14).abs() < 1e-6);
+}
+
+#[test]
 fn claude_pressure_metrics_survive_separate_runtime_surfaces() {
     let source = FixturePaneSource {
         panes: vec![pane(

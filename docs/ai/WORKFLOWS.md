@@ -115,8 +115,9 @@ Re-run the planning loop when any of the following happen:
 
 ## 7. Release and npm package routine
 
-1. Keep the mission ledger version (`v1.x.y`) and npm package version
-   (`package.json` semver) distinct; see `VERSION.md`.
+1. Keep the mission ledger tag (`v1.x.y`) and npm package version
+   (`package.json` semver `1.x.y`) aligned unless a release explicitly
+   documents a temporary divergence; see `VERSION.md`.
 2. Before publishing, run the normal Rust gates plus `npm pack --dry-run`.
 3. Commit and push `main`, then create and push an annotated ledger tag
    such as `v1.16.51`.

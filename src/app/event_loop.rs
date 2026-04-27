@@ -221,7 +221,10 @@ fn merge_runtime_refresh_tail(live_tail: &str, captured_tail: &str) -> String {
     if live_tail.trim().is_empty() {
         return captured_tail.to_string();
     }
-    format!("{live_tail}\n{captured_tail}")
+    // Runtime refresh captures provider facts from transient fullscreen
+    // surfaces. Keep the live pane tail last so prompt-ready cursor
+    // detection still reflects the pane's real post-refresh state.
+    format!("{captured_tail}\n{live_tail}")
 }
 
 fn apply_pressure_metric_cache(

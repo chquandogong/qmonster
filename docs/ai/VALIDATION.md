@@ -12,7 +12,7 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-27): `cargo fmt --check`,
-`git diff --check`, `cargo test --all-targets` (617 tests),
+`git diff --check`, `cargo test --all-targets` (618 tests),
 `cargo clippy --all-targets -- -D warnings`, `cargo build --release`,
 `npm pack --dry-run`, default `--once` smoke showing split provider quota
 output, live TUI confirmation for Claude CTX/quota visibility and Codex
@@ -20,9 +20,7 @@ remaining-quota inversion, control-mode attach diagnostic and
 legacy-fallback unit coverage, auto-source fallback unit coverage, and
 `scripts/verify-shared.sh` pass; official `mission-spec validate .` is
 still unavailable locally because `mission-spec` is not installed, so
-`verify-shared.sh` used its lite ledger-structure fallback. npm registry
-publication remains blocked locally by `ENEEDAUTH` until this machine is
-logged in.
+`verify-shared.sh` used its lite ledger-structure fallback.
 
 ## Planning-phase gates (Phase 0)
 

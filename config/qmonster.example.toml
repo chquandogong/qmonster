@@ -1,5 +1,5 @@
 # qmonster.example.toml
-# Version: v0.5.0
+# Version: v1.16.54
 # Date: 2026-04-27
 # Runtime-consumed example config for the current binary. The standard
 # operator path is `~/.qmonster/config/qmonster.toml`; `scripts/run-qmonster.sh`

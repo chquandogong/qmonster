@@ -187,6 +187,11 @@ where
                             }
 
                             let now = Instant::now();
+                            if matches!(k.code, KeyCode::Char('c') | KeyCode::Char('C')) {
+                                dashboard.clear_notices(now);
+                                continue;
+                            }
+
                             if handle_dashboard_selection_key(
                                 DashboardSelectionKeyView {
                                     focus,
@@ -233,9 +238,6 @@ where
                                         &dashboard.notices,
                                     );
                                     dashboard.push_notice(notice, Instant::now());
-                                }
-                                KeyCode::Char('c') => {
-                                    dashboard.clear_notices(Instant::now());
                                 }
                                 KeyCode::Char('u') if focus == FocusedPanel::Panes => {
                                     let selected = dashboard
