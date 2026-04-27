@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.1 Phase-C C1 target-picker extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.2 Phase-C C1 runtime-refresh extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -42,7 +42,7 @@ checkpoint, retention, and durable audit storage.
 ```
 src/
   main.rs      # CLI entry + current TUI event loop (still too large)
-  app/         # bootstrap, config+safety-precedence, event loop, keymap + target picker helpers, effect gate
+  app/         # bootstrap, config+safety-precedence, event loop, keymap/target-picker/runtime-refresh helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # polling first; control-mode-capable PaneSource trait
   adapters/    # per-provider tail parsers (no identity inference)
@@ -59,8 +59,10 @@ The long-term target is still a thinner `src/main.rs`. v1.16.0 begins
 that work by moving dashboard focus, selection, and list hit-testing
 helpers into `app::keymap`; v1.16.1 moves the session/window target
 picker model, preview, choice application, and row hit-test logic into
-`app::target_picker`. The current implementation still keeps the live TUI
-event loop and modal orchestration in `main.rs`.
+`app::target_picker`; v1.16.2 moves runtime-refresh command selection,
+cycling, send/capture, and operator-facing label helpers into
+`app::runtime_refresh`. The current implementation still keeps the live
+TUI event loop and modal orchestration in `main.rs`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

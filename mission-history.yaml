@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.1 Phase-C C1 target-picker extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.2 Phase-C C1 runtime-refresh extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 83
-  latest_version: "1.16.1"
+  total_revisions: 84
+  latest_version: "1.16.2"
 
 timeline:
   - change_id: "initial"
@@ -8341,8 +8341,83 @@ timeline:
     follow_up:
       - "Continue C1: split additional runtime-refresh or alert-state helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.2-phase-c-c1-runtime-refresh-extraction"
+    semantic_version: "1.16.2"
+    change_sequence: 84
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: tag pushed versions and continue Phase C"
+    change_type: "architecture/refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue C1 by moving provider runtime-refresh support out of
+      `src/main.rs` while preserving the `u` key dispatch and runtime
+      behavior.
+    intent_ko: >
+      `u` key dispatch와 런타임 동작은 유지하면서 provider runtime-refresh
+      support를 `src/main.rs` 밖으로 옮겨 C1을 계속 진행한다.
+    decision: >
+      Add `src/app/runtime_refresh.rs` for provider command lists,
+      active-safe classification, one-at-a-time cycling, send/capture
+      execution, and audit/notice labels. Keep the high-level TUI key
+      handler, selected-pane lookup, audit insertion, and notice routing
+      in `src/main.rs`.
+    decision_ko: >
+      `src/app/runtime_refresh.rs`를 추가해 provider command list,
+      active-safe classification, one-at-a-time cycling, send/capture
+      execution, audit/notice label을 담당하게 한다. high-level TUI key
+      handler, selected-pane lookup, audit insertion, notice routing은
+      `src/main.rs`에 유지한다.
+    triggered_by: "Continuation after v1.16.1 Phase C C1 target-picker extraction."
+    issue_or_context: >
+      Runtime-refresh command selection and send/capture mechanics were a
+      cohesive helper cluster inside `main.rs`; moving them isolates the
+      provider slash-command policy from the event loop before any tmux
+      control-mode work.
+    changes:
+      added:
+        - "src/app/runtime_refresh.rs with runtime-refresh command, cycling, send/capture, and label helpers"
+      modified:
+        - "src/app/mod.rs exports runtime_refresh"
+        - "src/main.rs imports runtime_refresh helpers and removes inline runtime-refresh support code"
+        - "Runtime-refresh unit tests moved from main.rs to app::runtime_refresh"
+        - "README / PROJECT_BRIEF / ARCHITECTURE / mission ledger updated for v1.16.2 Phase C C1"
+      removed:
+        - "inline runtime-refresh helper functions and RecordingRefreshSource test fixture from src/main.rs"
+    changed_sections:
+      - "src/app/runtime_refresh.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Third Phase C C1 code slice exists outside main.rs"
+      modified:
+        - "main.rs line count drops from 2768 to 2361 after extraction"
+      removed: []
+    impact_scope:
+      code: "refactor only; no intended runtime behavior change"
+      tests: "526 total — 460 lib + 6 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (no net count change vs v1.16.1)"
+      ledger: "1 new timeline entry (sequence 84); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with further main.rs splits before control-mode adapter work."
+    breaking: false
+    risk: "low to moderate — mechanical extraction of provider command-send helpers; existing tests moved with the code and event-loop integration tests remain green."
+    related_commits: []
+    related_decisions:
+      - "Decision: move runtime-refresh support as the third C1 slice while leaving the TUI event handler in main.rs."
+    snapshot_after: ""
+    follow_up:
+      - "Continue C1: split alert-state helper cluster or pane-state helper cluster from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.1 Phase-C C1 target-picker extraction — main.rs decomposition now has keymap and target_picker helper modules."
+  current_phase: "v1.16.2 Phase-C C1 runtime-refresh extraction — main.rs decomposition now has keymap, target_picker, and runtime_refresh helper modules."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
