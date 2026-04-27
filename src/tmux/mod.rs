@@ -1,4 +1,5 @@
 pub(crate) mod commands;
+pub(crate) mod control_client;
 pub mod control_mode;
 pub(crate) mod control_process;
 pub(crate) mod control_protocol;

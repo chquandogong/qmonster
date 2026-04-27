@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.43 control-mode attach contract)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.44 control-mode client boundary)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -149,6 +149,9 @@ v1.16.42 moves `tmux -C attach-session` process ownership into
 match the earlier polling CLI boundary split.
 v1.16.43 locks that attach command's argv contract with a unit test so
 future refactors cannot silently drift from tmux control-mode attach.
+v1.16.44 moves the control-mode command client and reconnect helper into
+`src/tmux/control_client.rs`, so `control_mode.rs` owns the PaneSource
+adapter shape while process and client responsibilities remain separate.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
