@@ -121,11 +121,20 @@ fn code_exploration(
     if !matches!(id.identity.role, Role::Main | Role::Review) {
         return None;
     }
+    // R1 cleanup: drop the bare `output_chars >= 1500` fallback. The
+    // 2026-04-28 live audit (8 panes / 2 windows) showed every Main
+    // pane was tripping the advisory just because its captured tail
+    // was longer than 1500 chars — a trivially-met bar on any active
+    // CLI. Same v1.13.0 anti-pattern we already removed for log_storm
+    // and verbose_answer: a "lots of output" proxy that does not
+    // survive contact with real fixtures. Real code-exploration
+    // semantics (repeated symbol/file lookups, repo grep) need either
+    // the future `TaskType::CodeExploration` adapter signal or the
+    // already-narrowed `verbose_answer` hedge phrases.
     let triggers_fired = matches!(
         signals.task_type,
         crate::domain::signal::TaskType::CodeExploration
-    ) || signals.verbose_answer
-        || signals.output_chars >= 1500;
+    ) || signals.verbose_answer;
     if !triggers_fired {
         return None;
     }
@@ -803,6 +812,29 @@ mod tests {
         assert!(
             recs.iter()
                 .any(|r| r.action == "code-exploration: graph/symbol")
+        );
+    }
+
+    #[test]
+    fn code_exploration_does_not_fire_on_large_output_alone() {
+        // R1 regression: a long captured tail on a healthy Main pane
+        // is not by itself evidence of code exploration. Without an
+        // explicit verbose hedge phrase or a `TaskType::CodeExploration`
+        // signal, the advisory must stay silent — the 2026-04-28 live
+        // audit showed every active Main pane was tripping the rule
+        // through the 1500-char fallback alone.
+        let id = id_high(Role::Main);
+        let s = SignalSet {
+            output_chars: 50_000,
+            verbose_answer: false,
+            ..SignalSet::default()
+        };
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action == "code-exploration: graph/symbol"),
+            "code-exploration must not fire on output volume alone"
         );
     }
 

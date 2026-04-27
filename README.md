@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: npm package `1.16.55`; current mission ledger `v1.16.55`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.16.56`; current mission ledger `v1.16.56`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,30 +31,37 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current line: `v1.16.55` completes Phase C C3 by adding the named
-review-tier profile recommendations for Codex and Gemini review panes:
-`codex-review` and `gemini-policy-review`. Phase C C2 remains complete:
-`[tmux] source = "auto"` prefers control-mode and falls back to polling at
-startup when attach is unavailable.
+Current line: `v1.16.56` narrows the `code-exploration` advisory to drop
+the bare `output_chars >= 1500` fallback that was firing on every
+healthy Main pane in the 2026-04-28 live audit (same v1.13.0
+anti-pattern that was already removed for `log_storm` and
+`verbose_answer`). The advisory now requires either a
+`TaskType::CodeExploration` adapter signal or a narrowed
+`verbose_answer` hedge phrase; a new regression test locks the rule
+silent on output volume alone. `v1.16.55` completed Phase C C3 by
+adding the named review-tier profile recommendations for Codex and
+Gemini review panes: `codex-review` and `gemini-policy-review`. Phase
+C C2 remains complete: `[tmux] source = "auto"` prefers control-mode
+and falls back to polling at startup when attach is unavailable.
 
-| Area | Status | Notes |
-| --- | --- | --- |
-| Phases 0-5 | Shipped | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete. |
-| Runtime observability | Shipped | Pane state, command row, provider facts, copyable `run:` commands, security posture badges, cost/context/quota gradients, and settings overlay are live. |
-| Phase B visibility | Complete | Standard config/pricing paths, command row, Codex in/out token detail, opt-in security advisories, quieter concurrent-work warnings, and Phase-B docs consistency are closed. |
-| Phase C C1 | Complete | `src/main.rs` was split into app modules through `src/app/tui_loop.rs`; main is now a thin CLI/startup/TUI wrapper. |
-| Phase C C2 | Complete | `PaneSource` supports polling and control-mode; auto source now tries control-mode first with polling fallback. |
-| Phase C C3 | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled profile payloads. |
+| Area                  | Status   | Notes                                                                                                                                                                         |
+| --------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phases 0-5            | Shipped  | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete.                                                |
+| Runtime observability | Shipped  | Pane state, command row, provider facts, copyable `run:` commands, security posture badges, cost/context/quota gradients, and settings overlay are live.                      |
+| Phase B visibility    | Complete | Standard config/pricing paths, command row, Codex in/out token detail, opt-in security advisories, quieter concurrent-work warnings, and Phase-B docs consistency are closed. |
+| Phase C C1            | Complete | `src/main.rs` was split into app modules through `src/app/tui_loop.rs`; main is now a thin CLI/startup/TUI wrapper.                                                           |
+| Phase C C2            | Complete | `PaneSource` supports polling and control-mode; auto source now tries control-mode first with polling fallback.                                                               |
+| Phase C C3            | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled profile payloads.                                      |
 
 ### Current Metric Contracts
 
-| Metric | Claude | Codex | Gemini |
-| --- | --- | --- | --- |
-| CTX | `/context` | bottom status line | status table `context` |
-| QUOTA 5H | `/usage` Current session | bottom status `5h` remaining, inverted to pressure | n/a |
-| QUOTA WEEK | `/usage` Current week (all models) | bottom status `weekly` remaining, inverted to pressure | n/a |
-| QUOTA | n/a | n/a | single quota surface |
-| COST | unset until provider exposes/price config supports it | pricing table + token usage | unset today |
+| Metric     | Claude                                                | Codex                                                  | Gemini                 |
+| ---------- | ----------------------------------------------------- | ------------------------------------------------------ | ---------------------- |
+| CTX        | `/context`                                            | bottom status line                                     | status table `context` |
+| QUOTA 5H   | `/usage` Current session                              | bottom status `5h` remaining, inverted to pressure     | n/a                    |
+| QUOTA WEEK | `/usage` Current week (all models)                    | bottom status `weekly` remaining, inverted to pressure | n/a                    |
+| QUOTA      | n/a                                                   | n/a                                                    | single quota surface   |
+| COST       | unset until provider exposes/price config supports it | pricing table + token usage                            | unset today            |
 
 The `S` settings overlay mirrors that contract: cost/context keep
 default + provider rows, while quota has default, `claude 5h`,

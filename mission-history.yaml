@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.16.55 — Review-tier provider profiles."
+  mission_title: "Qmonster v1.16.56 — Narrow code-exploration advisory triggers."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 137
-  latest_version: "1.16.55"
+  total_revisions: 138
+  latest_version: "1.16.56"
 
 timeline:
   - change_id: "initial"
@@ -10036,7 +10036,7 @@ timeline:
     done_when_delta:
       added:
         - "First Phase C C2 code slice exists"
-        - "Operator can opt into tmux control-mode transport via [tmux] source = \"control_mode\""
+        - 'Operator can opt into tmux control-mode transport via [tmux] source = "control_mode"'
         - "Control-mode parser and command quoting are covered by unit tests"
       modified:
         - "startup runtime source type changes from PollingSource to TmuxSource"
@@ -10255,7 +10255,7 @@ timeline:
       review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
       follow_up_carryover: "Continue C2 with control-mode hardening informed by repeated live parity runs."
     breaking: false
-    risk: "low — helper is additive and does not affect default `[tmux] source = \"polling\"`."
+    risk: 'low — helper is additive and does not affect default `[tmux] source = "polling"`.'
     related_commits: []
     follow_up:
       - "Continue C2: harden control-mode behavior around target-scoped parity and lifecycle events before any default-source switch."
@@ -10321,7 +10321,7 @@ timeline:
       review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh, ./scripts/check-tmux-source-parity.sh --all-targets, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
       follow_up_carryover: "Continue C2 with additional control-mode hardening now that aggregate and target-scoped parity can be smoke-tested."
     breaking: false
-    risk: "low — helper is additive and default `[tmux] source = \"polling\"` is unchanged."
+    risk: 'low — helper is additive and default `[tmux] source = "polling"` is unchanged.'
     related_commits: []
     follow_up:
       - "Continue C2: harden control-mode lifecycle behavior under repeated all-target parity runs."
@@ -10793,7 +10793,7 @@ timeline:
       added:
         - "polling transport shells out through a single helper"
         - "stderr trimming contract is unit-tested"
-        - "default remains `[tmux] source = \"polling\"`"
+        - 'default remains `[tmux] source = "polling"`'
       modified:
         - "all-target test count increases to 591"
       removed:
@@ -11762,9 +11762,9 @@ timeline:
         - "unit coverage for auto success, auto fallback, and strict explicit control_mode"
         - ".docs/codex implementation note for C2 completion"
       modified:
-        - "`Cargo.toml` sets `default-run = \"qmonster\"` so documented `cargo run -- --once` smoke commands target the main binary despite the parity helper binary"
+        - '`Cargo.toml` sets `default-run = "qmonster"` so documented `cargo run -- --once` smoke commands target the main binary despite the parity helper binary'
         - "`TmuxConfig::default()` now uses `Auto`"
-        - "`config/qmonster.example.toml` now sets `source = \"auto\"`"
+        - '`config/qmonster.example.toml` now sets `source = "auto"`'
         - "`--once` prints the active transport, not only the configured mode"
         - "startup carries auto fallback notices into the dashboard/startup output"
         - "README / docs/ai / mission ledger updated for v1.16.50 and C2 completion"
@@ -12219,9 +12219,92 @@ timeline:
     follow_up:
       - "Keep D1/D2/D3 deferred unless the operator explicitly prioritizes long-horizon work."
 
+  - change_id: "v1.16.56-code-exploration-narrowing"
+    semantic_version: "1.16.56"
+    change_sequence: 138
+    date: "2026-04-28"
+    author: "Claude (Opus 4.7)"
+    contributors:
+      - "Operator directive: minor cleanup (R1 noise removal)"
+    change_type: "fix"
+    motivation_type: "false-positive cleanup"
+    persistence: "permanent"
+    intent: >
+      Remove the bare `output_chars >= 1500` fallback from the
+      code-exploration advisory so it stops firing on every healthy
+      Main pane.
+    intent_ko: >
+      `code-exploration` advisory에서 `output_chars >= 1500` 폴백을
+      제거하여 모든 건강한 Main pane에서 무조건 발화하던 문제를 닫는다.
+    decision: >
+      Drop the third trigger condition (`signals.output_chars >= 1500`)
+      from `code_exploration` in `policy/rules/advisories.rs`. The
+      remaining triggers are `TaskType::CodeExploration` (currently a
+      defensive dead branch — adapter classifier returns `Unknown`
+      after the v1.14.0 honest-default narrowing) and the already-tight
+      `verbose_answer` (which requires explicit hedge phrases from
+      `VERBOSE_MARKERS`). A new regression test
+      `code_exploration_does_not_fire_on_large_output_alone` locks the
+      advisory silent when only `output_chars` is high.
+    decision_ko: >
+      `policy/rules/advisories.rs`의 `code_exploration`에서 세 번째
+      트리거 조건(`signals.output_chars >= 1500`)을 제거한다. 남은 트리거는
+      `TaskType::CodeExploration`(v1.14.0 honest default narrowing 이후
+      adapter classifier가 `Unknown`만 반환하여 현재는 defensive dead branch)와
+      이미 좁게 정의된 `verbose_answer`(VERBOSE_MARKERS 명시 hedge 구절 필요).
+      신규 회귀 테스트 `code_exploration_does_not_fire_on_large_output_alone`로
+      output_chars만 높을 때 advisory가 silent임을 잠근다.
+    triggered_by: "Live `--once` audit on 2026-04-28 showed all 6 healthy Main panes (mission-spec + qmonster windows) tripping `concern [Heur] prefer graph/symbol navigation` advisory through the 1500-char fallback alone."
+    issue_or_context: >
+      The fallback was the same architectural anti-pattern that v1.13.0
+      already removed for `log_storm` (chars/lines fallback) and
+      `verbose_answer` (lines/long_lines fallback): a "lots of output"
+      proxy that does not survive contact with real CLIs because any
+      active session trivially exceeds 1500 chars in its captured tail.
+      Live audit on 2026-04-28 measured 6/6 healthy Main panes firing
+      the advisory through the fallback alone. After this cleanup the
+      live audit shows 0/6, and the actionable cross-pane finding plus
+      the six profile recommendations remain unaffected.
+    changes:
+      added:
+        - "Regression test `code_exploration_does_not_fire_on_large_output_alone` in `src/policy/rules/advisories.rs`"
+      modified:
+        - "`code_exploration` trigger contract in `src/policy/rules/advisories.rs` — drop the bare `output_chars >= 1500` fallback; cite the v1.13.0 anti-pattern in an inline comment"
+        - "README.md, VERSION.md, docs/ai/PROJECT_BRIEF.md, docs/ai/VALIDATION.md, mission.yaml, mission-history.yaml, package.json bumped to v1.16.56"
+      removed: []
+    changed_sections:
+      - "src/policy/rules/advisories.rs"
+      - "README.md"
+      - "VERSION.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - "package.json"
+    observable_effects:
+      added:
+        - "Live `--once` advisory volume on healthy Main panes drops by ~43% (6 false-positive `concern [Heur] prefer graph/symbol` recs removed)"
+      modified:
+        - "all-target test count increases to 624 (562 lib + 38 event_loop + 18 false_positive + 6 idle_state)"
+      removed:
+        - "`code-exploration: graph/symbol` Concern advisory firing on output volume alone"
+    impact_scope:
+      runtime: "Pure policy rule narrowing; no tmux, adapter, storage, or actuation behavior change"
+      tests: "624 total passed — 562 lib + 38 event_loop + 18 false_positive + 6 idle_state"
+      ledger: "1 new timeline entry (sequence 138); meta bump"
+      npm: "package.json version set to 1.16.56"
+      review_gate: "cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and live --once smoke"
+      follow_up_carryover: "Phase C C1/C2/C3 + R1 cleanup are complete. Phase D remains explicitly long-horizon: cross-window/project correlation, identity drift anomaly detection, and precise subagent token accounting."
+    breaking: false
+    risk: "low — narrows an existing Heuristic advisory; cannot create new alerts; existing positive-fire test (`code_exploration_fires_on_verbose_main_role`) still passes because `verbose_answer` remains a trigger."
+    related_commits: []
+    follow_up:
+      - "If a future TaskType::CodeExploration classifier is added, the advisory will fire on it without further changes."
+      - "Phase D1 (cross-window correlation) is the next operator-prioritized work."
+
 evolution_summary:
-  current_phase: "v1.16.55 review-tier provider profiles — `codex-review` and `gemini-policy-review` now fire on healthy review panes."
-  next_phase: "Phase C C1/C2/C3 are complete. Phase D long-horizon work remains deferred: cross-window/project correlation, identity drift anomaly detection, and precise subagent token accounting. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.56 narrows the code-exploration advisory — drops the bare output_chars >= 1500 fallback that was firing on every healthy Main pane, locked by a new regression test."
+  next_phase: "Phase D long-horizon work begins: D1 cross-window/project correlation is the next operator-prioritized slice. D2 identity drift anomaly detection and D3 precise subagent token accounting follow. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

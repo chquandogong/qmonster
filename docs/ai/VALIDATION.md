@@ -1,7 +1,7 @@
 # VALIDATION
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (current implementation validation sync)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-28 (current implementation validation sync)
 
 This doc defines what "good" looks like for Qmonster at each phase, and
 what reviewers (Codex, Gemini, and the human operator) should
@@ -11,14 +11,14 @@ lives in `REVIEW_GUIDE.md`. Every displayed metric must carry a
 Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
-Current local verification (2026-04-27): `cargo fmt --check`,
-`git diff --check`, `cargo test --all-targets` (622 tests),
+Current local verification (2026-04-28): `cargo fmt --check`,
+`git diff --check`, `cargo test --all-targets` (624 tests),
 `cargo clippy --all-targets -- -D warnings`, `npm pack --dry-run`, and
 `scripts/verify-shared.sh` pass. Official `mission-spec validate .` is
 still unavailable locally because `mission-spec` is not installed, so
 `verify-shared.sh` used its lite ledger-structure fallback. The
 control-mode attach diagnostic, legacy fallback, and auto-source fallback
-contracts remain covered by unit tests in the 622-test run.
+contracts remain covered by unit tests in the 624-test run.
 
 ## Planning-phase gates (Phase 0)
 
@@ -248,9 +248,9 @@ profile_lines` in `src/ui/panels.rs`; emits a
       (P5-3 v1.10.0: `PromptSendCompleted` on successful send,
       `PromptSendFailed` on post-confirmation error, `PromptSendBlocked`
       on ObserveOnly accept-block; prose summary `"{pane} {cmd}
-  (verb; ...)"` — no raw bytes per audit-isolation rule.
+(verb; ...)"` — no raw bytes per audit-isolation rule.
       SQLite roundtrip locked by `p5_3_prompt_send_kinds_roundtrip_
-  through_sqlite` test in `src/store/audit.rs`)
+through_sqlite` test in `src/store/audit.rs`)
 - [x] Destructive actions remain outside the automation surface. No
       code path exists for auto `/compact`, `/clear`, `/memory`
       mutation, provider reconfiguration.
