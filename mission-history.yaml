@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.45 current-pane env helper."
+  mission_title: "Qmonster v0.5.0 — v1.16.46 control-mode helper arg guard."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 127
-  latest_version: "1.16.45"
+  total_revisions: 128
+  latest_version: "1.16.46"
 
 timeline:
   - change_id: "initial"
@@ -11434,8 +11434,78 @@ timeline:
     follow_up:
       - "Continue C2: add remaining transport-readiness hardening before any default switch."
 
+  - change_id: "qmonster-v1.16.46-control-mode-helper-arg-guard"
+    semantic_version: "1.16.46"
+    change_sequence: 128
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C separation before C2 default switch and close every work item with commit/push/tag"
+    change_type: "fix"
+    motivation_type: "Phase C C2 operator-helper hardening"
+    persistence: "permanent"
+    intent: >
+      Make the temporary-config control-mode once helper fail early when
+      operators pass arguments that the helper does not support.
+    intent_ko: >
+      운영자가 helper가 지원하지 않는 인자를 넘겼을 때 temporary-config
+      control-mode once helper가 초기에 명확히 실패하도록 한다.
+    decision: >
+      Tighten `scripts/run-qmonster-control-mode-once.sh` argument
+      validation. The helper owns `--config` and `--once`, accepts only
+      optional `--root` / `--set` passthroughs, checks required values for
+      split-form flags, and rejects unsupported flags such as `--target`
+      before building or launching Qmonster.
+    decision_ko: >
+      `scripts/run-qmonster-control-mode-once.sh` 인자 검증을 강화한다.
+      helper가 `--config`와 `--once`를 소유하고, optional `--root` /
+      `--set` passthrough만 허용하며, split-form flag의 required value를
+      검사하고, `--target` 같은 미지원 flag는 Qmonster build/launch 전에
+      거부한다.
+    triggered_by: "Follow-up after a control-mode helper smoke was accidentally invoked with unsupported `--target`."
+    issue_or_context: >
+      The helper previously forwarded arbitrary arguments after its
+      generated `--config` and `--once`, so unsupported arguments failed
+      only after building/running Qmonster. The helper contract should be
+      explicit while C2 remains opt-in.
+    changes:
+      added:
+        - "argument parser in `scripts/run-qmonster-control-mode-once.sh`"
+        - "early error for unsupported helper arguments"
+        - "early error for missing split-form `--root` / `--set` values"
+      modified:
+        - "README / UI_MANUAL / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.46"
+      removed:
+        - "arbitrary passthrough from the control-mode once helper"
+    changed_sections:
+      - "scripts/run-qmonster-control-mode-once.sh"
+      - "README.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "control-mode once helper rejects unsupported arguments before launch"
+        - "helper contract documents `--root` / `--set` as the only passthroughs"
+      modified:
+        - "all-target test count remains 596"
+      removed: []
+    impact_scope:
+      runtime: "operator-helper only — no Rust runtime behavior change"
+      tests: "596 total passed — 536 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; helper syntax and unsupported-argument rejection smoke pass; repeated default and all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 128); meta bump"
+      review_gate: "bash -n scripts/run-qmonster-control-mode-once.sh, unsupported-argument smoke, cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, control-mode once helper smoke, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with remaining transport-readiness hardening before any source default switch."
+    breaking: false
+    risk: "low — narrows helper passthrough to documented flags."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add remaining transport-readiness hardening before any default switch."
+
 evolution_summary:
-  current_phase: "v1.16.45 current-pane env helper — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  current_phase: "v1.16.46 control-mode helper arg guard — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
   next_phase: "Continue Phase C C2 with additional control-mode default-readiness hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

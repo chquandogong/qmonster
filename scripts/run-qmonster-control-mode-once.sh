@@ -3,10 +3,31 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-for arg in "$@"; do
+args=("$@")
+i=0
+while ((i < ${#args[@]})); do
+  arg="${args[$i]}"
   case "$arg" in
     --config | --config=*)
       printf 'qmonster: this helper owns --config; pass --root/--set only\n' >&2
+      exit 2
+      ;;
+    --once)
+      printf 'qmonster: this helper owns --once; pass --root/--set only\n' >&2
+      exit 2
+      ;;
+    --root | --set)
+      if ((i + 1 >= ${#args[@]})); then
+        printf 'qmonster: %s expects a value\n' "$arg" >&2
+        exit 2
+      fi
+      i=$((i + 2))
+      ;;
+    --root=* | --set=*)
+      i=$((i + 1))
+      ;;
+    *)
+      printf 'qmonster: unsupported helper argument %s; pass only --root/--set\n' "$arg" >&2
       exit 2
       ;;
   esac

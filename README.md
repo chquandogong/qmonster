@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.45`; current canonical ledger: `v1.16.45`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.46`; current canonical ledger: `v1.16.46`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -155,6 +155,9 @@ PaneSource adapter surface.
 v1.16.45 extracts `TMUX_PANE` current-pane normalization into
 `src/tmux/targets.rs`, so polling and control-mode share the same
 current-target environment gate.
+v1.16.46 hardens `scripts/run-qmonster-control-mode-once.sh` so the
+temporary-config helper rejects unsupported arguments early and accepts only
+`--root` / `--set` passthroughs.
 
 ## Quick start
 
@@ -202,6 +205,7 @@ cargo run --release
 ./scripts/check-tmux-source-parity.sh --all-targets --strict-title
 
 # C2 operator trial: one control-mode run without editing ~/.qmonster/config/qmonster.toml.
+# The helper owns --config/--once and accepts only optional --root/--set passthroughs.
 ./scripts/run-qmonster-control-mode-once.sh
 
 # Override the storage root (useful for tests / sandbox runs)
