@@ -100,8 +100,9 @@ session:window · Provider role · %pane_id
 - `QUOTA 5H`와 `QUOTA WEEK`는 Claude/Codex 전용 split quota입니다.
   Claude는 `/usage`의 `Current session`을 5시간 한도, `Current week
   (all models)`를 주간 한도로 읽습니다. Codex는 bottom status line의
-  `5h N%`와 `weekly N%`를 같은 의미로 읽습니다. Gemini처럼 provider가
-  단일 quota만 노출하는 경우에는 기존 `QUOTA N%` badge를 사용합니다.
+  `5h N%`와 `weekly N%`를 **남은 quota**로 읽고, Qmonster의 pressure
+  badge에는 `100 - N` 값을 표시합니다. Gemini처럼 provider가 단일 quota만
+  노출하는 경우에는 기존 `QUOTA N%` badge를 사용합니다.
 - **Provider 측의 status surface는 운영자가 보이는 항목을 끌 수 있음**:
   Codex의 `/statusline` 슬래시 명령 ("Configure which items appear in
   the status line")은 bottom status line의 항목(branch / model / input

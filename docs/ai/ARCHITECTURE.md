@@ -354,9 +354,9 @@ Pressure metrics intentionally mirror provider surfaces:
 - `quota_pressure`: provider exposes only one quota surface, currently
   Gemini.
 - `quota_5h_pressure`: Claude `/usage` Current session; Codex bottom
-  status `5h`.
+  status `5h` converted from remaining quota to pressure.
 - `quota_weekly_pressure`: Claude `/usage` Current week (all models);
-  Codex bottom status `weekly`.
+  Codex bottom status `weekly` converted from remaining quota to pressure.
 
 The policy layer keeps these windows distinct so settings and advisory
 actions can pace a rolling 5-hour budget without hiding an exhausted

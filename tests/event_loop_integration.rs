@@ -1369,8 +1369,8 @@ output_per_1m = 10.00
         signals.context_pressure.as_ref().unwrap().source_kind,
         SourceKind::ProviderOfficial
     );
-    assert!((signals.quota_5h_pressure.as_ref().unwrap().value - 0.98).abs() < 1e-6);
-    assert!((signals.quota_weekly_pressure.as_ref().unwrap().value - 0.99).abs() < 1e-6);
+    assert!((signals.quota_5h_pressure.as_ref().unwrap().value - 0.02).abs() < 1e-6);
+    assert!((signals.quota_weekly_pressure.as_ref().unwrap().value - 0.01).abs() < 1e-6);
     assert_eq!(signals.token_count.as_ref().unwrap().value, 1_530_000);
     assert_eq!(signals.model_name.as_ref().unwrap().value, "gpt-5.4");
     let cost = signals.cost_usd.as_ref().unwrap();
@@ -1480,8 +1480,8 @@ output_per_1m = 10.00
         signals.context_pressure.as_ref().unwrap().source_kind,
         SourceKind::ProviderOfficial
     );
-    assert!((signals.quota_5h_pressure.as_ref().unwrap().value - 0.98).abs() < 1e-6);
-    assert!((signals.quota_weekly_pressure.as_ref().unwrap().value - 0.99).abs() < 1e-6);
+    assert!((signals.quota_5h_pressure.as_ref().unwrap().value - 0.02).abs() < 1e-6);
+    assert!((signals.quota_weekly_pressure.as_ref().unwrap().value - 0.01).abs() < 1e-6);
     assert_eq!(signals.token_count.as_ref().unwrap().value, 1_530_000);
     assert_eq!(signals.model_name.as_ref().unwrap().value, "gpt-5.4");
     let cost = signals.cost_usd.as_ref().unwrap();

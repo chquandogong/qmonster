@@ -9,8 +9,8 @@ pub struct CodexAdapter;
 
 struct CodexStatus {
     context_pct: u8,
-    quota_5h_pct: Option<u8>,
-    quota_weekly_pct: Option<u8>,
+    quota_5h_remaining_pct: Option<u8>,
+    quota_weekly_remaining_pct: Option<u8>,
     total_tokens: u64,
     input_tokens: u64,
     output_tokens: u64,
@@ -70,13 +70,16 @@ impl ProviderParser for CodexAdapter {
             .with_confidence(0.95)
             .with_provider(Provider::Codex),
         );
-        set.quota_5h_pressure = status.quota_5h_pct.map(|pct| {
-            MetricValue::new(pct as f32 / 100.0, SourceKind::ProviderOfficial)
+        // Codex bottom status exposes remaining quota (`5h 98%`,
+        // `weekly 99%`). Qmonster's quota metrics are pressure values, so
+        // convert remaining -> used pressure before policy/UI thresholds.
+        set.quota_5h_pressure = status.quota_5h_remaining_pct.map(|pct| {
+            MetricValue::new(remaining_pct_to_pressure(pct), SourceKind::ProviderOfficial)
                 .with_confidence(0.95)
                 .with_provider(Provider::Codex)
         });
-        set.quota_weekly_pressure = status.quota_weekly_pct.map(|pct| {
-            MetricValue::new(pct as f32 / 100.0, SourceKind::ProviderOfficial)
+        set.quota_weekly_pressure = status.quota_weekly_remaining_pct.map(|pct| {
+            MetricValue::new(remaining_pct_to_pressure(pct), SourceKind::ProviderOfficial)
                 .with_confidence(0.95)
                 .with_provider(Provider::Codex)
         });
@@ -240,8 +243,8 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
         }
 
         let mut context_pct: Option<u8> = None;
-        let mut quota_5h_pct: Option<u8> = None;
-        let mut quota_weekly_pct: Option<u8> = None;
+        let mut quota_5h_remaining_pct: Option<u8> = None;
+        let mut quota_weekly_remaining_pct: Option<u8> = None;
         let mut total_tokens: Option<u64> = None;
         let mut input_tokens: Option<u64> = None;
         let mut output_tokens: Option<u64> = None;
@@ -275,16 +278,16 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
                 context_pct = Some(pct);
                 continue;
             }
-            if quota_5h_pct.is_none()
+            if quota_5h_remaining_pct.is_none()
                 && let Some(pct) = parse_named_percent_token(token, "5h")
             {
-                quota_5h_pct = Some(pct);
+                quota_5h_remaining_pct = Some(pct);
                 continue;
             }
-            if quota_weekly_pct.is_none()
+            if quota_weekly_remaining_pct.is_none()
                 && let Some(pct) = parse_named_percent_token(token, "weekly")
             {
-                quota_weekly_pct = Some(pct);
+                quota_weekly_remaining_pct = Some(pct);
                 continue;
             }
             // Token counts (Slice 1)
@@ -331,8 +334,8 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
                 total_tokens: tot,
                 input_tokens: inp,
                 output_tokens: out,
-                quota_5h_pct,
-                quota_weekly_pct,
+                quota_5h_remaining_pct,
+                quota_weekly_remaining_pct,
                 model,
                 worktree_path,
                 git_branch,
@@ -348,6 +351,10 @@ fn parse_named_percent_token(token: &str, label: &str) -> Option<u8> {
     let rest = token.strip_prefix(label)?.trim_start();
     let pct_str = rest.strip_suffix('%')?.trim();
     pct_str.parse::<u8>().ok().filter(|pct| *pct <= 100)
+}
+
+fn remaining_pct_to_pressure(pct: u8) -> f32 {
+    1.0 - (pct as f32 / 100.0)
 }
 
 fn is_plain_identifier(s: &str) -> bool {
@@ -582,14 +589,14 @@ output_per_1m = 10.00
         assert_eq!(cx.source_kind, SourceKind::ProviderOfficial);
 
         let quota_5h = set.quota_5h_pressure.as_ref().expect("5h quota parsed");
-        assert!((quota_5h.value - 0.98).abs() < 0.001);
+        assert!((quota_5h.value - 0.02).abs() < 0.001);
         assert_eq!(quota_5h.source_kind, SourceKind::ProviderOfficial);
 
         let quota_weekly = set
             .quota_weekly_pressure
             .as_ref()
             .expect("weekly quota parsed");
-        assert!((quota_weekly.value - 0.99).abs() < 0.001);
+        assert!((quota_weekly.value - 0.01).abs() < 0.001);
         assert_eq!(quota_weekly.source_kind, SourceKind::ProviderOfficial);
 
         let tokens = set.token_count.as_ref().expect("tokens parsed");

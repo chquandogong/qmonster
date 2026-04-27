@@ -51,8 +51,8 @@ startup when attach is unavailable.
 | Metric | Claude | Codex | Gemini |
 | --- | --- | --- | --- |
 | CTX | `/context` | bottom status line | status table `context` |
-| QUOTA 5H | `/usage` Current session | bottom status `5h` | n/a |
-| QUOTA WEEK | `/usage` Current week (all models) | bottom status `weekly` | n/a |
+| QUOTA 5H | `/usage` Current session | bottom status `5h` remaining, inverted to pressure | n/a |
+| QUOTA WEEK | `/usage` Current week (all models) | bottom status `weekly` remaining, inverted to pressure | n/a |
 | QUOTA | n/a | n/a | single quota surface |
 | COST | unset until provider exposes/price config supports it | pricing table + token usage | unset today |
 

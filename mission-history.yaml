@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.52 Claude live CTX/quota visibility."
+  mission_title: "Qmonster v0.5.0 — v1.16.53 Codex quota remaining inversion."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 134
-  latest_version: "1.16.52"
+  total_revisions: 135
+  latest_version: "1.16.53"
 
 timeline:
   - change_id: "initial"
@@ -11981,8 +11981,80 @@ timeline:
       - "Complete npm registry publication after `npm adduser` or token configuration."
       - "Continue Phase C with C3 review-tier profiles."
 
+  - change_id: "qmonster-v1.16.53-codex-quota-remaining-inversion"
+    semantic_version: "1.16.53"
+    change_sequence: 135
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator correction: Codex QUOTA percentages are remaining quota, not used pressure"
+    change_type: "fix"
+    motivation_type: "operator observability"
+    persistence: "permanent"
+    intent: >
+      Make Codex split quota badges report Qmonster pressure correctly when
+      Codex's bottom status line exposes remaining quota percentages.
+    intent_ko: >
+      Codex bottom status line이 남은 quota percent를 노출할 때 Qmonster의
+      split quota badge가 pressure 값을 올바르게 표시하도록 한다.
+    decision: >
+      Rename the Codex parser state to `quota_5h_remaining_pct` and
+      `quota_weekly_remaining_pct`, convert those values with
+      `remaining_pct_to_pressure` before populating `SignalSet`, and lock
+      the contract in unit and integration tests so `5h 98%` / `weekly
+      99%` become pressure `0.02` / `0.01`.
+    decision_ko: >
+      Codex parser 상태를 `quota_5h_remaining_pct`와
+      `quota_weekly_remaining_pct`로 명명하고, `SignalSet`에 넣기 전에
+      `remaining_pct_to_pressure`로 변환한다. unit/integration test는
+      `5h 98%` / `weekly 99%`가 pressure `0.02` / `0.01`이 되는 계약을
+      고정한다.
+    triggered_by: "The operator clarified that Codex QUOTA is remaining quota, not used quota."
+    issue_or_context: >
+      v1.16.51 split the Codex quota windows but treated the raw bottom
+      status percentages as already-used pressure. That inverted the
+      operator-facing meaning: a healthy `5h 98%` remaining surface showed
+      as high pressure instead of 2% pressure.
+    changes:
+      added:
+        - "`remaining_pct_to_pressure` helper for Codex quota conversion"
+      modified:
+        - "Codex split quota parser fields now say remaining explicitly"
+        - "Codex `quota_5h_pressure` / `quota_weekly_pressure` are inverted from remaining quota before UI/policy use"
+        - "Codex unit and event-loop integration expectations now assert 98% remaining => 2% pressure"
+        - "README, VERSION.md, docs/ai, and mission ledger updated for v1.16.53 semantics"
+      removed: []
+    changed_sections:
+      - "src/adapters/codex.rs"
+      - "tests/event_loop_integration.rs"
+      - "README.md"
+      - "VERSION.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Live qmonster:0 Codex row shows QUOTA 5H and QUOTA WEEK as inverted pressure values"
+      modified:
+        - "all-target test count remains 617"
+      removed: []
+    impact_scope:
+      runtime: "Codex split quota parsing, pressure badges, and quota threshold inputs"
+      tests: "617 total passed — 556 lib + 0 main + 0 qmonster-tmux-parity + 37 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 135); meta bump"
+      npm: "`npm view qmonster version` returns E404 (name currently unclaimed); `npm pack --dry-run` passes for qmonster@0.5.0; `npm publish --access public` is blocked locally by ENEEDAUTH because this machine is not logged in to npm"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, npm pack --dry-run, `--once` smoke, and live TUI confirmation pass."
+      follow_up_carryover: "Complete npm registry publication after npm auth; continue Phase C with C3 review-tier profiles."
+    breaking: false
+    risk: "low — limited to Codex quota interpretation and corresponding docs/tests."
+    related_commits: []
+    follow_up:
+      - "Complete npm registry publication after `npm adduser` or token configuration."
+      - "Continue Phase C with C3 review-tier profiles."
+
 evolution_summary:
-  current_phase: "v1.16.52 Claude live CTX/quota visibility — live Claude runtime refresh shows CTX, QUOTA 5H, and QUOTA WEEK together."
+  current_phase: "v1.16.53 Codex quota remaining inversion — Codex bottom-status 5h/weekly remaining percentages are displayed as Qmonster pressure."
   next_phase: "Complete npm registry publication after npm auth, then continue Phase C with C3 review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
