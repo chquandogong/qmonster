@@ -12822,12 +12822,32 @@ timeline:
         - "`PolicyGates.identity_drift_findings: bool` plumbed through `from_config_and_identity`"
         - "Seven unit tests in `policy/rules/identity_drift.rs` covering positive provider drift, positive worktree drift, simultaneous drift, gate-disabled silence, no-drift baseline, Unknown→known catch-up, and empty→present path catch-up"
         - "Two integration tests in `tests/event_loop_integration.rs` walking the full pipeline through three polls (baseline → drift → dedup) plus a default-config silence test"
+        - "`is_provider_model_token`, `parse_reasoning_effort_token`, and `parse_codex_model_status_token` helper functions in `src/adapters/codex.rs` (BUNDLED scope-leak — see `bundled_out_of_scope` below)"
       modified:
         - "`event_loop.rs` evicts `identity_history` + per-pane `reported_drifts` keys on `BecameDead`/`Reappeared`; computes drift findings before pushing the report"
         - "`policy/rules/mod.rs` exposes the new `identity_drift` module"
         - "`docs/ai/{ARCHITECTURE,PROJECT_BRIEF,VALIDATION}.md`, `README.md`, `VERSION.md`, `package.json`, `mission.yaml`, `mission-history.yaml`"
+        - "`src/adapters/codex.rs` parse_codex_status_line + parse_codex_welcome_model now read reasoning_effort directly from the status-line model token via the new helpers, falling back to the existing `parse_codex_reasoning_effort` only when the status-line token does not carry the effort suffix (BUNDLED scope-leak — see `bundled_out_of_scope` below)"
       removed:
         - "Anomaly detection on pane identity drift removed from `docs/ai/ARCHITECTURE.md` deferred list"
+    bundled_out_of_scope:
+      file: "src/adapters/codex.rs"
+      summary: >
+        `git add -A` on the v1.18.0 staging step picked up a Codex
+        adapter helper-extraction refactor (`is_provider_model_token`,
+        `parse_reasoning_effort_token`, `parse_codex_model_status_token`)
+        that was already present in the working tree from earlier
+        operator activity. The refactor is functionally an
+        improvement — it pulls reasoning_effort directly from the
+        status-line model token instead of doing a second tail scan —
+        and the existing v1.17.x test suite continues to pass with
+        the new code path. Per the operator's "option C" direction
+        (2026-04-28), the refactor is documented here rather than
+        split out into a separate commit so the tag history stays
+        intact and no destructive `git reset` is required. Future
+        slices that touch Codex parsing should treat v1.18.0 as the
+        baseline that already contains these three helpers.
+      verification: "All 646 tests pass with the bundled helpers in place; clippy + fmt + verify-shared all clean. Behavior change is limited to picking up reasoning_effort from one extra tail line that previously required a second `parse_codex_reasoning_effort` scan."
     changed_sections:
       - "src/policy/rules/identity_drift.rs"
       - "src/policy/rules/mod.rs"
@@ -12837,6 +12857,7 @@ timeline:
       - "src/policy/rules/auto_memory.rs"
       - "src/policy/rules/concurrent.rs"
       - "src/policy/rules/profiles.rs"
+      - "src/adapters/codex.rs"
       - "src/app/bootstrap.rs"
       - "src/app/event_loop.rs"
       - "src/app/config.rs"
