@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.33 control-mode protocol boundary."
+  mission_title: "Qmonster v0.5.0 — v1.16.34 volatile-title parity handling."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 115
-  latest_version: "1.16.33"
+  total_revisions: 116
+  latest_version: "1.16.34"
 
 timeline:
   - change_id: "initial"
@@ -10598,8 +10598,75 @@ timeline:
     follow_up:
       - "Continue C2: add focused lifecycle/reconnect tests around the process client boundary."
 
+  - change_id: "qmonster-v1.16.34-volatile-title-parity-handling"
+    semantic_version: "1.16.34"
+    change_sequence: 116
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: keep progressing C2 and close each work item with commit/push/tag"
+    change_type: "fix"
+    motivation_type: "Phase C C2 live parity false-positive reduction"
+    persistence: "permanent"
+    intent: >
+      Keep live polling-vs-control-mode parity useful when animated pane
+      titles change between sequential source captures.
+    intent_ko: >
+      sequential source capture 사이에 animated pane title이 바뀌어도 live
+      polling-vs-control-mode parity가 유용하게 유지되도록 한다.
+    decision: >
+      Split pane title mismatches from structural metadata mismatches.
+      Title drift now warns by default and `qmonster-tmux-parity
+      --strict-title` opts back into failure semantics.
+    decision_ko: >
+      pane title mismatch를 structural metadata mismatch와 분리한다. title
+      drift는 기본 warning이며, `qmonster-tmux-parity --strict-title`이
+      failure semantics로 되돌린다.
+    triggered_by: "Live all-target repeated parity observed a Qmonster title spinner mismatch between polling and control-mode captures."
+    issue_or_context: >
+      Qmonster pane titles can animate while parity is running. Polling and
+      control-mode are sampled sequentially, so title equality can fail even
+      when target, pane identity, command, path, active/dead, and tail parity
+      are healthy.
+    changes:
+      added:
+        - "qmonster-tmux-parity --strict-title"
+        - "TmuxSourceParityReport.title_mismatches"
+        - "unit coverage for title mismatches warning by default and failing in strict-title mode"
+      modified:
+        - "src/tmux/parity.rs excludes title differences from default structural mismatch count"
+        - "src/bin/qmonster-tmux-parity.rs prints pane title mismatches as warn/fail depending on --strict-title"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.34"
+      removed: []
+    changed_sections:
+      - "src/tmux/parity.rs"
+      - "src/bin/qmonster-tmux-parity.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "live title drift is visible without failing default parity"
+        - "strict title parity remains available for targeted checks"
+      modified:
+        - "all-target test count increases to 587"
+      removed: []
+    impact_scope:
+      code: "parity helper behavior; no runtime TUI behavior change"
+      tests: "587 total passed — 527 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; repeated default and all-target live parity smokes remain green"
+      ledger: "1 new timeline entry (sequence 116); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, ./scripts/check-tmux-source-parity.sh --repeat 2, ./scripts/check-tmux-source-parity.sh --all-targets --repeat 2, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue C2 with focused lifecycle/reconnect tests and default-readiness checks."
+    breaking: false
+    risk: "low — title differences remain visible, and strict failure is available through --strict-title."
+    related_commits: []
+    follow_up:
+      - "Continue C2: add focused lifecycle/reconnect tests around the process client boundary."
+
 evolution_summary:
-  current_phase: "v1.16.33 control-mode protocol boundary — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
+  current_phase: "v1.16.34 volatile-title parity handling — Phase C C2 is active with polling still the default and control_mode available behind PaneSource."
   next_phase: "Continue Phase C C2 with additional control-mode default-readiness hardening. Later Phase C items remain review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

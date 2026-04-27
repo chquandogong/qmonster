@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.33`; current canonical ledger: `v1.16.33`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.34`; current canonical ledger: `v1.16.34`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -124,6 +124,8 @@ window-target parsing for current/available target queries. v1.16.32
 adds repeated parity runs so the same control-mode client can be checked
 across consecutive commands. v1.16.33 extracts the control-mode protocol
 parser/quoting/error-classifier into `src/tmux/control_protocol.rs`.
+v1.16.34 treats live title drift as a parity warning by default, with
+`--strict-title` available when title equality must fail the check.
 
 ## Quick start
 
@@ -168,6 +170,7 @@ cargo run --release
 ./scripts/check-tmux-source-parity.sh
 ./scripts/check-tmux-source-parity.sh --all-targets
 ./scripts/check-tmux-source-parity.sh --all-targets --repeat 3 --delay-ms 100
+./scripts/check-tmux-source-parity.sh --all-targets --strict-title
 
 # Override the storage root (useful for tests / sandbox runs)
 QMONSTER_ROOT=/tmp/q cargo run -- --once

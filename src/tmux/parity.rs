@@ -51,6 +51,7 @@ pub struct TmuxSourceParityReport {
     pub only_control_mode_targets: Vec<WindowTarget>,
     pub only_polling_panes: Vec<PaneParityKey>,
     pub only_control_mode_panes: Vec<PaneParityKey>,
+    pub title_mismatches: Vec<PaneFieldMismatch>,
     pub pane_mismatches: Vec<PaneFieldMismatch>,
     pub tail_mismatches: Vec<TailMismatch>,
     pub polling_pane_count: usize,
@@ -68,7 +69,13 @@ impl TmuxSourceParityReport {
     }
 
     pub fn passes(&self, strict_tail: bool) -> bool {
-        self.structural_mismatch_count() == 0 && (!strict_tail || self.tail_mismatches.is_empty())
+        self.passes_with_options(strict_tail, false)
+    }
+
+    pub fn passes_with_options(&self, strict_tail: bool, strict_title: bool) -> bool {
+        self.structural_mismatch_count() == 0
+            && (!strict_tail || self.tail_mismatches.is_empty())
+            && (!strict_title || self.title_mismatches.is_empty())
     }
 }
 
@@ -99,13 +106,14 @@ where
     let polling_keys: BTreeSet<_> = polling_by_key.keys().cloned().collect();
     let control_mode_keys: BTreeSet<_> = control_mode_by_key.keys().cloned().collect();
 
+    let mut title_mismatches = Vec::new();
     let mut pane_mismatches = Vec::new();
     let mut tail_mismatches = Vec::new();
     for key in polling_keys.intersection(&control_mode_keys) {
         let polling_snapshot = &polling_by_key[key];
         let control_mode_snapshot = &control_mode_by_key[key];
         compare_field(
-            &mut pane_mismatches,
+            &mut title_mismatches,
             key,
             "title",
             &polling_snapshot.title,
@@ -172,6 +180,7 @@ where
             .difference(&polling_keys)
             .cloned()
             .collect(),
+        title_mismatches,
         pane_mismatches,
         tail_mismatches,
         polling_pane_count,
@@ -346,6 +355,21 @@ mod tests {
         assert_eq!(report.pane_mismatches.len(), 2);
         assert_eq!(report.tail_mismatches.len(), 1);
         assert_eq!(report.structural_mismatch_count(), 3);
+    }
+
+    #[test]
+    fn title_mismatches_warn_by_default_and_fail_when_strict() {
+        let polling = TestSource::new(vec![pane("%1", "claude", "tail")]);
+        let mut control_pane = pane("%1", "claude", "tail");
+        control_pane.title = "qmonster changed".into();
+        let control_mode = TestSource::new(vec![control_pane]);
+
+        let report = compare_pane_sources(&polling, &control_mode, None, 24).unwrap();
+
+        assert!(report.passes(false), "{report:#?}");
+        assert!(!report.passes_with_options(false, true));
+        assert_eq!(report.title_mismatches.len(), 1);
+        assert_eq!(report.structural_mismatch_count(), 0);
     }
 
     #[test]

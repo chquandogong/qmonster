@@ -31,6 +31,10 @@ struct Cli {
     #[arg(long)]
     strict_tail: bool,
 
+    /// Treat live title differences as failures. By default they are warnings.
+    #[arg(long)]
+    strict_title: bool,
+
     /// Repeat the parity check using the same control-mode client.
     #[arg(long, default_value_t = 1)]
     repeat: usize,
@@ -55,8 +59,10 @@ fn main() -> anyhow::Result<()> {
             println!("tmux source parity run {iteration}/{}", cli.repeat);
         }
         let reports = collect_reports(&polling, &control_mode, &target, &cli)?;
-        print_reports(&reports, cli.strict_tail);
-        failed |= reports.iter().any(|report| !report.passes(cli.strict_tail));
+        print_reports(&reports, cli.strict_tail, cli.strict_title);
+        failed |= reports
+            .iter()
+            .any(|report| !report.passes_with_options(cli.strict_tail, cli.strict_title));
         if iteration < cli.repeat && cli.delay_ms > 0 {
             thread::sleep(Duration::from_millis(cli.delay_ms));
         }
@@ -109,7 +115,7 @@ fn parse_target(raw: &str) -> anyhow::Result<WindowTarget> {
     })
 }
 
-fn print_reports(reports: &[TmuxSourceParityReport], strict_tail: bool) {
+fn print_reports(reports: &[TmuxSourceParityReport], strict_tail: bool, strict_title: bool) {
     if reports.is_empty() {
         println!("tmux source parity: no tmux targets discovered");
         println!("status: ok");
@@ -122,13 +128,16 @@ fn print_reports(reports: &[TmuxSourceParityReport], strict_tail: bool) {
         if index > 0 {
             println!();
         }
-        print_report(report, strict_tail);
+        print_report(report, strict_tail, strict_title);
     }
     if reports.len() > 1 {
         println!();
         println!(
             "overall status: {}",
-            if reports.iter().all(|report| report.passes(strict_tail)) {
+            if reports
+                .iter()
+                .all(|report| report.passes_with_options(strict_tail, strict_title))
+            {
                 "ok"
             } else {
                 "mismatch"
@@ -137,7 +146,7 @@ fn print_reports(reports: &[TmuxSourceParityReport], strict_tail: bool) {
     }
 }
 
-fn print_report(report: &TmuxSourceParityReport, strict_tail: bool) {
+fn print_report(report: &TmuxSourceParityReport, strict_tail: bool, strict_title: bool) {
     let target = report
         .target
         .as_ref()
@@ -164,6 +173,18 @@ fn print_report(report: &TmuxSourceParityReport, strict_tail: bool) {
         "only in control_mode panes",
         &report.only_control_mode_panes,
     );
+    if !report.title_mismatches.is_empty() {
+        let mode = if strict_title { "fail" } else { "warn" };
+        println!("pane title mismatches ({mode}):");
+        for mismatch in &report.title_mismatches {
+            println!(
+                "  {}: polling={:?} control_mode={:?}",
+                mismatch.key.label(),
+                mismatch.polling,
+                mismatch.control_mode
+            );
+        }
+    }
     if !report.pane_mismatches.is_empty() {
         println!("pane metadata mismatches:");
         for mismatch in &report.pane_mismatches {
@@ -190,7 +211,7 @@ fn print_report(report: &TmuxSourceParityReport, strict_tail: bool) {
     }
     println!(
         "status: {}",
-        if report.passes(strict_tail) {
+        if report.passes_with_options(strict_tail, strict_title) {
             "ok"
         } else {
             "mismatch"

@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.33 control-mode protocol boundary)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.34 volatile-title parity handling)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -123,6 +123,10 @@ switch.
 v1.16.33 extracts `tmux::control_protocol` so control-mode response
 block parsing, command-line quoting, and transport-error classification
 are testable without the process-owning client.
+v1.16.34 splits parity title differences from structural metadata
+differences. Live title drift is a warning by default because animated
+pane titles can change between sequential polling/control-mode captures;
+`--strict-title` restores failure semantics when needed.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -176,6 +180,8 @@ The `tmux::control_protocol` helper owns protocol-only parsing/quoting
 for the control-mode client.
 The parity helper can repeat checks against one control-mode client to
 expose lifecycle regressions before default-source changes.
+It also keeps volatile pane-title drift out of the default failure path
+while leaving strict title checks opt-in.
 `[ProviderOfficial: tmux wiki / Formats / Control Mode]` informs the
 format strings and lifecycle assumptions.
 
