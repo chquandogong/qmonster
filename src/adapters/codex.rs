@@ -11,13 +11,13 @@ struct CodexStatus {
     context_pct: u8,
     quota_5h_remaining_pct: Option<u8>,
     quota_weekly_remaining_pct: Option<u8>,
-    total_tokens: u64,
-    input_tokens: u64,
-    output_tokens: u64,
+    total_tokens: Option<u64>,
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
     /// v1.11.2 remediation (Codex v1.11.0 warning): the newest
     /// status-line-shaped line is authoritative. If its model token
     /// is outside the `gpt-/claude-/gemini-` allowlist we still emit
-    /// context + tokens (ProviderOfficial) and leave `model` as
+    /// context/quota/token fields that are present and leave `model` as
     /// `None` so cost/model badges stay blank rather than fall back
     /// to a stale older `/status` frame.
     model: Option<String>,
@@ -81,40 +81,44 @@ impl ProviderParser for CodexAdapter {
                 .with_confidence(0.95)
                 .with_provider(Provider::Codex)
         });
-        set.token_count = Some(
-            MetricValue::new(status.total_tokens, SourceKind::ProviderOfficial)
+        set.token_count = status.total_tokens.map(|tokens| {
+            MetricValue::new(tokens, SourceKind::ProviderOfficial)
                 .with_confidence(0.95)
-                .with_provider(Provider::Codex),
-        );
+                .with_provider(Provider::Codex)
+        });
         // S3-1: surface input/output tokens (session cumulative per
         // Codex's TokenUsage struct). Already extracted by
         // parse_codex_status_line for the cost_usd derivation; expose
         // them on SignalSet so policy/audit can reason about input vs
         // output share without recomputing.
-        set.input_tokens = Some(
-            MetricValue::new(status.input_tokens, SourceKind::ProviderOfficial)
+        set.input_tokens = status.input_tokens.map(|tokens| {
+            MetricValue::new(tokens, SourceKind::ProviderOfficial)
                 .with_confidence(0.95)
-                .with_provider(Provider::Codex),
-        );
-        set.output_tokens = Some(
-            MetricValue::new(status.output_tokens, SourceKind::ProviderOfficial)
+                .with_provider(Provider::Codex)
+        });
+        set.output_tokens = status.output_tokens.map(|tokens| {
+            MetricValue::new(tokens, SourceKind::ProviderOfficial)
                 .with_confidence(0.95)
-                .with_provider(Provider::Codex),
-        );
+                .with_provider(Provider::Codex)
+        });
         if let Some(model) = status.model.as_ref() {
             set.model_name = Some(
                 MetricValue::new(model.clone(), SourceKind::ProviderOfficial)
                     .with_confidence(0.95)
                     .with_provider(Provider::Codex),
             );
-            set.cost_usd = pricing.lookup(Provider::Codex, model).map(|rates| {
-                let cost = (status.input_tokens as f64 * rates.input_per_1m
-                    + status.output_tokens as f64 * rates.output_per_1m)
-                    / 1_000_000.0;
-                MetricValue::new(cost, SourceKind::Estimated)
-                    .with_confidence(0.7)
-                    .with_provider(Provider::Codex)
-            });
+            if let (Some(input_tokens), Some(output_tokens)) =
+                (status.input_tokens, status.output_tokens)
+            {
+                set.cost_usd = pricing.lookup(Provider::Codex, model).map(|rates| {
+                    let cost = (input_tokens as f64 * rates.input_per_1m
+                        + output_tokens as f64 * rates.output_per_1m)
+                        / 1_000_000.0;
+                    MetricValue::new(cost, SourceKind::Estimated)
+                        .with_confidence(0.7)
+                        .with_provider(Provider::Codex)
+                });
+            }
         }
         set.worktree_path = status.worktree_path.map(|p| {
             MetricValue::new(p, SourceKind::ProviderOfficial)
@@ -221,11 +225,12 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
     // status-line-shaped line is authoritative. Bottom-up scan stops
     // after the first shape match so we never silently fall back to
     // an older `/status` frame whose values are stale. Per-field
-    // extraction is independent of the model gate: context + 3 token
-    // counts gate the result; model is optional — if the newest
+    // extraction is independent of the model gate: context gates the
+    // status result, while token fields are optional. If the newest
     // line's model token is outside the known allowlist the parser
-    // still emits context/tokens and leaves model `None` so cost and
-    // model badges stay blank (honest) rather than drift forward.
+    // still emits the visible context/quota/token fields and leaves
+    // model `None` so cost/model badges stay blank (honest) rather
+    // than drift forward.
     for line in tail.lines().rev() {
         if !(line.contains("Context") && line.contains("% used") && line.contains(" · ")) {
             continue;
@@ -325,18 +330,24 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
             }
         }
 
+        let total_tokens = total_tokens.or_else(|| match (input_tokens, output_tokens) {
+            (Some(inp), Some(out)) => Some(inp.saturating_add(out)),
+            _ => None,
+        });
+
         // Newest-line authoritative (v1.11.2): stop at the first
-        // shape-matching line whether or not every field parsed.
-        if let (Some(c), Some(tot), Some(inp), Some(out)) =
-            (context_pct, total_tokens, input_tokens, output_tokens)
-        {
+        // shape-matching line whether or not every optional field
+        // parsed. Codex can omit the `N used` total immediately after
+        // `/clear`; CTX/quota must still surface from the same visible
+        // status line.
+        if let Some(c) = context_pct {
             let reasoning_effort =
                 status_line_reasoning_effort.or_else(|| parse_codex_reasoning_effort(tail));
             return Some(CodexStatus {
                 context_pct: c,
-                total_tokens: tot,
-                input_tokens: inp,
-                output_tokens: out,
+                total_tokens,
+                input_tokens,
+                output_tokens,
                 quota_5h_remaining_pct,
                 quota_weekly_remaining_pct,
                 model,
@@ -564,6 +575,7 @@ mod tests {
     const STATUS_LINE: &str = "Context 73% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 27% used · 5h 98% · weekly 99% · 0.122.0 · 258K window · 1.53M used · 1.51M in · 20.4K out · <redacted> · gp";
     const STATUS_LINE_WITH_REASONING: &str = "Context 60% left · ~/Qmonster · gpt-5.5 xhigh · Qmonster · main · Context 40% used · 5h 96% · weekly 82% · 0.125.0 · 258K window · 1.30M used · 1.29M in · 8.31K out · <redacted>";
     const STATUS_LINE_WITH_TRAILING_MODEL_WITH_REASONING: &str = "Context 24% left · ~/Qmonster · gpt-5.5 · Qmonster · main · Context 76% used · 5h 96% · weekly 82% · 0.125.0 · 258K window · 6.33M used · 6.31M in · 21.4K out · gpt-5.5 xhigh";
+    const STATUS_LINE_AFTER_CLEAR_WITHOUT_TOTAL: &str = "Context 100% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 0% used · 5h 100% · weekly 100% · 0.122.0 · 0 in · 0 out · <redacted> · gp";
 
     // v1.11.2 remediation (Gemini v1.11.0 must-fix #1 — remove the
     // `insert_for_test` public API surface): build the pricing
@@ -663,6 +675,49 @@ output_per_1m = 10.00
             .expect("output_tokens populated from `20.4K out`");
         assert_eq!(out.value, 20_400);
         assert_eq!(out.source_kind, SourceKind::ProviderOfficial);
+    }
+
+    #[test]
+    fn codex_adapter_surfaces_clear_status_line_without_total_tokens() {
+        // After Codex `/clear`, the bottom status line can omit the
+        // `N used` total while still showing context, split quota, and
+        // input/output tokens. Keep those visible instead of treating
+        // the whole line as absent.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(
+            &id,
+            STATUS_LINE_AFTER_CLEAR_WITHOUT_TOTAL,
+            &pricing,
+            &settings,
+            &history,
+        );
+        let set = CodexAdapter.parse(&c);
+
+        let cx = set.context_pressure.as_ref().expect("context parsed");
+        assert!((cx.value - 0.0).abs() < 0.001);
+        assert_eq!(cx.source_kind, SourceKind::ProviderOfficial);
+
+        let quota_5h = set.quota_5h_pressure.as_ref().expect("5h quota parsed");
+        assert!((quota_5h.value - 0.0).abs() < 0.001);
+
+        let quota_weekly = set
+            .quota_weekly_pressure
+            .as_ref()
+            .expect("weekly quota parsed");
+        assert!((quota_weekly.value - 0.0).abs() < 0.001);
+
+        let tokens = set
+            .token_count
+            .as_ref()
+            .expect("token total derived from visible in/out counts");
+        assert_eq!(tokens.value, 0);
+        assert_eq!(set.input_tokens.as_ref().unwrap().value, 0);
+        assert_eq!(set.output_tokens.as_ref().unwrap().value, 0);
+        assert_eq!(set.model_name.as_ref().unwrap().value, "gpt-5.4");
+        assert!(set.cost_usd.is_none());
     }
 
     #[test]
