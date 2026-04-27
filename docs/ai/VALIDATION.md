@@ -12,15 +12,13 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-27): `cargo fmt --check`,
-`git diff --check`, `cargo test --all-targets` (618 tests),
-`cargo clippy --all-targets -- -D warnings`, `cargo build --release`,
-`npm pack --dry-run`, default `--once` smoke showing split provider quota
-output, live TUI confirmation for Claude CTX/quota visibility and Codex
-remaining-quota inversion, control-mode attach diagnostic and
-legacy-fallback unit coverage, auto-source fallback unit coverage, and
-`scripts/verify-shared.sh` pass; official `mission-spec validate .` is
+`git diff --check`, `cargo test --all-targets` (622 tests),
+`cargo clippy --all-targets -- -D warnings`, `npm pack --dry-run`, and
+`scripts/verify-shared.sh` pass. Official `mission-spec validate .` is
 still unavailable locally because `mission-spec` is not installed, so
-`verify-shared.sh` used its lite ledger-structure fallback.
+`verify-shared.sh` used its lite ledger-structure fallback. The
+control-mode attach diagnostic, legacy fallback, and auto-source fallback
+contracts remain covered by unit tests in the 622-test run.
 
 ## Planning-phase gates (Phase 0)
 
@@ -211,6 +209,12 @@ profile_lines` in `src/ui/panels.rs`; emits a
       under `TaskType::Review` / `TaskType::SessionResume`. G-5
       cross-reference also embedded in the aggressive profile
       `side_effects` for all 3 providers)
+- [x] Review-tier profiles fire on review-role panes without colliding
+      with main-pane baseline/aggressive profiles.
+      (Phase C C3 v1.16.55: `codex-review` and
+      `gemini-policy-review` fire only on `Role::Review` at medium-or-
+      higher confidence, carry structured profile payloads, and remain
+      independent of the `quota_tight` main-pane switch.)
 - [x] `token.thresholds` structure may split per-provider ONLY if
       Phase-1 fixture data justifies the split; otherwise keep one
       global block.

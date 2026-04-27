@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.54 TUI runtime-refresh/notice-clear fixes)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.55 review-tier profiles)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -181,6 +181,12 @@ Claude fullscreen surfaces with a deeper provider-specific tail, waits
 for render/pre-`Escape` settle, and caches last observed Claude pressure
 metrics per pane so CTX, QUOTA 5H, and QUOTA WEEK can display together
 after `/usage` and `/context` have both been observed.
+v1.16.55 completes Phase C C3 by adding `codex-review` and
+`gemini-policy-review` profile recommendations in `policy/rules/profiles.rs`.
+They fire only for healthy `Role::Review` panes at medium-or-higher
+identity confidence, carry structured `ProviderProfile` payloads with
+source-labeled levers, and stay independent of the main-pane
+quota_tight baseline/aggressive switch.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -503,12 +509,9 @@ module shape.
 
 ## Deferred for later phases
 
-- Control-mode tmux adapter.
 - Subagent token accounting (Phase 1 ships a detection-only warning).
 - Cross-window / cross-project correlation.
 - Anomaly detection on pane identity drift (Phase 1 logs transitions).
 - Concurrent-work warning across panes (v1.15.23 requires
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
-- Review-tier profiles to restore the intended 3×3 provider/profile
-  grid.

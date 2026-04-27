@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.16.54 — TUI runtime-refresh and system-notice clear fixes."
+  mission_title: "Qmonster v1.16.55 — Review-tier provider profiles."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 136
-  latest_version: "1.16.54"
+  total_revisions: 137
+  latest_version: "1.16.55"
 
 timeline:
   - change_id: "initial"
@@ -12138,9 +12138,90 @@ timeline:
     follow_up:
       - "Continue Phase C with C3 review-tier profiles."
 
+  - change_id: "qmonster-v1.16.55-review-tier-provider-profiles"
+    semantic_version: "1.16.55"
+    change_sequence: 137
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue remaining work after Phase C C2"
+    change_type: "feature"
+    motivation_type: "operator-directed follow-up"
+    persistence: "permanent"
+    intent: >
+      Complete Phase C C3 by adding the named review-tier provider
+      profiles that were deferred during Phase A activation.
+    intent_ko: >
+      Phase A에서 후속으로 넘긴 review-tier provider profile 항목을
+      완료하여 Phase C C3를 닫는다.
+    decision: >
+      Add `codex-review` and `gemini-policy-review` as role-gated
+      `Severity::Good` profile recommendations. They fire only on healthy
+      `Role::Review` panes at medium-or-higher identity confidence, carry
+      structured `ProviderProfile` payloads with per-lever SourceKind
+      labels, and remain independent of the main-pane `quota_tight`
+      baseline/aggressive switch.
+    decision_ko: >
+      `codex-review`와 `gemini-policy-review`를 `Role::Review` 전용
+      `Severity::Good` profile recommendation으로 추가한다. 두 profile은
+      medium 이상 identity confidence와 건강한 pane 상태에서만 발화하고,
+      각 lever의 SourceKind를 유지한 structured `ProviderProfile` payload를
+      렌더러까지 전달하며, main-pane `quota_tight` baseline/aggressive 전환과
+      겹치지 않는다.
+    triggered_by: "The operator stated C2 was complete and asked to continue the remaining update-plan work without stopping."
+    issue_or_context: >
+      The profile recommender had complete main-pane baseline/aggressive
+      coverage, but the named review-tier profiles from the original
+      provider-profile plan were still missing. This left canonical
+      `codex:1:review` and `gemini:*:review` panes without role-specific
+      profile payloads even when identity resolution was healthy.
+    changes:
+      added:
+        - "`recommend_codex_review` + `codex_review_profile`"
+        - "`recommend_gemini_policy_review` + `gemini_policy_review_profile`"
+        - "Four unit tests locking review-role firing, authority splits, side_effect visibility, and quota_tight independence"
+        - ".docs/codex/Qmonster-v0.4.0-2026-04-27-v1.16.55-review-tier-profiles.md"
+      modified:
+        - "`eval_profiles` dispatches the two new review-tier rules"
+        - "README, VERSION.md, docs/ai, package.json, mission.yaml, mission-history.yaml, and CURRENT_STATE updated for v1.16.55"
+      removed: []
+    changed_sections:
+      - "src/policy/rules/profiles.rs"
+      - "README.md"
+      - "VERSION.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/VALIDATION.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "package.json"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - ".mission/CURRENT_STATE.md"
+    done_when_delta:
+      added:
+        - "Codex review panes surface `provider-profile: codex-review` with local-only review levers and visible trade-offs"
+        - "Gemini review panes surface `provider-profile: gemini-policy-review` with policy-review levers and visible trade-offs"
+        - "Review-tier profiles are role-gated and do not overlap main-pane baseline/aggressive profiles, even under `quota_tight`"
+      modified:
+        - "all-target test count increases to 622"
+      removed:
+        - "C3 review-tier profiles follow-up"
+    impact_scope:
+      runtime: "Pure policy/profile recommendation additions; no tmux, adapter, storage, or actuation behavior change"
+      tests: "622 total passed — 561 lib + 0 main + 0 qmonster-tmux-parity + 38 event_loop + 18 false_positive + 6 idle_state + 0 sim"
+      ledger: "1 new timeline entry (sequence 137); meta bump"
+      npm: "package.json version set to 1.16.55"
+      review_gate: "cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and git diff --check"
+      follow_up_carryover: "Phase C C1/C2/C3 are complete. Phase D remains explicitly long-horizon: cross-window/project correlation, identity drift anomaly detection, and precise subagent token accounting."
+    breaking: false
+    risk: "low — pure recommendation additions gated by provider+Role::Review+identity confidence, with no actuation path and direct unit coverage."
+    related_commits: []
+    follow_up:
+      - "Keep D1/D2/D3 deferred unless the operator explicitly prioritizes long-horizon work."
+
 evolution_summary:
-  current_phase: "v1.16.54 TUI runtime-refresh and system-notice clear fixes — `u` keeps live cursor detection stable and `c` clears Good/Warning system notices."
-  next_phase: "Continue Phase C with C3 review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.55 review-tier provider profiles — `codex-review` and `gemini-policy-review` now fire on healthy review panes."
+  next_phase: "Phase C C1/C2/C3 are complete. Phase D long-horizon work remains deferred: cross-window/project correlation, identity drift anomaly detection, and precise subagent token accounting. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

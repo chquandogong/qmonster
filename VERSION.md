@@ -5,13 +5,13 @@ audiences.
 
 | Surface | Current | Meaning |
 | --- | --- | --- |
-| Mission ledger | `v1.16.54` | Operator-facing implementation/history version. This is what tags and `mission-history.yaml` track. |
-| npm package | `1.16.54` | Installable package version for the npm registry; matches the ledger tag semver without the `v` prefix. |
+| Mission ledger | `v1.16.55` | Operator-facing implementation/history version. This is what tags and `mission-history.yaml` track. |
+| npm package | `1.16.55` | Installable package version for the npm registry; matches the ledger tag semver without the `v` prefix. |
 | Cargo crate | `0.1.0` | Internal Rust crate metadata. It is not the operator-facing runtime version. |
 
 The running TUI displays `git describe --tags --always --dirty`, captured
 by `build.rs` as `QMONSTER_GIT_VERSION`. Tagged source builds therefore
-show tags such as `v1.16.54`; dirty local builds show a `-dirty` suffix.
+show tags such as `v1.16.55`; dirty local builds show a `-dirty` suffix.
 When the source is built outside a git checkout, the fallback label is
 `v{CARGO_PKG_VERSION}-nogit`.
 

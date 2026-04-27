@@ -203,6 +203,9 @@ side_effects (N):
 - 각 lever는 자기 source label을 따로 가집니다.
 - aggressive profile만 `side_effects`가 붙고, baseline profile은 보통
   생략됩니다.
+- Review-role profile인 `codex-review`와 `gemini-policy-review`도 같은
+  형식으로 표시됩니다. 이 둘은 local-only / policy-review 운영 trade-off를
+  보여주기 위해 `side_effects`를 함께 표시합니다.
 
 ## 7. 조작
 

@@ -13,20 +13,29 @@ use crate::policy::gates::{PolicyGates, allow_provider_specific};
 /// `ProjectCanonical` when the value is a Qmonster pick on a
 /// documented key). Every lever carries an explicit citation.
 ///
-/// Phase 4's provider-profile coverage is the 3x2 grid — 3 providers
-/// (Claude / Codex / Gemini) × 2 modes (baseline / aggressive):
+/// Phase 4's provider-profile coverage opened as a 3x2 grid — 3
+/// providers (Claude / Codex / Gemini) × 2 main-pane modes (baseline /
+/// aggressive):
 ///
 ///   claude-default (P4-1)            claude-script-low-token (P4-3)
 ///   codex-default (P4-4 + v1.8.5+)   codex-script-low-token (P4-5)
 ///   gemini-default (P4-6)            gemini-script-low-token (P4-7)
 ///
-/// Provider gates inside each rule isolate a pane to at most one
-/// provider's profiles. Within each provider, the default profile's
-/// `if gates.quota_tight { return None; }` gate hands off to the
-/// aggressive variant, which has the inverse
-/// `if !gates.quota_tight { return None; }` — so per pane at most one
-/// of the six profiles fires. Mutual exclusion is invariant-level
-/// (shared gate) and locked by explicit per-pair unit tests.
+/// Phase C C3 adds the first review-tier profiles, matching the named
+/// operator follow-up without changing the main-pane mutual-exclusion
+/// contract:
+///
+///   codex-review                    gemini-policy-review
+///
+/// Provider/role gates inside each rule isolate a pane to at most one
+/// provider's profiles. Within each provider's main-pane pair, the
+/// default profile's `if gates.quota_tight { return None; }` gate hands
+/// off to the aggressive variant, which has the inverse
+/// `if !gates.quota_tight { return None; }` — so a main pane sees at
+/// most one baseline/aggressive profile. Review-tier profiles fire only
+/// on `Role::Review`, so they do not overlap the main-pane grid.
+/// Mutual exclusion is invariant-level (shared gate + role gate) and
+/// locked by explicit unit tests.
 ///
 /// Gemini G-6 (side_effects on high-compression profiles) is honored
 /// across all three aggressive variants, each carrying a 1:1 lever
@@ -54,10 +63,16 @@ pub fn eval_profiles(
     if let Some(rec) = recommend_codex_script_low_token(id, signals, gates) {
         out.push(rec);
     }
+    if let Some(rec) = recommend_codex_review(id, signals, gates) {
+        out.push(rec);
+    }
     if let Some(rec) = recommend_gemini_default(id, signals, gates) {
         out.push(rec);
     }
     if let Some(rec) = recommend_gemini_script_low_token(id, signals, gates) {
+        out.push(rec);
+    }
+    if let Some(rec) = recommend_gemini_policy_review(id, signals, gates) {
         out.push(rec);
     }
     out
@@ -626,6 +641,122 @@ fn codex_script_low_token_profile() -> ProviderProfile {
     }
 }
 
+/// `codex-review`: role-specific review profile for a Codex review
+/// pane doing local repo cross-checks / commit-text review. It is not
+/// gated by quota_tight: review role is a separate middle tier, not the
+/// scripted low-token path. The bundle intentionally disables web search
+/// and app/connectors for local-only review panes, so unlike the healthy
+/// main baseline it carries operator-visible side effects.
+fn recommend_codex_review(
+    id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    if id.identity.provider != Provider::Codex {
+        return None;
+    }
+    if id.identity.role != Role::Review {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    if matches!(
+        signals.idle_state,
+        Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+    ) || signals.log_storm
+        || signals.error_hint
+    {
+        return None;
+    }
+    if let Some(mv) = signals.context_pressure.as_ref()
+        && mv.value >= 0.75
+    {
+        return None;
+    }
+
+    let profile = codex_review_profile();
+    let provider_official_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProviderOfficial)
+        .count();
+    let project_canonical_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
+        .count();
+    let reason = format!(
+        "profile `{}`: apply {} levers for a local-only Codex review pane — {} ProviderOfficial + {} ProjectCanonical, with {} operator-visible side effects (see list below)",
+        profile.name,
+        profile.levers.len(),
+        provider_official_count,
+        project_canonical_count,
+        profile.side_effects.len(),
+    );
+    let side_effects = profile.side_effects.clone();
+    Some(Recommendation {
+        action: "provider-profile: codex-review",
+        reason,
+        severity: Severity::Good,
+        source_kind: SourceKind::ProjectCanonical,
+        // Applying a named Codex profile requires a multi-key
+        // ~/.codex/config.toml edit; no single runnable command
+        // honestly captures the whole bundle.
+        suggested_command: None,
+        side_effects,
+        is_strong: false,
+        next_step: None,
+        profile: Some(profile),
+    })
+}
+
+fn codex_review_profile() -> ProviderProfile {
+    ProviderProfile {
+        name: "codex-review",
+        levers: vec![
+            ProfileLever {
+                key: "profiles.codex-review.web_search",
+                value: "disabled",
+                citation: "Codex config reference — profile-scoped web_search supports disabled/cached/live; Qmonster chooses disabled for local-only review panes",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            ProfileLever {
+                key: "tool_output_token_limit",
+                value: "4000",
+                citation: "Codex config reference describes tool_output_token_limit; Qmonster picks 4000 as the tight review-pane budget from the original profile plan",
+                source_kind: SourceKind::ProjectCanonical,
+            },
+            ProfileLever {
+                key: "commit_attribution",
+                value: "",
+                citation: "Codex config reference — commit_attribution is a string; empty string disables automatic attribution",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            ProfileLever {
+                key: "[features].apps",
+                value: "false",
+                citation: "Codex config reference — features.apps enables ChatGPT Apps/connectors support; Qmonster disables it for local-only review panes",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            ProfileLever {
+                key: "[apps._default].enabled",
+                value: "false",
+                citation: "Codex config reference — apps._default.enabled controls the default app enabled state; Qmonster disables it for local-only review panes",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+        ],
+        side_effects: vec![
+            "web_search = disabled means the review pane will not fetch fresh web context; route freshness-dependent checks to a research pane".into(),
+            "tool_output_token_limit = 4000 can truncate large tool outputs; use a main/research profile when full logs or long diffs must stay in history".into(),
+            "commit_attribution = \"\" removes automatic attribution from commit text generated by the review pane".into(),
+            "features.apps = false removes the ChatGPT Apps/connectors surface from this profile".into(),
+            "apps._default.enabled = false disables the default app entry point for this review profile".into(),
+        ],
+        source_kind: SourceKind::ProjectCanonical,
+    }
+}
+
 /// `gemini-default`: healthy-state baseline profile for a Gemini main
 /// pane. Pattern parity with `recommend_claude_default` /
 /// `recommend_codex_default` — fires on a healthy Gemini main pane at
@@ -923,6 +1054,117 @@ fn gemini_script_low_token_profile() -> ProviderProfile {
             "--yolo = enabled auto-approves every Gemini agent action in this scripted session — operator cedes per-call confirmation; pair with version-controlled prompts + post-hoc audit rather than interactive oversight".into(),
             "experimental.autoMemory = false disables the Gemini Auto Memory feature for the duration of this session — state handoff MUST go through .mission/CURRENT_STATE.md or an MDR (aligns with Gemini G-5 auto-memory guide rule)".into(),
             "--model = gemini-2.5-flash stays on a lighter model for aggressive cost reduction — complex reasoning tasks that would benefit from pro-tier capacity must be routed outside this scripted session or escalate to an interactive pane".into(),
+        ],
+        source_kind: SourceKind::ProjectCanonical,
+    }
+}
+
+/// `gemini-policy-review`: role-specific review profile for Gemini
+/// policy / safety / audit reinforcement panes. It keeps the review
+/// pane interactive (`--approval-mode = default`), keeps provider
+/// skills available, pins Auto Memory off per Qmonster's ledger-first
+/// rule, and asks Gemini to load both thin router files as instructional
+/// context. It is independent of quota_tight: review role is the middle
+/// tier, while `gemini-script-low-token` remains the opt-in aggressive
+/// scripted profile.
+fn recommend_gemini_policy_review(
+    id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+) -> Option<Recommendation> {
+    if id.identity.provider != Provider::Gemini {
+        return None;
+    }
+    if id.identity.role != Role::Review {
+        return None;
+    }
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    if matches!(
+        signals.idle_state,
+        Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+    ) || signals.log_storm
+        || signals.error_hint
+    {
+        return None;
+    }
+    if let Some(mv) = signals.context_pressure.as_ref()
+        && mv.value >= 0.75
+    {
+        return None;
+    }
+
+    let profile = gemini_policy_review_profile();
+    let provider_official_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProviderOfficial)
+        .count();
+    let project_canonical_count = profile
+        .levers
+        .iter()
+        .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
+        .count();
+    let reason = format!(
+        "profile `{}`: apply {} levers for a Gemini policy-review pane — {} ProviderOfficial + {} ProjectCanonical, with {} operator-visible side effects (see list below)",
+        profile.name,
+        profile.levers.len(),
+        provider_official_count,
+        project_canonical_count,
+        profile.side_effects.len(),
+    );
+    let side_effects = profile.side_effects.clone();
+    Some(Recommendation {
+        action: "provider-profile: gemini-policy-review",
+        reason,
+        severity: Severity::Good,
+        source_kind: SourceKind::ProjectCanonical,
+        // Applying this profile spans Gemini CLI flags and
+        // ~/.gemini/settings.json; keep it as rendered profile data
+        // instead of pretending there is one command.
+        suggested_command: None,
+        side_effects,
+        is_strong: false,
+        next_step: None,
+        profile: Some(profile),
+    })
+}
+
+fn gemini_policy_review_profile() -> ProviderProfile {
+    ProviderProfile {
+        name: "gemini-policy-review",
+        levers: vec![
+            ProfileLever {
+                key: "--approval-mode",
+                value: "default",
+                citation: "Gemini CLI docs — --approval-mode default prompts for approval on each tool call; Qmonster keeps policy review interactive",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            ProfileLever {
+                key: "context.fileName",
+                value: "[\"GEMINI.md\", \"AGENTS.md\"]",
+                citation: "Gemini CLI docs describe context.fileName as the context file list; Qmonster chooses both thin router files for policy-review context",
+                source_kind: SourceKind::ProjectCanonical,
+            },
+            ProfileLever {
+                key: "experimental.autoMemory",
+                value: "false",
+                citation: "Gemini CLI docs — experimental.autoMemory toggles Auto Memory; Qmonster keeps it off so state-critical review conclusions stay in .mission/CURRENT_STATE.md or MDRs",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            ProfileLever {
+                key: "skills.enabled",
+                value: "true",
+                citation: "Gemini CLI docs — skills.enabled controls Skills; policy-review panes keep skills available for audit/review reinforcement",
+                source_kind: SourceKind::ProviderOfficial,
+            },
+        ],
+        side_effects: vec![
+            "--approval-mode = default keeps policy review interactive; the pane may stop for approval instead of running autonomously".into(),
+            "context.fileName = [\"GEMINI.md\", \"AGENTS.md\"] loads both thin router files, adding context tokens in exchange for stronger project-rule coverage".into(),
+            "experimental.autoMemory = false disables Gemini Auto Memory extraction; state handoff MUST go through .mission/CURRENT_STATE.md or an MDR (aligns with G-5)".into(),
+            "skills.enabled = true leaves provider skills available; review panes may see extra skill/tool surface compared with a stripped local-only profile".into(),
         ],
         source_kind: SourceKind::ProjectCanonical,
     }
@@ -1241,6 +1483,18 @@ mod tests {
                 provider: Provider::Codex,
                 instance: 1,
                 role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::High,
+        }
+    }
+
+    fn healthy_codex_review() -> ResolvedIdentity {
+        ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Codex,
+                instance: 1,
+                role: Role::Review,
                 pane_id: "%1".into(),
             },
             confidence: IdentityConfidence::High,
@@ -1615,6 +1869,115 @@ mod tests {
     }
 
     // -----------------------------------------------------------------
+    // Phase C C3 v1.16.55 — codex-review role-tier profile
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn recommend_codex_review_fires_on_review_role_with_honest_authority_labels() {
+        // Review tier is role-gated, not quota-gated. The bundle is
+        // intentionally local-only: web search and apps/connectors are
+        // disabled, so side_effects are populated even though severity
+        // stays Good.
+        let id = healthy_codex_review();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&id, &s, &gates_default());
+
+        let rec = recs
+            .iter()
+            .find(|r| r.action == "provider-profile: codex-review")
+            .expect("codex-review profile rec fires on healthy Codex review pane");
+
+        assert_eq!(rec.severity, Severity::Good);
+        assert_eq!(rec.source_kind, SourceKind::ProjectCanonical);
+        assert!(rec.reason.contains("codex-review"));
+        assert!(rec.reason.contains("ProviderOfficial"));
+        assert!(rec.reason.contains("ProjectCanonical"));
+        assert!(
+            rec.suggested_command.is_none(),
+            "profile application spans multiple config keys"
+        );
+
+        let profile = rec
+            .profile
+            .as_ref()
+            .expect("structured codex-review profile payload must be attached");
+        assert_eq!(profile.name, "codex-review");
+        assert_eq!(profile.source_kind, SourceKind::ProjectCanonical);
+        assert_eq!(
+            profile.levers.len(),
+            5,
+            "codex-review bundles local-only review settings"
+        );
+        assert_eq!(
+            profile.side_effects.len(),
+            profile.levers.len(),
+            "local-only review settings must surface their trade-offs"
+        );
+
+        let po_count = profile
+            .levers
+            .iter()
+            .filter(|l| l.source_kind == SourceKind::ProviderOfficial)
+            .count();
+        let pc_count = profile
+            .levers
+            .iter()
+            .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
+            .count();
+        assert_eq!(po_count, 4);
+        assert_eq!(pc_count, 1);
+
+        let find_lever = |key: &str| -> &ProfileLever {
+            profile
+                .levers
+                .iter()
+                .find(|l| l.key == key)
+                .unwrap_or_else(|| panic!("lever `{key}` must be present in codex-review"))
+        };
+        assert_eq!(
+            find_lever("profiles.codex-review.web_search").value,
+            "disabled"
+        );
+        assert_eq!(find_lever("tool_output_token_limit").value, "4000");
+        assert_eq!(find_lever("commit_attribution").value, "");
+        assert_eq!(find_lever("[features].apps").value, "false");
+        assert_eq!(find_lever("[apps._default].enabled").value, "false");
+    }
+
+    #[test]
+    fn codex_review_is_review_role_gated_and_independent_of_quota_tight() {
+        let s = SignalSet::default();
+
+        let main_recs = eval_profiles(&healthy_codex_main(), &s, &gates_default());
+        assert!(
+            !main_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: codex-review"),
+            "codex-review must not fire on main role"
+        );
+        assert!(
+            main_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: codex-default"),
+            "main role keeps the existing baseline profile"
+        );
+
+        let review_recs = eval_profiles(&healthy_codex_review(), &s, &gates_quota_tight());
+        assert!(
+            review_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: codex-review"),
+            "review tier still fires when quota_tight is on"
+        );
+        assert!(
+            !review_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: codex-script-low-token"),
+            "script-low-token remains main-role-only and must not overlap review"
+        );
+    }
+
+    // -----------------------------------------------------------------
     // Phase 4 P4-6 v1.8.8 — gemini-default baseline profile (first
     // non-Claude-non-Codex provider entry)
     // -----------------------------------------------------------------
@@ -1625,6 +1988,18 @@ mod tests {
                 provider: Provider::Gemini,
                 instance: 1,
                 role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::High,
+        }
+    }
+
+    fn healthy_gemini_review() -> ResolvedIdentity {
+        ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Gemini,
+                instance: 1,
+                role: Role::Review,
                 pane_id: "%1".into(),
             },
             confidence: IdentityConfidence::High,
@@ -2044,6 +2419,116 @@ mod tests {
         assert!(
             aggressive_on,
             "gemini-script-low-token fires when quota_tight is on"
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Phase C C3 v1.16.55 — gemini-policy-review role-tier profile
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn recommend_gemini_policy_review_fires_on_review_role_with_honest_authority_labels() {
+        let id = healthy_gemini_review();
+        let s = SignalSet::default();
+        let recs = eval_profiles(&id, &s, &gates_default());
+
+        let rec = recs
+            .iter()
+            .find(|r| r.action == "provider-profile: gemini-policy-review")
+            .expect("gemini-policy-review profile rec fires on healthy Gemini review pane");
+
+        assert_eq!(rec.severity, Severity::Good);
+        assert_eq!(rec.source_kind, SourceKind::ProjectCanonical);
+        assert!(rec.reason.contains("gemini-policy-review"));
+        assert!(rec.reason.contains("ProviderOfficial"));
+        assert!(rec.reason.contains("ProjectCanonical"));
+        assert!(
+            rec.suggested_command.is_none(),
+            "profile application spans Gemini flags and settings.json"
+        );
+
+        let profile = rec
+            .profile
+            .as_ref()
+            .expect("structured gemini-policy-review profile payload must be attached");
+        assert_eq!(profile.name, "gemini-policy-review");
+        assert_eq!(profile.source_kind, SourceKind::ProjectCanonical);
+        assert_eq!(
+            profile.levers.len(),
+            4,
+            "gemini-policy-review bundles approval, context, auto-memory, and skills levers"
+        );
+        assert_eq!(
+            profile.side_effects.len(),
+            profile.levers.len(),
+            "policy review levers must surface their operator-visible trade-offs"
+        );
+
+        let po_count = profile
+            .levers
+            .iter()
+            .filter(|l| l.source_kind == SourceKind::ProviderOfficial)
+            .count();
+        let pc_count = profile
+            .levers
+            .iter()
+            .filter(|l| l.source_kind == SourceKind::ProjectCanonical)
+            .count();
+        assert_eq!(
+            po_count, 3,
+            "ProviderOfficial: approval mode default, autoMemory false, skills enabled"
+        );
+        assert_eq!(
+            pc_count, 1,
+            "ProjectCanonical: the selected context.fileName list is Qmonster's review policy"
+        );
+
+        let find_lever = |key: &str| -> &ProfileLever {
+            profile
+                .levers
+                .iter()
+                .find(|l| l.key == key)
+                .unwrap_or_else(|| panic!("lever `{key}` must be present in gemini-policy-review"))
+        };
+        assert_eq!(find_lever("--approval-mode").value, "default");
+        assert_eq!(
+            find_lever("context.fileName").value,
+            "[\"GEMINI.md\", \"AGENTS.md\"]"
+        );
+        assert_eq!(find_lever("experimental.autoMemory").value, "false");
+        assert_eq!(find_lever("skills.enabled").value, "true");
+    }
+
+    #[test]
+    fn gemini_policy_review_is_review_role_gated_and_independent_of_quota_tight() {
+        let s = SignalSet::default();
+
+        let main_recs = eval_profiles(&healthy_gemini_main(), &s, &gates_default());
+        assert!(
+            !main_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: gemini-policy-review"),
+            "gemini-policy-review must not fire on main role"
+        );
+        assert!(
+            main_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: gemini-default"),
+            "main role keeps the existing baseline profile"
+        );
+
+        let review_recs = eval_profiles(&healthy_gemini_review(), &s, &gates_quota_tight());
+        assert!(
+            review_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: gemini-policy-review"),
+            "review tier still fires when quota_tight is on"
+        );
+        assert!(
+            !review_recs
+                .iter()
+                .any(|r| r.action == "provider-profile: gemini-script-low-token"),
+            "script-low-token remains main-role-only and must not overlap review"
         );
     }
 }

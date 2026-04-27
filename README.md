@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: npm package `1.16.54`; current mission ledger `v1.16.54`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.16.55`; current mission ledger `v1.16.55`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,11 +31,9 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current line: `v1.16.54` fixes keyboard-driven TUI regressions after the
-runtime-refresh pressure work: `u` no longer causes pane-state flicker from
-one-shot Claude captures, and `c` reliably clears Good/Warning system notices.
-The npm package version now tracks the ledger tag semver
-(`qmonster@1.16.54`). Phase C C2 is already complete:
+Current line: `v1.16.55` completes Phase C C3 by adding the named
+review-tier profile recommendations for Codex and Gemini review panes:
+`codex-review` and `gemini-policy-review`. Phase C C2 remains complete:
 `[tmux] source = "auto"` prefers control-mode and falls back to polling at
 startup when attach is unavailable.
 
@@ -46,7 +44,7 @@ startup when attach is unavailable.
 | Phase B visibility | Complete | Standard config/pricing paths, command row, Codex in/out token detail, opt-in security advisories, quieter concurrent-work warnings, and Phase-B docs consistency are closed. |
 | Phase C C1 | Complete | `src/main.rs` was split into app modules through `src/app/tui_loop.rs`; main is now a thin CLI/startup/TUI wrapper. |
 | Phase C C2 | Complete | `PaneSource` supports polling and control-mode; auto source now tries control-mode first with polling fallback. |
-| Phase C C3 | Next | Review-tier profiles (`codex-review`, `gemini-policy-review`) remain the next architecture-debt item. |
+| Phase C C3 | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled profile payloads. |
 
 ### Current Metric Contracts
 
