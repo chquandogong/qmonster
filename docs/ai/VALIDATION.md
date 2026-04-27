@@ -12,10 +12,12 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-28): `cargo test adapters::gemini
---lib`, `cargo test app::runtime_refresh --lib`, `cargo fmt --check`,
-`git diff --check`, `cargo test --all-targets` (626 tests),
+--lib`, `cargo test adapters::common --lib`,
+`cargo test app::runtime_refresh --lib`, `cargo fmt --check`,
+`git diff --check`, `cargo test --all-targets` (627 tests),
 `cargo clippy --all-targets -- -D warnings`, `npm pack --dry-run`, and
-`scripts/verify-shared.sh` pass for v1.16.57. Official `mission-spec
+`scripts/verify-shared.sh` pass for v1.16.58. `cargo build --release`
+also passes for the local TUI binary. Official `mission-spec
 validate .` is still unavailable locally because `mission-spec` is not
 installed, so `verify-shared.sh` used its lite ledger-structure
 fallback.

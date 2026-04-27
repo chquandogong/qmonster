@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.16.57 — Protect active Claude refresh and Gemini thinking state."
+  mission_title: "Qmonster v1.16.58 — Restore active-safe runtime refresh."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 139
-  latest_version: "1.16.57"
+  total_revisions: 140
+  latest_version: "1.16.58"
 
 timeline:
   - change_id: "initial"
@@ -12391,8 +12391,96 @@ timeline:
       - "If Gemini changes the progress text away from `thinking...`, add a new captured fixture and extend the marker under the Gemini adapter only."
       - "If operators need active Claude metrics, design a non-interrupting provider surface rather than reintroducing active-pane Escape."
 
+  - change_id: "v1.16.58-active-safe-runtime-refresh"
+    semantic_version: "1.16.58"
+    change_sequence: 140
+    date: "2026-04-28"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "CHENGHAO QUAN (operator report)"
+    change_type: "fix"
+    motivation_type: "operator-reported-runtime-ux"
+    persistence: "permanent"
+    intent: >
+      Restore useful `u` key behavior after v1.16.57 made active Claude
+      runtime refresh too conservative, and further reduce Gemini
+      working-pane false IDLE states when Gemini keeps the live prompt
+      visible while output is still changing.
+    intent_ko: >
+      v1.16.57에서 Claude active 상태의 `u` 동작을 과하게 막아버린 문제를
+      되돌리고, Gemini가 작업 중에도 live prompt를 계속 보여줄 때 tail 변화가
+      있는 동안 IDLE로 표시되는 문제를 줄인다.
+    decision: >
+      For Claude active/uncertain panes, `u` now sends only `/stats` and
+      sends no pre- or post-command Escape. Confirmed idle/wait/limit
+      Claude panes retain the full `/usage`, `/context`, `/status`,
+      `/stats` cycle with capture-and-close. Gemini idle classification
+      now treats recent tail-history changes as active before accepting
+      the live prompt as WorkComplete.
+    decision_ko: >
+      Claude active/uncertain pane에서는 `u`가 `/stats`만 보내고 앞뒤로
+      `Escape`를 보내지 않는다. 확인된 idle/wait/limit 상태에서는 기존 전체
+      `/usage`, `/context`, `/status`, `/stats` 순환과 capture-and-close를
+      유지한다. Gemini는 live prompt를 WorkComplete로 받아들이기 전에 최근
+      tail history 변화가 있으면 active로 처리한다.
+    triggered_by: "operator reported v1.16.57 made `u` non-functional and Gemini still stayed IDLE while working"
+    issue_or_context: >
+      The v1.16.57 active Claude guard solved the interrupting Escape but
+      replaced it with a blocked action. Gemini still had a second false
+      IDLE route: live prompt cursor detection beat tail-history change
+      detection, so a changing pane could still be rendered IDLE DONE.
+    changes:
+      added: []
+      modified:
+        - "src/adapters/common.rs"
+        - "src/adapters/gemini.rs"
+        - "src/app/runtime_refresh.rs"
+        - "README.md"
+        - "VERSION.md"
+        - "docs/ai/ARCHITECTURE.md"
+        - "docs/ai/PROJECT_BRIEF.md"
+        - "docs/ai/UI_MANUAL.md"
+        - "docs/ai/VALIDATION.md"
+        - "mission.yaml"
+        - "mission-history.yaml"
+        - "package.json"
+      removed: []
+    changed_sections:
+      - "Claude runtime refresh active-safe command selection"
+      - "Gemini live-prompt idle classifier"
+      - "operator docs and ledger"
+    done_when_delta:
+      added:
+        - "Active/uncertain Claude `u` sends `/stats` without Escape"
+        - "Confirmed idle/wait/limit Claude panes keep full runtime-refresh cycle"
+        - "Gemini live prompt does not become WorkComplete while recent tail history is changing"
+        - "Targeted Gemini/common/runtime_refresh tests and full release validation pass"
+      modified:
+        - "README/VERSION/docs/mission ledger bumped to v1.16.58"
+      removed:
+        - "v1.16.57 `runtime refresh deferred` behavior for active Claude panes"
+    observable_effects:
+      added:
+        - "`u` works again on active/uncertain Claude panes without sending Escape"
+        - "Gemini panes with a visible live prompt stay active while output is still changing"
+      modified:
+        - "Active Claude refresh notices now report `/stats` sent instead of deferred"
+      removed: []
+    impact_scope:
+      runtime: "Runtime-refresh command dispatch and Gemini idle classification only"
+      tests: "627 total passed — 565 lib + 38 event_loop + 18 false_positive + 6 idle_state"
+      ledger: "1 new timeline entry (sequence 140); meta bump"
+      npm: "package.json version set to 1.16.58"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, npm pack --dry-run, scripts/verify-shared.sh, and cargo build --release pass"
+      follow_up_carryover: "Phase D remains long-horizon; no D1/D2/D3 implementation in this patch"
+    breaking: false
+    risk: "low — restores operator key behavior while keeping the harmful active-pane Escape removed."
+    related_commits: []
+    follow_up:
+      - "If Gemini can remain visually working with a completely still tail and no progress marker, add a provider-title or control-sequence based signal; tail-only parsing cannot observe that state."
+
 evolution_summary:
-  current_phase: "v1.16.57 protects active provider work: Gemini `thinking...` suppresses stale-IDLE fallback, and Claude `u` runtime refresh defers on active/uncertain panes without sending Escape."
+  current_phase: "v1.16.58 restores active-safe runtime refresh: active/uncertain Claude `u` sends `/stats` without Escape, and Gemini live-prompt panes stay active while recent tail history is changing."
   next_phase: "Phase D long-horizon work begins: D1 cross-window/project correlation is the next operator-prioritized slice. D2 identity drift anomaly detection and D3 precise subagent token accounting follow. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

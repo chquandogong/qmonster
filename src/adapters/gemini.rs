@@ -235,11 +235,11 @@ fn classify_idle_gemini(
     if gemini_limit_hit(tail) {
         return Some(IdleCause::LimitHit);
     }
+    if gemini_in_progress_marker(tail) || history.changed_within_capacity() {
+        return None;
+    }
     if gemini_idle_cursor(tail) {
         return Some(IdleCause::WorkComplete);
-    }
-    if gemini_in_progress_marker(tail) {
-        return None;
     }
     if history.is_still(history.capacity()) {
         return Some(IdleCause::Stale);
@@ -665,6 +665,31 @@ main no sandbox gemini-3.1 ~/proj 47% used 0% used 119 MB
 
 Working on the new request now";
         let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        assert_eq!(set.idle_state, None);
+    }
+
+    #[test]
+    fn gemini_changing_tail_with_live_prompt_stays_active() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let previous = "\
+Answer line 1
+*  Type your message or @path/to/file
+branch sandbox /model quota context memory
+main no sandbox gemini-3.1 ~/proj 47% used 0% used 119 MB";
+        let current = "\
+Answer line 1
+Answer line 2
+*  Type your message or @path/to/file
+branch sandbox /model quota context memory
+main no sandbox gemini-3.1 ~/proj 47% used 0% used 119 MB";
+        let mut history = PaneTailHistory::empty();
+        history.push(previous.into());
+        history.push(current.into());
+
+        let c = ctx(&id, current, &pricing, &settings, &history);
         let set = GeminiAdapter.parse(&c);
         assert_eq!(set.idle_state, None);
     }

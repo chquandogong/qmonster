@@ -31,8 +31,11 @@ pub fn runtime_refresh_provider_label(provider: Provider) -> &'static str {
 
 pub fn runtime_refresh_commands(
     provider: Provider,
-    _idle_state: Option<IdleCause>,
+    idle_state: Option<IdleCause>,
 ) -> &'static [&'static str] {
+    if matches!(provider, Provider::Claude) && runtime_refresh_uses_active_safe_only(idle_state) {
+        return &["/stats"];
+    }
     runtime_refresh_provider_commands(provider)
 }
 
@@ -74,15 +77,7 @@ pub fn runtime_refresh_sends_escape_first(
     provider: Provider,
     idle_state: Option<IdleCause>,
 ) -> bool {
-    matches!(provider, Provider::Claude)
-        && !runtime_refresh_blocks_in_flight_work(provider, idle_state)
-}
-
-pub fn runtime_refresh_blocks_in_flight_work(
-    provider: Provider,
-    idle_state: Option<IdleCause>,
-) -> bool {
-    matches!(provider, Provider::Claude) && matches!(idle_state, None | Some(IdleCause::Stale))
+    matches!(provider, Provider::Claude) && !runtime_refresh_uses_active_safe_only(idle_state)
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -101,13 +96,6 @@ pub fn send_runtime_refresh_commands<P: PaneSource>(
     tail_overlays: &mut HashMap<String, String>,
 ) -> RuntimeRefreshSendOutcome {
     let mut outcome = RuntimeRefreshSendOutcome::default();
-    if runtime_refresh_blocks_in_flight_work(provider, idle_state) {
-        outcome.failed = Some((
-            "Claude active runtime refresh".into(),
-            "blocked to avoid interrupting in-flight work".into(),
-        ));
-        return outcome;
-    }
     if runtime_refresh_sends_escape_first(provider, idle_state)
         && let Err(e) = source.send_key(pane_id, "Escape")
     {
@@ -182,6 +170,10 @@ pub fn runtime_refresh_notice_body(
     if captured_and_closed && one_at_a_time {
         format!(
             "{pane_id} → `{command_label}` sent with terminal submit; Claude fullscreen output was captured, then Escape closed the surface so the next `u` can run immediately"
+        )
+    } else if active_only && one_at_a_time {
+        format!(
+            "{pane_id} → `{command_label}` sent with terminal submit; active or uncertain pane uses the provider runtime source that does not require Escape"
         )
     } else if captured_and_closed {
         format!(
@@ -261,31 +253,6 @@ pub fn handle_runtime_refresh_action<P: PaneSource>(
             notice: SystemNotice {
                 title: "runtime refresh blocked".into(),
                 body: format!("{pane_id} \u{2192} `{command_label}` blocked by observe_only mode"),
-                severity: Severity::Warning,
-                source_kind: SourceKind::ProjectCanonical,
-            },
-            force_poll: false,
-        };
-    }
-
-    if runtime_refresh_blocks_in_flight_work(provider, report.idle_state) {
-        let command_label = runtime_refresh_command_label(available_commands);
-        sink.record(AuditEvent {
-            kind: AuditEventKind::RuntimeRefreshBlocked,
-            pane_id: pane_id.clone(),
-            severity: Severity::Warning,
-            summary: format!(
-                "{pane_id} {command_label} (blocked; Claude pane appears active or uncertain)"
-            ),
-            provider: Some(provider),
-            role: Some(report.identity.identity.role),
-        });
-        return RuntimeRefreshActionOutcome {
-            notice: SystemNotice {
-                title: "runtime refresh deferred".into(),
-                body: format!(
-                    "{pane_id} appears active or uncertain; not sending Escape or runtime slash commands because they can interrupt Claude work"
-                ),
                 severity: Severity::Warning,
                 source_kind: SourceKind::ProjectCanonical,
             },
@@ -736,7 +703,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_action_blocks_active_claude_without_sending_escape() {
+    fn runtime_refresh_action_active_claude_sends_stats_without_escape() {
         let source = RecordingRefreshSource::with_capture("Claude status\nmodel: opus");
         let sink = InMemorySink::new();
         let report = base_report(Provider::Claude);
@@ -754,11 +721,12 @@ mod tests {
         );
 
         let events = sink.snapshot();
-        assert_eq!(outcome.notice.title, "runtime refresh deferred");
-        assert!(!outcome.force_poll);
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].kind, AuditEventKind::RuntimeRefreshBlocked);
-        assert!(source.calls().is_empty());
+        assert_eq!(outcome.notice.title, "runtime refresh sent");
+        assert!(outcome.force_poll);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].kind, AuditEventKind::RuntimeRefreshRequested);
+        assert_eq!(events[1].kind, AuditEventKind::RuntimeRefreshCompleted);
+        assert_eq!(source.calls(), vec!["keys:%1:/stats"]);
         assert!(overlays.is_empty());
     }
 
@@ -808,13 +776,10 @@ mod tests {
 
     #[test]
     fn runtime_refresh_commands_for_claude_active_cycle_same_runtime_sources() {
-        assert_eq!(
-            runtime_refresh_commands(Provider::Claude, None),
-            ["/usage", "/context", "/status", "/stats"]
-        );
+        assert_eq!(runtime_refresh_commands(Provider::Claude, None), ["/stats"]);
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, Some(IdleCause::Stale)),
-            ["/usage", "/context", "/status", "/stats"]
+            ["/stats"]
         );
     }
 
@@ -847,23 +812,48 @@ mod tests {
     fn runtime_refresh_dispatch_cycles_claude_runtime_sources_one_at_a_time() {
         let mut offsets = HashMap::new();
         assert_eq!(
-            runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
+            runtime_refresh_dispatch_commands(
+                Provider::Claude,
+                Some(IdleCause::WorkComplete),
+                "%1",
+                &mut offsets
+            ),
             ["/usage"]
         );
         assert_eq!(
-            runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
+            runtime_refresh_dispatch_commands(
+                Provider::Claude,
+                Some(IdleCause::WorkComplete),
+                "%1",
+                &mut offsets
+            ),
             ["/context"]
         );
         assert_eq!(
-            runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
+            runtime_refresh_dispatch_commands(
+                Provider::Claude,
+                Some(IdleCause::WorkComplete),
+                "%1",
+                &mut offsets
+            ),
             ["/status"]
         );
         assert_eq!(
-            runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
+            runtime_refresh_dispatch_commands(
+                Provider::Claude,
+                Some(IdleCause::WorkComplete),
+                "%1",
+                &mut offsets
+            ),
             ["/stats"]
         );
         assert_eq!(
-            runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
+            runtime_refresh_dispatch_commands(
+                Provider::Claude,
+                Some(IdleCause::WorkComplete),
+                "%1",
+                &mut offsets
+            ),
             ["/usage"]
         );
         assert!(!runtime_refresh_sends_escape_first(Provider::Claude, None));

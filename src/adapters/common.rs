@@ -160,6 +160,11 @@ impl PaneTailHistory {
         iter.all(|s| s == first)
     }
 
+    pub fn changed_within_capacity(&self) -> bool {
+        let window = self.capacity.min(self.snapshots.len());
+        window >= 2 && !self.is_still(window)
+    }
+
     fn normalize(s: &str) -> String {
         let mut lines: Vec<&str> = s.lines().map(|l| l.trim_end()).collect();
         while lines.last().is_some_and(|l| l.is_empty()) {
