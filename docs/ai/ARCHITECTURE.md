@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.12 clipboard action extraction)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.13 target-picker action extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -76,7 +76,8 @@ moves operator version-refresh and snapshot-write helpers into
 `app::once_report`. v1.16.10 moves prompt-send accept/dismiss handling
 into `app::prompt_send_actions`. v1.16.11 moves runtime-refresh action
 orchestration into `app::runtime_refresh`. v1.16.12 moves selected-alert
-command copy notices into `app::clipboard_actions`.
+command copy notices into `app::clipboard_actions`. v1.16.13 moves
+target-picker open/key/mouse dispatch into `app::target_picker`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

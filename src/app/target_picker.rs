@@ -1,10 +1,17 @@
+use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
 
+use crate::app::keymap::{
+    ScrollDir, list_row_at, move_selection, page_selection, rect_contains, select_first,
+    select_last,
+};
 use crate::app::system_notice::SystemNotice;
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Severity;
 use crate::tmux::polling::PaneSource;
 use crate::tmux::types::{RawPaneSnapshot, WindowTarget};
+use crate::ui::dashboard::{close_button_rect, target_picker_rects};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetPickerStage {
@@ -29,6 +36,177 @@ pub struct TargetChoice {
 pub enum TargetPickerOutcome {
     AdvanceToWindows(String),
     Close(String),
+}
+
+pub struct TargetPickerController<'a> {
+    pub open: &'a mut bool,
+    pub stage: &'a mut TargetPickerStage,
+    pub session: &'a mut Option<String>,
+    pub state: &'a mut ListState,
+    pub choices: &'a mut Vec<TargetChoice>,
+    pub preview_title: &'a mut String,
+    pub preview_lines: &'a mut Vec<String>,
+    pub selected_target: &'a mut Option<WindowTarget>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetPickerAction {
+    None,
+    TargetSwitched(String),
+}
+
+impl TargetPickerController<'_> {
+    fn refresh_choices<P: PaneSource>(&mut self, source: &P) {
+        refresh_target_choices(
+            source,
+            *self.stage,
+            self.session.as_deref(),
+            self.choices,
+            self.state,
+            self.selected_target.as_ref(),
+        );
+        self.refresh_preview(source);
+    }
+
+    fn refresh_preview<P: PaneSource>(&mut self, source: &P) {
+        refresh_target_preview(
+            source,
+            self.choices,
+            self.state,
+            self.preview_title,
+            self.preview_lines,
+        );
+    }
+
+    fn move_selection<P: PaneSource>(&mut self, source: &P, step: isize) {
+        move_selection(self.state, self.choices.len(), step);
+        self.refresh_preview(source);
+    }
+
+    fn page_selection<P: PaneSource>(&mut self, source: &P, dir: ScrollDir) {
+        page_selection(self.state, self.choices.len(), 6, dir);
+        self.refresh_preview(source);
+    }
+
+    fn back_to_sessions<P: PaneSource>(&mut self, source: &P) {
+        if *self.stage == TargetPickerStage::Window {
+            *self.stage = TargetPickerStage::Session;
+            *self.session = None;
+            self.refresh_choices(source);
+        }
+    }
+
+    fn apply_selected<P: PaneSource>(&mut self, source: &P) -> TargetPickerAction {
+        match apply_target_choice(
+            *self.stage,
+            self.session.as_deref(),
+            self.choices,
+            self.state,
+            self.selected_target,
+        ) {
+            Some(TargetPickerOutcome::AdvanceToWindows(session_name)) => {
+                *self.stage = TargetPickerStage::Window;
+                *self.session = Some(session_name);
+                self.refresh_choices(source);
+                TargetPickerAction::None
+            }
+            Some(TargetPickerOutcome::Close(label)) => {
+                *self.open = false;
+                TargetPickerAction::TargetSwitched(label)
+            }
+            None => TargetPickerAction::None,
+        }
+    }
+}
+
+pub fn open_target_picker<P: PaneSource>(source: &P, mut picker: TargetPickerController<'_>) {
+    *picker.stage = TargetPickerStage::Session;
+    *picker.session = None;
+    picker.refresh_choices(source);
+    *picker.open = true;
+}
+
+pub fn handle_target_picker_key<P: PaneSource>(
+    source: &P,
+    mut picker: TargetPickerController<'_>,
+    key: KeyCode,
+) -> TargetPickerAction {
+    match key {
+        KeyCode::Esc | KeyCode::Char('t') => {
+            *picker.open = false;
+            TargetPickerAction::None
+        }
+        KeyCode::Left | KeyCode::Backspace => {
+            picker.back_to_sessions(source);
+            TargetPickerAction::None
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            picker.move_selection(source, -1);
+            TargetPickerAction::None
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            picker.move_selection(source, 1);
+            TargetPickerAction::None
+        }
+        KeyCode::PageUp => {
+            picker.page_selection(source, ScrollDir::Up);
+            TargetPickerAction::None
+        }
+        KeyCode::PageDown => {
+            picker.page_selection(source, ScrollDir::Down);
+            TargetPickerAction::None
+        }
+        KeyCode::Home => {
+            select_first(picker.state, picker.choices.len());
+            picker.refresh_preview(source);
+            TargetPickerAction::None
+        }
+        KeyCode::End => {
+            select_last(picker.state, picker.choices.len());
+            picker.refresh_preview(source);
+            TargetPickerAction::None
+        }
+        KeyCode::Enter => picker.apply_selected(source),
+        _ => TargetPickerAction::None,
+    }
+}
+
+pub fn handle_target_picker_mouse<P: PaneSource>(
+    source: &P,
+    mut picker: TargetPickerController<'_>,
+    viewport: Rect,
+    event: MouseEvent,
+) -> TargetPickerAction {
+    let rects = target_picker_rects(viewport);
+    if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
+        && rect_contains(close_button_rect(rects.list), event.column, event.row)
+    {
+        *picker.open = false;
+        return TargetPickerAction::None;
+    }
+
+    match event.kind {
+        MouseEventKind::ScrollUp if rect_contains(rects.list, event.column, event.row) => {
+            picker.move_selection(source, -1);
+            TargetPickerAction::None
+        }
+        MouseEventKind::ScrollDown if rect_contains(rects.list, event.column, event.row) => {
+            picker.move_selection(source, 1);
+            TargetPickerAction::None
+        }
+        MouseEventKind::Down(MouseButton::Left) => {
+            let Some(row) = list_row_at(rects.list, event) else {
+                return TargetPickerAction::None;
+            };
+            let Some(idx) = target_choice_index_at_row(picker.choices, picker.state, row) else {
+                return TargetPickerAction::None;
+            };
+            picker.state.select(Some(idx));
+            picker.refresh_preview(source);
+            picker.apply_selected(source)
+        }
+        _ => TargetPickerAction::None,
+    }
 }
 
 pub fn refresh_target_choices<P: PaneSource>(
@@ -343,6 +521,131 @@ fn window_choice_label(target: &WindowTarget) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tmux::polling::{PaneSource, PollingError};
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    struct PickerSource {
+        panes: Vec<RawPaneSnapshot>,
+    }
+
+    impl PickerSource {
+        fn new() -> Self {
+            Self {
+                panes: vec![
+                    pane("a", "0", "%1"),
+                    pane("a", "1", "%2"),
+                    pane("b", "0", "%3"),
+                ],
+            }
+        }
+    }
+
+    impl PaneSource for PickerSource {
+        fn list_panes(
+            &self,
+            target: Option<&WindowTarget>,
+        ) -> Result<Vec<RawPaneSnapshot>, PollingError> {
+            Ok(self
+                .panes
+                .iter()
+                .filter(|pane| {
+                    target.is_none_or(|target| {
+                        pane.session_name == target.session_name
+                            && pane.window_index == target.window_index
+                    })
+                })
+                .cloned()
+                .collect())
+        }
+
+        fn current_target(&self) -> Result<Option<WindowTarget>, PollingError> {
+            Ok(self.available_targets()?.into_iter().next())
+        }
+
+        fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
+            let mut targets: Vec<WindowTarget> = self
+                .panes
+                .iter()
+                .map(|pane| WindowTarget {
+                    session_name: pane.session_name.clone(),
+                    window_index: pane.window_index.clone(),
+                })
+                .collect();
+            targets.sort();
+            targets.dedup();
+            Ok(targets)
+        }
+
+        fn capture_tail(&self, _pane_id: &str, _lines: usize) -> Result<String, PollingError> {
+            Ok(String::new())
+        }
+
+        fn send_keys(&self, _pane_id: &str, _text: &str) -> Result<(), PollingError> {
+            Ok(())
+        }
+    }
+
+    struct PickerHarness {
+        open: bool,
+        stage: TargetPickerStage,
+        session: Option<String>,
+        state: ListState,
+        choices: Vec<TargetChoice>,
+        preview_title: String,
+        preview_lines: Vec<String>,
+        selected_target: Option<WindowTarget>,
+    }
+
+    impl Default for PickerHarness {
+        fn default() -> Self {
+            Self {
+                open: false,
+                stage: TargetPickerStage::Session,
+                session: None,
+                state: ListState::default(),
+                choices: Vec::new(),
+                preview_title: String::new(),
+                preview_lines: Vec::new(),
+                selected_target: None,
+            }
+        }
+    }
+
+    impl PickerHarness {
+        fn controller(&mut self) -> TargetPickerController<'_> {
+            TargetPickerController {
+                open: &mut self.open,
+                stage: &mut self.stage,
+                session: &mut self.session,
+                state: &mut self.state,
+                choices: &mut self.choices,
+                preview_title: &mut self.preview_title,
+                preview_lines: &mut self.preview_lines,
+                selected_target: &mut self.selected_target,
+            }
+        }
+    }
+
+    fn target(session_name: &str, window_index: &str) -> WindowTarget {
+        WindowTarget {
+            session_name: session_name.into(),
+            window_index: window_index.into(),
+        }
+    }
+
+    fn pane(session_name: &str, window_index: &str, pane_id: &str) -> RawPaneSnapshot {
+        RawPaneSnapshot {
+            session_name: session_name.into(),
+            window_index: window_index.into(),
+            pane_id: pane_id.into(),
+            title: "claude".into(),
+            current_command: "claude".into(),
+            current_path: "/repo".into(),
+            active: false,
+            dead: false,
+            tail: String::new(),
+        }
+    }
 
     #[test]
     fn target_choice_index_accounts_for_multiline_tree_items() {
@@ -362,6 +665,81 @@ mod tests {
         assert_eq!(target_choice_index_at_row(&choices, &state, 0), Some(0));
         assert_eq!(target_choice_index_at_row(&choices, &state, 2), Some(0));
         assert_eq!(target_choice_index_at_row(&choices, &state, 3), Some(1));
+    }
+
+    #[test]
+    fn open_target_picker_resets_to_session_choices() {
+        let source = PickerSource::new();
+        let mut harness = PickerHarness {
+            stage: TargetPickerStage::Window,
+            session: Some("a".into()),
+            selected_target: Some(target("b", "0")),
+            ..PickerHarness::default()
+        };
+
+        open_target_picker(&source, harness.controller());
+
+        assert!(harness.open);
+        assert_eq!(harness.stage, TargetPickerStage::Session);
+        assert_eq!(harness.session, None);
+        assert_eq!(harness.choices.len(), 3);
+        assert_eq!(harness.state.selected(), Some(2));
+        assert_eq!(harness.preview_title, "Session · b");
+    }
+
+    #[test]
+    fn target_picker_enter_session_advances_to_window_stage() {
+        let source = PickerSource::new();
+        let mut harness = PickerHarness::default();
+        open_target_picker(&source, harness.controller());
+        harness.state.select(Some(1));
+
+        let action = handle_target_picker_key(&source, harness.controller(), KeyCode::Enter);
+
+        assert_eq!(action, TargetPickerAction::None);
+        assert!(harness.open);
+        assert_eq!(harness.stage, TargetPickerStage::Window);
+        assert_eq!(harness.session.as_deref(), Some("a"));
+        assert_eq!(harness.choices.len(), 2);
+    }
+
+    #[test]
+    fn target_picker_enter_window_selects_target_and_closes() {
+        let source = PickerSource::new();
+        let mut harness = PickerHarness::default();
+        open_target_picker(&source, harness.controller());
+        harness.state.select(Some(1));
+        assert_eq!(
+            handle_target_picker_key(&source, harness.controller(), KeyCode::Enter),
+            TargetPickerAction::None
+        );
+        harness.state.select(Some(1));
+
+        let action = handle_target_picker_key(&source, harness.controller(), KeyCode::Enter);
+
+        assert_eq!(action, TargetPickerAction::TargetSwitched("a:1".into()));
+        assert!(!harness.open);
+        assert_eq!(harness.selected_target, Some(target("a", "1")));
+    }
+
+    #[test]
+    fn target_picker_mouse_close_button_closes() {
+        let source = PickerSource::new();
+        let mut harness = PickerHarness::default();
+        open_target_picker(&source, harness.controller());
+        let viewport = Rect::new(0, 0, 120, 40);
+        let close = close_button_rect(target_picker_rects(viewport).list);
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: close.x,
+            row: close.y,
+            modifiers: KeyModifiers::empty(),
+        };
+
+        let action = handle_target_picker_mouse(&source, harness.controller(), viewport, event);
+
+        assert_eq!(action, TargetPickerAction::None);
+        assert!(!harness.open);
     }
 
     #[test]

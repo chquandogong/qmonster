@@ -47,8 +47,8 @@ use qmonster::app::system_notice::{
     route_version_drift,
 };
 use qmonster::app::target_picker::{
-    TargetChoice, TargetPickerOutcome, TargetPickerStage, apply_target_choice,
-    refresh_target_choices, refresh_target_preview, target_choice_index_at_row, target_label,
+    TargetChoice, TargetPickerAction, TargetPickerController, TargetPickerStage,
+    handle_target_picker_key, handle_target_picker_mouse, open_target_picker, target_label,
     target_picker_hint, target_picker_title, target_switched_notice,
 };
 use qmonster::app::version_drift::{
@@ -69,7 +69,7 @@ use qmonster::tmux::types::WindowTarget;
 use qmonster::ui::dashboard::{
     DashboardSplit, DashboardView, TargetPickerView, close_button_rect, dashboard_rects,
     dashboard_split_from_row, git_modal_rects, help_modal_rects, render_dashboard,
-    target_picker_rects, version_badge_rect,
+    version_badge_rect,
 };
 
 #[derive(Debug, Parser)]
@@ -534,158 +534,37 @@ where
                         }
 
                         if target_picker_open {
-                            match k.code {
-                                KeyCode::Esc | KeyCode::Char('t') => target_picker_open = false,
-                                KeyCode::Left | KeyCode::Backspace => {
-                                    if target_picker_stage == TargetPickerStage::Window {
-                                        target_picker_stage = TargetPickerStage::Session;
-                                        target_picker_session = None;
-                                        refresh_target_choices(
-                                            &ctx.source,
-                                            target_picker_stage,
-                                            target_picker_session.as_deref(),
-                                            &mut target_choices,
-                                            &mut target_picker_state,
-                                            selected_target.as_ref(),
-                                        );
-                                        refresh_target_preview(
-                                            &ctx.source,
-                                            &target_choices,
-                                            &target_picker_state,
-                                            &mut target_preview_title,
-                                            &mut target_preview_lines,
-                                        );
-                                    }
-                                }
-                                KeyCode::Up | KeyCode::Char('k') => {
-                                    move_selection(
-                                        &mut target_picker_state,
-                                        target_choices.len(),
-                                        -1,
-                                    );
-                                    refresh_target_preview(
-                                        &ctx.source,
-                                        &target_choices,
-                                        &target_picker_state,
-                                        &mut target_preview_title,
-                                        &mut target_preview_lines,
-                                    );
-                                }
-                                KeyCode::Down | KeyCode::Char('j') => {
-                                    move_selection(
-                                        &mut target_picker_state,
-                                        target_choices.len(),
-                                        1,
-                                    );
-                                    refresh_target_preview(
-                                        &ctx.source,
-                                        &target_choices,
-                                        &target_picker_state,
-                                        &mut target_preview_title,
-                                        &mut target_preview_lines,
-                                    );
-                                }
-                                KeyCode::PageUp => {
-                                    page_selection(
-                                        &mut target_picker_state,
-                                        target_choices.len(),
-                                        6,
-                                        ScrollDir::Up,
-                                    );
-                                    refresh_target_preview(
-                                        &ctx.source,
-                                        &target_choices,
-                                        &target_picker_state,
-                                        &mut target_preview_title,
-                                        &mut target_preview_lines,
-                                    );
-                                }
-                                KeyCode::PageDown => {
-                                    page_selection(
-                                        &mut target_picker_state,
-                                        target_choices.len(),
-                                        6,
-                                        ScrollDir::Down,
-                                    );
-                                    refresh_target_preview(
-                                        &ctx.source,
-                                        &target_choices,
-                                        &target_picker_state,
-                                        &mut target_preview_title,
-                                        &mut target_preview_lines,
-                                    );
-                                }
-                                KeyCode::Home => {
-                                    select_first(&mut target_picker_state, target_choices.len());
-                                    refresh_target_preview(
-                                        &ctx.source,
-                                        &target_choices,
-                                        &target_picker_state,
-                                        &mut target_preview_title,
-                                        &mut target_preview_lines,
-                                    );
-                                }
-                                KeyCode::End => {
-                                    select_last(&mut target_picker_state, target_choices.len());
-                                    refresh_target_preview(
-                                        &ctx.source,
-                                        &target_choices,
-                                        &target_picker_state,
-                                        &mut target_preview_title,
-                                        &mut target_preview_lines,
-                                    );
-                                }
-                                KeyCode::Enter => {
-                                    match apply_target_choice(
-                                        target_picker_stage,
-                                        target_picker_session.as_deref(),
-                                        &target_choices,
-                                        &target_picker_state,
-                                        &mut selected_target,
-                                    ) {
-                                        Some(TargetPickerOutcome::AdvanceToWindows(
-                                            session_name,
-                                        )) => {
-                                            target_picker_stage = TargetPickerStage::Window;
-                                            target_picker_session = Some(session_name);
-                                            refresh_target_choices(
-                                                &ctx.source,
-                                                target_picker_stage,
-                                                target_picker_session.as_deref(),
-                                                &mut target_choices,
-                                                &mut target_picker_state,
-                                                selected_target.as_ref(),
-                                            );
-                                            refresh_target_preview(
-                                                &ctx.source,
-                                                &target_choices,
-                                                &target_picker_state,
-                                                &mut target_preview_title,
-                                                &mut target_preview_lines,
-                                            );
-                                        }
-                                        Some(TargetPickerOutcome::Close(label)) => {
-                                            notices.insert(0, target_switched_notice(&label));
-                                            sync_dashboard_state(
-                                                &notices,
-                                                &last_reports,
-                                                DashboardSyncState {
-                                                    alert_state: &mut alert_state,
-                                                    pane_state: &mut pane_state,
-                                                    previous_alerts: &mut previous_alerts,
-                                                    fresh_alerts: &mut fresh_alerts,
-                                                    alert_times: &mut alert_times,
-                                                    alert_hide_deadlines: &mut alert_hide_deadlines,
-                                                },
-                                                Instant::now(),
-                                            );
-                                            target_picker_open = false;
-                                            last_poll = Instant::now() - poll;
-                                        }
-                                        None => {}
-                                    }
-                                }
-                                _ => {}
+                            let action = handle_target_picker_key(
+                                &ctx.source,
+                                TargetPickerController {
+                                    open: &mut target_picker_open,
+                                    stage: &mut target_picker_stage,
+                                    session: &mut target_picker_session,
+                                    state: &mut target_picker_state,
+                                    choices: &mut target_choices,
+                                    preview_title: &mut target_preview_title,
+                                    preview_lines: &mut target_preview_lines,
+                                    selected_target: &mut selected_target,
+                                },
+                                k.code,
+                            );
+                            if let TargetPickerAction::TargetSwitched(label) = action {
+                                let now = Instant::now();
+                                notices.insert(0, target_switched_notice(&label));
+                                sync_dashboard_state(
+                                    &notices,
+                                    &last_reports,
+                                    DashboardSyncState {
+                                        alert_state: &mut alert_state,
+                                        pane_state: &mut pane_state,
+                                        previous_alerts: &mut previous_alerts,
+                                        fresh_alerts: &mut fresh_alerts,
+                                        alert_times: &mut alert_times,
+                                        alert_hide_deadlines: &mut alert_hide_deadlines,
+                                    },
+                                    now,
+                                );
+                                last_poll = now - poll;
                             }
                             continue;
                         }
@@ -831,24 +710,19 @@ where
                                 );
                             }
                             KeyCode::Char('t') => {
-                                target_picker_stage = TargetPickerStage::Session;
-                                target_picker_session = None;
-                                refresh_target_choices(
+                                open_target_picker(
                                     &ctx.source,
-                                    target_picker_stage,
-                                    target_picker_session.as_deref(),
-                                    &mut target_choices,
-                                    &mut target_picker_state,
-                                    selected_target.as_ref(),
+                                    TargetPickerController {
+                                        open: &mut target_picker_open,
+                                        stage: &mut target_picker_stage,
+                                        session: &mut target_picker_session,
+                                        state: &mut target_picker_state,
+                                        choices: &mut target_choices,
+                                        preview_title: &mut target_preview_title,
+                                        preview_lines: &mut target_preview_lines,
+                                        selected_target: &mut selected_target,
+                                    },
                                 );
-                                refresh_target_preview(
-                                    &ctx.source,
-                                    &target_choices,
-                                    &target_picker_state,
-                                    &mut target_preview_title,
-                                    &mut target_preview_lines,
-                                );
-                                target_picker_open = true;
                             }
                             KeyCode::Char('r') => {
                                 let fresh = capture_versions();
@@ -1040,114 +914,37 @@ where
 
                         if target_picker_open {
                             dashboard_split_dragging = false;
-                            let rects = target_picker_rects(viewport);
-                            if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
-                                && rect_contains(close_button_rect(rects.list), m.column, m.row)
-                            {
-                                target_picker_open = false;
-                                continue;
-                            }
-                            match m.kind {
-                                MouseEventKind::ScrollUp
-                                    if rect_contains(rects.list, m.column, m.row) =>
-                                {
-                                    move_selection(
-                                        &mut target_picker_state,
-                                        target_choices.len(),
-                                        -1,
-                                    );
-                                    refresh_target_preview(
-                                        &ctx.source,
-                                        &target_choices,
-                                        &target_picker_state,
-                                        &mut target_preview_title,
-                                        &mut target_preview_lines,
-                                    );
-                                }
-                                MouseEventKind::ScrollDown
-                                    if rect_contains(rects.list, m.column, m.row) =>
-                                {
-                                    move_selection(
-                                        &mut target_picker_state,
-                                        target_choices.len(),
-                                        1,
-                                    );
-                                    refresh_target_preview(
-                                        &ctx.source,
-                                        &target_choices,
-                                        &target_picker_state,
-                                        &mut target_preview_title,
-                                        &mut target_preview_lines,
-                                    );
-                                }
-                                MouseEventKind::Down(MouseButton::Left) => {
-                                    if let Some(row) = list_row_at(rects.list, m)
-                                        && let Some(idx) = target_choice_index_at_row(
-                                            &target_choices,
-                                            &target_picker_state,
-                                            row,
-                                        )
-                                    {
-                                        target_picker_state.select(Some(idx));
-                                        refresh_target_preview(
-                                            &ctx.source,
-                                            &target_choices,
-                                            &target_picker_state,
-                                            &mut target_preview_title,
-                                            &mut target_preview_lines,
-                                        );
-                                        match apply_target_choice(
-                                            target_picker_stage,
-                                            target_picker_session.as_deref(),
-                                            &target_choices,
-                                            &target_picker_state,
-                                            &mut selected_target,
-                                        ) {
-                                            Some(TargetPickerOutcome::AdvanceToWindows(
-                                                session_name,
-                                            )) => {
-                                                target_picker_stage = TargetPickerStage::Window;
-                                                target_picker_session = Some(session_name);
-                                                refresh_target_choices(
-                                                    &ctx.source,
-                                                    target_picker_stage,
-                                                    target_picker_session.as_deref(),
-                                                    &mut target_choices,
-                                                    &mut target_picker_state,
-                                                    selected_target.as_ref(),
-                                                );
-                                                refresh_target_preview(
-                                                    &ctx.source,
-                                                    &target_choices,
-                                                    &target_picker_state,
-                                                    &mut target_preview_title,
-                                                    &mut target_preview_lines,
-                                                );
-                                            }
-                                            Some(TargetPickerOutcome::Close(label)) => {
-                                                notices.insert(0, target_switched_notice(&label));
-                                                sync_dashboard_state(
-                                                    &notices,
-                                                    &last_reports,
-                                                    DashboardSyncState {
-                                                        alert_state: &mut alert_state,
-                                                        pane_state: &mut pane_state,
-                                                        previous_alerts: &mut previous_alerts,
-                                                        fresh_alerts: &mut fresh_alerts,
-                                                        alert_times: &mut alert_times,
-                                                        alert_hide_deadlines:
-                                                            &mut alert_hide_deadlines,
-                                                    },
-                                                    now,
-                                                );
-                                                target_picker_open = false;
-                                                last_poll = now - poll;
-                                            }
-                                            None => {}
-                                        }
-                                    }
-                                }
-                                _ => {}
+                            let action = handle_target_picker_mouse(
+                                &ctx.source,
+                                TargetPickerController {
+                                    open: &mut target_picker_open,
+                                    stage: &mut target_picker_stage,
+                                    session: &mut target_picker_session,
+                                    state: &mut target_picker_state,
+                                    choices: &mut target_choices,
+                                    preview_title: &mut target_preview_title,
+                                    preview_lines: &mut target_preview_lines,
+                                    selected_target: &mut selected_target,
+                                },
+                                viewport,
+                                m,
+                            );
+                            if let TargetPickerAction::TargetSwitched(label) = action {
+                                notices.insert(0, target_switched_notice(&label));
+                                sync_dashboard_state(
+                                    &notices,
+                                    &last_reports,
+                                    DashboardSyncState {
+                                        alert_state: &mut alert_state,
+                                        pane_state: &mut pane_state,
+                                        previous_alerts: &mut previous_alerts,
+                                        fresh_alerts: &mut fresh_alerts,
+                                        alert_times: &mut alert_times,
+                                        alert_hide_deadlines: &mut alert_hide_deadlines,
+                                    },
+                                    now,
+                                );
+                                last_poll = now - poll;
                             }
                             continue;
                         }

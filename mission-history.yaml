@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.12 clipboard action extraction."
+  mission_title: "Qmonster v0.5.0 — v1.16.13 target-picker action extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 94
-  latest_version: "1.16.12"
+  total_revisions: 95
+  latest_version: "1.16.13"
 
 timeline:
   - change_id: "initial"
@@ -9139,8 +9139,80 @@ timeline:
     follow_up:
       - "Continue C1: split remaining event-loop helper clusters from main.rs."
 
+  - change_id: "qmonster-v1.16.13-target-picker-action-extraction"
+    semantic_version: "1.16.13"
+    change_sequence: 95
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue Phase C C1 decomposition before C2 and close each slice with commit/push/tag"
+    change_type: "refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Continue Phase C C1 by moving target-picker open, keyboard, and
+      mouse dispatch out of `src/main.rs`.
+    intent_ko: >
+      target-picker open, keyboard, mouse dispatch를 `src/main.rs` 밖으로
+      옮겨 Phase C C1 분해를 계속한다.
+    decision: >
+      Expand `src/app/target_picker.rs` with `TargetPickerController`,
+      `TargetPickerAction`, and helper functions for opening the picker
+      plus handling picker key/mouse events. Keep the surrounding TUI
+      modal priority, notices list insertion, dashboard resync, and
+      force-poll scheduling in `src/main.rs`, where the live event loop
+      still owns those cross-cutting state transitions.
+    decision_ko: >
+      `TargetPickerController`, `TargetPickerAction`, picker open helper,
+      picker key/mouse event helper를 `src/app/target_picker.rs`에 추가한다.
+      modal priority, notices 삽입, dashboard resync, force-poll
+      scheduling은 live event loop가 소유하므로 `src/main.rs`에 남긴다.
+    triggered_by: "Continuation after the v1.16.12 clipboard action extraction."
+    issue_or_context: >
+      The target picker model and choice helpers were already extracted
+      in v1.16.1, but `src/main.rs` still carried the event-level
+      open/key/mouse dispatch, including back navigation, scroll/page
+      movement, session-to-window advance, target close, and mouse close
+      button handling.
+    changes:
+      added:
+        - "src/app/target_picker.rs: TargetPickerController, TargetPickerAction, open_target_picker, handle_target_picker_key, handle_target_picker_mouse"
+        - "src/app/target_picker.rs: 4 direct unit tests for open, Enter session advance, Enter window close/select, and mouse close button"
+      modified:
+        - "src/main.rs delegates target-picker open/key/mouse dispatch to app::target_picker"
+        - "README / ARCHITECTURE / PROJECT_BRIEF / mission ledger updated for v1.16.13"
+      removed:
+        - "inline target-picker open/key/mouse dispatch branches from src/main.rs"
+    changed_sections:
+      - "src/app/target_picker.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Twelfth Phase C C1 code slice exists outside main.rs"
+        - "target-picker dispatch paths are covered by direct unit tests"
+      modified:
+        - "main.rs no longer owns target-picker list movement, back navigation, Enter apply, mouse list click, or picker close-button dispatch"
+      removed:
+        - "roughly 200 lines of target-picker event dispatch from the live entry module"
+    impact_scope:
+      code: "internal refactor only; no target picker keybinding, mouse behavior, target selection, notice wording, or poll scheduling change intended"
+      tests: "559 total passed — 497 lib + 2 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (+4 lib tests vs v1.16.12)"
+      ledger: "1 new timeline entry (sequence 95); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with remaining event-loop helper splits before control-mode adapter work."
+    breaking: false
+    risk: "low — helper preserves existing target-picker semantics and directly covers the newly extracted open, key, and mouse paths."
+    related_commits: []
+    follow_up:
+      - "Continue C1: split remaining event-loop helper clusters from main.rs."
+
 evolution_summary:
-  current_phase: "v1.16.12 clipboard action extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
+  current_phase: "v1.16.13 target-picker action extraction — Phase C C1 remains active with keymap, target_picker, runtime_refresh, dashboard_state, modal_state, settings_overlay, operator_actions, once_report, prompt_send_actions, and clipboard_actions helper modules already extracted."
   next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
