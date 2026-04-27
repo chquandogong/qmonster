@@ -8,7 +8,7 @@ use chrono::Local;
 use clap::Parser;
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
-    MouseEvent, MouseEventKind,
+    MouseEventKind,
 };
 use crossterm::{
     execute,
@@ -21,6 +21,10 @@ use qmonster::app::bootstrap::Context;
 use qmonster::app::config::{ActionsMode, QmonsterConfig, load_from_path};
 use qmonster::app::event_loop::{PaneReport, run_once, run_once_with_target};
 use qmonster::app::git_info::capture_repo_panel;
+use qmonster::app::keymap::{
+    FocusedPanel, ScrollDir, list_row_at, move_selection, page_selection, rect_contains,
+    select_first, select_last, toggle_focus,
+};
 use qmonster::app::path_resolution::pick_root;
 use qmonster::app::safety_audit::apply_override_with_audit;
 use qmonster::app::system_notice::{
@@ -387,12 +391,6 @@ fn print_reports(reports: &[PaneReport], config: &qmonster::app::config::Qmonste
             }
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FocusedPanel {
-    Alerts,
-    Panes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2272,13 +2270,6 @@ fn target_picker_hint(stage: TargetPickerStage) -> &'static str {
     }
 }
 
-fn toggle_focus(focus: FocusedPanel) -> FocusedPanel {
-    match focus {
-        FocusedPanel::Alerts => FocusedPanel::Panes,
-        FocusedPanel::Panes => FocusedPanel::Alerts,
-    }
-}
-
 fn target_label(target: Option<&WindowTarget>) -> String {
     target
         .map(WindowTarget::label)
@@ -2504,22 +2495,6 @@ fn sync_pane_selection(state: &mut ListState, pane_count: usize) {
     }
 }
 
-fn move_selection(state: &mut ListState, pane_count: usize, step: isize) {
-    if pane_count == 0 {
-        state.select(None);
-        return;
-    }
-    let current = state.selected().unwrap_or(0) as isize;
-    let next = (current + step).clamp(0, pane_count.saturating_sub(1) as isize) as usize;
-    state.select(Some(next));
-}
-
-#[derive(Debug, Clone, Copy)]
-enum ScrollDir {
-    Up,
-    Down,
-}
-
 struct DashboardSyncState<'a> {
     alert_state: &'a mut ListState,
     pane_state: &'a mut ListState,
@@ -2527,49 +2502,6 @@ struct DashboardSyncState<'a> {
     fresh_alerts: &'a mut HashSet<String>,
     alert_times: &'a mut HashMap<String, String>,
     alert_hide_deadlines: &'a mut HashMap<String, Instant>,
-}
-
-fn page_selection(state: &mut ListState, total: usize, page: usize, dir: ScrollDir) {
-    if total == 0 {
-        state.select(None);
-        return;
-    }
-    let step = page.max(1) as isize;
-    match dir {
-        ScrollDir::Up => move_selection(state, total, -step),
-        ScrollDir::Down => move_selection(state, total, step),
-    }
-}
-
-fn select_first(state: &mut ListState, total: usize) {
-    if total == 0 {
-        state.select(None);
-        return;
-    }
-    state.select(Some(0));
-}
-
-fn select_last(state: &mut ListState, total: usize) {
-    if total == 0 {
-        state.select(None);
-        return;
-    }
-    state.select(Some(total.saturating_sub(1)));
-}
-
-fn rect_contains(rect: Rect, column: u16, row: u16) -> bool {
-    column >= rect.x
-        && column < rect.x.saturating_add(rect.width)
-        && row >= rect.y
-        && row < rect.y.saturating_add(rect.height)
-}
-
-fn list_row_at(rect: Rect, event: MouseEvent) -> Option<u16> {
-    let inner = rect.inner(Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    rect_contains(inner, event.column, event.row).then_some(event.row.saturating_sub(inner.y))
 }
 
 fn target_choice_index_at_row(
@@ -2795,7 +2727,6 @@ fn window_choice_label(target: &WindowTarget) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::KeyModifiers;
     use qmonster::domain::identity::{
         IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
     };
@@ -2951,18 +2882,6 @@ mod tests {
     }
 
     #[test]
-    fn list_row_at_ignores_block_border_and_returns_body_row() {
-        let rect = Rect::new(10, 4, 30, 8);
-        let event = MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: 12,
-            row: 6,
-            modifiers: KeyModifiers::empty(),
-        };
-        assert_eq!(list_row_at(rect, event), Some(1));
-    }
-
-    #[test]
     fn target_choice_index_accounts_for_multiline_tree_items() {
         let choices = vec![
             TargetChoice {
@@ -2980,15 +2899,6 @@ mod tests {
         assert_eq!(target_choice_index_at_row(&choices, &state, 0), Some(0));
         assert_eq!(target_choice_index_at_row(&choices, &state, 2), Some(0));
         assert_eq!(target_choice_index_at_row(&choices, &state, 3), Some(1));
-    }
-
-    #[test]
-    fn rect_contains_excludes_coordinates_on_outer_edge() {
-        let rect = Rect::new(2, 3, 4, 5);
-        assert!(rect_contains(rect, 2, 3));
-        assert!(rect_contains(rect, 5, 7));
-        assert!(!rect_contains(rect, 6, 7));
-        assert!(!rect_contains(rect, 5, 8));
     }
 
     #[test]

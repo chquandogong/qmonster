@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.15.25 Phase-C kickoff docs consistency)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.0 Phase-C C1 keymap extraction)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -42,7 +42,7 @@ checkpoint, retention, and durable audit storage.
 ```
 src/
   main.rs      # CLI entry + current TUI event loop (still too large)
-  app/         # bootstrap, config+safety-precedence, event loop, effect gate
+  app/         # bootstrap, config+safety-precedence, event loop, keymap helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # polling first; control-mode-capable PaneSource trait
   adapters/    # per-provider tail parsers (no identity inference)
@@ -55,8 +55,10 @@ src/
   notify/      # desktop / terminal bell; severity-aware rate limiting
 ```
 
-The long-term target is still a thinner `src/main.rs`, but the current
-implementation keeps the TUI event loop and modal orchestration there.
+The long-term target is still a thinner `src/main.rs`. v1.16.0 begins
+that work by moving dashboard focus, selection, and list hit-testing
+helpers into `app::keymap`; the current implementation still keeps the
+live TUI event loop and modal orchestration in `main.rs`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.

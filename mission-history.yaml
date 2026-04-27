@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.15.25 Phase-C kickoff docs consistency."
+  mission_title: "Qmonster v0.5.0 — v1.16.0 Phase-C C1 keymap extraction."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 81
-  latest_version: "1.15.25"
+  total_revisions: 82
+  latest_version: "1.16.0"
 
 timeline:
   - change_id: "initial"
@@ -8188,9 +8188,85 @@ timeline:
     follow_up:
       - "Begin Phase C C1 implementation."
 
+  - change_id: "qmonster-v1.16.0-phase-c-c1-keymap-extraction"
+    semantic_version: "1.16.0"
+    change_sequence: 82
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: continue from docs consistency into Phase C"
+    change_type: "architecture/refactor"
+    motivation_type: "Phase C C1 main.rs decomposition"
+    persistence: "permanent"
+    intent: >
+      Start Phase C with a low-risk `src/main.rs` split before attempting
+      the larger control-mode adapter. The first slice should move
+      reusable dashboard interaction helpers without changing runtime
+      behavior.
+    intent_ko: >
+      control-mode adapter 같은 큰 변경 전에 낮은 위험도의 `src/main.rs`
+      분리로 Phase C를 시작한다. 첫 슬라이스는 런타임 동작을 바꾸지 않고
+      재사용 가능한 dashboard interaction helper를 이동한다.
+    decision: >
+      Add `src/app/keymap.rs` and move dashboard focus toggling, list
+      selection movement, page/home/end selection helpers, and list
+      hit-testing helpers there. Keep the live TUI event loop and modal
+      orchestration in `src/main.rs` for now.
+    decision_ko: >
+      `src/app/keymap.rs`를 추가하고 dashboard focus 전환, list selection
+      이동, page/home/end helper, list hit-test helper를 그쪽으로 옮긴다.
+      live TUI event loop와 modal orchestration은 지금은 `src/main.rs`에
+      유지한다.
+    triggered_by: "Operator instruction (2026-04-27): after docs consistency, move to C."
+    issue_or_context: >
+      `src/main.rs` remained over 3,200 lines after Phase B. Extracting a
+      pure-ish interaction helper module gives Phase C an incremental,
+      testable start without coupling it to tmux control-mode design.
+    changes:
+      added:
+        - "src/app/keymap.rs with FocusedPanel, ScrollDir, selection helpers, and list hit-test helpers"
+        - "6 unit tests in app::keymap, including moved hit-test coverage plus new selection/focus coverage"
+      modified:
+        - "src/app/mod.rs exports the keymap module"
+        - "src/main.rs imports keymap helpers instead of defining them inline"
+        - "README / PROJECT_BRIEF / ARCHITECTURE / mission ledger updated for v1.16.0 Phase C C1"
+      removed:
+        - "inline FocusedPanel / ScrollDir / selection / hit-test helper definitions from src/main.rs"
+        - "2 hit-test tests from main.rs after moving them to app::keymap"
+    changed_sections:
+      - "src/app/keymap.rs"
+      - "src/app/mod.rs"
+      - "src/main.rs"
+      - "README.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "First Phase C C1 code slice exists outside main.rs"
+        - "Keymap/list helper behavior has direct module-level tests"
+      modified:
+        - "main.rs line count drops from 3205 to 3115 after extraction"
+      removed: []
+    impact_scope:
+      code: "refactor only; no intended runtime behavior change"
+      tests: "524 total — 450 lib + 14 main + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim (net +4 vs v1.15.25)"
+      ledger: "1 new timeline entry (sequence 82); meta bump"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Continue Phase C C1 with further main.rs splits before control-mode adapter work."
+    breaking: false
+    risk: "low — mechanical extraction plus focused tests; public helper visibility is limited to the crate package API surface."
+    related_commits: []
+    related_decisions:
+      - "Decision: start Phase C with keymap/list helper extraction rather than event-loop or tmux-control-mode changes."
+    snapshot_after: ""
+    follow_up:
+      - "Continue C1: split additional modal/event-loop state from main.rs."
+
 evolution_summary:
-  current_phase: "v1.15.25 Phase-C kickoff docs consistency — Phase B is complete and canonical docs/README/mission ledger now point at Phase C C1."
-  next_phase: "Phase C C1: split main.rs conservatively before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.0 Phase-C C1 keymap extraction — first main.rs decomposition slice is implemented in src/app/keymap.rs."
+  next_phase: "Continue Phase C C1 with further conservative main.rs splits before control-mode adapter work. Later Phase C items remain control-mode tmux adapter and review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
