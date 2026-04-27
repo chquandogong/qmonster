@@ -84,16 +84,23 @@ session:window · Provider role · %pane_id
   `log storm`, `repeated output`, `verbose output`, `error hint`,
   `subagent activity`
 - `metrics` 줄은 badge 형태로 표시됩니다.
-  `CTX 90%`, `QUOTA 47%`, `TOKENS 12345 [Official]`, `COST $0.42 [Estimate]`,
+  `CTX 90%`, `QUOTA 5H 47%`, `QUOTA WEEK 62%`,
+  `TOKENS 12345 [Official]`, `COST $0.42 [Estimate]`,
   `MODEL gpt-5.4 [Official]`
 - `CTX` badge는 수치가 높을수록 더 강한 severity 색을 사용합니다.
   85% 이상은 `Risk`, 75% 이상은 `Warning`, 60% 이상은 `Concern`으로
-  취급됩니다. `QUOTA` badge는 Gemini 전용으로 같은 severity 임계치를
-  공유합니다 (Slice 3 S3-3).
+  취급됩니다. `QUOTA`, `QUOTA 5H`, `QUOTA WEEK` badge도 같은 severity
+  임계치를 공유합니다.
 - 현재 `CTX`는 구조적으로 확인 가능한 provider status에서만 채웁니다.
-  Codex는 bottom status line, Gemini는 status table의 `context` 컬럼을
-  사용합니다. Claude의 `/status` 사용량 막대는 context window가 아니라
-  usage/rate limit이므로 `CTX`로 표시하지 않습니다.
+  Claude는 `/context`, Codex는 bottom status line, Gemini는 status
+  table의 `context` 컬럼을 사용합니다. Claude의 `/usage` Current session
+  / Current week 막대는 context window가 아니라 rate-limit quota이므로
+  `CTX`로 표시하지 않습니다.
+- `QUOTA 5H`와 `QUOTA WEEK`는 Claude/Codex 전용 split quota입니다.
+  Claude는 `/usage`의 `Current session`을 5시간 한도, `Current week
+  (all models)`를 주간 한도로 읽습니다. Codex는 bottom status line의
+  `5h N%`와 `weekly N%`를 같은 의미로 읽습니다. Gemini처럼 provider가
+  단일 quota만 노출하는 경우에는 기존 `QUOTA N%` badge를 사용합니다.
 - **Provider 측의 status surface는 운영자가 보이는 항목을 끌 수 있음**:
   Codex의 `/statusline` 슬래시 명령 ("Configure which items appear in
   the status line")은 bottom status line의 항목(branch / model / input
@@ -129,11 +136,12 @@ session:window · Provider role · %pane_id
   표시합니다. Qmonster는 선택된 pane에서 `u`를 누르면 provider의
   read-only runtime slash command와 terminal submit(`C-m`, Enter-equivalent)을
   보냅니다. 여러 runtime surface가 있는 provider는 `u`를 누를 때마다 하나씩
-  순환 실행합니다: Claude `/status` → `/usage` → `/stats`, Codex
-  `/status`, Gemini `/stats session` → `/stats model` → `/stats tools`.
-  Claude `/status`는 실행 후 화면이 계속 남기 때문에 Qmonster가 먼저 그
-  출력을 캡처해 one-shot parser overlay로 저장하고, 이어서 `Escape`를 보내
-  pane이 다음 명령을 받을 수 있게 되돌립니다. Claude는 다음 순환 명령을
+  순환 실행합니다: Claude `/status` → `/context` → `/usage` → `/stats`,
+  Codex `/status`, Gemini `/stats session` → `/stats model` → `/stats tools`.
+  Claude `/status`, `/context`, `/usage`는 실행 후 화면이 계속 남기 때문에
+  Qmonster가 먼저 그 출력을 캡처해 one-shot parser overlay로 저장하고,
+  이어서 `Escape`를 보내 pane이 다음 명령을 받을 수 있게 되돌립니다.
+  Claude는 다음 순환 명령을
   보내기 전에도 방어적으로 `Escape`를 보내 이전 fullscreen runtime surface를
   닫습니다. Gemini는 pre-`Escape` 없이 stats 명령만 순환합니다. 다음 poll에서
   캡처와 읽을 수 있는 로컬 provider 설정을 `RuntimeFact`로 파싱합니다.
@@ -243,10 +251,11 @@ side_effects (N):
   현재 repo root, branch, HEAD, upstream ahead/behind, worktree 변경 요약,
   최근 커밋을 보여줍니다.
 - **Settings**:
-  `S`로 열립니다. cost / context / quota의 default, claude, codex,
-  gemini warning/critical threshold를 한 화면에서 조정합니다. modal
-  오른쪽 위 `[x]`를 클릭하거나 `q` / `Esc`로 닫습니다. `w` 저장은
-  `~/.qmonster/config/qmonster.toml` 또는 명시적 `--config PATH`에
+  `S`로 열립니다. cost / context는 default, claude, codex, gemini
+  warning/critical threshold를 조정합니다. quota는 default, claude 5h,
+  claude weekly, codex 5h, codex weekly, gemini threshold를 별도 row로
+  조정합니다. modal 오른쪽 위 `[x]`를 클릭하거나 `q` / `Esc`로 닫습니다.
+  `w` 저장은 `~/.qmonster/config/qmonster.toml` 또는 명시적 `--config PATH`에
   `toml::to_string_pretty` 형식으로 씁니다. 이 저장 방식은 현재
   comment-preserving이 아닙니다.
 

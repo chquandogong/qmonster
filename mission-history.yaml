@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v0.5.0 — v1.16.50 control-mode auto default."
+  mission_title: "Qmonster v0.5.0 — v1.16.51 Claude context + split quota."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 132
-  latest_version: "1.16.50"
+  total_revisions: 133
+  latest_version: "1.16.51"
 
 timeline:
   - change_id: "initial"
@@ -11806,9 +11806,105 @@ timeline:
     follow_up:
       - "Continue Phase C with C3 review-tier profiles."
 
+  - change_id: "qmonster-v1.16.51-claude-context-split-quota-npm"
+    semantic_version: "1.16.51"
+    change_sequence: 133
+    date: "2026-04-27"
+    author: "Codex (GPT-5)"
+    contributors:
+      - "Operator directive: use Claude /context for CTX, split Claude/Codex quota into 5h and weekly windows, add version/contributing pages, tidy README phase status, and publish npm"
+    change_type: "feature"
+    motivation_type: "operator observability and release packaging"
+    persistence: "permanent"
+    intent: >
+      Make provider pressure metrics match the real provider quota/context
+      surfaces and prepare Qmonster for npm installation.
+    intent_ko: >
+      provider pressure metric을 실제 provider quota/context surface와 맞추고
+      Qmonster를 npm 설치 가능한 source package 형태로 준비한다.
+    decision: >
+      Claude context pressure is populated from `/context`, not `/status`.
+      Claude quota is split into `/usage` Current session (5h) and Current
+      week (all models). Codex quota is split into bottom-status `5h` and
+      `weekly`. The policy gates, advisory actions, TUI badges, and `S`
+      settings overlay keep those quota windows separate. The npm package
+      is source-based (`qmonster@0.5.0`) and runs the Rust binary through
+      Cargo.
+    decision_ko: >
+      Claude context pressure는 `/status`가 아니라 `/context`에서 채운다.
+      Claude quota는 `/usage` Current session(5h)과 Current week(all
+      models)로 나눈다. Codex quota는 bottom-status `5h`와 `weekly`로
+      나눈다. policy gate, advisory action, TUI badge, `S` settings
+      overlay는 이 quota window를 분리해 유지한다. npm package는 Cargo를
+      통해 Rust binary를 실행하는 source package(`qmonster@0.5.0`)다.
+    triggered_by: "The operator requested the provider pressure corrections, README/docs cleanup, Git version/contributing pages, and npm publish."
+    issue_or_context: >
+      Qmonster previously treated quota as one provider-level pressure
+      signal for Claude/Codex even though both CLIs expose distinct rolling
+      5-hour and weekly limits. Claude CTX also needed to come from the
+      explicit `/context` surface rather than usage/status quota panels.
+    changes:
+      added:
+        - "`SignalSet.quota_5h_pressure` and `SignalSet.quota_weekly_pressure`"
+        - "Claude `/context` pressure parser and `/usage` split-quota parser"
+        - "Codex bottom-status `5h` / `weekly` quota parser"
+        - "split quota thresholds in `QuotaConfig`, `PolicyGates`, advisory actions, TUI badges, and settings overlay rows"
+        - "`VERSION.md`, `CONTRIBUTING.md`, `package.json`, and `npm/bin/qmonster`"
+      modified:
+        - "Claude runtime refresh cycle now includes `/context` before `/usage`"
+        - "README Phase status is condensed into current status, Phase C, and metric-contract tables"
+        - "docs/ai and config template updated for Claude `/context` and split quota windows"
+        - "mission ledger updated for v1.16.51"
+      removed: []
+    changed_sections:
+      - "src/domain/signal.rs"
+      - "src/adapters/claude.rs"
+      - "src/adapters/codex.rs"
+      - "src/app/config.rs"
+      - "src/app/runtime_refresh.rs"
+      - "src/policy/gates.rs"
+      - "src/policy/rules/advisories.rs"
+      - "src/ui/panels.rs"
+      - "src/ui/settings.rs"
+      - "config/qmonster.example.toml"
+      - "README.md"
+      - "VERSION.md"
+      - "CONTRIBUTING.md"
+      - "package.json"
+      - "npm/bin/qmonster"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/VALIDATION.md"
+      - "docs/ai/WORKFLOWS.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    done_when_delta:
+      added:
+        - "Claude CTX reflects `/context` output"
+        - "Claude and Codex quota thresholds are configurable separately for 5h and weekly windows"
+        - "README phase status is concise and current"
+        - "npm package metadata exists and packs successfully"
+      modified:
+        - "all-target test count increases to 613"
+      removed: []
+    impact_scope:
+      runtime: "provider pressure parsing, quota advisories, metric badges, settings overlay, and Claude runtime refresh command cycle"
+      tests: "613 total passed — 553 lib + 0 main + 0 qmonster-tmux-parity + 36 event_loop + 18 false_positive + 6 idle_state + 0 sim; default --once smoke displays `tmux source: control_mode` and split Codex quota output"
+      ledger: "1 new timeline entry (sequence 133); meta bump"
+      npm: "`npm view qmonster version` returns E404 (name currently unclaimed); `npm pack --dry-run` passes for qmonster@0.5.0; `npm publish` was attempted but blocked by local ENEEDAUTH because this machine is not logged in to npm"
+      review_gate: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, npm pack --dry-run, default --once smoke, and ./scripts/verify-shared.sh pass. Shared verification uses the lite ledger fallback because mission-spec is not installed locally."
+      follow_up_carryover: "Log in to npm and rerun `npm publish` if registry publication must complete from this machine; otherwise continue Phase C with C3 review-tier profiles."
+    breaking: false
+    risk: "medium-low — operator-facing quota labels/actions change for Claude and Codex, but legacy single-provider quota config remains a fallback into both split windows."
+    related_commits: []
+    follow_up:
+      - "Complete npm registry publication after `npm adduser` or token configuration."
+      - "Continue Phase C with C3 review-tier profiles."
+
 evolution_summary:
-  current_phase: "v1.16.50 control-mode auto default — Phase C C2 is complete with auto preferring control_mode and falling back to polling."
-  next_phase: "Continue Phase C with C3 review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
+  current_phase: "v1.16.51 Claude context + split quota — Claude CTX uses /context, Claude/Codex quota windows are split into 5h and weekly, and npm packaging exists."
+  next_phase: "Complete npm registry publication after npm auth, then continue Phase C with C3 review-tier profiles. Save path remains comment-lossy via `toml::to_string_pretty` (swap to `toml_edit` if operators ask for format-preserving writes). Confirm-archive review remains permanently closed per operator decision (2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

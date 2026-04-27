@@ -523,6 +523,20 @@ pub fn metric_row(s: &SignalSet) -> String {
             source_kind_label(m.source_kind)
         ));
     }
+    if let Some(m) = s.quota_5h_pressure.as_ref() {
+        parts.push(format!(
+            "quota 5h {:.0}% [{}]",
+            m.value * 100.0,
+            source_kind_label(m.source_kind)
+        ));
+    }
+    if let Some(m) = s.quota_weekly_pressure.as_ref() {
+        parts.push(format!(
+            "quota weekly {:.0}% [{}]",
+            m.value * 100.0,
+            source_kind_label(m.source_kind)
+        ));
+    }
     if let Some(m) = s.token_count.as_ref() {
         parts.push(format!(
             "tokens {} [{}]",
@@ -684,6 +698,22 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
             &mut spans,
             &mut has_any,
             format!(" QUOTA {:.0}% ", metric.value * 100.0),
+            theme::severity_badge_style(context_metric_severity(metric.value)),
+        );
+    }
+    if let Some(metric) = signals.quota_5h_pressure.as_ref() {
+        push_badge(
+            &mut spans,
+            &mut has_any,
+            format!(" QUOTA 5H {:.0}% ", metric.value * 100.0),
+            theme::severity_badge_style(context_metric_severity(metric.value)),
+        );
+    }
+    if let Some(metric) = signals.quota_weekly_pressure.as_ref() {
+        push_badge(
+            &mut spans,
+            &mut has_any,
+            format!(" QUOTA WEEK {:.0}% ", metric.value * 100.0),
             theme::severity_badge_style(context_metric_severity(metric.value)),
         );
     }

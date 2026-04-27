@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.50 control-mode auto default)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-27 (implementation sync through v1.16.51 Claude context + split quota)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -44,7 +44,7 @@ src/
   main.rs      # thin CLI/startup/--once/TUI-entry wrapper
   app/         # bootstrap/startup, config+safety-precedence, path resolution, event loop, tui-loop/dashboard-runtime/polling-tick/terminal-session/dashboard-render/keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
-  tmux/        # PaneSource trait; polling default plus opt-in control-mode source
+  tmux/        # PaneSource trait; auto source prefers control-mode with polling fallback
   adapters/    # per-provider tail parsers (no identity inference)
   policy/      # pure rules; Phase 1 = rules/alerts.rs;
                # Phase 3 adds rules/{advisories,concurrent}.rs;
@@ -170,6 +170,12 @@ compatibility on older tmux versions.
 v1.16.50 completes Phase C C2 by making `[tmux] source = "auto"` the
 default. Auto mode attaches control-mode first and falls back to polling
 only when startup attach fails; explicit `control_mode` remains strict.
+v1.16.51 updates provider pressure semantics without changing the
+PaneSource contract: Claude CTX is read from `/context`, Claude quota is
+split from `/usage` Current session (5h) and Current week (all models),
+Codex quota is split from bottom-status `5h` and `weekly`, and the
+settings overlay persists separate 5h/weekly quota thresholds for Claude
+and Codex.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
@@ -319,16 +325,32 @@ provider status/slash output and readable provider config sources. The
 TUI key `u` sends the selected provider's read-only runtime slash
 commands with terminal submit (`C-m`, Enter-equivalent), one command per
 press when a provider exposes multiple runtime surfaces. Claude cycles
-`/status`, `/usage`, `/stats`; Codex sends `/status`; Gemini cycles
-`/stats session`, `/stats model`, `/stats tools`. Claude `/status`
-output is captured before Qmonster sends `Escape` to close the
-fullscreen surface; the captured tail is consumed once as an in-memory
-parser overlay on the next poll. Claude also gets a defensive `Escape`
-before each cycled runtime command so any prior fullscreen surface is
-closed before the next slash command is submitted. Gemini stats surfaces
-are cycled without a pre-`Escape`. Claude `/btw` is not used as a
-runtime fact source because it has no tool or internal-state access.
-Unknown or unexposed fields stay absent rather than inferred.
+`/status`, `/context`, `/usage`, `/stats`; Codex sends `/status`;
+Gemini cycles `/stats session`, `/stats model`, `/stats tools`. Claude
+fullscreen surfaces (`/status`, `/context`, `/usage`) are captured
+before Qmonster sends `Escape` to close them; the captured tail is
+consumed once as an in-memory parser overlay on the next poll. Claude
+also gets a defensive `Escape` before each cycled runtime command so any
+prior fullscreen surface is closed before the next slash command is
+submitted. Gemini stats surfaces are cycled without a pre-`Escape`.
+Claude `/btw` is not used as a runtime fact source because it has no
+tool or internal-state access. Unknown or unexposed fields stay absent
+rather than inferred.
+
+Pressure metrics intentionally mirror provider surfaces:
+
+- `context_pressure`: Claude `/context`, Codex bottom status, Gemini
+  status table `context`.
+- `quota_pressure`: provider exposes only one quota surface, currently
+  Gemini.
+- `quota_5h_pressure`: Claude `/usage` Current session; Codex bottom
+  status `5h`.
+- `quota_weekly_pressure`: Claude `/usage` Current week (all models);
+  Codex bottom status `weekly`.
+
+The policy layer keeps these windows distinct so settings and advisory
+actions can pace a rolling 5-hour budget without hiding an exhausted
+weekly budget.
 
 ### `notify/`
 

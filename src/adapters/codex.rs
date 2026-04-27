@@ -9,6 +9,8 @@ pub struct CodexAdapter;
 
 struct CodexStatus {
     context_pct: u8,
+    quota_5h_pct: Option<u8>,
+    quota_weekly_pct: Option<u8>,
     total_tokens: u64,
     input_tokens: u64,
     output_tokens: u64,
@@ -68,6 +70,16 @@ impl ProviderParser for CodexAdapter {
             .with_confidence(0.95)
             .with_provider(Provider::Codex),
         );
+        set.quota_5h_pressure = status.quota_5h_pct.map(|pct| {
+            MetricValue::new(pct as f32 / 100.0, SourceKind::ProviderOfficial)
+                .with_confidence(0.95)
+                .with_provider(Provider::Codex)
+        });
+        set.quota_weekly_pressure = status.quota_weekly_pct.map(|pct| {
+            MetricValue::new(pct as f32 / 100.0, SourceKind::ProviderOfficial)
+                .with_confidence(0.95)
+                .with_provider(Provider::Codex)
+        });
         set.token_count = Some(
             MetricValue::new(status.total_tokens, SourceKind::ProviderOfficial)
                 .with_confidence(0.95)
@@ -228,6 +240,8 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
         }
 
         let mut context_pct: Option<u8> = None;
+        let mut quota_5h_pct: Option<u8> = None;
+        let mut quota_weekly_pct: Option<u8> = None;
         let mut total_tokens: Option<u64> = None;
         let mut input_tokens: Option<u64> = None;
         let mut output_tokens: Option<u64> = None;
@@ -259,6 +273,18 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
                 && let Ok(pct) = pct_str.parse::<u8>()
             {
                 context_pct = Some(pct);
+                continue;
+            }
+            if quota_5h_pct.is_none()
+                && let Some(pct) = parse_named_percent_token(token, "5h")
+            {
+                quota_5h_pct = Some(pct);
+                continue;
+            }
+            if quota_weekly_pct.is_none()
+                && let Some(pct) = parse_named_percent_token(token, "weekly")
+            {
+                quota_weekly_pct = Some(pct);
                 continue;
             }
             // Token counts (Slice 1)
@@ -305,6 +331,8 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
                 total_tokens: tot,
                 input_tokens: inp,
                 output_tokens: out,
+                quota_5h_pct,
+                quota_weekly_pct,
                 model,
                 worktree_path,
                 git_branch,
@@ -314,6 +342,12 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
         return None;
     }
     None
+}
+
+fn parse_named_percent_token(token: &str, label: &str) -> Option<u8> {
+    let rest = token.strip_prefix(label)?.trim_start();
+    let pct_str = rest.strip_suffix('%')?.trim();
+    pct_str.parse::<u8>().ok().filter(|pct| *pct <= 100)
 }
 
 fn is_plain_identifier(s: &str) -> bool {
@@ -546,6 +580,17 @@ output_per_1m = 10.00
         let cx = set.context_pressure.as_ref().expect("context parsed");
         assert!((cx.value - 0.27).abs() < 0.001);
         assert_eq!(cx.source_kind, SourceKind::ProviderOfficial);
+
+        let quota_5h = set.quota_5h_pressure.as_ref().expect("5h quota parsed");
+        assert!((quota_5h.value - 0.98).abs() < 0.001);
+        assert_eq!(quota_5h.source_kind, SourceKind::ProviderOfficial);
+
+        let quota_weekly = set
+            .quota_weekly_pressure
+            .as_ref()
+            .expect("weekly quota parsed");
+        assert!((quota_weekly.value - 0.99).abs() < 0.001);
+        assert_eq!(quota_weekly.source_kind, SourceKind::ProviderOfficial);
 
         let tokens = set.token_count.as_ref().expect("tokens parsed");
         assert_eq!(tokens.value, 1_530_000);

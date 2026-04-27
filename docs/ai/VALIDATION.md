@@ -12,11 +12,11 @@ Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-04-27): `cargo fmt --check`,
-`git diff --check`, `cargo test --all-targets` (605 tests),
-`cargo clippy --all-targets -- -D warnings`,
-`tmux -C attach-session -f ignore-size,no-output` smoke, control-mode attach diagnostic and legacy-fallback unit coverage,
-auto-source fallback unit coverage, default `--once` smoke showing
-`tmux source: control_mode`, repeated default/all-target live tmux source parity checks, and
+`git diff --check`, `cargo test --all-targets` (613 tests),
+`cargo clippy --all-targets -- -D warnings`, `npm pack --dry-run`,
+default `--once` smoke showing `tmux source: control_mode` and split
+Codex quota output, control-mode attach diagnostic and legacy-fallback
+unit coverage, auto-source fallback unit coverage, and
 `scripts/verify-shared.sh` pass; official `mission-spec validate .` is
 still unavailable locally because `mission-spec` is not installed, so
 `verify-shared.sh` used its lite ledger-structure fallback.
@@ -125,9 +125,10 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
 - [x] Every rule carries a `SourceKind`; for `Heuristic` rules, a
       pointer to the community source is recorded.
 - [x] Quota-pressure gradient advisories keep authority split honest:
-      the Gemini `quota_pressure` metric remains `ProviderOfficial`,
-      but the 75% / 85% advisory recommendations are `Estimated`
-      Qmonster thresholds.
+      provider quota metrics are `ProviderOfficial`, while the 75% /
+      85% advisory recommendations are `Estimated` Qmonster thresholds.
+      Claude and Codex keep rolling 5-hour and weekly windows separate;
+      Gemini keeps the single `quota_pressure` surface.
 - [x] Security posture advisories are opt-in: permissive runtime facts
       (YOLO / bypass / Full Access / `danger-full-access` / no sandbox)
       stay badge-only by default and become passive `Concern`

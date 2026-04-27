@@ -39,11 +39,7 @@ pub fn eval_advisories(
         }
     }
 
-    if let Some(rec) = quota_pressure_critical(id, signals, gates) {
-        out.push(rec);
-    } else if let Some(rec) = quota_pressure_warning(id, signals, gates) {
-        out.push(rec);
-    }
+    out.extend(quota_pressure_recommendations(id, signals, gates));
 
     if let Some(rec) = cost_pressure_critical(id, signals, gates) {
         out.push(rec);
@@ -229,72 +225,107 @@ fn aggressive_context_pressure_critical() -> Recommendation {
     }
 }
 
-/// quota_pressure gradient advisory (post-v1.15.10). Built on the
-/// quota_pressure metric shipped in v1.15.8 and the v1.15.10 honesty
-/// fix that limits LimitHit to the validated quota column. Operators
-/// should be aware before quota hits 100% so they can pace work or
-/// switch model; rate-limited quotas reset on the provider's schedule
-/// and cannot be addressed by `/compact` (unlike context_pressure).
-fn quota_pressure_warning(
-    _id: &ResolvedIdentity,
+/// quota_pressure gradient advisory (post-v1.15.10). Built on provider
+/// quota metrics and the v1.15.10 honesty fix that limits LimitHit to
+/// validated quota surfaces. v1.16.51 keeps Gemini's single quota metric
+/// while adding Claude/Codex split 5h and weekly quota windows.
+fn quota_pressure_recommendations(
+    id: &ResolvedIdentity,
     signals: &SignalSet,
     gates: &PolicyGates,
-) -> Option<Recommendation> {
-    let v = signals.quota_pressure.as_ref()?.value;
-    if !(gates.quota_warning_pct..gates.quota_critical_pct).contains(&v) {
-        return None;
+) -> Vec<Recommendation> {
+    let mut out = Vec::new();
+    if let Some(rec) = quota_pressure_rec(
+        id,
+        signals.quota_pressure.as_ref().map(|m| m.value),
+        gates.quota_warning_pct,
+        gates.quota_critical_pct,
+        gates.identity_confidence,
+        None,
+    ) {
+        out.push(rec);
     }
-    if !allow_provider_specific(gates.identity_confidence) {
-        return None;
+    if let Some(rec) = quota_pressure_rec(
+        id,
+        signals.quota_5h_pressure.as_ref().map(|m| m.value),
+        gates.quota_5h_warning_pct,
+        gates.quota_5h_critical_pct,
+        gates.identity_confidence,
+        Some("5h"),
+    ) {
+        out.push(rec);
     }
-    Some(Recommendation {
-        action: "quota-pressure: pace",
-        reason:
-            "provider quota approaching limit — pace work and prepare to checkpoint before LimitHit"
-                .into(),
-        severity: Severity::Warning,
-        source_kind: SourceKind::Estimated,
-        // No single runnable command: rate-limited quotas reset on the
-        // provider's schedule, not by a slash command. Operator picks
-        // between waiting, switching account/model, or pausing the pane.
-        suggested_command: None,
-        side_effects: vec![],
-        is_strong: false,
-        next_step: Some(
-            "press 's' to snapshot now, then pace prompts or switch to a less rate-limited model"
-                .into(),
-        ),
-        profile: None,
-    })
+    if let Some(rec) = quota_pressure_rec(
+        id,
+        signals.quota_weekly_pressure.as_ref().map(|m| m.value),
+        gates.quota_weekly_warning_pct,
+        gates.quota_weekly_critical_pct,
+        gates.identity_confidence,
+        Some("weekly"),
+    ) {
+        out.push(rec);
+    }
+    out
 }
 
-fn quota_pressure_critical(
+fn quota_pressure_rec(
     _id: &ResolvedIdentity,
-    signals: &SignalSet,
-    gates: &PolicyGates,
+    value: Option<f32>,
+    warning_pct: f32,
+    critical_pct: f32,
+    identity_confidence: crate::domain::identity::IdentityConfidence,
+    window: Option<&'static str>,
 ) -> Option<Recommendation> {
-    let v = signals.quota_pressure.as_ref()?.value;
-    if v < gates.quota_critical_pct {
+    let v = value?;
+    let is_critical = v >= critical_pct;
+    let is_warning = (warning_pct..critical_pct).contains(&v);
+    if !is_critical && !is_warning {
         return None;
     }
-    if !allow_provider_specific(gates.identity_confidence) {
+    if !allow_provider_specific(identity_confidence) {
         return None;
     }
+
+    let window_prefix = window.map(|w| format!("{w} ")).unwrap_or_default();
+    let action = match (window, is_critical) {
+        (Some("5h"), true) => "quota-pressure: 5h act now",
+        (Some("5h"), false) => "quota-pressure: 5h pace",
+        (Some("weekly"), true) => "quota-pressure: weekly act now",
+        (Some("weekly"), false) => "quota-pressure: weekly pace",
+        (None, true) => "quota-pressure: act now",
+        (None, false) => "quota-pressure: pace",
+        _ => "quota-pressure: pace",
+    };
+    let (severity, is_strong, reason, next_step) = if is_critical {
+        (
+            Severity::Risk,
+            true,
+            format!(
+                "provider {window_prefix}quota near critical — checkpoint and stop new prompts before LimitHit"
+            ),
+            "press 's' to snapshot + archive, then stop or switch account/model before quota hits 100%".to_string(),
+        )
+    } else {
+        (
+            Severity::Warning,
+            false,
+            format!(
+                "provider {window_prefix}quota approaching limit — pace work and prepare to checkpoint before LimitHit"
+            ),
+            "press 's' to snapshot now, then pace prompts or switch to a less rate-limited model"
+                .to_string(),
+        )
+    };
+
     Some(Recommendation {
-        action: "quota-pressure: act now",
-        reason: "provider quota near critical — checkpoint and stop new prompts before LimitHit"
-            .into(),
-        severity: Severity::Risk,
+        action,
+        reason,
+        severity,
         source_kind: SourceKind::Estimated,
-        // Same constraint as the warning variant: no single runnable
-        // command resolves a rate-limit; operator must change behaviour.
         suggested_command: None,
         side_effects: vec![],
-        is_strong: true,
-        next_step: Some(
-            "press 's' to snapshot + archive, then stop or switch account/model before quota hits 100%"
-                .into(),
-        ),
+        is_strong,
+        next_step: Some(next_step),
         profile: None,
     })
 }
@@ -610,6 +641,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         }
     }
 
@@ -788,6 +823,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -807,6 +846,14 @@ mod tests {
     fn quota(v: f32) -> SignalSet {
         SignalSet {
             quota_pressure: Some(MetricValue::new(v, SK::ProviderOfficial)),
+            ..SignalSet::default()
+        }
+    }
+
+    fn split_quota(five_hour: f32, weekly: f32) -> SignalSet {
+        SignalSet {
+            quota_5h_pressure: Some(MetricValue::new(five_hour, SK::ProviderOfficial)),
+            quota_weekly_pressure: Some(MetricValue::new(weekly, SK::ProviderOfficial)),
             ..SignalSet::default()
         }
     }
@@ -850,6 +897,19 @@ mod tests {
     }
 
     #[test]
+    fn split_quota_pressure_uses_window_specific_actions() {
+        let id = id_high(Role::Main);
+        let s = split_quota(0.78, 0.90);
+        let recs = eval_advisories(&id, &s, &gates_default());
+
+        let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
+        assert!(actions.contains(&"quota-pressure: 5h pace"));
+        assert!(actions.contains(&"quota-pressure: weekly act now"));
+        assert!(!actions.contains(&"quota-pressure: pace"));
+        assert!(!actions.contains(&"quota-pressure: act now"));
+    }
+
+    #[test]
     fn quota_pressure_below_threshold_does_not_fire() {
         let id = id_high(Role::Main);
         let s = quota(0.50);
@@ -879,6 +939,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -926,6 +990,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -986,6 +1054,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1009,6 +1081,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1052,6 +1128,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let aggressive_actions: Vec<&str> = recs
@@ -1084,6 +1164,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
@@ -1114,6 +1198,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let any_aggressive = recs.iter().any(|r| r.action.starts_with("aggressive:"));
@@ -1221,6 +1309,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
@@ -1252,6 +1344,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         let adv = recs
@@ -1349,6 +1445,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1379,6 +1479,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let codex_recs = eval_advisories(&id, &s, &codex_gates);
         assert!(
@@ -1400,6 +1504,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let claude_recs = eval_advisories(&id, &s, &claude_gates);
         assert!(
@@ -1426,6 +1534,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let gemini_recs = eval_advisories(&id, &s, &gemini_gates);
         assert!(
@@ -1456,6 +1568,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let default_recs = eval_advisories(&id, &s, &default_gates);
         assert!(
@@ -1520,6 +1636,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         let default_recs = eval_advisories(&id, &s, &default_gates);
         assert!(
@@ -1539,6 +1659,10 @@ mod tests {
         let tight_gates = PolicyGates {
             quota_warning_pct: 0.60,
             quota_critical_pct: 0.75,
+            quota_5h_warning_pct: 0.60,
+            quota_5h_critical_pct: 0.75,
+            quota_weekly_warning_pct: 0.60,
+            quota_weekly_critical_pct: 0.75,
             ..default_gates
         };
         let tight_recs = eval_advisories(&id, &s, &tight_gates);
@@ -1553,6 +1677,10 @@ mod tests {
         let loose_gates = PolicyGates {
             quota_warning_pct: 0.85,
             quota_critical_pct: 0.95,
+            quota_5h_warning_pct: 0.85,
+            quota_5h_critical_pct: 0.95,
+            quota_weekly_warning_pct: 0.85,
+            quota_weekly_critical_pct: 0.95,
             ..default_gates
         };
         let loose_recs = eval_advisories(&id, &s, &loose_gates);

@@ -1,0 +1,47 @@
+{
+  "name": "qmonster",
+  "version": "0.5.0",
+  "description": "Observe-first TUI for multi-CLI tmux development.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chquandogong/qmonster.git"
+  },
+  "homepage": "https://github.com/chquandogong/qmonster#readme",
+  "bugs": {
+    "url": "https://github.com/chquandogong/qmonster/issues"
+  },
+  "keywords": [
+    "tmux",
+    "tui",
+    "claude",
+    "codex",
+    "gemini",
+    "monitoring"
+  ],
+  "bin": {
+    "qmonster": "npm/bin/qmonster"
+  },
+  "files": [
+    "build.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+    "src/",
+    "config/",
+    "docs/ai/",
+    "README.md",
+    "VERSION.md",
+    "CONTRIBUTING.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "cargo build --release --bin qmonster",
+    "test": "cargo test --all-targets",
+    "qmonster": "cargo run --release --bin qmonster --"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

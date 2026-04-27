@@ -7,11 +7,12 @@
 //! but does not touch disk on its own — `save()` is an explicit
 //! operator action gated on a known config path.
 //!
-//! Editable fields cover six sections × four scopes = 24 numeric
-//! values: cost / context / quota × default / claude / codex / gemini.
-//! Per-provider scopes that have no override read as inherited from
-//! the section default and display as `(default)` until the operator
-//! types a value.
+//! Editable fields cover cost / context defaults plus per-provider
+//! overrides, and quota defaults plus provider-specific quota windows.
+//! Claude/Codex quota rows split into 5h and weekly windows; Gemini
+//! keeps its single quota row. Provider/window scopes with no override
+//! read as inherited from the section default and display as `(default)`
+//! until the operator types a value.
 
 use crate::app::config::{
     ContextConfig, CostConfig, CostProviderConfig, PressureProviderConfig, QmonsterConfig,
@@ -41,7 +42,11 @@ pub enum Section {
 pub enum Scope {
     Default,
     Claude,
+    Claude5h,
+    ClaudeWeekly,
     Codex,
+    Codex5h,
+    CodexWeekly,
     Gemini,
 }
 
@@ -53,7 +58,8 @@ pub enum Bound {
 }
 
 /// A single editable field — `(Section, Scope, Bound)` triple.
-/// 3 × 4 × 2 = 24 fields total.
+/// Cost/context use default + provider scopes; quota uses default,
+/// Claude 5h/weekly, Codex 5h/weekly, and Gemini.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FieldId {
     pub section: Section,
@@ -71,21 +77,37 @@ impl FieldId {
     }
 }
 
-/// The 24 fields in the order they appear in the overlay. Iteration
+/// The fields in the order they appear in the overlay. Iteration
 /// order is `(section outer, scope middle, bound inner)` so a single
 /// row of the rendered grid is one `(section, scope)` pair with the
 /// warning + critical cells side by side, and adjacent sections sit
 /// on consecutive rows of the same scope.
 pub fn all_fields() -> Vec<FieldId> {
-    let mut out = Vec::with_capacity(24);
+    let mut out = Vec::with_capacity(28);
     for section in [Section::Cost, Section::Context, Section::Quota] {
-        for scope in [Scope::Default, Scope::Claude, Scope::Codex, Scope::Gemini] {
+        for scope in scopes_for_section(section) {
             for bound in [Bound::Warning, Bound::Critical] {
-                out.push(FieldId::new(section, scope, bound));
+                out.push(FieldId::new(section, *scope, bound));
             }
         }
     }
     out
+}
+
+fn scopes_for_section(section: Section) -> &'static [Scope] {
+    match section {
+        Section::Cost | Section::Context => {
+            &[Scope::Default, Scope::Claude, Scope::Codex, Scope::Gemini]
+        }
+        Section::Quota => &[
+            Scope::Default,
+            Scope::Claude5h,
+            Scope::ClaudeWeekly,
+            Scope::Codex5h,
+            Scope::CodexWeekly,
+            Scope::Gemini,
+        ],
+    }
 }
 
 /// One-line status banner shown at the bottom of the overlay.
@@ -365,7 +387,8 @@ fn read_cost(config: &QmonsterConfig, field: FieldId) -> Option<f64> {
                 Scope::Claude => cost.claude.as_ref(),
                 Scope::Codex => cost.codex.as_ref(),
                 Scope::Gemini => cost.gemini.as_ref(),
-                Scope::Default => unreachable!(),
+                Scope::Claude5h | Scope::ClaudeWeekly | Scope::Codex5h | Scope::CodexWeekly => None,
+                Scope::Default => None,
             }?;
             Some(match bound {
                 Bound::Warning => provider.warning_usd,
@@ -407,6 +430,7 @@ impl PctConfig for ContextConfig {
             Scope::Claude => self.claude.as_ref(),
             Scope::Codex => self.codex.as_ref(),
             Scope::Gemini => self.gemini.as_ref(),
+            Scope::Claude5h | Scope::ClaudeWeekly | Scope::Codex5h | Scope::CodexWeekly => None,
             Scope::Default => None,
         }
     }
@@ -421,8 +445,10 @@ impl PctConfig for QuotaConfig {
     }
     fn provider_override(&self, scope: Scope) -> Option<&PressureProviderConfig> {
         match scope {
-            Scope::Claude => self.claude.as_ref(),
-            Scope::Codex => self.codex.as_ref(),
+            Scope::Claude | Scope::Claude5h => self.claude_5h.as_ref().or(self.claude.as_ref()),
+            Scope::ClaudeWeekly => self.claude_weekly.as_ref().or(self.claude.as_ref()),
+            Scope::Codex | Scope::Codex5h => self.codex_5h.as_ref().or(self.codex.as_ref()),
+            Scope::CodexWeekly => self.codex_weekly.as_ref().or(self.codex.as_ref()),
             Scope::Gemini => self.gemini.as_ref(),
             Scope::Default => None,
         }
@@ -524,6 +550,7 @@ fn apply_cost(cost: &mut CostConfig, field: FieldId, value: f64) {
             field.bound,
             value,
         ),
+        Scope::Claude5h | Scope::ClaudeWeekly | Scope::Codex5h | Scope::CodexWeekly => {}
     }
 }
 
@@ -571,6 +598,7 @@ fn apply_context(context: &mut ContextConfig, field: FieldId, value: f32) {
             field.bound,
             value,
         ),
+        Scope::Claude5h | Scope::ClaudeWeekly | Scope::Codex5h | Scope::CodexWeekly => {}
     }
 }
 
@@ -581,14 +609,42 @@ fn apply_quota(quota: &mut QuotaConfig, field: FieldId, value: f32) {
             Bound::Critical => quota.critical_pct = value,
         },
         Scope::Claude => apply_pct_provider(
-            &mut quota.claude,
+            &mut quota.claude_5h,
+            quota.warning_pct,
+            quota.critical_pct,
+            field.bound,
+            value,
+        ),
+        Scope::Claude5h => apply_pct_provider(
+            &mut quota.claude_5h,
+            quota.warning_pct,
+            quota.critical_pct,
+            field.bound,
+            value,
+        ),
+        Scope::ClaudeWeekly => apply_pct_provider(
+            &mut quota.claude_weekly,
             quota.warning_pct,
             quota.critical_pct,
             field.bound,
             value,
         ),
         Scope::Codex => apply_pct_provider(
-            &mut quota.codex,
+            &mut quota.codex_5h,
+            quota.warning_pct,
+            quota.critical_pct,
+            field.bound,
+            value,
+        ),
+        Scope::Codex5h => apply_pct_provider(
+            &mut quota.codex_5h,
+            quota.warning_pct,
+            quota.critical_pct,
+            field.bound,
+            value,
+        ),
+        Scope::CodexWeekly => apply_pct_provider(
+            &mut quota.codex_weekly,
             quota.warning_pct,
             quota.critical_pct,
             field.bound,
@@ -629,6 +685,7 @@ fn clear_provider_override(config: &mut QmonsterConfig, section: Section, scope:
                 Scope::Claude => cost.claude = None,
                 Scope::Codex => cost.codex = None,
                 Scope::Gemini => cost.gemini = None,
+                Scope::Claude5h | Scope::ClaudeWeekly | Scope::Codex5h | Scope::CodexWeekly => {}
                 Scope::Default => {}
             }
         }
@@ -638,14 +695,19 @@ fn clear_provider_override(config: &mut QmonsterConfig, section: Section, scope:
                 Scope::Claude => ctx.claude = None,
                 Scope::Codex => ctx.codex = None,
                 Scope::Gemini => ctx.gemini = None,
+                Scope::Claude5h | Scope::ClaudeWeekly | Scope::Codex5h | Scope::CodexWeekly => {}
                 Scope::Default => {}
             }
         }
         Section::Quota => {
             let q = &mut config.quota;
             match scope {
-                Scope::Claude => q.claude = None,
-                Scope::Codex => q.codex = None,
+                Scope::Claude => q.claude_5h = None,
+                Scope::Claude5h => q.claude_5h = None,
+                Scope::ClaudeWeekly => q.claude_weekly = None,
+                Scope::Codex => q.codex_5h = None,
+                Scope::Codex5h => q.codex_5h = None,
+                Scope::CodexWeekly => q.codex_weekly = None,
                 Scope::Gemini => q.gemini = None,
                 Scope::Default => {}
             }
@@ -707,7 +769,11 @@ pub fn describe_scope(scope: Scope) -> &'static str {
     match scope {
         Scope::Default => "default",
         Scope::Claude => "claude",
+        Scope::Claude5h => "claude 5h",
+        Scope::ClaudeWeekly => "claude weekly",
         Scope::Codex => "codex",
+        Scope::Codex5h => "codex 5h",
+        Scope::CodexWeekly => "codex weekly",
         Scope::Gemini => "gemini",
     }
 }
@@ -739,7 +805,7 @@ fn format_value_for_display(value: f64, section: Section) -> String {
 // Rendering. The overlay is a centered modal with three sections
 // (cost / context / quota) stacked vertically. Each section header
 // names the metric and unit, and four rows below carry the
-// (default + 3 providers) × (warning, critical) cells.
+// each scope's warning/critical cells.
 // -----------------------------------------------------------------
 
 const MODAL_WIDTH_PERCENT: u16 = 76;
@@ -854,8 +920,8 @@ fn build_body_lines<'a>(overlay: &'a SettingsOverlay, config: &'a QmonsterConfig
             lines.push(Line::from(""));
         }
         lines.push(section_header_line(*section));
-        for scope in [Scope::Default, Scope::Claude, Scope::Codex, Scope::Gemini] {
-            lines.push(scope_row_line(overlay, config, *section, scope));
+        for scope in scopes_for_section(*section) {
+            lines.push(scope_row_line(overlay, config, *section, *scope));
         }
     }
     lines.push(Line::from(""));
@@ -877,7 +943,7 @@ fn section_header_line(section: Section) -> Line<'static> {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            "          warning      critical",
+            "              warning      critical",
             Style::default().fg(theme::TEXT_DIM),
         ),
     ])
@@ -899,7 +965,7 @@ fn scope_row_line<'a>(
     } else {
         "  "
     };
-    let scope_label = format!("{:<10}", describe_scope(scope));
+    let scope_label = format!("{:<14}", describe_scope(scope));
 
     let warning_cell = cell_text(overlay, config, warning_field);
     let critical_cell = cell_text(overlay, config, critical_field);
@@ -960,17 +1026,27 @@ fn override_marker(config: &QmonsterConfig, section: Section, scope: Scope) -> &
             Scope::Claude => config.cost.claude.is_some(),
             Scope::Codex => config.cost.codex.is_some(),
             Scope::Gemini => config.cost.gemini.is_some(),
+            Scope::Claude5h | Scope::ClaudeWeekly | Scope::Codex5h | Scope::CodexWeekly => false,
             Scope::Default => false,
         },
         Section::Context => match scope {
             Scope::Claude => config.context.claude.is_some(),
             Scope::Codex => config.context.codex.is_some(),
             Scope::Gemini => config.context.gemini.is_some(),
+            Scope::Claude5h | Scope::ClaudeWeekly | Scope::Codex5h | Scope::CodexWeekly => false,
             Scope::Default => false,
         },
         Section::Quota => match scope {
-            Scope::Claude => config.quota.claude.is_some(),
-            Scope::Codex => config.quota.codex.is_some(),
+            Scope::Claude => config.quota.claude_5h.is_some() || config.quota.claude.is_some(),
+            Scope::Claude5h => config.quota.claude_5h.is_some() || config.quota.claude.is_some(),
+            Scope::ClaudeWeekly => {
+                config.quota.claude_weekly.is_some() || config.quota.claude.is_some()
+            }
+            Scope::Codex => config.quota.codex_5h.is_some() || config.quota.codex.is_some(),
+            Scope::Codex5h => config.quota.codex_5h.is_some() || config.quota.codex.is_some(),
+            Scope::CodexWeekly => {
+                config.quota.codex_weekly.is_some() || config.quota.codex.is_some()
+            }
             Scope::Gemini => config.quota.gemini.is_some(),
             Scope::Default => false,
         },
@@ -1063,17 +1139,17 @@ mod tests {
     }
 
     #[test]
-    fn next_field_advances_through_24_fields_and_wraps() {
+    fn next_field_advances_through_all_fields_and_wraps() {
         let mut s = SettingsOverlay::new();
         s.open();
         let start = s.selected();
-        for _ in 0..24 {
+        for _ in 0..all_fields().len() {
             s.next_field();
         }
         assert_eq!(
             s.selected(),
             start,
-            "24 next_field calls must wrap to start"
+            "one full all_fields cycle must wrap to start"
         );
     }
 
@@ -1135,6 +1211,37 @@ mod tests {
             (v - 0.75).abs() < 1e-6,
             "unset codex inherits 0.75 from default"
         );
+    }
+
+    #[test]
+    fn quota_fields_split_claude_and_codex_5h_weekly_scopes() {
+        let fields = all_fields();
+        assert!(fields.contains(&FieldId::new(
+            Section::Quota,
+            Scope::Claude5h,
+            Bound::Warning
+        )));
+        assert!(fields.contains(&FieldId::new(
+            Section::Quota,
+            Scope::ClaudeWeekly,
+            Bound::Warning
+        )));
+        assert!(fields.contains(&FieldId::new(
+            Section::Quota,
+            Scope::Codex5h,
+            Bound::Warning
+        )));
+        assert!(fields.contains(&FieldId::new(
+            Section::Quota,
+            Scope::CodexWeekly,
+            Bound::Warning
+        )));
+        assert!(!fields.contains(&FieldId::new(
+            Section::Cost,
+            Scope::Claude5h,
+            Bound::Warning
+        )));
+        assert_eq!(fields.len(), 28);
     }
 
     // -----------------------------------------------------------------
@@ -1288,6 +1395,27 @@ mod tests {
         assert!((claude.warning_usd - 12.5).abs() < f64::EPSILON);
         // Critical stays at the default-loaded 30.0 for claude.
         assert!((claude.critical_usd - 30.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn commit_quota_codex_weekly_creates_split_override_only() {
+        let mut s = SettingsOverlay::new();
+        s.open();
+        while s.selected() != FieldId::new(Section::Quota, Scope::CodexWeekly, Bound::Warning) {
+            s.next_field();
+        }
+        let mut config = cfg();
+        s.edit_buffer = Some("0.66".into());
+        s.commit_edit(&mut config).expect("valid edit must commit");
+
+        assert!(config.quota.codex_5h.is_none());
+        let weekly = config
+            .quota
+            .codex_weekly
+            .as_ref()
+            .expect("weekly override present");
+        assert!((weekly.warning_pct - 0.66).abs() < f32::EPSILON);
+        assert!((weekly.critical_pct - config.quota.critical_pct).abs() < f32::EPSILON);
     }
 
     // -----------------------------------------------------------------

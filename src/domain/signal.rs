@@ -129,11 +129,18 @@ pub struct SignalSet {
     pub output_chars: usize,
     pub task_type: TaskType,
     pub context_pressure: Option<MetricValue<f32>>,
-    /// S3-3: Gemini-specific quota usage from the status table's
-    /// `quota` column. Independent from `context_pressure`. None on
-    /// providers that do not expose quota or when the status table
-    /// is absent / mis-aligned.
+    /// Single-window quota usage. Today this is Gemini's status-table
+    /// `quota` column. Claude/Codex expose two quota windows and use
+    /// `quota_5h_pressure` / `quota_weekly_pressure` below instead.
     pub quota_pressure: Option<MetricValue<f32>>,
+    /// Claude/Codex rolling 5-hour usage limit. Claude sources this
+    /// from `/usage` "Current session"; Codex sources it from the
+    /// bottom status line's `5h N%` token.
+    pub quota_5h_pressure: Option<MetricValue<f32>>,
+    /// Claude/Codex weekly usage limit. Claude sources this from
+    /// `/usage` "Current week (all models)"; Codex sources it from the
+    /// bottom status line's `weekly N%` token.
+    pub quota_weekly_pressure: Option<MetricValue<f32>>,
     pub token_count: Option<MetricValue<u64>>,
     /// S3-1: cumulative session input tokens. Currently populated only
     /// by the Codex bottom-status-line parser (`1.51M in` token).

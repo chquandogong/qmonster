@@ -39,6 +39,10 @@ pub struct PolicyGates {
     pub context_critical_pct: f32,
     pub quota_warning_pct: f32,
     pub quota_critical_pct: f32,
+    pub quota_5h_warning_pct: f32,
+    pub quota_5h_critical_pct: f32,
+    pub quota_weekly_warning_pct: f32,
+    pub quota_weekly_critical_pct: f32,
 }
 
 impl Default for PolicyGates {
@@ -57,6 +61,10 @@ impl Default for PolicyGates {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         }
     }
 }
@@ -81,6 +89,14 @@ impl PolicyGates {
             context_critical_pct: context.critical_for(provider),
             quota_warning_pct: quota.warning_for(provider),
             quota_critical_pct: quota.critical_for(provider),
+            quota_5h_warning_pct: quota
+                .warning_for_window(provider, crate::app::config::QuotaWindow::FiveHour),
+            quota_5h_critical_pct: quota
+                .critical_for_window(provider, crate::app::config::QuotaWindow::FiveHour),
+            quota_weekly_warning_pct: quota
+                .warning_for_window(provider, crate::app::config::QuotaWindow::Weekly),
+            quota_weekly_critical_pct: quota
+                .critical_for_window(provider, crate::app::config::QuotaWindow::Weekly),
         }
     }
 }
@@ -170,6 +186,10 @@ mod tests {
             context_critical_pct: 0.85,
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
+            quota_5h_warning_pct: 0.75,
+            quota_5h_critical_pct: 0.85,
+            quota_weekly_warning_pct: 0.75,
+            quota_weekly_critical_pct: 0.85,
         };
         assert!(gates.quota_tight);
     }
@@ -221,6 +241,10 @@ mod tests {
         assert!((gates.context_critical_pct - 0.85).abs() < f32::EPSILON);
         assert!((gates.quota_warning_pct - 0.75).abs() < f32::EPSILON);
         assert!((gates.quota_critical_pct - 0.85).abs() < f32::EPSILON);
+        assert!((gates.quota_5h_warning_pct - 0.75).abs() < f32::EPSILON);
+        assert!((gates.quota_5h_critical_pct - 0.85).abs() < f32::EPSILON);
+        assert!((gates.quota_weekly_warning_pct - 0.75).abs() < f32::EPSILON);
+        assert!((gates.quota_weekly_critical_pct - 0.85).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -277,9 +301,9 @@ mod tests {
         // v1.15.17: ContextConfig + QuotaConfig follow the same
         // per-provider override pattern as CostConfig. The default
         // top-level threshold is 0.75 / 0.85; an override under
-        // [context.gemini] (or [quota.claude], etc.) replaces both
-        // values for that provider only. Other providers still see
-        // the top-level defaults.
+        // [context.gemini] replaces both values for that provider only.
+        // Quota can now override Claude/Codex 5h and weekly windows
+        // independently.
         use crate::app::config::{
             ContextConfig, CostConfig, PressureProviderConfig, QuotaConfig, SecurityConfig,
             TokenConfig,
@@ -295,9 +319,17 @@ mod tests {
             ..ContextConfig::default()
         };
         let quota = QuotaConfig {
-            claude: Some(PressureProviderConfig {
+            claude_5h: Some(PressureProviderConfig {
                 warning_pct: 0.80,
                 critical_pct: 0.90,
+            }),
+            claude_weekly: Some(PressureProviderConfig {
+                warning_pct: 0.70,
+                critical_pct: 0.88,
+            }),
+            codex_weekly: Some(PressureProviderConfig {
+                warning_pct: 0.65,
+                critical_pct: 0.82,
             }),
             ..QuotaConfig::default()
         };
@@ -319,8 +351,8 @@ mod tests {
         assert!((gemini.quota_warning_pct - 0.75).abs() < f32::EPSILON);
         assert!((gemini.quota_critical_pct - 0.85).abs() < f32::EPSILON);
 
-        // Claude sees the [quota.claude] override; context falls
-        // through to the top-level ContextConfig default.
+        // Claude sees the split [quota.claude_*] overrides; context
+        // falls through to the top-level ContextConfig default.
         let claude = PolicyGates::from_config_and_identity(
             &cfg,
             &cost,
@@ -332,10 +364,14 @@ mod tests {
         );
         assert!((claude.context_warning_pct - 0.75).abs() < f32::EPSILON);
         assert!((claude.context_critical_pct - 0.85).abs() < f32::EPSILON);
-        assert!((claude.quota_warning_pct - 0.80).abs() < f32::EPSILON);
-        assert!((claude.quota_critical_pct - 0.90).abs() < f32::EPSILON);
+        assert!((claude.quota_warning_pct - 0.75).abs() < f32::EPSILON);
+        assert!((claude.quota_critical_pct - 0.85).abs() < f32::EPSILON);
+        assert!((claude.quota_5h_warning_pct - 0.80).abs() < f32::EPSILON);
+        assert!((claude.quota_5h_critical_pct - 0.90).abs() < f32::EPSILON);
+        assert!((claude.quota_weekly_warning_pct - 0.70).abs() < f32::EPSILON);
+        assert!((claude.quota_weekly_critical_pct - 0.88).abs() < f32::EPSILON);
 
-        // Codex has no override on either; both fall through.
+        // Codex has only a weekly override; 5h falls through.
         let codex = PolicyGates::from_config_and_identity(
             &cfg,
             &cost,
@@ -349,6 +385,10 @@ mod tests {
         assert!((codex.context_critical_pct - 0.85).abs() < f32::EPSILON);
         assert!((codex.quota_warning_pct - 0.75).abs() < f32::EPSILON);
         assert!((codex.quota_critical_pct - 0.85).abs() < f32::EPSILON);
+        assert!((codex.quota_5h_warning_pct - 0.75).abs() < f32::EPSILON);
+        assert!((codex.quota_5h_critical_pct - 0.85).abs() < f32::EPSILON);
+        assert!((codex.quota_weekly_warning_pct - 0.65).abs() < f32::EPSILON);
+        assert!((codex.quota_weekly_critical_pct - 0.82).abs() < f32::EPSILON);
     }
 
     // -----------------------------------------------------------------

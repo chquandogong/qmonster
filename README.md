@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on the selected pane.
 
-- Version: v0.4.0 project phase. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer (latest tag in this workspace: `v1.16.46`; current canonical ledger: `v1.16.50`). `Cargo.toml`'s `0.1.0` is not the operator-facing version.
+- Version: npm package `0.5.0`; current mission ledger `v1.16.51`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,146 +31,37 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-| Phase              | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Status                                                                                                                                                                                                                                                                                                |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0                  | Planning — canonical docs, mission ledger, thin routers, r1 plan + r2 final synthesis                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | **Shipped**                                                                                                                                                                                                                                                                                           |
-| 1                  | Observe-first MVP — tmux polling, identity resolver, adapters, alert rules, ratatui UI, desktop/bell notifications, safety precedence, version-drift detector                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | **Shipped**                                                                                                                                                                                                                                                                                           |
-| 2                  | Archive + checkpoint + SQLite — `SqliteAuditSink` with type-level raw exclusion, `ArchiveWriter` preview/full split, `SnapshotWriter`, retention, persistent version drift                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | **Shipped**                                                                                                                                                                                                                                                                                           |
-| 3                  | Policy engine A–G + concurrent-work warning + `suggested_command` + strong-rec `next_step` + shared render helper                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | **Shipped** (gate-approved v1.7.6)                                                                                                                                                                                                                                                                    |
-| 4                  | Provider profile recommender — 3×2 provider/profile grid, structured payload render, side-effects surfacing, and auto-memory routing guidance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | **Shipped** — Phase 4 complete; P4-8 wrap-up v1.8.12                                                                                                                                                                                                                                                  |
-| 5                  | Manual prompt-send helper (safer actuation) — `PromptSendGate` two-stage (display + execution), `tmux send-keys` with `-l` literal split, 6 `PromptSend*` audit kinds, `p`/`d` TUI keys, stable `proposal_id`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | **Shipped** — P5-1 → P5-4 fully gate-approved; audit-vocab arc closed                                                                                                                                                                                                                                 |
-| P0-1               | Provider usage-hint parsing + observability field expansion — `PricingTable` + `ClaudeSettings` operator-config readers, `ProviderParser` → `&ParserContext` struct, 7-metric Codex populate (context / tokens / model / cost / branch / path / reasoning effort), Claude `↓ Nk tokens` + `settings.json` model, 2-row TUI metric badge line, honesty regression tests locking tail-based absence                                                                                                                                                                                                                                                                                                                                                                                               | **Shipped** — Slice 1 (v1.11.0–v1.11.3) + Slice 2 (v1.12.0–v1.12.2) fully gate-approved                                                                                                                                                                                                               |
-| v1.13.x            | Emergency false-positive suppression — `PERMISSION_PROMPT_MARKERS` / `WAITING_PROMPT_MARKERS` phrase-only contracts, `is_log_like` structural patterns, drop loose `verbose_answer` / `parse_context_pressure` / `ERROR_MARKERS` / `detect_task_type` substring fallbacks, real-tail regression suite                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | **Shipped** — v1.13.0 (4 markers) + v1.13.1 (error_hint + context_pressure); single-version pattern, confirm-archive deferred to Slice 4                                                                                                                                                              |
-| Slice 4            | Halted/idle state detection — `IdleCause` hybrid classifier (marker → limit → cursor → stillness fallback), per-adapter `classify_idle` for Claude/Codex/Gemini/Qmonster, `PaneTailHistory` + `IdleTransitionTracker` per-pane caches, `eval_idle_transition` rule with transition-only firing, new `state` row on pane cards, `[idle] stillness_polls` config knob                                                                                                                                                                                                                                                                                                                                                                                                                             | **Shipped** — v1.14.0 (16-commit chain) + v1.14.1 cursor-fix (Codex bottom-status-line skip); rolled forward into v1.15.0                                                                                                                                                                             |
-| Runtime facts      | Provider runtime fact display — manual `u` key cycles read-only slash commands with terminal submit (`C-m`, Enter-equivalent), one command per press: Claude `/status` → `/usage` → `/stats`, Codex `/status`, Gemini `/stats session` → `/stats model` → `/stats tools`. Claude `/status` output is captured before Qmonster sends `Escape`, then parsed once from an in-memory overlay so the pane is ready for the next slash command. Claude gets a defensive `Escape` before each cycled command to close any prior fullscreen runtime surface; Gemini does not. Adapter parsers surface permission/yolo/auto mode, sandbox, allowed dirs, loaded tools/skills/plugins, restricted tools, and Gemini status-table context/model/path fields when exposed by provider status/config sources | **Shipped** — v1.15.x; display-only facts with `SourceKind` (prose-derived → Heuristic, settings/box/table-validated → ProviderOfficial); unknown fields stay blank                                                                                                                                   |
-| S3-5               | Identity resolver title fallback — Claude Code spinner-prefixed activity titles (`⠂ Analyze project ...`) and Gemini idle titles (`◇  Ready (project)`) resolve at `IdentityConfidence::Medium` when canonical pane titles are absent and the underlying command is `node`; bare glyph false positives stay `Unknown`                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | **Shipped** — v1.15.7; remaining Slice 3 backlog is S3-1, S3-3, S3-4 plus partial housekeeping (dead error variants already removed post-tag)                                                                                                                                                         |
-| Pressure gradients | Operator-actionable metrics surface gradient advisories before they hit hard limits — `context_pressure_warning`/`_critical` (Phase 3), `quota_pressure_warning`/`_critical` (v1.15.11), and `cost_pressure_warning`/`_critical` (v1.15.14). All three use the `>=warning..<critical` / `>=critical` band shape, carry `SourceKind::Estimated` (thresholds are Qmonster picks), and respect the `IdentityConfidence` gate. Critical variants are `is_strong` and surface in the CHECKPOINT slot. The CTX / QUOTA / COST badges share a uniform severity-tinting contract (v1.15.15)                                                                                                                                                                                                             | **Shipped** — v1.15.8 quota metric → v1.15.10 LimitHit fix → v1.15.11 quota gradient → v1.15.12 SourceKind honesty → v1.15.13 input/output tokens (S3-1) → v1.15.14 cost gradient → v1.15.15 COST badge severity; alerts/panes split-pane resizer (`[`/`]`/`=` + drag) shipped alongside in `8d0764a` |
+Current line: `v1.16.51` updates provider pressure semantics and prepares the
+first npm package (`qmonster@0.5.0`). Phase C C2 is already complete:
+`[tmux] source = "auto"` prefers control-mode and falls back to polling at
+startup when attach is unavailable.
 
-Recent post-Phase-4 TUI follow-ups are already shipped in-tree:
-scrollable alerts/panes/help/target picker, mouse interaction, severity
-bulk hide, session/window filtering, and a bottom-right version badge
-that opens a Git status overlay. The Slice 4 `state` row appears on
-each pane card when the pane is halted, with glyph + cause label +
-elapsed time (`⏹ IDLE (done)` / `⏸ WAIT (input)` / `⚠ WAIT (approval)`
-/ `⛔ USAGE LIMIT` / `⏸ IDLE (?)` for the stillness fallback). State
-transitions now add a short `CHANGED` pulse on the pane header and
-`state` row; a return to active briefly renders `▶ ACTIVE` before the
-row disappears again. If the changed pane is selected, the selection
-marker expands to `◆ CHANGED ◆` on every selected line and the card
-header starts with `STATE CHANGED` during the flash.
-The Phase-B visibility slice adds a `cmd` row sourced from tmux
-`pane_current_command` on pane cards/detail/`--once`, plus selected-pane
-Codex input/output token breakdown when the bottom status line exposes
-ProviderOfficial `in`/`out` counts. The security posture slice keeps
-YOLO / bypass / no-sandbox facts badge-only by default; set
-`[security] posture_advisories = true` to promote them into passive
-Concern recommendations.
-Concurrent-work warnings are also quieter after v1.15.23: same path
-alone is no longer enough; panes must expose the same git branch too.
-The selected alert's `run:` command is copyable with `y` when Alerts are
-focused; clipboard failure or a no-command selection is reported as a
-visible system notice. The `c` key is reserved for system-notice clear.
-Phase C has started: v1.16.0 extracts dashboard focus, selection, and
-list hit-test helpers from `src/main.rs` into `src/app/keymap.rs`;
-v1.16.1 moves the session/window target picker model, preview, and
-choice logic into `src/app/target_picker.rs`; v1.16.2 moves provider
-runtime-refresh command selection, cycling, send/capture, and notice
-label helpers into `src/app/runtime_refresh.rs`; v1.16.3 moves alert
-selection/hide/double-click and pane-state flash synchronization into
-`src/app/dashboard_state.rs`; v1.16.6 moves shared git/help scroll modal
-open/close/scroll state and key/mouse handlers into
-`src/app/modal_state.rs`; v1.16.7 moves settings overlay key and mouse
-dispatch into `src/app/settings_overlay.rs`; v1.16.8 moves operator
-version-refresh and snapshot-write helpers into
-`src/app/operator_actions.rs`; v1.16.9 moves `--once` report formatting
-into `src/app/once_report.rs`; v1.16.10 moves prompt-send accept/dismiss
-handling into `src/app/prompt_send_actions.rs`; v1.16.11 moves
-runtime-refresh action orchestration into `src/app/runtime_refresh.rs`;
-v1.16.12 moves selected-alert command copy notices into
-`src/app/clipboard_actions.rs`; v1.16.13 moves target-picker
-open/key/mouse dispatch into `src/app/target_picker.rs`; v1.16.14
-moves dashboard Alerts/Panes selection key dispatch into
-`src/app/dashboard_state.rs`; v1.16.15 moves dashboard mouse dispatch
-into `src/app/dashboard_state.rs`; v1.16.16 moves default config-path
-resolution into `src/app/path_resolution.rs`; v1.16.17 moves initial target
-selection into `src/app/target_picker.rs`; v1.16.18 moves dashboard
-frame/overlay render composition into `src/app/dashboard_render.rs`;
-v1.16.19 moves terminal raw-mode/alternate-screen/mouse-capture lifecycle
-into `src/app/terminal_session.rs`; v1.16.20 moves poll tick
-success/failure routing and pane-state flash updates into
-`src/app/polling_tick.rs`; v1.16.21 moves dashboard notices/reports,
-list-selection, and alert freshness resync bookkeeping into
-`src/app/dashboard_runtime.rs`; v1.16.22 moves startup config/root,
-audit sink, pricing, Claude settings, retention, and version snapshot
-assembly into `src/app/startup.rs`; v1.16.23 moves target-picker runtime
-state ownership into `src/app/target_picker.rs`; v1.16.24 moves the live
-TUI event loop into `src/app/tui_loop.rs`, leaving `src/main.rs` as a
-thin CLI/startup/`--once`/TUI-entry wrapper. This completes the
-pre-control-mode C1 split target enough for C2 adapter work to begin.
-v1.16.25 starts C2 with an opt-in `[tmux] source = "control_mode"`
-transport that implements the existing `PaneSource` contract through one
-tmux control-mode client; `polling` remains available as an explicit
-transport.
-v1.16.26 hardens that opt-in path by reconnecting the control-mode
-client once on transport lifecycle errors such as `%exit`, EOF, or
-broken pipe while leaving command-level tmux errors unchanged. v1.16.27
-extracts shared tmux command builders so polling and control-mode use
-the same list/capture/send argument contracts. v1.16.28 adds a live
-polling-vs-control-mode parity checker for the active tmux session.
-v1.16.29 extends that checker with `--all-targets` to validate each
-discovered tmux window separately. v1.16.30 extracts shared pane
-snapshot hydration so polling and control-mode parse list-panes rows and
-attach tails through the same helper. v1.16.31 extracts shared tmux
-window-target parsing for current/available target queries. v1.16.32
-adds repeated parity runs so the same control-mode client can be checked
-across consecutive commands. v1.16.33 extracts the control-mode protocol
-parser/quoting/error-classifier into `src/tmux/control_protocol.rs`.
-v1.16.34 treats live title drift as a parity warning by default, with
-`--strict-title` available when title equality must fail the check.
-v1.16.35 adds scripted unit coverage for the control-mode reconnect
-boundary so lifecycle errors retry once while command errors do not.
-v1.16.36 extracts polling tmux CLI execution into
-`src/tmux/polling_process.rs`, so the polling source has a single
-stdout/stderr/error mapping boundary before any control-mode default
-decision.
-v1.16.37 generalizes poll-tick failure/recovery notices from `tmux polling`
-to `tmux source` so an opt-in control-mode runtime is not mislabeled in
-the alert queue.
-v1.16.38 adds `scripts/run-qmonster-control-mode-once.sh`, a temporary-config
-operator trial helper that runs `--once` with `source = "control_mode"`
-without editing the standard config.
-v1.16.39 prints `tmux source: polling|control_mode` in `--once` startup
-output, so operator trials can confirm the active transport directly.
-v1.16.40 extracts `tmux::TmuxSource` into `src/tmux/source.rs`, keeping
-the polling/control-mode dispatch boundary out of `tmux/mod.rs`.
-v1.16.41 extracts startup tmux source construction into
-`src/app/tmux_source.rs`, so startup calls a factory instead of owning
-transport selection.
-v1.16.42 extracts control-mode process ownership into
-`src/tmux/control_process.rs`, matching the polling process-boundary split.
-v1.16.43 locks the control-mode attach argv contract
-(`tmux -C attach-session`) with a unit test.
-v1.16.44 extracts the control-mode command client and reconnect helper into
-`src/tmux/control_client.rs`, leaving `control_mode.rs` focused on the
-PaneSource adapter surface.
-v1.16.45 extracts `TMUX_PANE` current-pane normalization into
-`src/tmux/targets.rs`, so polling and control-mode share the same
-current-target environment gate.
-v1.16.46 hardens `scripts/run-qmonster-control-mode-once.sh` so the
-temporary-config helper rejects unsupported arguments early and accepts only
-`--root` / `--set` passthroughs.
-v1.16.47 tightens the control-mode attach argv to
-`tmux -C attach-session -f ignore-size,no-output`, keeping the hidden
-control client from influencing pane sizing or receiving unused pane output.
-v1.16.48 decorates initial control-mode attach failures with exited child
-status and stderr when available, improving diagnosis without changing the
-PaneSource command surface.
-v1.16.49 adds a legacy attach fallback for tmux versions that reject the
-preferred `ignore-size,no-output` client flags, preserving opt-in
-control-mode compatibility while keeping the quiet attach path first.
-v1.16.50 completes C2 by making `[tmux] source = "auto"` the default:
-auto tries control-mode first and falls back to polling at startup, while
-explicit `source = "control_mode"` remains strict.
+| Area | Status | Notes |
+| --- | --- | --- |
+| Phases 0-5 | Shipped | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete. |
+| Runtime observability | Shipped | Pane state, command row, provider facts, copyable `run:` commands, security posture badges, cost/context/quota gradients, and settings overlay are live. |
+| Phase B visibility | Complete | Standard config/pricing paths, command row, Codex in/out token detail, opt-in security advisories, quieter concurrent-work warnings, and Phase-B docs consistency are closed. |
+| Phase C C1 | Complete | `src/main.rs` was split into app modules through `src/app/tui_loop.rs`; main is now a thin CLI/startup/TUI wrapper. |
+| Phase C C2 | Complete | `PaneSource` supports polling and control-mode; auto source now tries control-mode first with polling fallback. |
+| Phase C C3 | Next | Review-tier profiles (`codex-review`, `gemini-policy-review`) remain the next architecture-debt item. |
+
+### Current Metric Contracts
+
+| Metric | Claude | Codex | Gemini |
+| --- | --- | --- | --- |
+| CTX | `/context` | bottom status line | status table `context` |
+| QUOTA 5H | `/usage` Current session | bottom status `5h` | n/a |
+| QUOTA WEEK | `/usage` Current week (all models) | bottom status `weekly` | n/a |
+| QUOTA | n/a | n/a | single quota surface |
+| COST | unset until provider exposes/price config supports it | pricing table + token usage | unset today |
+
+The `S` settings overlay mirrors that contract: cost/context keep
+default + provider rows, while quota has default, `claude 5h`,
+`claude weekly`, `codex 5h`, `codex weekly`, and `gemini` rows.
+
+Detailed rollout history is kept in `mission-history.yaml` and the
+canonical docs under `docs/ai/`; the README tracks the current operator
+shape rather than every patch-level slice.
 
 ## Quick start
 
@@ -291,6 +182,7 @@ src/
 
 docs/ai/       canonical docs (Git-tracked, stable rules)
 config/        qmonster.example.toml
+npm/           npm bin wrapper for source-based package install
 tmux/          qmonster.tmux.conf.example
 tests/         integration tests
 ```
@@ -311,6 +203,7 @@ cargo build
 ./scripts/check-tmux-source-parity.sh --all-targets
 ./scripts/check-tmux-source-parity.sh --all-targets --repeat 3
 ./scripts/run-qmonster-control-mode-once.sh --root /tmp/qmonster-control-mode-smoke
+npm pack --dry-run
 mission-spec validate .
 mission-spec eval --shared .
 MISSION_SPEC_CLI=/abs/path/to/mission-spec.js ./scripts/verify-shared.sh
@@ -331,6 +224,8 @@ not require a real tmux session.
 - `docs/ai/WORKFLOWS.md` — planning loop, day-end routine, gitignore flip
 - `docs/ai/REVIEW_GUIDE.md` — reviewer contract (Codex / Gemini / human)
 - `docs/ai/UI_MANUAL.md` — user manual for TUI badges, severity letters, and metrics
+- `VERSION.md` — version surface map (ledger tag, npm package, Cargo crate)
+- `CONTRIBUTING.md` — local development, documentation, and release rules
 
 ## Status & scope
 

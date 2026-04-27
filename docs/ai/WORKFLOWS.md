@@ -113,7 +113,18 @@ Re-run the planning loop when any of the following happen:
   `docs/ai/` and profile lever citations"_. The alert is informational;
   no auto-update happens (`refresh.policy = manual_only`).
 
-## 7. `/compact`, `/clear`, `/memory`, cache — operating rules
+## 7. Release and npm package routine
+
+1. Keep the mission ledger version (`v1.x.y`) and npm package version
+   (`package.json` semver) distinct; see `VERSION.md`.
+2. Before publishing, run the normal Rust gates plus `npm pack --dry-run`.
+3. Commit and push `main`, then create and push an annotated ledger tag
+   such as `v1.16.51`.
+4. Publish with `npm publish` only from the validated tree. The npm
+   package is source-based and invokes Cargo, so installed users need a
+   Rust toolchain.
+
+## 8. `/compact`, `/clear`, `/memory`, cache — operating rules
 
 - **`/compact`** — never automatic. Before `/compact`:
   1. Qmonster **offers** (does not force) a snapshot of large
@@ -133,7 +144,7 @@ Re-run the planning loop when any of the following happen:
   surfaces cache-friendly structure as guidance `[ProjectCanonical]`;
   it does not toggle provider cache settings.
 
-## 8. local-first with shared repo ledger
+## 9. local-first with shared repo ledger
 
 Tracked in shared repo:
 
@@ -162,7 +173,7 @@ CLAUDE.local.md
 The repository is already using this split. Local workflow files remain
 useful, but shared verification must succeed without them.
 
-## 8. Reference — round filename template
+## 10. Reference — round filename template
 
 ```
 {project}-{version}-{date}-{provider}-{kind}-r{round}.md

@@ -228,6 +228,8 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         // integration tests; it does not match any real CLI output.
         context_pressure: parse_context_pressure_test_marker(&lower),
         quota_pressure: None,
+        quota_5h_pressure: None,
+        quota_weekly_pressure: None,
         token_count: None,
         input_tokens: None,
         output_tokens: None,

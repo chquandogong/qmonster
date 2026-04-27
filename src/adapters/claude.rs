@@ -13,13 +13,24 @@ impl ProviderParser for ClaudeAdapter {
         let mut set = parse_common_signals(tail);
         append_claude_runtime_facts(&mut set, tail, ctx.claude_settings);
 
-        // v1.13.1: parse_context_percent_claude dropped — its substring
-        // matching of `claude` + `%` fired on operator prose mentioning
-        // Claude's percent share, and on Claude's own /status panel
-        // bars (`Current week 9% used`) which are rate-limit windows,
-        // not context-window pressure. context_pressure for Claude is
-        // S3-4 territory (read from ~/.claude/state when shipped, or
-        // leave None — honest).
+        if let Some(pct) = parse_claude_context_pressure(tail) {
+            set.context_pressure = Some(
+                MetricValue::new(pct, SourceKind::ProviderOfficial)
+                    .with_confidence(0.9)
+                    .with_provider(Provider::Claude),
+            );
+        }
+        let (quota_5h, quota_weekly) = parse_claude_usage_quotas(tail);
+        set.quota_5h_pressure = quota_5h.map(|pct| {
+            MetricValue::new(pct, SourceKind::ProviderOfficial)
+                .with_confidence(0.9)
+                .with_provider(Provider::Claude)
+        });
+        set.quota_weekly_pressure = quota_weekly.map(|pct| {
+            MetricValue::new(pct, SourceKind::ProviderOfficial)
+                .with_confidence(0.9)
+                .with_provider(Provider::Claude)
+        });
 
         if let Some(n) = parse_claude_output_tokens(tail) {
             set.token_count = Some(
@@ -78,7 +89,7 @@ fn claude_idle_cursor(tail: &str) -> bool {
 }
 
 fn claude_limit_hit(tail: &str) -> bool {
-    // Pattern A: two-line `Current session\n... 100% used` from /status.
+    // Pattern A: two-line `Current session\n... 100% used` from /usage.
     // Pattern B: same-line `Current week (...) 100% used`.
     // Pattern C: runtime limit banner (`usage limit reached` plus a
     // reset / retry hint). The reset anchor keeps ordinary prose about
@@ -151,6 +162,89 @@ fn has_limit_recovery_hint(line: &str) -> bool {
         || line.contains("until")
         || line.contains("tomorrow")
         || line.contains("available")
+}
+
+fn parse_claude_context_pressure(tail: &str) -> Option<f32> {
+    // Claude's `/context` output is not box-bordered like Codex, so keep
+    // this anchored to context-labeled percent lines and explicitly avoid
+    // `/usage` quota labels. Prefer "used" when both used/left appear.
+    for line in tail.lines().rev() {
+        let lower = line.to_lowercase();
+        if !lower.contains("context") {
+            continue;
+        }
+        if lower.contains("current session")
+            || lower.contains("current week")
+            || lower.contains("all models")
+        {
+            continue;
+        }
+        if let Some(used) = percent_followed_by_any(&lower, &["used", "full"]) {
+            return Some(used);
+        }
+        if let Some(left) = percent_followed_by_any(&lower, &["left", "remaining", "available"]) {
+            return Some((1.0 - left).clamp(0.0, 1.0));
+        }
+    }
+    None
+}
+
+fn parse_claude_usage_quotas(tail: &str) -> (Option<f32>, Option<f32>) {
+    let lines: Vec<&str> = tail.lines().collect();
+    let mut quota_5h = None;
+    let mut quota_weekly = None;
+    for (idx, line) in lines.iter().enumerate() {
+        let lower = line.to_lowercase();
+        if quota_5h.is_none() && lower.contains("current session") {
+            quota_5h = percent_used_near(&lines, idx);
+        }
+        if quota_weekly.is_none()
+            && (lower.contains("current week") && lower.contains("all models")
+                || lower.contains("week (all models)"))
+        {
+            quota_weekly = percent_used_near(&lines, idx);
+        }
+    }
+    (quota_5h, quota_weekly)
+}
+
+fn percent_used_near(lines: &[&str], idx: usize) -> Option<f32> {
+    lines
+        .iter()
+        .skip(idx)
+        .take(5)
+        .find_map(|line| percent_followed_by_any(&line.to_lowercase(), &["used"]))
+}
+
+fn percent_followed_by_any(line: &str, words: &[&str]) -> Option<f32> {
+    for (idx, _) in line.match_indices('%') {
+        let Some(pct) = parse_percent_before(line, idx) else {
+            continue;
+        };
+        let after = line[idx + 1..].trim_start();
+        if words.iter().any(|word| after.starts_with(word)) {
+            return Some(pct);
+        }
+    }
+    None
+}
+
+fn parse_percent_before(line: &str, pct_idx: usize) -> Option<f32> {
+    let bytes = line.as_bytes();
+    let mut start = pct_idx;
+    while start > 0 {
+        let b = bytes[start - 1];
+        if b.is_ascii_digit() || b == b'.' {
+            start -= 1;
+        } else {
+            break;
+        }
+    }
+    if start == pct_idx {
+        return None;
+    }
+    let value: f32 = line[start..pct_idx].parse().ok()?;
+    (0.0..=100.0).contains(&value).then_some(value / 100.0)
 }
 
 fn append_claude_runtime_facts(
@@ -463,6 +557,44 @@ mod tests {
     }
 
     #[test]
+    fn claude_context_command_populates_context_pressure() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+Context
+Context window: 82% used
+Esc to cancel";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        let m = set
+            .context_pressure
+            .expect("/context usage percent should populate CTX");
+        assert!((m.value - 0.82).abs() < f32::EPSILON);
+        assert_eq!(m.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(m.provider, Some(Provider::Claude));
+    }
+
+    #[test]
+    fn claude_context_left_is_converted_to_used_pressure() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(
+            &id,
+            "Context remaining: 18% left",
+            &pricing,
+            &settings,
+            &history,
+        );
+        let set = ClaudeAdapter.parse(&c);
+        let m = set.context_pressure.expect("left percent should parse");
+        assert!((m.value - 0.82).abs() < 1e-6);
+    }
+
+    #[test]
     fn claude_adapter_extracts_output_tokens_from_working_line() {
         let id = id();
         let pricing = PricingTable::empty();
@@ -702,6 +834,11 @@ And asks about bypass permissions on macOS";
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
         assert_eq!(set.idle_state, Some(IdleCause::LimitHit));
+        let quota = set
+            .quota_5h_pressure
+            .expect("Current session maps to 5h quota");
+        assert!((quota.value - 1.0).abs() < f32::EPSILON);
+        assert_eq!(quota.source_kind, SourceKind::ProviderOfficial);
     }
 
     #[test]
@@ -714,6 +851,11 @@ And asks about bypass permissions on macOS";
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = ClaudeAdapter.parse(&c);
         assert_eq!(set.idle_state, Some(IdleCause::LimitHit));
+        let quota = set
+            .quota_weekly_pressure
+            .expect("Current week (all models) maps to weekly quota");
+        assert!((quota.value - 1.0).abs() < f32::EPSILON);
+        assert_eq!(quota.provider, Some(Provider::Claude));
     }
 
     #[test]

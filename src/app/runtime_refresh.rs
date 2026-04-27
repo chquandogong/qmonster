@@ -155,11 +155,11 @@ pub fn runtime_refresh_notice_body(
 ) -> String {
     if captured_and_closed && one_at_a_time {
         format!(
-            "{pane_id} → `{command_label}` sent with terminal submit; Claude `/status` was captured, then Escape closed the fullscreen surface so the next `u` can run immediately"
+            "{pane_id} → `{command_label}` sent with terminal submit; Claude fullscreen output was captured, then Escape closed the surface so the next `u` can run immediately"
         )
     } else if captured_and_closed {
         format!(
-            "{pane_id} → `{command_label}` sent with terminal submit; Claude `/status` was captured, then Escape closed the fullscreen surface and the next poll will parse the captured output"
+            "{pane_id} → `{command_label}` sent with terminal submit; Claude fullscreen output was captured, then Escape closed the surface and the next poll will parse the captured output"
         )
     } else if one_at_a_time {
         format!(
@@ -318,13 +318,13 @@ pub fn handle_runtime_refresh_action<P: PaneSource>(
 }
 
 fn runtime_refresh_captures_then_closes(provider: Provider, command: &str) -> bool {
-    matches!(provider, Provider::Claude) && command == "/status"
+    matches!(provider, Provider::Claude) && matches!(command, "/status" | "/context" | "/usage")
 }
 
 fn runtime_refresh_provider_commands(provider: Provider) -> &'static [&'static str] {
     // Keep this list to provider-owned control/status surfaces.
     match provider {
-        Provider::Claude => &["/status", "/usage", "/stats"],
+        Provider::Claude => &["/status", "/context", "/usage", "/stats"],
         Provider::Codex => &["/status"],
         Provider::Gemini => &["/stats session", "/stats model", "/stats tools"],
         Provider::Qmonster | Provider::Unknown => &[],
@@ -569,17 +569,17 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_commands_for_claude_cycle_status_usage_stats_when_idle() {
+    fn runtime_refresh_commands_for_claude_cycle_status_context_usage_stats_when_idle() {
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, Some(IdleCause::WorkComplete)),
-            ["/status", "/usage", "/stats"]
+            ["/status", "/context", "/usage", "/stats"]
         );
         assert_eq!(
             runtime_refresh_command_label(runtime_refresh_commands(
                 Provider::Claude,
                 Some(IdleCause::LimitHit)
             )),
-            "/status, /usage, /stats"
+            "/status, /context, /usage, /stats"
         );
     }
 
@@ -587,11 +587,11 @@ mod tests {
     fn runtime_refresh_commands_for_claude_active_cycle_same_runtime_sources() {
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, None),
-            ["/status", "/usage", "/stats"]
+            ["/status", "/context", "/usage", "/stats"]
         );
         assert_eq!(
             runtime_refresh_commands(Provider::Claude, Some(IdleCause::Stale)),
-            ["/status", "/usage", "/stats"]
+            ["/status", "/context", "/usage", "/stats"]
         );
     }
 
@@ -626,6 +626,10 @@ mod tests {
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
             ["/status"]
+        );
+        assert_eq!(
+            runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
+            ["/context"]
         );
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Claude, None, "%1", &mut offsets),
@@ -676,6 +680,44 @@ mod tests {
                 captured_and_closed: true
             }
         );
+    }
+
+    #[test]
+    fn runtime_refresh_claude_context_and_usage_capture_then_close_surface() {
+        for command in ["/context", "/usage"] {
+            let source = RecordingRefreshSource::with_capture("Claude fullscreen output");
+            let mut overlays = HashMap::new();
+            let outcome = send_runtime_refresh_commands(
+                &source,
+                "%1",
+                Provider::Claude,
+                None,
+                &[command],
+                40,
+                &mut overlays,
+            );
+
+            assert_eq!(
+                source.calls(),
+                vec![
+                    "key:%1:Escape".to_string(),
+                    format!("keys:%1:{command}"),
+                    "capture:%1".to_string(),
+                    "key:%1:Escape".to_string(),
+                ]
+            );
+            assert_eq!(
+                overlays.get("%1").map(String::as_str),
+                Some("Claude fullscreen output")
+            );
+            assert_eq!(
+                outcome,
+                RuntimeRefreshSendOutcome {
+                    failed: None,
+                    captured_and_closed: true
+                }
+            );
+        }
     }
 
     #[test]

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script="$0"
+if command -v readlink >/dev/null 2>&1; then
+  resolved="$(readlink -f "$0" 2>/dev/null || true)"
+  if [ -n "${resolved:-}" ]; then
+    script="$resolved"
+  fi
+fi
+
+root="$(cd "$(dirname "$script")/../.." && pwd)"
+cache_root="${XDG_CACHE_HOME:-${HOME:-$root/.cache}}"
+export CARGO_TARGET_DIR="${QMONSTER_CARGO_TARGET_DIR:-$cache_root/qmonster/target}"
+mkdir -p "$CARGO_TARGET_DIR"
+
+exec cargo run --quiet --release --manifest-path "$root/Cargo.toml" --bin qmonster -- "$@"

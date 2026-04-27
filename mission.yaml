@@ -1,6 +1,6 @@
 mission:
-  version: "1.16.50"
-  title: "Qmonster v0.5.0 — v1.16.50 control-mode auto default. Completes Phase C C2 by making auto source prefer control-mode with polling fallback."
+  version: "1.16.51"
+  title: "Qmonster v0.5.0 — v1.16.51 Claude context + split quota. Uses Claude /context for CTX, splits Claude/Codex quota into 5h and weekly windows, and adds npm packaging."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1140,7 +1140,7 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.16.50 control-mode auto default on top of v1.16.49 attach legacy fallback. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped. Phase C C1 extracted the live TUI event loop into `src/app/tui_loop.rs` and left `src/main.rs` as a thin CLI/startup/`--once`/TUI-entry wrapper. Phase C C2 is complete: `src/tmux/control_mode.rs`, `tmux::ControlModeSource`, `tmux::TmuxSource`, shared command/snapshot/target helpers, repeated live parity validation, control-mode process/client/protocol boundaries, attach diagnostics, legacy attach fallback, and `[tmux] source = \"auto\"` are in place behind the existing `PaneSource` contract. Auto mode tries control-mode first and falls back to polling during startup if attach fails; explicit `[tmux] source = \"control_mode\"` remains strict. Polling remains available through explicit `[tmux] source = \"polling\"`."
+    topology: "Current working state is v1.16.51 Claude context + split quota on top of v1.16.50 control-mode auto default. Phases 1-5, P0-1 Slice 1+2, v1.13.x false-positive suppression, Slice 4 idle-state detection, v1.15.x runtime-refresh/state-change visibility, per-provider cost/context/quota thresholds, settings overlay, default config/pricing activation, pane `cmd` row, selected-pane token breakdown, opt-in security posture advisory, branch-narrowed concurrent-work detection, TUI copyable suggested commands, and the Slice 3 housekeeping bundle are shipped. Phase C C1 extracted the live TUI event loop into `src/app/tui_loop.rs` and left `src/main.rs` as a thin CLI/startup/`--once`/TUI-entry wrapper. Phase C C2 is complete: `src/tmux/control_mode.rs`, `tmux::ControlModeSource`, `tmux::TmuxSource`, shared command/snapshot/target helpers, repeated live parity validation, control-mode process/client/protocol boundaries, attach diagnostics, legacy attach fallback, and `[tmux] source = \"auto\"` are in place behind the existing `PaneSource` contract. Auto mode tries control-mode first and falls back to polling during startup if attach fails; explicit `[tmux] source = \"control_mode\"` remains strict. Polling remains available through explicit `[tmux] source = \"polling\"`. v1.16.51 keeps that transport shape and updates provider pressure semantics: Claude CTX uses `/context`, Claude/Codex quota windows are separate 5h and weekly signals, and npm package metadata exists for `qmonster@0.5.0`."
     suggested_approach: >
       Continue the operator-directed synthesis in order. Phase A chose
       the conservative defaults and activated config/pricing/profile
@@ -1253,6 +1253,14 @@ mission:
       default. Auto mode tries control-mode first and falls back to
       polling with a startup notice if attach fails; explicit
       `control_mode` remains strict.
+      v1.16.51 updates pressure semantics: Claude CTX comes from
+      `/context`; Claude quota comes from `/usage` Current session (5h)
+      and Current week (all models); Codex quota comes from bottom-status
+      `5h` and `weekly`; the settings overlay persists separate 5h and
+      weekly quota thresholds for Claude and Codex. It also adds
+      `VERSION.md`, `CONTRIBUTING.md`, and npm source-package metadata for
+      `qmonster@0.5.0`; `npm pack --dry-run` passes and `npm publish`
+      reaches registry packaging but is blocked locally by ENEEDAUTH.
       Phase C C3 review-tier profiles are the next architectural-debt
       item.
     note: >
@@ -1290,9 +1298,9 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.16.50 operator-directed Phase-C follow-up"
+    priority: "post-v1.16.51 operator-directed Phase-C follow-up"
     estimated_sessions: 1
-    scope: "Phase B complete; Phase C C2 control-mode tmux adapter complete; C3 remains"
+    scope: "Phase B complete; Phase C C2 control-mode tmux adapter complete; provider-pressure split complete; C3 remains"
     followups:
       - "C3: add Review-tier profiles (`codex-review`, `gemini-policy-review`) when the operator asks to continue Phase C"
 
@@ -1302,5 +1310,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 132
+    total_revisions: 133
     history: "mission-history.yaml"

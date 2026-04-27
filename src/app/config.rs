@@ -368,18 +368,27 @@ impl ContextConfig {
     }
 }
 
-/// v1.15.17: per-provider quota_pressure thresholds. Same shape as
-/// `ContextConfig`. Today only Gemini populates `quota_pressure` (via
-/// the v0.39 status table `quota` column); the per-provider override
-/// slots are present so a future provider that exposes a quota metric
-/// inherits the same configurability without code change.
+/// v1.15.17: per-provider quota_pressure thresholds. v1.16.51 splits
+/// Claude/Codex quota thresholds into the provider's two visible
+/// windows: rolling 5-hour quota and weekly quota. Gemini still exposes
+/// a single quota column and uses `gemini` / top-level thresholds.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(default)]
 pub struct QuotaConfig {
     pub warning_pct: f32,
     pub critical_pct: f32,
+    /// Legacy v1.15.17 field. Deserialized as a fallback for both
+    /// Claude quota windows but not written by the settings overlay.
+    #[serde(skip_serializing)]
     pub claude: Option<PressureProviderConfig>,
+    pub claude_5h: Option<PressureProviderConfig>,
+    pub claude_weekly: Option<PressureProviderConfig>,
+    /// Legacy v1.15.17 field. Deserialized as a fallback for both
+    /// Codex quota windows but not written by the settings overlay.
+    #[serde(skip_serializing)]
     pub codex: Option<PressureProviderConfig>,
+    pub codex_5h: Option<PressureProviderConfig>,
+    pub codex_weekly: Option<PressureProviderConfig>,
     pub gemini: Option<PressureProviderConfig>,
 }
 
@@ -389,33 +398,73 @@ impl Default for QuotaConfig {
             warning_pct: 0.75,
             critical_pct: 0.85,
             claude: None,
+            claude_5h: None,
+            claude_weekly: None,
             codex: None,
+            codex_5h: None,
+            codex_weekly: None,
             gemini: None,
         }
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuotaWindow {
+    Single,
+    FiveHour,
+    Weekly,
+}
+
 impl QuotaConfig {
     pub fn warning_for(&self, provider: crate::domain::identity::Provider) -> f32 {
-        self.override_for(provider)
+        self.override_for_window(provider, QuotaWindow::Single)
             .map(|o| o.warning_pct)
             .unwrap_or(self.warning_pct)
     }
 
     pub fn critical_for(&self, provider: crate::domain::identity::Provider) -> f32 {
-        self.override_for(provider)
+        self.override_for_window(provider, QuotaWindow::Single)
             .map(|o| o.critical_pct)
             .unwrap_or(self.critical_pct)
     }
 
-    fn override_for(
+    pub fn warning_for_window(
         &self,
         provider: crate::domain::identity::Provider,
+        window: QuotaWindow,
+    ) -> f32 {
+        self.override_for_window(provider, window)
+            .map(|o| o.warning_pct)
+            .unwrap_or(self.warning_pct)
+    }
+
+    pub fn critical_for_window(
+        &self,
+        provider: crate::domain::identity::Provider,
+        window: QuotaWindow,
+    ) -> f32 {
+        self.override_for_window(provider, window)
+            .map(|o| o.critical_pct)
+            .unwrap_or(self.critical_pct)
+    }
+
+    fn override_for_window(
+        &self,
+        provider: crate::domain::identity::Provider,
+        window: QuotaWindow,
     ) -> Option<&PressureProviderConfig> {
         use crate::domain::identity::Provider;
         match provider {
-            Provider::Claude => self.claude.as_ref(),
-            Provider::Codex => self.codex.as_ref(),
+            Provider::Claude => match window {
+                QuotaWindow::FiveHour => self.claude_5h.as_ref().or(self.claude.as_ref()),
+                QuotaWindow::Weekly => self.claude_weekly.as_ref().or(self.claude.as_ref()),
+                QuotaWindow::Single => self.claude.as_ref(),
+            },
+            Provider::Codex => match window {
+                QuotaWindow::FiveHour => self.codex_5h.as_ref().or(self.codex.as_ref()),
+                QuotaWindow::Weekly => self.codex_weekly.as_ref().or(self.codex.as_ref()),
+                QuotaWindow::Single => self.codex.as_ref(),
+            },
             Provider::Gemini => self.gemini.as_ref(),
             Provider::Qmonster | Provider::Unknown => None,
         }
@@ -693,5 +742,59 @@ stillness_polls = 6
 "#;
         let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
         assert_eq!(cfg.idle.stillness_polls, 6);
+    }
+
+    #[test]
+    fn quota_config_loads_split_claude_and_codex_windows() {
+        let toml = r#"
+[quota.claude_5h]
+warning_pct = 0.70
+critical_pct = 0.80
+
+[quota.claude_weekly]
+warning_pct = 0.75
+critical_pct = 0.90
+
+[quota.codex_5h]
+warning_pct = 0.60
+critical_pct = 0.72
+
+[quota.codex_weekly]
+warning_pct = 0.65
+critical_pct = 0.82
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
+
+        assert!((cfg.quota.claude_5h.unwrap().warning_pct - 0.70).abs() < f32::EPSILON);
+        assert!((cfg.quota.claude_weekly.unwrap().critical_pct - 0.90).abs() < f32::EPSILON);
+        assert!((cfg.quota.codex_5h.unwrap().critical_pct - 0.72).abs() < f32::EPSILON);
+        assert!((cfg.quota.codex_weekly.unwrap().warning_pct - 0.65).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn quota_config_legacy_provider_override_feeds_both_windows() {
+        let toml = r#"
+[quota.claude]
+warning_pct = 0.80
+critical_pct = 0.90
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
+
+        assert!(
+            (cfg.quota.warning_for_window(
+                crate::domain::identity::Provider::Claude,
+                QuotaWindow::FiveHour
+            ) - 0.80)
+                .abs()
+                < f32::EPSILON
+        );
+        assert!(
+            (cfg.quota.critical_for_window(
+                crate::domain::identity::Provider::Claude,
+                QuotaWindow::Weekly
+            ) - 0.90)
+                .abs()
+                < f32::EPSILON
+        );
     }
 }

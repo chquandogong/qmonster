@@ -17,7 +17,7 @@
 # - [security] posture_advisories
 # - [cost]    warning_usd, critical_usd, [.claude|.codex|.gemini]
 # - [context] warning_pct, critical_pct, [.claude|.codex|.gemini]
-# - [quota]   warning_pct, critical_pct, [.claude|.codex|.gemini]
+# - [quota]   warning_pct, critical_pct, [.claude_5h|.claude_weekly|.codex_5h|.codex_weekly|.gemini]
 #
 # Everything else belongs in docs/ai/* or tmux launcher conventions,
 # not in runtime TOML.
@@ -99,8 +99,9 @@ critical_usd = 10.0
 # v1.15.17 — per-provider context_pressure thresholds for the
 # context_pressure_warning / context_pressure_critical advisory rules
 # (see src/policy/rules/advisories.rs). `context_pressure` is populated
-# by every provider parser today (Claude header, Codex bottom status,
-# Gemini status table), so all three providers honour these thresholds.
+# by Claude `/context`, Codex bottom status, and Gemini status table, so
+# all three providers honour these thresholds when that provider surface
+# is visible or has just been captured through `u` runtime refresh.
 #
 # `warning_pct` / `critical_pct` are fractions in 0..=1.0 (not %). They
 # apply to any provider that does not have a `[context.<provider>]`
@@ -135,16 +136,15 @@ critical_pct = 0.85
 # warning_pct = 0.75
 # critical_pct = 0.85
 
-# v1.15.17 — per-provider quota_pressure thresholds. Same shape as
-# `[context]` above. Today only Gemini's v0.39 status table populates
-# `quota_pressure` (via the `quota` column); Claude and Codex panes
-# leave the metric None, so their thresholds are dormant until a future
-# provider exposes a quota fraction. The per-provider override slots
-# are present so adding such a provider does not require code changes.
+# v1.16.51 — quota_pressure thresholds. Gemini exposes one quota column;
+# Claude and Codex expose two quota windows. For Codex, bottom status
+# `5h N%` is the rolling 5-hour limit and `weekly N%` is the weekly
+# limit. For Claude, `/usage` "Current session" is the rolling 5-hour
+# limit and "Current week (all models)" is the weekly limit.
 #
 # Behaviour invariants:
-#   - quota_pressure_warning  fires when warning_pct <= quota_pressure < critical_pct.
-#   - quota_pressure_critical fires when quota_pressure >= critical_pct.
+#   - quota_pressure_warning  fires when warning_pct <= quota < critical_pct.
+#   - quota_pressure_critical fires when quota >= critical_pct.
 #   - Both rules respect the IdentityConfidence gate (KD-007). Neither
 #     emits a `suggested_command`: rate-limited quotas reset on the
 #     provider's schedule, not via a slash command — the operator picks
@@ -153,11 +153,19 @@ critical_pct = 0.85
 warning_pct = 0.75
 critical_pct = 0.85
 
-# [quota.claude]                    # uncomment when Claude exposes quota
+# [quota.claude_5h]                 # Claude /usage Current session
 # warning_pct = 0.75
 # critical_pct = 0.85
 
-# [quota.codex]                     # uncomment when Codex exposes quota
+# [quota.claude_weekly]             # Claude /usage Current week (all models)
+# warning_pct = 0.75
+# critical_pct = 0.85
+
+# [quota.codex_5h]                  # Codex bottom status `5h N%`
+# warning_pct = 0.75
+# critical_pct = 0.85
+
+# [quota.codex_weekly]              # Codex bottom status `weekly N%`
 # warning_pct = 0.75
 # critical_pct = 0.85
 
