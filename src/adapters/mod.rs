@@ -23,7 +23,9 @@ pub struct ParserContext<'a> {
     pub history: &'a PaneTailHistory,
     /// Phase F F-1: tmux `#{pane_pid}` for descendant-RSS lookup. May
     /// be `None` for legacy fixtures or when tmux emitted a non-integer
-    /// value. Task 4 wires the dispatcher to consume this.
+    /// value. Consumed by `parse_for` to fill `SignalSet.process_memory_mb`
+    /// via `process_memory::read_descendant_rss_mb` when no
+    /// provider-native memory signal was emitted.
     pub pane_pid: Option<u32>,
 }
 

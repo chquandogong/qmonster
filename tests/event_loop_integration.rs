@@ -1667,7 +1667,7 @@ output_per_1m = 10.00
         pricing: &pricing,
         claude_settings: &settings,
         history: &history,
-        pane_pid: None,
+        pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
     };
     let signals = parse_for(&ctx);
 
@@ -1713,7 +1713,7 @@ fn codex_status_line_end_to_end_without_pricing_populates_three_metrics() {
         pricing: &pricing,
         claude_settings: &settings,
         history: &history,
-        pane_pid: None,
+        pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
     };
     let signals = parse_for(&ctx);
 
@@ -1778,7 +1778,7 @@ output_per_1m = 10.00
         pricing: &pricing,
         claude_settings: &claude_settings,
         history: &history,
-        pane_pid: None,
+        pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
     };
 
     let signals = parse_for(&ctx);
@@ -1846,7 +1846,7 @@ fn claude_adapter_end_to_end_reads_model_from_claude_settings() {
         pricing: &pricing,
         claude_settings: &claude_settings,
         history: &history,
-        pane_pid: None,
+        pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
     };
 
     let signals = parse_for(&ctx);
