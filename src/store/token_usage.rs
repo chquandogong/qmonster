@@ -14,6 +14,7 @@
 //! samples to produce a meaningful "rate of context growth" sparkline.
 
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use rusqlite::{Connection, params};
 
@@ -32,13 +33,28 @@ pub struct TokenSample {
 
 pub struct SqliteTokenUsageSink {
     db: AuditDb,
+    error_count: AtomicU64,
 }
 
 impl SqliteTokenUsageSink {
+    /// Phase F F-3 (v1.24.0): opens a `SqliteTokenUsageSink` against
+    /// the given DB path. Note: today this constructs its own
+    /// `AuditDb` — i.e., a second `rusqlite::Connection` to the same
+    /// `qmonster.db` file the audit sink already opened. This is a
+    /// tracked debt: the F-3 plan intended both writers to share a
+    /// single `Connection` via a future `Db` facade. Until that
+    /// refactor lands, both connections coexist (SQLite handles file-
+    /// level locking; impact is purely cosmetic for the workload of
+    /// 1 record_sample per pane per 5s).
     pub fn open(path: &Path) -> Result<Self, SqliteError> {
         Ok(Self {
             db: AuditDb::open(path)?,
+            error_count: AtomicU64::new(0),
         })
+    }
+
+    pub fn error_count(&self) -> u64 {
+        self.error_count.load(Ordering::Relaxed)
     }
 
     pub fn record_sample(&self, sample: &TokenSample) -> Result<(), SqliteError> {
@@ -47,7 +63,11 @@ impl SqliteTokenUsageSink {
             .connection()
             .lock()
             .expect("token_usage db lock poisoned");
-        record_sample_via(&conn, sample)
+        let res = record_sample_via(&conn, sample);
+        if res.is_err() {
+            self.error_count.fetch_add(1, Ordering::Relaxed);
+        }
+        res
     }
 
     pub fn recent_samples(
@@ -240,5 +260,35 @@ mod tests {
             let got = sink.recent_samples(&format!("%{}", i), 1).unwrap();
             assert_eq!(got[0].provider, *p, "provider must round-trip for {:?}", p);
         }
+    }
+
+    #[test]
+    fn record_sample_error_count_increments_on_forced_failure() {
+        let td = tempdir().unwrap();
+        let sink = SqliteTokenUsageSink::open(&td.path().join("q.db")).unwrap();
+        // Sanity: counter starts at 0
+        assert_eq!(sink.error_count(), 0);
+
+        // Drop the table out from under the sink to force INSERT failure.
+        {
+            let conn = sink.db.connection().lock().unwrap();
+            conn.execute("DROP TABLE token_usage_samples", []).unwrap();
+        }
+
+        let s = TokenSample {
+            ts_unix_ms: 100,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(1),
+            output_tokens: None,
+            cost_usd: None,
+        };
+        let res = sink.record_sample(&s);
+        assert!(res.is_err(), "INSERT into dropped table must fail");
+        assert_eq!(sink.error_count(), 1);
+
+        // Second failure increments to 2
+        let _ = sink.record_sample(&s);
+        assert_eq!(sink.error_count(), 2);
     }
 }
