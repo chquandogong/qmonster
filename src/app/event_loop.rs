@@ -113,6 +113,7 @@ where
                 cross_pane_findings: vec![],
                 idle_state: None,
                 idle_state_entered_at: None,
+                recent_token_samples: Vec::new(), // F-3: dead pane; no samples needed
             });
             continue;
         }
@@ -240,6 +241,16 @@ where
                 .record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
         }
 
+        // F-3: read back the recent samples for this pane so the
+        // UI sparkline can render deltas. Empty Vec when the sink
+        // is None (open failed at startup) or has no rows for the
+        // pane yet (first iteration).
+        let recent_token_samples: Vec<crate::store::TokenSample> = ctx
+            .token_usage_sink
+            .as_ref()
+            .and_then(|sink| sink.recent_samples(&pane.pane_id, 20).ok())
+            .unwrap_or_default();
+
         reports.push(PaneReport {
             pane_id: pane.pane_id,
             session_name: pane.session_name,
@@ -255,6 +266,7 @@ where
             cross_pane_findings: vec![],
             idle_state,
             idle_state_entered_at: entered_at,
+            recent_token_samples,
         });
     }
 
@@ -499,4 +511,11 @@ pub struct PaneReport {
     /// Instant at which the pane entered its current `idle_state`.
     /// `None` when `idle_state` is `None` (pane is active).
     pub idle_state_entered_at: Option<std::time::Instant>,
+    /// Phase F F-3 (v1.24.0): recent token-usage samples for this
+    /// pane, ordered ts_unix_ms DESC, capped at 20 rows. Populated
+    /// from `SqliteTokenUsageSink::recent_samples` when the sink is
+    /// open. Empty vec when the sink is None or has no rows for this
+    /// pane. Consumed by the UI sparkline (Task 4) to compute deltas
+    /// between adjacent samples.
+    pub recent_token_samples: Vec<crate::store::TokenSample>,
 }

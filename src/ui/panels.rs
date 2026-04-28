@@ -1277,6 +1277,7 @@ mod tests {
             cross_pane_findings: vec![],
             idle_state: None,
             idle_state_entered_at: None,
+            recent_token_samples: Vec::new(), // F-3: test fixture; production fetches via event_loop
         }
     }
 
