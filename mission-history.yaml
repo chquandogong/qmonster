@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.27.1 — Phase F Codex Token usage parsing fix."
+  mission_title: "Qmonster v1.28.0 — Phase F F-7-config: operator-tunable cache thresholds."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 157
-  latest_version: "1.27.1"
+  total_revisions: 158
+  latest_version: "1.28.0"
 
 timeline:
   - change_id: "initial"
@@ -14096,9 +14096,103 @@ timeline:
       - "v1.27.1 release commit (tagged as v1.27.1)"
     follow_up: []
 
+  - change_id: "v1.28.0-phase-f-f7-config-operator-tunable-cache-thresholds"
+    semantic_version: "1.28.0"
+    change_sequence: 158
+    date: "2026-04-29"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (main pane)"
+    change_type: "feature"
+    motivation_type: "operator-ergonomics"
+    persistence: "permanent"
+    intent: >
+      Phase F F-7-config: expose the 6 cache-rule thresholds previously hardcoded
+      in F-7 / F-7b as operator-tunable config fields in the new `[cache]` section
+      of `qmonster.toml`. New `CacheConfig` struct in `src/app/config.rs` with
+      `#[serde(default)]` keeps all existing operator configs working unchanged.
+      `PolicyGates` gains 6 `cache_*` fields populated from `CacheConfig` in
+      `from_config_and_identity` (8th positional param). `src/policy/rules/cache.rs`
+      removes the 6 const declarations and reads from `gates.cache_*`; reason strings
+      interpolate the configured threshold value so operators see the actual threshold
+      that fired. Defaults match prior hardcoded values exactly — no v1.27.x behavior
+      change for default configs. Refactor side effect: 22 `PolicyGates { … }` literals
+      across `advisories.rs` / `auto_memory.rs` / `profiles.rs` are simplified to
+      `..PolicyGates::default()` spread syntax — purely mechanical. Settings overlay UI
+      for cache thresholds explicitly deferred; operators edit `qmonster.toml` directly.
+      Tests grew to 660 lib + 68 integration green.
+    intent_ko: >
+      Phase F F-7-config: F-7/F-7b에서 하드코딩된 캐시 규칙 임계값 6개를
+      `qmonster.toml`의 새 `[cache]` 섹션으로 노출하여 운영자가 직접 조정할 수 있게 한다.
+      `src/app/config.rs`에 `CacheConfig` 구조체를 `#[serde(default)]`로 추가해
+      기존 운영자 설정 파일이 변경 없이 동작한다. `PolicyGates`에 `cache_*` 필드 6개를
+      추가하고 `from_config_and_identity` (8번째 파라미터)에서 `CacheConfig`로 채운다.
+      `src/policy/rules/cache.rs`는 const 선언 6개를 제거하고 `gates.cache_*`에서 읽으며,
+      reason 문자열에 실제 임계값을 삽입해 운영자가 발화한 임계값을 확인할 수 있다.
+      기본값은 기존 하드코딩 상수와 동일하므로 기본 설정 운영자는 동작 변경 없음.
+      부수 효과: `advisories.rs` / `auto_memory.rs` / `profiles.rs`의 22개
+      `PolicyGates { … }` 리터럴을 `..PolicyGates::default()` 스프레드로 단순화 —
+      순전히 기계적 변경. 캐시 임계값 Settings overlay UI는 명시적으로 연기됨.
+      테스트 660 lib + 68 integration green.
+    triggered_by: "F-7-config task1: operator-tunable cache thresholds via [cache] config (commit 2274dd3)"
+    issue_or_context: >
+      F-7 (v1.26.0) and F-7b (v1.27.0) shipped the three cache advisory rules with
+      hard-coded thresholds: hot_ratio = 0.6, cold_ratio = 0.3, hot_low_ctx = 0.7,
+      cold_high_ctx = 0.6, drift_drop = 0.30, drift_min_samples = 4. Operators
+      running non-standard setups (aggressive caching, different context budgets)
+      had no way to tune these without source changes. F-7-config closes that gap
+      with a zero-breaking config section that mirrors the [cost] / [context] /
+      [quota] per-section pattern already established in the config layer.
+    changes:
+      added:
+        - "`CacheConfig` struct in `src/app/config.rs` with 6 `#[serde(default)]` fields matching prior hardcoded constants"
+        - "`[cache]` section documented in `config/qmonster.example.toml`"
+        - "6 `cache_*` fields in `PolicyGates` struct populated from `CacheConfig` in `from_config_and_identity` (8th param)"
+        - "`cache_rules_honor_custom_thresholds_from_gates` test verifying custom `cache_hot_ratio = 0.40` makes ratio = 0.50 fire the hot rule"
+      modified:
+        - "`src/policy/rules/cache.rs` removes 6 const declarations and reads from `gates.cache_*`; reason strings interpolate configured values"
+        - "22 `PolicyGates { … }` literals across `advisories.rs` / `auto_memory.rs` / `profiles.rs` simplified to `..PolicyGates::default()` spread syntax"
+        - "`README.md`, `VERSION.md`, `mission.yaml`, `mission-history.yaml`, `docs/ai/UI_MANUAL.md`, `docs/ai/ARCHITECTURE.md`, `docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md` bumped to v1.28.0"
+      removed: []
+    changed_sections:
+      - "src/app/config.rs"
+      - "src/policy/engine.rs"
+      - "src/policy/rules/cache.rs"
+      - "src/policy/rules/advisories.rs"
+      - "src/policy/rules/auto_memory.rs"
+      - "src/policy/rules/profiles.rs"
+      - "config/qmonster.example.toml"
+      - "README.md"
+      - "VERSION.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/VALIDATION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    observable_effects:
+      added:
+        - "Operators can set `[cache] hot_ratio_threshold`, `cold_ratio_threshold`, `hot_low_ctx_threshold`, `cold_high_ctx_threshold`, `drift_drop_threshold`, `drift_min_samples` in `~/.qmonster/config/qmonster.toml` to retune cache advisory fire conditions"
+        - "Cache advisory reason strings include the configured threshold value so operators know which threshold fired"
+      modified:
+        - "22 test-site `PolicyGates { … }` literals simplified to spread syntax — mechanical only, no observable behavior change"
+      removed:
+        - "6 const declarations (`HOT_RATIO_THRESHOLD` etc.) from `src/policy/rules/cache.rs`"
+    impact_scope:
+      runtime: "config parsing and PolicyGates construction only; no storage schema, UI layout, or actuation change; policy rule logic unchanged except threshold source."
+      tests: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, scripts/verify-shared.sh"
+      ledger: "1 new timeline entry (sequence 158); meta bump; minor version bump v1.27.1 → v1.28.0 for F-7-config operator-tunable cache thresholds"
+      npm: "package.json version unchanged at 1.21.3 — npm publish deferred"
+      review_gate: "local validation passes before commit"
+    breaking: false
+    risk: "low — config struct uses serde(default) so existing configs are zero-breaking; defaults reproduce prior constants exactly."
+    related_commits:
+      - "2274dd3 F-7-config task1: operator-tunable cache thresholds via [cache] config"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.27.1 fixes Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4's cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
-  next_phase: "Phase F is open with F-1, F-2, F-3, F-4, F-7, F-7b plus the v1.27.1 Codex token parser fix shipped; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on F-5/F-6 reset_eta) remain unscoped."
+  current_phase: "v1.28.0 ships F-7-config: operator-tunable cache thresholds. New `CacheConfig` struct in `src/app/config.rs` exposes the 6 thresholds from F-7/F-7b via `[cache]` section in `qmonster.toml`; `PolicyGates` gains 6 `cache_*` fields; `cache.rs` reads from gates and interpolates values into reason strings. v1.27.1 fixed Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4's cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
+  next_phase: "Phase F is open with F-1, F-2, F-3, F-4, F-7, F-7b, F-7-config plus the v1.27.1 fix shipped; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on F-5/F-6 reset_eta), settings-overlay UI for cache thresholds remain unscoped."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

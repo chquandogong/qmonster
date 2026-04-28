@@ -217,6 +217,25 @@ cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
   wait is active. Thresholds are hard-coded for v1; operator-tunable
   thresholds are deferred.
 - **Third rule (F-7b, v1.27.0)**: `cache: drift detected — /compact will let cache rebuild` fires `Severity::Concern` with `suggested_command: /compact` when the cache hit ratio has dropped by ≥ 30 percentage points between the oldest sample in the recent window (last 20 polls) and the current SignalSet, AND at least 4 samples are available. The reason text reports the actual drop, baseline, and current values. Use this signal when context drifted (e.g., after a long agent-driven exploration) and the cache prefix has lost its alignment with the current prompt — `/compact` will trim the surface so cache rebuilds quickly on the next turn. Same suppression conditions as the other two cache rules.
+- **Operator-tunable thresholds (F-7-config, v1.28.0)**: all 6 cache-rule
+  thresholds are now configurable via the `[cache]` section in
+  `~/.qmonster/config/qmonster.toml`. Defaults match the prior
+  hardcoded values exactly:
+  - `hot_ratio_threshold = 0.6` — `cache_hot_compact_warning` fires
+    above this ratio
+  - `cold_ratio_threshold = 0.3` — `compact_when_cache_cold` fires
+    below this ratio
+  - `hot_low_ctx_threshold = 0.7` — hot warning requires
+    context_pressure below this
+  - `cold_high_ctx_threshold = 0.6` — cold compact-recommendation
+    requires context_pressure above this
+  - `drift_drop_threshold = 0.30` — `cache_drift_compact` fires when
+    cache_hit_ratio drops by ≥ this absolute amount
+  - `drift_min_samples = 4` — `cache_drift_compact` requires this
+    many samples in the recent window
+    Adjust to taste. The `S` settings overlay does not yet edit `[cache]`
+    — operators modify `qmonster.toml` directly and Qmonster picks up
+    changes on the next config load.
 - 긴 worktree 경로 문자열은 PATH badge에서 40자까지 자동
   ellipsize됩니다 (Slice 3 housekeeping). 잘린 부분은 `…` 한 글자로
   표시되어 badge 한 줄이 pane card 폭을 넘기지 않습니다.

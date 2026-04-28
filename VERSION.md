@@ -3,15 +3,15 @@
 Qmonster has three version surfaces. They intentionally serve different
 audiences.
 
-| Surface        | Current   | Meaning                                                                                                 |
-| -------------- | --------- | ------------------------------------------------------------------------------------------------------- |
-| Mission ledger | `v1.27.1` | Operator-facing implementation/history version. This is what tags and `mission-history.yaml` track.     |
-| npm package    | `1.21.3`  | Installable package version for the npm registry; may lag the ledger when npm publish is deferred.      |
-| Cargo crate    | `0.1.0`   | Internal Rust crate metadata. It is not the operator-facing runtime version.                            |
+| Surface        | Current   | Meaning                                                                                             |
+| -------------- | --------- | --------------------------------------------------------------------------------------------------- |
+| Mission ledger | `v1.28.0` | Operator-facing implementation/history version. This is what tags and `mission-history.yaml` track. |
+| npm package    | `1.21.3`  | Installable package version for the npm registry; may lag the ledger when npm publish is deferred.  |
+| Cargo crate    | `0.1.0`   | Internal Rust crate metadata. It is not the operator-facing runtime version.                        |
 
 The running TUI displays `git describe --tags --always --dirty`, captured
 by `build.rs` as `QMONSTER_GIT_VERSION`. Tagged source builds therefore
-show tags such as `v1.27.1`; dirty local builds show a `-dirty` suffix.
+show tags such as `v1.28.0`; dirty local builds show a `-dirty` suffix.
 When the source is built outside a git checkout, the fallback label is
 `v{CARGO_PKG_VERSION}-nogit`.
 

@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.21.3`; current mission ledger `v1.27.1`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.21.3`; current mission ledger `v1.28.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,20 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.27.1` / npm `1.21.3` (npm publish deferred).
+Current release: `v1.28.0` / npm `1.21.3` (npm publish deferred).
+
+`v1.28.0` continues Phase F with F-7-config: operator-tunable cache thresholds. New `CacheConfig`
+struct in `src/app/config.rs` exposes the 6 thresholds previously hardcoded in F-7 plus F-7b via
+a `[cache]` section in `qmonster.toml`: `hot_ratio_threshold` (0.6), `cold_ratio_threshold` (0.3),
+`hot_low_ctx_threshold` (0.7), `cold_high_ctx_threshold` (0.6), `drift_drop_threshold` (0.30),
+`drift_min_samples` (4). `PolicyGates` gains 6 `cache_*` fields populated from `CacheConfig` in
+`from_config_and_identity` (8th param). `src/policy/rules/cache.rs` removes the 6 const declarations
+and reads from `gates.cache_*`; reason strings interpolate the configured threshold so operators see
+the actual value that fired. Defaults match prior hardcoded constants exactly — no v1.27.x behavior
+change for default configs. Side effect: 22 `PolicyGates { … }` literals across `advisories.rs`
+plus `auto_memory.rs` plus `profiles.rs` simplified to `..PolicyGates::default()` spread — purely
+mechanical. Settings overlay UI for cache thresholds deferred; operators edit `qmonster.toml`
+directly. 1 new test; 660 lib plus 68 integration green.
 
 `v1.27.1` is a Phase F follow-up for Codex token observability. The Codex adapter now parses
 the provider `Token usage:` summary atomically (`total=`, `input=`, `(+ N cached)`, `output=`)
@@ -146,6 +159,7 @@ untouched — the `/proc` fill only applies when the provider adapter left
 | Phase F F-4           | Shipped  | Codex `/status` welcome panel `(+ N cached)` parser populates `SignalSet.cached_input_tokens`; UI renders `CACHE <%>` badge with `cached / (input + cached) * 100` and one-decimal precision; honesty rule preserves missing badge for Claude / Gemini OAuth. |
 | Phase F F-7           | Shipped  | Cache-aware advisory rules: `cache_hot_compact_warning` (Concern when cache hot AND ctx headroom) and `compact_when_cache_cold` (Good with `/compact` suggestion when cache cold AND ctx filling); mutually exclusive by ratio threshold construction.        |
 | Phase F F-7b          | Shipped  | Cache drift detection rule: fires `Severity::Concern` with suggested `/compact` when `cache_hit_ratio` drops ≥ 30 pp over last 4+ samples; uses F-3 `recent_token_samples` time series; Engine::evaluate gains 5th param.                                     |
+| Phase F F-7-config    | Shipped  | `[cache]` config section exposes 6 thresholds for the F-7/F-7b cache-aware rules; defaults preserve prior behavior; reason strings interpolate the configured values so operators see what actually fired.                                                    |
 
 Recent release notes:
 

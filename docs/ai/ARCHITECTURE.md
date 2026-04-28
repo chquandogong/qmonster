@@ -641,6 +641,27 @@ module shape.
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
 
+v1.28.0 continues **Phase F** with **F-7-config operator-tunable cache thresholds**:
+new `CacheConfig` struct in `src/app/config.rs` with 6 fields
+(`hot_ratio_threshold`, `cold_ratio_threshold`, `hot_low_ctx_threshold`,
+`cold_high_ctx_threshold`, `drift_drop_threshold`, `drift_min_samples`)
+mirrors the `[cost]` / `[context]` / `[quota]` per-section pattern.
+`PolicyGates` gains 6 `cache_*` fields populated from `CacheConfig`
+in `from_config_and_identity` (8th positional param;
+`#[allow(clippy::too_many_arguments)]` applied narrowly).
+`src/policy/rules/cache.rs` removes the 6 const declarations
+introduced in F-7 / F-7b and reads from `gates.cache_*`; reason
+strings interpolate the configured threshold so operators see the
+actual value that fired. Defaults match the prior hardcoded
+constants exactly so no v1.27.x behavior change for default configs.
+Operators edit `~/.qmonster/config/qmonster.toml`'s new `[cache]`
+section to retune. Settings overlay (`S` key) UI for cache
+thresholds is explicitly deferred. Refactor side effect: 22
+`PolicyGates { … }` literals across `advisories.rs` /
+`auto_memory.rs` / `profiles.rs` are simplified to
+`..PolicyGates::default()` spread syntax — purely mechanical, no
+semantic change.
+
 v1.27.1 is a **Phase F Codex Token usage parsing follow-up**. Codex
 `Token usage:` summary lines are now parsed as one ProviderOfficial
 surface (`total=`, `input=`, `(+ N cached)`, `output=`) and applied
