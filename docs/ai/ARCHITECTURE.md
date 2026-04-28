@@ -265,6 +265,23 @@ with archive sweep). Provider native cache_read fields will populate
 the sparkline once F-4 / F-5 / F-6 land; F-3 ships the persistence +
 render infrastructure today.
 
+v1.25.0 continues **Phase F** with **F-4 Codex cached_input_tokens + CACHE hit ratio badge**:
+new `parse_codex_cached_input_tokens` in `src/adapters/codex.rs` extracts the
+`(+ N cached)` token from the Codex `/status` welcome panel's `Token usage:`
+line and populates `SignalSet.cached_input_tokens: Option<MetricValue<u64>>`
+with `SourceKind::ProviderOfficial`. The `token_usage_samples` table gains a
+nullable `cached_input_tokens INTEGER` column; `AuditDb::open` runs an
+idempotent `ALTER TABLE … ADD COLUMN` migration that swallows "duplicate
+column" errors so v1.24.0 DBs upgrade in place. `TokenSample.cached_input_tokens`
+round-trips through INSERT/SELECT. The event-loop sampling predicate now
+records cache-only rows. UI renders `cache_hit_ratio = cached / (input +
+cached)` as a `cache <%>` text field or `CACHE <%>` badge with one-decimal
+precision; honesty rule preserved when `cached_input_tokens` is None.
+Provider coverage today: Codex (welcome panel, ProviderOfficial). Deferred
+siblings: F-4b (Gemini /stats parsing), F-5 (Claude statusLine command),
+F-6 (Codex App Server resetsAt), F-7 (cache-aware policy rules using the
+time series).
+
 ## Module responsibilities
 
 ### `app/`

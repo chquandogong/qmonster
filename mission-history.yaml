@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.24.0 — Phase F F-3: token usage time series + sparkline UI."
+  mission_title: "Qmonster v1.25.0 — Phase F F-4: Codex cached_input_tokens + CACHE hit ratio badge."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 153
-  latest_version: "1.24.0"
+  total_revisions: 154
+  latest_version: "1.25.0"
 
 timeline:
   - change_id: "initial"
@@ -13741,9 +13741,105 @@ timeline:
       - "2dd49d8 F-3 task4: TOKENS sparkline on expanded pane card"
     follow_up: []
 
+  - change_id: "v1.25.0-phase-f-f4-codex-cached-input-tokens"
+    semantic_version: "1.25.0"
+    change_sequence: 154
+    date: "2026-04-29"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (main pane)"
+    change_type: "feature"
+    motivation_type: "phase-continuation"
+    persistence: "permanent"
+    intent: >
+      Phase F F-4: Codex cached_input_tokens parser + CACHE hit ratio UI badge.
+      Codex's /status welcome panel surfaces `(+ N cached)` in the `Token usage:`
+      line; new parse_codex_cached_input_tokens extracts the comma-stripped value
+      and populates SignalSet.cached_input_tokens: Option<MetricValue<u64>> with
+      SourceKind::ProviderOfficial. The token_usage_samples SQLite schema gains a
+      nullable cached_input_tokens INTEGER column with an idempotent ALTER TABLE
+      migration in AuditDb::open that swallows "duplicate column" errors so
+      existing v1.24.0 DBs upgrade in place. TokenSample.cached_input_tokens
+      round-trips through INSERT/SELECT. event_loop.rs records the new field per
+      poll; the sampling predicate is extended so cache-only rows still persist. UI
+      surfaces a CACHE <%> [<source>] badge computed at render time as
+      cached / (input + cached) * 100 with one-decimal precision; honesty rule
+      preserved when cached_input_tokens is None.
+    intent_ko: >
+      Phase F F-4: Codex cached_input_tokens 파서 + CACHE 적중률 UI 뱃지.
+      Codex /status 환영 패널의 `Token usage:` 줄에 `(+ N cached)` 형태로 노출되는
+      캐시 토큰을 parse_codex_cached_input_tokens가 쉼표 제거 후 파싱하여
+      SignalSet.cached_input_tokens: Option<MetricValue<u64>>에
+      SourceKind::ProviderOfficial로 채움. token_usage_samples 스키마에
+      nullable cached_input_tokens INTEGER 컬럼 추가; AuditDb::open의 idempotent
+      ALTER TABLE 마이그레이션이 "duplicate column" 에러를 무시하여 v1.24.0 DB를
+      그대로 업그레이드. TokenSample.cached_input_tokens는 INSERT/SELECT 왕복.
+      event_loop.rs가 매 poll마다 해당 값을 기록; sampling predicate 확장으로
+      cache-only 행도 저장. UI는 cached / (input + cached) * 100을 소수점 1자리로
+      CACHE <%> [<source>] 뱃지로 렌더링; cached_input_tokens가 None이면 뱃지 생략
+      (honesty rule).
+    triggered_by: "Phase F F-4 plan: Codex cached_input_tokens + CACHE hit ratio badge."
+    issue_or_context: >
+      Codex /status welcome panel already exposes `(+ N cached)` alongside
+      input/output totals, but Qmonster had no parser for that field. F-4 wires
+      the cache token count into SignalSet, persists it in the time-series table,
+      and renders a CACHE hit-ratio badge so the operator can see at a glance
+      how much of Codex's prompt-input is being served from cache vs. freshly
+      processed. Honesty rule preserved: Claude has no statusline cache surface
+      today; Gemini OAuth FAQ documents cache=0; both keep the badge absent.
+    changes:
+      added:
+        - "`parse_codex_cached_input_tokens` in `src/adapters/codex.rs` — extracts `(+ N cached)` from Token usage: line with comma stripping"
+        - "`SignalSet.cached_input_tokens: Option<MetricValue<u64>>` in `src/domain/signal.rs`"
+        - "`cached_input_tokens INTEGER` nullable column in `token_usage_samples` via idempotent ALTER TABLE in `src/store/sqlite.rs`"
+        - "`TokenSample.cached_input_tokens: Option<u64>` field in `src/store/token_usage.rs`"
+        - "`format_cache_hit_ratio` helper in `src/ui/panels.rs`"
+        - "CACHE badge rendering on pane cards in `src/ui/panels.rs`"
+        - "7 new tests: parser + schema round-trip + ratio formatter + UI render"
+      modified:
+        - "`src/app/event_loop.rs` — records cached_input_tokens per poll; sampling predicate extended to include cache-only rows"
+        - "`README.md`, `VERSION.md`, `mission.yaml`, `mission-history.yaml`, `docs/ai/UI_MANUAL.md`, `docs/ai/ARCHITECTURE.md`, `docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md` bumped to v1.25.0"
+      removed: []
+    changed_sections:
+      - "src/adapters/codex.rs"
+      - "src/domain/signal.rs"
+      - "src/store/sqlite.rs"
+      - "src/store/token_usage.rs"
+      - "src/app/event_loop.rs"
+      - "src/ui/panels.rs"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    observable_effects:
+      added:
+        - "Codex pane cards show `CACHE <N.N>% [Official]` badge when /status welcome panel `(+ N cached)` is present in Token usage: line"
+        - "token_usage_samples rows for Codex panes now carry cached_input_tokens when available"
+      modified:
+        - "v1.24.0 qmonster.db files are upgraded in place via idempotent ALTER TABLE — no manual schema migration required"
+      removed: []
+    impact_scope:
+      runtime: "new Codex parser field; one extra column in per-poll SQLite INSERT for Codex panes; no policy, storage-root, or actuation change."
+      tests: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, scripts/verify-shared.sh"
+      ledger: "1 new timeline entry (sequence 154); meta bump; minor version bump v1.24.0 → v1.25.0 for Phase F F-4"
+      npm: "package.json version unchanged at 1.21.3 — npm publish deferred"
+      review_gate: "local validation passes before commit"
+      follow_up_carryover: "Phase F F-4b (Gemini /stats parsing), F-5, F-6, F-7 remain unscoped pending operator direction."
+    breaking: false
+    risk: "low — ALTER TABLE migration is idempotent (swallows duplicate-column errors); cache badge is display-only with honesty guard; no policy or actuation path change."
+    related_commits:
+      - "b9a17bd F-4 task1: SignalSet.cached_input_tokens + Codex welcome panel parser"
+      - "ecbbaf1 F-4 task2: token_usage_samples cached_input_tokens column + TokenSample field"
+      - "5286929 F-4 task3: CACHE <%> badge + format_cache_hit_ratio helper"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.23.0 continues Phase F with F-2: agent memory file scan + bloat advisory. New adapters::agent_memory sums provider-specific memory files (CLAUDE.md / AGENTS.md / GEMINI.md plus home-dir + Claude project memory dir) into SignalSet.agent_memory_bytes; UI surfaces MEM-FILE <KB|MB> [Heur] badge; new recommend_memory_bloat_advisory rule fires Severity::Concern above 50_000 bytes (~49 KiB). v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
-  next_phase: "Phase F is open with F-1, F-2, F-3 shipped; F-4..F-7 remain unscoped pending operator direction."
+  current_phase: "v1.25.0 continues Phase F with F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. New parse_codex_cached_input_tokens extracts (+ N cached) from Codex /status welcome panel into SignalSet.cached_input_tokens (ProviderOfficial); token_usage_samples gains nullable cached_input_tokens column with idempotent ALTER TABLE migration; UI renders CACHE <%> badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
+  next_phase: "Phase F is open with F-1, F-2, F-3, F-4 shipped; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7 (cache-aware policy rules) remain unscoped."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.21.3`; current mission ledger `v1.24.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.21.3`; current mission ledger `v1.25.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,23 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.24.0` / npm `1.21.3` (npm publish deferred).
+Current release: `v1.25.0` / npm `1.21.3` (npm publish deferred).
+
+`v1.25.0` continues Phase F with F-4: Codex `cached_input_tokens`
+parser plus a CACHE hit ratio UI badge. New `parse_codex_cached_input_tokens`
+extracts the `(+ N cached)` token from the Codex `/status` welcome
+panel into `SignalSet.cached_input_tokens` (ProviderOfficial). The
+`token_usage_samples` SQLite table gains a nullable
+`cached_input_tokens INTEGER` column; `AuditDb::open` runs an
+idempotent `ALTER TABLE` migration that swallows "duplicate column"
+errors so v1.24.0 DBs upgrade in place. `TokenSample.cached_input_tokens`
+round-trips through INSERT/SELECT, and the event-loop sampling predicate
+extends to include cache-only rows. UI surfaces a `cache <N.N>%` text
+field plus a `CACHE <N.N>%` badge with one-decimal precision,
+computed at render time as `cached / (input + cached) * 100`. Honesty
+rule preserved: badge omitted when `cached_input_tokens` is None
+(Claude no statusline cache surface; Gemini OAuth FAQ-documented limit).
+Tests grew to 646 lib and 68 integration green.
 
 `v1.24.0` continues Phase F with F-3: token usage time series and sparkline UI.
 Token samples are persisted to a new `token_usage_samples` SQLite table in
@@ -72,22 +88,23 @@ comm names. Gemini's status-table `[Official]` MEM path is preserved
 untouched — the `/proc` fill only applies when the provider adapter left
 `process_memory_mb` as `None`. 608 lib + 67 integration tests green.
 
-| Area                  | Status   | Operator-visible result                                                                                                                                                                                                                              |
-| --------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phases 0-5            | Shipped  | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete.                                                                                                                       |
-| Runtime observability | Shipped  | Pane state, command row, provider facts, copyable `run:` commands, security posture badges, cost/context/quota gradients, and settings overlay are live.                                                                                             |
-| Phase B visibility    | Complete | Standard config/pricing paths, Codex token in/out, opt-in security advisories, branch-aware concurrent-work warnings, and copyable commands are closed.                                                                                              |
-| Phase C C1            | Complete | `src/main.rs` is a thin CLI/startup wrapper; the live TUI loop and helpers live under `src/app/`.                                                                                                                                                    |
-| Phase C C2            | Complete | `[tmux] source = "auto"` tries control-mode first and falls back to polling when attach is unavailable.                                                                                                                                              |
-| Phase C C3            | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled payloads.                                                                                                                     |
-| Phase D D1            | Shipped  | Opt-in cross-window concurrent-work findings exist for same path + branch panes across tmux windows.                                                                                                                                                 |
-| Phase D D2            | Shipped  | Opt-in identity-drift findings catch provider or worktree changes in the same pane, with per-session dedup.                                                                                                                                          |
-| Phase D D3            | Closed   | Claude subagent detection is refined; per-subagent token attribution stays permanently deferred because providers do not expose counters.                                                                                                            |
-| Phase E E1            | Shipped  | Gemini status-table memory is parsed into `MEM` badges and `--once` metrics.                                                                                                                                                                         |
-| Phase E E2            | Shipped  | Settings overlay writes preserve existing TOML comments, unrelated sections, and key order.                                                                                                                                                          |
-| Phase F F-1           | Shipped  | Process RSS surfaced as `memory <N> MB [Heur]` on Claude/Codex pane cards via /proc descendant walk; Gemini status-table `[Official]` path untouched.                                                                                                |
-| Phase F F-2           | Shipped  | Agent memory file scan (CLAUDE.md / AGENTS.md / GEMINI.md + home-dir + Claude project memory dir) surfaces `MEM-FILE <KB\|MB> [Heur]` badge; `recommend_memory_bloat_advisory` fires Concern above 50_000 bytes (~49 KiB).                           |
-| Phase F F-3           | Shipped  | Token usage persisted to `token_usage_samples` SQLite table (per pane per poll); selected pane card renders `TOKENS ▁▂▃▄▅▆▇█` sparkline of input-token deltas; retention sweep ages out rows with the same `max_age_days` knob as archive/snapshots. |
+| Area                  | Status   | Operator-visible result                                                                                                                                                                                                                                       |
+| --------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phases 0-5            | Shipped  | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete.                                                                                                                                |
+| Runtime observability | Shipped  | Pane state, command row, provider facts, copyable `run:` commands, security posture badges, cost/context/quota gradients, and settings overlay are live.                                                                                                      |
+| Phase B visibility    | Complete | Standard config/pricing paths, Codex token in/out, opt-in security advisories, branch-aware concurrent-work warnings, and copyable commands are closed.                                                                                                       |
+| Phase C C1            | Complete | `src/main.rs` is a thin CLI/startup wrapper; the live TUI loop and helpers live under `src/app/`.                                                                                                                                                             |
+| Phase C C2            | Complete | `[tmux] source = "auto"` tries control-mode first and falls back to polling when attach is unavailable.                                                                                                                                                       |
+| Phase C C3            | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled payloads.                                                                                                                              |
+| Phase D D1            | Shipped  | Opt-in cross-window concurrent-work findings exist for same path + branch panes across tmux windows.                                                                                                                                                          |
+| Phase D D2            | Shipped  | Opt-in identity-drift findings catch provider or worktree changes in the same pane, with per-session dedup.                                                                                                                                                   |
+| Phase D D3            | Closed   | Claude subagent detection is refined; per-subagent token attribution stays permanently deferred because providers do not expose counters.                                                                                                                     |
+| Phase E E1            | Shipped  | Gemini status-table memory is parsed into `MEM` badges and `--once` metrics.                                                                                                                                                                                  |
+| Phase E E2            | Shipped  | Settings overlay writes preserve existing TOML comments, unrelated sections, and key order.                                                                                                                                                                   |
+| Phase F F-1           | Shipped  | Process RSS surfaced as `memory <N> MB [Heur]` on Claude/Codex pane cards via /proc descendant walk; Gemini status-table `[Official]` path untouched.                                                                                                         |
+| Phase F F-2           | Shipped  | Agent memory file scan (CLAUDE.md / AGENTS.md / GEMINI.md + home-dir + Claude project memory dir) surfaces `MEM-FILE <KB\|MB> [Heur]` badge; `recommend_memory_bloat_advisory` fires Concern above 50_000 bytes (~49 KiB).                                    |
+| Phase F F-3           | Shipped  | Token usage persisted to `token_usage_samples` SQLite table (per pane per poll); selected pane card renders `TOKENS ▁▂▃▄▅▆▇█` sparkline of input-token deltas; retention sweep ages out rows with the same `max_age_days` knob as archive/snapshots.          |
+| Phase F F-4           | Shipped  | Codex `/status` welcome panel `(+ N cached)` parser populates `SignalSet.cached_input_tokens`; UI renders `CACHE <%>` badge with `cached / (input + cached) * 100` and one-decimal precision; honesty rule preserves missing badge for Claude / Gemini OAuth. |
 
 Recent release notes:
 

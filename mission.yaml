@@ -1,6 +1,6 @@
 mission:
-  version: "1.24.0"
-  title: "Qmonster v1.24.0 — Phase F F-3: token usage time series + sparkline UI."
+  version: "1.25.0"
+  title: "Qmonster v1.25.0 — Phase F F-4: Codex cached_input_tokens + CACHE hit ratio badge."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1118,6 +1118,28 @@ mission:
     2 sparkline UI + 1 retention sweep + 1 integration; 639 lib + 68
     integration green at the slice tip.
 
+    Phase F continues with F-4 (v1.25.0): Codex cached_input_tokens parser +
+    CACHE hit ratio UI badge. Codex's `/status` welcome panel surfaces
+    `(+ N cached)` in the `Token usage:` line; new
+    `parse_codex_cached_input_tokens` extracts the comma-stripped value and
+    populates `SignalSet.cached_input_tokens: Option<MetricValue<u64>>` with
+    `SourceKind::ProviderOfficial`. The `token_usage_samples` SQLite schema
+    gains a nullable `cached_input_tokens INTEGER` column, with an idempotent
+    ALTER TABLE migration in `AuditDb::open` that swallows "duplicate column"
+    errors so existing v1.24.0 DBs upgrade in place.
+    `TokenSample.cached_input_tokens: Option<u64>` round-trips through
+    INSERT/SELECT. `event_loop.rs` records the new field per poll; the
+    sampling predicate is extended so cache-only rows still persist. UI
+    surfaces a `CACHE <%> [<source>]` badge on pane cards (text path uses
+    lowercase `cache`, TUI uses uppercase `CACHE`) computed at render time as
+    `cached / (input + cached) * 100` with one-decimal precision. Honesty
+    rule preserved: badge omitted when `cached_input_tokens` is None (Claude
+    no statusline surface; Gemini OAuth FAQ-documented limit). Deferred
+    siblings: F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude
+    statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7
+    (cache-aware policy rules). 7 new tests across parser + schema
+    round-trip + ratio formatter + UI render; 646 lib + 68 integration green.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1140,6 +1162,10 @@ mission:
     - "F-3: SqliteTokenUsageSink::recent_samples(pane_id, limit) returns rows ordered ts_unix_ms DESC, capped at limit; PaneReport.recent_token_samples fetches limit=20 per live pane per iteration"
     - "F-3: render_token_sparkline computes input_tokens deltas between adjacent samples (saturating-sub for provider counter resets), maps them to the 8 Unicode block chars, prepends 'TOKENS '; returns None when fewer than 2 samples (honesty rule)"
     - "F-3: retention sweep DELETEs token_usage_samples rows with ts_unix_ms < (now - max_age_days*86_400_000); zero retention preserves all rows (consistent with archive sweep); RetentionReport.token_usage_rows_deleted counts the affected rows"
+    - "F-4: SignalSet.cached_input_tokens is Option<MetricValue<u64>>; Codex `/status` welcome panel `(+ N cached)` parser populates it with SourceKind::ProviderOfficial after stripping commas"
+    - "F-4: token_usage_samples gains nullable cached_input_tokens INTEGER column; AuditDb::open runs idempotent ALTER TABLE that swallows 'duplicate column' errors so v1.24.0 DBs upgrade in place; TokenSample.cached_input_tokens round-trips through INSERT/SELECT"
+    - "F-4: event_loop sampling predicate is extended to include cached_input_tokens; per-poll TokenSample writer carries the value to SQLite"
+    - "F-4: UI renders cache_hit_ratio = cached / (input + cached) as `cache <%> [<source>]` (text) and ` CACHE <%> [<source>] ` (TUI badge); honesty rule preserved when cached_input_tokens is None (badge omitted)"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."

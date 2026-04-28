@@ -184,6 +184,18 @@ session:window · Provider role · %pane_id
   rule). Token-source providers today: Codex (bottom-status
   `1.51M in / 20.4K out`); Claude / Gemini will populate when later
   F-slices add cache-aware token surfaces.
+- `CACHE` badge shows the cache hit ratio for the pane's cumulative
+  prompt input — `cache_hit_ratio = cached_input_tokens /
+(input_tokens + cached_input_tokens) × 100`, formatted with one
+  decimal. Source label tracks `cached_input_tokens.source_kind`
+  (`[Official]` for Codex `/status` welcome panel; future providers
+  may add other source labels). The badge appears only when
+  `cached_input_tokens` is `Some(...)` — Claude (no statusline cache
+  surface today) and Gemini OAuth (FAQ-documented cache=0) keep the
+  badge absent. Format: `cache <N.N>%` (text) or `CACHE <N.N>%` (TUI).
+  Codex example: `Token usage: total=210,058 input=189,703 (+ 1,317,376
+cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
+  1,507,079 prompt-input tokens were cache-hits, ~87% reuse).
 - 긴 worktree 경로 문자열은 PATH badge에서 40자까지 자동
   ellipsize됩니다 (Slice 3 housekeeping). 잘린 부분은 `…` 한 글자로
   표시되어 badge 한 줄이 pane card 폭을 넘기지 않습니다.
