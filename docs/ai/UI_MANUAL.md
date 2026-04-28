@@ -150,8 +150,8 @@ session:window · Provider role · %pane_id
   - Claude / Codex: F-1 reads `/proc/<descendant>/status` VmRSS for the
     highest-RSS descendant of the pane's foreground shell PID (depth ≤ 5,
     with a visited-set guarding against diamonds/cycles), preferring
-    descendants whose `comm` matches `claude / codex / gemini / node /
-python / python3` — `[Heur]`. If `/proc` is unreadable, no
+    descendants whose `comm` matches the `KNOWN_CLI_COMMS` allowlist (`claude` / `codex` / `gemini` / `node` /
+    `python` / `python3`) — `[Heur]`. If `/proc` is unreadable, no
     descendant exists, or `pane_pid` is `None`, the badge stays absent
     (honesty rule).
 - 긴 worktree 경로 문자열은 PATH badge에서 40자까지 자동
