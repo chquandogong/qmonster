@@ -34,6 +34,20 @@ CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts_utc);
 CREATE INDEX IF NOT EXISTS idx_audit_kind ON audit_events(kind);
 ";
 
+pub const TOKEN_USAGE_SCHEMA: &str = r"
+CREATE TABLE IF NOT EXISTS token_usage_samples (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_unix_ms    INTEGER NOT NULL,
+    pane_id       TEXT    NOT NULL,
+    provider      TEXT    NOT NULL,
+    input_tokens  INTEGER,
+    output_tokens INTEGER,
+    cost_usd      REAL
+);
+CREATE INDEX IF NOT EXISTS idx_token_usage_pane_ts
+    ON token_usage_samples(pane_id, ts_unix_ms DESC);
+";
+
 pub struct AuditDb {
     conn: Mutex<Connection>,
 }
@@ -45,6 +59,8 @@ impl AuditDb {
         }
         let conn = Connection::open(path).map_err(|e| SqliteError::Open(e.to_string()))?;
         conn.execute_batch(AUDIT_SCHEMA)
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        conn.execute_batch(TOKEN_USAGE_SCHEMA)
             .map_err(|e| SqliteError::Query(e.to_string()))?;
         Ok(Self {
             conn: Mutex::new(conn),
