@@ -26,12 +26,21 @@ struct CodexStatus {
     reasoning_effort: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct CodexTokenUsage {
+    total_tokens: Option<u64>,
+    input_tokens: Option<u64>,
+    cached_input_tokens: u64,
+    output_tokens: Option<u64>,
+}
+
 impl ProviderParser for CodexAdapter {
     fn parse(&self, ctx: &crate::adapters::ParserContext) -> SignalSet {
         let tail = ctx.tail;
         let pricing = ctx.pricing;
         let mut set = parse_common_signals(tail);
         append_codex_runtime_facts(&mut set, tail);
+        let token_usage = parse_codex_token_usage(tail);
         let Some(status) = parse_codex_status_line(tail) else {
             // S3-2 fallback: when the bottom status line is absent
             // (right after Codex startup, or when the status box is the
@@ -51,6 +60,7 @@ impl ProviderParser for CodexAdapter {
                     );
                 }
             }
+            apply_codex_token_usage(&mut set, token_usage);
             // Slice 4: classify idle state. Common-tier markers populated
             // PermissionWait/InputWait if applicable; layer Codex-specific
             // cursor + 5h-limit detection, then stillness fallback.
@@ -101,22 +111,17 @@ impl ProviderParser for CodexAdapter {
                 .with_confidence(0.95)
                 .with_provider(Provider::Codex)
         });
-        if let Some(n) = parse_codex_cached_input_tokens(ctx.tail) {
-            set.cached_input_tokens = Some(
-                MetricValue::new(n, SourceKind::ProviderOfficial)
-                    .with_confidence(0.95)
-                    .with_provider(Provider::Codex),
-            );
-        }
+        apply_codex_token_usage(&mut set, token_usage);
         if let Some(model) = status.model.as_ref() {
             set.model_name = Some(
                 MetricValue::new(model.clone(), SourceKind::ProviderOfficial)
                     .with_confidence(0.95)
                     .with_provider(Provider::Codex),
             );
-            if let (Some(input_tokens), Some(output_tokens)) =
-                (status.input_tokens, status.output_tokens)
-            {
+            if let (Some(input_tokens), Some(output_tokens)) = (
+                set.input_tokens.as_ref().map(|m| m.value),
+                set.output_tokens.as_ref().map(|m| m.value),
+            ) {
                 set.cost_usd = pricing.lookup(Provider::Codex, model).map(|rates| {
                     let cost = (input_tokens as f64 * rates.input_per_1m
                         + output_tokens as f64 * rates.output_per_1m)
@@ -152,6 +157,28 @@ impl ProviderParser for CodexAdapter {
 
         set
     }
+}
+
+fn provider_official_codex_u64(value: u64) -> MetricValue<u64> {
+    MetricValue::new(value, SourceKind::ProviderOfficial)
+        .with_confidence(0.95)
+        .with_provider(Provider::Codex)
+}
+
+fn apply_codex_token_usage(set: &mut SignalSet, usage: Option<CodexTokenUsage>) {
+    let Some(usage) = usage else {
+        return;
+    };
+    if let Some(total) = usage.total_tokens {
+        set.token_count = Some(provider_official_codex_u64(total));
+    }
+    if let Some(input) = usage.input_tokens {
+        set.input_tokens = Some(provider_official_codex_u64(input));
+    }
+    if let Some(output) = usage.output_tokens {
+        set.output_tokens = Some(provider_official_codex_u64(output));
+    }
+    set.cached_input_tokens = Some(provider_official_codex_u64(usage.cached_input_tokens));
 }
 
 /// Scan `tail` for a Codex `/status` box line matching
@@ -475,25 +502,50 @@ fn codex_runtime_kind_for_label(label: &str) -> Option<RuntimeFactKind> {
     }
 }
 
-/// Phase F F-4 (v1.25.0): extract `(+ N cached)` from the Codex
-/// `/status` welcome panel `Token usage:` line. Returns the number
-/// with commas stripped. Returns None when the marker is absent.
-fn parse_codex_cached_input_tokens(tail: &str) -> Option<u64> {
-    for line in tail.lines() {
+/// Phase F F-4/F-7: parse Codex's `Token usage:` summary as one
+/// atomic surface. The line carries the non-cached input, cached
+/// input, output, and total token counts together; keeping them paired
+/// prevents the cache ratio from mixing this official summary with a
+/// later bottom-status placeholder like `0 in · 0 out`.
+fn parse_codex_token_usage(tail: &str) -> Option<CodexTokenUsage> {
+    for line in tail.lines().rev() {
         if !line.contains("Token usage:") {
             continue;
         }
-        let plus = line.find("(+ ")?;
-        let after = &line[plus + 3..];
-        let cached_idx = after.find(" cached)")?;
-        let raw = &after[..cached_idx];
-        let stripped: String = raw.chars().filter(|c| c.is_ascii_digit()).collect();
-        if stripped.is_empty() {
-            return None;
-        }
-        return stripped.parse::<u64>().ok();
+        let cached_input_tokens = parse_cached_tokens_from_usage_line(line)?;
+        return Some(CodexTokenUsage {
+            total_tokens: parse_labeled_usage_number(line, "total="),
+            input_tokens: parse_labeled_usage_number(line, "input="),
+            cached_input_tokens,
+            output_tokens: parse_labeled_usage_number(line, "output="),
+        });
     }
     None
+}
+
+fn parse_cached_tokens_from_usage_line(line: &str) -> Option<u64> {
+    let plus = line.find("(+ ")?;
+    let after = &line[plus + 3..];
+    let cached_idx = after.find(" cached)")?;
+    parse_ascii_digit_number(&after[..cached_idx])
+}
+
+fn parse_labeled_usage_number(line: &str, label: &str) -> Option<u64> {
+    let idx = line.find(label)?;
+    let after = &line[idx + label.len()..];
+    let raw: String = after
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == ',')
+        .collect();
+    parse_ascii_digit_number(&raw)
+}
+
+fn parse_ascii_digit_number(raw: &str) -> Option<u64> {
+    let stripped: String = raw.chars().filter(|c| c.is_ascii_digit()).collect();
+    if stripped.is_empty() {
+        return None;
+    }
+    stripped.parse::<u64>().ok()
 }
 
 fn clean_codex_status_line(line: &str) -> String {
@@ -1296,7 +1348,6 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
 
     #[test]
     fn codex_welcome_panel_cached_token_is_parsed_into_cached_input_tokens() {
-        use crate::domain::origin::SourceKind;
         let tail = include_str!("../../tests/fixtures/real/codex_welcome_v0_122.txt");
         let id = id();
         let pricing = PricingTable::empty();
@@ -1304,11 +1355,52 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
         let history = PaneTailHistory::empty();
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let signals = CodexAdapter.parse(&c);
+
+        let input = signals
+            .input_tokens
+            .expect("F-4: input must parse from the same Token usage line");
+        assert_eq!(input.value, 189_703);
+        assert_eq!(input.source_kind, SourceKind::ProviderOfficial);
+
         let cached = signals
             .cached_input_tokens
             .expect("F-4: cached must parse from welcome panel");
         assert_eq!(cached.value, 1_317_376);
         assert_eq!(cached.source_kind, SourceKind::ProviderOfficial);
+
+        let output = signals
+            .output_tokens
+            .expect("F-4: output must parse from the same Token usage line");
+        assert_eq!(output.value, 20_355);
+        assert_eq!(output.source_kind, SourceKind::ProviderOfficial);
+
+        let total = signals
+            .token_count
+            .expect("F-4: total must parse from the same Token usage line");
+        assert_eq!(total.value, 210_058);
+        assert_eq!(total.source_kind, SourceKind::ProviderOfficial);
+    }
+
+    #[test]
+    fn codex_token_usage_line_overrides_zero_bottom_status_counts() {
+        let tail = "Token usage: total=370,210 input=345,460 (+ 6,274,816 cached) output=24,750 (reasoning 6,077)\n\
+To continue this session, run codex resume <redacted>\n\
+Context 100% left · ~/Qmonster · gpt-5.5 · Qmonster · main · Context 0% used · 0.125.0 · 0 in · 0 out · gpt-5.5 xhigh";
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let signals = CodexAdapter.parse(&c);
+
+        assert_eq!(signals.context_pressure.as_ref().unwrap().value, 0.0);
+        assert_eq!(signals.input_tokens.as_ref().unwrap().value, 345_460);
+        assert_eq!(
+            signals.cached_input_tokens.as_ref().unwrap().value,
+            6_274_816
+        );
+        assert_eq!(signals.output_tokens.as_ref().unwrap().value, 24_750);
+        assert_eq!(signals.token_count.as_ref().unwrap().value, 370_210);
     }
 
     #[test]

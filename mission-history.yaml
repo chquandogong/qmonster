@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.27.0 — Phase F F-7b: cache drift detection rule."
+  mission_title: "Qmonster v1.27.1 — Phase F Codex Token usage parsing fix."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 156
-  latest_version: "1.27.0"
+  total_revisions: 157
+  latest_version: "1.27.1"
 
 timeline:
   - change_id: "initial"
@@ -14026,9 +14026,79 @@ timeline:
       - "1c7e782 F-7b task1: cache_drift_compact_recommended rule + Engine signature"
     follow_up: []
 
+  - change_id: "v1.27.1-phase-f-codex-token-usage-parser-fix"
+    semantic_version: "1.27.1"
+    change_sequence: 157
+    date: "2026-04-28"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Codex (review/fix pane)"
+    change_type: "fix"
+    motivation_type: "reviewer-driven"
+    persistence: "permanent"
+    intent: >
+      Phase F follow-up: parse Codex `Token usage:` summaries as one atomic
+      ProviderOfficial surface. The adapter now reads total, input, cached
+      input, and output token counts from the same line and applies them
+      together so a bottom-status placeholder such as `0 in · 0 out` cannot
+      overwrite the real session counters. This keeps F-3 token samples, F-4
+      CACHE hit-ratio badges, and F-7/F-7b cache policy inputs visible on
+      resumed Codex sessions before the footer counters populate.
+    intent_ko: >
+      Phase F 후속 수정: Codex `Token usage:` 요약을 하나의 ProviderOfficial
+      표면으로 원자적으로 파싱한다. adapter가 같은 줄에서 total/input/cached
+      input/output 토큰 수를 함께 읽고 적용하므로 `0 in · 0 out` 같은
+      bottom-status placeholder가 실제 세션 카운터를 덮어쓰지 못한다. Codex
+      resumed session에서 footer counter가 아직 채워지지 않아도 F-3 token
+      samples, F-4 CACHE badge, F-7/F-7b cache policy input이 계속 보인다.
+    triggered_by: "Review of today's Phase F work: F-3/F-4 surfaces were not visible on the live Codex pane when footer counters showed 0 in / 0 out."
+    issue_or_context: >
+      The v1.25.0 F-4 parser only extracted cached_input_tokens from the Codex
+      `Token usage:` line. The adapter still took input/output from the newest
+      bottom status line, so a live pane that displayed a correct `Token usage:
+      total=370,210 input=345,460 (+ 6,274,816 cached) output=24,750` summary
+      and a later `0 in · 0 out` footer mixed two surfaces. The cache ratio
+      could remain hidden or be computed against placeholder zeros.
+    changes:
+      added:
+        - "`CodexTokenUsage` parser struct plus helpers for labeled usage numbers in `src/adapters/codex.rs`"
+        - "Regression test for a real Codex-style `Token usage:` line followed by `0 in · 0 out`"
+      modified:
+        - "`CodexAdapter::parse` now applies token_count/input/output/cached_input_tokens from the same ProviderOfficial summary when available"
+        - "Existing Codex welcome-panel test now asserts total/input/output/cached values together"
+        - "`README.md`, `VERSION.md`, `mission.yaml`, `mission-history.yaml`, `docs/ai/UI_MANUAL.md`, `docs/ai/ARCHITECTURE.md`, `docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md` bumped to v1.27.1"
+      removed: []
+    changed_sections:
+      - "src/adapters/codex.rs"
+      - "README.md"
+      - "VERSION.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/VALIDATION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    observable_effects:
+      added:
+        - "Codex panes with `Token usage:` summaries show token input/output totals and CACHE badges even when the footer still says `0 in · 0 out`"
+      modified:
+        - "Codex cost estimation, token sampling, and cache policy inputs use the same official token summary when present"
+      removed: []
+    impact_scope:
+      runtime: "Codex adapter parsing only; no storage schema, UI layout, policy rule, or actuation change."
+      tests: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, scripts/verify-shared.sh"
+      ledger: "1 new timeline entry (sequence 157); meta bump; patch version bump v1.27.0 → v1.27.1 for Codex token observability fix"
+      npm: "package.json version unchanged at 1.21.3 — npm publish deferred"
+      review_gate: "local validation passes before commit"
+    breaking: false
+    risk: "low — parser-only fix; uses a single provider official line to avoid cross-surface token mixing."
+    related_commits:
+      - "v1.27.1 release commit (tagged as v1.27.1)"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.27.0 continues Phase F with F-7b: cache drift detection rule. New recommend_cache_drift_compact rule in src/policy/rules/cache.rs consumes F-3's recent_token_samples time series to detect cache hit ratio drops over time; fires Severity::Concern with suggested_command /compact when drop >= 30 pp over last 4+ samples; Engine::evaluate gains 5th param recent_token_samples; event_loop reorders read/evaluate/write for correct historical window. v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4's cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
-  next_phase: "Phase F is open with F-1, F-2, F-3, F-4, F-7, F-7b shipped; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on F-5/F-6 reset_eta) remain unscoped."
+  current_phase: "v1.27.1 fixes Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4's cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
+  next_phase: "Phase F is open with F-1, F-2, F-3, F-4, F-7, F-7b plus the v1.27.1 Codex token parser fix shipped; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on F-5/F-6 reset_eta) remain unscoped."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

@@ -641,6 +641,14 @@ module shape.
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
 
+v1.27.1 is a **Phase F Codex Token usage parsing follow-up**. Codex
+`Token usage:` summary lines are now parsed as one ProviderOfficial
+surface (`total=`, `input=`, `(+ N cached)`, `output=`) and applied
+together, so footer placeholders such as `0 in · 0 out` cannot hide
+the real session counts. This preserves F-3 samples, F-4 cache-hit
+ratio badges, and F-7/F-7b cache policy inputs on newly resumed Codex
+sessions.
+
 v1.27.0 continues **Phase F** with **F-7b cache drift detection rule**:
 new `recommend_cache_drift_compact` in `src/policy/rules/cache.rs`
 consumes F-3's `recent_token_samples` time series to detect cache hit

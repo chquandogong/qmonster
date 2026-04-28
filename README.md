@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.21.3`; current mission ledger `v1.27.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.21.3`; current mission ledger `v1.27.1`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,13 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.27.0` / npm `1.21.3` (npm publish deferred).
+Current release: `v1.27.1` / npm `1.21.3` (npm publish deferred).
+
+`v1.27.1` is a Phase F follow-up for Codex token observability. The Codex adapter now parses
+the provider `Token usage:` summary atomically (`total=`, `input=`, `(+ N cached)`, `output=`)
+and lets that official surface win over footer placeholders such as `0 in · 0 out`. This keeps
+F-3 sampling, F-4 `CACHE` badges, and F-7/F-7b cache recommendations visible on Codex sessions
+where the bottom status line has not populated token counters yet.
 
 `v1.27.0` continues Phase F with F-7b: cache drift detection rule. New `recommend_cache_drift_compact`
 rule in `src/policy/rules/cache.rs` consumes F-3's `recent_token_samples` time series to detect cache

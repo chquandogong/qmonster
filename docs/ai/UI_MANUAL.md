@@ -196,6 +196,11 @@ session:window · Provider role · %pane_id
   Codex example: `Token usage: total=210,058 input=189,703 (+ 1,317,376
 cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
   1,507,079 prompt-input tokens were cache-hits, ~87% reuse).
+- v1.27.1 parser fix: Codex `Token usage:` lines are parsed atomically
+  into total/input/cached/output token counts. When a resumed session
+  also shows a footer placeholder like `0 in · 0 out`, the official
+  `Token usage:` values continue to drive the token row and `CACHE`
+  badge.
 - Cache-aware advisory recommendations (Phase F F-7, v1.26.0):
   When the `CACHE` badge crosses the hot threshold (60%) while
   context still has headroom (< 70% used), Qmonster surfaces a

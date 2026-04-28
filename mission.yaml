@@ -1,6 +1,6 @@
 mission:
-  version: "1.27.0"
-  title: "Qmonster v1.27.0 — Phase F F-7b: cache drift detection rule."
+  version: "1.27.1"
+  title: "Qmonster v1.27.1 — Phase F Codex Token usage parsing fix."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1184,6 +1184,15 @@ mission:
     snapshot_before_reset — depend on F-5/F-6 reset_eta). 4 new tests;
     659 lib + 68 integration green.
 
+    Phase F follow-up (v1.27.1) fixes Codex Token usage parsing so the
+    provider's `Token usage:` summary is treated as one atomic official
+    surface. Qmonster now parses `total=`, `input=`, `(+ N cached)`, and
+    `output=` together and applies them before bottom-status placeholders
+    like `0 in · 0 out` can overwrite the real session counts. This keeps
+    F-3 sampling, F-4 cache-hit badges, and F-7/F-7b cache policy inputs
+    visible for Codex sessions whose footer has not yet populated token
+    counters.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1210,6 +1219,7 @@ mission:
     - "F-4: token_usage_samples gains nullable cached_input_tokens INTEGER column; AuditDb::open runs idempotent ALTER TABLE that swallows 'duplicate column' errors so v1.24.0 DBs upgrade in place; TokenSample.cached_input_tokens round-trips through INSERT/SELECT"
     - "F-4: event_loop sampling predicate is extended to include cached_input_tokens; per-poll TokenSample writer carries the value to SQLite"
     - "F-4: UI renders cache_hit_ratio = cached / (input + cached) as `cache <%> [<source>]` (text) and ` CACHE <%> [<source>] ` (TUI badge); honesty rule preserved when cached_input_tokens is None (badge omitted)"
+    - "v1.27.1: Codex `Token usage:` lines parse atomically into token_count, input_tokens, cached_input_tokens, and output_tokens; this ProviderOfficial summary wins over bottom-status `0 in · 0 out` placeholders"
     - "F-7: recommend_cache_hot_compact_warning fires Severity::Concern ProjectCanonical when cache_hit_ratio > 60% AND context_pressure < 70% AND IdentityConfidence >= Medium AND no input/permission wait; suggests waiting until ctx >= 80% before /compact"
     - "F-7: recommend_compact_when_cache_cold fires Severity::Good ProjectCanonical with suggested_command Some('/compact') when cache_hit_ratio < 30% AND context_pressure > 60% AND IdentityConfidence >= Medium AND no input/permission wait; next_step prompts snapshot-first"
     - "F-7: the two cache rules are mutually exclusive by construction (hot ratio > 0.6 AND cold ratio < 0.3 are strictly disjoint); intermediate band 30-60% ratio triggers neither rule; eval_cache dispatched in Engine::evaluate after eval_agent_memory"
@@ -1508,5 +1518,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 152
+    total_revisions: 157
     history: "mission-history.yaml"
