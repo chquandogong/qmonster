@@ -133,6 +133,7 @@ where
             pricing: &ctx.pricing,
             claude_settings: &ctx.claude_settings,
             history: history_for_pane,
+            pane_pid: pane.pane_pid,
         };
         let mut signals = crate::adapters::parse_for(&parse_ctx);
         apply_pressure_metric_cache(

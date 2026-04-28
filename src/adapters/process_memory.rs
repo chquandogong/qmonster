@@ -200,4 +200,37 @@ mod tests {
         let mb = read_descendant_rss_mb_with_proc_root(1, root);
         assert!(mb.is_none());
     }
+
+    #[test]
+    fn parser_context_carries_pane_pid_field() {
+        use crate::adapters::ParserContext;
+        use crate::adapters::common::PaneTailHistory;
+        use crate::domain::identity::{
+            IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+        };
+        use crate::policy::claude_settings::ClaudeSettings;
+        use crate::policy::pricing::PricingTable;
+
+        let id = ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Claude,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::High,
+        };
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let ctx = ParserContext {
+            identity: &id,
+            tail: "",
+            pricing: &pricing,
+            claude_settings: &settings,
+            history: &history,
+            pane_pid: Some(42),
+        };
+        assert_eq!(ctx.pane_pid, Some(42));
+    }
 }

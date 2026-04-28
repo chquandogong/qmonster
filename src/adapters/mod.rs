@@ -21,6 +21,10 @@ pub struct ParserContext<'a> {
     pub pricing: &'a PricingTable,
     pub claude_settings: &'a ClaudeSettings,
     pub history: &'a PaneTailHistory,
+    /// Phase F F-1: tmux `#{pane_pid}` for descendant-RSS lookup. May
+    /// be `None` for legacy fixtures or when tmux emitted a non-integer
+    /// value. Task 4 wires the dispatcher to consume this.
+    pub pane_pid: Option<u32>,
 }
 
 /// Provider-specific parser. Each adapter receives a ParserContext
@@ -60,5 +64,6 @@ pub(crate) fn ctx<'a>(
         pricing,
         claude_settings: settings,
         history,
+        pane_pid: None,
     }
 }
