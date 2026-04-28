@@ -33,18 +33,19 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 Current release: `v1.23.0` / npm `1.21.3` (npm publish deferred).
 
-`v1.23.0` continues Phase F with F-2: agent memory file scan + bloat advisory.
-New `adapters::agent_memory` discovers provider-specific memory files (Claude
-`CLAUDE.md` + `~/.claude/` + `~/.claude/projects/<encoded>/memory/*.md`; Codex
-`AGENTS.md` + `~/.codex/` + `~/.codex/AGENTS.override.md`; Gemini `GEMINI.md`
-
-- `.gemini/` + `~/.gemini/GEMINI.md`) and sums their byte sizes (per-file
-  capped at 1 MiB) into `SignalSet.agent_memory_bytes`. UI surfaces `MEM-FILE
-<KB|MB> [Heur]` badge; sub-1 KiB renders as `<1 KB`. New
-  `recommend_memory_bloat_advisory` rule fires `Severity::Concern` above 50_000
-  bytes (~49 KiB), routing the operator toward `.claude/skills/`,
-  `~/.codex/AGENTS.override.md`, or `.gemini/skills/` on-demand files. 630 lib
-- 67 integration tests green.
+`v1.23.0` continues Phase F with F-2: agent memory file scan and bloat
+advisory. New `adapters::agent_memory` discovers provider-specific memory
+files (Claude sums `CLAUDE.md` plus `~/.claude/CLAUDE.md` plus
+`~/.claude/projects/<encoded>/memory/*.md`; Codex sums `AGENTS.md` plus
+`~/.codex/AGENTS.md` plus `~/.codex/AGENTS.override.md`; Gemini sums
+`GEMINI.md` plus `<project>/.gemini/GEMINI.md` plus `~/.gemini/GEMINI.md`)
+and sums their byte sizes (per-file capped at 1 MiB) into
+`SignalSet.agent_memory_bytes`. UI surfaces a `MEM-FILE <KB|MB> [Heur]`
+badge; sub-1 KiB renders as `<1 KB`. The new
+`recommend_memory_bloat_advisory` rule fires `Severity::Concern` above
+50_000 bytes (~49 KiB), routing the operator toward `.claude/skills/`,
+`~/.codex/AGENTS.override.md`, or `.gemini/skills/` on-demand files.
+Tests grew to 630 lib and 67 integration green.
 
 `v1.22.0` opened Phase F with F-1: process RSS is surfaced as `memory <N> MB [Heur]`
 on Claude/Codex pane cards. tmux `#{pane_pid}` is captured as the 9th
