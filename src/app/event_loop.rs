@@ -139,6 +139,52 @@ where
         };
         let mut signals = crate::adapters::parse_for(&parse_ctx);
 
+        apply_pressure_metric_cache(
+            &mut ctx.pressure_metric_cache,
+            &pane.pane_id,
+            resolved.identity.provider,
+            &mut signals,
+        );
+        let gates = crate::policy::gates::PolicyGates::from_config_and_identity(
+            &ctx.config.token,
+            &ctx.config.cost,
+            &ctx.config.context,
+            &ctx.config.quota,
+            &ctx.config.security,
+            resolved.identity.provider,
+            resolved.confidence,
+        );
+        // Read last idle state BEFORE calling evaluate so the engine can
+        // detect transitions (None→Some, Some(X)→Some(Y)). Update AFTER.
+        let last_idle = ctx.idle_transition.get(&pane.pane_id).copied().flatten();
+
+        // F-7b: fetch historical samples BEFORE evaluate so the drift
+        // detection rule has time-series context. Newest-first DESC.
+        // Moving the read before evaluate (and the write after) ensures
+        // the window passed to policy is strictly older than the current
+        // iteration.
+        // TODO(F-3): `recent_samples` errors are silently dropped via
+        // `.ok()` here. Asymmetric with the writer below, which uses
+        // `eprintln!` on `record_sample` failure. A persistent read
+        // failure (corrupt index, permission revoked) leaves the sparkline
+        // blank with no diagnostic. Wire to a rate-limited audit-sink
+        // event when a `TokenUsageReadFailed` AuditEventKind variant lands.
+        let recent_token_samples: Vec<crate::store::TokenSample> = ctx
+            .token_usage_sink
+            .as_ref()
+            .and_then(|sink| sink.recent_samples(&pane.pane_id, 20).ok())
+            .unwrap_or_default();
+
+        let mut out: EvalOutput = ctx.policy.evaluate(
+            &resolved,
+            &signals,
+            &gates,
+            last_idle,
+            &recent_token_samples,
+        );
+
+        // F-7b: write current TokenSample AFTER evaluate so the historical
+        // window passed to the policy represents strictly-older state.
         // F-3: persist token usage to SQLite when at least one of
         // the three fields is populated. UI consumers compute deltas
         // between samples for the sparkline; we never aggregate at
@@ -172,26 +218,6 @@ where
                 }
             }
         }
-
-        apply_pressure_metric_cache(
-            &mut ctx.pressure_metric_cache,
-            &pane.pane_id,
-            resolved.identity.provider,
-            &mut signals,
-        );
-        let gates = crate::policy::gates::PolicyGates::from_config_and_identity(
-            &ctx.config.token,
-            &ctx.config.cost,
-            &ctx.config.context,
-            &ctx.config.quota,
-            &ctx.config.security,
-            resolved.identity.provider,
-            resolved.confidence,
-        );
-        // Read last idle state BEFORE calling evaluate so the engine can
-        // detect transitions (None→Some, Some(X)→Some(Y)). Update AFTER.
-        let last_idle = ctx.idle_transition.get(&pane.pane_id).copied().flatten();
-        let mut out: EvalOutput = ctx.policy.evaluate(&resolved, &signals, &gates, last_idle);
 
         // Phase D D2 (v1.18.0): identity-drift detection. Pure rule;
         // the caller owns the per-session history map and the dedup
@@ -242,23 +268,6 @@ where
             ctx.sink
                 .record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
         }
-
-        // F-3: read back the recent samples for this pane so the
-        // UI sparkline can render deltas. Empty Vec when the sink
-        // is None (open failed at startup) or has no rows for the
-        // pane yet (first iteration).
-        // TODO(F-3): `recent_samples` errors are silently dropped via
-        // `.ok()` here. Asymmetric with the writer at the same scope,
-        // which uses `eprintln!` on `record_sample` failure. A
-        // persistent read failure (corrupt index, permission
-        // revoked) leaves the sparkline blank with no diagnostic.
-        // Wire to a rate-limited audit-sink event when a
-        // `TokenUsageReadFailed` AuditEventKind variant lands.
-        let recent_token_samples: Vec<crate::store::TokenSample> = ctx
-            .token_usage_sink
-            .as_ref()
-            .and_then(|sink| sink.recent_samples(&pane.pane_id, 20).ok())
-            .unwrap_or_default();
 
         reports.push(PaneReport {
             pane_id: pane.pane_id,

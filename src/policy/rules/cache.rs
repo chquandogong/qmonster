@@ -15,19 +15,27 @@ use crate::policy::gates::{PolicyGates, allow_provider_specific};
 ///     is cold AND context is filling. Tells the operator a good
 ///     moment to compact (cache won't be lost).
 ///
-/// Both gate on `IdentityConfidence ≥ Medium` (provider-specific
+/// Phase F F-7b (v1.27.0): third rule using F-3 time series:
+///   - `recommend_cache_drift_compact` — Concern, fires when the
+///     cache hit ratio drops ≥ 30 pp over the recent sample window.
+///
+/// All rules gate on `IdentityConfidence ≥ Medium` (provider-specific
 /// signal: cached_input_tokens is parsed per-provider) and suppress
 /// when the operator's attention is on a more pressing prompt.
 pub fn eval_cache(
     id: &ResolvedIdentity,
     signals: &SignalSet,
     gates: &PolicyGates,
+    recent_token_samples: &[crate::store::TokenSample],
 ) -> Vec<Recommendation> {
     let mut out = Vec::new();
     if let Some(rec) = recommend_cache_hot_compact_warning(id, signals, gates) {
         out.push(rec);
     }
     if let Some(rec) = recommend_compact_when_cache_cold(id, signals, gates) {
+        out.push(rec);
+    }
+    if let Some(rec) = recommend_cache_drift_compact(id, signals, gates, recent_token_samples) {
         out.push(rec);
     }
     out
@@ -37,6 +45,16 @@ const HOT_RATIO_THRESHOLD: f64 = 0.6;
 const COLD_RATIO_THRESHOLD: f64 = 0.3;
 const LOW_CTX_THRESHOLD: f32 = 0.7;
 const HIGH_CTX_THRESHOLD: f32 = 0.6;
+
+/// Phase F F-7b (v1.27.0): minimum cache_hit_ratio drop (in absolute
+/// ratio units, NOT percentage points) for the drift rule to fire.
+/// 0.30 = 30 pp drop (e.g., 70% → 40%). Hard-coded for v1;
+/// operator-tunable threshold deferred.
+const DRIFT_RATIO_DROP_THRESHOLD: f64 = 0.30;
+
+/// Minimum samples in the recent window for drift to be computable.
+/// With 5s polling, 4 samples ≈ 20 seconds of history.
+const DRIFT_MIN_SAMPLES: usize = 4;
 
 /// Returns `cache_hit_ratio = cached / (input + cached)` when both
 /// signals are present; None otherwise. The denominator is the
@@ -50,6 +68,20 @@ fn cache_hit_ratio(signals: &SignalSet) -> Option<f64> {
         .as_ref()
         .map(|m| m.value as f64)
         .unwrap_or(0.0);
+    let total = input + cached;
+    if total <= 0.0 {
+        return None;
+    }
+    Some(cached / total)
+}
+
+/// Cache hit ratio from a single `TokenSample`. Returns None when
+/// `cached_input_tokens` is None or the total is zero. Mirrors the
+/// `cache_hit_ratio(signals)` semantics but operates on persisted
+/// historical data (`recent_token_samples` from F-3).
+fn cache_hit_ratio_from_sample(s: &crate::store::TokenSample) -> Option<f64> {
+    let cached = s.cached_input_tokens? as f64;
+    let input = s.input_tokens.unwrap_or(0) as f64;
     let total = input + cached;
     if total <= 0.0 {
         return None;
@@ -151,6 +183,58 @@ fn recommend_compact_when_cache_cold(
     })
 }
 
+fn recommend_cache_drift_compact(
+    _id: &ResolvedIdentity,
+    signals: &SignalSet,
+    gates: &PolicyGates,
+    recent_token_samples: &[crate::store::TokenSample],
+) -> Option<Recommendation> {
+    if !allow_provider_specific(gates.identity_confidence) {
+        return None;
+    }
+    if matches!(
+        signals.idle_state,
+        Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+    ) {
+        return None;
+    }
+    if recent_token_samples.len() < DRIFT_MIN_SAMPLES {
+        return None;
+    }
+    let current = cache_hit_ratio(signals)?;
+    // recent_token_samples is newest-first (DESC). Use the oldest
+    // sample in the window as the baseline.
+    let oldest = recent_token_samples.last()?;
+    let baseline = cache_hit_ratio_from_sample(oldest)?;
+    let drop = baseline - current;
+    if drop < DRIFT_RATIO_DROP_THRESHOLD {
+        return None;
+    }
+    let baseline_pct = baseline * 100.0;
+    let current_pct = current * 100.0;
+    let drop_pp = drop * 100.0;
+    Some(Recommendation {
+        action: "cache: drift detected — /compact will let cache rebuild",
+        reason: format!(
+            "cache hit ratio dropped {:.1}pp (from {:.1}% to {:.1}%) over the last {} samples — context drifted; /compact will reset on a smaller stable surface and let cache rebuild quickly on the next turn",
+            drop_pp,
+            baseline_pct,
+            current_pct,
+            recent_token_samples.len(),
+        ),
+        severity: Severity::Concern,
+        source_kind: SourceKind::ProjectCanonical,
+        suggested_command: Some("/compact".into()),
+        side_effects: vec![],
+        is_strong: false,
+        next_step: Some(
+            "snapshot first via 's' key to preserve handoff state, then run /compact to rebuild cache on the trimmed surface"
+                .into(),
+        ),
+        profile: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,6 +279,7 @@ mod tests {
             &id(Provider::Codex, IdentityConfidence::High),
             &signals_with(200_000, 1_000_000, 0.50),
             &gates_high(),
+            &[],
         );
         // Both rules consider the same data; only the hot rule should
         // fire here (ratio > 0.6 AND ctx < 0.7).
@@ -213,6 +298,7 @@ mod tests {
             &id(Provider::Codex, IdentityConfidence::High),
             &signals_with(1_000_000, 100_000, 0.75),
             &gates_high(),
+            &[],
         );
         assert_eq!(recs.len(), 1);
         let rec = &recs[0];
@@ -230,6 +316,7 @@ mod tests {
             &id(Provider::Codex, IdentityConfidence::High),
             &signals_with(200_000, 1_000_000, 0.70),
             &gates_high(),
+            &[],
         );
         assert!(recs.is_empty());
     }
@@ -241,6 +328,7 @@ mod tests {
             &id(Provider::Codex, IdentityConfidence::High),
             &signals_with(1_000_000, 100_000, 0.60),
             &gates_high(),
+            &[],
         );
         assert!(recs.is_empty());
     }
@@ -252,6 +340,7 @@ mod tests {
             &id(Provider::Codex, IdentityConfidence::High),
             &signals_with(550_000, 450_000, 0.50),
             &gates_high(),
+            &[],
         );
         assert!(recs.is_empty());
     }
@@ -268,6 +357,7 @@ mod tests {
             &id(Provider::Codex, IdentityConfidence::High),
             &s,
             &gates_high(),
+            &[],
         );
         assert!(recs.is_empty());
     }
@@ -282,6 +372,7 @@ mod tests {
                     identity_confidence: conf,
                     ..PolicyGates::default()
                 },
+                &[],
             );
             assert!(recs.is_empty(), "expected empty for {conf:?}");
         }
@@ -296,8 +387,235 @@ mod tests {
                 &id(Provider::Codex, IdentityConfidence::High),
                 &s,
                 &gates_high(),
+                &[],
             );
             assert!(recs.is_empty(), "expected empty for {cause:?}");
         }
+    }
+
+    #[test]
+    fn cache_drift_fires_when_ratio_drops_30pp_or_more_over_4_samples() {
+        use crate::domain::identity::Provider as P;
+        use crate::store::TokenSample;
+        // current ratio ~ 30% (300_000 / (700_000 + 300_000))
+        let signals = signals_with(700_000, 300_000, 0.50);
+        // 4 samples DESC; oldest has ratio 80% (800_000 / (200_000 + 800_000))
+        let samples = vec![
+            // newest first; ratio ~ 30%, 35%, 50%, 80%
+            TokenSample {
+                ts_unix_ms: 4000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(700_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(300_000),
+            },
+            TokenSample {
+                ts_unix_ms: 3000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(650_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(350_000),
+            },
+            TokenSample {
+                ts_unix_ms: 2000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(500_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(500_000),
+            },
+            TokenSample {
+                ts_unix_ms: 1000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(200_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(800_000),
+            },
+        ];
+        let recs = eval_cache(
+            &id(P::Codex, IdentityConfidence::High),
+            &signals,
+            &gates_high(),
+            &samples,
+        );
+        let drift = recs
+            .iter()
+            .find(|r| r.action.starts_with("cache: drift detected"))
+            .expect("drift rule should fire");
+        assert_eq!(drift.severity, Severity::Concern);
+        assert_eq!(drift.suggested_command.as_deref(), Some("/compact"));
+        // Drop = 80% - 30% = 50 pp
+        assert!(drift.reason.contains("50.0pp"));
+        assert!(drift.reason.contains("80.0%"));
+        assert!(drift.reason.contains("30.0%"));
+    }
+
+    #[test]
+    fn cache_drift_suppressed_when_drop_below_30pp() {
+        use crate::domain::identity::Provider as P;
+        use crate::store::TokenSample;
+        // current 50%, oldest 70% → drop = 20pp (< 30pp)
+        let signals = signals_with(500_000, 500_000, 0.50);
+        let samples = vec![
+            TokenSample {
+                ts_unix_ms: 4000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(500_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(500_000),
+            },
+            TokenSample {
+                ts_unix_ms: 3000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(450_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(550_000),
+            },
+            TokenSample {
+                ts_unix_ms: 2000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(400_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(600_000),
+            },
+            TokenSample {
+                ts_unix_ms: 1000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(300_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(700_000),
+            },
+        ];
+        let recs = eval_cache(
+            &id(P::Codex, IdentityConfidence::High),
+            &signals,
+            &gates_high(),
+            &samples,
+        );
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action.starts_with("cache: drift detected")),
+            "drift rule should not fire for 20pp drop"
+        );
+    }
+
+    #[test]
+    fn cache_drift_suppressed_when_fewer_than_4_samples() {
+        use crate::domain::identity::Provider as P;
+        use crate::store::TokenSample;
+        let signals = signals_with(700_000, 300_000, 0.50);
+        // Only 3 samples — below DRIFT_MIN_SAMPLES
+        let samples = vec![
+            TokenSample {
+                ts_unix_ms: 3000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(700_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(300_000),
+            },
+            TokenSample {
+                ts_unix_ms: 2000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(500_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(500_000),
+            },
+            TokenSample {
+                ts_unix_ms: 1000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(200_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(800_000),
+            },
+        ];
+        let recs = eval_cache(
+            &id(P::Codex, IdentityConfidence::High),
+            &signals,
+            &gates_high(),
+            &samples,
+        );
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action.starts_with("cache: drift detected"))
+        );
+    }
+
+    #[test]
+    fn cache_drift_suppressed_on_low_confidence() {
+        use crate::domain::identity::Provider as P;
+        use crate::store::TokenSample;
+        let signals = signals_with(700_000, 300_000, 0.50);
+        let samples = vec![
+            TokenSample {
+                ts_unix_ms: 4000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(700_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(300_000),
+            },
+            TokenSample {
+                ts_unix_ms: 3000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(650_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(350_000),
+            },
+            TokenSample {
+                ts_unix_ms: 2000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(500_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(500_000),
+            },
+            TokenSample {
+                ts_unix_ms: 1000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(200_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(800_000),
+            },
+        ];
+        let gates_low = PolicyGates {
+            identity_confidence: IdentityConfidence::Low,
+            ..PolicyGates::default()
+        };
+        let recs = eval_cache(
+            &id(P::Codex, IdentityConfidence::Low),
+            &signals,
+            &gates_low,
+            &samples,
+        );
+        assert!(recs.is_empty());
     }
 }
