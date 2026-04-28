@@ -172,6 +172,18 @@ session:window · Provider role · %pane_id
   pointing the operator toward `.claude/skills/`,
   `~/.codex/AGENTS.override.md`, or `.gemini/skills/` on-demand
   files instead of `/compact` / `/clear` / `/memory`.
+- `TOKENS` sparkline appears on the SELECTED pane card only (Tab to
+  panes focus, then ↑/↓ to select). It shows the delta in
+  `input_tokens` between adjacent recent samples (last 20 polls
+  fetched DESC; rendered oldest-to-newest left-to-right), mapped to
+  the 8-block Unicode set `▁▂▃▄▅▆▇█`. Idle pane → all lowest-block;
+  active pane → rising blocks. The metric measures rate of
+  context-prompt growth, NOT cumulative usage; samples themselves
+  are persisted as cumulative counts. The sparkline does not appear
+  when fewer than 2 samples have been recorded for the pane (honesty
+  rule). Token-source providers today: Codex (bottom-status
+  `1.51M in / 20.4K out`); Claude / Gemini will populate when later
+  F-slices add cache-aware token surfaces.
 - 긴 worktree 경로 문자열은 PATH badge에서 40자까지 자동
   ellipsize됩니다 (Slice 3 housekeeping). 잘린 부분은 `…` 한 글자로
   표시되어 badge 한 줄이 pane card 폭을 넘기지 않습니다.

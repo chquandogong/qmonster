@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.23.0 — Phase F F-2: agent memory file scan + bloat advisory."
+  mission_title: "Qmonster v1.24.0 — Phase F F-3: token usage time series + sparkline UI."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 152
-  latest_version: "1.23.0"
+  total_revisions: 153
+  latest_version: "1.24.0"
 
 timeline:
   - change_id: "initial"
@@ -13637,9 +13637,109 @@ timeline:
       - "832034c F-2 task5: <1 KB rendering + trailing-comma symmetry"
     follow_up: []
 
+  - change_id: "v1.24.0-phase-f-f3"
+    semantic_version: "1.24.0"
+    change_sequence: 153
+    date: "2026-04-29"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (main pane)"
+    change_type: "feature"
+    motivation_type: "phase-continuation"
+    persistence: "permanent"
+    intent: >
+      Phase F F-3: ship token usage time series persistence and sparkline UI.
+      New token_usage_samples SQLite table (ts_unix_ms, pane_id, provider,
+      input_tokens, output_tokens, cost_usd) plus idx_token_usage_pane_ts index
+      are added alongside audit_events in AuditDb::open. SqliteTokenUsageSink
+      provides record_sample (fire-and-forget with error_count AtomicU64 mirror)
+      and recent_samples(pane_id, limit) newest-first. Event loop opens sink at
+      startup with None fallback; writes per pane per poll; errors logged to
+      stderr, never crash. PaneReport.recent_token_samples populated for every
+      live pane every iteration (limit=20). UI renders TOKENS sparkline from
+      input_tokens deltas (saturating-sub, 8-block Unicode set) on the expanded
+      selected pane card; honesty rule: no sparkline when fewer than 2 samples.
+      Retention sweep extended to DELETE token_usage_samples older than
+      max_age_days; zero retention is a no-op. RetentionReport gains
+      token_usage_rows_deleted field. 11 new tests: 639 lib + 68 integration green.
+    intent_ko: >
+      Phase F F-3: token 사용 시계열 저장 및 sparkline UI 추가.
+      token_usage_samples SQLite 테이블 (ts_unix_ms, pane_id, provider,
+      input_tokens, output_tokens, cost_usd) + idx_token_usage_pane_ts 인덱스를
+      AuditDb::open 시 audit_events와 함께 생성. SqliteTokenUsageSink는
+      record_sample (에러 시 error_count AtomicU64 증가, 크래시 없음)과
+      recent_samples(pane_id, limit) 최신순 조회 제공. 이벤트 루프는 시작 시
+      sink를 열고 실패 시 None으로 폴백; 폴마다 pane별 기록; 오류는 stderr 로깅.
+      PaneReport.recent_token_samples는 매 iteration마다 live pane 전체에 채워짐
+      (limit=20). UI는 선택된 pane 확장 카드에만 TOKENS sparkline을 렌더링
+      (input_tokens 델타, saturating-sub, 8블록 유니코드); 2개 미만 샘플 시 표시
+      안 함. retention sweep이 token_usage_samples 행 삭제로 확장됨.
+    triggered_by: "Phase F F-3 plan: token usage time series + sparkline UI."
+    issue_or_context: >
+      Operators running Codex see session-cumulative token counts in the bottom
+      status bar but have no way to observe usage rate over time. F-3 adds a
+      per-poll SQLite sample store so the TUI can render a sparkline of input
+      token deltas on the expanded pane card, giving the operator a glanceable
+      "context growth rate" signal without any provider API calls.
+    changes:
+      added:
+        - "`src/store/token_usage.rs` — SqliteTokenUsageSink with record_sample, recent_samples, error_count AtomicU64, and 5 unit tests"
+        - "`src/store/sqlite.rs` — token_usage_samples table + idx_token_usage_pane_ts schema applied in AuditDb::open"
+        - "`src/domain/dispatcher.rs` — PaneReport.recent_token_samples: Vec<TokenSample>; populated per live pane per iteration"
+        - "`src/ui/panels.rs` — render_token_sparkline: delta-based 8-block Unicode sparkline on expanded pane card; honesty rule"
+        - "src/app/startup.rs — token_usage_sink opened alongside audit sink; None fallback on open failure"
+        - "11 new tests: 5 token_usage module + 2 dispatcher + 3 sparkline UI + 1 retention sweep"
+      modified:
+        - "`src/store/retention.rs` — sweep adds DELETE FROM token_usage_samples WHERE ts_unix_ms < cutoff; RetentionReport.token_usage_rows_deleted field; RetentionError::Sqlite variant"
+        - "`src/store/mod.rs` — re-exports SqliteTokenUsageSink and TokenSample from token_usage module"
+        - "`README.md`, `VERSION.md`, `mission.yaml`, `mission-history.yaml`, `docs/ai/UI_MANUAL.md`, `docs/ai/ARCHITECTURE.md`, `docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md` bumped to v1.24.0"
+      removed: []
+    changed_sections:
+      - "src/store/token_usage.rs"
+      - "src/store/sqlite.rs"
+      - "src/store/retention.rs"
+      - "src/store/mod.rs"
+      - "src/domain/dispatcher.rs"
+      - "src/ui/panels.rs"
+      - "src/app/startup.rs"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    observable_effects:
+      added:
+        - "Selected (expanded) pane card shows `TOKENS ▁▂▃▄▅▆▇` sparkline when 2+ samples are available for that pane"
+        - "token_usage_samples table in qmonster.db accumulates one row per pane per poll when any token field is populated"
+        - "Retention sweep DELETE output is counted in RetentionReport.token_usage_rows_deleted"
+      modified:
+        - "Retention sweep now touches SQLite DB in addition to archive/ and snapshots/ directories"
+      removed: []
+    impact_scope:
+      runtime: "new per-poll SQLite INSERT per live pane with token data; one SELECT LIMIT 20 per live pane per poll for PaneReport; both are sub-ms indexed operations."
+      tests: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, scripts/verify-shared.sh"
+      ledger: "1 new timeline entry (sequence 153); meta bump; minor version bump v1.23.0 → v1.24.0 for Phase F F-3"
+      npm: "package.json version unchanged at 1.21.3 — npm publish deferred"
+      review_gate: "local validation passes before commit"
+      follow_up_carryover: "Phase F F-4 through F-7 remain unscoped pending operator direction."
+    breaking: false
+    risk: "low — SQLite writes are fire-and-forget with error logging; retention pass falls through silently if DB does not exist; no provider API calls; sparkline is display-only with honesty guard."
+    related_commits:
+      - "1f11a45 F-3 task1: token_usage_samples schema + SqliteTokenUsageSink"
+      - "a15ee78 F-3 task1: provider round-trip test + minor polish"
+      - "bd2bc1a F-3 task2: event loop persists token_usage samples per poll"
+      - "4bd0749 F-3 task2: explicit nested-if + error_count parity with audit sink"
+      - "d6b091e F-3 task3: PaneReport carries recent_token_samples for UI sparkline"
+      - "3af29c1 F-3 task3: doc clarification + read-error TODO note"
+      - "2dd49d8 F-3 task4: TOKENS sparkline on expanded pane card"
+    follow_up: []
+
 evolution_summary:
   current_phase: "v1.23.0 continues Phase F with F-2: agent memory file scan + bloat advisory. New adapters::agent_memory sums provider-specific memory files (CLAUDE.md / AGENTS.md / GEMINI.md plus home-dir + Claude project memory dir) into SignalSet.agent_memory_bytes; UI surfaces MEM-FILE <KB|MB> [Heur] badge; new recommend_memory_bloat_advisory rule fires Severity::Concern above 50_000 bytes (~49 KiB). v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
-  next_phase: "Phase F F-2 shipped; F-3 (token usage time series + sparkline), F-4 (Gemini /stats polling for tokens.cached), F-5 (Claude statusLine command opt-in for cache_read), F-6 (Codex App Server resetsAt polling), and F-7 (cache-aware policy rules) remain unscoped pending operator direction. No outstanding housekeeping items in the deferred ledger."
+  next_phase: "Phase F is open with F-1, F-2, F-3 shipped; F-4..F-7 remain unscoped pending operator direction."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

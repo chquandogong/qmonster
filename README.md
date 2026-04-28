@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.21.3`; current mission ledger `v1.23.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.21.3`; current mission ledger `v1.24.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,23 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.23.0` / npm `1.21.3` (npm publish deferred).
+Current release: `v1.24.0` / npm `1.21.3` (npm publish deferred).
+
+`v1.24.0` continues Phase F with F-3: token usage time series and sparkline UI.
+Token samples are persisted to a new `token_usage_samples` SQLite table in
+`qmonster.db` — one row per pane per poll when Codex (or a future provider)
+reports at least one of `input_tokens` / `output_tokens` / `cost_usd`.
+`SqliteTokenUsageSink::record_sample` is fire-and-forget with an `error_count`
+AtomicU64 counter mirroring the audit sink; failures log to stderr and never
+crash the polling loop. `recent_samples(pane_id, limit=20)` is called for every
+live pane every iteration (indexed, sub-ms). The expanded selected pane card
+renders a `TOKENS` sparkline by computing `input_tokens` deltas between adjacent
+samples (saturating-sub for provider counter resets) and mapping them to the
+8-block Unicode set. The sparkline is omitted when fewer than 2 samples exist
+(honesty rule). Retention sweep extended: `DELETE FROM token_usage_samples WHERE
+ts_unix_ms less than (now minus max_age_days times 86_400_000)` runs after the
+archive plus snapshot file sweeps; zero retention is a no-op. Tests grew to 639 lib
+and 68 integration green.
 
 `v1.23.0` continues Phase F with F-2: agent memory file scan and bloat
 advisory. New `adapters::agent_memory` discovers provider-specific memory
@@ -56,21 +72,22 @@ comm names. Gemini's status-table `[Official]` MEM path is preserved
 untouched — the `/proc` fill only applies when the provider adapter left
 `process_memory_mb` as `None`. 608 lib + 67 integration tests green.
 
-| Area                  | Status   | Operator-visible result                                                                                                                                                                                                    |
-| --------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phases 0-5            | Shipped  | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete.                                                                                             |
-| Runtime observability | Shipped  | Pane state, command row, provider facts, copyable `run:` commands, security posture badges, cost/context/quota gradients, and settings overlay are live.                                                                   |
-| Phase B visibility    | Complete | Standard config/pricing paths, Codex token in/out, opt-in security advisories, branch-aware concurrent-work warnings, and copyable commands are closed.                                                                    |
-| Phase C C1            | Complete | `src/main.rs` is a thin CLI/startup wrapper; the live TUI loop and helpers live under `src/app/`.                                                                                                                          |
-| Phase C C2            | Complete | `[tmux] source = "auto"` tries control-mode first and falls back to polling when attach is unavailable.                                                                                                                    |
-| Phase C C3            | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled payloads.                                                                                           |
-| Phase D D1            | Shipped  | Opt-in cross-window concurrent-work findings exist for same path + branch panes across tmux windows.                                                                                                                       |
-| Phase D D2            | Shipped  | Opt-in identity-drift findings catch provider or worktree changes in the same pane, with per-session dedup.                                                                                                                |
-| Phase D D3            | Closed   | Claude subagent detection is refined; per-subagent token attribution stays permanently deferred because providers do not expose counters.                                                                                  |
-| Phase E E1            | Shipped  | Gemini status-table memory is parsed into `MEM` badges and `--once` metrics.                                                                                                                                               |
-| Phase E E2            | Shipped  | Settings overlay writes preserve existing TOML comments, unrelated sections, and key order.                                                                                                                                |
-| Phase F F-1           | Shipped  | Process RSS surfaced as `memory <N> MB [Heur]` on Claude/Codex pane cards via /proc descendant walk; Gemini status-table `[Official]` path untouched.                                                                      |
-| Phase F F-2           | Shipped  | Agent memory file scan (CLAUDE.md / AGENTS.md / GEMINI.md + home-dir + Claude project memory dir) surfaces `MEM-FILE <KB\|MB> [Heur]` badge; `recommend_memory_bloat_advisory` fires Concern above 50_000 bytes (~49 KiB). |
+| Area                  | Status   | Operator-visible result                                                                                                                                                                                                                              |
+| --------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phases 0-5            | Shipped  | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete.                                                                                                                       |
+| Runtime observability | Shipped  | Pane state, command row, provider facts, copyable `run:` commands, security posture badges, cost/context/quota gradients, and settings overlay are live.                                                                                             |
+| Phase B visibility    | Complete | Standard config/pricing paths, Codex token in/out, opt-in security advisories, branch-aware concurrent-work warnings, and copyable commands are closed.                                                                                              |
+| Phase C C1            | Complete | `src/main.rs` is a thin CLI/startup wrapper; the live TUI loop and helpers live under `src/app/`.                                                                                                                                                    |
+| Phase C C2            | Complete | `[tmux] source = "auto"` tries control-mode first and falls back to polling when attach is unavailable.                                                                                                                                              |
+| Phase C C3            | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled payloads.                                                                                                                     |
+| Phase D D1            | Shipped  | Opt-in cross-window concurrent-work findings exist for same path + branch panes across tmux windows.                                                                                                                                                 |
+| Phase D D2            | Shipped  | Opt-in identity-drift findings catch provider or worktree changes in the same pane, with per-session dedup.                                                                                                                                          |
+| Phase D D3            | Closed   | Claude subagent detection is refined; per-subagent token attribution stays permanently deferred because providers do not expose counters.                                                                                                            |
+| Phase E E1            | Shipped  | Gemini status-table memory is parsed into `MEM` badges and `--once` metrics.                                                                                                                                                                         |
+| Phase E E2            | Shipped  | Settings overlay writes preserve existing TOML comments, unrelated sections, and key order.                                                                                                                                                          |
+| Phase F F-1           | Shipped  | Process RSS surfaced as `memory <N> MB [Heur]` on Claude/Codex pane cards via /proc descendant walk; Gemini status-table `[Official]` path untouched.                                                                                                |
+| Phase F F-2           | Shipped  | Agent memory file scan (CLAUDE.md / AGENTS.md / GEMINI.md + home-dir + Claude project memory dir) surfaces `MEM-FILE <KB\|MB> [Heur]` badge; `recommend_memory_bloat_advisory` fires Concern above 50_000 bytes (~49 KiB).                           |
+| Phase F F-3           | Shipped  | Token usage persisted to `token_usage_samples` SQLite table (per pane per poll); selected pane card renders `TOKENS ▁▂▃▄▅▆▇█` sparkline of input-token deltas; retention sweep ages out rows with the same `max_age_days` knob as archive/snapshots. |
 
 Recent release notes:
 

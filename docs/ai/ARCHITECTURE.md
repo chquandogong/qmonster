@@ -245,6 +245,26 @@ permission wait; next-step routes the operator to per-task skill / override
 files. Threshold is hard-coded for v1; operator-configurable threshold
 deferred to a later slice.
 
+v1.24.0 continues **Phase F** with **F-3 token usage time series + sparkline UI**:
+a new `token_usage_samples` table is added to the shared `qmonster.db`
+(alongside `audit_events`); `AuditDb::open` applies both schemas at
+construction. `store::token_usage::SqliteTokenUsageSink` provides
+`record_sample` (write one row per pane per poll when any token field
+is populated) and `recent_samples(pane_id, limit)` (newest first via
+`idx_token_usage_pane_ts`). The sink carries an `error_count: AtomicU64`
+mirroring `SqliteAuditSink` for durability observability. The event
+loop wires the new sink alongside the existing audit sink at startup;
+`PaneReport.recent_token_samples: Vec<TokenSample>` is populated for
+every live pane every iteration (one indexed `SELECT LIMIT 20` per
+pane per poll, sub-ms cost). UI renders `TOKENS ▁▂▃▄▅▆▇█` from
+`input_tokens` deltas on the expanded (selected) pane card; fewer
+than 2 samples → no sparkline. Retention sweep extends with
+`DELETE FROM token_usage_samples WHERE ts_unix_ms < (now -
+max_age_days*86_400_000)`; zero retention is a no-op (consistent
+with archive sweep). Provider native cache_read fields will populate
+the sparkline once F-4 / F-5 / F-6 land; F-3 ships the persistence +
+render infrastructure today.
+
 ## Module responsibilities
 
 ### `app/`

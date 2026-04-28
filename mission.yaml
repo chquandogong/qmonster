@@ -1,6 +1,6 @@
 mission:
-  version: "1.23.0"
-  title: "Qmonster v1.23.0 — Phase F F-2: agent memory file scan + bloat advisory."
+  version: "1.24.0"
+  title: "Qmonster v1.24.0 — Phase F F-3: token usage time series + sparkline UI."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1095,6 +1095,29 @@ mission:
     render + 1 polish test for `<1 KB` rendering + 1 carry forward).
     Total: 630 lib + 67 integration tests green.
 
+    Phase F continues with F-3 (v1.24.0): token usage time series +
+    sparkline UI. New `token_usage_samples` SQLite table is added to the
+    shared `qmonster.db` (alongside `audit_events`); `AuditDb::open`
+    applies both schemas at construction. New
+    `store::token_usage::SqliteTokenUsageSink` exposes `record_sample`
+    (write one row per pane per poll when any of `input_tokens` /
+    `output_tokens` / `cost_usd` is `Some`) and `recent_samples(pane_id,
+    limit)` (newest-first via `idx_token_usage_pane_ts`). Sink carries an
+    `error_count: AtomicU64` mirroring `SqliteAuditSink` for durability
+    observability. The event loop opens the sink at startup with graceful
+    `None` fallback on open failure; per-iteration writes log to stderr on
+    error and never crash. `PaneReport.recent_token_samples: Vec<TokenSample>`
+    is populated for every live pane every iteration (one indexed `SELECT
+    LIMIT 20` per pane per poll, sub-ms cost). UI renders
+    `TOKENS ▁▂▃▄▅▆▇` Unicode-block sparkline from `input_tokens` deltas
+    (saturating-sub for provider counter resets) on the expanded pane card
+    only; fewer than 2 samples → no sparkline (honesty rule). Retention
+    sweep extends to `DELETE FROM token_usage_samples WHERE ts_unix_ms <
+    (now - max_age_days*86_400_000)`; zero retention preserves all rows
+    (consistent with archive sweep). 11 new tests across module +
+    dispatcher + integration; 639 lib + 68 integration green at the slice
+    tip.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1112,6 +1135,11 @@ mission:
     - "F-2: parse_for_with_environment fills agent_memory_bytes only when current_path is non-empty (prevents global ~/.claude/CLAUDE.md mis-attribution to a pane with unresolved cwd); F-1 parse_for_with_proc_root shim preserved for backward compat"
     - "F-2: recommend_memory_bloat_advisory fires Severity::Concern ProjectCanonical above 50_000 bytes with IdentityConfidence >= Medium and no input/permission wait; suggested next_step routes operator to .claude/skills/, ~/.codex/AGENTS.override.md, or .gemini/skills/"
     - "F-2: UI panel metric line renders 'MEM-FILE <KB|MB> [Heur]' badge whenever agent_memory_bytes is Some; badge omitted when None; sub-1 KiB renders '<1 KB' so operators can distinguish tiny-non-zero from no-files-found (honesty rule)"
+    - "F-3: token_usage_samples table created in qmonster.db with schema (ts_unix_ms, pane_id, provider, input_tokens, output_tokens, cost_usd) plus an idx_token_usage_pane_ts index for newest-first per-pane queries"
+    - "F-3: SqliteTokenUsageSink::record_sample writes one row per pane per poll cycle when at least one of input_tokens / output_tokens / cost_usd is populated; failures log via stderr and do not crash the polling loop; error_count counter mirrors SqliteAuditSink for durability observability"
+    - "F-3: SqliteTokenUsageSink::recent_samples(pane_id, limit) returns rows ordered ts_unix_ms DESC, capped at limit; PaneReport.recent_token_samples fetches limit=20 per live pane per iteration"
+    - "F-3: render_token_sparkline computes input_tokens deltas between adjacent samples (saturating-sub for provider counter resets), maps them to the 8 Unicode block chars, prepends 'TOKENS '; returns None when fewer than 2 samples (honesty rule)"
+    - "F-3: retention sweep DELETEs token_usage_samples rows with ts_unix_ms < (now - max_age_days*86_400_000); zero retention preserves all rows (consistent with archive sweep); RetentionReport.token_usage_rows_deleted counts the affected rows"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
