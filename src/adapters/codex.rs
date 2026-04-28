@@ -101,6 +101,13 @@ impl ProviderParser for CodexAdapter {
                 .with_confidence(0.95)
                 .with_provider(Provider::Codex)
         });
+        if let Some(n) = parse_codex_cached_input_tokens(ctx.tail) {
+            set.cached_input_tokens = Some(
+                MetricValue::new(n, SourceKind::ProviderOfficial)
+                    .with_confidence(0.95)
+                    .with_provider(Provider::Codex),
+            );
+        }
         if let Some(model) = status.model.as_ref() {
             set.model_name = Some(
                 MetricValue::new(model.clone(), SourceKind::ProviderOfficial)
@@ -466,6 +473,27 @@ fn codex_runtime_kind_for_label(label: &str) -> Option<RuntimeFactKind> {
         }
         _ => None,
     }
+}
+
+/// Phase F F-4 (v1.25.0): extract `(+ N cached)` from the Codex
+/// `/status` welcome panel `Token usage:` line. Returns the number
+/// with commas stripped. Returns None when the marker is absent.
+fn parse_codex_cached_input_tokens(tail: &str) -> Option<u64> {
+    for line in tail.lines() {
+        if !line.contains("Token usage:") {
+            continue;
+        }
+        let plus = line.find("(+ ")?;
+        let after = &line[plus + 3..];
+        let cached_idx = after.find(" cached)")?;
+        let raw = &after[..cached_idx];
+        let stripped: String = raw.chars().filter(|c| c.is_ascii_digit()).collect();
+        if stripped.is_empty() {
+            return None;
+        }
+        return stripped.parse::<u64>().ok();
+    }
+    None
 }
 
 fn clean_codex_status_line(line: &str) -> String {
@@ -1264,6 +1292,23 @@ Context 30% left · ~/Qmonster · codex-mini · Qmonster · main · Context 70% 
 
         assert!(set.model_name.is_none());
         assert!(set.reasoning_effort.is_none());
+    }
+
+    #[test]
+    fn codex_welcome_panel_cached_token_is_parsed_into_cached_input_tokens() {
+        use crate::domain::origin::SourceKind;
+        let tail = include_str!("../../tests/fixtures/real/codex_welcome_v0_122.txt");
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let signals = CodexAdapter.parse(&c);
+        let cached = signals
+            .cached_input_tokens
+            .expect("F-4: cached must parse from welcome panel");
+        assert_eq!(cached.value, 1_317_376);
+        assert_eq!(cached.source_kind, SourceKind::ProviderOfficial);
     }
 
     #[test]

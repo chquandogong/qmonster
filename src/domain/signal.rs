@@ -151,6 +151,16 @@ pub struct SignalSet {
     /// `input_tokens` (`20.4K out` token on the Codex bottom status
     /// line). Same operator-configurability + provider notes apply.
     pub output_tokens: Option<MetricValue<u64>>,
+    /// Phase F F-4 (v1.25.0): cached input tokens surfaced by the
+    /// Codex `/status` welcome panel (`(+ N cached)` portion of the
+    /// `Token usage: …` line). Always `ProviderOfficial`. UI derives
+    /// `cache_hit_ratio = cached / (input + cached)` at render time;
+    /// the ratio itself is not stored on `SignalSet` because it's a
+    /// pure function of two adjacent fields. None for Claude (no
+    /// statusline surface today) and Gemini OAuth (FAQ-documented
+    /// limit); non-None when Claude statusLine command opt-in (F-5)
+    /// or Gemini API-key/Vertex-AI auth (F-4b) lands.
+    pub cached_input_tokens: Option<MetricValue<u64>>,
     pub cost_usd: Option<MetricValue<f64>>,
     pub model_name: Option<MetricValue<String>>,
     pub git_branch: Option<MetricValue<String>>,
