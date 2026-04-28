@@ -261,6 +261,12 @@ fn pane_list_lines_with_flash(
                 "no active recommendations",
             )));
         }
+        // F-3: TOKENS sparkline from recent_token_samples (input_tokens
+        // delta over the last 20 polls). Renders only when the pane
+        // has accumulated >= 2 samples.
+        if let Some(line) = render_token_sparkline(&report.recent_token_samples) {
+            lines.push(line);
+        }
     }
 
     if with_separator {
@@ -834,6 +840,57 @@ fn format_agent_memory_bytes(bytes: u64) -> String {
     } else {
         format!("{} KB", bytes / KIB)
     }
+}
+
+/// Phase F F-3 (v1.24.0): render a TOKENS sparkline from recent
+/// `input_tokens` samples. Returns `None` when there are fewer than
+/// 2 samples (no deltas computable). Samples are expected newest-first
+/// from `SqliteTokenUsageSink::recent_samples`; this function reverses
+/// them internally so the sparkline reads left-to-right
+/// oldest-to-newest.
+///
+/// The sparkline shows DELTA between adjacent input_tokens samples
+/// (rate of context growth), not the cumulative count. Idle pane → flat
+/// line; active pane → rising blocks. None values in input_tokens are
+/// treated as 0 for delta computation. Negative deltas (provider
+/// counter reset) saturate to 0 via `saturating_sub`.
+fn render_token_sparkline(
+    samples: &[crate::store::TokenSample],
+) -> Option<ratatui::text::Line<'static>> {
+    if samples.len() < 2 {
+        return None;
+    }
+    // Reverse to oldest-first for the sparkline body. recent_samples
+    // returns DESC ts order; the visual reads left-to-right
+    // oldest-to-newest, so we flip.
+    let chrono: Vec<u64> = samples
+        .iter()
+        .rev()
+        .map(|s| s.input_tokens.unwrap_or(0))
+        .collect();
+    // Compute deltas between adjacent samples.
+    let deltas: Vec<u64> = chrono
+        .windows(2)
+        .map(|w| w[1].saturating_sub(w[0]))
+        .collect();
+    if deltas.is_empty() {
+        return None;
+    }
+    let max = *deltas.iter().max().unwrap_or(&0);
+    let blocks = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    let body: String = if max == 0 {
+        // All deltas are 0 — render the lowest block for each.
+        deltas.iter().map(|_| blocks[0]).collect()
+    } else {
+        deltas
+            .iter()
+            .map(|d| {
+                let idx = ((*d as f64 / max as f64) * (blocks.len() - 1) as f64).round() as usize;
+                blocks[idx.min(blocks.len() - 1)]
+            })
+            .collect()
+    };
+    Some(ratatui::text::Line::from(format!("TOKENS {body}")))
 }
 
 fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
@@ -2102,6 +2159,51 @@ mod tests {
         assert!(
             !rendered.contains("MEM-FILE"),
             "MEM-FILE must not render when agent_memory_bytes is None; rendered = {rendered}"
+        );
+    }
+
+    #[test]
+    fn render_token_sparkline_emits_token_label_and_seven_block_chars() {
+        use crate::domain::identity::Provider;
+        use crate::store::TokenSample;
+        let samples = (0..8)
+            .map(|i| TokenSample {
+                ts_unix_ms: (i * 1000) as i64,
+                pane_id: "%1".into(),
+                provider: Provider::Codex,
+                input_tokens: Some((i as u64) * 100),
+                output_tokens: None,
+                cost_usd: None,
+            })
+            .collect::<Vec<_>>();
+        let line = render_token_sparkline(&samples).expect("8 samples must render");
+        let rendered: String = line.spans.iter().map(|sp| sp.content.as_ref()).collect();
+        assert!(rendered.starts_with("TOKENS "), "rendered = {rendered}");
+        let body = &rendered["TOKENS ".len()..];
+        let block_chars: Vec<char> = body.chars().filter(|c| "▁▂▃▄▅▆▇█".contains(*c)).collect();
+        assert_eq!(
+            block_chars.len(),
+            7,
+            "expected 7 block chars; got body={body:?}"
+        );
+    }
+
+    #[test]
+    fn render_token_sparkline_returns_none_when_fewer_than_two_samples() {
+        use crate::domain::identity::Provider;
+        use crate::store::TokenSample;
+        assert!(render_token_sparkline(&[]).is_none());
+        assert!(
+            render_token_sparkline(&[TokenSample {
+                ts_unix_ms: 0,
+                pane_id: "%1".into(),
+                provider: Provider::Codex,
+                input_tokens: Some(100),
+                output_tokens: None,
+                cost_usd: None,
+            }])
+            .is_none(),
+            "one sample = no delta = no line"
         );
     }
 }
