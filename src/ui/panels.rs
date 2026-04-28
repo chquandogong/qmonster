@@ -760,7 +760,9 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
             theme::label_style(),
         );
     }
-    // Phase E E1 (v1.21.0): Gemini-only process memory badge.
+    // Phase E E1 (v1.21.0) + Phase F F-1 (v1.22.0): process memory
+    // badge. Gemini sources from its status-table column [Official];
+    // Claude/Codex source from /proc descendant RSS [Heur].
     // `process_memory_mb` is canonicalized to MiB at parse time;
     // adapt the unit at render time so values >= 1024 MiB render
     // as `GB` for readability.
