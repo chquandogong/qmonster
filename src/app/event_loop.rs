@@ -245,6 +245,13 @@ where
         // UI sparkline can render deltas. Empty Vec when the sink
         // is None (open failed at startup) or has no rows for the
         // pane yet (first iteration).
+        // TODO(F-3): `recent_samples` errors are silently dropped via
+        // `.ok()` here. Asymmetric with the writer at the same scope,
+        // which uses `eprintln!` on `record_sample` failure. A
+        // persistent read failure (corrupt index, permission
+        // revoked) leaves the sparkline blank with no diagnostic.
+        // Wire to a rate-limited audit-sink event when a
+        // `TokenUsageReadFailed` AuditEventKind variant lands.
         let recent_token_samples: Vec<crate::store::TokenSample> = ctx
             .token_usage_sink
             .as_ref()
@@ -514,8 +521,12 @@ pub struct PaneReport {
     /// Phase F F-3 (v1.24.0): recent token-usage samples for this
     /// pane, ordered ts_unix_ms DESC, capped at 20 rows. Populated
     /// from `SqliteTokenUsageSink::recent_samples` when the sink is
-    /// open. Empty vec when the sink is None or has no rows for this
-    /// pane. Consumed by the UI sparkline (Task 4) to compute deltas
+    /// open. Populated for every live pane every iteration (one
+    /// indexed `SELECT ... LIMIT 20` per pane per poll, sub-ms cost
+    /// against the same `qmonster.db` the sink writes); the UI layer
+    /// decides which pane's vec to actually render. Empty vec when
+    /// the sink is None (open failed at startup) or has no rows for
+    /// this pane yet. Consumed by the UI sparkline to compute deltas
     /// between adjacent samples.
     pub recent_token_samples: Vec<crate::store::TokenSample>,
 }
