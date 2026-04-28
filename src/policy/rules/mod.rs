@@ -1,4 +1,5 @@
 pub mod advisories;
+pub mod agent_memory;
 pub mod alerts;
 pub mod auto_memory;
 pub mod concurrent;

@@ -31,6 +31,9 @@ impl Engine {
         recs.extend(crate::policy::rules::auto_memory::eval_auto_memory(
             id, signals, gates,
         ));
+        recs.extend(crate::policy::rules::agent_memory::eval_agent_memory(
+            id, signals, gates,
+        ));
         recs.extend(crate::policy::rules::idle::eval_idle_transition(
             id,
             signals,
