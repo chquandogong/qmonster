@@ -586,6 +586,13 @@ pub fn metric_row(s: &SignalSet) -> String {
             source_kind_label(m.source_kind)
         ));
     }
+    if let Some(m) = s.agent_memory_bytes.as_ref() {
+        parts.push(format!(
+            "memory-file {} [{}]",
+            format_agent_memory_bytes(m.value),
+            source_kind_label(m.source_kind)
+        ));
+    }
     parts.join("  ")
 }
 
@@ -778,6 +785,23 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
             theme::label_style(),
         );
     }
+    // Phase F F-2 (v1.23.0): agent memory file bytes — sums
+    // CLAUDE.md / AGENTS.md / GEMINI.md plus per-provider home
+    // counterparts. Always Heuristic because file existence is not
+    // proof the CLI loaded the bytes — operator decides if the
+    // total is too high (advisory threshold: 50 KB).
+    if let Some(metric) = signals.agent_memory_bytes.as_ref() {
+        push_badge(
+            &mut spans,
+            &mut has_any,
+            format!(
+                " MEM-FILE {} [{}] ",
+                format_agent_memory_bytes(metric.value),
+                source_kind_label(metric.source_kind),
+            ),
+            theme::label_style(),
+        );
+    }
 
     has_any.then(|| Line::from(spans))
 }
@@ -790,6 +814,20 @@ fn format_memory_mb(mb: f64) -> String {
         format!("{:.2} GB", mb / 1024.0)
     } else {
         format!("{:.1} MB", mb)
+    }
+}
+
+/// Format an `agent_memory_bytes` value for the operator badge.
+/// Uses `KB` (1 KiB = 1024 bytes) below 1 MiB and `MB` (one decimal)
+/// at or above. Mirrors `format_memory_mb`'s MiB→GB transition style
+/// for visual consistency between the two memory-related badges.
+fn format_agent_memory_bytes(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * KIB;
+    if bytes >= MIB {
+        format!("{:.1} MB", (bytes as f64) / (MIB as f64))
+    } else {
+        format!("{} KB", bytes / KIB)
     }
 }
 
@@ -1989,5 +2027,67 @@ mod tests {
         let rep = base_report();
         let lines = render_pane_state_row(&rep);
         assert!(lines.is_empty(), "no state row when idle_state is None");
+    }
+
+    #[test]
+    fn format_agent_memory_bytes_below_mib_renders_kb() {
+        assert_eq!(format_agent_memory_bytes(48_000), "46 KB");
+        assert_eq!(format_agent_memory_bytes(1023 * 1024), "1023 KB");
+    }
+
+    #[test]
+    fn format_agent_memory_bytes_at_or_above_mib_renders_mb() {
+        assert_eq!(format_agent_memory_bytes(1024 * 1024), "1.0 MB");
+        assert_eq!(format_agent_memory_bytes(2_500_000), "2.4 MB");
+    }
+
+    #[test]
+    fn metric_row_emits_memory_file_when_agent_memory_bytes_set() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::{MetricValue, SignalSet};
+        let s = SignalSet {
+            agent_memory_bytes: Some(MetricValue::new(48_000_u64, SourceKind::Heuristic)),
+            ..SignalSet::default()
+        };
+        let row = metric_row(&s);
+        assert!(row.contains("memory-file 46 KB [Heur]"), "row = {row}");
+    }
+
+    #[test]
+    fn metric_badge_line_includes_mem_file_badge_when_agent_memory_bytes_set() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::{MetricValue, SignalSet};
+        let s = SignalSet {
+            agent_memory_bytes: Some(MetricValue::new(48_000_u64, SourceKind::Heuristic)),
+            ..SignalSet::default()
+        };
+        let lines = metric_badge_line(&s);
+        assert!(
+            !lines.is_empty(),
+            "MEM-FILE should render at least one Line"
+        );
+        let rendered: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|sp| sp.content.as_ref())
+            .collect();
+        assert!(rendered.contains("MEM-FILE 46 KB"), "rendered = {rendered}");
+        assert!(rendered.contains("[Heur]"), "rendered = {rendered}");
+    }
+
+    #[test]
+    fn metric_badge_line_omits_mem_file_when_agent_memory_bytes_none() {
+        use crate::domain::signal::SignalSet;
+        let s = SignalSet::default();
+        let lines = metric_badge_line(&s);
+        let rendered: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|sp| sp.content.as_ref())
+            .collect();
+        assert!(
+            !rendered.contains("MEM-FILE"),
+            "MEM-FILE must not render when agent_memory_bytes is None; rendered = {rendered}"
+        );
     }
 }
