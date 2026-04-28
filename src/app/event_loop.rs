@@ -137,6 +137,36 @@ where
             current_path: &pane.current_path,
         };
         let mut signals = crate::adapters::parse_for(&parse_ctx);
+
+        // F-3: persist token usage to SQLite when at least one of
+        // the three fields is populated. UI consumers compute deltas
+        // between samples for the sparkline; we never aggregate at
+        // the writer. Failure here logs to stderr and does not
+        // crash the polling loop (mirrors Codex Phase-2 audit-sink
+        // durability pattern).
+        if let Some(token_sink) = ctx.token_usage_sink.as_ref().filter(|_| {
+            signals.input_tokens.is_some()
+                || signals.output_tokens.is_some()
+                || signals.cost_usd.is_some()
+        }) {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let ts_unix_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            let sample = crate::store::TokenSample {
+                ts_unix_ms,
+                pane_id: pane.pane_id.clone(),
+                provider: resolved.identity.provider,
+                input_tokens: signals.input_tokens.as_ref().map(|m| m.value),
+                output_tokens: signals.output_tokens.as_ref().map(|m| m.value),
+                cost_usd: signals.cost_usd.as_ref().map(|m| m.value),
+            };
+            if let Err(e) = token_sink.record_sample(&sample) {
+                eprintln!("F-3: token_usage record_sample failed: {e}");
+            }
+        }
+
         apply_pressure_metric_cache(
             &mut ctx.pressure_metric_cache,
             &pane.pane_id,

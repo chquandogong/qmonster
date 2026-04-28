@@ -6,6 +6,7 @@ use crate::notify::rate_limit::RateLimiter;
 use crate::policy::claude_settings::ClaudeSettings;
 use crate::policy::engine::Engine;
 use crate::policy::pricing::PricingTable;
+use crate::store::SqliteTokenUsageSink;
 use crate::store::archive_fs::ArchiveWriter;
 use crate::store::sink::EventSink;
 use crate::tmux::polling::PaneSource;
@@ -69,6 +70,11 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// per session even if the comparison stays true for multiple
     /// polls. Evicted alongside `identity_history` on lifecycle reset.
     pub reported_drifts: std::collections::HashSet<(String, String)>,
+    /// Phase F F-3 (v1.24.0): token-usage time-series sink for the
+    /// per-pane sparkline. `None` when the SQLite open failed at
+    /// startup (logged via the in-process eprintln); the event loop
+    /// skips recording in that case rather than crashing.
+    pub token_usage_sink: Option<SqliteTokenUsageSink>,
     known_pane_ids: Vec<String>,
 }
 
@@ -94,6 +100,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             pressure_metric_cache: std::collections::HashMap::new(),
             identity_history: std::collections::HashMap::new(),
             reported_drifts: std::collections::HashSet::new(),
+            token_usage_sink: None,
             known_pane_ids: Vec::new(),
         }
     }
@@ -115,6 +122,11 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
 
     pub fn with_claude_settings(mut self, settings: ClaudeSettings) -> Self {
         self.claude_settings = settings;
+        self
+    }
+
+    pub fn with_token_usage_sink(mut self, sink: SqliteTokenUsageSink) -> Self {
+        self.token_usage_sink = Some(sink);
         self
     }
 

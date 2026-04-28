@@ -18,7 +18,8 @@ use crate::notify::desktop::DesktopNotifier;
 use crate::policy::claude_settings::{ClaudeSettings, ClaudeSettingsError};
 use crate::policy::pricing::PricingTable;
 use crate::store::{
-    ArchiveWriter, EventSink, InMemorySink, QmonsterPaths, SnapshotWriter, SqliteAuditSink, sweep,
+    ArchiveWriter, EventSink, InMemorySink, QmonsterPaths, SnapshotWriter, SqliteAuditSink,
+    SqliteTokenUsageSink, sweep,
 };
 use crate::tmux::TmuxSource;
 
@@ -76,6 +77,18 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
         }
     };
 
+    let token_usage_sink: Option<SqliteTokenUsageSink> =
+        match SqliteTokenUsageSink::open(&paths.sqlite_path()) {
+            Ok(sink) => Some(sink),
+            Err(e) => {
+                eprintln!(
+                    "qmonster: token-usage sink open failed ({e}); per-pane token \
+                     samples will not be persisted this session"
+                );
+                None
+            }
+        };
+
     let source_build = build_tmux_source(&config)?;
     let notifier = DesktopNotifier;
     let archive = ArchiveWriter::new(paths.clone(), config.logging.big_output_chars);
@@ -87,6 +100,9 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
         .with_pricing(pricing)
         .with_claude_settings(claude_settings)
         .with_config_path(writable_config_path);
+    if let Some(sink) = token_usage_sink {
+        ctx = ctx.with_token_usage_sink(sink);
+    }
 
     if !pairs.is_empty() {
         let refs: Vec<(&str, &str)> = pairs

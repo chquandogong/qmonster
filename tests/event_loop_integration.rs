@@ -2100,3 +2100,54 @@ fn claude_pressure_metrics_survive_separate_runtime_surfaces() {
         "Claude /clear statusline must overwrite the cached pre-clear CTX with 0%"
     );
 }
+
+#[test]
+fn event_loop_records_token_usage_sample_when_codex_tail_has_in_out() {
+    // F-3 Task 2: when a Codex pane's bottom-status tail surfaces
+    // token counts ("400K in / 100K out"), the per-poll writer must land
+    // a row in token_usage_samples. The existing Codex adapter
+    // populates SignalSet.input_tokens / output_tokens from that
+    // surface, so this test pins the sink-write step in event_loop.rs.
+    use qmonster::store::{QmonsterPaths, SqliteTokenUsageSink};
+
+    let td = tempfile::TempDir::new().unwrap();
+    let paths = QmonsterPaths::at(td.path());
+    paths.ensure().unwrap();
+
+    // Codex bottom-status tail that the adapter is known to parse for
+    // input_tokens=400_000 and output_tokens=100_000. The format mirrors
+    // the busy_codex_tail helper used elsewhere in this file.
+    let tail = "Context 50% left · /tmp · gpt-5.4 · Qmonster · main · Context 50% used · 0.122.0 · \
+         500K used · 400K in · 100K out";
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%1", "codex:1:main", "node", tail, false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let audit_sink = Box::new(InMemorySink::new());
+    let token_sink = SqliteTokenUsageSink::open(&paths.sqlite_path())
+        .expect("SqliteTokenUsageSink::open must succeed on a fresh tempdir");
+
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, audit_sink)
+        .with_token_usage_sink(token_sink);
+
+    run_once(&mut ctx, Instant::now()).expect("run_once must succeed");
+
+    // Open a fresh read-side sink and confirm at least one row was written.
+    let read_sink = SqliteTokenUsageSink::open(&paths.sqlite_path())
+        .expect("read-side SqliteTokenUsageSink::open must succeed");
+    let got = read_sink
+        .recent_samples("%1", 5)
+        .expect("recent_samples must succeed");
+
+    assert!(
+        !got.is_empty(),
+        "F-3: event loop must persist at least one token_usage sample after a Codex tail with in/out"
+    );
+    assert_eq!(got[0].pane_id, "%1");
+    assert!(
+        got[0].input_tokens.is_some() || got[0].output_tokens.is_some(),
+        "at least one of input_tokens / output_tokens should be Some; got {:?}",
+        got[0]
+    );
+}
