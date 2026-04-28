@@ -42,7 +42,11 @@ impl SqliteTokenUsageSink {
     }
 
     pub fn record_sample(&self, sample: &TokenSample) -> Result<(), SqliteError> {
-        let conn = self.db.connection().lock().expect("token_usage mutex");
+        let conn = self
+            .db
+            .connection()
+            .lock()
+            .expect("token_usage db lock poisoned");
         record_sample_via(&conn, sample)
     }
 
@@ -51,7 +55,11 @@ impl SqliteTokenUsageSink {
         pane_id: &str,
         limit: usize,
     ) -> Result<Vec<TokenSample>, SqliteError> {
-        let conn = self.db.connection().lock().expect("token_usage mutex");
+        let conn = self
+            .db
+            .connection()
+            .lock()
+            .expect("token_usage db lock poisoned");
         recent_samples_via(&conn, pane_id, limit)
     }
 }
@@ -80,7 +88,7 @@ fn recent_samples_via(
     limit: usize,
 ) -> Result<Vec<TokenSample>, SqliteError> {
     let mut stmt = conn
-        .prepare(
+        .prepare_cached(
             "SELECT ts_unix_ms, pane_id, provider, input_tokens, output_tokens, cost_usd \
              FROM token_usage_samples \
              WHERE pane_id = ? \
@@ -100,7 +108,7 @@ fn recent_samples_via(
             })
         })
         .map_err(|e| SqliteError::Query(e.to_string()))?;
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(limit);
     for row in rows {
         out.push(row.map_err(|e| SqliteError::Query(e.to_string()))?);
     }
@@ -147,12 +155,18 @@ mod tests {
     fn record_sample_round_trip_returns_inserted_row() {
         let td = tempdir().unwrap();
         let sink = SqliteTokenUsageSink::open(&td.path().join("q.db")).unwrap();
-        sink.record_sample(&sample(1000, "%1", Some(1234))).unwrap();
+        let original = TokenSample {
+            ts_unix_ms: 1000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(1234),
+            output_tokens: Some(56),
+            cost_usd: Some(0.078),
+        };
+        sink.record_sample(&original).unwrap();
         let got = sink.recent_samples("%1", 10).unwrap();
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0].ts_unix_ms, 1000);
-        assert_eq!(got[0].pane_id, "%1");
-        assert_eq!(got[0].input_tokens, Some(1234));
+        assert_eq!(got[0], original);
     }
 
     #[test]
@@ -198,5 +212,33 @@ mod tests {
         let got = sink.recent_samples("%1", 1).unwrap();
         assert_eq!(got[0].input_tokens, None);
         assert_eq!(got[0].cost_usd, Some(0.42));
+    }
+
+    #[test]
+    fn provider_round_trips_through_sqlite_for_every_variant() {
+        let td = tempdir().unwrap();
+        let sink = SqliteTokenUsageSink::open(&td.path().join("q.db")).unwrap();
+        let providers = [
+            Provider::Claude,
+            Provider::Codex,
+            Provider::Gemini,
+            Provider::Qmonster,
+            Provider::Unknown,
+        ];
+        for (i, p) in providers.iter().enumerate() {
+            sink.record_sample(&TokenSample {
+                ts_unix_ms: i as i64 * 100,
+                pane_id: format!("%{}", i),
+                provider: *p,
+                input_tokens: None,
+                output_tokens: None,
+                cost_usd: None,
+            })
+            .unwrap();
+        }
+        for (i, p) in providers.iter().enumerate() {
+            let got = sink.recent_samples(&format!("%{}", i), 1).unwrap();
+            assert_eq!(got[0].provider, *p, "provider must round-trip for {:?}", p);
+        }
     }
 }
