@@ -1,6 +1,6 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.21.3 — MIT license and Claude clear CTX reset."
+  mission_title: "Qmonster v1.22.0 — Phase F F-1: process RAM signal for Claude/Codex panes."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
   total_revisions: 151
@@ -13532,7 +13532,7 @@ timeline:
 
 evolution_summary:
   current_phase: "v1.22.0 opens Phase F with F-1: process RSS surfaced as `memory <N> MB [Heur]` on Claude/Codex pane cards via /proc descendant walk (depth-capped at 5 with a visited-set); Gemini status-table `[Official]` path is preserved untouched. v1.21.3 added MIT licensing and made Claude `/clear` statusline `CTX —` render as `CTX 0%`."
-  next_phase: "Phase E is fully shipped. No outstanding housekeeping items remain in the deferred ledger besides confirm-archive review (permanently closed per operator decision 2026-04-27). Awaiting new operator-directed work."
+  next_phase: "Phase F is open with F-1 shipped (process RAM for Claude/Codex panes); F-2 (agent memory file scan + bloat advisory), F-3 (token usage time series + sparkline), F-4 (Gemini /stats polling for tokens.cached), F-5 (Claude statusLine command opt-in for cache_read), F-6 (Codex App Server resetsAt polling), and F-7 (cache-aware policy rules) remain unscoped pending operator direction. No outstanding housekeeping items in the deferred ledger besides confirm-archive review (permanently closed per operator decision 2026-04-27)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
