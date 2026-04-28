@@ -8,12 +8,23 @@
 //! `comm` matches a known CLI name. If the pane has no readable
 //! descendant, the helper returns `None` (honesty rule: Qmonster does
 //! not fabricate metrics).
+//!
+//! Note: `comm` is matched against `KNOWN_CLI_COMMS` by exact equality.
+//! Linux truncates `comm` to 15 bytes (`TASK_COMM_LEN - 1`) — long
+//! binary names will not match and will be classified as non-CLI.
+//! Acceptable for v1 because all known AI CLI binaries are ≤ 7 chars;
+//! revisit if this list grows.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 const KNOWN_CLI_COMMS: &[&str] = &["claude", "codex", "gemini", "node", "python", "python3"];
 
+/// BFS depth cap. Real shell→CLI trees are depth 1–3 (bash → claude,
+/// or bash → node → gemini-cli child); 5 leaves headroom for unusual
+/// wrappers (e.g. tmux → bash → asdf → node → cli) without admitting
+/// pathological trees.
 const MAX_DEPTH: usize = 5;
 
 /// Default `/proc` root. Tests pass a tempdir-rooted alternative via
@@ -24,6 +35,7 @@ pub fn read_descendant_rss_mb(pane_pid: u32) -> Option<f64> {
 
 /// Test-friendly variant: pass an alternate `/proc` root (typically a
 /// `tempdir`) so the descendant walk operates on a controlled tree.
+#[doc(hidden)]
 pub fn read_descendant_rss_mb_with_proc_root(pane_pid: u32, proc_root: &Path) -> Option<f64> {
     // Breadth-first walk, depth-capped. Pick the candidate with the
     // best class (CLI comm beats non-CLI) and within a class the highest
@@ -31,6 +43,8 @@ pub fn read_descendant_rss_mb_with_proc_root(pane_pid: u32, proc_root: &Path) ->
     // child still gets a number (its shell), conveyed honestly via
     // SourceKind::Heuristic upstream.
     let mut frontier: Vec<u32> = vec![pane_pid];
+    let mut visited: HashSet<u32> = HashSet::new();
+    visited.insert(pane_pid);
     let mut depth = 0;
     let mut best_rss_kb: Option<u64> = None;
     let mut best_is_cli_comm = false;
@@ -38,19 +52,21 @@ pub fn read_descendant_rss_mb_with_proc_root(pane_pid: u32, proc_root: &Path) ->
     while !frontier.is_empty() && depth < MAX_DEPTH {
         let mut next: Vec<u32> = Vec::new();
         for pid in &frontier {
-            if let Some((rss_kb, is_cli)) = read_pid_stats(*pid, proc_root) {
-                let replace = match (best_is_cli_comm, is_cli) {
+            if let Some((rss_kb, is_cli_comm)) = read_pid_stats(*pid, proc_root) {
+                let replace = match (best_is_cli_comm, is_cli_comm) {
                     (false, true) => true,
                     (true, false) => false,
                     _ => rss_kb > best_rss_kb.unwrap_or(0),
                 };
                 if replace {
                     best_rss_kb = Some(rss_kb);
-                    best_is_cli_comm = is_cli;
+                    best_is_cli_comm = is_cli_comm;
                 }
             }
             for child in read_children(*pid, proc_root) {
-                next.push(child);
+                if visited.insert(child) {
+                    next.push(child);
+                }
             }
         }
         frontier = next;
