@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.25.0 — Phase F F-4: Codex cached_input_tokens + CACHE hit ratio badge."
+  mission_title: "Qmonster v1.26.0 — Phase F F-7: cache-aware advisory rules."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 154
-  latest_version: "1.25.0"
+  total_revisions: 155
+  latest_version: "1.26.0"
 
 timeline:
   - change_id: "initial"
@@ -13837,9 +13837,102 @@ timeline:
       - "5286929 F-4 task3: CACHE <%> badge + format_cache_hit_ratio helper"
     follow_up: []
 
+  - change_id: "v1.26.0-phase-f-f7-cache-aware-advisory-rules"
+    semantic_version: "1.26.0"
+    change_sequence: 155
+    date: "2026-04-29"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (main pane)"
+    change_type: "feature"
+    motivation_type: "phase-continuation"
+    persistence: "permanent"
+    intent: >
+      Phase F F-7: cache-aware advisory rules. Two new rules in
+      src/policy/rules/cache.rs turn F-4's cached_input_tokens data into
+      actionable /compact decisions. recommend_cache_hot_compact_warning
+      (Severity::Concern, SourceKind::ProjectCanonical) fires when
+      cache_hit_ratio > 60% AND context_pressure < 70%, advising the operator
+      NOT to compact (compact resets cache; let context fill further first).
+      recommend_compact_when_cache_cold (Severity::Good,
+      SourceKind::ProjectCanonical, suggested_command: Some("/compact")) fires
+      when cache_hit_ratio < 30% AND context_pressure > 60%, advising a
+      snapshot-first /compact (cache rebuild cost already paid on every turn).
+      Both gate on IdentityConfidence >= Medium and suppress on input/permission
+      wait. Mutual exclusion is structural: hot needs ratio > 0.6, cold needs
+      ratio < 0.3 — strictly disjoint. Engine::evaluate dispatches eval_cache
+      after eval_agent_memory. 8 new tests; 654 lib + 68 integration green.
+    intent_ko: >
+      Phase F F-7: 캐시 인식 어드바이저리 규칙. src/policy/rules/cache.rs에
+      새 규칙 두 개를 추가하여 F-4의 cached_input_tokens 데이터를 실행 가능한
+      /compact 결정으로 전환. recommend_cache_hot_compact_warning
+      (Severity::Concern, SourceKind::ProjectCanonical)는 cache_hit_ratio >
+      60% AND context_pressure < 70%일 때 발화하여 운영자에게 compact를 하지
+      말도록 권고 (compact는 캐시를 초기화하므로, ctx를 더 채운 뒤 진행).
+      recommend_compact_when_cache_cold (Severity::Good,
+      SourceKind::ProjectCanonical, suggested_command: Some("/compact"))는
+      cache_hit_ratio < 30% AND context_pressure > 60%일 때 발화하여 스냅샷
+      우선 /compact를 권고 (이미 매 turn마다 캐시 재구축 비용을 지불 중).
+      두 규칙 모두 IdentityConfidence >= Medium 조건이며 입력/권한 대기 중에는
+      억제. 상호 배타성은 구조적: hot은 ratio > 0.6, cold는 ratio < 0.3 —
+      완전히 분리된 영역. Engine::evaluate에서 eval_agent_memory 이후
+      eval_cache 디스패치. 테스트 8개 추가; 654 lib + 68 integration 통과.
+    triggered_by: "Phase F F-7 plan: cache-aware advisory rules using cached_input_tokens."
+    issue_or_context: >
+      F-4 wired cached_input_tokens into SignalSet and exposed the CACHE hit
+      ratio badge, but Qmonster had no policy rules acting on that signal.
+      F-7 closes the gap: when the cache is hot (> 60% ratio) and context
+      still has headroom (< 70%), compacting would throw away an expensive
+      cache warm-up; the Concern recommendation tells the operator to wait.
+      When the cache is cold (< 30% ratio) and context is filling (> 60%),
+      every turn already pays the full prompt rebuild cost, so /compact is
+      safe and beneficial; the Good recommendation surfaces the suggested
+      command. The 30-60% intermediate band is deliberately silent — neither
+      condition is clear enough to warrant a recommendation.
+    changes:
+      added:
+        - "`src/policy/rules/cache.rs` — new module with `recommend_cache_hot_compact_warning` and `recommend_compact_when_cache_cold` rules"
+        - "`eval_cache` dispatcher in `src/policy/engine.rs` — called after `eval_agent_memory`"
+        - "`pub mod cache;` in `src/policy/rules/mod.rs`"
+        - "8 new unit tests covering both rules and the intermediate-band silence"
+      modified:
+        - "`README.md`, `VERSION.md`, `mission.yaml`, `mission-history.yaml`, `docs/ai/UI_MANUAL.md`, `docs/ai/ARCHITECTURE.md`, `docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md` bumped to v1.26.0"
+      removed: []
+    changed_sections:
+      - "src/policy/rules/cache.rs"
+      - "src/policy/rules/mod.rs"
+      - "src/policy/engine.rs"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    observable_effects:
+      added:
+        - "Pane cards with cache_hit_ratio > 60% AND context_pressure < 70% show a Concern recommendation advising against /compact"
+        - "Pane cards with cache_hit_ratio < 30% AND context_pressure > 60% show a Good recommendation with suggested_command /compact and snapshot-first next_step"
+      modified:
+        - "Engine::evaluate now dispatches eval_cache after eval_agent_memory"
+      removed: []
+    impact_scope:
+      runtime: "two new pure policy rules; no new IO, no new storage columns, no UI rendering change beyond the existing recommendation display path."
+      tests: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, scripts/verify-shared.sh"
+      ledger: "1 new timeline entry (sequence 155); meta bump; minor version bump v1.25.0 → v1.26.0 for Phase F F-7"
+      npm: "package.json version unchanged at 1.21.3 — npm publish deferred"
+      review_gate: "local validation passes before commit"
+      follow_up_carryover: "Phase F F-4b (Gemini /stats parsing), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7b (cache_drift_detected via recent_token_samples), F-7c (wait_for_reset / snapshot_before_reset) remain unscoped."
+    breaking: false
+    risk: "low — pure policy rules; no storage, IO, or actuation path change; existing badge/metric paths unaffected."
+    related_commits:
+      - "ff83b09 F-7 task1: cache_hot_compact_warning + compact_when_cache_cold rules"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.25.0 continues Phase F with F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. New parse_codex_cached_input_tokens extracts (+ N cached) from Codex /status welcome panel into SignalSet.cached_input_tokens (ProviderOfficial); token_usage_samples gains nullable cached_input_tokens column with idempotent ALTER TABLE migration; UI renders CACHE <%> badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
-  next_phase: "Phase F is open with F-1, F-2, F-3, F-4 shipped; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7 (cache-aware policy rules) remain unscoped."
+  current_phase: "v1.26.0 continues Phase F with F-7: cache-aware advisory rules. Two new rules in src/policy/rules/cache.rs (recommend_cache_hot_compact_warning and recommend_compact_when_cache_cold) turn F-4's cached_input_tokens data into actionable /compact decisions; mutually exclusive by ratio threshold construction (hot > 60%, cold < 30%); eval_cache dispatched in Engine::evaluate after eval_agent_memory. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
+  next_phase: "Phase F is open with F-1, F-2, F-3, F-4, F-7 shipped; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7b (cache_drift_detected via recent_token_samples), F-7c (wait_for_reset / snapshot_before_reset — depend on F-5/F-6 reset_eta) remain unscoped."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

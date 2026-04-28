@@ -282,6 +282,29 @@ siblings: F-4b (Gemini /stats parsing), F-5 (Claude statusLine command),
 F-6 (Codex App Server resetsAt), F-7 (cache-aware policy rules using the
 time series).
 
+v1.26.0 continues **Phase F** with **F-7 cache-aware advisory rules**:
+two new rules in `src/policy/rules/cache.rs` turn F-4's
+`cached_input_tokens` data into actionable `/compact` decisions.
+`recommend_cache_hot_compact_warning` (Severity::Concern,
+SourceKind::ProjectCanonical) fires when `cache_hit_ratio > 60%`
+AND `context_pressure < 70%`, advising the operator NOT to
+compact (compact resets cache; let context fill further).
+`recommend_compact_when_cache_cold` (Severity::Good,
+SourceKind::ProjectCanonical, suggested_command: Some("/compact"))
+fires when `cache_hit_ratio < 30%` AND `context_pressure > 60%`,
+advising a snapshot-first `/compact` (cache rebuild cost is already
+paid on every turn). Both gate on `IdentityConfidence ≥ Medium`
+and suppress on input/permission wait. Mutual exclusion is
+structural: hot needs ratio > 0.6, cold needs ratio < 0.3 —
+strictly disjoint regions, intermediate 30-60% band triggers
+neither. `Engine::evaluate` dispatches `eval_cache` after
+`eval_agent_memory`. Thresholds hard-coded for v1; operator-tunable
+thresholds deferred. Deferred siblings: F-4b (Gemini /stats),
+F-5 (Claude statusLine), F-6 (Codex App Server resetsAt),
+F-7b (cache_drift_detected via recent_token_samples), F-7c
+(wait_for_reset / snapshot_before_reset — depend on F-5/F-6
+reset_eta).
+
 ## Module responsibilities
 
 ### `app/`

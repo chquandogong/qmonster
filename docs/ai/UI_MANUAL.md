@@ -196,6 +196,21 @@ session:window · Provider role · %pane_id
   Codex example: `Token usage: total=210,058 input=189,703 (+ 1,317,376
 cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
   1,507,079 prompt-input tokens were cache-hits, ~87% reuse).
+- Cache-aware advisory recommendations (Phase F F-7, v1.26.0):
+  When the `CACHE` badge crosses the hot threshold (60%) while
+  context still has headroom (< 70% used), Qmonster surfaces a
+  `Concern` `cache: avoid /compact while cache is hot` recommendation
+  that explains running `/compact` would reset cache and force a
+  full prompt rebuild. Wait until ctx >= 80% so the cache rebuild
+  cost amortizes over more turns. Conversely, when the cache hit
+  ratio drops below 30% while context is filling (> 60% used), a
+  `Good` `cache: /compact is safe — cache is cold` recommendation
+  fires with `suggested_command: /compact` — the cache rebuild cost
+  is already paid on every turn, so compacting won't cost cache
+  effectiveness. Both recommendations gate on
+  `IdentityConfidence ≥ Medium` and suppress when input/permission
+  wait is active. Thresholds are hard-coded for v1; operator-tunable
+  thresholds are deferred.
 - 긴 worktree 경로 문자열은 PATH badge에서 40자까지 자동
   ellipsize됩니다 (Slice 3 housekeeping). 잘린 부분은 `…` 한 글자로
   표시되어 badge 한 줄이 pane card 폭을 넘기지 않습니다.

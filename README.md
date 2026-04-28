@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.21.3`; current mission ledger `v1.25.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.21.3`; current mission ledger `v1.26.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,24 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.25.0` / npm `1.21.3` (npm publish deferred).
+Current release: `v1.26.0` / npm `1.21.3` (npm publish deferred).
+
+`v1.26.0` continues Phase F with F-7: cache-aware advisory rules. Two new rules in `src/policy/rules/cache.rs`
+turn F-4's `cached_input_tokens` data into actionable `/compact` decisions.
+`recommend_cache_hot_compact_warning` (Severity::Concern, SourceKind::ProjectCanonical) fires when
+`cache_hit_ratio > 60%` AND `context_pressure < 70%`, advising the operator NOT to compact (compact
+resets cache; let context fill further first — wait until ctx >= 80% so the cache rebuild cost amortizes
+over more turns). `recommend_compact_when_cache_cold` (Severity::Good, SourceKind::ProjectCanonical,
+suggested_command: `/compact`) fires when `cache_hit_ratio < 30%` AND `context_pressure > 60%`,
+advising a snapshot-first `/compact` (cache rebuild cost is already paid on every turn, so compacting
+won't cost cache effectiveness). Both rules gate on `IdentityConfidence >= Medium` and suppress when
+input/permission wait is active. The two rules are mutually exclusive by construction: hot requires
+ratio greater than 0.6, cold requires ratio less than 0.3 — strictly disjoint regions; the intermediate
+30-60% band triggers neither rule. `Engine::evaluate` dispatches `eval_cache` after `eval_agent_memory`.
+Thresholds are hard-coded for v1; operator-tunable thresholds are deferred. Deferred siblings: F-4b
+(Gemini /stats parsing), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt),
+F-7b (cache_drift_detected via recent_token_samples), F-7c (wait_for_reset / snapshot_before_reset —
+depend on F-5/F-6 reset_eta). Tests grew to 654 lib and 68 integration green.
 
 `v1.25.0` continues Phase F with F-4: Codex `cached_input_tokens`
 parser plus a CACHE hit ratio UI badge. New `parse_codex_cached_input_tokens`
@@ -105,6 +122,7 @@ untouched — the `/proc` fill only applies when the provider adapter left
 | Phase F F-2           | Shipped  | Agent memory file scan (CLAUDE.md / AGENTS.md / GEMINI.md + home-dir + Claude project memory dir) surfaces `MEM-FILE <KB\|MB> [Heur]` badge; `recommend_memory_bloat_advisory` fires Concern above 50_000 bytes (~49 KiB).                                    |
 | Phase F F-3           | Shipped  | Token usage persisted to `token_usage_samples` SQLite table (per pane per poll); selected pane card renders `TOKENS ▁▂▃▄▅▆▇█` sparkline of input-token deltas; retention sweep ages out rows with the same `max_age_days` knob as archive/snapshots.          |
 | Phase F F-4           | Shipped  | Codex `/status` welcome panel `(+ N cached)` parser populates `SignalSet.cached_input_tokens`; UI renders `CACHE <%>` badge with `cached / (input + cached) * 100` and one-decimal precision; honesty rule preserves missing badge for Claude / Gemini OAuth. |
+| Phase F F-7           | Shipped  | Cache-aware advisory rules: `cache_hot_compact_warning` (Concern when cache hot AND ctx headroom) and `compact_when_cache_cold` (Good with `/compact` suggestion when cache cold AND ctx filling); mutually exclusive by ratio threshold construction.        |
 
 Recent release notes:
 

@@ -1,6 +1,6 @@
 mission:
-  version: "1.25.0"
-  title: "Qmonster v1.25.0 — Phase F F-4: Codex cached_input_tokens + CACHE hit ratio badge."
+  version: "1.26.0"
+  title: "Qmonster v1.26.0 — Phase F F-7: cache-aware advisory rules."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1140,6 +1140,28 @@ mission:
     (cache-aware policy rules). 7 new tests across parser + schema
     round-trip + ratio formatter + UI render; 646 lib + 68 integration green.
 
+    Phase F continues with F-7 (v1.26.0): cache-aware advisory rules. Two
+    new rules in `src/policy/rules/cache.rs` turn F-4's
+    `cached_input_tokens` data into actionable `/compact` decisions.
+    `recommend_cache_hot_compact_warning` (Concern, ProjectCanonical) fires
+    when cache hit ratio > 60% AND context pressure < 70%, telling the
+    operator NOT to compact (compact resets cache; let context fill further
+    first). `recommend_compact_when_cache_cold` (Good, ProjectCanonical)
+    fires when cache hit ratio < 30% AND context pressure > 60%, telling
+    the operator a good moment to compact (cache won't be lost;
+    suggested_command Some("/compact"); next_step prompts snapshot-first).
+    Both rules gate on `IdentityConfidence >= Medium` and suppress when
+    input/permission wait is active. The two-rule design is mutually
+    exclusive by construction (hot needs ratio > 60%, cold needs ratio <
+    30% — strictly disjoint regions). Engine::evaluate dispatches
+    `eval_cache` after `eval_agent_memory`. Hard-coded thresholds for v1;
+    operator-tunable thresholds deferred. Deferred siblings: F-4b (Gemini
+    /stats parsing — needs live fixture), F-5 (Claude statusLine command
+    opt-in), F-6 (Codex App Server resetsAt), F-7b (cache_drift_detected
+    via recent_token_samples), F-7c (wait_for_reset /
+    snapshot_before_reset — depend on F-5/F-6 reset_eta). 8 new tests;
+    654 lib + 68 integration green.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1166,6 +1188,9 @@ mission:
     - "F-4: token_usage_samples gains nullable cached_input_tokens INTEGER column; AuditDb::open runs idempotent ALTER TABLE that swallows 'duplicate column' errors so v1.24.0 DBs upgrade in place; TokenSample.cached_input_tokens round-trips through INSERT/SELECT"
     - "F-4: event_loop sampling predicate is extended to include cached_input_tokens; per-poll TokenSample writer carries the value to SQLite"
     - "F-4: UI renders cache_hit_ratio = cached / (input + cached) as `cache <%> [<source>]` (text) and ` CACHE <%> [<source>] ` (TUI badge); honesty rule preserved when cached_input_tokens is None (badge omitted)"
+    - "F-7: recommend_cache_hot_compact_warning fires Severity::Concern ProjectCanonical when cache_hit_ratio > 60% AND context_pressure < 70% AND IdentityConfidence >= Medium AND no input/permission wait; suggests waiting until ctx >= 80% before /compact"
+    - "F-7: recommend_compact_when_cache_cold fires Severity::Good ProjectCanonical with suggested_command Some('/compact') when cache_hit_ratio < 30% AND context_pressure > 60% AND IdentityConfidence >= Medium AND no input/permission wait; next_step prompts snapshot-first"
+    - "F-7: the two cache rules are mutually exclusive by construction (hot ratio > 0.6 AND cold ratio < 0.3 are strictly disjoint); intermediate band 30-60% ratio triggers neither rule; eval_cache dispatched in Engine::evaluate after eval_agent_memory"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
