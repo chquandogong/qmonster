@@ -46,16 +46,20 @@ pub trait ProviderParser {
 
 /// Dispatch helper — pick the right adapter by provider.
 pub fn parse_for(ctx: &ParserContext) -> SignalSet {
-    parse_for_with_proc_root(ctx, std::path::Path::new("/proc"))
+    let home = directories::BaseDirs::new().map(|bd| bd.home_dir().to_path_buf());
+    parse_for_with_environment(ctx, std::path::Path::new("/proc"), home.as_deref())
 }
 
-/// Test-seam variant: delegates to a caller-supplied proc root so unit
-/// tests can exercise the `/proc` descendant-RSS fill path without
-/// touching the real filesystem.
-///
-/// Production callers must use [`parse_for`] instead.
+/// Test seam — accepts an alternate `/proc` root and an explicit
+/// `home_dir`. Tests inject both via tempdir-rooted trees. F-1's
+/// `parse_for_with_proc_root` is preserved as a backward-compat
+/// shim that calls this with `home_dir = None`.
 #[doc(hidden)]
-pub fn parse_for_with_proc_root(ctx: &ParserContext, proc_root: &std::path::Path) -> SignalSet {
+pub fn parse_for_with_environment(
+    ctx: &ParserContext,
+    proc_root: &std::path::Path,
+    home_dir: Option<&std::path::Path>,
+) -> SignalSet {
     let mut signals = match ctx.identity.identity.provider {
         Provider::Claude => claude::ClaudeAdapter.parse(ctx),
         Provider::Codex => codex::CodexAdapter.parse(ctx),
@@ -63,10 +67,9 @@ pub fn parse_for_with_proc_root(ctx: &ParserContext, proc_root: &std::path::Path
         Provider::Qmonster => qmonster::QmonsterAdapter.parse(ctx),
         Provider::Unknown => common::parse_common_signals(ctx.tail),
     };
-    // Phase F F-1: fill process_memory_mb from /proc descendant RSS
-    // when the provider adapter left it None. Gemini's ProviderOfficial
-    // path (parsed from its status table) is preserved by skipping the
-    // fill on Some(_).
+    // F-1: process_memory_mb fill from /proc descendant RSS when the
+    // adapter left it None (Gemini's status-table ProviderOfficial
+    // path is preserved by the is_none() guard).
     if signals.process_memory_mb.is_none()
         && let Some(pid) = ctx.pane_pid
         && let Some(mb) = process_memory::read_descendant_rss_mb_with_proc_root(pid, proc_root)
@@ -76,7 +79,34 @@ pub fn parse_for_with_proc_root(ctx: &ParserContext, proc_root: &std::path::Path
             crate::domain::origin::SourceKind::Heuristic,
         ));
     }
+    // F-2: agent_memory_bytes fill from filesystem scan. Always
+    // Heuristic (file existence is observation, not load
+    // confirmation). Fill skipped when current_path is empty so the
+    // global ~/.claude/CLAUDE.md cannot be mis-attributed to a pane
+    // without a resolved cwd.
+    if signals.agent_memory_bytes.is_none()
+        && !ctx.current_path.is_empty()
+        && let Some(bytes) = agent_memory::read_agent_memory_bytes_with_filesystem(
+            ctx.identity.identity.provider,
+            std::path::Path::new(ctx.current_path),
+            home_dir,
+        )
+    {
+        signals.agent_memory_bytes = Some(crate::domain::signal::MetricValue::new(
+            bytes,
+            crate::domain::origin::SourceKind::Heuristic,
+        ));
+    }
     signals
+}
+
+/// Backward-compat shim: F-1 callers (existing tests) can keep using
+/// the `parse_for_with_proc_root` signature. New code should use
+/// `parse_for_with_environment` so it can also exercise the
+/// agent-memory fill path with a fake home dir.
+#[doc(hidden)]
+pub fn parse_for_with_proc_root(ctx: &ParserContext, proc_root: &std::path::Path) -> SignalSet {
+    parse_for_with_environment(ctx, proc_root, None)
 }
 
 pub use common::parse_common_signals;

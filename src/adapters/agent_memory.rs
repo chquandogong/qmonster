@@ -275,4 +275,101 @@ mod tests {
         let path = Path::new("/home/chquan/Qmonster");
         assert_eq!(encode_claude_project_dir(path), "-home-chquan-Qmonster");
     }
+
+    #[test]
+    fn parse_for_fills_agent_memory_bytes_for_claude_when_files_exist() {
+        use crate::adapters::ParserContext;
+        use crate::adapters::common::PaneTailHistory;
+        use crate::adapters::parse_for_with_environment;
+        use crate::domain::identity::{
+            IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+        };
+        use crate::domain::origin::SourceKind;
+        use crate::policy::claude_settings::ClaudeSettings;
+        use crate::policy::pricing::PricingTable;
+        use std::path::Path;
+        use tempfile::tempdir;
+
+        let tmp = tempdir().unwrap();
+        let project = tmp.path().join("proj");
+        let home = tmp.path().join("home");
+        write_file(&project.join("CLAUDE.md"), &"a".repeat(15_000));
+        write_file(&home.join(".claude").join("CLAUDE.md"), &"b".repeat(2_000));
+
+        let id = ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Claude,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::High,
+        };
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let project_str = project.to_string_lossy().to_string();
+        let ctx = ParserContext {
+            identity: &id,
+            tail: "",
+            pricing: &pricing,
+            claude_settings: &settings,
+            history: &history,
+            pane_pid: None,
+            current_path: &project_str,
+        };
+
+        let signals = parse_for_with_environment(&ctx, Path::new("/proc"), Some(&home));
+        let mem = signals
+            .agent_memory_bytes
+            .expect("Claude pane with files should fill agent_memory_bytes");
+        assert_eq!(mem.value, 17_000);
+        assert_eq!(mem.source_kind, SourceKind::Heuristic);
+    }
+
+    #[test]
+    fn parse_for_skips_agent_memory_when_current_path_is_empty() {
+        use crate::adapters::ParserContext;
+        use crate::adapters::common::PaneTailHistory;
+        use crate::adapters::parse_for_with_environment;
+        use crate::domain::identity::{
+            IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+        };
+        use crate::policy::claude_settings::ClaudeSettings;
+        use crate::policy::pricing::PricingTable;
+        use std::path::Path;
+        use tempfile::tempdir;
+
+        let tmp = tempdir().unwrap();
+        let home = tmp.path().join("home");
+        // Even with a global ~/.claude/CLAUDE.md present, an empty
+        // current_path means we cannot attribute it to a pane — must
+        // skip rather than fabricate.
+        write_file(&home.join(".claude").join("CLAUDE.md"), &"a".repeat(99_000));
+
+        let id = ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Claude,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::High,
+        };
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let ctx = ParserContext {
+            identity: &id,
+            tail: "",
+            pricing: &pricing,
+            claude_settings: &settings,
+            history: &history,
+            pane_pid: None,
+            current_path: "",
+        };
+
+        let signals = parse_for_with_environment(&ctx, Path::new("/proc"), Some(&home));
+        assert!(signals.agent_memory_bytes.is_none());
+    }
 }
