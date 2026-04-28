@@ -797,7 +797,7 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
             format!(
                 " MEM-FILE {} [{}] ",
                 format_agent_memory_bytes(metric.value),
-                source_kind_label(metric.source_kind),
+                source_kind_label(metric.source_kind)
             ),
             theme::label_style(),
         );
@@ -826,6 +826,11 @@ fn format_agent_memory_bytes(bytes: u64) -> String {
     const MIB: u64 = 1024 * KIB;
     if bytes >= MIB {
         format!("{:.1} MB", (bytes as f64) / (MIB as f64))
+    } else if bytes < KIB {
+        // Sub-1 KiB renders as "<1 KB" rather than "0 KB" so
+        // operators can distinguish "tiny non-zero file present" from
+        // "no files found" (the latter omits the badge entirely).
+        "<1 KB".to_string()
     } else {
         format!("{} KB", bytes / KIB)
     }
@@ -2039,6 +2044,14 @@ mod tests {
     fn format_agent_memory_bytes_at_or_above_mib_renders_mb() {
         assert_eq!(format_agent_memory_bytes(1024 * 1024), "1.0 MB");
         assert_eq!(format_agent_memory_bytes(2_500_000), "2.4 MB");
+    }
+
+    #[test]
+    fn format_agent_memory_bytes_below_kib_renders_lt_1_kb() {
+        assert_eq!(format_agent_memory_bytes(0), "<1 KB");
+        assert_eq!(format_agent_memory_bytes(536), "<1 KB");
+        assert_eq!(format_agent_memory_bytes(1023), "<1 KB");
+        assert_eq!(format_agent_memory_bytes(1024), "1 KB");
     }
 
     #[test]
