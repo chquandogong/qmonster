@@ -1,9 +1,12 @@
-//! Low-level SQLite adapter shared by the audit writer.
+//! Low-level SQLite adapter shared by the audit and token-usage
+//! writers.
 //!
-//! This module is internal to `store/`. All external callers write
-//! through `store::audit::SqliteAuditSink`, which carries the
-//! type-level guarantee that only `AuditEvent` reaches the DB (r2
-//! CSF-2 / Gemini G-8).
+//! This module is internal to `store/`. External callers write
+//! through `store::audit::SqliteAuditSink` (audit_events table) or
+//! `store::token_usage::SqliteTokenUsageSink` (token_usage_samples
+//! table — Phase F F-3, v1.24.0). The audit writer carries the
+//! type-level guarantee that only `AuditEvent` reaches its table
+//! (r2 CSF-2 / Gemini G-8).
 
 use std::path::Path;
 use std::sync::Mutex;

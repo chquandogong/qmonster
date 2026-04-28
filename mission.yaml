@@ -1109,14 +1109,14 @@ mission:
     error and never crash. `PaneReport.recent_token_samples: Vec<TokenSample>`
     is populated for every live pane every iteration (one indexed `SELECT
     LIMIT 20` per pane per poll, sub-ms cost). UI renders
-    `TOKENS ▁▂▃▄▅▆▇` Unicode-block sparkline from `input_tokens` deltas
+    `TOKENS ▁▂▃▄▅▆▇█` Unicode-block sparkline from `input_tokens` deltas
     (saturating-sub for provider counter resets) on the expanded pane card
     only; fewer than 2 samples → no sparkline (honesty rule). Retention
     sweep extends to `DELETE FROM token_usage_samples WHERE ts_unix_ms <
     (now - max_age_days*86_400_000)`; zero retention preserves all rows
-    (consistent with archive sweep). 11 new tests across module +
-    dispatcher + integration; 639 lib + 68 integration green at the slice
-    tip.
+    (consistent with archive sweep). 10 new tests: 6 token_usage module +
+    2 sparkline UI + 1 retention sweep + 1 integration; 639 lib + 68
+    integration green at the slice tip.
 
   done_when:
     - "cargo_build_passes"

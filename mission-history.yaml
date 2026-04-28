@@ -13661,7 +13661,9 @@ timeline:
       selected pane card; honesty rule: no sparkline when fewer than 2 samples.
       Retention sweep extended to DELETE token_usage_samples older than
       max_age_days; zero retention is a no-op. RetentionReport gains
-      token_usage_rows_deleted field. 11 new tests: 639 lib + 68 integration green.
+      token_usage_rows_deleted field. 10 new tests (6 token_usage module +
+      2 sparkline UI + 1 retention sweep + 1 integration); 639 lib + 68
+      integration green.
     intent_ko: >
       Phase F F-3: token 사용 시계열 저장 및 sparkline UI 추가.
       token_usage_samples SQLite 테이블 (ts_unix_ms, pane_id, provider,
@@ -13685,10 +13687,11 @@ timeline:
       added:
         - "`src/store/token_usage.rs` — SqliteTokenUsageSink with record_sample, recent_samples, error_count AtomicU64, and 5 unit tests"
         - "`src/store/sqlite.rs` — token_usage_samples table + idx_token_usage_pane_ts schema applied in AuditDb::open"
-        - "`src/domain/dispatcher.rs` — PaneReport.recent_token_samples: Vec<TokenSample>; populated per live pane per iteration"
+        - "`src/app/event_loop.rs` — PaneReport.recent_token_samples: Vec<TokenSample>; populated per live pane per iteration; record_sample writer hook in the per-pane parsing loop"
         - "`src/ui/panels.rs` — render_token_sparkline: delta-based 8-block Unicode sparkline on expanded pane card; honesty rule"
-        - "src/app/startup.rs — token_usage_sink opened alongside audit sink; None fallback on open failure"
-        - "11 new tests: 5 token_usage module + 2 dispatcher + 3 sparkline UI + 1 retention sweep"
+        - "`src/app/startup.rs` — token_usage_sink opened alongside audit sink; None fallback on open failure"
+        - "`src/app/bootstrap.rs` — Context.token_usage_sink: Option<SqliteTokenUsageSink> + with_token_usage_sink builder"
+        - "10 new tests: 6 token_usage module + 2 sparkline UI + 1 retention sweep + 1 integration"
       modified:
         - "`src/store/retention.rs` — sweep adds DELETE FROM token_usage_samples WHERE ts_unix_ms < cutoff; RetentionReport.token_usage_rows_deleted field; RetentionError::Sqlite variant"
         - "`src/store/mod.rs` — re-exports SqliteTokenUsageSink and TokenSample from token_usage module"
@@ -13699,9 +13702,10 @@ timeline:
       - "src/store/sqlite.rs"
       - "src/store/retention.rs"
       - "src/store/mod.rs"
-      - "src/domain/dispatcher.rs"
-      - "src/ui/panels.rs"
+      - "src/app/event_loop.rs"
       - "src/app/startup.rs"
+      - "src/app/bootstrap.rs"
+      - "src/ui/panels.rs"
       - "docs/ai/UI_MANUAL.md"
       - "docs/ai/ARCHITECTURE.md"
       - "docs/ai/PROJECT_BRIEF.md"
