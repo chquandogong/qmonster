@@ -2,6 +2,7 @@ pub mod claude;
 pub mod codex;
 pub mod common;
 pub mod gemini;
+pub mod process_memory;
 pub mod qmonster;
 mod runtime;
 

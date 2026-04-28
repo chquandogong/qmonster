@@ -34,7 +34,7 @@ pub struct RawPaneSnapshot {
     /// `None` when the row came from a legacy 8-field fixture or when
     /// tmux emitted a non-integer value. Consumers that need RSS for
     /// the actual AI CLI must walk descendants from this PID via
-    /// `adapters::process_memory::read_descendant_rss_mb` (Task 2).
+    /// `adapters::process_memory::read_descendant_rss_mb`.
     pub pane_pid: Option<u32>,
 }
 
@@ -102,6 +102,15 @@ mod tests {
         // tmux emits an integer; a corrupted snapshot or surprise format
         // change MUST NOT panic.
         let line = "qwork\t1\t%42\tclaude:1:main\tclaude\t/home/a\t1\t0\tnot-a-pid";
+        let row = parse_list_panes_row(line).expect("parse ok");
+        assert_eq!(row.pane_pid, None);
+    }
+
+    #[test]
+    fn parse_list_panes_row_treats_empty_pid_field_as_none() {
+        // tmux can emit a trailing tab when #{pane_pid} is unresolved
+        // (e.g. mid-spawn). Empty must degrade to None, not "0".
+        let line = "qwork\t1\t%42\tclaude:1:main\tclaude\t/home/a\t1\t0\t";
         let row = parse_list_panes_row(line).expect("parse ok");
         assert_eq!(row.pane_pid, None);
     }
