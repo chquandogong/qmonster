@@ -180,6 +180,7 @@ mod tests {
             input_tokens: Some(1),
             output_tokens: None,
             cost_usd: None,
+            cached_input_tokens: None,
         })
         .unwrap();
         // Fresh (1 day ago) - must survive
@@ -190,6 +191,7 @@ mod tests {
             input_tokens: Some(2),
             output_tokens: None,
             cost_usd: None,
+            cached_input_tokens: None,
         })
         .unwrap();
         // Drop our writer-side connection so the retention pass owns the lock

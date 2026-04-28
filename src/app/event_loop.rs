@@ -151,6 +151,7 @@ where
             if signals.input_tokens.is_some()
                 || signals.output_tokens.is_some()
                 || signals.cost_usd.is_some()
+                || signals.cached_input_tokens.is_some()
             {
                 use std::time::{SystemTime, UNIX_EPOCH};
                 let ts_unix_ms = SystemTime::now()
@@ -164,6 +165,7 @@ where
                     input_tokens: signals.input_tokens.as_ref().map(|m| m.value),
                     output_tokens: signals.output_tokens.as_ref().map(|m| m.value),
                     cost_usd: signals.cost_usd.as_ref().map(|m| m.value),
+                    cached_input_tokens: signals.cached_input_tokens.as_ref().map(|m| m.value),
                 };
                 if let Err(e) = token_sink.record_sample(&sample) {
                     eprintln!("F-3: token_usage record_sample failed: {e}");

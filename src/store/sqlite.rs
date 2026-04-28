@@ -39,13 +39,14 @@ CREATE INDEX IF NOT EXISTS idx_audit_kind ON audit_events(kind);
 
 pub const TOKEN_USAGE_SCHEMA: &str = r"
 CREATE TABLE IF NOT EXISTS token_usage_samples (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts_unix_ms    INTEGER NOT NULL,
-    pane_id       TEXT    NOT NULL,
-    provider      TEXT    NOT NULL,
-    input_tokens  INTEGER,
-    output_tokens INTEGER,
-    cost_usd      REAL
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_unix_ms            INTEGER NOT NULL,
+    pane_id               TEXT    NOT NULL,
+    provider              TEXT    NOT NULL,
+    input_tokens          INTEGER,
+    output_tokens         INTEGER,
+    cost_usd              REAL,
+    cached_input_tokens   INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_token_usage_pane_ts
     ON token_usage_samples(pane_id, ts_unix_ms DESC);
@@ -65,6 +66,20 @@ impl AuditDb {
             .map_err(|e| SqliteError::Query(e.to_string()))?;
         conn.execute_batch(TOKEN_USAGE_SCHEMA)
             .map_err(|e| SqliteError::Query(e.to_string()))?;
+        // F-4 (v1.25.0): existing DBs from v1.24.0 lack the
+        // cached_input_tokens column. ALTER returns "duplicate column"
+        // if it already exists; we swallow that explicitly so the
+        // migration is idempotent across cold and warm starts.
+        if let Err(e) = conn.execute(
+            "ALTER TABLE token_usage_samples ADD COLUMN cached_input_tokens INTEGER",
+            [],
+        ) {
+            // "duplicate column name" is the expected error on warm starts
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(SqliteError::Query(msg));
+            }
+        }
         Ok(Self {
             conn: Mutex::new(conn),
         })

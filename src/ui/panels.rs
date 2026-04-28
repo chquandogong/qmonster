@@ -2174,6 +2174,7 @@ mod tests {
                 input_tokens: Some((i as u64) * 100),
                 output_tokens: None,
                 cost_usd: None,
+                cached_input_tokens: None,
             })
             .collect::<Vec<_>>();
         let line = render_token_sparkline(&samples).expect("8 samples must render");
@@ -2201,6 +2202,7 @@ mod tests {
                 input_tokens: Some(100),
                 output_tokens: None,
                 cost_usd: None,
+                cached_input_tokens: None,
             }])
             .is_none(),
             "one sample = no delta = no line"

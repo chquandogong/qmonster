@@ -29,6 +29,10 @@ pub struct TokenSample {
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     pub cost_usd: Option<f64>,
+    /// Phase F F-4 (v1.25.0): cached input tokens; sourced from Codex
+    /// `/status` welcome panel (`+ N cached`). None for providers
+    /// that don't surface cache info.
+    pub cached_input_tokens: Option<u64>,
 }
 
 pub struct SqliteTokenUsageSink {
@@ -87,8 +91,8 @@ impl SqliteTokenUsageSink {
 fn record_sample_via(conn: &Connection, sample: &TokenSample) -> Result<(), SqliteError> {
     conn.execute(
         "INSERT INTO token_usage_samples \
-         (ts_unix_ms, pane_id, provider, input_tokens, output_tokens, cost_usd) \
-         VALUES (?, ?, ?, ?, ?, ?)",
+         (ts_unix_ms, pane_id, provider, input_tokens, output_tokens, cost_usd, cached_input_tokens) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
         params![
             sample.ts_unix_ms,
             sample.pane_id,
@@ -96,6 +100,7 @@ fn record_sample_via(conn: &Connection, sample: &TokenSample) -> Result<(), Sqli
             sample.input_tokens.map(|n| n as i64),
             sample.output_tokens.map(|n| n as i64),
             sample.cost_usd,
+            sample.cached_input_tokens.map(|n| n as i64),
         ],
     )
     .map_err(|e| SqliteError::Query(e.to_string()))?;
@@ -109,7 +114,7 @@ fn recent_samples_via(
 ) -> Result<Vec<TokenSample>, SqliteError> {
     let mut stmt = conn
         .prepare_cached(
-            "SELECT ts_unix_ms, pane_id, provider, input_tokens, output_tokens, cost_usd \
+            "SELECT ts_unix_ms, pane_id, provider, input_tokens, output_tokens, cost_usd, cached_input_tokens \
              FROM token_usage_samples \
              WHERE pane_id = ? \
              ORDER BY ts_unix_ms DESC \
@@ -125,6 +130,7 @@ fn recent_samples_via(
                 input_tokens: row.get::<_, Option<i64>>(3)?.map(|n| n as u64),
                 output_tokens: row.get::<_, Option<i64>>(4)?.map(|n| n as u64),
                 cost_usd: row.get(5)?,
+                cached_input_tokens: row.get::<_, Option<i64>>(6)?.map(|n| n as u64),
             })
         })
         .map_err(|e| SqliteError::Query(e.to_string()))?;
@@ -168,6 +174,7 @@ mod tests {
             input_tokens: in_tok,
             output_tokens: None,
             cost_usd: None,
+            cached_input_tokens: None,
         }
     }
 
@@ -182,6 +189,7 @@ mod tests {
             input_tokens: Some(1234),
             output_tokens: Some(56),
             cost_usd: Some(0.078),
+            cached_input_tokens: None,
         };
         sink.record_sample(&original).unwrap();
         let got = sink.recent_samples("%1", 10).unwrap();
@@ -227,6 +235,7 @@ mod tests {
             input_tokens: None,
             output_tokens: None,
             cost_usd: Some(0.42),
+            cached_input_tokens: None,
         };
         sink.record_sample(&s).unwrap();
         let got = sink.recent_samples("%1", 1).unwrap();
@@ -253,6 +262,7 @@ mod tests {
                 input_tokens: None,
                 output_tokens: None,
                 cost_usd: None,
+                cached_input_tokens: None,
             })
             .unwrap();
         }
@@ -260,6 +270,25 @@ mod tests {
             let got = sink.recent_samples(&format!("%{}", i), 1).unwrap();
             assert_eq!(got[0].provider, *p, "provider must round-trip for {:?}", p);
         }
+    }
+
+    #[test]
+    fn record_sample_round_trips_cached_input_tokens() {
+        let td = tempdir().unwrap();
+        let sink = SqliteTokenUsageSink::open(&td.path().join("q.db")).unwrap();
+        let s = TokenSample {
+            ts_unix_ms: 1000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(189_703),
+            output_tokens: Some(20_355),
+            cost_usd: None,
+            cached_input_tokens: Some(1_317_376),
+        };
+        sink.record_sample(&s).unwrap();
+        let got = sink.recent_samples("%1", 1).unwrap();
+        assert_eq!(got[0].cached_input_tokens, Some(1_317_376));
+        assert_eq!(got[0].input_tokens, Some(189_703));
     }
 
     #[test]
@@ -282,6 +311,7 @@ mod tests {
             input_tokens: Some(1),
             output_tokens: None,
             cost_usd: None,
+            cached_input_tokens: None,
         };
         let res = sink.record_sample(&s);
         assert!(res.is_err(), "INSERT into dropped table must fail");
