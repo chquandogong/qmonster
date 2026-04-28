@@ -403,6 +403,7 @@ mod tests {
             active: true,
             dead: false,
             tail: tail.into(),
+            pane_pid: None, // F-1: test fixture; production rows fill from tmux
         }
     }
 

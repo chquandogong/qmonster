@@ -45,6 +45,7 @@ impl PaneSource for SharedPaneSource {
             active: true,
             dead: false,
             tail: self.tail.lock().unwrap().clone(),
+            pane_pid: None, // F-1: test fixture; production rows fill from tmux
         }])
     }
     fn current_target(&self) -> Result<Option<WindowTarget>, PollingError> {

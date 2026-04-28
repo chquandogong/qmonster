@@ -280,6 +280,7 @@ mod tests {
             active: true,
             dead: false,
             tail: "hello".into(),
+            pane_pid: None, // F-1: test fixture; production rows fill from tmux
         }];
         let src = FixtureSource { panes: fixtures };
         let panes = src.list_panes(None).unwrap();
@@ -320,6 +321,7 @@ mod tests {
                     active: true,
                     dead: false,
                     tail: "hello".into(),
+                    pane_pid: None, // F-1: test fixture; production rows fill from tmux
                 },
                 RawPaneSnapshot {
                     session_name: "qwork".into(),
@@ -331,6 +333,7 @@ mod tests {
                     active: true,
                     dead: false,
                     tail: "hello".into(),
+                    pane_pid: None, // F-1: test fixture; production rows fill from tmux
                 },
                 RawPaneSnapshot {
                     session_name: "research".into(),
@@ -342,6 +345,7 @@ mod tests {
                     active: true,
                     dead: false,
                     tail: "hello".into(),
+                    pane_pid: None, // F-1: test fixture; production rows fill from tmux
                 },
             ],
         };

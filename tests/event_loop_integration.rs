@@ -100,6 +100,7 @@ fn pane(pane_id: &str, title: &str, cmd: &str, tail: &str, dead: bool) -> RawPan
         active: !dead,
         dead,
         tail: tail.into(),
+        pane_pid: None, // F-1: test fixture; production rows fill from tmux
     }
 }
 
@@ -121,6 +122,7 @@ fn pane_with_path(
         active: !dead,
         dead,
         tail: tail.into(),
+        pane_pid: None, // F-1: test fixture; production rows fill from tmux
     }
 }
 
@@ -808,6 +810,7 @@ fn cross_window_concurrent_work_fires_end_to_end_when_security_gate_enabled() {
         active: true,
         dead: false,
         tail: tail.clone(),
+        pane_pid: None, // F-1: test fixture; production rows fill from tmux
     };
     let pane_b = RawPaneSnapshot {
         session_name: "scratch".into(),
@@ -819,6 +822,7 @@ fn cross_window_concurrent_work_fires_end_to_end_when_security_gate_enabled() {
         active: true,
         dead: false,
         tail,
+        pane_pid: None, // F-1: test fixture; production rows fill from tmux
     };
     let source = FixturePaneSource {
         panes: vec![pane_a, pane_b],
@@ -1057,6 +1061,7 @@ fn cross_window_concurrent_work_stays_silent_when_gate_off_by_default() {
         active: true,
         dead: false,
         tail: tail.clone(),
+        pane_pid: None, // F-1: test fixture; production rows fill from tmux
     };
     let pane_b = RawPaneSnapshot {
         session_name: "scratch".into(),
@@ -1068,6 +1073,7 @@ fn cross_window_concurrent_work_stays_silent_when_gate_off_by_default() {
         active: true,
         dead: false,
         tail,
+        pane_pid: None, // F-1: test fixture; production rows fill from tmux
     };
     let source = FixturePaneSource {
         panes: vec![pane_a, pane_b],
