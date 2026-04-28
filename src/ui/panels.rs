@@ -599,6 +599,20 @@ pub fn metric_row(s: &SignalSet) -> String {
             source_kind_label(m.source_kind)
         ));
     }
+    // F-4: cache hit ratio (cached / (input + cached)). Source
+    // labeled from cached_input_tokens metric since input_tokens
+    // and cached share a single provider surface.
+    if let Some(pct) = format_cache_hit_ratio(
+        s.input_tokens.as_ref().map(|m| m.value),
+        s.cached_input_tokens.as_ref().map(|m| m.value),
+    ) {
+        let label = s
+            .cached_input_tokens
+            .as_ref()
+            .map(|m| source_kind_label(m.source_kind))
+            .unwrap_or("Heur");
+        parts.push(format!("cache {} [{}]", pct, label));
+    }
     parts.join("  ")
 }
 
@@ -808,6 +822,23 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
             theme::label_style(),
         );
     }
+    // F-4: CACHE hit ratio badge.
+    if let Some(pct) = format_cache_hit_ratio(
+        signals.input_tokens.as_ref().map(|m| m.value),
+        signals.cached_input_tokens.as_ref().map(|m| m.value),
+    ) {
+        let label = signals
+            .cached_input_tokens
+            .as_ref()
+            .map(|m| source_kind_label(m.source_kind))
+            .unwrap_or("Heur");
+        push_badge(
+            &mut spans,
+            &mut has_any,
+            format!(" CACHE {} [{}] ", pct, label),
+            theme::label_style(),
+        );
+    }
 
     has_any.then(|| Line::from(spans))
 }
@@ -840,6 +871,29 @@ fn format_agent_memory_bytes(bytes: u64) -> String {
     } else {
         format!("{} KB", bytes / KIB)
     }
+}
+
+/// Phase F F-4 (v1.25.0): compute `cache_hit_ratio = cached /
+/// (input + cached)` and format as a percent string with one
+/// decimal. Returns None when both inputs are None or both zero
+/// (avoid divide-by-zero / nonsense ratios). The numerator is
+/// strictly cached_input_tokens; the denominator is input_tokens
+/// (which is non-cached) PLUS cached_input_tokens — Codex's welcome
+/// panel reports them as siblings in `Token usage: total=N
+/// input=N (+ N cached) output=N`, so the ratio answers "what
+/// fraction of the prompt was reused from cache?".
+fn format_cache_hit_ratio(
+    input_tokens: Option<u64>,
+    cached_input_tokens: Option<u64>,
+) -> Option<String> {
+    let cached = cached_input_tokens?;
+    let input = input_tokens.unwrap_or(0);
+    let total = input.saturating_add(cached);
+    if total == 0 {
+        return None;
+    }
+    let pct = (cached as f64 / total as f64) * 100.0;
+    Some(format!("{pct:.1}%"))
 }
 
 /// Phase F F-3 (v1.24.0): render a TOKENS sparkline from recent
@@ -2207,5 +2261,62 @@ mod tests {
             .is_none(),
             "one sample = no delta = no line"
         );
+    }
+
+    #[test]
+    fn format_cache_hit_ratio_returns_none_when_both_inputs_are_none() {
+        assert!(format_cache_hit_ratio(None, None).is_none());
+    }
+
+    #[test]
+    fn format_cache_hit_ratio_returns_none_when_cached_is_zero_and_input_is_zero() {
+        assert!(format_cache_hit_ratio(Some(0), Some(0)).is_none());
+    }
+
+    #[test]
+    fn format_cache_hit_ratio_codex_welcome_panel_example() {
+        // input=189703, cached=1317376 → ratio = 1317376/(189703+1317376) ≈ 0.8741 → "87.4%"
+        assert_eq!(
+            format_cache_hit_ratio(Some(189_703), Some(1_317_376)).as_deref(),
+            Some("87.4%")
+        );
+    }
+
+    #[test]
+    fn metric_row_emits_cache_when_cached_input_tokens_set() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::{MetricValue, SignalSet};
+        let s = SignalSet {
+            input_tokens: Some(MetricValue::new(189_703_u64, SourceKind::ProviderOfficial)),
+            cached_input_tokens: Some(MetricValue::new(
+                1_317_376_u64,
+                SourceKind::ProviderOfficial,
+            )),
+            ..SignalSet::default()
+        };
+        let row = metric_row(&s);
+        assert!(row.contains("cache 87.4% [Official]"), "row = {row}");
+    }
+
+    #[test]
+    fn metric_badge_line_includes_cache_badge_when_cached_input_tokens_set() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::{MetricValue, SignalSet};
+        let s = SignalSet {
+            input_tokens: Some(MetricValue::new(189_703_u64, SourceKind::ProviderOfficial)),
+            cached_input_tokens: Some(MetricValue::new(
+                1_317_376_u64,
+                SourceKind::ProviderOfficial,
+            )),
+            ..SignalSet::default()
+        };
+        let lines = metric_badge_line(&s);
+        let rendered: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|sp| sp.content.as_ref())
+            .collect();
+        assert!(rendered.contains("CACHE 87.4%"), "rendered = {rendered}");
+        assert!(rendered.contains("[Official]"), "rendered = {rendered}");
     }
 }
