@@ -83,7 +83,11 @@ pub fn parse_for_with_environment(
     // Heuristic (file existence is observation, not load
     // confirmation). Fill skipped when current_path is empty so the
     // global ~/.claude/CLAUDE.md cannot be mis-attributed to a pane
-    // without a resolved cwd.
+    // without a resolved cwd. The is_none() guard mirrors F-1's
+    // pattern: if a future adapter parses agent_memory_bytes from a
+    // provider-native source (e.g., Codex /memory output), that
+    // stronger SourceKind must not be clobbered by this Heuristic
+    // fallback.
     if signals.agent_memory_bytes.is_none()
         && !ctx.current_path.is_empty()
         && let Some(bytes) = agent_memory::read_agent_memory_bytes_with_filesystem(
@@ -100,10 +104,10 @@ pub fn parse_for_with_environment(
     signals
 }
 
-/// Backward-compat shim: F-1 callers (existing tests) can keep using
-/// the `parse_for_with_proc_root` signature. New code should use
-/// `parse_for_with_environment` so it can also exercise the
-/// agent-memory fill path with a fake home dir.
+/// Backward-compat shim — prefer `parse_for_with_environment` for
+/// new tests. F-1 callers can keep using this signature; passing
+/// `home_dir = None` short-circuits the F-2 agent-memory fill,
+/// which is exactly the behavior F-1 tests expect.
 #[doc(hidden)]
 pub fn parse_for_with_proc_root(ctx: &ParserContext, proc_root: &std::path::Path) -> SignalSet {
     parse_for_with_environment(ctx, proc_root, None)
