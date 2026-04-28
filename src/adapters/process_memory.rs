@@ -120,6 +120,8 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    const GEMINI_IDLE_FIXTURE: &str = include_str!("../../tests/fixtures/real/gemini_idle.txt");
+
     fn write_proc_pid(root: &Path, pid: u32, comm: &str, rss_kb: u64, children: &[u32]) {
         let dir = root.join(pid.to_string());
         fs::create_dir_all(&dir).unwrap();
@@ -296,8 +298,7 @@ mod tests {
         use crate::policy::claude_settings::ClaudeSettings;
         use crate::policy::pricing::PricingTable;
 
-        // Path is relative to this file (src/adapters/process_memory.rs).
-        let tail = include_str!("../../tests/fixtures/real/gemini_idle.txt");
+        let tail = GEMINI_IDLE_FIXTURE;
 
         let id = ResolvedIdentity {
             identity: PaneIdentity {
@@ -333,6 +334,15 @@ mod tests {
             .process_memory_mb
             .expect("Gemini status-table memory column should be parsed");
         assert_eq!(mem.source_kind, SourceKind::ProviderOfficial);
+        // Defense in depth: tie the test to the fixture's known content. If
+        // gemini_idle.txt is intentionally updated, this assertion fails first
+        // and points the reader at the fixture; the distance check below stays
+        // as a backup that catches Heuristic-overwrite regressions.
+        assert!(
+            (mem.value - 118.8).abs() < 0.5,
+            "Gemini fixture should report 118.8 MB; got {} (drift in fixture?)",
+            mem.value
+        );
         // Don't assert the exact MB — depends on the fixture. Just ensure
         // /proc's 999_000 kB ≈ 975.6 MiB did NOT win.
         assert!(
