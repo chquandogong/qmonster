@@ -59,7 +59,7 @@ fn recommend_memory_bloat_advisory(
     Some(Recommendation {
         action: "agent-memory: trim before /compact",
         reason: format!(
-            "agent memory files total {:.1} KB (> 50 KB advisory threshold) — every prompt loads them; trimming reduces session prompt surface and lets cache rebuild on a smaller stable prefix",
+            "agent memory files total {:.1} KB (> 50_000 bytes (~49 KiB) advisory threshold) — every prompt loads them; trimming reduces session prompt surface and lets cache rebuild on a smaller stable prefix",
             kb,
         ),
         severity: Severity::Concern,
@@ -68,7 +68,7 @@ fn recommend_memory_bloat_advisory(
         side_effects: vec![],
         is_strong: false,
         next_step: Some(
-            "trim CLAUDE.md / AGENTS.md / GEMINI.md content into per-task .claude/skills/, .codex/AGENTS.override.md, or .gemini/skills/ on-demand docs to reduce session prompt surface".into(),
+            "trim CLAUDE.md / AGENTS.md / GEMINI.md content into per-task .claude/skills/, ~/.codex/AGENTS.override.md, or .gemini/skills/ on-demand docs to reduce session prompt surface".into(),
         ),
         profile: None,
     })
@@ -128,7 +128,10 @@ mod tests {
         assert_eq!(rec.severity, Severity::Concern);
         assert_eq!(rec.source_kind, SourceKind::ProjectCanonical);
         assert!(rec.reason.contains("58.6 KB"));
-        assert!(rec.next_step.as_deref().unwrap().contains(".claude/skills"));
+        let step = rec.next_step.as_deref().unwrap();
+        assert!(step.contains(".claude/skills"));
+        assert!(step.contains("~/.codex/AGENTS.override.md"));
+        assert!(step.contains(".gemini/skills"));
         assert!(!rec.is_strong);
         assert!(rec.suggested_command.is_none());
     }

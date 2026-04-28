@@ -227,6 +227,23 @@ untouched (the dispatcher fills `/proc` descendant RSS only when the
 provider adapter left `process_memory_mb` `None` and `pane_pid.is_some()`).
 SourceKind for the new path is `Heuristic` because `/proc` RSS is an OS
 observation, not a provider-published number.
+v1.23.0 continues **Phase F** with **F-2 agent memory file scan + bloat advisory**:
+new `adapters::agent_memory::read_agent_memory_bytes_with_filesystem` discovers
+provider-specific memory files (per-provider candidate lists; Claude includes
+`~/.claude/projects/<encoded>/memory/*.md`), sums byte sizes capped per file at
+1 MiB, and returns `Option<u64>`. `ParserContext.current_path: &str` is threaded
+through; `parse_for_with_proc_root` is preserved as a backward-compat shim that
+calls a new `parse_for_with_environment(ctx, proc_root, home_dir)` seam — single
+dispatch responsible for both F-1 process RAM and F-2 agent memory fills.
+`SignalSet.agent_memory_bytes: Option<MetricValue<u64>>` carries the result,
+always `Heuristic` (file existence ≠ load confirmation). UI renders
+`MEM-FILE <KB|MB> [Heur]` after the F-1 MEM badge; sub-1 KiB renders as
+`<1 KB`. New policy rule `policy::rules::agent_memory::eval_agent_memory` fires
+`Severity::Concern` `ProjectCanonical` advisory above 50_000 bytes
+(`BLOAT_THRESHOLD_BYTES`) with `IdentityConfidence ≥ Medium` and no input /
+permission wait; next-step routes the operator to per-task skill / override
+files. Threshold is hard-coded for v1; operator-configurable threshold
+deferred to a later slice.
 
 ## Module responsibilities
 

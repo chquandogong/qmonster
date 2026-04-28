@@ -154,6 +154,24 @@ session:window · Provider role · %pane_id
     `python` / `python3`) — `[Heur]`. If `/proc` is unreadable, no
     descendant exists, or `pane_pid` is `None`, the badge stays absent
     (honesty rule).
+- `MEM-FILE` badge shows total bytes of provider-specific agent
+  memory files: Claude sums `CLAUDE.md` (project root + `~/.claude/`)
+  plus all `.md` files in `~/.claude/projects/<encoded>/memory/`;
+  Codex sums `AGENTS.md` (project root + `~/.codex/`) plus
+  `~/.codex/AGENTS.override.md`; Gemini sums `GEMINI.md` (project
+  root + `<project>/.gemini/`) plus `~/.gemini/GEMINI.md`. Per-file
+  size is capped at 1 MiB during the scan to prevent a pathological
+  file from dominating the total. Source label is always `[Heur]`
+  because file existence is not proof the CLI loaded the bytes — it
+  is an observation that the bytes are _available_ to be loaded.
+  Format is `<N> KB` between 1 KiB and 1 MiB and `<N.N> MB` at or
+  above 1 MiB; sub-1 KiB renders as `<1 KB` so operators can
+  distinguish "tiny non-zero" from "no files found" (badge omitted
+  in the latter case — honesty rule). Total above 50_000 bytes
+  (~49 KiB) triggers a `memory_bloat_advisory` Concern recommendation
+  pointing the operator toward `.claude/skills/`,
+  `~/.codex/AGENTS.override.md`, or `.gemini/skills/` on-demand
+  files instead of `/compact` / `/clear` / `/memory`.
 - 긴 worktree 경로 문자열은 PATH badge에서 40자까지 자동
   ellipsize됩니다 (Slice 3 housekeeping). 잘린 부분은 `…` 한 글자로
   표시되어 badge 한 줄이 pane card 폭을 넘기지 않습니다.

@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.22.0 — Phase F F-1: process RAM signal for Claude/Codex panes."
+  mission_title: "Qmonster v1.23.0 — Phase F F-2: agent memory file scan + bloat advisory."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 151
-  latest_version: "1.22.0"
+  total_revisions: 152
+  latest_version: "1.23.0"
 
 timeline:
   - change_id: "initial"
@@ -13530,9 +13530,116 @@ timeline:
       - "05c8148 F-1 task4: fixture-path const and Gemini value defense-in-depth assertion"
     follow_up: []
 
+  - change_id: "v1.23.0-phase-f-f2-agent-memory-scan"
+    semantic_version: "1.23.0"
+    change_sequence: 152
+    date: "2026-04-29"
+    author: "Claude"
+    contributors:
+      - "Operator directive: Task 6 docs/ledger bump for Phase F F-2 agent memory file scan + bloat advisory"
+    change_type: "feature"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Continue Phase F with F-2: discover provider-specific agent memory files,
+      sum their byte sizes into SignalSet.agent_memory_bytes, surface a
+      MEM-FILE badge in the UI, and fire a bloat advisory when the total
+      exceeds 50_000 bytes (~49 KiB).
+    intent_ko: >
+      Phase F F-2: provider별 agent memory file 탐색, 바이트 합산을
+      SignalSet.agent_memory_bytes에 저장, UI에 MEM-FILE 뱃지 표시,
+      50_000 bytes (~49 KiB) 초과 시 bloat advisory 발화.
+    decision: >
+      New adapters::agent_memory::read_agent_memory_bytes_with_filesystem
+      discovers per-provider memory files (Claude: CLAUDE.md + ~/.claude/CLAUDE.md
+      + ~/.claude/projects/<encoded>/memory/*.md; Codex: AGENTS.md +
+      ~/.codex/AGENTS.md + ~/.codex/AGENTS.override.md; Gemini: GEMINI.md +
+      <project>/.gemini/GEMINI.md + ~/.gemini/GEMINI.md) and sums byte sizes
+      capped per file at 1 MiB. ParserContext.current_path: &str is threaded
+      through for project-root resolution. parse_for dispatches to
+      parse_for_with_environment(ctx, proc_root, home_dir) — single seam for
+      both F-1 process RAM and F-2 agent memory fills; parse_for_with_proc_root
+      shim preserved for backward compat. SignalSet.agent_memory_bytes:
+      Option<MetricValue<u64>> with SourceKind::Heuristic (file existence is not
+      load confirmation). UI renders MEM-FILE <KB|MB> [Heur] badge; sub-1 KiB
+      renders as <1 KB (honesty rule). New policy rule
+      recommend_memory_bloat_advisory fires Severity::Concern ProjectCanonical
+      above BLOAT_THRESHOLD_BYTES (50_000) with IdentityConfidence >= Medium
+      and no input/permission wait; next_step routes operator to
+      .claude/skills/, ~/.codex/AGENTS.override.md, or .gemini/skills/.
+    decision_ko: >
+      adapters::agent_memory 모듈이 provider별 memory file을 탐색해 1 MiB cap으로
+      바이트 합산. ParserContext.current_path를 project-root 해석에 사용.
+      parse_for_with_environment가 F-1 + F-2 fills를 단일 seam으로 처리.
+      SignalSet.agent_memory_bytes는 Heuristic (파일 존재 = 로드 확인 아님).
+      UI는 MEM-FILE 뱃지 표시; 1 KiB 미만은 <1 KB로 렌더링. 정책 규칙
+      recommend_memory_bloat_advisory는 50_000 bytes 초과 + Medium 이상 신뢰도
+      + 입력/권한 대기 없을 때 Concern 발화.
+    triggered_by: "Phase F F-2 plan: agent memory file scan + bloat advisory."
+    issue_or_context: >
+      Operators loading large CLAUDE.md / AGENTS.md / GEMINI.md files consume
+      session prompt surface on every turn without knowing the total file size.
+      F-2 surfaces the total as a MEM-FILE badge and fires a Concern when
+      the total exceeds ~49 KiB, routing the operator toward per-task skill /
+      override files instead of /compact / /clear / /memory.
+    changes:
+      added:
+        - "`src/adapters/agent_memory.rs` — read_agent_memory_bytes_with_filesystem with per-provider candidate lists, 1 MiB per-file cap, and filesystem test seam"
+        - "`parse_for_with_environment` seam in `src/adapters/mod.rs`; `parse_for_with_proc_root` shim preserved"
+        - "`src/policy/rules/agent_memory.rs` — eval_agent_memory + recommend_memory_bloat_advisory with BLOAT_THRESHOLD_BYTES = 50_000"
+        - "22 new tests: 9 in agent_memory.rs, 2 in dispatcher seam, 5 in policy::rules::agent_memory, 4 in UI render, 1 <1 KB polish, 1 carry forward"
+      modified:
+        - "`src/domain/signal.rs` — SignalSet.agent_memory_bytes: Option<MetricValue<u64>> added"
+        - "`src/adapters/mod.rs` — ParserContext.current_path: &str added; parse_for dispatches to parse_for_with_environment"
+        - "`src/ui/panels.rs` — MEM-FILE badge rendering with format_agent_memory_bytes helper"
+        - "`src/policy/rules/agent_memory.rs` — M2: next_step uses ~/.codex/AGENTS.override.md; M3: reason text uses 50_000 bytes (~49 KiB)"
+        - "`src/ui/panels.rs` — M3: advisory threshold comment updated to 50_000 bytes (~49 KiB)"
+        - "`README.md`, `VERSION.md`, `mission.yaml`, `mission-history.yaml`, `docs/ai/UI_MANUAL.md`, `docs/ai/ARCHITECTURE.md`, `docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md` bumped to v1.23.0"
+      removed: []
+    changed_sections:
+      - "src/adapters/agent_memory.rs"
+      - "src/adapters/mod.rs"
+      - "src/domain/signal.rs"
+      - "src/policy/rules/agent_memory.rs"
+      - "src/ui/panels.rs"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    observable_effects:
+      added:
+        - "Claude/Codex/Gemini pane cards show `MEM-FILE <N> KB [Heur]` (or `<1 KB`) when provider memory files exist in the project root or home dir"
+        - "New `memory_bloat_advisory` Concern recommendation fires when total agent memory bytes exceed 50_000 (~49 KiB) at Medium+ identity confidence"
+      modified:
+        - "Policy rule next_step now correctly references ~/.codex/AGENTS.override.md (home-level) instead of .codex/AGENTS.override.md (project-level)"
+        - "Advisory threshold wording changed from '50 KB' to '50_000 bytes (~49 KiB)' for precision"
+      removed: []
+    impact_scope:
+      runtime: "new per-poll filesystem reads for agent memory files; no tmux transport, storage, or actuation change."
+      tests: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, scripts/verify-shared.sh"
+      ledger: "1 new timeline entry (sequence 152); meta bump; minor version bump v1.22.0 → v1.23.0 for Phase F F-2"
+      npm: "package.json version unchanged at 1.21.3 — npm publish deferred"
+      review_gate: "local validation passes before commit"
+      follow_up_carryover: "Phase F F-3 through F-7 remain unscoped pending operator direction."
+    breaking: false
+    risk: "low — filesystem reads are Linux/macOS compatible; missing files return None; Heuristic label is honest about file-existence-not-load-confirmation."
+    related_commits:
+      - "102a37b F-2 task1: SignalSet.agent_memory_bytes + ParserContext.current_path"
+      - "1200854 F-2 task2: agent_memory module scans provider memory files"
+      - "1d4d9ac F-2 task3: parse_for_with_environment fills agent_memory_bytes from filesystem"
+      - "0202c9f F-2 task3: dispatcher shim + is_none() guard doc polish"
+      - "3742eb6 F-2 task4: memory_bloat_advisory rule fires above 50KB"
+      - "be48f7b F-2 task5: MEM-FILE badge surfaces agent_memory_bytes on pane cards"
+      - "832034c F-2 task5: <1 KB rendering + trailing-comma symmetry"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.22.0 opens Phase F with F-1: process RSS surfaced as `memory <N> MB [Heur]` on Claude/Codex pane cards via /proc descendant walk (depth-capped at 5 with a visited-set); Gemini status-table `[Official]` path is preserved untouched. v1.21.3 added MIT licensing and made Claude `/clear` statusline `CTX —` render as `CTX 0%`."
-  next_phase: "Phase F is open with F-1 shipped (process RAM for Claude/Codex panes); F-2 (agent memory file scan + bloat advisory), F-3 (token usage time series + sparkline), F-4 (Gemini /stats polling for tokens.cached), F-5 (Claude statusLine command opt-in for cache_read), F-6 (Codex App Server resetsAt polling), and F-7 (cache-aware policy rules) remain unscoped pending operator direction. No outstanding housekeeping items in the deferred ledger besides confirm-archive review (permanently closed per operator decision 2026-04-27)."
+  current_phase: "v1.23.0 continues Phase F with F-2: agent memory file scan + bloat advisory. New adapters::agent_memory sums provider-specific memory files (CLAUDE.md / AGENTS.md / GEMINI.md plus home-dir + Claude project memory dir) into SignalSet.agent_memory_bytes; UI surfaces MEM-FILE <KB|MB> [Heur] badge; new recommend_memory_bloat_advisory rule fires Severity::Concern above 50_000 bytes (~49 KiB). v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
+  next_phase: "Phase F F-2 shipped; F-3 (token usage time series + sparkline), F-4 (Gemini /stats polling for tokens.cached), F-5 (Claude statusLine command opt-in for cache_read), F-6 (Codex App Server resetsAt polling), and F-7 (cache-aware policy rules) remain unscoped pending operator direction. No outstanding housekeeping items in the deferred ledger."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

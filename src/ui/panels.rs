@@ -789,7 +789,7 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
     // CLAUDE.md / AGENTS.md / GEMINI.md plus per-provider home
     // counterparts. Always Heuristic because file existence is not
     // proof the CLI loaded the bytes — operator decides if the
-    // total is too high (advisory threshold: 50 KB).
+    // total is too high (advisory threshold: 50_000 bytes (~49 KiB)).
     if let Some(metric) = signals.agent_memory_bytes.as_ref() {
         push_badge(
             &mut spans,

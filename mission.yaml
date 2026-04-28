@@ -1,6 +1,6 @@
 mission:
-  version: "1.22.0"
-  title: "Qmonster v1.22.0 — Phase F F-1: process RAM signal for Claude/Codex panes."
+  version: "1.23.0"
+  title: "Qmonster v1.23.0 — Phase F F-2: agent memory file scan + bloat advisory."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1068,6 +1068,33 @@ mission:
     `tmux/types.rs::test parse_list_panes_row_treats_empty_pid_field_as_none`).
     Total: 608 lib + 67 integration tests green.
 
+    Phase F continues with F-2 (v1.23.0): agent memory file scan + bloat
+    advisory. New `src/adapters/agent_memory.rs` discovers provider-specific
+    memory files (Claude `CLAUDE.md` + `~/.claude/CLAUDE.md` +
+    `~/.claude/projects/<encoded>/memory/*.md`; Codex `AGENTS.md` +
+    `~/.codex/AGENTS.md` + `~/.codex/AGENTS.override.md`; Gemini `GEMINI.md`
+    + `<project>/.gemini/GEMINI.md` + `~/.gemini/GEMINI.md`) and sums their
+    byte sizes (per-file capped at 1 MiB) into a new
+    `SignalSet.agent_memory_bytes: Option<MetricValue<u64>>` field with
+    `SourceKind::Heuristic`. `ParserContext.current_path: &str` is threaded
+    through for project-root resolution. `parse_for` now resolves the home
+    dir via `directories::BaseDirs::new()` and dispatches to
+    `parse_for_with_environment(ctx, proc_root, home_dir)` — a single seam
+    handling both F-1 process RAM and F-2 agent memory fills, with a
+    backward-compat `parse_for_with_proc_root` shim for existing F-1 callers.
+    UI surfaces a new `MEM-FILE <KB|MB> [Heur]` badge after the existing
+    process-memory badge (`memory-file` lowercase on the `--once` text path;
+    sub-1 KiB renders as `<1 KB` so operators can distinguish "tiny non-zero"
+    from "no files at all"). New policy rule `recommend_memory_bloat_advisory`
+    fires `Severity::Concern` `ProjectCanonical` advisory when summed bytes
+    exceed 50_000 (~49 KiB) and identity confidence is >= Medium; suggested
+    next-step routes the operator toward `.claude/skills/`,
+    `~/.codex/AGENTS.override.md`, or `.gemini/skills/` instead of `/compact`
+    / `/clear` / `/memory`. Tests grew by 22 (9 in `agent_memory.rs` + 2 in
+    dispatcher seam tests + 5 in `policy::rules::agent_memory` + 4 in UI
+    render + 1 polish test for `<1 KB` rendering + 1 carry forward).
+    Total: 630 lib + 67 integration tests green.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1080,6 +1107,11 @@ mission:
     - "F-1: adapters::process_memory::read_descendant_rss_mb returns highest-RSS descendant in MiB, preferring known CLI comm names; missing /proc returns None; visited-set prevents redundant /proc reads on diamonds/cycles"
     - "F-1: ParserContext carries pane_pid; parse_for_with_proc_root test seam (#[doc(hidden)] pub) fills SignalSet.process_memory_mb from /proc only when the adapter left it None and pane_pid is Some (Gemini ProviderOfficial path preserved)"
     - "F-1: live --once smoke against multi-pane tmux session shows memory <N> MB [Heur] on Claude and Codex panes; Gemini retains [Official] source label; test parse_for_does_not_overwrite_gemini_provider_official_memory locks the contract at 118.8 MB fixture content"
+    - "F-2: SignalSet.agent_memory_bytes is Option<MetricValue<u64>>; ParserContext.current_path is &str; SignalSet field is Heuristic-labeled because file existence is observation, not load-confirmation"
+    - "F-2: adapters::agent_memory::read_agent_memory_bytes_with_filesystem returns Some(total_bytes) when at least one provider memory file exists; per-file size capped at 1 MiB; Qmonster/Unknown providers always return None"
+    - "F-2: parse_for_with_environment fills agent_memory_bytes only when current_path is non-empty (prevents global ~/.claude/CLAUDE.md mis-attribution to a pane with unresolved cwd); F-1 parse_for_with_proc_root shim preserved for backward compat"
+    - "F-2: recommend_memory_bloat_advisory fires Severity::Concern ProjectCanonical above 50_000 bytes with IdentityConfidence >= Medium and no input/permission wait; suggested next_step routes operator to .claude/skills/, ~/.codex/AGENTS.override.md, or .gemini/skills/"
+    - "F-2: UI panel metric line renders 'MEM-FILE <KB|MB> [Heur]' badge whenever agent_memory_bytes is Some; badge omitted when None; sub-1 KiB renders '<1 KB' so operators can distinguish tiny-non-zero from no-files-found (honesty rule)"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1372,5 +1404,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 151
+    total_revisions: 152
     history: "mission-history.yaml"

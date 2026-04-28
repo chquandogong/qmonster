@@ -1,7 +1,7 @@
 # VALIDATION
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-28 (current implementation validation sync)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-29 (current implementation validation sync)
 
 This doc defines what "good" looks like for Qmonster at each phase, and
 what reviewers (Codex, Gemini, and the human operator) should
@@ -11,10 +11,10 @@ lives in `REVIEW_GUIDE.md`. Every displayed metric must carry a
 Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
-Current local verification (2026-04-28): `cargo fmt --check`,
+Current local verification (2026-04-29): `cargo fmt --check`,
 `git diff --check`, `cargo test --all-targets`,
 `cargo clippy --all-targets -- -D warnings`, `cargo build --release`,
-and `scripts/verify-shared.sh` pass for v1.22.0. Official
+and `scripts/verify-shared.sh` pass for v1.23.0. Official
 `mission-spec validate .` is still unavailable locally because
 `mission-spec` is not installed, so `scripts/verify-shared.sh` falls
 back to the lite ledger-structure check after cargo checks.
