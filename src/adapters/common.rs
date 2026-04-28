@@ -264,6 +264,7 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         worktree_path: None,
         reasoning_effort: None,
         process_memory_mb: None,
+        agent_memory_bytes: None,
         runtime_facts: Vec::new(),
     }
 }

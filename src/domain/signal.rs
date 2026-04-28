@@ -163,6 +163,18 @@ pub struct SignalSet {
     /// canonicalized to MiB at parse time so downstream renders never
     /// have to disambiguate MB vs GB.
     pub process_memory_mb: Option<MetricValue<f64>>,
+    /// Phase F F-2 (v1.23.0): total bytes of provider-specific agent
+    /// memory files summed at observation time (CLAUDE.md / AGENTS.md
+    /// / GEMINI.md in the pane's `current_path` plus the home-dir
+    /// counterparts plus, for Claude, the
+    /// `~/.claude/projects/<encoded>/memory/` directory). Always
+    /// `Heuristic` because file existence is not proof the CLI
+    /// actually loaded the bytes — it's an observation that the bytes
+    /// are *available* to be loaded. Per-file size is capped at 1MB
+    /// during scan to prevent pathological OOM-level reads. None when
+    /// the pane has no readable memory file (honesty rule) or the
+    /// provider is Qmonster monitor (no memory surface).
+    pub agent_memory_bytes: Option<MetricValue<u64>>,
     pub runtime_facts: Vec<RuntimeFact>,
 }
 

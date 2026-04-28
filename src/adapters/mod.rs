@@ -27,6 +27,13 @@ pub struct ParserContext<'a> {
     /// via `process_memory::read_descendant_rss_mb` when no
     /// provider-native memory signal was emitted.
     pub pane_pid: Option<u32>,
+    /// Phase F F-2 (v1.23.0): pane's current working directory, used
+    /// to discover provider-specific memory files at the project
+    /// root. Empty when the pane has no resolved cwd. Consumed by
+    /// `parse_for_with_environment` (added in Task 3) to fill
+    /// `SignalSet.agent_memory_bytes` via
+    /// `agent_memory::read_agent_memory_bytes_with_filesystem`.
+    pub current_path: &'a str,
 }
 
 /// Provider-specific parser. Each adapter receives a ParserContext
@@ -91,5 +98,6 @@ pub(crate) fn ctx<'a>(
         claude_settings: settings,
         history,
         pane_pid: None,
+        current_path: "", // F-2: test fixture; production wires from snapshot.current_path
     }
 }

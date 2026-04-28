@@ -232,6 +232,7 @@ mod tests {
             claude_settings: &settings,
             history: &history,
             pane_pid: Some(42),
+            current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         };
         assert_eq!(ctx.pane_pid, Some(42));
     }
@@ -276,6 +277,7 @@ mod tests {
             claude_settings: &settings,
             history: &history,
             pane_pid: Some(1),
+            current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         };
 
         let signals = parse_for_with_proc_root(&ctx, root);
@@ -324,6 +326,7 @@ mod tests {
             claude_settings: &settings,
             history: &history,
             pane_pid: Some(99),
+            current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         };
         let signals = parse_for_with_proc_root(&ctx, root);
 
