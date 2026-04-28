@@ -1,3 +1,4 @@
+pub mod agent_memory;
 pub mod claude;
 pub mod codex;
 pub mod common;
