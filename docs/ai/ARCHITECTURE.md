@@ -215,6 +215,18 @@ populates `model_name = gpt-5.5` and `reasoning_effort = xhigh`.
 The invariant that matters is boundary purity: provider parsing stays in
 `adapters/`, policy stays pure, storage stays out of `ui/`, and tmux
 stays unaware of provider semantics.
+v1.22.0 opens **Phase F** with **F-1 process RAM**: tmux `#{pane_pid}` is
+captured as the 9th `PANE_LIST_FORMAT` field, and a new
+`adapters::process_memory` helper walks `/proc/<pid>/task/<pid>/children`
+recursively (depth-capped at 5 with a visited-set against
+diamond/cycle re-reads) to surface the highest-RSS descendant's RSS as
+`SignalSet.process_memory_mb` for Claude/Codex panes via a new
+`#[doc(hidden)] pub` `parse_for_with_proc_root` test seam in the adapter
+dispatcher. Gemini's status-table `[Official]` path is preserved
+untouched (the dispatcher fills `/proc` descendant RSS only when the
+provider adapter left `process_memory_mb` `None` and `pane_pid.is_some()`).
+SourceKind for the new path is `Heuristic` because `/proc` RSS is an OS
+observation, not a provider-published number.
 
 ## Module responsibilities
 

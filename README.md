@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.21.3`; current mission ledger `v1.21.3`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.21.3`; current mission ledger `v1.22.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,27 +31,30 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.21.3` / npm `1.21.3`.
+Current release: `v1.22.0` / npm `1.21.3` (npm publish deferred).
 
-`v1.21.3` is a small operator-facing cleanup: the package is now MIT
-licensed, and Claude `/clear` statuslines render `CTX —` as `CTX 0%`
-instead of replaying the pre-clear cached CTX value. Quota placeholders
-remain conservative: `5h` / `7d` render only when Claude exposes a
-numeric value.
+`v1.22.0` opens Phase F with F-1: process RSS is surfaced as `memory <N> MB [Heur]`
+on Claude/Codex pane cards. tmux `#{pane_pid}` is captured as the 9th
+`PANE_LIST_FORMAT` field; a new `adapters::process_memory` helper walks
+`/proc/<pid>/task/<pid>/children` recursively (depth ≤ 5, visited-set) to
+find the highest-RSS descendant, preferring `claude/codex/gemini/node/python`
+comm names. Gemini's status-table `[Official]` MEM path is preserved
+untouched — the `/proc` fill only applies when the provider adapter left
+`process_memory_mb` as `None`. 608 lib + 67 integration tests green.
 
-| Area                  | Status   | Operator-visible result                                                                                                                                 |
-| --------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phases 0-5            | Shipped  | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete.                          |
+| Area                  | Status   | Operator-visible result                                                                                                                                  |
+| --------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phases 0-5            | Shipped  | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete.                           |
 | Runtime observability | Shipped  | Pane state, command row, provider facts, copyable `run:` commands, security posture badges, cost/context/quota gradients, and settings overlay are live. |
 | Phase B visibility    | Complete | Standard config/pricing paths, Codex token in/out, opt-in security advisories, branch-aware concurrent-work warnings, and copyable commands are closed.  |
 | Phase C C1            | Complete | `src/main.rs` is a thin CLI/startup wrapper; the live TUI loop and helpers live under `src/app/`.                                                        |
 | Phase C C2            | Complete | `[tmux] source = "auto"` tries control-mode first and falls back to polling when attach is unavailable.                                                  |
-| Phase C C3            | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled payloads.                        |
-| Phase D D1            | Shipped  | Opt-in cross-window concurrent-work findings exist for same path + branch panes across tmux windows.                                                    |
-| Phase D D2            | Shipped  | Opt-in identity-drift findings catch provider or worktree changes in the same pane, with per-session dedup.                                             |
+| Phase C C3            | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled payloads.                         |
+| Phase D D1            | Shipped  | Opt-in cross-window concurrent-work findings exist for same path + branch panes across tmux windows.                                                     |
+| Phase D D2            | Shipped  | Opt-in identity-drift findings catch provider or worktree changes in the same pane, with per-session dedup.                                              |
 | Phase D D3            | Closed   | Claude subagent detection is refined; per-subagent token attribution stays permanently deferred because providers do not expose counters.                |
-| Phase E E1            | Shipped  | Gemini status-table memory is parsed into `MEM` badges and `--once` metrics.                                                                            |
-| Phase E E2            | Shipped  | Settings overlay writes preserve existing TOML comments, unrelated sections, and key order.                                                             |
+| Phase E E1            | Shipped  | Gemini status-table memory is parsed into `MEM` badges and `--once` metrics.                                                                             |
+| Phase E E2            | Shipped  | Settings overlay writes preserve existing TOML comments, unrelated sections, and key order.                                                              |
 
 Recent release notes:
 

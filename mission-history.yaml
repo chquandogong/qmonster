@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v1.21.3 — MIT license and Claude clear CTX reset."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 150
-  latest_version: "1.21.3"
+  total_revisions: 151
+  latest_version: "1.22.0"
 
 timeline:
   - change_id: "initial"
@@ -13435,8 +13435,103 @@ timeline:
     follow_up:
       - "Assess `.docs/init/` goals against actual visible/working UI features and identify remaining work."
 
+  - change_id: "v1.22.0-phase-f-f1-process-ram-signal"
+    semantic_version: "1.22.0"
+    change_sequence: 151
+    date: "2026-04-28"
+    author: "Claude"
+    contributors:
+      - "Operator directive: Task 5 docs/ledger bump for Phase F F-1 process RAM signal"
+    change_type: "feature"
+    motivation_type: "implementation"
+    persistence: "permanent"
+    intent: >
+      Open Phase F with F-1: surface process resident-set-size (RSS) as a
+      `MEM` badge on Claude/Codex pane cards by reading `/proc` descendant
+      RSS for the pane's foreground shell PID, capped at depth 5 with a
+      visited-set against diamond/cycle re-walks.
+    intent_ko: >
+      Phase F를 F-1로 열기: pane의 foreground shell PID에서 `/proc` 하위
+      descendant RSS를 읽어 Claude/Codex pane 카드에 `MEM` badge로
+      프로세스 상주 메모리를 표시. depth 5 cap + visited-set으로
+      diamond/cycle 재읽기 방지.
+    decision: >
+      Capture tmux `#{pane_pid}` as the 9th PANE_LIST_FORMAT field into
+      RawPaneSnapshot.pane_pid: Option<u32>. New adapters::process_memory
+      module walks /proc/<pid>/task/<pid>/children recursively with a
+      depth cap of 5 and a visited-set, preferring descendants whose
+      `comm` matches claude/codex/gemini/node/python/python3, and returns
+      the highest-RSS descendant in MiB. ParserContext carries pane_pid;
+      a new #[doc(hidden)] pub parse_for_with_proc_root test seam fills
+      SignalSet.process_memory_mb from /proc only when the provider adapter
+      left it None and pane_pid is Some. Gemini's ProviderOfficial
+      status-table path is preserved untouched. SourceKind for the new
+      fill is Heuristic (OS observation, not provider-published).
+    decision_ko: >
+      tmux `#{pane_pid}`를 PANE_LIST_FORMAT 9번째 필드로 캡처해
+      RawPaneSnapshot.pane_pid: Option<u32>에 저장한다. 새
+      adapters::process_memory 모듈이 /proc/<pid>/task/<pid>/children을
+      depth 5 cap + visited-set으로 재귀 탐색해 claude/codex/gemini/
+      node/python/python3 comm 일치 우선으로 highest-RSS descendant를
+      MiB로 반환한다. ParserContext가 pane_pid를 전달하고,
+      #[doc(hidden)] pub parse_for_with_proc_root test seam이 provider
+      adapter가 None으로 남긴 경우에만 pane_pid가 Some일 때 /proc에서
+      SignalSet.process_memory_mb를 채운다. Gemini ProviderOfficial
+      status-table 경로는 그대로 유지. 새 채움의 SourceKind는 Heuristic.
+    triggered_by: "Phase F F-1 plan: surface process RAM as MEM badge on Claude/Codex pane cards."
+    issue_or_context: >
+      Gemini surfaces memory via its status table (ProviderOfficial path,
+      v1.21.0). Claude and Codex do not publish RAM usage in their status
+      surfaces, so the MEM badge was absent for those providers. The OS
+      /proc filesystem exposes RSS for every descendant of the shell PID
+      that tmux already tracks as pane_pid.
+    changes:
+      added:
+        - "`src/adapters/process_memory.rs` — read_descendant_rss_mb with depth-capped /proc walk, visited-set, comm-preference logic, and proc_root test seam"
+        - "`parse_for_with_proc_root` #[doc(hidden)] pub test seam in `src/adapters/mod.rs`"
+        - "13 new tests: 8 in process_memory.rs (proc walk + ParserContext + dispatcher + Gemini contract), 4 in tmux/types.rs (9-field format + legacy/unparseable/empty pid), 1 parse_list_panes_row_treats_empty_pid_field_as_none"
+      modified:
+        - "`src/tmux/types.rs` — PANE_LIST_FORMAT gains #{pane_pid} as 9th field; parse_list_panes_row handles legacy 8-field rows with pane_pid: None"
+        - "`src/adapters/mod.rs` — ParserContext gains pane_pid field; parse_for is a thin wrapper over parse_for_with_proc_root"
+        - "`README.md`, `VERSION.md`, `mission.yaml`, `mission-history.yaml`, `docs/ai/UI_MANUAL.md`, `docs/ai/ARCHITECTURE.md` bumped to v1.22.0"
+      removed: []
+    changed_sections:
+      - "src/adapters/process_memory.rs"
+      - "src/adapters/mod.rs"
+      - "src/tmux/types.rs"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    observable_effects:
+      added:
+        - "Claude and Codex pane cards show `MEM <N> MB [Heur]` when tmux pane_pid is available and a descendant process with RSS is found under /proc"
+      modified:
+        - "Gemini pane MEM badge source label [Official] is preserved; /proc fill skips Gemini panes because Gemini adapter already sets process_memory_mb"
+      removed: []
+    impact_scope:
+      runtime: "tmux polling gains one #{pane_pid} field; new /proc read per poll cycle per Claude/Codex pane; no policy, storage, or actuation change."
+      tests: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, scripts/verify-shared.sh"
+      ledger: "1 new timeline entry (sequence 151); meta bump; minor version bump v1.21.3 → v1.22.0 for Phase F F-1"
+      npm: "package.json version unchanged at 1.21.3 — npm publish deferred to a later commit per CONTRIBUTING.md release flow"
+      review_gate: "local validation passes before commit"
+      follow_up_carryover: "Phase F F-2 and beyond remain open for future operator-directed work."
+    breaking: false
+    risk: "low — /proc read is Linux-only; missing /proc path or unreadable file returns None rather than erroring; Gemini ProviderOfficial path is locked by a dedicated regression test."
+    related_commits:
+      - "6b6ab44 F-1 task1: capture #{pane_pid} as 9th tmux format field"
+      - "7278ac4 F-1 task2: process_memory module reads descendant RSS from /proc"
+      - "0a8bf3f F-1 task2: visited-set, #[doc(hidden)], and comm-truncation note"
+      - "aa52609 F-1 task3: thread pane_pid through ParserContext"
+      - "a800d40 F-1 task3: phase-stable doc and inline-comment hygiene"
+      - "04a5dfa F-1 task4: fill process_memory_mb from /proc descendant RSS for Claude/Codex"
+      - "05c8148 F-1 task4: fixture-path const and Gemini value defense-in-depth assertion"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.21.3 adds MIT licensing and makes Claude `/clear` statusline `CTX —` render as `CTX 0%` so the UI does not preserve the pre-clear cached CTX. v1.21.2 keeps Claude statusline placeholder metrics bounded per column, and v1.21.1 keeps Codex CTX/quota visible after `/clear` by surfacing partial bottom-status fields when the total token field is absent."
+  current_phase: "v1.22.0 opens Phase F with F-1: process RSS surfaced as `memory <N> MB [Heur]` on Claude/Codex pane cards via /proc descendant walk (depth-capped at 5 with a visited-set); Gemini status-table `[Official]` path is preserved untouched. v1.21.3 added MIT licensing and made Claude `/clear` statusline `CTX —` render as `CTX 0%`."
   next_phase: "Phase E is fully shipped. No outstanding housekeeping items remain in the deferred ledger besides confirm-archive review (permanently closed per operator decision 2026-04-27). Awaiting new operator-directed work."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

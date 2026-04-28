@@ -145,6 +145,15 @@ session:window · Provider role · %pane_id
   토큰을 읽을 수 있으면 채웁니다. Codex는 `gpt-5.5 xhigh`처럼
   trailing model-with-reasoning status item에만 effort가 붙는 경우에도
   `MODEL`과 `EFFORT`를 분리해 채웁니다.
+- `MEM` badge shows process resident memory in MiB. Sources by provider:
+  - Gemini: status-table `memory` column (`118.8 MB` / `1.2 GB`) — `[Official]`.
+  - Claude / Codex: F-1 reads `/proc/<descendant>/status` VmRSS for the
+    highest-RSS descendant of the pane's foreground shell PID (depth ≤ 5,
+    with a visited-set guarding against diamonds/cycles), preferring
+    descendants whose `comm` matches `claude / codex / gemini / node /
+python / python3` — `[Heur]`. If `/proc` is unreadable, no
+    descendant exists, or `pane_pid` is `None`, the badge stays absent
+    (honesty rule).
 - 긴 worktree 경로 문자열은 PATH badge에서 40자까지 자동
   ellipsize됩니다 (Slice 3 housekeeping). 잘린 부분은 `…` 한 글자로
   표시되어 badge 한 줄이 pane card 폭을 넘기지 않습니다.

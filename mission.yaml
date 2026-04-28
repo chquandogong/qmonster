@@ -1,6 +1,6 @@
 mission:
-  version: "1.21.3"
-  title: "Qmonster v1.21.3 — MIT license and Claude clear CTX reset."
+  version: "1.22.0"
+  title: "Qmonster v1.22.0 — Phase F F-1: process RAM signal for Claude/Codex panes."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1046,6 +1046,28 @@ mission:
     --all-targets -D warnings clean; cargo fmt clean. Layered
     on v1.10.7 (`346fe27`); everything below untouched.
 
+    Phase F opens with F-1 (v1.22.0): process RAM signal for Claude/Codex
+    pane cards. tmux `#{pane_pid}` becomes the 9th `PANE_LIST_FORMAT`
+    field, captured into `RawPaneSnapshot.pane_pid: Option<u32>`. New
+    `src/adapters/process_memory.rs` walks `/proc/<pid>/task/<pid>/children`
+    recursively (depth-capped at 5, with a visited-set guarding against
+    diamond/cycle re-walks) and returns the highest-RSS descendant in MiB,
+    preferring children whose `comm` matches `claude / codex / gemini /
+    node / python / python3`. `ParserContext` carries the new `pane_pid`
+    field; `parse_for` is split into a thin wrapper plus a
+    `#[doc(hidden)] pub` `parse_for_with_proc_root` test seam that fills
+    `SignalSet.process_memory_mb` from `/proc` descendant RSS only when the
+    provider adapter left it `None` and `pane_pid.is_some()` — Gemini's
+    status-table `ProviderOfficial` path stays untouched. Source for the
+    new fill is `Heuristic` (OS observation, not provider-published). Live
+    smoke confirmed `memory <N> MB [Heur]` on Claude/Codex panes and
+    `memory N MB [Official]` preserved on Gemini panes. Tests grew by 13
+    (8 in `process_memory.rs` for /proc walks + ParserContext + dispatcher
+    + Gemini-not-overwritten contract; 4 in `tmux/types.rs` for 9-field
+    format + legacy/unparseable/empty pid; 1 in
+    `tmux/types.rs::test parse_list_panes_row_treats_empty_pid_field_as_none`).
+    Total: 608 lib + 67 integration tests green.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1054,6 +1076,10 @@ mission:
     - "mission-history.yaml exists"
     - "docs/ai/WORKFLOWS.md exists"
     - "scripts/verify-shared.sh exists"
+    - "F-1: tmux capture format includes #{pane_pid} as 9th field; RawPaneSnapshot.pane_pid is Option<u32>; legacy 8-field rows still parse with pane_pid: None"
+    - "F-1: adapters::process_memory::read_descendant_rss_mb returns highest-RSS descendant in MiB, preferring known CLI comm names; missing /proc returns None; visited-set prevents redundant /proc reads on diamonds/cycles"
+    - "F-1: ParserContext carries pane_pid; parse_for_with_proc_root test seam (#[doc(hidden)] pub) fills SignalSet.process_memory_mb from /proc only when the adapter left it None and pane_pid is Some (Gemini ProviderOfficial path preserved)"
+    - "F-1: live --once smoke against multi-pane tmux session shows memory <N> MB [Heur] on Claude and Codex panes; Gemini retains [Official] source label; test parse_for_does_not_overwrite_gemini_provider_official_memory locks the contract at 118.8 MB fixture content"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1346,5 +1372,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 150
+    total_revisions: 151
     history: "mission-history.yaml"
