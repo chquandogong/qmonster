@@ -38,13 +38,37 @@ pub trait ProviderParser {
 
 /// Dispatch helper — pick the right adapter by provider.
 pub fn parse_for(ctx: &ParserContext) -> SignalSet {
-    match ctx.identity.identity.provider {
+    parse_for_with_proc_root(ctx, std::path::Path::new("/proc"))
+}
+
+/// Test-seam variant: delegates to a caller-supplied proc root so unit
+/// tests can exercise the `/proc` descendant-RSS fill path without
+/// touching the real filesystem.
+///
+/// Production callers must use [`parse_for`] instead.
+#[doc(hidden)]
+pub fn parse_for_with_proc_root(ctx: &ParserContext, proc_root: &std::path::Path) -> SignalSet {
+    let mut signals = match ctx.identity.identity.provider {
         Provider::Claude => claude::ClaudeAdapter.parse(ctx),
         Provider::Codex => codex::CodexAdapter.parse(ctx),
         Provider::Gemini => gemini::GeminiAdapter.parse(ctx),
         Provider::Qmonster => qmonster::QmonsterAdapter.parse(ctx),
         Provider::Unknown => common::parse_common_signals(ctx.tail),
+    };
+    // Phase F F-1: fill process_memory_mb from /proc descendant RSS
+    // when the provider adapter left it None. Gemini's ProviderOfficial
+    // path (parsed from its status table) is preserved by skipping the
+    // fill on Some(_).
+    if signals.process_memory_mb.is_none()
+        && let Some(pid) = ctx.pane_pid
+        && let Some(mb) = process_memory::read_descendant_rss_mb_with_proc_root(pid, proc_root)
+    {
+        signals.process_memory_mb = Some(crate::domain::signal::MetricValue::new(
+            mb,
+            crate::domain::origin::SourceKind::Heuristic,
+        ));
     }
+    signals
 }
 
 pub use common::parse_common_signals;

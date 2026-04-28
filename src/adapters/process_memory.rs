@@ -233,4 +233,112 @@ mod tests {
         };
         assert_eq!(ctx.pane_pid, Some(42));
     }
+
+    // -----------------------------------------------------------------
+    // Phase F F-1 Task 4: parse_for_with_proc_root wiring tests
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn parse_for_fills_process_memory_mb_for_claude_when_adapter_left_it_none() {
+        use crate::adapters::ParserContext;
+        use crate::adapters::common::PaneTailHistory;
+        use crate::adapters::parse_for_with_proc_root;
+        use crate::domain::identity::{
+            IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+        };
+        use crate::domain::origin::SourceKind;
+        use crate::policy::claude_settings::ClaudeSettings;
+        use crate::policy::pricing::PricingTable;
+
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        write_proc_pid(root, 1, "bash", 4_000, &[2]);
+        write_proc_pid(root, 2, "claude", 300_000, &[]);
+
+        let id = ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Claude,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::High,
+        };
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let ctx = ParserContext {
+            identity: &id,
+            tail: "",
+            pricing: &pricing,
+            claude_settings: &settings,
+            history: &history,
+            pane_pid: Some(1),
+        };
+
+        let signals = parse_for_with_proc_root(&ctx, root);
+        let mem = signals
+            .process_memory_mb
+            .expect("F-1: claude pane should get RSS-derived MEM");
+        assert!((mem.value - (300_000.0 / 1024.0)).abs() < 0.001);
+        assert_eq!(mem.source_kind, SourceKind::Heuristic);
+    }
+
+    #[test]
+    fn parse_for_does_not_overwrite_gemini_provider_official_memory() {
+        use crate::adapters::ParserContext;
+        use crate::adapters::common::PaneTailHistory;
+        use crate::adapters::parse_for_with_proc_root;
+        use crate::domain::identity::{
+            IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+        };
+        use crate::domain::origin::SourceKind;
+        use crate::policy::claude_settings::ClaudeSettings;
+        use crate::policy::pricing::PricingTable;
+
+        // Path is relative to this file (src/adapters/process_memory.rs).
+        let tail = include_str!("../../tests/fixtures/real/gemini_idle.txt");
+
+        let id = ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Gemini,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::High,
+        };
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        write_proc_pid(root, 99, "node", 999_000, &[]);
+
+        let ctx = ParserContext {
+            identity: &id,
+            tail,
+            pricing: &pricing,
+            claude_settings: &settings,
+            history: &history,
+            pane_pid: Some(99),
+        };
+        let signals = parse_for_with_proc_root(&ctx, root);
+
+        // If the Gemini adapter recognized the fixture's memory column, it
+        // populated process_memory_mb with ProviderOfficial. Task 4's /proc
+        // fill MUST NOT clobber it with the 999_000 kB Heuristic value.
+        let mem = signals
+            .process_memory_mb
+            .expect("Gemini status-table memory column should be parsed");
+        assert_eq!(mem.source_kind, SourceKind::ProviderOfficial);
+        // Don't assert the exact MB — depends on the fixture. Just ensure
+        // /proc's 999_000 kB ≈ 975.6 MiB did NOT win.
+        assert!(
+            (mem.value - (999_000.0 / 1024.0)).abs() > 100.0,
+            "Gemini value {} MB should not equal /proc-derived ~975 MB",
+            mem.value
+        );
+    }
 }
