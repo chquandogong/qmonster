@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.26.0 — Phase F F-7: cache-aware advisory rules."
+  mission_title: "Qmonster v1.27.0 — Phase F F-7b: cache drift detection rule."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 155
-  latest_version: "1.26.0"
+  total_revisions: 156
+  latest_version: "1.27.0"
 
 timeline:
   - change_id: "initial"
@@ -13930,9 +13930,105 @@ timeline:
       - "ff83b09 F-7 task1: cache_hot_compact_warning + compact_when_cache_cold rules"
     follow_up: []
 
+  - change_id: "v1.27.0-phase-f-f7b-cache-drift-detection-rule"
+    semantic_version: "1.27.0"
+    change_sequence: 156
+    date: "2026-04-29"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (main pane)"
+    change_type: "feature"
+    motivation_type: "phase-continuation"
+    persistence: "permanent"
+    intent: >
+      Phase F F-7b: cache_drift_compact_recommended advisory rule. New rule in
+      src/policy/rules/cache.rs consumes F-3's recent_token_samples time series
+      to detect cache hit ratio drops over time. Engine::evaluate gains a 5th
+      parameter recent_token_samples: &[TokenSample] threaded through to
+      eval_cache; other eval_* functions unchanged. event_loop reorders per-pane
+      work: read recent_samples FIRST, evaluate SECOND, write current sample LAST
+      — so the historical window passed to policy is strictly older than the
+      current iteration's snapshot. The new rule fires Severity::Concern
+      ProjectCanonical with suggested_command Some("/compact") when
+      cache_hit_ratio has dropped >= 30 percentage points
+      (DRIFT_RATIO_DROP_THRESHOLD) between the oldest sample in the window and
+      the current SignalSet, AND at least 4 samples (DRIFT_MIN_SAMPLES) are
+      available. Suppresses on Low/Unknown confidence and input/permission wait.
+      The three cache rules (hot warning, cold compact, drift compact) can
+      co-fire — drift fires on the trend independent of hot/cold thresholds, so
+      an operator who sees both "cache currently 50%" AND "dropped 40 pp from
+      90%" gets both framings. 4 new tests; 659 lib + 68 integration green.
+      Hard-coded thresholds for v1; operator-tunable thresholds deferred.
+      Deferred siblings: F-4b (Gemini /stats), F-5 (Claude statusLine), F-6
+      (Codex App Server), F-7c (wait_for_reset / snapshot_before_reset — depend
+      on F-5/F-6 reset_eta).
+    intent_ko: >
+      Phase F F-7b: cache_drift_compact_recommended 어드바이저리 규칙.
+      src/policy/rules/cache.rs에 새 규칙을 추가하여 F-3의
+      recent_token_samples 시계열로 캐시 히트 비율 하락을 감지.
+      Engine::evaluate에 5번째 파라미터 recent_token_samples: &[TokenSample]
+      추가, eval_cache에만 전달 (나머지 eval_* 함수 변경 없음). event_loop에서
+      per-pane 처리 순서 재정렬: recent_samples 읽기 FIRST → evaluate SECOND →
+      현재 샘플 쓰기 LAST. 새 규칙은 cache_hit_ratio가 윈도우 내 최고점
+      대비 >= 30 pp (DRIFT_RATIO_DROP_THRESHOLD) 하락하고 samples.len() >= 4
+      (DRIFT_MIN_SAMPLES)이며 IdentityConfidence >= Medium이고 입력/권한 대기
+      없을 때 Severity::Concern ProjectCanonical suggested_command
+      Some("/compact")로 발화. 세 캐시 규칙(hot warning, cold compact, drift
+      compact)은 동시 발화 가능. 테스트 4개 추가; 659 lib + 68 integration 통과.
+    triggered_by: "Phase F F-7b plan: cache drift detection using recent_token_samples time series."
+    issue_or_context: >
+      F-7 shipped two cache rules (hot warning / cold compact) reacting to the
+      current snapshot ratio, but no rule detected a downward trend — an operator
+      who had 90% cache hits two hours ago and is now at 50% would see neither
+      rule fire. F-7b closes the gap: the drift rule looks back over the
+      recent_token_samples window and fires when the drop is large enough (>= 30
+      pp) and the evidence is sufficient (>= 4 samples), signalling that context
+      drifted and /compact will let the cache rebuild quickly on the next turn.
+    changes:
+      added:
+        - "`recommend_cache_drift_compact` rule in `src/policy/rules/cache.rs`"
+        - "DRIFT_RATIO_DROP_THRESHOLD and DRIFT_MIN_SAMPLES constants in `src/policy/rules/cache.rs`"
+        - "4 new unit tests covering drift rule firing, suppression, and threshold boundary"
+      modified:
+        - "`Engine::evaluate` in `src/policy/engine.rs` — 5th parameter `recent_token_samples: &[TokenSample]` added; threaded to `eval_cache`"
+        - "`event_loop.rs` — per-pane read/evaluate/write reordering; PaneReport carries early-fetched vec"
+        - "`README.md`, `VERSION.md`, `mission.yaml`, `mission-history.yaml`, `docs/ai/UI_MANUAL.md`, `docs/ai/ARCHITECTURE.md`, `docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md` bumped to v1.27.0"
+      removed: []
+    changed_sections:
+      - "src/policy/rules/cache.rs"
+      - "src/policy/engine.rs"
+      - "src/app/event_loop.rs"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+      - "README.md"
+      - "VERSION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+    observable_effects:
+      added:
+        - "Pane cards where cache_hit_ratio has dropped >= 30 pp over the last 4+ samples show a Concern recommendation with suggested_command /compact"
+      modified:
+        - "Engine::evaluate now takes recent_token_samples as 5th argument; eval_cache uses the historical window for drift detection"
+        - "event_loop per-pane work is reordered so the historical window is strictly older than the current snapshot"
+      removed: []
+    impact_scope:
+      runtime: "one new pure policy rule; event_loop read/evaluate/write reorder; no new IO, no new storage columns, no UI rendering change beyond existing recommendation display path."
+      tests: "cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, scripts/verify-shared.sh"
+      ledger: "1 new timeline entry (sequence 156); meta bump; minor version bump v1.26.0 → v1.27.0 for Phase F F-7b"
+      npm: "package.json version unchanged at 1.21.3 — npm publish deferred"
+      review_gate: "local validation passes before commit"
+      follow_up_carryover: "Phase F F-4b (Gemini /stats parsing), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on F-5/F-6 reset_eta) remain unscoped."
+    breaking: false
+    risk: "low — pure policy rule; event_loop reorder preserves data correctness by ensuring historical window predates current snapshot; existing badge/metric paths unaffected."
+    related_commits:
+      - "1c7e782 F-7b task1: cache_drift_compact_recommended rule + Engine signature"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.26.0 continues Phase F with F-7: cache-aware advisory rules. Two new rules in src/policy/rules/cache.rs (recommend_cache_hot_compact_warning and recommend_compact_when_cache_cold) turn F-4's cached_input_tokens data into actionable /compact decisions; mutually exclusive by ratio threshold construction (hot > 60%, cold < 30%); eval_cache dispatched in Engine::evaluate after eval_agent_memory. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
-  next_phase: "Phase F is open with F-1, F-2, F-3, F-4, F-7 shipped; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7b (cache_drift_detected via recent_token_samples), F-7c (wait_for_reset / snapshot_before_reset — depend on F-5/F-6 reset_eta) remain unscoped."
+  current_phase: "v1.27.0 continues Phase F with F-7b: cache drift detection rule. New recommend_cache_drift_compact rule in src/policy/rules/cache.rs consumes F-3's recent_token_samples time series to detect cache hit ratio drops over time; fires Severity::Concern with suggested_command /compact when drop >= 30 pp over last 4+ samples; Engine::evaluate gains 5th param recent_token_samples; event_loop reorders read/evaluate/write for correct historical window. v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4's cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
+  next_phase: "Phase F is open with F-1, F-2, F-3, F-4, F-7, F-7b shipped; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on F-5/F-6 reset_eta) remain unscoped."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

@@ -1,6 +1,6 @@
 mission:
-  version: "1.26.0"
-  title: "Qmonster v1.26.0 — Phase F F-7: cache-aware advisory rules."
+  version: "1.27.0"
+  title: "Qmonster v1.27.0 — Phase F F-7b: cache drift detection rule."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1162,6 +1162,28 @@ mission:
     snapshot_before_reset — depend on F-5/F-6 reset_eta). 8 new tests;
     654 lib + 68 integration green.
 
+    Phase F continues with F-7b (v1.27.0): cache_drift_compact_recommended
+    advisory rule. New rule in `src/policy/rules/cache.rs` consumes F-3's
+    `recent_token_samples` time series to detect cache hit ratio drops over
+    time. `Engine::evaluate` gains a 5th parameter
+    `recent_token_samples: &[TokenSample]` threaded through to `eval_cache`;
+    other eval_* functions unchanged. event_loop reorders per-pane work:
+    read recent_samples FIRST, evaluate SECOND, write current sample LAST —
+    so the historical window passed to policy is strictly older than the
+    current iteration's snapshot. The new rule fires `Severity::Concern`
+    `ProjectCanonical` with `suggested_command Some("/compact")` when
+    `cache_hit_ratio` has dropped >= 30 percentage points
+    (DRIFT_RATIO_DROP_THRESHOLD) between the oldest sample in the window
+    and the current SignalSet, AND at least 4 samples (DRIFT_MIN_SAMPLES)
+    are available. Suppresses on Low/Unknown confidence and input/permission
+    wait. The three cache rules (hot warning, cold compact, drift compact)
+    can co-fire — drift fires on the trend independent of hot/cold
+    thresholds. Hard-coded thresholds for v1; operator-tunable thresholds
+    deferred. Deferred siblings: F-4b (Gemini /stats), F-5 (Claude
+    statusLine), F-6 (Codex App Server), F-7c (wait_for_reset /
+    snapshot_before_reset — depend on F-5/F-6 reset_eta). 4 new tests;
+    659 lib + 68 integration green.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1191,6 +1213,9 @@ mission:
     - "F-7: recommend_cache_hot_compact_warning fires Severity::Concern ProjectCanonical when cache_hit_ratio > 60% AND context_pressure < 70% AND IdentityConfidence >= Medium AND no input/permission wait; suggests waiting until ctx >= 80% before /compact"
     - "F-7: recommend_compact_when_cache_cold fires Severity::Good ProjectCanonical with suggested_command Some('/compact') when cache_hit_ratio < 30% AND context_pressure > 60% AND IdentityConfidence >= Medium AND no input/permission wait; next_step prompts snapshot-first"
     - "F-7: the two cache rules are mutually exclusive by construction (hot ratio > 0.6 AND cold ratio < 0.3 are strictly disjoint); intermediate band 30-60% ratio triggers neither rule; eval_cache dispatched in Engine::evaluate after eval_agent_memory"
+    - "F-7b: recommend_cache_drift_compact fires Severity::Concern ProjectCanonical with suggested_command Some('/compact') when cache_hit_ratio has dropped >= 30 pp (DRIFT_RATIO_DROP_THRESHOLD) between recent_token_samples.last() (oldest in DESC window) and the current signals, AND samples.len() >= 4 (DRIFT_MIN_SAMPLES), AND IdentityConfidence >= Medium AND no input/permission wait"
+    - "F-7b: Engine::evaluate signature extends with 5th param recent_token_samples: &[TokenSample]; threaded only to eval_cache (other eval_* functions unchanged); all internal Engine test callers pass &[] for back-compat"
+    - "F-7b: event_loop reorders per-pane work — read recent_token_samples FIRST, policy.evaluate SECOND with samples passed in, F-3 write LAST — so historical window is strictly older than current iteration; PaneReport reuses the early-fetched vec (no duplicate SQLite read)"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."

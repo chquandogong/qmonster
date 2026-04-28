@@ -640,3 +640,24 @@ module shape.
 - Concurrent-work warning across panes (v1.15.23 requires
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
+
+v1.27.0 continues **Phase F** with **F-7b cache drift detection rule**:
+new `recommend_cache_drift_compact` in `src/policy/rules/cache.rs`
+consumes F-3's `recent_token_samples` time series to detect cache hit
+ratio drops over time. `Engine::evaluate` extends from 4 to 5
+parameters with `recent_token_samples: &[TokenSample]`; threaded
+only to `eval_cache` (other eval\_\* functions unchanged). The event
+loop reorders per-pane work: `recent_token_samples` SQLite read
+moves BEFORE `policy.evaluate`, the F-3 sample write moves AFTER
+evaluate, so the historical window passed to policy is strictly
+older than the current iteration's snapshot. PaneReport reuses the
+early-fetched vec (no duplicate read). The rule fires
+`Severity::Concern` with `suggested_command: Some("/compact")` when
+the drop ≥ `DRIFT_RATIO_DROP_THRESHOLD` (0.30) between
+`samples.last()` (oldest in DESC window) and the current SignalSet
+ratio, AND `samples.len() ≥ DRIFT_MIN_SAMPLES` (4), AND
+`IdentityConfidence ≥ Medium`, AND no input/permission wait. The
+three cache rules (hot warning, cold compact, drift compact) can
+co-fire — drift fires on the trend independent of hot/cold
+thresholds. Hard-coded thresholds for v1; operator-tunable
+thresholds deferred.

@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.21.3`; current mission ledger `v1.26.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.21.3`; current mission ledger `v1.27.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,23 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.26.0` / npm `1.21.3` (npm publish deferred).
+Current release: `v1.27.0` / npm `1.21.3` (npm publish deferred).
+
+`v1.27.0` continues Phase F with F-7b: cache drift detection rule. New `recommend_cache_drift_compact`
+rule in `src/policy/rules/cache.rs` consumes F-3's `recent_token_samples` time series to detect cache
+hit ratio drops over time. `Engine::evaluate` gains a 5th parameter `recent_token_samples: &[TokenSample]`
+threaded only to `eval_cache` (other eval\_\* functions unchanged). event_loop reorders per-pane work:
+read `recent_token_samples` FIRST, `policy.evaluate` SECOND, F-3 write LAST — so the historical window
+passed to policy is strictly older than the current iteration's snapshot. PaneReport reuses the
+early-fetched vec (no duplicate SQLite read). The new rule fires `Severity::Concern` `ProjectCanonical`
+with `suggested_command: /compact` when `cache_hit_ratio` has dropped ≥ 30 pp (DRIFT_RATIO_DROP_THRESHOLD)
+between `recent_token_samples.last()` (oldest in DESC window) and the current SignalSet, AND
+`samples.len() ≥ 4` (DRIFT_MIN_SAMPLES), AND `IdentityConfidence ≥ Medium`, AND no input/permission wait.
+The three cache rules (hot warning, cold compact, drift compact) can co-fire — drift fires on the trend
+independent of hot/cold thresholds. Hard-coded thresholds for v1; operator-tunable thresholds deferred.
+Deferred siblings: F-4b (Gemini /stats), F-5 (Claude statusLine), F-6 (Codex App Server), F-7c
+(wait_for_reset plus snapshot_before_reset — depend on F-5/F-6 reset_eta). 4 new tests; 659 lib plus
+68 integration green.
 
 `v1.26.0` continues Phase F with F-7: cache-aware advisory rules. Two new rules in `src/policy/rules/cache.rs`
 turn F-4's `cached_input_tokens` data into actionable `/compact` decisions.
@@ -123,6 +139,7 @@ untouched — the `/proc` fill only applies when the provider adapter left
 | Phase F F-3           | Shipped  | Token usage persisted to `token_usage_samples` SQLite table (per pane per poll); selected pane card renders `TOKENS ▁▂▃▄▅▆▇█` sparkline of input-token deltas; retention sweep ages out rows with the same `max_age_days` knob as archive/snapshots.          |
 | Phase F F-4           | Shipped  | Codex `/status` welcome panel `(+ N cached)` parser populates `SignalSet.cached_input_tokens`; UI renders `CACHE <%>` badge with `cached / (input + cached) * 100` and one-decimal precision; honesty rule preserves missing badge for Claude / Gemini OAuth. |
 | Phase F F-7           | Shipped  | Cache-aware advisory rules: `cache_hot_compact_warning` (Concern when cache hot AND ctx headroom) and `compact_when_cache_cold` (Good with `/compact` suggestion when cache cold AND ctx filling); mutually exclusive by ratio threshold construction.        |
+| Phase F F-7b          | Shipped  | Cache drift detection rule: fires `Severity::Concern` with suggested `/compact` when `cache_hit_ratio` drops ≥ 30 pp over last 4+ samples; uses F-3 `recent_token_samples` time series; Engine::evaluate gains 5th param.                                     |
 
 Recent release notes:
 
