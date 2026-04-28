@@ -18,6 +18,8 @@
 # - [cost]    warning_usd, critical_usd, [.claude|.codex|.gemini]
 # - [context] warning_pct, critical_pct, [.claude|.codex|.gemini]
 # - [quota]   warning_pct, critical_pct, [.claude_5h|.claude_weekly|.codex_5h|.codex_weekly|.gemini]
+# - [cache]   hot_ratio_threshold, cold_ratio_threshold, hot_low_ctx_threshold,
+#             cold_high_ctx_threshold, drift_drop_threshold, drift_min_samples
 #
 # Everything else belongs in docs/ai/* or tmux launcher conventions,
 # not in runtime TOML.
@@ -172,6 +174,19 @@ critical_pct = 0.85
 # [quota.gemini]                    # uncomment to pin Gemini thresholds
 # warning_pct = 0.75
 # critical_pct = 0.85
+
+# Phase F F-7-config (v1.28.0): operator-tunable cache-rule thresholds.
+# Defaults match the v1.27.0 hardcoded values exactly. Adjust to taste:
+# - Lower hot_ratio_threshold to fire the "don't /compact yet" warning more aggressively
+# - Raise cold_ratio_threshold to require lower cache hit before suggesting /compact
+# - drift_min_samples controls how much history must accrue before drift fires
+[cache]
+hot_ratio_threshold = 0.6      # cache_hit_ratio > this → "cache hot, avoid /compact"
+cold_ratio_threshold = 0.3     # cache_hit_ratio < this → "cache cold, /compact OK"
+hot_low_ctx_threshold = 0.7    # hot warning requires context_pressure < this
+cold_high_ctx_threshold = 0.6  # cold compact-recommendation requires context_pressure > this
+drift_drop_threshold = 0.30    # ratio drop ≥ this (in absolute) triggers cache_drift rule
+drift_min_samples = 4          # cache_drift requires this many samples in the window
 
 [actions]
 mode = "recommend_only"          # observe_only | recommend_only | safe_auto

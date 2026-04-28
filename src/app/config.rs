@@ -30,6 +30,8 @@ pub struct QmonsterConfig {
     pub quota: QuotaConfig,
     #[serde(default)]
     pub security: SecurityConfig,
+    #[serde(default)]
+    pub cache: CacheConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -182,6 +184,51 @@ pub struct TokenConfig {
 pub struct StorageConfig {
     /// `~/.qmonster/` by default; tests override via env `QMONSTER_ROOT`.
     pub root: Option<String>,
+}
+
+/// Phase F F-7-config (v1.28.0): operator-tunable thresholds for the
+/// cache-aware advisory rules in `src/policy/rules/cache.rs`. Defaults
+/// match the v1.26.0 (F-7) and v1.27.0 (F-7b) hardcoded constants
+/// exactly, so an operator with no `[cache]` section gets the original
+/// behavior. Each field is documented with the rule it influences.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CacheConfig {
+    /// `recommend_cache_hot_compact_warning` fires when
+    /// `cache_hit_ratio > hot_ratio_threshold`. Default 0.6 (60%).
+    pub hot_ratio_threshold: f64,
+    /// `recommend_compact_when_cache_cold` fires when
+    /// `cache_hit_ratio < cold_ratio_threshold`. Default 0.3 (30%).
+    pub cold_ratio_threshold: f64,
+    /// `recommend_cache_hot_compact_warning` requires
+    /// `context_pressure < hot_low_ctx_threshold` (still has headroom
+    /// — operator could keep working). Default 0.7 (70%).
+    pub hot_low_ctx_threshold: f32,
+    /// `recommend_compact_when_cache_cold` requires
+    /// `context_pressure > cold_high_ctx_threshold` (filling — should
+    /// compact). Default 0.6 (60%).
+    pub cold_high_ctx_threshold: f32,
+    /// `recommend_cache_drift_compact` fires when the cache hit ratio
+    /// has dropped by ≥ `drift_drop_threshold` between the oldest
+    /// sample in the recent window and the current SignalSet. Default
+    /// 0.30 (30 percentage points).
+    pub drift_drop_threshold: f64,
+    /// `recommend_cache_drift_compact` requires
+    /// `recent_token_samples.len() ≥ drift_min_samples`. Default 4.
+    pub drift_min_samples: usize,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            hot_ratio_threshold: 0.6,
+            cold_ratio_threshold: 0.3,
+            hot_low_ctx_threshold: 0.7,
+            cold_high_ctx_threshold: 0.6,
+            drift_drop_threshold: 0.30,
+            drift_min_samples: 4,
+        }
+    }
 }
 
 /// Operator-controlled security posture surfacing. Runtime facts remain
@@ -511,6 +558,7 @@ impl QmonsterConfig {
             context: ContextConfig::default(),
             quota: QuotaConfig::default(),
             security: SecurityConfig::default(),
+            cache: CacheConfig::default(),
         }
     }
 }

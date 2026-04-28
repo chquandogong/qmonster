@@ -151,6 +151,7 @@ where
             &ctx.config.context,
             &ctx.config.quota,
             &ctx.config.security,
+            &ctx.config.cache,
             resolved.identity.provider,
             resolved.confidence,
         );

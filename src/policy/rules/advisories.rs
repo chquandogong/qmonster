@@ -641,21 +641,8 @@ mod tests {
 
     fn gates_default() -> PolicyGates {
         PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         }
     }
 
@@ -848,21 +835,8 @@ mod tests {
             ..SignalSet::default()
         };
         let gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -966,21 +940,8 @@ mod tests {
         let id = id_low(Role::Main);
         let s = quota(0.92);
         let gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1019,21 +980,8 @@ mod tests {
         let id = id_low(Role::Main);
         let s = pressure(0.92);
         let gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1086,20 +1034,8 @@ mod tests {
         let s = pressure(0.92);
         let gates = PolicyGates {
             quota_tight: true,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1114,21 +1050,8 @@ mod tests {
         let id = id_low(Role::Main);
         let s = pressure(0.92);
         let gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1164,20 +1087,8 @@ mod tests {
         };
         let gates = PolicyGates {
             quota_tight: true,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let recs = eval_advisories(&id, &s, &gates);
         let aggressive_actions: Vec<&str> = recs
@@ -1202,20 +1113,8 @@ mod tests {
         };
         let gates = PolicyGates {
             quota_tight: true,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
@@ -1237,21 +1136,8 @@ mod tests {
             ..SignalSet::default()
         };
         let gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let recs = eval_advisories(&id, &s, &gates);
         let any_aggressive = recs.iter().any(|r| r.action.starts_with("aggressive:"));
@@ -1350,21 +1236,8 @@ mod tests {
             ..SignalSet::default()
         };
         let gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let recs = eval_advisories(&id, &s, &gates);
         let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
@@ -1388,20 +1261,8 @@ mod tests {
         };
         let gates = PolicyGates {
             quota_tight: true,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let recs = eval_advisories(&id, &s, &gates);
         let adv = recs
@@ -1490,21 +1351,8 @@ mod tests {
         let id = id_low(Role::Main);
         let s = cost(50.00);
         let gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Low,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let recs = eval_advisories(&id, &s, &gates);
         assert!(
@@ -1526,21 +1374,8 @@ mod tests {
 
         // Codex-style thresholds → $25 is past critical ($20).
         let codex_gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let codex_recs = eval_advisories(&id, &s, &codex_gates);
         assert!(
@@ -1553,21 +1388,10 @@ mod tests {
         // Claude-style thresholds → $25 is between warning ($10) and
         // critical ($30); only Warning fires.
         let claude_gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 10.0,
             cost_critical_usd: 30.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let claude_recs = eval_advisories(&id, &s, &claude_gates);
         assert!(
@@ -1585,21 +1409,10 @@ mod tests {
 
         // Gemini-style thresholds → $25 is past critical ($10).
         let gemini_gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
             cost_warning_usd: 3.0,
             cost_critical_usd: 10.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let gemini_recs = eval_advisories(&id, &s, &gemini_gates);
         assert!(
@@ -1621,21 +1434,8 @@ mod tests {
 
         // Default 0.75/0.85 → 0.78 is in [warning, critical) → Warning only.
         let default_gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let default_recs = eval_advisories(&id, &s, &default_gates);
         assert!(
@@ -1691,21 +1491,8 @@ mod tests {
 
         // Default 0.75/0.85 → 0.78 is in [warning, critical) → Warning only.
         let default_gates = PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         };
         let default_recs = eval_advisories(&id, &s, &default_gates);
         assert!(

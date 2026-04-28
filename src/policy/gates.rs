@@ -43,6 +43,16 @@ pub struct PolicyGates {
     pub quota_5h_critical_pct: f32,
     pub quota_weekly_warning_pct: f32,
     pub quota_weekly_critical_pct: f32,
+    /// Phase F F-7-config (v1.28.0): operator-tunable cache-rule
+    /// thresholds. Populated from `[cache]` in `qmonster.toml` via
+    /// `from_config_and_identity`. Defaults match the F-7/F-7b hardcoded
+    /// constants exactly so no behavior change when the section is absent.
+    pub cache_hot_ratio: f64,
+    pub cache_cold_ratio: f64,
+    pub cache_hot_low_ctx: f32,
+    pub cache_cold_high_ctx: f32,
+    pub cache_drift_drop: f64,
+    pub cache_drift_min_samples: usize,
     /// Phase D D1 (v1.17.0): opt-in cross-window concurrent-work
     /// detection. When `true`, the cross-pane rule emits
     /// `CrossPaneKind::CrossWindowConcurrentWork` for groups whose panes
@@ -82,6 +92,12 @@ impl Default for PolicyGates {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cache_hot_ratio: 0.6,
+            cache_cold_ratio: 0.3,
+            cache_hot_low_ctx: 0.7,
+            cache_cold_high_ctx: 0.6,
+            cache_drift_drop: 0.30,
+            cache_drift_min_samples: 4,
             cross_window_findings: false,
             identity_drift_findings: false,
         }
@@ -89,12 +105,14 @@ impl Default for PolicyGates {
 }
 
 impl PolicyGates {
+    #[allow(clippy::too_many_arguments)]
     pub fn from_config_and_identity(
         token: &crate::app::config::TokenConfig,
         cost: &crate::app::config::CostConfig,
         context: &crate::app::config::ContextConfig,
         quota: &crate::app::config::QuotaConfig,
         security: &crate::app::config::SecurityConfig,
+        cache: &crate::app::config::CacheConfig,
         provider: crate::domain::identity::Provider,
         conf: IdentityConfidence,
     ) -> Self {
@@ -116,6 +134,12 @@ impl PolicyGates {
                 .warning_for_window(provider, crate::app::config::QuotaWindow::Weekly),
             quota_weekly_critical_pct: quota
                 .critical_for_window(provider, crate::app::config::QuotaWindow::Weekly),
+            cache_hot_ratio: cache.hot_ratio_threshold,
+            cache_cold_ratio: cache.cold_ratio_threshold,
+            cache_hot_low_ctx: cache.hot_low_ctx_threshold,
+            cache_cold_high_ctx: cache.cold_high_ctx_threshold,
+            cache_drift_drop: cache.drift_drop_threshold,
+            cache_drift_min_samples: cache.drift_min_samples,
             cross_window_findings: security.cross_window_findings,
             identity_drift_findings: security.identity_drift_findings,
         }
@@ -211,6 +235,12 @@ mod tests {
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            cache_hot_ratio: 0.6,
+            cache_cold_ratio: 0.3,
+            cache_hot_low_ctx: 0.7,
+            cache_cold_high_ctx: 0.6,
+            cache_drift_drop: 0.30,
+            cache_drift_min_samples: 4,
             cross_window_findings: false,
             identity_drift_findings: false,
         };
@@ -234,7 +264,7 @@ mod tests {
     #[test]
     fn policy_gates_from_config_and_identity_reads_both() {
         use crate::app::config::{
-            ContextConfig, CostConfig, QuotaConfig, SecurityConfig, TokenConfig,
+            CacheConfig, ContextConfig, CostConfig, QuotaConfig, SecurityConfig, TokenConfig,
         };
         use crate::domain::identity::Provider;
         let cfg = TokenConfig { quota_tight: true };
@@ -246,12 +276,14 @@ mod tests {
             cross_window_findings: false,
             identity_drift_findings: false,
         };
+        let cache = CacheConfig::default();
         let gates = PolicyGates::from_config_and_identity(
             &cfg,
             &cost,
             &context,
             &quota,
             &security,
+            &cache,
             Provider::Codex,
             IdentityConfidence::Medium,
         );
@@ -278,7 +310,7 @@ mod tests {
         // Claude → $10 / $30, Gemini → $3 / $10, Codex falls through to
         // the top-level $5 / $20.
         use crate::app::config::{
-            ContextConfig, CostConfig, QuotaConfig, SecurityConfig, TokenConfig,
+            CacheConfig, ContextConfig, CostConfig, QuotaConfig, SecurityConfig, TokenConfig,
         };
         use crate::domain::identity::Provider;
         let cfg = TokenConfig { quota_tight: false };
@@ -286,12 +318,14 @@ mod tests {
         let context = ContextConfig::default();
         let quota = QuotaConfig::default();
         let security = SecurityConfig::default();
+        let cache = CacheConfig::default();
         let claude = PolicyGates::from_config_and_identity(
             &cfg,
             &cost,
             &context,
             &quota,
             &security,
+            &cache,
             Provider::Claude,
             IdentityConfidence::High,
         );
@@ -303,6 +337,7 @@ mod tests {
             &context,
             &quota,
             &security,
+            &cache,
             Provider::Codex,
             IdentityConfidence::High,
         );
@@ -314,6 +349,7 @@ mod tests {
             &context,
             &quota,
             &security,
+            &cache,
             Provider::Gemini,
             IdentityConfidence::High,
         );
@@ -330,8 +366,8 @@ mod tests {
         // Quota can now override Claude/Codex 5h and weekly windows
         // independently.
         use crate::app::config::{
-            ContextConfig, CostConfig, PressureProviderConfig, QuotaConfig, SecurityConfig,
-            TokenConfig,
+            CacheConfig, ContextConfig, CostConfig, PressureProviderConfig, QuotaConfig,
+            SecurityConfig, TokenConfig,
         };
         use crate::domain::identity::Provider;
         let cfg = TokenConfig { quota_tight: false };
@@ -359,6 +395,7 @@ mod tests {
             ..QuotaConfig::default()
         };
         let security = SecurityConfig::default();
+        let cache = CacheConfig::default();
 
         // Gemini sees the [context.gemini] override; quota falls
         // through to the top-level QuotaConfig default.
@@ -368,6 +405,7 @@ mod tests {
             &context,
             &quota,
             &security,
+            &cache,
             Provider::Gemini,
             IdentityConfidence::High,
         );
@@ -384,6 +422,7 @@ mod tests {
             &context,
             &quota,
             &security,
+            &cache,
             Provider::Claude,
             IdentityConfidence::High,
         );
@@ -403,6 +442,7 @@ mod tests {
             &context,
             &quota,
             &security,
+            &cache,
             Provider::Codex,
             IdentityConfidence::High,
         );

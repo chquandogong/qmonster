@@ -1189,21 +1189,8 @@ mod tests {
 
     fn gates_default() -> PolicyGates {
         PolicyGates {
-            quota_tight: false,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         }
     }
 
@@ -1332,20 +1319,8 @@ mod tests {
     fn gates_quota_tight() -> PolicyGates {
         PolicyGates {
             quota_tight: true,
-            security_posture_advisories: false,
             identity_confidence: IdentityConfidence::High,
-            cost_warning_usd: 5.0,
-            cost_critical_usd: 20.0,
-            context_warning_pct: 0.75,
-            context_critical_pct: 0.85,
-            quota_warning_pct: 0.75,
-            quota_critical_pct: 0.85,
-            quota_5h_warning_pct: 0.75,
-            quota_5h_critical_pct: 0.85,
-            quota_weekly_warning_pct: 0.75,
-            quota_weekly_critical_pct: 0.85,
-            cross_window_findings: false,
-            identity_drift_findings: false,
+            ..PolicyGates::default()
         }
     }
 

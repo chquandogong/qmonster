@@ -41,21 +41,6 @@ pub fn eval_cache(
     out
 }
 
-const HOT_RATIO_THRESHOLD: f64 = 0.6;
-const COLD_RATIO_THRESHOLD: f64 = 0.3;
-const LOW_CTX_THRESHOLD: f32 = 0.7;
-const HIGH_CTX_THRESHOLD: f32 = 0.6;
-
-/// Phase F F-7b (v1.27.0): minimum cache_hit_ratio drop (in absolute
-/// ratio units, NOT percentage points) for the drift rule to fire.
-/// 0.30 = 30 pp drop (e.g., 70% → 40%). Hard-coded for v1;
-/// operator-tunable threshold deferred.
-const DRIFT_RATIO_DROP_THRESHOLD: f64 = 0.30;
-
-/// Minimum samples in the recent window for drift to be computable.
-/// With 5s polling, 4 samples ≈ 20 seconds of history.
-const DRIFT_MIN_SAMPLES: usize = 4;
-
 /// Returns `cache_hit_ratio = cached / (input + cached)` when both
 /// signals are present; None otherwise. The denominator is the
 /// total prompt input across cached and non-cached, matching the
@@ -98,11 +83,11 @@ fn recommend_cache_hot_compact_warning(
         return None;
     }
     let ratio = cache_hit_ratio(signals)?;
-    if ratio <= HOT_RATIO_THRESHOLD {
+    if ratio <= gates.cache_hot_ratio {
         return None;
     }
     let ctx = signals.context_pressure.as_ref()?.value;
-    if ctx >= LOW_CTX_THRESHOLD {
+    if ctx >= gates.cache_hot_low_ctx {
         // Context is high; the operator may need to compact regardless
         // of cache state. The "wait" advice is for when ctx still has
         // headroom AND cache is hot.
@@ -121,7 +106,7 @@ fn recommend_cache_hot_compact_warning(
         reason: format!(
             "cache hit ratio {:.1}% (> {:.0}% hot threshold) and context still has headroom ({:.0}% used) — running /compact resets cache and forces full prompt rebuild on the next turn",
             pct,
-            HOT_RATIO_THRESHOLD * 100.0,
+            gates.cache_hot_ratio * 100.0,
             ctx * 100.0,
         ),
         severity: Severity::Concern,
@@ -146,11 +131,11 @@ fn recommend_compact_when_cache_cold(
         return None;
     }
     let ratio = cache_hit_ratio(signals)?;
-    if ratio >= COLD_RATIO_THRESHOLD {
+    if ratio >= gates.cache_cold_ratio {
         return None;
     }
     let ctx = signals.context_pressure.as_ref()?.value;
-    if ctx <= HIGH_CTX_THRESHOLD {
+    if ctx <= gates.cache_cold_high_ctx {
         // Cache is cold but context isn't filling yet — no urgency
         // to compact. Operator can keep working.
         return None;
@@ -168,7 +153,7 @@ fn recommend_compact_when_cache_cold(
         reason: format!(
             "cache hit ratio {:.1}% (< {:.0}% cold threshold) and context filling ({:.0}% used) — /compact would not lose meaningful cache; cache rebuild cost is already paid on every turn",
             pct,
-            COLD_RATIO_THRESHOLD * 100.0,
+            gates.cache_cold_ratio * 100.0,
             ctx * 100.0,
         ),
         severity: Severity::Good,
@@ -198,7 +183,7 @@ fn recommend_cache_drift_compact(
     ) {
         return None;
     }
-    if recent_token_samples.len() < DRIFT_MIN_SAMPLES {
+    if recent_token_samples.len() < gates.cache_drift_min_samples {
         return None;
     }
     let current = cache_hit_ratio(signals)?;
@@ -207,7 +192,7 @@ fn recommend_cache_drift_compact(
     let oldest = recent_token_samples.last()?;
     let baseline = cache_hit_ratio_from_sample(oldest)?;
     let drop = baseline - current;
-    if drop < DRIFT_RATIO_DROP_THRESHOLD {
+    if drop < gates.cache_drift_drop {
         return None;
     }
     let baseline_pct = baseline * 100.0;
@@ -560,6 +545,35 @@ mod tests {
             !recs
                 .iter()
                 .any(|r| r.action.starts_with("cache: drift detected"))
+        );
+    }
+
+    #[test]
+    fn cache_rules_honor_custom_thresholds_from_gates() {
+        use crate::domain::identity::Provider;
+        // With a stricter hot_ratio threshold (0.4 instead of 0.6), a
+        // ratio of 0.50 should trip the hot warning even though it's
+        // below the default 0.6 threshold.
+        let mut gates = gates_high();
+        gates.cache_hot_ratio = 0.40;
+
+        // ratio = 500_000 / (500_000 + 500_000) = 50%; ctx = 50%
+        let signals = signals_with(500_000, 500_000, 0.50);
+        let recs = eval_cache(
+            &id(Provider::Codex, IdentityConfidence::High),
+            &signals,
+            &gates,
+            &[],
+        );
+        let hot = recs
+            .iter()
+            .find(|r| r.action.starts_with("cache: avoid /compact"))
+            .expect("with cache_hot_ratio=0.40, ratio=0.50 should fire");
+        assert_eq!(hot.severity, Severity::Concern);
+        assert!(
+            hot.reason.contains("40%") || hot.reason.contains("40.0%"),
+            "reason should reference the configured 40% threshold; got: {}",
+            hot.reason
         );
     }
 
