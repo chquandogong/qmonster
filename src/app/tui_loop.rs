@@ -70,6 +70,41 @@ where
     let mut settings_overlay = crate::ui::settings::SettingsOverlay::new();
     let mut provider_setup_overlay =
         crate::ui::provider_setup::ProviderSetupOverlay::from_config(&ctx.config);
+
+    // Phase F F-6 (v1.32.0): spawn `codex app-server` once at TUI
+    // startup when the operator opted in via the [provider_setup]
+    // section. Spawn failures surface as a SystemNotice but never
+    // abort startup — the rest of Qmonster works fine without
+    // app-server-derived rate limits.
+    if ctx.config.provider_setup.codex_app_server && ctx.codex_app_server.is_none() {
+        let client_version = env!("CARGO_PKG_VERSION");
+        match crate::adapters::codex_app_server::CodexAppServer::spawn("qmonster", client_version) {
+            Ok(server) => {
+                ctx.codex_app_server = Some(server);
+                dashboard.push_notice(
+                    crate::app::system_notice::SystemNotice {
+                        title: "Codex App Server started".into(),
+                        body: "F-6 rate-limit polling active".into(),
+                        severity: crate::domain::recommendation::Severity::Good,
+                        source_kind: crate::domain::origin::SourceKind::ProjectCanonical,
+                    },
+                    Instant::now(),
+                );
+            }
+            Err(e) => {
+                dashboard.push_notice(
+                    crate::app::system_notice::SystemNotice {
+                        title: "Codex App Server failed to start".into(),
+                        body: format!("rate limits unavailable — {e}"),
+                        severity: crate::domain::recommendation::Severity::Warning,
+                        source_kind: crate::domain::origin::SourceKind::ProjectCanonical,
+                    },
+                    Instant::now(),
+                );
+            }
+        }
+    }
+
     let mut last_alert_click: Option<AlertMouseClick> = None;
     let mut last_pane_idle_states: HashMap<String, Option<IdleCause>> = HashMap::new();
     let mut pane_state_flashes: HashMap<String, crate::ui::panels::PaneStateFlash> = HashMap::new();

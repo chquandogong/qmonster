@@ -75,6 +75,25 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// startup (logged via the in-process eprintln); the event loop
     /// skips recording in that case rather than crashing.
     pub token_usage_sink: Option<SqliteTokenUsageSink>,
+    /// Phase F F-6 (v1.32.0): live `codex app-server` JSON-RPC
+    /// client. Spawned at TUI startup when the operator opted in
+    /// via `[provider_setup] codex_app_server = true`. None when
+    /// the operator did not opt in (default), the spawn failed at
+    /// startup (a SystemNotice is recorded), or the child died
+    /// mid-session and was not yet re-spawned. Per-tick rate-limit
+    /// snapshots land in `codex_rate_limits`.
+    pub codex_app_server: Option<
+        crate::adapters::codex_app_server::CodexAppServer<
+            crate::adapters::codex_app_server::SubprocessIo,
+        >,
+    >,
+    /// Phase F F-6 (v1.32.0): most-recent rate-limit snapshot
+    /// returned by `codex app-server`'s `account/rateLimits/read`.
+    /// Account-level — broadcast to every Codex pane on each
+    /// polling tick after `parse_for` runs. Stays `None` until the
+    /// first successful read; cleared when the server falls over
+    /// so stale data doesn't linger on screen.
+    pub codex_rate_limits: Option<crate::adapters::codex_app_server::CodexRateLimits>,
     known_pane_ids: Vec<String>,
 }
 
@@ -101,6 +120,8 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             identity_history: std::collections::HashMap::new(),
             reported_drifts: std::collections::HashSet::new(),
             token_usage_sink: None,
+            codex_app_server: None,
+            codex_rate_limits: None,
             known_pane_ids: Vec::new(),
         }
     }

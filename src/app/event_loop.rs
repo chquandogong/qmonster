@@ -63,6 +63,25 @@ where
         }
     };
 
+    // Phase F F-6 (v1.32.0): refresh the account-level Codex rate
+    // limits ONCE per polling tick, before iterating panes — every
+    // Codex pane in the loop below shares the same snapshot. A read
+    // failure clears the cache (so stale data doesn't linger on
+    // screen) and drops the client (the next tick won't try again
+    // until restart). Spawn happens at TUI startup, not here.
+    if let Some(server) = ctx.codex_app_server.as_mut() {
+        match server.read_rate_limits() {
+            Ok(rl) => {
+                ctx.codex_rate_limits = Some(rl);
+            }
+            Err(e) => {
+                eprintln!("F-6: codex app-server read_rate_limits failed: {e}");
+                ctx.codex_app_server = None;
+                ctx.codex_rate_limits = None;
+            }
+        }
+    }
+
     for pane in panes {
         let parse_tail = ctx
             .runtime_refresh_tail_overlays
@@ -138,6 +157,20 @@ where
             current_path: &pane.current_path,
         };
         let mut signals = crate::adapters::parse_for(&parse_ctx);
+
+        // Phase F F-6 (v1.32.0): apply the account-level rate-limits
+        // snapshot to Codex panes. `is_none()` guards on the
+        // pressure fields preserve the per-pane statusline values
+        // (Codex bottom status `5h N% weekly N%`) when present;
+        // resets_at fields are unconditional because the statusline
+        // doesn't carry them.
+        if matches!(
+            resolved.identity.provider,
+            crate::domain::identity::Provider::Codex
+        ) && let Some(rl) = ctx.codex_rate_limits.as_ref()
+        {
+            apply_codex_rate_limits(&mut signals, rl);
+        }
 
         apply_pressure_metric_cache(
             &mut ctx.pressure_metric_cache,
@@ -324,6 +357,42 @@ where
     }
 
     Ok(reports)
+}
+
+/// Phase F F-6 (v1.32.0): write the account-level rate-limits
+/// snapshot from `codex app-server` into a per-Codex-pane SignalSet.
+/// `is_none()` guards on `quota_5h_pressure` / `quota_weekly_pressure`
+/// preserve the pane's own statusline values (Codex bottom status
+/// `5h N% weekly N%`) when populated; resets_at fields are
+/// unconditional because no other surface emits them today.
+fn apply_codex_rate_limits(
+    signals: &mut SignalSet,
+    rl: &crate::adapters::codex_app_server::CodexRateLimits,
+) {
+    use crate::domain::origin::SourceKind;
+    use crate::domain::signal::MetricValue;
+    let metric_pct = |pct: u8| {
+        MetricValue::new((pct as f32) / 100.0, SourceKind::ProviderOfficial)
+            .with_confidence(0.95)
+            .with_provider(Provider::Codex)
+    };
+    let metric_ts = |ts: u64| {
+        MetricValue::new(ts, SourceKind::ProviderOfficial)
+            .with_confidence(0.95)
+            .with_provider(Provider::Codex)
+    };
+    if let Some(w) = rl.primary.as_ref() {
+        if signals.quota_5h_pressure.is_none() {
+            signals.quota_5h_pressure = Some(metric_pct(w.used_percent));
+        }
+        signals.quota_5h_resets_at = Some(metric_ts(w.resets_at_unix_seconds));
+    }
+    if let Some(w) = rl.secondary.as_ref() {
+        if signals.quota_weekly_pressure.is_none() {
+            signals.quota_weekly_pressure = Some(metric_pct(w.used_percent));
+        }
+        signals.quota_weekly_resets_at = Some(metric_ts(w.resets_at_unix_seconds));
+    }
 }
 
 fn merge_runtime_refresh_tail(live_tail: &str, captured_tail: &str) -> String {
@@ -541,4 +610,94 @@ pub struct PaneReport {
     /// this pane yet. Consumed by the UI sparkline to compute deltas
     /// between adjacent samples.
     pub recent_token_samples: Vec<crate::store::TokenSample>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::adapters::codex_app_server::{CodexRateLimits, CodexRateWindow};
+    use crate::domain::origin::SourceKind;
+    use crate::domain::signal::MetricValue;
+
+    #[test]
+    fn apply_codex_rate_limits_populates_resets_at_and_pressure_when_absent() {
+        // Phase F F-6 contract: account-level rate-limits broadcast
+        // to a Codex pane that has no statusline-derived pressure
+        // values. Both pressure fields and both resets_at fields
+        // populate from the snapshot.
+        let mut signals = SignalSet::default();
+        let rl = CodexRateLimits {
+            primary: Some(CodexRateWindow {
+                used_percent: 12,
+                window_duration_mins: 300,
+                resets_at_unix_seconds: 1_700_000_000,
+            }),
+            secondary: Some(CodexRateWindow {
+                used_percent: 7,
+                window_duration_mins: 10080,
+                resets_at_unix_seconds: 1_700_500_000,
+            }),
+        };
+        apply_codex_rate_limits(&mut signals, &rl);
+        assert!((signals.quota_5h_pressure.as_ref().unwrap().value - 0.12).abs() < 1e-6);
+        assert!((signals.quota_weekly_pressure.as_ref().unwrap().value - 0.07).abs() < 1e-6);
+        assert_eq!(
+            signals.quota_5h_resets_at.as_ref().unwrap().value,
+            1_700_000_000
+        );
+        assert_eq!(
+            signals.quota_weekly_resets_at.as_ref().unwrap().value,
+            1_700_500_000
+        );
+    }
+
+    #[test]
+    fn apply_codex_rate_limits_preserves_statusline_pressure_when_present() {
+        // Statusline path takes priority for usedPercent (it's the
+        // pane's own surface). The app-server snapshot only fills
+        // resets_at — those have no statusline equivalent.
+        let mut signals = SignalSet {
+            quota_5h_pressure: Some(MetricValue::new(0.42, SourceKind::ProviderOfficial)),
+            quota_weekly_pressure: Some(MetricValue::new(0.31, SourceKind::ProviderOfficial)),
+            ..SignalSet::default()
+        };
+        let rl = CodexRateLimits {
+            primary: Some(CodexRateWindow {
+                used_percent: 99,
+                window_duration_mins: 300,
+                resets_at_unix_seconds: 1_700_000_000,
+            }),
+            secondary: Some(CodexRateWindow {
+                used_percent: 99,
+                window_duration_mins: 10080,
+                resets_at_unix_seconds: 1_700_500_000,
+            }),
+        };
+        apply_codex_rate_limits(&mut signals, &rl);
+        assert!((signals.quota_5h_pressure.as_ref().unwrap().value - 0.42).abs() < 1e-6);
+        assert!((signals.quota_weekly_pressure.as_ref().unwrap().value - 0.31).abs() < 1e-6);
+        // resets_at always populates from snapshot.
+        assert_eq!(
+            signals.quota_5h_resets_at.as_ref().unwrap().value,
+            1_700_000_000
+        );
+    }
+
+    #[test]
+    fn apply_codex_rate_limits_handles_missing_secondary_window() {
+        let mut signals = SignalSet::default();
+        let rl = CodexRateLimits {
+            primary: Some(CodexRateWindow {
+                used_percent: 10,
+                window_duration_mins: 300,
+                resets_at_unix_seconds: 100,
+            }),
+            secondary: None,
+        };
+        apply_codex_rate_limits(&mut signals, &rl);
+        assert!(signals.quota_5h_pressure.is_some());
+        assert!(signals.quota_5h_resets_at.is_some());
+        assert!(signals.quota_weekly_pressure.is_none());
+        assert!(signals.quota_weekly_resets_at.is_none());
+    }
 }
