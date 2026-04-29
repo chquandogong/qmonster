@@ -456,7 +456,7 @@ pub fn render_provider_setup_modal(
     frame.render_widget(body, rects.body);
 
     let hint = Paragraph::new(Line::from(
-        "[1]/[2]/[3] tab · [s] toggle · [y] copy snippet · [↑↓ wheel j/k] scroll · click [x] / [q] / [Esc] close",
+        "[1]/[2]/[3]/[Tab]/[←→] tab · [s] toggle · [y] copy snippet · [↑↓ wheel j/k] scroll · click [x] / [q] / [Esc] close",
     ))
     .style(Style::default().fg(theme::TEXT_DIM))
     .wrap(Wrap { trim: false });
@@ -826,7 +826,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
 
     lines.extend(help_wrapped_detail_lines(
         "P",
-        "open the Provider Setup overlay (read-only) — recommended Claude statusline.sh / Codex /statusline + /status / Gemini ui.footer.* snippets with detected current state; 1/2/3 switch tabs, s toggles per-tab optional sections (Claude sidefile / Codex app-server)",
+        "open the Provider Setup overlay (read-only) — recommended Claude statusline.sh / Codex /statusline + /status / Gemini ui.footer.* snippets with detected current state; 1/2/3, Tab, or Left/Right switch tabs, s toggles per-tab optional sections (Claude sidefile / Codex app-server)",
         total_width,
     ));
 

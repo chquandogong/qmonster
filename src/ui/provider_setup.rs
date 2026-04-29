@@ -32,6 +32,14 @@ impl ProviderSetupTab {
             ProviderSetupTab::Gemini => ProviderSetupTab::Claude,
         }
     }
+
+    pub fn previous(self) -> Self {
+        match self {
+            ProviderSetupTab::Claude => ProviderSetupTab::Gemini,
+            ProviderSetupTab::Codex => ProviderSetupTab::Claude,
+            ProviderSetupTab::Gemini => ProviderSetupTab::Codex,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -116,6 +124,14 @@ impl ProviderSetupOverlay {
     pub fn switch_tab(&mut self, tab: ProviderSetupTab) {
         self.tab = tab;
         self.scroll_offset = 0;
+    }
+
+    pub fn next_tab(&mut self) {
+        self.switch_tab(self.tab.next());
+    }
+
+    pub fn previous_tab(&mut self) {
+        self.switch_tab(self.tab.previous());
     }
 
     pub fn scroll_up(&mut self) {

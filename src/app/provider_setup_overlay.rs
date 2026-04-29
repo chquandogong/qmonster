@@ -45,6 +45,8 @@ pub fn handle_provider_setup_overlay_key(
         KeyCode::Char('1') => overlay.switch_tab(ProviderSetupTab::Claude),
         KeyCode::Char('2') => overlay.switch_tab(ProviderSetupTab::Codex),
         KeyCode::Char('3') => overlay.switch_tab(ProviderSetupTab::Gemini),
+        KeyCode::Tab | KeyCode::Right => overlay.next_tab(),
+        KeyCode::BackTab | KeyCode::Left => overlay.previous_tab(),
         KeyCode::Char('s') => overlay.toggle(),
         KeyCode::Up | KeyCode::Char('k') => overlay.scroll_up(),
         KeyCode::Down | KeyCode::Char('j') => overlay.scroll_down(),
@@ -179,6 +181,23 @@ mod tests {
         assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Char('1'));
         assert_eq!(overlay.tab, ProviderSetupTab::Claude);
+    }
+
+    #[test]
+    fn tab_and_arrow_keys_cycle_tabs() {
+        let mut overlay = ProviderSetupOverlay::new();
+        overlay.open();
+        handle_provider_setup_overlay_key(&mut overlay, KeyCode::Tab);
+        assert_eq!(overlay.tab, ProviderSetupTab::Codex);
+        handle_provider_setup_overlay_key(&mut overlay, KeyCode::Right);
+        assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
+        handle_provider_setup_overlay_key(&mut overlay, KeyCode::Tab);
+        assert_eq!(overlay.tab, ProviderSetupTab::Claude);
+
+        handle_provider_setup_overlay_key(&mut overlay, KeyCode::BackTab);
+        assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
+        handle_provider_setup_overlay_key(&mut overlay, KeyCode::Left);
+        assert_eq!(overlay.tab, ProviderSetupTab::Codex);
     }
 
     #[test]
