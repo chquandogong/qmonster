@@ -641,6 +641,41 @@ module shape.
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
 
+v1.31.0 ships **Phase F F-5b Claude sidefile reader**. The recommended
+`~/.claude/statusline.sh` (G-1 snippet) drops a per-session JSON file at
+`~/.local/share/ai-cli-status/claude/<session_id>.json` carrying raw
+`cache_read_input_tokens` / `input_tokens` / `output_tokens` /
+`cache_creation_input_tokens`, cumulative `cost.total_cost_usd`,
+`transcript_path`, and Unix `resets_at` timestamps for the 5h and 7-day
+rate-limit windows. F-5b reads it. New `src/adapters/claude_sidefile.rs`
+defines a `ClaudeSidefile` serde struct + `read_sidefile_for_path(home,
+current_path)` matcher that finds the most-recently-modified
+`<sid>.json` whose `cwd` field equals the pane's `current_path`
+(newest-mtime tiebreak; best-effort silent None on missing dir /
+malformed JSON / no match). Architecture choice: post-adapter
+enrichment in `parse_for_with_environment` mirroring the Phase F-1
+(process memory `/proc` walk) and F-2 (agent-memory file scan)
+patterns — adapters stay pure on tail-derived signals, environment-
+derived state lands in a single enrichment seam. A provider gate
+restricts the enrichment to Claude panes so a Codex / Gemini pane
+sharing the cwd never inherits Claude session state. New `SignalSet`
+fields `quota_5h_resets_at` and `quota_weekly_resets_at`
+(`Option<MetricValue<u64>>`, Unix seconds, `SourceKind::ProviderOfficial`)
+feed two new metric rows: `5h resets in <eta>` and `7d resets in <eta>`.
+New helper `format_resets_eta` formats `2h13m` / `45m` / `30s` and caps
+at 14 days to reject sentinels. New `RuntimeFactKind::{SessionId,
+TranscriptPath}` variants surface per-pane Claude session identity
+(rendering labels `SID` / `XSCRIPT`). `cost_usd` now populates for
+Claude panes via the existing `cost $X.XX` row (was always None on the
+statusline-only path). `is_none()` guards preserve the statusline path's
+values for raw counts (input / output / cached); the one explicit
+override exception is `cache_hit_ratio` — the sidefile-derived precise
+count-based ratio (`cache_read_input_tokens / (input_tokens +
+cache_read_input_tokens + cache_creation_input_tokens)`) wins over the
+rounded `cache N%` statusline value, so F-7 / F-7b cache rules fire on
+Claude panes with full fidelity instead of integer-rounded ratios.
+Tests grew to 710 lib + 68 integration green.
+
 v1.30.0 ships **Phase G G-2 [provider_setup] config + Phase F F-5
 Claude statusline cache parser**. G-2 adds operator-tunable Provider
 Setup defaults via a new `[provider_setup]` section in `qmonster.toml`:

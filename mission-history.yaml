@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.30.0 — Phase G G-2: [provider_setup] sidefile-on-default + Phase F F-5: Claude statusline cache N% parser."
+  mission_title: "Qmonster v1.31.0 — Phase F F-5b: Claude sidefile reader → cost / raw token counts / reset eta surfacing."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 160
-  latest_version: "1.30.0"
+  total_revisions: 161
+  latest_version: "1.31.0"
 
 timeline:
   - change_id: "initial"
@@ -14454,9 +14454,150 @@ timeline:
       - "831a598 v1.30.0 task2: F-5 Claude statusline cache N% parser → CACHE badge"
     follow_up: []
 
+  - change_id: "v1.31.0-phase-f-f5b-claude-sidefile-reader"
+    semantic_version: "1.31.0"
+    change_sequence: 161
+    date: "2026-04-29"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (main pane)"
+    change_type: "feature"
+    motivation_type: "operator-ergonomics"
+    persistence: "permanent"
+    intent: >
+      Phase F continues with F-5b (v1.31.0): the Claude sidefile reader.
+      The recommended `~/.claude/statusline.sh` (G-1 snippet) drops a
+      per-session JSON file at
+      `~/.local/share/ai-cli-status/claude/<session_id>.json` on every
+      prompt cycle, carrying raw `cache_read_input_tokens` /
+      `input_tokens` / `output_tokens` / `cache_creation_input_tokens`,
+      cumulative `cost.total_cost_usd`, `transcript_path`, and Unix
+      `resets_at` timestamps for the 5h and 7-day rate-limit windows.
+      New `src/adapters/claude_sidefile.rs` defines a `ClaudeSidefile`
+      serde struct + `read_sidefile_for_path(home, current_path)`
+      matcher that finds the most-recently-modified
+      `<sid>.json` whose `cwd` field equals the pane's `current_path`
+      (best-effort: missing dir / malformed JSON / no match → silent
+      None). `parse_for_with_environment` calls the matcher after the
+      agent-memory fill (Phase F-1 / F-2 pattern); a provider gate
+      restricts the enrichment to Claude panes so a Codex / Gemini
+      pane sharing the cwd never inherits Claude session state. New
+      `SignalSet` fields `quota_5h_resets_at` and
+      `quota_weekly_resets_at` (Option<MetricValue<u64>>, Unix
+      seconds) feed two new metric rows: `5h resets in <eta>` and
+      `7d resets in <eta>`. New helper `format_resets_eta` formats
+      `2h13m` / `45m` / `30s` and caps at 14 days to reject sentinel
+      values. New `RuntimeFactKind::{SessionId, TranscriptPath}`
+      variants surface per-pane Claude session identity (rendering
+      labels `SID` / `XSCRIPT`). `cost_usd` now populates for Claude
+      panes via the existing `cost $X.XX` metric row. `is_none()`
+      guards preserve the statusline path's values for raw counts;
+      cache_hit_ratio is the one explicit override (sidefile-derived
+      precise count-based ratio wins over the rounded `cache N%`
+      statusline value). 11 new tests (710 lib + 68 integration);
+      clippy + fmt clean.
+    intent_ko: >
+      Phase F가 v1.31.0에서 F-5b로 이어진다 — Claude sidefile reader.
+      G-1에서 권장한 `~/.claude/statusline.sh`는 매 prompt cycle마다
+      `~/.local/share/ai-cli-status/claude/<session_id>.json` 파일에
+      세션별 raw 데이터를 떨군다: `cache_read_input_tokens` /
+      `input_tokens` / `output_tokens` /
+      `cache_creation_input_tokens`, 누적 `cost.total_cost_usd`,
+      `transcript_path`, 그리고 5시간 / 7일 rate-limit 창의 Unix
+      `resets_at` 타임스탬프. 새 `src/adapters/claude_sidefile.rs`는
+      `ClaudeSidefile` serde 구조체와
+      `read_sidefile_for_path(home, current_path)` matcher를 정의하며,
+      JSON의 `cwd` 필드가 pane의 `current_path`와 같은 파일들 중 mtime이
+      가장 최근인 것을 선택한다 (best-effort: 디렉터리 없음 / JSON
+      파싱 실패 / 매칭 없음 → silent None). `parse_for_with_environment`
+      는 agent-memory 채움 다음에 matcher를 호출한다 (Phase F-1 / F-2
+      패턴). provider gate가 Claude pane에만 적용되도록 좁혀
+      Codex / Gemini pane이 같은 cwd를 공유해도 Claude 세션 상태를
+      물려받지 않는다. 새 SignalSet 필드 `quota_5h_resets_at`와
+      `quota_weekly_resets_at` (Option<MetricValue<u64>>, Unix 초)는
+      두 개의 새 metric row `5h resets in <eta>` / `7d resets in <eta>`
+      에 데이터를 공급한다. 새 helper `format_resets_eta`는 `2h13m` /
+      `45m` / `30s` 포맷으로 출력하고, sentinel 값 차단을 위해 14일
+      상한을 둔다. 새 `RuntimeFactKind::{SessionId, TranscriptPath}`
+      variant가 pane별 Claude 세션 identity (`SID` / `XSCRIPT` 배지)를
+      노출한다. `cost_usd`는 이제 Claude pane에서도 채워져 기존
+      `cost $X.XX` metric row가 활성화된다. `is_none()` 가드로 raw
+      카운트는 statusline 경로 값이 보존되며, cache_hit_ratio만
+      예외적으로 sidefile 값이 우선한다 (raw 카운트 기반의 정밀한
+      비율이 반올림된 `cache N%` statusline 값을 이긴다). 11개 신규
+      테스트 (710 lib + 68 integration); clippy + fmt clean.
+    triggered_by: "Phase F cache-observability stream — F-5b sidefile reader (commit 4db99ae) building on G-2 sidefile-on-default (v1.30.0) infrastructure"
+    issue_or_context: >
+      v1.30.0 G-2 made `claude_sidefile = true` the default so the
+      recommended `~/.claude/statusline.sh` drops a per-session JSON
+      file with full raw counts, cumulative cost, transcript_path, and
+      Unix resets_at timestamps for both rate-limit windows — but
+      nothing on Qmonster's side actually consumed that file. v1.30.0
+      F-5 only scraped a rounded `cache N%` token off the visible
+      tmux statusline. F-5b closes the loop: a dedicated reader pulls
+      raw cache_read_input_tokens / input_tokens / output_tokens /
+      cache_creation_input_tokens / cost.total_cost_usd /
+      resets_at / session_id / transcript_path out of the JSON and
+      surfaces them on Claude pane cards. Two operator-visible wins
+      that were impossible before: (1) `5h resets in <eta>` /
+      `7d resets in <eta>` countdowns derived from the sidefile's
+      `resets_at` timestamps — Claude doesn't expose reset etas on
+      its tmux statusline, only the percentage; (2) Claude `cost USD`
+      row now populates (was always None on the statusline path).
+      The cache_hit_ratio precision also improves from rounded-to-
+      integer to count-derived precise ratio so F-7 / F-7b cache
+      rules fire on Claude panes with full fidelity.
+    changes:
+      added:
+        - "src/adapters/claude_sidefile.rs::ClaudeSidefile serde struct + read_sidefile_for_path(home, current_path) matcher; finds the most-recently-modified ~/.local/share/ai-cli-status/claude/<sid>.json whose cwd field equals the pane's current_path; best-effort behavior (missing dir / malformed JSON / no match → silent None)"
+        - "src/domain/signal.rs::SignalSet.quota_5h_resets_at: Option<MetricValue<u64>> and quota_weekly_resets_at: Option<MetricValue<u64>> fields (Unix seconds, ProviderOfficial)"
+        - "src/domain/runtime_facts.rs::RuntimeFactKind::SessionId and RuntimeFactKind::TranscriptPath variants (rendering labels SID / XSCRIPT)"
+        - "src/ui/panels.rs::format_resets_eta(unix_seconds) helper formats 2h13m / 45m / 30s and caps at 14 days to reject sentinel values; new metric_row entries for `5h resets in <eta>` and `7d resets in <eta>`"
+        - "11 new tests (4 sidefile reader unit tests + 3 SignalSet/RuntimeFactKind shape + parse tests + 2 format_resets_eta unit tests + 2 integration tests for the apply_claude_sidefile enrichment path)"
+      modified:
+        - "src/adapters/claude.rs (or wherever parse_for_with_environment lives) — apply_claude_sidefile call inserted after the agent-memory fill, gated to Provider::Claude; is_none() guards preserve statusline path values for raw counts; cache_hit_ratio is the one explicit override (sidefile precise ratio wins over rounded statusline value)"
+        - "Claude pane cards now render `5h resets in <eta>` / `7d resets in <eta>` rows when sidefile is matched; SID / XSCRIPT runtime fact badges visible; cost $X.XX row populates"
+        - "README.md, VERSION.md, mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md, docs/ai/UI_MANUAL.md, docs/ai/ARCHITECTURE.md, docs/ai/PROJECT_BRIEF.md, docs/ai/VALIDATION.md bumped to v1.31.0"
+      removed: []
+    changed_sections:
+      - "src/adapters/claude_sidefile.rs"
+      - "src/adapters/claude.rs"
+      - "src/domain/signal.rs"
+      - "src/domain/runtime_facts.rs"
+      - "src/ui/panels.rs"
+      - "README.md"
+      - "VERSION.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/VALIDATION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - ".mission/CURRENT_STATE.md"
+    observable_effects:
+      added:
+        - "Claude pane cards render `5h resets in <eta>` and `7d resets in <eta>` countdown rows when sidefile is matched (Claude tmux statusline doesn't expose reset etas, only the percentage)"
+        - "Claude pane cards render `cost $X.XX` row from sidefile cost.total_cost_usd (was always None on statusline-only path)"
+        - "Claude pane cards render `SID` and `XSCRIPT` runtime fact badges from sidefile session_id / transcript_path"
+        - "F-7 / F-7b cache rules now fire on Claude panes with full fidelity (precise count-derived ratio replaces rounded statusline value)"
+      modified:
+        - "Claude cache_hit_ratio precision improves from rounded-to-integer (statusline `cache N%`) to count-derived precise ratio (sidefile raw cache_read_input_tokens / input_tokens / cache_creation_input_tokens) when sidefile is matched"
+      removed: []
+    impact_scope:
+      runtime: "new adapter module + 2 new SignalSet fields + 2 new RuntimeFactKind variants + 2 new metric rows; no schema migration, no actuation change, no destructive mutations; sidefile read is best-effort (missing/malformed → silent None) so existing operators without the recommended statusline.sh see no behavior change."
+      tests: "11 new tests (710 lib + 68 integration green); cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release pass."
+      ledger: "1 new timeline entry (sequence 161); meta bump; minor version bump v1.30.0 → v1.31.0 for Phase F F-5b Claude sidefile reader."
+      npm: "package.json bumped to 1.31.0 in a separate follow-up commit (v1.31.0 npm publish bump)."
+      review_gate: "local validation passes before commit"
+    breaking: false
+    risk: "low — new adapter module is best-effort silent on missing/malformed sidefile; new SignalSet fields are Option so all signal sites stay backward compatible; provider gate restricts enrichment to Claude panes only; cache_hit_ratio override preserves Codex F-4 count-derived path on non-sidefile pipelines; existing operators without the recommended statusline.sh see zero behavior change."
+    related_commits:
+      - "4db99ae v1.31.0 F-5b: Claude sidefile reader + cost / token / reset-eta surfacing"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.30.0 ships Phase G G-2 + Phase F F-5. G-2: operator-tunable Provider Setup defaults via a new `[provider_setup]` config section in `qmonster.toml` (`claude_sidefile = true` default flips the recommended sidefile JSON-export workflow on at startup; `codex_app_server = false` keeps the advanced daemon opt-in). New `ProviderSetupConfig` struct in `src/app/config.rs` and `ProviderSetupOverlay::from_config(&QmonsterConfig)` constructor seed runtime overlay state from persisted config; `tui_loop.rs` uses `from_config` instead of `::new()`. Sidefile-on-default writes the full Claude statusLine JSON to `~/.local/share/ai-cli-status/claude/<sid>.json` so downstream Claude tooling (the F-5 reader, future audit pipelines) can read raw cache_read / cache_creation / resets_at / cost / transcript_path. F-5: Claude statusline `cache N%` parser → CACHE badge. New `SignalSet.cache_hit_ratio: Option<MetricValue<f64>>` field (0..1, ProviderOfficial); the recommended `~/.claude/statusline.sh` emits the optional `cache N%` token between CTX and 5h, the Claude adapter parses it via a new `find_status_label_in` range-bounded label search, and `parse_claude_status_line_row` narrows CTX's percent-search bound to stop at the `cache` label so values don't bleed. UI + policy prefer this pre-computed ratio when populated; the count-derived path (Codex F-4) remains as fallback. The CACHE badge now surfaces for Claude panes alongside Codex; F-7 / F-7b cache rules fire on Claude panes too. 8 new tests; 699 lib + 68 integration green. v1.29.0 opened Phase G with G-1: Provider Setup overlay. New `P` key opens a 3-tab in-TUI modal (Claude/Codex/Gemini) showing recommended config snippets and detected current state per provider via read-only filesystem probes of `~/.claude/statusline.sh`, `~/.codex/config.toml`, and `~/.gemini/settings.json`. New `src/ui/provider_setup.rs` module owns view-model, state detectors, snippet `include_str!` consts, and `render_tab_content`; `src/app/provider_setup_overlay.rs` mirrors `settings_overlay.rs` for key dispatch. Read-only — Qmonster never writes provider config; operator copies snippets manually. v1.28.0 shipped F-7-config: operator-tunable cache thresholds. New `CacheConfig` struct in `src/app/config.rs` exposes the 6 thresholds from F-7/F-7b via `[cache]` section in `qmonster.toml`; `PolicyGates` gains 6 `cache_*` fields; `cache.rs` reads from gates and interpolates values into reason strings. v1.27.1 fixed Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4's cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
-  next_phase: "Phase G G-1/G-2 + Phase F F-5 shipped (v1.30.0); F-4b (Gemini /stats parsing — needs live fixture), F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on F-6 reset_eta), and a settings-overlay UI for [provider_setup] + [cache] booleans remain unscoped."
+  current_phase: "v1.31.0 ships Phase F F-5b: Claude sidefile reader. New `src/adapters/claude_sidefile.rs` parses the per-session JSON file dropped by the recommended `~/.claude/statusline.sh` (G-1 snippet) at `~/.local/share/ai-cli-status/claude/<session_id>.json` and matches it to a Claude pane by the JSON's `cwd` field equalling the pane's `current_path` (newest-mtime tiebreak; best-effort silent None on missing dir / malformed JSON / no match). `parse_for_with_environment` calls the matcher after the agent-memory fill (Phase F-1 / F-2 pattern); a provider gate restricts the enrichment to Claude panes so a Codex / Gemini pane sharing the cwd never inherits Claude session state. New `SignalSet` fields `quota_5h_resets_at` and `quota_weekly_resets_at` (Option<MetricValue<u64>>, Unix seconds) feed two new metric rows: `5h resets in <eta>` and `7d resets in <eta>`; new helper `format_resets_eta` formats `2h13m` / `45m` / `30s` and caps at 14 days to reject sentinels. New `RuntimeFactKind::{SessionId, TranscriptPath}` variants surface per-pane Claude session identity (rendering labels `SID` / `XSCRIPT`). `cost_usd` now populates for Claude panes via the existing `cost $X.XX` row. `is_none()` guards preserve the statusline path's values for raw counts; `cache_hit_ratio` is the one explicit override (sidefile-derived count-based ratio wins over rounded statusline `cache N%`). 11 new tests; 710 lib + 68 integration green. v1.30.0 shipped Phase G G-2 + Phase F F-5. G-2: operator-tunable Provider Setup defaults via a new `[provider_setup]` config section in `qmonster.toml` (`claude_sidefile = true` default flips the recommended sidefile JSON-export workflow on at startup; `codex_app_server = false` keeps the advanced daemon opt-in). New `ProviderSetupConfig` struct in `src/app/config.rs` and `ProviderSetupOverlay::from_config(&QmonsterConfig)` constructor seed runtime overlay state from persisted config; `tui_loop.rs` uses `from_config` instead of `::new()`. Sidefile-on-default writes the full Claude statusLine JSON to `~/.local/share/ai-cli-status/claude/<sid>.json` so downstream Claude tooling (the F-5b reader, future audit pipelines) can read raw cache_read / cache_creation / resets_at / cost / transcript_path. F-5: Claude statusline `cache N%` parser → CACHE badge. New `SignalSet.cache_hit_ratio: Option<MetricValue<f64>>` field (0..1, ProviderOfficial); the recommended `~/.claude/statusline.sh` emits the optional `cache N%` token between CTX and 5h, the Claude adapter parses it via a new `find_status_label_in` range-bounded label search, and `parse_claude_status_line_row` narrows CTX's percent-search bound to stop at the `cache` label so values don't bleed. UI + policy prefer this pre-computed ratio when populated; the count-derived path (Codex F-4) remains as fallback. The CACHE badge now surfaces for Claude panes alongside Codex; F-7 / F-7b cache rules fire on Claude panes too. 8 new tests; 699 lib + 68 integration green. v1.29.0 opened Phase G with G-1: Provider Setup overlay. New `P` key opens a 3-tab in-TUI modal (Claude/Codex/Gemini) showing recommended config snippets and detected current state per provider via read-only filesystem probes of `~/.claude/statusline.sh`, `~/.codex/config.toml`, and `~/.gemini/settings.json`. New `src/ui/provider_setup.rs` module owns view-model, state detectors, snippet `include_str!` consts, and `render_tab_content`; `src/app/provider_setup_overlay.rs` mirrors `settings_overlay.rs` for key dispatch. Read-only — Qmonster never writes provider config; operator copies snippets manually. v1.28.0 shipped F-7-config: operator-tunable cache thresholds. New `CacheConfig` struct in `src/app/config.rs` exposes the 6 thresholds from F-7/F-7b via `[cache]` section in `qmonster.toml`; `PolicyGates` gains 6 `cache_*` fields; `cache.rs` reads from gates and interpolates values into reason strings. v1.27.1 fixed Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4's cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
+  next_phase: "Phase G G-1/G-2 + Phase F F-5/F-5b shipped (v1.30.0/v1.31.0); F-6 (Codex App Server resetsAt) is the next planned slice and unlocks F-7c (wait_for_reset / snapshot_before_reset — depend on F-6 reset_eta). F-4b (Gemini /stats parsing — needs live fixture) and a settings-overlay UI for [provider_setup] + [cache] booleans remain unscoped."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

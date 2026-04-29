@@ -1,6 +1,6 @@
 mission:
-  version: "1.30.0"
-  title: "Qmonster v1.30.0 — Phase G G-2: [provider_setup] sidefile-on-default + Phase F F-5: Claude statusline cache N% parser."
+  version: "1.31.0"
+  title: "Qmonster v1.31.0 — Phase F F-5b: Claude sidefile reader → cost / raw token counts / reset eta surfacing."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1272,6 +1272,34 @@ mission:
     F-7 / F-7b cache rules fire on Claude panes too. 8 new tests;
     699 lib + 68 integration green.
 
+    Phase F continues with F-5b (v1.31.0): the Claude sidefile
+    reader. The recommended `~/.claude/statusline.sh` (G-1
+    snippet) drops a per-session JSON file at
+    `~/.local/share/ai-cli-status/claude/<session_id>.json` on
+    every prompt cycle, carrying raw `cache_read_input_tokens` /
+    `input_tokens` / `output_tokens` / `cache_creation_input_tokens`,
+    cumulative `cost.total_cost_usd`, `transcript_path`, and Unix
+    `resets_at` timestamps for the 5h and 7-day rate-limit
+    windows. New `src/adapters/claude_sidefile.rs` parses the
+    file and matches it to a Claude pane by the JSON's `cwd`
+    field equalling the pane's `current_path` (newest mtime wins
+    on ties). `parse_for_with_environment` calls the matcher
+    after the agent-memory fill (Phase F-1 / F-2 pattern); the
+    provider gate restricts the enrichment to Claude panes so a
+    Codex / Gemini pane sharing the cwd never inherits Claude
+    session state. New SignalSet fields `quota_5h_resets_at` and
+    `quota_weekly_resets_at` (Option<MetricValue<u64>>, Unix
+    seconds) feed the new `5h resets in <eta>` and `7d resets in
+    <eta>` metric rows; `format_resets_eta` formats `2h13m` /
+    `45m` / `30s` and caps at 14 days to reject sentinels. New
+    `RuntimeFactKind::{SessionId, TranscriptPath}` variants
+    surface per-pane Claude session identity (`SID` / `XSCRIPT`
+    badges). `cost_usd` now populates for Claude panes via the
+    existing `cost $X.XX` metric row. Sidefile-derived
+    cache_hit_ratio overrides the statusline's rounded `cache
+    N%` value (raw counts → precise ratio). 11 new tests;
+    710 lib + 68 integration green.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1316,6 +1344,10 @@ mission:
     - "G-2: ProviderSetupOverlay::from_config(&QmonsterConfig) constructor seeds per-tab toggles from persisted config; tui_loop.rs uses from_config in place of ::new() at startup"
     - "F-5: SignalSet.cache_hit_ratio: Option<MetricValue<f64>> field added; Claude adapter parses optional `cache N%` token between CTX and 5h on statusline.sh output, populates cache_hit_ratio with SourceKind::ProviderOfficial"
     - "F-5: policy/rules/cache.rs::cache_hit_ratio() prefers SignalSet.cache_hit_ratio over count-derived computation; UI panels.rs::signals_cache_pct_with_source() helper encapsulates the same precedence so the CACHE badge surfaces for Claude panes (not just Codex)"
+    - "F-5b: src/adapters/claude_sidefile.rs reads ~/.local/share/ai-cli-status/claude/<sid>.json per Claude pane, matched to current_path by JSON cwd field, newest-mtime tiebreak; provider gate restricts to Claude only"
+    - "F-5b: SignalSet gains quota_5h_resets_at and quota_weekly_resets_at (Option<MetricValue<u64>>, Unix seconds); panels.rs::metric_row renders `5h resets in <eta>` and `7d resets in <eta>` via format_resets_eta (capped at 14 days)"
+    - "F-5b: RuntimeFactKind::{SessionId, TranscriptPath} variants added (SID / XSCRIPT badges); apply_claude_sidefile in parse_for_with_environment populates raw input_tokens / output_tokens / cached_input_tokens / cost_usd / quota_*_resets_at / runtime_facts when sidefile JSON is found"
+    - "F-5b: sidefile-derived cache_hit_ratio overrides statusline-derived value (raw count-based ratio > rounded `cache N%`); statusline path remains the fallback when no sidefile is matched"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1608,5 +1640,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 160
+    total_revisions: 161
     history: "mission-history.yaml"

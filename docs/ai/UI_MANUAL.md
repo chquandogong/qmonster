@@ -406,12 +406,37 @@ side_effects (N):
   - **v1.30.0 업데이트 (F-5) — Claude CACHE 배지**: 추천
     `~/.claude/statusline.sh`가 CTX와 5h 사이에 옵션 `cache N%`
     토큰을 출력하면 Claude adapter가 이를 파싱해 `CACHE <N.N>%
-    [Official]` 배지를 Claude pane card에 표시합니다 (Codex CACHE
+[Official]` 배지를 Claude pane card에 표시합니다 (Codex CACHE
     배지와 동일한 UX). 이 값은 `SignalSet.cache_hit_ratio` 필드
     (0..1)로 들어가며, F-7 / F-7b cache rule (cache hot warning,
     cold compact, drift compact)이 Claude pane에도 발동합니다.
     배지가 안 보이면 `P` overlay → Claude 탭에서 cache % 계산이
     포함된 statusline.sh를 적용했는지 확인하세요.
+  - **v1.31.0 업데이트 (F-5b) — Claude sidefile reader**: G-2
+    sidefile-on-default가 떨군 세션 JSON 파일
+    (`~/.local/share/ai-cli-status/claude/<session_id>.json`)을
+    Qmonster가 직접 읽어 Claude pane card에 추가 정보를 채웁니다.
+    JSON의 `cwd` 필드가 pane의 `current_path`와 같은 파일 중 mtime이
+    가장 최근인 것을 선택하며, missing dir / malformed JSON /
+    매칭 없음은 silent None으로 처리합니다 (Provider gate가
+    Claude pane에만 적용 — Codex / Gemini가 같은 cwd를 공유해도
+    Claude 세션 상태를 물려받지 않습니다). 결과:
+    - **`cost $N.NN` 행**이 Claude pane card에 표시됩니다 (sidefile
+      `cost.total_cost_usd`에서). 이전 statusline 전용 경로에서는
+      Claude의 cost는 항상 None이었습니다.
+    - **`5h resets in <eta>` / `7d resets in <eta>` 행**이 표시됩니다
+      (sidefile `resets_at` 타임스탬프 기반). Claude tmux statusline은
+      reset eta를 노출하지 않고 percentage만 보여주므로 sidefile만
+      가능한 새 정보입니다. 포맷은 `2h13m` / `45m` / `30s`이며,
+      14일 상한으로 sentinel 값을 거부합니다.
+    - **`SID` / `XSCRIPT` runtime fact 배지**가 Claude pane card에
+      표시됩니다 (sidefile `session_id` / `transcript_path`에서).
+    - **`cache_hit_ratio` 정밀도 향상**: sidefile의 raw counts
+      (`cache_read_input_tokens` / `input_tokens` /
+      `cache_creation_input_tokens`)에서 정밀 비율을 계산해
+      반올림된 statusline `cache N%` 값을 덮어씁니다. 이 결과
+      F-7 / F-7b cache rule이 Claude pane에서 더 정밀하게
+      발동합니다.
 
 ## 9. 운영 파일
 
