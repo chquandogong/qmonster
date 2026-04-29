@@ -492,10 +492,13 @@ pub fn render_tab_content(
                 &mut out,
                 "/stats + /model periodic dispatch (not copied by y)",
             );
-            out.push("Qmonster's `u` key already cycles `/stats session` →".into());
+            out.push("When the selected Gemini pane is idle, `u` cycles `/model` →".into());
+            out.push("`/stats session` → `/stats model`.".into());
             out.push(
-                "`/stats model` → `/model` → `/stats tools` on the selected Gemini pane.".into(),
+                "While Gemini is active, `u` skips `/model` and cycles only the stats panels."
+                    .into(),
             );
+            out.push("`/stats tools` is not sent because Qmonster does not parse it today.".into());
             out.push("No additional setup needed — just keep using `u` periodically.".into());
 
             section(&mut out, "Auth note (informational, not copied by y)");

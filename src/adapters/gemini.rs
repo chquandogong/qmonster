@@ -66,13 +66,14 @@ impl ProviderParser for GeminiAdapter {
             );
         }
         // Phase F F-4b (v1.33.0): when the operator presses `u` on a
-        // Gemini pane, runtime_refresh cycles `/stats session` →
-        // `/stats model` → `/model` → `/stats tools` and
-        // merge_runtime_refresh_tail splices the captured panel into
-        // the parsed tail. Surface session id + cumulative token counts
-        // so CACHE / TOKENS / cost rendering paths light up for Gemini
-        // panes — mirrors the F-4 (Codex) and F-5b (Claude) enrichment
-        // patterns.
+        // Gemini pane, runtime_refresh cycles `/model` →
+        // `/stats session` → `/stats model` only when the pane is
+        // idle/stale/limit-hit; active panes skip `/model` and cycle
+        // only the stats surfaces. `merge_runtime_refresh_tail` splices
+        // captured panels into the parsed tail. `/model` feeds RESET,
+        // `/stats session` feeds SID/CALLS, and `/stats model` feeds
+        // token/cache counts, mirroring the F-4 (Codex) and F-5b
+        // (Claude) enrichment patterns.
         let session = parse_gemini_stats_session(ctx.tail);
         if let Some(sid) = session.session_id.as_ref() {
             set.runtime_facts.push(
@@ -96,7 +97,8 @@ impl ProviderParser for GeminiAdapter {
                 .with_confidence(0.95),
             );
         }
-        for reset in parse_gemini_model_resets(ctx.tail) {
+        let current_model = set.model_name.as_ref().map(|m| m.value.as_str());
+        for reset in parse_gemini_model_resets(ctx.tail, current_model) {
             set.runtime_facts.push(
                 RuntimeFact::new(
                     RuntimeFactKind::ModelReset,
@@ -421,7 +423,7 @@ fn is_gemini_separator(line: &str) -> bool {
     !line.is_empty()
         && line
             .chars()
-            .all(|c| c.is_whitespace() || matches!(c, '-' | '─' | '━' | '═'))
+            .all(|c| c.is_whitespace() || matches!(c, '-' | '─' | '━' | '═' | '▄' | '▀'))
 }
 
 fn is_gemini_status_header(line: &str) -> bool {
@@ -646,10 +648,17 @@ fn parse_gemini_stats_model(tail: &str) -> Option<GeminiModelStats> {
 ///
 ///   `gemini-2.5-flash Reset: 12:30 AM (4h left)`
 ///
-/// The parser intentionally requires a nearby model label containing
-/// "gemini" and at least one digit in the reset text. That keeps chat
-/// prose like "Reset: your terminal" out of ProviderOfficial facts.
-fn parse_gemini_model_resets(tail: &str) -> Vec<GeminiModelReset> {
+/// Gemini v0.41 also renders quota rows as:
+///
+///   `Pro  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  5%  Resets: 6:45 PM (19h 32m)`
+///
+/// The parser intentionally requires a nearby model label and at least
+/// one digit in the reset text. That keeps chat prose like "Reset:
+/// your terminal" out of ProviderOfficial facts. When the current
+/// status-table model is known, only matching family rows are surfaced
+/// (`gemini-3.1-pro-preview` -> `Pro`, `gemini-*-flash-lite` ->
+/// `Flash Lite`, `gemini-*-flash` -> `Flash`).
+fn parse_gemini_model_resets(tail: &str, current_model: Option<&str>) -> Vec<GeminiModelReset> {
     let mut out = Vec::new();
     let mut last_model: Option<(String, usize)> = None;
 
@@ -660,9 +669,9 @@ fn parse_gemini_model_resets(tail: &str) -> Vec<GeminiModelReset> {
             continue;
         }
 
-        if let Some(reset_idx) = find_reset_label(line) {
+        if let Some((reset_idx, reset_label_len)) = find_reset_label(line) {
             let before_reset = line[..reset_idx].trim();
-            let reset_text = line[reset_idx + "Reset:".len()..]
+            let reset_text = line[reset_idx + reset_label_len..]
                 .trim()
                 .trim_matches(|c: char| matches!(c, '|' | '[' | ']'))
                 .trim()
@@ -679,7 +688,9 @@ fn parse_gemini_model_resets(tail: &str) -> Vec<GeminiModelReset> {
                         .map(|(model, _)| model.clone())
                 })
                 .filter(|m| !m.is_empty());
-            if let Some(model) = model {
+            if let Some(model) = model
+                && gemini_reset_model_matches_current(&model, current_model)
+            {
                 let reset = GeminiModelReset {
                     model,
                     reset: reset_text,
@@ -699,34 +710,148 @@ fn parse_gemini_model_resets(tail: &str) -> Vec<GeminiModelReset> {
     out
 }
 
-fn find_reset_label(line: &str) -> Option<usize> {
-    line.to_lowercase().find("reset:")
+fn gemini_reset_model_matches_current(reset_model: &str, current_model: Option<&str>) -> bool {
+    let Some(current_model) = current_model else {
+        return true;
+    };
+    let Some(current_family) = gemini_model_family(current_model) else {
+        return true;
+    };
+    gemini_model_family(reset_model).is_none_or(|reset_family| reset_family == current_family)
+}
+
+fn gemini_model_family(model: &str) -> Option<&'static str> {
+    let lower = model.to_ascii_lowercase();
+    if lower.contains("flash-lite") || lower.contains("flash lite") {
+        Some("flash-lite")
+    } else if lower.contains("flash") {
+        Some("flash")
+    } else if lower.contains("pro") {
+        Some("pro")
+    } else {
+        None
+    }
+}
+
+fn find_reset_label(line: &str) -> Option<(usize, usize)> {
+    let lower = line.to_ascii_lowercase();
+    ["resets:", "reset:"]
+        .into_iter()
+        .filter_map(|label| lower.find(label).map(|idx| (idx, label.len())))
+        .min_by_key(|(idx, _)| *idx)
 }
 
 fn extract_gemini_model_name(line: &str) -> Option<String> {
     let before_reset = find_reset_label(line)
-        .map(|idx| &line[..idx])
+        .map(|(idx, _)| &line[..idx])
         .unwrap_or(line);
-    let lower = before_reset.to_lowercase();
-    let start = lower.find("gemini")?;
-    let candidate = before_reset[start..]
-        .trim()
-        .trim_matches(|c: char| matches!(c, '|' | '[' | ']' | '(' | ')' | ':' | ','))
-        .trim();
-    if candidate.is_empty() {
-        return None;
-    }
+    let candidate = clean_gemini_model_candidate(before_reset)?;
+    let lower = before_reset.to_ascii_lowercase();
+    if let Some(start) = lower.find("gemini") {
+        let candidate = before_reset[start..]
+            .trim()
+            .trim_matches(|c: char| matches!(c, '|' | '[' | ']' | '(' | ')' | ':' | ','))
+            .trim();
+        if candidate.is_empty() {
+            return None;
+        }
 
-    let first = candidate
-        .split_whitespace()
-        .next()
-        .unwrap_or_default()
-        .trim_matches(|c: char| matches!(c, '|' | '[' | ']' | '(' | ')' | ':' | ','));
-    if first.to_lowercase().starts_with("gemini-") {
-        return Some(first.to_string());
+        let first = candidate
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .trim_matches(|c: char| matches!(c, '|' | '[' | ']' | '(' | ')' | ':' | ','));
+        if first.to_lowercase().starts_with("gemini-") {
+            return Some(first.to_string());
+        }
+
+        return Some(candidate.chars().take(64).collect());
     }
 
     Some(candidate.chars().take(64).collect())
+}
+
+fn clean_gemini_model_candidate(line: &str) -> Option<String> {
+    let mut candidate = line
+        .trim()
+        .trim_matches(|c: char| matches!(c, '|' | '[' | ']' | '(' | ')' | ':' | ','))
+        .trim();
+    while let Some(stripped) = candidate.strip_prefix(|c: char| {
+        c.is_whitespace() || matches!(c, '>' | '*' | '-' | '•' | '●' | '○' | '◉' | '✓' | '✔')
+    }) {
+        candidate = stripped.trim_start();
+    }
+    if let Some(stripped) = strip_numbered_model_list_prefix(candidate) {
+        candidate = stripped;
+    }
+    if let Some(idx) = candidate.find(is_gemini_usage_bar_char) {
+        candidate = candidate[..idx].trim_end();
+    }
+
+    let lower = candidate.to_lowercase();
+    if candidate.is_empty()
+        || lower.contains("select model")
+        || lower.contains("choose model")
+        || lower.contains("choose a model")
+        || lower.contains("stats")
+        || lower.contains("session")
+        || lower.contains("tokens")
+        || lower.contains("reset:")
+        || lower.contains("resets:")
+    {
+        return None;
+    }
+
+    let has_gemini = lower.contains("gemini");
+    let has_model_word = lower.split_whitespace().any(|word| {
+        let word = word.trim_matches(|c: char| !c.is_ascii_alphanumeric());
+        matches!(word, "pro" | "flash" | "preview")
+    });
+    let has_digit = lower.chars().any(|c| c.is_ascii_digit());
+    if has_gemini || has_model_word || (has_digit && lower.len() <= 48) {
+        Some(candidate.to_string())
+    } else {
+        None
+    }
+}
+
+fn is_gemini_usage_bar_char(c: char) -> bool {
+    matches!(
+        c,
+        '▬' | '▰'
+            | '▱'
+            | '█'
+            | '▉'
+            | '▊'
+            | '▋'
+            | '▌'
+            | '▍'
+            | '▎'
+            | '▏'
+            | '■'
+            | '□'
+            | '▪'
+            | '▫'
+    )
+}
+
+fn strip_numbered_model_list_prefix(candidate: &str) -> Option<&str> {
+    for sep in ['.', ')'] {
+        let Some(idx) = candidate.find(sep) else {
+            continue;
+        };
+        let (prefix, rest_with_sep) = candidate.split_at(idx);
+        let rest = rest_with_sep[sep.len_utf8()..].trim_start();
+        if prefix.chars().all(|c| c.is_ascii_digit())
+            && rest_with_sep[sep.len_utf8()..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_whitespace())
+        {
+            return Some(rest);
+        }
+    }
+    None
 }
 
 fn normalize_inline_whitespace(s: &str) -> String {
@@ -748,6 +873,7 @@ fn strip_box_chars(line: &str) -> String {
 /// remainder of the line (suitable for first-number extraction). Used
 /// to anchor `Input` / `Output` / `Cache Reads` row matches.
 fn strip_metric_label<'a>(line: &'a str, label: &str) -> Option<&'a str> {
+    let line = line.strip_prefix('↳').map(str::trim_start).unwrap_or(line);
     let rest = line.strip_prefix(label)?;
     // Require a whitespace separator so `Input` doesn't match
     // `Inputs` or similar prose.
@@ -1301,6 +1427,27 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
     }
 
     #[test]
+    fn stats_model_extracts_actual_arrow_prefixed_rows() {
+        let tail = "\
+╭────────────────────────────────────────────────────────────╮
+│  Model Stats For Nerds                                     │
+│  Metric                      gemini-3.1-pro-preview        │
+│  API                                                       │
+│  Requests                    10                            │
+│  Tokens                                                    │
+│  Total                       190,404                       │
+│    ↳ Input                   87,588                        │
+│    ↳ Cache Reads             99,632 (53.2%)                │
+│    ↳ Thoughts                2,263                         │
+│    ↳ Output                  921                           │
+╰────────────────────────────────────────────────────────────╯";
+        let stats = parse_gemini_stats_model(tail).expect("model stats parsed");
+        assert_eq!(stats.input_tokens, Some(87_588));
+        assert_eq!(stats.output_tokens, Some(921));
+        assert_eq!(stats.cache_reads, Some(99_632));
+    }
+
+    #[test]
     fn stats_model_extracts_input_output_when_cache_reads_absent() {
         // OAuth Gemini: `hasCached` is false (Google FAQ — cache reads
         // are hidden for OAuth), so the Cache Reads row is omitted
@@ -1344,7 +1491,7 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
 │    Reset: 5:00 PM (in 1h 12m)                              │
 │  gemini-2.5-flash Reset: 12:30 AM (4h left)                │
 ╰────────────────────────────────────────────────────────────╯";
-        let resets = parse_gemini_model_resets(tail);
+        let resets = parse_gemini_model_resets(tail, None);
         assert_eq!(
             resets,
             vec![
@@ -1361,6 +1508,80 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
     }
 
     #[test]
+    fn model_screen_extracts_reset_rows_when_model_label_omits_gemini_word() {
+        let tail = "\
+╭─ Select Model ─────────────────────────────────────────────╮
+│  2.5 Pro                                                   │
+│    Reset: 5:00 PM (in 1h 12m)                              │
+│  Flash Reset: 12:30 AM (4h left)                           │
+╰────────────────────────────────────────────────────────────╯";
+        let resets = parse_gemini_model_resets(tail, None);
+        assert_eq!(
+            resets,
+            vec![
+                GeminiModelReset {
+                    model: "2.5 Pro".into(),
+                    reset: "5:00 PM (in 1h 12m)".into(),
+                },
+                GeminiModelReset {
+                    model: "Flash".into(),
+                    reset: "12:30 AM (4h left)".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn model_screen_extracts_actual_model_usage_resets_rows() {
+        let tail = "\
+╭────────────────────────────────────────────────────────────╮
+│ Select Model                                               │
+│ Model usage                                                │
+│ Flash       ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  0%   Resets: 11:13 PM (24h)
+│ Flash Lite  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  0%   Resets: 11:43 AM (12h 30m)
+│ Pro         ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  5%   Resets: 6:45 PM (19h 32m)
+╰────────────────────────────────────────────────────────────╯";
+        let resets = parse_gemini_model_resets(tail, None);
+        assert_eq!(
+            resets,
+            vec![
+                GeminiModelReset {
+                    model: "Flash".into(),
+                    reset: "11:13 PM (24h)".into(),
+                },
+                GeminiModelReset {
+                    model: "Flash Lite".into(),
+                    reset: "11:43 AM (12h 30m)".into(),
+                },
+                GeminiModelReset {
+                    model: "Pro".into(),
+                    reset: "6:45 PM (19h 32m)".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn model_screen_filters_resets_to_current_model_family() {
+        let tail = "\
+╭────────────────────────────────────────────────────────────╮
+│ Select Model                                               │
+│ Model usage                                                │
+│ Flash       ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  0%   Resets: 11:13 PM (24h)
+│ Flash Lite  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  0%   Resets: 11:43 AM (12h 30m)
+│ Pro         ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  5%   Resets: 6:45 PM (19h 32m)
+╰────────────────────────────────────────────────────────────╯";
+        let resets = parse_gemini_model_resets(tail, Some("gemini-3.1-pro-preview"));
+        assert_eq!(
+            resets,
+            vec![GeminiModelReset {
+                model: "Pro".into(),
+                reset: "6:45 PM (19h 32m)".into(),
+            }]
+        );
+    }
+
+    #[test]
     fn model_screen_ignores_reset_prose_without_model_or_time() {
         let tail = "\
 assistant says Reset: your terminal prompt
@@ -1371,7 +1592,7 @@ chat line
 another chat line
 Reset: 5:00 PM";
         assert!(
-            parse_gemini_model_resets(tail).is_empty(),
+            parse_gemini_model_resets(tail, None).is_empty(),
             "ProviderOfficial reset facts require a Gemini model and numeric reset text"
         );
     }
@@ -1503,6 +1724,41 @@ Reset: 5:00 PM";
             .expect("model reset runtime fact emitted");
 
         assert_eq!(fact.value, "Gemini 2.5 Pro 5:00 PM (in 1h 12m)");
+        assert_eq!(fact.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(fact.provider, Some(Provider::Gemini));
+    }
+
+    #[test]
+    fn gemini_adapter_parse_emits_model_reset_from_actual_usage_rows() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+╭────────────────────────────────────────────────────────────╮
+│ Select Model                                               │
+│ Model usage                                                │
+│ Flash       ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  0%   Resets: 11:13 PM (24h)
+│ Flash Lite  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  0%   Resets: 11:43 AM (12h 30m)
+│ Pro         ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  5%   Resets: 6:45 PM (19h 32m)
+╰────────────────────────────────────────────────────────────╯
+branch         sandbox             /model                         workspace (/directory)         quota           context          memory           session                       /auth
+main           no sandbox          gemini-3.1-pro-preview         ~/Qmonster                     5% used         0% used          238.2 MB         af324058         user@example.com";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        let facts = set
+            .runtime_facts
+            .iter()
+            .filter(|f| f.kind == RuntimeFactKind::ModelReset)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            facts.len(),
+            1,
+            "only the current Pro model reset should surface"
+        );
+        let fact = facts[0];
+        assert_eq!(fact.value, "Pro 6:45 PM (19h 32m)");
         assert_eq!(fact.source_kind, SourceKind::ProviderOfficial);
         assert_eq!(fact.provider, Some(Provider::Gemini));
     }

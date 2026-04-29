@@ -30,9 +30,9 @@ pub fn runtime_refresh_provider_label(provider: Provider) -> &'static str {
 
 pub fn runtime_refresh_commands(
     provider: Provider,
-    _idle_state: Option<IdleCause>,
+    idle_state: Option<IdleCause>,
 ) -> &'static [&'static str] {
-    runtime_refresh_provider_commands(provider)
+    runtime_refresh_provider_commands(provider, idle_state)
 }
 
 pub fn runtime_refresh_uses_active_safe_only(idle_state: Option<IdleCause>) -> bool {
@@ -51,8 +51,9 @@ pub fn runtime_refresh_dispatch_commands(
     }
     if runtime_refresh_sends_one_command_at_a_time(provider, idle_state) {
         let key = format!(
-            "{pane_id}:{}-runtime",
-            runtime_refresh_provider_key(provider)
+            "{pane_id}:{}-runtime:{}",
+            runtime_refresh_provider_key(provider),
+            runtime_refresh_command_scope(provider, idle_state)
         );
         let idx = offsets.entry(key).or_insert(0);
         let command = commands[*idx % commands.len()];
@@ -109,11 +110,15 @@ pub fn send_runtime_refresh_commands<P: PaneSource>(
                     outcome.failed = Some((format!("{cmd} capture"), e.to_string()));
                 }
             }
-            if let Err(e) = source.send_key(pane_id, "Escape") {
-                if outcome.failed.is_none() {
-                    outcome.failed = Some(("Escape".into(), e.to_string()));
+            for close_key in runtime_refresh_close_keys(provider, cmd) {
+                if let Err(e) = source.send_key(pane_id, close_key) {
+                    if outcome.failed.is_none() {
+                        outcome.failed = Some(((*close_key).into(), e.to_string()));
+                    }
+                    break;
                 }
-            } else if outcome.failed.is_none() {
+            }
+            if outcome.failed.is_none() {
                 outcome.captured_and_closed = true;
             }
             if outcome.failed.is_some() {
@@ -156,7 +161,7 @@ pub fn runtime_refresh_notice_body(
 ) -> String {
     if captured_and_closed && one_at_a_time {
         format!(
-            "{pane_id} → `{command_label}` sent with terminal submit; Claude fullscreen output was captured, then Escape closed the surface so the next `u` can run immediately"
+            "{pane_id} → `{command_label}` sent with terminal submit; runtime surface output was captured, then Escape closed the surface so the next `u` can run immediately"
         )
     } else if active_only && one_at_a_time {
         format!(
@@ -164,7 +169,7 @@ pub fn runtime_refresh_notice_body(
         )
     } else if captured_and_closed {
         format!(
-            "{pane_id} → `{command_label}` sent with terminal submit; Claude fullscreen output was captured, then Escape closed the surface and the next poll will parse the captured output"
+            "{pane_id} → `{command_label}` sent with terminal submit; runtime surface output was captured, then Escape closed the surface and the next poll will parse the captured output"
         )
     } else if one_at_a_time {
         format!(
@@ -344,7 +349,14 @@ pub fn handle_runtime_refresh_action<P: PaneSource>(
 }
 
 fn runtime_refresh_captures_then_closes(provider: Provider, command: &str) -> bool {
-    matches!(provider, Provider::Claude) && matches!(command, "/status" | "/usage" | "/stats")
+    matches!(
+        (provider, command),
+        (Provider::Claude, "/status" | "/usage" | "/stats") | (Provider::Gemini, "/model")
+    )
+}
+
+fn runtime_refresh_close_keys(_provider: Provider, _command: &str) -> &'static [&'static str] {
+    &["Escape"]
 }
 
 fn capture_runtime_refresh_tail<P: PaneSource>(
@@ -354,7 +366,8 @@ fn capture_runtime_refresh_tail<P: PaneSource>(
     command: &str,
     capture_lines: usize,
 ) -> Result<String, crate::tmux::polling::PollingError> {
-    if provider != Provider::Claude {
+    if provider != Provider::Claude && !matches!((provider, command), (Provider::Gemini, "/model"))
+    {
         return source.capture_tail(pane_id, capture_lines);
     }
 
@@ -367,9 +380,10 @@ fn capture_runtime_refresh_tail<P: PaneSource>(
             CLAUDE_RUNTIME_CAPTURE_RETRY_DELAY
         });
         last = source.capture_tail(pane_id, capture_lines)?;
-        if runtime_refresh_capture_ready(provider, command, &last)
-            || !claude_runtime_tail_still_loading(&last)
-        {
+        if runtime_refresh_capture_ready(provider, command, &last) {
+            break;
+        }
+        if provider == Provider::Claude && !claude_runtime_tail_still_loading(&last) {
             break;
         }
     }
@@ -377,11 +391,16 @@ fn capture_runtime_refresh_tail<P: PaneSource>(
 }
 
 fn runtime_refresh_capture_ready(provider: Provider, command: &str, tail: &str) -> bool {
+    let lower = tail.to_lowercase();
+    if provider == Provider::Gemini && command == "/model" {
+        return (lower.contains("select model") || lower.contains("model usage"))
+            && (lower.contains("reset:") || lower.contains("resets:"));
+    }
+
     if provider != Provider::Claude {
         return true;
     }
 
-    let lower = tail.to_lowercase();
     match command {
         "/context" => claude_context_capture_ready(&lower),
         "/usage" => claude_usage_capture_ready(&lower),
@@ -434,13 +453,37 @@ fn claude_runtime_tail_still_loading(tail: &str) -> bool {
     })
 }
 
-fn runtime_refresh_provider_commands(provider: Provider) -> &'static [&'static str] {
+fn runtime_refresh_provider_commands(
+    provider: Provider,
+    idle_state: Option<IdleCause>,
+) -> &'static [&'static str] {
     // Keep this list to provider-owned control/status surfaces.
     match provider {
         Provider::Claude => &[],
         Provider::Codex => &["/status"],
-        Provider::Gemini => &["/stats session", "/stats model", "/model", "/stats tools"],
+        Provider::Gemini if gemini_model_refresh_allowed(idle_state) => {
+            &["/model", "/stats session", "/stats model"]
+        }
+        Provider::Gemini => &["/stats session", "/stats model"],
         Provider::Qmonster | Provider::Unknown => &[],
+    }
+}
+
+fn gemini_model_refresh_allowed(idle_state: Option<IdleCause>) -> bool {
+    matches!(
+        idle_state,
+        Some(IdleCause::WorkComplete | IdleCause::Stale | IdleCause::LimitHit)
+    )
+}
+
+fn runtime_refresh_command_scope(
+    provider: Provider,
+    idle_state: Option<IdleCause>,
+) -> &'static str {
+    match provider {
+        Provider::Gemini if gemini_model_refresh_allowed(idle_state) => "idle",
+        Provider::Gemini => "active",
+        _ => "default",
     }
 }
 
@@ -802,14 +845,30 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_commands_for_gemini_use_stats_slashes_active_or_idle() {
+    fn runtime_refresh_commands_for_gemini_only_use_model_when_idle() {
         assert_eq!(
             runtime_refresh_commands(Provider::Gemini, None),
-            ["/stats session", "/stats model", "/model", "/stats tools"]
+            ["/stats session", "/stats model"]
         );
         assert_eq!(
             runtime_refresh_commands(Provider::Gemini, Some(IdleCause::WorkComplete)),
-            ["/stats session", "/stats model", "/model", "/stats tools"]
+            ["/model", "/stats session", "/stats model"]
+        );
+        assert_eq!(
+            runtime_refresh_commands(Provider::Gemini, Some(IdleCause::Stale)),
+            ["/model", "/stats session", "/stats model"]
+        );
+        assert_eq!(
+            runtime_refresh_commands(Provider::Gemini, Some(IdleCause::LimitHit)),
+            ["/model", "/stats session", "/stats model"]
+        );
+        assert_eq!(
+            runtime_refresh_commands(Provider::Gemini, Some(IdleCause::InputWait)),
+            ["/stats session", "/stats model"]
+        );
+        assert_eq!(
+            runtime_refresh_commands(Provider::Gemini, Some(IdleCause::PermissionWait)),
+            ["/stats session", "/stats model"]
         );
     }
 
@@ -946,6 +1005,103 @@ mod tests {
     }
 
     #[test]
+    fn runtime_refresh_gemini_model_captures_then_closes_surface() {
+        let source = RecordingRefreshSource::with_capture(
+            "Select Model\nGemini 2.5 Pro\nReset: 5:00 PM (in 1h 12m)",
+        );
+        let mut overlays = HashMap::new();
+        let outcome = send_runtime_refresh_commands(
+            &source,
+            "%3",
+            Provider::Gemini,
+            Some(IdleCause::WorkComplete),
+            &["/model"],
+            40,
+            &mut overlays,
+        );
+
+        assert_eq!(
+            source.calls(),
+            vec!["keys:%3:/model", "capture:%3:300", "key:%3:Escape"]
+        );
+        assert_eq!(
+            overlays.get("%3").map(String::as_str),
+            Some("Select Model\nGemini 2.5 Pro\nReset: 5:00 PM (in 1h 12m)")
+        );
+        assert_eq!(
+            outcome,
+            RuntimeRefreshSendOutcome {
+                failed: None,
+                captured_and_closed: true
+            }
+        );
+    }
+
+    #[test]
+    fn runtime_refresh_gemini_model_retries_until_reset_rows_are_visible() {
+        let source = SequencedCaptureSource::new(&[
+            "Select Model\nLoading models...",
+            "Select Model\nPro ▬▬▬▬▬▬▬▬▬▬▬ 5% Resets: 6:45 PM (19h 32m)",
+        ]);
+        let mut overlays = HashMap::new();
+        let outcome = send_runtime_refresh_commands(
+            &source,
+            "%3",
+            Provider::Gemini,
+            Some(IdleCause::WorkComplete),
+            &["/model"],
+            40,
+            &mut overlays,
+        );
+
+        assert_eq!(
+            source.calls(),
+            vec![
+                "keys:%3:/model",
+                "capture:%3:300",
+                "capture:%3:300",
+                "key:%3:Escape",
+            ]
+        );
+        assert_eq!(
+            overlays.get("%3").map(String::as_str),
+            Some("Select Model\nPro ▬▬▬▬▬▬▬▬▬▬▬ 5% Resets: 6:45 PM (19h 32m)")
+        );
+        assert_eq!(
+            outcome,
+            RuntimeRefreshSendOutcome {
+                failed: None,
+                captured_and_closed: true
+            }
+        );
+    }
+
+    #[test]
+    fn runtime_refresh_gemini_stats_do_not_close_with_escape() {
+        let source = RecordingRefreshSource::with_capture("Gemini stats");
+        let mut overlays = HashMap::new();
+        let outcome = send_runtime_refresh_commands(
+            &source,
+            "%3",
+            Provider::Gemini,
+            Some(IdleCause::WorkComplete),
+            &["/stats session"],
+            40,
+            &mut overlays,
+        );
+
+        assert_eq!(source.calls(), vec!["keys:%3:/stats session"]);
+        assert!(overlays.is_empty());
+        assert_eq!(
+            outcome,
+            RuntimeRefreshSendOutcome {
+                failed: None,
+                captured_and_closed: false
+            }
+        );
+    }
+
+    #[test]
     fn claude_context_capture_ready_accepts_current_usage_block() {
         let tail = "\
 Context Usage
@@ -962,7 +1118,7 @@ System prompt: 8.6k tokens (0.9%)";
     }
 
     #[test]
-    fn runtime_refresh_dispatch_cycles_gemini_stats_sources_one_at_a_time() {
+    fn runtime_refresh_dispatch_cycles_active_gemini_stats_without_model() {
         let mut offsets = HashMap::new();
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
@@ -974,16 +1130,68 @@ System prompt: 8.6k tokens (0.9%)";
         );
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
+            ["/stats session"]
+        );
+        assert!(!runtime_refresh_sends_escape_first(Provider::Gemini, None));
+    }
+
+    #[test]
+    fn runtime_refresh_dispatch_cycles_idle_gemini_model_and_used_stats_sources() {
+        let mut offsets = HashMap::new();
+        assert_eq!(
+            runtime_refresh_dispatch_commands(
+                Provider::Gemini,
+                Some(IdleCause::WorkComplete),
+                "%2",
+                &mut offsets,
+            ),
             ["/model"]
         );
         assert_eq!(
-            runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
-            ["/stats tools"]
+            runtime_refresh_dispatch_commands(
+                Provider::Gemini,
+                Some(IdleCause::WorkComplete),
+                "%2",
+                &mut offsets,
+            ),
+            ["/stats session"]
         );
+        assert_eq!(
+            runtime_refresh_dispatch_commands(
+                Provider::Gemini,
+                Some(IdleCause::WorkComplete),
+                "%2",
+                &mut offsets,
+            ),
+            ["/stats model"]
+        );
+        assert_eq!(
+            runtime_refresh_dispatch_commands(
+                Provider::Gemini,
+                Some(IdleCause::WorkComplete),
+                "%2",
+                &mut offsets,
+            ),
+            ["/model"]
+        );
+        assert!(!runtime_refresh_sends_escape_first(Provider::Gemini, None));
+    }
+
+    #[test]
+    fn runtime_refresh_dispatch_keeps_active_and_idle_gemini_cycles_separate() {
+        let mut offsets = HashMap::new();
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
             ["/stats session"]
         );
-        assert!(!runtime_refresh_sends_escape_first(Provider::Gemini, None));
+        assert_eq!(
+            runtime_refresh_dispatch_commands(
+                Provider::Gemini,
+                Some(IdleCause::Stale),
+                "%2",
+                &mut offsets,
+            ),
+            ["/model"]
+        );
     }
 }

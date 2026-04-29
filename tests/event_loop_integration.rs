@@ -14,7 +14,7 @@ use qmonster::tmux::polling::{PaneSource, PollingError};
 use qmonster::tmux::types::{RawPaneSnapshot, WindowTarget};
 
 mod sim;
-use qmonster::domain::signal::IdleCause;
+use qmonster::domain::signal::{IdleCause, RuntimeFactKind};
 use sim::PollSim;
 
 /// Audit sink that captures events into a shared buffer for test inspection.
@@ -2031,6 +2031,69 @@ fn runtime_refresh_tail_overlay_preserves_live_idle_cursor() {
         "informational runtime captures must not hide the live prompt-ready cursor"
     );
     assert!((reports[0].signals.context_pressure.as_ref().unwrap().value - 0.14).abs() < 1e-6);
+}
+
+#[test]
+fn gemini_model_reset_overlay_persists_after_transient_picker_closes() {
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%9",
+            "gemini:1:main",
+            "node",
+            "\
+previous output
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+ *   Type your message or @path/to/file
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+ branch         sandbox             /model                         workspace (/directory)         quota           context          memory           session                       /auth
+ main           no sandbox          gemini-3.1-pro-preview         ~/Qmonster                     5% used         0% used          238.2 MB         af324058         user@example.com",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+    ctx.runtime_refresh_tail_overlays.insert(
+        "%9".into(),
+        "\
+╭────────────────────────────────────────────────────────────╮
+│ Select Model                                               │
+│ Model usage                                                │
+│ Flash       ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  0%   Resets: 11:13 PM (24h)
+│ Flash Lite  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  0%   Resets: 11:43 AM (12h 30m)
+│ Pro         ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  5%   Resets: 6:45 PM (19h 32m)
+╰────────────────────────────────────────────────────────────╯"
+            .into(),
+    );
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("first poll ok");
+    assert_eq!(reports[0].idle_state, Some(IdleCause::WorkComplete));
+    let reset_facts = reports[0]
+        .signals
+        .runtime_facts
+        .iter()
+        .filter(|fact| fact.kind == RuntimeFactKind::ModelReset)
+        .collect::<Vec<_>>();
+    assert_eq!(reset_facts.len(), 1);
+    assert_eq!(reset_facts[0].value, "Pro 6:45 PM (19h 32m)");
+    assert!(
+        ctx.runtime_refresh_tail_overlays.contains_key("%9"),
+        "Gemini /model picker captures are transient and must persist after the first parse"
+    );
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("second poll ok");
+    let reset_facts = reports[0]
+        .signals
+        .runtime_facts
+        .iter()
+        .filter(|fact| fact.kind == RuntimeFactKind::ModelReset)
+        .collect::<Vec<_>>();
+    assert_eq!(reset_facts.len(), 1);
+    assert_eq!(reset_facts[0].value, "Pro 6:45 PM (19h 32m)");
+    assert!(
+        ctx.runtime_refresh_tail_overlays.contains_key("%9"),
+        "reset badge should not disappear just because the closed picker is no longer in live tail"
+    );
 }
 
 #[test]

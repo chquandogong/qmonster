@@ -451,9 +451,23 @@ TUI key `u` sends the selected provider's read-only runtime slash
 commands with terminal submit (`C-m`, Enter-equivalent) for Codex and
 Gemini only. Claude is statusline-only: pressing `u` on a Claude pane
 forces the next poll but sends no slash command and no `Escape`. Codex
-sends `/status`; Gemini cycles `/stats session`, `/stats model`,
-`/model`, `/stats tools`.
-Gemini runtime surfaces are cycled without a pre-`Escape`; Gemini
+sends `/status`; Gemini cycles `/model`, `/stats session`,
+`/stats model` only when the pane is idle/stale/limit-hit. While
+Gemini is active, Qmonster skips `/model` and cycles only
+`/stats session`, `/stats model`.
+Gemini `/stats ...` surfaces are cycled without a pre-`Escape`; Gemini
+`/model` is treated as a picker surface, so Qmonster captures the tail
+and then sends one `Escape` to close it before the next `u` cycle
+command. Gemini v0.41 model usage rows render `Resets:` rather than
+`Reset:`, and both forms are parsed. When the live status table exposes
+the current `/model` value, Qmonster filters picker reset rows to that
+model family only (`gemini-3.1-pro-preview` maps to the `Pro` row, not
+`Flash` or `Flash Lite`). Unlike one-shot informational runtime
+overlays, Gemini `/model` reset captures persist until the next `/model`
+capture or pane lifecycle reset because closing the picker removes the
+reset rows from live scrollback. `/stats tools` is not sent because no
+current Gemini parser consumes it.
+Gemini
 `thinking...` progress markers and recently changing live-prompt tails
 suppress idle classification so a genuinely working Gemini pane does not
 display as `IDLE`.
@@ -724,9 +738,10 @@ minutes). F-7d would expose these via a new `[reset]` config
 section once tuning data lands. Provider scope: F-7c is a
 Claude+Codex-only feature because only F-5b (Claude sidefile) and
 F-6 (Codex App Server) populate `quota*\*\_resets_at`. Gemini `/model`
-`Reset:` rows are parsed as display-only `RuntimeFactKind::ModelReset`
-facts (`RESET <model> <time/remaining> [Official]`) but do not populate
-the F-7c `quota_*_resets_at` policy inputs. Bundled small
+`Reset:` rows for the current status-table model family are parsed as
+display-only `RuntimeFactKind::ModelReset` facts (`RESET <model>
+<time/remaining> [Official]`) but do not populate the F-7c
+`quota_*_resets_at` policy inputs. Bundled small
 cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
 
 - field reassign to struct-update syntax (silences
@@ -745,10 +760,12 @@ stripped-box-char lines for `Session ID:` and `Tool Calls:` anchors;
 `parse_gemini_stats_model(tail) -> Option<GeminiModelStats {
 input_tokens, output_tokens, cache_reads }>` performs section-anchored
 scanning for the `Tokens` header followed by `Total` / `Input` /
-`Cache Reads` / `Output` rows. `parse_gemini_model_resets(tail)` scans
-the `/model` picker for model-specific `Reset:` rows and preserves the
-provider-rendered reset time plus remaining duration as display-only
-runtime facts. Architecture choice: section-anchored
+`Cache Reads` / `Output` rows. `parse_gemini_model_resets(tail,
+current_model)` scans the `/model` picker for model-specific `Reset:` /
+`Resets:` rows, filters to the current status-table model family when
+known, and preserves the provider-rendered reset time plus remaining
+duration as display-only runtime facts. Architecture choice:
+section-anchored
 scanning over plain regex — Gemini's `/stats` output is rendered by
 Ink and the box-drawing characters surrounding each row vary across
 terminal widths and Ink versions, so the parser strips those

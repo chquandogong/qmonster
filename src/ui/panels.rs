@@ -912,6 +912,18 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
             Style::default().fg(theme::TEXT_PRIMARY),
         );
     }
+    if let Some(fact) = first_model_reset_fact(signals) {
+        push_badge(
+            &mut spans,
+            &mut has_any,
+            format!(
+                " RESET {} [{}] ",
+                ellipsize(&fact.value, 48),
+                source_kind_label(fact.source_kind)
+            ),
+            Style::default().fg(theme::TEXT_PRIMARY),
+        );
+    }
     if let Some(metric) = signals.token_count.as_ref() {
         push_badge(
             &mut spans,
@@ -994,6 +1006,13 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
     }
 
     has_any.then(|| Line::from(spans))
+}
+
+fn first_model_reset_fact(signals: &SignalSet) -> Option<&RuntimeFact> {
+    signals
+        .runtime_facts
+        .iter()
+        .find(|fact| fact.kind == RuntimeFactKind::ModelReset)
 }
 
 /// Phase F F-5b (v1.31.0): format a Unix timestamp `resets_at`
@@ -2351,6 +2370,28 @@ mod tests {
         assert!(text.contains("limits"), "text = {text:?}");
         assert!(text.contains("RESET Gemini 2.5 Pro"), "text = {text:?}");
         assert!(text.contains("1h 12m"), "text = {text:?}");
+    }
+
+    #[test]
+    fn metric_badge_lines_surface_first_model_reset_fact() {
+        let s = crate::domain::signal::SignalSet {
+            runtime_facts: vec![RuntimeFact::new(
+                RuntimeFactKind::ModelReset,
+                "Pro 6:45 PM (19h 32m)",
+                SourceKind::ProviderOfficial,
+            )],
+            ..crate::domain::signal::SignalSet::default()
+        };
+
+        let text = metric_badge_lines(&s, 120)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert!(text.contains("metrics"), "text = {text:?}");
+        assert!(text.contains("RESET Pro 6:45 PM"), "text = {text:?}");
+        assert!(text.contains("19h 32m"), "text = {text:?}");
     }
 
     #[test]

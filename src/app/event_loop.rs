@@ -83,11 +83,20 @@ where
     }
 
     for pane in panes {
-        let parse_tail = ctx
+        let overlay = ctx
             .runtime_refresh_tail_overlays
-            .remove(&pane.pane_id)
-            .map(|overlay| merge_runtime_refresh_tail(&pane.tail, &overlay))
+            .get(&pane.pane_id)
+            .cloned();
+        let parse_tail = overlay
+            .as_ref()
+            .map(|overlay| merge_runtime_refresh_tail(&pane.tail, overlay))
             .unwrap_or_else(|| pane.tail.clone());
+        if overlay
+            .as_deref()
+            .is_some_and(|overlay| !runtime_refresh_tail_overlay_persists(overlay))
+        {
+            ctx.runtime_refresh_tail_overlays.remove(&pane.pane_id);
+        }
         let raw = crate::domain::identity::RawPaneInput {
             pane_id: pane.pane_id.clone(),
             title: pane.title.clone(),
@@ -107,6 +116,7 @@ where
             ctx.idle_transition.remove(&pane.pane_id);
             ctx.idle_entered_at.remove(&pane.pane_id);
             ctx.pressure_metric_cache.remove(&pane.pane_id);
+            ctx.runtime_refresh_tail_overlays.remove(&pane.pane_id);
             // Phase D D2 (v1.18.0): a re-spawned pane is a fresh
             // identity history. Drop the stored snapshot and any
             // dedup keys for that pane so a CLI swap inside the new
@@ -407,6 +417,12 @@ fn merge_runtime_refresh_tail(live_tail: &str, captured_tail: &str) -> String {
     // surfaces. Keep the live pane tail last so prompt-ready cursor
     // detection still reflects the pane's real post-refresh state.
     format!("{captured_tail}\n{live_tail}")
+}
+
+fn runtime_refresh_tail_overlay_persists(captured_tail: &str) -> bool {
+    let lower = captured_tail.to_lowercase();
+    (lower.contains("select model") || lower.contains("model usage"))
+        && (lower.contains("reset:") || lower.contains("resets:"))
 }
 
 fn apply_pressure_metric_cache(

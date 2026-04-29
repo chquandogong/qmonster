@@ -253,10 +253,22 @@ cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
   눌러도 slash command나 `Escape`를 보내지 않고 다음 poll만 당겨옵니다.
   Codex와 Gemini는 선택된 pane에서 `u`를 누르면 provider의 read-only runtime
   slash command와 terminal submit(`C-m`, Enter-equivalent)을 보냅니다:
-  Codex `/status`, Gemini `/stats session` → `/stats model` → `/model` →
-  `/stats tools`.
-  Gemini는 pre-`Escape` 없이 명령만 순환하며, `thinking...` 진행 표시가 있으면 tail이
-  몇 poll 동안 같아도 `IDLE`로 떨어지지 않고, live prompt가 남아 있어도
+  Codex `/status`, Gemini idle/stale/limit-hit pane에서는 `/model` →
+  `/stats session` → `/stats model`, active pane에서는 `/stats session` →
+  `/stats model`.
+  Gemini `/stats ...` 명령은 pre-`Escape` 없이 순환하지만, `/model`은
+  picker 화면을 열기 때문에 Qmonster가 필요한 tail을 캡처한 뒤 `Escape`로
+  한 번 닫아 다음 `u` cycle 명령이 바로 실행 가능하게 합니다.
+  `/model`의 `Reset:` / `Resets:` 모델별 행은 `limits:` runtime fact와
+  `metrics:` `RESET` 배지로 표시합니다. 현재 status table의 `/model`
+  값이 `gemini-3.1-pro-preview`이면 `Pro`로 시작하는 reset 행만 남기고,
+  `Flash` / `Flash Lite` 행은 표시하지 않습니다. 닫힌 picker 화면은 live
+  scrollback에 남지 않으므로, 이 reset 캡처는 다음 `/model` 캡처나 pane
+  lifecycle reset 전까지 유지되어 다음 poll에서 배지가 사라지지 않습니다.
+  `/stats tools`는 현재 Qmonster가 파싱하는 표출 항목이 없어 보내지
+  않습니다. `thinking...`
+  진행 표시가 있으면 tail이 몇 poll 동안 같아도 `IDLE`로 떨어지지 않고,
+  live prompt가 남아 있어도
   최근 tail이 변하는 동안은 active로 유지됩니다. 다음 poll에서
   캡처와 읽을 수 있는 로컬 provider 설정을 `RuntimeFact`로 파싱합니다.
   Claude `/btw`는 작업 중에도 즉시 실행되지만 도구/내부 상태 접근이 없는
@@ -493,9 +505,9 @@ side_effects (N):
     `-c sandbox_mode="danger-full-access"` 플래그가 자동으로
     추가됩니다.
   - **v1.33.0 업데이트 (F-4b) — Gemini /stats + /model parser**: 운영자가
-    `u` 키를 cycle해 Gemini pane에서 `/stats session`, `/stats model`, `/model`을
-    dispatch하면, 그 출력을 Qmonster가 파싱해 다음 정보를 Gemini pane
-    card에 채웁니다:
+    `u` 키를 cycle해 Gemini pane에서 `/stats session`, `/stats model`,
+    그리고 idle/stale/limit-hit 상태일 때만 `/model`을 dispatch하면,
+    그 출력을 Qmonster가 파싱해 다음 정보를 Gemini pane card에 채웁니다:
     - **누적 input / output token 카운트**: `/stats model` 출력의
       `Tokens` 섹션에서 `Total` / `Input` / `Output` 행을 읽어
       `input_tokens` / `output_tokens` 필드에 채웁니다 (`is_none()`
@@ -513,10 +525,16 @@ side_effects (N):
       Gemini pane card에도 SID 배지가 표시됩니다.
     - **CALLS runtime fact 배지**: `/stats session` 출력의 `Tool Calls:`
       선두 숫자를 읽어 `CALLS <N> [Official]`로 표시합니다.
-    - **RESET runtime fact 배지**: `/model` 화면의 모델별 `Reset:` 행을
-      읽어 provider가 렌더한 reset 시각과 남은 시간을 그대로
-      `RESET <model> <time/remaining> [Official]` 형태로 표시합니다.
-      이 값은 Gemini 모델별 display-only runtime fact이며, F-7c
+    - **RESET runtime fact / metric 배지**: `/model` 화면의 모델별
+      `Reset:` / `Resets:` 행을 읽어 provider가 렌더한 reset 시각과
+      남은 시간을 그대로 `RESET <model> <time/remaining> [Official]`
+      형태로 표시합니다. Qmonster는 현재 status table의 `/model` 값을
+      기준으로 같은 모델 family만 남깁니다 (`gemini-3.1-pro-preview`는
+      `Pro`, `gemini-*-flash-lite`는 `Flash Lite`, `gemini-*-flash`는
+      `Flash`). 전체 값은 `limits:` runtime fact 줄에 남고, 같은 값은
+      상단 `metrics:` 줄에도 표시됩니다. 닫힌 `/model` picker 캡처는
+      다음 `/model` 캡처나 pane lifecycle reset 전까지 유지됩니다. 이
+      값은 Gemini 모델별 display-only runtime fact이며, F-7c
       reset-aware 정책 룰의 `quota_*_resets_at` 입력과는 별개입니다.
   - **v1.33.x polish (RESET 5H / RESET 7D 배지)**: 컴팩트 한-줄 metric
     행에 `RESET 5H <eta>` / `RESET 7D <eta>` 배지가 추가되어, F-5b의
