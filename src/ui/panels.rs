@@ -7,6 +7,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::app::event_loop::PaneReport;
 use crate::domain::identity::{IdentityConfidence, Provider, Role};
+use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Recommendation;
 use crate::domain::signal::{IdleCause, RuntimeFact, RuntimeFactKind, SignalSet};
 use crate::ui::labels::{ellipsize, format_count_with_suffix, source_kind_label};
@@ -599,19 +600,11 @@ pub fn metric_row(s: &SignalSet) -> String {
             source_kind_label(m.source_kind)
         ));
     }
-    // F-4: cache hit ratio (cached / (input + cached)). Source
-    // labeled from cached_input_tokens metric since input_tokens
-    // and cached share a single provider surface.
-    if let Some(pct) = format_cache_hit_ratio(
-        s.input_tokens.as_ref().map(|m| m.value),
-        s.cached_input_tokens.as_ref().map(|m| m.value),
-    ) {
-        let label = s
-            .cached_input_tokens
-            .as_ref()
-            .map(|m| source_kind_label(m.source_kind))
-            .unwrap_or("Heur");
-        parts.push(format!("cache {} [{}]", pct, label));
+    // F-4 / F-5: cache hit ratio. Prefers Claude statusline's
+    // pre-computed `cache N%`; falls back to Codex's `cached /
+    // (input + cached)` from raw welcome-panel counts.
+    if let Some((pct, source)) = signals_cache_pct_with_source(s) {
+        parts.push(format!("cache {} [{}]", pct, source_kind_label(source)));
     }
     parts.join("  ")
 }
@@ -822,20 +815,12 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
             theme::label_style(),
         );
     }
-    // F-4: CACHE hit ratio badge.
-    if let Some(pct) = format_cache_hit_ratio(
-        signals.input_tokens.as_ref().map(|m| m.value),
-        signals.cached_input_tokens.as_ref().map(|m| m.value),
-    ) {
-        let label = signals
-            .cached_input_tokens
-            .as_ref()
-            .map(|m| source_kind_label(m.source_kind))
-            .unwrap_or("Heur");
+    // F-4 / F-5: CACHE hit ratio badge.
+    if let Some((pct, source)) = signals_cache_pct_with_source(signals) {
         push_badge(
             &mut spans,
             &mut has_any,
-            format!(" CACHE {} [{}] ", pct, label),
+            format!(" CACHE {} [{}] ", pct, source_kind_label(source)),
             theme::label_style(),
         );
     }
@@ -894,6 +879,29 @@ fn format_cache_hit_ratio(
     }
     let pct = (cached as f64 / total as f64) * 100.0;
     Some(format!("{pct:.1}%"))
+}
+
+/// Phase F F-5 (v1.30.0): pick the cache hit ratio for badge
+/// rendering. Prefers `signals.cache_hit_ratio` (Claude statusline's
+/// pre-computed `cache N%`) and falls back to the count-derived
+/// `format_cache_hit_ratio` (Codex `(+ N cached)`) when only the raw
+/// counts are available. Returns `(formatted_pct, source_kind)` so
+/// the badge label stays honest about the surface.
+fn signals_cache_pct_with_source(s: &SignalSet) -> Option<(String, SourceKind)> {
+    if let Some(direct) = s.cache_hit_ratio.as_ref() {
+        let pct = direct.value * 100.0;
+        return Some((format!("{pct:.1}%"), direct.source_kind));
+    }
+    let pct = format_cache_hit_ratio(
+        s.input_tokens.as_ref().map(|m| m.value),
+        s.cached_input_tokens.as_ref().map(|m| m.value),
+    )?;
+    let source = s
+        .cached_input_tokens
+        .as_ref()
+        .map(|m| m.source_kind)
+        .unwrap_or(SourceKind::Heuristic);
+    Some((pct, source))
 }
 
 /// Phase F F-3 (v1.24.0): render a TOKENS sparkline from recent

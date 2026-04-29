@@ -161,6 +161,15 @@ pub struct SignalSet {
     /// limit); non-None when Claude statusLine command opt-in (F-5)
     /// or Gemini API-key/Vertex-AI auth (F-4b) lands.
     pub cached_input_tokens: Option<MetricValue<u64>>,
+    /// Phase F F-5 (v1.30.0): pre-computed cache hit ratio surfaced
+    /// directly by the provider statusline (Claude `statusline.sh`'s
+    /// `cache N%` output) when raw cached/input token counts are
+    /// not individually exposed. Stored as 0..1 (so 0.75 = 75%).
+    /// Renders the same `CACHE` badge as the Codex count-derived
+    /// path; UI + policy prefer this field over the count-derived
+    /// computation when both are available so a Claude pane that
+    /// only emits the percentage still feeds F-7 / F-7b.
+    pub cache_hit_ratio: Option<MetricValue<f64>>,
     pub cost_usd: Option<MetricValue<f64>>,
     pub model_name: Option<MetricValue<String>>,
     pub git_branch: Option<MetricValue<String>>,

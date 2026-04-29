@@ -12,6 +12,10 @@ struct ClaudeStatusLine {
     model: String,
     reasoning_effort: Option<String>,
     context_pressure: Option<f32>,
+    /// Phase F F-5 (v1.30.0): cache hit ratio extracted from the
+    /// recommended `~/.claude/statusline.sh`'s `cache N%` token. 0..1.
+    /// None when the operator's statusline doesn't emit the field.
+    cache_hit_ratio: Option<f64>,
     quota_5h_pressure: Option<f32>,
     quota_weekly_pressure: Option<f32>,
     worktree_path: Option<String>,
@@ -62,6 +66,13 @@ impl ProviderParser for ClaudeAdapter {
                     .with_confidence(0.95)
                     .with_provider(Provider::Claude)
             });
+            if let Some(ratio) = status.cache_hit_ratio {
+                set.cache_hit_ratio = Some(
+                    MetricValue::new(ratio, SourceKind::ProviderOfficial)
+                        .with_confidence(0.95)
+                        .with_provider(Provider::Claude),
+                );
+            }
         }
         if set.context_pressure.is_none()
             && let Some(pct) = parse_claude_context_pressure(tail)
@@ -234,11 +245,23 @@ fn parse_claude_status_line_row(line: &str) -> Option<ClaudeStatusLine> {
         return None;
     }
 
+    // Phase F F-5 (v1.30.0): the recommended statusline.sh emits an
+    // optional `cache N%` token between CTX and 5h whenever the live
+    // session JSON populates `cache_read_input_tokens`. When present
+    // it sits between `ctx_idx` and `h5_idx`, so narrow CTX's range
+    // to stop at it; absence is still a valid statusline shape and
+    // simply leaves cache_hit_ratio = None.
+    let cache_idx = find_status_label_in(&lower, "cache", ctx_idx, h5_idx);
+    let ctx_end = cache_idx.unwrap_or(h5_idx);
+
     // Each percent search is bounded by the next label so that an em-dash
     // placeholder (statusline.sh renders missing JSON fields as "—") in
     // one column cannot bleed the following column's value into itself.
     let context_pressure =
-        percent_or_zero_placeholder_in_range(trimmed, ctx_idx + "ctx".len(), h5_idx);
+        percent_or_zero_placeholder_in_range(trimmed, ctx_idx + "ctx".len(), ctx_end);
+    let cache_hit_ratio = cache_idx.and_then(|idx| {
+        percent_in_range(trimmed, idx + "cache".len(), h5_idx).map(|pct| pct as f64)
+    });
     let quota_5h_pressure = percent_in_range(trimmed, h5_idx + "5h".len(), d7_idx);
     let quota_weekly_pressure = percent_in_range(trimmed, d7_idx + "7d".len(), trimmed.len());
     let (model, reasoning_effort) = parse_claude_statusline_model(&trimmed[..ctx_idx])?;
@@ -248,10 +271,29 @@ fn parse_claude_status_line_row(line: &str) -> Option<ClaudeStatusLine> {
         model,
         reasoning_effort,
         context_pressure,
+        cache_hit_ratio,
         quota_5h_pressure,
         quota_weekly_pressure,
         worktree_path,
     })
+}
+
+/// Like `find_status_label`, but bounded to `[start, end)` so a label
+/// outside the expected column position cannot match. Used by the
+/// optional `cache N%` parser to constrain the search to the gap
+/// between CTX and 5h.
+fn find_status_label_in(line: &str, label: &str, start: usize, end: usize) -> Option<usize> {
+    line.get(start..end)?
+        .match_indices(label)
+        .find_map(|(rel_idx, _)| {
+            let abs_idx = start + rel_idx;
+            let before_ok =
+                abs_idx == 0 || !line.as_bytes()[abs_idx.saturating_sub(1)].is_ascii_alphanumeric();
+            let after_idx = abs_idx + label.len();
+            let after_ok =
+                after_idx >= line.len() || !line.as_bytes()[after_idx].is_ascii_alphanumeric();
+            (before_ok && after_ok).then_some(abs_idx)
+        })
 }
 
 fn parse_claude_statusline_model(prefix: &str) -> Option<(String, Option<String>)> {
@@ -907,6 +949,64 @@ Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster
                 && f.value == "bypass permissions on"
                 && f.source_kind == SourceKind::ProviderOfficial
         }));
+    }
+
+    #[test]
+    fn claude_statusline_with_cache_pct_populates_cache_hit_ratio() {
+        // Phase F F-5 (v1.30.0): the recommended statusline.sh emits
+        // `cache N%` between CTX and 5h whenever the live session JSON
+        // populates `cache_read_input_tokens`. The adapter parses this
+        // into SignalSet.cache_hit_ratio (ProviderOfficial) so the
+        // CACHE badge surfaces for Claude panes — not just Codex.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Opus 4.7 (1M context)·max  CTX 29%  cache 100%  5h 73%  7d 66%  ~/Qmonster";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+
+        let cache = set
+            .cache_hit_ratio
+            .as_ref()
+            .expect("cache N% must populate cache_hit_ratio");
+        assert!((cache.value - 1.0).abs() < 1e-6, "cache 100% → 1.0 ratio");
+        assert_eq!(cache.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(cache.provider, Some(Provider::Claude));
+        // Adjacent fields stay correct — the cache token must not bleed
+        // into CTX/5h/7d.
+        assert!((set.context_pressure.as_ref().unwrap().value - 0.29).abs() < 1e-6);
+        assert!((set.quota_5h_pressure.as_ref().unwrap().value - 0.73).abs() < 1e-6);
+        assert!((set.quota_weekly_pressure.as_ref().unwrap().value - 0.66).abs() < 1e-6);
+    }
+
+    #[test]
+    fn claude_statusline_without_cache_pct_keeps_cache_hit_ratio_none() {
+        // Honesty rule: a statusline that doesn't emit `cache N%`
+        // (operator on the older script, or session JSON without
+        // cache_read_input_tokens) must leave cache_hit_ratio = None
+        // — never synthesize a value.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        assert!(set.cache_hit_ratio.is_none());
+    }
+
+    #[test]
+    fn claude_statusline_cache_pct_75_renders_as_0_75() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Opus 4.7·max  CTX 42%  cache 75%  5h 18%  7d 7%  ~/Qmonster";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+        let cache = set.cache_hit_ratio.as_ref().expect("75% must parse");
+        assert!((cache.value - 0.75).abs() < 1e-6);
     }
 
     #[test]

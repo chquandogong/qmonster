@@ -47,6 +47,14 @@ pub fn eval_cache(
 /// UI's `format_cache_hit_ratio` definition (Codex's welcome-panel
 /// `Token usage: total=N input=N (+ N cached) output=N`).
 fn cache_hit_ratio(signals: &SignalSet) -> Option<f64> {
+    // Phase F F-5 (v1.30.0): prefer the pre-computed ratio when the
+    // adapter populated it directly (Claude statusline `cache N%`)
+    // — that surface ships the percentage but not the raw cached /
+    // input counts, so the count-derived path below would return
+    // None for those panes and silently suppress the cache rules.
+    if let Some(direct) = signals.cache_hit_ratio.as_ref() {
+        return Some(direct.value);
+    }
     let cached = signals.cached_input_tokens.as_ref()?.value as f64;
     let input = signals
         .input_tokens
@@ -257,6 +265,34 @@ mod tests {
             context_pressure: Some(MetricValue::new(ctx, SourceKind::ProviderOfficial)),
             ..SignalSet::default()
         }
+    }
+
+    fn signals_with_cache_pct(ratio: f64, ctx: f32) -> SignalSet {
+        SignalSet {
+            cache_hit_ratio: Some(MetricValue::new(ratio, SourceKind::ProviderOfficial)),
+            context_pressure: Some(MetricValue::new(ctx, SourceKind::ProviderOfficial)),
+            ..SignalSet::default()
+        }
+    }
+
+    #[test]
+    fn cache_hot_warning_fires_from_direct_cache_hit_ratio_field() {
+        // Phase F F-5 (v1.30.0): when an adapter populates
+        // SignalSet.cache_hit_ratio directly (Claude statusline's
+        // pre-computed `cache N%`), the cache rules must use that
+        // value — not silently suppress because the count-derived
+        // path returns None for the missing input/cached pair.
+        let recs = eval_cache(
+            &id(Provider::Claude, IdentityConfidence::High),
+            &signals_with_cache_pct(0.83, 0.50),
+            &gates_high(),
+            &[],
+        );
+        assert!(
+            recs.iter()
+                .any(|r| r.action == "cache: avoid /compact while cache is hot"),
+            "Claude statusline cache 83% must surface the hot-cache warning"
+        );
     }
 
     #[test]
