@@ -275,7 +275,10 @@ where
                                     help_modal.open("", Vec::new());
                                 }
                                 KeyCode::Char('S') => settings_overlay.open(),
-                                KeyCode::Char('P') => provider_setup_overlay.open(),
+                                KeyCode::Char('P') => {
+                                    provider_setup_overlay.sync_from_config(&ctx.config);
+                                    provider_setup_overlay.open();
+                                }
                                 KeyCode::Char('t') => {
                                     open_target_picker(&ctx.source, target_picker.controller());
                                 }
@@ -353,7 +356,12 @@ where
 
                             if settings_overlay.is_open() {
                                 dashboard_split_dragging = false;
-                                handle_settings_overlay_mouse(&mut settings_overlay, viewport, m);
+                                handle_settings_overlay_mouse(
+                                    &mut settings_overlay,
+                                    &mut ctx.config,
+                                    viewport,
+                                    m,
+                                );
                                 continue;
                             }
 

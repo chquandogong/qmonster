@@ -15,8 +15,8 @@
 //! until the operator types a value.
 
 use crate::app::config::{
-    ContextConfig, CostConfig, CostProviderConfig, PressureProviderConfig, QmonsterConfig,
-    QuotaConfig,
+    ActionsMode, ContextConfig, CostConfig, CostProviderConfig, LogSensitivity,
+    PressureProviderConfig, QmonsterConfig, QuotaConfig, RefreshPolicy,
 };
 use crate::domain::recommendation::Severity;
 use crate::ui::theme;
@@ -24,7 +24,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use std::path::Path;
 
 /// Which advisory section a field belongs to. Drives unit display
@@ -150,6 +150,91 @@ fn scopes_for_section(section: Section) -> &'static [Scope] {
     }
 }
 
+/// Top-level pages inside the Settings modal. Thresholds and
+/// Integrations are editable; Parameters and Rules are read-only
+/// reference pages for the currently loaded runtime configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsTab {
+    Thresholds,
+    Integrations,
+    Parameters,
+    Rules,
+}
+
+impl SettingsTab {
+    pub const fn label(self) -> &'static str {
+        match self {
+            SettingsTab::Thresholds => "Thresholds",
+            SettingsTab::Integrations => "Integrations",
+            SettingsTab::Parameters => "Parameters",
+            SettingsTab::Rules => "Rules",
+        }
+    }
+
+    pub const fn index(self) -> usize {
+        match self {
+            SettingsTab::Thresholds => 0,
+            SettingsTab::Integrations => 1,
+            SettingsTab::Parameters => 2,
+            SettingsTab::Rules => 3,
+        }
+    }
+
+    pub const fn next(self) -> Self {
+        match self {
+            SettingsTab::Thresholds => SettingsTab::Integrations,
+            SettingsTab::Integrations => SettingsTab::Parameters,
+            SettingsTab::Parameters => SettingsTab::Rules,
+            SettingsTab::Rules => SettingsTab::Thresholds,
+        }
+    }
+
+    pub const fn previous(self) -> Self {
+        match self {
+            SettingsTab::Thresholds => SettingsTab::Rules,
+            SettingsTab::Integrations => SettingsTab::Thresholds,
+            SettingsTab::Parameters => SettingsTab::Integrations,
+            SettingsTab::Rules => SettingsTab::Parameters,
+        }
+    }
+}
+
+const SETTINGS_TABS: [SettingsTab; 4] = [
+    SettingsTab::Thresholds,
+    SettingsTab::Integrations,
+    SettingsTab::Parameters,
+    SettingsTab::Rules,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntegrationField {
+    ClaudeSidefile,
+    CodexAppServer,
+}
+
+impl IntegrationField {
+    pub const fn label(self) -> &'static str {
+        match self {
+            IntegrationField::ClaudeSidefile => "Claude sidefile export",
+            IntegrationField::CodexAppServer => "Codex app-server auto-spawn",
+        }
+    }
+
+    const fn next(self) -> Self {
+        match self {
+            IntegrationField::ClaudeSidefile => IntegrationField::CodexAppServer,
+            IntegrationField::CodexAppServer => IntegrationField::ClaudeSidefile,
+        }
+    }
+
+    const fn previous(self) -> Self {
+        match self {
+            IntegrationField::ClaudeSidefile => IntegrationField::CodexAppServer,
+            IntegrationField::CodexAppServer => IntegrationField::ClaudeSidefile,
+        }
+    }
+}
+
 /// One-line status banner shown at the bottom of the overlay.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsStatus {
@@ -169,7 +254,9 @@ pub enum SettingsStatus {
 #[derive(Debug, Clone)]
 pub struct SettingsOverlay {
     open: bool,
+    tab: SettingsTab,
     selected: FieldId,
+    selected_integration: IntegrationField,
     edit_buffer: Option<String>,
     status: SettingsStatus,
     /// Tracks dirty-since-open so `is_dirty()` survives a transient
@@ -181,7 +268,9 @@ impl Default for SettingsOverlay {
     fn default() -> Self {
         Self {
             open: false,
+            tab: SettingsTab::Thresholds,
             selected: FieldId::new(Section::Cost, Scope::Default, Bound::Warning),
+            selected_integration: IntegrationField::ClaudeSidefile,
             edit_buffer: None,
             status: SettingsStatus::Idle,
             dirty: false,
@@ -202,11 +291,47 @@ impl SettingsOverlay {
         self.selected
     }
 
-    pub fn select_field(&mut self, field: FieldId) {
+    pub fn tab(&self) -> SettingsTab {
+        self.tab
+    }
+
+    pub fn selected_integration(&self) -> IntegrationField {
+        self.selected_integration
+    }
+
+    pub fn switch_tab(&mut self, tab: SettingsTab) {
         if self.edit_buffer.is_some() {
             return;
         }
+        self.tab = tab;
+    }
+
+    pub fn next_tab(&mut self) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        self.tab = self.tab.next();
+    }
+
+    pub fn previous_tab(&mut self) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        self.tab = self.tab.previous();
+    }
+
+    pub fn select_field(&mut self, field: FieldId) {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Thresholds {
+            return;
+        }
         self.selected = field;
+    }
+
+    pub fn select_integration(&mut self, field: IntegrationField) {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Integrations {
+            return;
+        }
+        self.selected_integration = field;
     }
 
     pub fn edit_buffer(&self) -> Option<&str> {
@@ -225,7 +350,9 @@ impl SettingsOverlay {
     /// (cost / default / warning) becomes the focus.
     pub fn open(&mut self) {
         self.open = true;
+        self.tab = SettingsTab::Thresholds;
         self.selected = FieldId::new(Section::Cost, Scope::Default, Bound::Warning);
+        self.selected_integration = IntegrationField::ClaudeSidefile;
         self.edit_buffer = None;
         self.status = SettingsStatus::Idle;
         self.dirty = false;
@@ -241,7 +368,7 @@ impl SettingsOverlay {
     /// Move focus to the next field, wrapping at the end of the list.
     /// No-op when an edit buffer is active (must commit/cancel first).
     pub fn next_field(&mut self) {
-        if self.edit_buffer.is_some() {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Thresholds {
             return;
         }
         let fields = all_fields();
@@ -251,12 +378,42 @@ impl SettingsOverlay {
 
     /// Move focus to the previous field, wrapping at the start.
     pub fn prev_field(&mut self) {
-        if self.edit_buffer.is_some() {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Thresholds {
             return;
         }
         let fields = all_fields();
         let idx = fields.iter().position(|f| *f == self.selected).unwrap_or(0);
         self.selected = fields[(idx + fields.len() - 1) % fields.len()];
+    }
+
+    pub fn next_integration(&mut self) {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Integrations {
+            return;
+        }
+        self.selected_integration = self.selected_integration.next();
+    }
+
+    pub fn prev_integration(&mut self) {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Integrations {
+            return;
+        }
+        self.selected_integration = self.selected_integration.previous();
+    }
+
+    pub fn toggle_integration(&mut self, config: &mut QmonsterConfig) {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Integrations {
+            return;
+        }
+        match self.selected_integration {
+            IntegrationField::ClaudeSidefile => {
+                config.provider_setup.claude_sidefile = !config.provider_setup.claude_sidefile;
+            }
+            IntegrationField::CodexAppServer => {
+                config.provider_setup.codex_app_server = !config.provider_setup.codex_app_server;
+            }
+        }
+        self.dirty = true;
+        self.status = SettingsStatus::Dirty;
     }
 
     /// Read the value the field would resolve to today, or `None` for
@@ -285,7 +442,7 @@ impl SettingsOverlay {
     /// Begin editing the focused field. Buffer initializes with the
     /// effective (resolved) value formatted for in-place editing.
     pub fn start_edit(&mut self, config: &QmonsterConfig) {
-        if !self.open {
+        if !self.open || self.tab != SettingsTab::Thresholds {
             return;
         }
         let v = self.effective_field(config, self.selected);
@@ -371,7 +528,7 @@ impl SettingsOverlay {
     /// cleared would leave the override partially populated and is
     /// always operator-confusing.
     pub fn clear_override(&mut self, config: &mut QmonsterConfig) {
-        if self.edit_buffer.is_some() {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Thresholds {
             return;
         }
         if self.selected.scope == Scope::Default {
@@ -463,6 +620,16 @@ impl SettingsOverlay {
             let path = field.toml_path();
             set_nested_f64(&mut doc, &path, v);
         }
+        set_nested_bool(
+            &mut doc,
+            &["provider_setup", "claude_sidefile"],
+            config.provider_setup.claude_sidefile,
+        );
+        set_nested_bool(
+            &mut doc,
+            &["provider_setup", "codex_app_server"],
+            config.provider_setup.codex_app_server,
+        );
 
         Ok(doc.to_string())
     }
@@ -485,6 +652,29 @@ fn set_nested_f64(doc: &mut toml_edit::DocumentMut, path: &[&str], v: f64) {
         // case in normal flows; if a malformed file reaches this path
         // anyway, replacing the scalar with a fresh table keeps the
         // save from panicking.
+        let needs_replace = current
+            .get(seg)
+            .map(|item| !item.is_table())
+            .unwrap_or(true);
+        if needs_replace {
+            current.insert(seg, Item::Table(Table::new()));
+        }
+        current = current
+            .get_mut(seg)
+            .and_then(|item| item.as_table_mut())
+            .expect("segment is a table after the ensure step above");
+    }
+    current.insert(path[last], value(v));
+}
+
+fn set_nested_bool(doc: &mut toml_edit::DocumentMut, path: &[&str], v: bool) {
+    use toml_edit::{Item, Table, value};
+    if path.is_empty() {
+        return;
+    }
+    let last = path.len() - 1;
+    let mut current: &mut Table = doc.as_table_mut();
+    for seg in &path[..last] {
         let needs_replace = current
             .get(seg)
             .map(|item| !item.is_table())
@@ -941,6 +1131,7 @@ const MODAL_HEIGHT_PERCENT: u16 = 80;
 
 pub struct SettingsModalRects {
     pub area: Rect,
+    pub tabs: Rect,
     pub body: Rect,
     pub hint: Rect,
 }
@@ -949,12 +1140,17 @@ pub fn settings_modal_rects(viewport: Rect) -> SettingsModalRects {
     let area = centered_rect(MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT, viewport);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(6), Constraint::Length(3)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(6),
+            Constraint::Length(3),
+        ])
         .split(area);
     SettingsModalRects {
         area,
-        body: chunks[0],
-        hint: chunks[1],
+        tabs: chunks[0],
+        body: chunks[1],
+        hint: chunks[2],
     }
 }
 
@@ -990,12 +1186,31 @@ pub fn render_settings_modal(
     let rects = settings_modal_rects(frame.area());
     frame.render_widget(Clear, rects.area);
 
+    let tab_titles: Vec<Line<'_>> = SETTINGS_TABS
+        .iter()
+        .map(|tab| Line::from(tab.label()))
+        .collect();
+    let tabs = Tabs::new(tab_titles)
+        .select(overlay.tab().index())
+        .block(
+            Block::default()
+                .title("Settings")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        );
+    frame.render_widget(tabs, rects.tabs);
+
     let body_lines = build_body_lines(overlay, config);
     frame.render_widget(
         Paragraph::new(body_lines).wrap(Wrap { trim: false }).block(
             Block::default()
                 .title(Span::styled(
-                    " Settings — cost / context / quota thresholds ",
+                    settings_body_title(overlay.tab()),
                     Style::default().add_modifier(Modifier::BOLD),
                 ))
                 .borders(Borders::ALL)
@@ -1038,6 +1253,32 @@ pub fn settings_close_button_rect(body: Rect) -> Rect {
     )
 }
 
+pub fn settings_tab_index_at(tabs: Rect, column: u16) -> Option<usize> {
+    if column < tabs.x {
+        return None;
+    }
+    // Mirrors ratatui Tabs' left-aligned layout inside an ALL-borders
+    // block: one border cell, then ` label `, a divider, and the next
+    // padded label. Empty space to the right of the final label is
+    // intentionally not clickable.
+    let mut cursor = tabs.x.saturating_add(1);
+    for (idx, tab) in SETTINGS_TABS.iter().enumerate() {
+        let label_width = tab.label().chars().count() as u16;
+        let end = cursor.saturating_add(label_width).saturating_add(2);
+        if column < end {
+            return Some(idx);
+        }
+        cursor = end;
+        if idx + 1 < SETTINGS_TABS.len() {
+            cursor = cursor.saturating_add(1);
+            if column < cursor {
+                return None;
+            }
+        }
+    }
+    None
+}
+
 pub fn settings_field_at(body: Rect, column: u16, row: u16) -> Option<FieldId> {
     let inner = body.inner(Margin {
         vertical: 1,
@@ -1077,6 +1318,25 @@ pub fn settings_field_at(body: Rect, column: u16, row: u16) -> Option<FieldId> {
     None
 }
 
+pub fn settings_integration_field_at(
+    body: Rect,
+    column: u16,
+    row: u16,
+) -> Option<IntegrationField> {
+    let inner = body.inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    if !rect_contains(inner, column, row) {
+        return None;
+    }
+    match row.saturating_sub(inner.y) {
+        1 => Some(IntegrationField::ClaudeSidefile),
+        2 => Some(IntegrationField::CodexAppServer),
+        _ => None,
+    }
+}
+
 fn rect_contains(rect: Rect, x: u16, y: u16) -> bool {
     x >= rect.x
         && x < rect.x.saturating_add(rect.width)
@@ -1084,7 +1344,28 @@ fn rect_contains(rect: Rect, x: u16, y: u16) -> bool {
         && y < rect.y.saturating_add(rect.height)
 }
 
+fn settings_body_title(tab: SettingsTab) -> &'static str {
+    match tab {
+        SettingsTab::Thresholds => " Settings — cost / context / quota thresholds ",
+        SettingsTab::Integrations => " Settings — provider integrations ",
+        SettingsTab::Parameters => " Settings — configured parameters ",
+        SettingsTab::Rules => " Settings — rule conditions ",
+    }
+}
+
 fn build_body_lines<'a>(overlay: &'a SettingsOverlay, config: &'a QmonsterConfig) -> Vec<Line<'a>> {
+    match overlay.tab() {
+        SettingsTab::Thresholds => build_threshold_body_lines(overlay, config),
+        SettingsTab::Integrations => build_integration_body_lines(overlay, config),
+        SettingsTab::Parameters => build_parameter_body_lines(overlay, config),
+        SettingsTab::Rules => build_rule_body_lines(overlay, config),
+    }
+}
+
+fn build_threshold_body_lines<'a>(
+    overlay: &'a SettingsOverlay,
+    config: &'a QmonsterConfig,
+) -> Vec<Line<'a>> {
     let mut lines: Vec<Line<'a>> = Vec::new();
     for (i, section) in [Section::Cost, Section::Context, Section::Quota]
         .iter()
@@ -1101,6 +1382,424 @@ fn build_body_lines<'a>(overlay: &'a SettingsOverlay, config: &'a QmonsterConfig
     lines.push(Line::from(""));
     lines.push(status_line(overlay));
     lines
+}
+
+fn build_integration_body_lines(
+    overlay: &SettingsOverlay,
+    config: &QmonsterConfig,
+) -> Vec<Line<'static>> {
+    vec![
+        reference_header_line("[provider_setup]"),
+        integration_row_line(
+            overlay,
+            IntegrationField::ClaudeSidefile,
+            config.provider_setup.claude_sidefile,
+            "copy Claude statusline snippet with JSON sidefile export",
+        ),
+        integration_row_line(
+            overlay,
+            IntegrationField::CodexAppServer,
+            config.provider_setup.codex_app_server,
+            "auto-spawn qmonster-managed app-server on next TUI start",
+        ),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "  Provider Setup (P) is read-only. ",
+                Style::default().fg(theme::TEXT_DIM),
+            ),
+            Span::styled(
+                "Change these values here, then press w to write TOML.",
+                Style::default().fg(theme::TEXT_PRIMARY),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("  Codex app-server: ", Style::default().fg(theme::TEXT_DIM)),
+            Span::styled(
+                "restart required after save; Qmonster sends initialize + rateLimits/read.",
+                Style::default().fg(theme::TEXT_PRIMARY),
+            ),
+        ]),
+        Line::from(""),
+        status_line(overlay),
+    ]
+}
+
+fn integration_row_line(
+    overlay: &SettingsOverlay,
+    field: IntegrationField,
+    enabled: bool,
+    detail: &'static str,
+) -> Line<'static> {
+    let focused = overlay.is_open()
+        && overlay.tab() == SettingsTab::Integrations
+        && overlay.selected_integration() == field;
+    let cursor = if focused { "▶ " } else { "  " };
+    let value = if enabled { "ON " } else { "OFF" };
+    let value_style = if focused {
+        Style::default()
+            .fg(theme::TEXT_PRIMARY)
+            .add_modifier(Modifier::REVERSED)
+    } else if enabled {
+        Style::default()
+            .fg(theme::severity_color(Severity::Good))
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme::TEXT_DIM)
+    };
+    Line::from(vec![
+        Span::raw(format!("    {cursor}")),
+        Span::styled(
+            format!("{:<29}", field.label()),
+            Style::default().fg(theme::TEXT_PRIMARY),
+        ),
+        Span::styled(format!(" {value} "), value_style),
+        Span::styled(detail, Style::default().fg(theme::TEXT_DIM)),
+    ])
+}
+
+fn build_parameter_body_lines(
+    overlay: &SettingsOverlay,
+    config: &QmonsterConfig,
+) -> Vec<Line<'static>> {
+    let defaults = QmonsterConfig::defaults();
+    vec![
+        Line::from(vec![
+            Span::styled(
+                "  *",
+                Style::default().fg(theme::severity_color(Severity::Warning)),
+            ),
+            Span::styled(
+                " differs from the built-in default; unmarked rows are current defaults",
+                Style::default().fg(theme::TEXT_DIM),
+            ),
+        ]),
+        Line::from(""),
+        reference_header_line("Runtime"),
+        setting_row(
+            "tmux source/poll/capture",
+            format!(
+                "{}/{}ms/{} lines",
+                config.tmux.source.as_str(),
+                config.tmux.poll_interval_ms,
+                config.tmux.capture_lines
+            ),
+            format!(
+                "{}/{}ms/{} lines",
+                defaults.tmux.source.as_str(),
+                defaults.tmux.poll_interval_ms,
+                defaults.tmux.capture_lines
+            ),
+        ),
+        setting_row(
+            "refresh/idle/logging",
+            format!(
+                "{}/{} polls/{}",
+                refresh_policy_label(config.refresh.policy),
+                config.idle.stillness_polls,
+                log_sensitivity_label(config.logging.sensitivity)
+            ),
+            format!(
+                "{}/{} polls/{}",
+                refresh_policy_label(defaults.refresh.policy),
+                defaults.idle.stillness_polls,
+                log_sensitivity_label(defaults.logging.sensitivity)
+            ),
+        ),
+        setting_row(
+            "logging retention/big output",
+            format!(
+                "{}d/{} chars",
+                config.logging.retention_days, config.logging.big_output_chars
+            ),
+            format!(
+                "{}d/{} chars",
+                defaults.logging.retention_days, defaults.logging.big_output_chars
+            ),
+        ),
+        setting_row(
+            "storage.root",
+            config.storage.root.as_deref().unwrap_or("(auto)").into(),
+            defaults.storage.root.as_deref().unwrap_or("(auto)").into(),
+        ),
+        Line::from(""),
+        reference_header_line("Actions"),
+        setting_row(
+            "mode/send/destructive",
+            format!(
+                "{}/{}/{}",
+                actions_mode_label(config.actions.mode),
+                on_off(config.actions.allow_auto_prompt_send),
+                on_off(config.actions.allow_destructive_actions)
+            ),
+            format!(
+                "{}/{}/{}",
+                actions_mode_label(defaults.actions.mode),
+                on_off(defaults.actions.allow_auto_prompt_send),
+                on_off(defaults.actions.allow_destructive_actions)
+            ),
+        ),
+        setting_row(
+            "actions.notifications/archive",
+            format!(
+                "{}/{}",
+                on_off(config.actions.allow_auto_notifications),
+                on_off(config.actions.allow_auto_archive)
+            ),
+            format!(
+                "{}/{}",
+                on_off(defaults.actions.allow_auto_notifications),
+                on_off(defaults.actions.allow_auto_archive)
+            ),
+        ),
+        Line::from(""),
+        reference_header_line("Policy Inputs"),
+        setting_row(
+            "token quota_tight",
+            on_off(config.token.quota_tight).into(),
+            on_off(defaults.token.quota_tight).into(),
+        ),
+        setting_row(
+            "provider setup sidefile/server",
+            format!(
+                "{}/{}",
+                on_off(config.provider_setup.claude_sidefile),
+                on_off(config.provider_setup.codex_app_server)
+            ),
+            format!(
+                "{}/{}",
+                on_off(defaults.provider_setup.claude_sidefile),
+                on_off(defaults.provider_setup.codex_app_server)
+            ),
+        ),
+        setting_row(
+            "security posture/cross/drift",
+            format!(
+                "{}/{}/{}",
+                on_off(config.security.posture_advisories),
+                on_off(config.security.cross_window_findings),
+                on_off(config.security.identity_drift_findings)
+            ),
+            format!(
+                "{}/{}/{}",
+                on_off(defaults.security.posture_advisories),
+                on_off(defaults.security.cross_window_findings),
+                on_off(defaults.security.identity_drift_findings)
+            ),
+        ),
+        setting_row(
+            "cache hot/cold ratios",
+            format!(
+                "{}/{}",
+                pct_label(config.cache.hot_ratio_threshold),
+                pct_label(config.cache.cold_ratio_threshold)
+            ),
+            format!(
+                "{}/{}",
+                pct_label(defaults.cache.hot_ratio_threshold),
+                pct_label(defaults.cache.cold_ratio_threshold)
+            ),
+        ),
+        setting_row(
+            "cache context hot/cold",
+            format!(
+                "{}/{}",
+                pct_label(f64::from(config.cache.hot_low_ctx_threshold)),
+                pct_label(f64::from(config.cache.cold_high_ctx_threshold))
+            ),
+            format!(
+                "{}/{}",
+                pct_label(f64::from(defaults.cache.hot_low_ctx_threshold)),
+                pct_label(f64::from(defaults.cache.cold_high_ctx_threshold))
+            ),
+        ),
+        setting_row(
+            "cache drift drop/samples",
+            format!(
+                "{}/{}",
+                pct_label(config.cache.drift_drop_threshold),
+                config.cache.drift_min_samples
+            ),
+            format!(
+                "{}/{}",
+                pct_label(defaults.cache.drift_drop_threshold),
+                defaults.cache.drift_min_samples
+            ),
+        ),
+        Line::from(""),
+        status_line(overlay),
+    ]
+}
+
+fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> Vec<Line<'static>> {
+    vec![
+        reference_header_line("Shared Gates"),
+        rule_row(
+            "provider-specific",
+            "identity confidence must be Medium or High".into(),
+        ),
+        rule_row(
+            "attention wait",
+            "cache and memory advisories suppress on input/permission wait".into(),
+        ),
+        rule_row(
+            "aggressive profiles",
+            format!("token.quota_tight must be {}", on_off(true)),
+        ),
+        Line::from(""),
+        reference_header_line("Pressure Rules"),
+        rule_row(
+            "cost pressure",
+            format!(
+                "warning >= ${:.2}; critical >= ${:.2}; provider overrides apply",
+                config.cost.warning_usd, config.cost.critical_usd
+            ),
+        ),
+        rule_row(
+            "context pressure",
+            format!(
+                "warning >= {}; critical >= {}",
+                pct_label(f64::from(config.context.warning_pct)),
+                pct_label(f64::from(config.context.critical_pct))
+            ),
+        ),
+        rule_row(
+            "quota pressure",
+            format!(
+                "warning >= {}; critical >= {}; Claude/Codex split 5h + weekly",
+                pct_label(f64::from(config.quota.warning_pct)),
+                pct_label(f64::from(config.quota.critical_pct))
+            ),
+        ),
+        Line::from(""),
+        reference_header_line("Cache / Memory"),
+        rule_row(
+            "cache hot wait",
+            format!(
+                "cache > {} and context < {}",
+                pct_label(config.cache.hot_ratio_threshold),
+                pct_label(f64::from(config.cache.hot_low_ctx_threshold))
+            ),
+        ),
+        rule_row(
+            "cache cold compact",
+            format!(
+                "cache < {} and context > {}",
+                pct_label(config.cache.cold_ratio_threshold),
+                pct_label(f64::from(config.cache.cold_high_ctx_threshold))
+            ),
+        ),
+        rule_row(
+            "cache drift",
+            format!(
+                "drop >= {} over >= {} token samples",
+                pct_label(config.cache.drift_drop_threshold),
+                config.cache.drift_min_samples
+            ),
+        ),
+        rule_row("memory bloat", "agent memory files > 50,000 bytes".into()),
+        Line::from(""),
+        reference_header_line("Opt-in Findings"),
+        rule_row(
+            "security posture",
+            format!(
+                "security.posture_advisories = {}",
+                on_off(config.security.posture_advisories)
+            ),
+        ),
+        rule_row(
+            "cross-window",
+            format!(
+                "security.cross_window_findings = {}; same repo+branch in >=2 windows",
+                on_off(config.security.cross_window_findings)
+            ),
+        ),
+        rule_row(
+            "identity drift",
+            format!(
+                "security.identity_drift_findings = {}; provider/path changes between polls",
+                on_off(config.security.identity_drift_findings)
+            ),
+        ),
+        rule_row(
+            "prompt send",
+            format!(
+                "actions.mode != observe_only and auto_prompt_send = {}",
+                on_off(config.actions.allow_auto_prompt_send)
+            ),
+        ),
+        Line::from(""),
+        status_line(overlay),
+    ]
+}
+
+fn reference_header_line(label: &'static str) -> Line<'static> {
+    Line::from(vec![Span::styled(
+        format!("  {label}"),
+        Style::default()
+            .fg(theme::TEXT_PRIMARY)
+            .add_modifier(Modifier::BOLD),
+    )])
+}
+
+fn setting_row(label: &'static str, value: String, default: String) -> Line<'static> {
+    let custom = value != default;
+    let marker = if custom { "*" } else { " " };
+    let marker_style = if custom {
+        Style::default().fg(theme::severity_color(Severity::Warning))
+    } else {
+        Style::default().fg(theme::TEXT_DIM)
+    };
+    let default_note = if custom {
+        format!("  default {default}")
+    } else {
+        "  default".to_string()
+    };
+    Line::from(vec![
+        Span::styled(format!("  {marker} "), marker_style),
+        Span::styled(format!("{label:<31}"), Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(value, Style::default().fg(theme::TEXT_PRIMARY)),
+        Span::styled(default_note, Style::default().fg(theme::TEXT_DIM)),
+    ])
+}
+
+fn rule_row(label: &'static str, condition: String) -> Line<'static> {
+    Line::from(vec![
+        Span::raw("    "),
+        Span::styled(format!("{label:<20}"), Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(condition, Style::default().fg(theme::TEXT_PRIMARY)),
+    ])
+}
+
+fn actions_mode_label(mode: ActionsMode) -> &'static str {
+    match mode {
+        ActionsMode::ObserveOnly => "observe_only",
+        ActionsMode::RecommendOnly => "recommend_only",
+        ActionsMode::SafeAuto => "safe_auto",
+    }
+}
+
+fn refresh_policy_label(policy: RefreshPolicy) -> &'static str {
+    match policy {
+        RefreshPolicy::ManualOnly => "manual_only",
+        RefreshPolicy::Automatic => "automatic",
+    }
+}
+
+fn log_sensitivity_label(sensitivity: LogSensitivity) -> &'static str {
+    match sensitivity {
+        LogSensitivity::Minimal => "minimal",
+        LogSensitivity::Balanced => "balanced",
+        LogSensitivity::Forensic => "forensic",
+    }
+}
+
+fn on_off(v: bool) -> &'static str {
+    if v { "on" } else { "off" }
+}
+
+fn pct_label(v: f64) -> String {
+    format!("{:.0}%", v * 100.0)
 }
 
 fn section_header_line(section: Section) -> Line<'static> {
@@ -1264,13 +1963,20 @@ fn hint_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
     let editing = overlay.edit_buffer().is_some();
     let line1 = if editing {
         "  EDIT — type digits/'.' · Enter commit · Esc cancel · Backspace delete"
+    } else if overlay.tab() == SettingsTab::Thresholds {
+        "  [1]/[2]/[3]/[4]/[Tab] tab · ↑/↓ select · e/Enter edit · c clear · w write · q/Esc close"
+    } else if overlay.tab() == SettingsTab::Integrations {
+        "  [1]/[2]/[3]/[4]/[Tab] tab · ↑/↓ select · Space/e/Enter toggle · w write · q/Esc close"
     } else {
-        "  ↑/↓ select · e or Enter edit · c clear override (provider rows) · w write · q or Esc close"
+        "  [1]/[2]/[3]/[4]/[Tab] tab · click tabs · w write dirty edits · q/Esc close"
     };
-    vec![
-        Line::from(line1),
-        Line::from("  Edits stay in memory until 'w' writes back to the loaded TOML."),
-    ]
+    let line2 =
+        if overlay.tab() == SettingsTab::Thresholds || overlay.tab() == SettingsTab::Integrations {
+            "  Edits stay in memory until 'w' writes back to the loaded TOML."
+        } else {
+            "  This tab is read-only; edit values on Thresholds or Integrations."
+        };
+    vec![Line::from(line1), Line::from(line2)]
 }
 
 #[cfg(test)]
@@ -1279,6 +1985,19 @@ mod tests {
 
     fn cfg() -> QmonsterConfig {
         QmonsterConfig::defaults()
+    }
+
+    fn rendered_text(lines: &[Line<'_>]) -> String {
+        lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     // -----------------------------------------------------------------
@@ -1325,6 +2044,7 @@ mod tests {
         let mut s = SettingsOverlay::new();
         s.open();
         assert!(s.is_open());
+        assert_eq!(s.tab(), SettingsTab::Thresholds);
         assert_eq!(
             s.selected(),
             FieldId::new(Section::Cost, Scope::Default, Bound::Warning)
@@ -1374,6 +2094,144 @@ mod tests {
         let before = s.selected();
         s.next_field();
         assert_eq!(s.selected(), before, "must not move focus while editing");
+    }
+
+    #[test]
+    fn tab_navigation_cycles_and_is_noop_during_edit() {
+        let mut s = SettingsOverlay::new();
+        s.open();
+
+        s.next_tab();
+        assert_eq!(s.tab(), SettingsTab::Integrations);
+        s.next_tab();
+        assert_eq!(s.tab(), SettingsTab::Parameters);
+        s.next_tab();
+        assert_eq!(s.tab(), SettingsTab::Rules);
+        s.next_tab();
+        assert_eq!(s.tab(), SettingsTab::Thresholds);
+        s.previous_tab();
+        assert_eq!(s.tab(), SettingsTab::Rules);
+
+        s.switch_tab(SettingsTab::Thresholds);
+        s.start_edit(&cfg());
+        s.next_tab();
+        assert_eq!(
+            s.tab(),
+            SettingsTab::Thresholds,
+            "tab must not move while an edit buffer is active"
+        );
+    }
+
+    #[test]
+    fn settings_tab_index_at_uses_rendered_label_boundaries() {
+        let tabs = Rect::new(10, 2, 80, 3);
+        let inner_x = tabs.x + 1;
+
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 2), Some(0));
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 17), Some(1));
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 29), Some(2));
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 41), Some(3));
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 60), None);
+        assert_eq!(settings_tab_index_at(tabs, tabs.x - 1), None);
+    }
+
+    #[test]
+    fn integration_tab_toggles_provider_setup_values() {
+        let mut s = SettingsOverlay::new();
+        let mut config = cfg();
+        s.open();
+        s.switch_tab(SettingsTab::Integrations);
+
+        assert_eq!(s.selected_integration(), IntegrationField::ClaudeSidefile);
+        let before_sidefile = config.provider_setup.claude_sidefile;
+        s.toggle_integration(&mut config);
+        assert_ne!(config.provider_setup.claude_sidefile, before_sidefile);
+        assert!(s.is_dirty());
+        assert!(matches!(s.status(), SettingsStatus::Dirty));
+
+        s.next_integration();
+        assert_eq!(s.selected_integration(), IntegrationField::CodexAppServer);
+        let before_server = config.provider_setup.codex_app_server;
+        s.toggle_integration(&mut config);
+        assert_ne!(config.provider_setup.codex_app_server, before_server);
+    }
+
+    #[test]
+    fn settings_integration_field_at_maps_body_rows() {
+        let viewport = Rect::new(0, 0, 120, 40);
+        let rects = settings_modal_rects(viewport);
+        let inner = rects.body.inner(Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
+
+        assert_eq!(
+            settings_integration_field_at(rects.body, inner.x + 5, inner.y + 1),
+            Some(IntegrationField::ClaudeSidefile)
+        );
+        assert_eq!(
+            settings_integration_field_at(rects.body, inner.x + 5, inner.y + 2),
+            Some(IntegrationField::CodexAppServer)
+        );
+        assert_eq!(
+            settings_integration_field_at(rects.body, inner.x + 5, inner.y),
+            None
+        );
+    }
+
+    #[test]
+    fn integrations_tab_shows_provider_setup_values_and_guidance() {
+        let mut config = cfg();
+        config.provider_setup.claude_sidefile = false;
+        config.provider_setup.codex_app_server = true;
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Integrations);
+
+        let rendered = rendered_text(&build_body_lines(&s, &config));
+
+        assert!(rendered.contains("[provider_setup]"));
+        assert!(rendered.contains("Claude sidefile export"));
+        assert!(rendered.contains("OFF"));
+        assert!(rendered.contains("Codex app-server"));
+        assert!(rendered.contains("ON"));
+        assert!(rendered.contains("Provider Setup (P) is read-only"));
+        assert!(rendered.contains("press w to write TOML"));
+    }
+
+    #[test]
+    fn parameters_tab_shows_custom_policy_inputs() {
+        let mut config = cfg();
+        config.token.quota_tight = true;
+        config.cache.drift_min_samples = 6;
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+
+        let rendered = rendered_text(&build_body_lines(&s, &config));
+
+        assert!(rendered.contains("token quota_tight"));
+        assert!(rendered.contains("on"));
+        assert!(rendered.contains("default off"));
+        assert!(rendered.contains("cache drift drop/samples"));
+        assert!(rendered.contains("30%/6"));
+    }
+
+    #[test]
+    fn rules_tab_shows_dynamic_activation_conditions() {
+        let mut config = cfg();
+        config.cache.hot_ratio_threshold = 0.7;
+        config.security.identity_drift_findings = true;
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Rules);
+
+        let rendered = rendered_text(&build_body_lines(&s, &config));
+
+        assert!(rendered.contains("cache hot wait"));
+        assert!(rendered.contains("cache > 70%"));
+        assert!(rendered.contains("identity drift"));
+        assert!(rendered.contains("security.identity_drift_findings = on"));
     }
 
     // -----------------------------------------------------------------
@@ -1725,10 +2583,10 @@ mod tests {
 
     #[test]
     fn save_preserves_unrelated_section_comments_and_keys() {
-        // Settings overlay only edits `[cost]` / `[context]` /
-        // `[quota]`. Any other section the operator has authored —
-        // `[tmux]`, `[security]`, `[idle]`, custom comments, key
-        // order — must be untouched after save.
+        // Settings overlay edits its owned sections and preserves any
+        // other section the operator has authored — `[tmux]`,
+        // `[security]`, `[idle]`, custom comments, key order — after
+        // save.
         use std::io::Write;
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("qmonster.toml");
@@ -1790,6 +2648,44 @@ mod tests {
         );
         let reloaded: QmonsterConfig = toml::from_str(&saved).expect("parse");
         assert!((reloaded.cost.warning_usd - 9.25).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn save_updates_provider_setup_values_in_existing_file() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("qmonster.toml");
+        let original =
+            "# header\n[provider_setup]\nclaude_sidefile = true\ncodex_app_server = false\n";
+        std::fs::File::create(&path)
+            .and_then(|mut f| f.write_all(original.as_bytes()))
+            .expect("write seed");
+
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Integrations);
+        let mut config = cfg();
+        config.provider_setup.claude_sidefile = false;
+        config.provider_setup.codex_app_server = true;
+
+        s.save(&config, &path).expect("save ok");
+
+        let saved = std::fs::read_to_string(&path).expect("read back");
+        assert!(
+            saved.contains("# header"),
+            "leading comment must survive: {saved}"
+        );
+        assert!(
+            saved.contains("claude_sidefile = false"),
+            "sidefile setting must be written: {saved}"
+        );
+        assert!(
+            saved.contains("codex_app_server = true"),
+            "app-server setting must be written: {saved}"
+        );
+        let reloaded: QmonsterConfig = toml::from_str(&saved).expect("parse");
+        assert!(!reloaded.provider_setup.claude_sidefile);
+        assert!(reloaded.provider_setup.codex_app_server);
     }
 
     #[test]

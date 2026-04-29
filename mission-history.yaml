@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.32.1 — Provider Setup overlay readability polish."
+  mission_title: "Qmonster v1.32.2 — Settings integrations and token sparkline polish."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 163
-  latest_version: "1.32.1"
+  total_revisions: 164
+  latest_version: "1.32.2"
 
 timeline:
   - change_id: "initial"
@@ -14828,9 +14828,90 @@ timeline:
     related_commits: []
     follow_up: []
 
+  - change_id: "v1.32.2-settings-integrations-token-sparkline"
+    semantic_version: "1.32.2"
+    change_sequence: 164
+    date: "2026-04-29"
+    author: "OpenAI Codex (GPT-5.5)"
+    contributors:
+      - "CHENGHAO QUAN (chquan@dogu.xyz)"
+    change_type: "polish"
+    motivation_type: "operator-feedback"
+    persistence: "permanent"
+    intent: >
+      Move Provider Setup's sidefile/app-server switches to the Settings
+      surface, keep Provider Setup read-only, and make token sparkline
+      status visible on crowded selected pane cards.
+    intent_ko: >
+      Provider Setup의 sidefile/app-server 스위치를 Settings 화면으로
+      이동하고, Provider Setup은 읽기 전용으로 유지하며, 배지가 많은
+      선택 pane card에서도 TOKENS sparkline 상태가 보이게 만든다.
+    decision: >
+      Add a Settings Integrations tab for `[provider_setup]` booleans,
+      keep Parameters and Rules as read-only reference tabs, and re-sync
+      Provider Setup from the current config before opening `P`. The
+      Provider Setup body now names Settings as the edit surface; `s`
+      no longer mutates the overlay. Token sparklines move above
+      recommendation details, render as plain high-contrast text, and
+      show an explicit collecting state until two samples exist.
+    changes:
+      added:
+        - "Settings tab model now includes Thresholds / Integrations / Parameters / Rules"
+        - "IntegrationField state for claude_sidefile and codex_app_server, with keyboard and mouse toggles"
+        - "Settings save path writes [provider_setup] booleans while preserving comments and unrelated TOML sections"
+        - "Provider Setup sync_from_config so the read-only overlay mirrors Settings immediately before opening"
+        - "Token sparkline collecting-state text when fewer than two samples exist"
+      modified:
+        - "src/ui/settings.rs and src/app/settings_overlay.rs: Integrations tab rendering, hit testing, key handling, mouse handling, and persistence tests"
+        - "src/ui/provider_setup.rs and src/app/provider_setup_overlay.rs: sidefile/app-server options are read-only Settings-derived values; s key ignored"
+        - "src/app/tui_loop.rs: P opening re-syncs Provider Setup from current config"
+        - "src/ui/panels.rs: selected-pane TOKENS sparkline appears near the top and no longer uses a badge background"
+        - "docs/ai/UI_MANUAL.md, README.md, VERSION.md, package.json, mission.yaml, mission-history.yaml, docs/ai/PROJECT_BRIEF.md, docs/ai/VALIDATION.md bumped to v1.32.2"
+      removed:
+        - "Provider Setup in-overlay [s] mutation path for claude_sidefile / codex_app_server"
+    changed_sections:
+      - "src/ui/settings.rs"
+      - "src/app/settings_overlay.rs"
+      - "src/ui/provider_setup.rs"
+      - "src/app/provider_setup_overlay.rs"
+      - "src/app/tui_loop.rs"
+      - "src/ui/panels.rs"
+      - "src/ui/dashboard.rs"
+      - "src/ui/provider_setup_snippets/codex_app_server_guide.sh"
+      - "docs/ai/UI_MANUAL.md"
+      - "README.md"
+      - "VERSION.md"
+      - "package.json"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/VALIDATION.md"
+    observable_effects:
+      added:
+        - "`S` Settings shows an Integrations tab where `[provider_setup] claude_sidefile` and `codex_app_server` can be toggled by keyboard or mouse"
+        - "`S` Settings shows Parameters and Rules tabs for current major parameters and policy activation conditions"
+        - "Selected-pane card shows `TOKENS collecting N/2` before enough samples exist"
+      modified:
+        - "Provider Setup shows current sidefile/app-server values but directs edits to `S Settings -> Integrations`"
+        - "Provider Setup `y` copy target follows the Settings-derived value"
+        - "Codex app-server guidance says normal Qmonster use does not require a separate terminal or manual JSON-RPC messages"
+        - "TOKENS sparkline is rendered as foreground text near the top of the selected pane card"
+      removed:
+        - "Provider Setup `[s]` toggle behavior"
+    impact_scope:
+      runtime: "UI state-routing and config persistence only; no provider config writes, no new database schema, no destructive mutations. Codex app-server remains opt-in and restart-gated."
+      tests: "744 lib + 68 integration tests pass; cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release, scripts/verify-shared.sh, and npm pack --dry-run pass."
+      ledger: "1 new timeline entry (sequence 164); meta bump; patch version bump v1.32.1 → v1.32.2 for Settings integrations and token sparkline polish."
+      npm: "package.json bumped to 1.32.2 to keep npm metadata aligned with the ledger tag."
+      review_gate: "local validation passes before commit"
+    breaking: false
+    risk: "low — the change moves where existing provider_setup booleans are edited and keeps Provider Setup read-only; token sparkline changes are presentational only."
+    related_commits: []
+    follow_up: []
+
 evolution_summary:
-  current_phase: 'v1.32.1 ships Provider Setup overlay readability polish: tab bodies now separate Current Status, Options, Copy With y, and copied-preview sections; [s] toggles render as ON/OFF near the top; each tab states what y copies and what remains informational only. 5 new Provider Setup tests; 728 lib + 68 integration green. v1.32.0 ships Phase F F-6: Codex App Server JSON-RPC client. New `src/adapters/codex_app_server.rs` spawns `codex app-server` with `-c sandbox_mode="danger-full-access"` to bypass bubblewrap on Linux, sends NDJSON `initialize` + `account/rateLimits/read` over the child''s piped stdin/stdout, and parses the response into `CodexRateLimits { primary, secondary }` where each window carries `used_percent` (clamped 0..=100), `window_duration_mins`, and `resets_at_unix_seconds`. A `JsonRpcIo` trait abstracts the IO so tests inject a `VecDequeIo` stub; `SubprocessIo`''s Drop closes stdin for graceful EOF then try_wait → kill fallback for clean reap. `Context` gains `codex_app_server: Option<CodexAppServer<SubprocessIo>>` (long-lived client) + `codex_rate_limits: Option<CodexRateLimits>` (cached snapshot). `tui_loop` spawns the server once at startup when `[provider_setup] codex_app_server = true`; success and failure both surface a SystemNotice (Severity::Good / Warning) and the TUI continues either way. `event_loop::run_once_with_target` calls `read_rate_limits()` once per polling tick BEFORE iterating panes; read failure logs to stderr, drops the client, clears the cache so stale data can never linger. New `apply_codex_rate_limits(signals, rl)` helper writes the account-level snapshot into each Codex-pane SignalSet — `quota_5h_pressure` / `quota_weekly_pressure` populate ONLY when the statusline path didn''t (is_none guards), but `quota_5h_resets_at` / `quota_weekly_resets_at` populate unconditionally (no other surface emits them). Result: F-5b''s `5h resets in <eta>` / `7d resets in <eta>` rows now appear on Codex pane cards too, consistent with the Claude sidefile path. Bundled polish: v1.31.x settings-overlay mouse (click-to-select + scroll-wheel cycles fields), pane-card badge wrapping keyed off terminal width; v1.32.x Provider Setup overlay Tab / Right / BackTab / Left tab cycling. 11 new tests; 726 lib + 68 integration green. v1.31.0 shipped Phase F F-5b: Claude sidefile reader. New `src/adapters/claude_sidefile.rs` parses the per-session JSON file dropped by the recommended `~/.claude/statusline.sh` (G-1 snippet) at `~/.local/share/ai-cli-status/claude/<session_id>.json` and matches it to a Claude pane by the JSON''s `cwd` field equalling the pane''s `current_path` (newest-mtime tiebreak; best-effort silent None on missing dir / malformed JSON / no match). `parse_for_with_environment` calls the matcher after the agent-memory fill (Phase F-1 / F-2 pattern); a provider gate restricts the enrichment to Claude panes so a Codex / Gemini pane sharing the cwd never inherits Claude session state. New `SignalSet` fields `quota_5h_resets_at` and `quota_weekly_resets_at` (Option<MetricValue<u64>>, Unix seconds) feed two new metric rows: `5h resets in <eta>` and `7d resets in <eta>`; new helper `format_resets_eta` formats `2h13m` / `45m` / `30s` and caps at 14 days to reject sentinels. New `RuntimeFactKind::{SessionId, TranscriptPath}` variants surface per-pane Claude session identity (rendering labels `SID` / `XSCRIPT`). `cost_usd` now populates for Claude panes via the existing `cost $X.XX` row. `is_none()` guards preserve the statusline path''s values for raw counts; `cache_hit_ratio` is the one explicit override (sidefile-derived count-based ratio wins over rounded statusline `cache N%`). 11 new tests; 710 lib + 68 integration green. v1.30.0 shipped Phase G G-2 + Phase F F-5. G-2: operator-tunable Provider Setup defaults via a new `[provider_setup]` config section in `qmonster.toml` (`claude_sidefile = true` default flips the recommended sidefile JSON-export workflow on at startup; `codex_app_server = false` keeps the advanced daemon opt-in). New `ProviderSetupConfig` struct in `src/app/config.rs` and `ProviderSetupOverlay::from_config(&QmonsterConfig)` constructor seed runtime overlay state from persisted config; `tui_loop.rs` uses `from_config` instead of `::new()`. Sidefile-on-default writes the full Claude statusLine JSON to `~/.local/share/ai-cli-status/claude/<sid>.json` so downstream Claude tooling (the F-5b reader, future audit pipelines) can read raw cache_read / cache_creation / resets_at / cost / transcript_path. F-5: Claude statusline `cache N%` parser → CACHE badge. New `SignalSet.cache_hit_ratio: Option<MetricValue<f64>>` field (0..1, ProviderOfficial); the recommended `~/.claude/statusline.sh` emits the optional `cache N%` token between CTX and 5h, the Claude adapter parses it via a new `find_status_label_in` range-bounded label search, and `parse_claude_status_line_row` narrows CTX''s percent-search bound to stop at the `cache` label so values don''t bleed. UI + policy prefer this pre-computed ratio when populated; the count-derived path (Codex F-4) remains as fallback. The CACHE badge now surfaces for Claude panes alongside Codex; F-7 / F-7b cache rules fire on Claude panes too. 8 new tests; 699 lib + 68 integration green. v1.29.0 opened Phase G with G-1: Provider Setup overlay. New `P` key opens a 3-tab in-TUI modal (Claude/Codex/Gemini) showing recommended config snippets and detected current state per provider via read-only filesystem probes of `~/.claude/statusline.sh`, `~/.codex/config.toml`, and `~/.gemini/settings.json`. New `src/ui/provider_setup.rs` module owns view-model, state detectors, snippet `include_str!` consts, and `render_tab_content`; `src/app/provider_setup_overlay.rs` mirrors `settings_overlay.rs` for key dispatch. Read-only — Qmonster never writes provider config; operator copies snippets manually. v1.28.0 shipped F-7-config: operator-tunable cache thresholds. New `CacheConfig` struct in `src/app/config.rs` exposes the 6 thresholds from F-7/F-7b via `[cache]` section in `qmonster.toml`; `PolicyGates` gains 6 `cache_*` fields; `cache.rs` reads from gates and interpolates values into reason strings. v1.27.1 fixed Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4''s cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards.'
-  next_phase: "Phase G G-1/G-2 + Phase F F-5/F-5b/F-6 shipped (v1.30.0/v1.31.0/v1.32.0), with v1.32.1 Provider Setup readability polish layered on top; F-4b (Gemini /stats parsing — needs live fixture) is the next planned cache-observability slice. F-7c (wait_for_reset / snapshot_before_reset) is now unblocked by F-6's resets_at surface but remains deferred until enough resets_at history accumulates to validate the wait-for-reset trigger threshold. A settings-overlay UI for [provider_setup] + [cache] booleans also remains unscoped."
+  current_phase: 'v1.32.2 ships Settings integrations and token sparkline polish: Settings now has Thresholds, Integrations, Parameters, and Rules tabs; [provider_setup] sidefile/app-server toggles live in S -> Integrations with keyboard and mouse support; Provider Setup mirrors those values read-only and points edits back to Settings; selected-pane TOKENS sparkline renders near the top as high-contrast plain text and shows TOKENS collecting N/2 while warming up. 744 lib + 68 integration green. v1.32.1 ships Provider Setup overlay readability polish: tab bodies now separate Current Status, Options, Copy With y, and copied-preview sections; [s] toggles render as ON/OFF near the top; each tab states what y copies and what remains informational only. 5 new Provider Setup tests; 728 lib + 68 integration green. v1.32.0 ships Phase F F-6: Codex App Server JSON-RPC client. New `src/adapters/codex_app_server.rs` spawns `codex app-server` with `-c sandbox_mode="danger-full-access"` to bypass bubblewrap on Linux, sends NDJSON `initialize` + `account/rateLimits/read` over the child''s piped stdin/stdout, and parses the response into `CodexRateLimits { primary, secondary }` where each window carries `used_percent` (clamped 0..=100), `window_duration_mins`, and `resets_at_unix_seconds`. A `JsonRpcIo` trait abstracts the IO so tests inject a `VecDequeIo` stub; `SubprocessIo`''s Drop closes stdin for graceful EOF then try_wait → kill fallback for clean reap. `Context` gains `codex_app_server: Option<CodexAppServer<SubprocessIo>>` (long-lived client) + `codex_rate_limits: Option<CodexRateLimits>` (cached snapshot). `tui_loop` spawns the server once at startup when `[provider_setup] codex_app_server = true`; success and failure both surface a SystemNotice (Severity::Good / Warning) and the TUI continues either way. `event_loop::run_once_with_target` calls `read_rate_limits()` once per polling tick BEFORE iterating panes; read failure logs to stderr, drops the client, clears the cache so stale data can never linger. New `apply_codex_rate_limits(signals, rl)` helper writes the account-level snapshot into each Codex-pane SignalSet — `quota_5h_pressure` / `quota_weekly_pressure` populate ONLY when the statusline path didn''t (is_none guards), but `quota_5h_resets_at` / `quota_weekly_resets_at` populate unconditionally (no other surface emits them). Result: F-5b''s `5h resets in <eta>` / `7d resets in <eta>` rows now appear on Codex pane cards too, consistent with the Claude sidefile path. Bundled polish: v1.31.x settings-overlay mouse (click-to-select + scroll-wheel cycles fields), pane-card badge wrapping keyed off terminal width; v1.32.x Provider Setup overlay Tab / Right / BackTab / Left tab cycling. 11 new tests; 726 lib + 68 integration green. v1.31.0 shipped Phase F F-5b: Claude sidefile reader. New `src/adapters/claude_sidefile.rs` parses the per-session JSON file dropped by the recommended `~/.claude/statusline.sh` (G-1 snippet) at `~/.local/share/ai-cli-status/claude/<session_id>.json` and matches it to a Claude pane by the JSON''s `cwd` field equalling the pane''s `current_path` (newest-mtime tiebreak; best-effort silent None on missing dir / malformed JSON / no match). `parse_for_with_environment` calls the matcher after the agent-memory fill (Phase F-1 / F-2 pattern); a provider gate restricts the enrichment to Claude panes so a Codex / Gemini pane sharing the cwd never inherits Claude session state. New `SignalSet` fields `quota_5h_resets_at` and `quota_weekly_resets_at` (Option<MetricValue<u64>>, Unix seconds) feed two new metric rows: `5h resets in <eta>` and `7d resets in <eta>`; new helper `format_resets_eta` formats `2h13m` / `45m` / `30s` and caps at 14 days to reject sentinels. New `RuntimeFactKind::{SessionId, TranscriptPath}` variants surface per-pane Claude session identity (rendering labels `SID` / `XSCRIPT`). `cost_usd` now populates for Claude panes via the existing `cost $X.XX` row. `is_none()` guards preserve the statusline path''s values for raw counts; `cache_hit_ratio` is the one explicit override (sidefile-derived count-based ratio wins over rounded statusline `cache N%`). 11 new tests; 710 lib + 68 integration green. v1.30.0 shipped Phase G G-2 + Phase F F-5. G-2: operator-tunable Provider Setup defaults via a new `[provider_setup]` config section in `qmonster.toml` (`claude_sidefile = true` default flips the recommended sidefile JSON-export workflow on at startup; `codex_app_server = false` keeps the advanced daemon opt-in). New `ProviderSetupConfig` struct in `src/app/config.rs` and `ProviderSetupOverlay::from_config(&QmonsterConfig)` constructor seed runtime overlay state from persisted config; `tui_loop.rs` uses `from_config` instead of `::new()`. Sidefile-on-default writes the full Claude statusLine JSON to `~/.local/share/ai-cli-status/claude/<sid>.json` so downstream Claude tooling (the F-5b reader, future audit pipelines) can read raw cache_read / cache_creation / resets_at / cost / transcript_path. F-5: Claude statusline `cache N%` parser → CACHE badge. New `SignalSet.cache_hit_ratio: Option<MetricValue<f64>>` field (0..1, ProviderOfficial); the recommended `~/.claude/statusline.sh` emits the optional `cache N%` token between CTX and 5h, the Claude adapter parses it via a new `find_status_label_in` range-bounded label search, and `parse_claude_status_line_row` narrows CTX''s percent-search bound to stop at the `cache` label so values don''t bleed. UI + policy prefer this pre-computed ratio when populated; the count-derived path (Codex F-4) remains as fallback. The CACHE badge now surfaces for Claude panes alongside Codex; F-7 / F-7b cache rules fire on Claude panes too. 8 new tests; 699 lib + 68 integration green. v1.29.0 opened Phase G with G-1: Provider Setup overlay. New `P` key opens a 3-tab in-TUI modal (Claude/Codex/Gemini) showing recommended config snippets and detected current state per provider via read-only filesystem probes of `~/.claude/statusline.sh`, `~/.codex/config.toml`, and `~/.gemini/settings.json`. New `src/ui/provider_setup.rs` module owns view-model, state detectors, snippet `include_str!` consts, and `render_tab_content`; `src/app/provider_setup_overlay.rs` mirrors `settings_overlay.rs` for key dispatch. Read-only — Qmonster never writes provider config; operator copies snippets manually. v1.28.0 shipped F-7-config: operator-tunable cache thresholds. New `CacheConfig` struct in `src/app/config.rs` exposes the 6 thresholds from F-7/F-7b via `[cache]` section in `qmonster.toml`; `PolicyGates` gains 6 `cache_*` fields; `cache.rs` reads from gates and interpolates values into reason strings. v1.27.1 fixed Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4''s cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards.'
+  next_phase: "Phase G G-1/G-2 + Phase F F-5/F-5b/F-6 shipped (v1.30.0/v1.31.0/v1.32.0), with v1.32.1 Provider Setup readability polish layered on top; F-4b (Gemini /stats parsing — needs live fixture) is the next planned cache-observability slice. F-7c (wait_for_reset / snapshot_before_reset) is now unblocked by F-6's resets_at surface but remains deferred until enough resets_at history accumulates to validate the wait-for-reset trigger threshold. A settings-overlay UI for [cache] booleans remains unscoped; [provider_setup] moved to Settings -> Integrations in v1.32.2."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

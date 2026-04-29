@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.32.1`; current mission ledger `v1.32.1`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.32.2`; current mission ledger `v1.32.2`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,16 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.32.1` / npm `1.32.1`.
+Current release: `v1.32.2` / npm `1.32.2`.
+
+`v1.32.2` ships Settings/Provider Setup integration cleanup and token
+sparkline visibility fixes. Settings now has `Thresholds`,
+`Integrations`, `Parameters`, and `Rules` tabs; `[provider_setup]`
+sidefile/app-server toggles live in `S -> Integrations` with keyboard
+and mouse support, while Provider Setup is read-only and mirrors those
+values. The selected pane's `TOKENS` sparkline now renders near the top
+as high-contrast plain text and shows `TOKENS collecting N/2` while it
+waits for enough samples. 744 lib + 68 integration green.
 
 `v1.32.1` ships Provider Setup overlay readability polish. The tab body
 now uses stable sections for `Current Status`, `Options`, `Copy With y`,
@@ -107,12 +116,11 @@ fire on Claude panes too. 8 new tests; 699 lib + 68 integration green.
 `v1.29.0` opens **Phase G** with **G-1 Provider Setup overlay**: the new `P` key opens a 3-tab
 in-TUI modal (Claude/Codex/Gemini) showing the recommended config snippet for each provider's
 statusline/footer plus detected current state of `~/.claude/statusline.sh`, `~/.codex/config.toml`,
-and `~/.gemini/settings.json`. Each snippet is rendered inline as copy-pasteable text — the
-Claude tab carries an `[s]` toggle that reveals an additional sidefile JSON-export block (writes
-the full statusLine JSON to `~/.local/share/ai-cli-status/claude/<session_id>.json` for future
-F-5 reader); the Codex tab carries an `[s]` toggle for the deferred Codex App Server polling
-guide. Read-only — Qmonster never writes provider config files; operator copies manually. Keys:
-`P` opens, `1`/`2`/`3` switch tabs, `s` toggles, `↑↓`/`j/k` scroll, `q`/`Esc` close. 8 new tests;
+and `~/.gemini/settings.json`. Each snippet is rendered inline as copy-pasteable text. The
+optional Claude sidefile JSON-export block and Codex App Server polling guide are now controlled
+from `S -> Integrations`; Provider Setup mirrors those values read-only and never writes provider
+config files. Keys: `P` opens, `1`/`2`/`3` switch tabs, `Tab`/`←→` cycles tabs,
+`↑↓`/`j/k` scroll, `q`/`Esc` close. 8 new tests;
 678 lib + 68 integration green.
 
 `v1.28.0` continues Phase F with F-7-config: operator-tunable cache thresholds. New `CacheConfig`

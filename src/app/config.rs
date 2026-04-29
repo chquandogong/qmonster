@@ -233,10 +233,10 @@ impl Default for CacheConfig {
     }
 }
 
-/// Phase G G-2 (v1.30.0): operator-tunable defaults for the Provider
-/// Setup overlay's per-tab toggles. Persisted in `qmonster.toml`'s
-/// `[provider_setup]` section so toggling at runtime survives restart
-/// once the operator commits the value (or edits the TOML directly).
+/// Phase G G-2 (v1.30.0): operator-tunable provider integration
+/// switches. Persisted in `qmonster.toml`'s `[provider_setup]`
+/// section and edited from Settings > Integrations; Provider Setup
+/// only mirrors these values while showing copyable guidance.
 ///
 /// `claude_sidefile` defaults to `true` — the recommended Claude
 /// statusline writes a per-session JSON sidefile to
@@ -251,13 +251,11 @@ impl Default for CacheConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProviderSetupConfig {
-    /// Default state of the Provider Setup overlay's Claude tab
-    /// `[s]` toggle (sidefile JSON export). `true` so the
+    /// Claude statusline sidefile JSON export. `true` so the
     /// recommended workflow is on by default.
     pub claude_sidefile: bool,
-    /// Default state of the Provider Setup overlay's Codex tab
-    /// `[s]` toggle (Codex App Server polling guide visibility).
-    /// `false` because the App Server is an advanced opt-in.
+    /// Qmonster-managed Codex App Server polling. `false` because the
+    /// App Server is an advanced opt-in.
     pub codex_app_server: bool,
 }
 

@@ -172,18 +172,21 @@ session:window · Provider role · %pane_id
   pointing the operator toward `.claude/skills/`,
   `~/.codex/AGENTS.override.md`, or `.gemini/skills/` on-demand
   files instead of `/compact` / `/clear` / `/memory`.
-- `TOKENS` sparkline appears on the SELECTED pane card only (Tab to
-  panes focus, then ↑/↓ to select). It shows the delta in
-  `input_tokens` between adjacent recent samples (last 20 polls
-  fetched DESC; rendered oldest-to-newest left-to-right), mapped to
-  the 8-block Unicode set `▁▂▃▄▅▆▇█`. Idle pane → all lowest-block;
-  active pane → rising blocks. The metric measures rate of
-  context-prompt growth, NOT cumulative usage; samples themselves
-  are persisted as cumulative counts. The sparkline does not appear
-  when fewer than 2 samples have been recorded for the pane (honesty
-  rule). Token-source providers today: Codex (bottom-status
-  `1.51M in / 20.4K out`); Claude / Gemini will populate when later
-  F-slices add cache-aware token surfaces.
+- `TOKENS` sparkline appears near the top of the SELECTED pane card
+  (Tab to panes focus, then ↑/↓ to select), before recommendation
+  details so it is not pushed off-screen by long alerts. It shows the
+  delta in `input_tokens` between adjacent recent samples (last 20
+  polls fetched DESC; rendered oldest-to-newest left-to-right), mapped
+  to the 8-block Unicode set `▁▂▃▄▅▆▇█`. It is rendered as plain
+  high-contrast text, not a background badge, so the thin block glyphs
+  stay legible. Idle pane → all lowest-block; active pane → rising
+  blocks. The metric measures rate of
+  context-prompt growth, NOT cumulative usage; samples themselves are
+  persisted as cumulative counts. When fewer than 2 samples have been
+  recorded for the pane, the selected card shows `TOKENS collecting
+  N/2` instead of staying blank. Token-source providers today: Codex
+  (bottom-status `1.51M in / 20.4K out`); Claude / Gemini will
+  populate when later F-slices add cache-aware token surfaces.
 - `CACHE` badge shows the cache hit ratio for the pane's cumulative
   prompt input — `cache_hit_ratio = cached_input_tokens /
 (input_tokens + cached_input_tokens) × 100`, formatted with one
@@ -360,13 +363,17 @@ side_effects (N):
   현재 repo root, branch, HEAD, upstream ahead/behind, worktree 변경 요약,
   최근 커밋을 보여줍니다.
 - **Settings**:
-  `S`로 열립니다. cost / context는 default, claude, codex, gemini
-  warning/critical threshold를 조정합니다. quota는 default, claude 5h,
-  claude weekly, codex 5h, codex weekly, gemini threshold를 별도 row로
-  조정합니다. modal 오른쪽 위 `[x]`를 클릭하거나 `q` / `Esc`로 닫습니다.
-  `w` 저장은 `~/.qmonster/config/qmonster.toml` 또는 명시적 `--config PATH`에
-  `toml::to_string_pretty` 형식으로 씁니다. 이 저장 방식은 현재
-  comment-preserving이 아닙니다.
+  `S`로 열립니다. `1` / `2` / `3` / `4`, `Tab` / `Shift+Tab`, 또는
+  마우스 클릭으로 `Thresholds` / `Integrations` / `Parameters` / `Rules`
+  탭을 전환합니다. `Thresholds`는 cost / context / quota의
+  warning/critical 값을 조정하고, `Integrations`는
+  `[provider_setup] claude_sidefile` 및 `codex_app_server`를
+  `Space` / `e` / `Enter` 또는 마우스 클릭으로 토글합니다.
+  `Parameters`는 현재 주요 설정값과 기본값 차이를 보여주며,
+  `Rules`는 cache / quota / memory / security 정책이 발동하는 조건을
+  읽기 전용으로 보여줍니다. modal 오른쪽 위 `[x]`를 클릭하거나
+  `q` / `Esc`로 닫습니다. `w` 저장은 로드된 TOML의 코멘트와
+  관련 없는 섹션을 보존하면서 Settings가 소유한 key만 갱신합니다.
 - **Provider Setup (G-1, v1.29.0)**:
   `P`로 열립니다. 3개 탭(Claude / Codex / Gemini)을 `1` / `2` / `3`으로
   전환하며, 각 탭이 해당 provider의 statusline / footer / config 파일을
@@ -377,28 +384,33 @@ side_effects (N):
   핵심 필드(예: `cache_read_input_tokens` export, `ui.footer.*`
   boolean) 상태; (2) 권장 설정 스니펫 — 복붙 가능한 텍스트로 렌더됩니다.
   - **Claude 탭**: cache 비율 계산이 포함된 추천 `statusline.sh` (bash).
-    `[s]`로 sidefile JSON export 블록(`~/.local/share/ai-cli-status/claude/<session_id>.json`)을
-    토글합니다. sidefile은 향후 F-5 reader가 statusLine JSON을 그대로
-    재사용할 수 있도록 미리 깔아두는 용도입니다.
+    sidefile JSON export 블록
+    (`~/.local/share/ai-cli-status/claude/<session_id>.json`) 포함 여부는
+    `S` Settings → `Integrations`의
+    `[provider_setup] claude_sidefile` 값으로 결정됩니다. Provider Setup
+    안에서는 현재 값을 보여만 주며, 수정 위치가 Settings임을 안내합니다.
   - **Codex 탭**: `/statusline` 토글 리스트(어떤 항목이 bottom status에
     실리도록 권장하는지)와 `/status` welcome panel을 주기적으로 띄워
     `(+ N cached)` 필드가 Qmonster F-4 cache parser에 도달하게 하는
-    가이드입니다. `[s]`로 deferred Codex App Server polling 가이드(F-6)를
-    토글합니다.
+    가이드입니다. Codex App Server 사용 여부는 `S` Settings →
+    `Integrations`의 `[provider_setup] codex_app_server` 값으로
+    결정됩니다. Provider Setup은 현재 값을 표시하고, `y`로 복사되는
+    안내 스니펫을 그 값에 맞춰 보여줍니다.
   - **Gemini 탭**: `~/.gemini/settings.json`의 `ui.footer.*` 권장 JSON
     템플릿과, OAuth는 그대로 유지하되 cache 필드는 FAQ-documented OAuth
     한계로 인해 노출되지 않는다는 informational note (API key 전환은
     운영자 선호에 따라 deferred).
-  - **조작**: `1` / `2` / `3` 탭 전환, `s` 탭별 옵션 섹션 토글,
-    `↑` / `↓` 또는 `j` / `k` 스크롤, `q` / `Esc` 닫기.
+  - **조작**: `1` / `2` / `3`, `Tab`, `←` / `→` 탭 전환,
+    `↑` / `↓` 또는 `j` / `k` / mouse wheel 스크롤, `y` 현재
+    Settings 기반 스니펫 복사, `q` / `Esc` 닫기.
   - **Read-only**: Qmonster는 어떤 provider 설정 파일에도 절대 쓰지
     않습니다. 운영자가 표시된 스니펫을 수동으로 복사해 적용합니다.
   - **v1.30.0 업데이트 (G-2)**: `qmonster.toml`에 새로
     `[provider_setup]` 섹션이 생겼습니다 (`claude_sidefile = true`
-    기본 / `codex_app_server = false` 기본). `P`로 overlay를 열면
-    각 탭의 `[s]` 토글 상태는 이 섹션에서 시드됩니다 — 즉 첫
-    `P` 진입에서 Claude 탭은 sidefile JSON-export 블록이
-    이미 펼쳐진 권장 posture를 보여줍니다. Sidefile-on-default는
+    기본 / `codex_app_server = false` 기본). 이 값들은 `S`
+    Settings → `Integrations`에서 편집합니다. `P`로 overlay를 열면
+    Provider Setup은 이 값을 읽어 현재 상태와 `y` 복사 대상을
+    표시합니다. Sidefile-on-default는
     추천 `statusline.sh`가 라이브 세션 JSON을
     `~/.local/share/ai-cli-status/claude/<session_id>.json`에 그대로
     적어두게 하므로, 다운스트림 도구(F-5 reader 등)가 raw cache /
@@ -454,10 +466,12 @@ side_effects (N):
     안내됩니다 — 성공: "Codex App Server started" (Severity::Good),
     실패: "Codex App Server failed to start: <reason>"
     (Severity::Warning). Spawn 실패해도 TUI는 정상 시작합니다.
-    배지가 안 보이면 `P` overlay → Codex 탭에서 app-server 가이드를
-    참고해 `codex app-server`를 사용 가능한 상태로 만든 뒤
-    `qmonster.toml`의 `[provider_setup] codex_app_server = true`를
-    확인하세요. Linux에서는 bubblewrap 우회를 위해 spawn 시
+    reset eta가 안 보이면 `S` Settings → `Integrations`에서
+    `codex_app_server`가 ON인지 확인하고 `w`로 저장한 뒤 Qmonster를
+    재시작하세요. 별도 터미널에서 서버를 띄우거나 JSON-RPC 메시지를
+    수동으로 보낼 필요는 없습니다. Qmonster가 startup에서
+    `codex app-server`를 spawn하고 `initialize` 및
+    `account/rateLimits/read`를 전송합니다. Linux에서는 bubblewrap 우회를 위해 spawn 시
     `-c sandbox_mode="danger-full-access"` 플래그가 자동으로
     추가됩니다.
 

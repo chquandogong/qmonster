@@ -72,10 +72,9 @@ impl ProviderSetupOverlay {
         Self::default()
     }
 
-    /// Build an overlay whose per-tab toggles match the operator's
-    /// persisted `[provider_setup]` config defaults — used at TUI
-    /// startup so a `claude_sidefile = true` operator sees the
-    /// sidefile section visible the first time they press `P`.
+    /// Build an overlay whose read-only integration flags match the
+    /// operator's persisted `[provider_setup]` config defaults — used
+    /// at TUI startup so Provider Setup previews mirror Settings.
     pub fn from_config(config: &crate::app::config::QmonsterConfig) -> Self {
         Self {
             tab: ProviderSetupTab::Claude,
@@ -86,15 +85,19 @@ impl ProviderSetupOverlay {
         }
     }
 
+    pub fn sync_from_config(&mut self, config: &crate::app::config::QmonsterConfig) {
+        self.claude_sidefile_enabled = config.provider_setup.claude_sidefile;
+        self.codex_app_server_enabled = config.provider_setup.codex_app_server;
+    }
+
     pub fn is_open(&self) -> bool {
         self.open
     }
 
     /// Open the overlay. Resets the active tab to `Claude` and the
     /// scroll offset to `0` so the first-use experience is the same
-    /// as a freshly-constructed overlay; per-tab toggles
-    /// (`claude_sidefile_enabled` / `codex_app_server_enabled`)
-    /// persist across open/close cycles.
+    /// as a freshly-constructed overlay. Integration flags are synced
+    /// from Settings by the caller before opening.
     pub fn open(&mut self) {
         self.open = true;
         self.tab = ProviderSetupTab::Claude;
@@ -103,22 +106,6 @@ impl ProviderSetupOverlay {
 
     pub fn close(&mut self) {
         self.open = false;
-    }
-
-    /// Toggle the per-tab boolean. For Claude, toggles
-    /// `claude_sidefile_enabled`; for Codex, toggles
-    /// `codex_app_server_enabled`; Gemini has no toggle (no-op).
-    pub fn toggle(&mut self) {
-        match self.tab {
-            ProviderSetupTab::Claude => {
-                self.claude_sidefile_enabled = !self.claude_sidefile_enabled;
-            }
-            ProviderSetupTab::Codex => {
-                self.codex_app_server_enabled = !self.codex_app_server_enabled;
-            }
-            ProviderSetupTab::Gemini => {}
-        }
-        self.scroll_offset = 0; // reset scroll when content shape changes
     }
 
     pub fn switch_tab(&mut self, tab: ProviderSetupTab) {
@@ -263,13 +250,13 @@ pub const GEMINI_AUTH_NOTE: &str = include_str!("provider_setup_snippets/gemini_
 /// border characters, ANSI styling, and other artifacts).
 ///
 /// Returns `(label, text)` where `label` is a short human-readable
-/// surface name for the resulting toast notice. Honors the per-tab
-/// toggle state — when `claude_sidefile_enabled` is set, the addon
-/// block is appended to the Claude statusline; when
-/// `codex_app_server_enabled` is set, the app-server guide is appended
-/// to the Codex guidance. The Gemini auth note is informational and
-/// is intentionally excluded from the copied output (operator does
-/// not paste it anywhere).
+/// surface name for the resulting toast notice. Honors the
+/// Settings-synced integration flags — when
+/// `claude_sidefile_enabled` is set, the addon block is appended to
+/// the Claude statusline; when `codex_app_server_enabled` is set, the
+/// app-server guide is appended to the Codex guidance. The Gemini auth
+/// note is informational and is intentionally excluded from the
+/// copied output (operator does not paste it anywhere).
 pub fn snippet_for_tab(overlay: &ProviderSetupOverlay) -> (&'static str, String) {
     match overlay.tab {
         ProviderSetupTab::Claude => {
@@ -331,7 +318,7 @@ fn append_copy_contract(out: &mut Vec<String>, overlay: &ProviderSetupOverlay) {
             out.push(detail_row(
                 "Optional included",
                 format!(
-                    "Sidefile JSON export {}",
+                    "Sidefile JSON export {} (from Settings)",
                     on_off(overlay.claude_sidefile_enabled)
                 ),
             ));
@@ -343,7 +330,7 @@ fn append_copy_contract(out: &mut Vec<String>, overlay: &ProviderSetupOverlay) {
             out.push(detail_row(
                 "Optional included",
                 format!(
-                    "Codex App Server polling guide {}",
+                    "Codex App Server polling guide {} (from Settings)",
                     on_off(overlay.codex_app_server_enabled)
                 ),
             ));
@@ -369,8 +356,8 @@ fn append_copied_preview(out: &mut Vec<String>, overlay: &ProviderSetupOverlay) 
 }
 
 /// Compose the full text shown for the active tab, accounting for the
-/// per-tab toggle. Returns lines (Vec<String>) for ratatui Paragraph
-/// rendering.
+/// Settings-synced integration flags. Returns lines (Vec<String>) for
+/// ratatui Paragraph rendering.
 pub fn render_tab_content(
     overlay: &ProviderSetupOverlay,
     claude: &ClaudeState,
@@ -400,12 +387,13 @@ pub fn render_tab_content(
                 yes_no(claude.sidefile_export_present),
             ));
 
-            section(&mut out, "Options");
+            section(&mut out, "Settings");
             out.push(detail_row(
-                "[s] Sidefile JSON export",
+                "provider_setup.claude_sidefile",
                 on_off(overlay.claude_sidefile_enabled),
             ));
-            out.push("      Adds cache/cost/reset sidefile fields to the copied snippet.".into());
+            out.push("      Read-only here. Change in S Settings -> Integrations.".into());
+            out.push("      y copies the Claude snippet using this Settings value.".into());
 
             append_copy_contract(&mut out, overlay);
             append_copied_preview(&mut out, overlay);
@@ -432,13 +420,14 @@ pub fn render_tab_content(
                 "not detectable; run /statusline in pane",
             ));
 
-            section(&mut out, "Options");
+            section(&mut out, "Settings");
             out.push(detail_row(
-                "[s] Codex App Server guide",
+                "provider_setup.codex_app_server",
                 on_off(overlay.codex_app_server_enabled),
             ));
+            out.push("      Read-only here. Change in S Settings -> Integrations.".into());
             out.push(
-                "      Adds advanced app-server polling guidance to the copied snippet.".into(),
+                "      Restart Qmonster after saving ON; Qmonster auto-spawns app-server.".into(),
             );
 
             append_copy_contract(&mut out, overlay);
@@ -469,8 +458,9 @@ pub fn render_tab_content(
             ));
             out.push(detail_row("hideFooter", gemini.hide_footer.to_string()));
 
-            section(&mut out, "Options");
+            section(&mut out, "Settings");
             out.push("  No optional sections on this tab.".into());
+            out.push("  Provider integration toggles live in S Settings -> Integrations.".into());
 
             append_copy_contract(&mut out, overlay);
             append_copied_preview(&mut out, overlay);
@@ -559,18 +549,26 @@ mod tests {
     }
 
     #[test]
-    fn overlay_toggle_flips_per_tab_boolean() {
-        let mut o = ProviderSetupOverlay::default();
-        assert!(!o.claude_sidefile_enabled);
-        o.toggle(); // tab is Claude
-        assert!(o.claude_sidefile_enabled);
-        o.tab = ProviderSetupTab::Codex;
-        o.toggle();
-        assert!(o.codex_app_server_enabled);
-        o.tab = ProviderSetupTab::Gemini;
-        let before = o.claude_sidefile_enabled;
-        o.toggle(); // no-op for Gemini
-        assert_eq!(o.claude_sidefile_enabled, before);
+    fn sync_from_config_refreshes_read_only_integration_flags() {
+        use crate::app::config::{ProviderSetupConfig, QmonsterConfig};
+        let mut cfg = QmonsterConfig::defaults();
+        cfg.provider_setup = ProviderSetupConfig {
+            claude_sidefile: true,
+            codex_app_server: false,
+        };
+        let mut overlay = ProviderSetupOverlay::default();
+
+        overlay.sync_from_config(&cfg);
+        assert!(overlay.claude_sidefile_enabled);
+        assert!(!overlay.codex_app_server_enabled);
+
+        cfg.provider_setup = ProviderSetupConfig {
+            claude_sidefile: false,
+            codex_app_server: true,
+        };
+        overlay.sync_from_config(&cfg);
+        assert!(!overlay.claude_sidefile_enabled);
+        assert!(overlay.codex_app_server_enabled);
     }
 
     #[test]
@@ -593,14 +591,15 @@ mod tests {
         let text = lines.join("\n");
         assert!(text.contains("Current Status"));
         assert!(text.contains("1718 bytes"));
-        assert!(text.contains("Options"));
-        assert!(text.contains("[s] Sidefile JSON export"));
+        assert!(text.contains("Settings"));
+        assert!(text.contains("provider_setup.claude_sidefile"));
+        assert!(text.contains("Change in S Settings -> Integrations"));
         assert!(text.contains("Copy With y"));
         assert!(text.contains("Target"));
         assert!(text.contains("~/.claude/statusline.sh"));
         assert!(text.contains("Preview: y copies this content"));
         assert!(
-            text.contains("Sidefile JSON export OFF"),
+            text.contains("Sidefile JSON export OFF (from Settings)"),
             "sidefile section should be hidden by default"
         );
         assert!(
@@ -616,13 +615,12 @@ mod tests {
         // whether to render the modal and route keys to the overlay
         // handler. `open()` resets navigation state (tab + scroll)
         // so the first frame after a re-open is consistent with the
-        // first frame after a fresh `new()`. Per-tab toggles persist
-        // across open/close cycles by design — operators expect the
-        // toggle they set last to survive a peek-and-close.
+        // first frame after a fresh `new()`. Settings-synced flags are
+        // not mutated by open/close.
         let mut overlay = ProviderSetupOverlay::new();
         assert!(!overlay.is_open(), "fresh overlay must start closed");
 
-        // Pre-state mutation: switch tabs, scroll, flip a toggle.
+        // Pre-state mutation: switch tabs, scroll, mirror Settings.
         overlay.tab = ProviderSetupTab::Gemini;
         overlay.scroll_offset = 7;
         overlay.claude_sidefile_enabled = true;
@@ -637,23 +635,23 @@ mod tests {
         assert_eq!(overlay.scroll_offset, 0, "open() resets scroll_offset");
         assert!(
             overlay.claude_sidefile_enabled,
-            "open() must NOT clobber per-tab toggles"
+            "open() must NOT clobber Settings-synced flags"
         );
 
         overlay.close();
         assert!(!overlay.is_open(), "close() must clear is_open()");
         assert!(
             overlay.claude_sidefile_enabled,
-            "close() must NOT clobber per-tab toggles"
+            "close() must NOT clobber Settings-synced flags"
         );
     }
 
     #[test]
-    fn from_config_seeds_toggles_from_provider_setup_section() {
-        // Phase G G-2 (v1.30.0): the overlay's per-tab toggles default
-        // to whatever the operator persisted in the [provider_setup]
-        // config section, so a fresh `P` press shows the recommended
-        // sidefile / app-server posture without an extra `s` keystroke.
+    fn from_config_seeds_read_only_flags_from_provider_setup_section() {
+        // Phase G G-2 (v1.30.0): the overlay's read-only flags mirror
+        // whatever the operator persisted in the [provider_setup]
+        // config section, so a fresh `P` press shows the current
+        // sidefile / app-server posture.
         use crate::app::config::{ProviderSetupConfig, QmonsterConfig};
         let mut cfg = QmonsterConfig::defaults();
         cfg.provider_setup = ProviderSetupConfig {
@@ -675,7 +673,7 @@ mod tests {
     }
 
     #[test]
-    fn render_tab_content_claude_shows_sidefile_when_toggled() {
+    fn render_tab_content_claude_shows_sidefile_when_enabled_by_settings() {
         let overlay = ProviderSetupOverlay {
             claude_sidefile_enabled: true,
             ..Default::default()
@@ -701,7 +699,7 @@ mod tests {
     }
 
     #[test]
-    fn render_tab_content_codex_surfaces_toggle_and_y_copy_target() {
+    fn render_tab_content_codex_surfaces_settings_value_and_y_copy_target() {
         let overlay = ProviderSetupOverlay {
             tab: ProviderSetupTab::Codex,
             codex_app_server_enabled: true,
@@ -721,9 +719,11 @@ mod tests {
         };
         let gemini = GeminiFooterState::default();
         let text = render_tab_content(&overlay, &claude, &codex, &gemini).join("\n");
-        assert!(text.contains("Options"));
-        assert!(text.contains("[s] Codex App Server guide"));
-        assert!(text.contains("Codex App Server polling guide ON"));
+        assert!(text.contains("Settings"));
+        assert!(text.contains("provider_setup.codex_app_server"));
+        assert!(text.contains("Change in S Settings -> Integrations"));
+        assert!(text.contains("Restart Qmonster after saving ON; Qmonster auto-spawns app-server"));
+        assert!(text.contains("Codex App Server polling guide ON (from Settings)"));
         assert!(text.contains("Copy With y"));
         assert!(text.contains("Target"));
         assert!(text.contains("Codex setup guide"));
@@ -770,7 +770,7 @@ mod tests {
         assert!(text.contains("cache_read"));
         assert!(
             !text.contains("ai-cli-status/claude"),
-            "sidefile addon must not be included unless toggled"
+            "sidefile addon must not be included unless enabled in Settings"
         );
     }
 
@@ -800,7 +800,7 @@ mod tests {
         assert!(text.contains("/statusline"));
         assert!(
             !text.contains("codex app-server"),
-            "app-server guide must not be included unless toggled"
+            "app-server guide must not be included unless enabled in Settings"
         );
     }
 

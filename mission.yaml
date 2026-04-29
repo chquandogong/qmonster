@@ -1,6 +1,6 @@
 mission:
-  version: "1.32.1"
-  title: "Qmonster v1.32.1 — Provider Setup overlay readability polish."
+  version: "1.32.2"
+  title: "Qmonster v1.32.2 — Settings integrations and token sparkline polish."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1228,22 +1228,22 @@ mission:
     config snippet — bash for Claude statusline.sh with cache hit ratio
     calculation, plain text for Codex /statusline + /status guidance,
     JSON for Gemini ui.footer.* settings, plus auth/app-server notes —
-    rendered as scrollable copy-pasteable text. The Claude tab carries
-    a `[s]` toggle that reveals the optional sidefile JSON export
-    block (writes provider statusLine JSON to
-    `~/.local/share/ai-cli-status/claude/<session_id>.json` for future
-    F-5 reader). The Codex tab carries a `[s]` toggle for the deferred
-    Codex App Server polling guide. The Gemini tab keeps OAuth as
-    informational note only (API-key transition deferred per operator
-    preference). Read-only — Qmonster never writes provider config.
+    rendered as scrollable copy-pasteable text. The optional Claude
+    sidefile JSON export block (writes provider statusLine JSON to
+    `~/.local/share/ai-cli-status/claude/<session_id>.json`) and the
+    Codex App Server polling guide are now controlled from `S ->
+    Integrations`; Provider Setup mirrors those values read-only. The
+    Gemini tab keeps OAuth as informational note only (API-key
+    transition deferred per operator preference). Read-only — Qmonster
+    never writes provider config.
     All snippet content lives at `src/ui/provider_setup_snippets/`
     (6 files included via `include_str!`). New module
     `src/ui/provider_setup.rs` owns the view-model, state detectors,
     and `render_tab_content`; `src/app/provider_setup_overlay.rs`
     mirrors `settings_overlay.rs` for key dispatch; render plumbed via
     `dashboard_render.rs` field + `dashboard.rs::render_provider_setup_modal`.
-    Keys: `P` opens, `1`/`2`/`3` switch tabs, `s` toggles, `↑↓` or
-    `j/k` scroll, `q`/`Esc` close. 8 new tests; 678 lib + 68 integration
+    Keys: `P` opens, `1`/`2`/`3` switch tabs, `Tab`/`←→` cycles tabs,
+    `↑↓` or `j/k` scroll, `q`/`Esc` close. 8 new tests; 678 lib + 68 integration
     green. F-4b/F-5/F-6/F-7c remain unscoped; G-2+ undefined.
 
     Phase G continues with G-2 + Phase F adds F-5 (v1.30.0). G-2:
@@ -1253,9 +1253,9 @@ mission:
     default). `ProviderSetupConfig` mirrors the F-7-config
     per-section pattern; `#[serde(default)]` keeps existing
     configs working unchanged. New `ProviderSetupOverlay::from_config`
-    constructor seeds the per-tab toggles at startup so a fresh
-    `P` press shows the recommended sidefile posture without an
-    extra `s` keystroke. Sidefile-on-default writes the full
+    constructor seeds the Settings-derived read-only flags at startup
+    so a fresh `P` press shows the recommended sidefile posture.
+    Sidefile-on-default writes the full
     Claude statusLine JSON to
     `~/.local/share/ai-cli-status/claude/<session_id>.json` —
     downstream Claude tooling (including F-5) can read raw
@@ -1343,6 +1343,16 @@ mission:
     sections are not copied. 5 new Provider Setup tests; 728
     lib + 68 integration green.
 
+    v1.32.2 ships Settings integrations and token sparkline polish.
+    Settings now has Thresholds, Integrations, Parameters, and Rules
+    tabs; `[provider_setup]` sidefile/app-server toggles live in
+    `S -> Integrations` with keyboard and mouse support. Provider
+    Setup is read-only and mirrors those Settings values, including
+    the `y` copy target. The selected pane's TOKENS sparkline renders
+    near the top as high-contrast plain text and shows `TOKENS
+    collecting N/2` while waiting for enough samples. 744 lib + 68
+    integration tests green.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1379,13 +1389,15 @@ mission:
     - "F-7-config: CacheConfig struct in src/app/config.rs with 6 fields (hot_ratio_threshold, cold_ratio_threshold, hot_low_ctx_threshold, cold_high_ctx_threshold, drift_drop_threshold, drift_min_samples); defaults match the v1.26.0/v1.27.0 hardcoded constants exactly so operators with empty configs see no behavior change"
     - "F-7-config: PolicyGates gains 6 cache_* fields populated from CacheConfig in from_config_and_identity (8th param); src/policy/rules/cache.rs removes the 6 const declarations and reads from gates.cache_*; reason strings interpolate the configured values"
     - "F-7-config: cache_config_loads_toml_and_defaults_missing_values verifies absent/partial [cache] defaults; policy_gates_from_config_and_identity_reads_both asserts all 6 cache fields propagate; cache_rules_honor_custom_thresholds_from_gates and cache_drift_honors_custom_thresholds_from_gates verify custom hot/drift gates"
-    - "G-1: ProviderSetupOverlay struct in src/ui/provider_setup.rs has open: bool field with new()/is_open()/open()/close(); open() resets tab to Claude and scroll_offset to 0 but preserves per-tab toggles (claude_sidefile_enabled / codex_app_server_enabled)"
+    - "G-1: ProviderSetupOverlay struct in src/ui/provider_setup.rs has open: bool field with new()/is_open()/open()/close(); open() resets tab to Claude and scroll_offset to 0 while preserving Settings-synced integration flags (claude_sidefile_enabled / codex_app_server_enabled)"
     - "G-1: detect_claude_state / detect_codex_state / detect_gemini_footer_state perform read-only probes of ~/.claude/statusline.sh, ~/.codex/config.toml, ~/.gemini/settings.json; missing files yield benign defaults; Gemini settings.json is parsed for ui.footer.* booleans via serde_json::Value::pointer"
-    - "G-1: 6 snippet files at src/ui/provider_setup_snippets/ are include_str!'d into provider_setup.rs as &'static str constants — claude_statusline_base.sh, claude_sidefile_addon.sh, codex_statusline_guide.txt, codex_app_server_guide.sh, gemini_footer_settings.json, gemini_auth_note.txt; render_tab_content composes per-tab body conditional on overlay toggles"
-    - "G-1: src/app/provider_setup_overlay.rs::handle_provider_setup_overlay_key returns false when overlay closed; Esc/q close, 1/2/3 switch tabs, s toggles per-tab boolean, Up/k scroll up, Down/j scroll down; src/app/tui_loop.rs owns the overlay alongside settings_overlay, plumbed to DashboardFrameView; render_provider_setup_modal in src/ui/dashboard.rs uses Tabs widget + scrollable Paragraph + hint footer at 80%×76% centered"
+    - "G-1: 6 snippet files at src/ui/provider_setup_snippets/ are include_str!'d into provider_setup.rs as &'static str constants — claude_statusline_base.sh, claude_sidefile_addon.sh, codex_statusline_guide.txt, codex_app_server_guide.sh, gemini_footer_settings.json, gemini_auth_note.txt; render_tab_content composes per-tab body conditional on Settings-synced integration flags"
+    - "G-1: src/app/provider_setup_overlay.rs::handle_provider_setup_overlay_key returns false when overlay closed; Esc/q close, 1/2/3 switch tabs, Tab/Right/BackTab/Left cycle tabs, Up/k scroll up, Down/j scroll down; Provider Setup is read-only and does not mutate provider_setup flags"
     - "G-2: [provider_setup] config section in src/app/config.rs with claude_sidefile: bool (default true) and codex_app_server: bool (default false); #[serde(default)] keeps existing configs working unchanged"
-    - "G-2: ProviderSetupOverlay::from_config(&QmonsterConfig) constructor seeds per-tab toggles from persisted config; tui_loop.rs uses from_config in place of ::new() at startup"
+    - "G-2: ProviderSetupOverlay::from_config(&QmonsterConfig) constructor seeds read-only integration flags from persisted config; tui_loop.rs uses from_config at startup and re-syncs from current Settings config before opening P"
     - "v1.32.1: Provider Setup overlay body uses Current Status / Options / Copy With y / Preview sections; [s] toggles render as ON/OFF near the top; each tab documents exactly what y copies and which informational sections are not copied"
+    - "v1.32.2: Settings overlay has Thresholds / Integrations / Parameters / Rules tabs; [provider_setup] claude_sidefile and codex_app_server move to Integrations with keyboard and mouse toggles; Provider Setup mirrors those values read-only and points edits back to Settings"
+    - "v1.32.2: Selected pane token sparkline renders near the top as high-contrast plain text, without a badge background, and shows TOKENS collecting N/2 until two samples exist"
     - "F-5: SignalSet.cache_hit_ratio: Option<MetricValue<f64>> field added; Claude adapter parses optional `cache N%` token between CTX and 5h on statusline.sh output, populates cache_hit_ratio with SourceKind::ProviderOfficial"
     - "F-5: policy/rules/cache.rs::cache_hit_ratio() prefers SignalSet.cache_hit_ratio over count-derived computation; UI panels.rs::signals_cache_pct_with_source() helper encapsulates the same precedence so the CACHE badge surfaces for Claude panes (not just Codex)"
     - "F-5b: src/adapters/claude_sidefile.rs reads ~/.local/share/ai-cli-status/claude/<sid>.json per Claude pane, matched to current_path by JSON cwd field, newest-mtime tiebreak; provider gate restricts to Claude only"
@@ -1688,5 +1700,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 162
+    total_revisions: 164
     history: "mission-history.yaml"

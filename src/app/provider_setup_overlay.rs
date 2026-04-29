@@ -47,7 +47,6 @@ pub fn handle_provider_setup_overlay_key(
         KeyCode::Char('3') => overlay.switch_tab(ProviderSetupTab::Gemini),
         KeyCode::Tab | KeyCode::Right => overlay.next_tab(),
         KeyCode::BackTab | KeyCode::Left => overlay.previous_tab(),
-        KeyCode::Char('s') => overlay.toggle(),
         KeyCode::Up | KeyCode::Char('k') => overlay.scroll_up(),
         KeyCode::Down | KeyCode::Char('j') => overlay.scroll_down(),
         _ => {}
@@ -201,12 +200,18 @@ mod tests {
     }
 
     #[test]
-    fn s_toggles_per_tab_state() {
+    fn s_key_is_ignored_because_options_live_in_settings() {
         let mut overlay = ProviderSetupOverlay::new();
         overlay.open();
         assert!(!overlay.claude_sidefile_enabled);
-        handle_provider_setup_overlay_key(&mut overlay, KeyCode::Char('s'));
-        assert!(overlay.claude_sidefile_enabled);
+        assert!(handle_provider_setup_overlay_key(
+            &mut overlay,
+            KeyCode::Char('s')
+        ));
+        assert!(
+            !overlay.claude_sidefile_enabled,
+            "Provider Setup is read-only; use S Settings > Integrations"
+        );
     }
 
     #[test]
@@ -333,13 +338,13 @@ mod tests {
     }
 
     #[test]
-    fn copy_active_tab_snippet_includes_sidefile_addon_when_toggled() {
+    fn copy_active_tab_snippet_includes_sidefile_addon_when_enabled_by_settings() {
         let mut overlay = ProviderSetupOverlay::default();
         overlay.claude_sidefile_enabled = true;
         let stub = |text: &str| -> Result<(), String> {
             assert!(
                 text.contains("ai-cli-status/claude"),
-                "toggled-on snippet must carry the addon block to the clipboard: {text}"
+                "Settings-enabled snippet must carry the addon block to the clipboard: {text}"
             );
             Ok(())
         };

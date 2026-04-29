@@ -273,6 +273,9 @@ fn pane_list_lines_with_flash(
     for row in metric_badge_lines(&report.signals, wrap_width) {
         lines.push(row);
     }
+    if expanded {
+        lines.push(token_sparkline_status_line(&report.recent_token_samples));
+    }
     for row in runtime_badge_lines_wrapped(&report.signals, wrap_width) {
         lines.push(row);
     }
@@ -295,12 +298,6 @@ fn pane_list_lines_with_flash(
                 "status",
                 "no active recommendations",
             )));
-        }
-        // F-3: TOKENS sparkline from recent_token_samples (input_tokens
-        // delta over the last 20 polls). Renders only when the pane
-        // has accumulated >= 2 samples.
-        if let Some(line) = render_token_sparkline(&report.recent_token_samples) {
-            lines.push(line);
         }
     }
 
@@ -1065,9 +1062,38 @@ fn signals_cache_pct_with_source(s: &SignalSet) -> Option<(String, SourceKind)> 
 /// line; active pane → rising blocks. None values in input_tokens are
 /// treated as 0 for delta computation. Negative deltas (provider
 /// counter reset) saturate to 0 via `saturating_sub`.
+#[cfg(test)]
 fn render_token_sparkline(
     samples: &[crate::store::TokenSample],
 ) -> Option<ratatui::text::Line<'static>> {
+    token_sparkline_body(samples).map(|body| ratatui::text::Line::from(format!("TOKENS {body}")))
+}
+
+fn token_sparkline_status_line(samples: &[crate::store::TokenSample]) -> Line<'static> {
+    let mut spans = vec![Span::raw(format!("{:<8}: ", "tokens"))];
+    if let Some(body) = token_sparkline_body(samples) {
+        spans.push(Span::styled(
+            " TOKENS ",
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(
+            body,
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        ));
+    } else {
+        spans.push(Span::styled(
+            format!(" TOKENS collecting {}/2 ", samples.len().min(2)),
+            Style::default().fg(theme::TEXT_PRIMARY),
+        ));
+    }
+    Line::from(spans)
+}
+
+fn token_sparkline_body(samples: &[crate::store::TokenSample]) -> Option<String> {
     if samples.len() < 2 {
         return None;
     }
@@ -1101,7 +1127,7 @@ fn render_token_sparkline(
             })
             .collect()
     };
-    Some(ratatui::text::Line::from(format!("TOKENS {body}")))
+    Some(body)
 }
 
 fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
@@ -2557,6 +2583,111 @@ mod tests {
             .is_none(),
             "one sample = no delta = no line"
         );
+    }
+
+    #[test]
+    fn selected_pane_shows_token_collecting_state_near_metrics() {
+        let rep = base_report();
+        let expanded = pane_list_lines(&rep, true, false)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>();
+        let collapsed = pane_list_lines(&rep, false, false)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>();
+
+        assert!(
+            expanded
+                .iter()
+                .any(|line| line.contains("tokens  :  TOKENS collecting 0/2")),
+            "selected pane should explain why sparkline is not ready: {expanded:?}"
+        );
+        assert!(
+            !collapsed
+                .iter()
+                .any(|line| line.contains("TOKENS collecting")),
+            "collapsed panes should stay compact: {collapsed:?}"
+        );
+    }
+
+    #[test]
+    fn selected_pane_renders_token_sparkline_before_recommendation_details() {
+        use crate::domain::identity::Provider;
+        use crate::domain::recommendation::{Recommendation, Severity};
+        use crate::store::TokenSample;
+
+        let mut rep = base_report();
+        rep.recent_token_samples = (0..4)
+            .map(|i| TokenSample {
+                ts_unix_ms: (i * 1000) as i64,
+                pane_id: "%1".into(),
+                provider: Provider::Codex,
+                input_tokens: Some((i as u64) * 250),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: None,
+            })
+            .collect();
+        rep.recommendations = vec![Recommendation {
+            action: "ctx: compact soon",
+            reason: "context pressure is high".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: Some("/compact".into()),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        }];
+
+        let lines = pane_list_lines(&rep, true, false)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>();
+        let tokens_idx = lines
+            .iter()
+            .position(|line| line.contains("tokens  :  TOKENS"))
+            .expect("sparkline row should render near metrics");
+        let rec_idx = lines
+            .iter()
+            .position(|line| line.contains("context pressure is high"))
+            .expect("recommendation detail should render");
+
+        assert!(
+            tokens_idx < rec_idx,
+            "sparkline should be visible before long recommendation details: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn selected_pane_token_sparkline_uses_no_badge_background() {
+        use crate::domain::identity::Provider;
+        use crate::store::TokenSample;
+
+        let samples = (0..4)
+            .map(|i| TokenSample {
+                ts_unix_ms: (i * 1000) as i64,
+                pane_id: "%1".into(),
+                provider: Provider::Codex,
+                input_tokens: Some((i as u64) * 250),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: None,
+            })
+            .collect::<Vec<_>>();
+        let line = token_sparkline_status_line(&samples);
+
+        for span in line.spans {
+            let text = span.content.as_ref();
+            if text.contains("TOKENS") || text.chars().any(|c| "▁▂▃▄▅▆▇█".contains(c))
+            {
+                assert!(
+                    span.style.bg.is_none(),
+                    "sparkline spans must avoid badge backgrounds: {text:?}"
+                );
+            }
+        }
     }
 
     #[test]
