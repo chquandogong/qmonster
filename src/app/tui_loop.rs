@@ -23,7 +23,7 @@ use crate::app::operator_actions::{version_refresh_notices, write_operator_snaps
 use crate::app::polling_tick::{PollTickState, handle_poll_tick};
 use crate::app::prompt_send_actions::handle_prompt_send_action;
 use crate::app::provider_setup_overlay::{
-    handle_provider_setup_overlay_key, handle_provider_setup_overlay_mouse,
+    copy_active_tab_snippet, handle_provider_setup_overlay_key, handle_provider_setup_overlay_mouse,
 };
 use crate::app::runtime_refresh::handle_runtime_refresh_action;
 use crate::app::settings_overlay::{handle_settings_overlay_key, handle_settings_overlay_mouse};
@@ -192,6 +192,14 @@ where
                             }
 
                             if provider_setup_overlay.is_open() {
+                                if k.code == KeyCode::Char('y') {
+                                    let notice = copy_active_tab_snippet(
+                                        &provider_setup_overlay,
+                                        crate::app::clipboard_actions::copy_text_to_clipboard,
+                                    );
+                                    dashboard.push_notice(notice, Instant::now());
+                                    continue;
+                                }
                                 handle_provider_setup_overlay_key(
                                     &mut provider_setup_overlay,
                                     k.code,

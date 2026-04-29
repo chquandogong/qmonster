@@ -14,10 +14,13 @@ use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
 use crate::app::keymap::rect_contains;
+use crate::app::system_notice::SystemNotice;
+use crate::domain::origin::SourceKind;
+use crate::domain::recommendation::Severity;
 use crate::ui::dashboard::{
     close_button_rect, provider_setup_modal_rects, provider_setup_tab_index_at,
 };
-use crate::ui::provider_setup::{ProviderSetupOverlay, ProviderSetupTab};
+use crate::ui::provider_setup::{ProviderSetupOverlay, ProviderSetupTab, snippet_for_tab};
 
 const TAB_BY_INDEX: [ProviderSetupTab; 3] = [
     ProviderSetupTab::Claude,
@@ -48,6 +51,33 @@ pub fn handle_provider_setup_overlay_key(
         _ => {}
     }
     true
+}
+
+/// Copy the active tab's snippet to the clipboard via the supplied
+/// `copy_text` function and produce a SystemNotice describing the
+/// outcome. Pure with respect to the clipboard backend so tests can
+/// inject a stub. The Gemini auth note is informational and is
+/// excluded by `snippet_for_tab` — only config snippets are copied.
+pub fn copy_active_tab_snippet<F>(overlay: &ProviderSetupOverlay, copy_text: F) -> SystemNotice
+where
+    F: FnOnce(&str) -> Result<(), String>,
+{
+    let (label, text) = snippet_for_tab(overlay);
+    let char_count = text.chars().count();
+    match copy_text(&text) {
+        Ok(()) => SystemNotice {
+            title: format!("{label} copied"),
+            body: format!("{char_count} chars in clipboard — paste into your editor"),
+            severity: Severity::Good,
+            source_kind: SourceKind::ProjectCanonical,
+        },
+        Err(e) => SystemNotice {
+            title: "clipboard unavailable".into(),
+            body: format!("could not copy {label}: {e}"),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+        },
+    }
 }
 
 /// Dispatch a mouse event to the Provider Setup overlay. Returns
@@ -251,6 +281,50 @@ mod tests {
             mouse(MouseEventKind::Down(MouseButton::Left), empty_x, row),
         );
         assert_eq!(overlay.tab, ProviderSetupTab::Claude);
+    }
+
+    #[test]
+    fn copy_active_tab_snippet_reports_success_with_clipboard_chars_count() {
+        use std::cell::RefCell;
+        let overlay = ProviderSetupOverlay::default();
+        let captured: RefCell<Option<String>> = RefCell::new(None);
+        let stub = |text: &str| -> Result<(), String> {
+            *captured.borrow_mut() = Some(text.to_string());
+            Ok(())
+        };
+        let notice = copy_active_tab_snippet(&overlay, stub);
+        assert_eq!(notice.severity, Severity::Good);
+        assert!(notice.title.contains("Claude statusline.sh"));
+        let copied = captured.borrow().clone().expect("stub must capture text");
+        assert!(copied.starts_with("#!/usr/bin/env bash"));
+        assert!(
+            !copied.contains("ai-cli-status/claude"),
+            "default Claude snippet must not include the sidefile addon"
+        );
+    }
+
+    #[test]
+    fn copy_active_tab_snippet_reports_failure_when_clipboard_unavailable() {
+        let overlay = ProviderSetupOverlay::default();
+        let stub = |_: &str| -> Result<(), String> { Err("no clipboard backend".into()) };
+        let notice = copy_active_tab_snippet(&overlay, stub);
+        assert_eq!(notice.severity, Severity::Warning);
+        assert!(notice.title.contains("clipboard unavailable"));
+        assert!(notice.body.contains("no clipboard backend"));
+    }
+
+    #[test]
+    fn copy_active_tab_snippet_includes_sidefile_addon_when_toggled() {
+        let mut overlay = ProviderSetupOverlay::default();
+        overlay.claude_sidefile_enabled = true;
+        let stub = |text: &str| -> Result<(), String> {
+            assert!(
+                text.contains("ai-cli-status/claude"),
+                "toggled-on snippet must carry the addon block to the clipboard: {text}"
+            );
+            Ok(())
+        };
+        copy_active_tab_snippet(&overlay, stub);
     }
 
     #[test]

@@ -456,7 +456,7 @@ pub fn render_provider_setup_modal(
     frame.render_widget(body, rects.body);
 
     let hint = Paragraph::new(Line::from(
-        "[1]/[2]/[3] tab · [s] toggle · [↑↓ wheel j/k] scroll · click [x] / [q] / [Esc] close",
+        "[1]/[2]/[3] tab · [s] toggle · [y] copy snippet · [↑↓ wheel j/k] scroll · click [x] / [q] / [Esc] close",
     ))
     .style(Style::default().fg(theme::TEXT_DIM))
     .wrap(Wrap { trim: false });

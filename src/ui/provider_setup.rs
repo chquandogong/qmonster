@@ -227,6 +227,52 @@ pub const GEMINI_FOOTER_SETTINGS: &str =
     include_str!("provider_setup_snippets/gemini_footer_settings.json");
 pub const GEMINI_AUTH_NOTE: &str = include_str!("provider_setup_snippets/gemini_auth_note.txt");
 
+/// Compose the raw, copy-pasteable snippet text for the active tab —
+/// used by the clipboard-copy action so operators don't have to mouse-
+/// select rendered text out of the terminal (which would pick up
+/// border characters, ANSI styling, and other artifacts).
+///
+/// Returns `(label, text)` where `label` is a short human-readable
+/// surface name for the resulting toast notice. Honors the per-tab
+/// toggle state — when `claude_sidefile_enabled` is set, the addon
+/// block is appended to the Claude statusline; when
+/// `codex_app_server_enabled` is set, the app-server guide is appended
+/// to the Codex guidance. The Gemini auth note is informational and
+/// is intentionally excluded from the copied output (operator does
+/// not paste it anywhere).
+pub fn snippet_for_tab(overlay: &ProviderSetupOverlay) -> (&'static str, String) {
+    match overlay.tab {
+        ProviderSetupTab::Claude => {
+            let mut text = String::from(CLAUDE_STATUSLINE_BASE);
+            if overlay.claude_sidefile_enabled {
+                if !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text.push_str(
+                    "\n# --- Sidefile JSON export — paste IMMEDIATELY AFTER `input=$(cat)` ---\n",
+                );
+                text.push_str(CLAUDE_SIDEFILE_ADDON);
+            }
+            ("Claude statusline.sh", text)
+        }
+        ProviderSetupTab::Codex => {
+            let mut text = String::from(CODEX_STATUSLINE_GUIDE);
+            if overlay.codex_app_server_enabled {
+                if !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text.push_str("\n# --- Codex App Server polling guide ---\n");
+                text.push_str(CODEX_APP_SERVER_GUIDE);
+            }
+            ("Codex /statusline guide", text)
+        }
+        ProviderSetupTab::Gemini => (
+            "Gemini ~/.gemini/settings.json",
+            String::from(GEMINI_FOOTER_SETTINGS),
+        ),
+    }
+}
+
 /// Compose the full text shown for the active tab, accounting for the
 /// per-tab toggle. Returns lines (Vec<String>) for ratatui Paragraph
 /// rendering.
@@ -559,5 +605,76 @@ mod tests {
         let text = lines.join("\n");
         assert!(text.contains("Sidefile JSON export"));
         assert!(text.contains("ai-cli-status/claude"));
+    }
+
+    #[test]
+    fn snippet_for_tab_claude_default_is_just_the_base_script() {
+        let overlay = ProviderSetupOverlay::default();
+        let (label, text) = snippet_for_tab(&overlay);
+        assert_eq!(label, "Claude statusline.sh");
+        assert!(text.starts_with("#!/usr/bin/env bash"));
+        assert!(text.contains("cache_read"));
+        assert!(
+            !text.contains("ai-cli-status/claude"),
+            "sidefile addon must not be included unless toggled"
+        );
+    }
+
+    #[test]
+    fn snippet_for_tab_claude_with_sidefile_appends_addon() {
+        let overlay = ProviderSetupOverlay {
+            claude_sidefile_enabled: true,
+            ..Default::default()
+        };
+        let (_, text) = snippet_for_tab(&overlay);
+        assert!(text.contains("#!/usr/bin/env bash"));
+        assert!(text.contains("ai-cli-status/claude"));
+        assert!(
+            text.contains("paste IMMEDIATELY AFTER"),
+            "addon must carry the placement-instruction comment so the copied output is self-explanatory"
+        );
+    }
+
+    #[test]
+    fn snippet_for_tab_codex_default_is_just_the_statusline_guide() {
+        let overlay = ProviderSetupOverlay {
+            tab: ProviderSetupTab::Codex,
+            ..Default::default()
+        };
+        let (label, text) = snippet_for_tab(&overlay);
+        assert_eq!(label, "Codex /statusline guide");
+        assert!(text.contains("/statusline"));
+        assert!(
+            !text.contains("codex app-server"),
+            "app-server guide must not be included unless toggled"
+        );
+    }
+
+    #[test]
+    fn snippet_for_tab_codex_with_app_server_appends_guide() {
+        let overlay = ProviderSetupOverlay {
+            tab: ProviderSetupTab::Codex,
+            codex_app_server_enabled: true,
+            ..Default::default()
+        };
+        let (_, text) = snippet_for_tab(&overlay);
+        assert!(text.contains("/statusline"));
+        assert!(text.contains("codex app-server"));
+    }
+
+    #[test]
+    fn snippet_for_tab_gemini_returns_settings_json_only() {
+        let overlay = ProviderSetupOverlay {
+            tab: ProviderSetupTab::Gemini,
+            ..Default::default()
+        };
+        let (label, text) = snippet_for_tab(&overlay);
+        assert_eq!(label, "Gemini ~/.gemini/settings.json");
+        assert!(text.contains("\"ui\""));
+        assert!(text.contains("\"footer\""));
+        assert!(
+            !text.contains("OAuth"),
+            "auth note is informational and must not be copied"
+        );
     }
 }
