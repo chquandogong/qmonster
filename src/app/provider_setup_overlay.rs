@@ -22,10 +22,11 @@ use crate::ui::dashboard::{
 };
 use crate::ui::provider_setup::{ProviderSetupOverlay, ProviderSetupTab, snippet_for_tab};
 
-const TAB_BY_INDEX: [ProviderSetupTab; 3] = [
+const TAB_BY_INDEX: [ProviderSetupTab; 4] = [
     ProviderSetupTab::Claude,
     ProviderSetupTab::Codex,
     ProviderSetupTab::Gemini,
+    ProviderSetupTab::Tmux,
 ];
 
 /// Dispatch a single key event to the Provider Setup overlay.
@@ -45,6 +46,7 @@ pub fn handle_provider_setup_overlay_key(
         KeyCode::Char('1') => overlay.switch_tab(ProviderSetupTab::Claude),
         KeyCode::Char('2') => overlay.switch_tab(ProviderSetupTab::Codex),
         KeyCode::Char('3') => overlay.switch_tab(ProviderSetupTab::Gemini),
+        KeyCode::Char('4') => overlay.switch_tab(ProviderSetupTab::Tmux),
         KeyCode::Tab | KeyCode::Right => overlay.next_tab(),
         KeyCode::BackTab | KeyCode::Left => overlay.previous_tab(),
         KeyCode::Up | KeyCode::Char('k') => overlay.scroll_up(),
@@ -88,7 +90,7 @@ where
 /// Behaviors:
 /// - Left-click on the `[x]` button (top-right of the tabs row): close.
 /// - Left-click anywhere else on the tabs row: switch to the tab whose
-///   horizontal slot was clicked (3-way equal split).
+///   rendered label region was clicked.
 /// - Scroll wheel up/down anywhere over the modal body: scroll content.
 pub fn handle_provider_setup_overlay_mouse(
     overlay: &mut ProviderSetupOverlay,
@@ -178,6 +180,8 @@ mod tests {
         assert_eq!(overlay.tab, ProviderSetupTab::Codex);
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Char('3'));
         assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
+        handle_provider_setup_overlay_key(&mut overlay, KeyCode::Char('4'));
+        assert_eq!(overlay.tab, ProviderSetupTab::Tmux);
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Char('1'));
         assert_eq!(overlay.tab, ProviderSetupTab::Claude);
     }
@@ -191,11 +195,15 @@ mod tests {
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Right);
         assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Tab);
+        assert_eq!(overlay.tab, ProviderSetupTab::Tmux);
+        handle_provider_setup_overlay_key(&mut overlay, KeyCode::Right);
         assert_eq!(overlay.tab, ProviderSetupTab::Claude);
 
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::BackTab);
-        assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
+        assert_eq!(overlay.tab, ProviderSetupTab::Tmux);
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Left);
+        assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
+        handle_provider_setup_overlay_key(&mut overlay, KeyCode::BackTab);
         assert_eq!(overlay.tab, ProviderSetupTab::Codex);
     }
 
@@ -255,9 +263,9 @@ mod tests {
     fn left_click_on_tabs_row_switches_tabs() {
         // Click positions target the actual rendered label cells of
         // the ratatui Tabs widget (left-aligned ` Claude │ Codex │
-        // Gemini ` inside a single-cell border), not the equal-thirds
+        // Gemini │ Tmux ` inside a single-cell border), not the equal-width
         // approximation that an earlier implementation used. A wide
-        // modal would otherwise mis-route clicks on Codex/Gemini to
+        // modal would otherwise mis-route clicks on later tabs to
         // the always-Claude left third.
         let mut overlay = ProviderSetupOverlay::new();
         overlay.open();
@@ -287,6 +295,15 @@ mod tests {
         );
         assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
 
+        // Click on an 'm' in "Tmux" (inner_x + 28).
+        let tmux_x = inner_x + 28;
+        handle_provider_setup_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(MouseEventKind::Down(MouseButton::Left), tmux_x, row),
+        );
+        assert_eq!(overlay.tab, ProviderSetupTab::Tmux);
+
         // Click on a 'l' in "Claude" (inner_x + 2).
         let claude_x = inner_x + 2;
         handle_provider_setup_overlay_mouse(
@@ -296,7 +313,7 @@ mod tests {
         );
         assert_eq!(overlay.tab, ProviderSetupTab::Claude);
 
-        // Click on whitespace past "Gemini" (inner_x + 60) does
+        // Click on whitespace past "Tmux" (inner_x + 60) does
         // nothing — current tab stays Claude.
         let empty_x = inner_x + 60;
         handle_provider_setup_overlay_mouse(

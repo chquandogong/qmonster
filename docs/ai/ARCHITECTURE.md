@@ -452,8 +452,8 @@ commands with terminal submit (`C-m`, Enter-equivalent) for Codex and
 Gemini only. Claude is statusline-only: pressing `u` on a Claude pane
 forces the next poll but sends no slash command and no `Escape`. Codex
 sends `/status`; Gemini cycles `/stats session`, `/stats model`,
-`/stats tools`.
-Gemini stats surfaces are cycled without a pre-`Escape`; Gemini
+`/model`, `/stats tools`.
+Gemini runtime surfaces are cycled without a pre-`Escape`; Gemini
 `thinking...` progress markers and recently changing live-prompt tails
 suppress idle classification so a genuinely working Gemini pane does not
 display as `IDLE`.
@@ -678,10 +678,13 @@ operators who never edit `qmonster.toml` see no v1.34.0
 regression. With F-7d shipped, the entire F-stack (F-1 → F-7d) is
 now under operator control where appropriate (cache thresholds via
 `[cache]`, reset thresholds via `[reset]`); the rest is
-observation/wiring without operator knobs. Settings overlay (`S`
-key) UI for the `[reset]` section remains explicitly deferred,
-same posture as `[cache]` in v1.28.0 F-7-config. Tests grew to
-771 lib + 68 integration green.
+observation/wiring without operator knobs. Settings overlay (`S`)
+shows `[reset]` values in `Parameters` and the reset rule conditions
+in `Rules`; editing remains direct `qmonster.toml` for the threshold
+sections. The `Badges` tab documents source labels and metric meanings
+so the operator can decode `CTX`, `COST`, `TOKENS`, `CACHE`, `RESET`,
+and `CALLS` without leaving the TUI. Tests grew to 771+ lib + 68
+integration green in the v1.35.x line.
 
 v1.34.0 ships **Phase F F-7c reset-aware policy rules**
 (`wait_for_reset` + `snapshot_before_reset`). New
@@ -720,9 +723,10 @@ risk is tiny). Hardcoded thresholds for v1:
 minutes). F-7d would expose these via a new `[reset]` config
 section once tuning data lands. Provider scope: F-7c is a
 Claude+Codex-only feature because only F-5b (Claude sidefile) and
-F-6 (Codex App Server) populate `quota*\*\_resets_at`— Gemini stays
-silent until a future Gemini surface ever exposes resets (F-4b's
-/stats parser doesn't carry reset timestamps). Bundled small
+F-6 (Codex App Server) populate `quota*\*\_resets_at`. Gemini `/model`
+`Reset:` rows are parsed as display-only `RuntimeFactKind::ModelReset`
+facts (`RESET <model> <time/remaining> [Official]`) but do not populate
+the F-7c `quota_*_resets_at` policy inputs. Bundled small
 cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
 
 - field reassign to struct-update syntax (silences
@@ -730,7 +734,9 @@ cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
   deterministic now-injection. Tests grew to 765 lib + 68 integration
   green.
 
-v1.33.0 ships **Phase F F-4b Gemini `/stats` output parser**. New
+v1.33.0 ships **Phase F F-4b Gemini `/stats` output parser**; the
+current v1.35.x sync extends the same path to Gemini `/model` reset
+rows. New
 private parsers in `src/adapters/gemini.rs` close the long-deferred
 F-4b slice that was originally listed alongside F-4 in v1.25.0 but
 pending a live Ink-rendered fixture. `parse_gemini_stats_session(tail)
@@ -739,7 +745,10 @@ stripped-box-char lines for `Session ID:` and `Tool Calls:` anchors;
 `parse_gemini_stats_model(tail) -> Option<GeminiModelStats {
 input_tokens, output_tokens, cache_reads }>` performs section-anchored
 scanning for the `Tokens` header followed by `Total` / `Input` /
-`Cache Reads` / `Output` rows. Architecture choice: section-anchored
+`Cache Reads` / `Output` rows. `parse_gemini_model_resets(tail)` scans
+the `/model` picker for model-specific `Reset:` rows and preserves the
+provider-rendered reset time plus remaining duration as display-only
+runtime facts. Architecture choice: section-anchored
 scanning over plain regex — Gemini's `/stats` output is rendered by
 Ink and the box-drawing characters surrounding each row vary across
 terminal widths and Ink versions, so the parser strips those
@@ -749,10 +758,12 @@ and `parse_count_with_commas` keep the line scan cheap and defensive.
 Honesty rule: the model parser returns `Some` ONLY when both
 `input_tokens` AND `output_tokens` parse — don't ship half-data.
 `GeminiAdapter::parse` integrates both parsers AFTER the existing
-status-table block: `RuntimeFactKind::SessionId` (reused from F-5b)
-populates from the session panel, and `input_tokens` /
-`output_tokens` / `cached_input_tokens` populate via `is_none()`
-guards. The is_none() guard pattern is shared with F-5b (Claude
+status-table block: `RuntimeFactKind::SessionId` (reused from F-5b),
+`RuntimeFactKind::ToolCalls`, and `RuntimeFactKind::ModelReset`
+populate from the runtime panels (`SID` / `CALLS` / `RESET` badges),
+while `input_tokens` / `output_tokens` / `cached_input_tokens` populate
+via `is_none()` guards. The is_none()
+guard pattern is shared with F-5b (Claude
 sidefile) and F-6 (Codex app-server): adapters' enrichment paths
 preserve any earlier-surface authority on the same field rather than
 overwriting it. OAuth Gemini honesty: `cache_reads` stays `None` per
@@ -887,10 +898,11 @@ observability stack. New module `src/ui/provider_setup.rs` owns: (1) the
 view-model (`ProviderSetupTab` enum, `ProviderSetupOverlay` struct with
 `open: bool`, `tab`, per-tab toggles, `scroll_offset`), (2) read-only
 state detectors that probe `~/.claude/statusline.sh`,
-`~/.codex/config.toml`, and `~/.gemini/settings.json`, (3) 6 const
+`~/.codex/config.toml`, and `~/.gemini/settings.json`, (3) 7 const
 snippet `include_str!` references composed by `render_tab_content`.
 `src/app/provider_setup_overlay.rs` mirrors `settings_overlay.rs` for
-key dispatch (Esc/q close, 1/2/3 switch tabs, s toggle, ↑↓/j/k scroll).
+key dispatch (Esc/q close, 1/2/3/4 switch tabs, Tab/arrow cycle,
+↑↓/j/k scroll).
 Render plumbed via `dashboard_render.rs::DashboardFrameView` field +
 `dashboard.rs::render_provider_setup_modal`. The overlay is read-only —
 Qmonster never writes provider config files; the operator copies the
@@ -900,7 +912,9 @@ F-4 CACHE badge); the Codex tab's snippet enumerates the bottom-status
 `/statusline` items and explains the `/status` welcome panel
 `(+ N cached)` source for Qmonster's F-4 cache parser; the Gemini tab
 shows the `ui.footer.*` JSON template plus an OAuth-stays-informational
-note (per FAQ-documented OAuth cache limit).
+note (per FAQ-documented OAuth cache limit). The Tmux tab copies a
+bundle installer that writes `~/ts.sh` and
+`~/.tmux/qmonster.tmux.conf` for the recommended four-pane workflow.
 
 v1.28.0 continues **Phase F** with **F-7-config operator-tunable cache thresholds**:
 new `CacheConfig` struct in `src/app/config.rs` with 6 fields
@@ -916,8 +930,9 @@ strings interpolate the configured threshold so operators see the
 actual value that fired. Defaults match the prior hardcoded
 constants exactly so no v1.27.x behavior change for default configs.
 Operators edit `~/.qmonster/config/qmonster.toml`'s new `[cache]`
-section to retune. Settings overlay (`S` key) UI for cache
-thresholds is explicitly deferred. Refactor side effect: 22
+section to retune. Settings overlay (`S`) shows the current cache
+thresholds in `Parameters` and cache rule conditions in `Rules`;
+editing those thresholds remains direct TOML. Refactor side effect: 22
 `PolicyGates { … }` literals across `advisories.rs` /
 `auto_memory.rs` / `profiles.rs` are simplified to
 `..PolicyGates::default()` spread syntax — purely mechanical, no

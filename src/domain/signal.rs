@@ -86,6 +86,14 @@ pub enum RuntimeFactKind {
     /// Lets the operator correlate a Claude pane with its log file
     /// and transcript without manually inspecting the sidefile dir.
     SessionId,
+    /// Phase F F-4b follow-up: Gemini `/stats session` Tool Calls
+    /// count. Display-only because it is session telemetry, not a
+    /// policy gate today.
+    ToolCalls,
+    /// Gemini `/model` screen reset rows. The Gemini CLI renders
+    /// model-specific `Reset:` times with remaining time; Qmonster
+    /// preserves the provider text as display-only runtime telemetry.
+    ModelReset,
     /// Phase F F-5b (v1.31.0): absolute path to the Claude session
     /// transcript JSONL (`~/.claude/projects/<encoded>/<sid>.jsonl`).
     /// Read from the sidefile's `transcript_path` field.
@@ -182,6 +190,12 @@ pub struct SignalSet {
     /// limit); non-None when Claude statusLine command opt-in (F-5)
     /// or Gemini API-key/Vertex-AI auth (F-4b) lands.
     pub cached_input_tokens: Option<MetricValue<u64>>,
+    /// Claude sidefile `cache_creation_input_tokens`. This is distinct
+    /// from cache reads: creation is the prompt-cache write cost, while
+    /// `cached_input_tokens` is the read/reuse side. It is display-only
+    /// today and intentionally not folded into `CACHE`, whose contract is
+    /// read-hit ratio.
+    pub cache_creation_input_tokens: Option<MetricValue<u64>>,
     /// Phase F F-5 (v1.30.0): pre-computed cache hit ratio surfaced
     /// directly by the provider statusline (Claude `statusline.sh`'s
     /// `cache N%` output) when raw cached/input token counts are

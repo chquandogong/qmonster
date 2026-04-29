@@ -589,10 +589,12 @@ fn runtime_fact_kind_label(kind: RuntimeFactKind) -> &'static str {
         RuntimeFactKind::LoadedSkill => "skill",
         RuntimeFactKind::LoadedPlugin => "plugin",
         RuntimeFactKind::RestrictedTool => "restricted-tool",
-        // Phase F F-5b (v1.31.0): SessionId / TranscriptPath are
-        // identity surfaces, not security posture facts — no
-        // advisory should fire from them.
-        RuntimeFactKind::SessionId | RuntimeFactKind::TranscriptPath => "identity",
+        // Session telemetry is display-only, not a security posture
+        // fact — no advisory should fire from it.
+        RuntimeFactKind::SessionId
+        | RuntimeFactKind::ToolCalls
+        | RuntimeFactKind::ModelReset
+        | RuntimeFactKind::TranscriptPath => "session",
     }
 }
 

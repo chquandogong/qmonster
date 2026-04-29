@@ -1635,6 +1635,32 @@ fn build_parameter_body_lines(
                 defaults.cache.drift_min_samples
             ),
         ),
+        setting_row(
+            "reset wait pressure/eta",
+            format!(
+                "{}/{}",
+                pct_label(f64::from(config.reset.wait_pressure_threshold)),
+                seconds_label(config.reset.wait_eta_secs)
+            ),
+            format!(
+                "{}/{}",
+                pct_label(f64::from(defaults.reset.wait_pressure_threshold)),
+                seconds_label(defaults.reset.wait_eta_secs)
+            ),
+        ),
+        setting_row(
+            "reset snapshot pressure/eta",
+            format!(
+                "{}/{}",
+                pct_label(f64::from(config.reset.snapshot_pressure_threshold)),
+                seconds_label(config.reset.snapshot_eta_secs)
+            ),
+            format!(
+                "{}/{}",
+                pct_label(f64::from(defaults.reset.snapshot_pressure_threshold)),
+                seconds_label(defaults.reset.snapshot_eta_secs)
+            ),
+        ),
         Line::from(""),
         status_line(overlay),
     ]
@@ -1679,6 +1705,28 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
                 pct_label(f64::from(config.quota.warning_pct)),
                 pct_label(f64::from(config.quota.critical_pct))
             ),
+        ),
+        Line::from(""),
+        reference_header_line("Reset"),
+        rule_row(
+            "wait for reset",
+            format!(
+                "5h/weekly pressure >= {} and eta <= {}",
+                pct_label(f64::from(config.reset.wait_pressure_threshold)),
+                seconds_label(config.reset.wait_eta_secs)
+            ),
+        ),
+        rule_row(
+            "snapshot before reset",
+            format!(
+                "any eta <= {} and pressure >= {}; suggests s snapshot",
+                seconds_label(config.reset.snapshot_eta_secs),
+                pct_label(f64::from(config.reset.snapshot_pressure_threshold))
+            ),
+        ),
+        rule_row(
+            "reset sources",
+            "Claude sidefile / Codex app-server; Gemini silent until resets_at exists".into(),
         ),
         Line::from(""),
         reference_header_line("Cache / Memory"),
@@ -1784,8 +1832,16 @@ fn build_badge_body_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
             "provider-visible session token count; selected pane also shows prompt=input+cached and recent delta",
         ),
         badge_row(
+            "token io",
+            "expanded pane input/output token counts from provider stats when both sides are known",
+        ),
+        badge_row(
             "CACHE N%",
             "cache_read / (input + cache_read); hidden when the provider does not expose cache reads",
+        ),
+        badge_row(
+            "cache io",
+            "expanded pane cache read/create token counts when a provider sidefile or stats panel exposes them",
         ),
         badge_row(
             "COST $N",
@@ -1824,6 +1880,11 @@ fn build_badge_body_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
         badge_row(
             "SID / XSCRIPT",
             "Claude/Gemini session id and Claude transcript path when exported",
+        ),
+        badge_row("CALLS N", "Gemini /stats session Tool Calls count"),
+        badge_row(
+            "RESET model",
+            "Gemini /model Reset line with provider-rendered time and remaining duration",
         ),
         badge_row(
             "TOOL / SKILL",
@@ -1909,6 +1970,16 @@ fn on_off(v: bool) -> &'static str {
 
 fn pct_label(v: f64) -> String {
     format!("{:.0}%", v * 100.0)
+}
+
+fn seconds_label(seconds: u64) -> String {
+    match seconds {
+        s if s >= 3600 && s % 3600 == 0 => format!("{}h", s / 3600),
+        s if s >= 3600 => format!("{}h{}m", s / 3600, (s % 3600) / 60),
+        s if s >= 60 && s % 60 == 0 => format!("{}m", s / 60),
+        s if s >= 60 => format!("{}m{}s", s / 60, s % 60),
+        s => format!("{s}s"),
+    }
 }
 
 fn section_header_line(section: Section) -> Line<'static> {
@@ -2316,6 +2387,8 @@ mod tests {
         let mut config = cfg();
         config.token.quota_tight = true;
         config.cache.drift_min_samples = 6;
+        config.reset.wait_eta_secs = 15 * 60;
+        config.reset.snapshot_pressure_threshold = 0.65;
         let mut s = SettingsOverlay::new();
         s.open();
         s.switch_tab(SettingsTab::Parameters);
@@ -2327,12 +2400,19 @@ mod tests {
         assert!(rendered.contains("default off"));
         assert!(rendered.contains("cache drift drop/samples"));
         assert!(rendered.contains("30%/6"));
+        assert!(rendered.contains("reset wait pressure/eta"));
+        assert!(rendered.contains("85%/15m"));
+        assert!(rendered.contains("reset snapshot pressure/eta"));
+        assert!(rendered.contains("65%/5m"));
     }
 
     #[test]
     fn rules_tab_shows_dynamic_activation_conditions() {
         let mut config = cfg();
         config.cache.hot_ratio_threshold = 0.7;
+        config.reset.wait_pressure_threshold = 0.75;
+        config.reset.wait_eta_secs = 10 * 60;
+        config.reset.snapshot_eta_secs = 90;
         config.security.identity_drift_findings = true;
         let mut s = SettingsOverlay::new();
         s.open();
@@ -2342,6 +2422,11 @@ mod tests {
 
         assert!(rendered.contains("cache hot wait"));
         assert!(rendered.contains("cache > 70%"));
+        assert!(rendered.contains("wait for reset"));
+        assert!(rendered.contains("5h/weekly pressure >= 75% and eta <= 10m"));
+        assert!(rendered.contains("snapshot before reset"));
+        assert!(rendered.contains("any eta <= 1m30s and pressure >= 50%"));
+        assert!(rendered.contains("reset sources"));
         assert!(rendered.contains("identity drift"));
         assert!(rendered.contains("security.identity_drift_findings = on"));
     }
@@ -2363,6 +2448,8 @@ mod tests {
         assert!(rendered.contains("COST $N"));
         assert!(rendered.contains("Claude sidefile total_cost_usd"));
         assert!(rendered.contains("Codex cost is Estimate"));
+        assert!(rendered.contains("CALLS N"));
+        assert!(rendered.contains("RESET model"));
     }
 
     // -----------------------------------------------------------------

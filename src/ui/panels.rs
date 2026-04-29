@@ -278,6 +278,12 @@ fn pane_list_lines_with_flash(
             &report.recent_token_samples,
             &report.signals,
         ));
+        if let Some(line) = token_io_line(report) {
+            lines.push(Line::from(line));
+        }
+        if let Some(line) = cache_token_io_line(report) {
+            lines.push(Line::from(line));
+        }
     }
     for row in runtime_badge_lines_wrapped(&report.signals, wrap_width) {
         lines.push(row);
@@ -1281,7 +1287,34 @@ fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
     has_any.then(|| Line::from(spans))
 }
 
+fn token_io_line(report: &PaneReport) -> Option<String> {
+    token_breakdown_line_with_label(report, "token io")
+}
+
+fn cache_token_io_line(report: &PaneReport) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(metric) = report.signals.cached_input_tokens.as_ref() {
+        parts.push(format!(
+            "read {} [{}]",
+            format_count_with_suffix(metric.value),
+            source_kind_label(metric.source_kind)
+        ));
+    }
+    if let Some(metric) = report.signals.cache_creation_input_tokens.as_ref() {
+        parts.push(format!(
+            "create {} [{}]",
+            format_count_with_suffix(metric.value),
+            source_kind_label(metric.source_kind)
+        ));
+    }
+    (!parts.is_empty()).then(|| aligned_field("cache io", &parts.join(" / ")))
+}
+
 fn token_breakdown_line(report: &PaneReport) -> Option<String> {
+    token_breakdown_line_with_label(report, "tokens")
+}
+
+fn token_breakdown_line_with_label(report: &PaneReport, label: &'static str) -> Option<String> {
     let input = report.signals.input_tokens.as_ref()?;
     let output = report.signals.output_tokens.as_ref()?;
     let source = if input.source_kind == output.source_kind {
@@ -1294,7 +1327,7 @@ fn token_breakdown_line(report: &PaneReport) -> Option<String> {
         )
     };
     Some(aligned_field(
-        "tokens",
+        label,
         &format!(
             "{} {} in / {} out {}",
             token_owner_label(report.identity.identity.role),
@@ -1353,9 +1386,14 @@ fn runtime_text_groups(signals: &SignalSet) -> Vec<(&'static str, Vec<String>)> 
                 RuntimeFactKind::AgentConfig,
             ],
         ),
+        ("limits", &[RuntimeFactKind::ModelReset]),
         (
             "session",
-            &[RuntimeFactKind::SessionId, RuntimeFactKind::TranscriptPath],
+            &[
+                RuntimeFactKind::SessionId,
+                RuntimeFactKind::ToolCalls,
+                RuntimeFactKind::TranscriptPath,
+            ],
         ),
         (
             "loaded",
@@ -1410,6 +1448,8 @@ fn runtime_fact_label(kind: RuntimeFactKind) -> &'static str {
         // Phase F F-5b (v1.31.0): per-pane Claude session identity
         // surfaced from sidefile JSON.
         RuntimeFactKind::SessionId => "SID",
+        RuntimeFactKind::ToolCalls => "CALLS",
+        RuntimeFactKind::ModelReset => "RESET",
         RuntimeFactKind::TranscriptPath => "XSCRIPT",
     }
 }
@@ -2266,6 +2306,11 @@ mod tests {
                     SourceKind::ProviderOfficial,
                 ),
                 RuntimeFact::new(
+                    RuntimeFactKind::ToolCalls,
+                    "42",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
                     RuntimeFactKind::TranscriptPath,
                     "/home/chquan/.claude/projects/-home-chquan-Qmonster/fbd8bf4a-6dc7-4b50-9823-ab69bb3c5c26.jsonl",
                     SourceKind::ProviderOfficial,
@@ -2282,7 +2327,30 @@ mod tests {
 
         assert!(text.contains("session"), "text = {text:?}");
         assert!(text.contains("SID fbd8bf4a"), "text = {text:?}");
+        assert!(text.contains("CALLS 42"), "text = {text:?}");
         assert!(text.contains("XSCRIPT"), "text = {text:?}");
+    }
+
+    #[test]
+    fn runtime_badge_lines_render_model_reset_facts() {
+        let s = crate::domain::signal::SignalSet {
+            runtime_facts: vec![RuntimeFact::new(
+                RuntimeFactKind::ModelReset,
+                "Gemini 2.5 Pro 5:00 PM (in 1h 12m)",
+                SourceKind::ProviderOfficial,
+            )],
+            ..crate::domain::signal::SignalSet::default()
+        };
+
+        let text = runtime_badge_lines_wrapped(&s, 120)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert!(text.contains("limits"), "text = {text:?}");
+        assert!(text.contains("RESET Gemini 2.5 Pro"), "text = {text:?}");
+        assert!(text.contains("1h 12m"), "text = {text:?}");
     }
 
     #[test]
@@ -2854,6 +2922,44 @@ mod tests {
             tokens_idx < rec_idx,
             "sparkline should be visible before long recommendation details: {lines:?}"
         );
+    }
+
+    #[test]
+    fn selected_pane_renders_token_input_output_when_available() {
+        let mut rep = base_report();
+        rep.signals.input_tokens = Some(MetricValue::new(1_234_567, SourceKind::ProviderOfficial));
+        rep.signals.output_tokens = Some(MetricValue::new(45_678, SourceKind::ProviderOfficial));
+
+        let lines = pane_list_lines(&rep, true, false)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>();
+        let io = lines
+            .iter()
+            .find(|line| line.contains("token io"))
+            .expect("expanded selected pane should show token input/output line");
+
+        assert!(io.contains("Main 1.23M in / 45.7K out [Official]"));
+    }
+
+    #[test]
+    fn selected_pane_renders_cache_read_and_create_counts_when_available() {
+        let mut rep = base_report();
+        rep.signals.cached_input_tokens =
+            Some(MetricValue::new(150_000, SourceKind::ProviderOfficial));
+        rep.signals.cache_creation_input_tokens =
+            Some(MetricValue::new(770, SourceKind::ProviderOfficial));
+
+        let lines = pane_list_lines(&rep, true, false)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>();
+        let io = lines
+            .iter()
+            .find(|line| line.contains("cache io"))
+            .expect("expanded selected pane should show cache read/create counts");
+
+        assert!(io.contains("read 150.0K [Official] / create 770 [Official]"));
     }
 
     #[test]

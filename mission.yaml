@@ -1214,8 +1214,8 @@ mission:
     `PolicyGates { … }` literals across `advisories.rs` /
     `auto_memory.rs` / `profiles.rs` are simplified to
     `..PolicyGates::default()` spread syntax — purely mechanical, no
-    semantic change. Settings overlay UI for cache thresholds deferred —
-    operators edit `qmonster.toml` directly. Tests grew to 662 lib + 68
+    semantic change. Settings displays cache thresholds and conditions
+    read-only; operators edit `qmonster.toml` directly. Tests grew to 662 lib + 68
     integration green.
 
     Phase G opens (v1.29.0) with G-1: Provider Setup overlay. Phase G is
@@ -1344,14 +1344,14 @@ mission:
     lib + 68 integration green.
 
     v1.32.2 ships Settings integrations and token sparkline polish.
-    Settings now has Thresholds, Integrations, Parameters, and Rules
-    tabs; `[provider_setup]` sidefile/app-server toggles live in
+    Settings has Thresholds, Integrations, Parameters, Rules, and
+    Badges tabs; `[provider_setup]` sidefile/app-server toggles live in
     `S -> Integrations` with keyboard and mouse support. Provider
     Setup is read-only and mirrors those Settings values, including
     the `y` copy target. The selected pane's TOKENS sparkline renders
-    near the top as high-contrast plain text and shows `TOKENS
-    collecting N/2` while waiting for enough samples. 744 lib + 68
-    integration tests green.
+    near the top as high-contrast plain text, shows prompt totals/deltas,
+    and shows `TOKENS collecting N/2` while waiting for enough samples.
+    744 lib + 68 integration tests green at the original release point.
 
     Phase F continues with F-4b (v1.33.0, this revision) — the long-
     deferred Gemini `/stats` output parser. New private parsers in
@@ -1368,10 +1368,10 @@ mission:
     `first_count_in`, and `parse_count_with_commas` keep the
     line-by-line scan defensive against Ink rendering variations.
     `GeminiAdapter::parse` integrates both parsers AFTER the existing
-    status-table block: `RuntimeFactKind::SessionId` (reused from
-    F-5b) populates from the session panel, and
-    `input_tokens` / `output_tokens` / `cached_input_tokens` populate
-    via `is_none()` guards mirroring the F-5b Claude / F-6 Codex
+    status-table block: `RuntimeFactKind::SessionId` and
+    `RuntimeFactKind::ToolCalls` populate from the session panel as
+    `SID` / `CALLS` badges, and `input_tokens` / `output_tokens` /
+    `cached_input_tokens` populate via `is_none()` guards mirroring the F-5b Claude / F-6 Codex
     pattern — preserve any earlier-surface truth. OAuth Gemini honesty:
     `cache_reads` stays `None` per FAQ-documented Google limit (the
     `Cache Reads` row is hidden for OAuth users); never synthesize a
@@ -1450,11 +1450,12 @@ mission:
     `&ctx.config.reset` to `from_config_and_identity`; the 7 existing
     gates.rs test call sites updated with the new arg. Defaults match
     v1.34.0 constants exactly so no behavior change for default
-    configs. 4 new tests (config defaults match v1.34.0 constants
-    exactly, TOML override leaves untouched fields default, custom
-    wait_pressure threshold fires at lower pressure, custom
-    snapshot_eta widens the imminent window). 771 lib + 68
-    integration green; clippy + fmt clean.
+    configs. Settings now shows reset values/defaults in `Parameters`,
+    reset activation conditions in `Rules`, and source/metric meanings
+    in `Badges`; threshold editing remains direct TOML. Expanded pane
+    details show `token io` input/output and `cache io` read/create
+    counts when provider data exists. 4 initial F-7d tests plus current
+    UI-surface coverage.
 
   done_when:
     - "cargo_build_passes"
@@ -1499,20 +1500,20 @@ mission:
     - "G-2: [provider_setup] config section in src/app/config.rs with claude_sidefile: bool (default true) and codex_app_server: bool (default false); #[serde(default)] keeps existing configs working unchanged"
     - "G-2: ProviderSetupOverlay::from_config(&QmonsterConfig) constructor seeds read-only integration flags from persisted config; tui_loop.rs uses from_config at startup and re-syncs from current Settings config before opening P"
     - "v1.32.1: Provider Setup overlay body uses Current Status / Options / Copy With y / Preview sections; [s] toggles render as ON/OFF near the top; each tab documents exactly what y copies and which informational sections are not copied"
-    - "v1.32.2: Settings overlay has Thresholds / Integrations / Parameters / Rules tabs; [provider_setup] claude_sidefile and codex_app_server move to Integrations with keyboard and mouse toggles; Provider Setup mirrors those values read-only and points edits back to Settings"
-    - "v1.32.2: Selected pane token sparkline renders near the top as high-contrast plain text, without a badge background, and shows TOKENS collecting N/2 until two samples exist"
+    - "v1.32.2: Settings overlay has Thresholds / Integrations / Parameters / Rules / Badges tabs; [provider_setup] claude_sidefile and codex_app_server move to Integrations with keyboard and mouse toggles; Provider Setup mirrors those values read-only and points edits back to Settings"
+    - "v1.32.2: Selected pane token sparkline renders near the top as high-contrast plain text, without a badge background, shows prompt totals/deltas, and shows TOKENS collecting N/2 until two samples exist"
     - "F-5: SignalSet.cache_hit_ratio: Option<MetricValue<f64>> field added; Claude adapter parses optional `cache N%` token between CTX and 5h on statusline.sh output, populates cache_hit_ratio with SourceKind::ProviderOfficial"
     - "F-5: policy/rules/cache.rs::cache_hit_ratio() prefers SignalSet.cache_hit_ratio over count-derived computation; UI panels.rs::signals_cache_pct_with_source() helper encapsulates the same precedence so the CACHE badge surfaces for Claude panes (not just Codex)"
     - "F-5b: src/adapters/claude_sidefile.rs reads ~/.local/share/ai-cli-status/claude/<sid>.json per Claude pane, matched to current_path by JSON cwd field, newest-mtime tiebreak; provider gate restricts to Claude only"
     - "F-5b: SignalSet gains quota_5h_resets_at and quota_weekly_resets_at (Option<MetricValue<u64>>, Unix seconds); panels.rs::metric_row renders `5h resets in <eta>` and `7d resets in <eta>` via format_resets_eta (capped at 14 days)"
-    - "F-5b: RuntimeFactKind::{SessionId, TranscriptPath} variants added (SID / XSCRIPT badges); apply_claude_sidefile in parse_for_with_environment populates raw input_tokens / output_tokens / cached_input_tokens / cost_usd / quota_*_resets_at / runtime_facts when sidefile JSON is found"
+    - "F-5b: RuntimeFactKind::{SessionId, TranscriptPath} variants added (SID / XSCRIPT badges); apply_claude_sidefile in parse_for_with_environment populates raw input_tokens / output_tokens / cached_input_tokens / cache_creation_input_tokens / cost_usd / quota_*_resets_at / runtime_facts when sidefile JSON is found"
     - "F-5b: sidefile-derived cache_hit_ratio overrides statusline-derived value (raw count-based ratio > rounded `cache N%`); statusline path remains the fallback when no sidefile is matched"
     - "F-6: src/adapters/codex_app_server.rs spawns `codex app-server` with sandbox_mode=danger-full-access; sends initialize + account/rateLimits/read over piped stdin/stdout; parses CodexRateLimits.{primary,secondary}.{used_percent,window_duration_mins,resets_at_unix_seconds}; JsonRpcIo trait + VecDequeIo stub for tests"
     - "F-6: Context gains codex_app_server (Option<CodexAppServer<SubprocessIo>>) + codex_rate_limits (Option<CodexRateLimits>); spawned at TUI startup when [provider_setup] codex_app_server = true; spawn success/failure surfaces as SystemNotice without aborting startup"
     - "F-6: event_loop::run_once_with_target reads rate limits once per polling tick before iterating panes; failure drops client + clears cache so stale data never lingers; apply_codex_rate_limits is_none-guards quota_*_pressure fields and unconditionally fills quota_*_resets_at"
     - "F-6: 5h resets in <eta> / 7d resets in <eta> rows now appear on Codex pane cards via the same panels.rs::format_resets_eta helper used by Claude (F-5b path)"
     - "F-4b: src/adapters/gemini.rs gains parse_gemini_stats_session (Session ID + Tool Calls) and parse_gemini_stats_model (Total/Input/Cache Reads/Output rows) with strip_box_chars / strip_metric_label / first_count_in / parse_count_with_commas helpers"
-    - "F-4b: GeminiAdapter::parse pushes RuntimeFactKind::SessionId from /stats session and fills input_tokens/output_tokens/cached_input_tokens from /stats model via is_none() guards (mirrors F-5b); OAuth Gemini cache_reads absence preserved (no synthesized zero)"
+    - "F-4b: GeminiAdapter::parse pushes RuntimeFactKind::SessionId and RuntimeFactKind::ToolCalls from /stats session and fills input_tokens/output_tokens/cached_input_tokens from /stats model via is_none() guards (mirrors F-5b); OAuth Gemini cache_reads absence preserved (no synthesized zero)"
     - "F-4b: GeminiModelStats returns Some only when both input_tokens AND output_tokens extract from the section-anchored Tokens table (honesty rule: don't ship half-data)"
     - "v1.33.x polish: panels.rs::primary_metric_row renders RESET 5H <eta> / RESET 7D <eta> badges via format_resets_eta when resets_at populated (Claude sidefile or Codex app-server path)"
     - "F-7c: src/policy/rules/reset.rs::eval_reset evaluates 5h and weekly windows independently; both gate on IdentityConfidence >= Medium and suppress when idle_state is InputWait/PermissionWait"
@@ -1523,6 +1524,7 @@ mission:
     - "F-7d: PolicyGates gains reset_wait_pressure / reset_wait_eta_secs / reset_snapshot_pressure / reset_snapshot_eta_secs fields populated from ResetConfig in from_config_and_identity (9th positional param)"
     - "F-7d: eval_reset and helpers take &PolicyGates and read from gates.reset_* instead of removed module constants; reason strings interpolate gates.reset_wait_pressure so operators see the configured threshold that fired"
     - "F-7d: event_loop::run_once_with_target passes &ctx.config.reset to from_config_and_identity; 7 existing gates.rs test call sites updated with the new arg"
+    - "v1.35.x UI sync: Settings Parameters/Rules show cache/reset values and activation conditions read-only; Badges explains CTX/COST/TOKENS/CACHE/RESET/CALLS/source labels; expanded panes show token io and cache io rows when provider data exists"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."

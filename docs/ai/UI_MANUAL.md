@@ -125,7 +125,7 @@ session:window · Provider role · %pane_id
   `output_tokens` 필드 — 검증됨). Qmonster는 이를 `SignalSet.input_tokens`
   / `output_tokens`로 노출합니다. metric badge는 여전히 compact summary인
   `TOKENS`(total)를 표시하고, 선택된 pane 상세에는 두 값이 모두 있을 때
-  `tokens  : Main 1.51M in / 20.4K out [Official]` 형태의 breakdown을
+  `token io: Main 1.51M in / 20.4K out [Official]` 형태의 breakdown을
   추가로 보여줍니다. **Subagent token 분리는 영구 deferred**입니다 —
   Claude / Codex / Gemini 모두 per-subagent input/output 카운터를
   노출하지 않으므로, 세션 누적값은 subagent 작업까지 이미 포함합니다.
@@ -175,7 +175,7 @@ session:window · Provider role · %pane_id
 - `TOKENS` sparkline appears near the top of the SELECTED pane card
   (Tab to panes focus, then ↑/↓ to select), before recommendation
   details so it is not pushed off-screen by long alerts. It shows the
-  delta in `input_tokens` between adjacent recent samples (last 20
+  delta in prompt tokens (`input_tokens + cached_input_tokens`) between adjacent recent samples (last 20
   polls fetched DESC; rendered oldest-to-newest left-to-right), mapped
   to the 8-block Unicode set `▁▂▃▄▅▆▇█`. It is rendered as plain
   high-contrast text, not a background badge, so the thin block glyphs
@@ -185,17 +185,22 @@ session:window · Provider role · %pane_id
   persisted as cumulative counts. When fewer than 2 samples have been
   recorded for the pane, the selected card shows `TOKENS collecting
 N/2` instead of staying blank. Token-source providers today: Codex
-  (bottom-status `1.51M in / 20.4K out`); Claude / Gemini will
-  populate when later F-slices add cache-aware token surfaces.
+  (bottom-status `1.51M in / 20.4K out` and `/status` token usage),
+  Claude sidefile (`input_tokens` / `output_tokens` / cache reads),
+  and Gemini `/stats model` after the operator cycles `u`.
 - `CACHE` badge shows the cache hit ratio for the pane's cumulative
   prompt input — `cache_hit_ratio = cached_input_tokens /
 (input_tokens + cached_input_tokens) × 100`, formatted with one
   decimal. Source label tracks `cached_input_tokens.source_kind`
-  (`[Official]` for Codex `/status` welcome panel; future providers
-  may add other source labels). The badge appears only when
-  `cached_input_tokens` is `Some(...)` — Claude (no statusline cache
-  surface today) and Gemini OAuth (FAQ-documented cache=0) keep the
-  badge absent. Format: `cache <N.N>%` (text) or `CACHE <N.N>%` (TUI).
+  (`[Official]` for Codex `/status`, Claude sidefile/statusline cache,
+  and Gemini `/stats model` when Cache Reads is visible). The badge
+  appears only when `cached_input_tokens` or a provider cache ratio is
+  `Some(...)`; Gemini OAuth keeps it absent because the Cache Reads row
+  is not exposed. Format: `cache <N.N>%` (text) or `CACHE <N.N>%`
+  (TUI). When selected-pane details have raw cache counts, Qmonster
+  also shows `cache io: read <N> / create <N>`; `create` is currently
+  Claude sidefile `cache_creation_input_tokens` and is not folded into
+  the hit-ratio badge.
   Codex example: `Token usage: total=210,058 input=189,703 (+ 1,317,376
 cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
   1,507,079 prompt-input tokens were cache-hits, ~87% reuse).
@@ -217,8 +222,8 @@ cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
   is already paid on every turn, so compacting won't cost cache
   effectiveness. Both recommendations gate on
   `IdentityConfidence ≥ Medium` and suppress when input/permission
-  wait is active. Thresholds are hard-coded for v1; operator-tunable
-  thresholds are deferred.
+  wait is active. The default thresholds listed here are configurable
+  through `[cache]`.
 - **Third rule (F-7b, v1.27.0)**: `cache: drift detected — /compact will let cache rebuild` fires `Severity::Concern` with `suggested_command: /compact` when the cache hit ratio has dropped by ≥ 30 percentage points between the oldest sample in the recent window (last 20 polls) and the current SignalSet, AND at least 4 samples are available. The reason text reports the actual drop, baseline, and current values. Use this signal when context drifted (e.g., after a long agent-driven exploration) and the cache prefix has lost its alignment with the current prompt — `/compact` will trim the surface so cache rebuilds quickly on the next turn. Same suppression conditions as the other two cache rules.
 - **Operator-tunable thresholds (F-7-config, v1.28.0)**: all 6 cache-rule
   thresholds are now configurable via the `[cache]` section in
@@ -248,8 +253,9 @@ cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
   눌러도 slash command나 `Escape`를 보내지 않고 다음 poll만 당겨옵니다.
   Codex와 Gemini는 선택된 pane에서 `u`를 누르면 provider의 read-only runtime
   slash command와 terminal submit(`C-m`, Enter-equivalent)을 보냅니다:
-  Codex `/status`, Gemini `/stats session` → `/stats model` → `/stats tools`.
-  Gemini는 pre-`Escape` 없이 stats 명령만 순환하며, `thinking...` 진행 표시가 있으면 tail이
+  Codex `/status`, Gemini `/stats session` → `/stats model` → `/model` →
+  `/stats tools`.
+  Gemini는 pre-`Escape` 없이 명령만 순환하며, `thinking...` 진행 표시가 있으면 tail이
   몇 poll 동안 같아도 `IDLE`로 떨어지지 않고, live prompt가 남아 있어도
   최근 tail이 변하는 동안은 active로 유지됩니다. 다음 poll에서
   캡처와 읽을 수 있는 로컬 provider 설정을 `RuntimeFact`로 파싱합니다.
@@ -345,7 +351,7 @@ side_effects (N):
   - AutoSendOff (`allow_auto_prompt_send=false`, 비 observe_only) → `PromptSendAccepted + PromptSendBlocked` (2 이벤트)
   - observe_only → `PromptSendBlocked` 단독 (`PromptSendAccepted` 없음)
 - `d`: 선택된 pane의 pending prompt-send proposal 기각 (audit: `PromptSendRejected`; 모든 actuation mode에서 가용)
-- `S`: cost / context / quota threshold settings overlay 열기.
+- `S`: settings overlay 열기.
   화살표로 필드 이동, `e` 또는 `Enter`로 편집 시작, 숫자 입력 후
   `Enter`로 commit, `Esc`로 편집 취소, provider override row에서 `c`로
   override 제거, `w`로 loaded TOML에 저장합니다. `--config` 없이 시작해도
@@ -363,21 +369,26 @@ side_effects (N):
   현재 repo root, branch, HEAD, upstream ahead/behind, worktree 변경 요약,
   최근 커밋을 보여줍니다.
 - **Settings**:
-  `S`로 열립니다. `1` / `2` / `3` / `4`, `Tab` / `Shift+Tab`, 또는
-  마우스 클릭으로 `Thresholds` / `Integrations` / `Parameters` / `Rules`
+  `S`로 열립니다. `1` / `2` / `3` / `4` / `5`,
+  `Tab` / `Shift+Tab`, 또는 마우스 클릭으로
+  `Thresholds` / `Integrations` / `Parameters` / `Rules` / `Badges`
   탭을 전환합니다. `Thresholds`는 cost / context / quota의
   warning/critical 값을 조정하고, `Integrations`는
   `[provider_setup] claude_sidefile` 및 `codex_app_server`를
   `Space` / `e` / `Enter` 또는 마우스 클릭으로 토글합니다.
   `Parameters`는 현재 주요 설정값과 기본값 차이를 보여주며,
-  `Rules`는 cache / quota / memory / security 정책이 발동하는 조건을
-  읽기 전용으로 보여줍니다. modal 오른쪽 위 `[x]`를 클릭하거나
+  `Rules`는 cache / quota / reset / memory / security 정책이 발동하는
+  조건을 읽기 전용으로 보여줍니다. `Badges`는 `CTX`, `COST`,
+  `TOKENS`, `CACHE`, `RESET`, `CALLS`, `token io`, `cache io`와
+  `[Official]` / `[Estimate]` / `[Heur]` / `[Qmonster]` source label의
+  뜻을 설명합니다. modal 오른쪽 위 `[x]`를 클릭하거나
   `q` / `Esc`로 닫습니다. `w` 저장은 로드된 TOML의 코멘트와
   관련 없는 섹션을 보존하면서 Settings가 소유한 key만 갱신합니다.
 - **Provider Setup (G-1, v1.29.0)**:
-  `P`로 열립니다. 3개 탭(Claude / Codex / Gemini)을 `1` / `2` / `3`으로
-  전환하며, 각 탭이 해당 provider의 statusline / footer / config 파일을
-  Qmonster가 데이터를 수집할 수 있도록 어떻게 셋업할지 안내합니다.
+  `P`로 열립니다. 4개 탭(Claude / Codex / Gemini / Tmux)을 `1` / `2` / `3` / `4`로
+  전환하며, provider 탭은 해당 statusline / footer / config 파일을
+  Qmonster가 데이터를 수집할 수 있도록 어떻게 셋업할지 안내하고,
+  Tmux 탭은 추천 4-pane 실행 환경을 설치하는 방법을 안내합니다.
   탭 본문은 두 부분으로 구성됩니다: (1) 현재 상태 헤더 — read-only
   filesystem 프로브로 감지한 `~/.claude/statusline.sh`,
   `~/.codex/config.toml`, `~/.gemini/settings.json`의 존재 여부와
@@ -400,9 +411,16 @@ side_effects (N):
     템플릿과, OAuth는 그대로 유지하되 cache 필드는 FAQ-documented OAuth
     한계로 인해 노출되지 않는다는 informational note (API key 전환은
     운영자 선호에 따라 deferred).
-  - **조작**: `1` / `2` / `3`, `Tab`, `←` / `→` 탭 전환,
+  - **Tmux 탭**: 추천 4-pane 워크플로우 설치 스크립트를 `y`로 복사합니다.
+    복사한 스크립트를 실행하면 `~/ts.sh` (Claude/Codex/Gemini/Qmonster
+    pane을 만들고 `claude:1:main`, `codex:1:review`, `gemini:1:research`,
+    `qmonster:1:monitor` title을 설정하는 launcher)와
+    `~/.tmux/qmonster.tmux.conf` (mouse/history/navigation/title helper)를
+    생성합니다. 실행 후 `tmux source-file ~/.tmux/qmonster.tmux.conf`,
+    `~/ts.sh qmonster ~/Qmonster` 순서로 사용합니다.
+  - **조작**: `1` / `2` / `3` / `4`, `Tab`, `←` / `→` 탭 전환,
     `↑` / `↓` 또는 `j` / `k` / mouse wheel 스크롤, `y` 현재
-    Settings 기반 스니펫 복사, `q` / `Esc` 닫기.
+    탭 스니펫 복사, `q` / `Esc` 닫기.
   - **Read-only**: Qmonster는 어떤 provider 설정 파일에도 절대 쓰지
     않습니다. 운영자가 표시된 스니펫을 수동으로 복사해 적용합니다.
   - **v1.30.0 업데이트 (G-2)**: `qmonster.toml`에 새로
@@ -474,8 +492,8 @@ side_effects (N):
     `account/rateLimits/read`를 전송합니다. Linux에서는 bubblewrap 우회를 위해 spawn 시
     `-c sandbox_mode="danger-full-access"` 플래그가 자동으로
     추가됩니다.
-  - **v1.33.0 업데이트 (F-4b) — Gemini /stats parser**: 운영자가
-    `u` 키를 cycle해 Gemini pane에서 `/stats model`과 `/stats session`을
+  - **v1.33.0 업데이트 (F-4b) — Gemini /stats + /model parser**: 운영자가
+    `u` 키를 cycle해 Gemini pane에서 `/stats session`, `/stats model`, `/model`을
     dispatch하면, 그 출력을 Qmonster가 파싱해 다음 정보를 Gemini pane
     card에 채웁니다:
     - **누적 input / output token 카운트**: `/stats model` 출력의
@@ -493,6 +511,13 @@ side_effects (N):
     - **SID runtime fact 배지**: `/stats session` 출력의 `Session ID:`
       를 읽어 `RuntimeFactKind::SessionId` (F-5b에서 도입)가 채워지고,
       Gemini pane card에도 SID 배지가 표시됩니다.
+    - **CALLS runtime fact 배지**: `/stats session` 출력의 `Tool Calls:`
+      선두 숫자를 읽어 `CALLS <N> [Official]`로 표시합니다.
+    - **RESET runtime fact 배지**: `/model` 화면의 모델별 `Reset:` 행을
+      읽어 provider가 렌더한 reset 시각과 남은 시간을 그대로
+      `RESET <model> <time/remaining> [Official]` 형태로 표시합니다.
+      이 값은 Gemini 모델별 display-only runtime fact이며, F-7c
+      reset-aware 정책 룰의 `quota_*_resets_at` 입력과는 별개입니다.
   - **v1.33.x polish (RESET 5H / RESET 7D 배지)**: 컴팩트 한-줄 metric
     행에 `RESET 5H <eta>` / `RESET 7D <eta>` 배지가 추가되어, F-5b의
     verbose `metric_row` 텍스트 행과 같은 `format_resets_eta` helper
@@ -537,10 +562,11 @@ side_effects (N):
     `wait_for_reset` reason 문자열은 `gates.reset_wait_pressure`를
     그대로 보간하므로 `wait_pressure_threshold = 0.75`로 조정하면
     어드바이저리가 75% pressure에서 발화하고 reason에도 75%로
-    표시됩니다 (원본 85%가 아님). `S` settings overlay UI는 `[cache]`
-    /`[reset]` 토글을 아직 편집하지 않습니다 (v1.28.0 F-7-config과
-    동일한 자세) — 운영자가 `qmonster.toml`을 직접 수정하면 다음
-    config 로드 시 Qmonster가 새 값을 읽어옵니다.
+    표시됩니다 (원본 85%가 아님). `S` Settings → `Parameters`는
+    현재 `[reset]` 값과 기본값 차이를 보여주고, `S` Settings → `Rules`
+    는 `wait_for_reset` / `snapshot_before_reset` 발화 조건을 보여줍니다.
+    편집은 아직 `qmonster.toml` 직접 수정 방식입니다. 다음 config 로드 시
+    Qmonster가 새 값을 읽어옵니다.
 
 ## 9. 운영 파일
 

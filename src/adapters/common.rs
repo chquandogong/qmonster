@@ -261,6 +261,7 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         input_tokens: None,
         output_tokens: None,
         cached_input_tokens: None,
+        cache_creation_input_tokens: None,
         cache_hit_ratio: None,
         cost_usd: None,
         model_name: None,

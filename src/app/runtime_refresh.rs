@@ -439,7 +439,7 @@ fn runtime_refresh_provider_commands(provider: Provider) -> &'static [&'static s
     match provider {
         Provider::Claude => &[],
         Provider::Codex => &["/status"],
-        Provider::Gemini => &["/stats session", "/stats model", "/stats tools"],
+        Provider::Gemini => &["/stats session", "/stats model", "/model", "/stats tools"],
         Provider::Qmonster | Provider::Unknown => &[],
     }
 }
@@ -805,11 +805,11 @@ mod tests {
     fn runtime_refresh_commands_for_gemini_use_stats_slashes_active_or_idle() {
         assert_eq!(
             runtime_refresh_commands(Provider::Gemini, None),
-            ["/stats session", "/stats model", "/stats tools"]
+            ["/stats session", "/stats model", "/model", "/stats tools"]
         );
         assert_eq!(
             runtime_refresh_commands(Provider::Gemini, Some(IdleCause::WorkComplete)),
-            ["/stats session", "/stats model", "/stats tools"]
+            ["/stats session", "/stats model", "/model", "/stats tools"]
         );
     }
 
@@ -971,6 +971,10 @@ System prompt: 8.6k tokens (0.9%)";
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
             ["/stats model"]
+        );
+        assert_eq!(
+            runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
+            ["/model"]
         );
         assert_eq!(
             runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),

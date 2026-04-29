@@ -159,6 +159,11 @@ fn apply_claude_sidefile(
         {
             signals.cached_input_tokens = Some(metric(n));
         }
+        if signals.cache_creation_input_tokens.is_none()
+            && let Some(n) = usage.cache_creation_input_tokens
+        {
+            signals.cache_creation_input_tokens = Some(metric(n));
+        }
     }
     // Override cache_hit_ratio when the sidefile has raw counts — the
     // sidefile-derived ratio is more precise than the statusline's
@@ -310,6 +315,10 @@ mod sidefile_integration_tests {
         assert_eq!(signals.input_tokens.as_ref().unwrap().value, 50_000);
         assert_eq!(signals.output_tokens.as_ref().unwrap().value, 8);
         assert_eq!(signals.cached_input_tokens.as_ref().unwrap().value, 150_000);
+        assert_eq!(
+            signals.cache_creation_input_tokens.as_ref().unwrap().value,
+            770
+        );
         // cost_usd surfaces from the sidefile (Claude statusline doesn't carry it).
         assert!((signals.cost_usd.as_ref().unwrap().value - 12.34).abs() < 1e-9);
         // cache_hit_ratio overrides the rounded statusline value with the

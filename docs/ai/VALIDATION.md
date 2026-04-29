@@ -14,7 +14,13 @@ called out inline.
 Current local verification (2026-04-29): `cargo fmt --check`,
 `git diff --check`, `cargo test --all-targets`,
 `cargo clippy --all-targets -- -D warnings`, `cargo build --release`,
-and `scripts/verify-shared.sh` pass for v1.35.0. Official
+and `scripts/verify-shared.sh` pass for v1.35.0. Current code-level
+verification after the Settings/badge consistency sync is
+`cargo test --all-targets` with 773 lib tests, 44 event-loop
+integration tests, 18 false-positive regression tests, and 6
+idle-state regression tests passing, plus `cargo build --release`,
+`cargo clippy --all-targets -- -D warnings`, and `git diff --check`.
+Official
 `mission-spec validate .` is still unavailable locally because
 `mission-spec` is not installed, so `scripts/verify-shared.sh` falls
 back to the lite ledger-structure check after cargo checks.

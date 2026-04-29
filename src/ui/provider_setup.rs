@@ -2,6 +2,8 @@
 //! for wiring Claude / Codex / Gemini to expose token + cache data
 //! to Qmonster. Static snippet content; state detection probes
 //! `~/.claude/`, `~/.codex/`, `~/.gemini/` without modifying anything.
+//! The Tmux tab provides a copyable installer for the recommended
+//! four-pane launcher/config bundle.
 //!
 //! The overlay never writes provider config files. Operator copies
 //! the displayed snippet and applies it manually.
@@ -14,6 +16,7 @@ pub enum ProviderSetupTab {
     Claude,
     Codex,
     Gemini,
+    Tmux,
 }
 
 impl ProviderSetupTab {
@@ -22,6 +25,7 @@ impl ProviderSetupTab {
             ProviderSetupTab::Claude => "Claude",
             ProviderSetupTab::Codex => "Codex",
             ProviderSetupTab::Gemini => "Gemini",
+            ProviderSetupTab::Tmux => "Tmux",
         }
     }
 
@@ -29,15 +33,17 @@ impl ProviderSetupTab {
         match self {
             ProviderSetupTab::Claude => ProviderSetupTab::Codex,
             ProviderSetupTab::Codex => ProviderSetupTab::Gemini,
-            ProviderSetupTab::Gemini => ProviderSetupTab::Claude,
+            ProviderSetupTab::Gemini => ProviderSetupTab::Tmux,
+            ProviderSetupTab::Tmux => ProviderSetupTab::Claude,
         }
     }
 
     pub fn previous(self) -> Self {
         match self {
-            ProviderSetupTab::Claude => ProviderSetupTab::Gemini,
+            ProviderSetupTab::Claude => ProviderSetupTab::Tmux,
             ProviderSetupTab::Codex => ProviderSetupTab::Claude,
             ProviderSetupTab::Gemini => ProviderSetupTab::Codex,
+            ProviderSetupTab::Tmux => ProviderSetupTab::Gemini,
         }
     }
 }
@@ -243,6 +249,8 @@ pub const CODEX_APP_SERVER_GUIDE: &str =
 pub const GEMINI_FOOTER_SETTINGS: &str =
     include_str!("provider_setup_snippets/gemini_footer_settings.json");
 pub const GEMINI_AUTH_NOTE: &str = include_str!("provider_setup_snippets/gemini_auth_note.txt");
+pub const TMUX_QMONSTER_BUNDLE: &str =
+    include_str!("provider_setup_snippets/tmux_qmonster_bundle.sh");
 
 /// Compose the raw, copy-pasteable snippet text for the active tab —
 /// used by the clipboard-copy action so operators don't have to mouse-
@@ -286,6 +294,10 @@ pub fn snippet_for_tab(overlay: &ProviderSetupOverlay) -> (&'static str, String)
         ProviderSetupTab::Gemini => (
             "Gemini ~/.gemini/settings.json",
             String::from(GEMINI_FOOTER_SETTINGS),
+        ),
+        ProviderSetupTab::Tmux => (
+            "Qmonster tmux bundle installer",
+            String::from(TMUX_QMONSTER_BUNDLE),
         ),
     }
 }
@@ -341,6 +353,17 @@ fn append_copy_contract(out: &mut Vec<String>, overlay: &ProviderSetupOverlay) {
             out.push(detail_row(
                 "Not copied",
                 "/stats instructions and auth note below",
+            ));
+        }
+        ProviderSetupTab::Tmux => {
+            out.push(detail_row("Target", "~/ts.sh + ~/.tmux/qmonster.tmux.conf"));
+            out.push(detail_row(
+                "Content",
+                "installer script that writes both recommended files",
+            ));
+            out.push(detail_row(
+                "Not copied",
+                "provider statusline/footer snippets",
             ));
         }
     }
@@ -465,15 +488,50 @@ pub fn render_tab_content(
             append_copy_contract(&mut out, overlay);
             append_copied_preview(&mut out, overlay);
 
-            section(&mut out, "/stats periodic dispatch (not copied by y)");
+            section(
+                &mut out,
+                "/stats + /model periodic dispatch (not copied by y)",
+            );
             out.push("Qmonster's `u` key already cycles `/stats session` →".into());
-            out.push("`/stats model` → `/stats tools` on the selected Gemini pane.".into());
+            out.push(
+                "`/stats model` → `/model` → `/stats tools` on the selected Gemini pane.".into(),
+            );
             out.push("No additional setup needed — just keep using `u` periodically.".into());
 
             section(&mut out, "Auth note (informational, not copied by y)");
             for line in GEMINI_AUTH_NOTE.lines() {
                 out.push(line.to_string());
             }
+        }
+        ProviderSetupTab::Tmux => {
+            section(&mut out, "Purpose");
+            out.push("  Recommended tmux launcher for the four-pane Qmonster workflow.".into());
+            out.push(
+                "  It creates/reattaches a tiled session and sets canonical pane titles.".into(),
+            );
+
+            section(&mut out, "Files Created By Copied Installer");
+            out.push(detail_row(
+                "~/ts.sh",
+                "executable launcher; run ~/ts.sh <session-name> <directory>",
+            ));
+            out.push(detail_row(
+                "~/.tmux/qmonster.tmux.conf",
+                "tmux mouse/history/navigation/title helpers",
+            ));
+
+            section(&mut out, "After Running The Copied Installer");
+            out.push("  tmux source-file ~/.tmux/qmonster.tmux.conf".into());
+            out.push("  ~/ts.sh qmonster ~/Qmonster".into());
+
+            section(&mut out, "Pane Titles");
+            out.push(detail_row("0.0", "claude:1:main"));
+            out.push(detail_row("0.1", "codex:1:review"));
+            out.push(detail_row("0.2", "gemini:1:research"));
+            out.push(detail_row("0.3", "qmonster:1:monitor"));
+
+            append_copy_contract(&mut out, overlay);
+            append_copied_preview(&mut out, overlay);
         }
     }
     out
@@ -757,8 +815,37 @@ mod tests {
         assert!(text.contains("~/.gemini/settings.json"));
         assert!(text.contains("Not copied"));
         assert!(text.contains("/stats instructions and auth note below"));
-        assert!(text.contains("/stats periodic dispatch (not copied by y)"));
+        assert!(text.contains("/stats + /model periodic dispatch (not copied by y)"));
         assert!(text.contains("Auth note (informational, not copied by y)"));
+    }
+
+    #[test]
+    fn render_tab_content_tmux_documents_targets_and_next_steps() {
+        let overlay = ProviderSetupOverlay {
+            tab: ProviderSetupTab::Tmux,
+            ..Default::default()
+        };
+        let claude = ClaudeState {
+            statusline_script_present: false,
+            statusline_size_bytes: 0,
+            exports_cache_read: false,
+            exports_cache_creation: false,
+            exports_input_tokens: false,
+            sidefile_export_present: false,
+        };
+        let codex = CodexState {
+            config_present: false,
+            app_server_running: false,
+        };
+        let gemini = GeminiFooterState::default();
+        let text = render_tab_content(&overlay, &claude, &codex, &gemini).join("\n");
+        assert!(text.contains("Recommended tmux launcher"));
+        assert!(text.contains("~/ts.sh"));
+        assert!(text.contains("~/.tmux/qmonster.tmux.conf"));
+        assert!(text.contains("tmux source-file ~/.tmux/qmonster.tmux.conf"));
+        assert!(text.contains("~/ts.sh qmonster ~/Qmonster"));
+        assert!(text.contains("claude:1:main"));
+        assert!(text.contains("Preview: y copies this content"));
     }
 
     #[test]
@@ -830,5 +917,20 @@ mod tests {
             !text.contains("OAuth"),
             "auth note is informational and must not be copied"
         );
+    }
+
+    #[test]
+    fn snippet_for_tab_tmux_returns_installer_for_launcher_and_conf() {
+        let overlay = ProviderSetupOverlay {
+            tab: ProviderSetupTab::Tmux,
+            ..Default::default()
+        };
+        let (label, text) = snippet_for_tab(&overlay);
+        assert_eq!(label, "Qmonster tmux bundle installer");
+        assert!(text.contains("cat > \"$HOME/ts.sh\""));
+        assert!(text.contains("cat > \"$HOME/.tmux/qmonster.tmux.conf\""));
+        assert!(text.contains("chmod 0755 \"$HOME/ts.sh\""));
+        assert!(text.contains("claude:1:main"));
+        assert!(text.contains("set -g mouse on"));
     }
 }
