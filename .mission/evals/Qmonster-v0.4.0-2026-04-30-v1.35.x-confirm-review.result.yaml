@@ -1,0 +1,61 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-04-30"
+  target_versions:
+    - "1.35.0"
+    - "1.35.1"
+  commit_range: "e6fd785..c131dc4"
+  head_reviewed: "c131dc4e415c2ee72ca093dde340618858705ebb"
+  evidence_mode: "GitHub mirror review; local shell validation unavailable because exec failed with bwrap loopback RTM_NEWADDR error before command execution."
+  local_validation:
+    cargo_fmt_check: not_run
+    git_diff_check: not_run
+    cargo_build_release: not_run
+    cargo_test_all_targets: not_run
+    cargo_clippy_all_targets_d_warnings: not_run
+    scripts_verify_shared: not_run
+    note: "Author-reported validation was considered as release evidence but not independently reproduced."
+  verdict: approve-with-fixes
+  summary:
+    code_assessment: "No blocking v1.35.x code defect found. ResetConfig/gates/policy wiring is coherent, Gemini reset facts remain display-only, and cache_creation_input_tokens is kept separate from CACHE."
+    primary_risk: "Canonical documentation drift around Gemini reset parser anchoring, Gemini runtime-refresh order, and cache_creation_input_tokens versus CACHE formula."
+  must_fix_before_next_phase:
+    - id: CFX-135-1
+      severity: warning
+      file: README.md
+      approx_line: 40
+      title: "Gemini reset parser docs overstate the nearby 'gemini' label requirement."
+      proposed_change: "Document actual /model panel or current-model-family anchoring plus numeric reset text."
+    - id: CFX-135-2
+      severity: warning
+      file: README.md
+      approx_line: 60
+      title: "Gemini runtime-refresh command order text is stale."
+      proposed_change: "Mirror provider_setup.rs wording and remove /stats tools unless actually shipped."
+    - id: CFX-135-3
+      severity: warning
+      file: "docs/ai/ARCHITECTURE.md; docs/ai/UI_MANUAL.md"
+      approx_line: "F-5b/cache-observability sections"
+      title: "Stale cache-hit formula language folds cache_creation_input_tokens into CACHE."
+      proposed_change: "State CACHE = cached_input_tokens / (input_tokens + cached_input_tokens); document creation only as write-side telemetry."
+    - id: CFX-135-4
+      severity: concern
+      file: docs/ai/ARCHITECTURE.md
+      approx_line: 3
+      title: "Architecture header sync status is stale."
+      proposed_change: "Update header date/status to v1.35.1."
+  answers:
+    reset_config_defaults: "Accept. Struct-level serde default plus Default is honest for missing and partial [reset] TOML."
+    policy_gates_ninth_arg: "Accept for this patch line. Add a non-default ResetConfig constructor test and consider PolicyGateInputs<'a>."
+    gemini_reset_parser_defensiveness: "Docs and brief are stricter than shipped behavior. Update docs or tighten parser. Keep confidence at 0.90."
+    model_reset_display_only: "Principled. Keep Gemini reset text display-only until stable machine-readable timestamp semantics exist."
+    tmux_installer: "Acceptable because Qmonster copies but does not execute. Script has set -euo pipefail; future backup/dry-run support would improve safety."
+    cache_creation_signal: "Principled raw provider telemetry, displayed separately and intentionally not folded into CACHE."
+    settings_read_only: "Correct for v1.35.x. TOML editing is acceptable intentional friction."
+    eleven_version_sweep: "Found documentation drift, not a policy-code regression."
+  suggested_followups:
+    - "Add PolicyGates::from_config_and_identity test with custom ResetConfig."
+    - "Consider replacing the 9-argument gate constructor with PolicyGateInputs<'a>."
+    - "Consider backup or dry-run support for the copied tmux installer."
+    - "Clean README v1.34.0 Markdown formatting corruption during the doc pass."

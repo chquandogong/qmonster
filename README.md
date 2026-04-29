@@ -32,7 +32,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.35.1`; current mission ledger `v1.35.1`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.35.2`; current mission ledger `v1.35.2`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.88+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -57,20 +57,37 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.35.1` / npm `1.35.1`.
+Current release: `v1.35.2` / npm `1.35.2`.
+
+`v1.35.2` closes the v1.35.x confirm-review must-fixes. Gemini's
+`extract_gemini_model_name` is tightened to require either an
+explicit `gemini` substring or a recognized Gemini family
+keyword (`Pro`, `Flash`, `Flash Lite`, or a digit-bearing
+version label like `2.5 Pro`); `gemini_reset_model_matches_current`
+now rejects unknown families outright so chat prose containing
+`pro` / `flash` as a token (`Reset Pro Helper Reset: 5s`) cannot
+enter ProviderOfficial reset facts. Canonical docs are aligned
+with shipped behavior: README documents the actual Gemini runtime
+cycle (`/model` first only on idle/stale/limit-hit, then `/stats
+session` and `/stats model`; `/stats tools` is intentionally not
+sent), `docs/ai/ARCHITECTURE.md` and `docs/ai/UI_MANUAL.md` state
+the read-hit `CACHE` formula `cached / (input + cached)` without
+folding `cache_creation_input_tokens` into the denominator, and
+the `ARCHITECTURE.md` header sync date advances to v1.35.2. One
+new regression test (`model_screen_rejects_family_word_embedded_in_chat_prose`)
+locks the parser tightening.
 
 `v1.35.1` layers five operator-visible polish surfaces on top of
 v1.35.0 (F-7d) without changing any policy semantics: (1) Gemini
 `/model` `Reset:` rows surface as display-only `RESET <model>
 <time/remaining> [Official]` runtime facts via the new
-`parse_gemini_model_resets` parser (defensive — requires a nearby
-`gemini` model label and an ASCII digit in the reset text so chat
-prose can never enter ProviderOfficial facts); (2) `/stats session`
-`Tool Calls:` count surfaces as the `CALLS` runtime badge via the
-new `RuntimeFactKind::ToolCalls` variant; (3) Provider Setup
-overlay gains a fourth `Tmux` tab (`4` key/click/Tab-cycle) whose
-`y` snippet is an installer for `~/ts.sh` +
-`~/.tmux/qmonster.tmux.conf`; (4) Settings overlay
+`parse_gemini_model_resets` parser; the v1.35.2 tightening
+described above is what the brief originally promised; (2)
+`/stats session` `Tool Calls:` count surfaces as the `CALLS`
+runtime badge via the new `RuntimeFactKind::ToolCalls` variant;
+(3) Provider Setup overlay gains a fourth `Tmux` tab (`4`
+key/click/Tab-cycle) whose `y` snippet is an installer for
+`~/ts.sh` + `~/.tmux/qmonster.tmux.conf`; (4) Settings overlay
 `Parameters` / `Rules` / `Badges` tabs mirror the v1.35.0
 `[reset]` thresholds and the badge/source glossary read-only;
 (5) Claude sidefile `cache_creation_input_tokens` flows through
@@ -79,9 +96,12 @@ the new `SignalSet.cache_creation_input_tokens` field
 read-hit ratio), and expanded selected panes show
 `token io <input> / <output>` and `cache io <read> / <create>`
 rows when provider data exists. Gemini `u` runtime-refresh
-extends to dispatch `/model` after `/stats model`. No new policy
-rule, no new threshold, no schema migration, no provider config
-write.
+dispatches `/model` first only when the pane is idle / stale /
+limit-hit, then `/stats session` and `/stats model`; active panes
+skip `/model` and cycle the two used `/stats` surfaces only.
+`/stats tools` is intentionally not sent because no current
+parser consumes it. No new policy rule, no new threshold, no
+schema migration, no provider config write.
 
 `v1.35.0` ships **Phase F F-7d operator-tunable `[reset]`
 thresholds** for the F-7c reset-aware advisories. Mirrors the

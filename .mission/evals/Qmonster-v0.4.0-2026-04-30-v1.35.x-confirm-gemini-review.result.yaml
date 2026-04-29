@@ -1,0 +1,42 @@
+schema_version: 1.0
+mission_phase: v1.35.x-confirm-gemini-review
+target_commit: c131dc4
+review_date: 2026-04-30
+reviewer: Gemini
+
+verdict: approve-with-fixes
+
+severity_counts:
+  safe: 6
+  good: 4
+  concern: 1
+  warning: 1
+  risk: 0
+
+must_fix_items:
+  - id: MF-1
+    severity: warning
+    file: src/adapters/gemini.rs
+    description: "Gemini /model reset parser allows chat prose to bypass the 'gemini' label requirement because extract_gemini_model_name returns unstructured 64-char strings and gemini_reset_model_matches_current permits unknown families."
+    proposed_change: "Require the 'gemini' string to match the brief's claim by returning None in extract_gemini_model_name when absent."
+
+architectural_observations:
+  - id: OBS-1
+    severity: good
+    description: "Treating Gemini ModelReset as a display-only RuntimeFact accurately reflects provider honesty by avoiding brittle timezone parsing."
+  - id: OBS-2
+    severity: good
+    description: "Separating cache_creation_input_tokens from CACHE hit ratio ensures metrics remain pure."
+  - id: OBS-3
+    severity: concern
+    description: "PolicyGates::from_config_and_identity taking 9 arguments and causing test divergence is a code smell that should be addressed before it grows further."
+
+doc_mission_memory_status:
+  - id: DMM-1
+    severity: safe
+    description: "Settings UI correctly acts as a read-only mirror of the loaded QmonsterConfig."
+
+token_optimization_status:
+  - id: TO-1
+    severity: safe
+    description: "The [reset] thresholds provide clear paths to avoid token waste during window resets."

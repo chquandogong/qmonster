@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-28 (implementation sync through v1.19.0 Phase D D3 subagent detection refinement + Codex statusline effort parsing)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (implementation sync through v1.35.2 Phase F F-7d operator-tunable [reset] thresholds + v1.35.x Gemini /model reset parser tightening + Tmux setup tab + Settings reset/badges sync + cache_creation_input_tokens distinct from CACHE)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -737,11 +737,11 @@ risk is tiny). Hardcoded thresholds for v1:
 minutes). F-7d would expose these via a new `[reset]` config
 section once tuning data lands. Provider scope: F-7c is a
 Claude+Codex-only feature because only F-5b (Claude sidefile) and
-F-6 (Codex App Server) populate `quota*\*\_resets_at`. Gemini `/model`
-`Reset:` rows for the current status-table model family are parsed as
-display-only `RuntimeFactKind::ModelReset` facts (`RESET <model>
+F-6 (Codex App Server) populate `quota*\*\_resets*at`. Gemini `/model`
+`Reset:`rows for the current status-table model family are parsed as
+display-only`RuntimeFactKind::ModelReset` facts (`RESET <model>
 <time/remaining> [Official]`) but do not populate the F-7c
-`quota_*_resets_at` policy inputs. Bundled small
+`quota*\*\_resets_at` policy inputs. Bundled small
 cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
 
 - field reassign to struct-update syntax (silences
@@ -866,9 +866,14 @@ statusline-only path). `is_none()` guards preserve the statusline path's
 values for raw counts (input / output / cached); the one explicit
 override exception is `cache_hit_ratio` — the sidefile-derived precise
 count-based ratio (`cache_read_input_tokens / (input_tokens +
-cache_read_input_tokens + cache_creation_input_tokens)`) wins over the
-rounded `cache N%` statusline value, so F-7 / F-7b cache rules fire on
-Claude panes with full fidelity instead of integer-rounded ratios.
+cache_read_input_tokens)`) wins over the rounded `cache N%` statusline
+value, so F-7 / F-7b cache rules fire on Claude panes with full
+fidelity instead of integer-rounded ratios. `cache_creation_input_tokens`
+is the prompt-cache write cost and is intentionally **not** folded
+into the hit-ratio denominator — it surfaces separately as the
+expanded-pane `cache io <read> / <create>` row so cache cost-vs-benefit
+analysis can reason about creation cost without conflating it with
+read-hit performance.
 Tests grew to 710 lib + 68 integration green.
 
 v1.30.0 ships **Phase G G-2 [provider_setup] config + Phase F F-5

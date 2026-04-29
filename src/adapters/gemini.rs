@@ -711,13 +711,16 @@ fn parse_gemini_model_resets(tail: &str, current_model: Option<&str>) -> Vec<Gem
 }
 
 fn gemini_reset_model_matches_current(reset_model: &str, current_model: Option<&str>) -> bool {
+    let Some(reset_family) = gemini_model_family(reset_model) else {
+        return false;
+    };
     let Some(current_model) = current_model else {
         return true;
     };
     let Some(current_family) = gemini_model_family(current_model) else {
         return true;
     };
-    gemini_model_family(reset_model).is_none_or(|reset_family| reset_family == current_family)
+    reset_family == current_family
 }
 
 fn gemini_model_family(model: &str) -> Option<&'static str> {
@@ -746,17 +749,18 @@ fn extract_gemini_model_name(line: &str) -> Option<String> {
         .map(|(idx, _)| &line[..idx])
         .unwrap_or(line);
     let candidate = clean_gemini_model_candidate(before_reset)?;
-    let lower = before_reset.to_ascii_lowercase();
+    let lower = candidate.to_ascii_lowercase();
+
     if let Some(start) = lower.find("gemini") {
-        let candidate = before_reset[start..]
+        let candidate_from_gemini = candidate[start..]
             .trim()
             .trim_matches(|c: char| matches!(c, '|' | '[' | ']' | '(' | ')' | ':' | ','))
             .trim();
-        if candidate.is_empty() {
+        if candidate_from_gemini.is_empty() {
             return None;
         }
 
-        let first = candidate
+        let first = candidate_from_gemini
             .split_whitespace()
             .next()
             .unwrap_or_default()
@@ -765,10 +769,18 @@ fn extract_gemini_model_name(line: &str) -> Option<String> {
             return Some(first.to_string());
         }
 
-        return Some(candidate.chars().take(64).collect());
+        return Some(candidate_from_gemini.chars().take(64).collect());
     }
 
-    Some(candidate.chars().take(64).collect())
+    gemini_model_family(&candidate)?;
+    let normalized = lower.replace('-', " ");
+    let single_token_family = matches!(normalized.trim(), "pro" | "flash" | "flash lite");
+    let has_digit = candidate.chars().any(|c| c.is_ascii_digit());
+    if single_token_family || has_digit {
+        Some(candidate)
+    } else {
+        None
+    }
 }
 
 fn clean_gemini_model_candidate(line: &str) -> Option<String> {
@@ -1595,6 +1607,26 @@ Reset: 5:00 PM";
             parse_gemini_model_resets(tail, None).is_empty(),
             "ProviderOfficial reset facts require a Gemini model and numeric reset text"
         );
+    }
+
+    /// v1.35.2 (Gemini MF-1): chat prose that happens to embed a family word
+    /// (e.g., "Reset Pro Helper Reset: 5s") must not leak into ProviderOfficial
+    /// reset facts. The brief promised "nearby `gemini` model label OR a
+    /// recognized Gemini family keyword"; multi-word prose containing `pro` /
+    /// `flash` as a token without a digit should be rejected.
+    #[test]
+    fn model_screen_rejects_family_word_embedded_in_chat_prose() {
+        let tails = [
+            "Reset Pro Helper Reset: 5s",
+            "I will reset Flash mode Reset: 1m",
+            "approximate Pro time Reset: 30s",
+        ];
+        for tail in tails {
+            assert!(
+                parse_gemini_model_resets(tail, None).is_empty(),
+                "chat prose with embedded family word but no digit anchor must be rejected: {tail}"
+            );
+        }
     }
 
     #[test]
