@@ -32,6 +32,8 @@ pub struct QmonsterConfig {
     pub security: SecurityConfig,
     #[serde(default)]
     pub cache: CacheConfig,
+    #[serde(default)]
+    pub provider_setup: ProviderSetupConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,6 +229,43 @@ impl Default for CacheConfig {
             cold_high_ctx_threshold: 0.6,
             drift_drop_threshold: 0.30,
             drift_min_samples: 4,
+        }
+    }
+}
+
+/// Phase G G-2 (v1.30.0): operator-tunable defaults for the Provider
+/// Setup overlay's per-tab toggles. Persisted in `qmonster.toml`'s
+/// `[provider_setup]` section so toggling at runtime survives restart
+/// once the operator commits the value (or edits the TOML directly).
+///
+/// `claude_sidefile` defaults to `true` — the recommended Claude
+/// statusline writes a per-session JSON sidefile to
+/// `~/.local/share/ai-cli-status/claude/<session_id>.json`, which
+/// downstream Claude tooling (including F-5's cache reader) consumes.
+/// Operators on minimal setups who do not want the sidefile written
+/// can opt out via `claude_sidefile = false`.
+///
+/// `codex_app_server` defaults to `false` — running `codex
+/// app-server` is an advanced background daemon and not all
+/// operators want it; the toggle stays opt-in.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProviderSetupConfig {
+    /// Default state of the Provider Setup overlay's Claude tab
+    /// `[s]` toggle (sidefile JSON export). `true` so the
+    /// recommended workflow is on by default.
+    pub claude_sidefile: bool,
+    /// Default state of the Provider Setup overlay's Codex tab
+    /// `[s]` toggle (Codex App Server polling guide visibility).
+    /// `false` because the App Server is an advanced opt-in.
+    pub codex_app_server: bool,
+}
+
+impl Default for ProviderSetupConfig {
+    fn default() -> Self {
+        Self {
+            claude_sidefile: true,
+            codex_app_server: false,
         }
     }
 }
@@ -555,6 +594,7 @@ impl QmonsterConfig {
             storage: StorageConfig::default(),
             idle: IdleConfig::default(),
             cost: CostConfig::default(),
+            provider_setup: ProviderSetupConfig::default(),
             context: ContextConfig::default(),
             quota: QuotaConfig::default(),
             security: SecurityConfig::default(),
@@ -807,6 +847,48 @@ stillness_polls = 6
 "#;
         let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
         assert_eq!(cfg.idle.stillness_polls, 6);
+    }
+
+    #[test]
+    fn provider_setup_config_defaults_to_sidefile_on_app_server_off() {
+        let absent: QmonsterConfig = toml::from_str("").unwrap();
+        assert!(
+            absent.provider_setup.claude_sidefile,
+            "claude_sidefile must default to true so the recommended workflow is on out of the box"
+        );
+        assert!(
+            !absent.provider_setup.codex_app_server,
+            "codex_app_server must default to false (advanced opt-in)"
+        );
+    }
+
+    #[test]
+    fn provider_setup_config_loads_overrides_from_toml() {
+        let toml = r#"
+[provider_setup]
+claude_sidefile = false
+codex_app_server = true
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
+        assert!(!cfg.provider_setup.claude_sidefile);
+        assert!(cfg.provider_setup.codex_app_server);
+    }
+
+    #[test]
+    fn provider_setup_config_partial_toml_keeps_other_default() {
+        // serde(default) on the struct itself: missing fields fall
+        // back to the per-field default. Operators editing only one
+        // toggle must not lose the other.
+        let toml = r#"
+[provider_setup]
+codex_app_server = true
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
+        assert!(
+            cfg.provider_setup.claude_sidefile,
+            "missing claude_sidefile must keep the default-true value"
+        );
+        assert!(cfg.provider_setup.codex_app_server);
     }
 
     #[test]

@@ -68,7 +68,8 @@ where
     let mut git_modal = ScrollModalState::default();
     let mut help_modal = ScrollModalState::default();
     let mut settings_overlay = crate::ui::settings::SettingsOverlay::new();
-    let mut provider_setup_overlay = crate::ui::provider_setup::ProviderSetupOverlay::new();
+    let mut provider_setup_overlay =
+        crate::ui::provider_setup::ProviderSetupOverlay::from_config(&ctx.config);
     let mut last_alert_click: Option<AlertMouseClick> = None;
     let mut last_pane_idle_states: HashMap<String, Option<IdleCause>> = HashMap::new();
     let mut pane_state_flashes: HashMap<String, crate::ui::panels::PaneStateFlash> = HashMap::new();

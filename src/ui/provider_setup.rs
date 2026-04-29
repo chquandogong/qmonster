@@ -64,6 +64,20 @@ impl ProviderSetupOverlay {
         Self::default()
     }
 
+    /// Build an overlay whose per-tab toggles match the operator's
+    /// persisted `[provider_setup]` config defaults — used at TUI
+    /// startup so a `claude_sidefile = true` operator sees the
+    /// sidefile section visible the first time they press `P`.
+    pub fn from_config(config: &crate::app::config::QmonsterConfig) -> Self {
+        Self {
+            tab: ProviderSetupTab::Claude,
+            claude_sidefile_enabled: config.provider_setup.claude_sidefile,
+            codex_app_server_enabled: config.provider_setup.codex_app_server,
+            scroll_offset: 0,
+            open: false,
+        }
+    }
+
     pub fn is_open(&self) -> bool {
         self.open
     }
@@ -580,6 +594,32 @@ mod tests {
             overlay.claude_sidefile_enabled,
             "close() must NOT clobber per-tab toggles"
         );
+    }
+
+    #[test]
+    fn from_config_seeds_toggles_from_provider_setup_section() {
+        // Phase G G-2 (v1.30.0): the overlay's per-tab toggles default
+        // to whatever the operator persisted in the [provider_setup]
+        // config section, so a fresh `P` press shows the recommended
+        // sidefile / app-server posture without an extra `s` keystroke.
+        use crate::app::config::{ProviderSetupConfig, QmonsterConfig};
+        let mut cfg = QmonsterConfig::defaults();
+        cfg.provider_setup = ProviderSetupConfig {
+            claude_sidefile: true,
+            codex_app_server: false,
+        };
+        let overlay = ProviderSetupOverlay::from_config(&cfg);
+        assert!(overlay.claude_sidefile_enabled);
+        assert!(!overlay.codex_app_server_enabled);
+        assert!(!overlay.is_open(), "from_config must not auto-open");
+
+        cfg.provider_setup = ProviderSetupConfig {
+            claude_sidefile: false,
+            codex_app_server: true,
+        };
+        let overlay = ProviderSetupOverlay::from_config(&cfg);
+        assert!(!overlay.claude_sidefile_enabled);
+        assert!(overlay.codex_app_server_enabled);
     }
 
     #[test]
