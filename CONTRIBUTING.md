@@ -18,7 +18,7 @@ Common checks:
 cargo fmt --check
 git diff --check
 cargo test --all-targets
-cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 ./scripts/verify-shared.sh
 ```
 

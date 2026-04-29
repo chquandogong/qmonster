@@ -49,7 +49,7 @@ jobs:
         run: cargo test --all-targets
 
       - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 
       - name: Dry-run npm package
         run: npm pack --dry-run

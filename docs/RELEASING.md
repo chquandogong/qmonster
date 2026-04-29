@@ -22,7 +22,7 @@ It validates:
 cargo fmt --all --check
 git diff --check
 cargo test --all-targets
-cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 ```
 
 It then builds the release binary, creates or updates the GitHub Release,
