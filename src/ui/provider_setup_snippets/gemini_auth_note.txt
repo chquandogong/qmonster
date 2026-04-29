@@ -1,0 +1,13 @@
+Gemini OAuth (currently in use — "Signed in with Google /auth"):
+  • cache_read_input_tokens is hidden by Gemini (FAQ-documented limit)
+  • Qmonster's CACHE badge will stay absent for OAuth Gemini panes
+  • All other metrics (context %, quota, model, memory) work fine
+
+API key / Vertex AI (informational; no action requested):
+  • Setting GOOGLE_API_KEY or running `gemini auth --vertex` would
+    expose the cached field in /stats session output
+  • Operator's preference is to KEEP OAuth — leaving this as
+    documentation only
+
+Either way, /stats session is auto-cycled by Qmonster's `u` key on the
+selected Gemini pane. No additional setup needed for the cycle itself.

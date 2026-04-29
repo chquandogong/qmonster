@@ -1,0 +1,27 @@
+Codex bottom-status line items are toggled per-CLI via the slash command:
+
+  /statusline
+
+Run that inside any Codex pane and ensure these items are ON for full
+Qmonster observability:
+
+  [x] branch        — git branch name
+  [x] model         — gpt-X / reasoning effort
+  [x] input         — cumulative input tokens (Qmonster F-3 sample input)
+  [x] output        — cumulative output tokens
+  [x] 5h            — 5-hour quota remaining %
+  [x] weekly        — weekly quota remaining %
+  [x] version       — Codex version (drift detection)
+
+Also: Codex's /status WELCOME PANEL contains the cache-read data Qmonster
+F-4 needs:
+
+  Token usage: total=N input=N (+ N cached) output=N (reasoning N)
+
+The (+ N cached) value is the source of Qmonster's CACHE badge. The panel
+appears once on session start AND every time the operator runs /status.
+
+Recommended workflow: run /status every 5-10 minutes to refresh the cache
+counter visible to Qmonster. Qmonster's `u` key dispatches /status to the
+selected Codex pane automatically (won't fire while operator is typing in
+the prompt).

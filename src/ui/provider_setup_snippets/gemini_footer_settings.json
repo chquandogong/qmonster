@@ -1,0 +1,11 @@
+{
+  "ui": {
+    "footer": {
+      "hideCWD": false,
+      "hideSandboxStatus": false,
+      "hideModelInfo": false,
+      "hideContextPercentage": false,
+      "hideFooter": false
+    }
+  }
+}
