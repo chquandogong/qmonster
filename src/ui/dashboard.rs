@@ -737,8 +737,14 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
 
     let mut lines = vec![section_line("Controls")];
     for (label, value) in [
-        ("Mouse wheel", "scroll the list or modal under the pointer"),
-        ("Mouse left", "select the clicked alert, pane, or target"),
+        (
+            "Mouse wheel",
+            "scroll the list, modal, or settings fields under the pointer",
+        ),
+        (
+            "Mouse left",
+            "select the clicked alert, pane, target, tab, or settings field",
+        ),
         ("Mouse double", "toggle hide on the clicked alert"),
         (
             "Mouse drag",

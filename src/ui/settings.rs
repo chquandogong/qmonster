@@ -21,7 +21,7 @@ use crate::app::config::{
 use crate::domain::recommendation::Severity;
 use crate::ui::theme;
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
@@ -200,6 +200,13 @@ impl SettingsOverlay {
 
     pub fn selected(&self) -> FieldId {
         self.selected
+    }
+
+    pub fn select_field(&mut self, field: FieldId) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        self.selected = field;
     }
 
     pub fn edit_buffer(&self) -> Option<&str> {
@@ -1031,6 +1038,52 @@ pub fn settings_close_button_rect(body: Rect) -> Rect {
     )
 }
 
+pub fn settings_field_at(body: Rect, column: u16, row: u16) -> Option<FieldId> {
+    let inner = body.inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    if !rect_contains(inner, column, row) {
+        return None;
+    }
+    let mut line_idx = row.saturating_sub(inner.y);
+    let rel_col = column.saturating_sub(inner.x) as usize;
+    for (section_idx, section) in [Section::Cost, Section::Context, Section::Quota]
+        .into_iter()
+        .enumerate()
+    {
+        if line_idx == 0 {
+            return None;
+        }
+        line_idx = line_idx.saturating_sub(1);
+        for scope in scopes_for_section(section) {
+            if line_idx == 0 {
+                let bound = if rel_col >= 34 {
+                    Bound::Critical
+                } else {
+                    Bound::Warning
+                };
+                return Some(FieldId::new(section, *scope, bound));
+            }
+            line_idx = line_idx.saturating_sub(1);
+        }
+        if section_idx < 2 {
+            if line_idx == 0 {
+                return None;
+            }
+            line_idx = line_idx.saturating_sub(1);
+        }
+    }
+    None
+}
+
+fn rect_contains(rect: Rect, x: u16, y: u16) -> bool {
+    x >= rect.x
+        && x < rect.x.saturating_add(rect.width)
+        && y >= rect.y
+        && y < rect.y.saturating_add(rect.height)
+}
+
 fn build_body_lines<'a>(overlay: &'a SettingsOverlay, config: &'a QmonsterConfig) -> Vec<Line<'a>> {
     let mut lines: Vec<Line<'a>> = Vec::new();
     for (i, section) in [Section::Cost, Section::Context, Section::Quota]
@@ -1236,6 +1289,35 @@ mod tests {
     fn default_overlay_is_closed() {
         let s = SettingsOverlay::new();
         assert!(!s.is_open());
+    }
+
+    #[test]
+    fn settings_field_at_maps_body_rows_to_warning_and_critical_cells() {
+        let viewport = Rect::new(0, 0, 120, 40);
+        let rects = settings_modal_rects(viewport);
+        let inner = rects.body.inner(Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
+
+        let warning = settings_field_at(rects.body, inner.x + 20, inner.y + 1)
+            .expect("default cost warning cell should hit a field");
+        assert_eq!(
+            warning,
+            FieldId::new(Section::Cost, Scope::Default, Bound::Warning)
+        );
+
+        let critical = settings_field_at(rects.body, inner.x + 34, inner.y + 1)
+            .expect("default cost critical cell should hit a field");
+        assert_eq!(
+            critical,
+            FieldId::new(Section::Cost, Scope::Default, Bound::Critical)
+        );
+
+        assert!(
+            settings_field_at(rects.body, inner.x + 20, inner.y).is_none(),
+            "section header rows are not editable fields"
+        );
     }
 
     #[test]

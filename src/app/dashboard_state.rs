@@ -338,9 +338,12 @@ pub fn handle_dashboard_mouse(
             } else if let Some(row) = list_row_at(rects.panes, event) {
                 *view.focus = FocusedPanel::Panes;
                 *view.last_alert_click = None;
-                if let Some(idx) =
-                    crate::ui::panels::pane_index_at_row(view.reports, view.pane_state, row)
-                {
+                if let Some(idx) = crate::ui::panels::pane_index_at_row(
+                    view.reports,
+                    view.pane_state,
+                    row,
+                    rects.panes.width.saturating_sub(4),
+                ) {
                     view.pane_state.select(Some(idx));
                 }
             } else {

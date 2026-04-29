@@ -5,7 +5,9 @@ use ratatui::layout::Rect;
 
 use crate::app::config::QmonsterConfig;
 use crate::app::keymap::rect_contains;
-use crate::ui::settings::{SettingsOverlay, settings_close_button_rect, settings_modal_rects};
+use crate::ui::settings::{
+    SettingsOverlay, settings_close_button_rect, settings_field_at, settings_modal_rects,
+};
 
 const NO_CONFIG_PATH_SAVE_ERROR: &str =
     "no config path \u{2014} restart with `--config PATH` to enable save";
@@ -67,14 +69,28 @@ pub fn handle_settings_overlay_mouse(
     }
 
     let rects = settings_modal_rects(viewport);
-    if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
-        && rect_contains(
-            settings_close_button_rect(rects.body),
-            event.column,
-            event.row,
-        )
-    {
-        overlay.close();
+    match event.kind {
+        MouseEventKind::Down(MouseButton::Left)
+            if rect_contains(
+                settings_close_button_rect(rects.body),
+                event.column,
+                event.row,
+            ) =>
+        {
+            overlay.close();
+        }
+        MouseEventKind::Down(MouseButton::Left) => {
+            if let Some(field) = settings_field_at(rects.body, event.column, event.row) {
+                overlay.select_field(field);
+            }
+        }
+        MouseEventKind::ScrollUp if rect_contains(rects.body, event.column, event.row) => {
+            overlay.prev_field();
+        }
+        MouseEventKind::ScrollDown if rect_contains(rects.body, event.column, event.row) => {
+            overlay.next_field();
+        }
+        _ => {}
     }
     true
 }
@@ -154,5 +170,53 @@ mod tests {
         ));
 
         assert!(!overlay.is_open());
+    }
+
+    #[test]
+    fn mouse_handler_selects_fields_and_scrolls_selection() {
+        let mut overlay = SettingsOverlay::new();
+        overlay.open();
+        let viewport = Rect::new(0, 0, 120, 40);
+        let rects = settings_modal_rects(viewport);
+        let body_inner = rects.body.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
+
+        assert!(handle_settings_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(
+                MouseEventKind::Down(MouseButton::Left),
+                body_inner.x + 34,
+                body_inner.y + 1
+            ),
+        ));
+        assert_eq!(
+            overlay.selected(),
+            crate::ui::settings::FieldId::new(
+                crate::ui::settings::Section::Cost,
+                crate::ui::settings::Scope::Default,
+                crate::ui::settings::Bound::Critical,
+            )
+        );
+
+        handle_settings_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(
+                MouseEventKind::ScrollDown,
+                body_inner.x + 10,
+                body_inner.y + 1,
+            ),
+        );
+        assert_eq!(
+            overlay.selected(),
+            crate::ui::settings::FieldId::new(
+                crate::ui::settings::Section::Cost,
+                crate::ui::settings::Scope::Claude,
+                crate::ui::settings::Bound::Warning,
+            )
+        );
     }
 }

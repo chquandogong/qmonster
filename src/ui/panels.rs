@@ -15,6 +15,7 @@ use crate::ui::theme;
 
 pub const STATE_FLASH_DURATION: Duration = Duration::from_secs(3);
 const STATE_FLASH_PULSE_MS: u128 = 350;
+const BADGE_WRAP_FALLBACK_WIDTH: u16 = 96;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PaneStateFlash {
@@ -123,6 +124,7 @@ pub fn render_pane_list(
         .unwrap_or(0)
         .min(reports.len().saturating_sub(1));
     state.select(Some(selected));
+    let wrap_width = pane_badge_wrap_width(area);
     let items: Vec<ListItem<'static>> = reports
         .iter()
         .enumerate()
@@ -133,6 +135,7 @@ pub fn render_pane_list(
                 idx + 1 < reports.len(),
                 flash_view.now,
                 flash_view.state_flashes.get(&report.pane_id),
+                wrap_width,
             )
         })
         .collect();
@@ -149,7 +152,12 @@ pub fn render_pane_list(
     );
 }
 
-pub fn pane_index_at_row(reports: &[PaneReport], state: &ListState, row: u16) -> Option<usize> {
+pub fn pane_index_at_row(
+    reports: &[PaneReport],
+    state: &ListState,
+    row: u16,
+    wrap_width: u16,
+) -> Option<usize> {
     if reports.is_empty() {
         return None;
     }
@@ -159,7 +167,13 @@ pub fn pane_index_at_row(reports: &[PaneReport], state: &ListState, row: u16) ->
         .min(reports.len().saturating_sub(1));
     let mut remaining = row;
     for (idx, report) in reports.iter().enumerate().skip(state.offset()) {
-        let height = pane_list_lines(report, idx == selected, idx + 1 < reports.len()).len() as u16;
+        let height = pane_list_lines_with_width(
+            report,
+            idx == selected,
+            idx + 1 < reports.len(),
+            wrap_width,
+        )
+        .len() as u16;
         if remaining < height {
             return Some(idx);
         }
@@ -186,6 +200,7 @@ fn pane_list_item(
     with_separator: bool,
     now: Instant,
     flash: Option<&PaneStateFlash>,
+    wrap_width: u16,
 ) -> ListItem<'static> {
     ListItem::new(pane_list_lines_with_flash(
         report,
@@ -193,15 +208,33 @@ fn pane_list_item(
         with_separator,
         now,
         flash,
+        wrap_width,
     ))
 }
 
+#[cfg(test)]
 fn pane_list_lines(
     report: &PaneReport,
     expanded: bool,
     with_separator: bool,
 ) -> Vec<Line<'static>> {
-    pane_list_lines_with_flash(report, expanded, with_separator, Instant::now(), None)
+    pane_list_lines_with_width(report, expanded, with_separator, BADGE_WRAP_FALLBACK_WIDTH)
+}
+
+fn pane_list_lines_with_width(
+    report: &PaneReport,
+    expanded: bool,
+    with_separator: bool,
+    wrap_width: u16,
+) -> Vec<Line<'static>> {
+    pane_list_lines_with_flash(
+        report,
+        expanded,
+        with_separator,
+        Instant::now(),
+        None,
+        wrap_width,
+    )
 }
 
 fn pane_list_lines_with_flash(
@@ -210,6 +243,7 @@ fn pane_list_lines_with_flash(
     with_separator: bool,
     now: Instant,
     flash: Option<&PaneStateFlash>,
+    wrap_width: u16,
 ) -> Vec<Line<'static>> {
     let flash = matching_state_flash(report, now, flash);
     let mut lines = vec![pane_panel_title_line(report, now, flash)];
@@ -229,17 +263,17 @@ fn pane_list_lines_with_flash(
         &state_summary_line(report),
     )));
 
-    if let Some(line) = blocking_signal_line(&report.signals) {
-        lines.push(line);
-    }
-    if let Some(line) = signal_badge_line("signals", secondary_signal_chips(&report.signals)) {
-        lines.push(line);
-    }
+    lines.extend(blocking_signal_lines(&report.signals, wrap_width));
+    lines.extend(signal_badge_lines(
+        "signals",
+        secondary_signal_chips(&report.signals),
+        wrap_width,
+    ));
 
-    for row in metric_badge_line(&report.signals) {
+    for row in metric_badge_lines(&report.signals, wrap_width) {
         lines.push(row);
     }
-    for row in runtime_badge_lines(&report.signals) {
+    for row in runtime_badge_lines_wrapped(&report.signals, wrap_width) {
         lines.push(row);
     }
 
@@ -342,7 +376,7 @@ pub fn render_pane_panel(area: Rect, buf: &mut Buffer, report: &PaneReport) {
         return;
     }
 
-    let items = panel_body(report);
+    let items = panel_body_with_width(report, pane_badge_wrap_width(area));
     Widget::render(List::new(items).block(block), area, buf);
 }
 
@@ -429,6 +463,10 @@ fn idle_title_state_style(cause: IdleCause) -> Style {
 }
 
 pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
+    panel_body_with_width(report, BADGE_WRAP_FALLBACK_WIDTH)
+}
+
+fn panel_body_with_width(report: &PaneReport, wrap_width: u16) -> Vec<ListItem<'static>> {
     let mut items = Vec::new();
     for row in render_pane_state_row(report) {
         items.push(ListItem::new(row));
@@ -445,14 +483,18 @@ pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
         "status",
         &state_summary_line(report),
     )));
-    if let Some(line) = blocking_signal_line(&report.signals) {
+    for line in blocking_signal_lines(&report.signals, wrap_width) {
         items.push(ListItem::new(line));
     }
-    if let Some(line) = signal_badge_line("signals", secondary_signal_chips(&report.signals)) {
+    for line in signal_badge_lines(
+        "signals",
+        secondary_signal_chips(&report.signals),
+        wrap_width,
+    ) {
         items.push(ListItem::new(line));
     }
 
-    for row in metric_badge_line(&report.signals) {
+    for row in metric_badge_lines(&report.signals, wrap_width) {
         items.push(ListItem::new(row));
     }
     if let Some(line) = token_breakdown_line(report) {
@@ -475,6 +517,10 @@ pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
         }
     }
     items
+}
+
+fn pane_badge_wrap_width(area: Rect) -> u16 {
+    area.width.saturating_sub(4)
 }
 
 pub fn signal_chips(s: &SignalSet) -> Vec<&'static str> {
@@ -701,15 +747,67 @@ fn severity_label(severity: crate::domain::recommendation::Severity) -> &'static
     }
 }
 
+#[cfg(test)]
 fn metric_badge_line(signals: &SignalSet) -> Vec<Line<'static>> {
+    metric_badge_lines(signals, BADGE_WRAP_FALLBACK_WIDTH)
+}
+
+fn metric_badge_lines(signals: &SignalSet, wrap_width: u16) -> Vec<Line<'static>> {
     let mut rows = Vec::with_capacity(2);
     if let Some(line) = primary_metric_row(signals) {
-        rows.push(line);
+        rows.extend(wrap_badge_line(line, wrap_width));
     }
     if let Some(line) = context_metric_row(signals) {
-        rows.push(line);
+        rows.extend(wrap_badge_line(line, wrap_width));
     }
     rows
+}
+
+fn wrap_badge_line(line: Line<'static>, max_width: u16) -> Vec<Line<'static>> {
+    let mut spans = line.spans.into_iter();
+    let Some(prefix) = spans.next() else {
+        return vec![Line::from("")];
+    };
+    let prefix_width = span_width(&prefix);
+    let continuation_prefix = Span::raw(" ".repeat(prefix_width));
+    let badges: Vec<Span<'static>> = spans.filter(|span| span.content.as_ref() != " ").collect();
+    if badges.is_empty() {
+        return vec![Line::from(vec![prefix])];
+    }
+
+    let max_width = usize::from(max_width);
+    let mut rows = Vec::new();
+    let mut current = vec![prefix.clone()];
+    let mut used_width = prefix_width;
+    let mut has_badge = false;
+
+    for badge in badges {
+        let badge_width = span_width(&badge);
+        let separator_width = usize::from(has_badge);
+        if has_badge
+            && max_width > prefix_width
+            && used_width + separator_width + badge_width > max_width
+        {
+            rows.push(Line::from(current));
+            current = vec![continuation_prefix.clone()];
+            used_width = prefix_width;
+            has_badge = false;
+        }
+        if has_badge {
+            current.push(Span::raw(" "));
+            used_width += 1;
+        }
+        used_width += badge_width;
+        current.push(badge);
+        has_badge = true;
+    }
+
+    rows.push(Line::from(current));
+    rows
+}
+
+fn span_width(span: &Span<'_>) -> usize {
+    span.content.chars().count()
 }
 
 /// DRY helper for the metric/context-row badge placement.
@@ -1084,10 +1182,15 @@ fn token_owner_label(role: Role) -> &'static str {
     }
 }
 
+#[cfg(test)]
 fn runtime_badge_lines(signals: &SignalSet) -> Vec<Line<'static>> {
+    runtime_badge_lines_wrapped(signals, BADGE_WRAP_FALLBACK_WIDTH)
+}
+
+fn runtime_badge_lines_wrapped(signals: &SignalSet, wrap_width: u16) -> Vec<Line<'static>> {
     runtime_text_groups(signals)
         .into_iter()
-        .map(|(label, facts)| {
+        .flat_map(|(label, facts)| {
             let mut spans = vec![Span::raw(format!("{label:<8}: "))];
             for (idx, fact) in facts.into_iter().enumerate() {
                 if idx > 0 {
@@ -1095,7 +1198,7 @@ fn runtime_badge_lines(signals: &SignalSet) -> Vec<Line<'static>> {
                 }
                 spans.push(Span::styled(format!(" {fact} "), theme::label_style()));
             }
-            Line::from(spans)
+            wrap_badge_line(Line::from(spans), wrap_width)
         })
         .collect()
 }
@@ -1410,6 +1513,22 @@ fn signal_badge_line(label: &str, chips: Vec<&'static str>) -> Option<Line<'stat
     Some(Line::from(spans))
 }
 
+fn blocking_signal_lines(signals: &SignalSet, wrap_width: u16) -> Vec<Line<'static>> {
+    blocking_signal_line(signals)
+        .map(|line| wrap_badge_line(line, wrap_width))
+        .unwrap_or_default()
+}
+
+fn signal_badge_lines(
+    label: &str,
+    chips: Vec<&'static str>,
+    wrap_width: u16,
+) -> Vec<Line<'static>> {
+    signal_badge_line(label, chips)
+        .map(|line| wrap_badge_line(line, wrap_width))
+        .unwrap_or_default()
+}
+
 fn signal_chip_span(
     chip: &'static str,
     severity: crate::domain::recommendation::Severity,
@@ -1453,6 +1572,13 @@ mod tests {
             idle_state_entered_at: None,
             recent_token_samples: Vec::new(), // F-3: test fixture; production fetches via event_loop
         }
+    }
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
     }
 
     #[test]
@@ -1960,6 +2086,78 @@ mod tests {
     }
 
     #[test]
+    fn metric_badge_lines_wrap_many_badges_with_indented_continuations() {
+        let s = crate::domain::signal::SignalSet {
+            context_pressure: Some(MetricValue::new(0.71, SourceKind::Estimated)),
+            quota_5h_pressure: Some(MetricValue::new(0.44, SourceKind::ProviderOfficial)),
+            quota_weekly_pressure: Some(MetricValue::new(0.22, SourceKind::ProviderOfficial)),
+            token_count: Some(MetricValue::new(
+                1_530_000_u64,
+                SourceKind::ProviderOfficial,
+            )),
+            cost_usd: Some(MetricValue::new(4.25, SourceKind::ProviderOfficial)),
+            model_name: Some(MetricValue::new(
+                "gpt-5.4".to_string(),
+                SourceKind::ProviderOfficial,
+            )),
+            process_memory_mb: Some(MetricValue::new(188.3, SourceKind::Heuristic)),
+            input_tokens: Some(MetricValue::new(200_000_u64, SourceKind::ProviderOfficial)),
+            cached_input_tokens: Some(MetricValue::new(800_000_u64, SourceKind::ProviderOfficial)),
+            ..SignalSet::default()
+        };
+
+        let rows = metric_badge_lines(&s, 48);
+        let text: Vec<String> = rows.iter().map(line_text).collect();
+
+        assert!(text.len() > 2, "badges should wrap: {text:?}");
+        assert!(
+            text.iter()
+                .skip(1)
+                .any(|line| line.starts_with("          ")),
+            "continuation rows should hang under the label column: {text:?}"
+        );
+        assert!(text.join(" ").contains("CACHE 80.0%"), "text = {text:?}");
+        assert!(
+            text.iter().all(|line| line.chars().count() <= 48),
+            "wrapped metric rows must fit the requested width: {text:?}"
+        );
+    }
+
+    #[test]
+    fn runtime_badge_lines_wrap_many_facts_with_indented_continuations() {
+        let s = crate::domain::signal::SignalSet {
+            runtime_facts: vec![
+                RuntimeFact::new(
+                    RuntimeFactKind::PermissionMode,
+                    "FullAccess",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::AutoMode,
+                    "YOLO",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::Sandbox,
+                    "danger-full-access",
+                    SourceKind::ProviderOfficial,
+                ),
+            ],
+            ..SignalSet::default()
+        };
+
+        let rows = runtime_badge_lines_wrapped(&s, 44);
+        let text: Vec<String> = rows.iter().map(line_text).collect();
+
+        assert!(text.len() >= 2, "runtime badges should wrap: {text:?}");
+        assert!(
+            text[1].starts_with("          "),
+            "runtime continuation should be indented: {text:?}"
+        );
+        assert!(text.iter().any(|line| line.contains("SANDBOX")));
+    }
+
+    #[test]
     fn metric_badge_line_returns_two_rows_when_context_fields_present() {
         let s = crate::domain::signal::SignalSet {
             token_count: Some(crate::domain::signal::MetricValue::new(
@@ -2074,8 +2272,22 @@ mod tests {
         let rep = base_report();
         let now = std::time::Instant::now();
         let flash = PaneStateFlash::new(None, now);
-        let expanded_lines = pane_list_lines_with_flash(&rep, true, false, now, Some(&flash));
-        let collapsed_lines = pane_list_lines_with_flash(&rep, false, false, now, Some(&flash));
+        let expanded_lines = pane_list_lines_with_flash(
+            &rep,
+            true,
+            false,
+            now,
+            Some(&flash),
+            BADGE_WRAP_FALLBACK_WIDTH,
+        );
+        let collapsed_lines = pane_list_lines_with_flash(
+            &rep,
+            false,
+            false,
+            now,
+            Some(&flash),
+            BADGE_WRAP_FALLBACK_WIDTH,
+        );
         let expanded_text: String = expanded_lines[0]
             .spans
             .iter()
@@ -2110,7 +2322,14 @@ mod tests {
         let now = std::time::Instant::now();
         let expired_flash =
             PaneStateFlash::new(Some(IdleCause::InputWait), now - STATE_FLASH_DURATION);
-        let lines = pane_list_lines_with_flash(&rep, true, false, now, Some(&expired_flash));
+        let lines = pane_list_lines_with_flash(
+            &rep,
+            true,
+            false,
+            now,
+            Some(&expired_flash),
+            BADGE_WRAP_FALLBACK_WIDTH,
+        );
         let title: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
 
         assert!(title.contains("WAIT INPUT"), "idle title missing: {title}");
@@ -2130,8 +2349,22 @@ mod tests {
         let mut rep = base_report();
         rep.idle_state = Some(IdleCause::PermissionWait);
         rep.idle_state_entered_at = Some(std::time::Instant::now());
-        let expanded = pane_list_lines_with_flash(&rep, true, false, Instant::now(), None);
-        let collapsed = pane_list_lines_with_flash(&rep, false, false, Instant::now(), None);
+        let expanded = pane_list_lines_with_flash(
+            &rep,
+            true,
+            false,
+            Instant::now(),
+            None,
+            BADGE_WRAP_FALLBACK_WIDTH,
+        );
+        let collapsed = pane_list_lines_with_flash(
+            &rep,
+            false,
+            false,
+            Instant::now(),
+            None,
+            BADGE_WRAP_FALLBACK_WIDTH,
+        );
         let expanded_title: String = expanded[0]
             .spans
             .iter()
