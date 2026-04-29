@@ -1,0 +1,17 @@
+Qmonster demo: sanitized Claude main pane tail
+
+> Implement the parser guard and run focused tests.
+
+Status: waiting for operator review
+Model: claude-sonnet-4.5
+CTX 61% | 5h 78% | 7d 34% | cache 82% | cost $12.48
+Session: 00000000-0000-0000-0000-000000000000
+Transcript: /demo/project/.claude/transcripts/session.jsonl
+
+Sidefile values:
+input_tokens=184200
+output_tokens=21400
+cache_read_input_tokens=96200
+cache_creation_input_tokens=8400
+quota_5h_resets_at=1893456000
+quota_weekly_resets_at=1893888000

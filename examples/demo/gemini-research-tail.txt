@@ -1,0 +1,24 @@
+Qmonster demo: sanitized Gemini research pane tail
+
+/stats session
+Session ID: demo-session
+Tool Calls: 14
+
+/stats model
+Tokens
+Total:  220,000
+Input:  194,000
+Output: 26,000
+Cache Reads: 80,000
+
+/model
+Current model: gemini-3.1-pro-preview
+Gemini 3.1 Pro Preview
+Reset: 01:42:10
+Gemini 3.1 Flash
+Reset: 00:18:31
+Gemini 3.1 Flash Lite
+Reset: 00:18:31
+
+Status table:
+Model gemini-3.1-pro-preview | Context 58% | Quota 71% | Memory 512 MB

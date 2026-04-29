@@ -1,0 +1,35 @@
+# GitHub generated release notes configuration.
+# Keep README current-state only; put patch-level detail in Releases and
+# mission-history.yaml.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+    authors:
+      - dependabot
+  categories:
+    - title: Runtime and TUI
+      labels:
+        - runtime
+        - tui
+        - bug
+        - fix
+    - title: Provider Adapters
+      labels:
+        - claude
+        - codex
+        - gemini
+        - adapter
+    - title: Policy and Data Contracts
+      labels:
+        - policy
+        - data-contract
+        - observability
+    - title: Documentation and Repository Polish
+      labels:
+        - documentation
+        - github
+        - release
+    - title: Other Changes
+      labels:
+        - "*"

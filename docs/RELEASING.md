@@ -27,7 +27,12 @@ cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 
 It then builds the release binary, creates or updates the GitHub Release,
 publishes `qmonster` to npmjs when `NPM_TOKEN` is configured, and publishes
-the scoped GitHub Packages mirror using `GITHUB_TOKEN`.
+the scoped GitHub Packages mirror using `GITHUB_TOKEN`. Release assets are
+also signed with GitHub artifact attestations.
+
+Generated GitHub Release notes use `.github/release.yml`. Keep README
+focused on the current product surface; put patch-level implementation
+detail in GitHub Releases, `mission-history.yaml`, and canonical docs.
 
 ## Manual Checklist
 
@@ -43,6 +48,15 @@ the scoped GitHub Packages mirror using `GITHUB_TOKEN`.
    ```
 
 5. Confirm the release workflow published the GitHub Release and packages.
+
+6. Verify release provenance for downloaded assets when needed:
+
+   ```bash
+   gh attestation verify qmonster-vX.Y.Z-linux-x86_64.tar.gz \
+     --repo chquandogong/qmonster
+   gh attestation verify qmonster-X.Y.Z.tgz \
+     --repo chquandogong/qmonster
+   ```
 
 ## SNS Preview
 

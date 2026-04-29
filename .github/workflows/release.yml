@@ -15,6 +15,7 @@ permissions:
   contents: write
   packages: write
   id-token: write
+  attestations: write
 
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -69,6 +70,14 @@ jobs:
           tar -C dist -czf "dist/qmonster-${TAG_NAME}-linux-x86_64.tar.gz" "qmonster-${TAG_NAME}-linux-x86_64"
           npm pack --pack-destination dist
           find dist -maxdepth 1 -type f ! -name checksums.txt -print0 | sort -z | xargs -0 sha256sum > dist/checksums.txt
+
+      - name: Generate artifact attestations
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/qmonster-${{ env.TAG_NAME }}-linux-x86_64.tar.gz
+            dist/qmonster-*.tgz
+            dist/checksums.txt
 
       - name: Create or update GitHub release
         env:

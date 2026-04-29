@@ -1,0 +1,16 @@
+Qmonster demo: sanitized monitor pane tail
+
+Target: demo:0
+Panes: 4
+Alerts: 1 active, 2 hidden
+Selected: claude:1:main
+
+Metrics:
+CTX 61% [Official]
+TOKENS 205.6K +3.1K [Official]
+CACHE 82% [Official]
+RESET 5H 1h42m [Official]
+
+Recommendation:
+snapshot_before_reset [Project] - quota reset window is near; press s to
+write a local runtime snapshot before continuing.

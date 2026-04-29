@@ -15,6 +15,13 @@ maintained, trustworthy, and easy to evaluate from the GitHub page.
 | Dependency automation | Dependabot for Cargo, npm, and GitHub Actions |
 | Social artwork | `docs/assets/qmonster-social-preview.png` |
 | Package metadata | npm keywords, repository, homepage, license, files allow-list |
+| Ownership routing | `.github/CODEOWNERS` |
+| Release notes | `.github/release.yml` generated-notes categories |
+| Release provenance | GitHub artifact attestations for release assets |
+| Compatibility docs | `docs/COMPATIBILITY.md` |
+| Demo fixtures | `examples/demo/` sanitized provider tails |
+| Architecture visual | `docs/assets/qmonster-architecture.svg` |
+| Community conduct | `CODE_OF_CONDUCT.md` |
 
 ## Recommended Next Steps
 
@@ -23,39 +30,27 @@ maintained, trustworthy, and easy to evaluate from the GitHub page.
 
 2. Protect release tags.
    Restrict `v*` tag creation/deletion to maintainers so publish events
-   cannot be triggered accidentally.
+   cannot be triggered accidentally. An evaluate-mode starter payload
+   lives in `.github/rulesets/release-tags.example.json`; add the right
+   maintainer bypass path before switching it to active.
 
 3. Add a repository social preview image.
    Upload `docs/assets/qmonster-social-preview.png` in GitHub
    `Settings -> Social preview`.
 
-4. Add screenshots or a short terminal recording.
-   A TUI project benefits from a real dashboard image. Prefer a sanitized
-   screenshot under `docs/assets/` and link it from README.
+4. Add a real dashboard screenshot or short terminal recording.
+   `examples/demo/` now provides sanitized tails, but the best README
+   asset would still be a real captured dashboard image under
+   `docs/assets/`.
 
-5. Add a `CODEOWNERS` file.
-   Route changes in `src/adapters/`, `.github/`, and `docs/ai/` to the
-   right reviewer once more collaborators are active.
+5. Expand release provenance over time.
+   Release assets now get GitHub artifact attestations; future hardening
+   could add SBOM generation and an explicit verification section in each
+   release body.
 
-6. Add release notes discipline.
-   Keep README current-state only; put patch detail in GitHub Releases,
-   `mission-history.yaml`, and canonical docs.
-
-7. Add a minimal architecture diagram image.
-   The README text pipeline is enough for developers, but a small visual
-   diagram improves quick evaluation.
-
-8. Add signed release provenance when the package flow supports it end to
-   end.
-   npm provenance is already enabled in the workflow; binary attestation
-   can be added later with GitHub artifact attestations.
-
-9. Add a compatibility matrix.
-   Track tested versions of tmux, Rust, Claude Code, Codex, and Gemini CLI.
-
-10. Add curated demo fixtures.
-    Provide sanitized sample tmux captures under `examples/` so reviewers
-    can understand the UI without connecting real provider panes.
+6. Keep compatibility evidence fresh.
+   Update `docs/COMPATIBILITY.md` after provider CLI rendering changes or
+   major tmux/Rust/GitHub runner changes.
 
 ## Manual GitHub Settings
 

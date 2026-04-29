@@ -109,6 +109,9 @@ npm install -g @chquandogong/qmonster
 | Settings | Thresholds, integrations, parameters, rules, badge glossary |
 | Git status | Click the footer version badge to inspect local repo state |
 
+Sanitized provider tails for demos and screenshots live in
+[examples/demo](examples/demo/).
+
 Primary keys:
 
 | Key | Action |
@@ -169,6 +172,10 @@ history lives in `mission-history.yaml`; the README only tracks the
 current operator surface.
 
 ## Architecture
+
+<p align="center">
+  <img src="docs/assets/qmonster-architecture.svg" alt="Qmonster observe-first architecture diagram" width="100%">
+</p>
 
 ```text
 tmux::RawPaneSnapshot
@@ -245,8 +252,9 @@ tmux session.
 - [WORKFLOWS.md](docs/ai/WORKFLOWS.md) — planning and handoff workflow
 - [REVIEW_GUIDE.md](docs/ai/REVIEW_GUIDE.md) — reviewer contract
 - [docs/RELEASING.md](docs/RELEASING.md) — release and package mirror flow
+- [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) — tested runtime and provider surfaces
 - [docs/GITHUB_POLISH.md](docs/GITHUB_POLISH.md) — repo polish checklist and next steps
-- [SECURITY.md](SECURITY.md) / [SUPPORT.md](SUPPORT.md) — reporting and support routing
+- [SECURITY.md](SECURITY.md) / [SUPPORT.md](SUPPORT.md) / [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — reporting and community routing
 - [VERSION.md](VERSION.md) — version surface map
 
 ## Community

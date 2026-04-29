@@ -1,0 +1,10 @@
+Qmonster demo: sanitized Codex review pane tail
+
+Reviewing current branch against canonical docs.
+
+Token usage: total=370210 input=345460 (+ 6274816 cached) output=24750
+Context 72% used | 5h 64% used | weekly 29% used
+model: gpt-5.5 | reasoning: high | worktree: /demo/project | branch: main
+
+Footer:
+Qmonster demo project | main | Context 72% used | 0.125.0

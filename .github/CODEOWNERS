@@ -1,0 +1,19 @@
+# Default owner for repository-wide changes.
+* @chquandogong
+
+# High-signal areas that should stay aligned with the project contract.
+/.github/ @chquandogong
+/config/ @chquandogong
+/docs/ai/ @chquandogong
+/docs/GITHUB_POLISH.md @chquandogong
+/docs/RELEASING.md @chquandogong
+/mission.yaml @chquandogong
+/mission-history.yaml @chquandogong
+
+# Runtime behavior boundaries.
+/src/adapters/ @chquandogong
+/src/app/ @chquandogong
+/src/policy/ @chquandogong
+/src/tmux/ @chquandogong
+/src/ui/ @chquandogong
+/tests/ @chquandogong
