@@ -810,6 +810,30 @@ stillness_polls = 6
     }
 
     #[test]
+    fn cache_config_loads_toml_and_defaults_missing_values() {
+        let absent: QmonsterConfig = toml::from_str("").unwrap();
+        assert!((absent.cache.hot_ratio_threshold - 0.6).abs() < f64::EPSILON);
+        assert!((absent.cache.cold_ratio_threshold - 0.3).abs() < f64::EPSILON);
+        assert!((absent.cache.hot_low_ctx_threshold - 0.7).abs() < f32::EPSILON);
+        assert!((absent.cache.cold_high_ctx_threshold - 0.6).abs() < f32::EPSILON);
+        assert!((absent.cache.drift_drop_threshold - 0.30).abs() < f64::EPSILON);
+        assert_eq!(absent.cache.drift_min_samples, 4);
+
+        let toml = r#"
+[cache]
+hot_ratio_threshold = 0.45
+drift_min_samples = 7
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
+        assert!((cfg.cache.hot_ratio_threshold - 0.45).abs() < f64::EPSILON);
+        assert!((cfg.cache.cold_ratio_threshold - 0.3).abs() < f64::EPSILON);
+        assert!((cfg.cache.hot_low_ctx_threshold - 0.7).abs() < f32::EPSILON);
+        assert!((cfg.cache.cold_high_ctx_threshold - 0.6).abs() < f32::EPSILON);
+        assert!((cfg.cache.drift_drop_threshold - 0.30).abs() < f64::EPSILON);
+        assert_eq!(cfg.cache.drift_min_samples, 7);
+    }
+
+    #[test]
     fn quota_config_loads_split_claude_and_codex_windows() {
         let toml = r#"
 [quota.claude_5h]

@@ -276,7 +276,14 @@ mod tests {
             cross_window_findings: false,
             identity_drift_findings: false,
         };
-        let cache = CacheConfig::default();
+        let cache = CacheConfig {
+            hot_ratio_threshold: 0.45,
+            cold_ratio_threshold: 0.20,
+            hot_low_ctx_threshold: 0.65,
+            cold_high_ctx_threshold: 0.72,
+            drift_drop_threshold: 0.25,
+            drift_min_samples: 6,
+        };
         let gates = PolicyGates::from_config_and_identity(
             &cfg,
             &cost,
@@ -302,6 +309,12 @@ mod tests {
         assert!((gates.quota_5h_critical_pct - 0.85).abs() < f32::EPSILON);
         assert!((gates.quota_weekly_warning_pct - 0.75).abs() < f32::EPSILON);
         assert!((gates.quota_weekly_critical_pct - 0.85).abs() < f32::EPSILON);
+        assert!((gates.cache_hot_ratio - 0.45).abs() < f64::EPSILON);
+        assert!((gates.cache_cold_ratio - 0.20).abs() < f64::EPSILON);
+        assert!((gates.cache_hot_low_ctx - 0.65).abs() < f32::EPSILON);
+        assert!((gates.cache_cold_high_ctx - 0.72).abs() < f32::EPSILON);
+        assert!((gates.cache_drift_drop - 0.25).abs() < f64::EPSILON);
+        assert_eq!(gates.cache_drift_min_samples, 6);
     }
 
     #[test]

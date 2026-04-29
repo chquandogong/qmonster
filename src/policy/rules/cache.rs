@@ -201,11 +201,13 @@ fn recommend_cache_drift_compact(
     Some(Recommendation {
         action: "cache: drift detected — /compact will let cache rebuild",
         reason: format!(
-            "cache hit ratio dropped {:.1}pp (from {:.1}% to {:.1}%) over the last {} samples — context drifted; /compact will reset on a smaller stable surface and let cache rebuild quickly on the next turn",
+            "cache hit ratio dropped {:.1}pp (from {:.1}% to {:.1}%) over the last {} samples, meeting the {:.1}pp drift threshold with min {} samples — context drifted; /compact will reset on a smaller stable surface and let cache rebuild quickly on the next turn",
             drop_pp,
             baseline_pct,
             current_pct,
             recent_token_samples.len(),
+            gates.cache_drift_drop * 100.0,
+            gates.cache_drift_min_samples,
         ),
         severity: Severity::Concern,
         source_kind: SourceKind::ProjectCanonical,
@@ -575,6 +577,62 @@ mod tests {
             "reason should reference the configured 40% threshold; got: {}",
             hot.reason
         );
+    }
+
+    #[test]
+    fn cache_drift_honors_custom_thresholds_from_gates() {
+        use crate::domain::identity::Provider as P;
+        use crate::store::TokenSample;
+        let mut gates = gates_high();
+        gates.cache_drift_drop = 0.20;
+        gates.cache_drift_min_samples = 3;
+
+        // current 55%, oldest 80% -> drop = 25pp. This is below the
+        // default 30pp threshold and below the default 4-sample minimum,
+        // so it only fires when both custom gates are honored.
+        let signals = signals_with(450_000, 550_000, 0.50);
+        let samples = vec![
+            TokenSample {
+                ts_unix_ms: 3000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(450_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(550_000),
+            },
+            TokenSample {
+                ts_unix_ms: 2000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(350_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(650_000),
+            },
+            TokenSample {
+                ts_unix_ms: 1000,
+                pane_id: "%1".into(),
+                provider: P::Codex,
+                input_tokens: Some(200_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: Some(800_000),
+            },
+        ];
+        let recs = eval_cache(
+            &id(P::Codex, IdentityConfidence::High),
+            &signals,
+            &gates,
+            &samples,
+        );
+        let drift = recs
+            .iter()
+            .find(|r| r.action.starts_with("cache: drift detected"))
+            .expect("custom drift threshold and min-sample gates should fire");
+        assert!(drift.reason.contains("25.0pp"));
+        assert!(drift.reason.contains("20.0pp drift threshold"));
+        assert!(drift.reason.contains("min 3 samples"));
     }
 
     #[test]

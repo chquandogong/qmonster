@@ -178,7 +178,7 @@ critical_pct = 0.85
 # Phase F F-7-config (v1.28.0): operator-tunable cache-rule thresholds.
 # Defaults match the v1.27.0 hardcoded values exactly. Adjust to taste:
 # - Lower hot_ratio_threshold to fire the "don't /compact yet" warning more aggressively
-# - Raise cold_ratio_threshold to require lower cache hit before suggesting /compact
+# - Lower cold_ratio_threshold to require a lower cache hit before suggesting /compact
 # - drift_min_samples controls how much history must accrue before drift fires
 [cache]
 hot_ratio_threshold = 0.6      # cache_hit_ratio > this → "cache hot, avoid /compact"

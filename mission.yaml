@@ -1206,15 +1206,16 @@ mission:
     `from_config_and_identity` (8th param). `src/policy/rules/cache.rs`
     removes the 6 const declarations and reads from `gates.cache_*`
     instead; `format!` reason strings interpolate the configured values
-    so operators see the actual threshold that fired. 1 new test verifies
-    custom thresholds are honored. Defaults match prior hardcoded values
+    so operators see the actual threshold that fired. 3 cache/config tests
+    verify TOML defaults, PolicyGates propagation, and custom hot/drift
+    gates. Defaults match prior hardcoded values
     exactly so no v1.27.x behavior change for an operator with an
     empty/default config. Side effect of the refactor: 22
     `PolicyGates { … }` literals across `advisories.rs` /
     `auto_memory.rs` / `profiles.rs` are simplified to
     `..PolicyGates::default()` spread syntax — purely mechanical, no
     semantic change. Settings overlay UI for cache thresholds deferred —
-    operators edit `qmonster.toml` directly. Tests grew to 660 lib + 68
+    operators edit `qmonster.toml` directly. Tests grew to 662 lib + 68
     integration green.
 
   done_when:
@@ -1252,7 +1253,7 @@ mission:
     - "F-7b: event_loop reorders per-pane work — read recent_token_samples FIRST, policy.evaluate SECOND with samples passed in, F-3 write LAST — so historical window is strictly older than current iteration; PaneReport reuses the early-fetched vec (no duplicate SQLite read)"
     - "F-7-config: CacheConfig struct in src/app/config.rs with 6 fields (hot_ratio_threshold, cold_ratio_threshold, hot_low_ctx_threshold, cold_high_ctx_threshold, drift_drop_threshold, drift_min_samples); defaults match the v1.26.0/v1.27.0 hardcoded constants exactly so operators with empty configs see no behavior change"
     - "F-7-config: PolicyGates gains 6 cache_* fields populated from CacheConfig in from_config_and_identity (8th param); src/policy/rules/cache.rs removes the 6 const declarations and reads from gates.cache_*; reason strings interpolate the configured values"
-    - "F-7-config: cache_rules_honor_custom_thresholds_from_gates test verifies a custom gates.cache_hot_ratio = 0.40 makes ratio = 0.50 fire the hot rule; existing 12 cache tests pass without body changes because gates_high() picks up matching defaults via the spread"
+    - "F-7-config: cache_config_loads_toml_and_defaults_missing_values verifies absent/partial [cache] defaults; policy_gates_from_config_and_identity_reads_both asserts all 6 cache fields propagate; cache_rules_honor_custom_thresholds_from_gates and cache_drift_honors_custom_thresholds_from_gates verify custom hot/drift gates"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."

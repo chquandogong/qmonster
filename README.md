@@ -44,7 +44,7 @@ the actual value that fired. Defaults match prior hardcoded constants exactly �
 change for default configs. Side effect: 22 `PolicyGates { … }` literals across `advisories.rs`
 plus `auto_memory.rs` plus `profiles.rs` simplified to `..PolicyGates::default()` spread — purely
 mechanical. Settings overlay UI for cache thresholds deferred; operators edit `qmonster.toml`
-directly. 1 new test; 660 lib plus 68 integration green.
+directly. 3 cache/config tests; 662 lib plus 68 integration green.
 
 `v1.27.1` is a Phase F follow-up for Codex token observability. The Codex adapter now parses
 the provider `Token usage:` summary atomically (`total=`, `input=`, `(+ N cached)`, `output=`)

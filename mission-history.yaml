@@ -14120,7 +14120,7 @@ timeline:
       across `advisories.rs` / `auto_memory.rs` / `profiles.rs` are simplified to
       `..PolicyGates::default()` spread syntax — purely mechanical. Settings overlay UI
       for cache thresholds explicitly deferred; operators edit `qmonster.toml` directly.
-      Tests grew to 660 lib + 68 integration green.
+      Tests grew to 662 lib + 68 integration green.
     intent_ko: >
       Phase F F-7-config: F-7/F-7b에서 하드코딩된 캐시 규칙 임계값 6개를
       `qmonster.toml`의 새 `[cache]` 섹션으로 노출하여 운영자가 직접 조정할 수 있게 한다.
@@ -14133,7 +14133,7 @@ timeline:
       부수 효과: `advisories.rs` / `auto_memory.rs` / `profiles.rs`의 22개
       `PolicyGates { … }` 리터럴을 `..PolicyGates::default()` 스프레드로 단순화 —
       순전히 기계적 변경. 캐시 임계값 Settings overlay UI는 명시적으로 연기됨.
-      테스트 660 lib + 68 integration green.
+      테스트 662 lib + 68 integration green.
     triggered_by: "F-7-config task1: operator-tunable cache thresholds via [cache] config (commit 2274dd3)"
     issue_or_context: >
       F-7 (v1.26.0) and F-7b (v1.27.0) shipped the three cache advisory rules with
@@ -14148,9 +14148,11 @@ timeline:
         - "`CacheConfig` struct in `src/app/config.rs` with 6 `#[serde(default)]` fields matching prior hardcoded constants"
         - "`[cache]` section documented in `config/qmonster.example.toml`"
         - "6 `cache_*` fields in `PolicyGates` struct populated from `CacheConfig` in `from_config_and_identity` (8th param)"
-        - "`cache_rules_honor_custom_thresholds_from_gates` test verifying custom `cache_hot_ratio = 0.40` makes ratio = 0.50 fire the hot rule"
+        - "`cache_config_loads_toml_and_defaults_missing_values` test verifying absent/partial `[cache]` defaults"
+        - "`policy_gates_from_config_and_identity_reads_both` assertions for all 6 cache field propagations"
+        - "`cache_rules_honor_custom_thresholds_from_gates` and `cache_drift_honors_custom_thresholds_from_gates` tests verifying custom hot/drift gates"
       modified:
-        - "`src/policy/rules/cache.rs` removes 6 const declarations and reads from `gates.cache_*`; reason strings interpolate configured values"
+        - "`src/policy/rules/cache.rs` removes 6 const declarations and reads from `gates.cache_*`; reason strings interpolate configured values, including drift drop/min-sample gates"
         - "22 `PolicyGates { … }` literals across `advisories.rs` / `auto_memory.rs` / `profiles.rs` simplified to `..PolicyGates::default()` spread syntax"
         - "`README.md`, `VERSION.md`, `mission.yaml`, `mission-history.yaml`, `docs/ai/UI_MANUAL.md`, `docs/ai/ARCHITECTURE.md`, `docs/ai/PROJECT_BRIEF.md`, `docs/ai/VALIDATION.md` bumped to v1.28.0"
       removed: []
