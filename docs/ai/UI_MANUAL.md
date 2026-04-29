@@ -184,7 +184,7 @@ session:window · Provider role · %pane_id
   context-prompt growth, NOT cumulative usage; samples themselves are
   persisted as cumulative counts. When fewer than 2 samples have been
   recorded for the pane, the selected card shows `TOKENS collecting
-  N/2` instead of staying blank. Token-source providers today: Codex
+N/2` instead of staying blank. Token-source providers today: Codex
   (bottom-status `1.51M in / 20.4K out`); Claude / Gemini will
   populate when later F-slices add cache-aware token surfaces.
 - `CACHE` badge shows the cache hit ratio for the pane's cumulative
@@ -474,6 +474,30 @@ side_effects (N):
     `account/rateLimits/read`를 전송합니다. Linux에서는 bubblewrap 우회를 위해 spawn 시
     `-c sandbox_mode="danger-full-access"` 플래그가 자동으로
     추가됩니다.
+  - **v1.33.0 업데이트 (F-4b) — Gemini /stats parser**: 운영자가
+    `u` 키를 cycle해 Gemini pane에서 `/stats model`과 `/stats session`을
+    dispatch하면, 그 출력을 Qmonster가 파싱해 다음 정보를 Gemini pane
+    card에 채웁니다:
+    - **누적 input / output token 카운트**: `/stats model` 출력의
+      `Tokens` 섹션에서 `Total` / `Input` / `Output` 행을 읽어
+      `input_tokens` / `output_tokens` 필드에 채웁니다 (`is_none()`
+      가드 — 더 이른 surface가 이미 채웠다면 그대로 둠). model 파서는
+      `input_tokens`와 `output_tokens`가 **둘 다** 추출됐을 때만 값을
+      씁니다 (정직성 규칙: 반쪽 데이터 금지).
+    - **CACHE 배지** (API key / Vertex Gemini만): `/stats model` 출력의
+      `Cache Reads` 행이 보이면 `cached_input_tokens`로 들어가 CACHE
+      배지가 표시됩니다. **OAuth Gemini는 FAQ-documented Google 제약**
+      으로 인해 `Cache Reads` 행이 출력에 없으므로 CACHE 배지도
+      나타나지 않습니다 — Qmonster는 0을 합성하지 않습니다 (정직성
+      규칙).
+    - **SID runtime fact 배지**: `/stats session` 출력의 `Session ID:`
+      를 읽어 `RuntimeFactKind::SessionId` (F-5b에서 도입)가 채워지고,
+      Gemini pane card에도 SID 배지가 표시됩니다.
+  - **v1.33.x polish (RESET 5H / RESET 7D 배지)**: 컴팩트 한-줄 metric
+    행에 `RESET 5H <eta>` / `RESET 7D <eta>` 배지가 추가되어, F-5b의
+    verbose `metric_row` 텍스트 행과 같은 `format_resets_eta` helper
+    및 SourceKind 라벨링을 사용합니다. Claude sidefile 또는 Codex
+    app-server 경로가 `quota_*_resets_at`을 채웠을 때 표시됩니다.
 
 ## 9. 운영 파일
 

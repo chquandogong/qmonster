@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.32.2 — Settings integrations and token sparkline polish."
+  mission_title: "Qmonster v1.33.0 — Phase F F-4b: Gemini /stats output parser → cumulative token / cache surfacing on Gemini panes."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 164
-  latest_version: "1.32.2"
+  total_revisions: 165
+  latest_version: "1.33.0"
 
 timeline:
   - change_id: "initial"
@@ -14909,9 +14909,151 @@ timeline:
     related_commits: []
     follow_up: []
 
+  - change_id: "v1.33.0-phase-f-f4b-gemini-stats-parser"
+    semantic_version: "1.33.0"
+    change_sequence: 165
+    date: "2026-04-29"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (main pane)"
+    change_type: "feature"
+    motivation_type: "operator-ergonomics"
+    persistence: "permanent"
+    intent: >
+      Phase F continues with F-4b (v1.33.0) — the long-deferred
+      Gemini `/stats` output parser. New private parsers in
+      `src/adapters/gemini.rs`: `parse_gemini_stats_session(tail) ->
+      GeminiSessionStats { session_id, tool_calls }` defensively
+      scans stripped-box-char lines for `Session ID:` and `Tool
+      Calls:` anchors, and `parse_gemini_stats_model(tail) ->
+      Option<GeminiModelStats { input_tokens, output_tokens,
+      cache_reads }>` performs section-anchored scanning for the
+      `Tokens` header followed by `Total` / `Input` / `Cache Reads`
+      / `Output` rows. The model parser returns `Some` ONLY when
+      both `input_tokens` AND `output_tokens` parse — honesty rule,
+      don't ship half-data. Helpers `strip_box_chars`,
+      `strip_metric_label`, `first_count_in`, and
+      `parse_count_with_commas` keep the line-by-line scan
+      defensive against Ink rendering variations.
+      `GeminiAdapter::parse` integrates both parsers AFTER the
+      existing status-table block:
+      `RuntimeFactKind::SessionId` (reused from F-5b) populates
+      from the session panel, and
+      `input_tokens` / `output_tokens` / `cached_input_tokens`
+      populate via `is_none()` guards mirroring the F-5b Claude /
+      F-6 Codex pattern (preserve any earlier-surface truth).
+      OAuth Gemini honesty: `cache_reads` stays `None` per
+      FAQ-documented Google limit (the `Cache Reads` row is hidden
+      for OAuth users); never synthesize a zero. Bundled v1.33.x
+      polish: `src/ui/panels.rs::primary_metric_row` adds
+      `RESET 5H <eta>` and `RESET 7D <eta>` badges to the compact
+      one-line view, mirroring the verbose `metric_row` text rows
+      from F-5b via the same `format_resets_eta` helper and
+      SourceKind labeling. 8 new unit tests with synthetic
+      Ink-rendered fixtures (honesty cases: OAuth →
+      cache_reads=None, panel absent → defaults). 753 lib + 68
+      integration green; clippy + fmt clean.
+    intent_ko: >
+      Phase F가 v1.33.0에서 F-4b로 이어진다 — 오래 deferred 되어
+      있던 Gemini `/stats` 출력 파서. 새 private parser들이
+      `src/adapters/gemini.rs`에 추가된다:
+      `parse_gemini_stats_session(tail) -> GeminiSessionStats {
+      session_id, tool_calls }`은 box 문자가 제거된 line들을
+      방어적으로 스캔하면서 `Session ID:`와 `Tool Calls:` 앵커를
+      찾고, `parse_gemini_stats_model(tail) ->
+      Option<GeminiModelStats { input_tokens, output_tokens,
+      cache_reads }>`은 `Tokens` 헤더 이후의 `Total` / `Input` /
+      `Cache Reads` / `Output` 행을 section-anchored 방식으로
+      스캔한다. 모델 파서는 `input_tokens`와 `output_tokens`가
+      **둘 다** 추출됐을 때만 `Some`을 반환한다 — 정직성 규칙,
+      반쪽 데이터를 보내지 않는다. 헬퍼 `strip_box_chars`,
+      `strip_metric_label`, `first_count_in`,
+      `parse_count_with_commas`가 Ink 렌더링 변형에 대해 line
+      스캔을 방어적으로 유지한다. `GeminiAdapter::parse`는 기존
+      status-table 블록 **이후에** 두 파서를 통합한다:
+      `RuntimeFactKind::SessionId` (F-5b에서 재사용)이 session
+      panel에서 채워지고,
+      `input_tokens` / `output_tokens` / `cached_input_tokens`은
+      `is_none()` 가드를 통해 채워진다 (F-5b Claude / F-6 Codex
+      패턴과 동일 — 더 이른 surface의 진실을 보존). OAuth Gemini
+      정직성: `cache_reads`는 FAQ 문서에 명시된 Google 제약
+      (OAuth 사용자에게는 `Cache Reads` 행이 숨겨짐)에 따라
+      `None`으로 유지된다 — 0을 합성하지 않는다. Bundled v1.33.x
+      polish: `src/ui/panels.rs::primary_metric_row`이 `RESET 5H
+      <eta>` 및 `RESET 7D <eta>` 배지를 compact one-line view에
+      추가해, F-5b의 verbose `metric_row` 텍스트 행을 동일한
+      `format_resets_eta` helper와 SourceKind 라벨링으로
+      미러링한다. 합성 Ink 렌더링 fixture를 사용한 8개의 신규
+      unit test (정직성 케이스: OAuth → cache_reads=None, panel
+      부재 → defaults). 753 lib + 68 integration green; clippy +
+      fmt clean.
+    triggered_by: "Phase F cache-observability stream — F-4b is the long-deferred Gemini /stats parser slice that closes the parity gap left after F-5/F-5b (Claude) and F-6 (Codex). Built on the F-5b RuntimeFactKind::SessionId variant + is_none() adapter integration pattern; commits 90cd3d8 (parser + adapter integration) + 29f6a7c (RESET 5H/7D primary_metric_row badges)."
+    issue_or_context: >
+      F-4b had been deferred since v1.25.0 (F-4) for needing a live
+      `/stats` capture fixture. The intervening v1.30.0 (F-5),
+      v1.31.0 (F-5b), and v1.32.0 (F-6) slices populated cumulative
+      input/output token counts and reset-eta countdowns for Claude
+      and Codex panes — leaving Gemini panes as the only provider
+      whose pane card lacked these signals when the operator
+      cycled the `u` key to dispatch `/stats model` and
+      `/stats session`. v1.33.0 closes that gap. The OAuth
+      Gemini honesty rule mirrors the longstanding pattern: when
+      the provider chooses not to expose a metric (OAuth Gemini's
+      hidden Cache Reads row), Qmonster keeps the field None
+      rather than synthesizing a zero that an operator could
+      misread as a signal. The bundled `RESET 5H` / `RESET 7D`
+      primary_metric_row badges complete the visual surface for
+      reset-eta information that F-5b and F-6 had only rendered in
+      the verbose metric_row layout.
+    changes:
+      added:
+        - "src/adapters/gemini.rs: parse_gemini_stats_session(tail) -> GeminiSessionStats { session_id, tool_calls } — defensive scan of stripped-box-char lines for `Session ID:` and `Tool Calls:` anchors"
+        - "src/adapters/gemini.rs: parse_gemini_stats_model(tail) -> Option<GeminiModelStats { input_tokens, output_tokens, cache_reads }> — section-anchored scan for the `Tokens` header followed by `Total` / `Input` / `Cache Reads` / `Output` rows; returns Some only when both input_tokens AND output_tokens parse"
+        - "src/adapters/gemini.rs: helpers strip_box_chars, strip_metric_label, first_count_in, parse_count_with_commas for defensive line scanning"
+        - "GeminiAdapter::parse integration: RuntimeFactKind::SessionId pushed from /stats session panel; input_tokens / output_tokens / cached_input_tokens fill via is_none() guards mirroring F-5b Claude pattern"
+        - "src/ui/panels.rs::primary_metric_row: RESET 5H <eta> / RESET 7D <eta> badges via format_resets_eta when resets_at populated (Claude sidefile or Codex app-server path)"
+        - "8 new unit tests with synthetic Ink-rendered fixtures (honesty cases: OAuth → cache_reads=None, panel absent → defaults)"
+      modified:
+        - "GeminiAdapter::parse runs the new /stats parsers AFTER the existing status-table block so earlier surface values keep priority via is_none() guards"
+        - "README.md, VERSION.md, mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md, docs/ai/UI_MANUAL.md, docs/ai/ARCHITECTURE.md, docs/ai/PROJECT_BRIEF.md, docs/ai/VALIDATION.md bumped to v1.33.0"
+      removed: []
+    changed_sections:
+      - "src/adapters/gemini.rs"
+      - "src/ui/panels.rs"
+      - "README.md"
+      - "VERSION.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/VALIDATION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - ".mission/CURRENT_STATE.md"
+    observable_effects:
+      added:
+        - "Gemini pane cards now show cumulative input / output token counts after the operator cycles `u` to dispatch `/stats model`"
+        - "API-key / Vertex Gemini panes surface a CACHE badge when /stats model exposes the `Cache Reads` row"
+        - "Gemini panes show a SID runtime fact badge sourced from /stats session"
+        - "Compact one-line primary_metric_row view shows RESET 5H <eta> / RESET 7D <eta> badges (Claude sidefile and Codex app-server reset-eta surfaces are now visible in the compact layout, mirroring the verbose metric_row F-5b text)"
+      modified:
+        - "Gemini panes' input_tokens / output_tokens / cached_input_tokens fields preserve any earlier-surface truth (is_none() guards) but pick up /stats model values when the earlier surface didn't populate them"
+      removed: []
+    impact_scope:
+      runtime: "two new parsers + adapter integration in src/adapters/gemini.rs + RESET 5H/7D badges on primary_metric_row; no schema migration, no actuation change, no destructive mutations; OAuth Gemini cache_reads honesty rule preserved (never synthesize zero)."
+      tests: "8 new unit tests (753 lib + 68 integration green); cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings pass."
+      ledger: "1 new timeline entry (sequence 165); meta bump; minor version bump v1.32.2 → v1.33.0 for Phase F F-4b Gemini /stats output parser."
+      npm: "package.json bumped to 1.33.0 in a separate follow-up commit (v1.33.0 npm publish bump)."
+      review_gate: "local validation passes before commit"
+    breaking: false
+    risk: "low — Gemini /stats parsing is purely additive; is_none() guards preserve earlier-surface authority for input/output/cached tokens; OAuth cache_reads stays None per FAQ-documented limit (no synthesized zero); RESET 5H/7D badges mirror the verbose metric_row contract that F-5b and F-6 already shipped."
+    related_commits:
+      - "90cd3d8 v1.33.0 Phase F F-4b Gemini /stats output parser → token surfacing"
+      - "29f6a7c v1.33.x polish: RESET 5H/7D badges on primary metric row"
+    follow_up: []
+
 evolution_summary:
-  current_phase: 'v1.32.2 ships Settings integrations and token sparkline polish: Settings now has Thresholds, Integrations, Parameters, and Rules tabs; [provider_setup] sidefile/app-server toggles live in S -> Integrations with keyboard and mouse support; Provider Setup mirrors those values read-only and points edits back to Settings; selected-pane TOKENS sparkline renders near the top as high-contrast plain text and shows TOKENS collecting N/2 while warming up. 744 lib + 68 integration green. v1.32.1 ships Provider Setup overlay readability polish: tab bodies now separate Current Status, Options, Copy With y, and copied-preview sections; [s] toggles render as ON/OFF near the top; each tab states what y copies and what remains informational only. 5 new Provider Setup tests; 728 lib + 68 integration green. v1.32.0 ships Phase F F-6: Codex App Server JSON-RPC client. New `src/adapters/codex_app_server.rs` spawns `codex app-server` with `-c sandbox_mode="danger-full-access"` to bypass bubblewrap on Linux, sends NDJSON `initialize` + `account/rateLimits/read` over the child''s piped stdin/stdout, and parses the response into `CodexRateLimits { primary, secondary }` where each window carries `used_percent` (clamped 0..=100), `window_duration_mins`, and `resets_at_unix_seconds`. A `JsonRpcIo` trait abstracts the IO so tests inject a `VecDequeIo` stub; `SubprocessIo`''s Drop closes stdin for graceful EOF then try_wait → kill fallback for clean reap. `Context` gains `codex_app_server: Option<CodexAppServer<SubprocessIo>>` (long-lived client) + `codex_rate_limits: Option<CodexRateLimits>` (cached snapshot). `tui_loop` spawns the server once at startup when `[provider_setup] codex_app_server = true`; success and failure both surface a SystemNotice (Severity::Good / Warning) and the TUI continues either way. `event_loop::run_once_with_target` calls `read_rate_limits()` once per polling tick BEFORE iterating panes; read failure logs to stderr, drops the client, clears the cache so stale data can never linger. New `apply_codex_rate_limits(signals, rl)` helper writes the account-level snapshot into each Codex-pane SignalSet — `quota_5h_pressure` / `quota_weekly_pressure` populate ONLY when the statusline path didn''t (is_none guards), but `quota_5h_resets_at` / `quota_weekly_resets_at` populate unconditionally (no other surface emits them). Result: F-5b''s `5h resets in <eta>` / `7d resets in <eta>` rows now appear on Codex pane cards too, consistent with the Claude sidefile path. Bundled polish: v1.31.x settings-overlay mouse (click-to-select + scroll-wheel cycles fields), pane-card badge wrapping keyed off terminal width; v1.32.x Provider Setup overlay Tab / Right / BackTab / Left tab cycling. 11 new tests; 726 lib + 68 integration green. v1.31.0 shipped Phase F F-5b: Claude sidefile reader. New `src/adapters/claude_sidefile.rs` parses the per-session JSON file dropped by the recommended `~/.claude/statusline.sh` (G-1 snippet) at `~/.local/share/ai-cli-status/claude/<session_id>.json` and matches it to a Claude pane by the JSON''s `cwd` field equalling the pane''s `current_path` (newest-mtime tiebreak; best-effort silent None on missing dir / malformed JSON / no match). `parse_for_with_environment` calls the matcher after the agent-memory fill (Phase F-1 / F-2 pattern); a provider gate restricts the enrichment to Claude panes so a Codex / Gemini pane sharing the cwd never inherits Claude session state. New `SignalSet` fields `quota_5h_resets_at` and `quota_weekly_resets_at` (Option<MetricValue<u64>>, Unix seconds) feed two new metric rows: `5h resets in <eta>` and `7d resets in <eta>`; new helper `format_resets_eta` formats `2h13m` / `45m` / `30s` and caps at 14 days to reject sentinels. New `RuntimeFactKind::{SessionId, TranscriptPath}` variants surface per-pane Claude session identity (rendering labels `SID` / `XSCRIPT`). `cost_usd` now populates for Claude panes via the existing `cost $X.XX` row. `is_none()` guards preserve the statusline path''s values for raw counts; `cache_hit_ratio` is the one explicit override (sidefile-derived count-based ratio wins over rounded statusline `cache N%`). 11 new tests; 710 lib + 68 integration green. v1.30.0 shipped Phase G G-2 + Phase F F-5. G-2: operator-tunable Provider Setup defaults via a new `[provider_setup]` config section in `qmonster.toml` (`claude_sidefile = true` default flips the recommended sidefile JSON-export workflow on at startup; `codex_app_server = false` keeps the advanced daemon opt-in). New `ProviderSetupConfig` struct in `src/app/config.rs` and `ProviderSetupOverlay::from_config(&QmonsterConfig)` constructor seed runtime overlay state from persisted config; `tui_loop.rs` uses `from_config` instead of `::new()`. Sidefile-on-default writes the full Claude statusLine JSON to `~/.local/share/ai-cli-status/claude/<sid>.json` so downstream Claude tooling (the F-5b reader, future audit pipelines) can read raw cache_read / cache_creation / resets_at / cost / transcript_path. F-5: Claude statusline `cache N%` parser → CACHE badge. New `SignalSet.cache_hit_ratio: Option<MetricValue<f64>>` field (0..1, ProviderOfficial); the recommended `~/.claude/statusline.sh` emits the optional `cache N%` token between CTX and 5h, the Claude adapter parses it via a new `find_status_label_in` range-bounded label search, and `parse_claude_status_line_row` narrows CTX''s percent-search bound to stop at the `cache` label so values don''t bleed. UI + policy prefer this pre-computed ratio when populated; the count-derived path (Codex F-4) remains as fallback. The CACHE badge now surfaces for Claude panes alongside Codex; F-7 / F-7b cache rules fire on Claude panes too. 8 new tests; 699 lib + 68 integration green. v1.29.0 opened Phase G with G-1: Provider Setup overlay. New `P` key opens a 3-tab in-TUI modal (Claude/Codex/Gemini) showing recommended config snippets and detected current state per provider via read-only filesystem probes of `~/.claude/statusline.sh`, `~/.codex/config.toml`, and `~/.gemini/settings.json`. New `src/ui/provider_setup.rs` module owns view-model, state detectors, snippet `include_str!` consts, and `render_tab_content`; `src/app/provider_setup_overlay.rs` mirrors `settings_overlay.rs` for key dispatch. Read-only — Qmonster never writes provider config; operator copies snippets manually. v1.28.0 shipped F-7-config: operator-tunable cache thresholds. New `CacheConfig` struct in `src/app/config.rs` exposes the 6 thresholds from F-7/F-7b via `[cache]` section in `qmonster.toml`; `PolicyGates` gains 6 `cache_*` fields; `cache.rs` reads from gates and interpolates values into reason strings. v1.27.1 fixed Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4''s cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards.'
-  next_phase: "Phase G G-1/G-2 + Phase F F-5/F-5b/F-6 shipped (v1.30.0/v1.31.0/v1.32.0), with v1.32.1 Provider Setup readability polish layered on top; F-4b (Gemini /stats parsing — needs live fixture) is the next planned cache-observability slice. F-7c (wait_for_reset / snapshot_before_reset) is now unblocked by F-6's resets_at surface but remains deferred until enough resets_at history accumulates to validate the wait-for-reset trigger threshold. A settings-overlay UI for [cache] booleans remains unscoped; [provider_setup] moved to Settings -> Integrations in v1.32.2."
+  current_phase: 'v1.33.0 ships Phase F F-4b: the long-deferred Gemini /stats output parser. New private parsers in `src/adapters/gemini.rs` — `parse_gemini_stats_session(tail) -> GeminiSessionStats { session_id, tool_calls }` defensively scans stripped-box-char lines for `Session ID:` and `Tool Calls:` anchors, and `parse_gemini_stats_model(tail) -> Option<GeminiModelStats { input_tokens, output_tokens, cache_reads }>` performs section-anchored scanning for the `Tokens` header followed by `Total` / `Input` / `Cache Reads` / `Output` rows. The model parser returns `Some` only when both `input_tokens` AND `output_tokens` parse — honesty rule, don''t ship half-data. Helpers `strip_box_chars`, `strip_metric_label`, `first_count_in`, `parse_count_with_commas` keep the line scan defensive against Ink rendering variations. `GeminiAdapter::parse` integrates both parsers AFTER the existing status-table block: `RuntimeFactKind::SessionId` (reused from F-5b) populates from the session panel, and `input_tokens` / `output_tokens` / `cached_input_tokens` populate via `is_none()` guards mirroring the F-5b Claude / F-6 Codex pattern. OAuth Gemini honesty: `cache_reads` stays `None` per FAQ-documented Google limit (Cache Reads row hidden for OAuth); never synthesize a zero. Bundled v1.33.x polish: `src/ui/panels.rs::primary_metric_row` adds `RESET 5H <eta>` / `RESET 7D <eta>` badges to the compact one-line view, mirroring the verbose metric_row text rows from F-5b. 8 new unit tests with synthetic Ink-rendered fixtures; 753 lib + 68 integration green; clippy + fmt clean. v1.32.2 ships Settings integrations and token sparkline polish: Settings now has Thresholds, Integrations, Parameters, and Rules tabs; [provider_setup] sidefile/app-server toggles live in S -> Integrations with keyboard and mouse support; Provider Setup mirrors those values read-only and points edits back to Settings; selected-pane TOKENS sparkline renders near the top as high-contrast plain text and shows TOKENS collecting N/2 while warming up. 744 lib + 68 integration green. v1.32.1 ships Provider Setup overlay readability polish: tab bodies now separate Current Status, Options, Copy With y, and copied-preview sections; [s] toggles render as ON/OFF near the top; each tab states what y copies and what remains informational only. 5 new Provider Setup tests; 728 lib + 68 integration green. v1.32.0 ships Phase F F-6: Codex App Server JSON-RPC client. New `src/adapters/codex_app_server.rs` spawns `codex app-server` with `-c sandbox_mode="danger-full-access"` to bypass bubblewrap on Linux, sends NDJSON `initialize` + `account/rateLimits/read` over the child''s piped stdin/stdout, and parses the response into `CodexRateLimits { primary, secondary }` where each window carries `used_percent` (clamped 0..=100), `window_duration_mins`, and `resets_at_unix_seconds`. A `JsonRpcIo` trait abstracts the IO so tests inject a `VecDequeIo` stub; `SubprocessIo`''s Drop closes stdin for graceful EOF then try_wait → kill fallback for clean reap. `Context` gains `codex_app_server: Option<CodexAppServer<SubprocessIo>>` (long-lived client) + `codex_rate_limits: Option<CodexRateLimits>` (cached snapshot). `tui_loop` spawns the server once at startup when `[provider_setup] codex_app_server = true`; success and failure both surface a SystemNotice (Severity::Good / Warning) and the TUI continues either way. `event_loop::run_once_with_target` calls `read_rate_limits()` once per polling tick BEFORE iterating panes; read failure logs to stderr, drops the client, clears the cache so stale data can never linger. New `apply_codex_rate_limits(signals, rl)` helper writes the account-level snapshot into each Codex-pane SignalSet — `quota_5h_pressure` / `quota_weekly_pressure` populate ONLY when the statusline path didn''t (is_none guards), but `quota_5h_resets_at` / `quota_weekly_resets_at` populate unconditionally (no other surface emits them). Result: F-5b''s `5h resets in <eta>` / `7d resets in <eta>` rows now appear on Codex pane cards too, consistent with the Claude sidefile path. Bundled polish: v1.31.x settings-overlay mouse (click-to-select + scroll-wheel cycles fields), pane-card badge wrapping keyed off terminal width; v1.32.x Provider Setup overlay Tab / Right / BackTab / Left tab cycling. 11 new tests; 726 lib + 68 integration green. v1.31.0 shipped Phase F F-5b: Claude sidefile reader. New `src/adapters/claude_sidefile.rs` parses the per-session JSON file dropped by the recommended `~/.claude/statusline.sh` (G-1 snippet) at `~/.local/share/ai-cli-status/claude/<session_id>.json` and matches it to a Claude pane by the JSON''s `cwd` field equalling the pane''s `current_path` (newest-mtime tiebreak; best-effort silent None on missing dir / malformed JSON / no match). `parse_for_with_environment` calls the matcher after the agent-memory fill (Phase F-1 / F-2 pattern); a provider gate restricts the enrichment to Claude panes so a Codex / Gemini pane sharing the cwd never inherits Claude session state. New `SignalSet` fields `quota_5h_resets_at` and `quota_weekly_resets_at` (Option<MetricValue<u64>>, Unix seconds) feed two new metric rows: `5h resets in <eta>` and `7d resets in <eta>`; new helper `format_resets_eta` formats `2h13m` / `45m` / `30s` and caps at 14 days to reject sentinels. New `RuntimeFactKind::{SessionId, TranscriptPath}` variants surface per-pane Claude session identity (rendering labels `SID` / `XSCRIPT`). `cost_usd` now populates for Claude panes via the existing `cost $X.XX` row. `is_none()` guards preserve the statusline path''s values for raw counts; `cache_hit_ratio` is the one explicit override (sidefile-derived count-based ratio wins over rounded statusline `cache N%`). 11 new tests; 710 lib + 68 integration green. v1.30.0 shipped Phase G G-2 + Phase F F-5. G-2: operator-tunable Provider Setup defaults via a new `[provider_setup]` config section in `qmonster.toml` (`claude_sidefile = true` default flips the recommended sidefile JSON-export workflow on at startup; `codex_app_server = false` keeps the advanced daemon opt-in). New `ProviderSetupConfig` struct in `src/app/config.rs` and `ProviderSetupOverlay::from_config(&QmonsterConfig)` constructor seed runtime overlay state from persisted config; `tui_loop.rs` uses `from_config` instead of `::new()`. Sidefile-on-default writes the full Claude statusLine JSON to `~/.local/share/ai-cli-status/claude/<sid>.json` so downstream Claude tooling (the F-5b reader, future audit pipelines) can read raw cache_read / cache_creation / resets_at / cost / transcript_path. F-5: Claude statusline `cache N%` parser → CACHE badge. New `SignalSet.cache_hit_ratio: Option<MetricValue<f64>>` field (0..1, ProviderOfficial); the recommended `~/.claude/statusline.sh` emits the optional `cache N%` token between CTX and 5h, the Claude adapter parses it via a new `find_status_label_in` range-bounded label search, and `parse_claude_status_line_row` narrows CTX''s percent-search bound to stop at the `cache` label so values don''t bleed. UI + policy prefer this pre-computed ratio when populated; the count-derived path (Codex F-4) remains as fallback. The CACHE badge now surfaces for Claude panes alongside Codex; F-7 / F-7b cache rules fire on Claude panes too. 8 new tests; 699 lib + 68 integration green. v1.29.0 opened Phase G with G-1: Provider Setup overlay. New `P` key opens a 3-tab in-TUI modal (Claude/Codex/Gemini) showing recommended config snippets and detected current state per provider via read-only filesystem probes of `~/.claude/statusline.sh`, `~/.codex/config.toml`, and `~/.gemini/settings.json`. New `src/ui/provider_setup.rs` module owns view-model, state detectors, snippet `include_str!` consts, and `render_tab_content`; `src/app/provider_setup_overlay.rs` mirrors `settings_overlay.rs` for key dispatch. Read-only — Qmonster never writes provider config; operator copies snippets manually. v1.28.0 shipped F-7-config: operator-tunable cache thresholds. New `CacheConfig` struct in `src/app/config.rs` exposes the 6 thresholds from F-7/F-7b via `[cache]` section in `qmonster.toml`; `PolicyGates` gains 6 `cache_*` fields; `cache.rs` reads from gates and interpolates values into reason strings. v1.27.1 fixed Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4''s cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards.'
+  next_phase: "Phase F F-4b shipped (v1.33.0), closing the Gemini /stats parser parity gap left after F-5/F-5b (Claude) and F-6 (Codex). F-7c (wait_for_reset / snapshot_before_reset) is now the next planned slice — both Claude (F-5b) and Codex (F-6) populate quota_*_resets_at, so the trigger surface is in place; F-4b's Gemini path doesn't expose reset timestamps so F-7c remains a Claude+Codex-only feature. Further long-term slices include live live-render of /stats panel updates without operator-press (currently deferred — Gemini /stats output only refreshes when the operator dispatches `/stats model` or `/stats session` via the `u` cycle), plus a settings-overlay UI for [cache] booleans (still unscoped). [provider_setup] toggles continue to live in Settings -> Integrations (v1.32.2)."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

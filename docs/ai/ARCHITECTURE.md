@@ -641,6 +641,41 @@ module shape.
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
 
+v1.33.0 ships **Phase F F-4b Gemini `/stats` output parser**. New
+private parsers in `src/adapters/gemini.rs` close the long-deferred
+F-4b slice that was originally listed alongside F-4 in v1.25.0 but
+pending a live Ink-rendered fixture. `parse_gemini_stats_session(tail)
+-> GeminiSessionStats { session_id, tool_calls }` defensively scans
+stripped-box-char lines for `Session ID:` and `Tool Calls:` anchors;
+`parse_gemini_stats_model(tail) -> Option<GeminiModelStats {
+input_tokens, output_tokens, cache_reads }>` performs section-anchored
+scanning for the `Tokens` header followed by `Total` / `Input` /
+`Cache Reads` / `Output` rows. Architecture choice: section-anchored
+scanning over plain regex — Gemini's `/stats` output is rendered by
+Ink and the box-drawing characters surrounding each row vary across
+terminal widths and Ink versions, so the parser strips those
+characters first (`strip_box_chars`), then walks lines forward from
+each labeled anchor. Helpers `strip_metric_label`, `first_count_in`,
+and `parse_count_with_commas` keep the line scan cheap and defensive.
+Honesty rule: the model parser returns `Some` ONLY when both
+`input_tokens` AND `output_tokens` parse — don't ship half-data.
+`GeminiAdapter::parse` integrates both parsers AFTER the existing
+status-table block: `RuntimeFactKind::SessionId` (reused from F-5b)
+populates from the session panel, and `input_tokens` /
+`output_tokens` / `cached_input_tokens` populate via `is_none()`
+guards. The is_none() guard pattern is shared with F-5b (Claude
+sidefile) and F-6 (Codex app-server): adapters' enrichment paths
+preserve any earlier-surface authority on the same field rather than
+overwriting it. OAuth Gemini honesty: `cache_reads` stays `None` per
+FAQ-documented Google limit (the `Cache Reads` row is hidden for
+OAuth users); Qmonster never synthesizes a zero. Bundled v1.33.x
+polish: `src/ui/panels.rs::primary_metric_row` adds `RESET 5H <eta>`
+/ `RESET 7D <eta>` badges to the compact one-line view via the same
+`format_resets_eta` helper and SourceKind labeling as the verbose
+F-5b `metric_row`. 8 new unit tests with synthetic Ink-rendered
+fixtures (honesty cases: OAuth → cache_reads=None, panel absent →
+defaults). Tests grew to 753 lib + 68 integration green.
+
 v1.32.0 ships **Phase F F-6 Codex App Server JSON-RPC client**. New
 `src/adapters/codex_app_server.rs` spawns `codex app-server` as a
 child process with `-c sandbox_mode="danger-full-access"` to bypass

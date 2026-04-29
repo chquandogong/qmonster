@@ -1,6 +1,6 @@
 mission:
-  version: "1.32.2"
-  title: "Qmonster v1.32.2 — Settings integrations and token sparkline polish."
+  version: "1.33.0"
+  title: "Qmonster v1.33.0 — Phase F F-4b: Gemini /stats output parser → cumulative token / cache surfacing on Gemini panes."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1353,6 +1353,36 @@ mission:
     collecting N/2` while waiting for enough samples. 744 lib + 68
     integration tests green.
 
+    Phase F continues with F-4b (v1.33.0, this revision) — the long-
+    deferred Gemini `/stats` output parser. New private parsers in
+    `src/adapters/gemini.rs`: `parse_gemini_stats_session(tail) ->
+    GeminiSessionStats { session_id, tool_calls }` defensively scans
+    stripped-box-char lines for `Session ID:` and `Tool Calls:`
+    anchors, and `parse_gemini_stats_model(tail) ->
+    Option<GeminiModelStats { input_tokens, output_tokens,
+    cache_reads }>` performs section-anchored scanning for the
+    `Tokens` header followed by `Total` / `Input` / `Cache Reads` /
+    `Output` rows. The model parser returns `Some` ONLY when both
+    `input_tokens` AND `output_tokens` parse — honesty rule, don't
+    ship half-data. Helpers `strip_box_chars`, `strip_metric_label`,
+    `first_count_in`, and `parse_count_with_commas` keep the
+    line-by-line scan defensive against Ink rendering variations.
+    `GeminiAdapter::parse` integrates both parsers AFTER the existing
+    status-table block: `RuntimeFactKind::SessionId` (reused from
+    F-5b) populates from the session panel, and
+    `input_tokens` / `output_tokens` / `cached_input_tokens` populate
+    via `is_none()` guards mirroring the F-5b Claude / F-6 Codex
+    pattern — preserve any earlier-surface truth. OAuth Gemini honesty:
+    `cache_reads` stays `None` per FAQ-documented Google limit (the
+    `Cache Reads` row is hidden for OAuth users); never synthesize a
+    zero. Bundled v1.33.x polish: `src/ui/panels.rs::primary_metric_row`
+    adds `RESET 5H <eta>` and `RESET 7D <eta>` badges to the compact
+    one-line view, mirroring the verbose `metric_row` text rows from
+    F-5b via the same `format_resets_eta` helper and SourceKind
+    labeling. 8 new unit tests with synthetic Ink-rendered fixtures
+    (honesty cases: OAuth → cache_reads=None, panel absent →
+    defaults). 753 lib + 68 integration green; clippy + fmt clean.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1408,6 +1438,10 @@ mission:
     - "F-6: Context gains codex_app_server (Option<CodexAppServer<SubprocessIo>>) + codex_rate_limits (Option<CodexRateLimits>); spawned at TUI startup when [provider_setup] codex_app_server = true; spawn success/failure surfaces as SystemNotice without aborting startup"
     - "F-6: event_loop::run_once_with_target reads rate limits once per polling tick before iterating panes; failure drops client + clears cache so stale data never lingers; apply_codex_rate_limits is_none-guards quota_*_pressure fields and unconditionally fills quota_*_resets_at"
     - "F-6: 5h resets in <eta> / 7d resets in <eta> rows now appear on Codex pane cards via the same panels.rs::format_resets_eta helper used by Claude (F-5b path)"
+    - "F-4b: src/adapters/gemini.rs gains parse_gemini_stats_session (Session ID + Tool Calls) and parse_gemini_stats_model (Total/Input/Cache Reads/Output rows) with strip_box_chars / strip_metric_label / first_count_in / parse_count_with_commas helpers"
+    - "F-4b: GeminiAdapter::parse pushes RuntimeFactKind::SessionId from /stats session and fills input_tokens/output_tokens/cached_input_tokens from /stats model via is_none() guards (mirrors F-5b); OAuth Gemini cache_reads absence preserved (no synthesized zero)"
+    - "F-4b: GeminiModelStats returns Some only when both input_tokens AND output_tokens extract from the section-anchored Tokens table (honesty rule: don't ship half-data)"
+    - "v1.33.x polish: panels.rs::primary_metric_row renders RESET 5H <eta> / RESET 7D <eta> badges via format_resets_eta when resets_at populated (Claude sidefile or Codex app-server path)"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1700,5 +1734,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 164
+    total_revisions: 165
     history: "mission-history.yaml"
