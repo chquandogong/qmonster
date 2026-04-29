@@ -1,0 +1,25 @@
+title: "[Q&A] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for setup questions, provider behavior, tmux layout, and interpretation of Qmonster badges.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to understand or configure?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Include OS, tmux version, provider CLI, Qmonster version, and redacted snippets if relevant.
+      render: text
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: Commands, config, or docs already checked.

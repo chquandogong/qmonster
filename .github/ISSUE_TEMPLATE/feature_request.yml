@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose a scoped improvement.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What operator-visible gap should this close?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should Qmonster display, collect, or recommend?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Provider parser
+        - Runtime refresh
+        - Policy rule
+        - TUI / settings
+        - tmux transport
+        - Packaging / release
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Mention safety, privacy, provider API, or compatibility limits.
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Project fit
+      options:
+        - label: This keeps Qmonster observe-first by default.
+          required: true
+        - label: Provider-derived values can be source-labeled honestly.
+          required: true

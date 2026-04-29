@@ -1,4 +1,30 @@
-# Qmonster
+<p align="center">
+  <img src="docs/assets/qmonster-banner.svg" alt="Qmonster: observe-first TUI for Claude, Codex, and Gemini tmux panes" width="100%">
+</p>
+
+<h1 align="center">Qmonster</h1>
+
+<p align="center">
+  <strong>Observe-first Rust TUI for multi-CLI tmux development.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/chquandogong/qmonster/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/chquandogong/qmonster/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/chquandogong/qmonster/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/chquandogong/qmonster?display_name=tag&sort=semver"></a>
+  <a href="https://www.npmjs.com/package/qmonster"><img alt="npm version" src="https://img.shields.io/npm/v/qmonster?label=npm"></a>
+  <a href="https://github.com/chquandogong/qmonster/pkgs/npm/qmonster"><img alt="GitHub Packages mirror" src="https://img.shields.io/badge/GitHub%20Packages-%40chquandogong%2Fqmonster-2f81f7?logo=github"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/chquandogong/qmonster"></a>
+  <img alt="Rust 1.85+" src="https://img.shields.io/badge/Rust-1.85%2B-b7410e?logo=rust">
+  <img alt="tmux" src="https://img.shields.io/badge/tmux-observe--first-1bb91f">
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a>
+  · <a href="https://github.com/chquandogong/qmonster/releases">Releases</a>
+  · <a href="https://github.com/chquandogong/qmonster/discussions">Discussions</a>
+  · <a href="docs/RELEASING.md">Release flow</a>
+  · <a href="docs/ai/UI_MANUAL.md">UI manual</a>
+</p>
 
 Observe-first TUI for multi-CLI tmux development — watches Claude Code /
 Codex / Gemini panes (plus itself), surfaces alerts, token-pressure
@@ -413,6 +439,46 @@ Detailed rollout history is kept in `mission-history.yaml` and the
 canonical docs under `docs/ai/`; the README tracks the current operator
 shape rather than every patch-level slice.
 
+## Install
+
+```bash
+# npmjs package
+npm install -g qmonster
+
+# Run from the installed package wrapper. A Rust toolchain is still
+# required because the npm package builds/runs the Rust binary from source.
+qmonster --help
+```
+
+GitHub Packages mirrors the same source package under the scoped name
+`@chquandogong/qmonster`:
+
+```bash
+npm config set @chquandogong:registry https://npm.pkg.github.com
+npm install -g @chquandogong/qmonster
+```
+
+Source builds remain the primary development path:
+
+```bash
+cargo build --release
+cargo run --release
+```
+
+## Releases and Community
+
+- GitHub Releases: tagged `vX.Y.Z` releases with Linux x86_64 binary
+  tarballs, npm package tarballs, and checksums.
+- npmjs: canonical public package, `qmonster`.
+- GitHub Packages: scoped mirror package, `@chquandogong/qmonster`.
+- Discussions: setup questions, tmux layouts, provider behavior, and
+  workflow ideas.
+- Issues: reproducible defects and scoped feature requests.
+- Security: private vulnerability reports through GitHub Security
+  Advisories; see `SECURITY.md`.
+- SNS preview: `docs/assets/qmonster-social-preview.png` is ready for
+  GitHub Settings -> Social preview upload.
+
 ## Quick start
 
 ```bash
@@ -534,8 +600,10 @@ src/
   notify/      desktop + terminal-bell + severity-aware rate limiter
 
 docs/ai/       canonical docs (Git-tracked, stable rules)
+docs/assets/   README banner and SNS/social-preview artwork
 config/        qmonster.example.toml
 npm/           npm bin wrapper for source-based package install
+.github/       CI, release/package mirror workflows, issue/discussion templates
 tmux/          qmonster.tmux.conf.example
 tests/         integration tests
 ```
@@ -577,8 +645,10 @@ not require a real tmux session.
 - `docs/ai/WORKFLOWS.md` — planning loop, day-end routine, gitignore flip
 - `docs/ai/REVIEW_GUIDE.md` — reviewer contract (Codex / Gemini / human)
 - `docs/ai/UI_MANUAL.md` — user manual for TUI badges, severity letters, and metrics
+- `docs/RELEASING.md` — tag, GitHub Release, npm, and package mirror flow
 - `VERSION.md` — version surface map (ledger tag, npm package, Cargo crate)
 - `CONTRIBUTING.md` — local development, documentation, and release rules
+- `SECURITY.md` / `SUPPORT.md` — responsible reporting and support routing
 - `LICENSE` — MIT license
 
 ## Status & scope

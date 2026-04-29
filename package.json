@@ -14,10 +14,16 @@
   "keywords": [
     "tmux",
     "tui",
+    "rust",
+    "ratatui",
     "claude",
+    "claude-code",
     "codex",
     "gemini",
-    "monitoring"
+    "gemini-cli",
+    "ai-cli",
+    "monitoring",
+    "observability"
   ],
   "bin": {
     "qmonster": "npm/bin/qmonster"
@@ -29,10 +35,14 @@
     "src/",
     "config/",
     "docs/ai/",
+    "docs/assets/",
+    "docs/RELEASING.md",
     "README.md",
     "LICENSE",
     "VERSION.md",
-    "CONTRIBUTING.md"
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "SUPPORT.md"
   ],
   "engines": {
     "node": ">=18"

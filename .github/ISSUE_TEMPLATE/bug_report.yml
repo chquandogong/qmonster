@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a reproducible Qmonster defect.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for keeping the report concrete. Please avoid pasting raw provider transcripts that contain secrets.
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should Qmonster have done instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider surface
+      options:
+        - Claude
+        - Codex
+        - Gemini
+        - Qmonster UI
+        - tmux transport
+        - Configuration / packaging
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Include the smallest command/config path that reproduces the issue.
+      placeholder: |
+        1. Start tmux with ...
+        2. Run ...
+        3. Press ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, tmux version, Rust version, Qmonster version/tag, and relevant provider CLI version.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: sanitized
+    attributes:
+      label: Sanitized evidence
+      description: Paste redacted pane snippets, `cargo run -- --once` output, or screenshots if useful.
+      render: text

@@ -1,0 +1,33 @@
+title: "[Idea] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for workflow proposals, provider telemetry ideas, and policy-rule sketches that are not yet actionable issues.
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: What should Qmonster make easier or more visible?
+    validations:
+      required: true
+  - type: textarea
+    id: operator-value
+    attributes:
+      label: Operator value
+      description: What decision or repeated workflow improves?
+    validations:
+      required: true
+  - type: textarea
+    id: data-source
+    attributes:
+      label: Data source
+      description: Which provider surface, file, or tmux signal would support this honestly?
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Project fit
+      options:
+        - label: Keeps Qmonster observe-first by default.
+        - label: Does not require destructive automation.

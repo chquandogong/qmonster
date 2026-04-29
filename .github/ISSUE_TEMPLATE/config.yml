@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and setup help
+    url: https://github.com/chquandogong/qmonster/discussions
+    about: Use Discussions for setup questions, provider-specific behavior, and workflow ideas.
+  - name: Security report
+    url: https://github.com/chquandogong/qmonster/security/advisories/new
+    about: Report security issues privately through GitHub Security Advisories.
