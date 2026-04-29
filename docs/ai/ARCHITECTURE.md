@@ -641,6 +641,49 @@ module shape.
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
 
+v1.32.0 ships **Phase F F-6 Codex App Server JSON-RPC client**. New
+`src/adapters/codex_app_server.rs` spawns `codex app-server` as a
+child process with `-c sandbox_mode="danger-full-access"` to bypass
+bubblewrap on Linux (without the flag, the spawn fails with a sandbox
+setup error), pipes its stdin / stdout, and speaks JSON-RPC over
+NDJSON. The client first sends `initialize`, then
+`account/rateLimits/read`; the parser turns the response into
+`CodexRateLimits { primary: Option<CodexRateWindow>, secondary:
+Option<CodexRateWindow> }` where each window carries `used_percent`
+(clamped 0..=100), `window_duration_mins`, and
+`resets_at_unix_seconds`. Architecture choice: a `JsonRpcIo` trait
+abstracts the child's IO so tests inject a `VecDequeIo` stub for
+fully synchronous in-memory unit testing; `SubprocessIo` is the
+production implementation, and its `Drop` closes stdin (graceful EOF)
+then runs `try_wait` → `kill` fallback for clean child reap on TUI
+shutdown. `Context` gains `codex_app_server: Option<CodexAppServer<SubprocessIo>>`
+(long-lived client owned by the app loop) and
+`codex_rate_limits: Option<CodexRateLimits>` (cached account-level
+snapshot updated once per polling tick). Lifecycle: `tui_loop`
+spawns the server once at startup when
+`[provider_setup] codex_app_server = true`; spawn success surfaces
+as `SystemNotice` (Severity::Good), spawn failure surfaces as
+`SystemNotice` (Severity::Warning) — startup never aborts on
+app-server failure, so an operator who enabled the toggle but
+doesn't have a working `codex app-server` binary still gets the rest
+of the TUI. `event_loop::run_once_with_target` calls
+`read_rate_limits()` once per polling tick BEFORE iterating panes;
+on success it caches the result on `Context.codex_rate_limits`, on
+failure it logs to stderr, drops the client, and clears the cache so
+stale data can never linger past one transient failure. Account-
+level read once-per-tick + per-pane apply: new
+`apply_codex_rate_limits(signals, rl)` helper runs inside the
+per-pane loop only when `provider == Codex`, writing the cached
+account-level snapshot into the pane's SignalSet. Two precedence
+rules:`quota_5h_pressure` / `quota_weekly_pressure` populate ONLY
+when the statusline path didn't (is_none guards — the existing per-
+pane bottom-status authority stays intact when present), but
+`quota_5h_resets_at` / `quota_weekly_resets_at` populate
+unconditionally (no other surface emits Codex reset timestamps).
+Result: F-5b's `5h resets in <eta>` / `7d resets in <eta>` rows
+now appear on Codex pane cards too, consistent with the Claude
+sidefile path. Tests grew to 726 lib + 68 integration green.
+
 v1.31.0 ships **Phase F F-5b Claude sidefile reader**. The recommended
 `~/.claude/statusline.sh` (G-1 snippet) drops a per-session JSON file at
 `~/.local/share/ai-cli-status/claude/<session_id>.json` carrying raw

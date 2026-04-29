@@ -437,6 +437,29 @@ side_effects (N):
       반올림된 statusline `cache N%` 값을 덮어씁니다. 이 결과
       F-7 / F-7b cache rule이 Claude pane에서 더 정밀하게
       발동합니다.
+  - **v1.32.0 업데이트 (F-6) — Codex App Server**: G-2의
+    `[provider_setup] codex_app_server = true` 토글이 켜져 있을 때
+    Qmonster TUI는 startup에서 `codex app-server` 자식 프로세스를
+    한 번 띄워 JSON-RPC `account/rateLimits/read`를 polling tick마다
+    호출합니다. 응답의 5h / weekly 창이 갖는 `resets_at_unix_seconds`
+    타임스탬프가 모든 Codex pane에 broadcast되어, Claude pane과
+    동일한 **`5h resets in <eta>` / `7d resets in <eta>` 행**이
+    Codex pane card에도 표시됩니다 (Codex tmux statusline은 reset
+    timestamp를 노출하지 않고 percentage만 보여주므로 app-server만
+    가능한 새 정보). 포맷은 F-5b의 `format_resets_eta`와 같은
+    `2h13m` / `45m` / `30s`입니다. Pressure 필드 (`quota_5h_pressure`
+    / `quota_weekly_pressure`)는 statusline 경로가 채우지 않았을
+    때만 app-server 값으로 채워집니다 (`is_none()` 가드 — 기존
+    per-pane 권한 유지). 시작 시 spawn 결과는 `SystemNotice`로
+    안내됩니다 — 성공: "Codex App Server started" (Severity::Good),
+    실패: "Codex App Server failed to start: <reason>"
+    (Severity::Warning). Spawn 실패해도 TUI는 정상 시작합니다.
+    배지가 안 보이면 `P` overlay → Codex 탭에서 app-server 가이드를
+    참고해 `codex app-server`를 사용 가능한 상태로 만든 뒤
+    `qmonster.toml`의 `[provider_setup] codex_app_server = true`를
+    확인하세요. Linux에서는 bubblewrap 우회를 위해 spawn 시
+    `-c sandbox_mode="danger-full-access"` 플래그가 자동으로
+    추가됩니다.
 
 ## 9. 운영 파일
 

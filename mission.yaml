@@ -1,6 +1,6 @@
 mission:
-  version: "1.31.0"
-  title: "Qmonster v1.31.0 — Phase F F-5b: Claude sidefile reader → cost / raw token counts / reset eta surfacing."
+  version: "1.32.0"
+  title: "Qmonster v1.32.0 — Phase F F-6: Codex App Server JSON-RPC client → 5h/7d resets_at on Codex panes."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1300,6 +1300,40 @@ mission:
     N%` value (raw counts → precise ratio). 11 new tests;
     710 lib + 68 integration green.
 
+    Phase F continues with F-6 (v1.32.0): the Codex App Server
+    JSON-RPC client. New `src/adapters/codex_app_server.rs`
+    spawns `codex app-server` with `-c
+    sandbox_mode="danger-full-access"` to bypass bubblewrap
+    on Linux, sends NDJSON `initialize` + `account/rateLimits/read`
+    over the child's piped stdin/stdout, and parses the
+    response into `CodexRateLimits { primary, secondary }`
+    where each window carries `used_percent` (clamped 0..=100),
+    `window_duration_mins`, and `resets_at_unix_seconds`.
+    A `JsonRpcIo` trait abstracts the IO so tests stub the
+    child via `VecDequeIo`; `SubprocessIo`'s Drop closes stdin
+    for graceful EOF then try_wait → kill fallback for clean
+    reap. `Context` gains `codex_app_server` (long-lived
+    client) and `codex_rate_limits` (cached snapshot)
+    fields. `tui_loop` spawns the server once at startup
+    when `[provider_setup] codex_app_server = true`; success
+    or failure both surface a SystemNotice and the TUI
+    continues either way. `event_loop::run_once_with_target`
+    calls `read_rate_limits()` once per polling tick BEFORE
+    iterating panes; read failure drops the client + clears
+    the cache so stale data can never linger. New
+    `apply_codex_rate_limits` helper writes the snapshot into
+    each Codex-pane SignalSet — pressure fields with
+    is_none() guards (statusline path keeps priority),
+    resets_at fields unconditional (no other surface emits
+    them). Result: F-5b's `5h resets in <eta>` / `7d resets
+    in <eta>` rows now appear on Codex pane cards too,
+    consistent with the Claude sidefile path. Bundled
+    polish: settings-overlay mouse (click-to-select +
+    scroll-wheel cycles fields), pane-card badge wrapping
+    keyed off terminal width, Provider Setup overlay
+    Tab/Right/BackTab/Left tab cycling. 11 new tests; 726
+    lib + 68 integration green.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1348,6 +1382,10 @@ mission:
     - "F-5b: SignalSet gains quota_5h_resets_at and quota_weekly_resets_at (Option<MetricValue<u64>>, Unix seconds); panels.rs::metric_row renders `5h resets in <eta>` and `7d resets in <eta>` via format_resets_eta (capped at 14 days)"
     - "F-5b: RuntimeFactKind::{SessionId, TranscriptPath} variants added (SID / XSCRIPT badges); apply_claude_sidefile in parse_for_with_environment populates raw input_tokens / output_tokens / cached_input_tokens / cost_usd / quota_*_resets_at / runtime_facts when sidefile JSON is found"
     - "F-5b: sidefile-derived cache_hit_ratio overrides statusline-derived value (raw count-based ratio > rounded `cache N%`); statusline path remains the fallback when no sidefile is matched"
+    - "F-6: src/adapters/codex_app_server.rs spawns `codex app-server` with sandbox_mode=danger-full-access; sends initialize + account/rateLimits/read over piped stdin/stdout; parses CodexRateLimits.{primary,secondary}.{used_percent,window_duration_mins,resets_at_unix_seconds}; JsonRpcIo trait + VecDequeIo stub for tests"
+    - "F-6: Context gains codex_app_server (Option<CodexAppServer<SubprocessIo>>) + codex_rate_limits (Option<CodexRateLimits>); spawned at TUI startup when [provider_setup] codex_app_server = true; spawn success/failure surfaces as SystemNotice without aborting startup"
+    - "F-6: event_loop::run_once_with_target reads rate limits once per polling tick before iterating panes; failure drops client + clears cache so stale data never lingers; apply_codex_rate_limits is_none-guards quota_*_pressure fields and unconditionally fills quota_*_resets_at"
+    - "F-6: 5h resets in <eta> / 7d resets in <eta> rows now appear on Codex pane cards via the same panels.rs::format_resets_eta helper used by Claude (F-5b path)"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1640,5 +1678,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 161
+    total_revisions: 162
     history: "mission-history.yaml"
