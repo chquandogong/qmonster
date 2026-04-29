@@ -1,6 +1,6 @@
 mission:
-  version: "1.35.0"
-  title: "Qmonster v1.35.0 — Phase F F-7d: operator-tunable [reset] thresholds for the F-7c reset-aware advisories."
+  version: "1.35.1"
+  title: "Qmonster v1.35.1 — Phase F F-4b follow-up: Gemini /model reset rows + Provider Setup Tmux tab + Settings reset/badges sync + cache_creation_input_tokens surface."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
