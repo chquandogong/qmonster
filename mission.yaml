@@ -1,6 +1,6 @@
 mission:
-  version: "1.32.0"
-  title: "Qmonster v1.32.0 — Phase F F-6: Codex App Server JSON-RPC client → 5h/7d resets_at on Codex panes."
+  version: "1.32.1"
+  title: "Qmonster v1.32.1 — Provider Setup overlay readability polish."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1334,6 +1334,15 @@ mission:
     Tab/Right/BackTab/Left tab cycling. 11 new tests; 726
     lib + 68 integration green.
 
+    v1.32.1 ships Provider Setup overlay readability polish.
+    The tab body now separates Current Status, Options, Copy
+    With y, and the copied-preview content so provider setup
+    guidance no longer reads as one mixed block. `[s]` toggle
+    state is shown near the top as ON/OFF, and each tab states
+    exactly what pressing `y` copies plus which informational
+    sections are not copied. 5 new Provider Setup tests; 728
+    lib + 68 integration green.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1376,6 +1385,7 @@ mission:
     - "G-1: src/app/provider_setup_overlay.rs::handle_provider_setup_overlay_key returns false when overlay closed; Esc/q close, 1/2/3 switch tabs, s toggles per-tab boolean, Up/k scroll up, Down/j scroll down; src/app/tui_loop.rs owns the overlay alongside settings_overlay, plumbed to DashboardFrameView; render_provider_setup_modal in src/ui/dashboard.rs uses Tabs widget + scrollable Paragraph + hint footer at 80%×76% centered"
     - "G-2: [provider_setup] config section in src/app/config.rs with claude_sidefile: bool (default true) and codex_app_server: bool (default false); #[serde(default)] keeps existing configs working unchanged"
     - "G-2: ProviderSetupOverlay::from_config(&QmonsterConfig) constructor seeds per-tab toggles from persisted config; tui_loop.rs uses from_config in place of ::new() at startup"
+    - "v1.32.1: Provider Setup overlay body uses Current Status / Options / Copy With y / Preview sections; [s] toggles render as ON/OFF near the top; each tab documents exactly what y copies and which informational sections are not copied"
     - "F-5: SignalSet.cache_hit_ratio: Option<MetricValue<f64>> field added; Claude adapter parses optional `cache N%` token between CTX and 5h on statusline.sh output, populates cache_hit_ratio with SourceKind::ProviderOfficial"
     - "F-5: policy/rules/cache.rs::cache_hit_ratio() prefers SignalSet.cache_hit_ratio over count-derived computation; UI panels.rs::signals_cache_pct_with_source() helper encapsulates the same precedence so the CACHE badge surfaces for Claude panes (not just Codex)"
     - "F-5b: src/adapters/claude_sidefile.rs reads ~/.local/share/ai-cli-status/claude/<sid>.json per Claude pane, matched to current_path by JSON cwd field, newest-mtime tiebreak; provider gate restricts to Claude only"

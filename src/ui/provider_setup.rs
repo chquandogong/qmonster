@@ -303,6 +303,71 @@ pub fn snippet_for_tab(overlay: &ProviderSetupOverlay) -> (&'static str, String)
     }
 }
 
+fn section(out: &mut Vec<String>, title: &str) {
+    if !out.is_empty() {
+        out.push(String::new());
+    }
+    out.push(format!("--- {title} ---"));
+}
+
+fn detail_row(label: &str, value: impl AsRef<str>) -> String {
+    format!("  {label:<34} {}", value.as_ref())
+}
+
+fn on_off(enabled: bool) -> &'static str {
+    if enabled { "ON" } else { "OFF" }
+}
+
+fn yes_no(enabled: bool) -> &'static str {
+    if enabled { "YES" } else { "NO" }
+}
+
+fn append_copy_contract(out: &mut Vec<String>, overlay: &ProviderSetupOverlay) {
+    section(out, "Copy With y");
+    match overlay.tab {
+        ProviderSetupTab::Claude => {
+            out.push(detail_row("Target", "~/.claude/statusline.sh"));
+            out.push(detail_row("Content", "base statusline script"));
+            out.push(detail_row(
+                "Optional included",
+                format!(
+                    "Sidefile JSON export {}",
+                    on_off(overlay.claude_sidefile_enabled)
+                ),
+            ));
+            out.push(detail_row("Not copied", "Wiring section below"));
+        }
+        ProviderSetupTab::Codex => {
+            out.push(detail_row("Target", "Codex setup guide"));
+            out.push(detail_row("Content", "/statusline ON/OFF guidance"));
+            out.push(detail_row(
+                "Optional included",
+                format!(
+                    "Codex App Server polling guide {}",
+                    on_off(overlay.codex_app_server_enabled)
+                ),
+            ));
+        }
+        ProviderSetupTab::Gemini => {
+            out.push(detail_row("Target", "~/.gemini/settings.json"));
+            out.push(detail_row("Content", "footer visibility JSON snippet"));
+            out.push(detail_row(
+                "Not copied",
+                "/stats instructions and auth note below",
+            ));
+        }
+    }
+}
+
+fn append_copied_preview(out: &mut Vec<String>, overlay: &ProviderSetupOverlay) {
+    let (label, text) = snippet_for_tab(overlay);
+    section(out, "Preview: y copies this content");
+    out.push(format!("# {label}"));
+    for line in text.lines() {
+        out.push(line.to_string());
+    }
+}
+
 /// Compose the full text shown for the active tab, accounting for the
 /// per-tab toggle. Returns lines (Vec<String>) for ratatui Paragraph
 /// rendering.
@@ -315,73 +380,37 @@ pub fn render_tab_content(
     let mut out = Vec::new();
     match overlay.tab {
         ProviderSetupTab::Claude => {
-            out.push("=== Current state ===".into());
-            out.push(format!(
-                "  ~/.claude/statusline.sh: {}",
-                if claude.statusline_script_present {
-                    format!("present ({} bytes)", claude.statusline_size_bytes)
-                } else {
-                    "MISSING".into()
-                }
+            section(&mut out, "Current Status");
+            let statusline_state = if claude.statusline_script_present {
+                format!("present ({} bytes)", claude.statusline_size_bytes)
+            } else {
+                "MISSING".into()
+            };
+            out.push(detail_row("~/.claude/statusline.sh", statusline_state));
+            out.push(detail_row(
+                "cache_read_input_tokens",
+                yes_no(claude.exports_cache_read),
             ));
-            out.push(format!(
-                "  exports cache_read_input_tokens: {}",
-                if claude.exports_cache_read {
-                    "YES"
-                } else {
-                    "NO"
-                }
+            out.push(detail_row(
+                "cache_creation_input_tokens",
+                yes_no(claude.exports_cache_creation),
             ));
-            out.push(format!(
-                "  exports cache_creation_input_tokens: {}",
-                if claude.exports_cache_creation {
-                    "YES"
-                } else {
-                    "NO"
-                }
+            out.push(detail_row(
+                "sidefile JSON export",
+                yes_no(claude.sidefile_export_present),
             ));
-            out.push(format!(
-                "  sidefile JSON export: {}",
-                if claude.sidefile_export_present {
-                    "YES"
-                } else {
-                    "NO"
-                }
+
+            section(&mut out, "Options");
+            out.push(detail_row(
+                "[s] Sidefile JSON export",
+                on_off(overlay.claude_sidefile_enabled),
             ));
-            out.push(String::new());
-            out.push(format!(
-                "[s] toggle Sidefile JSON export section: {}",
-                if overlay.claude_sidefile_enabled {
-                    "[x]"
-                } else {
-                    "[ ]"
-                }
-            ));
-            out.push(String::new());
-            out.push("=== Recommended ~/.claude/statusline.sh ===".into());
-            out.push("# Copy the block below into ~/.claude/statusline.sh".into());
-            out.push("# then: chmod +x ~/.claude/statusline.sh".into());
-            out.push(String::new());
-            for line in CLAUDE_STATUSLINE_BASE.lines() {
-                out.push(line.to_string());
-            }
-            if overlay.claude_sidefile_enabled {
-                out.push(String::new());
-                out.push("=== Sidefile JSON export (paste into the script's top) ===".into());
-                out.push("# Saves the full statusLine JSON to a per-session file.".into());
-                out.push("# Future Qmonster slices (F-5) can read this file to surface".into());
-                out.push("# cache_read_input_tokens, cost, resets_at directly.".into());
-                out.push(String::new());
-                for line in CLAUDE_SIDEFILE_ADDON.lines() {
-                    out.push(line.to_string());
-                }
-                out.push(String::new());
-                out.push(
-                    "# Sidefile path: ~/.local/share/ai-cli-status/claude/<session_id>.json".into(),
-                );
-            }
-            out.push(String::new());
-            out.push("=== Wiring (one-time) ===".into());
+            out.push("      Adds cache/cost/reset sidefile fields to the copied snippet.".into());
+
+            append_copy_contract(&mut out, overlay);
+            append_copied_preview(&mut out, overlay);
+
+            section(&mut out, "Wiring (one-time, not copied by y)");
             out.push("Add to ~/.claude/settings.json:".into());
             out.push(r#"  "statusLine": {"#.into());
             out.push(r#"    "type": "command","#.into());
@@ -389,71 +418,69 @@ pub fn render_tab_content(
             out.push(r#"  }"#.into());
         }
         ProviderSetupTab::Codex => {
-            out.push("=== Current state ===".into());
-            out.push(format!(
-                "  ~/.codex/config.toml: {}",
+            section(&mut out, "Current Status");
+            out.push(detail_row(
+                "~/.codex/config.toml",
                 if codex.config_present {
                     "present"
                 } else {
                     "MISSING"
-                }
+                },
             ));
-            out.push("  /statusline live toggles: not detectable (run /statusline in pane)".into());
-            out.push(String::new());
-            out.push(format!(
-                "[s] toggle Codex App Server section: {}",
-                if overlay.codex_app_server_enabled {
-                    "[x]"
-                } else {
-                    "[ ]"
-                }
+            out.push(detail_row(
+                "/statusline live toggles",
+                "not detectable; run /statusline in pane",
             ));
-            out.push(String::new());
-            out.push("=== /statusline ON/OFF guidance ===".into());
-            for line in CODEX_STATUSLINE_GUIDE.lines() {
-                out.push(line.to_string());
-            }
-            if overlay.codex_app_server_enabled {
-                out.push(String::new());
-                out.push("=== Codex App Server polling (advanced) ===".into());
-                for line in CODEX_APP_SERVER_GUIDE.lines() {
-                    out.push(line.to_string());
-                }
-            }
+
+            section(&mut out, "Options");
+            out.push(detail_row(
+                "[s] Codex App Server guide",
+                on_off(overlay.codex_app_server_enabled),
+            ));
+            out.push(
+                "      Adds advanced app-server polling guidance to the copied snippet.".into(),
+            );
+
+            append_copy_contract(&mut out, overlay);
+            append_copied_preview(&mut out, overlay);
         }
         ProviderSetupTab::Gemini => {
-            out.push("=== Current state ===".into());
-            out.push(format!(
-                "  ~/.gemini/settings.json: {}",
+            section(&mut out, "Current Status");
+            out.push(detail_row(
+                "~/.gemini/settings.json",
                 if gemini.settings_present {
                     "present"
                 } else {
                     "MISSING"
-                }
+                },
             ));
-            out.push(format!("    hideCWD: {}", gemini.hide_cwd));
-            out.push(format!(
-                "    hideSandboxStatus: {}",
-                gemini.hide_sandbox_status
+            out.push(detail_row("hideCWD", gemini.hide_cwd.to_string()));
+            out.push(detail_row(
+                "hideSandboxStatus",
+                gemini.hide_sandbox_status.to_string(),
             ));
-            out.push(format!("    hideModelInfo: {}", gemini.hide_model_info));
-            out.push(format!(
-                "    hideContextPercentage: {}",
-                gemini.hide_context_percentage
+            out.push(detail_row(
+                "hideModelInfo",
+                gemini.hide_model_info.to_string(),
             ));
-            out.push(format!("    hideFooter: {}", gemini.hide_footer));
-            out.push(String::new());
-            out.push("=== Recommended ~/.gemini/settings.json (merge with existing) ===".into());
-            for line in GEMINI_FOOTER_SETTINGS.lines() {
-                out.push(line.to_string());
-            }
-            out.push(String::new());
-            out.push("=== /stats periodic dispatch ===".into());
+            out.push(detail_row(
+                "hideContextPercentage",
+                gemini.hide_context_percentage.to_string(),
+            ));
+            out.push(detail_row("hideFooter", gemini.hide_footer.to_string()));
+
+            section(&mut out, "Options");
+            out.push("  No optional sections on this tab.".into());
+
+            append_copy_contract(&mut out, overlay);
+            append_copied_preview(&mut out, overlay);
+
+            section(&mut out, "/stats periodic dispatch (not copied by y)");
             out.push("Qmonster's `u` key already cycles `/stats session` →".into());
             out.push("`/stats model` → `/stats tools` on the selected Gemini pane.".into());
             out.push("No additional setup needed — just keep using `u` periodically.".into());
-            out.push(String::new());
-            out.push("=== Auth note (informational, no action) ===".into());
+
+            section(&mut out, "Auth note (informational, not copied by y)");
             for line in GEMINI_AUTH_NOTE.lines() {
                 out.push(line.to_string());
             }
@@ -564,12 +591,21 @@ mod tests {
         let gemini = GeminiFooterState::default();
         let lines = render_tab_content(&overlay, &claude, &codex, &gemini);
         let text = lines.join("\n");
-        assert!(text.contains("Current state"));
+        assert!(text.contains("Current Status"));
         assert!(text.contains("1718 bytes"));
-        assert!(text.contains("Recommended ~/.claude/statusline.sh"));
+        assert!(text.contains("Options"));
+        assert!(text.contains("[s] Sidefile JSON export"));
+        assert!(text.contains("Copy With y"));
+        assert!(text.contains("Target"));
+        assert!(text.contains("~/.claude/statusline.sh"));
+        assert!(text.contains("Preview: y copies this content"));
         assert!(
-            !text.contains("Sidefile JSON export (paste"),
+            text.contains("Sidefile JSON export OFF"),
             "sidefile section should be hidden by default"
+        );
+        assert!(
+            !text.contains("ai-cli-status/claude"),
+            "sidefile addon must not be rendered by default"
         );
     }
 
@@ -660,7 +696,69 @@ mod tests {
         let lines = render_tab_content(&overlay, &claude, &codex, &gemini);
         let text = lines.join("\n");
         assert!(text.contains("Sidefile JSON export"));
+        assert!(text.contains("Sidefile JSON export ON"));
         assert!(text.contains("ai-cli-status/claude"));
+    }
+
+    #[test]
+    fn render_tab_content_codex_surfaces_toggle_and_y_copy_target() {
+        let overlay = ProviderSetupOverlay {
+            tab: ProviderSetupTab::Codex,
+            codex_app_server_enabled: true,
+            ..Default::default()
+        };
+        let claude = ClaudeState {
+            statusline_script_present: false,
+            statusline_size_bytes: 0,
+            exports_cache_read: false,
+            exports_cache_creation: false,
+            exports_input_tokens: false,
+            sidefile_export_present: false,
+        };
+        let codex = CodexState {
+            config_present: true,
+            app_server_running: false,
+        };
+        let gemini = GeminiFooterState::default();
+        let text = render_tab_content(&overlay, &claude, &codex, &gemini).join("\n");
+        assert!(text.contains("Options"));
+        assert!(text.contains("[s] Codex App Server guide"));
+        assert!(text.contains("Codex App Server polling guide ON"));
+        assert!(text.contains("Copy With y"));
+        assert!(text.contains("Target"));
+        assert!(text.contains("Codex setup guide"));
+        assert!(text.contains("Preview: y copies this content"));
+        assert!(text.contains("codex app-server"));
+    }
+
+    #[test]
+    fn render_tab_content_gemini_marks_non_copied_notes() {
+        let overlay = ProviderSetupOverlay {
+            tab: ProviderSetupTab::Gemini,
+            ..Default::default()
+        };
+        let claude = ClaudeState {
+            statusline_script_present: false,
+            statusline_size_bytes: 0,
+            exports_cache_read: false,
+            exports_cache_creation: false,
+            exports_input_tokens: false,
+            sidefile_export_present: false,
+        };
+        let codex = CodexState {
+            config_present: false,
+            app_server_running: false,
+        };
+        let gemini = GeminiFooterState::default();
+        let text = render_tab_content(&overlay, &claude, &codex, &gemini).join("\n");
+        assert!(text.contains("No optional sections"));
+        assert!(text.contains("Copy With y"));
+        assert!(text.contains("Target"));
+        assert!(text.contains("~/.gemini/settings.json"));
+        assert!(text.contains("Not copied"));
+        assert!(text.contains("/stats instructions and auth note below"));
+        assert!(text.contains("/stats periodic dispatch (not copied by y)"));
+        assert!(text.contains("Auth note (informational, not copied by y)"));
     }
 
     #[test]

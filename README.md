@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.32.0`; current mission ledger `v1.32.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.32.1`; current mission ledger `v1.32.1`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,14 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.32.0` / npm `1.32.0`.
+Current release: `v1.32.1` / npm `1.32.1`.
+
+`v1.32.1` ships Provider Setup overlay readability polish. The tab body
+now uses stable sections for `Current Status`, `Options`, `Copy With y`,
+and `Preview: y copies this content`; `[s]` toggle state is shown near
+the top as ON/OFF, and each tab states exactly what pressing `y` copies
+and which informational sections are not copied. 5 new Provider Setup
+tests; 728 lib + 68 integration green.
 
 `v1.32.0` ships **Phase F F-6 Codex App Server JSON-RPC client**. New
 `src/adapters/codex_app_server.rs` spawns `codex app-server` with `-c
