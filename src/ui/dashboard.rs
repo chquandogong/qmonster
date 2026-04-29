@@ -304,15 +304,15 @@ pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
 /// Render the Provider Setup modal (Phase G-1, v0.4.0). Read-only
 /// guidance for wiring Claude / Codex / Gemini to expose token +
 /// cache data to Qmonster — never writes provider config files.
-pub fn render_provider_setup_modal(
-    frame: &mut Frame<'_>,
-    overlay: &crate::ui::provider_setup::ProviderSetupOverlay,
-) {
-    use ratatui::widgets::Tabs;
+pub struct ProviderSetupModalRects {
+    pub area: Rect,
+    pub tabs: Rect,
+    pub body: Rect,
+    pub hint: Rect,
+}
 
-    let area = centered_rect(80, 76, frame.area());
-    frame.render_widget(Clear, area);
-
+pub fn provider_setup_modal_rects(viewport: Rect) -> ProviderSetupModalRects {
+    let area = centered_rect(80, 76, viewport);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -321,6 +321,38 @@ pub fn render_provider_setup_modal(
             Constraint::Length(2), // hint
         ])
         .split(area);
+    ProviderSetupModalRects {
+        area,
+        tabs: chunks[0],
+        body: chunks[1],
+        hint: chunks[2],
+    }
+}
+
+/// Map a left-click column on the tabs row to a tab index (0/1/2).
+/// Splits the tabs rect into three equal slots; out-of-bounds columns
+/// return None.
+pub fn provider_setup_tab_index_at(tabs: Rect, column: u16) -> Option<usize> {
+    if column < tabs.x || column >= tabs.x.saturating_add(tabs.width) || tabs.width == 0 {
+        return None;
+    }
+    let offset = column - tabs.x;
+    let slot_width = tabs.width / 3;
+    if slot_width == 0 {
+        return Some(0);
+    }
+    let idx = (offset / slot_width) as usize;
+    Some(idx.min(2))
+}
+
+pub fn render_provider_setup_modal(
+    frame: &mut Frame<'_>,
+    overlay: &crate::ui::provider_setup::ProviderSetupOverlay,
+) {
+    use ratatui::widgets::Tabs;
+
+    let rects = provider_setup_modal_rects(frame.area());
+    frame.render_widget(Clear, rects.area);
 
     let home = crate::ui::provider_setup::detect_home();
     let claude = home
@@ -372,7 +404,15 @@ pub fn render_provider_setup_modal(
                 .fg(theme::TEXT_PRIMARY)
                 .add_modifier(Modifier::BOLD),
         );
-    frame.render_widget(tabs, chunks[0]);
+    frame.render_widget(tabs, rects.tabs);
+    frame.render_widget(
+        Paragraph::new("[x]").style(
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        ),
+        close_button_rect(rects.tabs),
+    );
 
     let lines = crate::ui::provider_setup::render_tab_content(overlay, &claude, &codex, &gemini);
     let body_text: Vec<Line<'_>> = lines.iter().map(|l| Line::from(l.as_str())).collect();
@@ -384,14 +424,14 @@ pub fn render_provider_setup_modal(
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
         );
-    frame.render_widget(body, chunks[1]);
+    frame.render_widget(body, rects.body);
 
     let hint = Paragraph::new(Line::from(
-        "[1]/[2]/[3] tab · [s] toggle · [↑↓ or j/k] scroll · [q]/[Esc] close",
+        "[1]/[2]/[3] tab · [s] toggle · [↑↓ wheel j/k] scroll · click [x] / [q] / [Esc] close",
     ))
     .style(Style::default().fg(theme::TEXT_DIM))
     .wrap(Wrap { trim: false });
-    frame.render_widget(hint, chunks[2]);
+    frame.render_widget(hint, rects.hint);
 }
 
 pub fn render_git_modal(frame: &mut Frame<'_>, title: &str, lines: &[String], scroll: u16) {
@@ -1457,5 +1497,27 @@ mod tests {
             dump.contains("Claude"),
             "default tab must render the Claude label"
         );
+        assert!(
+            dump.contains("[x]"),
+            "modal must render an [x] close button so mouse operators can dismiss it"
+        );
+    }
+
+    #[test]
+    fn provider_setup_tab_index_at_partitions_tabs_row_into_three_slots() {
+        let tabs = Rect::new(10, 0, 30, 3);
+        // First slot (Claude): columns 10..19
+        assert_eq!(provider_setup_tab_index_at(tabs, 10), Some(0));
+        assert_eq!(provider_setup_tab_index_at(tabs, 19), Some(0));
+        // Second slot (Codex): columns 20..29
+        assert_eq!(provider_setup_tab_index_at(tabs, 20), Some(1));
+        assert_eq!(provider_setup_tab_index_at(tabs, 29), Some(1));
+        // Third slot (Gemini): columns 30..39 (clamped to 2 even at the
+        // very last cell since width / 3 truncates).
+        assert_eq!(provider_setup_tab_index_at(tabs, 30), Some(2));
+        assert_eq!(provider_setup_tab_index_at(tabs, 39), Some(2));
+        // Out-of-bounds → None.
+        assert_eq!(provider_setup_tab_index_at(tabs, 9), None);
+        assert_eq!(provider_setup_tab_index_at(tabs, 40), None);
     }
 }

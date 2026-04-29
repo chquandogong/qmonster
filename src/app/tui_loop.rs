@@ -22,7 +22,9 @@ use crate::app::modal_state::{
 use crate::app::operator_actions::{version_refresh_notices, write_operator_snapshot};
 use crate::app::polling_tick::{PollTickState, handle_poll_tick};
 use crate::app::prompt_send_actions::handle_prompt_send_action;
-use crate::app::provider_setup_overlay::handle_provider_setup_overlay_key;
+use crate::app::provider_setup_overlay::{
+    handle_provider_setup_overlay_key, handle_provider_setup_overlay_mouse,
+};
 use crate::app::runtime_refresh::handle_runtime_refresh_action;
 use crate::app::settings_overlay::{handle_settings_overlay_key, handle_settings_overlay_mouse};
 use crate::app::system_notice::SystemNotice;
@@ -312,11 +314,12 @@ where
                             }
 
                             if provider_setup_overlay.is_open() {
-                                // Phase G-1 Task 2: the Provider Setup overlay
-                                // has no mouse affordances yet — swallow mouse
-                                // events so split-drag and pane selection can't
-                                // race the modal while it is on screen.
                                 dashboard_split_dragging = false;
+                                handle_provider_setup_overlay_mouse(
+                                    &mut provider_setup_overlay,
+                                    viewport,
+                                    m,
+                                );
                                 continue;
                             }
 
