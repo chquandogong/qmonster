@@ -8,7 +8,7 @@ boundaries.
 
 Required tools:
 
-- Rust 1.85+
+- Rust 1.88+
 - tmux
 - Node.js 18+ and npm, only for npm package checks or publishing
 

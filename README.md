@@ -14,7 +14,7 @@
   <a href="https://www.npmjs.com/package/qmonster"><img alt="npm version" src="https://img.shields.io/npm/v/qmonster?label=npm"></a>
   <a href="https://github.com/chquandogong/qmonster/pkgs/npm/qmonster"><img alt="GitHub Packages mirror" src="https://img.shields.io/badge/GitHub%20Packages-%40chquandogong%2Fqmonster-2f81f7?logo=github"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/chquandogong/qmonster"></a>
-  <img alt="Rust 1.85+" src="https://img.shields.io/badge/Rust-1.85%2B-b7410e?logo=rust">
+  <img alt="Rust 1.88+" src="https://img.shields.io/badge/Rust-1.88%2B-b7410e?logo=rust">
   <img alt="tmux" src="https://img.shields.io/badge/tmux-observe--first-1bb91f">
 </p>
 
@@ -33,7 +33,7 @@ panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
 - Version: npm package `1.35.1`; current mission ledger `v1.35.1`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
-- Target env: Ubuntu + tmux + Rust 1.85+
+- Target env: Ubuntu + tmux + Rust 1.88+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
 ## Why
