@@ -1,6 +1,6 @@
 mission:
-  version: "1.34.0"
-  title: "Qmonster v1.34.0 — Phase F F-7c: reset-aware advisories (wait_for_reset + snapshot_before_reset)."
+  version: "1.35.0"
+  title: "Qmonster v1.35.0 — Phase F F-7d: operator-tunable [reset] thresholds for the F-7c reset-aware advisories."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1425,6 +1425,37 @@ mission:
     wait, suppress on low identity confidence, suppress on stale
     resets_at. 765 lib + 68 integration green; clippy + fmt clean.
 
+    Phase F continues with F-7d (v1.35.0, this revision) — operator-
+    tunable `[reset]` thresholds for the F-7c reset-aware advisories.
+    Mirrors the F-7-config (cache thresholds) refactor pattern from
+    v1.28.0: lift hardcoded constants out of the rule module into a
+    new config struct, thread the values through `PolicyGates`, and
+    have the rule read from gates instead of module constants. New
+    `ResetConfig` struct in `src/app/config.rs` with four
+    `#[serde(default)]` fields and per-field defaults matching the
+    v1.34.0 (F-7c) hardcoded constants exactly:
+    `wait_pressure_threshold = 0.85`, `wait_eta_secs = 1800`,
+    `snapshot_pressure_threshold = 0.50`,
+    `snapshot_eta_secs = 300`. `QmonsterConfig` adds a
+    `reset: ResetConfig` field (also `#[serde(default)]`) so existing
+    configs without a `[reset]` section keep working unchanged.
+    `PolicyGates` gains four `reset_*` fields populated from
+    `ResetConfig` in `from_config_and_identity` (now 9th positional
+    param). `eval_reset` and its two helpers
+    (`recommend_wait_for_reset`, `recommend_snapshot_before_reset`)
+    take `&PolicyGates` and read thresholds from `gates.reset_*`
+    instead of removed module constants; reason strings interpolate
+    `gates.reset_wait_pressure` so operators see the actual configured
+    threshold that fired. `event_loop::run_once_with_target` passes
+    `&ctx.config.reset` to `from_config_and_identity`; the 7 existing
+    gates.rs test call sites updated with the new arg. Defaults match
+    v1.34.0 constants exactly so no behavior change for default
+    configs. 4 new tests (config defaults match v1.34.0 constants
+    exactly, TOML override leaves untouched fields default, custom
+    wait_pressure threshold fires at lower pressure, custom
+    snapshot_eta widens the imminent window). 771 lib + 68
+    integration green; clippy + fmt clean.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1488,6 +1519,10 @@ mission:
     - "F-7c: recommend_wait_for_reset (Severity::Concern, ProjectCanonical) fires when quota_*_pressure >= 0.85 AND resets_at within 30 minutes; reason embeds percentage + threshold + 2h13m/45m/30s countdown via local format_eta_short"
     - "F-7c: recommend_snapshot_before_reset (Severity::Good, ProjectCanonical) fires when resets_at within 5 minutes AND quota_*_pressure >= 0.50; next_step prompts the `s` key to write a runtime snapshot"
     - "F-7c: Engine::evaluate reads SystemTime::now() once and threads now_unix_seconds to eval_reset so both windows compare against the same instant; tests inject the value directly for deterministic timing"
+    - "F-7d: ResetConfig struct in src/app/config.rs with 4 #[serde(default)] fields (wait_pressure_threshold=0.85, wait_eta_secs=1800, snapshot_pressure_threshold=0.50, snapshot_eta_secs=300); defaults match v1.34.0 (F-7c) hardcoded constants exactly"
+    - "F-7d: PolicyGates gains reset_wait_pressure / reset_wait_eta_secs / reset_snapshot_pressure / reset_snapshot_eta_secs fields populated from ResetConfig in from_config_and_identity (9th positional param)"
+    - "F-7d: eval_reset and helpers take &PolicyGates and read from gates.reset_* instead of removed module constants; reason strings interpolate gates.reset_wait_pressure so operators see the configured threshold that fired"
+    - "F-7d: event_loop::run_once_with_target passes &ctx.config.reset to from_config_and_identity; 7 existing gates.rs test call sites updated with the new arg"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1780,5 +1815,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 166
+    total_revisions: 167
     history: "mission-history.yaml"

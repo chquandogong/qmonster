@@ -517,6 +517,30 @@ side_effects (N):
       `InputWait` / `PermissionWait` 상태에서는 suppress 됩니다.
       `quota_*_resets_at`이 채워지지 않은 pane(현재 Gemini)에서는
       발화하지 않습니다 (정직성 규칙).
+  - **v1.35.0 업데이트 (F-7d) — operator-tunable `[reset]` 임계값**:
+    F-7c의 4개 hardcoded 임계값이 `qmonster.toml`의 신규 `[reset]`
+    섹션으로 노출됩니다. 운영자는 다음 키를 편집해 reset-aware
+    어드바이저리를 자기 워크플로에 맞게 조정할 수 있습니다.
+    기본값은 v1.34.0 (F-7c) hardcoded 값과 정확히 일치하므로 별도
+    편집이 없으면 동작 변화가 없습니다.
+    - `wait_pressure_threshold = 0.85` —
+      `quota: pause until ... resets` 어드바이저리가 발화하는
+      pressure 하한값
+    - `wait_eta_secs = 1800` (30분) — 같은 어드바이저리가 요구하는
+      reset까지 남은 시간 상한값
+    - `snapshot_pressure_threshold = 0.50` —
+      `snapshot before ... resets` 어드바이저리가 발화하는 pressure
+      하한값 (운영자가 막 시작했다면 handoff 상태를 보존할 의미가
+      없음)
+    - `snapshot_eta_secs = 300` (5분) — 같은 어드바이저리가 요구하는
+      reset까지 남은 시간 상한값
+    `wait_for_reset` reason 문자열은 `gates.reset_wait_pressure`를
+    그대로 보간하므로 `wait_pressure_threshold = 0.75`로 조정하면
+    어드바이저리가 75% pressure에서 발화하고 reason에도 75%로
+    표시됩니다 (원본 85%가 아님). `S` settings overlay UI는 `[cache]`
+    /`[reset]` 토글을 아직 편집하지 않습니다 (v1.28.0 F-7-config과
+    동일한 자세) — 운영자가 `qmonster.toml`을 직접 수정하면 다음
+    config 로드 시 Qmonster가 새 값을 읽어옵니다.
 
 ## 9. 운영 파일
 

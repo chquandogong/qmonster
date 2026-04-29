@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.34.0`; current mission ledger `v1.34.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.34.0`; current mission ledger `v1.35.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,33 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.34.0` / npm `1.34.0`.
+Current release: `v1.35.0` / npm `1.34.0` (npm publish deferred for this slice).
+
+`v1.35.0` ships **Phase F F-7d operator-tunable `[reset]`
+thresholds** for the F-7c reset-aware advisories. Mirrors the
+F-7-config (cache thresholds) refactor pattern from v1.28.0. New
+`ResetConfig` struct in `src/app/config.rs` with four
+`#[serde(default)]` fields exposes the v1.34.0 (F-7c) thresholds via
+a new `[reset]` section in `qmonster.toml`:
+`wait_pressure_threshold` (default `0.85`), `wait_eta_secs`
+(default `1800`), `snapshot_pressure_threshold` (default `0.50`),
+`snapshot_eta_secs` (default `300`). `QmonsterConfig` adds
+`reset: ResetConfig` (also `#[serde(default)]`) so existing configs
+without a `[reset]` section keep working unchanged. `PolicyGates`
+gains four `reset_*` fields populated from `ResetConfig` in
+`from_config_and_identity` (now 9th positional param).
+`eval_reset` and its two helpers take `&PolicyGates` and read
+thresholds from `gates.reset_*` instead of removed module
+constants; reason strings interpolate `gates.reset_wait_pressure`
+so an operator who sets `wait_pressure_threshold = 0.75` sees the
+recommendation mention 75% rather than the original 85%.
+`event_loop::run_once_with_target` passes `&ctx.config.reset` to
+`from_config_and_identity`. Defaults match v1.34.0 constants
+exactly so no behavior change for default configs. Settings
+overlay UI for `[reset]` remains explicitly deferred (operators
+edit `qmonster.toml` directly and Qmonster picks up changes on
+the next config load). 4 new tests; 771 lib + 68 integration
+green; clippy + fmt clean.
 
 `v1.34.0` ships **Phase F F-7c reset-aware policy rules**
 (`wait_for_reset` + `snapshot_before_reset`). New
@@ -316,6 +342,7 @@ untouched — the `/proc` fill only applies when the provider adapter left
 | Phase F F-6           | Shipped  | Codex App Server JSON-RPC client: new `src/adapters/codex_app_server.rs` spawns `codex app-server` with `sandbox_mode=danger-full-access`, sends `initialize` + `account/rateLimits/read`, parses `CodexRateLimits { primary, secondary }`. Spawned at startup when `[provider_setup] codex_app_server = true`; account-level snapshot read once per tick, broadcast to all Codex panes. `5h resets in <eta>` / `7d resets in <eta>` rows now appear on Codex pane cards via the same helper used for Claude (F-5b). Pressure fields `is_none`-guarded so statusline path keeps priority; resets_at fields unconditional.                                                                                    |
 | Phase F F-4b          | Shipped  | Gemini `/stats` output parser: new private `parse_gemini_stats_session` + `parse_gemini_stats_model` in `src/adapters/gemini.rs` extract Session ID, Tool Calls, and cumulative Input / Output / Cache Reads token counts after the operator cycles `u` to dispatch `/stats model` and `/stats session`. `GeminiAdapter::parse` integration uses `is_none()` guards mirroring F-5b. Honesty rule: model parser returns `Some` only when both input AND output tokens parse; OAuth Gemini `cache_reads` stays `None` per FAQ-documented Google limit (no synthesized zero). Bundled v1.33.x polish: `RESET 5H <eta>` / `RESET 7D <eta>` badges on `primary_metric_row`.                                       |
 | Phase F F-7c          | Shipped  | Reset-aware policy rules: new `src/policy/rules/reset.rs` defines `eval_reset(id, signals, gates, now_unix_seconds)` evaluating 5h and weekly windows independently. `recommend_wait_for_reset` (Concern) fires when `quota_*_pressure >= 0.85` AND reset within 30 min; `recommend_snapshot_before_reset` (Good) fires when ANY reset within 5 min AND pressure >= 0.50. Both gate on `IdentityConfidence >= Medium` and suppress on input/permission wait. `Engine::evaluate` reads `SystemTime::now()` once and threads `now_unix_seconds` for deterministic timing. Hardcoded v1 thresholds; F-7d would expose them via `[reset]` config. Claude+Codex-only feature (Gemini path doesn't expose resets). |
+| Phase F F-7d          | Shipped  | Operator-tunable `[reset]` thresholds for the F-7c reset-aware advisories. New `ResetConfig` struct in `src/app/config.rs` with 4 `#[serde(default)]` fields (`wait_pressure_threshold = 0.85`, `wait_eta_secs = 1800`, `snapshot_pressure_threshold = 0.50`, `snapshot_eta_secs = 300`); defaults match v1.34.0 constants exactly. `QmonsterConfig.reset: ResetConfig` field. `PolicyGates` gains 4 `reset_*` fields from `ResetConfig` in `from_config_and_identity` (9th positional param). `eval_reset` reads from `gates.reset_*`; reason strings interpolate `gates.reset_wait_pressure` so operators see the configured threshold that fired. Settings overlay UI for `[reset]` deferred (edit `qmonster.toml` directly). |
 
 Recent release notes:
 

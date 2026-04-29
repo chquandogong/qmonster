@@ -641,6 +641,48 @@ module shape.
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
 
+v1.35.0 ships **Phase F F-7d operator-tunable `[reset]`
+thresholds** for the F-7c reset-aware advisories. Mirrors the
+F-7-config (cache thresholds) refactor pattern from v1.28.0: lift
+hardcoded constants out of the rule module into a new config
+struct, thread the values through `PolicyGates`, and have the
+rule read from gates instead of module constants. New
+`ResetConfig` struct in `src/app/config.rs` with four
+`#[serde(default)]` fields and per-field defaults matching the
+v1.34.0 (F-7c) hardcoded constants exactly:
+`wait_pressure_threshold = 0.85`, `wait_eta_secs = 1800`,
+`snapshot_pressure_threshold = 0.50`, `snapshot_eta_secs = 300`.
+`QmonsterConfig` adds `reset: ResetConfig` (also
+`#[serde(default)]`) so existing configs without a `[reset]`
+section keep working unchanged. `PolicyGates` gains four
+`reset_*` fields populated from `ResetConfig` in
+`from_config_and_identity` (now 9th positional param;
+`#[allow(clippy::too_many_arguments)]` applied narrowly the same
+way F-7-config did at the 8th param boundary). `eval_reset` and
+its two helpers (`recommend_wait_for_reset`,
+`recommend_snapshot_before_reset`) take `&PolicyGates` and read
+thresholds from `gates.reset_*` instead of the removed module
+constants; reason strings interpolate
+`gates.reset_wait_pressure` so an operator who sets
+`wait_pressure_threshold = 0.75` sees the recommendation mention
+75% rather than the original 85%. `event_loop::run_once_with_target`
+passes `&ctx.config.reset` to `from_config_and_identity`; the 7
+existing `gates.rs` test call sites updated with the new arg via
+`&crate::app::config::ResetConfig::default()`. Why threshold
+tuning matters: operator workflows differ — some operators prefer
+earlier wait advice when their provider quota is precious; others
+want a longer snapshot lead-time so the runtime snapshot completes
+before the actual reset boundary. F-7d makes those preferences
+first-class config surface without changing default behavior, so
+operators who never edit `qmonster.toml` see no v1.34.0
+regression. With F-7d shipped, the entire F-stack (F-1 → F-7d) is
+now under operator control where appropriate (cache thresholds via
+`[cache]`, reset thresholds via `[reset]`); the rest is
+observation/wiring without operator knobs. Settings overlay (`S`
+key) UI for the `[reset]` section remains explicitly deferred,
+same posture as `[cache]` in v1.28.0 F-7-config. Tests grew to
+771 lib + 68 integration green.
+
 v1.34.0 ships **Phase F F-7c reset-aware policy rules**
 (`wait_for_reset` + `snapshot_before_reset`). New
 `src/policy/rules/reset.rs` consumes the F-5b (Claude sidefile) and
