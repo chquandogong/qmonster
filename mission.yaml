@@ -1,6 +1,6 @@
 mission:
-  version: "1.28.0"
-  title: "Qmonster v1.28.0 — Phase F F-7-config: operator-tunable cache thresholds."
+  version: "1.29.0"
+  title: "Qmonster v1.29.0 — Phase G G-1: Provider Setup overlay (operator integration helpers)."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1218,6 +1218,34 @@ mission:
     operators edit `qmonster.toml` directly. Tests grew to 662 lib + 68
     integration green.
 
+    Phase G opens (v1.29.0) with G-1: Provider Setup overlay. Phase G is
+    "operator integration helpers" — distinct from Phase F's cache
+    observability stack. The new `P` key opens a 3-tab modal in the
+    dashboard with one tab per CLI provider. Each tab shows: (1) detected
+    current state of that provider's statusline / footer / config files
+    via read-only filesystem probes (~/.claude/statusline.sh,
+    ~/.codex/config.toml, ~/.gemini/settings.json), (2) the recommended
+    config snippet — bash for Claude statusline.sh with cache hit ratio
+    calculation, plain text for Codex /statusline + /status guidance,
+    JSON for Gemini ui.footer.* settings, plus auth/app-server notes —
+    rendered as scrollable copy-pasteable text. The Claude tab carries
+    a `[s]` toggle that reveals the optional sidefile JSON export
+    block (writes provider statusLine JSON to
+    `~/.local/share/ai-cli-status/claude/<session_id>.json` for future
+    F-5 reader). The Codex tab carries a `[s]` toggle for the deferred
+    Codex App Server polling guide. The Gemini tab keeps OAuth as
+    informational note only (API-key transition deferred per operator
+    preference). Read-only — Qmonster never writes provider config.
+    All snippet content lives at `src/ui/provider_setup_snippets/`
+    (6 files included via `include_str!`). New module
+    `src/ui/provider_setup.rs` owns the view-model, state detectors,
+    and `render_tab_content`; `src/app/provider_setup_overlay.rs`
+    mirrors `settings_overlay.rs` for key dispatch; render plumbed via
+    `dashboard_render.rs` field + `dashboard.rs::render_provider_setup_modal`.
+    Keys: `P` opens, `1`/`2`/`3` switch tabs, `s` toggles, `↑↓` or
+    `j/k` scroll, `q`/`Esc` close. 8 new tests; 678 lib + 68 integration
+    green. F-4b/F-5/F-6/F-7c remain unscoped; G-2+ undefined.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1254,6 +1282,10 @@ mission:
     - "F-7-config: CacheConfig struct in src/app/config.rs with 6 fields (hot_ratio_threshold, cold_ratio_threshold, hot_low_ctx_threshold, cold_high_ctx_threshold, drift_drop_threshold, drift_min_samples); defaults match the v1.26.0/v1.27.0 hardcoded constants exactly so operators with empty configs see no behavior change"
     - "F-7-config: PolicyGates gains 6 cache_* fields populated from CacheConfig in from_config_and_identity (8th param); src/policy/rules/cache.rs removes the 6 const declarations and reads from gates.cache_*; reason strings interpolate the configured values"
     - "F-7-config: cache_config_loads_toml_and_defaults_missing_values verifies absent/partial [cache] defaults; policy_gates_from_config_and_identity_reads_both asserts all 6 cache fields propagate; cache_rules_honor_custom_thresholds_from_gates and cache_drift_honors_custom_thresholds_from_gates verify custom hot/drift gates"
+    - "G-1: ProviderSetupOverlay struct in src/ui/provider_setup.rs has open: bool field with new()/is_open()/open()/close(); open() resets tab to Claude and scroll_offset to 0 but preserves per-tab toggles (claude_sidefile_enabled / codex_app_server_enabled)"
+    - "G-1: detect_claude_state / detect_codex_state / detect_gemini_footer_state perform read-only probes of ~/.claude/statusline.sh, ~/.codex/config.toml, ~/.gemini/settings.json; missing files yield benign defaults; Gemini settings.json is parsed for ui.footer.* booleans via serde_json::Value::pointer"
+    - "G-1: 6 snippet files at src/ui/provider_setup_snippets/ are include_str!'d into provider_setup.rs as &'static str constants — claude_statusline_base.sh, claude_sidefile_addon.sh, codex_statusline_guide.txt, codex_app_server_guide.sh, gemini_footer_settings.json, gemini_auth_note.txt; render_tab_content composes per-tab body conditional on overlay toggles"
+    - "G-1: src/app/provider_setup_overlay.rs::handle_provider_setup_overlay_key returns false when overlay closed; Esc/q close, 1/2/3 switch tabs, s toggles per-tab boolean, Up/k scroll up, Down/j scroll down; src/app/tui_loop.rs owns the overlay alongside settings_overlay, plumbed to DashboardFrameView; render_provider_setup_modal in src/ui/dashboard.rs uses Tabs widget + scrollable Paragraph + hint footer at 80%×76% centered"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1546,5 +1578,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 158
+    total_revisions: 159
     history: "mission-history.yaml"

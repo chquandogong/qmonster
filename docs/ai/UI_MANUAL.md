@@ -367,6 +367,32 @@ side_effects (N):
   `w` 저장은 `~/.qmonster/config/qmonster.toml` 또는 명시적 `--config PATH`에
   `toml::to_string_pretty` 형식으로 씁니다. 이 저장 방식은 현재
   comment-preserving이 아닙니다.
+- **Provider Setup (G-1, v1.29.0)**:
+  `P`로 열립니다. 3개 탭(Claude / Codex / Gemini)을 `1` / `2` / `3`으로
+  전환하며, 각 탭이 해당 provider의 statusline / footer / config 파일을
+  Qmonster가 데이터를 수집할 수 있도록 어떻게 셋업할지 안내합니다.
+  탭 본문은 두 부분으로 구성됩니다: (1) 현재 상태 헤더 — read-only
+  filesystem 프로브로 감지한 `~/.claude/statusline.sh`,
+  `~/.codex/config.toml`, `~/.gemini/settings.json`의 존재 여부와
+  핵심 필드(예: `cache_read_input_tokens` export, `ui.footer.*`
+  boolean) 상태; (2) 권장 설정 스니펫 — 복붙 가능한 텍스트로 렌더됩니다.
+  - **Claude 탭**: cache 비율 계산이 포함된 추천 `statusline.sh` (bash).
+    `[s]`로 sidefile JSON export 블록(`~/.local/share/ai-cli-status/claude/<session_id>.json`)을
+    토글합니다. sidefile은 향후 F-5 reader가 statusLine JSON을 그대로
+    재사용할 수 있도록 미리 깔아두는 용도입니다.
+  - **Codex 탭**: `/statusline` 토글 리스트(어떤 항목이 bottom status에
+    실리도록 권장하는지)와 `/status` welcome panel을 주기적으로 띄워
+    `(+ N cached)` 필드가 Qmonster F-4 cache parser에 도달하게 하는
+    가이드입니다. `[s]`로 deferred Codex App Server polling 가이드(F-6)를
+    토글합니다.
+  - **Gemini 탭**: `~/.gemini/settings.json`의 `ui.footer.*` 권장 JSON
+    템플릿과, OAuth는 그대로 유지하되 cache 필드는 FAQ-documented OAuth
+    한계로 인해 노출되지 않는다는 informational note (API key 전환은
+    운영자 선호에 따라 deferred).
+  - **조작**: `1` / `2` / `3` 탭 전환, `s` 탭별 옵션 섹션 토글,
+    `↑` / `↓` 또는 `j` / `k` 스크롤, `q` / `Esc` 닫기.
+  - **Read-only**: Qmonster는 어떤 provider 설정 파일에도 절대 쓰지
+    않습니다. 운영자가 표시된 스니펫을 수동으로 복사해 적용합니다.
 
 ## 9. 운영 파일
 

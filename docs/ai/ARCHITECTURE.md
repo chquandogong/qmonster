@@ -641,6 +641,27 @@ module shape.
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
 
+v1.29.0 opens **Phase G** with **G-1 Provider Setup overlay**. Phase G is
+"operator integration helpers" — a stream distinct from Phase F's cache
+observability stack. New module `src/ui/provider_setup.rs` owns: (1) the
+view-model (`ProviderSetupTab` enum, `ProviderSetupOverlay` struct with
+`open: bool`, `tab`, per-tab toggles, `scroll_offset`), (2) read-only
+state detectors that probe `~/.claude/statusline.sh`,
+`~/.codex/config.toml`, and `~/.gemini/settings.json`, (3) 6 const
+snippet `include_str!` references composed by `render_tab_content`.
+`src/app/provider_setup_overlay.rs` mirrors `settings_overlay.rs` for
+key dispatch (Esc/q close, 1/2/3 switch tabs, s toggle, ↑↓/j/k scroll).
+Render plumbed via `dashboard_render.rs::DashboardFrameView` field +
+`dashboard.rs::render_provider_setup_modal`. The overlay is read-only —
+Qmonster never writes provider config files; the operator copies the
+displayed snippet manually. The Claude tab's snippet is the recommended
+`statusline.sh` (with cache hit ratio calculation that feeds Qmonster's
+F-4 CACHE badge); the Codex tab's snippet enumerates the bottom-status
+`/statusline` items and explains the `/status` welcome panel
+`(+ N cached)` source for Qmonster's F-4 cache parser; the Gemini tab
+shows the `ui.footer.*` JSON template plus an OAuth-stays-informational
+note (per FAQ-documented OAuth cache limit).
+
 v1.28.0 continues **Phase F** with **F-7-config operator-tunable cache thresholds**:
 new `CacheConfig` struct in `src/app/config.rs` with 6 fields
 (`hot_ratio_threshold`, `cold_ratio_threshold`, `hot_low_ctx_threshold`,

@@ -6,7 +6,7 @@ metrics, runtime facts, and recommendations. It does not touch observed
 panes automatically; the operator can press `u` to cycle read-only
 provider runtime slash commands on selected non-Claude panes.
 
-- Version: npm package `1.28.0`; current mission ledger `v1.28.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
+- Version: npm package `1.28.0`; current mission ledger `v1.29.0`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
 - Target env: Ubuntu + tmux + Rust 1.85+
 - Name origin: Dr. QUAN's Q + monitoring / master
 
@@ -31,7 +31,18 @@ See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
 
 ## Phase status
 
-Current release: `v1.28.0` / npm `1.28.0`.
+Current release: `v1.29.0` / npm `1.28.0` (npm publish deferred for this slice).
+
+`v1.29.0` opens **Phase G** with **G-1 Provider Setup overlay**: the new `P` key opens a 3-tab
+in-TUI modal (Claude/Codex/Gemini) showing the recommended config snippet for each provider's
+statusline/footer plus detected current state of `~/.claude/statusline.sh`, `~/.codex/config.toml`,
+and `~/.gemini/settings.json`. Each snippet is rendered inline as copy-pasteable text — the
+Claude tab carries an `[s]` toggle that reveals an additional sidefile JSON-export block (writes
+the full statusLine JSON to `~/.local/share/ai-cli-status/claude/<session_id>.json` for future
+F-5 reader); the Codex tab carries an `[s]` toggle for the deferred Codex App Server polling
+guide. Read-only — Qmonster never writes provider config files; operator copies manually. Keys:
+`P` opens, `1`/`2`/`3` switch tabs, `s` toggles, `↑↓`/`j/k` scroll, `q`/`Esc` close. 8 new tests;
+678 lib + 68 integration green.
 
 `v1.28.0` continues Phase F with F-7-config: operator-tunable cache thresholds. New `CacheConfig`
 struct in `src/app/config.rs` exposes the 6 thresholds previously hardcoded in F-7 plus F-7b via
@@ -160,6 +171,7 @@ untouched — the `/proc` fill only applies when the provider adapter left
 | Phase F F-7           | Shipped  | Cache-aware advisory rules: `cache_hot_compact_warning` (Concern when cache hot AND ctx headroom) and `compact_when_cache_cold` (Good with `/compact` suggestion when cache cold AND ctx filling); mutually exclusive by ratio threshold construction.        |
 | Phase F F-7b          | Shipped  | Cache drift detection rule: fires `Severity::Concern` with suggested `/compact` when `cache_hit_ratio` drops ≥ 30 pp over last 4+ samples; uses F-3 `recent_token_samples` time series; Engine::evaluate gains 5th param.                                     |
 | Phase F F-7-config    | Shipped  | `[cache]` config section exposes 6 thresholds for the F-7/F-7b cache-aware rules; defaults preserve prior behavior; reason strings interpolate the configured values so operators see what actually fired.                                                    |
+| Phase G G-1           | Shipped  | Provider Setup overlay (`P` key); 3 tabs (Claude/Codex/Gemini); read-only state detectors + `include_str!` snippet content; `s` toggles per-tab optional sections (Claude sidefile JSON / Codex app-server). Read-only — never writes provider config.        |
 
 Recent release notes:
 

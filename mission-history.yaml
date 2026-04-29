@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.28.0 — Phase F F-7-config: operator-tunable cache thresholds."
+  mission_title: "Qmonster v1.29.0 — Phase G G-1: Provider Setup overlay (operator integration helpers)."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 158
-  latest_version: "1.28.0"
+  total_revisions: 159
+  latest_version: "1.29.0"
 
 timeline:
   - change_id: "initial"
@@ -14192,9 +14192,114 @@ timeline:
       - "2274dd3 F-7-config task1: operator-tunable cache thresholds via [cache] config"
     follow_up: []
 
+  - change_id: "v1.29.0-phase-g-g1-provider-setup-overlay"
+    semantic_version: "1.29.0"
+    change_sequence: 159
+    date: "2026-04-29"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (main pane)"
+    change_type: "feature"
+    motivation_type: "operator-ergonomics"
+    persistence: "permanent"
+    intent: >
+      Phase G opens with G-1: Provider Setup overlay. New `P` key opens
+      a 3-tab in-TUI modal showing recommended config snippets and detected
+      current state per provider (Claude statusline.sh + sidefile, Codex
+      /statusline + /status + app-server, Gemini ~/.gemini/settings.json
+      footer + auth note). Read-only — Qmonster never writes provider
+      config; operator copies snippets manually. New `src/ui/provider_setup.rs`
+      module owns view-model, state detectors, snippet `include_str!` consts,
+      and `render_tab_content`. New `src/app/provider_setup_overlay.rs`
+      mirrors `settings_overlay.rs` for key dispatch. Render plumbed via
+      `dashboard_render.rs` field + `dashboard.rs::render_provider_setup_modal`.
+      Keys: P opens, 1/2/3 switch tabs, s toggles per-tab boolean, ↑↓/j/k
+      scroll, q/Esc close. 8 new tests; 678 lib + 68 integration green.
+    intent_ko: >
+      Phase G G-1: Provider Setup overlay. `P` 키로 3개 탭(Claude/Codex/Gemini)
+      모달이 열려 운영자가 각 provider의 statusline/footer/설정 파일을
+      어떻게 셋업해야 Qmonster가 데이터를 수집할 수 있는지 안내한다.
+      탭별로 (1) 현재 상태(파일 존재 여부, 핵심 필드 export 여부)를
+      읽기 전용으로 감지해 표시하고, (2) 권장 설정 스니펫을 복붙 가능한
+      형태로 렌더한다 — Claude는 cache 비율 계산이 포함된 statusline.sh,
+      Codex는 /statusline 토글과 /status 주기 안내, Gemini는 ui.footer.*
+      JSON과 OAuth 유지/API key 전환 안내. Claude/Codex는 `[s]` 토글로
+      sidefile/app-server 추가 안내가 노출된다. Read-only — Qmonster는
+      provider 설정 파일에 절대 쓰지 않는다. 6개 스니펫 파일은
+      `src/ui/provider_setup_snippets/`에 두고 `include_str!`로 컴파일 시점에
+      삽입한다. 모듈 분할: `src/ui/provider_setup.rs` (view-model + 검출 +
+      렌더 텍스트 합성), `src/app/provider_setup_overlay.rs` (키 디스패처),
+      `src/ui/dashboard.rs::render_provider_setup_modal` (UI), 그리고
+      `tui_loop.rs` / `dashboard_render.rs` 플럼빙. 8개 신규 테스트,
+      678 lib + 68 integration green.
+    triggered_by: "Phase G operator-integration-helpers stream — G-1 task1+task2 (commits 8d58039, f6811cd)"
+    issue_or_context: >
+      Phase F (v1.22.0 → v1.28.0) shipped the cache observability stack
+      (process RSS, agent memory files, token usage samples,
+      cached_input_tokens parsing, cache-aware advisory rules,
+      drift detection, operator-tunable thresholds). The infrastructure is
+      complete but provider data sources don't always expose the rich
+      fields Qmonster's CACHE / TOKENS badges need (Claude's default
+      ~/.claude/statusline.sh exports only model/CTX/quotas; Codex
+      /status welcome panel must be invoked periodically; Gemini OAuth
+      hides cache fields by FAQ-documented limit). Phase G G-1 surfaces
+      this configuration gap directly in the TUI: each provider tab tells
+      the operator exactly what to copy, where to put it, and the current
+      detected state of that wiring.
+    changes:
+      added:
+        - "src/ui/provider_setup.rs — view-model (ProviderSetupTab enum, ProviderSetupOverlay struct with open/tab/scroll_offset/per-tab toggles), read-only state detectors (detect_claude_state / detect_codex_state / detect_gemini_footer_state / detect_home), 6 const &'static str snippet refs via include_str!, render_tab_content composer; 8 unit tests"
+        - "src/ui/provider_setup_snippets/ — 6 plain-text snippet files: claude_statusline_base.sh (recommended bash with cache % calc), claude_sidefile_addon.sh (JSON export to ~/.local/share/ai-cli-status/claude/<sid>.json), codex_statusline_guide.txt (/statusline toggle list + /status periodic dispatch guidance), codex_app_server_guide.sh (deferred F-6 polling guide), gemini_footer_settings.json (ui.footer.* JSON template), gemini_auth_note.txt (OAuth-stays informational note)"
+        - "src/app/provider_setup_overlay.rs — handle_provider_setup_overlay_key dispatcher mirroring settings_overlay.rs shape; returns false when closed; 5 keymap unit tests"
+        - "src/ui/dashboard.rs::render_provider_setup_modal — 80%×76% centered modal with Tabs widget (3 tabs) + scrollable Paragraph body + hint footer; render smoke test"
+      modified:
+        - "src/ui/mod.rs — `pub mod provider_setup;` added alphabetically between panels and settings"
+        - "src/app/mod.rs — `pub mod provider_setup_overlay;` added alphabetically between prompt_send_actions and runtime_refresh"
+        - "src/app/tui_loop.rs — owns ProviderSetupOverlay alongside settings_overlay; plumbs to DashboardFrameView; P key opens; key dispatch placed after settings_overlay; mouse swallow when open"
+        - "src/app/dashboard_render.rs — provider_setup_overlay field on DashboardFrameView; alerts_focused/panes_focused AND-checked against !is_open(); render_provider_setup_modal call appended"
+        - "README.md, VERSION.md, mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md, docs/ai/UI_MANUAL.md, docs/ai/ARCHITECTURE.md, docs/ai/PROJECT_BRIEF.md, docs/ai/VALIDATION.md bumped to v1.29.0"
+      removed: []
+    changed_sections:
+      - "src/ui/provider_setup.rs (new)"
+      - "src/ui/provider_setup_snippets/ (new)"
+      - "src/app/provider_setup_overlay.rs (new)"
+      - "src/ui/mod.rs"
+      - "src/ui/dashboard.rs"
+      - "src/app/mod.rs"
+      - "src/app/tui_loop.rs"
+      - "src/app/dashboard_render.rs"
+      - "README.md"
+      - "VERSION.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/VALIDATION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - ".mission/CURRENT_STATE.md"
+    observable_effects:
+      added:
+        - "P key opens Provider Setup overlay; 3 tabs selectable via 1/2/3; s toggles per-tab optional sections; q/Esc closes"
+        - "Each tab shows detected current state header (e.g., '~/.claude/statusline.sh: present (1718 bytes)' / 'exports cache_read_input_tokens: NO') derived from read-only filesystem probes"
+        - "Each tab shows full recommended config snippet (bash for Claude statusline, plain text for Codex, JSON for Gemini) inline in copy-pasteable form"
+      modified: []
+      removed: []
+    impact_scope:
+      runtime: "UI overlay only; no policy, signal, storage, or actuation change; provider config files never modified."
+      tests: "8 new tests; cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release pass."
+      ledger: "1 new timeline entry (sequence 159); meta bump; minor version bump v1.28.0 → v1.29.0 for Phase G G-1 Provider Setup overlay."
+      npm: "package.json version unchanged at 1.28.0 — npm publish deferred for this slice."
+      review_gate: "local validation passes before commit"
+    breaking: false
+    risk: "low — UI-only addition; no signal, policy, storage, or actuation change; read-only filesystem probes degrade gracefully on missing files."
+    related_commits:
+      - "8d58039 G-1 task1: provider_setup module + snippet content + state detectors"
+      - "f6811cd G-1 task2: Provider Setup overlay UI + P key handler"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.28.0 ships F-7-config: operator-tunable cache thresholds. New `CacheConfig` struct in `src/app/config.rs` exposes the 6 thresholds from F-7/F-7b via `[cache]` section in `qmonster.toml`; `PolicyGates` gains 6 `cache_*` fields; `cache.rs` reads from gates and interpolates values into reason strings. v1.27.1 fixed Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4's cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
-  next_phase: "Phase F is open with F-1, F-2, F-3, F-4, F-7, F-7b, F-7-config plus the v1.27.1 fix shipped; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on F-5/F-6 reset_eta), settings-overlay UI for cache thresholds remain unscoped."
+  current_phase: "v1.29.0 opens Phase G with G-1: Provider Setup overlay. New `P` key opens a 3-tab in-TUI modal (Claude/Codex/Gemini) showing recommended config snippets and detected current state per provider via read-only filesystem probes of `~/.claude/statusline.sh`, `~/.codex/config.toml`, and `~/.gemini/settings.json`. New `src/ui/provider_setup.rs` module owns view-model, state detectors, snippet `include_str!` consts, and `render_tab_content`; `src/app/provider_setup_overlay.rs` mirrors `settings_overlay.rs` for key dispatch. Read-only — Qmonster never writes provider config; operator copies snippets manually. 8 new tests; 678 lib + 68 integration green. v1.28.0 shipped F-7-config: operator-tunable cache thresholds. New `CacheConfig` struct in `src/app/config.rs` exposes the 6 thresholds from F-7/F-7b via `[cache]` section in `qmonster.toml`; `PolicyGates` gains 6 `cache_*` fields; `cache.rs` reads from gates and interpolates values into reason strings. v1.27.1 fixed Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4's cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
+  next_phase: "Phase F (F-1/F-2/F-3/F-4/F-7/F-7b/F-7-config plus v1.27.1 fix) and Phase G G-1 shipped; G-2+ undefined; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on F-5/F-6 reset_eta), settings-overlay UI for cache thresholds remain unscoped."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
