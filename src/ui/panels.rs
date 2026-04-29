@@ -1080,10 +1080,9 @@ fn signals_cache_pct_with_source(s: &SignalSet) -> Option<(String, SourceKind)> 
 
 /// Phase F F-3 (v1.24.0): render a TOKENS sparkline from recent
 /// `input_tokens` samples. Returns `None` when there are fewer than
-/// 2 samples (no deltas computable). Samples are expected newest-first
-/// from `SqliteTokenUsageSink::recent_samples`; this function reverses
-/// them internally so the sparkline reads left-to-right
-/// oldest-to-newest.
+/// 2 samples (no deltas computable). Samples usually arrive newest-first
+/// from `SqliteTokenUsageSink::recent_samples`; this function sorts them
+/// by timestamp so the sparkline reads left-to-right oldest-to-newest.
 ///
 /// The sparkline shows DELTA between adjacent input_tokens samples
 /// (rate of context growth), not the cumulative count. Idle pane → flat
@@ -1099,7 +1098,7 @@ fn render_token_sparkline(
 
 fn token_sparkline_status_line(samples: &[crate::store::TokenSample]) -> Line<'static> {
     let mut spans = vec![Span::raw(format!("{:<8}: ", "tokens"))];
-    if let Some(body) = token_sparkline_body(samples) {
+    if let Some(stats) = token_sparkline_stats(samples) {
         spans.push(Span::styled(
             " TOKENS ",
             Style::default()
@@ -1107,32 +1106,48 @@ fn token_sparkline_status_line(samples: &[crate::store::TokenSample]) -> Line<'s
                 .add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::styled(
-            body,
+            format!(
+                "in {} · +{}/{}p ",
+                format_count_with_suffix(stats.latest_input_tokens),
+                format_count_with_suffix(stats.delta_input_tokens),
+                stats.sample_count
+            ),
+            Style::default().fg(theme::TEXT_PRIMARY),
+        ));
+        spans.push(Span::styled(
+            stats.body,
             Style::default()
                 .fg(theme::TEXT_PRIMARY)
                 .add_modifier(Modifier::BOLD),
         ));
     } else {
-        spans.push(Span::styled(
-            format!(" TOKENS collecting {}/2 ", samples.len().min(2)),
-            Style::default().fg(theme::TEXT_PRIMARY),
-        ));
+        let mut text = format!(" TOKENS collecting {}/2 ", samples.len().min(2));
+        if let Some(n) = latest_sampled_input_tokens(samples) {
+            text.push_str(&format!("· in {} ", format_count_with_suffix(n)));
+        }
+        spans.push(Span::styled(text, Style::default().fg(theme::TEXT_PRIMARY)));
     }
     Line::from(spans)
 }
 
+#[cfg(test)]
 fn token_sparkline_body(samples: &[crate::store::TokenSample]) -> Option<String> {
+    token_sparkline_stats(samples).map(|stats| stats.body)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TokenSparklineStats {
+    body: String,
+    latest_input_tokens: u64,
+    delta_input_tokens: u64,
+    sample_count: usize,
+}
+
+fn token_sparkline_stats(samples: &[crate::store::TokenSample]) -> Option<TokenSparklineStats> {
     if samples.len() < 2 {
         return None;
     }
-    // Reverse to oldest-first for the sparkline body. recent_samples
-    // returns DESC ts order; the visual reads left-to-right
-    // oldest-to-newest, so we flip.
-    let chrono: Vec<u64> = samples
-        .iter()
-        .rev()
-        .map(|s| s.input_tokens.unwrap_or(0))
-        .collect();
+    let chrono = input_token_series_oldest_first(samples);
     // Compute deltas between adjacent samples.
     let deltas: Vec<u64> = chrono
         .windows(2)
@@ -1155,7 +1170,30 @@ fn token_sparkline_body(samples: &[crate::store::TokenSample]) -> Option<String>
             })
             .collect()
     };
-    Some(body)
+    let first = *chrono.first().unwrap_or(&0);
+    let latest = *chrono.last().unwrap_or(&0);
+    Some(TokenSparklineStats {
+        body,
+        latest_input_tokens: latest,
+        delta_input_tokens: latest.saturating_sub(first),
+        sample_count: chrono.len(),
+    })
+}
+
+fn input_token_series_oldest_first(samples: &[crate::store::TokenSample]) -> Vec<u64> {
+    let mut sorted: Vec<&crate::store::TokenSample> = samples.iter().collect();
+    sorted.sort_by_key(|sample| sample.ts_unix_ms);
+    sorted
+        .into_iter()
+        .map(|sample| sample.input_tokens.unwrap_or(0))
+        .collect()
+}
+
+fn latest_sampled_input_tokens(samples: &[crate::store::TokenSample]) -> Option<u64> {
+    samples
+        .iter()
+        .max_by_key(|sample| sample.ts_unix_ms)
+        .and_then(|sample| sample.input_tokens)
 }
 
 fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
@@ -1276,10 +1314,7 @@ fn runtime_text_groups(signals: &SignalSet) -> Vec<(&'static str, Vec<String>)> 
         ),
         (
             "session",
-            &[
-                RuntimeFactKind::SessionId,
-                RuntimeFactKind::TranscriptPath,
-            ],
+            &[RuntimeFactKind::SessionId, RuntimeFactKind::TranscriptPath],
         ),
         (
             "loaded",
@@ -2161,6 +2196,35 @@ mod tests {
     }
 
     #[test]
+    fn runtime_badge_lines_render_session_facts() {
+        let s = crate::domain::signal::SignalSet {
+            runtime_facts: vec![
+                RuntimeFact::new(
+                    RuntimeFactKind::SessionId,
+                    "fbd8bf4a-6dc7-4b50-9823-ab69bb3c5c26",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::TranscriptPath,
+                    "/home/chquan/.claude/projects/-home-chquan-Qmonster/fbd8bf4a-6dc7-4b50-9823-ab69bb3c5c26.jsonl",
+                    SourceKind::ProviderOfficial,
+                ),
+            ],
+            ..crate::domain::signal::SignalSet::default()
+        };
+
+        let text = runtime_badge_lines_wrapped(&s, 120)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert!(text.contains("session"), "text = {text:?}");
+        assert!(text.contains("SID fbd8bf4a"), "text = {text:?}");
+        assert!(text.contains("XSCRIPT"), "text = {text:?}");
+    }
+
+    #[test]
     fn metric_badge_lines_wrap_many_badges_with_indented_continuations() {
         let s = crate::domain::signal::SignalSet {
             context_pressure: Some(MetricValue::new(0.71, SourceKind::Estimated)),
@@ -2732,6 +2796,48 @@ mod tests {
     }
 
     #[test]
+    fn selected_pane_token_sparkline_renders_latest_and_delta_values() {
+        use crate::domain::identity::Provider;
+        use crate::store::TokenSample;
+
+        let samples = vec![
+            TokenSample {
+                ts_unix_ms: 3_000,
+                pane_id: "%1".into(),
+                provider: Provider::Codex,
+                input_tokens: Some(1_300),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: None,
+            },
+            TokenSample {
+                ts_unix_ms: 2_000,
+                pane_id: "%1".into(),
+                provider: Provider::Codex,
+                input_tokens: Some(1_100),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: None,
+            },
+            TokenSample {
+                ts_unix_ms: 1_000,
+                pane_id: "%1".into(),
+                provider: Provider::Codex,
+                input_tokens: Some(1_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: None,
+            },
+        ];
+
+        let line = token_sparkline_status_line(&samples);
+        let rendered = line_text(&line);
+
+        assert!(rendered.contains("TOKENS in 1.3K"), "rendered = {rendered}");
+        assert!(rendered.contains("+300/3p"), "rendered = {rendered}");
+    }
+
+    #[test]
     fn selected_pane_token_sparkline_uses_no_badge_background() {
         use crate::domain::identity::Provider;
         use crate::store::TokenSample;
@@ -2750,14 +2856,11 @@ mod tests {
         let line = token_sparkline_status_line(&samples);
 
         for span in line.spans {
-            let text = span.content.as_ref();
-            if text.contains("TOKENS") || text.chars().any(|c| "▁▂▃▄▅▆▇█".contains(c))
-            {
-                assert!(
-                    span.style.bg.is_none(),
-                    "sparkline spans must avoid badge backgrounds: {text:?}"
-                );
-            }
+            assert!(
+                span.style.bg.is_none(),
+                "sparkline row spans must avoid badge backgrounds: {:?}",
+                span.content.as_ref()
+            );
         }
     }
 
