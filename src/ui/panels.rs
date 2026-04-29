@@ -849,12 +849,40 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
             theme::severity_badge_style(context_metric_severity(metric.value)),
         );
     }
+    if let Some(metric) = signals.quota_5h_resets_at.as_ref()
+        && let Some(eta) = format_resets_eta(metric.value)
+    {
+        push_badge(
+            &mut spans,
+            &mut has_any,
+            format!(
+                " RESET 5H {} [{}] ",
+                eta,
+                source_kind_label(metric.source_kind)
+            ),
+            Style::default().fg(theme::TEXT_PRIMARY),
+        );
+    }
     if let Some(metric) = signals.quota_weekly_pressure.as_ref() {
         push_badge(
             &mut spans,
             &mut has_any,
             format!(" QUOTA WEEK {:.0}% ", metric.value * 100.0),
             theme::severity_badge_style(context_metric_severity(metric.value)),
+        );
+    }
+    if let Some(metric) = signals.quota_weekly_resets_at.as_ref()
+        && let Some(eta) = format_resets_eta(metric.value)
+    {
+        push_badge(
+            &mut spans,
+            &mut has_any,
+            format!(
+                " RESET 7D {} [{}] ",
+                eta,
+                source_kind_label(metric.source_kind)
+            ),
+            Style::default().fg(theme::TEXT_PRIMARY),
         );
     }
     if let Some(metric) = signals.token_count.as_ref() {
@@ -1247,6 +1275,13 @@ fn runtime_text_groups(signals: &SignalSet) -> Vec<(&'static str, Vec<String>)> 
             ],
         ),
         (
+            "session",
+            &[
+                RuntimeFactKind::SessionId,
+                RuntimeFactKind::TranscriptPath,
+            ],
+        ),
+        (
             "loaded",
             &[
                 RuntimeFactKind::LoadedTool,
@@ -1272,10 +1307,15 @@ fn runtime_text_groups(signals: &SignalSet) -> Vec<(&'static str, Vec<String>)> 
 }
 
 fn format_runtime_fact(fact: &RuntimeFact) -> String {
+    let value = if matches!(fact.kind, RuntimeFactKind::TranscriptPath) {
+        display_path(&fact.value)
+    } else {
+        fact.value.clone()
+    };
     format!(
         "{} {} [{}]",
         runtime_fact_label(fact.kind),
-        fact.value,
+        value,
         source_kind_label(fact.source_kind)
     )
 }
@@ -1605,6 +1645,15 @@ mod tests {
             .iter()
             .map(|span| span.content.as_ref())
             .collect()
+    }
+
+    fn future_unix_seconds(offset: std::time::Duration) -> u64 {
+        std::time::SystemTime::now()
+            .checked_add(offset)
+            .expect("test timestamp must be representable")
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("test timestamp must be after unix epoch")
+            .as_secs()
     }
 
     #[test]
@@ -2147,6 +2196,28 @@ mod tests {
             text.iter().all(|line| line.chars().count() <= 48),
             "wrapped metric rows must fit the requested width: {text:?}"
         );
+    }
+
+    #[test]
+    fn metric_badge_lines_render_reset_etas() {
+        let s = crate::domain::signal::SignalSet {
+            quota_5h_resets_at: Some(MetricValue::new(
+                future_unix_seconds(std::time::Duration::from_secs(2 * 3600)),
+                SourceKind::ProviderOfficial,
+            )),
+            quota_weekly_resets_at: Some(MetricValue::new(
+                future_unix_seconds(std::time::Duration::from_secs(8 * 3600)),
+                SourceKind::ProviderOfficial,
+            )),
+            ..SignalSet::default()
+        };
+
+        let rows = metric_badge_lines(&s, 120);
+        let text = rows.iter().map(line_text).collect::<Vec<_>>().join(" ");
+
+        assert!(text.contains("RESET 5H"), "text = {text:?}");
+        assert!(text.contains("RESET 7D"), "text = {text:?}");
+        assert!(text.contains("[Official]"), "text = {text:?}");
     }
 
     #[test]
