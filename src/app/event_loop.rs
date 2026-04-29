@@ -185,6 +185,7 @@ where
             &ctx.config.quota,
             &ctx.config.security,
             &ctx.config.cache,
+            &ctx.config.reset,
             resolved.identity.provider,
             resolved.confidence,
         );

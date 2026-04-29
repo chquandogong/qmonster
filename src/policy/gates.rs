@@ -53,6 +53,15 @@ pub struct PolicyGates {
     pub cache_cold_high_ctx: f32,
     pub cache_drift_drop: f64,
     pub cache_drift_min_samples: usize,
+    /// Phase F F-7d (v1.35.0): operator-tunable reset-rule
+    /// thresholds. Populated from `[reset]` in `qmonster.toml` via
+    /// `from_config_and_identity`. Defaults match the F-7c
+    /// hardcoded constants exactly so no behavior change when the
+    /// section is absent.
+    pub reset_wait_pressure: f32,
+    pub reset_wait_eta_secs: u64,
+    pub reset_snapshot_pressure: f32,
+    pub reset_snapshot_eta_secs: u64,
     /// Phase D D1 (v1.17.0): opt-in cross-window concurrent-work
     /// detection. When `true`, the cross-pane rule emits
     /// `CrossPaneKind::CrossWindowConcurrentWork` for groups whose panes
@@ -98,6 +107,10 @@ impl Default for PolicyGates {
             cache_cold_high_ctx: 0.6,
             cache_drift_drop: 0.30,
             cache_drift_min_samples: 4,
+            reset_wait_pressure: 0.85,
+            reset_wait_eta_secs: 30 * 60,
+            reset_snapshot_pressure: 0.50,
+            reset_snapshot_eta_secs: 5 * 60,
             cross_window_findings: false,
             identity_drift_findings: false,
         }
@@ -113,6 +126,7 @@ impl PolicyGates {
         quota: &crate::app::config::QuotaConfig,
         security: &crate::app::config::SecurityConfig,
         cache: &crate::app::config::CacheConfig,
+        reset: &crate::app::config::ResetConfig,
         provider: crate::domain::identity::Provider,
         conf: IdentityConfidence,
     ) -> Self {
@@ -140,6 +154,10 @@ impl PolicyGates {
             cache_cold_high_ctx: cache.cold_high_ctx_threshold,
             cache_drift_drop: cache.drift_drop_threshold,
             cache_drift_min_samples: cache.drift_min_samples,
+            reset_wait_pressure: reset.wait_pressure_threshold,
+            reset_wait_eta_secs: reset.wait_eta_secs,
+            reset_snapshot_pressure: reset.snapshot_pressure_threshold,
+            reset_snapshot_eta_secs: reset.snapshot_eta_secs,
             cross_window_findings: security.cross_window_findings,
             identity_drift_findings: security.identity_drift_findings,
         }
@@ -241,6 +259,10 @@ mod tests {
             cache_cold_high_ctx: 0.6,
             cache_drift_drop: 0.30,
             cache_drift_min_samples: 4,
+            reset_wait_pressure: 0.85,
+            reset_wait_eta_secs: 30 * 60,
+            reset_snapshot_pressure: 0.50,
+            reset_snapshot_eta_secs: 5 * 60,
             cross_window_findings: false,
             identity_drift_findings: false,
         };
@@ -291,6 +313,7 @@ mod tests {
             &quota,
             &security,
             &cache,
+            &crate::app::config::ResetConfig::default(),
             Provider::Codex,
             IdentityConfidence::Medium,
         );
@@ -339,6 +362,7 @@ mod tests {
             &quota,
             &security,
             &cache,
+            &crate::app::config::ResetConfig::default(),
             Provider::Claude,
             IdentityConfidence::High,
         );
@@ -351,6 +375,7 @@ mod tests {
             &quota,
             &security,
             &cache,
+            &crate::app::config::ResetConfig::default(),
             Provider::Codex,
             IdentityConfidence::High,
         );
@@ -363,6 +388,7 @@ mod tests {
             &quota,
             &security,
             &cache,
+            &crate::app::config::ResetConfig::default(),
             Provider::Gemini,
             IdentityConfidence::High,
         );
@@ -419,6 +445,7 @@ mod tests {
             &quota,
             &security,
             &cache,
+            &crate::app::config::ResetConfig::default(),
             Provider::Gemini,
             IdentityConfidence::High,
         );
@@ -436,6 +463,7 @@ mod tests {
             &quota,
             &security,
             &cache,
+            &crate::app::config::ResetConfig::default(),
             Provider::Claude,
             IdentityConfidence::High,
         );
@@ -456,6 +484,7 @@ mod tests {
             &quota,
             &security,
             &cache,
+            &crate::app::config::ResetConfig::default(),
             Provider::Codex,
             IdentityConfidence::High,
         );

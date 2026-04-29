@@ -33,6 +33,8 @@ pub struct QmonsterConfig {
     #[serde(default)]
     pub cache: CacheConfig,
     #[serde(default)]
+    pub reset: ResetConfig,
+    #[serde(default)]
     pub provider_setup: ProviderSetupConfig,
 }
 
@@ -229,6 +231,49 @@ impl Default for CacheConfig {
             cold_high_ctx_threshold: 0.6,
             drift_drop_threshold: 0.30,
             drift_min_samples: 4,
+        }
+    }
+}
+
+/// Phase F F-7d (v1.35.0): operator-tunable thresholds for the
+/// reset-aware advisories in `src/policy/rules/reset.rs`. Defaults
+/// match the v1.34.0 (F-7c) hardcoded constants exactly so an
+/// operator with no `[reset]` section gets the original behavior.
+///
+/// `wait_pressure_threshold` / `wait_eta_secs` gate
+/// `recommend_wait_for_reset` (Concern advisory: pause until reset
+/// when quota high AND reset close).
+///
+/// `snapshot_pressure_threshold` / `snapshot_eta_secs` gate
+/// `recommend_snapshot_before_reset` (Good advisory: write a
+/// snapshot when reset is imminent so handoff state survives).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ResetConfig {
+    /// `recommend_wait_for_reset` requires
+    /// `quota_*_pressure ≥ wait_pressure_threshold`. Default 0.85
+    /// (85% of the window used).
+    pub wait_pressure_threshold: f32,
+    /// `recommend_wait_for_reset` requires the resets_at countdown
+    /// to be ≤ `wait_eta_secs`. Default 1800 (30 minutes).
+    pub wait_eta_secs: u64,
+    /// `recommend_snapshot_before_reset` requires
+    /// `quota_*_pressure ≥ snapshot_pressure_threshold` so the
+    /// advisory only fires when there's meaningful session state
+    /// worth preserving. Default 0.50 (50%).
+    pub snapshot_pressure_threshold: f32,
+    /// `recommend_snapshot_before_reset` requires the resets_at
+    /// countdown to be ≤ `snapshot_eta_secs`. Default 300 (5 mins).
+    pub snapshot_eta_secs: u64,
+}
+
+impl Default for ResetConfig {
+    fn default() -> Self {
+        Self {
+            wait_pressure_threshold: 0.85,
+            wait_eta_secs: 30 * 60,
+            snapshot_pressure_threshold: 0.50,
+            snapshot_eta_secs: 5 * 60,
         }
     }
 }
@@ -597,6 +642,7 @@ impl QmonsterConfig {
             quota: QuotaConfig::default(),
             security: SecurityConfig::default(),
             cache: CacheConfig::default(),
+            reset: ResetConfig::default(),
         }
     }
 }
@@ -887,6 +933,30 @@ codex_app_server = true
             "missing claude_sidefile must keep the default-true value"
         );
         assert!(cfg.provider_setup.codex_app_server);
+    }
+
+    #[test]
+    fn reset_config_defaults_match_v1_34_0_constants_exactly() {
+        let absent: QmonsterConfig = toml::from_str("").unwrap();
+        assert!((absent.reset.wait_pressure_threshold - 0.85).abs() < f32::EPSILON);
+        assert_eq!(absent.reset.wait_eta_secs, 30 * 60);
+        assert!((absent.reset.snapshot_pressure_threshold - 0.50).abs() < f32::EPSILON);
+        assert_eq!(absent.reset.snapshot_eta_secs, 5 * 60);
+    }
+
+    #[test]
+    fn reset_config_loads_toml_and_keeps_other_defaults() {
+        let toml = r#"
+[reset]
+wait_pressure_threshold = 0.92
+snapshot_eta_secs = 600
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
+        assert!((cfg.reset.wait_pressure_threshold - 0.92).abs() < f32::EPSILON);
+        // Untouched fields fall back to per-field defaults.
+        assert_eq!(cfg.reset.wait_eta_secs, 30 * 60);
+        assert!((cfg.reset.snapshot_pressure_threshold - 0.50).abs() < f32::EPSILON);
+        assert_eq!(cfg.reset.snapshot_eta_secs, 600);
     }
 
     #[test]

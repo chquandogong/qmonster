@@ -18,13 +18,12 @@ use crate::policy::gates::{PolicyGates, allow_provider_specific};
 /// attention is on a permission/input prompt (don't pile advice
 /// onto a paused pane).
 ///
-/// Hardcoded thresholds for v1; F-7d would expose them via a
-/// `[reset]` config section once operator-tuning data lands.
-const WAIT_PRESSURE_THRESHOLD: f32 = 0.85;
-const WAIT_ETA_SECS: u64 = 30 * 60;
-const SNAPSHOT_ETA_SECS: u64 = 5 * 60;
-const SNAPSHOT_PRESSURE_THRESHOLD: f32 = 0.50;
-
+/// Phase F F-7d (v1.35.0) lifted the four thresholds out of
+/// hardcoded module constants into the `[reset]` config section
+/// → `PolicyGates::reset_*` fields. Defaults (`wait_pressure=0.85`,
+/// `wait_eta=30m`, `snapshot_pressure=0.50`, `snapshot_eta=5m`)
+/// match the v1.34.0 constants exactly so an operator with no
+/// `[reset]` section gets the original behavior.
 pub fn eval_reset(
     id: &ResolvedIdentity,
     signals: &SignalSet,
@@ -48,6 +47,7 @@ pub fn eval_reset(
         signals.quota_5h_pressure.as_ref().map(|m| m.value),
         signals.quota_5h_resets_at.as_ref().map(|m| m.value),
         now_unix_seconds,
+        gates,
     ) {
         out.push(rec);
     }
@@ -57,6 +57,7 @@ pub fn eval_reset(
         signals.quota_weekly_pressure.as_ref().map(|m| m.value),
         signals.quota_weekly_resets_at.as_ref().map(|m| m.value),
         now_unix_seconds,
+        gates,
     ) {
         out.push(rec);
     }
@@ -66,6 +67,7 @@ pub fn eval_reset(
         signals.quota_5h_pressure.as_ref().map(|m| m.value),
         signals.quota_5h_resets_at.as_ref().map(|m| m.value),
         now_unix_seconds,
+        gates,
     ) {
         out.push(rec);
     }
@@ -75,6 +77,7 @@ pub fn eval_reset(
         signals.quota_weekly_pressure.as_ref().map(|m| m.value),
         signals.quota_weekly_resets_at.as_ref().map(|m| m.value),
         now_unix_seconds,
+        gates,
     ) {
         out.push(rec);
     }
@@ -87,17 +90,18 @@ fn recommend_wait_for_reset(
     pressure: Option<f32>,
     resets_at: Option<u64>,
     now_unix_seconds: u64,
+    gates: &PolicyGates,
 ) -> Option<Recommendation> {
     let pressure = pressure?;
     let resets_at = resets_at?;
-    if pressure < WAIT_PRESSURE_THRESHOLD {
+    if pressure < gates.reset_wait_pressure {
         return None;
     }
     if resets_at <= now_unix_seconds {
         return None;
     }
     let remaining = resets_at - now_unix_seconds;
-    if remaining > WAIT_ETA_SECS {
+    if remaining > gates.reset_wait_eta_secs {
         return None;
     }
     Some(Recommendation {
@@ -109,7 +113,7 @@ fn recommend_wait_for_reset(
             "{} quota at {:.0}% (≥ {:.0}% wait threshold), resets in {} — pausing here keeps the next session's full window intact",
             window_label,
             pressure * 100.0,
-            WAIT_PRESSURE_THRESHOLD * 100.0,
+            gates.reset_wait_pressure * 100.0,
             format_eta_short(remaining),
         ),
         severity: Severity::Concern,
@@ -130,17 +134,18 @@ fn recommend_snapshot_before_reset(
     pressure: Option<f32>,
     resets_at: Option<u64>,
     now_unix_seconds: u64,
+    gates: &PolicyGates,
 ) -> Option<Recommendation> {
     let pressure = pressure?;
     let resets_at = resets_at?;
-    if pressure < SNAPSHOT_PRESSURE_THRESHOLD {
+    if pressure < gates.reset_snapshot_pressure {
         return None;
     }
     if resets_at <= now_unix_seconds {
         return None;
     }
     let remaining = resets_at - now_unix_seconds;
-    if remaining > SNAPSHOT_ETA_SECS {
+    if remaining > gates.reset_snapshot_eta_secs {
         return None;
     }
     Some(Recommendation {
@@ -327,6 +332,61 @@ mod tests {
         };
         let recs = eval_reset(&id(Provider::Claude), &s, &gates, 100);
         assert!(recs.is_empty());
+    }
+
+    #[test]
+    fn custom_wait_pressure_threshold_from_gates_lets_lower_pressure_fire() {
+        // Phase F F-7d (v1.35.0): operator can lower the wait
+        // threshold via [reset] config so pause-advice fires
+        // earlier than the 0.85 default.
+        let s = signals_with(Some(0.65), Some(15 * 60), 100);
+        let strict_gates = gates_high();
+        let recs_default = eval_reset(&id(Provider::Claude), &s, &strict_gates, 100);
+        assert!(
+            recs_default
+                .iter()
+                .all(|r| r.action != "quota: pause until 5h window resets"),
+            "default 0.85 threshold should suppress at 65% pressure"
+        );
+
+        let lenient = PolicyGates {
+            reset_wait_pressure: 0.50,
+            ..gates_high()
+        };
+        let recs_lenient = eval_reset(&id(Provider::Claude), &s, &lenient, 100);
+        assert!(
+            recs_lenient
+                .iter()
+                .any(|r| r.action == "quota: pause until 5h window resets"),
+            "lowered 0.50 threshold should let 65% pressure fire wait_for_reset"
+        );
+    }
+
+    #[test]
+    fn custom_snapshot_eta_threshold_from_gates_widens_imminent_window() {
+        // Lift the snapshot eta from 5m to 15m so a 10m countdown
+        // qualifies as imminent for an operator who wants more
+        // lead-time before reset.
+        let s = signals_with(Some(0.70), Some(10 * 60), 100);
+        let recs_default = eval_reset(&id(Provider::Claude), &s, &gates_high(), 100);
+        assert!(
+            recs_default
+                .iter()
+                .all(|r| r.action != "snapshot before 5h window resets"),
+            "default 5m snapshot eta should not fire at 10m"
+        );
+
+        let widened = PolicyGates {
+            reset_snapshot_eta_secs: 15 * 60,
+            ..gates_high()
+        };
+        let recs_widened = eval_reset(&id(Provider::Claude), &s, &widened, 100);
+        assert!(
+            recs_widened
+                .iter()
+                .any(|r| r.action == "snapshot before 5h window resets"),
+            "widened 15m snapshot eta should fire at 10m"
+        );
     }
 
     #[test]
