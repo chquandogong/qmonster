@@ -498,6 +498,25 @@ side_effects (N):
     verbose `metric_row` 텍스트 행과 같은 `format_resets_eta` helper
     및 SourceKind 라벨링을 사용합니다. Claude sidefile 또는 Codex
     app-server 경로가 `quota_*_resets_at`을 채웠을 때 표시됩니다.
+  - **v1.34.0 업데이트 (F-7c) — reset-aware 어드바이저리**: quota
+    window가 reset에 가까워질 때 두 가지 신규 어드바이저리가 alert
+    queue에 표시됩니다. 이는 기존의 `5h resets in <eta>` /
+    `7d resets in <eta>` 배지(F-5b/F-6 경로)를 운영 행동으로
+    연결합니다.
+    - **`quota: pause until 5h/weekly window resets`** (Concern,
+      ProjectCanonical): `quota_*_pressure >= 85%`이고 해당 window의
+      reset이 30분 이내일 때 발화합니다. reason에는 실제 percentage,
+      threshold(85%), 그리고 `2h13m` / `45m` / `30s` countdown이
+      포함되어 RESET 5H/7D 배지와 일치합니다. next_step은 reset 시점
+      까지 prompt 제출을 중단하라고 안내합니다.
+    - **`snapshot before 5h/weekly window resets`** (Good,
+      ProjectCanonical): 어떤 quota window라도 reset이 5분 이내이고
+      해당 pressure가 50% 이상일 때 발화합니다. next_step은 `s` 키로
+      runtime snapshot을 쓰도록 안내합니다.
+    - 두 rule 모두 `IdentityConfidence >= Medium`을 요구하며
+      `InputWait` / `PermissionWait` 상태에서는 suppress 됩니다.
+      `quota_*_resets_at`이 채워지지 않은 pane(현재 Gemini)에서는
+      발화하지 않습니다 (정직성 규칙).
 
 ## 9. 운영 파일
 

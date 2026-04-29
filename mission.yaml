@@ -1,6 +1,6 @@
 mission:
-  version: "1.33.0"
-  title: "Qmonster v1.33.0 — Phase F F-4b: Gemini /stats output parser → cumulative token / cache surfacing on Gemini panes."
+  version: "1.34.0"
+  title: "Qmonster v1.34.0 — Phase F F-7c: reset-aware advisories (wait_for_reset + snapshot_before_reset)."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1383,6 +1383,48 @@ mission:
     (honesty cases: OAuth → cache_reads=None, panel absent →
     defaults). 753 lib + 68 integration green; clippy + fmt clean.
 
+    Phase F continues with F-7c (v1.34.0, this revision) — reset-
+    aware policy rules that consume the F-5b (Claude sidefile) and
+    F-6 (Codex App Server) `quota_*_resets_at` Unix timestamps to
+    give the operator concrete pacing advice as a quota window
+    approaches reset. New `src/policy/rules/reset.rs` defines
+    `eval_reset(id, signals, gates, now_unix_seconds) ->
+    Vec<Recommendation>` which evaluates the 5h and weekly windows
+    independently — either window can fire either rule on the same
+    tick. `recommend_wait_for_reset` (Severity::Concern,
+    ProjectCanonical) fires when `quota_*_pressure ≥ 0.85` AND the
+    matching window resets in ≤ 30 minutes; reason embeds the actual
+    percentage, the threshold, and a `2h13m` / `45m` / `30s`
+    countdown via the local `format_eta_short` helper that mirrors
+    `panels.rs::format_resets_eta` so the badge and the reason
+    string agree. next_step tells the operator to stop submitting
+    prompts until the window resets.
+    `recommend_snapshot_before_reset` (Severity::Good,
+    ProjectCanonical) fires when ANY quota window resets in ≤ 5
+    minutes AND the pressure is at least 50% (no point preserving
+    handoff state if the operator just started); next_step prompts
+    the `s` key to write a runtime snapshot. Both rules gate on
+    `IdentityConfidence ≥ Medium` and suppress when `idle_state` is
+    `InputWait` or `PermissionWait` (don't pile advice onto a paused
+    pane). `Engine::evaluate` reads `SystemTime::now()` once per
+    tick and threads `now_unix_seconds` to `eval_reset` so both
+    windows compare against the same instant; tests inject the
+    value directly to make timing deterministic. Hardcoded
+    thresholds for v1: `WAIT_PRESSURE_THRESHOLD=0.85`,
+    `WAIT_ETA_SECS=1800`, `SNAPSHOT_PRESSURE_THRESHOLD=0.50`,
+    `SNAPSHOT_ETA_SECS=300`. F-7d would expose them via a new
+    `[reset]` config section. Bundled small cleanup:
+    `src/ui/panels.rs` sparkline test refactored from let-mut +
+    field reassign to struct-update syntax to silence
+    `clippy::field_reassign_with_default`. 10 new unit tests with
+    deterministic now-injection covering: wait fires on high
+    pressure + close ETA, wait skips on low pressure, wait skips on
+    far ETA, snapshot fires on imminent + meaningful pressure,
+    snapshot skips on trivial pressure, both rules co-fire, both
+    windows evaluated independently, suppress on input/permission
+    wait, suppress on low identity confidence, suppress on stale
+    resets_at. 765 lib + 68 integration green; clippy + fmt clean.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1442,6 +1484,10 @@ mission:
     - "F-4b: GeminiAdapter::parse pushes RuntimeFactKind::SessionId from /stats session and fills input_tokens/output_tokens/cached_input_tokens from /stats model via is_none() guards (mirrors F-5b); OAuth Gemini cache_reads absence preserved (no synthesized zero)"
     - "F-4b: GeminiModelStats returns Some only when both input_tokens AND output_tokens extract from the section-anchored Tokens table (honesty rule: don't ship half-data)"
     - "v1.33.x polish: panels.rs::primary_metric_row renders RESET 5H <eta> / RESET 7D <eta> badges via format_resets_eta when resets_at populated (Claude sidefile or Codex app-server path)"
+    - "F-7c: src/policy/rules/reset.rs::eval_reset evaluates 5h and weekly windows independently; both gate on IdentityConfidence >= Medium and suppress when idle_state is InputWait/PermissionWait"
+    - "F-7c: recommend_wait_for_reset (Severity::Concern, ProjectCanonical) fires when quota_*_pressure >= 0.85 AND resets_at within 30 minutes; reason embeds percentage + threshold + 2h13m/45m/30s countdown via local format_eta_short"
+    - "F-7c: recommend_snapshot_before_reset (Severity::Good, ProjectCanonical) fires when resets_at within 5 minutes AND quota_*_pressure >= 0.50; next_step prompts the `s` key to write a runtime snapshot"
+    - "F-7c: Engine::evaluate reads SystemTime::now() once and threads now_unix_seconds to eval_reset so both windows compare against the same instant; tests inject the value directly for deterministic timing"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1734,5 +1780,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 165
+    total_revisions: 166
     history: "mission-history.yaml"

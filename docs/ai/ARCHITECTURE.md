@@ -641,6 +641,53 @@ module shape.
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
 
+v1.34.0 ships **Phase F F-7c reset-aware policy rules**
+(`wait_for_reset` + `snapshot_before_reset`). New
+`src/policy/rules/reset.rs` consumes the F-5b (Claude sidefile) and
+F-6 (Codex App Server) `quota_*_resets_at` Unix timestamps to give
+the operator concrete pacing advice as a quota window approaches
+reset. The orchestrator `eval_reset(id, signals, gates,
+now_unix_seconds) -> Vec<Recommendation>` evaluates the 5h and
+weekly windows independently — either window can fire either rule
+on the same tick. `recommend_wait_for_reset` (Severity::Concern,
+ProjectCanonical) fires when `quota_*_pressure >= 0.85` AND the
+matching window resets in <= 30 minutes; the reason embeds the
+actual percentage, the 85% threshold, and a `2h13m` / `45m` /
+`30s` countdown via a local `format_eta_short` helper that mirrors
+`panels.rs::format_resets_eta` so the badge and the reason string
+agree on wording. next*step tells the operator to stop submitting
+prompts until the window resets.
+`recommend_snapshot_before_reset` (Severity::Good,
+ProjectCanonical) fires when ANY quota window resets in <= 5
+minutes AND the corresponding pressure is at least 50% (no point
+preserving handoff state if the operator just started); next_step
+prompts the `s` key to write a runtime snapshot. Both rules gate
+on `IdentityConfidence >= Medium` and suppress when `idle_state`
+is `InputWait` or `PermissionWait`, mirroring the existing
+project-canonical recommendation conventions. Architecture choice:
+`now_unix_seconds` is a parameter rather than a private read inside
+`eval_reset` so tests can inject the value directly for
+deterministic timing — `Engine::evaluate` reads `SystemTime::now()`
+once per call and threads the same instant to `eval_reset`, which
+guarantees the 5h and weekly window comparisons are consistent
+within a single tick (a real-clock read inside each rule could in
+principle straddle a window boundary, even though the practical
+risk is tiny). Hardcoded thresholds for v1:
+`WAIT_PRESSURE_THRESHOLD=0.85`, `WAIT_ETA_SECS=1800` (30 minutes),
+`SNAPSHOT_PRESSURE_THRESHOLD=0.50`, `SNAPSHOT_ETA_SECS=300` (5
+minutes). F-7d would expose these via a new `[reset]` config
+section once tuning data lands. Provider scope: F-7c is a
+Claude+Codex-only feature because only F-5b (Claude sidefile) and
+F-6 (Codex App Server) populate `quota*\*\_resets_at`— Gemini stays
+silent until a future Gemini surface ever exposes resets (F-4b's
+/stats parser doesn't carry reset timestamps). Bundled small
+cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
+
+- field reassign to struct-update syntax (silences
+  `clippy::field_reassign_with_default`). 10 new unit tests with
+  deterministic now-injection. Tests grew to 765 lib + 68 integration
+  green.
+
 v1.33.0 ships **Phase F F-4b Gemini `/stats` output parser**. New
 private parsers in `src/adapters/gemini.rs` close the long-deferred
 F-4b slice that was originally listed alongside F-4 in v1.25.0 but
