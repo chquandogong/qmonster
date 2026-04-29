@@ -290,10 +290,10 @@ fn pane_list_lines_with_flash(
                 &rec.reason,
             )));
             for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
-                lines.push(Line::from(format!("  {detail}")));
+                lines.push(Line::from(expanded_detail_field(&detail)));
             }
             for line in format_profile_lines(rec) {
-                lines.push(Line::from(format!("  {line}")));
+                lines.push(Line::from(expanded_detail_field(&line)));
             }
         }
         if report.recommendations.is_empty() {
@@ -507,13 +507,13 @@ fn panel_body_with_width(report: &PaneReport, wrap_width: u16) -> Vec<ListItem<'
             &rec.reason,
         )));
         for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
-            items.push(ListItem::new(format!("  {detail}")));
+            items.push(ListItem::new(expanded_detail_field(&detail)));
         }
         // v1.8.1: expose the structured ProviderProfile payload so the
         // operator can audit lever key/value/citation/SourceKind
         // directly in the panel (Codex P4-1 finding #1 closed).
         for line in format_profile_lines(rec) {
-            items.push(ListItem::new(format!("  {line}")));
+            items.push(ListItem::new(expanded_detail_field(&line)));
         }
     }
     items
@@ -683,6 +683,24 @@ pub fn runtime_row(s: &SignalSet) -> String {
 
 fn aligned_field(label: &str, value: &str) -> String {
     format!("{label:<8}: {value}")
+}
+
+fn expanded_detail_field(raw: &str) -> String {
+    if let Some(effect) = raw.strip_prefix("- ") {
+        return aligned_field("effect", effect);
+    }
+    if raw.starts_with('[') {
+        return aligned_field("lever", raw);
+    }
+    if let Some((label, value)) = raw.split_once(':') {
+        let label = match label.trim() {
+            l if l.starts_with("side_effects") => "effects",
+            "" => "detail",
+            l => l,
+        };
+        return aligned_field(label, value.trim_start());
+    }
+    aligned_field("detail", raw)
 }
 
 fn state_summary_line(report: &PaneReport) -> String {
@@ -1081,17 +1099,18 @@ fn signals_cache_pct_with_source(s: &SignalSet) -> Option<(String, SourceKind)> 
     Some((pct, source))
 }
 
-/// Phase F F-3 (v1.24.0): render a TOKENS sparkline from recent
-/// `input_tokens` samples. Returns `None` when there are fewer than
-/// 2 samples (no deltas computable). Samples usually arrive newest-first
-/// from `SqliteTokenUsageSink::recent_samples`; this function sorts them
-/// by timestamp so the sparkline reads left-to-right oldest-to-newest.
+/// Phase F F-3 (v1.24.0): render a TOKENS sparkline from recent prompt
+/// token samples (`input_tokens + cached_input_tokens`). Returns `None`
+/// when there are fewer than 2 samples (no deltas computable). Samples
+/// usually arrive newest-first from `SqliteTokenUsageSink::recent_samples`;
+/// this function sorts them by timestamp so the sparkline reads left-to-right
+/// oldest-to-newest.
 ///
-/// The sparkline shows DELTA between adjacent input_tokens samples
-/// (rate of context growth), not the cumulative count. Idle pane → flat
-/// line; active pane → rising blocks. None values in input_tokens are
-/// treated as 0 for delta computation. Negative deltas (provider
-/// counter reset) saturate to 0 via `saturating_sub`.
+/// The sparkline shows DELTA between adjacent prompt-token samples
+/// (rate of context growth), not just the raw provider total. Idle pane
+/// → flat line; active pane → rising blocks. Missing token fields are
+/// treated as 0 for delta computation. Negative deltas (provider counter
+/// reset) saturate to 0 via `saturating_sub`.
 #[cfg(test)]
 fn render_token_sparkline(
     samples: &[crate::store::TokenSample],
@@ -1113,9 +1132,9 @@ fn token_sparkline_status_line(
         ));
         spans.push(Span::styled(
             format!(
-                "in {} · +{}/{}p ",
-                format_count_with_suffix(stats.latest_input_tokens),
-                format_count_with_suffix(stats.delta_input_tokens),
+                "prompt {} · +{}/{}p ",
+                format_count_with_suffix(stats.latest_prompt_tokens),
+                format_count_with_suffix(stats.delta_prompt_tokens),
                 stats.sample_count
             ),
             Style::default().fg(theme::TEXT_PRIMARY),
@@ -1132,8 +1151,8 @@ fn token_sparkline_status_line(
             token_sparkline_label(signals),
             samples.len().min(2)
         );
-        if let Some(n) = latest_sampled_input_tokens(samples) {
-            text.push_str(&format!("· in {} ", format_count_with_suffix(n)));
+        if let Some(n) = latest_sampled_prompt_tokens(samples) {
+            text.push_str(&format!("· prompt {} ", format_count_with_suffix(n)));
         }
         spans.push(Span::styled(text, Style::default().fg(theme::TEXT_PRIMARY)));
     }
@@ -1148,8 +1167,8 @@ fn token_sparkline_body(samples: &[crate::store::TokenSample]) -> Option<String>
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TokenSparklineStats {
     body: String,
-    latest_input_tokens: u64,
-    delta_input_tokens: u64,
+    latest_prompt_tokens: u64,
+    delta_prompt_tokens: u64,
     sample_count: usize,
 }
 
@@ -1157,7 +1176,7 @@ fn token_sparkline_stats(samples: &[crate::store::TokenSample]) -> Option<TokenS
     if samples.len() < 2 {
         return None;
     }
-    let chrono = input_token_series_oldest_first(samples);
+    let chrono = prompt_token_series_oldest_first(samples);
     // Compute deltas between adjacent samples.
     let deltas: Vec<u64> = chrono
         .windows(2)
@@ -1184,26 +1203,30 @@ fn token_sparkline_stats(samples: &[crate::store::TokenSample]) -> Option<TokenS
     let latest = *chrono.last().unwrap_or(&0);
     Some(TokenSparklineStats {
         body,
-        latest_input_tokens: latest,
-        delta_input_tokens: latest.saturating_sub(first),
+        latest_prompt_tokens: latest,
+        delta_prompt_tokens: latest.saturating_sub(first),
         sample_count: chrono.len(),
     })
 }
 
-fn input_token_series_oldest_first(samples: &[crate::store::TokenSample]) -> Vec<u64> {
+fn prompt_token_series_oldest_first(samples: &[crate::store::TokenSample]) -> Vec<u64> {
     let mut sorted: Vec<&crate::store::TokenSample> = samples.iter().collect();
     sorted.sort_by_key(|sample| sample.ts_unix_ms);
-    sorted
-        .into_iter()
-        .map(|sample| sample.input_tokens.unwrap_or(0))
-        .collect()
+    sorted.into_iter().map(sample_prompt_tokens).collect()
 }
 
-fn latest_sampled_input_tokens(samples: &[crate::store::TokenSample]) -> Option<u64> {
+fn latest_sampled_prompt_tokens(samples: &[crate::store::TokenSample]) -> Option<u64> {
     samples
         .iter()
         .max_by_key(|sample| sample.ts_unix_ms)
-        .and_then(|sample| sample.input_tokens)
+        .map(sample_prompt_tokens)
+}
+
+fn sample_prompt_tokens(sample: &crate::store::TokenSample) -> u64 {
+    sample
+        .input_tokens
+        .unwrap_or(0)
+        .saturating_add(sample.cached_input_tokens.unwrap_or(0))
 }
 
 fn token_sparkline_label(signals: &SignalSet) -> String {
@@ -1753,6 +1776,26 @@ mod tests {
         assert!(
             rendered.contains("cmd     : target/release/qmonster"),
             "selected pane panel must expose the tmux current command: {rendered}"
+        );
+    }
+
+    #[test]
+    fn expanded_recommendation_detail_fields_align_to_label_column() {
+        assert_eq!(
+            expanded_detail_field("next    : press s to snapshot"),
+            "next    : press s to snapshot"
+        );
+        assert_eq!(
+            expanded_detail_field("profile: claude-default (3 levers) [Qmonster]"),
+            "profile : claude-default (3 levers) [Qmonster]"
+        );
+        assert_eq!(
+            expanded_detail_field("[Official] BASH_MAX_OUTPUT_LENGTH = 30000"),
+            "lever   : [Official] BASH_MAX_OUTPUT_LENGTH = 30000"
+        );
+        assert_eq!(
+            expanded_detail_field("- disables provider auto-memory"),
+            "effect  : disables provider auto-memory"
         );
     }
 
@@ -2826,7 +2869,7 @@ mod tests {
                 input_tokens: Some(1_300),
                 output_tokens: None,
                 cost_usd: None,
-                cached_input_tokens: None,
+                cached_input_tokens: Some(2_200),
             },
             TokenSample {
                 ts_unix_ms: 2_000,
@@ -2835,7 +2878,7 @@ mod tests {
                 input_tokens: Some(1_100),
                 output_tokens: None,
                 cost_usd: None,
-                cached_input_tokens: None,
+                cached_input_tokens: Some(2_100),
             },
             TokenSample {
                 ts_unix_ms: 1_000,
@@ -2844,7 +2887,7 @@ mod tests {
                 input_tokens: Some(1_000),
                 output_tokens: None,
                 cost_usd: None,
-                cached_input_tokens: None,
+                cached_input_tokens: Some(2_000),
             },
         ];
 
@@ -2856,10 +2899,10 @@ mod tests {
         let rendered = line_text(&line);
 
         assert!(
-            rendered.contains("TOKENS 9.0K · in 1.3K"),
+            rendered.contains("TOKENS 9.0K · prompt 3.5K"),
             "rendered = {rendered}"
         );
-        assert!(rendered.contains("+300/3p"), "rendered = {rendered}");
+        assert!(rendered.contains("+500/3p"), "rendered = {rendered}");
     }
 
     #[test]

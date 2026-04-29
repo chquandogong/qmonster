@@ -12,11 +12,12 @@ use crate::ui::settings::{
 
 const NO_CONFIG_PATH_SAVE_ERROR: &str =
     "no config path \u{2014} restart with `--config PATH` to enable save";
-const TAB_BY_INDEX: [SettingsTab; 4] = [
+const TAB_BY_INDEX: [SettingsTab; 5] = [
     SettingsTab::Thresholds,
     SettingsTab::Integrations,
     SettingsTab::Parameters,
     SettingsTab::Rules,
+    SettingsTab::Badges,
 ];
 
 pub fn handle_settings_overlay_key(
@@ -43,6 +44,7 @@ pub fn handle_settings_overlay_key(
         KeyCode::Char('2') if !editing => overlay.switch_tab(SettingsTab::Integrations),
         KeyCode::Char('3') if !editing => overlay.switch_tab(SettingsTab::Parameters),
         KeyCode::Char('4') if !editing => overlay.switch_tab(SettingsTab::Rules),
+        KeyCode::Char('5') if !editing => overlay.switch_tab(SettingsTab::Badges),
         KeyCode::Tab if !editing => overlay.next_tab(),
         KeyCode::BackTab if !editing => overlay.previous_tab(),
         KeyCode::Up if !editing => move_selection_up(overlay),
@@ -85,7 +87,7 @@ fn move_selection_up(overlay: &mut SettingsOverlay) {
     match overlay.tab() {
         SettingsTab::Thresholds => overlay.prev_field(),
         SettingsTab::Integrations => overlay.prev_integration(),
-        SettingsTab::Parameters | SettingsTab::Rules => {}
+        SettingsTab::Parameters | SettingsTab::Rules | SettingsTab::Badges => {}
     }
 }
 
@@ -93,7 +95,7 @@ fn move_selection_down(overlay: &mut SettingsOverlay) {
     match overlay.tab() {
         SettingsTab::Thresholds => overlay.next_field(),
         SettingsTab::Integrations => overlay.next_integration(),
-        SettingsTab::Parameters | SettingsTab::Rules => {}
+        SettingsTab::Parameters | SettingsTab::Rules | SettingsTab::Badges => {}
     }
 }
 
@@ -101,7 +103,7 @@ fn edit_or_toggle(overlay: &mut SettingsOverlay, config: &mut QmonsterConfig) {
     match overlay.tab() {
         SettingsTab::Thresholds => overlay.start_edit(config),
         SettingsTab::Integrations => overlay.toggle_integration(config),
-        SettingsTab::Parameters | SettingsTab::Rules => {}
+        SettingsTab::Parameters | SettingsTab::Rules | SettingsTab::Badges => {}
     }
 }
 
@@ -247,8 +249,12 @@ mod tests {
 
         handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Tab);
         assert_eq!(overlay.tab(), SettingsTab::Rules);
+        handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('5'));
+        assert_eq!(overlay.tab(), SettingsTab::Badges);
+        handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('e'));
+        assert!(overlay.edit_buffer().is_none());
         handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::BackTab);
-        assert_eq!(overlay.tab(), SettingsTab::Parameters);
+        assert_eq!(overlay.tab(), SettingsTab::Rules);
         handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('1'));
         assert_eq!(overlay.tab(), SettingsTab::Thresholds);
 
@@ -342,6 +348,14 @@ mod tests {
             mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 41, row),
         );
         assert_eq!(overlay.tab(), SettingsTab::Rules);
+
+        handle_settings_overlay_mouse(
+            &mut overlay,
+            &mut config,
+            viewport,
+            mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 50, row),
+        );
+        assert_eq!(overlay.tab(), SettingsTab::Badges);
 
         handle_settings_overlay_mouse(
             &mut overlay,

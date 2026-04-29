@@ -151,14 +151,16 @@ fn scopes_for_section(section: Section) -> &'static [Scope] {
 }
 
 /// Top-level pages inside the Settings modal. Thresholds and
-/// Integrations are editable; Parameters and Rules are read-only
-/// reference pages for the currently loaded runtime configuration.
+/// Integrations are editable; Parameters, Rules, and Badges are
+/// read-only reference pages for the currently loaded runtime
+/// configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {
     Thresholds,
     Integrations,
     Parameters,
     Rules,
+    Badges,
 }
 
 impl SettingsTab {
@@ -168,6 +170,7 @@ impl SettingsTab {
             SettingsTab::Integrations => "Integrations",
             SettingsTab::Parameters => "Parameters",
             SettingsTab::Rules => "Rules",
+            SettingsTab::Badges => "Badges",
         }
     }
 
@@ -177,6 +180,7 @@ impl SettingsTab {
             SettingsTab::Integrations => 1,
             SettingsTab::Parameters => 2,
             SettingsTab::Rules => 3,
+            SettingsTab::Badges => 4,
         }
     }
 
@@ -185,25 +189,28 @@ impl SettingsTab {
             SettingsTab::Thresholds => SettingsTab::Integrations,
             SettingsTab::Integrations => SettingsTab::Parameters,
             SettingsTab::Parameters => SettingsTab::Rules,
-            SettingsTab::Rules => SettingsTab::Thresholds,
+            SettingsTab::Rules => SettingsTab::Badges,
+            SettingsTab::Badges => SettingsTab::Thresholds,
         }
     }
 
     pub const fn previous(self) -> Self {
         match self {
-            SettingsTab::Thresholds => SettingsTab::Rules,
+            SettingsTab::Thresholds => SettingsTab::Badges,
             SettingsTab::Integrations => SettingsTab::Thresholds,
             SettingsTab::Parameters => SettingsTab::Integrations,
             SettingsTab::Rules => SettingsTab::Parameters,
+            SettingsTab::Badges => SettingsTab::Rules,
         }
     }
 }
 
-const SETTINGS_TABS: [SettingsTab; 4] = [
+const SETTINGS_TABS: [SettingsTab; 5] = [
     SettingsTab::Thresholds,
     SettingsTab::Integrations,
     SettingsTab::Parameters,
     SettingsTab::Rules,
+    SettingsTab::Badges,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1350,6 +1357,7 @@ fn settings_body_title(tab: SettingsTab) -> &'static str {
         SettingsTab::Integrations => " Settings — provider integrations ",
         SettingsTab::Parameters => " Settings — configured parameters ",
         SettingsTab::Rules => " Settings — rule conditions ",
+        SettingsTab::Badges => " Settings — badge glossary ",
     }
 }
 
@@ -1359,6 +1367,7 @@ fn build_body_lines<'a>(overlay: &'a SettingsOverlay, config: &'a QmonsterConfig
         SettingsTab::Integrations => build_integration_body_lines(overlay, config),
         SettingsTab::Parameters => build_parameter_body_lines(overlay, config),
         SettingsTab::Rules => build_rule_body_lines(overlay, config),
+        SettingsTab::Badges => build_badge_body_lines(overlay),
     }
 }
 
@@ -1733,6 +1742,98 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
     ]
 }
 
+fn build_badge_body_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
+    vec![
+        reference_header_line("Source Labels"),
+        badge_row(
+            "[Official]",
+            "reported by the provider surface or provider-backed sidefile/app-server",
+        ),
+        badge_row(
+            "[Estimate]",
+            "computed by Qmonster from observed provider values; useful for trend, verify before acting",
+        ),
+        badge_row(
+            "[Heur]",
+            "heuristic local observation such as /proc memory, file scan, or output pattern",
+        ),
+        badge_row(
+            "[Qmonster]",
+            "project rule, policy, profile, or local config",
+        ),
+        Line::from(""),
+        reference_header_line("Metric Badges"),
+        badge_row(
+            "CTX N%",
+            "context window used, not remaining; higher means closer to compact/clear pressure",
+        ),
+        badge_row(
+            "QUOTA N%",
+            "single quota window used; Gemini status-table quota is normalized to used percentage",
+        ),
+        badge_row(
+            "QUOTA 5H/WEEK",
+            "rolling 5-hour / weekly limit used; Claude statusline and Codex status/app-server surfaces",
+        ),
+        badge_row(
+            "RESET 5H/7D",
+            "countdown until provider reset timestamp; Claude sidefile or Codex app-server supplies resets_at",
+        ),
+        badge_row(
+            "TOKENS N",
+            "provider-visible session token count; selected pane also shows prompt=input+cached and recent delta",
+        ),
+        badge_row(
+            "CACHE N%",
+            "cache_read / (input + cache_read); hidden when the provider does not expose cache reads",
+        ),
+        badge_row(
+            "COST $N",
+            "Claude sidefile total_cost_usd is Official; Codex cost is Estimate from input/output pricing",
+        ),
+        badge_row(
+            "MODEL",
+            "current provider model parsed from the provider status surface",
+        ),
+        badge_row(
+            "MEM",
+            "process resident memory; Gemini can be Official, Claude/Codex use local /proc heuristic",
+        ),
+        badge_row(
+            "MEM-FILE",
+            "bytes in AGENTS.md / CLAUDE.md / GEMINI.md style memory files loaded from repo/home paths",
+        ),
+        Line::from(""),
+        reference_header_line("Context / Runtime"),
+        badge_row(
+            "PATH / BRANCH",
+            "provider-reported working directory and git branch when visible",
+        ),
+        badge_row(
+            "EFFORT",
+            "reasoning effort parsed from provider status/config surfaces",
+        ),
+        badge_row(
+            "PERM / MODE",
+            "permission or autonomy mode such as bypass permissions, YOLO, or sandbox mode",
+        ),
+        badge_row(
+            "DIR / AGENTS",
+            "allowed directory or provider agent config path",
+        ),
+        badge_row(
+            "SID / XSCRIPT",
+            "Claude/Gemini session id and Claude transcript path when exported",
+        ),
+        badge_row(
+            "TOOL / SKILL",
+            "loaded or observed tool/skill/plugin/runtime capability",
+        ),
+        Line::from(""),
+        status_line(overlay),
+    ]
+}
+
 fn reference_header_line(label: &'static str) -> Line<'static> {
     Line::from(vec![Span::styled(
         format!("  {label}"),
@@ -1740,6 +1841,14 @@ fn reference_header_line(label: &'static str) -> Line<'static> {
             .fg(theme::TEXT_PRIMARY)
             .add_modifier(Modifier::BOLD),
     )])
+}
+
+fn badge_row(label: &'static str, meaning: &'static str) -> Line<'static> {
+    Line::from(vec![
+        Span::raw("    "),
+        Span::styled(format!("{label:<17}"), Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(meaning, Style::default().fg(theme::TEXT_PRIMARY)),
+    ])
 }
 
 fn setting_row(label: &'static str, value: String, default: String) -> Line<'static> {
@@ -1964,11 +2073,11 @@ fn hint_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
     let line1 = if editing {
         "  EDIT — type digits/'.' · Enter commit · Esc cancel · Backspace delete"
     } else if overlay.tab() == SettingsTab::Thresholds {
-        "  [1]/[2]/[3]/[4]/[Tab] tab · ↑/↓ select · e/Enter edit · c clear · w write · q/Esc close"
+        "  [1]-[5]/[Tab] tab · ↑/↓ select · e/Enter edit · c clear · w write · q/Esc close"
     } else if overlay.tab() == SettingsTab::Integrations {
-        "  [1]/[2]/[3]/[4]/[Tab] tab · ↑/↓ select · Space/e/Enter toggle · w write · q/Esc close"
+        "  [1]-[5]/[Tab] tab · ↑/↓ select · Space/e/Enter toggle · w write · q/Esc close"
     } else {
-        "  [1]/[2]/[3]/[4]/[Tab] tab · click tabs · w write dirty edits · q/Esc close"
+        "  [1]-[5]/[Tab] tab · click tabs · w write dirty edits · q/Esc close"
     };
     let line2 =
         if overlay.tab() == SettingsTab::Thresholds || overlay.tab() == SettingsTab::Integrations {
@@ -2108,9 +2217,11 @@ mod tests {
         s.next_tab();
         assert_eq!(s.tab(), SettingsTab::Rules);
         s.next_tab();
+        assert_eq!(s.tab(), SettingsTab::Badges);
+        s.next_tab();
         assert_eq!(s.tab(), SettingsTab::Thresholds);
         s.previous_tab();
-        assert_eq!(s.tab(), SettingsTab::Rules);
+        assert_eq!(s.tab(), SettingsTab::Badges);
 
         s.switch_tab(SettingsTab::Thresholds);
         s.start_edit(&cfg());
@@ -2131,7 +2242,8 @@ mod tests {
         assert_eq!(settings_tab_index_at(tabs, inner_x + 17), Some(1));
         assert_eq!(settings_tab_index_at(tabs, inner_x + 29), Some(2));
         assert_eq!(settings_tab_index_at(tabs, inner_x + 41), Some(3));
-        assert_eq!(settings_tab_index_at(tabs, inner_x + 60), None);
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 50), Some(4));
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 70), None);
         assert_eq!(settings_tab_index_at(tabs, tabs.x - 1), None);
     }
 
@@ -2232,6 +2344,25 @@ mod tests {
         assert!(rendered.contains("cache > 70%"));
         assert!(rendered.contains("identity drift"));
         assert!(rendered.contains("security.identity_drift_findings = on"));
+    }
+
+    #[test]
+    fn badges_tab_explains_cost_context_and_source_labels() {
+        let s = {
+            let mut s = SettingsOverlay::new();
+            s.open();
+            s.switch_tab(SettingsTab::Badges);
+            s
+        };
+
+        let rendered = rendered_text(&build_body_lines(&s, &cfg()));
+
+        assert!(rendered.contains("[Official]"));
+        assert!(rendered.contains("CTX N%"));
+        assert!(rendered.contains("context window used, not remaining"));
+        assert!(rendered.contains("COST $N"));
+        assert!(rendered.contains("Claude sidefile total_cost_usd"));
+        assert!(rendered.contains("Codex cost is Estimate"));
     }
 
     // -----------------------------------------------------------------
