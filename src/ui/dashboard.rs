@@ -301,6 +301,99 @@ pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
     );
 }
 
+/// Render the Provider Setup modal (Phase G-1, v0.4.0). Read-only
+/// guidance for wiring Claude / Codex / Gemini to expose token +
+/// cache data to Qmonster — never writes provider config files.
+pub fn render_provider_setup_modal(
+    frame: &mut Frame<'_>,
+    overlay: &crate::ui::provider_setup::ProviderSetupOverlay,
+) {
+    use ratatui::widgets::Tabs;
+
+    let area = centered_rect(80, 76, frame.area());
+    frame.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // tabs row
+            Constraint::Min(5),    // body
+            Constraint::Length(2), // hint
+        ])
+        .split(area);
+
+    let home = crate::ui::provider_setup::detect_home();
+    let claude = home
+        .as_deref()
+        .map(crate::ui::provider_setup::detect_claude_state)
+        .unwrap_or(crate::ui::provider_setup::ClaudeState {
+            statusline_script_present: false,
+            statusline_size_bytes: 0,
+            exports_cache_read: false,
+            exports_cache_creation: false,
+            exports_input_tokens: false,
+            sidefile_export_present: false,
+        });
+    let codex = home
+        .as_deref()
+        .map(crate::ui::provider_setup::detect_codex_state)
+        .unwrap_or(crate::ui::provider_setup::CodexState {
+            config_present: false,
+            app_server_running: false,
+        });
+    let gemini = home
+        .as_deref()
+        .map(crate::ui::provider_setup::detect_gemini_footer_state)
+        .unwrap_or_default();
+
+    let tab_titles: Vec<Line<'_>> = [
+        crate::ui::provider_setup::ProviderSetupTab::Claude,
+        crate::ui::provider_setup::ProviderSetupTab::Codex,
+        crate::ui::provider_setup::ProviderSetupTab::Gemini,
+    ]
+    .iter()
+    .map(|t| Line::from(t.label()))
+    .collect();
+    let active_idx = match overlay.tab {
+        crate::ui::provider_setup::ProviderSetupTab::Claude => 0,
+        crate::ui::provider_setup::ProviderSetupTab::Codex => 1,
+        crate::ui::provider_setup::ProviderSetupTab::Gemini => 2,
+    };
+    let tabs = Tabs::new(tab_titles)
+        .select(active_idx)
+        .block(
+            Block::default()
+                .title("Provider Setup")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        );
+    frame.render_widget(tabs, chunks[0]);
+
+    let lines = crate::ui::provider_setup::render_tab_content(overlay, &claude, &codex, &gemini);
+    let body_text: Vec<Line<'_>> = lines.iter().map(|l| Line::from(l.as_str())).collect();
+    let body = Paragraph::new(body_text)
+        .wrap(Wrap { trim: false })
+        .scroll((overlay.scroll_offset as u16, 0))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+        );
+    frame.render_widget(body, chunks[1]);
+
+    let hint = Paragraph::new(Line::from(
+        "[1]/[2]/[3] tab · [s] toggle · [↑↓ or j/k] scroll · [q]/[Esc] close",
+    ))
+    .style(Style::default().fg(theme::TEXT_DIM))
+    .wrap(Wrap { trim: false });
+    frame.render_widget(hint, chunks[2]);
+}
+
 pub fn render_git_modal(frame: &mut Frame<'_>, title: &str, lines: &[String], scroll: u16) {
     let rects = git_modal_rects(frame.area());
     frame.render_widget(Clear, rects.area);
@@ -1306,6 +1399,45 @@ mod tests {
         assert!(
             bullet_count >= 3,
             "the `p` summary row must be followed by at least 3 bullet-indented continuation lines (one per audit chain). got bullet_count = {bullet_count}. joined:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn provider_setup_modal_renders_without_panic() {
+        // Phase G-1 Task 2 (v0.4.0) smoke test: drive the new modal
+        // through ratatui's `TestBackend` to lock in that the layout
+        // constraints + tab + body + hint composition stays
+        // panic-free across viewport sizes used in the integration
+        // tests, and that the operator-facing strings ("Provider
+        // Setup" title and the active tab label "Claude") actually
+        // reach the buffer rather than being clipped or styled
+        // away.
+        use crate::ui::provider_setup::ProviderSetupOverlay;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let backend = TestBackend::new(120, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut overlay = ProviderSetupOverlay::new();
+        overlay.open();
+        terminal
+            .draw(|f| {
+                super::render_provider_setup_modal(f, &overlay);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let dump: String = buffer
+            .content
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(
+            dump.contains("Provider Setup"),
+            "modal must render its title in the visible buffer"
+        );
+        assert!(
+            dump.contains("Claude"),
+            "default tab must render the Claude label"
         );
     }
 }

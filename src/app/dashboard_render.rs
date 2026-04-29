@@ -14,9 +14,10 @@ use crate::app::target_picker::{
 };
 use crate::ui::dashboard::{
     DashboardSplit, DashboardView, TargetPickerView, render_dashboard, render_git_modal,
-    render_help_modal, render_target_picker,
+    render_help_modal, render_provider_setup_modal, render_target_picker,
 };
 use crate::ui::panels::PaneStateFlash;
+use crate::ui::provider_setup::ProviderSetupOverlay;
 use crate::ui::settings::{SettingsOverlay, render_settings_modal};
 
 pub struct DashboardFrameView<'a> {
@@ -42,6 +43,7 @@ pub struct DashboardFrameView<'a> {
     pub git_modal: &'a ScrollModalState,
     pub help_modal: &'a ScrollModalState,
     pub settings_overlay: &'a SettingsOverlay,
+    pub provider_setup_overlay: &'a ProviderSetupOverlay,
     pub config: &'a QmonsterConfig,
 }
 
@@ -63,10 +65,12 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
             alerts_focused: !view.target_picker_open
                 && !view.help_modal.is_open()
                 && !view.settings_overlay.is_open()
+                && !view.provider_setup_overlay.is_open()
                 && view.focus == FocusedPanel::Alerts,
             panes_focused: !view.target_picker_open
                 && !view.help_modal.is_open()
                 && !view.settings_overlay.is_open()
+                && !view.provider_setup_overlay.is_open()
                 && view.focus == FocusedPanel::Panes,
         },
     );
@@ -108,5 +112,9 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
 
     if view.settings_overlay.is_open() {
         render_settings_modal(frame, view.settings_overlay, view.config);
+    }
+
+    if view.provider_setup_overlay.is_open() {
+        render_provider_setup_modal(frame, view.provider_setup_overlay);
     }
 }

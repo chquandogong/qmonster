@@ -22,6 +22,7 @@ use crate::app::modal_state::{
 use crate::app::operator_actions::{version_refresh_notices, write_operator_snapshot};
 use crate::app::polling_tick::{PollTickState, handle_poll_tick};
 use crate::app::prompt_send_actions::handle_prompt_send_action;
+use crate::app::provider_setup_overlay::handle_provider_setup_overlay_key;
 use crate::app::runtime_refresh::handle_runtime_refresh_action;
 use crate::app::settings_overlay::{handle_settings_overlay_key, handle_settings_overlay_mouse};
 use crate::app::system_notice::SystemNotice;
@@ -65,6 +66,7 @@ where
     let mut git_modal = ScrollModalState::default();
     let mut help_modal = ScrollModalState::default();
     let mut settings_overlay = crate::ui::settings::SettingsOverlay::new();
+    let mut provider_setup_overlay = crate::ui::provider_setup::ProviderSetupOverlay::new();
     let mut last_alert_click: Option<AlertMouseClick> = None;
     let mut last_pane_idle_states: HashMap<String, Option<IdleCause>> = HashMap::new();
     let mut pane_state_flashes: HashMap<String, crate::ui::panels::PaneStateFlash> = HashMap::new();
@@ -126,6 +128,7 @@ where
                             git_modal: &git_modal,
                             help_modal: &help_modal,
                             settings_overlay: &settings_overlay,
+                            provider_setup_overlay: &provider_setup_overlay,
                             config: &ctx.config,
                         },
                     );
@@ -186,6 +189,14 @@ where
                                 continue;
                             }
 
+                            if provider_setup_overlay.is_open() {
+                                handle_provider_setup_overlay_key(
+                                    &mut provider_setup_overlay,
+                                    k.code,
+                                );
+                                continue;
+                            }
+
                             let now = Instant::now();
                             if matches!(k.code, KeyCode::Char('c') | KeyCode::Char('C')) {
                                 dashboard.clear_notices(now);
@@ -218,6 +229,7 @@ where
                                     help_modal.open("", Vec::new());
                                 }
                                 KeyCode::Char('S') => settings_overlay.open(),
+                                KeyCode::Char('P') => provider_setup_overlay.open(),
                                 KeyCode::Char('t') => {
                                     open_target_picker(&ctx.source, target_picker.controller());
                                 }
@@ -296,6 +308,15 @@ where
                             if settings_overlay.is_open() {
                                 dashboard_split_dragging = false;
                                 handle_settings_overlay_mouse(&mut settings_overlay, viewport, m);
+                                continue;
+                            }
+
+                            if provider_setup_overlay.is_open() {
+                                // Phase G-1 Task 2: the Provider Setup overlay
+                                // has no mouse affordances yet — swallow mouse
+                                // events so split-drag and pane selection can't
+                                // race the modal while it is on screen.
+                                dashboard_split_dragging = false;
                                 continue;
                             }
 

@@ -40,6 +40,11 @@ pub struct ProviderSetupOverlay {
     pub claude_sidefile_enabled: bool,
     pub codex_app_server_enabled: bool,
     pub scroll_offset: usize,
+    /// Whether the overlay is currently visible. Mirrors the
+    /// `SettingsOverlay::open` field so the dashboard frame can
+    /// short-circuit pane focus + key/mouse dispatch while the
+    /// modal is on screen.
+    open: bool,
 }
 
 impl Default for ProviderSetupOverlay {
@@ -49,11 +54,35 @@ impl Default for ProviderSetupOverlay {
             claude_sidefile_enabled: false,
             codex_app_server_enabled: false,
             scroll_offset: 0,
+            open: false,
         }
     }
 }
 
 impl ProviderSetupOverlay {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.open
+    }
+
+    /// Open the overlay. Resets the active tab to `Claude` and the
+    /// scroll offset to `0` so the first-use experience is the same
+    /// as a freshly-constructed overlay; per-tab toggles
+    /// (`claude_sidefile_enabled` / `codex_app_server_enabled`)
+    /// persist across open/close cycles.
+    pub fn open(&mut self) {
+        self.open = true;
+        self.tab = ProviderSetupTab::Claude;
+        self.scroll_offset = 0;
+    }
+
+    pub fn close(&mut self) {
+        self.open = false;
+    }
+
     /// Toggle the per-tab boolean. For Claude, toggles
     /// `claude_sidefile_enabled`; for Codex, toggles
     /// `codex_app_server_enabled`; Gemini has no toggle (no-op).
@@ -465,6 +494,45 @@ mod tests {
         assert!(
             !text.contains("Sidefile JSON export (paste"),
             "sidefile section should be hidden by default"
+        );
+    }
+
+    #[test]
+    fn overlay_open_close_round_trip() {
+        // Phase G-1 Task 2 invariant: `is_open()` must mirror the
+        // private `open` field so the dashboard frame can decide
+        // whether to render the modal and route keys to the overlay
+        // handler. `open()` resets navigation state (tab + scroll)
+        // so the first frame after a re-open is consistent with the
+        // first frame after a fresh `new()`. Per-tab toggles persist
+        // across open/close cycles by design — operators expect the
+        // toggle they set last to survive a peek-and-close.
+        let mut overlay = ProviderSetupOverlay::new();
+        assert!(!overlay.is_open(), "fresh overlay must start closed");
+
+        // Pre-state mutation: switch tabs, scroll, flip a toggle.
+        overlay.tab = ProviderSetupTab::Gemini;
+        overlay.scroll_offset = 7;
+        overlay.claude_sidefile_enabled = true;
+
+        overlay.open();
+        assert!(overlay.is_open(), "open() must set is_open()");
+        assert_eq!(
+            overlay.tab,
+            ProviderSetupTab::Claude,
+            "open() resets the active tab to Claude"
+        );
+        assert_eq!(overlay.scroll_offset, 0, "open() resets scroll_offset");
+        assert!(
+            overlay.claude_sidefile_enabled,
+            "open() must NOT clobber per-tab toggles"
+        );
+
+        overlay.close();
+        assert!(!overlay.is_open(), "close() must clear is_open()");
+        assert!(
+            overlay.claude_sidefile_enabled,
+            "close() must NOT clobber per-tab toggles"
         );
     }
 
