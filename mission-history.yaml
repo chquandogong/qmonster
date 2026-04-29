@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.29.0 — Phase G G-1: Provider Setup overlay (operator integration helpers)."
+  mission_title: "Qmonster v1.30.0 — Phase G G-2: [provider_setup] sidefile-on-default + Phase F F-5: Claude statusline cache N% parser."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 159
-  latest_version: "1.29.0"
+  total_revisions: 160
+  latest_version: "1.30.0"
 
 timeline:
   - change_id: "initial"
@@ -14297,9 +14297,166 @@ timeline:
       - "f6811cd G-1 task2: Provider Setup overlay UI + P key handler"
     follow_up: []
 
+  - change_id: "v1.30.0-phase-g-g2-provider-setup-config-and-phase-f-f5-claude-cache"
+    semantic_version: "1.30.0"
+    change_sequence: 160
+    date: "2026-04-29"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (main pane)"
+    change_type: "feature"
+    motivation_type: "operator-ergonomics"
+    persistence: "permanent"
+    intent: >
+      Phase G continues with G-2 + Phase F adds F-5 (v1.30.0). G-2:
+      operator-tunable Provider Setup defaults via a new
+      `[provider_setup]` section in `qmonster.toml` —
+      `claude_sidefile = true` default flips the recommended sidefile
+      JSON-export workflow on at startup (operator can opt out);
+      `codex_app_server = false` default keeps the advanced daemon
+      opt-in. New `ProviderSetupConfig` struct in `src/app/config.rs`
+      mirrors the F-7-config per-section pattern with
+      `#[serde(default)]` per-field so existing configs keep working.
+      New `ProviderSetupOverlay::from_config(&QmonsterConfig)`
+      constructor seeds the per-tab toggles from persisted config so a
+      fresh `P` press shows the recommended posture without the extra
+      `s` keystroke; `tui_loop.rs` uses `from_config` instead of
+      `::new()` at startup. Sidefile-on-default writes the full Claude
+      statusLine JSON to `~/.local/share/ai-cli-status/claude/<sid>.json`
+      so downstream Claude tooling (the F-5 reader, future audit
+      pipelines) can read raw cache_read / cache_creation / resets_at /
+      cost / transcript_path. F-5: Claude statusline `cache N%` parser
+      → CACHE badge. The recommended `~/.claude/statusline.sh` emits an
+      optional `cache N%` token between CTX and 5h whenever the live
+      session JSON populates `cache_read_input_tokens`; the Claude
+      adapter parses it into a new
+      `SignalSet.cache_hit_ratio: Option<MetricValue<f64>>` field
+      (stored as 0..1, ProviderOfficial). UI + policy prefer this
+      pre-computed ratio when populated; the count-derived calculation
+      (Codex F-4 path) remains as the fallback for adapters that
+      populate `input_tokens` + `cached_input_tokens` directly. The
+      CACHE badge now surfaces for Claude panes alongside Codex; the
+      F-7 / F-7b cache rules fire on Claude panes too. New
+      `ClaudeStatusLine.cache_hit_ratio: Option<f64>`,
+      `find_status_label_in(line, label, start, end)` range-bounded
+      label search, and `parse_claude_status_line_row` narrows CTX's
+      percent-search bound to stop at the optional `cache` label so
+      the cache value can't bleed into CTX. New
+      `policy/rules/cache.rs::cache_hit_ratio(signals)` and
+      `panels.rs::signals_cache_pct_with_source()` helper encapsulate
+      the same precedence so badge + policy stay aligned. 8 new tests;
+      699 lib + 68 integration green.
+    intent_ko: >
+      Phase G G-2 + Phase F F-5 (v1.30.0). G-2: 운영자가 Provider Setup
+      기본값을 조정할 수 있도록 `qmonster.toml`에 새 `[provider_setup]`
+      섹션을 추가했다. `claude_sidefile = true`가 기본이라 추천 sidefile
+      JSON export 워크플로가 시작부터 켜져 있고(원치 않는 운영자만 false로
+      옵트아웃), `codex_app_server = false`는 고급 daemon이라 명시적
+      옵트인이다. `ProviderSetupConfig` 구조체는 F-7-config의 섹션별
+      패턴을 그대로 따르며 `#[serde(default)]` 필드 단위 처리로 기존
+      `qmonster.toml`은 변경 없이 동작한다. 새
+      `ProviderSetupOverlay::from_config(&QmonsterConfig)` 생성자가
+      탭별 토글을 영속 config에서 시드해서, 첫 `P` 진입 시 별도
+      `s` 키 없이도 권장 posture가 보이게 했다. `tui_loop.rs`는
+      `::new()` 대신 `from_config`를 사용한다. Sidefile-on-default는
+      전체 Claude statusLine JSON을
+      `~/.local/share/ai-cli-status/claude/<sid>.json`에 기록해서
+      downstream Claude 도구(F-5 reader, 향후 audit 파이프라인 등)가
+      cache_read / cache_creation / resets_at / cost / transcript_path
+      raw 값을 읽을 수 있게 한다. F-5: Claude statusline `cache N%`
+      parser → CACHE badge. 추천 `~/.claude/statusline.sh`는 라이브
+      세션 JSON에 `cache_read_input_tokens`가 채워질 때만 CTX와 5h
+      사이에 `cache N%` 토큰을 옵션으로 출력한다. Claude adapter는 이를
+      새 `SignalSet.cache_hit_ratio: Option<MetricValue<f64>>` 필드(0..1
+      범위, ProviderOfficial)로 파싱한다. UI / policy는 이 사전 계산값을
+      우선하며, count 기반 계산(Codex F-4 경로)은 fallback으로 남는다.
+      이 변경으로 CACHE badge가 Claude pane에도 표시되고, F-7/F-7b
+      cache rule이 Claude pane에서도 발동한다. 새
+      `ClaudeStatusLine.cache_hit_ratio: Option<f64>`,
+      `find_status_label_in(line, label, start, end)` (범위 한정 라벨
+      검색), `parse_claude_status_line_row`의 CTX 퍼센트 검색 상한을
+      옵션 `cache` 라벨에서 끊어 cache 값이 CTX로 새지 않게 했다.
+      `policy/rules/cache.rs::cache_hit_ratio(signals)`와
+      `panels.rs::signals_cache_pct_with_source()` helper가 동일한
+      우선순위를 캡슐화해서 badge / policy 일관성을 보장한다. 8개 신규
+      테스트, 699 lib + 68 integration green.
+    triggered_by: "Phase G operator-integration-helpers stream — G-2 task1 (commit df7dc1d) + Phase F cache-observability stream — F-5 task2 (commit 831a598)"
+    issue_or_context: >
+      v1.29.0 G-1 shipped the Provider Setup overlay with all toggles
+      (sidefile JSON export, App Server polling guide) defaulting to
+      OFF — the operator had to press `s` on each tab to see the
+      recommended posture. The recommended workflow is sidefile-on
+      (it writes a session JSON file so downstream tooling can read
+      raw cache_read / cache_creation / cost / transcript_path
+      without re-parsing tmux capture), so requiring an extra
+      keystroke buried the recommendation. G-2 inverts the default and
+      makes both knobs operator-tunable via TOML. Separately, Phase F
+      F-4 shipped Codex CACHE badge from `(+ N cached)` parsing but
+      Claude's CACHE badge stayed absent because the statusline only
+      had CTX/5h/7d/cost columns — no place for a cache field. The
+      recommended `statusline.sh` from G-1 actually computes the
+      `cache N%` ratio inline from the live session JSON; F-5 parses
+      that token directly into a new `cache_hit_ratio` field so the
+      Claude CACHE badge and F-7/F-7b cache rules work end-to-end on
+      Claude panes too — closing the loop on the v1.29.0 G-1
+      sidefile / statusline recommendation.
+    changes:
+      added:
+        - "src/app/config.rs::ProviderSetupConfig struct with claude_sidefile: bool (default true) and codex_app_server: bool (default false); both #[serde(default)]; QmonsterConfig gains [provider_setup] section field; 3 new TOML round-trip tests (defaults / overrides / partial)"
+        - "src/ui/provider_setup.rs::ProviderSetupOverlay::from_config(&QmonsterConfig) constructor that seeds per-tab toggles from config.provider_setup; 1 new toggle round-trip test"
+        - "src/domain/signal.rs::SignalSet.cache_hit_ratio: Option<MetricValue<f64>> field (0..1 ratio); doc comment notes ProviderOfficial precedence over count-derived calculation"
+        - "src/adapters/claude.rs::ClaudeStatusLine.cache_hit_ratio: Option<f64> + find_status_label_in(line, label, start, end) range-bounded label search; parse_claude_status_line_row narrows CTX's percent-search bound to stop at the optional `cache` label; 3 new Claude adapter tests (cache 100% / cache absence / cache 75% positioning)"
+        - "src/policy/rules/cache.rs::cache_hit_ratio() helper that prefers SignalSet.cache_hit_ratio over count-derived computation; 1 new policy rule test (direct cache_hit_ratio fires hot warning when ratio > threshold)"
+        - "src/ui/panels.rs::signals_cache_pct_with_source() helper encapsulating the same precedence so the CACHE badge surfaces for Claude panes alongside Codex; both badge call sites (cache row + CACHE badge span) use it"
+      modified:
+        - "src/app/tui_loop.rs — uses ProviderSetupOverlay::from_config(&config) instead of ::new() at startup so the recommended sidefile-on posture seeds the runtime overlay state"
+        - "src/adapters/common.rs — zero-init SignalSet.cache_hit_ratio in parse_common_signals so all adapters start with None"
+        - "README.md, VERSION.md, mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md, docs/ai/UI_MANUAL.md, docs/ai/ARCHITECTURE.md, docs/ai/PROJECT_BRIEF.md, docs/ai/VALIDATION.md bumped to v1.30.0"
+      removed: []
+    changed_sections:
+      - "src/app/config.rs"
+      - "src/app/tui_loop.rs"
+      - "src/ui/provider_setup.rs"
+      - "src/ui/panels.rs"
+      - "src/adapters/claude.rs"
+      - "src/adapters/common.rs"
+      - "src/domain/signal.rs"
+      - "src/policy/rules/cache.rs"
+      - "README.md"
+      - "VERSION.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/PROJECT_BRIEF.md"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/VALIDATION.md"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - ".mission/CURRENT_STATE.md"
+    observable_effects:
+      added:
+        - "First `P` press after fresh start shows Claude tab with sidefile JSON-export block already expanded (recommended posture), without the operator needing to press `s` first"
+        - "Operator can override defaults via [provider_setup] section in qmonster.toml (claude_sidefile = false to opt out, codex_app_server = true to opt in)"
+        - "Sidefile-on-default writes ~/.local/share/ai-cli-status/claude/<session_id>.json with full Claude statusLine JSON each refresh (raw cache_read_input_tokens, cache_creation_input_tokens, resets_at, cost, transcript_path)"
+        - "Claude pane cards now render `CACHE <N.N>% [Official]` badge alongside CTX/TOKENS when the operator's statusline.sh emits the optional `cache N%` token (matches Codex CACHE badge UX)"
+        - "F-7 / F-7b cache rules (cache_hot_compact_warning / compact_when_cache_cold / cache_drift_compact) now fire on Claude panes too — previously they could only fire on Codex panes that had `(+ N cached)` data"
+      modified:
+        - "Claude statusline parser is now resilient to the optional `cache N%` token between CTX and 5h — CTX percent search stops at the cache label so the values don't bleed into each other"
+      removed: []
+    impact_scope:
+      runtime: "config struct + new SignalSet field + Claude adapter parser extension + policy/UI precedence helper; no schema migration, no actuation change, no destructive mutations; sidefile write is a documented filesystem effect under XDG data dir."
+      tests: "8 new tests (4 G-2 lib tests + 3 Claude adapter F-5 tests + 1 policy F-5 test); cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release pass."
+      ledger: "1 new timeline entry (sequence 160); meta bump; minor version bump v1.29.0 → v1.30.0 for Phase G G-2 [provider_setup] config + Phase F F-5 Claude cache parser."
+      npm: "package.json bumped to 1.30.0 in a separate follow-up commit (v1.30.0 npm publish bump)."
+      review_gate: "local validation passes before commit"
+    breaking: false
+    risk: "low — config struct uses #[serde(default)] per-field so existing configs are zero-breaking; new SignalSet field is Option so all signal sites stay backward compatible; cache_hit_ratio precedence preserves Codex F-4 count-derived path as fallback; sidefile write is into XDG data dir under operator-owned ~/.local/share."
+    related_commits:
+      - "df7dc1d v1.30.0 task1: [provider_setup] config + sidefile-on-default"
+      - "831a598 v1.30.0 task2: F-5 Claude statusline cache N% parser → CACHE badge"
+    follow_up: []
+
 evolution_summary:
-  current_phase: "v1.29.0 opens Phase G with G-1: Provider Setup overlay. New `P` key opens a 3-tab in-TUI modal (Claude/Codex/Gemini) showing recommended config snippets and detected current state per provider via read-only filesystem probes of `~/.claude/statusline.sh`, `~/.codex/config.toml`, and `~/.gemini/settings.json`. New `src/ui/provider_setup.rs` module owns view-model, state detectors, snippet `include_str!` consts, and `render_tab_content`; `src/app/provider_setup_overlay.rs` mirrors `settings_overlay.rs` for key dispatch. Read-only — Qmonster never writes provider config; operator copies snippets manually. 8 new tests; 678 lib + 68 integration green. v1.28.0 shipped F-7-config: operator-tunable cache thresholds. New `CacheConfig` struct in `src/app/config.rs` exposes the 6 thresholds from F-7/F-7b via `[cache]` section in `qmonster.toml`; `PolicyGates` gains 6 `cache_*` fields; `cache.rs` reads from gates and interpolates values into reason strings. v1.27.1 fixed Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4's cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
-  next_phase: "Phase F (F-1/F-2/F-3/F-4/F-7/F-7b/F-7-config plus v1.27.1 fix) and Phase G G-1 shipped; G-2+ undefined; F-4b (Gemini /stats parsing — needs live fixture), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on F-5/F-6 reset_eta), settings-overlay UI for cache thresholds remain unscoped."
+  current_phase: "v1.30.0 ships Phase G G-2 + Phase F F-5. G-2: operator-tunable Provider Setup defaults via a new `[provider_setup]` config section in `qmonster.toml` (`claude_sidefile = true` default flips the recommended sidefile JSON-export workflow on at startup; `codex_app_server = false` keeps the advanced daemon opt-in). New `ProviderSetupConfig` struct in `src/app/config.rs` and `ProviderSetupOverlay::from_config(&QmonsterConfig)` constructor seed runtime overlay state from persisted config; `tui_loop.rs` uses `from_config` instead of `::new()`. Sidefile-on-default writes the full Claude statusLine JSON to `~/.local/share/ai-cli-status/claude/<sid>.json` so downstream Claude tooling (the F-5 reader, future audit pipelines) can read raw cache_read / cache_creation / resets_at / cost / transcript_path. F-5: Claude statusline `cache N%` parser → CACHE badge. New `SignalSet.cache_hit_ratio: Option<MetricValue<f64>>` field (0..1, ProviderOfficial); the recommended `~/.claude/statusline.sh` emits the optional `cache N%` token between CTX and 5h, the Claude adapter parses it via a new `find_status_label_in` range-bounded label search, and `parse_claude_status_line_row` narrows CTX's percent-search bound to stop at the `cache` label so values don't bleed. UI + policy prefer this pre-computed ratio when populated; the count-derived path (Codex F-4) remains as fallback. The CACHE badge now surfaces for Claude panes alongside Codex; F-7 / F-7b cache rules fire on Claude panes too. 8 new tests; 699 lib + 68 integration green. v1.29.0 opened Phase G with G-1: Provider Setup overlay. New `P` key opens a 3-tab in-TUI modal (Claude/Codex/Gemini) showing recommended config snippets and detected current state per provider via read-only filesystem probes of `~/.claude/statusline.sh`, `~/.codex/config.toml`, and `~/.gemini/settings.json`. New `src/ui/provider_setup.rs` module owns view-model, state detectors, snippet `include_str!` consts, and `render_tab_content`; `src/app/provider_setup_overlay.rs` mirrors `settings_overlay.rs` for key dispatch. Read-only — Qmonster never writes provider config; operator copies snippets manually. v1.28.0 shipped F-7-config: operator-tunable cache thresholds. New `CacheConfig` struct in `src/app/config.rs` exposes the 6 thresholds from F-7/F-7b via `[cache]` section in `qmonster.toml`; `PolicyGates` gains 6 `cache_*` fields; `cache.rs` reads from gates and interpolates values into reason strings. v1.27.1 fixed Codex Token usage parsing so total/input/cached/output values from the provider `Token usage:` line are applied atomically and are not overwritten by footer placeholders like `0 in · 0 out`; this preserves F-3 token samples, F-4 CACHE badges, and F-7/F-7b cache policy inputs. v1.27.0 shipped F-7b: cache drift detection rule using F-3 recent_token_samples; v1.26.0 shipped F-7: two cache rules (hot warning / cold compact) from F-4's cached_input_tokens data. v1.25.0 shipped F-4: Codex cached_input_tokens parser + CACHE hit ratio badge. v1.24.0 shipped F-3: token usage time series + sparkline UI. v1.23.0 shipped F-2: agent memory file scan + bloat advisory. v1.22.0 opened Phase F with F-1: process RSS surfaced as memory <N> MB [Heur] on Claude/Codex pane cards."
+  next_phase: "Phase G G-1/G-2 + Phase F F-5 shipped (v1.30.0); F-4b (Gemini /stats parsing — needs live fixture), F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on F-6 reset_eta), and a settings-overlay UI for [provider_setup] + [cache] booleans remain unscoped."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

@@ -393,6 +393,25 @@ side_effects (N):
     `↑` / `↓` 또는 `j` / `k` 스크롤, `q` / `Esc` 닫기.
   - **Read-only**: Qmonster는 어떤 provider 설정 파일에도 절대 쓰지
     않습니다. 운영자가 표시된 스니펫을 수동으로 복사해 적용합니다.
+  - **v1.30.0 업데이트 (G-2)**: `qmonster.toml`에 새로
+    `[provider_setup]` 섹션이 생겼습니다 (`claude_sidefile = true`
+    기본 / `codex_app_server = false` 기본). `P`로 overlay를 열면
+    각 탭의 `[s]` 토글 상태는 이 섹션에서 시드됩니다 — 즉 첫
+    `P` 진입에서 Claude 탭은 sidefile JSON-export 블록이
+    이미 펼쳐진 권장 posture를 보여줍니다. Sidefile-on-default는
+    추천 `statusline.sh`가 라이브 세션 JSON을
+    `~/.local/share/ai-cli-status/claude/<session_id>.json`에 그대로
+    적어두게 하므로, 다운스트림 도구(F-5 reader 등)가 raw cache /
+    cost / transcript_path를 그대로 읽을 수 있습니다.
+  - **v1.30.0 업데이트 (F-5) — Claude CACHE 배지**: 추천
+    `~/.claude/statusline.sh`가 CTX와 5h 사이에 옵션 `cache N%`
+    토큰을 출력하면 Claude adapter가 이를 파싱해 `CACHE <N.N>%
+    [Official]` 배지를 Claude pane card에 표시합니다 (Codex CACHE
+    배지와 동일한 UX). 이 값은 `SignalSet.cache_hit_ratio` 필드
+    (0..1)로 들어가며, F-7 / F-7b cache rule (cache hot warning,
+    cold compact, drift compact)이 Claude pane에도 발동합니다.
+    배지가 안 보이면 `P` overlay → Claude 탭에서 cache % 계산이
+    포함된 statusline.sh를 적용했는지 확인하세요.
 
 ## 9. 운영 파일
 

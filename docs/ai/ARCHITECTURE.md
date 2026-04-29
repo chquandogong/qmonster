@@ -641,6 +641,44 @@ module shape.
   `same current_path + same git_branch`; file-level detection remains
   deferred until providers expose a trustworthy active-file signal).
 
+v1.30.0 ships **Phase G G-2 [provider_setup] config + Phase F F-5
+Claude statusline cache parser**. G-2 adds operator-tunable Provider
+Setup defaults via a new `[provider_setup]` section in `qmonster.toml`:
+`claude_sidefile = true` (default — recommended sidefile JSON-export
+workflow on at startup; operator can opt out) and `codex_app_server = false`
+(default — advanced background daemon, opt-in). New `ProviderSetupConfig`
+struct in `src/app/config.rs` mirrors the F-7-config per-section pattern
+with `#[serde(default)]` per-field so existing configs keep working
+unchanged. New `ProviderSetupOverlay::from_config(&QmonsterConfig)`
+constructor seeds the runtime per-tab toggles from persisted config so
+a fresh `P` press shows the recommended posture without an extra `s`
+keystroke; `tui_loop.rs` uses `from_config` instead of `::new()` at
+startup. Sidefile-on-default writes the full Claude statusLine JSON to
+`~/.local/share/ai-cli-status/claude/<session_id>.json` so downstream
+Claude tooling (the F-5 reader, future audit pipelines) can read raw
+`cache_read_input_tokens`, `cache_creation_input_tokens`, `resets_at`,
+`cost`, and `transcript_path` without re-parsing the tmux capture.
+F-5 wires the other end: the recommended `~/.claude/statusline.sh`
+emits an optional `cache N%` token between `CTX` and `5h` whenever the
+live session JSON populates `cache_read_input_tokens`; the Claude
+adapter parses it into a new
+`SignalSet.cache_hit_ratio: Option<MetricValue<f64>>` field
+(stored as 0..1, `SourceKind::ProviderOfficial`). New
+`ClaudeStatusLine.cache_hit_ratio: Option<f64>` carries the per-line
+parse, and a new `find_status_label_in(line, label, start, end)`
+range-bounded label search lets `parse_claude_status_line_row` narrow
+CTX's percent-search bound to stop at the optional `cache` label so
+the cache value cannot bleed into CTX. The existing count-derived
+ratio (Codex F-4 path: `cached / (input + cached)`) remains as
+fallback; new helpers `policy/rules/cache.rs::cache_hit_ratio(signals)`
+and `panels.rs::signals_cache_pct_with_source()` encapsulate the
+"prefer direct field, fall back to count-derived" precedence so the
+CACHE badge call sites and the F-7/F-7b cache rules stay aligned. The
+result: the CACHE badge surfaces for Claude panes alongside Codex, and
+the F-7/F-7b cache-aware advisories fire on Claude panes too — a Claude
+pane on the recommended statusline.sh now gets the same cache-pressure
+signal Codex does. Tests grew to 699 lib + 68 integration green.
+
 v1.29.0 opens **Phase G** with **G-1 Provider Setup overlay**. Phase G is
 "operator integration helpers" — a stream distinct from Phase F's cache
 observability stack. New module `src/ui/provider_setup.rs` owns: (1) the

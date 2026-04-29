@@ -1,6 +1,6 @@
 mission:
-  version: "1.29.0"
-  title: "Qmonster v1.29.0 — Phase G G-1: Provider Setup overlay (operator integration helpers)."
+  version: "1.30.0"
+  title: "Qmonster v1.30.0 — Phase G G-2: [provider_setup] sidefile-on-default + Phase F F-5: Claude statusline cache N% parser."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1246,6 +1246,32 @@ mission:
     `j/k` scroll, `q`/`Esc` close. 8 new tests; 678 lib + 68 integration
     green. F-4b/F-5/F-6/F-7c remain unscoped; G-2+ undefined.
 
+    Phase G continues with G-2 + Phase F adds F-5 (v1.30.0). G-2:
+    operator-tunable Provider Setup defaults via a new
+    `[provider_setup]` section in `qmonster.toml`
+    (`claude_sidefile = true` default, `codex_app_server = false`
+    default). `ProviderSetupConfig` mirrors the F-7-config
+    per-section pattern; `#[serde(default)]` keeps existing
+    configs working unchanged. New `ProviderSetupOverlay::from_config`
+    constructor seeds the per-tab toggles at startup so a fresh
+    `P` press shows the recommended sidefile posture without an
+    extra `s` keystroke. Sidefile-on-default writes the full
+    Claude statusLine JSON to
+    `~/.local/share/ai-cli-status/claude/<session_id>.json` —
+    downstream Claude tooling (including F-5) can read raw
+    cache_read / cache_creation / resets_at / cost / transcript_path.
+    F-5: Claude statusline `cache N%` parser → CACHE badge. The
+    recommended `~/.claude/statusline.sh` emits an optional
+    `cache N%` token between CTX and 5h whenever the live session
+    JSON populates `cache_read_input_tokens`; the Claude adapter
+    parses it into a new `SignalSet.cache_hit_ratio` field
+    (Option<MetricValue<f64>>, 0..1). UI + policy prefer this
+    pre-computed ratio when populated; the count-derived
+    calculation (Codex F-4 path) remains as fallback. The CACHE
+    badge now surfaces for Claude panes alongside Codex; the
+    F-7 / F-7b cache rules fire on Claude panes too. 8 new tests;
+    699 lib + 68 integration green.
+
   done_when:
     - "cargo_build_passes"
     - "cargo_test_passes"
@@ -1286,6 +1312,10 @@ mission:
     - "G-1: detect_claude_state / detect_codex_state / detect_gemini_footer_state perform read-only probes of ~/.claude/statusline.sh, ~/.codex/config.toml, ~/.gemini/settings.json; missing files yield benign defaults; Gemini settings.json is parsed for ui.footer.* booleans via serde_json::Value::pointer"
     - "G-1: 6 snippet files at src/ui/provider_setup_snippets/ are include_str!'d into provider_setup.rs as &'static str constants — claude_statusline_base.sh, claude_sidefile_addon.sh, codex_statusline_guide.txt, codex_app_server_guide.sh, gemini_footer_settings.json, gemini_auth_note.txt; render_tab_content composes per-tab body conditional on overlay toggles"
     - "G-1: src/app/provider_setup_overlay.rs::handle_provider_setup_overlay_key returns false when overlay closed; Esc/q close, 1/2/3 switch tabs, s toggles per-tab boolean, Up/k scroll up, Down/j scroll down; src/app/tui_loop.rs owns the overlay alongside settings_overlay, plumbed to DashboardFrameView; render_provider_setup_modal in src/ui/dashboard.rs uses Tabs widget + scrollable Paragraph + hint footer at 80%×76% centered"
+    - "G-2: [provider_setup] config section in src/app/config.rs with claude_sidefile: bool (default true) and codex_app_server: bool (default false); #[serde(default)] keeps existing configs working unchanged"
+    - "G-2: ProviderSetupOverlay::from_config(&QmonsterConfig) constructor seeds per-tab toggles from persisted config; tui_loop.rs uses from_config in place of ::new() at startup"
+    - "F-5: SignalSet.cache_hit_ratio: Option<MetricValue<f64>> field added; Claude adapter parses optional `cache N%` token between CTX and 5h on statusline.sh output, populates cache_hit_ratio with SourceKind::ProviderOfficial"
+    - "F-5: policy/rules/cache.rs::cache_hit_ratio() prefers SignalSet.cache_hit_ratio over count-derived computation; UI panels.rs::signals_cache_pct_with_source() helper encapsulates the same precedence so the CACHE badge surfaces for Claude panes (not just Codex)"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1578,5 +1608,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 159
+    total_revisions: 160
     history: "mission-history.yaml"
