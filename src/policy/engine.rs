@@ -41,6 +41,21 @@ impl Engine {
             gates,
             recent_token_samples,
         ));
+        // Phase F F-7c (v1.34.0): reset-aware advisories consume
+        // the F-5b/F-6 quota_*_resets_at fields. Read `now` once
+        // so both windows compare against the same instant
+        // (avoids 5h saying "12m" while weekly says "11m" for the
+        // same poll cycle).
+        let now_unix_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        recs.extend(crate::policy::rules::reset::eval_reset(
+            id,
+            signals,
+            gates,
+            now_unix_seconds,
+        ));
         recs.extend(crate::policy::rules::idle::eval_idle_transition(
             id,
             signals,

@@ -7,5 +7,6 @@ pub mod concurrent;
 pub mod identity_drift;
 pub mod idle;
 pub mod profiles;
+pub mod reset;
 
 pub use alerts::eval_alerts;

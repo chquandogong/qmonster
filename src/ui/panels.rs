@@ -274,7 +274,10 @@ fn pane_list_lines_with_flash(
         lines.push(row);
     }
     if expanded {
-        lines.push(token_sparkline_status_line(&report.recent_token_samples));
+        lines.push(token_sparkline_status_line(
+            &report.recent_token_samples,
+            &report.signals,
+        ));
     }
     for row in runtime_badge_lines_wrapped(&report.signals, wrap_width) {
         lines.push(row);
@@ -1096,11 +1099,14 @@ fn render_token_sparkline(
     token_sparkline_body(samples).map(|body| ratatui::text::Line::from(format!("TOKENS {body}")))
 }
 
-fn token_sparkline_status_line(samples: &[crate::store::TokenSample]) -> Line<'static> {
+fn token_sparkline_status_line(
+    samples: &[crate::store::TokenSample],
+    signals: &SignalSet,
+) -> Line<'static> {
     let mut spans = vec![Span::raw(format!("{:<8}: ", "tokens"))];
     if let Some(stats) = token_sparkline_stats(samples) {
         spans.push(Span::styled(
-            " TOKENS ",
+            token_sparkline_label(signals),
             Style::default()
                 .fg(theme::TEXT_PRIMARY)
                 .add_modifier(Modifier::BOLD),
@@ -1121,7 +1127,11 @@ fn token_sparkline_status_line(samples: &[crate::store::TokenSample]) -> Line<'s
                 .add_modifier(Modifier::BOLD),
         ));
     } else {
-        let mut text = format!(" TOKENS collecting {}/2 ", samples.len().min(2));
+        let mut text = format!(
+            "{}collecting {}/2 ",
+            token_sparkline_label(signals),
+            samples.len().min(2)
+        );
         if let Some(n) = latest_sampled_input_tokens(samples) {
             text.push_str(&format!("· in {} ", format_count_with_suffix(n)));
         }
@@ -1194,6 +1204,14 @@ fn latest_sampled_input_tokens(samples: &[crate::store::TokenSample]) -> Option<
         .iter()
         .max_by_key(|sample| sample.ts_unix_ms)
         .and_then(|sample| sample.input_tokens)
+}
+
+fn token_sparkline_label(signals: &SignalSet) -> String {
+    if let Some(metric) = signals.token_count.as_ref() {
+        format!(" TOKENS {} · ", format_count_with_suffix(metric.value))
+    } else {
+        " TOKENS ".to_string()
+    }
 }
 
 fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
@@ -2830,10 +2848,17 @@ mod tests {
             },
         ];
 
-        let line = token_sparkline_status_line(&samples);
+        let signals = SignalSet {
+            token_count: Some(MetricValue::new(9_000, SourceKind::ProviderOfficial)),
+            ..SignalSet::default()
+        };
+        let line = token_sparkline_status_line(&samples, &signals);
         let rendered = line_text(&line);
 
-        assert!(rendered.contains("TOKENS in 1.3K"), "rendered = {rendered}");
+        assert!(
+            rendered.contains("TOKENS 9.0K · in 1.3K"),
+            "rendered = {rendered}"
+        );
         assert!(rendered.contains("+300/3p"), "rendered = {rendered}");
     }
 
@@ -2853,7 +2878,7 @@ mod tests {
                 cached_input_tokens: None,
             })
             .collect::<Vec<_>>();
-        let line = token_sparkline_status_line(&samples);
+        let line = token_sparkline_status_line(&samples, &SignalSet::default());
 
         for span in line.spans {
             assert!(
