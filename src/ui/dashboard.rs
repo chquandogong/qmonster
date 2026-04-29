@@ -624,7 +624,7 @@ fn render_footer(
 /// `"focus: alerts"`) decided by the caller.
 fn footer_text(focus: &str, split: DashboardSplit) -> String {
     format!(
-        "{focus} · split {}% · [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · y copy · c clear · p accept · d dismiss · S settings · ? help · q quit",
+        "{focus} · split {}% · [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · y copy · c clear · p accept · d dismiss · S settings · P provider-setup · ? help · q quit",
         split.alerts_percent()
     )
 }
@@ -746,6 +746,12 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
     lines.extend(help_wrapped_detail_lines(
         "S",
         "open the settings overlay to view + edit cost / context / quota thresholds; press 'w' inside the overlay to write back to the loaded TOML",
+        total_width,
+    ));
+
+    lines.extend(help_wrapped_detail_lines(
+        "P",
+        "open the Provider Setup overlay (read-only) — recommended Claude statusline.sh / Codex /statusline + /status / Gemini ui.footer.* snippets with detected current state; 1/2/3 switch tabs, s toggles per-tab optional sections (Claude sidefile / Codex app-server)",
         total_width,
     ));
 
@@ -1212,11 +1218,16 @@ mod tests {
             text.contains("S settings"),
             "footer must advertise the `S settings` overlay key: {text}"
         );
+        // v1.29.0 G-1: provider setup overlay key.
+        assert!(
+            text.contains("P provider-setup"),
+            "footer must advertise the `P provider-setup` overlay key: {text}"
+        );
         // Sanity: existing anchors still present.
         assert!(text.starts_with("focus: alerts"));
         assert!(text.contains("? help"));
         assert!(text.contains("q quit"));
-        // Placement contract: t target → y copy → c clear → p accept → d dismiss → S settings → ? help.
+        // Placement contract: t target → y copy → c clear → p accept → d dismiss → S settings → P provider-setup → ? help.
         let target_pos = text
             .find("t target")
             .expect("footer must keep the `t target` anchor");
@@ -1232,6 +1243,9 @@ mod tests {
         let s_pos = text
             .find("S settings")
             .expect("footer must carry `S settings`");
+        let p_provider_pos = text
+            .find("P provider-setup")
+            .expect("footer must carry `P provider-setup`");
         let help_pos = text
             .find("? help")
             .expect("footer must keep the `? help` anchor");
@@ -1260,8 +1274,12 @@ mod tests {
             "`S settings` must follow the prompt-send actuation pair"
         );
         assert!(
-            s_pos < help_pos,
-            "actuation + settings keys must precede `? help` (generic tail)"
+            s_pos < p_provider_pos,
+            "`P provider-setup` must follow `S settings` (overlay-opener pair)"
+        );
+        assert!(
+            p_provider_pos < help_pos,
+            "overlay-opener keys must precede `? help` (generic tail)"
         );
     }
 
