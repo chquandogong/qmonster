@@ -3,7 +3,7 @@ use crate::adapters::common::parse_common_signals;
 use crate::adapters::runtime::push_provider_fact;
 use crate::domain::identity::Provider;
 use crate::domain::origin::SourceKind;
-use crate::domain::signal::{IdleCause, MetricValue, RuntimeFactKind, SignalSet};
+use crate::domain::signal::{IdleCause, MetricValue, RuntimeFact, RuntimeFactKind, SignalSet};
 
 pub struct GeminiAdapter;
 
@@ -64,6 +64,51 @@ impl ProviderParser for GeminiAdapter {
                     .with_confidence(0.95)
                     .with_provider(Provider::Gemini),
             );
+        }
+        // Phase F F-4b (v1.33.0): when the operator presses `u` on a
+        // Gemini pane, runtime_refresh cycles `/stats session` →
+        // `/stats model` → `/stats tools` and merge_runtime_refresh_tail
+        // splices the captured panel into the parsed tail. Surface
+        // session id + cumulative token counts so CACHE / TOKENS / cost
+        // rendering paths light up for Gemini panes — mirrors the F-4
+        // (Codex) and F-5b (Claude) enrichment patterns.
+        let session = parse_gemini_stats_session(ctx.tail);
+        if let Some(sid) = session.session_id.as_ref() {
+            set.runtime_facts.push(
+                RuntimeFact::new(
+                    RuntimeFactKind::SessionId,
+                    sid,
+                    SourceKind::ProviderOfficial,
+                )
+                .with_provider(Provider::Gemini)
+                .with_confidence(0.95),
+            );
+        }
+        if let Some(model) = parse_gemini_stats_model(ctx.tail) {
+            let metric = |v| {
+                MetricValue::new(v, SourceKind::ProviderOfficial)
+                    .with_confidence(0.95)
+                    .with_provider(Provider::Gemini)
+            };
+            if set.input_tokens.is_none()
+                && let Some(n) = model.input_tokens
+            {
+                set.input_tokens = Some(metric(n));
+            }
+            if set.output_tokens.is_none()
+                && let Some(n) = model.output_tokens
+            {
+                set.output_tokens = Some(metric(n));
+            }
+            // Honesty: `cache_reads` is None for OAuth (Cache Reads row
+            // hidden by Google). Only populate cached_input_tokens when
+            // the row was actually present — never synthesize a zero,
+            // which would render a misleading 0% CACHE badge.
+            if set.cached_input_tokens.is_none()
+                && let Some(n) = model.cache_reads
+            {
+                set.cached_input_tokens = Some(metric(n));
+            }
         }
         if set.idle_state.is_none() {
             set.idle_state = classify_idle_gemini(ctx.tail, ctx.history);
@@ -376,6 +421,243 @@ fn gemini_limit_hit(tail: &str) -> bool {
     parse_gemini_status(tail)
         .and_then(|status| status.quota_pressure)
         .is_some_and(|quota| (quota - 1.0).abs() < f32::EPSILON)
+}
+
+/// Phase F F-4b (v1.33.0): runtime facts the `/stats session` panel
+/// surfaces. Both fields are independently optional — Gemini hides the
+/// `Tool Calls:` row when `tools.totalCalls` is zero, and a partial
+/// capture may clip either anchor.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct GeminiSessionStats {
+    pub session_id: Option<String>,
+    pub tool_calls: Option<u64>,
+}
+
+/// Phase F F-4b (v1.33.0): cumulative token counts the `/stats model`
+/// panel surfaces. `cache_reads` is `None` when the "Cache Reads" row
+/// is absent (the hardcoded Google FAQ behavior for OAuth Gemini —
+/// `hasCached` evaluates false, so the row is omitted entirely). The
+/// presence-vs-absence is the auth signal Qmonster preserves so the
+/// CACHE badge doesn't render a misleading 0% for OAuth panes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct GeminiModelStats {
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    /// None when the "Cache Reads" row is absent (OAuth path) — the
+    /// honest signal Qmonster preserves so the CACHE badge doesn't
+    /// render a misleading 0% for OAuth Gemini panes.
+    pub cache_reads: Option<u64>,
+}
+
+/// Phase F F-4b (v1.33.0): parse a captured `/stats session` panel
+/// for runtime facts the existing surface can populate via
+/// RuntimeFacts. Returns the default (all `None`) when the panel
+/// anchors aren't present — no Heuristic guessing, only structurally
+/// anchored matches survive.
+///
+/// Anchors: the `Session ID:` and `Tool Calls:` titles emitted by
+/// `Section -> StatRow` in the Ink panel. Each line is preceded by
+/// box-drawing characters (`│`) and indentation; we strip those and
+/// split on the first `:` to get the value.
+fn parse_gemini_stats_session(tail: &str) -> GeminiSessionStats {
+    let mut out = GeminiSessionStats::default();
+    for raw in tail.lines() {
+        // Strip the bordered-box vertical glyphs and any leading
+        // indentation; do not require a literal `│` though — partial
+        // captures (or future Gemini builds rendering the panel
+        // borderless) should still parse.
+        let cleaned = strip_box_chars(raw);
+        let line = cleaned.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if out.session_id.is_none()
+            && let Some((label, value)) = line.split_once(':')
+            && label.trim().eq_ignore_ascii_case("Session ID")
+        {
+            let v = value.trim();
+            if !v.is_empty() {
+                out.session_id = Some(v.to_string());
+            }
+            continue;
+        }
+        if out.tool_calls.is_none()
+            && let Some((label, value)) = line.split_once(':')
+            && label.trim().eq_ignore_ascii_case("Tool Calls")
+        {
+            // Tool Calls renders as `42 ( ✓ 41 ✕ 1 )` (with success/
+            // failure breakdown). The leading integer is the
+            // `tools.totalCalls` count we want.
+            let leading: String = value
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == ',')
+                .collect();
+            if let Some(n) = parse_count_with_commas(&leading) {
+                out.tool_calls = Some(n);
+            }
+        }
+    }
+    out
+}
+
+/// Phase F F-4b (v1.33.0): parse a captured `/stats model` panel for
+/// cumulative token counts. Returns `None` when the table isn't found.
+///
+/// `cache_reads` is `None` for OAuth (Cache Reads row hidden by
+/// Google). Presence-vs-absence is the auth signal — never synthesize
+/// a zero. The function only returns `Some` when at least both
+/// `input_tokens` and `output_tokens` were extracted; otherwise we
+/// don't ship half-data (the honesty rule from F-5b).
+///
+/// Row shape (after stripping box-drawing/border glyphs and trimming):
+///   `Total                                                       1,514,812`
+///   `Input                                                       1,234,567`
+///   `Cache Reads                                  234,567 (15.5%)`
+///   `Output                                                         45,678`
+///
+/// Each row's first significant whitespace-separated number (with
+/// optional commas) is the value.
+fn parse_gemini_stats_model(tail: &str) -> Option<GeminiModelStats> {
+    let mut input_tokens: Option<u64> = None;
+    let mut output_tokens: Option<u64> = None;
+    let mut cache_reads: Option<u64> = None;
+    let mut in_tokens_section = false;
+    let mut saw_token_metric = false;
+
+    for raw in tail.lines() {
+        let cleaned = strip_box_chars(raw);
+        let line = cleaned.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // The "Tokens" section header anchors the metric rows we care
+        // about. The `Tokens` label appears alone on a row in the
+        // Ink-rendered table. We don't strictly require crossing into
+        // the section before matching — the row labels themselves
+        // (`Total`, `Input`, `Cache Reads`, `Output`) only appear inside
+        // this layout — but tracking the section gives an extra guard
+        // against a chat line that happens to mention `Input`.
+        if !in_tokens_section
+            && let Some(stripped) = line.strip_suffix(':')
+            && stripped.eq_ignore_ascii_case("Tokens")
+        {
+            in_tokens_section = true;
+            continue;
+        }
+        if !in_tokens_section && line.eq_ignore_ascii_case("Tokens") {
+            in_tokens_section = true;
+            continue;
+        }
+
+        // Match the metric label at the start of the line, with the
+        // first numeric token that follows being the value. Labels are
+        // case-sensitive ("Cache Reads" matches the Ink render exactly).
+        if input_tokens.is_none()
+            && let Some(rest) = strip_metric_label(line, "Input")
+            && let Some(n) = first_count_in(rest)
+        {
+            input_tokens = Some(n);
+            saw_token_metric = true;
+            continue;
+        }
+        if output_tokens.is_none()
+            && let Some(rest) = strip_metric_label(line, "Output")
+            && let Some(n) = first_count_in(rest)
+        {
+            output_tokens = Some(n);
+            saw_token_metric = true;
+            continue;
+        }
+        if cache_reads.is_none()
+            && let Some(rest) = strip_metric_label(line, "Cache Reads")
+            && let Some(n) = first_count_in(rest)
+        {
+            cache_reads = Some(n);
+            saw_token_metric = true;
+            continue;
+        }
+    }
+
+    // Honesty rule: only return a stats struct when both required
+    // fields parsed AND we saw at least one anchor that is unique to the
+    // /stats model panel layout. Otherwise the parser would emit token
+    // counts derived from arbitrary tail prose like "Input file". The
+    // section header anchor (`Tokens`) is the cleanest such guard.
+    if (in_tokens_section || saw_token_metric) && input_tokens.is_some() && output_tokens.is_some()
+    {
+        Some(GeminiModelStats {
+            input_tokens,
+            output_tokens,
+            cache_reads,
+        })
+    } else {
+        None
+    }
+}
+
+/// Strip Ink/React panel border glyphs and leading whitespace so the
+/// caller can treat the remainder as a plain `<label>: <value>` line.
+/// Drops `│` `╭` `╮` `╰` `╯` `─` `━` `═` (the box-drawing characters
+/// the Ink Box+Text components draw around the panel) plus the
+/// surrounding whitespace each one is padded with.
+fn strip_box_chars(line: &str) -> String {
+    line.chars()
+        .filter(|c| !matches!(*c, '│' | '╭' | '╮' | '╰' | '╯' | '─' | '━' | '═'))
+        .collect()
+}
+
+/// If `line` starts with `label` followed by whitespace, return the
+/// remainder of the line (suitable for first-number extraction). Used
+/// to anchor `Input` / `Output` / `Cache Reads` row matches.
+fn strip_metric_label<'a>(line: &'a str, label: &str) -> Option<&'a str> {
+    let rest = line.strip_prefix(label)?;
+    // Require a whitespace separator so `Input` doesn't match
+    // `Inputs` or similar prose.
+    if rest.starts_with(|c: char| c.is_whitespace()) {
+        Some(rest.trim_start())
+    } else {
+        None
+    }
+}
+
+/// Find and parse the first comma-grouped integer in `s`. Returns
+/// `None` when no contiguous run of digits/commas is present.
+fn first_count_in(s: &str) -> Option<u64> {
+    let mut start: Option<usize> = None;
+    for (i, ch) in s.char_indices() {
+        if ch.is_ascii_digit() {
+            if start.is_none() {
+                start = Some(i);
+            }
+        } else if ch == ',' {
+            // Only treat commas as part of the run when we've already
+            // started seeing digits — a leading comma is just punctuation.
+            if start.is_none() {
+                continue;
+            }
+        } else if let Some(begin) = start {
+            // End of run.
+            let raw = &s[begin..i];
+            return parse_count_with_commas(raw);
+        }
+    }
+    if let Some(begin) = start {
+        return parse_count_with_commas(&s[begin..]);
+    }
+    None
+}
+
+/// Parse a number with optional thousands-separator commas (e.g.,
+/// `1,514,812`) into `u64`. Returns `None` on empty input or anything
+/// that isn't a pure digit run after stripping commas.
+fn parse_count_with_commas(s: &str) -> Option<u64> {
+    let stripped: String = s.chars().filter(|c| *c != ',').collect();
+    if stripped.is_empty() {
+        return None;
+    }
+    stripped.parse::<u64>().ok()
 }
 
 #[cfg(test)]
@@ -817,5 +1099,202 @@ Thinking...";
             set.process_memory_mb.is_none(),
             "no status table → no memory value"
         );
+    }
+
+    // -----------------------------------------------------------------
+    // Phase F F-4b (v1.33.0) — Gemini /stats panel parsing
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn stats_session_extracts_session_id_and_tool_calls() {
+        // Synthetic /stats session panel: bordered box around an
+        // `Interaction Summary` Section with `Session ID:` and
+        // `Tool Calls:` StatRows. The Ink Tool Calls row renders a
+        // success/failure breakdown after the leading total; the
+        // parser must pick the first integer.
+        let tail = "\
+╭─ Session Stats ──────────────────────────────────────╮
+│                                                      │
+│  Interaction Summary                                 │
+│    Session ID:    cdf3f5ed-0123-4567-89ab-cdef01234567│
+│    Auth Method:   Signed in with Google              │
+│    Tier:          Pro                                │
+│    Tool Calls:    42 ( ✓ 41 ✕ 1 )                    │
+│    Success Rate:  98%                                │
+╰──────────────────────────────────────────────────────╯";
+        let stats = parse_gemini_stats_session(tail);
+        assert_eq!(
+            stats.session_id.as_deref(),
+            Some("cdf3f5ed-0123-4567-89ab-cdef01234567")
+        );
+        assert_eq!(stats.tool_calls, Some(42));
+    }
+
+    #[test]
+    fn stats_session_returns_default_when_panel_absent() {
+        // Ordinary status-table tail (no /stats session panel) —
+        // session id and tool count must stay None. Honesty: the
+        // bare status table doesn't carry these signals.
+        let tail = "\
+branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
+main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec      47% used      63% used     118.8 MB     cdf3f5ed      user@example.com";
+        let stats = parse_gemini_stats_session(tail);
+        assert_eq!(stats, GeminiSessionStats::default());
+    }
+
+    #[test]
+    fn stats_model_extracts_input_output_with_cache_reads() {
+        // API key / Vertex auth: `hasCached` is true, so the Cache
+        // Reads row renders inside the Tokens section. All three
+        // counts must populate.
+        let tail = "\
+╭─ Model Usage ────────────────────────────────────────────────────╮
+│                                       Input Tokens   Cache Reads   Output Tokens │
+│  gemini-3.1-pro-preview                  1,234,567        234,567        45,678  │
+│                                                                                  │
+│  Tokens                                                                          │
+│    Total                                                       1,514,812        │
+│    Input                                                       1,234,567        │
+│    Cache Reads                                  234,567 (15.5%)                 │
+│    Output                                                         45,678        │
+╰──────────────────────────────────────────────────────────────────╯";
+        let stats = parse_gemini_stats_model(tail).expect("model stats parsed");
+        assert_eq!(stats.input_tokens, Some(1_234_567));
+        assert_eq!(stats.output_tokens, Some(45_678));
+        assert_eq!(stats.cache_reads, Some(234_567));
+    }
+
+    #[test]
+    fn stats_model_extracts_input_output_when_cache_reads_absent() {
+        // OAuth Gemini: `hasCached` is false (Google FAQ — cache reads
+        // are hidden for OAuth), so the Cache Reads row is omitted
+        // entirely. The parser must surface input/output without
+        // synthesizing a zero for cache_reads — absence is the auth
+        // signal.
+        let tail = "\
+╭─ Model Usage ────────────────────────────────────────────────────╮
+│                                       Input Tokens   Output Tokens │
+│  gemini-3.1-pro-preview                  1,234,567          45,678  │
+│                                                                    │
+│  Tokens                                                            │
+│    Total                                                 1,280,490 │
+│    Input                                                 1,234,567 │
+│    Output                                                   45,678 │
+╰──────────────────────────────────────────────────────────────────╯";
+        let stats = parse_gemini_stats_model(tail).expect("model stats parsed");
+        assert_eq!(stats.input_tokens, Some(1_234_567));
+        assert_eq!(stats.output_tokens, Some(45_678));
+        assert_eq!(
+            stats.cache_reads, None,
+            "OAuth Gemini hides Cache Reads — must not synthesize a zero"
+        );
+    }
+
+    #[test]
+    fn stats_model_returns_none_when_table_absent() {
+        // Ordinary status-table tail — no /stats model panel anchors,
+        // so the parser must return None rather than guess.
+        let tail = "\
+branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
+main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec      47% used      63% used     118.8 MB     cdf3f5ed      user@example.com";
+        assert!(parse_gemini_stats_model(tail).is_none());
+    }
+
+    #[test]
+    fn gemini_adapter_parse_populates_input_output_from_stats_model_tail() {
+        // End-to-end: GeminiAdapter.parse must surface the /stats model
+        // panel's Input/Output rows on SignalSet with
+        // ProviderOfficial source and Gemini provider tag, mirroring
+        // the F-4 (Codex) and F-5b (Claude) wiring.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+╭─ Model Usage ────────────────────────────────────────────────────╮
+│  Tokens                                                          │
+│    Total                                                 1,514,812│
+│    Input                                                 1,234,567│
+│    Cache Reads                              234,567 (15.5%)      │
+│    Output                                                   45,678│
+╰──────────────────────────────────────────────────────────────────╯";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+
+        let inp = set.input_tokens.as_ref().expect("input parsed");
+        assert_eq!(inp.value, 1_234_567);
+        assert_eq!(inp.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(inp.provider, Some(Provider::Gemini));
+
+        let out = set.output_tokens.as_ref().expect("output parsed");
+        assert_eq!(out.value, 45_678);
+        assert_eq!(out.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(out.provider, Some(Provider::Gemini));
+
+        let cached = set
+            .cached_input_tokens
+            .as_ref()
+            .expect("cache reads parsed");
+        assert_eq!(cached.value, 234_567);
+        assert_eq!(cached.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(cached.provider, Some(Provider::Gemini));
+    }
+
+    #[test]
+    fn gemini_adapter_oauth_path_keeps_cached_input_tokens_none() {
+        // OAuth pane: stats-model tail without the Cache Reads row
+        // must leave cached_input_tokens None. The CACHE badge then
+        // stays blank rather than rendering a misleading 0%.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+╭─ Model Usage ────────────────────────────────────────────────────╮
+│  Tokens                                                          │
+│    Total                                                 1,280,245│
+│    Input                                                 1,234,567│
+│    Output                                                   45,678│
+╰──────────────────────────────────────────────────────────────────╯";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+
+        assert!(set.input_tokens.is_some(), "input still surfaces for OAuth");
+        assert!(
+            set.output_tokens.is_some(),
+            "output still surfaces for OAuth"
+        );
+        assert!(
+            set.cached_input_tokens.is_none(),
+            "Cache Reads row absent (OAuth) — cached_input_tokens stays None"
+        );
+    }
+
+    #[test]
+    fn gemini_adapter_parse_emits_session_id_runtime_fact_from_stats_session_tail() {
+        // /stats session panel must emit a SessionId RuntimeFact with
+        // ProviderOfficial source and Gemini provider tag, reusing the
+        // F-5b kind so existing surfaces (badges, audits) light up
+        // without enum changes.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+╭─ Session Stats ──────────────────────────────────────╮
+│  Interaction Summary                                 │
+│    Session ID:    cdf3f5ed-aaaa-bbbb-cccc-dddddddddddd│
+│    Tool Calls:    7 ( ✓ 7 ✕ 0 )                      │
+╰──────────────────────────────────────────────────────╯";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        let fact = set
+            .runtime_facts
+            .iter()
+            .find(|f| f.kind == RuntimeFactKind::SessionId)
+            .expect("session id runtime fact emitted");
+        assert_eq!(fact.value, "cdf3f5ed-aaaa-bbbb-cccc-dddddddddddd");
+        assert_eq!(fact.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(fact.provider, Some(Provider::Gemini));
     }
 }
