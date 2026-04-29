@@ -22,33 +22,31 @@ maintained, trustworthy, and easy to evaluate from the GitHub page.
 | Demo fixtures | `examples/demo/` sanitized provider tails |
 | Architecture visual | `docs/assets/qmonster-architecture.svg` |
 | Community conduct | `CODE_OF_CONDUCT.md` |
+| Branch protection | `main` requires `Rust, docs, and package checks`; admin bypass remains available |
 
 ## Recommended Next Steps
 
-1. Enable branch protection for `main`.
-   Require the `Rust, docs, and package checks` status check before merge.
-
-2. Protect release tags.
+1. Protect release tags.
    Restrict `v*` tag creation/deletion to maintainers so publish events
    cannot be triggered accidentally. An evaluate-mode starter payload
    lives in `.github/rulesets/release-tags.example.json`; add the right
    maintainer bypass path before switching it to active.
 
-3. Add a repository social preview image.
+2. Add a repository social preview image.
    Upload `docs/assets/qmonster-social-preview.png` in GitHub
    `Settings -> Social preview`.
 
-4. Add a real dashboard screenshot or short terminal recording.
+3. Add a real dashboard screenshot or short terminal recording.
    `examples/demo/` now provides sanitized tails, but the best README
    asset would still be a real captured dashboard image under
    `docs/assets/`.
 
-5. Expand release provenance over time.
+4. Expand release provenance over time.
    Release assets now get GitHub artifact attestations; future hardening
    could add SBOM generation and an explicit verification section in each
    release body.
 
-6. Keep compatibility evidence fresh.
+5. Keep compatibility evidence fresh.
    Update `docs/COMPATIBILITY.md` after provider CLI rendering changes or
    major tmux/Rust/GitHub runner changes.
 
