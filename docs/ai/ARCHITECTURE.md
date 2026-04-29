@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (implementation sync through v1.35.2 Phase F F-7d operator-tunable [reset] thresholds + v1.35.x Gemini /model reset parser tightening + Tmux setup tab + Settings reset/badges sync + cache_creation_input_tokens distinct from CACHE)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (implementation sync through v1.35.2 Phase F F-7d operator-tunable [reset] thresholds + v1.35.x Gemini /model reset parser tightening + Tmux setup tab + Settings reset/badges sync + cache_creation_input_tokens distinct from CACHE; v1.35.3 updates repository documentation/presentation only)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)

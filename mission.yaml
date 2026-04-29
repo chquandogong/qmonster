@@ -1,6 +1,6 @@
 mission:
-  version: "1.35.2"
-  title: "Qmonster v1.35.2 — v1.35.x confirm-review must-fix closure: Gemini /model reset parser tightening + canonical docs sync (CACHE formula, runtime-refresh order, header date)."
+  version: "1.35.3"
+  title: "Qmonster v1.35.3 — GitHub documentation polish: README first-screen cleanup, repo professionalism checklist, and release/package surface alignment."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

@@ -1,7 +1,7 @@
 # VALIDATION
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-29 (current implementation validation sync)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (current implementation validation sync)
 
 This doc defines what "good" looks like for Qmonster at each phase, and
 what reviewers (Codex, Gemini, and the human operator) should
@@ -11,15 +11,17 @@ lives in `REVIEW_GUIDE.md`. Every displayed metric must carry a
 Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
-Current local verification (2026-04-29): `cargo fmt --check`,
+Current local verification (2026-04-30): `cargo fmt --all --check`,
 `git diff --check`, `cargo test --all-targets`,
-`cargo clippy --all-targets -- -D warnings`, `cargo build --release`,
-and `scripts/verify-shared.sh` pass for v1.35.2. Current code-level
+`cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,
+`cargo build --release`, `npm pack --dry-run`, and
+`scripts/verify-shared.sh` pass for v1.35.3. Current code-level
 verification after the Settings/badge consistency sync is
-`cargo test --all-targets` with 773 lib tests, 44 event-loop
+`cargo test --all-targets` with 791 lib tests, 45 event-loop
 integration tests, 18 false-positive regression tests, and 6
 idle-state regression tests passing, plus `cargo build --release`,
-`cargo clippy --all-targets -- -D warnings`, and `git diff --check`.
+`cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,
+`git diff --check`, and `npm pack --dry-run`.
 Official
 `mission-spec validate .` is still unavailable locally because
 `mission-spec` is not installed, so `scripts/verify-shared.sh` falls

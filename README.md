@@ -19,667 +19,250 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a>
+  <a href="#quick-start">Quick Start</a>
+  · <a href="#what-it-shows">What It Shows</a>
+  · <a href="#data-contracts">Data Contracts</a>
   · <a href="https://github.com/chquandogong/qmonster/releases">Releases</a>
   · <a href="https://github.com/chquandogong/qmonster/discussions">Discussions</a>
-  · <a href="docs/RELEASING.md">Release flow</a>
-  · <a href="docs/ai/UI_MANUAL.md">UI manual</a>
+  · <a href="docs/ai/UI_MANUAL.md">UI Manual</a>
 </p>
 
-Observe-first TUI for multi-CLI tmux development — watches Claude Code /
-Codex / Gemini panes (plus itself), surfaces alerts, token-pressure
-metrics, runtime facts, and recommendations. It does not touch observed
-panes automatically; the operator can press `u` to cycle read-only
-provider runtime slash commands on selected non-Claude panes.
+Qmonster watches a tmux workspace that runs Claude Code, Codex, Gemini,
+and Qmonster side by side. It surfaces pane state, token pressure,
+provider facts, reset timing, safety alerts, and recommendations without
+taking destructive action by default.
 
-- Version: npm package `1.35.2`; current mission ledger `v1.35.2`. Runtime version is sourced from `git describe --tags --always --dirty` via `build.rs` and surfaced in the TUI footer. `Cargo.toml`'s `0.1.0` is internal crate metadata, not the operator-facing version.
-- Target env: Ubuntu + tmux + Rust 1.88+
-- Name origin: Dr. QUAN's Q + monitoring / master
+| Surface | Current |
+| --- | --- |
+| Release | `v1.35.3` |
+| npm | `qmonster@1.35.3` |
+| Rust | `1.88+` |
+| Runtime version | `git describe --tags --always --dirty` from `build.rs` |
+| Cargo crate version | Internal metadata only |
 
 ## Why
 
-Running Claude main, Codex review, and Gemini research side-by-side in
-tmux is powerful but hard to babysit: you lose track of which pane is
-waiting for approval, which one is bleeding tokens, and which alerted a
-security concern two minutes ago.
+Multi-agent tmux work is powerful, but easy to lose track of. Qmonster
+answers the operational questions that usually require constant manual
+checking:
 
-Qmonster sits in its own tmux pane, polls the others, and shows the
-operator-facing signals a human can't keep up with on their own. Its
-three guiding principles are:
+- Which pane is waiting, blocked, stale, or still working?
+- Which session is approaching context or quota pressure?
+- Which provider facts are official, estimated, or heuristic?
+- Which reset window is close enough to wait or snapshot first?
+- Which recommendation is worth acting on now?
 
-1. **Observe-first.** Read state before offering any action.
-2. **Alert-first.** The loudest surface is the queue of things that
-   need attention.
-3. **Recommendation-first.** Qmonster recommends; humans (or explicit
-   approval gates) act. **No destructive automation by default.**
+The design contract is intentionally conservative:
 
-See `docs/ai/PROJECT_BRIEF.md` for the full statement of intent.
+1. Observe first.
+2. Alert first.
+3. Recommend first.
+4. No destructive automation by default.
 
-## Phase status
+See [PROJECT_BRIEF.md](docs/ai/PROJECT_BRIEF.md) for the full project
+intent.
 
-Current release: `v1.35.2` / npm `1.35.2`.
-
-`v1.35.2` closes the v1.35.x confirm-review must-fixes. Gemini's
-`extract_gemini_model_name` is tightened to require either an
-explicit `gemini` substring or a recognized Gemini family
-keyword (`Pro`, `Flash`, `Flash Lite`, or a digit-bearing
-version label like `2.5 Pro`); `gemini_reset_model_matches_current`
-now rejects unknown families outright so chat prose containing
-`pro` / `flash` as a token (`Reset Pro Helper Reset: 5s`) cannot
-enter ProviderOfficial reset facts. Canonical docs are aligned
-with shipped behavior: README documents the actual Gemini runtime
-cycle (`/model` first only on idle/stale/limit-hit, then `/stats
-session` and `/stats model`; `/stats tools` is intentionally not
-sent), `docs/ai/ARCHITECTURE.md` and `docs/ai/UI_MANUAL.md` state
-the read-hit `CACHE` formula `cached / (input + cached)` without
-folding `cache_creation_input_tokens` into the denominator, and
-the `ARCHITECTURE.md` header sync date advances to v1.35.2. One
-new regression test (`model_screen_rejects_family_word_embedded_in_chat_prose`)
-locks the parser tightening.
-
-`v1.35.1` layers five operator-visible polish surfaces on top of
-v1.35.0 (F-7d) without changing any policy semantics: (1) Gemini
-`/model` `Reset:` rows surface as display-only `RESET <model>
-<time/remaining> [Official]` runtime facts via the new
-`parse_gemini_model_resets` parser; the v1.35.2 tightening
-described above is what the brief originally promised; (2)
-`/stats session` `Tool Calls:` count surfaces as the `CALLS`
-runtime badge via the new `RuntimeFactKind::ToolCalls` variant;
-(3) Provider Setup overlay gains a fourth `Tmux` tab (`4`
-key/click/Tab-cycle) whose `y` snippet is an installer for
-`~/ts.sh` + `~/.tmux/qmonster.tmux.conf`; (4) Settings overlay
-`Parameters` / `Rules` / `Badges` tabs mirror the v1.35.0
-`[reset]` thresholds and the badge/source glossary read-only;
-(5) Claude sidefile `cache_creation_input_tokens` flows through
-the new `SignalSet.cache_creation_input_tokens` field
-(intentionally not folded into `CACHE` whose contract remains
-read-hit ratio), and expanded selected panes show
-`token io <input> / <output>` and `cache io <read> / <create>`
-rows when provider data exists. Gemini `u` runtime-refresh
-dispatches `/model` first only when the pane is idle / stale /
-limit-hit, then `/stats session` and `/stats model`; active panes
-skip `/model` and cycle the two used `/stats` surfaces only.
-`/stats tools` is intentionally not sent because no current
-parser consumes it. No new policy rule, no new threshold, no
-schema migration, no provider config write.
-
-`v1.35.0` ships **Phase F F-7d operator-tunable `[reset]`
-thresholds** for the F-7c reset-aware advisories. Mirrors the
-F-7-config (cache thresholds) refactor pattern from v1.28.0. New
-`ResetConfig` struct in `src/app/config.rs` with four
-`#[serde(default)]` fields exposes the v1.34.0 (F-7c) thresholds via
-a new `[reset]` section in `qmonster.toml`:
-`wait_pressure_threshold` (default `0.85`), `wait_eta_secs`
-(default `1800`), `snapshot_pressure_threshold` (default `0.50`),
-`snapshot_eta_secs` (default `300`). `QmonsterConfig` adds
-`reset: ResetConfig` (also `#[serde(default)]`) so existing configs
-without a `[reset]` section keep working unchanged. `PolicyGates`
-gains four `reset_*` fields populated from `ResetConfig` in
-`from_config_and_identity` (now 9th positional param).
-`eval_reset` and its two helpers take `&PolicyGates` and read
-thresholds from `gates.reset_*` instead of removed module
-constants; reason strings interpolate `gates.reset_wait_pressure`
-so an operator who sets `wait_pressure_threshold = 0.75` sees the
-recommendation mention 75% rather than the original 85%.
-`event_loop::run_once_with_target` passes `&ctx.config.reset` to
-`from_config_and_identity`. Defaults match v1.34.0 constants
-exactly so no behavior change for default configs. Settings now
-surfaces the current `[reset]` values in `Parameters` and the
-`wait_for_reset` / `snapshot_before_reset` activation conditions in
-`Rules`; editing remains a direct TOML operation. The `Badges` tab
-documents metric/source labels, including `COST`, `CTX`, `TOKENS`,
-`CACHE`, `RESET`, `CALLS`, and expanded `token io` / `cache io`
-rows. 4 initial F-7d tests plus current UI-surface coverage; 771+
-lib + 68 integration green in the v1.35.x line.
-
-`v1.34.0` ships **Phase F F-7c reset-aware policy rules**
-(`wait_for_reset` + `snapshot_before_reset`). New
-`src/policy/rules/reset.rs` consumes the F-5b (Claude sidefile) and
-F-6 (Codex App Server) `quota_*_resets_at` Unix timestamps to give
-the operator concrete pacing advice as a quota window approaches
-reset. The orchestrator `eval_reset(id, signals, gates,
-now_unix_seconds) -> Vec<Recommendation>` evaluates the 5h and
-weekly windows independently — either window can fire either rule
-on the same tick. `recommend_wait_for_reset` (Severity::Concern,
-ProjectCanonical) fires when `quota_*_pressure >= 0.85` AND the
-matching window resets in <= 30 minutes; reason embeds the actual
-percentage, the threshold, and a `2h13m` / `45m` / `30s` countdown
-via the local `format_eta_short` helper that mirrors
-`panels.rs::format_resets_eta` so badge + reason agree. next_step
-tells the operator to stop submitting prompts until reset.
-`recommend_snapshot_before_reset` (Severity::Good, ProjectCanonical)
-fires when ANY quota window resets in <= 5 minutes AND pressure
-
-> = 0.50; next*step prompts the `s` key to write a runtime snapshot.
-> Both rules gate on `IdentityConfidence >= Medium` and suppress on
-> `InputWait` / `PermissionWait`. `Engine::evaluate` reads
-> `SystemTime::now()` once per call and threads `now_unix_seconds`
-> to `eval_reset` so both windows compare against the same instant;
-> tests inject the value directly for deterministic timing. Hardcoded
-> v1 thresholds: `WAIT_PRESSURE_THRESHOLD=0.85`, `WAIT_ETA_SECS=1800`,
-> `SNAPSHOT_PRESSURE_THRESHOLD=0.50`, `SNAPSHOT_ETA_SECS=300`. F-7d
-> would expose them via a new `[reset]` config section. F-7c is a
-> Claude+Codex-only feature because only F-5b and F-6 populate
-> `quota*\*\_resets_at`; Gemini `/model`reset rows are visible only as
-display-only`RESET`runtime facts. Bundled cleanup:`src/ui/panels.rs`sparkline test refactored from let-mut + field
-reassign to struct-update syntax (silences`clippy::field_reassign_with_default`). 10 new unit tests with
-> deterministic now-injection; 765 lib + 68 integration green;
-> clippy + fmt clean.
-
-`v1.33.0` ships **Phase F F-4b Gemini /stats output parser**; current
-v1.35.x also parses Gemini `/model` reset rows. New
-private parsers in `src/adapters/gemini.rs`:
-`parse_gemini_stats_session(tail) -> GeminiSessionStats { session_id,
-tool_calls }` defensively scans stripped-box-char lines for `Session
-ID:` and `Tool Calls:` anchors, and `parse_gemini_stats_model(tail) ->
-Option<GeminiModelStats { input_tokens, output_tokens, cache_reads }>`
-performs section-anchored scanning for the `Tokens` header followed by
-`Total` / `Input` / `Cache Reads` / `Output` rows. The model parser
-returns `Some` only when both `input_tokens` AND `output_tokens` parse
-— honesty rule, don't ship half-data. Helpers `strip_box_chars`,
-`strip_metric_label`, `first_count_in`, `parse_count_with_commas` keep
-the line scan defensive against Ink rendering variations.
-`GeminiAdapter::parse` integrates both parsers AFTER the existing
-status-table block: `RuntimeFactKind::SessionId` (reused from F-5b)
-and `RuntimeFactKind::ToolCalls` populate from the session panel
-(`SID` / `CALLS` badges), while `input_tokens` / `output_tokens` /
-`cached_input_tokens` populate via `is_none()` guards mirroring the
-F-5b Claude / F-6 Codex pattern. OAuth Gemini honesty: `cache_reads`
-stays `None` per FAQ-documented Google limit (Cache Reads row hidden);
-never synthesize a zero. Bundled v1.33.x polish:
-`src/ui/panels.rs::primary_metric_row` adds `RESET 5H <eta>` / `RESET
-7D <eta>` badges to the compact one-line view, mirroring the verbose
-`metric_row` text rows from F-5b via the same `format_resets_eta`
-helper and SourceKind labeling. 8 new unit tests with synthetic
-Ink-rendered fixtures; 753 lib + 68 integration green.
-
-`v1.32.2` ships Settings/Provider Setup integration cleanup and token
-sparkline visibility fixes. Settings has `Thresholds`, `Integrations`,
-`Parameters`, `Rules`, and `Badges` tabs; `[provider_setup]`
-sidefile/app-server toggles live in `S -> Integrations` with keyboard
-and mouse support, while Provider Setup is read-only and mirrors those
-values. The selected pane's `TOKENS` sparkline now renders near the top
-as high-contrast plain text, shows prompt totals and deltas, and shows
-`TOKENS collecting N/2` while it waits for enough samples. 744 lib + 68
-integration green at the original release point.
-
-`v1.32.1` ships Provider Setup overlay readability polish. The tab body
-now uses stable sections for `Current Status`, `Options`, `Copy With y`,
-and `Preview: y copies this content`; `[s]` toggle state is shown near
-the top as ON/OFF, and each tab states exactly what pressing `y` copies
-and which informational sections are not copied. 5 new Provider Setup
-tests; 728 lib + 68 integration green.
-
-`v1.32.0` ships **Phase F F-6 Codex App Server JSON-RPC client**. New
-`src/adapters/codex_app_server.rs` spawns `codex app-server` with `-c
-sandbox_mode="danger-full-access"` to bypass bubblewrap on Linux, sends NDJSON
-`initialize` + `account/rateLimits/read` over the child's piped stdin/stdout,
-and parses the response into `CodexRateLimits { primary, secondary }` where
-each window carries `used_percent` (clamped 0..=100), `window_duration_mins`,
-and `resets_at_unix_seconds`. A `JsonRpcIo` trait abstracts the IO so tests
-inject a `VecDequeIo` stub; `SubprocessIo` is the production implementation,
-and its Drop closes stdin (graceful EOF) then try_wait → kill fallback for
-clean child reap. `Context` gains `codex_app_server: Option<CodexAppServer<SubprocessIo>>`
-(long-lived client) + `codex_rate_limits: Option<CodexRateLimits>` (cached
-account-level snapshot). `tui_loop` spawns the server once at startup when
-`[provider_setup] codex_app_server = true`; spawn success surfaces as a
-`SystemNotice` (Severity::Good), failure surfaces as `SystemNotice`
-(Severity::Warning) — startup never aborts on app-server failure.
-`event_loop::run_once_with_target` calls `read_rate_limits()` once per polling
-tick BEFORE iterating panes; read failure logs to stderr, drops the client,
-clears the cache so stale data can never linger. New
-`apply_codex_rate_limits(signals, rl)` helper writes the account-level
-snapshot into each Codex-pane SignalSet — `quota_5h_pressure` /
-`quota_weekly_pressure` populate ONLY when the statusline path didn't (`is_none`
-guards), but `quota_5h_resets_at` / `quota_weekly_resets_at` populate
-unconditionally (no other surface emits them). Result: F-5b's `5h resets in
-<eta>` / `7d resets in <eta>` rows now appear on Codex pane cards too,
-consistent with the Claude sidefile path. Bundled polish: settings overlay
-mouse (click-to-select + scroll-wheel cycles fields), pane card badge wrapping
-keyed off terminal width, Provider Setup overlay Tab/Right/BackTab/Left tab
-cycling. 11 new tests; 726 lib + 68 integration green.
-
-`v1.31.0` ships **Phase F F-5b Claude sidefile reader**. New
-`src/adapters/claude_sidefile.rs` parses the per-session JSON file dropped by the
-recommended `~/.claude/statusline.sh` (G-1 snippet) at
-`~/.local/share/ai-cli-status/claude/<session_id>.json` and matches it to a Claude
-pane by the JSON's `cwd` field equalling the pane's `current_path` (newest-mtime
-tiebreak; best-effort silent None on missing dir / malformed JSON / no match).
-`parse_for_with_environment` calls the matcher after the agent-memory fill (Phase
-F-1 / F-2 pattern); a provider gate restricts the enrichment to Claude panes so a
-Codex / Gemini pane sharing the cwd never inherits Claude session state. New
-`SignalSet` fields `quota_5h_resets_at` and `quota_weekly_resets_at`
-(Option<MetricValue<u64>>, Unix seconds) feed two new metric rows: `5h resets in
-<eta>` and `7d resets in <eta>`; `format_resets_eta` formats `2h13m` / `45m` /
-`30s` and caps at 14 days to reject sentinels. New `RuntimeFactKind::{SessionId,
-TranscriptPath}` variants surface per-pane Claude session identity (`SID` /
-`XSCRIPT` badges). `cost_usd` now populates for Claude panes via the existing
-`cost $X.XX` row (was always None on the statusline-only path). `is_none()`
-guards preserve the statusline path's values for raw counts; `cache_hit_ratio` is
-the one explicit override (sidefile-derived precise count-based ratio wins over
-rounded statusline `cache N%`). 11 new tests; 710 lib + 68 integration green.
-
-`v1.30.0` ships **Phase G G-2 [provider_setup] config + Phase F F-5 Claude statusline cache parser**.
-G-2: operator-tunable Provider Setup defaults via a new `[provider_setup]` section in `qmonster.toml` —
-`claude_sidefile = true` (default — recommended sidefile JSON-export workflow on at startup; operator can
-opt out) and `codex_app_server = false` (default — advanced background daemon, opt-in). New
-`ProviderSetupConfig` struct + `ProviderSetupOverlay::from_config(&QmonsterConfig)` constructor seed runtime
-overlay state from persisted config so a fresh `P` press shows the recommended posture without an extra `s`
-keystroke. Sidefile-on-default writes the full Claude statusLine JSON to
-`~/.local/share/ai-cli-status/claude/<session_id>.json` so downstream Claude tooling can read raw cache /
-cost / transcript_path fields. F-5: the recommended `~/.claude/statusline.sh` emits an optional `cache N%`
-token between CTX and 5h whenever the live session JSON populates `cache_read_input_tokens`; the Claude
-adapter parses it into a new `SignalSet.cache_hit_ratio: Option<MetricValue<f64>>` field
-(0..1, ProviderOfficial). UI + policy prefer this pre-computed ratio; the count-derived path (Codex F-4)
-remains as fallback. The CACHE badge now surfaces for Claude panes alongside Codex; F-7 / F-7b cache rules
-fire on Claude panes too. 8 new tests; 699 lib + 68 integration green.
-
-`v1.29.0` opens **Phase G** with **G-1 Provider Setup overlay**: the new `P` key opens a 4-tab
-in-TUI modal (Claude/Codex/Gemini/Tmux) showing recommended provider snippets plus a
-copyable tmux bundle installer. Provider tabs show detected current state of
-`~/.claude/statusline.sh`, `~/.codex/config.toml`, and `~/.gemini/settings.json`.
-Each snippet is rendered inline as copy-pasteable text. The
-optional Claude sidefile JSON-export block and Codex App Server polling guide are now controlled
-from `S -> Integrations`; Provider Setup mirrors those values read-only and never writes provider
-config files. The Tmux tab's `y` snippet writes `~/ts.sh` and
-`~/.tmux/qmonster.tmux.conf` when the operator runs the copied installer.
-Keys: `P` opens, `1`/`2`/`3`/`4` switch tabs, `Tab`/`←→` cycles tabs,
-`↑↓`/`j/k` scroll, `q`/`Esc` close. 8 new tests;
-678 lib + 68 integration green.
-
-`v1.28.0` continues Phase F with F-7-config: operator-tunable cache thresholds. New `CacheConfig`
-struct in `src/app/config.rs` exposes the 6 thresholds previously hardcoded in F-7 plus F-7b via
-a `[cache]` section in `qmonster.toml`: `hot_ratio_threshold` (0.6), `cold_ratio_threshold` (0.3),
-`hot_low_ctx_threshold` (0.7), `cold_high_ctx_threshold` (0.6), `drift_drop_threshold` (0.30),
-`drift_min_samples` (4). `PolicyGates` gains 6 `cache_*` fields populated from `CacheConfig` in
-`from_config_and_identity` (8th param). `src/policy/rules/cache.rs` removes the 6 const declarations
-and reads from `gates.cache_*`; reason strings interpolate the configured threshold so operators see
-the actual value that fired. Defaults match prior hardcoded constants exactly — no v1.27.x behavior
-change for default configs. Side effect: 22 `PolicyGates { … }` literals across `advisories.rs`
-plus `auto_memory.rs` plus `profiles.rs` simplified to `..PolicyGates::default()` spread — purely
-mechanical. Settings now displays cache values and rule conditions read-only; operators edit
-`qmonster.toml` directly. 3 cache/config tests; 662 lib plus 68 integration green.
-
-`v1.27.1` is a Phase F follow-up for Codex token observability. The Codex adapter now parses
-the provider `Token usage:` summary atomically (`total=`, `input=`, `(+ N cached)`, `output=`)
-and lets that official surface win over footer placeholders such as `0 in · 0 out`. This keeps
-F-3 sampling, F-4 `CACHE` badges, and F-7/F-7b cache recommendations visible on Codex sessions
-where the bottom status line has not populated token counters yet.
-
-`v1.27.0` continues Phase F with F-7b: cache drift detection rule. New `recommend_cache_drift_compact`
-rule in `src/policy/rules/cache.rs` consumes F-3's `recent_token_samples` time series to detect cache
-hit ratio drops over time. `Engine::evaluate` gains a 5th parameter `recent_token_samples: &[TokenSample]`
-threaded only to `eval_cache` (other eval\_\* functions unchanged). event_loop reorders per-pane work:
-read `recent_token_samples` FIRST, `policy.evaluate` SECOND, F-3 write LAST — so the historical window
-passed to policy is strictly older than the current iteration's snapshot. PaneReport reuses the
-early-fetched vec (no duplicate SQLite read). The new rule fires `Severity::Concern` `ProjectCanonical`
-with `suggested_command: /compact` when `cache_hit_ratio` has dropped ≥ 30 pp (DRIFT_RATIO_DROP_THRESHOLD)
-between `recent_token_samples.last()` (oldest in DESC window) and the current SignalSet, AND
-`samples.len() ≥ 4` (DRIFT_MIN_SAMPLES), AND `IdentityConfidence ≥ Medium`, AND no input/permission wait.
-The three cache rules (hot warning, cold compact, drift compact) can co-fire — drift fires on the trend
-independent of hot/cold thresholds. Hard-coded thresholds for v1; operator-tunable thresholds deferred.
-Deferred siblings: F-4b (Gemini /stats), F-5 (Claude statusLine), F-6 (Codex App Server), F-7c
-(wait_for_reset plus snapshot_before_reset — depend on F-5/F-6 reset_eta). 4 new tests; 659 lib plus
-68 integration green.
-
-`v1.26.0` continues Phase F with F-7: cache-aware advisory rules. Two new rules in `src/policy/rules/cache.rs`
-turn F-4's `cached_input_tokens` data into actionable `/compact` decisions.
-`recommend_cache_hot_compact_warning` (Severity::Concern, SourceKind::ProjectCanonical) fires when
-`cache_hit_ratio > 60%` AND `context_pressure < 70%`, advising the operator NOT to compact (compact
-resets cache; let context fill further first — wait until ctx >= 80% so the cache rebuild cost amortizes
-over more turns). `recommend_compact_when_cache_cold` (Severity::Good, SourceKind::ProjectCanonical,
-suggested_command: `/compact`) fires when `cache_hit_ratio < 30%` AND `context_pressure > 60%`,
-advising a snapshot-first `/compact` (cache rebuild cost is already paid on every turn, so compacting
-won't cost cache effectiveness). Both rules gate on `IdentityConfidence >= Medium` and suppress when
-input/permission wait is active. The two rules are mutually exclusive by construction: hot requires
-ratio greater than 0.6, cold requires ratio less than 0.3 — strictly disjoint regions; the intermediate
-30-60% band triggers neither rule. `Engine::evaluate` dispatches `eval_cache` after `eval_agent_memory`.
-At the v1.26.0 release point, thresholds were still hard-coded and these siblings were deferred: F-4b
-(Gemini /stats parsing), F-5 (Claude statusLine command opt-in), F-6 (Codex App Server resetsAt),
-F-7b (cache_drift_detected via recent_token_samples), F-7c (wait_for_reset / snapshot_before_reset —
-depend on F-5/F-6 reset_eta). Tests grew to 654 lib and 68 integration green.
-
-`v1.25.0` continues Phase F with F-4: Codex `cached_input_tokens`
-parser plus a CACHE hit ratio UI badge. New `parse_codex_cached_input_tokens`
-extracts the `(+ N cached)` token from the Codex `/status` welcome
-panel into `SignalSet.cached_input_tokens` (ProviderOfficial). The
-`token_usage_samples` SQLite table gains a nullable
-`cached_input_tokens INTEGER` column; `AuditDb::open` runs an
-idempotent `ALTER TABLE` migration that swallows "duplicate column"
-errors so v1.24.0 DBs upgrade in place. `TokenSample.cached_input_tokens`
-round-trips through INSERT/SELECT, and the event-loop sampling predicate
-extends to include cache-only rows. UI surfaces a `cache <N.N>%` text
-field plus a `CACHE <N.N>%` badge with one-decimal precision,
-computed at render time as `cached / (input + cached) * 100`. Honesty
-rule preserved: badge omitted when `cached_input_tokens` is None
-(Claude no statusline cache surface; Gemini OAuth FAQ-documented limit).
-Tests grew to 646 lib and 68 integration green.
-
-`v1.24.0` continues Phase F with F-3: token usage time series and sparkline UI.
-Token samples are persisted to a new `token_usage_samples` SQLite table in
-`qmonster.db` — one row per pane per poll when Codex (or a future provider)
-reports at least one of `input_tokens` / `output_tokens` / `cost_usd`.
-`SqliteTokenUsageSink::record_sample` is fire-and-forget with an `error_count`
-AtomicU64 counter mirroring the audit sink; failures log to stderr and never
-crash the polling loop. `recent_samples(pane_id, limit=20)` is called for every
-live pane every iteration (indexed, sub-ms). The expanded selected pane card
-renders a `TOKENS` sparkline by computing `input_tokens` deltas between adjacent
-samples (saturating-sub for provider counter resets) and mapping them to the
-8-block Unicode set. The sparkline is omitted when fewer than 2 samples exist
-(honesty rule). Retention sweep extended: `DELETE FROM token_usage_samples WHERE
-ts_unix_ms less than (now minus max_age_days times 86_400_000)` runs after the
-archive plus snapshot file sweeps; zero retention is a no-op. Tests grew to 639 lib
-and 68 integration green.
-
-`v1.23.0` continues Phase F with F-2: agent memory file scan and bloat
-advisory. New `adapters::agent_memory` discovers provider-specific memory
-files (Claude sums `CLAUDE.md` plus `~/.claude/CLAUDE.md` plus
-`~/.claude/projects/<encoded>/memory/*.md`; Codex sums `AGENTS.md` plus
-`~/.codex/AGENTS.md` plus `~/.codex/AGENTS.override.md`; Gemini sums
-`GEMINI.md` plus `<project>/.gemini/GEMINI.md` plus `~/.gemini/GEMINI.md`)
-and sums their byte sizes (per-file capped at 1 MiB) into
-`SignalSet.agent_memory_bytes`. UI surfaces a `MEM-FILE <KB|MB> [Heur]`
-badge; sub-1 KiB renders as `<1 KB`. The new
-`recommend_memory_bloat_advisory` rule fires `Severity::Concern` above
-50_000 bytes (~49 KiB), routing the operator toward `.claude/skills/`,
-`~/.codex/AGENTS.override.md`, or `.gemini/skills/` on-demand files.
-Tests grew to 630 lib and 67 integration green.
-
-`v1.22.0` opened Phase F with F-1: process RSS is surfaced as `memory <N> MB [Heur]`
-on Claude/Codex pane cards. tmux `#{pane_pid}` is captured as the 9th
-`PANE_LIST_FORMAT` field; a new `adapters::process_memory` helper walks
-`/proc/<pid>/task/<pid>/children` recursively (depth ≤ 5, visited-set) to
-find the highest-RSS descendant, preferring `claude/codex/gemini/node/python`
-comm names. Gemini's status-table `[Official]` MEM path is preserved
-untouched — the `/proc` fill only applies when the provider adapter left
-`process_memory_mb` as `None`. 608 lib + 67 integration tests green.
-
-| Area                  | Status   | Operator-visible result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| --------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phases 0-5            | Shipped  | Planning, observe-first MVP, SQLite/archive/checkpoints, policy engine, provider profiles, and safer prompt-send are complete.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| Runtime observability | Shipped  | Pane state, command row, provider facts, copyable `run:` commands, security posture badges, cost/context/quota gradients, and settings overlay are live.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| Phase B visibility    | Complete | Standard config/pricing paths, Codex token in/out, opt-in security advisories, branch-aware concurrent-work warnings, and copyable commands are closed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Phase C C1            | Complete | `src/main.rs` is a thin CLI/startup wrapper; the live TUI loop and helpers live under `src/app/`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| Phase C C2            | Complete | `[tmux] source = "auto"` tries control-mode first and falls back to polling when attach is unavailable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Phase C C3            | Complete | Review-tier profiles (`codex-review`, `gemini-policy-review`) fire on healthy `Role::Review` panes with source-labeled payloads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Phase D D1            | Shipped  | Opt-in cross-window concurrent-work findings exist for same path + branch panes across tmux windows.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| Phase D D2            | Shipped  | Opt-in identity-drift findings catch provider or worktree changes in the same pane, with per-session dedup.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Phase D D3            | Closed   | Claude subagent detection is refined; per-subagent token attribution stays permanently deferred because providers do not expose counters.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Phase E E1            | Shipped  | Gemini status-table memory is parsed into `MEM` badges and `--once` metrics.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Phase E E2            | Shipped  | Settings overlay writes preserve existing TOML comments, unrelated sections, and key order.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Phase F F-1           | Shipped  | Process RSS surfaced as `memory <N> MB [Heur]` on Claude/Codex pane cards via /proc descendant walk; Gemini status-table `[Official]` path untouched.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Phase F F-2           | Shipped  | Agent memory file scan (CLAUDE.md / AGENTS.md / GEMINI.md + home-dir + Claude project memory dir) surfaces `MEM-FILE <KB\|MB> [Heur]` badge; `recommend_memory_bloat_advisory` fires Concern above 50_000 bytes (~49 KiB).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Phase F F-3           | Shipped  | Token usage persisted to `token_usage_samples` SQLite table (per pane per poll); selected pane card renders `TOKENS ▁▂▃▄▅▆▇█` sparkline of prompt-token deltas (`input + cache_read`) plus latest prompt/delta values; retention sweep ages out rows with the same `max_age_days` knob as archive/snapshots.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Phase F F-4           | Shipped  | Codex `/status` welcome panel `(+ N cached)` parser populates `SignalSet.cached_input_tokens`; UI renders `CACHE <%>` badge with `cached / (input + cached) * 100` and one-decimal precision; honesty rule preserves missing badge for Claude / Gemini OAuth.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Phase F F-7           | Shipped  | Cache-aware advisory rules: `cache_hot_compact_warning` (Concern when cache hot AND ctx headroom) and `compact_when_cache_cold` (Good with `/compact` suggestion when cache cold AND ctx filling); mutually exclusive by ratio threshold construction.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Phase F F-7b          | Shipped  | Cache drift detection rule: fires `Severity::Concern` with suggested `/compact` when `cache_hit_ratio` drops ≥ 30 pp over last 4+ samples; uses F-3 `recent_token_samples` time series; Engine::evaluate gains 5th param.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Phase F F-7-config    | Shipped  | `[cache]` config section exposes 6 thresholds for the F-7/F-7b cache-aware rules; defaults preserve prior behavior; reason strings interpolate the configured values so operators see what actually fired.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Phase G G-1           | Shipped  | Provider Setup overlay (`P` key); 4 tabs (Claude/Codex/Gemini/Tmux); read-only state detectors + `include_str!` snippet content; Settings-driven optional sections for Claude sidefile JSON / Codex app-server; Tmux tab copies an installer that writes `~/ts.sh` and `~/.tmux/qmonster.tmux.conf`. Read-only — Qmonster itself never writes provider/tmux config.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| Phase G G-2           | Shipped  | `[provider_setup]` config section seeds Provider Setup overlay defaults at startup (`claude_sidefile = true` recommended-on, `codex_app_server = false` opt-in); `ProviderSetupOverlay::from_config` constructor; sidefile-on-default writes statusLine JSON to `~/.local/share/ai-cli-status/claude/<sid>.json`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| Phase F F-5           | Shipped  | Claude statusline `cache N%` parser → CACHE badge. New `SignalSet.cache_hit_ratio` (Option<MetricValue<f64>>, 0..1). Claude adapter parses optional token between CTX and 5h; UI + policy prefer direct ratio over count-derived (Codex F-4) fallback. CACHE badge + F-7/F-7b cache rules now fire on Claude panes too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Phase F F-5b          | Shipped  | Claude sidefile reader: new `src/adapters/claude_sidefile.rs` parses `~/.local/share/ai-cli-status/claude/<sid>.json`, matched by JSON `cwd` field; provider-gated to Claude. Surfaces `cost $N.NN`, `5h resets in <eta>` / `7d resets in <eta>` metric rows, `SID` / `XSCRIPT` runtime fact badges, and count-derived precise `cache_hit_ratio` overriding the rounded statusline value.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Phase F F-6           | Shipped  | Codex App Server JSON-RPC client: new `src/adapters/codex_app_server.rs` spawns `codex app-server` with `sandbox_mode=danger-full-access`, sends `initialize` + `account/rateLimits/read`, parses `CodexRateLimits { primary, secondary }`. Spawned at startup when `[provider_setup] codex_app_server = true`; account-level snapshot read once per tick, broadcast to all Codex panes. `5h resets in <eta>` / `7d resets in <eta>` rows now appear on Codex pane cards via the same helper used for Claude (F-5b). Pressure fields `is_none`-guarded so statusline path keeps priority; resets_at fields unconditional.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Phase F F-4b          | Shipped  | Gemini `/stats` + `/model` output parser: new private `parse_gemini_stats_session` + `parse_gemini_stats_model` in `src/adapters/gemini.rs` extract Session ID, Tool Calls, and cumulative Input / Output / Cache Reads token counts after the operator cycles `u`; `parse_gemini_model_resets` extracts `/model` `Reset:` / `Resets:` rows, then filters them to the current status-table model family (`gemini-3.1-pro-preview` -> `Pro`) before emitting display-only `RESET <model> <time/remaining>` runtime badges. Gemini `u` cycles `/model` first only when the pane is idle/stale/limit-hit; while active it skips `/model` and cycles only the two used stats surfaces. `/stats tools` is not sent because no current parser consumes it. `/model` is captured and then closed with one `Escape` keypress so the next Gemini slash source can run; the captured picker reset overlay persists until the next `/model` capture or pane lifecycle reset so the badge does not disappear on the next poll. The current Gemini model reset also appears in the top `metrics:` badge row for visibility. `GeminiAdapter::parse` integration uses `is_none()` guards mirroring F-5b; `Tool Calls` surfaces as `CALLS`. Honesty rule: model parser returns `Some` only when both input AND output tokens parse; OAuth Gemini `cache_reads` stays `None` per FAQ-documented Google limit (no synthesized zero). Bundled v1.33.x polish: `RESET 5H <eta>` / `RESET 7D <eta>` badges on `primary_metric_row`. |
-| Phase F F-7c          | Shipped  | Reset-aware policy rules: new `src/policy/rules/reset.rs` defines `eval_reset(id, signals, gates, now_unix_seconds)` evaluating 5h and weekly windows independently. `recommend_wait_for_reset` (Concern) fires when `quota_*_pressure >= 0.85` AND reset within 30 min; `recommend_snapshot_before_reset` (Good) fires when ANY reset within 5 min AND pressure >= 0.50. Both gate on `IdentityConfidence >= Medium` and suppress on input/permission wait. `Engine::evaluate` reads `SystemTime::now()` once and threads `now_unix_seconds` for deterministic timing. Hardcoded v1 thresholds; F-7d would expose them via `[reset]` config. Claude+Codex-only policy feature; Gemini `/model` reset rows are display-only runtime facts, not `quota_*_resets_at` inputs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Phase F F-7d          | Shipped  | Operator-tunable `[reset]` thresholds for the F-7c reset-aware advisories. New `ResetConfig` struct in `src/app/config.rs` with 4 `#[serde(default)]` fields (`wait_pressure_threshold = 0.85`, `wait_eta_secs = 1800`, `snapshot_pressure_threshold = 0.50`, `snapshot_eta_secs = 300`); defaults match v1.34.0 constants exactly. `QmonsterConfig.reset: ResetConfig` field. `PolicyGates` gains 4 `reset_*` fields from `ResetConfig` in `from_config_and_identity` (9th positional param). `eval_reset` reads from `gates.reset_*`; reason strings interpolate `gates.reset_wait_pressure` so operators see the configured threshold that fired. Settings `Parameters` / `Rules` now show reset values and conditions read-only; edit `qmonster.toml` directly.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-
-Recent release notes:
-
-- `v1.21.3`: Claude `/clear` `CTX —` becomes `CTX 0%`; package metadata
-  and repo license switch to MIT.
-- `v1.21.2`: Claude statusline percent parsing is bounded per column so
-  placeholders do not steal adjacent values.
-- `v1.21.1`: Codex `/clear` keeps visible CTX/quota/model/path/token
-  fields even when the total token field is absent.
-- `v1.21.0`: Gemini `memory` status-table column surfaces as `MEM`.
-- `v1.20.0`: settings overlay saves only threshold keys without
-  rewriting the rest of `qmonster.toml`.
-
-### Current Metric Contracts
-
-| Metric     | Claude                                                | Codex                                                  | Gemini                                                                                |
-| ---------- | ----------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| CTX        | statusline `CTX`; `CTX —` after `/clear` renders `0%` | bottom status line                                     | status table `context`                                                                |
-| QUOTA 5H   | statusline `5h`                                       | bottom status `5h` remaining, inverted to pressure     | n/a                                                                                   |
-| QUOTA WEEK | statusline `7d`                                       | bottom status `weekly` remaining, inverted to pressure | n/a                                                                                   |
-| QUOTA      | n/a                                                   | n/a                                                    | single quota surface                                                                  |
-| RESET      | sidefile `resets_at` timestamps                       | app-server `resets_at_unix_seconds`                    | `/model` `Reset:` rows display model-level time/remaining; policy reset ETA still n/a |
-| TOKENS     | statusline total + sidefile input/output/cache reads  | bottom status / `/status` token usage                  | `/stats model`                                                                        |
-| CACHE      | statusline ratio or sidefile cache-read count         | `/status` cached input count                           | `/stats model` cache reads when provider exposes them                                 |
-| COST       | sidefile `total_cost_usd` (`[Official]`)              | pricing table + token usage (`[Estimate]`)             | unset today                                                                           |
-
-The `S` settings overlay mirrors that contract: cost/context keep
-default + provider rows, while quota has default, `claude 5h`,
-`claude weekly`, `codex 5h`, `codex weekly`, and `gemini` rows.
-`Parameters` / `Rules` show current cache/reset policy inputs and
-activation conditions, and `Badges` explains the source labels and
-metric meanings (`CTX` is used percentage, not remaining).
-
-Detailed rollout history is kept in `mission-history.yaml` and the
-canonical docs under `docs/ai/`; the README tracks the current operator
-shape rather than every patch-level slice.
-
-## Install
+## Quick Start
 
 ```bash
-# npmjs package
+# Install from npmjs. The package runs the Rust binary from source, so a
+# working Rust toolchain is still required.
 npm install -g qmonster
-
-# Run from the installed package wrapper. A Rust toolchain is still
-# required because the npm package builds/runs the Rust binary from source.
 qmonster --help
+
+# Or build directly from source.
+cargo build --release
+cargo run --release
 ```
 
-GitHub Packages mirrors the same source package under the scoped name
-`@chquandogong/qmonster`:
+For normal local operation:
+
+```bash
+# Creates ~/.qmonster/config/qmonster.toml and pricing.toml from templates
+# when missing, then starts the TUI with a persisted config path.
+./scripts/run-qmonster.sh
+```
+
+Smoke checks:
+
+```bash
+cargo run -- --once
+./scripts/check-tmux-source-parity.sh --all-targets --repeat 3
+./scripts/run-qmonster-control-mode-once.sh --root /tmp/qmonster-smoke
+```
+
+GitHub Packages mirrors the npm source package:
 
 ```bash
 npm config set @chquandogong:registry https://npm.pkg.github.com
 npm install -g @chquandogong/qmonster
 ```
 
-Source builds remain the primary development path:
+## What It Shows
 
-```bash
-cargo build --release
-cargo run --release
-```
+| Area | Operator-visible result |
+| --- | --- |
+| Pane state | Work complete, active, stale, input wait, permission wait, limit hit |
+| Metrics | CTX, quota, tokens, cache, memory, cost, reset ETA |
+| Runtime facts | Session IDs, transcript paths, tool calls, model reset rows |
+| Recommendations | Alert/advisory queue with source-labeled reasons and commands |
+| Settings | Thresholds, integrations, parameters, rules, badge glossary |
+| Git status | Click the footer version badge to inspect local repo state |
 
-## Releases and Community
+Primary keys:
 
-- GitHub Releases: tagged `vX.Y.Z` releases with Linux x86_64 binary
-  tarballs, npm package tarballs, and checksums.
-- npmjs: canonical public package, `qmonster`.
-- GitHub Packages: scoped mirror package, `@chquandogong/qmonster`.
-- Discussions: setup questions, tmux layouts, provider behavior, and
-  workflow ideas.
-- Issues: reproducible defects and scoped feature requests.
-- Security: private vulnerability reports through GitHub Security
-  Advisories; see `SECURITY.md`.
-- SNS preview: `docs/assets/qmonster-social-preview.png` is ready for
-  GitHub Settings -> Social preview upload.
+| Key | Action |
+| --- | --- |
+| `q` / `Esc` | Quit or close overlay |
+| `Tab` | Switch alert/pane focus |
+| `t` | Choose tmux session/window target |
+| `s` | Write runtime snapshot |
+| `u` | Refresh provider runtime surfaces |
+| `P` | Provider Setup overlay |
+| `S` | Settings overlay |
+| `?` | Help / legend |
+| Mouse | Scroll, select, double-click alert hide, footer Git status |
 
-## Quick start
+For a matching four-pane tmux layout, open Provider Setup with `P`,
+select the `Tmux` tab, and copy the installer. It writes:
 
-```bash
-# Build
-cargo build --release
+- `~/ts.sh`
+- `~/.tmux/qmonster.tmux.conf`
 
-# Smoke test (one iteration; prints pane reports, version snapshot,
-# and writes to ~/.qmonster/)
-cargo run -- --once
+## Data Contracts
 
-# Launch the TUI
-cargo run --release
-#   q / Esc  — quit
-#   Tab      — switch focus between alerts and pane list
-#   ↑ / ↓    — scroll the focused list
-#   PgUp/PgDn, Home/End — faster list navigation
-#   Enter/Space — toggle auto-hide on the selected alert
-#   t        — choose target (session -> window)
-#   Enter    — move to window list / confirm window selection
-#   Left / Backspace — back to session list
-#   ?        — open help / legend overlay
-#   r        — re-capture CLI versions; drift appears as a warning alert
-#   s        — write a runtime snapshot to ~/.qmonster/snapshots/
-#   u        — force-poll Claude statusline; cycle runtime slash sources for Codex/Gemini
-#   y        — copy the selected alert's run command when Alerts are focused
-#   c        — clear system notices
-#   p        — accept pending prompt-send proposal on the selected pane (P5-3
-#               safer-actuation; audit: PromptSendAccepted → Completed/Failed,
-#               or PromptSendBlocked on observe_only / auto-send-off)
-#   d        — dismiss pending prompt-send proposal (audit: PromptSendRejected)
-#   S        — open cost/context/quota settings overlay
-#   Mouse    — wheel scroll, click select, double-click alert hide
-#   Footer version badge — click bottom-right to open Git status
+Qmonster labels every provider-derived value by authority:
 
-# Standard operator launch. Creates ~/.qmonster/config/qmonster.toml and
-# ~/.qmonster/config/pricing.toml from templates when missing, then starts
-# Qmonster with --config so the settings overlay can persist edits.
-./scripts/run-qmonster.sh
+| Label | Meaning |
+| --- | --- |
+| `[Official]` | Emitted by the provider or a provider-owned config/status surface |
+| `[Project]` | Qmonster policy or project-canonical rule |
+| `[Heur]` | Local heuristic, such as process RSS or memory-file scan |
+| `[Estimate]` | Derived from local pricing or non-provider calculation |
 
-# C2 validation: compare polling and control-mode against the active tmux session.
-./scripts/check-tmux-source-parity.sh
-./scripts/check-tmux-source-parity.sh --all-targets
-./scripts/check-tmux-source-parity.sh --all-targets --repeat 3 --delay-ms 100
-./scripts/check-tmux-source-parity.sh --all-targets --strict-title
+Metric contract:
 
-# Forced control-mode smoke without editing ~/.qmonster/config/qmonster.toml.
-# The helper owns --config/--once and accepts only optional --root/--set passthroughs.
-./scripts/run-qmonster-control-mode-once.sh
+| Metric | Claude | Codex | Gemini |
+| --- | --- | --- | --- |
+| `CTX` | statusline context used | bottom status context | status table context |
+| `QUOTA` | statusline 5h / weekly | bottom status or app-server | status table quota |
+| `RESET` | sidefile timestamps | app-server timestamps | `/model` display rows only |
+| `TOKENS` | statusline + sidefile | bottom status / usage line | `/stats model` |
+| `CACHE` | statusline ratio or sidefile reads | cached input tokens | cache reads when exposed |
+| `COST` | sidefile total cost | pricing estimate | unset today |
 
-# Override the storage root (useful for tests / sandbox runs)
-QMONSTER_ROOT=/tmp/q cargo run -- --once
-cargo run -- --root /tmp/q --once
-```
+Gemini `/model` reset rows are display-only runtime facts. Policy-grade
+reset advisories still require machine-readable timestamps, currently
+available from Claude sidefiles and Codex app-server only.
 
-For a tmux layout matching Qmonster's pane-title convention, open
-Provider Setup (`P`) and use the `Tmux` tab to copy the recommended
-installer. It writes `~/ts.sh` (four-pane launcher) and
-`~/.tmux/qmonster.tmux.conf` (mouse/history/navigation/title helpers).
-Runtime-consumed config keys are
-documented in `config/qmonster.example.toml`; operator pricing rates
-live in `~/.qmonster/config/pricing.toml` using
-`config/pricing.example.toml` as the template.
+## Releases
 
-## Architecture at a glance
+The operator-facing version is the Git tag and npm version, not the
+internal Cargo crate version. Release automation publishes:
 
-```
+- GitHub Release with Linux x86_64 binary tarball, npm tarball, and checksums
+- npmjs package: `qmonster`
+- GitHub Packages mirror: `@chquandogong/qmonster`
+
+Release flow lives in [docs/RELEASING.md](docs/RELEASING.md). Long-form
+history lives in `mission-history.yaml`; the README only tracks the
+current operator surface.
+
+## Architecture
+
+```text
 tmux::RawPaneSnapshot
-   ↓
-domain::IdentityResolver              (provider + instance + role + IdentityConfidence)
-   ↓
-adapters::ProviderParser              (one per provider; no identity inference)
-   ↓
-domain::SignalSet                     (typed signals, each with SourceKind)
-   ↓
-policy::Engine                        (pure: signals → (Recommendation | RequestedEffect)[])
-   ↓
-app::EffectRunner                     (allow-list; `recommend_only` by default)
-   ↓  ↘
-ui::ViewModel           store::EventSink   (Phase 1: NoopSink / InMemorySink)
+   |
+domain::IdentityResolver
+   |
+adapters::ProviderParser
+   |
+domain::SignalSet
+   |
+policy::Engine
+   |
+app::EffectRunner
+   |\
+ui::ViewModel   store::EventSink
 ```
 
-Non-negotiable boundaries:
+Boundaries:
 
-- Identity resolution **before** provider dispatch.
+- Identity resolution happens before provider parsing.
 - `policy/` performs no IO.
-- Runtime writes stay inside `~/.qmonster/` (Phase 2 writes `qmonster.db`,
-  `archive/YYYY-MM-DD/<pane>/*.log`, `snapshots/*.json`, and
-  `versions.json` — never touches project-dir files).
-- `audit.rs` writer cannot accept raw bytes — type-level separation.
-  The SQLite schema has no raw_tail column; raw tails only live in
-  `archive_fs.rs`.
+- Runtime writes stay under `~/.qmonster/` by default.
+- Raw tmux tails are archived as files, not stored in SQLite.
+- Provider values must keep honest source labels.
 
-See `docs/ai/ARCHITECTURE.md` for module responsibilities and the full
-SourceKind taxonomy (`ProviderOfficial | ProjectCanonical | Heuristic |
-Estimated`).
+See [ARCHITECTURE.md](docs/ai/ARCHITECTURE.md) for module-level detail.
 
-## Repository layout
+## Repository Layout
 
-```
+```text
 src/
-  bin/         qmonster-tmux-parity live tmux-source parity checker
-  app/         bootstrap, config + safety-precedence, event loop, effect
-               runner, version-drift detector, system notices, safety
-               audit logging
-  domain/      pure types: identity, origin (SourceKind), signal,
-               recommendation, audit, lifecycle
-  tmux/        PaneSource trait + polling/control-mode sources, shared
-               tmux command, target parsing, snapshot hydration,
-               polling process boundary, control-mode process flags,
-               attach diagnostics/fallback, protocol, and parity helpers
-  adapters/    claude / codex / gemini / qmonster tail parsers
-  policy/      pure engine + rules (alert + advisory + concurrent + profile)
-  store/       paths, sink (EventSink + NoopSink + InMemorySink),
-               audit (SqliteAuditSink), sqlite (low-level adapter),
-               archive_fs (raw tail preview/full split),
-               snapshots (operator-requested JSON checkpoints),
-               retention (age-based sweep)
-  ui/          ratatui dashboard, alerts, panels, theme
-  notify/      desktop + terminal-bell + severity-aware rate limiter
+  app/        bootstrap, config, event loop, effects, overlays
+  adapters/   claude / codex / gemini / qmonster parsers
+  domain/     identity, origin, signal, recommendation, audit types
+  policy/     pure recommendation engine and rules
+  store/      sqlite, audit, archive, snapshots, token samples
+  tmux/       polling and control-mode pane sources
+  ui/         ratatui dashboard, alerts, panels, settings
 
-docs/ai/       canonical docs (Git-tracked, stable rules)
-docs/assets/   README banner and SNS/social-preview artwork
-config/        qmonster.example.toml
-npm/           npm bin wrapper for source-based package install
-.github/       CI, release/package mirror workflows, issue/discussion templates
-tmux/          qmonster.tmux.conf.example
-tests/         integration tests
+config/       operator config templates
+docs/ai/      canonical project docs
+docs/assets/  README and social-preview artwork
+.github/      CI, release, issue, PR, and discussion templates
+npm/          npm source-package wrapper
+scripts/      local run and validation helpers
+tests/        integration tests
 ```
-
-Local-only artefacts (gitignored): `.docs/`,
-`.mission/CURRENT_STATE.md`, `.mission/snapshots/`,
-`.mission/templates/`, `CLAUDE.local.md`. Shared repo ledger artefacts:
-`mission.yaml`, `mission-history.yaml`, `docs/ai/*`, `.mission/evals/`.
-See `docs/ai/WORKFLOWS.md` §7 for the exact tracking split.
 
 ## Development
 
 ```bash
+cargo fmt --all --check
+git diff --check
 cargo test --all-targets
-cargo clippy --all-targets -- -D warnings
-cargo build
-./scripts/check-tmux-source-parity.sh
-./scripts/check-tmux-source-parity.sh --all-targets
-./scripts/check-tmux-source-parity.sh --all-targets --repeat 3
-./scripts/run-qmonster-control-mode-once.sh --root /tmp/qmonster-control-mode-smoke
+cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 npm pack --dry-run
-mission-spec validate .
-mission-spec eval --shared .
-MISSION_SPEC_CLI=/abs/path/to/mission-spec.js ./scripts/verify-shared.sh
 ```
 
-If `mission-spec` is not installed, `scripts/verify-shared.sh` still
-runs cargo build/test/clippy and falls back to a lite ledger-structure
-check with install guidance.
+For tmux transport work:
 
-The event-loop integration tests use a fixture `PaneSource` so they do
-not require a real tmux session.
+```bash
+./scripts/check-tmux-source-parity.sh --all-targets --repeat 3
+```
+
+The integration tests use fixture pane sources and do not require a live
+tmux session.
 
 ## Documentation
 
-- `docs/ai/PROJECT_BRIEF.md` — operating principles and scope
-- `docs/ai/ARCHITECTURE.md` — module layout, pipeline, SourceKind, storage
-- `docs/ai/VALIDATION.md` — phase-by-phase acceptance checks
-- `docs/ai/WORKFLOWS.md` — planning loop, day-end routine, gitignore flip
-- `docs/ai/REVIEW_GUIDE.md` — reviewer contract (Codex / Gemini / human)
-- `docs/ai/UI_MANUAL.md` — user manual for TUI badges, severity letters, and metrics
-- `docs/RELEASING.md` — tag, GitHub Release, npm, and package mirror flow
-- `VERSION.md` — version surface map (ledger tag, npm package, Cargo crate)
-- `CONTRIBUTING.md` — local development, documentation, and release rules
-- `SECURITY.md` / `SUPPORT.md` — responsible reporting and support routing
-- `LICENSE` — MIT license
+- [PROJECT_BRIEF.md](docs/ai/PROJECT_BRIEF.md) — scope and operating principles
+- [ARCHITECTURE.md](docs/ai/ARCHITECTURE.md) — module layout and data flow
+- [UI_MANUAL.md](docs/ai/UI_MANUAL.md) — TUI keys, badges, and metric meanings
+- [VALIDATION.md](docs/ai/VALIDATION.md) — validation gates
+- [WORKFLOWS.md](docs/ai/WORKFLOWS.md) — planning and handoff workflow
+- [REVIEW_GUIDE.md](docs/ai/REVIEW_GUIDE.md) — reviewer contract
+- [docs/RELEASING.md](docs/RELEASING.md) — release and package mirror flow
+- [docs/GITHUB_POLISH.md](docs/GITHUB_POLISH.md) — repo polish checklist and next steps
+- [SECURITY.md](SECURITY.md) / [SUPPORT.md](SUPPORT.md) — reporting and support routing
+- [VERSION.md](VERSION.md) — version surface map
 
-## Status & scope
+## Community
 
-Qmonster is not a provider orchestrator, not a destructive automator,
-and not a cloud service. It is a single-user, local-first operating
-console. Default action mode is `recommend_only`; refresh policy is
-`manual_only`; logging sensitivity is `balanced`. All four safety flags
-can only move toward safer via env/CLI — attempted upward overrides
-are rejected and audit-logged.
+- Discussions: setup help, tmux layouts, provider behavior, and workflow ideas
+- Issues: reproducible bugs and scoped feature requests
+- Security: private vulnerability reports through GitHub Security Advisories
+- Social preview asset: `docs/assets/qmonster-social-preview.png`
+
+## Scope
+
+Qmonster is not a provider orchestrator, not a destructive automator, and
+not a cloud service. It is a single-user local operating console. Default
+action mode is `recommend_only`; refresh policy is `manual_only`; logging
+sensitivity is `balanced`.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [LICENSE](LICENSE).
