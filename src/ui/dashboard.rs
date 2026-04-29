@@ -330,19 +330,48 @@ pub fn provider_setup_modal_rects(viewport: Rect) -> ProviderSetupModalRects {
 }
 
 /// Map a left-click column on the tabs row to a tab index (0/1/2).
-/// Splits the tabs rect into three equal slots; out-of-bounds columns
-/// return None.
+/// Uses the actual rendered tab layout — ratatui's `Tabs` widget
+/// renders left-aligned ` Claude │ Codex │ Gemini ` inside the border,
+/// not three equal slots, so a naive width/3 split would mis-route
+/// clicks on a wide modal (Codex/Gemini regions would map to the
+/// always-Claude left third). Boundaries derived from the fixed
+/// `Claude` (6) / `Codex` (5) / `Gemini` (6) label widths plus
+/// 1-cell padding around each label and 1-cell `│` divider between
+/// adjacent tabs. Returns None for columns outside the rendered tab
+/// region (including the empty space to the right of `Gemini`) so
+/// clicks on the unrendered remainder don't accidentally snap to
+/// the last tab.
 pub fn provider_setup_tab_index_at(tabs: Rect, column: u16) -> Option<usize> {
-    if column < tabs.x || column >= tabs.x.saturating_add(tabs.width) || tabs.width == 0 {
+    if column < tabs.x {
         return None;
     }
-    let offset = column - tabs.x;
-    let slot_width = tabs.width / 3;
-    if slot_width == 0 {
-        return Some(0);
+    // Block::default().borders(ALL) eats the leftmost cell as a border.
+    let inner_x = tabs.x.saturating_add(1);
+    // Layout (positions relative to inner_x):
+    //   0       : leading space
+    //   1..=6   : "Claude"      (6 cells)
+    //   7       : trailing space
+    //   8       : "│" divider
+    //   9       : leading space
+    //   10..=14 : "Codex"       (5 cells)
+    //   15      : trailing space
+    //   16      : "│" divider
+    //   17      : leading space
+    //   18..=23 : "Gemini"      (6 cells)
+    //   24      : trailing space
+    let claude_end = inner_x.saturating_add(8); // first column belonging to Codex
+    let codex_end = inner_x.saturating_add(16); // first column belonging to Gemini
+    let gemini_end = inner_x.saturating_add(25); // first column past "Gemini "
+    if column >= gemini_end {
+        return None;
     }
-    let idx = (offset / slot_width) as usize;
-    Some(idx.min(2))
+    if column < claude_end {
+        Some(0)
+    } else if column < codex_end {
+        Some(1)
+    } else {
+        Some(2)
+    }
 }
 
 pub fn render_provider_setup_modal(
@@ -1504,20 +1533,33 @@ mod tests {
     }
 
     #[test]
-    fn provider_setup_tab_index_at_partitions_tabs_row_into_three_slots() {
-        let tabs = Rect::new(10, 0, 30, 3);
-        // First slot (Claude): columns 10..19
+    fn provider_setup_tab_index_at_uses_label_aware_boundaries() {
+        // Tabs rendered as ` Claude │ Codex │ Gemini ` left-aligned
+        // inside a single-cell border — the function maps each click
+        // column to whichever label region it lands on, NOT to a
+        // naive width/3 partition.
+        let tabs = Rect::new(10, 0, 40, 3);
+        // inner_x = 11
+        // claude_end = 19  (first column belonging to Codex region)
+        // codex_end = 27   (first column belonging to Gemini region)
+        // gemini_end = 36  (first column past " Gemini ")
+        //
+        // Claude region: columns 10..=18 (border + leading space + "Claude" + trailing space)
         assert_eq!(provider_setup_tab_index_at(tabs, 10), Some(0));
-        assert_eq!(provider_setup_tab_index_at(tabs, 19), Some(0));
-        // Second slot (Codex): columns 20..29
-        assert_eq!(provider_setup_tab_index_at(tabs, 20), Some(1));
-        assert_eq!(provider_setup_tab_index_at(tabs, 29), Some(1));
-        // Third slot (Gemini): columns 30..39 (clamped to 2 even at the
-        // very last cell since width / 3 truncates).
-        assert_eq!(provider_setup_tab_index_at(tabs, 30), Some(2));
-        assert_eq!(provider_setup_tab_index_at(tabs, 39), Some(2));
-        // Out-of-bounds → None.
+        assert_eq!(provider_setup_tab_index_at(tabs, 12), Some(0)); // first 'C' of "Claude"
+        assert_eq!(provider_setup_tab_index_at(tabs, 18), Some(0));
+        // Codex region: columns 19..=26 (divider + leading space + "Codex" + trailing space)
+        assert_eq!(provider_setup_tab_index_at(tabs, 19), Some(1));
+        assert_eq!(provider_setup_tab_index_at(tabs, 22), Some(1)); // 'd' of "Codex"
+        assert_eq!(provider_setup_tab_index_at(tabs, 26), Some(1));
+        // Gemini region: columns 27..=35 (divider + leading space + "Gemini" + trailing space)
+        assert_eq!(provider_setup_tab_index_at(tabs, 27), Some(2));
+        assert_eq!(provider_setup_tab_index_at(tabs, 30), Some(2)); // 'm' of "Gemini"
+        assert_eq!(provider_setup_tab_index_at(tabs, 35), Some(2));
+        // Past the rendered tabs (within the wide tabs rect): None
+        assert_eq!(provider_setup_tab_index_at(tabs, 36), None);
+        assert_eq!(provider_setup_tab_index_at(tabs, 49), None);
+        // Out of the tabs rect entirely: None
         assert_eq!(provider_setup_tab_index_at(tabs, 9), None);
-        assert_eq!(provider_setup_tab_index_at(tabs, 40), None);
     }
 }

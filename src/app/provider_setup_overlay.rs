@@ -199,15 +199,24 @@ mod tests {
 
     #[test]
     fn left_click_on_tabs_row_switches_tabs() {
+        // Click positions target the actual rendered label cells of
+        // the ratatui Tabs widget (left-aligned ` Claude │ Codex │
+        // Gemini ` inside a single-cell border), not the equal-thirds
+        // approximation that an earlier implementation used. A wide
+        // modal would otherwise mis-route clicks on Codex/Gemini to
+        // the always-Claude left third.
         let mut overlay = ProviderSetupOverlay::new();
         overlay.open();
         let viewport = Rect::new(0, 0, 120, 40);
         let rects = provider_setup_modal_rects(viewport);
-        // Click in the second slot (Codex).
-        let codex_x = rects.tabs.x + rects.tabs.width / 2;
         // Avoid the close button, which lives at the top-right corner of
-        // the tabs row — click on the second visible row instead.
+        // the tabs row — click on the second visible row of the tab
+        // block instead.
         let row = rects.tabs.y + 1;
+        let inner_x = rects.tabs.x + 1;
+
+        // Click on a 'd' in "Codex" (inner_x + 12).
+        let codex_x = inner_x + 12;
         handle_provider_setup_overlay_mouse(
             &mut overlay,
             viewport,
@@ -215,8 +224,8 @@ mod tests {
         );
         assert_eq!(overlay.tab, ProviderSetupTab::Codex);
 
-        // Click in the third slot (Gemini).
-        let gemini_x = rects.tabs.x + rects.tabs.width.saturating_sub(2);
+        // Click on a 'm' in "Gemini" (inner_x + 20).
+        let gemini_x = inner_x + 20;
         handle_provider_setup_overlay_mouse(
             &mut overlay,
             viewport,
@@ -224,12 +233,22 @@ mod tests {
         );
         assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
 
-        // Click in the first slot (Claude).
-        let claude_x = rects.tabs.x + 1;
+        // Click on a 'l' in "Claude" (inner_x + 2).
+        let claude_x = inner_x + 2;
         handle_provider_setup_overlay_mouse(
             &mut overlay,
             viewport,
             mouse(MouseEventKind::Down(MouseButton::Left), claude_x, row),
+        );
+        assert_eq!(overlay.tab, ProviderSetupTab::Claude);
+
+        // Click on whitespace past "Gemini" (inner_x + 60) does
+        // nothing — current tab stays Claude.
+        let empty_x = inner_x + 60;
+        handle_provider_setup_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(MouseEventKind::Down(MouseButton::Left), empty_x, row),
         );
         assert_eq!(overlay.tab, ProviderSetupTab::Claude);
     }
