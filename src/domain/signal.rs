@@ -81,6 +81,15 @@ pub enum RuntimeFactKind {
     LoadedSkill,
     LoadedPlugin,
     RestrictedTool,
+    /// Phase F F-5b (v1.31.0): per-pane Claude session identifier
+    /// (UUID) read from `~/.local/share/ai-cli-status/claude/<sid>.json`.
+    /// Lets the operator correlate a Claude pane with its log file
+    /// and transcript without manually inspecting the sidefile dir.
+    SessionId,
+    /// Phase F F-5b (v1.31.0): absolute path to the Claude session
+    /// transcript JSONL (`~/.claude/projects/<encoded>/<sid>.jsonl`).
+    /// Read from the sidefile's `transcript_path` field.
+    TranscriptPath,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -141,6 +150,18 @@ pub struct SignalSet {
     /// statusline `7d N%`; Codex sources it from the bottom status
     /// line's `weekly N%` token.
     pub quota_weekly_pressure: Option<MetricValue<f32>>,
+    /// Phase F F-5b (v1.31.0): Unix timestamp (seconds) when the
+    /// rolling 5-hour quota window resets. Claude sources this from
+    /// the sidefile's `rate_limits.five_hour.resets_at` field; Codex
+    /// will source from `app-server account/rateLimits/read` once
+    /// F-6 lands. UI renders a countdown ("5h resets in 2h13m") so
+    /// operators can pace their work against the reset clock.
+    pub quota_5h_resets_at: Option<MetricValue<u64>>,
+    /// Phase F F-5b (v1.31.0): Unix timestamp (seconds) when the
+    /// rolling 7-day / weekly quota window resets. Claude sources
+    /// this from `rate_limits.seven_day.resets_at`; Codex will use
+    /// the App Server `weekly` window once F-6 lands.
+    pub quota_weekly_resets_at: Option<MetricValue<u64>>,
     pub token_count: Option<MetricValue<u64>>,
     /// S3-1: cumulative session input tokens. Currently populated only
     /// by the Codex bottom-status-line parser (`1.51M in` token).

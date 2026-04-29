@@ -537,10 +537,28 @@ pub fn metric_row(s: &SignalSet) -> String {
             source_kind_label(m.source_kind)
         ));
     }
+    if let Some(m) = s.quota_5h_resets_at.as_ref()
+        && let Some(eta) = format_resets_eta(m.value)
+    {
+        parts.push(format!(
+            "5h resets in {} [{}]",
+            eta,
+            source_kind_label(m.source_kind)
+        ));
+    }
     if let Some(m) = s.quota_weekly_pressure.as_ref() {
         parts.push(format!(
             "quota weekly {:.0}% [{}]",
             m.value * 100.0,
+            source_kind_label(m.source_kind)
+        ));
+    }
+    if let Some(m) = s.quota_weekly_resets_at.as_ref()
+        && let Some(eta) = format_resets_eta(m.value)
+    {
+        parts.push(format!(
+            "7d resets in {} [{}]",
+            eta,
             source_kind_label(m.source_kind)
         ));
     }
@@ -828,6 +846,39 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
     has_any.then(|| Line::from(spans))
 }
 
+/// Phase F F-5b (v1.31.0): format a Unix timestamp `resets_at`
+/// (seconds since epoch) as a relative countdown like `2h13m` or
+/// `45m` or `30s`. Returns `None` when the timestamp is in the past
+/// or in the impossibly distant future (sentinel-style values that
+/// would render absurdly long countdowns). The countdown ticks once
+/// per poll cycle since the rendered text is rebuilt from the
+/// SignalSet on every frame.
+fn format_resets_eta(resets_at_unix_seconds: u64) -> Option<String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    if resets_at_unix_seconds <= now {
+        return None;
+    }
+    let remaining = resets_at_unix_seconds - now;
+    // Cap at 14 days — beyond that, the timestamp is almost certainly
+    // a sentinel from a misconfigured surface, not a real ETA.
+    if remaining > 14 * 24 * 3600 {
+        return None;
+    }
+    let hours = remaining / 3600;
+    let minutes = (remaining % 3600) / 60;
+    let seconds = remaining % 60;
+    if hours >= 1 {
+        Some(format!("{hours}h{minutes:02}m"))
+    } else if minutes >= 1 {
+        Some(format!("{minutes}m"))
+    } else {
+        Some(format!("{seconds}s"))
+    }
+}
+
 /// Format a `process_memory_mb` value (always MiB) for the operator
 /// badge. Switches to GiB at 1024 MiB so 1.2 GB renders cleanly
 /// instead of 1228.8 MB.
@@ -1111,6 +1162,10 @@ fn runtime_fact_label(kind: RuntimeFactKind) -> &'static str {
         RuntimeFactKind::LoadedSkill => "SKILL",
         RuntimeFactKind::LoadedPlugin => "PLUGIN",
         RuntimeFactKind::RestrictedTool => "TOOL",
+        // Phase F F-5b (v1.31.0): per-pane Claude session identity
+        // surfaced from sidefile JSON.
+        RuntimeFactKind::SessionId => "SID",
+        RuntimeFactKind::TranscriptPath => "XSCRIPT",
     }
 }
 
