@@ -142,10 +142,42 @@ jobs:
           fi
 
           previous_sbom="${previous_dir}/${previous_asset}"
-          current_count="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); console.log(p.packages?.length || 0)" "$current_sbom")"
-          previous_count="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); console.log(p.packages?.length || 0)" "$previous_sbom")"
-          current_purl_count="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const hasPurl=(pkg)=>(pkg.externalRefs||[]).some((ref)=>String(ref.referenceType||'').toLowerCase().includes('purl')||String(ref.referenceLocator||'').startsWith('pkg:')); console.log((p.packages||[]).filter(hasPurl).length)" "$current_sbom")"
-          previous_purl_count="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const hasPurl=(pkg)=>(pkg.externalRefs||[]).some((ref)=>String(ref.referenceType||'').toLowerCase().includes('purl')||String(ref.referenceLocator||'').startsWith('pkg:')); console.log((p.packages||[]).filter(hasPurl).length)" "$previous_sbom")"
+          # Filter SPDX root document entries before counting (mirrors
+          # scripts/release/sbom-diff.js so the package-count guard
+          # cannot be tricked by the per-tag root-doc rename that
+          # previously inflated diffs by one package every release).
+          count_real_packages() {
+            node -e "
+              const fs = require('fs');
+              const doc = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+              const isRoot = (p) =>
+                p.SPDXID === 'SPDXRef-DOCUMENT' ||
+                (typeof p.name === 'string' && /qmonster-v[0-9]+\.[0-9]+\.[0-9]+/.test(p.name));
+              const pkgs = (doc.packages || []).filter((p) => !isRoot(p));
+              console.log(pkgs.length);
+            " "$1"
+          }
+          count_purl_packages() {
+            node -e "
+              const fs = require('fs');
+              const doc = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+              const isRoot = (p) =>
+                p.SPDXID === 'SPDXRef-DOCUMENT' ||
+                (typeof p.name === 'string' && /qmonster-v[0-9]+\.[0-9]+\.[0-9]+/.test(p.name));
+              const hasPurl = (p) =>
+                (p.externalRefs || []).some(
+                  (ref) =>
+                    String(ref.referenceType || '').toLowerCase().includes('purl') ||
+                    String(ref.referenceLocator || '').startsWith('pkg:'),
+                );
+              const pkgs = (doc.packages || []).filter((p) => !isRoot(p));
+              console.log(pkgs.filter(hasPurl).length);
+            " "$1"
+          }
+          current_count="$(count_real_packages "$current_sbom")"
+          previous_count="$(count_real_packages "$previous_sbom")"
+          current_purl_count="$(count_purl_packages "$current_sbom")"
+          previous_purl_count="$(count_purl_packages "$previous_sbom")"
           minimum_allowed=$(( previous_count / 2 ))
           if [ "$minimum_allowed" -lt 50 ]; then
             minimum_allowed=50
@@ -155,117 +187,10 @@ jobs:
             minimum_purl_allowed=50
           fi
 
-          node - "$previous_sbom" "$current_sbom" "$previous_tag" "$TAG_NAME" > dist/sbom-diff-summary.txt <<'NODE'
-          const fs = require('fs');
-          const [previousPath, currentPath, previousTag, currentTag] = process.argv.slice(2);
-          const read = (path) => JSON.parse(fs.readFileSync(path, 'utf8')).packages || [];
-          const key = (pkg) => `${pkg.name || '(unnamed)'}@${pkg.versionInfo || '(no-version)'}`;
-          const previousPackages = read(previousPath);
-          const currentPackages = read(currentPath);
-          const previousByKey = new Map(previousPackages.map((pkg) => [key(pkg), pkg]));
-          const currentByKey = new Map(currentPackages.map((pkg) => [key(pkg), pkg]));
-          const previous = new Set(previousByKey.keys());
-          const current = new Set(currentByKey.keys());
-          const added = [...current].filter((item) => !previous.has(item)).sort();
-          const removed = [...previous].filter((item) => !current.has(item)).sort();
-          const addedPackages = added.map((item) => currentByKey.get(item));
-          const removedPackages = removed.map((item) => previousByKey.get(item));
-          const attentionNames = new Set([
-            'openssl',
-            'openssl-sys',
-            'native-tls',
-            'ring',
-            'rustls',
-            'webpki',
-            'tokio',
-            'hyper',
-            'reqwest',
-            'curl',
-            'rusqlite',
-            'libsqlite3-sys',
-            'sqlite',
-            'serde_json',
-            'clap',
-            'crossterm',
-            'ratatui',
-            'mio',
-            'nix',
-            'libc',
-            'zeroize',
-          ]);
-          const externalRefs = (pkg) => (Array.isArray(pkg?.externalRefs) ? pkg.externalRefs : []);
-          const hasPurl = (pkg) =>
-            externalRefs(pkg).some(
-              (ref) =>
-                String(ref.referenceType || '').toLowerCase().includes('purl') ||
-                String(ref.referenceLocator || '').startsWith('pkg:'),
-            );
-          const emptyish = (value) => !value || ['NOASSERTION', 'NONE'].includes(String(value).toUpperCase());
-          const missingVersion = (pkg) => emptyish(pkg?.versionInfo);
-          const missingLicense = (pkg) => emptyish(pkg?.licenseConcluded) && emptyish(pkg?.licenseDeclared);
-          const missingSupplier = (pkg) => emptyish(pkg?.supplier);
-          const attentionPackage = (pkg) => attentionNames.has(String(pkg?.name || '').toLowerCase());
-          const metrics = (packages) => ({
-            total: packages.length,
-            purl: packages.filter(hasPurl).length,
-            versioned: packages.filter((pkg) => !missingVersion(pkg)).length,
-            missingVersion: packages.filter(missingVersion).length,
-            missingLicense: packages.filter(missingLicense).length,
-            missingSupplier: packages.filter(missingSupplier).length,
-          });
-          const currentMetrics = metrics(currentPackages);
-          const previousMetrics = metrics(previousPackages);
-          const preview = (items) =>
-            items.length === 0
-              ? ['- none']
-              : items.slice(0, 25).map((item) => `- ${item}`).concat(
-                  items.length > 25 ? [`- ... ${items.length - 25} more`] : [],
-                );
-          const named = (packages, predicate) => packages.filter(predicate).map(key).sort();
-
-          console.log('# SBOM Diff Summary');
-          console.log();
-          console.log(`Previous tag: ${previousTag}`);
-          console.log(`Current tag: ${currentTag}`);
-          console.log(`Previous package count: ${previous.size}`);
-          console.log(`Current package count: ${current.size}`);
-          console.log(`Added packages: ${added.length}`);
-          console.log(`Removed packages: ${removed.length}`);
-          console.log();
-          console.log('## Metadata / Risk Summary');
-          console.log();
-          console.log('| Metric | Previous | Current |');
-          console.log('| --- | ---: | ---: |');
-          console.log(`| Package URL (purl) coverage | ${previousMetrics.purl}/${previousMetrics.total} | ${currentMetrics.purl}/${currentMetrics.total} |`);
-          console.log(`| Versioned package coverage | ${previousMetrics.versioned}/${previousMetrics.total} | ${currentMetrics.versioned}/${currentMetrics.total} |`);
-          console.log(`| Missing license assertion | ${previousMetrics.missingLicense} | ${currentMetrics.missingLicense} |`);
-          console.log(`| Missing supplier assertion | ${previousMetrics.missingSupplier} | ${currentMetrics.missingSupplier} |`);
-          console.log();
-          console.log('This summary is a dependency-review aid, not a vulnerability scan.');
-          console.log();
-          console.log('## Added Metadata Attention');
-          console.log();
-          console.log('### Added without purl');
-          console.log(preview(named(addedPackages, (pkg) => !hasPurl(pkg))).join('\n'));
-          console.log();
-          console.log('### Added without version');
-          console.log(preview(named(addedPackages, missingVersion)).join('\n'));
-          console.log();
-          console.log('### Added without license assertion');
-          console.log(preview(named(addedPackages, missingLicense)).join('\n'));
-          console.log();
-          console.log('### Added in security/runtime attention set');
-          console.log(preview(named(addedPackages, attentionPackage)).join('\n'));
-          console.log();
-          console.log('## Removed from security/runtime attention set');
-          console.log(preview(named(removedPackages, attentionPackage)).join('\n'));
-          console.log();
-          console.log('## Added');
-          console.log(preview(added).join('\n'));
-          console.log();
-          console.log('## Removed');
-          console.log(preview(removed).join('\n'));
-          NODE
+          node scripts/release/sbom-diff.js \
+            "$previous_sbom" "$current_sbom" \
+            "$previous_tag" "$TAG_NAME" \
+            > dist/sbom-diff-summary.txt
 
           if [ "$current_count" -lt "$minimum_allowed" ]; then
             echo "ERROR: SBOM package count dropped from $previous_count to $current_count; minimum allowed is $minimum_allowed." >&2
@@ -319,49 +244,7 @@ jobs:
             gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --generate-notes --verify-tag
           fi
 
-          footer_file="$(mktemp)"
-          cat > "$footer_file" <<'EOF'
-          <!-- qmonster-release-verification -->
-          ## Verification
-
-          Download the release assets, then verify checksums:
-
-          ```sh
-          sha256sum -c checksums.txt
-          ```
-
-          Verify build provenance for the Linux binary tarball:
-
-          ```sh
-          gh attestation verify qmonster-__TAG_NAME__-linux-x86_64.tar.gz \
-            --repo chquandogong/qmonster
-          ```
-
-          Verify the independent SBOM attestation for that tarball:
-
-          ```sh
-          gh attestation verify qmonster-__TAG_NAME__-linux-x86_64.tar.gz \
-            --repo chquandogong/qmonster \
-            --predicate-type https://spdx.dev/Document/v2.3
-          ```
-
-          The release also includes `qmonster-__TAG_NAME__-sbom.spdx.json`
-          and `sbom-diff-summary.txt`. See `docs/RELEASE_VERIFICATION.md`
-          for the full verification guide.
-          EOF
-          sed -i "s/__TAG_NAME__/${TAG_NAME}/g" "$footer_file"
-
-          body_file="$(mktemp)"
-          gh release view "$TAG_NAME" --json body --jq .body > "$body_file"
-          base_file="$(mktemp)"
-          awk '/<!-- qmonster-release-verification -->/{exit} {print}' "$body_file" > "$base_file"
-          notes_file="$(mktemp)"
-          {
-            cat "$base_file"
-            printf '\n\n'
-            cat "$footer_file"
-          } > "$notes_file"
-          gh release edit "$TAG_NAME" --notes-file "$notes_file"
+          scripts/release/inject-verification-footer.sh "$TAG_NAME"
 
   publish:
     name: Publish npm and GitHub Packages mirrors

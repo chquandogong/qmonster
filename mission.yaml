@@ -1,6 +1,6 @@
 mission:
-  version: "1.36.5"
-  title: "Qmonster v1.36.5 — Release checksum verification fix: checksums.txt uses asset basenames so release-body sha256sum verification works from a normal download directory."
+  version: "1.36.6"
+  title: "Qmonster v1.36.6 — Release pipeline polish: SBOM diff SPDX root-doc filter (false-positive fix) + extracted scripts/release/sbom-diff.js + scripts/release/inject-verification-footer.sh + scripts/release/dry-run.sh local mirror + cargo audit CI step (rustsec advisory check)."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

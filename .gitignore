@@ -1,5 +1,7 @@
 # Build artefacts
 /target
+# Local release dry-run output from scripts/release/dry-run.sh
+/dist-dryrun/
 
 # Local-only secrets / environment
 .env

@@ -40,17 +40,29 @@ detail in GitHub Releases, `mission-history.yaml`, and canonical docs.
 1. Update `README.md`, `VERSION.md`, `package.json`, `mission.yaml`, and
    `mission-history.yaml`.
 2. Run the validation gates from `docs/ai/VALIDATION.md`.
-3. Commit and push `main`.
-4. Create and push the annotated tag:
+3. Run the local release dry-run before tagging:
+
+   ```bash
+   scripts/release/dry-run.sh vX.Y.Z
+   ```
+
+   This mirrors the CI release-asset job (build → assemble → SBOM scan
+   → package-count guard → SBOM diff vs previous tag → checksum
+   manifest) and writes everything under `dist-dryrun/`. Catches the
+   class of regressions that hit v1.36.0 (missing dist/), v1.36.2 (SBOM
+   1-package collapse), and v1.36.5 (checksums.txt absolute paths).
+
+4. Commit and push `main`.
+5. Create and push the annotated tag:
 
    ```bash
    git tag -a vX.Y.Z -m "vX.Y.Z"
    git push origin vX.Y.Z
    ```
 
-5. Confirm the release workflow published the GitHub Release and packages.
+6. Confirm the release workflow published the GitHub Release and packages.
 
-6. Verify release provenance for downloaded assets when needed:
+7. Verify release provenance for downloaded assets when needed:
 
    ```bash
    gh version

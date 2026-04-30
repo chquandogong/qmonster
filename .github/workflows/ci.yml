@@ -51,6 +51,11 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 
+      - name: Audit cargo dependencies for known advisories
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Dry-run npm package
         run: npm pack --dry-run
 
