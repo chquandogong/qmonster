@@ -79,6 +79,36 @@ pub struct PolicyGates {
     /// transition. Stays `false` by default — most operators accept
     /// CLI swaps as routine, and the resolver already tolerates them.
     pub identity_drift_findings: bool,
+    /// Phase F F-8 (multi-pane orchestration): when `true`, the
+    /// cross-pane rule emits `CrossPaneKind::ConcurrentFileEdit` when
+    /// two or more busy Main/Review panes have recently touched the
+    /// same absolute file path. Stays `false` by default because
+    /// active-file detection is `Heuristic` (tail-derived from
+    /// provider tool-call markers) and operators who run a
+    /// `codex-review` pane alongside a Claude main pane often read
+    /// each other's files intentionally.
+    pub cross_pane_file_findings: bool,
+    /// Phase F F-9 (dynamic profile switching): when `true`, the
+    /// `profile_switch` rule may emit a passive `Concern`
+    /// recommendation that nudges the operator from the current
+    /// healthy-state baseline profile toward a more conservative
+    /// variant (`*-script-low-token` / `*-review`) when the pane's
+    /// recent error rate exceeds `profile_switch_error_rate`. Stays
+    /// `false` by default — the recommender only fires after a
+    /// configured number of polls, and operators who deliberately run
+    /// experimental code expect short bursts of errors to be normal.
+    pub profile_switch_enabled: bool,
+    /// Number of recent polls used to compute the per-pane error
+    /// rate consumed by `profile_switch`. Mirrors the F-7b cache-drift
+    /// `cache_drift_min_samples` pattern: the rule only fires once
+    /// the window is full so a single transient error never flips
+    /// the recommendation. Default 10 polls.
+    pub profile_switch_window: usize,
+    /// Error-rate (0..1) at which `profile_switch` fires. Comparison
+    /// is `>=`, so the default 0.5 means "≥ 5 of the last 10 polls
+    /// flagged `error_hint`". Operators on chronically-noisy
+    /// workloads can raise this to 0.7 or 0.8 to keep the rec quiet.
+    pub profile_switch_error_rate: f32,
 }
 
 impl Default for PolicyGates {
@@ -113,6 +143,10 @@ impl Default for PolicyGates {
             reset_snapshot_eta_secs: 5 * 60,
             cross_window_findings: false,
             identity_drift_findings: false,
+            cross_pane_file_findings: false,
+            profile_switch_enabled: false,
+            profile_switch_window: 10,
+            profile_switch_error_rate: 0.5,
         }
     }
 }
@@ -179,6 +213,10 @@ impl PolicyGates {
             reset_snapshot_eta_secs: reset.snapshot_eta_secs,
             cross_window_findings: security.cross_window_findings,
             identity_drift_findings: security.identity_drift_findings,
+            cross_pane_file_findings: security.cross_pane_file_findings,
+            profile_switch_enabled: false,
+            profile_switch_window: 10,
+            profile_switch_error_rate: 0.5,
         }
     }
 }
@@ -284,6 +322,10 @@ mod tests {
             reset_snapshot_eta_secs: 5 * 60,
             cross_window_findings: false,
             identity_drift_findings: false,
+            cross_pane_file_findings: false,
+            profile_switch_enabled: false,
+            profile_switch_window: 10,
+            profile_switch_error_rate: 0.5,
         };
         assert!(gates.quota_tight);
     }
@@ -316,6 +358,7 @@ mod tests {
             posture_advisories: true,
             cross_window_findings: false,
             identity_drift_findings: false,
+            cross_pane_file_findings: false,
         };
         let cache = CacheConfig {
             hot_ratio_threshold: 0.45,

@@ -458,6 +458,7 @@ fn collect_items(
             let (title_prefix, headline_kind) = match f.kind {
                 CrossPaneKind::ConcurrentMutatingWork => ("Cross-Pane", "cross-pane"),
                 CrossPaneKind::CrossWindowConcurrentWork => ("Cross-Window", "cross-window"),
+                CrossPaneKind::ConcurrentFileEdit => ("File-Conflict", "file-conflict"),
             };
             out.push(AlertItem {
                 key,

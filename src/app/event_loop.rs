@@ -359,6 +359,7 @@ where
     // is irrelevant for the cross-window classification.
     let cross_pane_gates = crate::policy::PolicyGates {
         cross_window_findings: ctx.config.security.cross_window_findings,
+        cross_pane_file_findings: ctx.config.security.cross_pane_file_findings,
         ..Default::default()
     };
     let findings = ctx.policy.evaluate_cross_pane(&views, &cross_pane_gates);

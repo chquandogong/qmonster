@@ -130,6 +130,99 @@ fn concurrent_key(view: &PaneView<'_>) -> Option<ConcurrentKey> {
     })
 }
 
+/// Phase F F-8 (multi-pane orchestration): file-level concurrent-edit
+/// detection. Pure rule that complements `eval_concurrent` (which
+/// keys on directory + branch) with finer-grained evidence when two
+/// or more panes have recently touched the same absolute file. Fires
+/// only when `gates.cross_pane_file_findings` is true because the
+/// underlying `active_files` signal is `Heuristic` (parsed from
+/// provider tool-call markers).
+///
+/// Each overlapping file produces at most one finding per call, with
+/// the lexicographically smallest pane_id as the anchor and the
+/// remaining pane_ids alphabetized in `other_pane_ids`.
+pub fn eval_concurrent_files(
+    panes: &[PaneView<'_>],
+    gates: &PolicyGates,
+) -> Vec<CrossPaneFinding> {
+    use crate::domain::identity::Role;
+    if !gates.cross_pane_file_findings {
+        return Vec::new();
+    }
+
+    // Build (file_path, pane_id) pairs for every qualifying pane.
+    // Eligibility mirrors `eval_concurrent`: Main/Review only, not
+    // waiting on input/permission. The output_chars >= 500 floor that
+    // gates the directory rule is intentionally NOT applied here —
+    // file-level evidence is direct (the tool-call marker WAS in the
+    // tail), so we don't need the volume proxy.
+    let mut by_file: std::collections::BTreeMap<String, Vec<&PaneView<'_>>> =
+        std::collections::BTreeMap::new();
+    for view in panes {
+        if !matches!(view.identity.identity.role, Role::Main | Role::Review) {
+            continue;
+        }
+        if matches!(
+            view.signals.idle_state,
+            Some(IdleCause::InputWait) | Some(IdleCause::PermissionWait)
+        ) {
+            continue;
+        }
+        for raw in &view.signals.active_files {
+            let abs = resolve_against(view.current_path, raw);
+            by_file.entry(abs).or_default().push(view);
+        }
+    }
+
+    let mut out: Vec<CrossPaneFinding> = Vec::new();
+    for (file, mut group) in by_file {
+        // Dedup pane_ids in case the same file appeared multiple times
+        // in one pane's active_files history.
+        group.sort_by(|a, b| a.identity.identity.pane_id.cmp(&b.identity.identity.pane_id));
+        group.dedup_by(|a, b| a.identity.identity.pane_id == b.identity.identity.pane_id);
+        if group.len() < 2 {
+            continue;
+        }
+        let anchor = group[0].identity.identity.pane_id.clone();
+        let others: Vec<String> = group[1..]
+            .iter()
+            .map(|v| v.identity.identity.pane_id.clone())
+            .collect();
+        let summary = if others.len() == 1 {
+            format!("{} and {}", anchor, others[0])
+        } else {
+            format!("{} and {} other panes", anchor, others.len())
+        };
+        out.push(CrossPaneFinding {
+            kind: CrossPaneKind::ConcurrentFileEdit,
+            anchor_pane_id: anchor,
+            other_pane_ids: others,
+            reason: format!(
+                "concurrent file edit on {summary}: both panes recently touched {file} — risk of conflicting edits; coordinate before saving",
+            ),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Heuristic,
+            suggested_command: Some(
+                "# coordinate via research pane: tmux select-pane -t <research_pane_id>".into(),
+            ),
+        });
+    }
+    out
+}
+
+/// Resolve a possibly-relative file path against a pane's
+/// `current_path` so cross-pane comparison sees absolute paths only.
+/// Returns the candidate as-is when it is already absolute, when
+/// `current_path` is empty (we have no anchor), or when normalization
+/// would otherwise fail. Avoids `std::fs` so the rule stays pure.
+fn resolve_against(current_path: &str, candidate: &str) -> String {
+    if candidate.starts_with('/') || current_path.is_empty() {
+        return candidate.to_string();
+    }
+    let trimmed = current_path.trim_end_matches('/');
+    format!("{trimmed}/{candidate}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -571,5 +664,258 @@ mod tests {
             findings.is_empty(),
             "different paths must never co-qualify, even across windows"
         );
+    }
+
+    // -----------------------------------------------------------------
+    // Phase F F-8 — file-level concurrent-edit detection
+    // -----------------------------------------------------------------
+
+    fn gates_with_file_findings(enabled: bool) -> PolicyGates {
+        PolicyGates {
+            cross_pane_file_findings: enabled,
+            ..PolicyGates::default()
+        }
+    }
+
+    fn signals_with_active_files(files: &[&str]) -> SignalSet {
+        SignalSet {
+            output_chars: 200,
+            active_files: files.iter().map(|s| s.to_string()).collect(),
+            ..SignalSet::default()
+        }
+    }
+
+    #[test]
+    fn concurrent_file_edit_fires_when_two_panes_touch_same_relative_path_in_same_repo() {
+        let id_a = mk_id(Role::Main, "%1");
+        let id_b = mk_id(Role::Review, "%2");
+        let sa = signals_with_active_files(&["src/foo.rs"]);
+        let sb = signals_with_active_files(&["src/foo.rs"]);
+        let views = vec![
+            PaneView {
+                identity: &id_a,
+                signals: &sa,
+                current_path: "/repo",
+                window_label: "qmonster:0",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &sb,
+                current_path: "/repo",
+                window_label: "qmonster:0",
+            },
+        ];
+        let findings = eval_concurrent_files(&views, &gates_with_file_findings(true));
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].kind, CrossPaneKind::ConcurrentFileEdit);
+        assert_eq!(findings[0].severity, Severity::Warning);
+        assert_eq!(findings[0].source_kind, SourceKind::Heuristic);
+        assert_eq!(findings[0].anchor_pane_id, "%1");
+        assert_eq!(findings[0].other_pane_ids, vec!["%2".to_string()]);
+        assert!(
+            findings[0].reason.contains("/repo/src/foo.rs"),
+            "reason must call out the absolute resolved path: {:?}",
+            findings[0].reason
+        );
+    }
+
+    #[test]
+    fn concurrent_file_edit_does_not_fire_when_gate_off() {
+        let id_a = mk_id(Role::Main, "%1");
+        let id_b = mk_id(Role::Main, "%2");
+        let s = signals_with_active_files(&["src/foo.rs"]);
+        let views = vec![
+            PaneView {
+                identity: &id_a,
+                signals: &s,
+                current_path: "/repo",
+                window_label: "",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &s,
+                current_path: "/repo",
+                window_label: "",
+            },
+        ];
+        let findings = eval_concurrent_files(&views, &gates_with_file_findings(false));
+        assert!(
+            findings.is_empty(),
+            "file-level finding is opt-in; default gate must keep it silent"
+        );
+    }
+
+    #[test]
+    fn concurrent_file_edit_does_not_fire_on_different_resolved_paths() {
+        // Pane A at /repo-a editing src/foo.rs and pane B at /repo-b
+        // editing src/foo.rs are NOT touching the same file — relative
+        // path resolution is what makes the rule sound across worktrees.
+        let id_a = mk_id(Role::Main, "%1");
+        let id_b = mk_id(Role::Main, "%2");
+        let sa = signals_with_active_files(&["src/foo.rs"]);
+        let sb = signals_with_active_files(&["src/foo.rs"]);
+        let views = vec![
+            PaneView {
+                identity: &id_a,
+                signals: &sa,
+                current_path: "/repo-a",
+                window_label: "",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &sb,
+                current_path: "/repo-b",
+                window_label: "",
+            },
+        ];
+        let findings = eval_concurrent_files(&views, &gates_with_file_findings(true));
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn concurrent_file_edit_handles_absolute_path_match_across_worktrees() {
+        // Both panes wrote the same absolute path even though their
+        // current_path differs — emit one finding.
+        let id_a = mk_id(Role::Main, "%1");
+        let id_b = mk_id(Role::Main, "%2");
+        let sa = signals_with_active_files(&["/etc/hosts"]);
+        let sb = signals_with_active_files(&["/etc/hosts"]);
+        let views = vec![
+            PaneView {
+                identity: &id_a,
+                signals: &sa,
+                current_path: "/repo-a",
+                window_label: "",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &sb,
+                current_path: "/repo-b",
+                window_label: "",
+            },
+        ];
+        let findings = eval_concurrent_files(&views, &gates_with_file_findings(true));
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].reason.contains("/etc/hosts"));
+    }
+
+    #[test]
+    fn concurrent_file_edit_input_wait_pane_disqualifies_group() {
+        let id_a = mk_id(Role::Main, "%1");
+        let id_b = mk_id(Role::Main, "%2");
+        let active = signals_with_active_files(&["src/foo.rs"]);
+        let waiting = SignalSet {
+            output_chars: 200,
+            active_files: vec!["src/foo.rs".into()],
+            idle_state: Some(IdleCause::InputWait),
+            ..SignalSet::default()
+        };
+        let views = vec![
+            PaneView {
+                identity: &id_a,
+                signals: &active,
+                current_path: "/repo",
+                window_label: "",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &waiting,
+                current_path: "/repo",
+                window_label: "",
+            },
+        ];
+        let findings = eval_concurrent_files(&views, &gates_with_file_findings(true));
+        assert!(
+            findings.is_empty(),
+            "a pane in InputWait disqualifies its file-level group"
+        );
+    }
+
+    #[test]
+    fn concurrent_file_edit_separates_overlapping_files() {
+        // Three panes, two distinct overlap groups. Each overlapping
+        // file produces exactly one finding; non-overlapping files
+        // produce none.
+        let id_a = mk_id(Role::Main, "%1");
+        let id_b = mk_id(Role::Main, "%2");
+        let id_c = mk_id(Role::Main, "%3");
+        let sa = signals_with_active_files(&["src/foo.rs", "src/bar.rs"]);
+        let sb = signals_with_active_files(&["src/foo.rs"]);
+        let sc = signals_with_active_files(&["src/bar.rs", "src/baz.rs"]);
+        let views = vec![
+            PaneView {
+                identity: &id_a,
+                signals: &sa,
+                current_path: "/repo",
+                window_label: "",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &sb,
+                current_path: "/repo",
+                window_label: "",
+            },
+            PaneView {
+                identity: &id_c,
+                signals: &sc,
+                current_path: "/repo",
+                window_label: "",
+            },
+        ];
+        let findings = eval_concurrent_files(&views, &gates_with_file_findings(true));
+        assert_eq!(
+            findings.len(),
+            2,
+            "expected one finding per overlapping file: {findings:?}"
+        );
+        // Anchors are lexicographically smallest pane_id — both
+        // overlap groups include %1 so the anchor stays %1 either way.
+        assert!(findings.iter().all(|f| f.anchor_pane_id == "%1"));
+        // src/baz.rs only appears on %3, so it must NOT produce a finding.
+        assert!(
+            findings
+                .iter()
+                .all(|f| !f.reason.contains("baz.rs")),
+            "non-overlapping files must not produce findings"
+        );
+    }
+
+    #[test]
+    fn concurrent_file_edit_research_role_does_not_anchor() {
+        // Research role is excluded from cross-pane mutating-work
+        // detection (matches eval_concurrent's role gate).
+        let id_a = mk_id(Role::Research, "%1");
+        let id_b = mk_id(Role::Research, "%2");
+        let s = signals_with_active_files(&["src/foo.rs"]);
+        let views = vec![
+            PaneView {
+                identity: &id_a,
+                signals: &s,
+                current_path: "/repo",
+                window_label: "",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &s,
+                current_path: "/repo",
+                window_label: "",
+            },
+        ];
+        let findings = eval_concurrent_files(&views, &gates_with_file_findings(true));
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn concurrent_file_edit_lone_pane_never_fires() {
+        let id_a = mk_id(Role::Main, "%1");
+        let s = signals_with_active_files(&["src/foo.rs"]);
+        let views = vec![PaneView {
+            identity: &id_a,
+            signals: &s,
+            current_path: "/repo",
+            window_label: "",
+        }];
+        let findings = eval_concurrent_files(&views, &gates_with_file_findings(true));
+        assert!(findings.is_empty());
     }
 }

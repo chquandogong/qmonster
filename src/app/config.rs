@@ -337,6 +337,15 @@ pub struct SecurityConfig {
     /// the operator runs, so a drift is not a problem unless the
     /// operator wants visibility.
     pub identity_drift_findings: bool,
+    /// Phase F F-8 (multi-pane orchestration): when `true`, the
+    /// cross-pane rule emits a `CrossPaneKind::ConcurrentFileEdit`
+    /// finding when two or more busy Main/Review panes have recently
+    /// touched the same absolute file path (parsed from
+    /// `● Edit(...)` / `● Write(...)` style tool-call markers in the
+    /// pane tail). Stays `false` by default because the active-file
+    /// signal is `Heuristic`; opt in once the operator's workflow
+    /// makes simultaneous file edits an actual coordination problem.
+    pub cross_pane_file_findings: bool,
 }
 
 /// Tuning knobs for the idle-stillness detector. Operators can set

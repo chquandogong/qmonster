@@ -834,6 +834,7 @@ fn cross_window_concurrent_work_fires_end_to_end_when_security_gate_enabled() {
         posture_advisories: false,
         cross_window_findings: true,
         identity_drift_findings: false,
+        cross_pane_file_findings: false,
     };
     let mut ctx = Context::new(config, source, notifier, sink);
 
@@ -859,6 +860,137 @@ fn cross_window_concurrent_work_fires_end_to_end_when_security_gate_enabled() {
     );
     assert!(finding.reason.contains("qmonster:0"));
     assert!(finding.reason.contains("scratch:0"));
+}
+
+#[test]
+fn concurrent_file_edit_fires_end_to_end_when_security_gate_enabled() {
+    // Phase F F-8: two healthy Claude Main panes that recently called
+    // `● Edit(file: "src/foo.rs")` on the same file inside the same
+    // worktree must surface a `ConcurrentFileEdit` finding once the
+    // operator opts into `[security] cross_pane_file_findings = true`.
+    use qmonster::app::config::SecurityConfig;
+    use qmonster::domain::recommendation::CrossPaneKind;
+
+    // Compose a Claude tail with the canonical busy markers PLUS a
+    // recent `● Edit(...)` Claude tool call. The shared `busy_tail()`
+    // helper (see top of this file) already supplies the verbose / log
+    // shape that keeps the pane out of the input/permission-wait gate.
+    let mut claude_tail = busy_tail();
+    claude_tail.push_str("\n● Edit(file: \"src/foo.rs\")\n");
+
+    let pane_a = RawPaneSnapshot {
+        session_name: "qmonster".into(),
+        window_index: "0".into(),
+        pane_id: "%1".into(),
+        title: "claude:1:main".into(),
+        current_command: "node".into(),
+        current_path: "/tmp/repo".into(),
+        active: true,
+        dead: false,
+        tail: claude_tail.clone(),
+        pane_pid: None,
+    };
+    let pane_b = RawPaneSnapshot {
+        session_name: "qmonster".into(),
+        window_index: "0".into(),
+        pane_id: "%2".into(),
+        title: "claude:2:review".into(),
+        current_command: "node".into(),
+        current_path: "/tmp/repo".into(),
+        active: true,
+        dead: false,
+        tail: claude_tail,
+        pane_pid: None,
+    };
+    let source = FixturePaneSource {
+        panes: vec![pane_a, pane_b],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut config = QmonsterConfig::defaults();
+    config.security = SecurityConfig {
+        posture_advisories: false,
+        cross_window_findings: false,
+        identity_drift_findings: false,
+        cross_pane_file_findings: true,
+    };
+    let mut ctx = Context::new(config, source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert_eq!(reports.len(), 2);
+
+    let file_findings: Vec<_> = reports
+        .iter()
+        .flat_map(|r| r.cross_pane_findings.iter())
+        .filter(|f| matches!(f.kind, CrossPaneKind::ConcurrentFileEdit))
+        .collect();
+    assert_eq!(
+        file_findings.len(),
+        1,
+        "exactly one ConcurrentFileEdit finding must surface for the shared file"
+    );
+    let finding = file_findings[0];
+    assert_eq!(finding.anchor_pane_id, "%1");
+    assert_eq!(finding.other_pane_ids, vec!["%2".to_string()]);
+    assert!(
+        finding.reason.contains("/tmp/repo/src/foo.rs"),
+        "reason must call out the resolved absolute file path: {:?}",
+        finding.reason
+    );
+}
+
+#[test]
+fn concurrent_file_edit_stays_silent_when_security_gate_disabled() {
+    // Same scenario as above, but without the opt-in gate. The rule
+    // must produce no ConcurrentFileEdit finding even though the file
+    // overlap is real and the tail markers are present.
+    use qmonster::domain::recommendation::CrossPaneKind;
+
+    let mut claude_tail = busy_tail();
+    claude_tail.push_str("\n● Edit(file: \"src/foo.rs\")\n");
+
+    let pane_a = RawPaneSnapshot {
+        session_name: "qmonster".into(),
+        window_index: "0".into(),
+        pane_id: "%1".into(),
+        title: "claude:1:main".into(),
+        current_command: "node".into(),
+        current_path: "/tmp/repo".into(),
+        active: true,
+        dead: false,
+        tail: claude_tail.clone(),
+        pane_pid: None,
+    };
+    let pane_b = RawPaneSnapshot {
+        session_name: "qmonster".into(),
+        window_index: "0".into(),
+        pane_id: "%2".into(),
+        title: "claude:2:main".into(),
+        current_command: "node".into(),
+        current_path: "/tmp/repo".into(),
+        active: true,
+        dead: false,
+        tail: claude_tail,
+        pane_pid: None,
+    };
+    let source = FixturePaneSource {
+        panes: vec![pane_a, pane_b],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    // Default config — gate stays off.
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    let file_findings: Vec<_> = reports
+        .iter()
+        .flat_map(|r| r.cross_pane_findings.iter())
+        .filter(|f| matches!(f.kind, CrossPaneKind::ConcurrentFileEdit))
+        .collect();
+    assert!(
+        file_findings.is_empty(),
+        "default config must not produce a ConcurrentFileEdit finding: {file_findings:?}"
+    );
 }
 
 #[test]
@@ -925,6 +1057,7 @@ fn provider_drift_fires_once_when_security_gate_enabled_and_dedups_on_repeat_pol
         posture_advisories: false,
         cross_window_findings: false,
         identity_drift_findings: true,
+        cross_pane_file_findings: false,
     };
     let mut ctx = Context::new(config, source, notifier, sink);
 

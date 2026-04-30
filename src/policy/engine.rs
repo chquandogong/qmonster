@@ -111,7 +111,11 @@ impl Engine {
         panes: &[PaneView<'_>],
         gates: &PolicyGates,
     ) -> Vec<crate::domain::recommendation::CrossPaneFinding> {
-        crate::policy::rules::concurrent::eval_concurrent(panes, gates)
+        let mut out = crate::policy::rules::concurrent::eval_concurrent(panes, gates);
+        out.extend(crate::policy::rules::concurrent::eval_concurrent_files(
+            panes, gates,
+        ));
+        out
     }
 }
 

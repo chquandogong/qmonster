@@ -271,7 +271,119 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         process_memory_mb: None,
         agent_memory_bytes: None,
         runtime_facts: Vec::new(),
+        active_files: parse_active_files(tail),
     }
+}
+
+/// Phase F F-8 (multi-pane orchestration): extract recently-touched
+/// file paths from provider tool-call markers in the tail. Designed to
+/// run alongside the cross-provider markers in `parse_common_signals`
+/// so any provider whose tail uses Claude-Code-style `● <Tool>(...)`
+/// rendering gets file-level edit detection for free; per-provider
+/// adapters layer their own markers on top (e.g. Codex
+/// `*** Update File:` apply_patch blocks).
+///
+/// Detection rules:
+///   - line starts (after trim) with `● Edit(`, `● Write(`,
+///     `● MultiEdit(`, or `● Update(` (Claude Code tool render);
+///   - the first quoted/unquoted token inside the parens that looks
+///     like a path (`.` / `/` present, no spaces, length ≥ 2) is
+///     captured as the active-file entry;
+///   - up to `MAX_ACTIVE_FILES` distinct paths are returned in
+///     most-recent-first order (latest line wins).
+///
+/// Honesty rule: no path is fabricated. If the parens are empty or
+/// contain something we cannot confidently parse as a path, the line
+/// is skipped. Tail-derived paths are inherently `Heuristic` —
+/// callers should not promote them to `ProviderOfficial`.
+pub(crate) fn parse_active_files(tail: &str) -> Vec<String> {
+    const MAX_ACTIVE_FILES: usize = 8;
+    // Tool markers Claude Code renders for filesystem-touching calls.
+    // Codex apply_patch (`*** Update File: …`) is parsed inside the
+    // Codex adapter where the surface lives — keep this helper
+    // cross-provider and conservative.
+    const FILE_TOOL_MARKERS: &[&str] = &[
+        "● Edit(",
+        "● Write(",
+        "● MultiEdit(",
+        "● Update(",
+        "● NotebookEdit(",
+    ];
+
+    let mut out: Vec<String> = Vec::new();
+    // Walk lines bottom-to-top so the most recent edit lands first.
+    for line in tail.lines().rev() {
+        let trimmed = line.trim_start();
+        let Some(open) = FILE_TOOL_MARKERS
+            .iter()
+            .find_map(|m| trimmed.strip_prefix(m))
+        else {
+            continue;
+        };
+        let Some(path) = extract_first_path_from_args(open) else {
+            continue;
+        };
+        if !out.iter().any(|p| p == &path) {
+            out.push(path);
+            if out.len() >= MAX_ACTIVE_FILES {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Extract the first path-like token from a tool-call argument string.
+/// Handles three Claude-Code argument shapes seen in real captures:
+///   - `"src/foo.rs"` (bare quoted path, used by Edit/Write)
+///   - `file: "src/foo.rs"` (named-arg form)
+///   - `src/foo.rs)` (occasional unquoted, single-arg form)
+fn extract_first_path_from_args(args: &str) -> Option<String> {
+    // Try double-quoted path first — the most reliable shape and the
+    // only one that survives paths with shell metacharacters.
+    if let Some(start) = args.find('"')
+        && let Some(rel) = args[start + 1..].find('"')
+    {
+        let candidate = &args[start + 1..start + 1 + rel];
+        if looks_like_path(candidate) {
+            return Some(candidate.to_string());
+        }
+    }
+    // Fallback: bare token up to a comma, paren, or whitespace.
+    let mut end = 0;
+    let bytes = args.as_bytes();
+    while end < bytes.len() {
+        let b = bytes[end];
+        if b == b',' || b == b')' || (b as char).is_whitespace() {
+            break;
+        }
+        end += 1;
+    }
+    let candidate = &args[..end];
+    if looks_like_path(candidate) {
+        Some(candidate.to_string())
+    } else {
+        None
+    }
+}
+
+fn looks_like_path(s: &str) -> bool {
+    let s = s.trim();
+    if s.len() < 2 {
+        return false;
+    }
+    // Reject obvious non-paths: shell flags, JSON keys, raw numbers.
+    if s.starts_with('-') || s.contains('=') {
+        return false;
+    }
+    // A path must have a directory separator OR a file extension.
+    let has_sep = s.contains('/');
+    let has_ext = s.rsplit_once('.').is_some_and(|(_, ext)| {
+        !ext.is_empty()
+            && ext.len() <= 8
+            && ext.bytes().all(|b| b.is_ascii_alphanumeric())
+    });
+    has_sep || has_ext
 }
 
 /// v1.13.1: integration-test sentinel for the end-to-end policy pipeline.
@@ -655,5 +767,96 @@ mod tests {
     fn no_markers_no_history_yields_idle_state_none() {
         let set = parse_common_signals("normal output");
         assert_eq!(set.idle_state, None);
+    }
+
+    // -----------------------------------------------------------------
+    // Phase F F-8 — active-files parser
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn active_files_extracts_quoted_edit_path() {
+        let tail = "● Edit(file: \"src/foo.rs\")\nsome chatter\n";
+        let set = parse_common_signals(tail);
+        assert_eq!(set.active_files, vec!["src/foo.rs".to_string()]);
+    }
+
+    #[test]
+    fn active_files_extracts_write_and_multiedit_paths() {
+        let tail = "● Write(file: \"docs/x.md\")\n● MultiEdit(file: \"src/lib.rs\")\n";
+        let set = parse_common_signals(tail);
+        // Most-recent-first order: MultiEdit (lower in tail) wins position 0.
+        assert_eq!(
+            set.active_files,
+            vec!["src/lib.rs".to_string(), "docs/x.md".to_string()]
+        );
+    }
+
+    #[test]
+    fn active_files_dedups_repeated_path() {
+        let tail = "● Edit(file: \"src/foo.rs\")\n● Edit(file: \"src/foo.rs\")\n";
+        let set = parse_common_signals(tail);
+        assert_eq!(
+            set.active_files,
+            vec!["src/foo.rs".to_string()],
+            "the same path appearing twice must dedupe to one entry"
+        );
+    }
+
+    #[test]
+    fn active_files_caps_at_eight_entries() {
+        let mut tail = String::new();
+        for i in 0..20 {
+            tail.push_str(&format!("● Edit(file: \"src/f{i}.rs\")\n"));
+        }
+        let set = parse_common_signals(&tail);
+        assert_eq!(set.active_files.len(), 8);
+    }
+
+    #[test]
+    fn active_files_skips_empty_parens() {
+        // Honesty rule: don't fabricate a path when the args are empty.
+        let tail = "● Edit()\n";
+        let set = parse_common_signals(tail);
+        assert!(set.active_files.is_empty());
+    }
+
+    #[test]
+    fn active_files_skips_non_path_args() {
+        // `● Bash(git status)` is not a file edit; the args do not look
+        // like a path. Must not produce a false-positive entry.
+        let tail = "● Bash(git status)\n● Read(/etc/hosts)\n";
+        let set = parse_common_signals(tail);
+        // Read(/etc/hosts) is a Read tool call, not Edit/Write — but
+        // even if it were, we explicitly only include edit-class tools.
+        assert!(
+            set.active_files.is_empty(),
+            "Bash and Read tool calls are not edits: {:?}",
+            set.active_files
+        );
+    }
+
+    #[test]
+    fn active_files_handles_unquoted_short_form() {
+        // Some renderers print `● Edit(src/foo.rs)` without the
+        // `file: "…"` named-arg wrapping. Still extract the path.
+        let tail = "● Edit(src/foo.rs)\n";
+        let set = parse_common_signals(tail);
+        assert_eq!(set.active_files, vec!["src/foo.rs".to_string()]);
+    }
+
+    #[test]
+    fn active_files_rejects_flag_like_args() {
+        // `● Bash(--help)` style args should not be treated as paths.
+        // Even though our marker list doesn't include Bash, this test
+        // belt-and-suspenders the flag rejection in `looks_like_path`.
+        let tail = "● Edit(--help)\n";
+        let set = parse_common_signals(tail);
+        assert!(set.active_files.is_empty());
+    }
+
+    #[test]
+    fn active_files_default_is_empty_vec() {
+        let set = parse_common_signals("");
+        assert!(set.active_files.is_empty());
     }
 }

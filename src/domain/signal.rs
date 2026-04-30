@@ -230,6 +230,16 @@ pub struct SignalSet {
     /// provider is Qmonster monitor (no memory surface).
     pub agent_memory_bytes: Option<MetricValue<u64>>,
     pub runtime_facts: Vec<RuntimeFact>,
+    /// Phase F F-8 (multi-pane orchestration): files the pane has
+    /// recently touched, surfaced from provider tool-call markers in
+    /// the tail (`● Edit(...)`, `● Write(...)`, `● MultiEdit(...)`,
+    /// Codex `*** Update File:` blocks, etc.). Each entry is the
+    /// path-as-printed by the provider — the cross-pane rule resolves
+    /// relative paths against the pane's `current_path` before
+    /// comparing across panes. Always `Heuristic` (tail-derived); the
+    /// list is bounded and most-recent-first. Empty when no edit
+    /// marker was observed in the most recent capture window.
+    pub active_files: Vec<String>,
 }
 
 #[cfg(test)]

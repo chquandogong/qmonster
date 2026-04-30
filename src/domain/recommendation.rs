@@ -132,6 +132,12 @@ pub enum CrossPaneKind {
     /// live in different tmux windows. The operator may have the same
     /// repo open across windows by accident.
     CrossWindowConcurrentWork,
+    /// Phase F F-8 (multi-pane orchestration): two or more panes have
+    /// recently touched the same absolute file path. Stronger evidence
+    /// of conflict than `ConcurrentMutatingWork` because it points at a
+    /// specific file rather than a directory; emitted at
+    /// `Severity::Warning` and gated behind `cross_pane_file_findings`.
+    ConcurrentFileEdit,
 }
 
 #[cfg(test)]
