@@ -3,6 +3,11 @@
   "version": "1.36.7",
   "description": "Observe-first TUI for multi-CLI tmux development.",
   "license": "MIT",
+  "contributors": [
+    "CHENGHAO QUAN <chquan@dogu.xyz>",
+    "OpenAI Codex",
+    "Google Gemini"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/chquandogong/qmonster.git"
@@ -43,6 +48,7 @@
     "examples/",
     "README.md",
     "LICENSE",
+    "CONTRIBUTORS.md",
     "CODE_OF_CONDUCT.md",
     "VERSION.md",
     "CONTRIBUTING.md",

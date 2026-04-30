@@ -264,6 +264,7 @@ tmux session.
 
 ## Community
 
+- Contributors: [CONTRIBUTORS.md](CONTRIBUTORS.md)
 - Discussions: setup help, tmux layouts, provider behavior, and workflow ideas
 - Issues: reproducible bugs and scoped feature requests
 - Security: private vulnerability reports through GitHub Security Advisories
