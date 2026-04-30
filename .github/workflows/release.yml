@@ -60,6 +60,9 @@ jobs:
       - name: Build release binary
         run: cargo build --release --bin qmonster
 
+      - name: Prepare release output directory
+        run: mkdir -p dist
+
       - name: Generate SBOM (SPDX-JSON)
         uses: anchore/sbom-action@v0
         with:

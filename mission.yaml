@@ -1,6 +1,6 @@
 mission:
-  version: "1.36.0"
-  title: "Qmonster v1.36.0 — PolicyGates::from_inputs constructor refactor (closes Codex/Gemini v1.35.x OBS), SPDX-JSON SBOM in release pipeline, RELEASE_VERIFICATION.md, dashboard screenshot embedded in README hero."
+  version: "1.36.1"
+  title: "Qmonster v1.36.1 — Release/package hygiene follow-up: npm tarball includes release verification docs, SBOM workflow creates dist first, canonical docs sync to v1.36.x."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1528,6 +1528,9 @@ mission:
     - "v1.36.0: PolicyGates 9-positional-arg from_config_and_identity replaced by single-arg from_inputs(PolicyGateInputs<'_>); the new struct bundles token/cost/context/quota/security/cache/reset configs plus provider+confidence so future config additions don't bloat the constructor; closes Codex CFX-135 OBS-1 and Gemini OBS-3 from the v1.35.x confirm round; new policy_gates_propagates_custom_reset_config test locks ResetConfig propagation through the constructor"
     - "v1.36.0: release.yml generates SPDX-JSON SBOM via anchore/sbom-action@v0 (output dist/qmonster-<TAG>-sbom.spdx.json), bundles it into release assets and the build provenance attestation subject-paths, and includes it in the checksums.txt sweep; new docs/RELEASE_VERIFICATION.md documents checksum / attestation / SBOM verification commands for downstream operators"
     - "v1.36.0: docs/assets/qmonster-dashboard.png captured from a live qmonster TUI session and embedded in the README 'What It Shows' section; docs/GITHUB_POLISH.md item 3 closes (refresh checklist remains)"
+    - "v1.36.1: package.json files includes docs/RELEASE_VERIFICATION.md so the README documentation link resolves inside the npm tarball"
+    - "v1.36.1: release workflow creates dist/ before anchore/sbom-action writes dist/qmonster-<TAG>-sbom.spdx.json"
+    - "v1.36.1: canonical docs/ai PROJECT_BRIEF, ARCHITECTURE, and VALIDATION sync to the v1.36.x release/package state"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
