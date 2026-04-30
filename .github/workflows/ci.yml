@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_AUDIT_VERSION: "0.22.1"
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -51,10 +54,12 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 
+      - name: Install cargo-audit
+        run: |
+          cargo install --locked cargo-audit --version "$CARGO_AUDIT_VERSION"
+
       - name: Audit cargo dependencies for known advisories
-        uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo audit
 
       - name: Dry-run npm package
         run: npm pack --dry-run

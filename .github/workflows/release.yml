@@ -24,6 +24,7 @@ concurrency:
 
 env:
   TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  CARGO_AUDIT_VERSION: "0.22.1"
 
 jobs:
   release:
@@ -58,13 +59,17 @@ jobs:
           cargo test --all-targets
           cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 
+      - name: Install cargo-audit
+        run: |
+          cargo install --locked cargo-audit --version "$CARGO_AUDIT_VERSION"
+
       - name: Audit cargo dependencies for known advisories
         # Defense-in-depth: ci.yml also runs this gate at PR time, but a
         # tag whose green CI predates a fresh RustSec advisory could
-        # still publish without this. Codex CFX-136R-3 closure.
-        uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        # still publish without this. Pin the cargo-audit CLI install so
+        # its transitive deps stay compatible with the Rust 1.88 CI
+        # toolchain.
+        run: cargo audit
 
       - name: Build release binary
         run: cargo build --release --bin qmonster

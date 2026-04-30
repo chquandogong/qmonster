@@ -34,6 +34,7 @@ if [ -z "$TAG_NAME" ]; then
   fi
 fi
 echo "[dry-run] Using TAG_NAME=${TAG_NAME}"
+CARGO_AUDIT_VERSION="${CARGO_AUDIT_VERSION:-0.22.1}"
 
 # 1. Verify package.json version matches the tag (release.yml does this too).
 tag_version="${TAG_NAME#v}"
@@ -54,8 +55,8 @@ cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args 2>&1 
 # RUSTSEC advisory blocks the local dry-run too. Best-effort: install
 # cargo-audit if missing and the operator has cargo install rights.
 if ! command -v cargo-audit >/dev/null 2>&1; then
-  echo "[dry-run] Installing cargo-audit (one-time) into ~/.cargo/bin"
-  cargo install --locked cargo-audit >/dev/null 2>&1 || {
+  echo "[dry-run] Installing cargo-audit ${CARGO_AUDIT_VERSION} (one-time) into ~/.cargo/bin"
+  cargo install --locked cargo-audit --version "$CARGO_AUDIT_VERSION" >/dev/null 2>&1 || {
     echo "[dry-run] WARNING: could not install cargo-audit; skipping advisory check." >&2
     SKIP_AUDIT=1
   }
