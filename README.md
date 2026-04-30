@@ -32,13 +32,13 @@ and Qmonster side by side. It surfaces pane state, token pressure,
 provider facts, reset timing, safety alerts, and recommendations without
 taking destructive action by default.
 
-| Surface | Current |
-| --- | --- |
-| Release | `v1.35.3` |
-| npm | `qmonster@1.35.3` |
-| Rust | `1.88+` |
-| Runtime version | `git describe --tags --always --dirty` from `build.rs` |
-| Cargo crate version | Internal metadata only |
+| Surface             | Current                                                |
+| ------------------- | ------------------------------------------------------ |
+| Release             | `v1.36.0`                                              |
+| npm                 | `qmonster@1.36.0`                                      |
+| Rust                | `1.88+`                                                |
+| Runtime version     | `git describe --tags --always --dirty` from `build.rs` |
+| Cargo crate version | Internal metadata only                                 |
 
 ## Why
 
@@ -100,31 +100,35 @@ npm install -g @chquandogong/qmonster
 
 ## What It Shows
 
-| Area | Operator-visible result |
-| --- | --- |
-| Pane state | Work complete, active, stale, input wait, permission wait, limit hit |
-| Metrics | CTX, quota, tokens, cache, memory, cost, reset ETA |
-| Runtime facts | Session IDs, transcript paths, tool calls, model reset rows |
-| Recommendations | Alert/advisory queue with source-labeled reasons and commands |
-| Settings | Thresholds, integrations, parameters, rules, badge glossary |
-| Git status | Click the footer version badge to inspect local repo state |
+<p align="center">
+  <img src="docs/assets/qmonster-dashboard.png" alt="Qmonster TUI dashboard: alert queue at the top, per-pane cards below" width="100%">
+</p>
+
+| Area            | Operator-visible result                                              |
+| --------------- | -------------------------------------------------------------------- |
+| Pane state      | Work complete, active, stale, input wait, permission wait, limit hit |
+| Metrics         | CTX, quota, tokens, cache, memory, cost, reset ETA                   |
+| Runtime facts   | Session IDs, transcript paths, tool calls, model reset rows          |
+| Recommendations | Alert/advisory queue with source-labeled reasons and commands        |
+| Settings        | Thresholds, integrations, parameters, rules, badge glossary          |
+| Git status      | Click the footer version badge to inspect local repo state           |
 
 Sanitized provider tails for demos and screenshots live in
 [examples/demo](examples/demo/).
 
 Primary keys:
 
-| Key | Action |
-| --- | --- |
-| `q` / `Esc` | Quit or close overlay |
-| `Tab` | Switch alert/pane focus |
-| `t` | Choose tmux session/window target |
-| `s` | Write runtime snapshot |
-| `u` | Refresh provider runtime surfaces |
-| `P` | Provider Setup overlay |
-| `S` | Settings overlay |
-| `?` | Help / legend |
-| Mouse | Scroll, select, double-click alert hide, footer Git status |
+| Key         | Action                                                     |
+| ----------- | ---------------------------------------------------------- |
+| `q` / `Esc` | Quit or close overlay                                      |
+| `Tab`       | Switch alert/pane focus                                    |
+| `t`         | Choose tmux session/window target                          |
+| `s`         | Write runtime snapshot                                     |
+| `u`         | Refresh provider runtime surfaces                          |
+| `P`         | Provider Setup overlay                                     |
+| `S`         | Settings overlay                                           |
+| `?`         | Help / legend                                              |
+| Mouse       | Scroll, select, double-click alert hide, footer Git status |
 
 For a matching four-pane tmux layout, open Provider Setup with `P`,
 select the `Tmux` tab, and copy the installer. It writes:
@@ -136,23 +140,23 @@ select the `Tmux` tab, and copy the installer. It writes:
 
 Qmonster labels every provider-derived value by authority:
 
-| Label | Meaning |
-| --- | --- |
+| Label        | Meaning                                                           |
+| ------------ | ----------------------------------------------------------------- |
 | `[Official]` | Emitted by the provider or a provider-owned config/status surface |
-| `[Project]` | Qmonster policy or project-canonical rule |
-| `[Heur]` | Local heuristic, such as process RSS or memory-file scan |
-| `[Estimate]` | Derived from local pricing or non-provider calculation |
+| `[Project]`  | Qmonster policy or project-canonical rule                         |
+| `[Heur]`     | Local heuristic, such as process RSS or memory-file scan          |
+| `[Estimate]` | Derived from local pricing or non-provider calculation            |
 
 Metric contract:
 
-| Metric | Claude | Codex | Gemini |
-| --- | --- | --- | --- |
-| `CTX` | statusline context used | bottom status context | status table context |
-| `QUOTA` | statusline 5h / weekly | bottom status or app-server | status table quota |
-| `RESET` | sidefile timestamps | app-server timestamps | `/model` display rows only |
-| `TOKENS` | statusline + sidefile | bottom status / usage line | `/stats model` |
-| `CACHE` | statusline ratio or sidefile reads | cached input tokens | cache reads when exposed |
-| `COST` | sidefile total cost | pricing estimate | unset today |
+| Metric   | Claude                             | Codex                       | Gemini                     |
+| -------- | ---------------------------------- | --------------------------- | -------------------------- |
+| `CTX`    | statusline context used            | bottom status context       | status table context       |
+| `QUOTA`  | statusline 5h / weekly             | bottom status or app-server | status table quota         |
+| `RESET`  | sidefile timestamps                | app-server timestamps       | `/model` display rows only |
+| `TOKENS` | statusline + sidefile              | bottom status / usage line  | `/stats model`             |
+| `CACHE`  | statusline ratio or sidefile reads | cached input tokens         | cache reads when exposed   |
+| `COST`   | sidefile total cost                | pricing estimate            | unset today                |
 
 Gemini `/model` reset rows are display-only runtime facts. Policy-grade
 reset advisories still require machine-readable timestamps, currently
@@ -253,6 +257,7 @@ tmux session.
 - [REVIEW_GUIDE.md](docs/ai/REVIEW_GUIDE.md) — reviewer contract
 - [docs/RELEASING.md](docs/RELEASING.md) — release and package mirror flow
 - [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) — tested runtime and provider surfaces
+- [docs/RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md) — checksums, build provenance, and SBOM verification
 - [docs/GITHUB_POLISH.md](docs/GITHUB_POLISH.md) — repo polish checklist and next steps
 - [SECURITY.md](SECURITY.md) / [SUPPORT.md](SUPPORT.md) / [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — reporting and community routing
 - [VERSION.md](VERSION.md) — version surface map

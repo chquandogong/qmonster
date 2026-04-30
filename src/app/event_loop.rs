@@ -188,16 +188,18 @@ where
             resolved.identity.provider,
             &mut signals,
         );
-        let gates = crate::policy::gates::PolicyGates::from_config_and_identity(
-            &ctx.config.token,
-            &ctx.config.cost,
-            &ctx.config.context,
-            &ctx.config.quota,
-            &ctx.config.security,
-            &ctx.config.cache,
-            &ctx.config.reset,
-            resolved.identity.provider,
-            resolved.confidence,
+        let gates = crate::policy::gates::PolicyGates::from_inputs(
+            crate::policy::gates::PolicyGateInputs {
+                token: &ctx.config.token,
+                cost: &ctx.config.cost,
+                context: &ctx.config.context,
+                quota: &ctx.config.quota,
+                security: &ctx.config.security,
+                cache: &ctx.config.cache,
+                reset: &ctx.config.reset,
+                provider: resolved.identity.provider,
+                confidence: resolved.confidence,
+            },
         );
         // Read last idle state BEFORE calling evaluate so the engine can
         // detect transitions (None→Some, Some(X)→Some(Y)). Update AFTER.

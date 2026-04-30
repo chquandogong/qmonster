@@ -1,6 +1,6 @@
 mission:
-  version: "1.35.3"
-  title: "Qmonster v1.35.3 — GitHub documentation polish: README first-screen cleanup, repo professionalism checklist, and release/package surface alignment."
+  version: "1.36.0"
+  title: "Qmonster v1.36.0 — PolicyGates::from_inputs constructor refactor (closes Codex/Gemini v1.35.x OBS), SPDX-JSON SBOM in release pipeline, RELEASE_VERIFICATION.md, dashboard screenshot embedded in README hero."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1525,6 +1525,9 @@ mission:
     - "F-7d: eval_reset and helpers take &PolicyGates and read from gates.reset_* instead of removed module constants; reason strings interpolate gates.reset_wait_pressure so operators see the configured threshold that fired"
     - "F-7d: event_loop::run_once_with_target passes &ctx.config.reset to from_config_and_identity; 7 existing gates.rs test call sites updated with the new arg"
     - "v1.35.x UI sync: Settings Parameters/Rules show cache/reset values and activation conditions read-only; Badges explains CTX/COST/TOKENS/CACHE/RESET/CALLS/source labels; expanded panes show token io and cache io rows when provider data exists"
+    - "v1.36.0: PolicyGates 9-positional-arg from_config_and_identity replaced by single-arg from_inputs(PolicyGateInputs<'_>); the new struct bundles token/cost/context/quota/security/cache/reset configs plus provider+confidence so future config additions don't bloat the constructor; closes Codex CFX-135 OBS-1 and Gemini OBS-3 from the v1.35.x confirm round; new policy_gates_propagates_custom_reset_config test locks ResetConfig propagation through the constructor"
+    - "v1.36.0: release.yml generates SPDX-JSON SBOM via anchore/sbom-action@v0 (output dist/qmonster-<TAG>-sbom.spdx.json), bundles it into release assets and the build provenance attestation subject-paths, and includes it in the checksums.txt sweep; new docs/RELEASE_VERIFICATION.md documents checksum / attestation / SBOM verification commands for downstream operators"
+    - "v1.36.0: docs/assets/qmonster-dashboard.png captured from a live qmonster TUI session and embedded in the README 'What It Shows' section; docs/GITHUB_POLISH.md item 3 closes (refresh checklist remains)"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."

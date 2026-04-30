@@ -45,7 +45,7 @@ pub struct PolicyGates {
     pub quota_weekly_critical_pct: f32,
     /// Phase F F-7-config (v1.28.0): operator-tunable cache-rule
     /// thresholds. Populated from `[cache]` in `qmonster.toml` via
-    /// `from_config_and_identity`. Defaults match the F-7/F-7b hardcoded
+    /// `from_inputs`. Defaults match the F-7/F-7b hardcoded
     /// constants exactly so no behavior change when the section is absent.
     pub cache_hot_ratio: f64,
     pub cache_cold_ratio: f64,
@@ -55,7 +55,7 @@ pub struct PolicyGates {
     pub cache_drift_min_samples: usize,
     /// Phase F F-7d (v1.35.0): operator-tunable reset-rule
     /// thresholds. Populated from `[reset]` in `qmonster.toml` via
-    /// `from_config_and_identity`. Defaults match the F-7c
+    /// `from_inputs`. Defaults match the F-7c
     /// hardcoded constants exactly so no behavior change when the
     /// section is absent.
     pub reset_wait_pressure: f32,
@@ -117,23 +117,42 @@ impl Default for PolicyGates {
     }
 }
 
+/// Bundled input bag for `PolicyGates::from_inputs`. v1.36.0 lifts the
+/// previous 9-positional-arg `from_config_and_identity` signature into
+/// this struct so future config additions (e.g. a `[reset]` follow-up
+/// or an action-mode override) can extend the input surface without
+/// touching every call site. Closes Codex / Gemini OBS feedback from
+/// the v1.35.x confirm round.
+#[derive(Debug, Clone, Copy)]
+pub struct PolicyGateInputs<'a> {
+    pub token: &'a crate::app::config::TokenConfig,
+    pub cost: &'a crate::app::config::CostConfig,
+    pub context: &'a crate::app::config::ContextConfig,
+    pub quota: &'a crate::app::config::QuotaConfig,
+    pub security: &'a crate::app::config::SecurityConfig,
+    pub cache: &'a crate::app::config::CacheConfig,
+    pub reset: &'a crate::app::config::ResetConfig,
+    pub provider: crate::domain::identity::Provider,
+    pub confidence: IdentityConfidence,
+}
+
 impl PolicyGates {
-    #[allow(clippy::too_many_arguments)]
-    pub fn from_config_and_identity(
-        token: &crate::app::config::TokenConfig,
-        cost: &crate::app::config::CostConfig,
-        context: &crate::app::config::ContextConfig,
-        quota: &crate::app::config::QuotaConfig,
-        security: &crate::app::config::SecurityConfig,
-        cache: &crate::app::config::CacheConfig,
-        reset: &crate::app::config::ResetConfig,
-        provider: crate::domain::identity::Provider,
-        conf: IdentityConfidence,
-    ) -> Self {
+    pub fn from_inputs(inputs: PolicyGateInputs<'_>) -> Self {
+        let PolicyGateInputs {
+            token,
+            cost,
+            context,
+            quota,
+            security,
+            cache,
+            reset,
+            provider,
+            confidence,
+        } = inputs;
         Self {
             quota_tight: token.quota_tight,
             security_posture_advisories: security.posture_advisories,
-            identity_confidence: conf,
+            identity_confidence: confidence,
             cost_warning_usd: cost.warning_for(provider),
             cost_critical_usd: cost.critical_for(provider),
             context_warning_pct: context.warning_for(provider),
@@ -284,7 +303,7 @@ mod tests {
     }
 
     #[test]
-    fn policy_gates_from_config_and_identity_reads_both() {
+    fn policy_gates_from_inputs_reads_both() {
         use crate::app::config::{
             CacheConfig, ContextConfig, CostConfig, QuotaConfig, SecurityConfig, TokenConfig,
         };
@@ -306,17 +325,18 @@ mod tests {
             drift_drop_threshold: 0.25,
             drift_min_samples: 6,
         };
-        let gates = PolicyGates::from_config_and_identity(
-            &cfg,
-            &cost,
-            &context,
-            &quota,
-            &security,
-            &cache,
-            &crate::app::config::ResetConfig::default(),
-            Provider::Codex,
-            IdentityConfidence::Medium,
-        );
+        let reset = crate::app::config::ResetConfig::default();
+        let gates = PolicyGates::from_inputs(PolicyGateInputs {
+            token: &cfg,
+            cost: &cost,
+            context: &context,
+            quota: &quota,
+            security: &security,
+            cache: &cache,
+            reset: &reset,
+            provider: Provider::Codex,
+            confidence: IdentityConfidence::Medium,
+        });
         assert!(gates.quota_tight);
         assert!(gates.security_posture_advisories);
         assert_eq!(gates.identity_confidence, IdentityConfidence::Medium);
@@ -341,6 +361,46 @@ mod tests {
     }
 
     #[test]
+    fn policy_gates_propagates_custom_reset_config() {
+        // Codex v1.35.x confirm round suggested follow-up: lock that
+        // non-default ResetConfig values flow into PolicyGates.reset_*
+        // through from_inputs. Mirrors the cache-config propagation
+        // assertions in policy_gates_from_inputs_reads_both above.
+        use crate::app::config::{
+            CacheConfig, ContextConfig, CostConfig, QuotaConfig, ResetConfig, SecurityConfig,
+            TokenConfig,
+        };
+        use crate::domain::identity::Provider;
+        let cfg = TokenConfig::default();
+        let cost = CostConfig::default();
+        let context = ContextConfig::default();
+        let quota = QuotaConfig::default();
+        let security = SecurityConfig::default();
+        let cache = CacheConfig::default();
+        let reset = ResetConfig {
+            wait_pressure_threshold: 0.72,
+            wait_eta_secs: 45 * 60,
+            snapshot_pressure_threshold: 0.40,
+            snapshot_eta_secs: 10 * 60,
+        };
+        let gates = PolicyGates::from_inputs(PolicyGateInputs {
+            token: &cfg,
+            cost: &cost,
+            context: &context,
+            quota: &quota,
+            security: &security,
+            cache: &cache,
+            reset: &reset,
+            provider: Provider::Claude,
+            confidence: IdentityConfidence::High,
+        });
+        assert!((gates.reset_wait_pressure - 0.72).abs() < f32::EPSILON);
+        assert_eq!(gates.reset_wait_eta_secs, 45 * 60);
+        assert!((gates.reset_snapshot_pressure - 0.40).abs() < f32::EPSILON);
+        assert_eq!(gates.reset_snapshot_eta_secs, 10 * 60);
+    }
+
+    #[test]
     fn policy_gates_resolves_per_provider_cost_overrides() {
         // v1.15.16: CostConfig::default() ships per-provider overrides.
         // Claude → $10 / $30, Gemini → $3 / $10, Codex falls through to
@@ -355,43 +415,25 @@ mod tests {
         let quota = QuotaConfig::default();
         let security = SecurityConfig::default();
         let cache = CacheConfig::default();
-        let claude = PolicyGates::from_config_and_identity(
-            &cfg,
-            &cost,
-            &context,
-            &quota,
-            &security,
-            &cache,
-            &crate::app::config::ResetConfig::default(),
-            Provider::Claude,
-            IdentityConfidence::High,
-        );
+        let reset = crate::app::config::ResetConfig::default();
+        let inputs_for = |provider: Provider| PolicyGateInputs {
+            token: &cfg,
+            cost: &cost,
+            context: &context,
+            quota: &quota,
+            security: &security,
+            cache: &cache,
+            reset: &reset,
+            provider,
+            confidence: IdentityConfidence::High,
+        };
+        let claude = PolicyGates::from_inputs(inputs_for(Provider::Claude));
         assert!((claude.cost_warning_usd - 10.0).abs() < f64::EPSILON);
         assert!((claude.cost_critical_usd - 30.0).abs() < f64::EPSILON);
-        let codex = PolicyGates::from_config_and_identity(
-            &cfg,
-            &cost,
-            &context,
-            &quota,
-            &security,
-            &cache,
-            &crate::app::config::ResetConfig::default(),
-            Provider::Codex,
-            IdentityConfidence::High,
-        );
+        let codex = PolicyGates::from_inputs(inputs_for(Provider::Codex));
         assert!((codex.cost_warning_usd - 5.0).abs() < f64::EPSILON);
         assert!((codex.cost_critical_usd - 20.0).abs() < f64::EPSILON);
-        let gemini = PolicyGates::from_config_and_identity(
-            &cfg,
-            &cost,
-            &context,
-            &quota,
-            &security,
-            &cache,
-            &crate::app::config::ResetConfig::default(),
-            Provider::Gemini,
-            IdentityConfidence::High,
-        );
+        let gemini = PolicyGates::from_inputs(inputs_for(Provider::Gemini));
         assert!((gemini.cost_warning_usd - 3.0).abs() < f64::EPSILON);
         assert!((gemini.cost_critical_usd - 10.0).abs() < f64::EPSILON);
     }
@@ -435,20 +477,22 @@ mod tests {
         };
         let security = SecurityConfig::default();
         let cache = CacheConfig::default();
+        let reset = crate::app::config::ResetConfig::default();
+        let inputs_for = |provider: Provider| PolicyGateInputs {
+            token: &cfg,
+            cost: &cost,
+            context: &context,
+            quota: &quota,
+            security: &security,
+            cache: &cache,
+            reset: &reset,
+            provider,
+            confidence: IdentityConfidence::High,
+        };
 
         // Gemini sees the [context.gemini] override; quota falls
         // through to the top-level QuotaConfig default.
-        let gemini = PolicyGates::from_config_and_identity(
-            &cfg,
-            &cost,
-            &context,
-            &quota,
-            &security,
-            &cache,
-            &crate::app::config::ResetConfig::default(),
-            Provider::Gemini,
-            IdentityConfidence::High,
-        );
+        let gemini = PolicyGates::from_inputs(inputs_for(Provider::Gemini));
         assert!((gemini.context_warning_pct - 0.60).abs() < f32::EPSILON);
         assert!((gemini.context_critical_pct - 0.75).abs() < f32::EPSILON);
         assert!((gemini.quota_warning_pct - 0.75).abs() < f32::EPSILON);
@@ -456,17 +500,7 @@ mod tests {
 
         // Claude sees the split [quota.claude_*] overrides; context
         // falls through to the top-level ContextConfig default.
-        let claude = PolicyGates::from_config_and_identity(
-            &cfg,
-            &cost,
-            &context,
-            &quota,
-            &security,
-            &cache,
-            &crate::app::config::ResetConfig::default(),
-            Provider::Claude,
-            IdentityConfidence::High,
-        );
+        let claude = PolicyGates::from_inputs(inputs_for(Provider::Claude));
         assert!((claude.context_warning_pct - 0.75).abs() < f32::EPSILON);
         assert!((claude.context_critical_pct - 0.85).abs() < f32::EPSILON);
         assert!((claude.quota_warning_pct - 0.75).abs() < f32::EPSILON);
@@ -477,17 +511,7 @@ mod tests {
         assert!((claude.quota_weekly_critical_pct - 0.88).abs() < f32::EPSILON);
 
         // Codex has only a weekly override; 5h falls through.
-        let codex = PolicyGates::from_config_and_identity(
-            &cfg,
-            &cost,
-            &context,
-            &quota,
-            &security,
-            &cache,
-            &crate::app::config::ResetConfig::default(),
-            Provider::Codex,
-            IdentityConfidence::High,
-        );
+        let codex = PolicyGates::from_inputs(inputs_for(Provider::Codex));
         assert!((codex.context_warning_pct - 0.75).abs() < f32::EPSILON);
         assert!((codex.context_critical_pct - 0.85).abs() < f32::EPSILON);
         assert!((codex.quota_warning_pct - 0.75).abs() < f32::EPSILON);
