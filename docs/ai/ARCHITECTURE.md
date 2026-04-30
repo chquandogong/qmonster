@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (implementation sync through v1.36.7 confirm-round must-fix closure on top of v1.36.6 release-pipeline polish — scripts/release/{sbom-diff.js,inject-verification-footer.sh,dry-run.sh}, SBOM SPDX root-doc filter, cargo audit RUSTSEC gate at PR time + tag time, npm publish --dry-run pre-tag check, sbom-diff.js --count / --count-purl modes consumed by release.yml. Runtime behavior remains the v1.35.2 Phase F F-7d/v1.35.x Gemini /model reset parser tightening + Tmux setup tab + Settings reset/badges sync + cache_creation_input_tokens distinct from CACHE; v1.35.3/v1.36.x update repository documentation/presentation and release provenance)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (implementation sync through v1.37.0: F-8 file-level multi-pane orchestration, F-9 opt-in dynamic profile switching, F-9b SQLite USD cost budget tracking with 80% / 100% alerts, and Phase 6 Team Mode layered configuration. v1.36.x remains the release-pipeline hardening base: scripts/release extraction, SBOM SPDX root-doc filter, cargo audit RUSTSEC gates, npm publish --dry-run, and sbom-diff.js --count / --count-purl modes)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
@@ -42,7 +42,7 @@ checkpoint, retention, and durable audit storage.
 ```
 src/
   main.rs      # thin CLI/startup/--once/TUI-entry wrapper
-  app/         # bootstrap/startup, config+safety-precedence, path resolution, event loop, tui-loop/dashboard-runtime/polling-tick/terminal-session/dashboard-render/keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
+  app/         # bootstrap/startup, layered config+safety-precedence, path resolution, event loop, tui-loop/dashboard-runtime/polling-tick/terminal-session/dashboard-render/keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # PaneSource trait; auto source prefers control-mode with polling fallback
   adapters/    # per-provider tail parsers (no identity inference)
@@ -50,7 +50,8 @@ src/
                # Phase 3 adds rules/{advisories,concurrent}.rs;
                # Phase 4 adds rules/profiles.rs (provider-profile recommender)
   store/       # Phase 1: EventSink trait + NoopSink/InMemorySink
-               # Phase 2: sqlite, archive_fs, audit (type-level raw split), snapshots, retention
+               # Phase 2+: sqlite, archive_fs, audit (type-level raw split), snapshots, retention
+               # Phase F/6+: token_usage_samples and cost_usage_events/cost_budget_alerts
   ui/          # ratatui widgets, alert queue, per-pane panels, theme
   notify/      # desktop / terminal bell; severity-aware rate limiting
 ```
@@ -535,6 +536,43 @@ ignored and logged as a `risk`-severity audit event:
 Runtime code does NOT toggle these flags; they are set at startup by
 config + safer-only env/CLI overrides.
 
+### Layered configuration (Phase 6 Team Mode)
+
+The configuration model is now a three-layer TOML merge:
+
+1. Serialized `QmonsterConfig::defaults()` provides a complete base
+   shape for every live config section.
+2. The shared config file (`--config PATH`, or
+   `~/.qmonster/config/qmonster.toml` when present) overlays those
+   defaults.
+3. A sibling `qmonster.local.toml` overlays the shared config when it
+   exists.
+
+`app::config::load_layered_from_paths(base, local)` owns the recursive
+merge. Table values merge key-by-key, so local files can be sparse:
+
+```toml
+[cost]
+budget_usd = 200.0
+
+[cost.claude]
+warning_usd = 15.0
+```
+
+Scalar or array values replace the lower layer. The local file path is
+derived with `local_override_path_for(path)` by replacing the base file
+name with `qmonster.local.toml`; Qmonster does not search parent
+directories or arbitrary include paths. `load_with_local_override(path)`
+is the startup-facing helper. If the local file exists, settings writes
+target that local path so machine-local choices do not overwrite shared
+team defaults.
+
+The git contract is explicit: shared `qmonster.toml` may be tracked;
+`qmonster.local.toml` and `config/qmonster.local.toml` are ignored.
+Local overrides are still subject to the same startup safety-precedence
+rule as the merged config: env/CLI can only move the four safety flags
+toward safer behavior.
+
 ### Data-shape rule
 
 - Config is TOML (static, stable). The runtime-parsed subset is the one
@@ -547,9 +585,10 @@ config + safer-only env/CLI overrides.
 
 - `qmonster.db` = `<qmonster-root>/qmonster.db` (Phase 2+; audit
   metadata - indices + summaries). **Never contains raw tail bytes.**
-  Phase 6 cost tracking stores positive USD deltas in
-  `cost_usage_events` and one-shot 80% / 100% budget claims in
-  `cost_budget_alerts`; both are metadata-only.
+  Phase F stores token samples in `token_usage_samples`; Phase 6 cost
+  tracking stores normalized USD deltas in `cost_usage_events` and
+  one-shot 80% / 100% budget claims in `cost_budget_alerts`; all are
+  metadata-only.
 - `archive_dir = <qmonster-root>/archive/` (Phase 2+; raw tails with
   preview/full split).
 - `snapshot_dir = <qmonster-root>/snapshots/` (Phase 2+; runtime
@@ -558,6 +597,48 @@ config + safer-only env/CLI overrides.
 - `.mission/CURRENT_STATE.md` is a **day-end handoff document** written
   by the human day-end routine (`docs/ai/WORKFLOWS.md` §3). Qmonster
   runtime never writes it.
+
+### Cost tracking and budget alerts (F-9b)
+
+Provider cost signals are cumulative session values, not deltas.
+`SignalSet.cost_usd` therefore has two storage paths with different
+contracts:
+
+- `token_usage_samples.cost_usd` keeps the raw per-poll cumulative value
+  next to token samples for graphing and historical inspection.
+- `cost_usage_events.cost_usd_delta` stores only the positive delta that
+  should count against a budget.
+
+`store::cost_usage::SqliteCostUsageSink` is the only writer for the
+budget ledger. For each `CostObservation { pane_id, provider,
+cumulative_cost_usd }`, it looks up the previous cumulative value for
+that pane ordered by `(ts_unix_ms DESC, id DESC)`:
+
+- first sample: count the cumulative value as the initial session spend;
+- higher sample: count `current - previous`;
+- equal sample or microscopic delta: record nothing to avoid
+  double-counting repeated polls;
+- lower sample: treat it as a provider/session reset and count the new
+  cumulative value as a fresh session.
+
+Budget claims are separate from usage rows. `claim_budget_alerts(cost,
+now)` sums `cost_usage_events`, compares the total against
+`[cost] budget_usd`, and inserts into `cost_budget_alerts` with primary
+key `(threshold_bps, budget_cents)`. The key intentionally makes 80%
+and 100% alerts one-shot for a specific configured budget value while
+allowing a changed budget to establish a new alert ledger. The live
+thresholds are:
+
+- 80% (`threshold_bps = 8000`) -> Warning recommendation;
+- 100% (`threshold_bps = 10000`) -> Risk recommendation and strong
+  budget-exhausted signal.
+
+`CostConfig::budget_usd` defaults to `200.0`, matching the operator
+budget for v1.37.0. `budget_enabled()` requires a finite positive value;
+`budget_usd = 0.0` disables budget alerts without disabling the existing
+per-poll token/cost samples. Event-loop errors in the cost sink are
+logged to stderr and do not crash polling, matching the durable-storage
+best-effort pattern used by the audit and token sinks.
 
 ### Filesystem write boundary
 
@@ -754,8 +835,23 @@ cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
   deterministic now-injection. Tests grew to 765 lib + 68 integration
   green.
 
+v1.37.0 ships four feature slices as the current runtime baseline.
+F-8 extends cross-pane orchestration from same-path/branch heuristics
+to file-level Claude tool-call observations: when the operator enables
+`[security] cross_pane_file_findings`, `Edit` / `Write` /
+`MultiEdit`-style markers are resolved against each pane's
+`current_path` and can emit a `ConcurrentFileEdit` warning for two
+busy Main/Review panes touching the same absolute file. F-9 adds an
+opt-in `[profile_switch]` rule that reads a per-pane sliding
+`error_hint` history and recommends a script-low-token profile when
+the configured error rate is reached. F-9b adds the SQLite USD cost
+ledger and budget-alert path described above. Phase 6 Team Mode adds
+the layered config loader described above so shared team defaults and
+machine-local overrides can coexist without provider reconfiguration or
+destructive automation.
+
 v1.33.0 ships **Phase F F-4b Gemini `/stats` output parser**; the
-current v1.35.x sync extends the same path to Gemini `/model` reset
+later v1.35.x sync extends the same path to Gemini `/model` reset
 rows. New
 private parsers in `src/adapters/gemini.rs` close the long-deferred
 F-4b slice that was originally listed alongside F-4 in v1.25.0 but
