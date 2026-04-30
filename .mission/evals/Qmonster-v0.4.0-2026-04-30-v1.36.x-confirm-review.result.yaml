@@ -1,0 +1,70 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-04-30"
+  target_versions:
+    - "1.36.0"
+    - "1.36.1"
+  commit_range: "c86b594..e33c82a"
+  head_reviewed: "e33c82a811d60e2e1c3516e74b00ca8ade88a481"
+  evidence_mode: "GitHub mirror review; Codex CLI could not write to disk (sandbox/apply_patch failures across .docs/codex/, repo root, and /tmp). Narrative captured to stdout and persisted by Claude. Author-reported cargo and npm gates considered as release evidence but not independently reproduced."
+  local_validation:
+    cargo_fmt_check: not_run
+    git_diff_check: not_run
+    cargo_build_release: not_run
+    cargo_test_all_targets: not_run
+    cargo_clippy_all_targets_d_warnings: not_run
+    scripts_verify_shared: not_run
+    note: "Codex local sandbox unavailable for this run."
+  verdict: approve
+  summary:
+    code_assessment: "Structurally sound. PolicyGates::from_inputs(PolicyGateInputs<'_>) removes the 9-arg constructor without behavior change. v1.36.1 correctly fixes the v1.36.0 release/package defects. No code-level must-fix blocks the next phase; remaining work is release hardening."
+    primary_risk: "Doc honesty around docs/RELEASE_VERIFICATION.md SBOM scope wording (currently workspace-scoped, not artifact-specific)."
+  must_fix_before_next_phase: []
+  observations:
+    - id: OBS-136-1
+      severity: good
+      description: "src/policy/gates.rs PolicyGateInputs<'a> gives the policy gate fan-in named fields; struct-literal call site at src/app/event_loop.rs:188 remains explicit and auditable."
+    - id: OBS-136-2
+      severity: good
+      description: "policy_gates_propagates_custom_reset_config locks the key regression risk identified by the v1.35.x confirm round."
+    - id: OBS-136-3
+      severity: good
+      description: ".github/workflows/release.yml mkdir -p dist step (v1.36.1 line 63) directly fixes the v1.36.0 SBOM ENOENT root cause without overcomplicating CI."
+    - id: OBS-136-4
+      severity: good
+      description: "package.json files allow-list now includes docs/RELEASE_VERIFICATION.md; mission ledger sequences 171 (intent) and 172 (defect closure) are an honest fix-forward record."
+    - id: OBS-136-5
+      severity: concern
+      description: "docs/RELEASE_VERIFICATION.md wording around SBOM 'matches the binary' overstates current behavior — the SBOM is workspace-scoped (path: .) not artifact-specific. Either soften the wording or add artifact-specific SBOM attestation in a follow-up."
+  scope_reduction_suggestions:
+    - "Keep Phase H, settings editing, SBOM diffs, and independent SBOM attestation out of this patch line unless separately scoped."
+  doc_mission_memory_status:
+    - id: DMM-136-1
+      severity: safe
+      description: "Docs and ledger are aligned to v1.36.1. Leave the v1.36.0 tag in place as a historical marker; deprecate the incomplete npm package instead of rewriting history."
+  token_optimization_status:
+    - id: TO-136-1
+      severity: safe
+      description: "No token behavior changed. The refactor improves future threshold additions by replacing positional config plumbing with a named input bag."
+  provider_abstraction_status:
+    - id: PA-136-1
+      severity: safe
+      description: "Provider boundaries hold. Borrowed config refs are the right shape; by-value config copies would add ownership friction without readability gain."
+  safety_audit_status:
+    - id: SA-136-1
+      severity: good
+      description: "Release workflow now has the needed directory precondition. Soften docs/RELEASE_VERIFICATION.md wording around SBOM 'matches the binary' unless artifact-specific SBOM attestation is added."
+  official_vs_heuristic_status:
+    - id: OH-136-1
+      severity: safe
+      description: "No provider SourceKind regression. Release verification doc should distinguish checksum integrity, build provenance, and SBOM scope precisely."
+  todos_for_claude:
+    - id: TC-136-1
+      description: "Deprecate qmonster@1.36.0 on npmjs pointing users to 1.36.1 (operator npm-auth required)."
+    - id: TC-136-2
+      description: "Add an npm pack --json --dry-run file-list guard to CI to prevent files allow-list omissions like the missing docs/RELEASE_VERIFICATION.md in the v1.36.0 npm tarball."
+    - id: TC-136-3
+      description: "Decide whether SBOM remains workspace-scoped (path: .) or becomes artifact-specific (scan the built binary tarball). Update docs/RELEASE_VERIFICATION.md wording to match."
+    - id: TC-136-4
+      description: "Keep the v1.36.0 git tag in place as a historical marker; rely on npm deprecation to redirect installs."

@@ -1,6 +1,6 @@
 mission:
-  version: "1.36.1"
-  title: "Qmonster v1.36.1 — Release/package hygiene follow-up: npm tarball includes release verification docs, SBOM workflow creates dist first, canonical docs sync to v1.36.x."
+  version: "1.36.2"
+  title: "Qmonster v1.36.2 — v1.36.x confirm-review must-fix closure: CI npm-pack files-allow-list guard (Gemini MF-1), SBOM repositioned after binary assembly to scan the released binary directory (Gemini MF-2), RELEASE_VERIFICATION.md SBOM scope honesty (Codex OBS-136-5)."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1531,6 +1531,9 @@ mission:
     - "v1.36.1: package.json files includes docs/RELEASE_VERIFICATION.md so the README documentation link resolves inside the npm tarball"
     - "v1.36.1: release workflow creates dist/ before anchore/sbom-action writes dist/qmonster-<TAG>-sbom.spdx.json"
     - "v1.36.1: canonical docs/ai PROJECT_BRIEF, ARCHITECTURE, and VALIDATION sync to the v1.36.x release/package state"
+    - "v1.36.2: .github/workflows/ci.yml gains a 'Verify npm package files allow-list covers top-level docs' step that parses npm pack --json --dry-run output and fails if any docs/*.md repo file is absent from the package payload; closes Gemini MF-1 from the v1.36.x confirm round and prevents recurrence of the v1.36.0 missing-docs/RELEASE_VERIFICATION.md regression"
+    - "v1.36.2: .github/workflows/release.yml SBOM step now runs AFTER the 'Assemble release artifacts' step and scans the unpacked release binary directory (dist/qmonster-<TAG>-linux-x86_64) instead of the repo workspace; checksum computation is split into its own 'Compute release checksums' step so the SBOM is included in checksums.txt; closes Gemini MF-2"
+    - "v1.36.2: docs/RELEASE_VERIFICATION.md SBOM section softened — the doc now states the SBOM scans the unpacked release binary directory, lists explicit scope/limit caveats (no npm source tarball, no toolchain), and keeps the build-provenance-attestation linkage; closes Codex OBS-136-5"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."

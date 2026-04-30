@@ -53,3 +53,22 @@ jobs:
 
       - name: Dry-run npm package
         run: npm pack --dry-run
+
+      - name: Verify npm package files allow-list covers top-level docs
+        run: |
+          set -euo pipefail
+          pack_files="$(npm pack --json --dry-run 2>/dev/null \
+            | node -e "const d=require('fs').readFileSync(0,'utf8'); const j=JSON.parse(d); console.log(j[0].files.map(f=>f.path).join('\n'))")"
+          missing=""
+          while IFS= read -r repo_doc; do
+            if ! printf '%s\n' "$pack_files" | grep -Fxq "$repo_doc"; then
+              missing="$missing $repo_doc"
+            fi
+          done < <(find docs -maxdepth 1 -type f -name '*.md' | sort)
+          if [ -n "$missing" ]; then
+            echo "ERROR: top-level docs/*.md files exist in repo but are missing from npm package:" >&2
+            for f in $missing; do echo "  - $f" >&2; done
+            echo "Add them to package.json files allow-list or remove them from the repo." >&2
+            exit 1
+          fi
+          echo "OK: all top-level docs/*.md files are included in npm package."

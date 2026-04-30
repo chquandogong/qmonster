@@ -1,0 +1,80 @@
+schema_version: 1.0
+mission_phase: v1.36.x-confirm-gemini-review
+target_commit: e33c82a
+review_date: 2026-04-30
+reviewer: Gemini
+
+verdict: approve-with-fixes
+
+severity_counts:
+  safe: 5
+  good: 5
+  concern: 0
+  warning: 2
+  risk: 0
+
+must_fix_items:
+  - id: MF-1
+    severity: warning
+    file: .github/workflows/ci.yml
+    description: "v1.36.0 npm tarball was missing docs/RELEASE_VERIFICATION.md because the new doc was not added to the package.json files allow-list. There is no automated guard against this class of regression."
+    proposed_change: "Add a CI validation step that runs npm pack --dry-run (or npm pack --json --dry-run) and diffs the resulting file list against an expected docs/ tree (or against a tracked allow-list manifest) before release tags can be cut."
+  - id: MF-2
+    severity: warning
+    file: .github/workflows/release.yml
+    description: "anchore/sbom-action@v0 currently runs against path: . BEFORE the binary tarball is built and assembled into dist/. The resulting SPDX-JSON therefore reflects a workspace scan, not the actual built binary's dependency graph, which weakens the supply-chain fidelity that docs/RELEASE_VERIFICATION.md promises."
+    proposed_change: "Move the SBOM generation step AFTER the 'Assemble release assets' step so the built binary tarball (or the binary itself) is included in the dependency graph. Alternatively, switch path: . to target the built artifact directly."
+
+architectural_observations:
+  - id: OBS-1
+    severity: good
+    description: "Bundling 7 configuration references into PolicyGateInputs<'a> is idiomatic Rust, leveraging lifetimes properly rather than unnecessary clones/copies; named fields at the call site are clean and readable."
+  - id: OBS-2
+    severity: good
+    description: "policy_gates_propagates_custom_reset_config verifies the exact behavior Codex requested in the v1.35.x confirm round, locking the regression risk."
+  - id: OBS-3
+    severity: good
+    description: "mkdir -p dist in v1.36.1 directly addresses the root cause of the workflow failure without overcomplicating CI."
+  - id: OBS-4
+    severity: good
+    description: "Honest ledgering: recording the intent (sequence 171) and the defect closure (sequence 172) separately preserves the immutable history of the mission."
+
+doc_mission_memory_status:
+  - id: DMM-1
+    severity: good
+    description: "The decision to split ledger entries between v1.36.0 (sequence 171) and v1.36.1 (sequence 172) correctly maintains the separation of intent and reality. The mission ledger remains an honest, append-only record."
+  - id: DMM-2
+    severity: safe
+    description: "v1.36.0 git tag should remain in place as a historical marker; do not delete or force-push it. npm deprecation is the correct mitigation path."
+
+token_optimization_status:
+  - id: TO-1
+    severity: safe
+    description: "PolicyGateInputs refactoring groups related configs, potentially reducing context fragmentation if this struct is later passed to other token-aware components. No immediate negative impact on token tracking."
+
+provider_abstraction_status:
+  - id: PA-1
+    severity: safe
+    description: "PolicyGates::from_inputs abstraction correctly encapsulates policy configuration without leaking provider-specific details. Integration in src/app/event_loop.rs maintains the boundary."
+
+safety_audit_status:
+  - id: SA-1
+    severity: safe
+    description: "Addition of docs/RELEASE_VERIFICATION.md is an excellent step for downstream auditability. Maintaining the broken v1.36.0 tag reinforces non-repudiation. SBOM provides supply-chain visibility."
+
+official_vs_heuristic_status:
+  - id: OH-1
+    severity: safe
+    description: "None identified in this slice. Changes are primarily structural and CI-related."
+
+scope_reduction_suggestions:
+  - id: SR-1
+    description: "Defer adding actions/attest-sbom@v2 for now; ensuring the SBOM accurately reflects the built binaries (MF-2) is higher priority than independent SBOM attestation, which can be grouped into a later dedicated supply-chain security epic."
+
+todos_for_claude:
+  - id: TC-1
+    description: "Update .github/workflows/ci.yml to include an npm pack --dry-run validation step against the docs/ folder."
+  - id: TC-2
+    description: "Update .github/workflows/release.yml to reorder the SBOM step after binary assembly."
+  - id: TC-3
+    description: "Ensure the v1.36.0 npm deprecation is completed by an operator."

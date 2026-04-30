@@ -63,16 +63,7 @@ jobs:
       - name: Prepare release output directory
         run: mkdir -p dist
 
-      - name: Generate SBOM (SPDX-JSON)
-        uses: anchore/sbom-action@v0
-        with:
-          path: .
-          format: spdx-json
-          output-file: dist/qmonster-${{ env.TAG_NAME }}-sbom.spdx.json
-          upload-release-assets: false
-          upload-artifact: false
-
-      - name: Assemble release assets
+      - name: Assemble release artifacts (tar + npm pack)
         run: |
           set -euo pipefail
           mkdir -p "dist/qmonster-${TAG_NAME}-linux-x86_64"
@@ -81,6 +72,19 @@ jobs:
           cp config/qmonster.example.toml "dist/qmonster-${TAG_NAME}-linux-x86_64/"
           tar -C dist -czf "dist/qmonster-${TAG_NAME}-linux-x86_64.tar.gz" "qmonster-${TAG_NAME}-linux-x86_64"
           npm pack --pack-destination dist
+
+      - name: Generate SBOM (SPDX-JSON, scans the released binary directory)
+        uses: anchore/sbom-action@v0
+        with:
+          path: dist/qmonster-${{ env.TAG_NAME }}-linux-x86_64
+          format: spdx-json
+          output-file: dist/qmonster-${{ env.TAG_NAME }}-sbom.spdx.json
+          upload-release-assets: false
+          upload-artifact: false
+
+      - name: Compute release checksums
+        run: |
+          set -euo pipefail
           find dist -maxdepth 1 -type f ! -name checksums.txt -print0 | sort -z | xargs -0 sha256sum > dist/checksums.txt
 
       - name: Generate artifact attestations
