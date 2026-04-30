@@ -16,6 +16,7 @@ permissions:
   packages: write
   id-token: write
   attestations: write
+  artifact-metadata: write
 
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -101,6 +102,92 @@ jobs:
           fi
           echo "OK: SBOM contains $pkg_count packages."
 
+      - name: Compare SBOM with previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          current_sbom="dist/qmonster-${TAG_NAME}-sbom.spdx.json"
+          previous_tag="$(
+            git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname \
+              | grep -vx "$TAG_NAME" \
+              | head -n 1 || true
+          )"
+
+          if [ -z "$previous_tag" ]; then
+            cat > dist/sbom-diff-summary.txt <<EOF
+          # SBOM Diff Summary
+
+          Current tag: ${TAG_NAME}
+          Previous tag: unavailable
+
+          No previous semver release tag was found, so no SBOM comparison was run.
+          EOF
+            exit 0
+          fi
+
+          previous_dir="$(mktemp -d)"
+          previous_asset="qmonster-${previous_tag}-sbom.spdx.json"
+          if ! gh release download "$previous_tag" --pattern "$previous_asset" --dir "$previous_dir"; then
+            cat > dist/sbom-diff-summary.txt <<EOF
+          # SBOM Diff Summary
+
+          Current tag: ${TAG_NAME}
+          Previous tag: ${previous_tag}
+
+          Previous SBOM asset ${previous_asset} could not be downloaded.
+          The release continues because older tags may not have SBOM assets.
+          EOF
+            exit 0
+          fi
+
+          previous_sbom="${previous_dir}/${previous_asset}"
+          current_count="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); console.log(p.packages?.length || 0)" "$current_sbom")"
+          previous_count="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); console.log(p.packages?.length || 0)" "$previous_sbom")"
+          minimum_allowed=$(( previous_count / 2 ))
+          if [ "$minimum_allowed" -lt 50 ]; then
+            minimum_allowed=50
+          fi
+
+          node - "$previous_sbom" "$current_sbom" "$previous_tag" "$TAG_NAME" > dist/sbom-diff-summary.txt <<'NODE'
+          const fs = require('fs');
+          const [previousPath, currentPath, previousTag, currentTag] = process.argv.slice(2);
+          const read = (path) => JSON.parse(fs.readFileSync(path, 'utf8')).packages || [];
+          const key = (pkg) => `${pkg.name || '(unnamed)'}@${pkg.versionInfo || '(no-version)'}`;
+          const previous = new Set(read(previousPath).map(key));
+          const current = new Set(read(currentPath).map(key));
+          const added = [...current].filter((item) => !previous.has(item)).sort();
+          const removed = [...previous].filter((item) => !current.has(item)).sort();
+          const preview = (items) =>
+            items.length === 0
+              ? ['- none']
+              : items.slice(0, 25).map((item) => `- ${item}`).concat(
+                  items.length > 25 ? [`- ... ${items.length - 25} more`] : [],
+                );
+
+          console.log('# SBOM Diff Summary');
+          console.log();
+          console.log(`Previous tag: ${previousTag}`);
+          console.log(`Current tag: ${currentTag}`);
+          console.log(`Previous package count: ${previous.size}`);
+          console.log(`Current package count: ${current.size}`);
+          console.log(`Added packages: ${added.length}`);
+          console.log(`Removed packages: ${removed.length}`);
+          console.log();
+          console.log('## Added');
+          console.log(preview(added).join('\n'));
+          console.log();
+          console.log('## Removed');
+          console.log(preview(removed).join('\n'));
+          NODE
+
+          if [ "$current_count" -lt "$minimum_allowed" ]; then
+            echo "ERROR: SBOM package count dropped from $previous_count to $current_count; minimum allowed is $minimum_allowed." >&2
+            echo "See dist/sbom-diff-summary.txt for details." >&2
+            exit 1
+          fi
+          echo "OK: SBOM package count $current_count compared with $previous_count in $previous_tag."
+
       - name: Compute release checksums
         run: |
           set -euo pipefail
@@ -113,19 +200,70 @@ jobs:
             dist/qmonster-${{ env.TAG_NAME }}-linux-x86_64.tar.gz
             dist/qmonster-*.tgz
             dist/qmonster-${{ env.TAG_NAME }}-sbom.spdx.json
+            dist/sbom-diff-summary.txt
             dist/checksums.txt
+
+      - name: Generate SBOM attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/qmonster-${{ env.TAG_NAME }}-linux-x86_64.tar.gz
+          sbom-path: dist/qmonster-${{ env.TAG_NAME }}-sbom.spdx.json
 
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          assets=(dist/*.tar.gz dist/*.tgz dist/*-sbom.spdx.json dist/checksums.txt)
+          assets=(dist/*.tar.gz dist/*.tgz dist/*-sbom.spdx.json dist/sbom-diff-summary.txt dist/checksums.txt)
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             gh release upload "$TAG_NAME" "${assets[@]}" --clobber
           else
             gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --generate-notes --verify-tag
           fi
+
+          footer_file="$(mktemp)"
+          cat > "$footer_file" <<'EOF'
+          <!-- qmonster-release-verification -->
+          ## Verification
+
+          Download the release assets, then verify checksums:
+
+          ```sh
+          sha256sum -c checksums.txt
+          ```
+
+          Verify build provenance for the Linux binary tarball:
+
+          ```sh
+          gh attestation verify qmonster-__TAG_NAME__-linux-x86_64.tar.gz \
+            --repo chquandogong/qmonster
+          ```
+
+          Verify the independent SBOM attestation for that tarball:
+
+          ```sh
+          gh attestation verify qmonster-__TAG_NAME__-linux-x86_64.tar.gz \
+            --repo chquandogong/qmonster \
+            --predicate-type https://spdx.dev/Document/v2.3
+          ```
+
+          The release also includes `qmonster-__TAG_NAME__-sbom.spdx.json`
+          and `sbom-diff-summary.txt`. See `docs/RELEASE_VERIFICATION.md`
+          for the full verification guide.
+          EOF
+          sed -i "s/__TAG_NAME__/${TAG_NAME}/g" "$footer_file"
+
+          body_file="$(mktemp)"
+          gh release view "$TAG_NAME" --json body --jq .body > "$body_file"
+          base_file="$(mktemp)"
+          awk '/<!-- qmonster-release-verification -->/{exit} {print}' "$body_file" > "$base_file"
+          notes_file="$(mktemp)"
+          {
+            cat "$base_file"
+            printf '\n\n'
+            cat "$footer_file"
+          } > "$notes_file"
+          gh release edit "$TAG_NAME" --notes-file "$notes_file"
 
   publish:
     name: Publish npm and GitHub Packages mirrors

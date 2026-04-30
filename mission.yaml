@@ -1,6 +1,6 @@
 mission:
-  version: "1.36.3"
-  title: "Qmonster v1.36.3 — SBOM regression fix (Cargo.lock now ships in the binary tarball so syft's rust-cargo-lock cataloger can extract the full 257-package dependency graph) + 50-package CI guard (locks v1.36.2's 1-package regression out)."
+  version: "1.36.4"
+  title: "Qmonster v1.36.4 — Release provenance hardening: v1.36.2 superseded/deprecated, release verification footer, SBOM diff summary guard, independent SBOM attestation."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1537,6 +1537,10 @@ mission:
     - "v1.36.3: release.yml 'Assemble release artifacts' now copies Cargo.lock into the binary directory before SBOM scan and before tar; without this syft has no rust-cargo-lock surface to scan and the SBOM collapses to 1 package (the v1.36.2 regression: 591KB → 1.2KB SBOM, 257 packages → 1 package)"
     - "v1.36.3: release.yml 'Validate SBOM has substantive dependency graph' guard fails the workflow when the generated SBOM contains fewer than 50 packages; magic-number guard but high enough above the 1-package collapse to catch a cataloger regression early"
     - "v1.36.3: docs/RELEASE_VERIFICATION.md mentions Cargo.lock in the binary tarball + explains why (rust-cargo-lock cataloger fidelity + downstream operator-side dep audit)"
+    - "v1.36.4: v1.36.2 GitHub Release marked prerelease with a warning banner and qmonster@1.36.2 deprecated on npm because its SBOM asset had an incomplete one-package graph"
+    - "v1.36.4: release.yml appends a verification footer to each GitHub Release body with checksum, build provenance, and SBOM attestation commands"
+    - "v1.36.4: release.yml emits sbom-diff-summary.txt and fails if current SBOM package count drops below max(50, previous_count/2); release assets/checksums/provenance include the summary"
+    - "v1.36.4: release.yml uses actions/attest@v4 with sbom-path to bind the SPDX SBOM to the Linux binary tarball via an independent SBOM attestation"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
