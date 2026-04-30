@@ -9,7 +9,7 @@ package metadata. `Cargo.toml` stays at its internal crate version.
 - npmjs package: `qmonster@X.Y.Z`
 - GitHub Packages mirror: `@chquandogong/qmonster@X.Y.Z`
 - GitHub Release assets: Linux x86_64 binary tarball, npm package
-  tarball, and checksums.
+  tarball, SPDX-JSON SBOM, SBOM diff summary, and checksums.
 
 ## Automated Flow
 
@@ -28,7 +28,8 @@ cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 It then builds the release binary, creates or updates the GitHub Release,
 publishes `qmonster` to npmjs when `NPM_TOKEN` is configured, and publishes
 the scoped GitHub Packages mirror using `GITHUB_TOKEN`. Release assets are
-also signed with GitHub artifact attestations.
+also signed with GitHub artifact attestations, and the Linux tarball gets a
+dedicated SBOM attestation.
 
 Generated GitHub Release notes use `.github/release.yml`. Keep README
 focused on the current product surface; put patch-level implementation
@@ -52,11 +53,18 @@ detail in GitHub Releases, `mission-history.yaml`, and canonical docs.
 6. Verify release provenance for downloaded assets when needed:
 
    ```bash
+   gh version
    gh attestation verify qmonster-vX.Y.Z-linux-x86_64.tar.gz \
      --repo chquandogong/qmonster
+   gh attestation verify qmonster-vX.Y.Z-linux-x86_64.tar.gz \
+     --repo chquandogong/qmonster \
+     --predicate-type https://spdx.dev/Document/v2.3
    gh attestation verify qmonster-X.Y.Z.tgz \
      --repo chquandogong/qmonster
    ```
+
+   Use GitHub CLI 2.49.0 or newer. If `gh attestation verify` is not
+   recognized, upgrade `gh` before running release-attestation checks.
 
 ## SNS Preview
 

@@ -144,9 +144,15 @@ jobs:
           previous_sbom="${previous_dir}/${previous_asset}"
           current_count="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); console.log(p.packages?.length || 0)" "$current_sbom")"
           previous_count="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); console.log(p.packages?.length || 0)" "$previous_sbom")"
+          current_purl_count="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const hasPurl=(pkg)=>(pkg.externalRefs||[]).some((ref)=>String(ref.referenceType||'').toLowerCase().includes('purl')||String(ref.referenceLocator||'').startsWith('pkg:')); console.log((p.packages||[]).filter(hasPurl).length)" "$current_sbom")"
+          previous_purl_count="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const hasPurl=(pkg)=>(pkg.externalRefs||[]).some((ref)=>String(ref.referenceType||'').toLowerCase().includes('purl')||String(ref.referenceLocator||'').startsWith('pkg:')); console.log((p.packages||[]).filter(hasPurl).length)" "$previous_sbom")"
           minimum_allowed=$(( previous_count / 2 ))
           if [ "$minimum_allowed" -lt 50 ]; then
             minimum_allowed=50
+          fi
+          minimum_purl_allowed=$(( previous_purl_count / 2 ))
+          if [ "$minimum_purl_allowed" -lt 50 ]; then
+            minimum_purl_allowed=50
           fi
 
           node - "$previous_sbom" "$current_sbom" "$previous_tag" "$TAG_NAME" > dist/sbom-diff-summary.txt <<'NODE'
@@ -154,16 +160,68 @@ jobs:
           const [previousPath, currentPath, previousTag, currentTag] = process.argv.slice(2);
           const read = (path) => JSON.parse(fs.readFileSync(path, 'utf8')).packages || [];
           const key = (pkg) => `${pkg.name || '(unnamed)'}@${pkg.versionInfo || '(no-version)'}`;
-          const previous = new Set(read(previousPath).map(key));
-          const current = new Set(read(currentPath).map(key));
+          const previousPackages = read(previousPath);
+          const currentPackages = read(currentPath);
+          const previousByKey = new Map(previousPackages.map((pkg) => [key(pkg), pkg]));
+          const currentByKey = new Map(currentPackages.map((pkg) => [key(pkg), pkg]));
+          const previous = new Set(previousByKey.keys());
+          const current = new Set(currentByKey.keys());
           const added = [...current].filter((item) => !previous.has(item)).sort();
           const removed = [...previous].filter((item) => !current.has(item)).sort();
+          const addedPackages = added.map((item) => currentByKey.get(item));
+          const removedPackages = removed.map((item) => previousByKey.get(item));
+          const attentionNames = new Set([
+            'openssl',
+            'openssl-sys',
+            'native-tls',
+            'ring',
+            'rustls',
+            'webpki',
+            'tokio',
+            'hyper',
+            'reqwest',
+            'curl',
+            'rusqlite',
+            'libsqlite3-sys',
+            'sqlite',
+            'serde_json',
+            'clap',
+            'crossterm',
+            'ratatui',
+            'mio',
+            'nix',
+            'libc',
+            'zeroize',
+          ]);
+          const externalRefs = (pkg) => (Array.isArray(pkg?.externalRefs) ? pkg.externalRefs : []);
+          const hasPurl = (pkg) =>
+            externalRefs(pkg).some(
+              (ref) =>
+                String(ref.referenceType || '').toLowerCase().includes('purl') ||
+                String(ref.referenceLocator || '').startsWith('pkg:'),
+            );
+          const emptyish = (value) => !value || ['NOASSERTION', 'NONE'].includes(String(value).toUpperCase());
+          const missingVersion = (pkg) => emptyish(pkg?.versionInfo);
+          const missingLicense = (pkg) => emptyish(pkg?.licenseConcluded) && emptyish(pkg?.licenseDeclared);
+          const missingSupplier = (pkg) => emptyish(pkg?.supplier);
+          const attentionPackage = (pkg) => attentionNames.has(String(pkg?.name || '').toLowerCase());
+          const metrics = (packages) => ({
+            total: packages.length,
+            purl: packages.filter(hasPurl).length,
+            versioned: packages.filter((pkg) => !missingVersion(pkg)).length,
+            missingVersion: packages.filter(missingVersion).length,
+            missingLicense: packages.filter(missingLicense).length,
+            missingSupplier: packages.filter(missingSupplier).length,
+          });
+          const currentMetrics = metrics(currentPackages);
+          const previousMetrics = metrics(previousPackages);
           const preview = (items) =>
             items.length === 0
               ? ['- none']
               : items.slice(0, 25).map((item) => `- ${item}`).concat(
                   items.length > 25 ? [`- ... ${items.length - 25} more`] : [],
                 );
+          const named = (packages, predicate) => packages.filter(predicate).map(key).sort();
 
           console.log('# SBOM Diff Summary');
           console.log();
@@ -173,6 +231,34 @@ jobs:
           console.log(`Current package count: ${current.size}`);
           console.log(`Added packages: ${added.length}`);
           console.log(`Removed packages: ${removed.length}`);
+          console.log();
+          console.log('## Metadata / Risk Summary');
+          console.log();
+          console.log('| Metric | Previous | Current |');
+          console.log('| --- | ---: | ---: |');
+          console.log(`| Package URL (purl) coverage | ${previousMetrics.purl}/${previousMetrics.total} | ${currentMetrics.purl}/${currentMetrics.total} |`);
+          console.log(`| Versioned package coverage | ${previousMetrics.versioned}/${previousMetrics.total} | ${currentMetrics.versioned}/${currentMetrics.total} |`);
+          console.log(`| Missing license assertion | ${previousMetrics.missingLicense} | ${currentMetrics.missingLicense} |`);
+          console.log(`| Missing supplier assertion | ${previousMetrics.missingSupplier} | ${currentMetrics.missingSupplier} |`);
+          console.log();
+          console.log('This summary is a dependency-review aid, not a vulnerability scan.');
+          console.log();
+          console.log('## Added Metadata Attention');
+          console.log();
+          console.log('### Added without purl');
+          console.log(preview(named(addedPackages, (pkg) => !hasPurl(pkg))).join('\n'));
+          console.log();
+          console.log('### Added without version');
+          console.log(preview(named(addedPackages, missingVersion)).join('\n'));
+          console.log();
+          console.log('### Added without license assertion');
+          console.log(preview(named(addedPackages, missingLicense)).join('\n'));
+          console.log();
+          console.log('### Added in security/runtime attention set');
+          console.log(preview(named(addedPackages, attentionPackage)).join('\n'));
+          console.log();
+          console.log('## Removed from security/runtime attention set');
+          console.log(preview(named(removedPackages, attentionPackage)).join('\n'));
           console.log();
           console.log('## Added');
           console.log(preview(added).join('\n'));
@@ -186,7 +272,13 @@ jobs:
             echo "See dist/sbom-diff-summary.txt for details." >&2
             exit 1
           fi
+          if [ "$current_purl_count" -lt "$minimum_purl_allowed" ]; then
+            echo "ERROR: SBOM purl coverage dropped from $previous_purl_count to $current_purl_count; minimum allowed is $minimum_purl_allowed." >&2
+            echo "See dist/sbom-diff-summary.txt for details." >&2
+            exit 1
+          fi
           echo "OK: SBOM package count $current_count compared with $previous_count in $previous_tag."
+          echo "OK: SBOM purl coverage $current_purl_count compared with $previous_purl_count in $previous_tag."
 
       - name: Compute release checksums
         run: |

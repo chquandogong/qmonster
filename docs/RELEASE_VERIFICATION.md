@@ -22,6 +22,14 @@ Release assets are signed by a GitHub Actions workflow run via
 Verify with the GitHub CLI:
 
 ```sh
+gh version
+```
+
+The `gh attestation` command set was introduced in GitHub CLI 2.49.0.
+If `gh attestation verify` is not recognized, upgrade `gh` before
+running the attestation checks.
+
+```sh
 gh attestation verify qmonster-vX.Y.Z-linux-x86_64.tar.gz \
   --repo chquandogong/qmonster
 ```
@@ -82,7 +90,15 @@ Scope and limits:
 
 Each release also includes `sbom-diff-summary.txt`. The release workflow
 downloads the previous semver release SBOM when available, compares the
-package set, and fails if the current SBOM package count drops below the
-larger of 50 packages or half of the previous release count. This catches
-cataloger regressions like the v1.36.2 one-package SBOM collapse while
-still allowing normal dependency churn.
+package set, summarizes metadata/risk signals for dependency review, and
+fails if either the current SBOM package count or package URL (`purl`)
+coverage drops below the larger of 50 entries or half of the previous
+release count. This catches cataloger regressions like the v1.36.2
+one-package SBOM collapse and metadata regressions where dependency
+identity references disappear while still allowing normal dependency
+churn.
+
+The risk summary is not a vulnerability scan. It highlights review
+signals such as purl coverage, version coverage, missing license/supplier
+assertions, and added packages from a small security/runtime attention
+set.

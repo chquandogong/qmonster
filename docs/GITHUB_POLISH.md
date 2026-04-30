@@ -17,7 +17,7 @@ maintained, trustworthy, and easy to evaluate from the GitHub page.
 | Package metadata        | npm keywords, repository, homepage, license, files allow-list                    |
 | Ownership routing       | `.github/CODEOWNERS`                                                             |
 | Release notes           | `.github/release.yml` generated-notes categories                                 |
-| Release provenance      | GitHub artifact attestations, SBOM attestation, SPDX-JSON SBOM, SBOM diff summary |
+| Release provenance      | GitHub artifact attestations, SBOM attestation, SPDX-JSON SBOM, SBOM diff + risk summary |
 | Compatibility docs      | `docs/COMPATIBILITY.md`                                                          |
 | Demo fixtures           | `examples/demo/` sanitized provider tails                                        |
 | Architecture visual     | `docs/assets/qmonster-architecture.svg`                                          |
@@ -52,10 +52,10 @@ maintained, trustworthy, and easy to evaluate from the GitHub page.
 4. Expand release provenance over time.
    Release assets now get GitHub artifact attestations, an independent
    SBOM attestation for the Linux tarball, a SPDX-JSON SBOM
-   (`anchore/sbom-action@v0`), an SBOM diff summary, and a release-body
-   verification footer. Further hardening could add vulnerability-policy
-   checks or replace the current package-count guard with a richer
-   dependency risk classifier.
+   (`anchore/sbom-action@v0`), an SBOM diff summary with purl coverage
+   and metadata/risk review signals, and a release-body verification
+   footer. Further hardening could add vulnerability-policy checks backed
+   by an advisory database.
 
 5. Keep compatibility evidence fresh.
    Update `docs/COMPATIBILITY.md` after provider CLI rendering changes or
