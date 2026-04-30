@@ -8,7 +8,8 @@ notes.
 ## 1. Checksums
 
 `checksums.txt` (SHA-256) is included in every release and covers all
-other release assets. After downloading, run:
+other release assets. It records asset basenames, so after downloading
+the assets into one directory, run:
 
 ```sh
 sha256sum -c checksums.txt

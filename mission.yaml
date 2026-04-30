@@ -1,6 +1,6 @@
 mission:
-  version: "1.36.4"
-  title: "Qmonster v1.36.4 — Release provenance hardening: v1.36.2 superseded/deprecated, release verification footer, SBOM diff summary guard, independent SBOM attestation."
+  version: "1.36.5"
+  title: "Qmonster v1.36.5 — Release checksum verification fix: checksums.txt uses asset basenames so release-body sha256sum verification works from a normal download directory."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1541,6 +1541,7 @@ mission:
     - "v1.36.4: release.yml appends a verification footer to each GitHub Release body with checksum, build provenance, and SBOM attestation commands"
     - "v1.36.4: release.yml emits sbom-diff-summary.txt and fails if current SBOM package count drops below max(50, previous_count/2); release assets/checksums/provenance include the summary"
     - "v1.36.4: release.yml uses actions/attest@v4 with sbom-path to bind the SPDX SBOM to the Linux binary tarball via an independent SBOM attestation"
+    - "v1.36.5: release.yml computes checksums from inside dist/ and strips ./ prefixes so checksums.txt contains asset basenames rather than dist/... paths; this makes the automated release-body sha256sum -c checksums.txt command work after downloading release assets into one directory"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
