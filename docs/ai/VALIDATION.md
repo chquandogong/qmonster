@@ -15,7 +15,7 @@ Current local verification (2026-04-30): `cargo fmt --all --check`,
 `git diff --check`, `cargo test --all-targets`,
 `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,
 `cargo build --release`, `npm pack --dry-run`, and
-`scripts/verify-shared.sh` pass for v1.36.5. Current code-level
+`scripts/verify-shared.sh` pass for v1.36.7. Current code-level
 verification after the PolicyGates input-bundle refactor is
 `cargo test --all-targets` with 792 lib tests, 45 event-loop
 integration tests, 18 false-positive regression tests, and 6

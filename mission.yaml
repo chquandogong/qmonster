@@ -1,6 +1,6 @@
 mission:
-  version: "1.36.6"
-  title: "Qmonster v1.36.6 — Release pipeline polish: SBOM diff SPDX root-doc filter (false-positive fix) + extracted scripts/release/sbom-diff.js + scripts/release/inject-verification-footer.sh + scripts/release/dry-run.sh local mirror + cargo audit CI step (rustsec advisory check)."
+  version: "1.36.7"
+  title: "Qmonster v1.36.7 — v1.36.x refresh confirm-round must-fix closure: docs/ai sync (Codex CFX-136R-1), sbom-diff.js --count / --count-purl modes consumed by release.yml + dry-run.sh (Gemini MF-3 / Codex CFX-136R-2), npm publish --dry-run in dry-run.sh (Gemini MF-1), cargo audit at release-tag time (Codex CFX-136R-3). Gemini MF-2 (evolution_summary length) deferred per operator policy."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

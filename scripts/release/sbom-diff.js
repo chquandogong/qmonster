@@ -1,15 +1,27 @@
 #!/usr/bin/env node
-// Diff two SPDX-JSON SBOMs and emit a human-readable summary plus
-// metadata/risk review signals.
+// SPDX-JSON SBOM tooling. Two modes:
 //
-// Usage:
+// Mode 1 — diff (default):
 //   node scripts/release/sbom-diff.js <previous.json> <current.json> <previousTag> <currentTag>
 //
-// Behavior:
+//   Emits a human-readable summary plus metadata/risk review signals.
+//
+// Mode 2 — count (single-SBOM probe):
+//   node scripts/release/sbom-diff.js --count <sbom.json>
+//   node scripts/release/sbom-diff.js --count-purl <sbom.json>
+//
+//   Prints just the package count (or purl-covered package count) of
+//   the given SBOM after the same SPDX root-document filter that diff
+//   mode applies. release.yml's package-count guard calls this so the
+//   filter logic lives in exactly one place (Gemini MF-3 / Codex
+//   CFX-136R-2 closure: no parallel filter implementations).
+//
+// Behavior (both modes share):
 // - Filters out SPDX root document entries (SPDXRef-DOCUMENT) and
-//   per-tag directory descriptors so the diff reflects only actual
-//   dependency churn — not the SBOM root document name change that
-//   happens every release tag (v1.36.4-v1.36.5 false-positive fix).
+//   per-tag directory descriptors so the diff/count reflects only
+//   actual dependency churn — not the SBOM root document name change
+//   that happens every release tag (v1.36.4 → v1.36.5 false-positive
+//   fix).
 // - Surfaces metadata-quality metrics: package URL (purl) coverage,
 //   versioned coverage, missing license/supplier assertions.
 // - Highlights packages added/removed in a security/runtime attention
@@ -20,15 +32,6 @@
 // - scripts/release/dry-run.sh local pre-tag mirror
 
 const fs = require("fs");
-
-const [previousPath, currentPath, previousTag, currentTag] =
-  process.argv.slice(2);
-if (!previousPath || !currentPath || !previousTag || !currentTag) {
-  console.error(
-    "usage: sbom-diff.js <previous.json> <current.json> <previousTag> <currentTag>",
-  );
-  process.exit(2);
-}
 
 const isRootDocument = (pkg) => {
   // SPDX root descriptor: SPDXID is "SPDXRef-DOCUMENT" or the package
@@ -45,14 +48,6 @@ const isRootDocument = (pkg) => {
   return false;
 };
 
-const read = (path) => {
-  const doc = JSON.parse(fs.readFileSync(path, "utf8"));
-  return (doc.packages || []).filter((p) => !isRootDocument(p));
-};
-
-const key = (pkg) =>
-  `${pkg.name || "(unnamed)"}@${pkg.versionInfo || "(no-version)"}`;
-
 const externalRefs = (pkg) =>
   Array.isArray(pkg?.externalRefs) ? pkg.externalRefs : [];
 const hasPurl = (pkg) =>
@@ -63,6 +58,45 @@ const hasPurl = (pkg) =>
         .includes("purl") ||
       String(ref.referenceLocator || "").startsWith("pkg:"),
   );
+
+const args = process.argv.slice(2);
+
+// --count / --count-purl single-SBOM modes (used by release.yml +
+// dry-run.sh package-count guards).
+if (args[0] === "--count" || args[0] === "--count-purl") {
+  if (args.length !== 2) {
+    console.error(`usage: sbom-diff.js ${args[0]} <sbom.json>`);
+    process.exit(2);
+  }
+  const doc = JSON.parse(fs.readFileSync(args[1], "utf8"));
+  const pkgs = (doc.packages || []).filter((p) => !isRootDocument(p));
+  if (args[0] === "--count-purl") {
+    console.log(pkgs.filter(hasPurl).length);
+  } else {
+    console.log(pkgs.length);
+  }
+  process.exit(0);
+}
+
+// Default: diff mode.
+const [previousPath, currentPath, previousTag, currentTag] = args;
+if (!previousPath || !currentPath || !previousTag || !currentTag) {
+  console.error(
+    "usage: sbom-diff.js <previous.json> <current.json> <previousTag> <currentTag>\n" +
+      "   or: sbom-diff.js --count <sbom.json>\n" +
+      "   or: sbom-diff.js --count-purl <sbom.json>",
+  );
+  process.exit(2);
+}
+
+const read = (path) => {
+  const doc = JSON.parse(fs.readFileSync(path, "utf8"));
+  return (doc.packages || []).filter((p) => !isRootDocument(p));
+};
+
+const key = (pkg) =>
+  `${pkg.name || "(unnamed)"}@${pkg.versionInfo || "(no-version)"}`;
+
 const emptyish = (value) =>
   !value || ["NOASSERTION", "NONE"].includes(String(value).toUpperCase());
 const missingVersion = (pkg) => emptyish(pkg?.versionInfo);

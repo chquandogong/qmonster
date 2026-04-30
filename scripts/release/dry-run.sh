@@ -50,6 +50,21 @@ git diff --check
 cargo test --all-targets >/dev/null
 cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args 2>&1 | tail -3
 
+# 2b. cargo audit (rustsec). Mirrors ci.yml + release.yml so a fresh
+# RUSTSEC advisory blocks the local dry-run too. Best-effort: install
+# cargo-audit if missing and the operator has cargo install rights.
+if ! command -v cargo-audit >/dev/null 2>&1; then
+  echo "[dry-run] Installing cargo-audit (one-time) into ~/.cargo/bin"
+  cargo install --locked cargo-audit >/dev/null 2>&1 || {
+    echo "[dry-run] WARNING: could not install cargo-audit; skipping advisory check." >&2
+    SKIP_AUDIT=1
+  }
+fi
+if [ -z "${SKIP_AUDIT:-}" ]; then
+  echo "[dry-run] cargo audit"
+  cargo audit
+fi
+
 # 3. Build release binary.
 echo "[dry-run] Build: cargo build --release --bin qmonster"
 cargo build --release --bin qmonster
@@ -65,6 +80,14 @@ cp config/qmonster.example.toml "$ARTIFACT_DIR/"
 cp Cargo.lock "$ARTIFACT_DIR/"
 tar -C "$DIST" -czf "${DIST}/qmonster-${TAG_NAME}-linux-x86_64.tar.gz" "qmonster-${TAG_NAME}-linux-x86_64"
 npm pack --pack-destination "$DIST" >/dev/null
+
+# 4b. npm publish --dry-run validates the registry-side contract
+# (file list + integrity + manifest) without actually publishing.
+# Catches Gemini MF-1 class regressions that npm pack alone cannot
+# (e.g. a name collision or a publishConfig issue surfacing only at
+# the registry interaction).
+echo "[dry-run] npm publish --dry-run"
+npm publish --dry-run --access public 2>&1 | tail -3
 
 # 5. Get syft.
 SYFT_DIR="${HOME}/.cache/qmonster-release-tools"
@@ -86,47 +109,47 @@ echo "[dry-run] SBOM scan: ${ARTIFACT_DIR}"
 "$SYFT_BIN" scan "dir:${ARTIFACT_DIR}" -o "spdx-json=${SBOM}" --quiet
 
 # 7. SBOM package-count guard (mirror release.yml threshold).
-# Filters SPDX root document entries so the count matches what
-# scripts/release/sbom-diff.js reports — the per-tag root rename must
-# not inflate the count and trip the guard later.
-count_real_packages() {
-  node -e '
-    const fs = require("fs");
-    const doc = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    const isRoot = (p) =>
-      p.SPDXID === "SPDXRef-DOCUMENT" ||
-      (typeof p.name === "string" && /qmonster-v[0-9]+\.[0-9]+\.[0-9]+/.test(p.name));
-    const pkgs = (doc.packages || []).filter((p) => !isRoot(p));
-    console.log(pkgs.length);
-  ' "$1"
-}
-pkg_count="$(count_real_packages "$SBOM")"
+# Single source of truth for the SPDX root-document filter:
+# scripts/release/sbom-diff.js --count / --count-purl modes.
+DIFF_JS="${ROOT_DIR}/scripts/release/sbom-diff.js"
+pkg_count="$(node "$DIFF_JS" --count "$SBOM")"
+purl_count="$(node "$DIFF_JS" --count-purl "$SBOM")"
 if [ "$pkg_count" -lt 50 ]; then
   echo "ERROR: SBOM has only $pkg_count packages — too few, suggests dependency cataloger failed." >&2
   exit 1
 fi
-echo "[dry-run] OK: SBOM contains $pkg_count packages."
+echo "[dry-run] OK: SBOM contains $pkg_count packages ($purl_count with purl)."
 
 # 8. SBOM diff vs previous release tag (best-effort).
+# Mirrors release.yml's "Compare SBOM with previous release" step
+# including the purl-coverage drop guard (Codex CFX-136R-2 closure).
 PREVIOUS_TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -vx "$TAG_NAME" | head -n 1 || true)"
 if [ -n "$PREVIOUS_TAG" ] && command -v gh >/dev/null 2>&1; then
   PREV_DIR="$(mktemp -d)"
   PREV_ASSET="qmonster-${PREVIOUS_TAG}-sbom.spdx.json"
   if gh release download "$PREVIOUS_TAG" --pattern "$PREV_ASSET" --dir "$PREV_DIR" 2>/dev/null; then
     echo "[dry-run] SBOM diff vs ${PREVIOUS_TAG}"
-    node "${ROOT_DIR}/scripts/release/sbom-diff.js" \
+    node "$DIFF_JS" \
       "${PREV_DIR}/${PREV_ASSET}" "$SBOM" "$PREVIOUS_TAG" "$TAG_NAME" \
       > "${DIST}/sbom-diff-summary.txt"
     head -8 "${DIST}/sbom-diff-summary.txt"
 
-    PREV_COUNT="$(count_real_packages "${PREV_DIR}/${PREV_ASSET}")"
+    PREV_COUNT="$(node "$DIFF_JS" --count "${PREV_DIR}/${PREV_ASSET}")"
+    PREV_PURL="$(node "$DIFF_JS" --count-purl "${PREV_DIR}/${PREV_ASSET}")"
     MIN_ALLOWED=$((PREV_COUNT / 2))
     if [ "$MIN_ALLOWED" -lt 50 ]; then MIN_ALLOWED=50; fi
+    MIN_PURL_ALLOWED=$((PREV_PURL / 2))
+    if [ "$MIN_PURL_ALLOWED" -lt 50 ]; then MIN_PURL_ALLOWED=50; fi
     if [ "$pkg_count" -lt "$MIN_ALLOWED" ]; then
       echo "ERROR: SBOM package count dropped from $PREV_COUNT to $pkg_count; minimum allowed is $MIN_ALLOWED." >&2
       exit 1
     fi
-    echo "[dry-run] OK: SBOM package count $pkg_count compared with $PREV_COUNT in $PREVIOUS_TAG."
+    if [ "$purl_count" -lt "$MIN_PURL_ALLOWED" ]; then
+      echo "ERROR: SBOM purl coverage dropped from $PREV_PURL to $purl_count; minimum allowed is $MIN_PURL_ALLOWED." >&2
+      exit 1
+    fi
+    echo "[dry-run] OK: SBOM package count $pkg_count vs $PREV_COUNT in $PREVIOUS_TAG."
+    echo "[dry-run] OK: SBOM purl coverage $purl_count vs $PREV_PURL in $PREVIOUS_TAG."
   else
     echo "[dry-run] Skipping diff: previous SBOM ${PREV_ASSET} not downloadable."
   fi

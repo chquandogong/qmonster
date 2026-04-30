@@ -1,0 +1,86 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-04-30"
+  target_versions:
+    - "1.36.2"
+    - "1.36.3"
+    - "1.36.4"
+    - "1.36.5"
+    - "1.36.6"
+  commit_range: "e33c82a..d7ef1e3"
+  head_reviewed: "d7ef1e370000000000000000000000000000000d"
+  head_reviewed_short: "d7ef1e3"
+  evidence_mode: "GitHub mirror review; Codex local sandbox failed at exec_command (bwrap loopback RTM_NEWADDR error) and apply_patch could not write to .docs/codex/ or /tmp. Narrative captured to stdout and persisted by Claude. Codex confirmed via official GitHub docs that actions/attest@v4 supports sbom-path mode."
+  local_validation:
+    cargo_fmt_check: not_run
+    git_diff_check: not_run
+    cargo_build_release: not_run
+    cargo_test_all_targets: not_run
+    cargo_clippy_all_targets_d_warnings: not_run
+    scripts_verify_shared: not_run
+    note: "Codex local sandbox unavailable for this run."
+  verdict: approve-with-fixes
+  summary:
+    code_assessment: "v1.36.2..v1.36.6 slice is structurally sound. Confirm-round must-fix closure (v1.36.2), SBOM regression closure (v1.36.3), provenance hardening (v1.36.4), checksum-format fix (v1.36.5), and release-pipeline polish (v1.36.6) compose coherently. SBOM attestation choice (actions/attest@v4 sbom-path mode) is officially supported."
+    primary_risk: "Three concrete drift / coverage gaps: docs/ai canonical surfaces still describe v1.36.5; dry-run.sh does not mirror release.yml's purl-coverage guard; cargo audit is CI-only and cannot block a release tag whose green CI ran before a new RustSec advisory was published."
+  must_fix_before_next_phase:
+    - id: CFX-136R-1
+      severity: warning
+      file: "docs/ai/PROJECT_BRIEF.md; docs/ai/ARCHITECTURE.md; docs/ai/VALIDATION.md"
+      title: "Canonical docs still describe v1.36.5 while mission.yaml and package.json are v1.36.6."
+      proposed_change: "Sync the three canonical docs (PROJECT_BRIEF, ARCHITECTURE, VALIDATION) to the v1.36.6 release-pipeline state — script extraction, SBOM diff filter, dry-run.sh, cargo audit gate."
+    - id: CFX-136R-2
+      severity: warning
+      file: scripts/release/dry-run.sh
+      title: "Dry-run does not enforce the purl-coverage regression guard that release.yml enforces."
+      proposed_change: "Add a purl-coverage drop guard to dry-run.sh (mirror the release.yml threshold: fail when purl_count drops below max(50, prev_purl/2)). Otherwise an operator can locally pass dry-run and still hit a CI failure on tag push."
+    - id: CFX-136R-3
+      severity: warning
+      file: ".github/workflows/release.yml"
+      title: "rustsec/audit-check@v2 is CI-only; the release job and local dry-run can still publish from an older green commit after a new RustSec advisory lands."
+      proposed_change: "Add a cargo audit step to release.yml release job (or call the audit-check action there too) so a freshly-published advisory blocks the release pipeline at tag push time, not only at the PR / push to main step. Also recommend mirroring the audit in dry-run.sh."
+  observations:
+    - id: OBS-136R-1
+      severity: good
+      description: "scripts/release/sbom-diff.js cleanly captures the inline node logic plus the new SPDX root-document filter. Local smoke (256 packages, Added: 0 / Removed: 0 vs v1.36.5) confirms the false-positive closure."
+    - id: OBS-136R-2
+      severity: good
+      description: "scripts/release/dry-run.sh directly addresses the 'shipped without running the pipeline locally' root cause behind the v1.36.0 / v1.36.2 / v1.36.5 regressions; the syft 1.42.3 cache under ~/.cache/qmonster-release-tools/ keeps the script self-contained."
+    - id: OBS-136R-3
+      severity: good
+      description: "actions/attest@v4 with sbom-path mode is the right call for the independent SBOM attestation; it generates an SPDX-predicate attestation that downstream operators verify with --predicate-type https://spdx.dev/Document/v2.3."
+    - id: OBS-136R-4
+      severity: safe
+      description: "Inline release.yml count probes (count_real_packages, count_purl_packages) duplicate the SPDX root-doc filter logic that lives in sbom-diff.js. Acceptable for the package-count guard which must fail BEFORE the diff script runs, but worth a follow-up to extract a sbom-diff.js --count mode (sibling of Gemini's MF-3)."
+  scope_reduction_suggestions:
+    - "Keep the 50-package guard threshold as a flat magic number for now; replace with a richer dependency-risk classifier only after SBOM-diff tooling matures (already in mission ledger follow-ups)."
+  doc_mission_memory_status:
+    - id: DMM-136R-1
+      severity: warning
+      description: "Mission ledger sequences 175 (v1.36.4) and 176 (v1.36.5) appear authored by the operator's git config but the narrative shape suggests another agent's intermediate work; spot-check confirms they accurately describe the workflow behavior at the matching commit. Documentation-drift remediation per CFX-136R-1 will close this."
+  token_optimization_status:
+    - id: TO-136R-1
+      severity: safe
+      description: "No token-behavior change in this slice. Refactor improves operator dependency-graph visibility (SBOM diff metadata/risk metrics)."
+  provider_abstraction_status:
+    - id: PA-136R-1
+      severity: safe
+      description: "No provider-boundary impact. Release pipeline only."
+  safety_audit_status:
+    - id: SA-136R-1
+      severity: good
+      description: "Three new defense-in-depth layers shipped: SBOM SPDX root-doc filter (no false positives in diff), 50-package + purl-coverage guards (cataloger collapse blocked), and cargo audit CI gate (RUSTSEC advisory blocked at PR time). CFX-136R-3 closes the tag-push-time gap."
+  official_vs_heuristic_status:
+    - id: OH-136R-1
+      severity: safe
+      description: "No SourceKind regression. Release-verification doc draws clean lines between provider attestation, SBOM scan scope, and SBOM-diff metadata coverage."
+  todos_for_claude:
+    - id: TC-136R-1
+      description: "Sync docs/ai/PROJECT_BRIEF.md, ARCHITECTURE.md, VALIDATION.md headers to v1.36.6 (closes CFX-136R-1)."
+    - id: TC-136R-2
+      description: "Add purl-coverage regression guard to scripts/release/dry-run.sh (closes CFX-136R-2)."
+    - id: TC-136R-3
+      description: "Add cargo audit to release.yml at tag push time (closes CFX-136R-3); consider also adding to dry-run.sh."
+    - id: TC-136R-4
+      description: "Optional follow-up: extract release.yml inline count probes into a scripts/release/sbom-diff.js --count mode."

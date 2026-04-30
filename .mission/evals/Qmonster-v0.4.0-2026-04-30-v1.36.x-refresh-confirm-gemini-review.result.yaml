@@ -1,0 +1,107 @@
+schema_version: 1.0
+mission_phase: v1.36.x-refresh-confirm-gemini-review
+target_commit: d7ef1e3
+target_versions:
+  - "1.36.2"
+  - "1.36.3"
+  - "1.36.4"
+  - "1.36.5"
+  - "1.36.6"
+review_date: 2026-04-30
+reviewer: Gemini
+
+verdict: approve-with-fixes
+evidence_mode: "Plan-mode review against gemini-3.1-pro-preview. Returned content covers verdict, must-fix items, and answers to all 7 brief questions; the strict 11-section narrative was not emitted because plan-mode policy denied write_file (output captured to .docs/gemini/Qmonster-v0.4.0-2026-04-30-v1.36.x-refresh-confirm-review.md). Quota retries: 10x 429 against gemini-3.1-pro-preview before final response landed."
+
+severity_counts:
+  safe: 4
+  good: 4
+  concern: 1
+  warning: 3
+  risk: 0
+
+must_fix_items:
+  - id: MF-1
+    severity: warning
+    file: scripts/release/dry-run.sh
+    description: "dry-run.sh covers the release-asset job but does not exercise the npm publish payload locally. An operator can pass dry-run and still hit an npm-side failure at publish time (mirror of the v1.36.0 missing-RELEASE_VERIFICATION.md regression class)."
+    proposed_change: "Add an `npm publish --dry-run` step to scripts/release/dry-run.sh after the existing `npm pack --pack-destination dist` so the npm payload is verified end-to-end against the same registry contract."
+  - id: MF-2
+    severity: warning
+    file: mission-history.yaml
+    description: "evolution_summary.current_phase has grown to ~2000 words spanning v1.22.0 → v1.36.6. Per-version timeline entries already preserve full history, so the rolling summary duplicates information and degrades context efficiency for downstream readers (Codex/Gemini context spend, operator briefings)."
+    proposed_change: "Condense evolution_summary.current_phase to the last ~3 patches; older history is preserved in timeline entries. NOTE: this item is operator-deferred per the 2026-04-30 'tag protection과 긴호흡 제외, 나머지 진행' directive — long-horizon cleanup, not a blocker for the next patch."
+  - id: MF-3
+    severity: warning
+    file: ".github/workflows/release.yml"
+    description: "release.yml inline count probes (count_real_packages, count_purl_packages) duplicate the SPDX root-document filter logic that lives in scripts/release/sbom-diff.js. Two parallel implementations of the same filter risks divergence on future updates."
+    proposed_change: "Centralize the count + purl logic in scripts/release/sbom-diff.js by adding a `--count` mode (or split into a separate `scripts/release/sbom-count.js`); release.yml's package-count guard then calls the script in count mode instead of inlining the filter."
+
+architectural_observations:
+  - id: OBS-1
+    severity: good
+    description: "Recent hardening (SBOM attestation, verification footer, dry-run.sh) successfully addresses the root causes of v1.36.0, v1.36.2, and v1.36.5 regressions."
+  - id: OBS-2
+    severity: good
+    description: "actions/attest@v4 with sbom-path mode correctly binds the unpacked-directory SBOM to the released binary tarball. RELEASE_VERIFICATION.md §3 wording is accurate."
+  - id: OBS-3
+    severity: good
+    description: "scripts/release/sbom-diff.js's SPDX root-document filter correctly drops the per-tag root rename, eliminating the v1.36.4-introduced Added: 1 / Removed: 1 noise."
+  - id: OBS-4
+    severity: concern
+    description: "Inline release.yml count probes duplicate the SPDX root-doc filter from sbom-diff.js (mirror of MF-3 above)."
+
+doc_mission_memory_status:
+  - id: DMM-1
+    severity: safe
+    description: "Mission ledger separation between v1.36.0..v1.36.6 entries is honest and auditable; each defect closure is recorded as its own change_sequence."
+
+token_optimization_status:
+  - id: TO-1
+    severity: safe
+    description: "No token-behavior change. Refactor improves dry-run/pre-tag visibility for operators."
+
+provider_abstraction_status:
+  - id: PA-1
+    severity: safe
+    description: "No provider-boundary impact in this slice."
+
+safety_audit_status:
+  - id: SA-1
+    severity: good
+    description: "cargo audit CI gate + SBOM diff metadata/risk summary + independent SBOM attestation form a coherent supply-chain hardening layer."
+
+official_vs_heuristic_status:
+  - id: OH-1
+    severity: safe
+    description: "None identified — release-pipeline + CI changes only."
+
+answers_to_brief_questions:
+  - q: "SBOM scope honesty"
+    a: "Documentation is accurate; the attestation binds the unpacked-directory SBOM to the binary tarball."
+  - q: "Attention-package list completeness"
+    a: "Recommend adding `sqlx` (future-proof if database deps land) and `serde` (base) to the security/runtime attention set in scripts/release/sbom-diff.js."
+  - q: "cargo audit failure mode strictness"
+    a: "Current rustsec/audit-check@v2 default is appropriately strict for the project's threat model. If unfixable transitives become an issue, add a documented allowlist via .cargo/audit.toml ignore list."
+  - q: "Dry-run script reach"
+    a: "Should include npm payload check (MF-1)."
+  - q: "Inline node count probes vs sbom-diff.js"
+    a: "Move into a --count mode in sbom-diff.js (MF-3)."
+  - q: "Mission ledger evolution_summary length"
+    a: "Worth a separate cleanup pass; condense to last ~3 patches (MF-2)."
+  - q: "Ledger sequences 175 / 176 accuracy"
+    a: "Narratives align with the matching commits; no spot-check failure detected."
+
+scope_reduction_suggestions:
+  - id: SR-1
+    description: "MF-2 (evolution_summary length) is a long-horizon cleanup the operator already deferred — keep it tracked in follow-ups, not blocking the next patch."
+
+todos_for_claude:
+  - id: TC-1
+    description: "Add npm publish --dry-run to scripts/release/dry-run.sh (closes MF-1)."
+  - id: TC-2
+    description: "Centralize SBOM count/purl logic in scripts/release/sbom-diff.js via a --count mode; release.yml calls it instead of inlining the filter (closes MF-3)."
+  - id: TC-3
+    description: "evolution_summary.current_phase condense pass remains a long-horizon cleanup item (MF-2 deferred per operator policy)."
+  - id: TC-4
+    description: "Consider extending scripts/release/sbom-diff.js's attention-package set with sqlx and serde when natural."

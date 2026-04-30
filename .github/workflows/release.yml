@@ -58,6 +58,14 @@ jobs:
           cargo test --all-targets
           cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 
+      - name: Audit cargo dependencies for known advisories
+        # Defense-in-depth: ci.yml also runs this gate at PR time, but a
+        # tag whose green CI predates a fresh RustSec advisory could
+        # still publish without this. Codex CFX-136R-3 closure.
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build release binary
         run: cargo build --release --bin qmonster
 
@@ -92,7 +100,9 @@ jobs:
         run: |
           set -euo pipefail
           sbom_path="dist/qmonster-${TAG_NAME}-sbom.spdx.json"
-          pkg_count="$(node -p "require('./'+process.argv[1]).packages?.length || 0" "$sbom_path")"
+          # Use sbom-diff.js --count so the SPDX root-document filter is
+          # applied here too — same source of truth as the diff step.
+          pkg_count="$(node scripts/release/sbom-diff.js --count "$sbom_path")"
           # 50 is well below qmonster's actual cargo-deps count (~257 at
           # v1.36.3) and high enough to detect a cataloger collapse like
           # v1.36.2's 1-package regression.
@@ -142,42 +152,14 @@ jobs:
           fi
 
           previous_sbom="${previous_dir}/${previous_asset}"
-          # Filter SPDX root document entries before counting (mirrors
-          # scripts/release/sbom-diff.js so the package-count guard
-          # cannot be tricked by the per-tag root-doc rename that
-          # previously inflated diffs by one package every release).
-          count_real_packages() {
-            node -e "
-              const fs = require('fs');
-              const doc = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
-              const isRoot = (p) =>
-                p.SPDXID === 'SPDXRef-DOCUMENT' ||
-                (typeof p.name === 'string' && /qmonster-v[0-9]+\.[0-9]+\.[0-9]+/.test(p.name));
-              const pkgs = (doc.packages || []).filter((p) => !isRoot(p));
-              console.log(pkgs.length);
-            " "$1"
-          }
-          count_purl_packages() {
-            node -e "
-              const fs = require('fs');
-              const doc = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
-              const isRoot = (p) =>
-                p.SPDXID === 'SPDXRef-DOCUMENT' ||
-                (typeof p.name === 'string' && /qmonster-v[0-9]+\.[0-9]+\.[0-9]+/.test(p.name));
-              const hasPurl = (p) =>
-                (p.externalRefs || []).some(
-                  (ref) =>
-                    String(ref.referenceType || '').toLowerCase().includes('purl') ||
-                    String(ref.referenceLocator || '').startsWith('pkg:'),
-                );
-              const pkgs = (doc.packages || []).filter((p) => !isRoot(p));
-              console.log(pkgs.filter(hasPurl).length);
-            " "$1"
-          }
-          current_count="$(count_real_packages "$current_sbom")"
-          previous_count="$(count_real_packages "$previous_sbom")"
-          current_purl_count="$(count_purl_packages "$current_sbom")"
-          previous_purl_count="$(count_purl_packages "$previous_sbom")"
+          # Single source of truth for the SPDX root-document filter:
+          # scripts/release/sbom-diff.js --count and --count-purl modes.
+          # Eliminates the parallel inline filter that previously lived
+          # here (Gemini MF-3 / Codex CFX-136R-2 closure).
+          current_count="$(node scripts/release/sbom-diff.js --count "$current_sbom")"
+          previous_count="$(node scripts/release/sbom-diff.js --count "$previous_sbom")"
+          current_purl_count="$(node scripts/release/sbom-diff.js --count-purl "$current_sbom")"
+          previous_purl_count="$(node scripts/release/sbom-diff.js --count-purl "$previous_sbom")"
           minimum_allowed=$(( previous_count / 2 ))
           if [ "$minimum_allowed" -lt 50 ]; then
             minimum_allowed=50

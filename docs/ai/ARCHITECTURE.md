@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (implementation sync through v1.36.5 release checksum verification fix on top of the v1.36.0 PolicyGates::from_inputs input-bundle refactor; runtime behavior remains the v1.35.2 Phase F F-7d/v1.35.x Gemini /model reset parser tightening + Tmux setup tab + Settings reset/badges sync + cache_creation_input_tokens distinct from CACHE; v1.35.3/v1.36.x update repository documentation/presentation and release provenance)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (implementation sync through v1.36.7 confirm-round must-fix closure on top of v1.36.6 release-pipeline polish — scripts/release/{sbom-diff.js,inject-verification-footer.sh,dry-run.sh}, SBOM SPDX root-doc filter, cargo audit RUSTSEC gate at PR time + tag time, npm publish --dry-run pre-tag check, sbom-diff.js --count / --count-purl modes consumed by release.yml. Runtime behavior remains the v1.35.2 Phase F F-7d/v1.35.x Gemini /model reset parser tightening + Tmux setup tab + Settings reset/badges sync + cache_creation_input_tokens distinct from CACHE; v1.35.3/v1.36.x update repository documentation/presentation and release provenance)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
 ## One-line shape (r2 canonical)
