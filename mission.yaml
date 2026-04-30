@@ -1,6 +1,6 @@
 mission:
-  version: "1.36.7"
-  title: "Qmonster v1.36.7 — v1.36.x refresh confirm-round must-fix closure: docs/ai sync (Codex CFX-136R-1), sbom-diff.js --count / --count-purl modes consumed by release.yml + dry-run.sh (Gemini MF-3 / Codex CFX-136R-2), npm publish --dry-run in dry-run.sh (Gemini MF-1), cargo audit at release-tag time (Codex CFX-136R-3). Gemini MF-2 (evolution_summary length) deferred per operator policy."
+  version: "1.36.8"
+  title: "Qmonster v1.36.8 — Ledger sync for two off-tag commits: cargo-audit CLI version pin (CARGO_AUDIT_VERSION=0.22.1, closes the v1.36.7 release workflow failure where rustsec/audit-check@v2 auto-pulled cargo-audit→smol_str@0.3.6 requiring rustc 1.89 against the Rust 1.88 CI toolchain) + Codex/Gemini contributors metadata (package.json contributors array + CONTRIBUTORS.md). npm tarball at v1.36.7 was published before these commits landed; v1.36.8 npm publish brings the registry tarball into sync with main."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

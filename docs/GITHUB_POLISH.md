@@ -13,7 +13,7 @@ maintained, trustworthy, and easy to evaluate from the GitHub page.
 | Community routing       | Issue forms, PR template, Discussion templates, support doc                      |
 | Security routing        | `SECURITY.md` and private advisory link                                          |
 | Dependency automation   | Dependabot for Cargo, npm, and GitHub Actions                                    |
-| Social artwork          | `docs/assets/qmonster-social-preview.png`                                        |
+| Social preview          | Uploaded in GitHub Settings; source asset at `docs/assets/qmonster-social-preview.png` |
 | Package metadata        | npm keywords, repository, homepage, license, files allow-list                    |
 | Ownership routing       | `.github/CODEOWNERS`                                                             |
 | Release notes           | `.github/release.yml` generated-notes categories                                 |
@@ -33,11 +33,7 @@ maintained, trustworthy, and easy to evaluate from the GitHub page.
    lives in `.github/rulesets/release-tags.example.json`; add the right
    maintainer bypass path before switching it to active.
 
-2. Add a repository social preview image.
-   Upload `docs/assets/qmonster-social-preview.png` in GitHub
-   `Settings -> Social preview`.
-
-3. Refresh the dashboard screenshot when the TUI changes substantively.
+2. Refresh the dashboard screenshot when the TUI changes substantively.
    The current asset lives at `docs/assets/qmonster-dashboard.png` and
    is embedded in the README "What It Shows" section. To recapture:
    - PNG: take a screenshot of the running TUI (system screenshot tool)
@@ -49,7 +45,7 @@ maintained, trustworthy, and easy to evaluate from the GitHub page.
      tmux session — production paths and session IDs should not appear
      in a public asset.
 
-4. Expand release provenance over time.
+3. Expand release provenance over time.
    Release assets now get GitHub artifact attestations, an independent
    SBOM attestation for the Linux tarball, a SPDX-JSON SBOM
    (`anchore/sbom-action@v0`), an SBOM diff summary with purl coverage
@@ -57,7 +53,7 @@ maintained, trustworthy, and easy to evaluate from the GitHub page.
    footer. Further hardening could add vulnerability-policy checks backed
    by an advisory database.
 
-5. Keep compatibility evidence fresh.
+4. Keep compatibility evidence fresh.
    Update `docs/COMPATIBILITY.md` after provider CLI rendering changes or
    major tmux/Rust/GitHub runner changes.
 
