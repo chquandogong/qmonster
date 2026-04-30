@@ -70,6 +70,11 @@ jobs:
           cp target/release/qmonster "dist/qmonster-${TAG_NAME}-linux-x86_64/"
           cp README.md LICENSE VERSION.md "dist/qmonster-${TAG_NAME}-linux-x86_64/"
           cp config/qmonster.example.toml "dist/qmonster-${TAG_NAME}-linux-x86_64/"
+          # Include Cargo.lock so syft's rust-cargo-lock cataloger can
+          # extract the full dependency graph for the released binary.
+          # Without this the SBOM collapses to 1 package (the directory
+          # itself) — see v1.36.2 regression.
+          cp Cargo.lock "dist/qmonster-${TAG_NAME}-linux-x86_64/"
           tar -C dist -czf "dist/qmonster-${TAG_NAME}-linux-x86_64.tar.gz" "qmonster-${TAG_NAME}-linux-x86_64"
           npm pack --pack-destination dist
 
@@ -81,6 +86,20 @@ jobs:
           output-file: dist/qmonster-${{ env.TAG_NAME }}-sbom.spdx.json
           upload-release-assets: false
           upload-artifact: false
+
+      - name: Validate SBOM has substantive dependency graph
+        run: |
+          set -euo pipefail
+          sbom_path="dist/qmonster-${TAG_NAME}-sbom.spdx.json"
+          pkg_count="$(node -p "require('./'+process.argv[1]).packages?.length || 0" "$sbom_path")"
+          # 50 is well below qmonster's actual cargo-deps count (~257 at
+          # v1.36.3) and high enough to detect a cataloger collapse like
+          # v1.36.2's 1-package regression.
+          if [ "$pkg_count" -lt 50 ]; then
+            echo "ERROR: SBOM has only $pkg_count packages — too few, suggests dependency cataloger failed. Expected >= 50." >&2
+            exit 1
+          fi
+          echo "OK: SBOM contains $pkg_count packages."
 
       - name: Compute release checksums
         run: |
