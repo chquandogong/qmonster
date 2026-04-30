@@ -21,6 +21,7 @@ impl Engine {
         gates: &PolicyGates,
         last_idle_state: Option<IdleCause>,
         recent_token_samples: &[crate::store::TokenSample],
+        recent_errors: &[bool],
     ) -> EvalOutput {
         let mut recs = eval_alerts(id, signals);
         recs.extend(crate::policy::rules::advisories::eval_advisories(
@@ -40,6 +41,15 @@ impl Engine {
             signals,
             gates,
             recent_token_samples,
+        ));
+        // Phase F F-9 (dynamic profile switching): error-rate watcher.
+        // Pure rule; consumes the per-pane error history the event
+        // loop maintains in `Context.recent_error_observations`.
+        recs.extend(crate::policy::rules::profile_switch::eval_profile_switch(
+            id,
+            signals,
+            recent_errors,
+            gates,
         ));
         // Phase F F-7c (v1.34.0): reset-aware advisories consume
         // the F-5b/F-6 quota_*_resets_at fields. Read `now` once
@@ -171,7 +181,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[]);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[], &[]);
         assert!(!out.recommendations.is_empty());
     }
 
@@ -184,7 +194,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[]);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[], &[]);
         assert!(
             out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::Notify)
@@ -208,7 +218,7 @@ mod tests {
             ..SignalSet::default()
         };
         let id = id(IdentityConfidence::High);
-        let out = Engine.evaluate(&id, &s, &gates(), None, &[]);
+        let out = Engine.evaluate(&id, &s, &gates(), None, &[], &[]);
 
         let strong_rec = out
             .recommendations
@@ -256,7 +266,7 @@ mod tests {
             idle_state: Some(crate::domain::signal::IdleCause::InputWait),
             ..SignalSet::default()
         };
-        let out = Engine.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[]);
+        let out = Engine.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[], &[]);
         let any_proposal = out.effects.iter().any(|e| {
             matches!(
                 e,
@@ -274,7 +284,7 @@ mod tests {
         // Negative baseline: a healthy pane (Severity::Good profile
         // rec only) has no strong rec and therefore no proposal.
         let s = SignalSet::default();
-        let out = Engine.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[]);
+        let out = Engine.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[], &[]);
         let any_proposal = out.effects.iter().any(|e| {
             matches!(
                 e,
@@ -294,7 +304,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[]);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[], &[]);
         assert!(
             out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::ArchiveLocal)
@@ -308,7 +318,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[]);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[], &[]);
         assert!(
             !out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::ArchiveLocal)
@@ -324,7 +334,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[]);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[], &[]);
         assert!(
             !out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::SensitiveNotImplemented)
@@ -340,7 +350,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[]);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[], &[]);
         assert!(
             out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::Notify),
@@ -356,7 +366,7 @@ mod tests {
             ..SignalSet::default()
         };
         let eng = Engine;
-        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[]);
+        let out = eng.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[], &[]);
         assert!(
             !out.effects
                 .contains(&crate::domain::recommendation::RequestedEffect::Notify),

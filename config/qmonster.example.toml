@@ -5,6 +5,9 @@
 # operator path is `~/.qmonster/config/qmonster.toml`; `scripts/run-qmonster.sh`
 # creates it from this template when missing, and the in-TUI settings overlay
 # writes threshold edits back there unless `--config PATH` points elsewhere.
+# Phase 6 Team Mode: if a sibling `qmonster.local.toml` exists next to the
+# loaded `qmonster.toml`, Qmonster recursively merges it after this file.
+# Keep shared/team defaults here; put machine-local overrides in the local file.
 #
 # Parsed today by `src/app/config.rs`:
 # - [tmux]    source, poll_interval_ms, capture_lines
@@ -15,7 +18,7 @@
 # - [storage] root
 # - [idle]    stillness_polls
 # - [security] posture_advisories
-# - [cost]    warning_usd, critical_usd, [.claude|.codex|.gemini]
+# - [cost]    budget_usd, warning_usd, critical_usd, [.claude|.codex|.gemini]
 # - [context] warning_pct, critical_pct, [.claude|.codex|.gemini]
 # - [quota]   warning_pct, critical_pct, [.claude_5h|.claude_weekly|.codex_5h|.codex_weekly|.gemini]
 # - [cache]   hot_ratio_threshold, cold_ratio_threshold, hot_low_ctx_threshold,
@@ -55,6 +58,8 @@ posture_advisories = false
 
 # v1.15.16 — per-provider USD thresholds for the cost_pressure_warning /
 # cost_pressure_critical advisory rules (see src/policy/rules/advisories.rs).
+# Cost budget tracking also records positive USD deltas in SQLite and emits
+# one-shot alerts at 80% and 100% of `budget_usd`.
 # `cost_usd` is currently populated only on Codex panes (Claude/Gemini
 # leave it None today); when a future provider populates cost_usd, the
 # advisory rules consume the same thresholds from this table.
@@ -83,6 +88,7 @@ posture_advisories = false
 #     end-session). Source label is `Estimated` because the threshold
 #     is a Qmonster pick, not a provider-documented limit.
 [cost]
+budget_usd = 200.0
 warning_usd = 5.0
 critical_usd = 20.0
 

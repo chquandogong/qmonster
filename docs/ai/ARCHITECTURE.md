@@ -515,11 +515,13 @@ bell. Severity-aware rate limiting so log storms do not spam.
 
 Current runtime config loading is explicit via `--config PATH`, or via
 the standard default path `~/.qmonster/config/qmonster.toml` when that
-file exists. If neither exists, in-memory defaults are used while the
-settings overlay still writes to the standard path. Safer-only runtime
-overrides may be passed with `--set KEY=VALUE`. Storage-root resolution has its own implemented
-precedence: `QMONSTER_ROOT > --root > config.storage.root > default
-(~/.qmonster/)`.
+file exists. If a sibling `qmonster.local.toml` exists next to the
+loaded file, Phase 6 Team Mode recursively merges that local override
+after the shared `qmonster.toml`. If neither exists, in-memory defaults
+are used while the settings overlay still writes to the standard path.
+Safer-only runtime overrides may be passed with `--set KEY=VALUE`.
+Storage-root resolution has its own implemented precedence:
+`QMONSTER_ROOT > --root > config.storage.root > default (~/.qmonster/)`.
 
 Asymmetry for these four flags — env/CLI may only move them TOWARD
 safer behavior; any attempt to move them toward more permissive is
@@ -545,6 +547,9 @@ config + safer-only env/CLI overrides.
 
 - `qmonster.db` = `<qmonster-root>/qmonster.db` (Phase 2+; audit
   metadata - indices + summaries). **Never contains raw tail bytes.**
+  Phase 6 cost tracking stores positive USD deltas in
+  `cost_usage_events` and one-shot 80% / 100% budget claims in
+  `cost_budget_alerts`; both are metadata-only.
 - `archive_dir = <qmonster-root>/archive/` (Phase 2+; raw tails with
   preview/full split).
 - `snapshot_dir = <qmonster-root>/snapshots/` (Phase 2+; runtime

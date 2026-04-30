@@ -166,6 +166,7 @@ pub struct PolicyGateInputs<'a> {
     pub security: &'a crate::app::config::SecurityConfig,
     pub cache: &'a crate::app::config::CacheConfig,
     pub reset: &'a crate::app::config::ResetConfig,
+    pub profile_switch: &'a crate::app::config::ProfileSwitchConfig,
     pub provider: crate::domain::identity::Provider,
     pub confidence: IdentityConfidence,
 }
@@ -180,6 +181,7 @@ impl PolicyGates {
             security,
             cache,
             reset,
+            profile_switch,
             provider,
             confidence,
         } = inputs;
@@ -214,9 +216,9 @@ impl PolicyGates {
             cross_window_findings: security.cross_window_findings,
             identity_drift_findings: security.identity_drift_findings,
             cross_pane_file_findings: security.cross_pane_file_findings,
-            profile_switch_enabled: false,
-            profile_switch_window: 10,
-            profile_switch_error_rate: 0.5,
+            profile_switch_enabled: profile_switch.enabled,
+            profile_switch_window: profile_switch.window_polls,
+            profile_switch_error_rate: profile_switch.error_rate_threshold,
         }
     }
 }
@@ -369,6 +371,7 @@ mod tests {
             drift_min_samples: 6,
         };
         let reset = crate::app::config::ResetConfig::default();
+        let profile_switch = crate::app::config::ProfileSwitchConfig::default();
         let gates = PolicyGates::from_inputs(PolicyGateInputs {
             token: &cfg,
             cost: &cost,
@@ -377,6 +380,7 @@ mod tests {
             security: &security,
             cache: &cache,
             reset: &reset,
+            profile_switch: &profile_switch,
             provider: Provider::Codex,
             confidence: IdentityConfidence::Medium,
         });
@@ -426,6 +430,7 @@ mod tests {
             snapshot_pressure_threshold: 0.40,
             snapshot_eta_secs: 10 * 60,
         };
+        let profile_switch = crate::app::config::ProfileSwitchConfig::default();
         let gates = PolicyGates::from_inputs(PolicyGateInputs {
             token: &cfg,
             cost: &cost,
@@ -434,6 +439,7 @@ mod tests {
             security: &security,
             cache: &cache,
             reset: &reset,
+            profile_switch: &profile_switch,
             provider: Provider::Claude,
             confidence: IdentityConfidence::High,
         });
@@ -459,6 +465,7 @@ mod tests {
         let security = SecurityConfig::default();
         let cache = CacheConfig::default();
         let reset = crate::app::config::ResetConfig::default();
+        let profile_switch = crate::app::config::ProfileSwitchConfig::default();
         let inputs_for = |provider: Provider| PolicyGateInputs {
             token: &cfg,
             cost: &cost,
@@ -467,6 +474,7 @@ mod tests {
             security: &security,
             cache: &cache,
             reset: &reset,
+            profile_switch: &profile_switch,
             provider,
             confidence: IdentityConfidence::High,
         };
@@ -521,6 +529,7 @@ mod tests {
         let security = SecurityConfig::default();
         let cache = CacheConfig::default();
         let reset = crate::app::config::ResetConfig::default();
+        let profile_switch = crate::app::config::ProfileSwitchConfig::default();
         let inputs_for = |provider: Provider| PolicyGateInputs {
             token: &cfg,
             cost: &cost,
@@ -529,6 +538,7 @@ mod tests {
             security: &security,
             cache: &cache,
             reset: &reset,
+            profile_switch: &profile_switch,
             provider,
             confidence: IdentityConfidence::High,
         };

@@ -33,3 +33,8 @@ CLAUDE.local.md
 # Operator-owned pricing table (see config/pricing.example.toml)
 config/pricing.toml
 config/claude-settings.json
+
+# Phase 6 Team Mode: shared qmonster.toml may be tracked; local
+# machine overrides stay untracked.
+qmonster.local.toml
+config/qmonster.local.toml

@@ -379,9 +379,7 @@ fn looks_like_path(s: &str) -> bool {
     // A path must have a directory separator OR a file extension.
     let has_sep = s.contains('/');
     let has_ext = s.rsplit_once('.').is_some_and(|(_, ext)| {
-        !ext.is_empty()
-            && ext.len() <= 8
-            && ext.bytes().all(|b| b.is_ascii_alphanumeric())
+        !ext.is_empty() && ext.len() <= 8 && ext.bytes().all(|b| b.is_ascii_alphanumeric())
     });
     has_sep || has_ext
 }

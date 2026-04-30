@@ -124,6 +124,10 @@ where
             ctx.identity_history.remove(&pane.pane_id);
             let pane_id_owned = pane.pane_id.clone();
             ctx.reported_drifts.retain(|(p, _)| p != &pane_id_owned);
+            // Phase F F-9: a re-spawned pane is a fresh error history.
+            // Carrying the old error rate forward would let a stale
+            // burst trip the profile-switch rule on the new lifetime.
+            ctx.recent_error_observations.remove(&pane.pane_id);
         }
 
         if pane.dead {
@@ -197,6 +201,7 @@ where
                 security: &ctx.config.security,
                 cache: &ctx.config.cache,
                 reset: &ctx.config.reset,
+                profile_switch: &ctx.config.profile_switch,
                 provider: resolved.identity.provider,
                 confidence: resolved.confidence,
             },
@@ -222,12 +227,33 @@ where
             .and_then(|sink| sink.recent_samples(&pane.pane_id, 20).ok())
             .unwrap_or_default();
 
+        // Phase F F-9 (dynamic profile switching): push the current
+        // `error_hint` to the per-pane sliding window BEFORE engine
+        // evaluation so the rule sees the freshest sample at index
+        // 0. The window length tracks `gates.profile_switch_window`
+        // so an operator who reduces the window mid-session sees
+        // the buffer settle rather than wait for old entries to
+        // age out.
+        let recent_errors: Vec<bool> = {
+            let cap = gates.profile_switch_window.max(1);
+            let entry = ctx
+                .recent_error_observations
+                .entry(pane.pane_id.clone())
+                .or_default();
+            entry.push_front(signals.error_hint);
+            while entry.len() > cap {
+                entry.pop_back();
+            }
+            entry.iter().copied().collect()
+        };
+
         let mut out: EvalOutput = ctx.policy.evaluate(
             &resolved,
             &signals,
             &gates,
             last_idle,
             &recent_token_samples,
+            &recent_errors,
         );
 
         // F-7b: write current TokenSample AFTER evaluate so the historical
@@ -246,11 +272,7 @@ where
                 || signals.cost_usd.is_some()
                 || signals.cached_input_tokens.is_some()
             {
-                use std::time::{SystemTime, UNIX_EPOCH};
-                let ts_unix_ms = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_millis() as i64)
-                    .unwrap_or(0);
+                let ts_unix_ms = current_unix_ms();
                 let sample = crate::store::TokenSample {
                     ts_unix_ms,
                     pane_id: pane.pane_id.clone(),
@@ -263,6 +285,37 @@ where
                 if let Err(e) = token_sink.record_sample(&sample) {
                     eprintln!("F-3: token_usage record_sample failed: {e}");
                 }
+            }
+        }
+
+        if let Some(cost_sink) = ctx.cost_usage_sink.as_ref()
+            && let Some(cost) = signals.cost_usd.as_ref()
+        {
+            let obs = crate::store::CostObservation {
+                ts_unix_ms: current_unix_ms(),
+                pane_id: pane.pane_id.clone(),
+                provider: resolved.identity.provider,
+                cumulative_cost_usd: cost.value,
+            };
+            if let Err(e) = cost_sink.record_observation(&obs) {
+                eprintln!("cost: record_observation failed: {e}");
+            }
+            match cost_sink.claim_budget_alerts(&ctx.config.cost, current_unix_ms()) {
+                Ok(alerts) => {
+                    let mut should_notify = false;
+                    for alert in alerts {
+                        let rec =
+                            crate::policy::rules::cost_budget::recommendation_for_budget_alert(
+                                &alert,
+                            );
+                        should_notify |= rec.severity >= Severity::Warning;
+                        out.recommendations.push(rec);
+                    }
+                    if should_notify && !out.effects.contains(&RequestedEffect::Notify) {
+                        out.effects.push(RequestedEffect::Notify);
+                    }
+                }
+                Err(e) => eprintln!("cost: claim_budget_alerts failed: {e}"),
             }
         }
 
@@ -407,6 +460,14 @@ fn apply_codex_rate_limits(
         }
         signals.quota_weekly_resets_at = Some(metric_ts(w.resets_at_unix_seconds));
     }
+}
+
+fn current_unix_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 fn merge_runtime_refresh_tail(live_tail: &str, captured_tail: &str) -> String {

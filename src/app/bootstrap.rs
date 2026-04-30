@@ -6,9 +6,9 @@ use crate::notify::rate_limit::RateLimiter;
 use crate::policy::claude_settings::ClaudeSettings;
 use crate::policy::engine::Engine;
 use crate::policy::pricing::PricingTable;
-use crate::store::SqliteTokenUsageSink;
 use crate::store::archive_fs::ArchiveWriter;
 use crate::store::sink::EventSink;
+use crate::store::{SqliteCostUsageSink, SqliteTokenUsageSink};
 use crate::tmux::polling::PaneSource;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -70,11 +70,26 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// per session even if the comparison stays true for multiple
     /// polls. Evicted alongside `identity_history` on lifecycle reset.
     pub reported_drifts: std::collections::HashSet<(String, String)>,
+    /// Phase F F-9 (dynamic profile switching): per-pane sliding
+    /// window of `error_hint` observations, most-recent-first. The
+    /// event loop pushes `signals.error_hint` to the front each tick
+    /// and trims to `gates.profile_switch_window` entries; the
+    /// `profile_switch` rule reads the head slice to compute the
+    /// observed error rate. Evicted on
+    /// `PaneLifecycleEvent::{BecameDead, Reappeared}` so a re-spawned
+    /// pane starts fresh — a stale "high error rate" carried across
+    /// a CLI restart would be a false positive.
+    pub recent_error_observations:
+        std::collections::HashMap<String, std::collections::VecDeque<bool>>,
     /// Phase F F-3 (v1.24.0): token-usage time-series sink for the
     /// per-pane sparkline. `None` when the SQLite open failed at
     /// startup (logged via the in-process eprintln); the event loop
     /// skips recording in that case rather than crashing.
     pub token_usage_sink: Option<SqliteTokenUsageSink>,
+    /// SQLite USD cost ledger. Records positive deltas from
+    /// provider-observed cumulative `cost_usd` and persists one-shot
+    /// budget-alert claims.
+    pub cost_usage_sink: Option<SqliteCostUsageSink>,
     /// Phase F F-6 (v1.32.0): live `codex app-server` JSON-RPC
     /// client. Spawned at TUI startup when the operator opted in
     /// via `[provider_setup] codex_app_server = true`. None when
@@ -119,7 +134,9 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             pressure_metric_cache: std::collections::HashMap::new(),
             identity_history: std::collections::HashMap::new(),
             reported_drifts: std::collections::HashSet::new(),
+            recent_error_observations: std::collections::HashMap::new(),
             token_usage_sink: None,
+            cost_usage_sink: None,
             codex_app_server: None,
             codex_rate_limits: None,
             known_pane_ids: Vec::new(),
@@ -148,6 +165,11 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
 
     pub fn with_token_usage_sink(mut self, sink: SqliteTokenUsageSink) -> Self {
         self.token_usage_sink = Some(sink);
+        self
+    }
+
+    pub fn with_cost_usage_sink(mut self, sink: SqliteCostUsageSink) -> Self {
+        self.cost_usage_sink = Some(sink);
         self
     }
 

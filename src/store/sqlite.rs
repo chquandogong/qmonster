@@ -52,6 +52,30 @@ CREATE INDEX IF NOT EXISTS idx_token_usage_pane_ts
     ON token_usage_samples(pane_id, ts_unix_ms DESC);
 ";
 
+pub const COST_USAGE_SCHEMA: &str = r"
+CREATE TABLE IF NOT EXISTS cost_usage_events (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_unix_ms            INTEGER NOT NULL,
+    pane_id               TEXT    NOT NULL,
+    provider              TEXT    NOT NULL,
+    cost_usd_delta        REAL    NOT NULL,
+    cumulative_cost_usd   REAL    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cost_usage_ts
+    ON cost_usage_events(ts_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_cost_usage_pane_ts
+    ON cost_usage_events(pane_id, ts_unix_ms DESC);
+
+CREATE TABLE IF NOT EXISTS cost_budget_alerts (
+    threshold_bps         INTEGER NOT NULL,
+    budget_cents          INTEGER NOT NULL,
+    fired_at_unix_ms      INTEGER NOT NULL,
+    spent_usd             REAL    NOT NULL,
+    budget_usd            REAL    NOT NULL,
+    PRIMARY KEY (threshold_bps, budget_cents)
+);
+";
+
 pub struct AuditDb {
     conn: Mutex<Connection>,
 }
@@ -65,6 +89,8 @@ impl AuditDb {
         conn.execute_batch(AUDIT_SCHEMA)
             .map_err(|e| SqliteError::Query(e.to_string()))?;
         conn.execute_batch(TOKEN_USAGE_SCHEMA)
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        conn.execute_batch(COST_USAGE_SCHEMA)
             .map_err(|e| SqliteError::Query(e.to_string()))?;
         // F-4 (v1.25.0): existing DBs from v1.24.0 lack the
         // cached_input_tokens column. ALTER returns "duplicate column"

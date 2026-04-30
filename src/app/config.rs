@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use thiserror::Error;
 
@@ -36,6 +36,8 @@ pub struct QmonsterConfig {
     pub reset: ResetConfig,
     #[serde(default)]
     pub provider_setup: ProviderSetupConfig,
+    #[serde(default)]
+    pub profile_switch: ProfileSwitchConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -313,6 +315,43 @@ impl Default for ProviderSetupConfig {
     }
 }
 
+/// Phase F F-9 (dynamic profile switching): operator-tunable knobs
+/// for the `profile_switch` policy rule. The rule monitors per-pane
+/// `error_hint` observations over a sliding window and recommends
+/// switching the active provider profile when the error rate exceeds
+/// `error_rate_threshold`. Defaults are conservative: the rule is
+/// off by default, the window is 10 polls, and the trigger is 50% —
+/// so a healthy run that occasionally hits a transient error never
+/// trips the recommendation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProfileSwitchConfig {
+    /// Master switch. The rule only fires when this is `true`. Stays
+    /// `false` because the rule is advisory; an operator who has not
+    /// opted into recommend-mode profile switches should not see the
+    /// nudge.
+    pub enabled: bool,
+    /// Length of the sliding window over which to compute the error
+    /// rate. The rule waits until the window is full so a single
+    /// transient error never trips the recommendation.
+    pub window_polls: usize,
+    /// Error-rate threshold (0..1). The rule fires when the observed
+    /// rate over the most recent `window_polls` is `>=` this value.
+    /// Defaults to `0.5` so 5+ of the last 10 polls flagged
+    /// `error_hint`.
+    pub error_rate_threshold: f32,
+}
+
+impl Default for ProfileSwitchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            window_polls: 10,
+            error_rate_threshold: 0.5,
+        }
+    }
+}
+
 /// Operator-controlled security posture surfacing. Runtime facts remain
 /// visible as badges regardless of this setting; enabling this flag
 /// promotes permissive modes into passive Concern recommendations.
@@ -395,6 +434,10 @@ impl Default for IdleConfig {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CostConfig {
+    /// Project/team USD budget for the SQLite cost ledger. Alerts fire
+    /// once when tracked spend crosses 80% and 100% of this value.
+    /// Set to 0.0 to disable budget alerts.
+    pub budget_usd: f64,
     pub warning_usd: f64,
     pub critical_usd: f64,
     /// Optional per-provider override for Claude panes. When `Some`,
@@ -418,6 +461,7 @@ pub struct CostProviderConfig {
 impl Default for CostConfig {
     fn default() -> Self {
         Self {
+            budget_usd: 200.0,
             warning_usd: 5.0,
             critical_usd: 20.0,
             claude: Some(CostProviderConfig {
@@ -434,6 +478,10 @@ impl Default for CostConfig {
 }
 
 impl CostConfig {
+    pub fn budget_enabled(&self) -> bool {
+        self.budget_usd.is_finite() && self.budget_usd > 0.0
+    }
+
     pub fn warning_for(&self, provider: crate::domain::identity::Provider) -> f64 {
         self.override_for(provider)
             .map(|o| o.warning_usd)
@@ -652,6 +700,7 @@ impl QmonsterConfig {
             security: SecurityConfig::default(),
             cache: CacheConfig::default(),
             reset: ResetConfig::default(),
+            profile_switch: ProfileSwitchConfig::default(),
         }
     }
 }
@@ -662,12 +711,60 @@ pub enum ConfigError {
     Io(#[from] std::io::Error),
     #[error("parse config: {0}")]
     Parse(#[from] toml::de::Error),
+    #[error("serialize default config: {0}")]
+    Serialize(#[from] toml::ser::Error),
 }
 
 pub fn load_from_path(path: &Path) -> Result<QmonsterConfig, ConfigError> {
-    let raw = std::fs::read_to_string(path)?;
-    let cfg: QmonsterConfig = toml::from_str(&raw)?;
-    Ok(cfg)
+    load_layered_from_paths(path, None)
+}
+
+pub fn load_with_local_override(path: &Path) -> Result<QmonsterConfig, ConfigError> {
+    let local_path = local_override_path_for(path);
+    let local = if local_path.exists() {
+        Some(local_path.as_path())
+    } else {
+        None
+    };
+    load_layered_from_paths(path, local)
+}
+
+pub fn local_override_path_for(path: &Path) -> PathBuf {
+    path.with_file_name("qmonster.local.toml")
+}
+
+pub fn load_layered_from_paths(
+    base_path: &Path,
+    local_override_path: Option<&Path>,
+) -> Result<QmonsterConfig, ConfigError> {
+    let mut merged = toml::Value::try_from(QmonsterConfig::defaults())?;
+    let base_raw = std::fs::read_to_string(base_path)?;
+    let base: toml::Value = toml::from_str(&base_raw)?;
+    merge_toml_values(&mut merged, base);
+    if let Some(path) = local_override_path {
+        let local_raw = std::fs::read_to_string(path)?;
+        let local: toml::Value = toml::from_str(&local_raw)?;
+        merge_toml_values(&mut merged, local);
+    }
+    Ok(merged.try_into()?)
+}
+
+fn merge_toml_values(base: &mut toml::Value, overlay: toml::Value) {
+    match (base, overlay) {
+        (toml::Value::Table(base_table), toml::Value::Table(overlay_table)) => {
+            for (key, value) in overlay_table {
+                match base_table.get_mut(&key) {
+                    Some(existing) => merge_toml_values(existing, value),
+                    None => {
+                        base_table.insert(key, value);
+                    }
+                }
+            }
+        }
+        (base_value, overlay_value) => {
+            *base_value = overlay_value;
+        }
+    }
 }
 
 /// Result of attempting to apply an env/CLI override to a safety flag.
@@ -942,6 +1039,92 @@ codex_app_server = true
             "missing claude_sidefile must keep the default-true value"
         );
         assert!(cfg.provider_setup.codex_app_server);
+    }
+
+    #[test]
+    fn cost_config_defaults_to_200_usd_budget() {
+        let cfg: QmonsterConfig = toml::from_str("").unwrap();
+        assert!((cfg.cost.budget_usd - 200.0).abs() < f64::EPSILON);
+        assert!(cfg.cost.budget_enabled());
+    }
+
+    #[test]
+    fn cost_config_zero_budget_disables_budget_alerts() {
+        let cfg: QmonsterConfig = toml::from_str(
+            r#"
+[cost]
+budget_usd = 0.0
+"#,
+        )
+        .unwrap();
+        assert!(!cfg.cost.budget_enabled());
+    }
+
+    #[test]
+    fn layered_config_merges_local_override_after_base() {
+        let td = tempfile::tempdir().unwrap();
+        let base = td.path().join("qmonster.toml");
+        let local = td.path().join("qmonster.local.toml");
+        std::fs::write(
+            &base,
+            r#"
+[tmux]
+capture_lines = 24
+
+[cost]
+budget_usd = 200.0
+warning_usd = 5.0
+critical_usd = 20.0
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &local,
+            r#"
+[tmux]
+capture_lines = 72
+
+[cost.claude]
+warning_usd = 12.5
+"#,
+        )
+        .unwrap();
+
+        let cfg = load_layered_from_paths(&base, Some(&local)).unwrap();
+
+        assert_eq!(cfg.tmux.capture_lines, 72);
+        assert!((cfg.cost.budget_usd - 200.0).abs() < f64::EPSILON);
+        let claude = cfg.cost.claude.expect("claude override survives merge");
+        assert!((claude.warning_usd - 12.5).abs() < f64::EPSILON);
+        assert!((claude.critical_usd - 30.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn load_with_local_override_uses_sibling_qmonster_local_toml_when_present() {
+        let td = tempfile::tempdir().unwrap();
+        let base = td.path().join("qmonster.toml");
+        let local = td.path().join("qmonster.local.toml");
+        std::fs::write(
+            &base,
+            r#"
+[actions]
+mode = "recommend_only"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &local,
+            r#"
+[actions]
+mode = "observe_only"
+"#,
+        )
+        .unwrap();
+
+        let cfg = load_with_local_override(&base).unwrap();
+
+        assert_eq!(cfg.actions.mode, ActionsMode::ObserveOnly);
+        assert_eq!(local_override_path_for(&base), local);
     }
 
     #[test]

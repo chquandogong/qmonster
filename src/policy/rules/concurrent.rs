@@ -141,10 +141,7 @@ fn concurrent_key(view: &PaneView<'_>) -> Option<ConcurrentKey> {
 /// Each overlapping file produces at most one finding per call, with
 /// the lexicographically smallest pane_id as the anchor and the
 /// remaining pane_ids alphabetized in `other_pane_ids`.
-pub fn eval_concurrent_files(
-    panes: &[PaneView<'_>],
-    gates: &PolicyGates,
-) -> Vec<CrossPaneFinding> {
+pub fn eval_concurrent_files(panes: &[PaneView<'_>], gates: &PolicyGates) -> Vec<CrossPaneFinding> {
     use crate::domain::identity::Role;
     if !gates.cross_pane_file_findings {
         return Vec::new();
@@ -178,7 +175,12 @@ pub fn eval_concurrent_files(
     for (file, mut group) in by_file {
         // Dedup pane_ids in case the same file appeared multiple times
         // in one pane's active_files history.
-        group.sort_by(|a, b| a.identity.identity.pane_id.cmp(&b.identity.identity.pane_id));
+        group.sort_by(|a, b| {
+            a.identity
+                .identity
+                .pane_id
+                .cmp(&b.identity.identity.pane_id)
+        });
         group.dedup_by(|a, b| a.identity.identity.pane_id == b.identity.identity.pane_id);
         if group.len() < 2 {
             continue;
@@ -873,9 +875,7 @@ mod tests {
         assert!(findings.iter().all(|f| f.anchor_pane_id == "%1"));
         // src/baz.rs only appears on %3, so it must NOT produce a finding.
         assert!(
-            findings
-                .iter()
-                .all(|f| !f.reason.contains("baz.rs")),
+            findings.iter().all(|f| !f.reason.contains("baz.rs")),
             "non-overlapping files must not produce findings"
         );
     }

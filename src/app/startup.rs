@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Context as _;
 
 use crate::app::bootstrap::Context;
-use crate::app::config::{QmonsterConfig, load_from_path};
+use crate::app::config::{QmonsterConfig, load_with_local_override, local_override_path_for};
 use crate::app::path_resolution::{RootSource, default_config_path, pick_root};
 use crate::app::safety_audit::apply_override_with_audit;
 use crate::app::system_notice::{SystemNotice, record_startup_snapshot, route_version_drift};
@@ -19,7 +19,7 @@ use crate::policy::claude_settings::{ClaudeSettings, ClaudeSettingsError};
 use crate::policy::pricing::PricingTable;
 use crate::store::{
     ArchiveWriter, EventSink, InMemorySink, QmonsterPaths, SnapshotWriter, SqliteAuditSink,
-    SqliteTokenUsageSink, sweep,
+    SqliteCostUsageSink, SqliteTokenUsageSink, sweep,
 };
 use crate::tmux::TmuxSource;
 
@@ -52,12 +52,18 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
             }
         });
     let config = match loaded_config_path.as_ref() {
-        Some(path) => load_from_path(path).with_context(|| format!("loading {path:?}"))?,
+        Some(path) => {
+            load_with_local_override(path).with_context(|| format!("loading {path:?}"))?
+        }
         None => QmonsterConfig::defaults(),
     };
-    let writable_config_path = options
-        .config_path
-        .map(|path| path.to_path_buf())
+    let writable_config_path = loaded_config_path
+        .as_ref()
+        .and_then(|path| {
+            let local = local_override_path_for(path);
+            if local.exists() { Some(local) } else { None }
+        })
+        .or_else(|| options.config_path.map(|path| path.to_path_buf()))
         .unwrap_or_else(|| default_config_path.clone());
     let pairs = parse_set_pairs(options.set)?;
 
@@ -89,6 +95,18 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
             }
         };
 
+    let cost_usage_sink: Option<SqliteCostUsageSink> =
+        match SqliteCostUsageSink::open(&paths.sqlite_path()) {
+            Ok(sink) => Some(sink),
+            Err(e) => {
+                eprintln!(
+                    "qmonster: cost-usage sink open failed ({e}); USD budget \
+                     tracking will not be persisted this session"
+                );
+                None
+            }
+        };
+
     let source_build = build_tmux_source(&config)?;
     let notifier = DesktopNotifier;
     let archive = ArchiveWriter::new(paths.clone(), config.logging.big_output_chars);
@@ -102,6 +120,9 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
         .with_config_path(writable_config_path);
     if let Some(sink) = token_usage_sink {
         ctx = ctx.with_token_usage_sink(sink);
+    }
+    if let Some(sink) = cost_usage_sink {
+        ctx = ctx.with_cost_usage_sink(sink);
     }
 
     if !pairs.is_empty() {

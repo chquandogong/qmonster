@@ -603,6 +603,66 @@ output_per_1m = 10.0
 }
 
 #[test]
+fn cost_budget_warning_fires_once_from_sqlite_cost_ledger() {
+    use qmonster::domain::recommendation::RequestedEffect;
+    use qmonster::policy::pricing::PricingTable;
+    use qmonster::store::SqliteCostUsageSink;
+    use std::io::Write;
+
+    let mut f = tempfile::NamedTempFile::new().unwrap();
+    write!(
+        f,
+        r#"
+[[entries]]
+provider = "codex"
+model = "gpt-5.4"
+input_per_1m = 1.0
+output_per_1m = 10.0
+"#
+    )
+    .unwrap();
+    let pricing = PricingTable::load_from_toml(f.path()).unwrap();
+
+    let tail = "Context 95% left · ~/Qmonster · gpt-5.4 · Qmonster · main · Context 5% used · 5h 10% · weekly 10% · 0.122.0 · 258K window · 25M used · 25M in · 0 out · <redacted> · gp";
+    let source = FixturePaneSource {
+        panes: vec![pane("%1", "codex:1:main", "codex", tail, false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let td = tempfile::tempdir().unwrap();
+    let cost_sink = SqliteCostUsageSink::open(&td.path().join("q.db")).unwrap();
+    let mut config = QmonsterConfig::defaults();
+    config.cost.budget_usd = 30.0;
+    config.cost.warning_usd = 900.0;
+    config.cost.critical_usd = 1000.0;
+    let mut ctx = Context::new(config, source, notifier, sink)
+        .with_pricing(pricing)
+        .with_cost_usage_sink(cost_sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("first poll ok");
+    let rec = reports[0]
+        .recommendations
+        .iter()
+        .find(|r| r.action == "cost-budget: 80% reached")
+        .expect("$25 tracked spend should cross 80% of the $30 test budget");
+    assert_eq!(rec.severity, Severity::Warning);
+    assert_eq!(rec.source_kind, SourceKind::Estimated);
+    assert!(
+        reports[0].effects.contains(&RequestedEffect::Notify),
+        "budget Warning must request Notify"
+    );
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("second poll ok");
+    assert!(
+        !reports[0]
+            .recommendations
+            .iter()
+            .any(|r| r.action == "cost-budget: 80% reached"),
+        "the SQLite alert claim table must keep the 80% budget alert one-shot"
+    );
+}
+
+#[test]
 fn strong_context_pressure_rec_emits_prompt_send_proposal_end_to_end() {
     // Phase 5 P5-2 (v1.9.2) integration: when context_pressure_warning
     // fires (is_strong + suggested_command = `/compact`), the engine
@@ -2346,4 +2406,90 @@ fn event_loop_records_token_usage_sample_when_codex_tail_has_in_out() {
         "at least one of input_tokens / output_tokens should be Some; got {:?}",
         got[0]
     );
+}
+
+#[test]
+fn profile_switch_recommendation_fires_after_window_full_of_errors() {
+    // Phase F F-9 (dynamic profile switching): once the operator opts
+    // into `[profile_switch] enabled = true`, repeated polls of a
+    // Claude main pane with an error_hint marker (here a Rust panic
+    // line) must fill the per-pane error window and trigger the
+    // profile-switch recommendation.
+    use qmonster::app::config::ProfileSwitchConfig;
+
+    // Tail with a `panic:` line at start — caught by detect_error_hint
+    // — plus the busy_tail volume so the pane is not idle/waiting.
+    let mut error_tail = String::from("panic: index out of bounds at lib.rs:42\n");
+    error_tail.push_str(&busy_tail());
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%1", "claude:1:main", "node", &error_tail, false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut config = QmonsterConfig::defaults();
+    // Small window for fast test — fire once 3-of-3 polls flag errors.
+    config.profile_switch = ProfileSwitchConfig {
+        enabled: true,
+        window_polls: 3,
+        error_rate_threshold: 0.5,
+    };
+    let mut ctx = Context::new(config, source, notifier, sink);
+
+    // Polls 1 & 2: window not yet full; rule must stay silent.
+    for _ in 0..2 {
+        let reports = run_once(&mut ctx, Instant::now()).expect("run_once ok");
+        let pane_report = reports.iter().find(|r| r.pane_id == "%1").unwrap();
+        assert!(
+            !pane_report
+                .recommendations
+                .iter()
+                .any(|r| r.action.starts_with("profile-switch:")),
+            "profile-switch rec must not fire before window is full"
+        );
+    }
+
+    // Poll 3: window is now full of `error_hint = true`; rule fires.
+    let reports = run_once(&mut ctx, Instant::now()).expect("run_once ok");
+    let pane_report = reports.iter().find(|r| r.pane_id == "%1").unwrap();
+    let rec = pane_report
+        .recommendations
+        .iter()
+        .find(|r| r.action.starts_with("profile-switch:"))
+        .expect("profile-switch rec must fire on poll 3 (full error window)");
+    assert_eq!(rec.severity, Severity::Concern);
+    assert_eq!(rec.source_kind, SourceKind::ProjectCanonical);
+    assert!(
+        rec.reason.contains("claude-default") && rec.reason.contains("claude-script-low-token"),
+        "reason must name both profiles: {:?}",
+        rec.reason
+    );
+}
+
+#[test]
+fn profile_switch_recommendation_stays_silent_when_disabled() {
+    // Default config — `[profile_switch] enabled = false` — the rule
+    // must produce no recommendation regardless of how many error
+    // polls accumulate.
+    let mut error_tail = String::from("panic: x\n");
+    error_tail.push_str(&busy_tail());
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%1", "claude:1:main", "node", &error_tail, false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    for _ in 0..15 {
+        let reports = run_once(&mut ctx, Instant::now()).expect("run_once ok");
+        let pane_report = reports.iter().find(|r| r.pane_id == "%1").unwrap();
+        assert!(
+            !pane_report
+                .recommendations
+                .iter()
+                .any(|r| r.action.starts_with("profile-switch:")),
+            "default config must not surface profile-switch recommendations"
+        );
+    }
 }
