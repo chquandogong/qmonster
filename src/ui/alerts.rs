@@ -345,6 +345,41 @@ pub fn pending_auto_hide_count(
     .count()
 }
 
+/// v1.39 Pending-action discoverability surface B (footer counter).
+/// Returns the number of currently-visible alerts whose
+/// `suggested_command` is `Some(_)` — i.e., the alerts that the
+/// operator can `y`-copy. Reuses `collect_items` so this matches
+/// exactly what `render_alerts` would render (same hide / sort
+/// pipeline). Caller passes the same `notices`/`reports`/`hidden_until`
+/// it would pass to `AlertView`.
+///
+/// Returns the highest severity among the matching alerts via the
+/// second tuple slot so the footer can color the chip when N > 0
+/// (None when the count is 0).
+pub fn copy_alert_count(
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> (usize, Option<Severity>) {
+    let mut count = 0usize;
+    let mut top: Option<Severity> = None;
+    for item in collect_items(
+        notices,
+        reports,
+        &HashSet::new(),
+        &HashMap::new(),
+        hidden_until,
+        now,
+    ) {
+        if item.suggested_command.is_some() {
+            count += 1;
+            top = Some(top.map_or(item.severity, |t| t.max(item.severity)));
+        }
+    }
+    (count, top)
+}
+
 fn block(title: &str, focused: bool) -> Block<'_> {
     Block::default()
         .borders(Borders::ALL)

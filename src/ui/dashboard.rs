@@ -175,13 +175,60 @@ pub fn render_dashboard(
         },
     );
 
+    // v1.39 Pending-action discoverability surface B: count panes
+    // with a pending prompt-send proposal AND alerts with a runnable
+    // suggested_command, and pass the counts (plus their highest
+    // severity) into the footer so the always-visible chip surfaces
+    // pending work peripherally.
+    let (proposal_count, proposal_top_severity) = pending_proposal_summary(view.reports);
+    let (copy_count, copy_top_severity) =
+        alerts::copy_alert_count(view.notices, view.reports, view.hidden_until, view.now);
     render_footer(
         rects.footer,
         frame.buffer_mut(),
         view.alerts_focused,
         view.panes_focused,
         view.split,
+        FooterCounters {
+            proposal_count,
+            proposal_top_severity,
+            copy_count,
+            copy_top_severity,
+        },
     );
+}
+
+/// v1.39 Pending-action discoverability surface B: walk the live
+/// reports for any pane that carries a pending `PromptSendProposed`
+/// effect via `first_prompt_send_proposal` (so the count matches the
+/// `★p` chip on each card title) and surface the highest-severity
+/// recommendation across those panes for the footer chip color.
+fn pending_proposal_summary(
+    reports: &[PaneReport],
+) -> (usize, Option<crate::domain::recommendation::Severity>) {
+    let mut count = 0usize;
+    let mut top: Option<crate::domain::recommendation::Severity> = None;
+    for r in reports {
+        if crate::app::prompt_send_actions::first_prompt_send_proposal(r).is_some() {
+            count += 1;
+            if let Some(s) = r.recommendations.iter().map(|rec| rec.severity).max() {
+                top = Some(top.map_or(s, |t| t.max(s)));
+            }
+        }
+    }
+    (count, top)
+}
+
+/// Footer chip counts threaded from `render_dashboard` into
+/// `render_footer`. Severities come from the highest-severity
+/// recommendation among the matching panes (★p) or alerts (★y), so
+/// the chip colors track the underlying urgency rather than always
+/// rendering in the dim default.
+struct FooterCounters {
+    proposal_count: usize,
+    proposal_top_severity: Option<crate::domain::recommendation::Severity>,
+    copy_count: usize,
+    copy_top_severity: Option<crate::domain::recommendation::Severity>,
 }
 
 pub fn render_target_picker(
@@ -672,6 +719,7 @@ fn render_footer(
     alerts_focused: bool,
     panes_focused: bool,
     split: DashboardSplit,
+    counters: FooterCounters,
 ) {
     let focus = if alerts_focused {
         "focus: alerts"
@@ -683,7 +731,7 @@ fn render_footer(
     let badge = version_badge_rect(area);
     let text_width = area.width.saturating_sub(badge.width).saturating_sub(1);
     let text_area = Rect::new(area.x, area.y, text_width, area.height);
-    Paragraph::new(footer_text(focus, split))
+    Paragraph::new(footer_lines(focus, split, &counters))
         .style(Style::default().fg(theme::TEXT_DIM))
         .wrap(Wrap { trim: false })
         .render(text_area, buf);
@@ -697,14 +745,78 @@ fn render_footer(
         .render(badge, buf);
 }
 
+/// v1.39 Pending-action discoverability surface B: build the footer
+/// as a styled `Line` so the always-visible `★p:N · ★y:M` counter
+/// chip can render in severity color when N>0 / dim on 0. The rest
+/// of the footer (focus + split + key cluster) reuses
+/// `footer_text` so the keybinding suite stays unit-tested.
+fn footer_lines(
+    focus: &str,
+    split: DashboardSplit,
+    counters: &FooterCounters,
+) -> Vec<Line<'static>> {
+    let head = format!(
+        "{focus} \u{00b7} split {}% \u{00b7} ",
+        split.alerts_percent()
+    );
+    let tail = format!(" \u{00b7} {}", footer_keys_text());
+    let p_chip = footer_chip_span(
+        "\u{2605}p",
+        counters.proposal_count,
+        counters.proposal_top_severity,
+    );
+    let y_chip = footer_chip_span("\u{2605}y", counters.copy_count, counters.copy_top_severity);
+    let spans = vec![
+        Span::raw(head),
+        p_chip,
+        Span::raw(" \u{00b7} "),
+        y_chip,
+        Span::raw(tail),
+    ];
+    vec![Line::from(spans)]
+}
+
+/// Build a single `★p:N` / `★y:M` chip styled by the highest
+/// severity among the matching panes/alerts. Renders dim when the
+/// count is 0 so an empty queue doesn't pull the operator's eye.
+fn footer_chip_span(
+    label: &str,
+    count: usize,
+    top_severity: Option<crate::domain::recommendation::Severity>,
+) -> Span<'static> {
+    let style = if count == 0 {
+        Style::default().fg(theme::TEXT_DIM)
+    } else {
+        let color = top_severity
+            .map(theme::severity_color)
+            .unwrap_or(theme::TEXT_PRIMARY);
+        Style::default().fg(color).add_modifier(Modifier::BOLD)
+    };
+    Span::styled(format!("{label}:{count}"), style)
+}
+
+/// Static key-cluster string. Reused by `footer_lines` (after the
+/// counter chip slot) and by `footer_text` (the legacy unit-tested
+/// shape that pins `p accept` / `d dismiss` placement).
+fn footer_keys_text() -> &'static str {
+    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} m metrics \u{00b7} a actions \u{00b7} ? help \u{00b7} q quit"
+}
+
 /// Pure footer-line builder. Extracted from `render_footer` in v1.10.2
 /// so the list of advertised keybindings can be unit-tested without
 /// spinning up a buffer. The `focus` argument is the prefix (e.g.
 /// `"focus: alerts"`) decided by the caller.
+///
+/// v1.39 update: includes the `★p:0 · ★y:0` placeholder slot so the
+/// keybinding placement test still pins the order with the counter
+/// chip in front of the key cluster (the live render uses
+/// `footer_lines` with real counts and severity-colored spans).
+#[cfg(test)]
 fn footer_text(focus: &str, split: DashboardSplit) -> String {
     format!(
-        "{focus} · split {}% · [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · y copy · c clear · p accept · d dismiss · S settings · P provider-setup · m metrics · ? help · q quit",
-        split.alerts_percent()
+        "{focus} \u{00b7} split {}% \u{00b7} \u{2605}p:0 \u{00b7} \u{2605}y:0 \u{00b7} {}",
+        split.alerts_percent(),
+        footer_keys_text(),
     )
 }
 
@@ -1382,6 +1494,191 @@ mod tests {
         assert!(
             p_provider_pos < help_pos,
             "overlay-opener keys must precede `? help` (generic tail)"
+        );
+    }
+
+    fn pending_actions_pane_report(
+        with_proposal: bool,
+        recommendations: Vec<crate::domain::recommendation::Recommendation>,
+    ) -> PaneReport {
+        use crate::domain::identity::{
+            IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+        };
+        use crate::domain::recommendation::RequestedEffect;
+        use crate::domain::signal::SignalSet;
+        let pane_id = "%1".to_string();
+        let mut effects = Vec::new();
+        if with_proposal {
+            effects.push(RequestedEffect::PromptSendProposed {
+                target_pane_id: pane_id.clone(),
+                slash_command: "/compact".into(),
+                proposal_id: "pid-1".into(),
+            });
+        }
+        PaneReport {
+            pane_id: pane_id.clone(),
+            session_name: "qwork".into(),
+            window_index: "1".into(),
+            provider: Provider::Claude,
+            identity: ResolvedIdentity {
+                identity: PaneIdentity {
+                    provider: Provider::Claude,
+                    instance: 1,
+                    role: Role::Main,
+                    pane_id: pane_id.clone(),
+                },
+                confidence: IdentityConfidence::High,
+            },
+            signals: SignalSet::default(),
+            recommendations,
+            effects,
+            dead: false,
+            current_path: "/repo".into(),
+            current_command: "claude".into(),
+            cross_pane_findings: vec![],
+            idle_state: None,
+            idle_state_entered_at: None,
+            recent_token_samples: Vec::new(),
+        }
+    }
+
+    fn footer_line_text(line: &Line<'static>) -> String {
+        line.spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect::<String>()
+    }
+
+    #[test]
+    fn footer_shows_pending_proposal_counter_when_present() {
+        // v1.39 surface B: footer must surface a `★p:N` chip whose
+        // count tracks panes carrying a pending PromptSendProposed
+        // effect. Exercises the live span path used by render_footer.
+        let rep_with = pending_actions_pane_report(true, vec![]);
+        let rep_without = pending_actions_pane_report(false, vec![]);
+        let reports = vec![rep_with, rep_without];
+        let (count, top) = pending_proposal_summary(&reports);
+        assert_eq!(count, 1, "exactly one pane carries a proposal");
+        assert!(top.is_none(), "no recommendations => no severity color");
+
+        let counters = FooterCounters {
+            proposal_count: count,
+            proposal_top_severity: top,
+            copy_count: 0,
+            copy_top_severity: None,
+        };
+        let lines = footer_lines("focus: alerts", DashboardSplit::default(), &counters);
+        let dump = footer_line_text(&lines[0]);
+        assert!(
+            dump.contains("\u{2605}p:1"),
+            "footer must count pending proposals; got: {dump}"
+        );
+    }
+
+    #[test]
+    fn footer_shows_copyable_alert_counter_when_present() {
+        // v1.39 surface B: footer `★y:N` chip tracks alerts whose
+        // suggested_command is Some — the same set the operator can
+        // `y`-copy.
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::{Recommendation, Severity};
+        let rec = Recommendation {
+            action: "context-pressure",
+            reason: "near limit".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Estimated,
+            suggested_command: Some("/clear".into()),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = pending_actions_pane_report(false, vec![rec]);
+        let reports = vec![rep];
+        let (count, top) =
+            alerts::copy_alert_count(&[], &reports, &HashMap::new(), std::time::Instant::now());
+        assert_eq!(count, 1);
+        assert_eq!(top, Some(crate::domain::recommendation::Severity::Warning));
+
+        let counters = FooterCounters {
+            proposal_count: 0,
+            proposal_top_severity: None,
+            copy_count: count,
+            copy_top_severity: top,
+        };
+        let lines = footer_lines("focus: alerts", DashboardSplit::default(), &counters);
+        let dump = footer_line_text(&lines[0]);
+        assert!(
+            dump.contains("\u{2605}y:1"),
+            "footer must count copyable alerts; got: {dump}"
+        );
+    }
+
+    #[test]
+    fn footer_zero_counts_render_dim() {
+        // v1.39 surface B: when nothing is pending, the chip still
+        // renders with a `:0` count (dim styling) so the footer slot
+        // doesn't shift between empty/non-empty states. The styling
+        // itself is the dim TEXT_DIM color (asserted via the span
+        // style; presence of `:0` proves the chip is in the line).
+        let counters = FooterCounters {
+            proposal_count: 0,
+            proposal_top_severity: None,
+            copy_count: 0,
+            copy_top_severity: None,
+        };
+        let lines = footer_lines("focus: alerts", DashboardSplit::default(), &counters);
+        let dump = footer_line_text(&lines[0]);
+        assert!(
+            dump.contains("\u{2605}p:0"),
+            "footer must show ★p:0 when no proposals; got: {dump}"
+        );
+        assert!(
+            dump.contains("\u{2605}y:0"),
+            "footer must show ★y:0 when no copyables; got: {dump}"
+        );
+        // Style: each chip is a Span with TEXT_DIM fg when count is 0.
+        let p_span = lines[0]
+            .spans
+            .iter()
+            .find(|s| s.content.as_ref() == "\u{2605}p:0")
+            .expect("★p:0 span must be present");
+        assert_eq!(p_span.style.fg, Some(theme::TEXT_DIM));
+        let y_span = lines[0]
+            .spans
+            .iter()
+            .find(|s| s.content.as_ref() == "\u{2605}y:0")
+            .expect("★y:0 span must be present");
+        assert_eq!(y_span.style.fg, Some(theme::TEXT_DIM));
+    }
+
+    #[test]
+    fn footer_nonzero_counts_render_severity_color() {
+        // Lock the contract: ★p:N (N>0) renders in severity color
+        // when the pane has a recommendation, falling back to
+        // TEXT_PRIMARY when no severity is available.
+        use crate::domain::recommendation::Severity;
+        let counters = FooterCounters {
+            proposal_count: 2,
+            proposal_top_severity: Some(Severity::Risk),
+            copy_count: 3,
+            copy_top_severity: Some(Severity::Warning),
+        };
+        let lines = footer_lines("focus: alerts", DashboardSplit::default(), &counters);
+        let p_span = lines[0]
+            .spans
+            .iter()
+            .find(|s| s.content.as_ref() == "\u{2605}p:2")
+            .expect("★p:2 span must be present");
+        assert_eq!(p_span.style.fg, Some(theme::severity_color(Severity::Risk)));
+        let y_span = lines[0]
+            .spans
+            .iter()
+            .find(|s| s.content.as_ref() == "\u{2605}y:3")
+            .expect("★y:3 span must be present");
+        assert_eq!(
+            y_span.style.fg,
+            Some(theme::severity_color(Severity::Warning))
         );
     }
 
