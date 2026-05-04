@@ -758,6 +758,19 @@ fn title_line(item: &AlertItem, prefix: &str) -> Line<'static> {
         item.title.clone(),
         Style::default().add_modifier(Modifier::BOLD),
     ));
+    // v1.39 Pending-action discoverability surface A: when this alert
+    // has a `suggested_command`, append a `★y` chip colored to match
+    // its severity so the operator can spot copyable items in the
+    // alert queue without selecting each one. Mirrors the `★p` chip
+    // on pane cards (panels.rs).
+    if item.suggested_command.is_some() {
+        spans.push(Span::styled(
+            "  \u{2605}y",
+            Style::default()
+                .fg(theme::severity_color(item.severity))
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
     Line::from(spans)
 }
 
@@ -1779,6 +1792,96 @@ mod tests {
         assert!(
             dump.contains("/clear"),
             "selected alert must render the actual command: {dump}"
+        );
+    }
+
+    #[test]
+    fn alert_title_carries_copy_chip_when_command_present() {
+        // v1.39 surface A: alert title carries a `★y` chip when its
+        // `suggested_command` is `Some(_)` so operators can spot
+        // copyable items in the alert queue without selecting each
+        // one. Mirrors the `★p` chip on pane cards.
+        let rec = Recommendation {
+            action: "context-pressure",
+            reason: "context near threshold".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Estimated,
+            suggested_command: Some("/clear".into()),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![rec.clone()]);
+        let key = recommendation_key("%1", &rec);
+        let times = HashMap::from([(key, "14:32:10".into())]);
+        let fresh = HashSet::new();
+        let hidden = HashMap::new();
+
+        let mut state = ListState::default();
+        // Don't select; the chip is on the title independent of selection.
+        let area = Rect::new(0, 0, 80, 16);
+        let mut buf = Buffer::empty(area);
+        let view = AlertView {
+            notices: &[],
+            reports: &[rep],
+            fresh_alerts: &fresh,
+            alert_times: &times,
+            hidden_until: &hidden,
+            now: Instant::now(),
+            target_label: "all",
+            focused: true,
+        };
+        render_alerts(area, &mut buf, &mut state, view);
+
+        let dump = buffer_to_string(&buf);
+        assert!(
+            dump.contains("\u{2605}y"),
+            "alert title should carry ★y chip when suggested_command is Some; got: {dump}"
+        );
+    }
+
+    #[test]
+    fn alert_title_omits_chip_when_no_command() {
+        // v1.39 surface A: no suggested_command => no chip, so the
+        // chip never lights up for an alert the operator can't copy
+        // a runnable command from.
+        let rec = Recommendation {
+            action: "notify-input-wait",
+            reason: "waiting for input".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![rec.clone()]);
+        let key = recommendation_key("%1", &rec);
+        let times = HashMap::from([(key, "14:32:10".into())]);
+        let fresh = HashSet::new();
+        let hidden = HashMap::new();
+
+        let mut state = ListState::default();
+        let area = Rect::new(0, 0, 80, 16);
+        let mut buf = Buffer::empty(area);
+        let view = AlertView {
+            notices: &[],
+            reports: &[rep],
+            fresh_alerts: &fresh,
+            alert_times: &times,
+            hidden_until: &hidden,
+            now: Instant::now(),
+            target_label: "all",
+            focused: true,
+        };
+        render_alerts(area, &mut buf, &mut state, view);
+
+        let dump = buffer_to_string(&buf);
+        assert!(
+            !dump.contains("\u{2605}y"),
+            "alert title MUST NOT carry ★y chip when suggested_command is None; got: {dump}"
         );
     }
 

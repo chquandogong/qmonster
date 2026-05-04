@@ -450,6 +450,26 @@ fn pane_panel_title_line(
         pane_panel_title(report),
         pane_header_style(report, now, flash),
     ));
+    // v1.39 Pending-action discoverability surface A: when this pane
+    // carries a pending prompt-send proposal, append a `★p` chip so
+    // operators can scan the panes list and spot actionable items
+    // without selecting each one. Color uses the highest-severity
+    // recommendation on the pane (so a Risk-tier proposal stands out
+    // from a Concern-tier one) and falls back to TEXT_PRIMARY when
+    // the pane has no recommendation severity.
+    if crate::app::prompt_send_actions::first_prompt_send_proposal(report).is_some() {
+        let chip_color = report
+            .recommendations
+            .iter()
+            .map(|rec| rec.severity)
+            .max()
+            .map(theme::severity_color)
+            .unwrap_or(theme::TEXT_PRIMARY);
+        spans.push(Span::styled(
+            "  \u{2605}p",
+            Style::default().fg(chip_color).add_modifier(Modifier::BOLD),
+        ));
+    }
     Line::from(spans)
 }
 
@@ -3407,6 +3427,52 @@ mod tests {
         assert!(
             !lines.iter().any(|l| line_text(l).contains("proposal:")),
             "proposal line should only appear when expanded"
+        );
+    }
+
+    #[test]
+    fn pane_card_title_carries_pending_proposal_chip() {
+        // v1.39 surface A: pane card title must carry a `★p` chip
+        // when the pane has a pending PromptSendProposed effect, so
+        // operators can spot actionable items without selecting each
+        // pane. Severity-colored from the highest-severity rec.
+        let mut rep = sample_pane_report();
+        rep.effects.push(
+            crate::domain::recommendation::RequestedEffect::PromptSendProposed {
+                target_pane_id: rep.pane_id.clone(),
+                slash_command: "/compact".into(),
+                proposal_id: "pid-1".into(),
+            },
+        );
+        let lines = pane_list_lines_with_width(&rep, true, false, 80);
+        let title_line = &lines[0];
+        let dump: String = title_line
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            dump.contains("\u{2605}p"),
+            "title should carry ★p chip when proposal pending; got: {dump}"
+        );
+    }
+
+    #[test]
+    fn pane_card_title_omits_chip_when_no_proposal() {
+        // v1.39 surface A: no proposal => no chip. Lock the gating
+        // so a stray Notify or non-prompt-send effect can never light
+        // up the chip.
+        let rep = sample_pane_report();
+        let lines = pane_list_lines_with_width(&rep, true, false, 80);
+        let title_line = &lines[0];
+        let dump: String = title_line
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            !dump.contains("\u{2605}p"),
+            "no proposal => no chip; got: {dump}"
         );
     }
 
