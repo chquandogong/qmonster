@@ -651,19 +651,19 @@ fn alert_item_lines(
     }
     // v1.38 §6.5: on the currently selected alert only, when its
     // `suggested_command` is `Some(cmd)`, append a dim
-    // `copy: <cmd>  → press y to copy` line below the existing detail
-    // rows so the operator can see the runnable command and the
-    // keypress hint without reaching for the metrics overlay.
-    if is_selected {
-        if let Some(cmd) = item.suggested_command.as_deref() {
-            for wrapped in wrap_with_prefix(
-                &format!("copy: {cmd}  → press y to copy"),
-                width,
-                &continuation,
-                &continuation,
-            ) {
-                lines.push(Line::styled(wrapped, Style::default().fg(theme::TEXT_DIM)));
-            }
+    // `copy    : `<cmd>`  → press y to copy` line below the existing
+    // detail rows so the operator can see the runnable command and the
+    // keypress hint without reaching for the metrics overlay. Uses
+    // `aligned_detail` and backticks to match the `run` / `summary` /
+    // `dismiss` sibling rows.
+    if is_selected && let Some(cmd) = item.suggested_command.as_deref() {
+        for wrapped in wrap_with_prefix(
+            &aligned_detail("copy", &format!("`{cmd}`  → press y to copy")),
+            width,
+            &continuation,
+            &continuation,
+        ) {
+            lines.push(Line::styled(wrapped, Style::default().fg(theme::TEXT_DIM)));
         }
     }
     lines.push(Line::styled(
@@ -1736,16 +1736,12 @@ mod tests {
 
         let dump = buffer_to_string(&buf);
         assert!(
-            dump.contains("copy:"),
-            "selected alert with suggested_command must render `copy:` line: {dump}"
+            dump.contains("press y to copy"),
+            "selected alert with suggested_command must render copy line: {dump}"
         );
         assert!(
             dump.contains("/clear"),
             "selected alert must render the actual command: {dump}"
-        );
-        assert!(
-            dump.contains("press y to copy"),
-            "selected alert copy line must include the keypress hint: {dump}"
         );
     }
 
@@ -1789,8 +1785,8 @@ mod tests {
 
         let dump = buffer_to_string(&buf);
         assert!(
-            !dump.contains("copy:"),
-            "selected alert without suggested_command must NOT render `copy:` line: {dump}"
+            !dump.contains("press y to copy"),
+            "selected alert without suggested_command must NOT render copy line: {dump}"
         );
     }
 }
