@@ -158,6 +158,18 @@ impl TargetPickerController<'_> {
     }
 }
 
+/// Returns `true` when the operator pressed the entry key (`t`) on an
+/// open target picker. The caller should toggle `open = false` and skip
+/// the per-overlay dispatcher. Mirrors the parity established by
+/// `settings_entry_key_closes` and `provider_setup_entry_key_closes`
+/// (Spec §7.1, §7.3).
+pub fn target_picker_entry_key_closes(
+    state: &TargetPickerRuntimeState,
+    code: crossterm::event::KeyCode,
+) -> bool {
+    state.open && code == crossterm::event::KeyCode::Char('t')
+}
+
 pub fn open_target_picker<P: PaneSource>(source: &P, mut picker: TargetPickerController<'_>) {
     *picker.stage = TargetPickerStage::Session;
     *picker.session = None;
@@ -801,6 +813,19 @@ mod tests {
         assert_eq!(action, TargetPickerAction::TargetSwitched("a:1".into()));
         assert!(!harness.open);
         assert_eq!(harness.selected_target, Some(target("a", "1")));
+    }
+
+    #[test]
+    fn target_picker_entry_key_closes_when_open() {
+        let source = PickerSource::new();
+        let mut state = TargetPickerRuntimeState::new(&source);
+
+        state.open = true;
+        assert!(target_picker_entry_key_closes(&state, KeyCode::Char('t')));
+        assert!(!target_picker_entry_key_closes(&state, KeyCode::Char('q')));
+
+        state.open = false;
+        assert!(!target_picker_entry_key_closes(&state, KeyCode::Char('t')));
     }
 
     #[test]
