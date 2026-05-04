@@ -360,8 +360,16 @@ fn card_rows(
     ];
 
     let mut lines = Vec::with_capacity(left_rows.len());
-    for (l, r) in left_rows.iter().zip(right_rows.iter()) {
-        lines.push(card_row(l, r, left_half_width, right_half_width));
+    for (idx, (l, r)) in left_rows.iter().zip(right_rows.iter()).enumerate() {
+        let mut line = card_row(l, r, left_half_width, right_half_width);
+        // Zebra-stripe rows 1 & 3 (5H and CACHE) so the 4 packed
+        // metric rows read as distinct items. Foregrounds (severity
+        // bar colors, sparkline glyphs, dim em-dashes) are preserved;
+        // only the line's bg is tinted.
+        if idx % 2 == 1 {
+            line = line.style(Style::default().bg(theme::ROW_ALT_BG));
+        }
+        lines.push(line);
     }
     lines
 }
@@ -1047,6 +1055,61 @@ mod tests {
                     .collect::<Vec<_>>(),
             );
         }
+    }
+
+    #[test]
+    fn metric_rows_alternate_background() {
+        use ratatui::layout::Rect;
+        let body = Rect::new(0, 0, 100, 30);
+        let mut rep = base_test_report("codex:1:review");
+        rep.signals.context_pressure = Some(crate::domain::signal::MetricValue::new(
+            0.5,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            body,
+        );
+        // Skip banner (line 0) and card divider (line 1). Metric rows are 2..6.
+        let alt = theme::ROW_ALT_BG;
+        assert_ne!(
+            lines[2].style.bg,
+            Some(alt),
+            "row 0 (CTX) should be default bg"
+        );
+        assert_eq!(lines[3].style.bg, Some(alt), "row 1 (5H) should be alt bg");
+        assert_ne!(
+            lines[4].style.bg,
+            Some(alt),
+            "row 2 (7D) should be default bg"
+        );
+        assert_eq!(
+            lines[5].style.bg,
+            Some(alt),
+            "row 3 (CACHE) should be alt bg"
+        );
+    }
+
+    #[test]
+    fn banner_and_divider_do_not_get_alt_background() {
+        use ratatui::layout::Rect;
+        let body = Rect::new(0, 0, 100, 30);
+        let rep = base_test_report("codex:1:review");
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            body,
+        );
+        let alt = theme::ROW_ALT_BG;
+        assert_ne!(lines[0].style.bg, Some(alt), "banner must not be alt bg");
+        assert_ne!(
+            lines[1].style.bg,
+            Some(alt),
+            "card divider must not be alt bg"
+        );
     }
 
     #[test]
