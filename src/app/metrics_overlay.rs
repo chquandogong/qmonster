@@ -28,6 +28,9 @@ pub fn handle_metrics_overlay_key(
         return false;
     }
     match code {
+        KeyCode::Char('[') => overlay.shrink(),
+        KeyCode::Char(']') => overlay.grow(),
+        KeyCode::Char('=') => overlay.reset_size(),
         KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('m') => overlay.close(),
         KeyCode::Up | KeyCode::Char('k') => overlay.scroll_up(),
         KeyCode::Down | KeyCode::Char('j') => overlay.scroll_down(SCROLL_MAX),
@@ -45,7 +48,7 @@ pub fn handle_metrics_overlay_mouse(
     if !overlay.is_open() {
         return;
     }
-    let rects = metrics_modal_rects(viewport);
+    let rects = metrics_modal_rects(viewport, overlay.width_pct(), overlay.height_pct());
     if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
         && rect_contains(close_button_rect(rects.area), event.column, event.row)
     {
@@ -96,7 +99,7 @@ mod tests {
         let mut o = MetricsOverlay::new();
         o.open();
         let viewport = Rect::new(0, 0, 100, 50);
-        let rects = metrics_modal_rects(viewport);
+        let rects = metrics_modal_rects(viewport, o.width_pct(), o.height_pct());
         let close_rect = close_button_rect(rects.area);
         let event = MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -106,5 +109,25 @@ mod tests {
         };
         handle_metrics_overlay_mouse(&mut o, viewport, 0, event);
         assert!(!o.is_open());
+    }
+
+    #[test]
+    fn bracket_keys_resize_overlay() {
+        let mut o = MetricsOverlay::new();
+        o.open();
+        let (w0, h0) = (o.width_pct(), o.height_pct());
+        // ']' grows
+        assert!(handle_metrics_overlay_key(&mut o, 0, KeyCode::Char(']')));
+        assert!(o.width_pct() >= w0);
+        assert!(o.height_pct() >= h0);
+        // '[' shrinks past the original
+        let (w1, h1) = (o.width_pct(), o.height_pct());
+        assert!(handle_metrics_overlay_key(&mut o, 0, KeyCode::Char('[')));
+        assert!(o.width_pct() <= w1);
+        assert!(o.height_pct() <= h1);
+        // '=' resets to defaults
+        assert!(handle_metrics_overlay_key(&mut o, 0, KeyCode::Char('=')));
+        assert_eq!(o.width_pct(), MetricsOverlay::DEFAULT_WIDTH_PCT);
+        assert_eq!(o.height_pct(), MetricsOverlay::DEFAULT_HEIGHT_PCT);
     }
 }

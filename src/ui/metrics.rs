@@ -21,13 +21,32 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct MetricsOverlay {
     open: bool,
     scroll: u16,
+    width_pct: u16,
+    height_pct: u16,
+}
+
+impl Default for MetricsOverlay {
+    fn default() -> Self {
+        Self {
+            open: false,
+            scroll: 0,
+            width_pct: Self::DEFAULT_WIDTH_PCT,
+            height_pct: Self::DEFAULT_HEIGHT_PCT,
+        }
+    }
 }
 
 impl MetricsOverlay {
+    pub const SIZE_STEP: u16 = 5;
+    pub const SIZE_MIN: u16 = 50;
+    pub const SIZE_MAX: u16 = 99;
+    pub const DEFAULT_WIDTH_PCT: u16 = 95;
+    pub const DEFAULT_HEIGHT_PCT: u16 = 90;
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -56,6 +75,35 @@ impl MetricsOverlay {
     pub fn scroll_down(&mut self, max: u16) {
         self.scroll = self.scroll.saturating_add(1).min(max);
     }
+
+    pub fn width_pct(&self) -> u16 {
+        self.width_pct
+    }
+
+    pub fn height_pct(&self) -> u16 {
+        self.height_pct
+    }
+
+    pub fn grow(&mut self) {
+        self.width_pct = (self.width_pct + Self::SIZE_STEP).min(Self::SIZE_MAX);
+        self.height_pct = (self.height_pct + Self::SIZE_STEP).min(Self::SIZE_MAX);
+    }
+
+    pub fn shrink(&mut self) {
+        self.width_pct = self
+            .width_pct
+            .saturating_sub(Self::SIZE_STEP)
+            .max(Self::SIZE_MIN);
+        self.height_pct = self
+            .height_pct
+            .saturating_sub(Self::SIZE_STEP)
+            .max(Self::SIZE_MIN);
+    }
+
+    pub fn reset_size(&mut self) {
+        self.width_pct = Self::DEFAULT_WIDTH_PCT;
+        self.height_pct = Self::DEFAULT_HEIGHT_PCT;
+    }
 }
 
 pub struct MetricsModalRects {
@@ -65,8 +113,8 @@ pub struct MetricsModalRects {
     pub hint: Rect,
 }
 
-pub fn metrics_modal_rects(viewport: Rect) -> MetricsModalRects {
-    let area = centered_rect(95, 90, viewport);
+pub fn metrics_modal_rects(viewport: Rect, width_pct: u16, height_pct: u16) -> MetricsModalRects {
+    let area = centered_rect(width_pct, height_pct, viewport);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -204,7 +252,6 @@ pub fn render_metrics_lines(
 ) -> Vec<Line<'static>> {
     let mut out = Vec::new();
     out.push(hottest_banner_line(reports));
-    out.push(Line::from(""));
 
     if reports.is_empty() {
         return out;
@@ -223,10 +270,7 @@ pub fn render_metrics_lines(
     let left_half_width = halves_budget / 2;
     let right_half_width = halves_budget - left_half_width;
 
-    for (i, r) in reports.iter().enumerate() {
-        if i > 0 {
-            out.push(Line::from(""));
-        }
+    for r in reports {
         out.push(card_divider_line(r, inner_width));
         out.extend(card_rows(r, left_half_width, right_half_width));
     }
@@ -506,7 +550,7 @@ pub fn render_metrics_modal(
     target_label: &str,
     reports: &[PaneReport],
 ) {
-    let rects = metrics_modal_rects(frame.area());
+    let rects = metrics_modal_rects(frame.area(), overlay.width_pct(), overlay.height_pct());
     frame.render_widget(Clear, rects.area);
 
     let block = Block::default()
@@ -534,8 +578,10 @@ pub fn render_metrics_modal(
         crate::ui::dashboard::close_button_rect(rects.area),
     );
     frame.render_widget(
-        Paragraph::new("↑/↓ scroll · m close · Esc close · click [x] close")
-            .style(Style::default().fg(theme::TEXT_DIM)),
+        Paragraph::new(
+            "[ shrink · ] grow · = reset · ↑/↓ scroll · m close · Esc close · click [x] close",
+        )
+        .style(Style::default().fg(theme::TEXT_DIM)),
         rects.hint,
     );
 }
@@ -571,7 +617,7 @@ mod tests {
     fn metrics_modal_rects_centered_95_by_90() {
         use ratatui::layout::Rect;
         let viewport = Rect::new(0, 0, 100, 50);
-        let r = metrics_modal_rects(viewport);
+        let r = metrics_modal_rects(viewport, 95, 90);
         assert_eq!(r.area.width, 95);
         assert_eq!(r.area.height, 45);
         // area is centered: x ≈ (100-95)/2 = 2..3, y ≈ (50-45)/2 = 2..3
@@ -584,11 +630,66 @@ mod tests {
     fn metrics_modal_rects_partition_sums_to_area() {
         use ratatui::layout::Rect;
         let viewport = Rect::new(0, 0, 120, 40);
-        let r = metrics_modal_rects(viewport);
+        let r = metrics_modal_rects(viewport, 95, 90);
         let bottom = r.banner.height + r.body.height + r.hint.height;
         assert_eq!(bottom, r.area.height);
         assert_eq!(r.banner.y, r.area.y);
         assert_eq!(r.hint.y + r.hint.height, r.area.y + r.area.height);
+    }
+
+    #[test]
+    fn grow_clamps_to_max() {
+        let mut o = MetricsOverlay::new();
+        // start at 95/90
+        assert_eq!(o.width_pct(), 95);
+        assert_eq!(o.height_pct(), 90);
+        o.grow();
+        // 95+5=100 → clamped to 99; 90+5=95
+        assert_eq!(o.width_pct(), 99);
+        assert_eq!(o.height_pct(), 95);
+        o.grow();
+        // 99 (already at max) stays; 95+5=100 → clamped to 99
+        assert_eq!(o.width_pct(), 99);
+        assert_eq!(o.height_pct(), 99);
+        o.grow();
+        // both saturated at 99
+        assert_eq!(o.width_pct(), 99);
+        assert_eq!(o.height_pct(), 99);
+    }
+
+    #[test]
+    fn shrink_clamps_to_min() {
+        let mut o = MetricsOverlay::new();
+        for _ in 0..50 {
+            o.shrink();
+        }
+        assert_eq!(o.width_pct(), MetricsOverlay::SIZE_MIN);
+        assert_eq!(o.height_pct(), MetricsOverlay::SIZE_MIN);
+    }
+
+    #[test]
+    fn reset_size_returns_to_defaults() {
+        let mut o = MetricsOverlay::new();
+        o.shrink();
+        o.shrink();
+        o.grow();
+        // size has drifted; reset returns to 95/90
+        o.reset_size();
+        assert_eq!(o.width_pct(), 95);
+        assert_eq!(o.height_pct(), 90);
+    }
+
+    #[test]
+    fn open_does_not_reset_size() {
+        let mut o = MetricsOverlay::new();
+        o.grow();
+        let w = o.width_pct();
+        let h = o.height_pct();
+        o.open();
+        o.close();
+        o.open();
+        assert_eq!(o.width_pct(), w);
+        assert_eq!(o.height_pct(), h);
     }
 
     #[test]
@@ -730,6 +831,36 @@ mod tests {
         assert!(
             dump.contains("Hottest:") && dump.contains("—"),
             "expected dim banner with em-dash"
+        );
+    }
+
+    #[test]
+    fn pane_cards_pack_without_blank_lines_between() {
+        use ratatui::layout::Rect;
+        let panes = vec![
+            report_with_pressure("claude:1:main", 0.40, None, None),
+            report_with_pressure("codex:1:review", 0.70, Some(0.85), None),
+            report_with_pressure("gemini:1:research", 0.21, None, None),
+        ];
+        let overlay = MetricsOverlay::new();
+        let body = Rect::new(0, 0, 120, 30);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body);
+        // Find any pair of consecutive purely-empty lines.
+        let strs: Vec<String> = lines.iter().map(line_to_string).collect();
+        for w in strs.windows(2) {
+            assert!(
+                !(w[0].trim().is_empty() && w[1].trim().is_empty()),
+                "found two consecutive blank lines:\n{}",
+                strs.join("\n")
+            );
+        }
+        // There should be exactly 3 card dividers (one per pane).
+        let divider_count = strs.iter().filter(|l| l.starts_with("━ ")).count();
+        assert_eq!(
+            divider_count,
+            3,
+            "expected one divider per pane; got:\n{}",
+            strs.join("\n")
         );
     }
 
