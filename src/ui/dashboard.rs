@@ -703,7 +703,7 @@ fn render_footer(
 /// `"focus: alerts"`) decided by the caller.
 fn footer_text(focus: &str, split: DashboardSplit) -> String {
     format!(
-        "{focus} · split {}% · [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · y copy · c clear · p accept · d dismiss · S settings · P provider-setup · ? help · q quit",
+        "{focus} · split {}% · [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git · ↑/↓ item · PgUp/PgDn page · Home/End · Tab switch · t target · u runtime · y copy · c clear · p accept · d dismiss · S settings · P provider-setup · m metrics · ? help · q quit",
         split.alerts_percent()
     )
 }
