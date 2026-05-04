@@ -417,6 +417,7 @@ pub fn render_tab_content(
             ));
             out.push("      Read-only here. Change in S Settings -> Integrations.".into());
             out.push("      y copies the Claude snippet using this Settings value.".into());
+            out.push("      Sidefile resets_at also drives F-7c reset-aware advisories: 'quota: pause until 5h/weekly resets' and 'snapshot before reset' (configurable in S Settings -> Rules).".into());
 
             append_copy_contract(&mut out, overlay);
             append_copied_preview(&mut out, overlay);
@@ -452,6 +453,7 @@ pub fn render_tab_content(
             out.push(
                 "      Restart Qmonster after saving ON; Qmonster auto-spawns app-server.".into(),
             );
+            out.push("      App-server resets_at also drives F-7c reset-aware advisories: 'quota: pause until 5h/weekly resets' and 'snapshot before reset' (configurable in S Settings -> Rules).".into());
 
             append_copy_contract(&mut out, overlay);
             append_copied_preview(&mut out, overlay);
@@ -919,6 +921,57 @@ mod tests {
         assert!(
             !text.contains("OAuth"),
             "auth note is informational and must not be copied"
+        );
+    }
+
+    #[test]
+    fn claude_tab_mentions_f7c_reset_advisories() {
+        let overlay = ProviderSetupOverlay::default();
+        let claude = ClaudeState {
+            statusline_script_present: false,
+            statusline_size_bytes: 0,
+            exports_cache_read: false,
+            exports_cache_creation: false,
+            exports_input_tokens: false,
+            sidefile_export_present: false,
+        };
+        let codex = CodexState {
+            config_present: false,
+            app_server_running: false,
+        };
+        let gemini = GeminiFooterState::default();
+        let lines = render_tab_content(&overlay, &claude, &codex, &gemini);
+        let dump: String = lines.join("\n");
+        assert!(
+            dump.contains("F-7c reset-aware advisories"),
+            "Claude tab should mention F-7c context; got:\n{dump}"
+        );
+    }
+
+    #[test]
+    fn codex_tab_mentions_f7c_reset_advisories() {
+        let overlay = ProviderSetupOverlay {
+            tab: ProviderSetupTab::Codex,
+            ..Default::default()
+        };
+        let claude = ClaudeState {
+            statusline_script_present: false,
+            statusline_size_bytes: 0,
+            exports_cache_read: false,
+            exports_cache_creation: false,
+            exports_input_tokens: false,
+            sidefile_export_present: false,
+        };
+        let codex = CodexState {
+            config_present: false,
+            app_server_running: false,
+        };
+        let gemini = GeminiFooterState::default();
+        let lines = render_tab_content(&overlay, &claude, &codex, &gemini);
+        let dump: String = lines.join("\n");
+        assert!(
+            dump.contains("F-7c reset-aware advisories"),
+            "Codex tab should mention F-7c context; got:\n{dump}"
         );
     }
 
