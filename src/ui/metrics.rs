@@ -420,18 +420,8 @@ fn card_rows(
             bar_cells,
             BarKind::Pressure,
         ),
-        left_row(
-            "5H",
-            s.quota_5h_pressure.as_ref().map(|m| m.value),
-            bar_cells,
-            BarKind::Pressure,
-        ),
-        left_row(
-            "7D",
-            s.quota_weekly_pressure.as_ref().map(|m| m.value),
-            bar_cells,
-            BarKind::Pressure,
-        ),
+        quota_left_row(s, bar_cells, true),
+        quota_left_row(s, bar_cells, false),
         left_row(
             "CACHE",
             s.cache_hit_ratio.as_ref().map(|m| m.value as f32),
@@ -441,10 +431,7 @@ fn card_rows(
     ];
 
     let right_rows = [
-        right_combined_reset_row(
-            s.quota_5h_resets_at.as_ref().map(|m| m.value),
-            s.quota_weekly_resets_at.as_ref().map(|m| m.value),
-        ),
+        right_combined_reset_row(s),
         right_tokens_row(
             "TOKENS in",
             &report.recent_token_samples,
@@ -564,20 +551,80 @@ fn left_row(
 
 /// Combined reset-eta row: `5H reset ▸ <eta>  ·  7D reset ▸ <eta>`.
 /// If only one eta is present, render just that one (no dangling
-/// separator). If neither is present, render a dim em-dash.
-fn right_combined_reset_row(eta_5h_unix: Option<u64>, eta_7d_unix: Option<u64>) -> String {
-    let part_5h = eta_5h_unix
+/// separator). If neither split eta is present, fall back to the
+/// Gemini `RuntimeFactKind::ModelReset` runtime fact (provider-rendered
+/// `<model> <time/remaining>` text). If nothing is available, render a
+/// dim em-dash.
+fn right_combined_reset_row(s: &crate::domain::signal::SignalSet) -> String {
+    let part_5h = s
+        .quota_5h_resets_at
+        .as_ref()
+        .map(|m| m.value)
         .and_then(crate::ui::panels::format_resets_eta)
         .map(|eta| format!("5H reset ▸ {eta}"));
-    let part_7d = eta_7d_unix
+    let part_7d = s
+        .quota_weekly_resets_at
+        .as_ref()
+        .map(|m| m.value)
         .and_then(crate::ui::panels::format_resets_eta)
         .map(|eta| format!("7D reset ▸ {eta}"));
     match (part_5h, part_7d) {
         (Some(a), Some(b)) => format!("{a}  ·  {b}"),
         (Some(a), None) => a,
         (None, Some(b)) => b,
-        (None, None) => DASH.to_string(),
+        (None, None) => {
+            // Gemini fallback: ModelReset runtime fact carries
+            // provider-rendered "<model> <time/remaining>" text.
+            for fact in &s.runtime_facts {
+                if fact.kind == crate::domain::signal::RuntimeFactKind::ModelReset {
+                    return format!("RESET ▸ {}", fact.value);
+                }
+            }
+            DASH.to_string()
+        }
     }
+}
+
+/// Pick the right quota label/value for the left column based on which
+/// quota fields the provider populates:
+/// - Claude/Codex (split): 5H in primary slot, 7D in secondary.
+/// - Gemini (single): QUOTA in primary slot, blank in secondary.
+/// - None populated: ─ em-dash row in both slots (preserves the
+///   4-row card height regardless of provider shape).
+fn quota_left_row(
+    s: &crate::domain::signal::SignalSet,
+    bar_cells: usize,
+    primary: bool,
+) -> Vec<Span<'static>> {
+    let split_5h = s.quota_5h_pressure.as_ref().map(|m| m.value);
+    let split_weekly = s.quota_weekly_pressure.as_ref().map(|m| m.value);
+    let single = s.quota_pressure.as_ref().map(|m| m.value);
+
+    if split_5h.is_some() || split_weekly.is_some() {
+        if primary {
+            left_row("5H", split_5h, bar_cells, BarKind::Pressure)
+        } else {
+            left_row("7D", split_weekly, bar_cells, BarKind::Pressure)
+        }
+    } else if single.is_some() {
+        if primary {
+            left_row("QUOTA", single, bar_cells, BarKind::Pressure)
+        } else {
+            left_row_placeholder()
+        }
+    } else if primary {
+        left_row("5H", None, bar_cells, BarKind::Pressure)
+    } else {
+        left_row("7D", None, bar_cells, BarKind::Pressure)
+    }
+}
+
+/// Empty placeholder row for the secondary quota slot when only single
+/// quota is populated. `card_row` pads the left half to
+/// `left_half_width`, so an empty span vector is sufficient — the
+/// 4-row card height stays consistent across providers.
+fn left_row_placeholder() -> Vec<Span<'static>> {
+    Vec::new()
 }
 
 fn right_tokens_row(
@@ -1487,6 +1534,99 @@ mod tests {
         assert!(
             !dump.contains("▲") && !dump.contains("▼"),
             "expected no real arrow without observation; got: {dump}"
+        );
+    }
+
+    #[test]
+    fn gemini_pane_shows_quota_in_metrics_overlay() {
+        use ratatui::layout::Rect;
+        let mut rep = base_test_report("gemini:1:research");
+        // Gemini populates the SINGLE quota_pressure field, not split.
+        rep.signals.quota_pressure = Some(crate::domain::signal::MetricValue::new(
+            0.47,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
+        );
+        let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        assert!(
+            dump.contains("QUOTA"),
+            "Gemini pane should show QUOTA bar; got:\n{dump}"
+        );
+        assert!(dump.contains("47%"), "QUOTA bar should render 47%");
+        // 5H / 7D labels should NOT appear since split is not populated.
+        assert!(
+            !dump.contains("5H "),
+            "5H label should not appear when only single quota is present:\n{dump}"
+        );
+        assert!(
+            !dump.contains("7D "),
+            "7D label should not appear when only single quota is present:\n{dump}"
+        );
+    }
+
+    #[test]
+    fn gemini_pane_uses_model_reset_runtime_fact_in_overlay() {
+        use ratatui::layout::Rect;
+        let mut rep = base_test_report("gemini:1:research");
+        rep.signals
+            .runtime_facts
+            .push(crate::domain::signal::RuntimeFact::new(
+                crate::domain::signal::RuntimeFactKind::ModelReset,
+                "Pro 14:35 (1h22m)",
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            ));
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
+        );
+        let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        assert!(
+            dump.contains("RESET"),
+            "Gemini reset row should fallback to ModelReset runtime fact; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("Pro 14:35"),
+            "RESET row should carry provider-rendered model+time; got:\n{dump}"
+        );
+    }
+
+    #[test]
+    fn claude_codex_split_quota_still_renders_5h_and_7d() {
+        use ratatui::layout::Rect;
+        let mut rep = base_test_report("codex:1:review");
+        rep.signals.quota_5h_pressure = Some(crate::domain::signal::MetricValue::new(
+            0.92,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        rep.signals.quota_weekly_pressure = Some(crate::domain::signal::MetricValue::new(
+            0.35,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
+        );
+        let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        assert!(dump.contains("5H "), "split-quota provider must show 5H");
+        assert!(dump.contains("7D "), "split-quota provider must show 7D");
+        assert!(dump.contains("92%"));
+        assert!(dump.contains("35%"));
+        // QUOTA single-label should NOT appear when split is populated.
+        assert!(
+            !dump.contains("QUOTA "),
+            "QUOTA single label should not appear when split is populated:\n{dump}"
         );
     }
 
