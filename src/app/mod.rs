@@ -1,3 +1,4 @@
+pub mod action_explainer;
 pub mod bootstrap;
 pub mod clipboard_actions;
 pub mod config;
