@@ -7,6 +7,7 @@
 //! tasks can rely on a stable state contract.
 
 use crate::app::event_loop::PaneReport;
+use crate::store::TokenSample;
 use crate::ui::dashboard::centered_rect;
 use crate::ui::theme;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -232,6 +233,193 @@ fn push_cost_cell(spans: &mut Vec<Span<'static>>, value: Option<f64>) {
     }
 }
 
+const WINDOW_5H_SECS: f64 = 5.0 * 3600.0;
+const WINDOW_7D_SECS: f64 = 7.0 * 86400.0;
+const SPARK_GLYPHS: &str = "▁▂▃▄▅▆▇█";
+
+/// Render the selected pane's detail block — token in/out sparklines,
+/// cost trend, memory current values, and 5H/7D reset bars. Spec §4.5.
+pub fn selected_detail_lines(report: &PaneReport) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+
+    // TOKENS in / out sparklines from recent_token_samples deltas
+    if let Some(line) = token_sparkline_line("TOKENS in", &report.recent_token_samples, |s| {
+        s.input_tokens
+    }) {
+        lines.push(line);
+    }
+    if let Some(line) = token_sparkline_line("TOKENS out", &report.recent_token_samples, |s| {
+        s.output_tokens
+    }) {
+        lines.push(line);
+    }
+    // COST sparkline + current
+    if let Some(line) = cost_sparkline_line(
+        &report.recent_token_samples,
+        report.signals.cost_usd.as_ref().map(|m| m.value),
+    ) {
+        lines.push(line);
+    }
+    // MEM RSS / MEM-FILE — current value
+    if let Some(line) = mem_rss_line(&report.signals) {
+        lines.push(line);
+    }
+    if let Some(line) = mem_file_line(&report.signals) {
+        lines.push(line);
+    }
+    // 5H / 7D reset bars
+    lines.push(reset_line(
+        "5H reset",
+        report.signals.quota_5h_resets_at.as_ref().map(|m| m.value),
+        WINDOW_5H_SECS,
+    ));
+    lines.push(reset_line(
+        "7D reset",
+        report
+            .signals
+            .quota_weekly_resets_at
+            .as_ref()
+            .map(|m| m.value),
+        WINDOW_7D_SECS,
+    ));
+
+    lines
+}
+
+fn token_sparkline_line(
+    label: &'static str,
+    samples: &[TokenSample],
+    field: impl Fn(&TokenSample) -> Option<u64>,
+) -> Option<Line<'static>> {
+    if samples.len() < 2 {
+        return None;
+    }
+    // Persisted callers store newest-first (`recent_samples` ORDER BY
+    // ts_unix_ms DESC), so sort ascending for delta computation.
+    let mut sorted: Vec<&TokenSample> = samples.iter().collect();
+    sorted.sort_by_key(|s| s.ts_unix_ms);
+    let values: Vec<u64> = sorted.iter().filter_map(|s| field(s)).collect();
+    if values.len() < 2 {
+        return None;
+    }
+    let deltas: Vec<u64> = values
+        .windows(2)
+        .map(|w| w[1].saturating_sub(w[0]))
+        .collect();
+    let max_delta = *deltas.iter().max().unwrap_or(&0);
+    let glyph_count = SPARK_GLYPHS.chars().count();
+    let spark: String = if max_delta == 0 {
+        SPARK_GLYPHS
+            .chars()
+            .next()
+            .unwrap()
+            .to_string()
+            .repeat(deltas.len())
+    } else {
+        deltas
+            .iter()
+            .map(|d| {
+                let idx =
+                    ((*d as f64 / max_delta as f64) * (glyph_count - 1) as f64).round() as usize;
+                SPARK_GLYPHS.chars().nth(idx).unwrap_or('▁')
+            })
+            .collect()
+    };
+    let current = *values.last().unwrap();
+    let last_delta = *deltas.last().unwrap_or(&0);
+    Some(Line::from(format!(
+        "{label:<11} {spark}  {current_fmt}  Δ+{delta_fmt}",
+        current_fmt = crate::ui::labels::format_count_with_suffix(current),
+        delta_fmt = crate::ui::labels::format_count_with_suffix(last_delta),
+    )))
+}
+
+fn cost_sparkline_line(samples: &[TokenSample], current: Option<f64>) -> Option<Line<'static>> {
+    let curr = current?;
+    let mut sorted: Vec<&TokenSample> = samples.iter().collect();
+    sorted.sort_by_key(|s| s.ts_unix_ms);
+    let values: Vec<f64> = sorted.iter().filter_map(|s| s.cost_usd).collect();
+    let glyph_count = SPARK_GLYPHS.chars().count();
+    let trend = if values.len() < 2 {
+        '─'
+    } else {
+        let last = values[values.len() - 1];
+        let prev = values[values.len() - 2];
+        if last > prev {
+            '▲'
+        } else if last < prev {
+            '▼'
+        } else {
+            '─'
+        }
+    };
+    let spark: String = if values.len() < 2 {
+        String::from(SPARK_GLYPHS.chars().next().unwrap())
+    } else {
+        let max = values.iter().cloned().fold(0.0_f64, f64::max);
+        if max == 0.0 {
+            SPARK_GLYPHS
+                .chars()
+                .next()
+                .unwrap()
+                .to_string()
+                .repeat(values.len())
+        } else {
+            values
+                .iter()
+                .map(|v| {
+                    let idx = ((v / max) * (glyph_count - 1) as f64).round() as usize;
+                    SPARK_GLYPHS.chars().nth(idx).unwrap_or('▁')
+                })
+                .collect()
+        }
+    };
+    Some(Line::from(format!(
+        "COST $       {spark}  ${curr:.2}  {trend}"
+    )))
+}
+
+fn mem_rss_line(s: &crate::domain::signal::SignalSet) -> Option<Line<'static>> {
+    let m = s.process_memory_mb.as_ref()?;
+    Some(Line::from(format!("MEM RSS     {} MiB", m.value as i64)))
+}
+
+fn mem_file_line(s: &crate::domain::signal::SignalSet) -> Option<Line<'static>> {
+    let m = s.agent_memory_bytes.as_ref()?;
+    let fmt = crate::ui::panels::format_agent_memory_bytes(m.value);
+    Some(Line::from(format!("MEM-FILE    {fmt}")))
+}
+
+fn reset_line(label: &'static str, eta_unix: Option<u64>, window_secs: f64) -> Line<'static> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    match eta_unix {
+        Some(eta) => {
+            // `format_resets_eta` filters past timestamps and 14-day
+            // sentinels; if it rejects, render em-dash. Otherwise
+            // compute window-elapsed bar from the same `now`.
+            match crate::ui::panels::format_resets_eta(eta) {
+                Some(eta_fmt) => {
+                    let remaining = eta.saturating_sub(now) as f64;
+                    let bar_ratio = ((window_secs - remaining) / window_secs).clamp(0.0, 1.0);
+                    let bar = render_pressure_bar(bar_ratio as f32);
+                    Line::from(format!("{label:<11} {bar} {eta_fmt}"))
+                }
+                None => Line::from(Span::styled(
+                    format!("{label:<11} —"),
+                    Style::default().fg(theme::TEXT_DIM),
+                )),
+            }
+        }
+        None => Line::from(Span::styled(
+            format!("{label:<11} —"),
+            Style::default().fg(theme::TEXT_DIM),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,6 +507,75 @@ mod tests {
             txt.contains("─"),
             "expected em-dash for missing 5h, got: {txt}"
         );
+    }
+
+    #[test]
+    fn selected_detail_renders_token_sparklines_when_samples_present() {
+        let mut rep = base_test_report("codex:1:review");
+        rep.recent_token_samples = vec![
+            token_sample(1, Some(1_000_000), Some(20_000)),
+            token_sample(2, Some(1_500_000), Some(20_300)),
+        ];
+        let lines = selected_detail_lines(&rep);
+        assert!(
+            lines
+                .iter()
+                .any(|l| line_to_string(l).contains("TOKENS in"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| line_to_string(l).contains("TOKENS out"))
+        );
+    }
+
+    #[test]
+    fn selected_detail_renders_reset_bar_when_eta_present() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::MetricValue;
+        let mut rep = base_test_report("codex:1:review");
+        let now_unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        rep.signals.quota_5h_resets_at = Some(MetricValue::new(
+            now_unix + 13 * 60,
+            SourceKind::ProviderOfficial,
+        ));
+        let lines = selected_detail_lines(&rep);
+        assert!(
+            lines.iter().any(|l| {
+                let t = line_to_string(l);
+                t.contains("5H reset") && t.contains("█")
+            }),
+            "expected 5H reset bar; got: {:?}",
+            lines.iter().map(line_to_string).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn selected_detail_em_dash_when_no_eta() {
+        let rep = base_test_report("g:1:r");
+        let lines = selected_detail_lines(&rep);
+        assert!(
+            lines.iter().any(|l| {
+                let t = line_to_string(l);
+                t.contains("5H reset") && t.contains("—")
+            }),
+            "expected em-dash for missing 5H reset"
+        );
+    }
+
+    fn token_sample(ts: i64, in_t: Option<u64>, out_t: Option<u64>) -> crate::store::TokenSample {
+        crate::store::TokenSample {
+            ts_unix_ms: ts,
+            pane_id: "%test".into(),
+            provider: crate::domain::identity::Provider::Codex,
+            input_tokens: in_t,
+            output_tokens: out_t,
+            cost_usd: None,
+            cached_input_tokens: None,
+        }
     }
 
     fn report_with_pressure(

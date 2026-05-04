@@ -1094,7 +1094,7 @@ fn first_model_reset_fact(signals: &SignalSet) -> Option<&RuntimeFact> {
 /// would render absurdly long countdowns). The countdown ticks once
 /// per poll cycle since the rendered text is rebuilt from the
 /// SignalSet on every frame.
-fn format_resets_eta(resets_at_unix_seconds: u64) -> Option<String> {
+pub(crate) fn format_resets_eta(resets_at_unix_seconds: u64) -> Option<String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .ok()?
@@ -1135,7 +1135,7 @@ fn format_memory_mb(mb: f64) -> String {
 /// Uses `KB` (1 KiB = 1024 bytes) below 1 MiB and `MB` (one decimal)
 /// at or above. Mirrors `format_memory_mb`'s MiB→GB transition style
 /// for visual consistency between the two memory-related badges.
-fn format_agent_memory_bytes(bytes: u64) -> String {
+pub(crate) fn format_agent_memory_bytes(bytes: u64) -> String {
     const KIB: u64 = 1024;
     const MIB: u64 = 1024 * KIB;
     if bytes >= MIB {
