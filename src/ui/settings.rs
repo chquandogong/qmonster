@@ -1711,6 +1711,13 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
             "aggressive profiles",
             format!("token.quota_tight must be {}", on_off(true)),
         ),
+        rule_row(
+            "action explainer",
+            format!(
+                "p/d/y opens modal when ux.confirm_actions != never and target exists; current = {}",
+                confirm_actions_label(config.ux.confirm_actions)
+            ),
+        ),
         Line::from(""),
         reference_header_line("Pressure Rules"),
         rule_row(
@@ -1718,6 +1725,13 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
             format!(
                 "warning >= ${:.2}; critical >= ${:.2}; provider overrides apply",
                 config.cost.warning_usd, config.cost.critical_usd
+            ),
+        ),
+        rule_row(
+            "cost budget",
+            format!(
+                "one-shot 80% (concern) / 100% (warning) alerts; budget = ${:.2}; 0.0 disables",
+                config.cost.budget_usd
             ),
         ),
         rule_row(
@@ -1734,6 +1748,15 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
                 "warning >= {}; critical >= {}; Claude/Codex split 5h + weekly",
                 pct_label(f64::from(config.quota.warning_pct)),
                 pct_label(f64::from(config.quota.critical_pct))
+            ),
+        ),
+        rule_row(
+            "profile switch",
+            format!(
+                "error-rate over {} polls >= {}; recommends script-low-token profile; enabled = {}",
+                config.profile_switch.window_polls,
+                pct_label(f64::from(config.profile_switch.error_rate_threshold)),
+                on_off(config.profile_switch.enabled)
             ),
         ),
         Line::from(""),
@@ -1799,6 +1822,13 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
             format!(
                 "security.cross_window_findings = {}; same repo+branch in >=2 windows",
                 on_off(config.security.cross_window_findings)
+            ),
+        ),
+        rule_row(
+            "cross-pane file",
+            format!(
+                "security.cross_pane_file_findings = {}; same absolute file edited from >=2 panes",
+                on_off(config.security.cross_pane_file_findings)
             ),
         ),
         rule_row(
