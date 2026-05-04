@@ -242,8 +242,11 @@ fn sparkline_cells(right_half_width: u16, label_len: usize, suffix_len: usize) -
 
 /// Pure helper that produces the modal body lines. Tested directly;
 /// `render_metrics_modal` uses this to feed a `Paragraph`. Lays out
-/// per-pane cards, each card = card-divider line + 6 content rows
-/// (`<left half> │ <right half>`).
+/// per-pane cards, each card = card-divider line + 4 content rows
+/// (`<left half> │ <right half>`). Card height matches the left
+/// column's metric count exactly (CTX/5H/7D/CACHE), so there are no
+/// blank rows below CACHE — the right column packs reset etas and
+/// COST/MEM into combined rows to fit the same 4-row budget.
 pub fn render_metrics_lines(
     _overlay: &MetricsOverlay,
     _target_label: &str,
@@ -263,12 +266,22 @@ pub fn render_metrics_lines(
     // already excludes the borders, but `render_metrics_lines` may be
     // called with the outer `area`, so subtract defensively.
     let inner_width = body_width.saturating_sub(2);
-    // Two halves separated by " │ " (3 chars). Any odd remainder goes
-    // to the right half so the sparkline keeps a touch more room.
+    // Two halves separated by " │ " (3 chars). The left column has a
+    // fixed maximum useful width (label 6 + 3 spaces + bar 24 + 2 gap
+    // + pct 4 + small margin 2 = ~41); when the modal is wide enough
+    // we cap the left half at that and hand the rest to the right
+    // column so sparklines and combined rows breathe. Narrow modals
+    // fall back to the even split.
     let separator_len: u16 = 3;
     let halves_budget = inner_width.saturating_sub(separator_len);
-    let left_half_width = halves_budget / 2;
-    let right_half_width = halves_budget - left_half_width;
+    let left_content_width: u16 = 6 + 3 + (BAR_MAX_CELLS as u16) + 2 + 4 + 2;
+    let (left_half_width, right_half_width) = if halves_budget >= left_content_width {
+        let l = left_content_width;
+        (l, halves_budget - l)
+    } else {
+        let l = halves_budget / 2;
+        (l, halves_budget - l)
+    };
 
     for r in reports {
         out.push(card_divider_line(r, inner_width));
@@ -319,14 +332,11 @@ fn card_rows(
             s.cache_hit_ratio.as_ref().map(|m| m.value as f32),
             bar_cells,
         ),
-        String::new(), // row 5 left blank (left col only has 4 metrics)
-        String::new(), // row 6 left blank
     ];
 
     let right_rows = [
-        right_reset_row("5H reset", s.quota_5h_resets_at.as_ref().map(|m| m.value)),
-        right_reset_row(
-            "7D reset",
+        right_combined_reset_row(
+            s.quota_5h_resets_at.as_ref().map(|m| m.value),
             s.quota_weekly_resets_at.as_ref().map(|m| m.value),
         ),
         right_tokens_row(
@@ -341,15 +351,15 @@ fn card_rows(
             |s| s.output_tokens,
             right_half_width,
         ),
-        right_cost_row(
+        right_cost_mem_combined_row(
             &report.recent_token_samples,
             s.cost_usd.as_ref().map(|m| m.value),
+            s,
             right_half_width,
         ),
-        right_mem_row(s),
     ];
 
-    let mut lines = Vec::with_capacity(6);
+    let mut lines = Vec::with_capacity(left_rows.len());
     for (l, r) in left_rows.iter().zip(right_rows.iter()) {
         lines.push(card_row(l, r, left_half_width, right_half_width));
     }
@@ -393,10 +403,21 @@ fn left_row(label: &str, value: Option<f32>, bar_cells: usize) -> String {
     }
 }
 
-fn right_reset_row(label: &'static str, eta_unix: Option<u64>) -> String {
-    match eta_unix.and_then(crate::ui::panels::format_resets_eta) {
-        Some(eta_fmt) => format!("{label:<11} ▸ {eta_fmt}"),
-        None => format!("{label:<11} ▸ {DASH}"),
+/// Combined reset-eta row: `5H reset ▸ <eta>  ·  7D reset ▸ <eta>`.
+/// If only one eta is present, render just that one (no dangling
+/// separator). If neither is present, render a dim em-dash.
+fn right_combined_reset_row(eta_5h_unix: Option<u64>, eta_7d_unix: Option<u64>) -> String {
+    let part_5h = eta_5h_unix
+        .and_then(crate::ui::panels::format_resets_eta)
+        .map(|eta| format!("5H reset ▸ {eta}"));
+    let part_7d = eta_7d_unix
+        .and_then(crate::ui::panels::format_resets_eta)
+        .map(|eta| format!("7D reset ▸ {eta}"));
+    match (part_5h, part_7d) {
+        (Some(a), Some(b)) => format!("{a}  ·  {b}"),
+        (Some(a), None) => a,
+        (None, Some(b)) => b,
+        (None, None) => DASH.to_string(),
     }
 }
 
@@ -450,45 +471,72 @@ fn right_tokens_row(
     format!("{label_field}{glyphs}{suffix}")
 }
 
-fn right_cost_row(samples: &[TokenSample], current: Option<f64>, right_half_width: u16) -> String {
-    let curr = match current {
-        Some(c) => c,
-        None => return format!("{:<11} {}", "COST", DASH),
-    };
-    let mut sorted: Vec<&TokenSample> = samples.iter().collect();
-    sorted.sort_by_key(|s| s.ts_unix_ms);
-    let values: Vec<f64> = sorted.iter().filter_map(|s| s.cost_usd).collect();
-    let trend = if values.len() < 2 {
-        '─'
-    } else {
-        let last = values[values.len() - 1];
-        let prev = values[values.len() - 2];
-        if last > prev {
-            '▲'
-        } else if last < prev {
-            '▼'
-        } else {
+/// Combined COST + MEM + MEM-FILE row. COST renders sparkline, value
+/// and trend arrow (sparkline width is reduced because the row is
+/// shared). MEM renders RSS as `<n> MiB ─` (trend placeholder; no
+/// delta source yet). MEM-FILE renders the agent memory byte count.
+/// Sub-items are separated by ` · `; a missing sub-item also drops
+/// its preceding separator so there are no dangling dots. If all
+/// three are missing the row falls back to a dim em-dash.
+fn right_cost_mem_combined_row(
+    samples: &[TokenSample],
+    cost_current: Option<f64>,
+    s: &crate::domain::signal::SignalSet,
+    right_half_width: u16,
+) -> String {
+    let mem_part = s
+        .process_memory_mb
+        .as_ref()
+        .map(|m| format!("MEM {} MiB ─", m.value as i64));
+    let mem_file_part = s.agent_memory_bytes.as_ref().map(|m| {
+        format!(
+            "MEM-FILE {}",
+            crate::ui::panels::format_agent_memory_bytes(m.value)
+        )
+    });
+
+    let cost_part = cost_current.map(|curr| {
+        let mut sorted: Vec<&TokenSample> = samples.iter().collect();
+        sorted.sort_by_key(|s| s.ts_unix_ms);
+        let values: Vec<f64> = sorted.iter().filter_map(|s| s.cost_usd).collect();
+        let trend = if values.len() < 2 {
             '─'
+        } else {
+            let last = values[values.len() - 1];
+            let prev = values[values.len() - 2];
+            if last > prev {
+                '▲'
+            } else if last < prev {
+                '▼'
+            } else {
+                '─'
+            }
+        };
+        // Suffix: " $0.42 ▲" — single spaces (tighter than today's
+        // double-space) so the shared row stays compact.
+        let label = "COST ";
+        let suffix = format!(" ${curr:.2} {trend}");
+        // Reserve room for the rest of the row (separator + MEM
+        // sub-items) so the COST sparkline shares the budget.
+        let mut tail_reserved = 0usize;
+        if let Some(p) = &mem_part {
+            tail_reserved += " · ".chars().count() + p.chars().count();
         }
-    };
-    let label_field = format!("{:<11} ", "COST");
-    let suffix = format!("  ${curr:.2}  {trend}");
-    let cells = sparkline_cells(
-        right_half_width,
-        label_field.chars().count(),
-        suffix.chars().count(),
-    );
-    let glyph_count = SPARK_GLYPHS.chars().count();
-    let glyphs: String = if values.len() < 2 {
-        SPARK_GLYPHS
-            .chars()
-            .next()
-            .unwrap()
-            .to_string()
-            .repeat(cells)
-    } else {
-        let max = values.iter().cloned().fold(0.0_f64, f64::max);
-        if max == 0.0 {
+        if let Some(p) = &mem_file_part {
+            tail_reserved += " · ".chars().count() + p.chars().count();
+        }
+        let label_len = label.chars().count();
+        let suffix_len = suffix.chars().count();
+        // sparkline_cells subtracts label, suffix, and a 4-char
+        // padding from right_half_width; bake the trailing MEM
+        // budget into the suffix length so the helper subtracts it
+        // too. Clamp to [4, 24] per spec.
+        let cells_raw =
+            sparkline_cells(right_half_width, label_len, suffix_len + tail_reserved) as i32;
+        let cells = cells_raw.clamp(4, 24) as usize;
+
+        let glyph_count = SPARK_GLYPHS.chars().count();
+        let glyphs: String = if values.len() < 2 {
             SPARK_GLYPHS
                 .chars()
                 .next()
@@ -496,12 +544,38 @@ fn right_cost_row(samples: &[TokenSample], current: Option<f64>, right_half_widt
                 .to_string()
                 .repeat(cells)
         } else {
-            sample_to_cells(&values, cells, |v| {
-                ((*v / max) * (glyph_count - 1) as f64).round() as usize
-            })
-        }
-    };
-    format!("{label_field}{glyphs}{suffix}")
+            let max = values.iter().cloned().fold(0.0_f64, f64::max);
+            if max == 0.0 {
+                SPARK_GLYPHS
+                    .chars()
+                    .next()
+                    .unwrap()
+                    .to_string()
+                    .repeat(cells)
+            } else {
+                sample_to_cells(&values, cells, |v| {
+                    ((*v / max) * (glyph_count - 1) as f64).round() as usize
+                })
+            }
+        };
+        format!("{label}{glyphs}{suffix}")
+    });
+
+    let mut parts: Vec<String> = Vec::with_capacity(3);
+    if let Some(p) = cost_part {
+        parts.push(p);
+    }
+    if let Some(p) = mem_part {
+        parts.push(p);
+    }
+    if let Some(p) = mem_file_part {
+        parts.push(p);
+    }
+    if parts.is_empty() {
+        DASH.to_string()
+    } else {
+        parts.join(" · ")
+    }
 }
 
 /// Resample a series to exactly `cells` points, mapping each to a
@@ -524,24 +598,6 @@ fn sample_to_cells<T>(series: &[T], cells: usize, idx_for: impl Fn(&T) -> usize)
         out.push(SPARK_GLYPHS.chars().nth(raw_idx).unwrap_or('▁'));
     }
     out
-}
-
-fn right_mem_row(s: &crate::domain::signal::SignalSet) -> String {
-    let rss = s
-        .process_memory_mb
-        .as_ref()
-        .map(|m| format!("{} MiB ─", m.value as i64));
-    let agent = s
-        .agent_memory_bytes
-        .as_ref()
-        .map(|m| crate::ui::panels::format_agent_memory_bytes(m.value));
-
-    match (rss, agent) {
-        (Some(rss), Some(af)) => format!("MEM   {rss}   MEM-FILE {af}"),
-        (Some(rss), None) => format!("MEM   {rss}   MEM-FILE {DASH}"),
-        (None, Some(af)) => format!("MEM   {DASH}   MEM-FILE {af}"),
-        (None, None) => format!("MEM   {DASH}"),
-    }
 }
 
 pub fn render_metrics_modal(
@@ -733,6 +789,7 @@ mod tests {
             now_unix + 4 * 24 * 3600 + 6 * 3600,
             SourceKind::ProviderOfficial,
         ));
+        rep.signals.process_memory_mb = Some(MetricValue::new(312.0, SourceKind::ProviderOfficial));
         rep.recent_token_samples = vec![
             token_sample(1, Some(80_000), Some(8_000)),
             token_sample(2, Some(84_000), Some(8_400)),
@@ -741,7 +798,16 @@ mod tests {
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
         let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body);
-        let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        let strs: Vec<String> = lines.iter().map(line_to_string).collect();
+        let dump: String = strs.iter().map(|s| format!("{s}\n")).collect();
+
+        // 1 banner + 1 divider + 4 content rows = 6 total lines.
+        assert_eq!(
+            lines.len(),
+            6,
+            "card should render exactly 4 content rows + 1 divider after the banner; got:\n{dump}"
+        );
+
         // CTX bar + percent
         assert!(dump.contains("CTX"), "missing CTX label: {dump}");
         assert!(dump.contains("█"), "missing bar glyph: {dump}");
@@ -750,15 +816,29 @@ mod tests {
         assert!(dump.contains("47%"), "missing 5H pct: {dump}");
         // CACHE bar + percent
         assert!(dump.contains("87%"), "missing CACHE pct: {dump}");
-        // Right column: 5H reset eta text (no progress bar)
-        assert!(dump.contains("5H reset"), "missing 5H reset row: {dump}");
-        assert!(dump.contains("▸"), "missing reset arrow: {dump}");
-        // Tokens sparklines
-        assert!(dump.contains("TOKENS in"), "missing TOKENS in: {dump}");
-        assert!(dump.contains("TOKENS out"), "missing TOKENS out: {dump}");
-        // COST in right column
-        assert!(dump.contains("COST"), "missing COST: {dump}");
-        assert!(dump.contains("$0.42"), "missing cost current: {dump}");
+
+        // Locate the per-pane card content rows (skip banner + divider).
+        let row1 = &strs[2]; // combined reset row
+        let row4 = &strs[5]; // combined COST · MEM · MEM-FILE row
+
+        // Row 1: combined reset etas — both 5H reset and 7D reset present.
+        assert!(
+            row1.contains("5H reset") && row1.contains("7D reset"),
+            "row 1 should combine 5H+7D resets; got: {row1}"
+        );
+        assert!(row1.contains("▸"), "row 1 missing reset arrow: {row1}");
+
+        // Tokens sparklines on rows 2 and 3.
+        assert!(strs[3].contains("TOKENS in"), "missing TOKENS in: {dump}");
+        assert!(strs[4].contains("TOKENS out"), "missing TOKENS out: {dump}");
+
+        // Row 4: COST + MEM combined.
+        assert!(
+            row4.contains("COST") && row4.contains("MEM"),
+            "row 4 should combine COST and MEM; got: {row4}"
+        );
+        assert!(row4.contains("$0.42"), "missing cost current: {row4}");
+        assert!(row4.contains("312"), "missing MEM RSS value: {row4}");
     }
 
     #[test]
@@ -821,6 +901,76 @@ mod tests {
     }
 
     #[test]
+    fn right_column_combined_reset_row_drops_separator_when_one_missing() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::MetricValue;
+        use ratatui::layout::Rect;
+        let now_unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut rep = report_with_pressure("codex:1:review", 0.5, None, None);
+        // Only 5H reset eta — no 7D.
+        rep.signals.quota_5h_resets_at = Some(MetricValue::new(
+            now_unix + 90 * 60,
+            SourceKind::ProviderOfficial,
+        ));
+
+        let overlay = MetricsOverlay::new();
+        let body = Rect::new(0, 0, 120, 30);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body);
+        let strs: Vec<String> = lines.iter().map(line_to_string).collect();
+        let row1 = &strs[2];
+
+        assert!(
+            row1.contains("5H reset"),
+            "row 1 should still show 5H reset: {row1}"
+        );
+        assert!(
+            !row1.contains("7D reset"),
+            "row 1 should not mention 7D reset when 7D eta is missing: {row1}"
+        );
+        assert!(
+            !row1.contains("·"),
+            "row 1 should drop the ` · ` separator when only one reset is present: {row1}"
+        );
+    }
+
+    #[test]
+    fn right_column_combined_cost_mem_row_drops_separator_when_only_cost() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::MetricValue;
+        use ratatui::layout::Rect;
+        let mut rep = report_with_pressure("codex:1:review", 0.5, None, None);
+        // Only COST present — no MEM RSS, no MEM-FILE.
+        rep.signals.cost_usd = Some(MetricValue::new(0.42, SourceKind::ProviderOfficial));
+        rep.recent_token_samples = vec![
+            token_sample(1, Some(1_000), Some(100)),
+            token_sample(2, Some(1_200), Some(120)),
+        ];
+
+        let overlay = MetricsOverlay::new();
+        let body = Rect::new(0, 0, 120, 30);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body);
+        let strs: Vec<String> = lines.iter().map(line_to_string).collect();
+        let row4 = &strs[5];
+
+        assert!(row4.contains("COST"), "row 4 should show COST: {row4}");
+        assert!(
+            row4.contains("$0.42"),
+            "row 4 should show cost value: {row4}"
+        );
+        assert!(
+            !row4.contains("MEM"),
+            "row 4 should not mention MEM/MEM-FILE when both are missing: {row4}"
+        );
+        assert!(
+            !row4.contains("·"),
+            "row 4 should drop the ` · ` separator when only COST is present: {row4}"
+        );
+    }
+
+    #[test]
     fn render_metrics_lines_handles_empty_reports() {
         use ratatui::layout::Rect;
         let panes: Vec<crate::app::event_loop::PaneReport> = Vec::new();
@@ -866,10 +1016,21 @@ mod tests {
 
     #[test]
     fn render_metrics_lines_includes_banner_and_per_pane_cards() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::MetricValue;
         use ratatui::layout::Rect;
+        let now_unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut codex = report_with_pressure("codex:1:review", 0.70, Some(0.85), None);
+        codex.signals.quota_5h_resets_at = Some(MetricValue::new(
+            now_unix + 90 * 60,
+            SourceKind::ProviderOfficial,
+        ));
         let panes = vec![
             report_with_pressure("claude:1:main", 0.40, None, None),
-            report_with_pressure("codex:1:review", 0.70, Some(0.85), None),
+            codex,
         ];
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
