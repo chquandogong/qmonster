@@ -20,6 +20,20 @@ const TAB_BY_INDEX: [SettingsTab; 5] = [
     SettingsTab::Badges,
 ];
 
+/// Returns `true` when the operator pressed the entry key on a
+/// non-editing open overlay; the caller should close() and skip
+/// the per-overlay dispatcher. Preserves the existing rule that
+/// while a numeric edit is in flight, the keystroke is consumed
+/// as input rather than closing the overlay.
+pub fn settings_entry_key_closes(
+    overlay: &crate::ui::settings::SettingsOverlay,
+    code: crossterm::event::KeyCode,
+) -> bool {
+    overlay.is_open()
+        && overlay.edit_buffer().is_none()
+        && code == crossterm::event::KeyCode::Char('S')
+}
+
 pub fn handle_settings_overlay_key(
     overlay: &mut SettingsOverlay,
     config: &mut QmonsterConfig,
@@ -201,6 +215,16 @@ mod tests {
             None,
             KeyCode::Esc,
         ));
+    }
+
+    #[test]
+    fn settings_entry_key_closes_when_open_and_not_editing() {
+        use crossterm::event::KeyCode;
+        let mut overlay = crate::ui::settings::SettingsOverlay::new();
+        assert!(!settings_entry_key_closes(&overlay, KeyCode::Char('S')));
+        overlay.open();
+        assert!(settings_entry_key_closes(&overlay, KeyCode::Char('S')));
+        assert!(!settings_entry_key_closes(&overlay, KeyCode::Char('q')));
     }
 
     #[test]

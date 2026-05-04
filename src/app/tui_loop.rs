@@ -217,6 +217,13 @@ where
                             }
 
                             if settings_overlay.is_open() {
+                                if crate::app::settings_overlay::settings_entry_key_closes(
+                                    &settings_overlay,
+                                    k.code,
+                                ) {
+                                    settings_overlay.close();
+                                    continue;
+                                }
                                 let config_path = ctx.config_path.clone();
                                 handle_settings_overlay_key(
                                     &mut settings_overlay,
