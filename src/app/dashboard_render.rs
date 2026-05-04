@@ -17,6 +17,9 @@ use crate::ui::dashboard::{
     render_help_modal, render_provider_setup_modal, render_target_picker,
 };
 use crate::ui::panels::PaneStateFlash;
+use crate::ui::pending_actions::{
+    PendingActionsOverlay, PendingItem, render_pending_actions_modal,
+};
 use crate::ui::provider_setup::ProviderSetupOverlay;
 use crate::ui::settings::{SettingsOverlay, render_settings_modal};
 
@@ -47,6 +50,8 @@ pub struct DashboardFrameView<'a> {
     pub metrics_overlay: &'a crate::ui::metrics::MetricsOverlay,
     pub mem_observations: &'a HashMap<String, crate::ui::metrics::MemObservation>,
     pub action_explainer: &'a crate::app::action_explainer::ActionExplainModal,
+    pub pending_actions: &'a PendingActionsOverlay,
+    pub pending_items: &'a [PendingItem],
     pub config: &'a QmonsterConfig,
 }
 
@@ -133,5 +138,13 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
 
     if let Some(view) = view.action_explainer.view() {
         crate::ui::action_explainer::render_action_explainer_modal(frame, view);
+    }
+
+    // v1.39 surface C: Pending Actions overlay. Rendered last so it
+    // sits on top of every other overlay; tui_loop only opens it when
+    // none of the higher-priority modals (action explainer / target /
+    // help / etc.) are taking keystrokes.
+    if view.pending_actions.is_open() {
+        render_pending_actions_modal(frame, view.pending_actions, view.pending_items);
     }
 }

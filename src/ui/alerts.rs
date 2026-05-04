@@ -380,6 +380,77 @@ pub fn copy_alert_count(
     (count, top)
 }
 
+/// v1.39 Pending-action discoverability surface C (overlay).
+/// Per-alert metadata for `ui::pending_actions::collect_pending_items`.
+/// Each entry corresponds to an alert with a non-empty
+/// `suggested_command`, exposing enough state for the overlay to
+/// render a row and to drive `alert_state.select(idx)` when the
+/// operator presses Enter.
+pub struct CommandAlertEntry {
+    /// Index into the alert list as `render_alerts` orders it (so
+    /// `alert_state.select(idx)` jumps to the matching alert).
+    pub alert_idx: usize,
+    pub command: String,
+    pub title: String,
+    pub severity: Severity,
+    pub source: SourceKind,
+    /// Pane the alert was emitted from, when available. `None` for
+    /// `SystemNotice` and findings without an anchor pane (the
+    /// overlay falls back to alert-only navigation).
+    pub pane_id: Option<String>,
+}
+
+/// Walk the same alert pipeline `render_alerts` uses and return one
+/// entry per alert with a runnable `suggested_command`. Reused by
+/// the Pending Actions overlay (`a` key) so the overlay's row order
+/// matches the queue rendering exactly.
+pub fn alert_items_with_command(
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    fresh_alerts: &HashSet<String>,
+    alert_times: &HashMap<String, String>,
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> Vec<CommandAlertEntry> {
+    let items = collect_items(
+        notices,
+        reports,
+        fresh_alerts,
+        alert_times,
+        hidden_until,
+        now,
+    );
+    items
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, item)| {
+            let command = item.suggested_command.clone()?;
+            // Recover pane_id from the alert key prefix `rec|<pane>|...`
+            // and `finding|<anchor>|...`. SystemNotice keys produce
+            // None here so we don't accidentally jump panes.
+            let pane_id = item
+                .key
+                .strip_prefix("rec|")
+                .and_then(|tail| tail.split('|').next())
+                .map(|s| s.to_string())
+                .or_else(|| {
+                    item.key
+                        .strip_prefix("finding|")
+                        .and_then(|tail| tail.split('|').next())
+                        .map(|s| s.to_string())
+                });
+            Some(CommandAlertEntry {
+                alert_idx: idx,
+                command,
+                title: item.title,
+                severity: item.severity,
+                source: item.source_kind,
+                pane_id,
+            })
+        })
+        .collect()
+}
+
 fn block(title: &str, focused: bool) -> Block<'_> {
     Block::default()
         .borders(Borders::ALL)

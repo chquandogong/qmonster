@@ -20,6 +20,10 @@ use crate::app::modal_state::{
     ScrollModalState, handle_scroll_modal_key, handle_scroll_modal_mouse,
 };
 use crate::app::operator_actions::{version_refresh_notices, write_operator_snapshot};
+use crate::app::pending_actions_overlay::{
+    PendingActionsKeyOutcome, handle_pending_actions_overlay_key,
+    handle_pending_actions_overlay_mouse,
+};
 use crate::app::polling_tick::{PollTickState, handle_poll_tick};
 use crate::app::prompt_send_actions::handle_prompt_send_action;
 use crate::app::provider_setup_overlay::{
@@ -72,6 +76,11 @@ where
         crate::ui::provider_setup::ProviderSetupOverlay::from_config(&ctx.config);
     let mut metrics_overlay = crate::ui::metrics::MetricsOverlay::new();
     let mut action_explainer = crate::app::action_explainer::ActionExplainModal::new();
+    // v1.39 surface C: Pending Actions overlay (a key). Lists every
+    // pane with a pending prompt-send proposal AND every alert with a
+    // suggested_command, with severity color coding. Enter jumps +
+    // opens the Action Explainer modal.
+    let mut pending_actions = crate::ui::pending_actions::PendingActionsOverlay::new();
 
     // Phase F F-6 (v1.32.0): spawn `codex app-server` once at TUI
     // startup when the operator opted in via the [provider_setup]
@@ -159,6 +168,19 @@ where
                 pane_state_flashes.retain(|_, flash| flash.is_active(now));
                 dashboard.sync_alert_selection(now);
                 let target = target_label(target_picker.selected_target.as_ref());
+                // v1.39 surface C: pre-build the pending-actions items
+                // each frame so the overlay (when open) and the future
+                // `a`-key handler always see the same snapshot of
+                // actionable items as render and so the operator's
+                // selection cursor stays aligned with the rendered list.
+                let pending_items = crate::ui::pending_actions::collect_pending_items(
+                    &dashboard.reports,
+                    &dashboard.notices,
+                    &dashboard.fresh_alerts,
+                    &dashboard.alert_times,
+                    &dashboard.alert_hide_deadlines,
+                    now,
+                );
                 terminal.draw(|frame| {
                     render_dashboard_frame(
                         frame,
@@ -189,6 +211,8 @@ where
                             metrics_overlay: &metrics_overlay,
                             mem_observations: &mem_observations,
                             action_explainer: &action_explainer,
+                            pending_actions: &pending_actions,
+                            pending_items: &pending_items,
                             config: &ctx.config,
                         },
                     );
@@ -295,6 +319,40 @@ where
                                 continue;
                             }
 
+                            if pending_actions.is_open() {
+                                // Re-collect items at key-handle time so
+                                // a poll between draw and key delivery
+                                // can't drift the index.
+                                let now = Instant::now();
+                                let items = crate::ui::pending_actions::collect_pending_items(
+                                    &dashboard.reports,
+                                    &dashboard.notices,
+                                    &dashboard.fresh_alerts,
+                                    &dashboard.alert_times,
+                                    &dashboard.alert_hide_deadlines,
+                                    now,
+                                );
+                                let outcome = handle_pending_actions_overlay_key(
+                                    &mut pending_actions,
+                                    items.len(),
+                                    k.code,
+                                );
+                                if let PendingActionsKeyOutcome::EnterSelected(idx) = outcome {
+                                    dispatch_pending_action(
+                                        idx,
+                                        &items,
+                                        PendingActionDispatch {
+                                            dashboard: &mut dashboard,
+                                            action_explainer: &mut action_explainer,
+                                            pending_actions: &mut pending_actions,
+                                            focus: &mut focus,
+                                            config: &ctx.config,
+                                        },
+                                    );
+                                }
+                                continue;
+                            }
+
                             if action_explainer.is_open() {
                                 let now = Instant::now();
                                 match k.code {
@@ -369,6 +427,17 @@ where
                                         metrics_overlay.close();
                                     } else {
                                         metrics_overlay.open();
+                                    }
+                                }
+                                KeyCode::Char('a') => {
+                                    // v1.39 surface C: open the Pending
+                                    // Actions overlay. Toggle on `a`
+                                    // again so the operator can dismiss
+                                    // without reaching for Esc.
+                                    if pending_actions.is_open() {
+                                        pending_actions.close();
+                                    } else {
+                                        pending_actions.open();
                                     }
                                 }
                                 KeyCode::Char('t') => {
@@ -587,6 +656,16 @@ where
                                 continue;
                             }
 
+                            if pending_actions.is_open() {
+                                dashboard_split_dragging = false;
+                                handle_pending_actions_overlay_mouse(
+                                    &mut pending_actions,
+                                    viewport,
+                                    m,
+                                );
+                                continue;
+                            }
+
                             // v1.38 Bug A fix: while the Action Explainer modal is
                             // open, swallow all mouse events so they don't leak
                             // through to the dashboard (selection / divider drag).
@@ -683,6 +762,96 @@ where
 
     leave_terminal_session();
     result
+}
+
+/// v1.39 surface C dispatch — Enter on a Pending Actions overlay row
+/// jumps the underlying selection (pane_state for Proposal items,
+/// alert_state for Copy items), opens the Action Explainer modal
+/// for the matching action, and closes the overlay so the operator
+/// confirms / cancels without leaving the keyboard. Deliberately
+/// keeps the action_explainer payload identical to the
+/// p/d/y-direct flows (snapshot identifying fields, build the same
+/// `ActionExplainView`) so confirm-time validation still catches a
+/// proposal vanish between Enter and `confirm_pending_action`.
+struct PendingActionDispatch<'a> {
+    dashboard: &'a mut crate::app::dashboard_runtime::DashboardRuntimeState,
+    action_explainer: &'a mut crate::app::action_explainer::ActionExplainModal,
+    pending_actions: &'a mut crate::ui::pending_actions::PendingActionsOverlay,
+    focus: &'a mut FocusedPanel,
+    config: &'a crate::app::config::QmonsterConfig,
+}
+
+fn dispatch_pending_action(
+    idx: usize,
+    items: &[crate::ui::pending_actions::PendingItem],
+    cx: PendingActionDispatch<'_>,
+) {
+    use crate::app::action_explainer::{PendingAction, build_accept_view, build_copy_view};
+    use crate::ui::pending_actions::PendingItem;
+
+    let PendingActionDispatch {
+        dashboard,
+        action_explainer,
+        pending_actions,
+        focus,
+        config,
+    } = cx;
+
+    let Some(item) = items.get(idx) else {
+        pending_actions.close();
+        return;
+    };
+    match item {
+        PendingItem::Proposal {
+            pane_idx,
+            slash_command,
+            proposal_id,
+            target_pane_id,
+            ..
+        } => {
+            // Jump pane selection to the item's pane so the operator's
+            // mental model lines up with the Action Explainer's
+            // "Target pane" row.
+            dashboard.pane_state.select(Some(*pane_idx));
+            *focus = FocusedPanel::Panes;
+            // Re-fetch the report so build_accept_view sees the live
+            // recommendations for the "Why now" reason text.
+            let Some(report) = dashboard.reports.get(*pane_idx) else {
+                pending_actions.close();
+                return;
+            };
+            let action = PendingAction::AcceptPromptSend {
+                target_pane_id: target_pane_id.clone(),
+                slash_command: slash_command.clone(),
+                proposal_id: proposal_id.clone(),
+            };
+            let view = build_accept_view(
+                report,
+                slash_command,
+                config.actions.mode,
+                config.actions.allow_auto_prompt_send,
+            );
+            action_explainer.open(action, view);
+        }
+        PendingItem::Copy {
+            alert_idx,
+            command,
+            alert_title,
+            severity,
+            source,
+            ..
+        } => {
+            dashboard.alert_state.select(Some(*alert_idx));
+            *focus = FocusedPanel::Alerts;
+            let action = PendingAction::CopyAlertCommand {
+                command: command.clone(),
+                alert_title: alert_title.clone(),
+            };
+            let view = build_copy_view(alert_title, command, Some(*severity), *source);
+            action_explainer.open(action, view);
+        }
+    }
+    pending_actions.close();
 }
 
 /// v1.38 Phase D Task 20: when the Action Explainer modal is open and

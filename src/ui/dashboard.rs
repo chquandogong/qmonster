@@ -907,6 +907,10 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
             "open the Metrics overlay (per-pane card layout); ↑/↓ scroll the body; [ / ] resize the modal; = reset to default; m again, Esc, q, or [x] click to close",
         ),
         (
+            "a",
+            "open Pending Actions overlay listing every pane with a pending p/d proposal AND every alert with a y-copyable command; ↑/↓ select, Enter jumps to that pane/alert and opens the Action Explainer modal, a again or Esc/q/[x] close",
+        ),
+        (
             "Enter",
             "advance session selection or confirm window target",
         ),
@@ -1816,6 +1820,24 @@ mod tests {
         assert!(
             bullet_count >= 3,
             "the `p` summary row must be followed by at least 3 bullet-indented continuation lines (one per audit chain). got bullet_count = {bullet_count}. joined:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn help_lists_a_pending_actions_overlay_key() {
+        // v1.39: the Pending Actions overlay key was added so
+        // operators can dispatch from anywhere without navigating to
+        // the right pane/alert. Lock the description so future row
+        // reorderings can't drop it.
+        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
+        let dump = lines.join("\n");
+        assert!(
+            dump.contains("Pending Actions overlay"),
+            "Help should list a -> Pending Actions overlay; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("a again or Esc/q/[x] close"),
+            "Help a row should mention close affordances; got:\n{dump}"
         );
     }
 

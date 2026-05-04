@@ -682,6 +682,35 @@ confirm_actions = "always"
 `first_time`은 세션 로컬입니다 — Qmonster를 재시작하면 다시 모달이
 뜹니다. 영구 silence를 원하면 `never`로 설정하세요.
 
+### 8.7 Pending Actions Overlay
+
+`a` 키로 토글합니다. v1.39에서 추가된 수면 가능한 디스커버리 layer로,
+다음 항목을 한 번에 보여줍니다:
+
+- pending prompt-send proposal을 보유한 모든 pane (operator가 `p`/`d`로
+  처리할 수 있는 항목)
+- `suggested_command`가 있는 모든 alert (operator가 `y`로 복사할 수
+  있는 항목)
+
+본 overlay 외에도 항목 존재는 두 가지 다른 surface로 노출됩니다:
+
+- **Header chip** — pane card 제목에 `★p`, alert 제목에 `★y`가 붙고
+  severity 색으로 강조됩니다.
+- **Footer counter** — 화면 하단에 `★p:N · ★y:M` 카운터가 항상
+  표시됩니다 (0이면 dim, 양수면 severity 색).
+
+Overlay 행 형식: `<cursor> [p|y] <severity> · <command> · <context>`
+
+조작:
+
+- `↑` / `↓` 또는 `j` / `k` — 항목 이동
+- `Enter` — 해당 pane/alert로 selection을 점프시키고 Action Explainer
+  modal을 자동으로 엽니다 (실제 dispatch는 Action Explainer에서
+  Enter로 확정)
+- `a` 다시, `Esc`, `q`, `[x]` 클릭 — overlay 닫기
+
+항목이 없을 때는 `No pending actions.` 안내 줄이 표시됩니다.
+
 ## 9. 운영 파일
 
 - 표준 runtime root는 `~/.qmonster/`입니다.
