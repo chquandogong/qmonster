@@ -36,10 +36,9 @@ Five backwards-compatible themes are complete in the v1.39.0 source. None of the
 ## Active Follow-Ups
 
 1. Tag protection / ruleset activation remains a GitHub Settings task.
-2. MF-2 remains deferred: `evolution_summary.current_phase` length cleanup.
-3. Phase H remains unscoped: opt-in auto-snapshot at reset boundary.
-4. Phase 7 planning is opened by `.docs/codex/phase7-anomaly-detection-spec.md` for anomaly detection and subagent analysis.
-5. Phase 7 D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters.
+2. Phase H remains unscoped: opt-in auto-snapshot at reset boundary.
+3. Phase 7 planning is opened by `.docs/codex/phase7-anomaly-detection-spec.md` for anomaly detection and subagent analysis.
+4. Phase 7 D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters.
 
 ## Validation Baseline
 
