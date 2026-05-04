@@ -30,7 +30,7 @@ pub fn handle_prompt_send_action<P: PaneSource>(
     }
 }
 
-fn first_prompt_send_proposal(report: &PaneReport) -> Option<(String, String)> {
+pub(crate) fn first_prompt_send_proposal(report: &PaneReport) -> Option<(String, String)> {
     let mut proposals: Vec<_> = report
         .effects
         .iter()

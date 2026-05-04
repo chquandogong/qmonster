@@ -293,6 +293,15 @@ fn pane_list_lines_with_flash(
     }
 
     if expanded {
+        if let Some((_target, slash)) =
+            crate::app::prompt_send_actions::first_prompt_send_proposal(report)
+        {
+            lines.extend(wrap_aligned_field(
+                "proposal",
+                &format!("{slash}  \u{2192} press p to accept \u{00b7} d to reject"),
+                wrap_width,
+            ));
+        }
         for rec in report.recommendations.iter().take(3) {
             lines.extend(wrap_aligned_field(
                 severity_label(rec.severity),
@@ -3355,5 +3364,41 @@ mod tests {
 
         let idx = pane_index_at_row(&reports, &state, first_height, wrap_width);
         assert_eq!(idx, Some(1));
+    }
+
+    #[test]
+    fn pane_card_shows_inline_proposal_line_when_pending() {
+        use crate::domain::recommendation::RequestedEffect;
+        let mut rep = sample_pane_report();
+        rep.effects.push(RequestedEffect::PromptSendProposed {
+            target_pane_id: rep.pane_id.clone(),
+            slash_command: "/compact".into(),
+            proposal_id: "pid-1".into(),
+        });
+        let lines = pane_list_lines_with_width(&rep, /* expanded */ true, false, 80);
+        assert!(
+            lines.iter().any(|l| line_text(l).contains("proposal:")),
+            "expected proposal: line"
+        );
+        assert!(
+            lines.iter().any(|l| line_text(l).contains("/compact")),
+            "expected slash command in proposal"
+        );
+    }
+
+    #[test]
+    fn pane_card_does_not_show_proposal_when_collapsed() {
+        use crate::domain::recommendation::RequestedEffect;
+        let mut rep = sample_pane_report();
+        rep.effects.push(RequestedEffect::PromptSendProposed {
+            target_pane_id: rep.pane_id.clone(),
+            slash_command: "/compact".into(),
+            proposal_id: "pid-1".into(),
+        });
+        let lines = pane_list_lines_with_width(&rep, /* expanded */ false, false, 80);
+        assert!(
+            !lines.iter().any(|l| line_text(l).contains("proposal:")),
+            "proposal line should only appear when expanded"
+        );
     }
 }
