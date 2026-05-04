@@ -1,4 +1,9 @@
 //! Phase C (v1.38) — Metrics Overlay key + mouse dispatchers.
+//!
+//! v1.38 layout v2: selection state is gone — all panes' metrics live
+//! inline in per-pane cards. ↑/↓/j/k now scroll the body, not select
+//! a pane. Mouse wheel still scrolls; `[x]` click and `m`/`Esc`/`q`
+//! still close.
 
 use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
@@ -7,9 +12,16 @@ use crate::app::keymap::rect_contains;
 use crate::ui::dashboard::close_button_rect;
 use crate::ui::metrics::{MetricsOverlay, metrics_modal_rects};
 
+/// Soft cap on the scroll counter. Ratatui's `Paragraph::scroll`
+/// self-clips visible output, so the cap exists purely to keep
+/// `MetricsOverlay::scroll` from drifting unboundedly when users
+/// hold ↓ or wheel past the actual content. 200 lines comfortably
+/// exceeds the modal body even on extreme pane counts.
+const SCROLL_MAX: u16 = 200;
+
 pub fn handle_metrics_overlay_key(
     overlay: &mut MetricsOverlay,
-    reports_len: usize,
+    _reports_len: usize,
     code: KeyCode,
 ) -> bool {
     if !overlay.is_open() {
@@ -17,8 +29,8 @@ pub fn handle_metrics_overlay_key(
     }
     match code {
         KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('m') => overlay.close(),
-        KeyCode::Up | KeyCode::Char('k') => overlay.select_prev(reports_len),
-        KeyCode::Down | KeyCode::Char('j') => overlay.select_next(reports_len),
+        KeyCode::Up | KeyCode::Char('k') => overlay.scroll_up(),
+        KeyCode::Down | KeyCode::Char('j') => overlay.scroll_down(SCROLL_MAX),
         _ => {}
     }
     true
@@ -42,12 +54,7 @@ pub fn handle_metrics_overlay_mouse(
     }
     match event.kind {
         MouseEventKind::ScrollUp => overlay.scroll_up(),
-        // Soft cap on internal scroll state. Ratatui's `Paragraph::scroll`
-        // self-clips visible output, so the cap exists purely to keep
-        // `MetricsOverlay::scroll` from drifting unboundedly when users
-        // wheel past the actual content. 200 lines comfortably exceeds
-        // the modal body even on extreme pane counts.
-        MouseEventKind::ScrollDown => overlay.scroll_down(200),
+        MouseEventKind::ScrollDown => overlay.scroll_down(SCROLL_MAX),
         _ => {}
     }
 }
@@ -66,13 +73,14 @@ mod tests {
     }
 
     #[test]
-    fn arrows_move_selection() {
+    fn arrows_scroll_body() {
         let mut o = MetricsOverlay::new();
         o.open();
         handle_metrics_overlay_key(&mut o, 3, KeyCode::Down);
-        assert_eq!(o.selected(), 1);
+        handle_metrics_overlay_key(&mut o, 3, KeyCode::Down);
+        assert_eq!(o.scroll(), 2);
         handle_metrics_overlay_key(&mut o, 3, KeyCode::Up);
-        assert_eq!(o.selected(), 0);
+        assert_eq!(o.scroll(), 1);
     }
 
     #[test]

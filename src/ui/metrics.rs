@@ -1,10 +1,15 @@
 //! Phase C (v1.38) — Metrics Overlay state container.
 //!
-//! Pure-state struct with open/close/select APIs and clamping. No
-//! rendering yet (Tasks 10-13 add layout, hottest banner, comparison
-//! table, selected-pane detail, and Frame-based renderer). Tests
-//! cover the state transitions in isolation so subsequent renderer
-//! tasks can rely on a stable state contract.
+//! v1.38 layout v2 (operator feedback): the comparison/detail split is
+//! gone in favor of per-pane cards so all panes' metrics are visible
+//! at once without ↑/↓ selection. Bars widen to 24 cells (scaled down
+//! on narrow viewports), 5H/7D reset etas live at the top of the right
+//! column as plain text (no progress bar), COST appears only once
+//! (right column), and ↑/↓ now scroll the body.
+//!
+//! Pure-state struct with open/close + scroll APIs. Tests cover state
+//! transitions in isolation so renderer and key-handler tests can rely
+//! on a stable state contract.
 
 use crate::app::event_loop::PaneReport;
 use crate::store::TokenSample;
@@ -19,7 +24,6 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 #[derive(Debug, Default, Clone)]
 pub struct MetricsOverlay {
     open: bool,
-    selected: usize,
     scroll: u16,
 }
 
@@ -41,33 +45,8 @@ impl MetricsOverlay {
     pub fn is_open(&self) -> bool {
         self.open
     }
-    pub fn selected(&self) -> usize {
-        self.selected
-    }
     pub fn scroll(&self) -> u16 {
         self.scroll
-    }
-
-    pub fn select_at(&mut self, idx: usize, total: usize) {
-        if total == 0 {
-            self.selected = 0;
-            return;
-        }
-        self.selected = idx.min(total - 1);
-    }
-
-    pub fn select_next(&mut self, total: usize) {
-        if total == 0 {
-            return;
-        }
-        self.selected = self.selected.saturating_add(1).min(total - 1);
-    }
-
-    pub fn select_prev(&mut self, total: usize) {
-        if total == 0 {
-            return;
-        }
-        self.selected = self.selected.saturating_sub(1);
     }
 
     pub fn scroll_up(&mut self) {
@@ -82,28 +61,25 @@ impl MetricsOverlay {
 pub struct MetricsModalRects {
     pub area: Rect,
     pub banner: Rect,
-    pub comparison: Rect,
-    pub detail: Rect,
+    pub body: Rect,
     pub hint: Rect,
 }
 
 pub fn metrics_modal_rects(viewport: Rect) -> MetricsModalRects {
-    let area = centered_rect(88, 80, viewport);
+    let area = centered_rect(95, 90, viewport);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // banner
-            Constraint::Min(6),    // comparison
-            Constraint::Length(8), // detail
+            Constraint::Min(6),    // body (per-pane cards, scrollable)
             Constraint::Length(1), // hint
         ])
         .split(area);
     MetricsModalRects {
         area,
         banner: chunks[0],
-        comparison: chunks[1],
-        detail: chunks[2],
-        hint: chunks[3],
+        body: chunks[1],
+        hint: chunks[2],
     }
 }
 
@@ -171,12 +147,15 @@ fn pane_label(r: &PaneReport) -> String {
     format!("{provider}:{}:{role}", id.instance)
 }
 
-const BAR_CELLS: usize = 6;
+const BAR_MAX_CELLS: usize = 24;
+const BAR_MIN_CELLS: usize = 8;
 
-fn render_pressure_bar(ratio: f32) -> String {
-    let filled = ((ratio.clamp(0.0, 1.0) * BAR_CELLS as f32).round() as usize).min(BAR_CELLS);
-    let mut s = String::with_capacity(BAR_CELLS);
-    for i in 0..BAR_CELLS {
+/// Render a pressure bar with `cells` total width — `█` for filled,
+/// `░` for unfilled. Severity color is applied by the caller via Span.
+fn render_pressure_bar(ratio: f32, cells: usize) -> String {
+    let filled = ((ratio.clamp(0.0, 1.0) * cells as f32).round() as usize).min(cells);
+    let mut s = String::with_capacity(cells);
+    for i in 0..cells {
         s.push(if i < filled { '█' } else { '░' });
     }
     s
@@ -188,121 +167,209 @@ fn pct(v: f32) -> String {
 
 const DASH: &str = "─";
 
-/// One row per pane in the comparison table. Columns: pane label, CTX
-/// bar, CTX %, 5H bar, 5H %, 7D bar, 7D %, CACHE bar, CACHE %, COST.
-/// Missing values render as em-dash dim. Spec §4.4.
-pub fn comparison_row_line(report: &PaneReport) -> Line<'static> {
-    let label = pane_label(report);
-    let s = &report.signals;
-    let mut spans = Vec::new();
-    spans.push(Span::raw(format!("{label:<18} ")));
-
-    push_pressure_cell(&mut spans, s.context_pressure.as_ref().map(|m| m.value));
-    push_pressure_cell(&mut spans, s.quota_5h_pressure.as_ref().map(|m| m.value));
-    push_pressure_cell(
-        &mut spans,
-        s.quota_weekly_pressure.as_ref().map(|m| m.value),
-    );
-    push_pressure_cell(
-        &mut spans,
-        s.cache_hit_ratio.as_ref().map(|m| m.value as f32),
-    );
-    push_cost_cell(&mut spans, s.cost_usd.as_ref().map(|m| m.value));
-
-    Line::from(spans)
-}
-
-fn push_pressure_cell(spans: &mut Vec<Span<'static>>, value: Option<f32>) {
-    match value {
-        Some(v) => {
-            spans.push(Span::raw(render_pressure_bar(v)));
-            spans.push(Span::raw(format!(" {} ", pct(v))));
-        }
-        None => spans.push(Span::styled(
-            format!("{:^11} ", DASH),
-            Style::default().fg(theme::TEXT_DIM),
-        )),
-    }
-}
-
-fn push_cost_cell(spans: &mut Vec<Span<'static>>, value: Option<f64>) {
-    match value {
-        Some(v) => spans.push(Span::raw(format!("${v:.2} "))),
-        None => spans.push(Span::styled(
-            format!("{} ", DASH),
-            Style::default().fg(theme::TEXT_DIM),
-        )),
-    }
-}
-
-const WINDOW_5H_SECS: f64 = 5.0 * 3600.0;
-const WINDOW_7D_SECS: f64 = 7.0 * 86400.0;
 const SPARK_GLYPHS: &str = "▁▂▃▄▅▆▇█";
 
-/// Render the selected pane's detail block — token in/out sparklines,
-/// cost trend, memory current values, and 5H/7D reset bars. Spec §4.5.
-pub fn selected_detail_lines(report: &PaneReport) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
+/// Compute the bar width for the given left-half budget.
+///
+/// Layout per left row: `LABEL   <bar>  <pct>` where:
+/// - LABEL column = 6 chars + 3 spaces = 9
+/// - pct column   = 4 chars (e.g. "100%")
+/// - gap before pct = 2 chars
+///
+/// So bar = `left_half_width - 9 - 2 - 4` clamped to [BAR_MIN_CELLS, BAR_MAX_CELLS].
+fn bar_cells_for_left_half(left_half_width: u16) -> usize {
+    let raw = (left_half_width as i32) - 9 - 2 - 4;
+    raw.clamp(BAR_MIN_CELLS as i32, BAR_MAX_CELLS as i32) as usize
+}
 
-    // TOKENS in / out sparklines from recent_token_samples deltas
-    if let Some(line) = token_sparkline_line("TOKENS in", &report.recent_token_samples, |s| {
-        s.input_tokens
-    }) {
-        lines.push(line);
-    }
-    if let Some(line) = token_sparkline_line("TOKENS out", &report.recent_token_samples, |s| {
-        s.output_tokens
-    }) {
-        lines.push(line);
-    }
-    // COST sparkline + current
-    if let Some(line) = cost_sparkline_line(
-        &report.recent_token_samples,
-        report.signals.cost_usd.as_ref().map(|m| m.value),
-    ) {
-        lines.push(line);
-    }
-    // MEM RSS / MEM-FILE — current value
-    if let Some(line) = mem_rss_line(&report.signals) {
-        lines.push(line);
-    }
-    if let Some(line) = mem_file_line(&report.signals) {
-        lines.push(line);
-    }
-    // 5H / 7D reset bars
-    lines.push(reset_line(
-        "5H reset",
-        report.signals.quota_5h_resets_at.as_ref().map(|m| m.value),
-        WINDOW_5H_SECS,
-    ));
-    lines.push(reset_line(
-        "7D reset",
-        report
-            .signals
-            .quota_weekly_resets_at
-            .as_ref()
-            .map(|m| m.value),
-        WINDOW_7D_SECS,
-    ));
+/// Compute the sparkline width for the right-half budget given a
+/// label prefix length and a suffix (current + delta) reservation.
+/// `right_half_width - label - suffix - padding` clamped to a sane
+/// minimum so we always render *some* glyph row even at narrow widths.
+fn sparkline_cells(right_half_width: u16, label_len: usize, suffix_len: usize) -> usize {
+    let padding = 4; // gaps around sparkline (2 spaces before + 2 after)
+    let raw = (right_half_width as i32) - (label_len as i32) - (suffix_len as i32) - padding;
+    raw.clamp(4, 32) as usize
+}
 
+/// Pure helper that produces the modal body lines. Tested directly;
+/// `render_metrics_modal` uses this to feed a `Paragraph`. Lays out
+/// per-pane cards, each card = card-divider line + 6 content rows
+/// (`<left half> │ <right half>`).
+pub fn render_metrics_lines(
+    _overlay: &MetricsOverlay,
+    _target_label: &str,
+    reports: &[PaneReport],
+    body: Rect,
+) -> Vec<Line<'static>> {
+    let mut out = Vec::new();
+    out.push(hottest_banner_line(reports));
+    out.push(Line::from(""));
+
+    if reports.is_empty() {
+        return out;
+    }
+
+    let body_width = body.width.max(20);
+    // Inner width = body width minus the surrounding modal border (2
+    // chars). A `body` that came directly from `metrics_modal_rects`
+    // already excludes the borders, but `render_metrics_lines` may be
+    // called with the outer `area`, so subtract defensively.
+    let inner_width = body_width.saturating_sub(2);
+    // Two halves separated by " │ " (3 chars). Any odd remainder goes
+    // to the right half so the sparkline keeps a touch more room.
+    let separator_len: u16 = 3;
+    let halves_budget = inner_width.saturating_sub(separator_len);
+    let left_half_width = halves_budget / 2;
+    let right_half_width = halves_budget - left_half_width;
+
+    for (i, r) in reports.iter().enumerate() {
+        if i > 0 {
+            out.push(Line::from(""));
+        }
+        out.push(card_divider_line(r, inner_width));
+        out.extend(card_rows(r, left_half_width, right_half_width));
+    }
+
+    out
+}
+
+fn card_divider_line(report: &PaneReport, inner_width: u16) -> Line<'static> {
+    let label = pane_label(report);
+    let prefix = format!("━ {label} · {pane_id} ", pane_id = report.pane_id);
+    let prefix_len = prefix.chars().count();
+    let trail = (inner_width as usize).saturating_sub(prefix_len);
+    let mut s = prefix;
+    for _ in 0..trail {
+        s.push('━');
+    }
+    Line::from(Span::styled(s, Style::default().fg(theme::TEXT_DIM)))
+}
+
+fn card_rows(
+    report: &PaneReport,
+    left_half_width: u16,
+    right_half_width: u16,
+) -> Vec<Line<'static>> {
+    let bar_cells = bar_cells_for_left_half(left_half_width);
+    let s = &report.signals;
+
+    let left_rows = [
+        left_row(
+            "CTX",
+            s.context_pressure.as_ref().map(|m| m.value),
+            bar_cells,
+        ),
+        left_row(
+            "5H",
+            s.quota_5h_pressure.as_ref().map(|m| m.value),
+            bar_cells,
+        ),
+        left_row(
+            "7D",
+            s.quota_weekly_pressure.as_ref().map(|m| m.value),
+            bar_cells,
+        ),
+        left_row(
+            "CACHE",
+            s.cache_hit_ratio.as_ref().map(|m| m.value as f32),
+            bar_cells,
+        ),
+        String::new(), // row 5 left blank (left col only has 4 metrics)
+        String::new(), // row 6 left blank
+    ];
+
+    let right_rows = [
+        right_reset_row("5H reset", s.quota_5h_resets_at.as_ref().map(|m| m.value)),
+        right_reset_row(
+            "7D reset",
+            s.quota_weekly_resets_at.as_ref().map(|m| m.value),
+        ),
+        right_tokens_row(
+            "TOKENS in",
+            &report.recent_token_samples,
+            |s| s.input_tokens,
+            right_half_width,
+        ),
+        right_tokens_row(
+            "TOKENS out",
+            &report.recent_token_samples,
+            |s| s.output_tokens,
+            right_half_width,
+        ),
+        right_cost_row(
+            &report.recent_token_samples,
+            s.cost_usd.as_ref().map(|m| m.value),
+            right_half_width,
+        ),
+        right_mem_row(s),
+    ];
+
+    let mut lines = Vec::with_capacity(6);
+    for (l, r) in left_rows.iter().zip(right_rows.iter()) {
+        lines.push(card_row(l, r, left_half_width, right_half_width));
+    }
     lines
 }
 
-fn token_sparkline_line(
+fn card_row(left: &str, right: &str, left_half_width: u16, right_half_width: u16) -> Line<'static> {
+    let left_padded = pad_to_width(left, left_half_width as usize);
+    let right_padded = pad_to_width(right, right_half_width as usize);
+    Line::from(format!("  {left_padded} │ {right_padded}"))
+}
+
+/// Pad a string with spaces on the right to exactly `width` columns.
+/// Truncation is by character count; the caller owns ensuring
+/// individual cells are single-column glyphs (bar `█`/`░`, sparkline
+/// glyphs, ASCII text).
+fn pad_to_width(s: &str, width: usize) -> String {
+    let len = s.chars().count();
+    if len >= width {
+        // truncate to width chars
+        s.chars().take(width).collect()
+    } else {
+        let mut out = String::with_capacity(s.len() + (width - len));
+        out.push_str(s);
+        for _ in 0..(width - len) {
+            out.push(' ');
+        }
+        out
+    }
+}
+
+fn left_row(label: &str, value: Option<f32>, bar_cells: usize) -> String {
+    match value {
+        Some(v) => {
+            let bar = render_pressure_bar(v, bar_cells);
+            // Layout: "LABEL{2-space gap}{bar}  {pct}"
+            // LABEL is left-padded to 6 chars so CTX/5H/7D/CACHE align.
+            format!("{label:<6} {bar}  {pct:>4}", pct = pct(v))
+        }
+        None => format!("{label:<6} {DASH}"),
+    }
+}
+
+fn right_reset_row(label: &'static str, eta_unix: Option<u64>) -> String {
+    match eta_unix.and_then(crate::ui::panels::format_resets_eta) {
+        Some(eta_fmt) => format!("{label:<11} ▸ {eta_fmt}"),
+        None => format!("{label:<11} ▸ {DASH}"),
+    }
+}
+
+fn right_tokens_row(
     label: &'static str,
     samples: &[TokenSample],
     field: impl Fn(&TokenSample) -> Option<u64>,
-) -> Option<Line<'static>> {
+    right_half_width: u16,
+) -> String {
     if samples.len() < 2 {
-        return None;
+        return format!("{label:<11} {DASH}");
     }
-    // Persisted callers store newest-first (`recent_samples` ORDER BY
-    // ts_unix_ms DESC), so sort ascending for delta computation.
     let mut sorted: Vec<&TokenSample> = samples.iter().collect();
     sorted.sort_by_key(|s| s.ts_unix_ms);
     let values: Vec<u64> = sorted.iter().filter_map(|s| field(s)).collect();
     if values.len() < 2 {
-        return None;
+        return format!("{label:<11} {DASH}");
     }
     let deltas: Vec<u64> = values
         .windows(2)
@@ -310,38 +377,43 @@ fn token_sparkline_line(
         .collect();
     let max_delta = *deltas.iter().max().unwrap_or(&0);
     let glyph_count = SPARK_GLYPHS.chars().count();
-    let spark: String = if max_delta == 0 {
+    let current = *values.last().unwrap();
+    let last_delta = *deltas.last().unwrap_or(&0);
+    let current_fmt = crate::ui::labels::format_count_with_suffix(current);
+    let delta_fmt = crate::ui::labels::format_count_with_suffix(last_delta);
+    // Suffix: "  {current}  Δ+{delta}" — measured before sparkline so
+    // the sparkline scales to fill the remaining budget.
+    let suffix = format!("  {current_fmt}  Δ+{delta_fmt}");
+    let label_field = format!("{label:<11} ");
+    let cells = sparkline_cells(
+        right_half_width,
+        label_field.chars().count(),
+        suffix.chars().count(),
+    );
+    let glyphs: String = if max_delta == 0 {
         SPARK_GLYPHS
             .chars()
             .next()
             .unwrap()
             .to_string()
-            .repeat(deltas.len())
+            .repeat(cells)
     } else {
-        deltas
-            .iter()
-            .map(|d| {
-                let idx =
-                    ((*d as f64 / max_delta as f64) * (glyph_count - 1) as f64).round() as usize;
-                SPARK_GLYPHS.chars().nth(idx).unwrap_or('▁')
-            })
-            .collect()
+        sample_to_cells(&deltas, cells, |d| {
+            let max = max_delta as f64;
+            ((*d as f64 / max) * (glyph_count - 1) as f64).round() as usize
+        })
     };
-    let current = *values.last().unwrap();
-    let last_delta = *deltas.last().unwrap_or(&0);
-    Some(Line::from(format!(
-        "{label:<11} {spark}  {current_fmt}  Δ+{delta_fmt}",
-        current_fmt = crate::ui::labels::format_count_with_suffix(current),
-        delta_fmt = crate::ui::labels::format_count_with_suffix(last_delta),
-    )))
+    format!("{label_field}{glyphs}{suffix}")
 }
 
-fn cost_sparkline_line(samples: &[TokenSample], current: Option<f64>) -> Option<Line<'static>> {
-    let curr = current?;
+fn right_cost_row(samples: &[TokenSample], current: Option<f64>, right_half_width: u16) -> String {
+    let curr = match current {
+        Some(c) => c,
+        None => return format!("{:<11} {}", "COST", DASH),
+    };
     let mut sorted: Vec<&TokenSample> = samples.iter().collect();
     sorted.sort_by_key(|s| s.ts_unix_ms);
     let values: Vec<f64> = sorted.iter().filter_map(|s| s.cost_usd).collect();
-    let glyph_count = SPARK_GLYPHS.chars().count();
     let trend = if values.len() < 2 {
         '─'
     } else {
@@ -355,8 +427,21 @@ fn cost_sparkline_line(samples: &[TokenSample], current: Option<f64>) -> Option<
             '─'
         }
     };
-    let spark: String = if values.len() < 2 {
-        String::from(SPARK_GLYPHS.chars().next().unwrap())
+    let label_field = format!("{:<11} ", "COST");
+    let suffix = format!("  ${curr:.2}  {trend}");
+    let cells = sparkline_cells(
+        right_half_width,
+        label_field.chars().count(),
+        suffix.chars().count(),
+    );
+    let glyph_count = SPARK_GLYPHS.chars().count();
+    let glyphs: String = if values.len() < 2 {
+        SPARK_GLYPHS
+            .chars()
+            .next()
+            .unwrap()
+            .to_string()
+            .repeat(cells)
     } else {
         let max = values.iter().cloned().fold(0.0_f64, f64::max);
         if max == 0.0 {
@@ -365,124 +450,54 @@ fn cost_sparkline_line(samples: &[TokenSample], current: Option<f64>) -> Option<
                 .next()
                 .unwrap()
                 .to_string()
-                .repeat(values.len())
+                .repeat(cells)
         } else {
-            values
-                .iter()
-                .map(|v| {
-                    let idx = ((v / max) * (glyph_count - 1) as f64).round() as usize;
-                    SPARK_GLYPHS.chars().nth(idx).unwrap_or('▁')
-                })
-                .collect()
+            sample_to_cells(&values, cells, |v| {
+                ((*v / max) * (glyph_count - 1) as f64).round() as usize
+            })
         }
     };
-    Some(Line::from(format!(
-        "COST $       {spark}  ${curr:.2}  {trend}"
-    )))
+    format!("{label_field}{glyphs}{suffix}")
 }
 
-fn mem_rss_line(s: &crate::domain::signal::SignalSet) -> Option<Line<'static>> {
-    let m = s.process_memory_mb.as_ref()?;
-    // TODO(v1.38.x): wire delta-vs-previous-poll source to render trend arrow + delta.
-    // Spec §4.5 calls for `▲ +3 MiB` style; today we render value only with a
-    // dim placeholder arrow ─ since no delta source exists yet.
-    Some(Line::from(format!(
-        "{:<11} {} MiB  ─",
-        "MEM RSS", m.value as i64
-    )))
-}
-
-fn mem_file_line(s: &crate::domain::signal::SignalSet) -> Option<Line<'static>> {
-    let m = s.agent_memory_bytes.as_ref()?;
-    let fmt = crate::ui::panels::format_agent_memory_bytes(m.value);
-    // TODO(v1.38.x): same — delta arrow placeholder.
-    Some(Line::from(format!("{:<11} {fmt}  ─", "MEM-FILE")))
-}
-
-fn reset_line(label: &'static str, eta_unix: Option<u64>, window_secs: f64) -> Line<'static> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    match eta_unix {
-        Some(eta) => {
-            // `format_resets_eta` filters past timestamps and 14-day
-            // sentinels; if it rejects, render em-dash. Otherwise
-            // compute window-elapsed bar from the same `now`.
-            match crate::ui::panels::format_resets_eta(eta) {
-                Some(eta_fmt) => {
-                    let remaining = eta.saturating_sub(now) as f64;
-                    let bar_ratio = ((window_secs - remaining) / window_secs).clamp(0.0, 1.0);
-                    let bar = render_pressure_bar(bar_ratio as f32);
-                    Line::from(format!(
-                        "{label:<11} ▸ {eta_fmt}  {bar} {pct}%",
-                        pct = (bar_ratio * 100.0).round() as i32
-                    ))
-                }
-                None => Line::from(Span::styled(
-                    format!("{label:<11} ▸ —"),
-                    Style::default().fg(theme::TEXT_DIM),
-                )),
-            }
-        }
-        None => Line::from(Span::styled(
-            format!("{label:<11} ▸ —"),
-            Style::default().fg(theme::TEXT_DIM),
-        )),
+/// Resample a series to exactly `cells` points, mapping each to a
+/// SPARK_GLYPHS index via `idx_for(value)`. When `series.len() > cells`
+/// it picks evenly-spaced indices; when shorter, it stretches the
+/// existing points.
+fn sample_to_cells<T>(series: &[T], cells: usize, idx_for: impl Fn(&T) -> usize) -> String {
+    let glyph_count = SPARK_GLYPHS.chars().count();
+    if cells == 0 || series.is_empty() {
+        return String::new();
     }
-}
-
-/// Pure helper that produces the modal body lines. Tested directly;
-/// `render_metrics_modal` uses this to feed a `Paragraph`.
-pub fn render_metrics_lines(
-    overlay: &MetricsOverlay,
-    _target_label: &str,
-    reports: &[PaneReport],
-    body: Rect,
-) -> Vec<Line<'static>> {
-    let mut out = Vec::new();
-    out.push(hottest_banner_line(reports));
-    out.push(Line::from(""));
-    if !reports.is_empty() {
-        out.push(comparison_header_line());
-        for (i, r) in reports.iter().enumerate() {
-            out.push(comparison_row_line_with_cursor(r, i == overlay.selected()));
-        }
-        out.push(separator_line(body.width));
-        if let Some(sel) = reports.get(overlay.selected()) {
-            out.push(selected_header_line(sel));
-            out.extend(selected_detail_lines(sel));
-        }
+    let mut out = String::with_capacity(cells);
+    for i in 0..cells {
+        let pos = if cells == 1 {
+            series.len() - 1
+        } else {
+            (i * (series.len() - 1)) / (cells - 1)
+        };
+        let raw_idx = idx_for(&series[pos]).min(glyph_count - 1);
+        out.push(SPARK_GLYPHS.chars().nth(raw_idx).unwrap_or('▁'));
     }
     out
 }
 
-fn comparison_header_line() -> Line<'static> {
-    // 2-space gutter aligns with the cursor prefix in
-    // `comparison_row_line_with_cursor` so column headers sit above
-    // their values.
-    Line::from(format!(
-        "  {:<18} {:<11} {:<11} {:<11} {:<11} {}",
-        "Pane", "CTX", "5H", "7D", "CACHE", "COST"
-    ))
-}
+fn right_mem_row(s: &crate::domain::signal::SignalSet) -> String {
+    let rss = s
+        .process_memory_mb
+        .as_ref()
+        .map(|m| format!("{} MiB ─", m.value as i64));
+    let agent = s
+        .agent_memory_bytes
+        .as_ref()
+        .map(|m| crate::ui::panels::format_agent_memory_bytes(m.value));
 
-fn comparison_row_line_with_cursor(report: &PaneReport, selected: bool) -> Line<'static> {
-    let prefix = if selected { "▶ " } else { "  " };
-    let mut line = comparison_row_line(report);
-    line.spans.insert(0, Span::raw(prefix));
-    line
-}
-
-fn separator_line(body_width: u16) -> Line<'static> {
-    Line::from(Span::styled(
-        "─".repeat(body_width.saturating_sub(2) as usize),
-        Style::default().fg(theme::TEXT_DIM),
-    ))
-}
-
-fn selected_header_line(report: &PaneReport) -> Line<'static> {
-    Line::from(format!("Selected: {}", pane_label(report)))
+    match (rss, agent) {
+        (Some(rss), Some(af)) => format!("MEM   {rss}   MEM-FILE {af}"),
+        (Some(rss), None) => format!("MEM   {rss}   MEM-FILE {DASH}"),
+        (None, Some(af)) => format!("MEM   {DASH}   MEM-FILE {af}"),
+        (None, None) => format!("MEM   {DASH}"),
+    }
 }
 
 pub fn render_metrics_modal(
@@ -496,13 +511,13 @@ pub fn render_metrics_modal(
 
     let block = Block::default()
         .title(format!(
-            "Metrics · target {target_label} · {} panes · m again to close",
+            "Metrics · target {target_label} · {} panes · m close",
             reports.len()
         ))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme::BORDER_ACTIVE));
 
-    let lines = render_metrics_lines(overlay, target_label, reports, rects.area);
+    let lines = render_metrics_lines(overlay, target_label, reports, rects.body);
     frame.render_widget(
         Paragraph::new(lines)
             .scroll((overlay.scroll(), 0))
@@ -519,7 +534,7 @@ pub fn render_metrics_modal(
         crate::ui::dashboard::close_button_rect(rects.area),
     );
     frame.render_widget(
-        Paragraph::new("↑/↓ select pane · m close · Esc close · click [x] close")
+        Paragraph::new("↑/↓ scroll · m close · Esc close · click [x] close")
             .style(Style::default().fg(theme::TEXT_DIM)),
         rects.hint,
     );
@@ -540,44 +555,37 @@ mod tests {
     }
 
     #[test]
-    fn select_clamps_within_bounds() {
+    fn scroll_saturates_at_zero_and_max() {
         let mut o = MetricsOverlay::new();
-        o.select_at(99, 3);
-        assert_eq!(o.selected(), 2);
-        o.select_prev(3);
-        assert_eq!(o.selected(), 1);
-        o.select_next(3);
-        assert_eq!(o.selected(), 2);
-        o.select_next(3); // saturates at top
-        assert_eq!(o.selected(), 2);
+        o.scroll_up();
+        assert_eq!(o.scroll(), 0);
+        o.scroll_down(2);
+        o.scroll_down(2);
+        o.scroll_down(2); // capped at 2
+        assert_eq!(o.scroll(), 2);
+        o.scroll_up();
+        assert_eq!(o.scroll(), 1);
     }
 
     #[test]
-    fn select_with_zero_panes_stays_at_zero() {
-        let mut o = MetricsOverlay::new();
-        o.select_next(0);
-        o.select_prev(0);
-        o.select_at(99, 0);
-        assert_eq!(o.selected(), 0);
-    }
-
-    #[test]
-    fn metrics_modal_rects_centered_88_by_80() {
+    fn metrics_modal_rects_centered_95_by_90() {
         use ratatui::layout::Rect;
         let viewport = Rect::new(0, 0, 100, 50);
         let r = metrics_modal_rects(viewport);
-        assert_eq!(r.area.width, 88);
-        assert_eq!(r.area.height, 40);
-        assert_eq!(r.area.x, 6);
-        assert_eq!(r.area.y, 5);
+        assert_eq!(r.area.width, 95);
+        assert_eq!(r.area.height, 45);
+        // area is centered: x ≈ (100-95)/2 = 2..3, y ≈ (50-45)/2 = 2..3
+        // (ratatui's percentage solver may distribute rounding either way).
+        assert!((2..=3).contains(&r.area.x), "x out of band: {}", r.area.x);
+        assert!((2..=3).contains(&r.area.y), "y out of band: {}", r.area.y);
     }
 
     #[test]
-    fn metrics_modal_rects_partition_sums_to_body() {
+    fn metrics_modal_rects_partition_sums_to_area() {
         use ratatui::layout::Rect;
         let viewport = Rect::new(0, 0, 120, 40);
         let r = metrics_modal_rects(viewport);
-        let bottom = r.banner.height + r.comparison.height + r.detail.height + r.hint.height;
+        let bottom = r.banner.height + r.body.height + r.hint.height;
         assert_eq!(bottom, r.area.height);
         assert_eq!(r.banner.y, r.area.y);
         assert_eq!(r.hint.y + r.hint.height, r.area.y + r.area.height);
@@ -605,97 +613,109 @@ mod tests {
     }
 
     #[test]
-    fn comparison_row_renders_em_dash_for_missing() {
-        let row = comparison_row_line(&report_with_pressure("g:1:r", 0.3, None, None));
-        let txt = line_to_string(&row);
-        assert!(
-            txt.contains("─"),
-            "expected em-dash for missing 5h, got: {txt}"
-        );
-    }
-
-    #[test]
-    fn selected_detail_renders_token_sparklines_when_samples_present() {
-        let mut rep = base_test_report("codex:1:review");
-        rep.recent_token_samples = vec![
-            token_sample(1, Some(1_000_000), Some(20_000)),
-            token_sample(2, Some(1_500_000), Some(20_300)),
-        ];
-        let lines = selected_detail_lines(&rep);
-        assert!(
-            lines
-                .iter()
-                .any(|l| line_to_string(l).contains("TOKENS in"))
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|l| line_to_string(l).contains("TOKENS out"))
-        );
-    }
-
-    #[test]
-    fn selected_detail_renders_reset_bar_when_eta_present() {
+    fn pane_card_includes_left_bars_and_right_timeseries() {
         use crate::domain::origin::SourceKind;
         use crate::domain::signal::MetricValue;
-        let mut rep = base_test_report("codex:1:review");
+        use ratatui::layout::Rect;
+        let mut rep = report_with_pressure("codex:1:review", 0.56, Some(0.47), None);
+        rep.signals.cache_hit_ratio = Some(MetricValue::new(0.87, SourceKind::ProviderOfficial));
+        rep.signals.cost_usd = Some(MetricValue::new(0.42, SourceKind::ProviderOfficial));
         let now_unix = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
         rep.signals.quota_5h_resets_at = Some(MetricValue::new(
-            now_unix + 13 * 60,
+            now_unix + 2 * 3600 + 13 * 60,
             SourceKind::ProviderOfficial,
         ));
-        let lines = selected_detail_lines(&rep);
-        assert!(
-            lines.iter().any(|l| {
-                let t = line_to_string(l);
-                t.contains("5H reset") && t.contains("█")
-            }),
-            "expected 5H reset bar; got: {:?}",
-            lines.iter().map(line_to_string).collect::<Vec<_>>()
-        );
+        rep.signals.quota_weekly_resets_at = Some(MetricValue::new(
+            now_unix + 4 * 24 * 3600 + 6 * 3600,
+            SourceKind::ProviderOfficial,
+        ));
+        rep.recent_token_samples = vec![
+            token_sample(1, Some(80_000), Some(8_000)),
+            token_sample(2, Some(84_000), Some(8_400)),
+        ];
+
+        let overlay = MetricsOverlay::new();
+        let body = Rect::new(0, 0, 120, 30);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body);
+        let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        // CTX bar + percent
+        assert!(dump.contains("CTX"), "missing CTX label: {dump}");
+        assert!(dump.contains("█"), "missing bar glyph: {dump}");
+        assert!(dump.contains("56%"), "missing CTX pct: {dump}");
+        // 5H bar + percent
+        assert!(dump.contains("47%"), "missing 5H pct: {dump}");
+        // CACHE bar + percent
+        assert!(dump.contains("87%"), "missing CACHE pct: {dump}");
+        // Right column: 5H reset eta text (no progress bar)
+        assert!(dump.contains("5H reset"), "missing 5H reset row: {dump}");
+        assert!(dump.contains("▸"), "missing reset arrow: {dump}");
+        // Tokens sparklines
+        assert!(dump.contains("TOKENS in"), "missing TOKENS in: {dump}");
+        assert!(dump.contains("TOKENS out"), "missing TOKENS out: {dump}");
+        // COST in right column
+        assert!(dump.contains("COST"), "missing COST: {dump}");
+        assert!(dump.contains("$0.42"), "missing cost current: {dump}");
     }
 
     #[test]
-    fn selected_detail_em_dash_when_no_eta() {
-        let rep = base_test_report("g:1:r");
-        let lines = selected_detail_lines(&rep);
+    fn pane_card_card_divider_starts_with_pane_label() {
+        use ratatui::layout::Rect;
+        let rep = report_with_pressure("claude:1:main", 0.40, None, None);
+        let overlay = MetricsOverlay::new();
+        let body = Rect::new(0, 0, 120, 30);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body);
+        // Find the divider: it begins with `━ claude:1:main`
+        let divider = lines
+            .iter()
+            .find(|l| line_to_string(l).starts_with("━ claude:1:main"));
         assert!(
+            divider.is_some(),
+            "expected divider starting with `━ claude:1:main`, got:\n{}",
             lines
                 .iter()
-                .any(|l| line_to_string(l).contains("5H reset    ▸ —")),
-            "expected literal `5H reset    ▸ —` prefix; got: {:?}",
-            lines.iter().map(line_to_string).collect::<Vec<_>>()
+                .map(line_to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 
     #[test]
-    fn render_metrics_lines_includes_banner_comparison_and_detail() {
+    fn bar_width_scales_to_left_half_budget() {
+        // Narrow: 80-col viewport -> body width ~76, inner ~74,
+        //   per-half ~35, bar 35-9-2-4 = 20 cells.
+        // Wide: 200-col viewport -> bar saturates at BAR_MAX_CELLS (24).
+        let narrow = bar_cells_for_left_half(35);
+        let wide = bar_cells_for_left_half(80);
+        assert!(
+            narrow < BAR_MAX_CELLS,
+            "narrow should be below max: {narrow}"
+        );
+        assert!(
+            narrow >= BAR_MIN_CELLS,
+            "narrow should be above min: {narrow}"
+        );
+        assert_eq!(wide, BAR_MAX_CELLS, "wide should saturate at max: {wide}");
+        // Below min still floors to BAR_MIN_CELLS.
+        let tiny = bar_cells_for_left_half(8);
+        assert_eq!(tiny, BAR_MIN_CELLS);
+    }
+
+    #[test]
+    fn em_dash_for_missing_left_metrics() {
         use ratatui::layout::Rect;
-        let panes = vec![
-            report_with_pressure("claude:1:main", 0.40, None, None),
-            report_with_pressure("codex:1:review", 0.70, Some(0.85), None),
-        ];
-        let mut overlay = MetricsOverlay::new();
-        overlay.open();
-        overlay.select_at(1, panes.len());
+        // Pane with only CTX populated; 5H, 7D, CACHE absent → em-dash.
+        let rep = report_with_pressure("g:1:r", 0.3, None, None);
+        let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body);
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
-        assert!(dump.contains("Hottest:"), "missing banner; got:\n{dump}");
+        // Em-dash should appear at least once for the missing rows.
         assert!(
-            dump.contains("claude:1:main"),
-            "missing comparison row; got:\n{dump}"
-        );
-        assert!(
-            dump.contains("codex:1:review"),
-            "missing comparison row; got:\n{dump}"
-        );
-        assert!(
-            dump.contains("5H reset"),
-            "missing selected detail reset row; got:\n{dump}"
+            dump.contains("─"),
+            "expected em-dash for missing rows: {dump}"
         );
     }
 
@@ -710,6 +730,37 @@ mod tests {
         assert!(
             dump.contains("Hottest:") && dump.contains("—"),
             "expected dim banner with em-dash"
+        );
+    }
+
+    #[test]
+    fn render_metrics_lines_includes_banner_and_per_pane_cards() {
+        use ratatui::layout::Rect;
+        let panes = vec![
+            report_with_pressure("claude:1:main", 0.40, None, None),
+            report_with_pressure("codex:1:review", 0.70, Some(0.85), None),
+        ];
+        let overlay = MetricsOverlay::new();
+        let body = Rect::new(0, 0, 120, 30);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body);
+        let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        assert!(dump.contains("Hottest:"), "missing banner; got:\n{dump}");
+        assert!(
+            dump.contains("claude:1:main"),
+            "missing claude pane card; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("codex:1:review"),
+            "missing codex pane card; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("5H reset"),
+            "missing 5H reset row; got:\n{dump}"
+        );
+        // No "Selected:" header in v2 layout.
+        assert!(
+            !dump.contains("Selected:"),
+            "v2 layout should drop Selected header; got:\n{dump}"
         );
     }
 
