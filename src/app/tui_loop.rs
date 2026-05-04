@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::layout::Rect;
 
 use crate::app::bootstrap::Context;
@@ -429,17 +429,6 @@ where
 
                             if target_picker.open {
                                 dashboard_split_dragging = false;
-                                let close_rect = crate::ui::dashboard::close_button_rect(
-                                    crate::ui::dashboard::target_picker_rects(viewport).area,
-                                );
-                                if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
-                                    && crate::app::keymap::rect_contains(
-                                        close_rect, m.column, m.row,
-                                    )
-                                {
-                                    target_picker.open = false;
-                                    continue;
-                                }
                                 let action = handle_target_picker_mouse(
                                     &ctx.source,
                                     target_picker.controller(),
