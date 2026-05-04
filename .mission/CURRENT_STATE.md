@@ -21,8 +21,9 @@ Four backwards-compatible UX features are complete in the v1.38.0 source. None o
 
 ## Post-tag polish (on main, untagged)
 
-Two operator-facing iterations landed on main after v1.38.0 was tagged.
-They will be picked up by the next tagged release (v1.38.1 or v1.39.0).
+Operator-facing iterations have continued landing on main since
+v1.38.0 was tagged. They will be picked up by the next tagged release
+(v1.38.1 or v1.39.0).
 
 - `ff11717` — `format_resets_eta` uses `4d 6h` style for ≥24h etas
   instead of `102h00m`. Affects panes card metric_row, RESET 5H/7D
@@ -30,8 +31,25 @@ They will be picked up by the next tagged release (v1.38.1 or v1.39.0).
 - `6355f8c` — real MEM RSS / MEM-FILE trend arrows (▲/▼/─) wired
   through a per-poll `MemObservation` tracker in `tui_loop`. Replaces
   the placeholder `─` introduced in v1.38.0.
+- `200560c` — VERSION.md catch-up to v1.38.0 + introduction of this
+  post-tag polish note.
+- `8fcc58a` — Action Explainer mouse guard + snapshot pending action
+  (P2 round 1): the modal snapshots `(target, slash, proposal_id)` at
+  open time and the confirm path validates the snapshot against live
+  reports, surfacing a "proposal vanished" notice instead of executing
+  a drifted action.
+- `9b9b09b` — UI_MANUAL §8.5 metrics overlay v2 rewrite to match the
+  per-pane card layout shipped during the v1.38 metrics polish run.
+- `f208bd2` — `m metrics` chip added to the dashboard footer so the
+  overlay is discoverable alongside the other footer keys.
+- `c0f6359` — CURRENT_STATE F1 description sync to the v2 metrics
+  overlay layout.
+- `7431c88` — Action Explainer confirm dispatches the snapshotted
+  proposal directly via `handle_prompt_send_action_for_proposal`
+  (P2 round 2), closing the residual hole where a newly polled
+  lex-lower proposal could divert the executed/dismissed command.
 
-`git describe --tags --always` reports `v1.38.0-2-g6355f8c` as of this
+`git describe --tags --always` reports `v1.38.0-8-g7431c88` as of this
 update.
 
 ## Latest Release Notes
