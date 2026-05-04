@@ -198,15 +198,32 @@ fn pane_label(r: &PaneReport) -> String {
 const BAR_MAX_CELLS: usize = 24;
 const BAR_MIN_CELLS: usize = 8;
 
-/// Render a pressure bar with `cells` total width — `█` for filled,
-/// `░` for unfilled. Severity color is applied by the caller via Span.
-fn render_pressure_bar(ratio: f32, cells: usize) -> String {
-    let filled = ((ratio.clamp(0.0, 1.0) * cells as f32).round() as usize).min(cells);
-    let mut s = String::with_capacity(cells);
-    for i in 0..cells {
-        s.push(if i < filled { '█' } else { '░' });
+/// Bar kind controls the filled-cell color:
+/// - `Pressure`: filled cells take a severity color derived from the
+///   value via `severity_for_ratio` (CTX/5H/7D pressure metrics).
+/// - `Neutral`: filled cells use `theme::TEXT_PRIMARY` (CACHE hit
+///   ratio is informational, so coloring it red at low values would
+///   be misleading).
+#[derive(Clone, Copy, Debug)]
+enum BarKind {
+    Pressure,
+    Neutral,
+}
+
+/// Mirror of `panels::context_metric_severity` — kept local so the
+/// metrics overlay can derive a `Severity` from a 0..1 pressure ratio
+/// without crossing the panels visibility boundary.
+fn severity_for_ratio(value: f32) -> crate::domain::recommendation::Severity {
+    use crate::domain::recommendation::Severity;
+    if value >= 0.85 {
+        Severity::Risk
+    } else if value >= 0.75 {
+        Severity::Warning
+    } else if value >= 0.60 {
+        Severity::Concern
+    } else {
+        Severity::Good
     }
-    s
 }
 
 fn pct(v: f32) -> String {
@@ -311,26 +328,30 @@ fn card_rows(
     let bar_cells = bar_cells_for_left_half(left_half_width);
     let s = &report.signals;
 
-    let left_rows = [
+    let left_rows: [Vec<Span<'static>>; 4] = [
         left_row(
             "CTX",
             s.context_pressure.as_ref().map(|m| m.value),
             bar_cells,
+            BarKind::Pressure,
         ),
         left_row(
             "5H",
             s.quota_5h_pressure.as_ref().map(|m| m.value),
             bar_cells,
+            BarKind::Pressure,
         ),
         left_row(
             "7D",
             s.quota_weekly_pressure.as_ref().map(|m| m.value),
             bar_cells,
+            BarKind::Pressure,
         ),
         left_row(
             "CACHE",
             s.cache_hit_ratio.as_ref().map(|m| m.value as f32),
             bar_cells,
+            BarKind::Neutral,
         ),
     ];
 
@@ -360,30 +381,33 @@ fn card_rows(
     ];
 
     let mut lines = Vec::with_capacity(left_rows.len());
-    for (idx, (l, r)) in left_rows.iter().zip(right_rows.iter()).enumerate() {
-        let mut line = card_row(l, r, left_half_width, right_half_width);
-        // Zebra-stripe rows 1 & 3 (5H and CACHE) so the 4 packed
-        // metric rows read as distinct items. Foregrounds (severity
-        // bar colors, sparkline glyphs, dim em-dashes) are preserved;
-        // only the line's bg is tinted.
-        if idx % 2 == 1 {
-            line = line.style(Style::default().bg(theme::ROW_ALT_BG));
-        }
-        lines.push(line);
+    for (l, r) in left_rows.iter().zip(right_rows.iter()) {
+        lines.push(card_row(l, r, left_half_width, right_half_width));
     }
     lines
 }
 
-fn card_row(left: &str, right: &str, left_half_width: u16, right_half_width: u16) -> Line<'static> {
-    let left_padded = pad_to_width(left, left_half_width as usize);
-    let right_padded = pad_to_width(right, right_half_width as usize);
-    // No leading indent: with a 2-char indent the line was 2 chars
-    // wider than the modal block's inner content area, which made
-    // `Paragraph::wrap(Wrap { trim: false })` spill each row onto a
-    // continuation line of trailing whitespace — visually a blank row
-    // between every metric row. Flush-left keeps the line length
-    // exactly equal to inner_width = body.width − 2.
-    Line::from(format!("{left_padded} │ {right_padded}"))
+fn card_row(
+    left: &[Span<'static>],
+    right: &str,
+    left_half_width: u16,
+    right_half_width: u16,
+) -> Line<'static> {
+    // Compose the left half from styled spans, then pad with raw
+    // spaces out to `left_half_width` so the separator and right half
+    // align identically across rows. The total emitted character
+    // count is `left_half_width + 3 (' │ ') + right_half_width`,
+    // i.e. exactly `inner_width` — preserving the no-overflow contract
+    // from db9bda3.
+    let left_width: usize = left.iter().map(|s| s.content.chars().count()).sum();
+    let pad_amount = (left_half_width as usize).saturating_sub(left_width);
+    let mut spans: Vec<Span<'static>> = left.to_vec();
+    if pad_amount > 0 {
+        spans.push(Span::raw(" ".repeat(pad_amount)));
+    }
+    spans.push(Span::raw(" │ "));
+    spans.push(Span::raw(pad_to_width(right, right_half_width as usize)));
+    Line::from(spans)
 }
 
 /// Pad a string with spaces on the right to exactly `width` columns.
@@ -405,16 +429,48 @@ fn pad_to_width(s: &str, width: usize) -> String {
     }
 }
 
-fn left_row(label: &str, value: Option<f32>, bar_cells: usize) -> String {
+fn left_row(
+    label: &str,
+    value: Option<f32>,
+    bar_cells: usize,
+    kind: BarKind,
+) -> Vec<Span<'static>> {
+    // Prefix: "LABEL  " — LABEL left-padded to 6 chars + a 1-space
+    // gap matches the prior single-space layout in the `String` body
+    // ("{label:<6} {bar}  {pct:>4}"). The post-bar gap is 2 spaces;
+    // both are emitted as plain `Span::raw` so widths are stable.
+    let prefix = format!("{label:<6} ");
+    let mut spans: Vec<Span<'static>> = vec![Span::raw(prefix)];
     match value {
         Some(v) => {
-            let bar = render_pressure_bar(v, bar_cells);
-            // Layout: "LABEL{2-space gap}{bar}  {pct}"
-            // LABEL is left-padded to 6 chars so CTX/5H/7D/CACHE align.
-            format!("{label:<6} {bar}  {pct:>4}", pct = pct(v))
+            let filled = ((v.clamp(0.0, 1.0) * bar_cells as f32).round() as usize).min(bar_cells);
+            let unfilled = bar_cells - filled;
+            let filled_color = match kind {
+                BarKind::Pressure => theme::severity_color(severity_for_ratio(v)),
+                BarKind::Neutral => theme::TEXT_PRIMARY,
+            };
+            if filled > 0 {
+                spans.push(Span::styled(
+                    "█".repeat(filled),
+                    Style::default().fg(filled_color),
+                ));
+            }
+            if unfilled > 0 {
+                spans.push(Span::styled(
+                    "░".repeat(unfilled),
+                    Style::default().fg(theme::TEXT_DIM),
+                ));
+            }
+            spans.push(Span::raw(format!("  {:>4}", pct(v))));
         }
-        None => format!("{label:<6} {DASH}"),
+        None => {
+            spans.push(Span::styled(
+                DASH.to_string(),
+                Style::default().fg(theme::TEXT_DIM),
+            ));
+        }
     }
+    spans
 }
 
 /// Combined reset-eta row: `5H reset ▸ <eta>  ·  7D reset ▸ <eta>`.
@@ -1058,12 +1114,15 @@ mod tests {
     }
 
     #[test]
-    fn metric_rows_alternate_background() {
+    fn pressure_bar_filled_cells_use_severity_color() {
+        // Build a fixture with CTX = 0.95 (Risk threshold). Render a
+        // single pane card. Find the CTX line. Assert that at least
+        // one Span in that line has fg == severity_color(Risk).
         use ratatui::layout::Rect;
         let body = Rect::new(0, 0, 100, 30);
-        let mut rep = base_test_report("codex:1:review");
+        let mut rep = base_test_report("test:1:main");
         rep.signals.context_pressure = Some(crate::domain::signal::MetricValue::new(
-            0.5,
+            0.95,
             crate::domain::origin::SourceKind::ProviderOfficial,
         ));
         let lines = render_metrics_lines(
@@ -1072,44 +1131,92 @@ mod tests {
             std::slice::from_ref(&rep),
             body,
         );
-        // Skip banner (line 0) and card divider (line 1). Metric rows are 2..6.
-        let alt = theme::ROW_ALT_BG;
-        assert_ne!(
-            lines[2].style.bg,
-            Some(alt),
-            "row 0 (CTX) should be default bg"
-        );
-        assert_eq!(lines[3].style.bg, Some(alt), "row 1 (5H) should be alt bg");
-        assert_ne!(
-            lines[4].style.bg,
-            Some(alt),
-            "row 2 (7D) should be default bg"
-        );
-        assert_eq!(
-            lines[5].style.bg,
-            Some(alt),
-            "row 3 (CACHE) should be alt bg"
+        let ctx_line = &lines[2]; // line 2 is CTX (0=banner, 1=divider)
+        let risk_color = theme::severity_color(crate::domain::recommendation::Severity::Risk);
+        let any_risk_fg = ctx_line
+            .spans
+            .iter()
+            .any(|s| s.style.fg == Some(risk_color));
+        assert!(
+            any_risk_fg,
+            "CTX bar at 95% should have at least one span with Risk fg; got: {:?}",
+            ctx_line
+                .spans
+                .iter()
+                .map(|s| (s.content.as_ref(), s.style.fg))
+                .collect::<Vec<_>>()
         );
     }
 
     #[test]
-    fn banner_and_divider_do_not_get_alt_background() {
+    fn pressure_bar_unfilled_cells_use_dim_color() {
         use ratatui::layout::Rect;
         let body = Rect::new(0, 0, 100, 30);
-        let rep = base_test_report("codex:1:review");
+        let mut rep = base_test_report("test:1:main");
+        rep.signals.context_pressure = Some(crate::domain::signal::MetricValue::new(
+            0.10,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
         let lines = render_metrics_lines(
             &MetricsOverlay::default(),
             "tgt",
             std::slice::from_ref(&rep),
             body,
         );
-        let alt = theme::ROW_ALT_BG;
-        assert_ne!(lines[0].style.bg, Some(alt), "banner must not be alt bg");
-        assert_ne!(
-            lines[1].style.bg,
-            Some(alt),
-            "card divider must not be alt bg"
+        let ctx_line = &lines[2];
+        let any_dim = ctx_line
+            .spans
+            .iter()
+            .any(|s| s.style.fg == Some(theme::TEXT_DIM) && s.content.contains('░'));
+        assert!(
+            any_dim,
+            "CTX bar at 10% should have a span with dim fg on '░' chars; got: {:?}",
+            ctx_line
+                .spans
+                .iter()
+                .map(|s| (s.content.as_ref(), s.style.fg))
+                .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn cache_bar_uses_neutral_not_severity_color() {
+        use ratatui::layout::Rect;
+        let body = Rect::new(0, 0, 100, 30);
+        let mut rep = base_test_report("test:1:main");
+        rep.signals.cache_hit_ratio = Some(crate::domain::signal::MetricValue::new(
+            0.30,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            body,
+        );
+        // CACHE is row 3 of the card; lines[2..6] are CTX/5H/7D/CACHE.
+        let cache_line = &lines[5];
+        let neutral = theme::TEXT_PRIMARY;
+        let has_neutral_filled = cache_line
+            .spans
+            .iter()
+            .any(|s| s.style.fg == Some(neutral) && s.content.contains('█'));
+        assert!(
+            has_neutral_filled,
+            "CACHE bar should have neutral-colored filled cells, not severity; got: {:?}",
+            cache_line
+                .spans
+                .iter()
+                .map(|s| (s.content.as_ref(), s.style.fg))
+                .collect::<Vec<_>>()
+        );
+        // Also assert it does NOT use severity Risk color even though
+        // 30% would normally fall below the Risk threshold anyway —
+        // belt-and-suspenders check that BarKind::Neutral routes
+        // around `severity_for_ratio` entirely.
+        let risk = theme::severity_color(crate::domain::recommendation::Severity::Risk);
+        let has_risk = cache_line.spans.iter().any(|s| s.style.fg == Some(risk));
+        assert!(!has_risk, "CACHE bar must not use severity color");
     }
 
     #[test]

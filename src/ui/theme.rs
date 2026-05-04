@@ -10,10 +10,6 @@ pub const BORDER_ACTIVE: Color = Color::Rgb(130, 160, 200);
 pub const TEXT_PRIMARY: Color = Color::Rgb(210, 215, 225);
 pub const TEXT_DIM: Color = Color::Rgb(120, 130, 145);
 pub const BADGE_BG: Color = Color::Rgb(60, 70, 90);
-/// Subtle dark cool gray bg for zebra-striped alt rows (e.g. metrics
-/// overlay per-pane card rows 1 & 3). Foreground glyphs/colors are
-/// preserved; only the row's background is tinted.
-pub const ROW_ALT_BG: Color = Color::Rgb(40, 40, 48);
 
 pub fn severity_color(sev: Severity) -> Color {
     match sev {
