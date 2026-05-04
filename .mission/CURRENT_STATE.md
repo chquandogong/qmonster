@@ -7,7 +7,7 @@ _Last updated: 2026-05-04 (Claude, v1.39.0 metrics overlay v2 + Action Explainer
 - Title: Qmonster v1.39.0 - metrics overlay v2 polish (per-pane cards, [/]/= resize, severity-colored bars, real per-poll MEM trend, day-format reset etas, Gemini quota + ModelReset surface, Codex split-resets-at regression cover) + Action Explainer hardening (mouse guard + PendingAction snapshot, confirm dispatches snapshot directly via handle_prompt_send_action_for_proposal, proposal_id threaded through prompt-send audit events) + Codex App Server v0.128 JSON-RPC compatibility (read_response skips unsolicited remoteControl/status/changed notifications between request and response).
 - Version surfaces: mission ledger target `1.39.0`; npm package metadata `qmonster@1.39.0`; latest local Git tag `v1.39.0`.
 - Branch / worktree at handoff start: `main`, tag `v1.39.0`.
-- Release publication state: code/tag/package metadata are staged for the v1.39.0 release; external GitHub/npm publication is CI-owned and triggers off the v1.39.0 tag push via the `Release and Package Mirror` workflow. v1.37.0 / v1.38.0 CI publication verification also remains an external follow-up.
+- Release publication state: v1.39.0 is published. `Release and Package Mirror` workflow run `25311723861` (2026-05-04, 7m5s, success) created GitHub Release `v1.39.0` with full asset set (binary tarball, npm tarball, SBOM, sbom-diff, checksums, attestations) and published `qmonster@1.39.0` to npm + GitHub Packages mirror. Sibling v1.37.0 (`25159598038`) and v1.38.0 (`25305201597`) publications also verified post-hoc — both releases live, both packages present in `npm view qmonster versions`.
 - Current phase: Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, the v1.38 UX bundle (F1/F2/F3/F4), and the v1.39 polish + correctness round are complete.
 
 ## v1.39.0 Feature State
@@ -29,21 +29,17 @@ Five backwards-compatible themes are complete in the v1.39.0 source. None of the
 
 ## Known External State
 
-- CI publication for `v1.37.0` may still be running. Do not claim GitHub Release or npm publication success until the workflow and registry are checked.
-- CI publication for `v1.38.0` follows the same workflow and remains pending verification until checked.
-- CI publication for `v1.39.0` triggers off the v1.39.0 tag push via the `Release and Package Mirror` workflow; verify the workflow run, GitHub Release, and npm registry before claiming success.
+- v1.37.0 / v1.38.0 / v1.39.0 are all published (workflow runs `25159598038` / `25305201597` / `25311723861` all completed success). GitHub Release pages live at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39}.0`; `npm view qmonster versions` lists `1.37.0`, `1.38.0`, `1.39.0`.
 - `qmonster@1.36.2` remains deprecated on npm because its GitHub Release SBOM was incomplete.
 - GitHub Release `v1.36.2` remains marked prerelease with a warning banner.
 
 ## Active Follow-Ups
 
-1. Verify the CI-published `v1.39.0` GitHub Release and npm package after the release workflow completes.
-2. Verify the still-pending CI publications for `v1.37.0` and `v1.38.0` (workflow runs, GitHub Release assets, npm registry) and update this state file with concrete run IDs and publication URLs.
-3. Tag protection/ruleset activation remains a GitHub Settings task.
-4. MF-2 remains deferred: `evolution_summary.current_phase` length cleanup.
-5. Phase H remains unscoped: opt-in auto-snapshot at reset boundary.
-6. Phase 7 planning is opened by `.docs/codex/phase7-anomaly-detection-spec.md` for anomaly detection and subagent analysis.
-7. Phase 7 D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters.
+1. Tag protection / ruleset activation remains a GitHub Settings task.
+2. MF-2 remains deferred: `evolution_summary.current_phase` length cleanup.
+3. Phase H remains unscoped: opt-in auto-snapshot at reset boundary.
+4. Phase 7 planning is opened by `.docs/codex/phase7-anomaly-detection-spec.md` for anomaly detection and subagent analysis.
+5. Phase 7 D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters.
 
 ## Validation Baseline
 
@@ -60,4 +56,4 @@ Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged rele
 
 ## Next First Action
 
-Verify CI publication of `v1.39.0`: confirm the `Release and Package Mirror` workflow run completed successfully, the GitHub Release `v1.39.0` is visible with all expected assets (binary tarball, checksums, SBOM, attestations), and `qmonster@1.39.0` is published to npm. Then close out the still-pending v1.37.0 / v1.38.0 publication verification and update this state file with concrete workflow run IDs and publication URLs.
+Pick the next follow-up from the Active Follow-Ups list. The closest concrete items are MF-2 (mission-history.yaml `evolution_summary.current_phase` length cleanup) and Phase H scoping (opt-in auto-snapshot at reset boundary). Phase 7 anomaly detection and tag protection both need either operator input (Phase 7 scope) or operator-side action (GitHub Settings).
