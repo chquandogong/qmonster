@@ -235,6 +235,13 @@ where
                             }
 
                             if provider_setup_overlay.is_open() {
+                                if crate::app::provider_setup_overlay::provider_setup_entry_key_closes(
+                                    &provider_setup_overlay,
+                                    k.code,
+                                ) {
+                                    provider_setup_overlay.close();
+                                    continue;
+                                }
                                 if k.code == KeyCode::Char('y') {
                                     let notice = copy_active_tab_snippet(
                                         &provider_setup_overlay,

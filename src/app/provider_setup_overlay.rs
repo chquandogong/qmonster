@@ -29,6 +29,16 @@ const TAB_BY_INDEX: [ProviderSetupTab; 4] = [
     ProviderSetupTab::Tmux,
 ];
 
+/// Returns `true` when the operator pressed the entry key on an
+/// open Provider Setup overlay; the caller should close() and skip
+/// the per-overlay dispatcher.
+pub fn provider_setup_entry_key_closes(
+    overlay: &crate::ui::provider_setup::ProviderSetupOverlay,
+    code: crossterm::event::KeyCode,
+) -> bool {
+    overlay.is_open() && code == crossterm::event::KeyCode::Char('P')
+}
+
 /// Dispatch a single key event to the Provider Setup overlay.
 /// Returns `true` if the overlay was open and the key was handled
 /// (or ignored) by the overlay; returns `false` when the overlay
@@ -142,6 +152,25 @@ mod tests {
         assert!(!handle_provider_setup_overlay_key(
             &mut overlay,
             KeyCode::Char('1')
+        ));
+    }
+
+    #[test]
+    fn provider_setup_entry_key_closes_when_open() {
+        use crossterm::event::KeyCode;
+        let mut overlay = crate::ui::provider_setup::ProviderSetupOverlay::default();
+        assert!(!provider_setup_entry_key_closes(
+            &overlay,
+            KeyCode::Char('P')
+        ));
+        overlay.open();
+        assert!(provider_setup_entry_key_closes(
+            &overlay,
+            KeyCode::Char('P')
+        ));
+        assert!(!provider_setup_entry_key_closes(
+            &overlay,
+            KeyCode::Char('q')
         ));
     }
 
