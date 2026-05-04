@@ -6,6 +6,9 @@
 //! cover the state transitions in isolation so subsequent renderer
 //! tasks can rely on a stable state contract.
 
+use crate::ui::dashboard::centered_rect;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+
 #[derive(Debug, Default, Clone)]
 pub struct MetricsOverlay {
     open: bool,
@@ -69,6 +72,34 @@ impl MetricsOverlay {
     }
 }
 
+pub struct MetricsModalRects {
+    pub area: Rect,
+    pub banner: Rect,
+    pub comparison: Rect,
+    pub detail: Rect,
+    pub hint: Rect,
+}
+
+pub fn metrics_modal_rects(viewport: Rect) -> MetricsModalRects {
+    let area = centered_rect(88, 80, viewport);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // banner
+            Constraint::Min(6),    // comparison
+            Constraint::Length(8), // detail
+            Constraint::Length(1), // hint
+        ])
+        .split(area);
+    MetricsModalRects {
+        area,
+        banner: chunks[0],
+        comparison: chunks[1],
+        detail: chunks[2],
+        hint: chunks[3],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,5 +134,27 @@ mod tests {
         o.select_prev(0);
         o.select_at(99, 0);
         assert_eq!(o.selected(), 0);
+    }
+
+    #[test]
+    fn metrics_modal_rects_centered_88_by_80() {
+        use ratatui::layout::Rect;
+        let viewport = Rect::new(0, 0, 100, 50);
+        let r = metrics_modal_rects(viewport);
+        assert_eq!(r.area.width, 88);
+        assert_eq!(r.area.height, 40);
+        assert_eq!(r.area.x, 6);
+        assert_eq!(r.area.y, 5);
+    }
+
+    #[test]
+    fn metrics_modal_rects_partition_sums_to_body() {
+        use ratatui::layout::Rect;
+        let viewport = Rect::new(0, 0, 120, 40);
+        let r = metrics_modal_rects(viewport);
+        let bottom = r.banner.height + r.comparison.height + r.detail.height + r.hint.height;
+        assert_eq!(bottom, r.area.height);
+        assert_eq!(r.banner.y, r.area.y);
+        assert_eq!(r.hint.y + r.hint.height, r.area.y + r.area.height);
     }
 }

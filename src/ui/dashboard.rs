@@ -708,7 +708,7 @@ fn footer_text(focus: &str, split: DashboardSplit) -> String {
     )
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let popup = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
