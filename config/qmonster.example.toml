@@ -23,6 +23,7 @@
 # - [quota]   warning_pct, critical_pct, [.claude_5h|.claude_weekly|.codex_5h|.codex_weekly|.gemini]
 # - [cache]   hot_ratio_threshold, cold_ratio_threshold, hot_low_ctx_threshold,
 #             cold_high_ctx_threshold, drift_drop_threshold, drift_min_samples
+# - [ux]      confirm_actions
 #
 # Everything else belongs in docs/ai/* or tmux launcher conventions,
 # not in runtime TOML.
@@ -222,3 +223,16 @@ policy = "manual_only"
 #   codex:1:review
 #   gemini:1:research
 #   qmonster:1:monitor
+
+# v1.38 UX bundle (spec §6.2): cadence for the action-explainer modal
+# that previews what `p` (prompt-send), `d` (dismiss/archive), and `y`
+# (yes/confirm) will do before executing them.
+#   - always     → confirm every time (default; safest for new operators)
+#   - first_time → show the modal once per action kind in a session,
+#                  then assume the operator has read it
+#   - never      → skip the modal entirely (operator already knows what
+#                  each shortcut does)
+[ux]
+# How often to show the action-explainer modal before executing p / d / y.
+# always | first_time | never
+confirm_actions = "always"

@@ -38,6 +38,8 @@ pub struct QmonsterConfig {
     pub provider_setup: ProviderSetupConfig,
     #[serde(default)]
     pub profile_switch: ProfileSwitchConfig,
+    #[serde(default)]
+    pub ux: UxConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -350,6 +352,35 @@ impl Default for ProfileSwitchConfig {
             error_rate_threshold: 0.5,
         }
     }
+}
+
+/// v1.38 UX bundle (spec §6.2): operator-tunable cadence for the
+/// action-explainer modal that previews what `p` / `d` / `y` will do
+/// before executing it. `Always` keeps the existing behaviour (confirm
+/// every time); `FirstTime` shows the modal once per action kind in a
+/// session, then assumes the operator has read it; `Never` skips the
+/// modal entirely for operators who already know what each shortcut
+/// does.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UxConfig {
+    pub confirm_actions: ConfirmActions,
+}
+
+impl Default for UxConfig {
+    fn default() -> Self {
+        Self {
+            confirm_actions: ConfirmActions::Always,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfirmActions {
+    Always,
+    FirstTime,
+    Never,
 }
 
 /// Operator-controlled security posture surfacing. Runtime facts remain
@@ -701,6 +732,7 @@ impl QmonsterConfig {
             cache: CacheConfig::default(),
             reset: ResetConfig::default(),
             profile_switch: ProfileSwitchConfig::default(),
+            ux: UxConfig::default(),
         }
     }
 }
@@ -1200,6 +1232,32 @@ critical_pct = 0.82
         assert!((cfg.quota.claude_weekly.unwrap().critical_pct - 0.90).abs() < f32::EPSILON);
         assert!((cfg.quota.codex_5h.unwrap().critical_pct - 0.72).abs() < f32::EPSILON);
         assert!((cfg.quota.codex_weekly.unwrap().warning_pct - 0.65).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn ux_config_defaults_to_always() {
+        let cfg = QmonsterConfig::defaults();
+        assert!(matches!(cfg.ux.confirm_actions, ConfirmActions::Always));
+    }
+
+    #[test]
+    fn ux_config_parses_first_time() {
+        let toml_str = r#"
+[ux]
+confirm_actions = "first_time"
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml_str).unwrap();
+        assert!(matches!(cfg.ux.confirm_actions, ConfirmActions::FirstTime));
+    }
+
+    #[test]
+    fn ux_config_parses_never() {
+        let toml_str = r#"
+[ux]
+confirm_actions = "never"
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml_str).unwrap();
+        assert!(matches!(cfg.ux.confirm_actions, ConfirmActions::Never));
     }
 
     #[test]
