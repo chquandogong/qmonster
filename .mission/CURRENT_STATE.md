@@ -49,8 +49,8 @@ v1.38.0 was tagged. They will be picked up by the next tagged release
   (P2 round 2), closing the residual hole where a newly polled
   lex-lower proposal could divert the executed/dismissed command.
 
-`git describe --tags --always` reports `v1.38.0-8-g7431c88` as of this
-update.
+Run `git describe --tags --always` on main to see the live polish
+count.
 
 ## Latest Release Notes
 
