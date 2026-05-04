@@ -111,6 +111,11 @@ where
     let mut last_pane_idle_states: HashMap<String, Option<IdleCause>> = HashMap::new();
     let mut pane_state_flashes: HashMap<String, crate::ui::panels::PaneStateFlash> = HashMap::new();
     let mut runtime_refresh_offsets: HashMap<String, usize> = HashMap::new();
+    // v1.38 polish: per-pane MEM tracker. Updated once per poll cycle
+    // (not per render), so the metrics overlay's COST·MEM combined
+    // row can drive ▲/▼/─ trend arrows from the actual delta between
+    // successive observations rather than the placeholder dash.
+    let mut mem_observations: HashMap<String, crate::ui::metrics::MemObservation> = HashMap::new();
 
     let result = {
         let mut run_loop = || -> anyhow::Result<()> {
@@ -136,6 +141,18 @@ where
                     }
                     if outcome.resync_dashboard {
                         dashboard.resync(now);
+                    }
+                    // v1.38 polish: refresh the per-pane MEM tracker
+                    // each poll so the metrics overlay's COST·MEM row
+                    // can render real ▲/▼/─ trend arrows derived from
+                    // last-poll deltas instead of the placeholder dash.
+                    for r in &dashboard.reports {
+                        crate::ui::metrics::update_mem_observation(
+                            &mut mem_observations,
+                            &r.pane_id,
+                            r.signals.process_memory_mb.as_ref().map(|m| m.value),
+                            r.signals.agent_memory_bytes.as_ref().map(|m| m.value),
+                        );
                     }
                 }
 
@@ -170,6 +187,7 @@ where
                             settings_overlay: &settings_overlay,
                             provider_setup_overlay: &provider_setup_overlay,
                             metrics_overlay: &metrics_overlay,
+                            mem_observations: &mem_observations,
                             action_explainer: &action_explainer,
                             config: &ctx.config,
                         },

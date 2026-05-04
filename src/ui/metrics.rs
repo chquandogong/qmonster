@@ -11,6 +11,8 @@
 //! transitions in isolation so renderer and key-handler tests can rely
 //! on a stable state contract.
 
+use std::collections::HashMap;
+
 use crate::app::event_loop::PaneReport;
 use crate::store::TokenSample;
 use crate::ui::dashboard::centered_rect;
@@ -20,6 +22,82 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+
+/// v1.38 polish: direction of the most recent MEM delta for one pane.
+/// Drives the trend arrow rendered in the metrics overlay's COST·MEM
+/// combined row. Computed in `update_mem_observation` from per-poll
+/// observations stashed in the tracker map.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemTrend {
+    Up,
+    Down,
+    Steady,
+}
+
+impl MemTrend {
+    pub fn arrow(self) -> &'static str {
+        match self {
+            MemTrend::Up => "▲",
+            MemTrend::Down => "▼",
+            MemTrend::Steady => "─",
+        }
+    }
+}
+
+/// One pane's last-poll MEM values plus the trend computed against
+/// the previous observation. The first call seeds values with `None`
+/// trends; the second and subsequent calls replace stored values and
+/// emit Up/Down/Steady based on the delta. Owned by `tui_loop` so the
+/// renderer stays a pure function of state.
+#[derive(Debug, Clone, Default)]
+pub struct MemObservation {
+    pub rss_mb: Option<f64>,
+    pub agent_bytes: Option<u64>,
+    pub rss_trend: Option<MemTrend>,
+    pub agent_trend: Option<MemTrend>,
+}
+
+/// Update the per-pane MEM tracker with the current poll's RSS and
+/// agent-bytes values. Compares against the previously-stored
+/// observation, sets `rss_trend`/`agent_trend`, and replaces the
+/// stored values for the next poll's comparison.
+///
+/// RSS uses a 1.0 MiB threshold for `Steady` so normal allocator
+/// jitter doesn't flicker ▲/▼ between polls. Agent bytes are summed
+/// integers from disk-stat, so exact equality is the right
+/// `Steady` predicate.
+///
+/// First observation has no prior to compare against — both trends
+/// are `None` and the renderer falls back to the dim `─` glyph.
+pub fn update_mem_observation(
+    map: &mut HashMap<String, MemObservation>,
+    pane_id: &str,
+    current_rss_mb: Option<f64>,
+    current_agent_bytes: Option<u64>,
+) {
+    let prev = map.get(pane_id).cloned().unwrap_or_default();
+    let rss_trend = match (prev.rss_mb, current_rss_mb) {
+        (Some(p), Some(c)) if (c - p).abs() < 1.0 => Some(MemTrend::Steady),
+        (Some(p), Some(c)) if c > p => Some(MemTrend::Up),
+        (Some(p), Some(c)) if c < p => Some(MemTrend::Down),
+        _ => None,
+    };
+    let agent_trend = match (prev.agent_bytes, current_agent_bytes) {
+        (Some(p), Some(c)) if c == p => Some(MemTrend::Steady),
+        (Some(p), Some(c)) if c > p => Some(MemTrend::Up),
+        (Some(p), Some(c)) if c < p => Some(MemTrend::Down),
+        _ => None,
+    };
+    map.insert(
+        pane_id.to_string(),
+        MemObservation {
+            rss_mb: current_rss_mb,
+            agent_bytes: current_agent_bytes,
+            rss_trend,
+            agent_trend,
+        },
+    );
+}
 
 #[derive(Debug, Clone)]
 pub struct MetricsOverlay {
@@ -269,6 +347,7 @@ pub fn render_metrics_lines(
     _target_label: &str,
     reports: &[PaneReport],
     body: Rect,
+    mem_observations: &HashMap<String, MemObservation>,
 ) -> Vec<Line<'static>> {
     let mut out = Vec::new();
     out.push(hottest_banner_line(reports));
@@ -302,7 +381,12 @@ pub fn render_metrics_lines(
 
     for r in reports {
         out.push(card_divider_line(r, inner_width));
-        out.extend(card_rows(r, left_half_width, right_half_width));
+        out.extend(card_rows(
+            r,
+            left_half_width,
+            right_half_width,
+            mem_observations,
+        ));
     }
 
     out
@@ -324,6 +408,7 @@ fn card_rows(
     report: &PaneReport,
     left_half_width: u16,
     right_half_width: u16,
+    mem_observations: &HashMap<String, MemObservation>,
 ) -> Vec<Line<'static>> {
     let bar_cells = bar_cells_for_left_half(left_half_width);
     let s = &report.signals;
@@ -377,6 +462,10 @@ fn card_rows(
             s.cost_usd.as_ref().map(|m| m.value),
             s,
             right_half_width,
+            mem_observations
+                .get(&report.pane_id)
+                .cloned()
+                .unwrap_or_default(),
         ),
     ];
 
@@ -543,25 +632,32 @@ fn right_tokens_row(
 
 /// Combined COST + MEM + MEM-FILE row. COST renders sparkline, value
 /// and trend arrow (sparkline width is reduced because the row is
-/// shared). MEM renders RSS as `<n> MiB ─` (trend placeholder; no
-/// delta source yet). MEM-FILE renders the agent memory byte count.
-/// Sub-items are separated by ` · `; a missing sub-item also drops
-/// its preceding separator so there are no dangling dots. If all
-/// three are missing the row falls back to a dim em-dash.
+/// shared). MEM renders RSS as `<n> MiB <arrow>` where `<arrow>` is
+/// driven by the per-pane `MemObservation` tracker (▲/▼/─ from the
+/// last-poll delta; ─ until the second observation arrives). MEM-FILE
+/// renders the agent memory byte count followed by the same per-pane
+/// trend arrow. Sub-items are separated by ` · `; a missing sub-item
+/// also drops its preceding separator so there are no dangling dots.
+/// If all three are missing the row falls back to a dim em-dash.
 fn right_cost_mem_combined_row(
     samples: &[TokenSample],
     cost_current: Option<f64>,
     s: &crate::domain::signal::SignalSet,
     right_half_width: u16,
+    obs: MemObservation,
 ) -> String {
+    let rss_arrow = obs.rss_trend.map(|t| t.arrow()).unwrap_or("─");
+    let agent_arrow = obs.agent_trend.map(|t| t.arrow()).unwrap_or("─");
+
     let mem_part = s
         .process_memory_mb
         .as_ref()
-        .map(|m| format!("MEM {} MiB ─", m.value as i64));
+        .map(|m| format!("MEM {} MiB {}", m.value as i64, rss_arrow));
     let mem_file_part = s.agent_memory_bytes.as_ref().map(|m| {
         format!(
-            "MEM-FILE {}",
-            crate::ui::panels::format_agent_memory_bytes(m.value)
+            "MEM-FILE {} {}",
+            crate::ui::panels::format_agent_memory_bytes(m.value),
+            agent_arrow
         )
     });
 
@@ -675,6 +771,7 @@ pub fn render_metrics_modal(
     overlay: &MetricsOverlay,
     target_label: &str,
     reports: &[PaneReport],
+    mem_observations: &HashMap<String, MemObservation>,
 ) {
     let rects = metrics_modal_rects(frame.area(), overlay.width_pct(), overlay.height_pct());
     frame.render_widget(Clear, rects.area);
@@ -687,7 +784,7 @@ pub fn render_metrics_modal(
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme::BORDER_ACTIVE));
 
-    let lines = render_metrics_lines(overlay, target_label, reports, rects.body);
+    let lines = render_metrics_lines(overlay, target_label, reports, rects.body, mem_observations);
     frame.render_widget(
         Paragraph::new(lines)
             .scroll((overlay.scroll(), 0))
@@ -867,7 +964,7 @@ mod tests {
 
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body, &HashMap::new());
         let strs: Vec<String> = lines.iter().map(line_to_string).collect();
         let dump: String = strs.iter().map(|s| format!("{s}\n")).collect();
 
@@ -917,7 +1014,7 @@ mod tests {
         let rep = report_with_pressure("claude:1:main", 0.40, None, None);
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body, &HashMap::new());
         // Find the divider: it begins with `━ claude:1:main`
         let divider = lines
             .iter()
@@ -961,7 +1058,7 @@ mod tests {
         let rep = report_with_pressure("g:1:r", 0.3, None, None);
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body, &HashMap::new());
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
         // Em-dash should appear at least once for the missing rows.
         assert!(
@@ -988,7 +1085,7 @@ mod tests {
 
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body, &HashMap::new());
         let strs: Vec<String> = lines.iter().map(line_to_string).collect();
         let row1 = &strs[2];
 
@@ -1021,7 +1118,7 @@ mod tests {
 
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body, &HashMap::new());
         let strs: Vec<String> = lines.iter().map(line_to_string).collect();
         let row4 = &strs[5];
 
@@ -1046,7 +1143,7 @@ mod tests {
         let panes: Vec<crate::app::event_loop::PaneReport> = Vec::new();
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body, &HashMap::new());
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
         assert!(
             dump.contains("Hottest:") && dump.contains("—"),
@@ -1064,7 +1161,7 @@ mod tests {
         ];
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body, &HashMap::new());
         // Find any pair of consecutive purely-empty lines.
         let strs: Vec<String> = lines.iter().map(line_to_string).collect();
         for w in strs.windows(2) {
@@ -1098,6 +1195,7 @@ mod tests {
             "tgt",
             std::slice::from_ref(&rep),
             body,
+            &HashMap::new(),
         );
         let inner_width = (body.width - 2) as usize;
         for (i, line) in lines.iter().enumerate() {
@@ -1130,6 +1228,7 @@ mod tests {
             "tgt",
             std::slice::from_ref(&rep),
             body,
+            &HashMap::new(),
         );
         let ctx_line = &lines[2]; // line 2 is CTX (0=banner, 1=divider)
         let risk_color = theme::severity_color(crate::domain::recommendation::Severity::Risk);
@@ -1162,6 +1261,7 @@ mod tests {
             "tgt",
             std::slice::from_ref(&rep),
             body,
+            &HashMap::new(),
         );
         let ctx_line = &lines[2];
         let any_dim = ctx_line
@@ -1193,6 +1293,7 @@ mod tests {
             "tgt",
             std::slice::from_ref(&rep),
             body,
+            &HashMap::new(),
         );
         // CACHE is row 3 of the card; lines[2..6] are CTX/5H/7D/CACHE.
         let cache_line = &lines[5];
@@ -1239,7 +1340,7 @@ mod tests {
         ];
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body, &HashMap::new());
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
         assert!(dump.contains("Hottest:"), "missing banner; got:\n{dump}");
         assert!(
@@ -1258,6 +1359,134 @@ mod tests {
         assert!(
             !dump.contains("Selected:"),
             "v2 layout should drop Selected header; got:\n{dump}"
+        );
+    }
+
+    #[test]
+    fn update_mem_observation_first_call_has_no_trend() {
+        let mut map: HashMap<String, MemObservation> = HashMap::new();
+        update_mem_observation(&mut map, "%1", Some(100.0), Some(40_000));
+        let obs = map.get("%1").unwrap();
+        assert!(
+            obs.rss_trend.is_none(),
+            "first observation has no prev to compare"
+        );
+        assert!(obs.agent_trend.is_none());
+        assert_eq!(obs.rss_mb, Some(100.0));
+        assert_eq!(obs.agent_bytes, Some(40_000));
+    }
+
+    #[test]
+    fn update_mem_observation_second_call_computes_trend() {
+        let mut map: HashMap<String, MemObservation> = HashMap::new();
+        update_mem_observation(&mut map, "%1", Some(100.0), Some(40_000));
+        update_mem_observation(&mut map, "%1", Some(110.0), Some(40_000));
+        let obs = map.get("%1").unwrap();
+        assert_eq!(obs.rss_trend, Some(MemTrend::Up));
+        assert_eq!(obs.agent_trend, Some(MemTrend::Steady));
+    }
+
+    #[test]
+    fn update_mem_observation_steady_threshold_for_rss() {
+        let mut map: HashMap<String, MemObservation> = HashMap::new();
+        update_mem_observation(&mut map, "%1", Some(100.0), None);
+        // delta of 0.5 MiB is below the 1.0 MiB jitter threshold
+        update_mem_observation(&mut map, "%1", Some(100.5), None);
+        let obs = map.get("%1").unwrap();
+        assert_eq!(obs.rss_trend, Some(MemTrend::Steady));
+    }
+
+    #[test]
+    fn update_mem_observation_detects_down_trend() {
+        let mut map: HashMap<String, MemObservation> = HashMap::new();
+        update_mem_observation(&mut map, "%1", Some(200.0), Some(80_000));
+        update_mem_observation(&mut map, "%1", Some(150.0), Some(70_000));
+        let obs = map.get("%1").unwrap();
+        assert_eq!(obs.rss_trend, Some(MemTrend::Down));
+        assert_eq!(obs.agent_trend, Some(MemTrend::Down));
+    }
+
+    #[test]
+    fn mem_trend_arrow_glyphs() {
+        assert_eq!(MemTrend::Up.arrow(), "▲");
+        assert_eq!(MemTrend::Down.arrow(), "▼");
+        assert_eq!(MemTrend::Steady.arrow(), "─");
+    }
+
+    #[test]
+    fn render_metrics_lines_uses_real_mem_trend_when_available() {
+        // Build a fixture pane with current RSS = 110 and a tracker
+        // that has a previous observation of RSS = 100. Render and
+        // assert the COST·MEM row contains "▲" for RSS.
+        use ratatui::layout::Rect;
+        let mut rep = base_test_report("test:1:main");
+        rep.signals.process_memory_mb = Some(crate::domain::signal::MetricValue::new(
+            110.0,
+            crate::domain::origin::SourceKind::Heuristic,
+        ));
+        let mut map: HashMap<String, MemObservation> = HashMap::new();
+        map.insert(
+            rep.pane_id.clone(),
+            MemObservation {
+                rss_mb: Some(100.0),
+                agent_bytes: None,
+                rss_trend: Some(MemTrend::Up),
+                agent_trend: None,
+            },
+        );
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            Rect::new(0, 0, 120, 30),
+            &map,
+        );
+        // CACHE row's right side carries the COST·MEM combined row
+        // (banner=0, divider=1, content rows 2..6 → COST·MEM = 5).
+        let cost_mem_line = &lines[5];
+        let dump: String = cost_mem_line
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            dump.contains("▲"),
+            "expected ▲ for RSS up trend; got: {dump}"
+        );
+    }
+
+    #[test]
+    fn render_metrics_lines_falls_back_to_dash_without_observation() {
+        // No prior MemObservation for this pane → trend is None →
+        // renderer falls back to the dim em-dash glyph.
+        use ratatui::layout::Rect;
+        let mut rep = base_test_report("test:1:main");
+        rep.signals.process_memory_mb = Some(crate::domain::signal::MetricValue::new(
+            312.0,
+            crate::domain::origin::SourceKind::Heuristic,
+        ));
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
+        );
+        let cost_mem_line = &lines[5];
+        let dump: String = cost_mem_line
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            dump.contains("MEM 312 MiB ─"),
+            "expected RSS line ending in '─' (no prior trend); got: {dump}"
+        );
+        // Belt-and-suspenders: no real arrow should appear without a
+        // prior observation.
+        assert!(
+            !dump.contains("▲") && !dump.contains("▼"),
+            "expected no real arrow without observation; got: {dump}"
         );
     }
 
