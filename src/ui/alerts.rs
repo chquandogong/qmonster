@@ -146,9 +146,11 @@ pub fn render_alerts(area: Rect, buf: &mut Buffer, state: &mut ListState, view: 
     } else if list_area.height > 0 {
         sync_list_selection(state, items.len());
         let item_width = list_width(inner.width);
+        let selected = state.selected();
         let alert_items: Vec<ListItem<'static>> = items
             .iter()
-            .map(|item| alert_list_item(item, item_width, view.now))
+            .enumerate()
+            .map(|(idx, item)| alert_list_item(item, item_width, view.now, Some(idx) == selected))
             .collect();
         StatefulWidget::render(
             List::new(alert_items)
@@ -200,9 +202,10 @@ pub fn alert_hit_at_row(
         view.now,
     );
     let mut remaining = row;
+    let selected = state.selected();
     for (idx, item) in items.iter().enumerate().skip(state.offset()) {
         let dismiss_height = dismiss_line_count(item, width, view.now) as u16;
-        let height = alert_item_lines(item, width, view.now).len() as u16;
+        let height = alert_item_lines(item, width, view.now, Some(idx) == selected).len() as u16;
         if remaining < height {
             return Some(AlertMouseHit {
                 index: idx,
@@ -600,11 +603,22 @@ fn list_width(inner_width: u16) -> usize {
     inner_width.saturating_sub(3) as usize
 }
 
-fn alert_list_item(item: &AlertItem, width: usize, now: Instant) -> ListItem<'static> {
-    ListItem::new(alert_item_lines(item, width, now)).style(alert_style(item.color, item.is_new))
+fn alert_list_item(
+    item: &AlertItem,
+    width: usize,
+    now: Instant,
+    is_selected: bool,
+) -> ListItem<'static> {
+    ListItem::new(alert_item_lines(item, width, now, is_selected))
+        .style(alert_style(item.color, item.is_new))
 }
 
-fn alert_item_lines(item: &AlertItem, width: usize, now: Instant) -> Vec<Line<'static>> {
+fn alert_item_lines(
+    item: &AlertItem,
+    width: usize,
+    now: Instant,
+    is_selected: bool,
+) -> Vec<Line<'static>> {
     let prefix = timestamp_prefix(item);
     let continuation = continuation_prefix(&prefix);
     let mut lines: Vec<Line<'static>> = vec![title_line(item, &prefix)];
@@ -634,6 +648,23 @@ fn alert_item_lines(item: &AlertItem, width: usize, now: Instant) -> Vec<Line<'s
                 .into_iter()
                 .map(Line::from),
         );
+    }
+    // v1.38 §6.5: on the currently selected alert only, when its
+    // `suggested_command` is `Some(cmd)`, append a dim
+    // `copy: <cmd>  → press y to copy` line below the existing detail
+    // rows so the operator can see the runnable command and the
+    // keypress hint without reaching for the metrics overlay.
+    if is_selected {
+        if let Some(cmd) = item.suggested_command.as_deref() {
+            for wrapped in wrap_with_prefix(
+                &format!("copy: {cmd}  → press y to copy"),
+                width,
+                &continuation,
+                &continuation,
+            ) {
+                lines.push(Line::styled(wrapped, Style::default().fg(theme::TEXT_DIM)));
+            }
+        }
     }
     lines.push(Line::styled(
         format!(
@@ -1650,6 +1681,116 @@ mod tests {
         assert!(
             line.contains("[d] dismiss"),
             "dismiss still available: {line}"
+        );
+    }
+
+    fn buffer_to_string(buf: &Buffer) -> String {
+        let area = buf.area();
+        (0..area.height)
+            .map(|y| {
+                (0..area.width)
+                    .map(|x| buf[(area.x + x, area.y + y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn selected_alert_shows_inline_copy_line_when_command_present() {
+        // Spec §6.5: on the currently selected alert only, when its
+        // `suggested_command` is `Some(cmd)`, append `copy: <cmd> →
+        // press y to copy` as a dim line below existing detail rows.
+        let rec = Recommendation {
+            action: "context-pressure",
+            reason: "context near threshold".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Estimated,
+            suggested_command: Some("/clear".into()),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![rec.clone()]);
+        let key = recommendation_key("%1", &rec);
+        let times = HashMap::from([(key, "14:32:10".into())]);
+        let fresh = HashSet::new();
+        let hidden = HashMap::new();
+
+        let mut state = ListState::default();
+        state.select(Some(0));
+        let area = Rect::new(0, 0, 80, 16);
+        let mut buf = Buffer::empty(area);
+        let view = AlertView {
+            notices: &[],
+            reports: &[rep],
+            fresh_alerts: &fresh,
+            alert_times: &times,
+            hidden_until: &hidden,
+            now: Instant::now(),
+            target_label: "all",
+            focused: true,
+        };
+        render_alerts(area, &mut buf, &mut state, view);
+
+        let dump = buffer_to_string(&buf);
+        assert!(
+            dump.contains("copy:"),
+            "selected alert with suggested_command must render `copy:` line: {dump}"
+        );
+        assert!(
+            dump.contains("/clear"),
+            "selected alert must render the actual command: {dump}"
+        );
+        assert!(
+            dump.contains("press y to copy"),
+            "selected alert copy line must include the keypress hint: {dump}"
+        );
+    }
+
+    #[test]
+    fn selected_alert_no_copy_line_when_no_command() {
+        // Spec §6.5: when the selected alert has no `suggested_command`,
+        // no inline `copy:` line is rendered (matches the "nothing to
+        // copy" SystemNotice path in copy_selected_alert_command_to_clipboard).
+        let rec = Recommendation {
+            action: "notify-input-wait",
+            reason: "waiting for input".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let rep = base_report(vec![rec.clone()]);
+        let key = recommendation_key("%1", &rec);
+        let times = HashMap::from([(key, "14:32:10".into())]);
+        let fresh = HashSet::new();
+        let hidden = HashMap::new();
+
+        let mut state = ListState::default();
+        state.select(Some(0));
+        let area = Rect::new(0, 0, 80, 16);
+        let mut buf = Buffer::empty(area);
+        let view = AlertView {
+            notices: &[],
+            reports: &[rep],
+            fresh_alerts: &fresh,
+            alert_times: &times,
+            hidden_until: &hidden,
+            now: Instant::now(),
+            target_label: "all",
+            focused: true,
+        };
+        render_alerts(area, &mut buf, &mut state, view);
+
+        let dump = buffer_to_string(&buf);
+        assert!(
+            !dump.contains("copy:"),
+            "selected alert without suggested_command must NOT render `copy:` line: {dump}"
         );
     }
 }
