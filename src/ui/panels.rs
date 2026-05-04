@@ -691,6 +691,58 @@ fn aligned_field(label: &str, value: &str) -> String {
     format!("{label:<8}: {value}")
 }
 
+/// Wrap an `aligned_field`-style row across multiple lines so the
+/// pane card never silently truncates. Continuation rows are
+/// indented under the value column (`label_col + 2` spaces).
+///
+/// `wrap_width` below `label_col + 4` returns a single uncut line —
+/// the renderer can clip the rest. Avoids producing zero-character
+/// continuation rows on degenerate viewports.
+fn wrap_aligned_field(label: &str, value: &str, wrap_width: u16) -> Vec<Line<'static>> {
+    let label_col = label.len().max(8);
+    let prefix = format!("{label:<width$}: ", label = label, width = label_col);
+    let cont_indent = " ".repeat(label_col + 2);
+    let max_width = wrap_width as usize;
+    let value_budget = max_width.saturating_sub(prefix.chars().count());
+
+    if max_width < label_col + 4 || value_budget == 0 {
+        return vec![Line::from(format!("{prefix}{value}"))];
+    }
+
+    let mut lines = Vec::new();
+    let mut buf = String::new();
+    let mut width_used = 0usize;
+    let mut on_first = true;
+
+    for ch in value.chars() {
+        if width_used >= value_budget {
+            lines.push(Line::from(if on_first {
+                format!("{prefix}{buf}")
+            } else {
+                format!("{cont_indent}{buf}")
+            }));
+            buf.clear();
+            width_used = 0;
+            on_first = false;
+        }
+        buf.push(ch);
+        width_used += 1;
+    }
+
+    if !buf.is_empty() {
+        lines.push(Line::from(if on_first {
+            format!("{prefix}{buf}")
+        } else {
+            format!("{cont_indent}{buf}")
+        }));
+    }
+
+    if lines.is_empty() {
+        lines.push(Line::from(prefix));
+    }
+    lines
+}
+
 fn expanded_detail_field(raw: &str) -> String {
     if let Some(effect) = raw.strip_prefix("- ") {
         return aligned_field("effect", effect);
@@ -3134,5 +3186,28 @@ mod tests {
             .collect();
         assert!(rendered.contains("CACHE 87.4%"), "rendered = {rendered}");
         assert!(rendered.contains("[Official]"), "rendered = {rendered}");
+    }
+
+    #[test]
+    fn wrap_aligned_field_no_wrap_when_value_fits() {
+        let lines = wrap_aligned_field("path", "/home/u/repo", 80);
+        assert_eq!(lines.len(), 1);
+        assert!(line_text(&lines[0]).starts_with("path    : /home/u/repo"));
+    }
+
+    #[test]
+    fn wrap_aligned_field_continuation_indent_matches_label_col() {
+        let value = "a/very/long/path/that/will/definitely/wrap/across/lines";
+        let lines = wrap_aligned_field("path", value, 30);
+        assert!(lines.len() >= 2);
+        let cont = line_text(&lines[1]);
+        assert!(cont.starts_with("          ")); // 8 (label) + 2 (": ") = 10 spaces
+        assert!(!cont.trim_start().is_empty());
+    }
+
+    #[test]
+    fn wrap_aligned_field_handles_narrow_width_gracefully() {
+        let lines = wrap_aligned_field("path", "/x/y/z", 5);
+        assert_eq!(lines.len(), 1, "narrow width returns single uncut line");
     }
 }
