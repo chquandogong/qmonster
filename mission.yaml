@@ -1,6 +1,6 @@
 mission:
-  version: "1.38.0"
-  title: "Qmonster v1.38.0 - UX bundle: Metrics Overlay (m) with bounded vs unbounded visual split, pane card text wrap fix via wrap_aligned_field, Action Explainer modal for p/d/y with [ux] confirm_actions config, and toggle-on-entry-key + [x] standardization across S/P/t/m + target picker. Minor release over v1.37.0; UI/UX layer only — no provider, audit, policy, or SignalSet schema changes."
+  version: "1.39.0"
+  title: "Qmonster v1.39.0 - metrics overlay v2 polish (per-pane cards, [/]/= resize, severity-colored bars, real per-poll MEM trend, day-format reset etas, Gemini quota + ModelReset surface, Codex split-resets-at regression cover) + Action Explainer hardening (mouse guard + PendingAction snapshot, confirm dispatches snapshot directly via handle_prompt_send_action_for_proposal, proposal_id threaded through prompt-send audit events) + Codex App Server v0.128 JSON-RPC compatibility (read_response skips unsolicited remoteControl/status/changed notifications between request and response). Minor release over v1.38.0; correctness + polish round."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1595,6 +1595,13 @@ mission:
     - "v1.38.0 F3 [ux] confirm_actions config: src/app/config.rs adds [ux] section with confirm_actions enum (always | first_time | never); always is default and gates every p/d/y action; first_time gates only the first invocation per session; never preserves the v1.37.0 silent-execute behavior"
     - "v1.38.0 F4 toggle-on-entry-key + [x] standardization: tui_loop dispatch layer toggles S (Settings), P (Provider Setup), t (target picker), m (Metrics) on entry-key when overlay open; close_button_rect helper renders [x] glyph top-right on every overlay; existing close keys (Esc/q) preserved; target picker mouse gate redundancy removed"
     - "v1.38.0 release metadata: package.json is at 1.38.0; UI_MANUAL.md updated for new overlays + actions; Cargo crate metadata stays at 0.1.0 (internal); local tag v1.38.0 created"
+    - "v1.39.0 metrics overlay v2 layout: src/ui/metrics.rs renders a per-pane card layout (one card per pane) with hottest banner on top and divider-separated cards below, each card splitting bounded values (severity-colored progress bars with tick marks at 60/75/85; reset window inverse bars) from unbounded values (cumulative tokens, cost, RSS as 8-block sparklines + Δ vs prior sample); [`/`]/= resize keys + ↑/↓ body scroll + [x] close glyph wired through src/app/metrics_overlay.rs"
+    - "v1.39.0 metrics overlay v2 polish: format_resets_eta uses 4d 6h day format for ≥24h etas (panes card metric_row + RESET 5H/7D badges + metrics overlay reset rows); MemObservation tracker in tui_loop drives real per-poll MEM RSS + MEM-FILE trend arrows (▲/▼/─) replacing the v1.38.0 placeholder; severity-colored bar foregrounds at 60/75/85 thresholds; m overlay surfaces Gemini quota + ModelReset advisories; regression coverage for the Codex split-resets-at rendering"
+    - "v1.39.0 Action Explainer hardening (P2 round 1): src/app/action_explainer.rs adds a mouse guard so [x] click closes and other clicks no longer pass through to the dashboard; PendingAction snapshots target identity at modal open time (pane_id + slash_command + proposal_id, or alert command); confirm path validates the snapshot against live reports and surfaces a 'proposal vanished' notice instead of executing a drifted action"
+    - "v1.39.0 Action Explainer hardening (P2 round 2 + audit): confirm dispatches the snapshotted proposal directly via handle_prompt_send_action_for_proposal so a newly polled lex-lower proposal can no longer divert the executed/dismissed command; proposal_id flows into PromptSendAccepted / PromptSendCompleted / PromptSendFailed / PromptSendBlocked / PromptSendRejected audit summaries end-to-end"
+    - "v1.39.0 Codex App Server v0.128 compatibility: src/runtime/codex_app_server.rs::read_response now skips JSON-RPC 2.0 notifications (id absent + method present, e.g. remoteControl/status/changed emitted by codex CLI ≥ 0.128 between request and response) until a real response arrives; closes the silent rateLimits/read failure that hit on every poll tick when running against codex 0.128"
+    - "v1.39.0 discoverability sync: Settings Parameters/Rules/Badges expose v1.37 (cost budget, profile_switch, cross_pane_file) + v1.38 ([ux] confirm_actions) knobs; Help overlay lists m / Action Explainer / [x] / toggle-on-entry-key; Provider Setup gains F-7c reset advisory context + F-5b docstring fix; UI_MANUAL §8.5 rewritten for the v2 metrics overlay layout; m metrics chip added to dashboard footer; confirm_actions wording spells out always/first_time/never; advisory phrasing drops pseudo-IDs"
+    - "v1.39.0 release metadata: VERSION.md and package.json bump to 1.39.0; README release table updated; ledger surfaces (mission.yaml, mission-history.yaml, .mission/CURRENT_STATE.md) sync to v1.39.0; Cargo crate metadata stays at 0.1.0 (internal); local tag v1.39.0 created at HEAD 0c59a90"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1681,19 +1688,24 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.38.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, and Phase 6 Team Mode are complete. v1.38.0 ships a UX-only bundle layered on the v1.37.0 baseline: F1 Metrics Overlay (m) with bounded vs unbounded visual split, F2 wrap_aligned_field pane card text wrap fix, F3 Action Explainer modal for p/d/y with [ux] confirm_actions config (always/first_time/never), and F4 toggle-on-entry-key + [x] standardization across S/P/t/m + target picker. No provider, audit, policy, or SignalSet schema changes. package.json is at 1.38.0; the local v1.38.0 tag is created. CI publication verification for v1.37.0 remains an external follow-up."
+    topology: "Current working state is v1.39.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, and Phase 6 Team Mode are complete. v1.39.0 layers metrics overlay v2 polish (per-pane cards, [/]/= resize, severity-colored bars, real per-poll MEM trend, day-format reset etas, Gemini quota + ModelReset surface, Codex split-resets-at regression cover) + Action Explainer hardening (mouse guard + PendingAction snapshot + handle_prompt_send_action_for_proposal direct dispatch + proposal_id audit) + Codex App Server v0.128 JSON-RPC compatibility (read_response skips unsolicited remoteControl/status/changed notifications) + discoverability sync (Settings/Help/Provider Setup/UI_MANUAL/footer/wording). No provider adapter or audit schema breaking changes; the audit summaries gain proposal_id but remain backwards-compatible. package.json is at 1.39.0; the local v1.39.0 tag is created. CI publication verification for v1.37.0 / v1.38.0 / v1.39.0 remains an external follow-up."
     suggested_approach: >
-      Treat v1.38.0 as the current runtime baseline. v1.38.0 is a UX
-      layer over v1.37.0 — provider, audit, policy, and SignalSet
-      schemas are unchanged. For implementation planning, keep Phase 7
-      focused on D2/D3 anomaly detection and subagent analysis as
-      drafted in .docs/codex/phase7-anomaly-detection-spec.md: reuse
-      existing IdentitySnapshot, subagent_hint, token/cost
+      Treat v1.39.0 as the current runtime baseline. v1.39.0 is a
+      polish + correctness round over v1.38.0 — F1 metrics overlay
+      gains the per-pane card layout with severity-colored bars and
+      real MEM trend, Action Explainer is hardened against mouse
+      pass-through and proposal drift with proposal_id flowing into
+      audit summaries, and Codex App Server compatibility is fixed
+      for codex CLI ≥ 0.128 by skipping unsolicited JSON-RPC
+      notifications between request and response. For implementation
+      planning, keep Phase 7 focused on D2/D3 anomaly detection and
+      subagent analysis as drafted in .docs/codex/phase7-anomaly-detection-spec.md:
+      reuse existing IdentitySnapshot, subagent_hint, token/cost
       time-series, and profile_switch history surfaces before
       introducing any new storage schema. Do not invent per-subagent
       token attribution unless a provider exposes structured counters.
-      v1.37.0 CI publication verification (GitHub Release + npm
-      package) remains an external follow-up.
+      v1.37.0 / v1.38.0 / v1.39.0 CI publication verification (GitHub
+      Release + npm package) remains an external follow-up.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1729,13 +1741,13 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.38.0 Phase 7 planning"
+    priority: "post-v1.39.0 Phase 7 planning"
     estimated_sessions: 1
-    scope: "v1.38.0 ships a UX-only bundle: F1 Metrics Overlay (m), F2 wrap_aligned_field pane card wrap fix, F3 Action Explainer modal + [ux] confirm_actions config, F4 toggle-on-entry-key + [x] standardization. No provider, audit, policy, or SignalSet schema changes. v1.37.0 CI publication verification remains a separate follow-up."
+    scope: "v1.39.0 ships a metrics overlay v2 polish + Action Explainer hardening + Codex App Server v0.128 JSON-RPC compatibility + discoverability sync. UI/UX correctness round; the audit summaries gain proposal_id but remain backwards-compatible. v1.37.0 / v1.38.0 / v1.39.0 CI publication verification remains a separate follow-up."
     followups:
       - "Phase 7 D2/D3 anomaly detection and subagent analysis spec drafted in .docs/codex/phase7-anomaly-detection-spec.md; implementation remains unstarted"
       - "D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters"
-      - "v1.37.0 CI publication verification (GitHub Release + npm package) remains an external follow-up"
+      - "v1.37.0 / v1.38.0 / v1.39.0 CI publication verification (GitHub Release + npm package) remains an external follow-up"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
   created: "2026-04-20"
@@ -1743,5 +1755,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 181
+    total_revisions: 182
     history: "mission-history.yaml"
