@@ -768,6 +768,10 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
             "Version badge",
             "click the bottom-right version to open Git status",
         ),
+        (
+            "Modal [x]",
+            "every overlay (Help / Settings / Provider Setup / Metrics / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
+        ),
         ("Tab", "switch focus between alerts and pane list"),
         ("Up / Down", "move one item in the focused list"),
         ("j / k", "alternate list scroll keys"),
@@ -775,11 +779,21 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("Home / End", "jump to the first or last item"),
         (
             "[ and ]",
-            "shrink or grow Alerts; Panes use the remaining height",
+            "shrink or grow Alerts (Panes uses remaining height); when Metrics overlay is open, also resize that modal in 5% steps",
         ),
         ("/", "cycle the Alerts/Panes split by one resize step"),
-        ("=", "reset the Alerts/Panes split"),
-        ("t", "open tmux target picker (session -> window)"),
+        (
+            "=",
+            "reset the Alerts/Panes split; when Metrics overlay is open, also reset its size to default 95×90%",
+        ),
+        (
+            "t",
+            "open tmux target picker (session -> window); press t again, click [x], or Esc to close",
+        ),
+        (
+            "m",
+            "open the Metrics overlay (per-pane card layout); ↑/↓ scroll the body; [ / ] resize the modal; = reset to default; m again, Esc, q, or [x] click to close",
+        ),
         (
             "Enter",
             "advance session selection or confirm window target",
@@ -794,7 +808,10 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
             "u",
             "request provider runtime status for the selected pane via its read-only slash command",
         ),
-        ("y", "copy the selected alert run command to the clipboard"),
+        (
+            "y",
+            "copy the selected alert run command to the clipboard; opens Action Explainer modal first when [ux] confirm_actions != never",
+        ),
         ("c", "clear system notices"),
     ] {
         lines.extend(help_wrapped_detail_lines(label, value, total_width));
@@ -802,7 +819,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
 
     lines.extend(help_wrapped_detail_lines(
         "p",
-        "accept pending prompt-send proposal (P5-3 safer-actuation)",
+        "accept pending prompt-send proposal (P5-3 safer-actuation); opens Action Explainer modal first when [ux] confirm_actions != never (Enter confirms, Esc / p / [x] click cancels)",
         total_width,
     ));
     lines.extend(help_wrapped_bullet_lines(
@@ -824,19 +841,19 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
 
     lines.extend(help_wrapped_detail_lines(
         "d",
-        &format!("dismiss pending prompt-send proposal (audit: {rejected}; every actuation mode)"),
+        &format!("dismiss pending prompt-send proposal (audit: {rejected}; every actuation mode); opens Action Explainer modal first when [ux] confirm_actions != never"),
         total_width,
     ));
 
     lines.extend(help_wrapped_detail_lines(
         "S",
-        "open the settings overlay to view + edit cost / context / quota thresholds; press 'w' inside the overlay to write back to the loaded TOML",
+        "open the settings overlay (Thresholds / Integrations / Parameters / Rules / Badges); press 'w' inside to write back to the loaded TOML; press S again (when not editing), Esc, q, or click [x] to close",
         total_width,
     ));
 
     lines.extend(help_wrapped_detail_lines(
         "P",
-        "open the Provider Setup overlay (read-only) — recommended Claude statusline.sh / Codex /statusline + /status / Gemini ui.footer.* / tmux launcher snippets with detected current state; 1/2/3/4, Tab, or Left/Right switch tabs; integration options are edited in S Settings > Integrations",
+        "open the Provider Setup overlay (read-only) — recommended Claude statusline.sh / Codex /statusline + /status / Gemini ui.footer.* / tmux launcher snippets with detected current state; 1/2/3/4, Tab, or Left/Right switch tabs; integration options are edited in S Settings > Integrations; press P again, Esc, q, or click [x] to close",
         total_width,
     ));
 
@@ -1502,6 +1519,77 @@ mod tests {
         assert!(
             bullet_count >= 3,
             "the `p` summary row must be followed by at least 3 bullet-indented continuation lines (one per audit chain). got bullet_count = {bullet_count}. joined:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn help_lists_m_metrics_overlay_key() {
+        // v1.38: the Metrics overlay key was missing from `?` Help.
+        // Lock its description so future row reorderings can't drop
+        // it again, and require the resize hint so operators learn
+        // that `[`/`]` reflow the modal too.
+        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
+        let dump = lines.join("\n");
+        assert!(
+            dump.contains("Metrics overlay"),
+            "Help should list m -> Metrics overlay; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("[ / ] resize"),
+            "Help m row should mention [/] resize"
+        );
+    }
+
+    #[test]
+    fn help_documents_action_explainer_for_pdy() {
+        // v1.38: p / d / y now route through the Action Explainer
+        // modal when `[ux] confirm_actions != never`. Help must call
+        // out both the modal and the config key so operators can
+        // toggle the gate.
+        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
+        let dump = lines.join("\n");
+        assert!(
+            dump.contains("Action Explainer modal"),
+            "Help should mention Action Explainer for p/d/y; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("[ux] confirm_actions"),
+            "Help should reference [ux] confirm_actions"
+        );
+    }
+
+    #[test]
+    fn help_documents_modal_x_close() {
+        // v1.38: every overlay carries an `[x]` mouse close target
+        // in the top-right corner. Document it once in the Mouse
+        // section so operators know the affordance is universal.
+        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
+        let dump = lines.join("\n");
+        assert!(
+            dump.contains("Modal [x]") || dump.contains("[x] click target"),
+            "Help should mention [x] click on modals; got:\n{dump}"
+        );
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn help_documents_toggle_close_on_S_P_t() {
+        // v1.38 Tasks 6/7/8: pressing the opener key a second time
+        // closes the matching overlay. Help rows for S / P / t must
+        // mention the press-again-to-close affordance.
+        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
+        let dump = lines.join("\n");
+        assert!(
+            dump.contains("press S again"),
+            "Help S row should mention press-S-again close; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("press P again"),
+            "Help P row should mention press-P-again close; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("press t again"),
+            "Help t row should mention press-t-again close; got:\n{dump}"
         );
     }
 
