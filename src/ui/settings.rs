@@ -1885,7 +1885,7 @@ fn build_badge_body_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
         ),
         badge_row(
             "RESET 5H/7D",
-            "countdown until provider reset timestamp; Claude sidefile or Codex app-server supplies resets_at",
+            "countdown until provider reset timestamp; Claude sidefile or Codex app-server supplies resets_at; rendered as 4d 6h for >=24h, 2h13m / 45m / 30s for <24h",
         ),
         badge_row(
             "TOKENS N",
@@ -1913,7 +1913,7 @@ fn build_badge_body_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
         ),
         badge_row(
             "MEM",
-            "process resident memory; Gemini can be Official, Claude/Codex use local /proc heuristic",
+            "process resident memory; Gemini Official, Claude/Codex local /proc heuristic; metrics overlay shows ▲/▼/─ trend vs last poll",
         ),
         badge_row(
             "MEM-FILE",
