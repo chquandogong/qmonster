@@ -369,7 +369,13 @@ fn card_rows(
 fn card_row(left: &str, right: &str, left_half_width: u16, right_half_width: u16) -> Line<'static> {
     let left_padded = pad_to_width(left, left_half_width as usize);
     let right_padded = pad_to_width(right, right_half_width as usize);
-    Line::from(format!("  {left_padded} │ {right_padded}"))
+    // No leading indent: with a 2-char indent the line was 2 chars
+    // wider than the modal block's inner content area, which made
+    // `Paragraph::wrap(Wrap { trim: false })` spill each row onto a
+    // continuation line of trailing whitespace — visually a blank row
+    // between every metric row. Flush-left keeps the line length
+    // exactly equal to inner_width = body.width − 2.
+    Line::from(format!("{left_padded} │ {right_padded}"))
 }
 
 /// Pad a string with spaces on the right to exactly `width` columns.
@@ -1012,6 +1018,35 @@ mod tests {
             "expected one divider per pane; got:\n{}",
             strs.join("\n")
         );
+    }
+
+    #[test]
+    fn card_row_does_not_overflow_inner_width() {
+        use ratatui::layout::Rect;
+        let body = Rect::new(0, 0, 100, 30);
+        let mut rep = base_test_report("test:1:main");
+        rep.signals.context_pressure = Some(crate::domain::signal::MetricValue::new(
+            0.5,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            body,
+        );
+        let inner_width = (body.width - 2) as usize;
+        for (i, line) in lines.iter().enumerate() {
+            let len: usize = line.spans.iter().map(|s| s.content.chars().count()).sum();
+            assert!(
+                len <= inner_width,
+                "line {i} has {len} chars > inner_width {inner_width}: {:?}",
+                line.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<Vec<_>>(),
+            );
+        }
     }
 
     #[test]
