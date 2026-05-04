@@ -250,18 +250,21 @@ fn pane_list_lines_with_flash(
     for row in render_pane_state_row_with_flash(report, now, flash) {
         lines.push(row);
     }
-    lines.push(Line::from(aligned_field(
+    lines.extend(wrap_aligned_field(
         "path",
         &display_path(&report.current_path),
-    )));
-    lines.push(Line::from(aligned_field(
+        wrap_width,
+    ));
+    lines.extend(wrap_aligned_field(
         "cmd",
         &display_command(&report.current_command),
-    )));
-    lines.push(Line::from(aligned_field(
+        wrap_width,
+    ));
+    lines.extend(wrap_aligned_field(
         "status",
         &state_summary_line(report),
-    )));
+        wrap_width,
+    ));
 
     lines.extend(blocking_signal_lines(&report.signals, wrap_width));
     lines.extend(signal_badge_lines(
@@ -3209,5 +3212,36 @@ mod tests {
     fn wrap_aligned_field_handles_narrow_width_gracefully() {
         let lines = wrap_aligned_field("path", "/x/y/z", 5);
         assert_eq!(lines.len(), 1, "narrow width returns single uncut line");
+    }
+
+    fn sample_pane_report() -> PaneReport {
+        base_report()
+    }
+
+    #[test]
+    fn pane_card_path_line_wraps_when_narrow() {
+        let mut rep = sample_pane_report();
+        rep.current_path = "/home/operator/long/worktree/path/that/exceeds/width".into();
+        let lines = pane_list_lines_with_width(&rep, true, false, 30);
+        // Find the path row; it should span ≥ 2 lines with continuation rows
+        // indented to the value column (label_col + 2 = 10 spaces).
+        let start = lines
+            .iter()
+            .position(|l| line_text(l).starts_with("path    : "))
+            .expect("path row must be present");
+        let mut path_lines: Vec<&Line> = vec![&lines[start]];
+        for line in lines.iter().skip(start + 1) {
+            if line_text(line).starts_with("          ") {
+                path_lines.push(line);
+            } else {
+                break;
+            }
+        }
+        assert!(path_lines.len() >= 2, "long path must wrap into ≥ 2 lines");
+        let cont = line_text(path_lines[1]);
+        assert!(
+            cont.starts_with("          "),
+            "continuation must be indented to value column, got: {cont:?}"
+        );
     }
 }
