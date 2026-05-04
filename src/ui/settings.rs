@@ -15,7 +15,7 @@
 //! until the operator types a value.
 
 use crate::app::config::{
-    ActionsMode, ContextConfig, CostConfig, CostProviderConfig, LogSensitivity,
+    ActionsMode, ConfirmActions, ContextConfig, CostConfig, CostProviderConfig, LogSensitivity,
     PressureProviderConfig, QmonsterConfig, QuotaConfig, RefreshPolicy,
 };
 use crate::domain::recommendation::Severity;
@@ -1561,6 +1561,11 @@ fn build_parameter_body_lines(
                 on_off(defaults.actions.allow_auto_archive)
             ),
         ),
+        setting_row(
+            "ux confirm_actions",
+            confirm_actions_label(config.ux.confirm_actions).into(),
+            confirm_actions_label(defaults.ux.confirm_actions).into(),
+        ),
         Line::from(""),
         reference_header_line("Policy Inputs"),
         setting_row(
@@ -1595,6 +1600,11 @@ fn build_parameter_body_lines(
                 on_off(defaults.security.cross_window_findings),
                 on_off(defaults.security.identity_drift_findings)
             ),
+        ),
+        setting_row(
+            "security cross_pane_file",
+            on_off(config.security.cross_pane_file_findings).into(),
+            on_off(defaults.security.cross_pane_file_findings).into(),
         ),
         setting_row(
             "cache hot/cold ratios",
@@ -1659,6 +1669,26 @@ fn build_parameter_body_lines(
                 "{}/{}",
                 pct_label(f64::from(defaults.reset.snapshot_pressure_threshold)),
                 seconds_label(defaults.reset.snapshot_eta_secs)
+            ),
+        ),
+        setting_row(
+            "cost budget_usd",
+            format!("${:.2}", config.cost.budget_usd),
+            format!("${:.2}", defaults.cost.budget_usd),
+        ),
+        setting_row(
+            "profile_switch enabled/threshold/window",
+            format!(
+                "{}/{}/{} polls",
+                on_off(config.profile_switch.enabled),
+                pct_label(f64::from(config.profile_switch.error_rate_threshold)),
+                config.profile_switch.window_polls
+            ),
+            format!(
+                "{}/{}/{} polls",
+                on_off(defaults.profile_switch.enabled),
+                pct_label(f64::from(defaults.profile_switch.error_rate_threshold)),
+                defaults.profile_switch.window_polls
             ),
         ),
         Line::from(""),
@@ -1946,6 +1976,14 @@ fn actions_mode_label(mode: ActionsMode) -> &'static str {
         ActionsMode::ObserveOnly => "observe_only",
         ActionsMode::RecommendOnly => "recommend_only",
         ActionsMode::SafeAuto => "safe_auto",
+    }
+}
+
+fn confirm_actions_label(mode: ConfirmActions) -> &'static str {
+    match mode {
+        ConfirmActions::Always => "always",
+        ConfirmActions::FirstTime => "first_time",
+        ConfirmActions::Never => "never",
     }
 }
 
