@@ -3334,4 +3334,26 @@ mod tests {
             reason_lines.len()
         );
     }
+
+    #[test]
+    fn pane_index_at_row_handles_wrapped_path_line() {
+        let mut rep_a = sample_pane_report();
+        rep_a.current_path = "/extremely/long/path/".repeat(8);
+        let mut rep_b = sample_pane_report();
+        rep_b.pane_id = "%999".into();
+        let reports = vec![rep_a, rep_b];
+        let mut state = ListState::default();
+        state.select(Some(0));
+
+        let wrap_width = 40u16;
+        let first_height =
+            pane_list_lines_with_width(&reports[0], true, true, wrap_width).len() as u16;
+        assert!(
+            first_height >= 5,
+            "expanded card with long path should produce many rows, got {first_height}"
+        );
+
+        let idx = pane_index_at_row(&reports, &state, first_height, wrap_width);
+        assert_eq!(idx, Some(1));
+    }
 }
