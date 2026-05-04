@@ -438,7 +438,7 @@ pub fn render_metrics_lines(
     overlay: &MetricsOverlay,
     _target_label: &str,
     reports: &[PaneReport],
-    _body: Rect,
+    body: Rect,
 ) -> Vec<Line<'static>> {
     let mut out = Vec::new();
     out.push(hottest_banner_line(reports));
@@ -448,7 +448,7 @@ pub fn render_metrics_lines(
         for (i, r) in reports.iter().enumerate() {
             out.push(comparison_row_line_with_cursor(r, i == overlay.selected()));
         }
-        out.push(separator_line());
+        out.push(separator_line(body.width));
         if let Some(sel) = reports.get(overlay.selected()) {
             out.push(selected_header_line(sel));
             out.extend(selected_detail_lines(sel));
@@ -458,8 +458,11 @@ pub fn render_metrics_lines(
 }
 
 fn comparison_header_line() -> Line<'static> {
+    // 2-space gutter aligns with the cursor prefix in
+    // `comparison_row_line_with_cursor` so column headers sit above
+    // their values.
     Line::from(format!(
-        "{:<18} {:<11} {:<11} {:<11} {:<11} {}",
+        "  {:<18} {:<11} {:<11} {:<11} {:<11} {}",
         "Pane", "CTX", "5H", "7D", "CACHE", "COST"
     ))
 }
@@ -471,9 +474,9 @@ fn comparison_row_line_with_cursor(report: &PaneReport, selected: bool) -> Line<
     line
 }
 
-fn separator_line() -> Line<'static> {
+fn separator_line(body_width: u16) -> Line<'static> {
     Line::from(Span::styled(
-        "─".repeat(60),
+        "─".repeat(body_width.saturating_sub(2) as usize),
         Style::default().fg(theme::TEXT_DIM),
     ))
 }

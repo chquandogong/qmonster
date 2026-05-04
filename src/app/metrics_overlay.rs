@@ -42,7 +42,12 @@ pub fn handle_metrics_overlay_mouse(
     }
     match event.kind {
         MouseEventKind::ScrollUp => overlay.scroll_up(),
-        MouseEventKind::ScrollDown => overlay.scroll_down(u16::MAX),
+        // Soft cap on internal scroll state. Ratatui's `Paragraph::scroll`
+        // self-clips visible output, so the cap exists purely to keep
+        // `MetricsOverlay::scroll` from drifting unboundedly when users
+        // wheel past the actual content. 200 lines comfortably exceeds
+        // the modal body even on extreme pane counts.
+        MouseEventKind::ScrollDown => overlay.scroll_down(200),
         _ => {}
     }
 }
@@ -75,5 +80,23 @@ mod tests {
         let mut o = MetricsOverlay::new();
         // not opened
         assert!(!handle_metrics_overlay_key(&mut o, 0, KeyCode::Char('m')));
+    }
+
+    #[test]
+    fn x_click_closes_overlay() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let mut o = MetricsOverlay::new();
+        o.open();
+        let viewport = Rect::new(0, 0, 100, 50);
+        let rects = metrics_modal_rects(viewport);
+        let close_rect = close_button_rect(rects.area);
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: close_rect.x,
+            row: close_rect.y,
+            modifiers: KeyModifiers::empty(),
+        };
+        handle_metrics_overlay_mouse(&mut o, viewport, 0, event);
+        assert!(!o.is_open());
     }
 }
