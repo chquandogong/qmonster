@@ -71,6 +71,7 @@ where
     let mut provider_setup_overlay =
         crate::ui::provider_setup::ProviderSetupOverlay::from_config(&ctx.config);
     let mut metrics_overlay = crate::ui::metrics::MetricsOverlay::new();
+    let mut action_explainer = crate::app::action_explainer::ActionExplainModal::new();
 
     // Phase F F-6 (v1.32.0): spawn `codex app-server` once at TUI
     // startup when the operator opted in via the [provider_setup]
@@ -169,6 +170,7 @@ where
                             settings_overlay: &settings_overlay,
                             provider_setup_overlay: &provider_setup_overlay,
                             metrics_overlay: &metrics_overlay,
+                            action_explainer: &action_explainer,
                             config: &ctx.config,
                         },
                     );
@@ -275,6 +277,70 @@ where
                                 continue;
                             }
 
+                            if action_explainer.is_open() {
+                                let now = Instant::now();
+                                match k.code {
+                                    KeyCode::Enter => {
+                                        if let Some(action) = action_explainer.pending().cloned() {
+                                            action_explainer.mark_seen(&action);
+                                            let notice = match action {
+                                                crate::app::action_explainer::PendingAction::AcceptPromptSend { pane_idx } => {
+                                                    handle_prompt_send_action(
+                                                        &ctx.source,
+                                                        &*ctx.sink,
+                                                        &dashboard.reports,
+                                                        Some(pane_idx),
+                                                        true,
+                                                        ctx.config.actions.mode,
+                                                        ctx.config.actions.allow_auto_prompt_send,
+                                                    )
+                                                }
+                                                crate::app::action_explainer::PendingAction::RejectPromptSend { pane_idx } => {
+                                                    handle_prompt_send_action(
+                                                        &ctx.source,
+                                                        &*ctx.sink,
+                                                        &dashboard.reports,
+                                                        Some(pane_idx),
+                                                        false,
+                                                        ctx.config.actions.mode,
+                                                        ctx.config.actions.allow_auto_prompt_send,
+                                                    )
+                                                }
+                                                crate::app::action_explainer::PendingAction::CopyAlertCommand { .. } => {
+                                                    let copy_view = AlertCommandCopyView {
+                                                        alert_state: &dashboard.alert_state,
+                                                        notices: &dashboard.notices,
+                                                        reports: &dashboard.reports,
+                                                        fresh_alerts: &dashboard.fresh_alerts,
+                                                        alert_times: &dashboard.alert_times,
+                                                        hidden_until:
+                                                            &dashboard.alert_hide_deadlines,
+                                                        now,
+                                                    };
+                                                    copy_selected_alert_command_to_clipboard(
+                                                        copy_view,
+                                                    )
+                                                }
+                                            };
+                                            action_explainer.close();
+                                            dashboard.push_notice(notice, now);
+                                        }
+                                        continue;
+                                    }
+                                    KeyCode::Esc | KeyCode::Char('q') => {
+                                        action_explainer.close();
+                                        continue;
+                                    }
+                                    KeyCode::Char(c) => {
+                                        if matches_originating_key(action_explainer.pending(), c) {
+                                            action_explainer.close();
+                                        }
+                                        continue;
+                                    }
+                                    _ => continue,
+                                }
+                            }
+
                             let now = Instant::now();
                             if matches!(k.code, KeyCode::Char('c') | KeyCode::Char('C')) {
                                 dashboard.clear_notices(now);
@@ -359,9 +425,42 @@ where
                                     dashboard.push_notice(outcome.notice, Instant::now());
                                 }
                                 KeyCode::Char('y') if focus == FocusedPanel::Alerts => {
+                                    use crate::app::action_explainer::{
+                                        PendingAction, build_copy_view,
+                                    };
+                                    use crate::app::config::ConfirmActions;
                                     let now = Instant::now();
-                                    let notice = copy_selected_alert_command_to_clipboard(
-                                        AlertCommandCopyView {
+                                    let confirm_mode = ctx.config.ux.confirm_actions;
+                                    let alert_idx = match dashboard.alert_state.selected() {
+                                        Some(i) => i,
+                                        None => continue,
+                                    };
+                                    let suggested =
+                                        crate::app::clipboard_actions::selected_alert_suggested_command(
+                                            AlertCommandCopyView {
+                                                alert_state: &dashboard.alert_state,
+                                                notices: &dashboard.notices,
+                                                reports: &dashboard.reports,
+                                                fresh_alerts: &dashboard.fresh_alerts,
+                                                alert_times: &dashboard.alert_times,
+                                                hidden_until: &dashboard.alert_hide_deadlines,
+                                                now,
+                                            },
+                                        );
+                                    let should_open =
+                                        !matches!(confirm_mode, ConfirmActions::Never)
+                                            && suggested.is_some();
+                                    if should_open {
+                                        if let Some((title, cmd, sev, source)) = suggested {
+                                            let view =
+                                                build_copy_view(&title, &cmd, Some(sev), source);
+                                            action_explainer.open(
+                                                PendingAction::CopyAlertCommand { alert_idx },
+                                                view,
+                                            );
+                                        }
+                                    } else {
+                                        let view = AlertCommandCopyView {
                                             alert_state: &dashboard.alert_state,
                                             notices: &dashboard.notices,
                                             reports: &dashboard.reports,
@@ -369,21 +468,68 @@ where
                                             alert_times: &dashboard.alert_times,
                                             hidden_until: &dashboard.alert_hide_deadlines,
                                             now,
-                                        },
-                                    );
-                                    dashboard.push_notice(notice, now);
+                                        };
+                                        let notice = copy_selected_alert_command_to_clipboard(view);
+                                        dashboard.push_notice(notice, now);
+                                    }
                                 }
                                 KeyCode::Char('p') | KeyCode::Char('d') => {
-                                    let notice = handle_prompt_send_action(
-                                        &ctx.source,
-                                        &*ctx.sink,
-                                        &dashboard.reports,
-                                        dashboard.pane_state.selected(),
-                                        k.code == KeyCode::Char('p'),
-                                        ctx.config.actions.mode,
-                                        ctx.config.actions.allow_auto_prompt_send,
-                                    );
-                                    dashboard.push_notice(notice, Instant::now());
+                                    use crate::app::action_explainer::{
+                                        PendingAction, build_accept_view, build_reject_view,
+                                    };
+                                    use crate::app::config::ConfirmActions;
+
+                                    let accepting = k.code == KeyCode::Char('p');
+                                    let pane_idx = match dashboard.pane_state.selected() {
+                                        Some(i) => i,
+                                        None => continue,
+                                    };
+                                    let report = match dashboard.reports.get(pane_idx) {
+                                        Some(r) => r,
+                                        None => continue,
+                                    };
+                                    let proposal =
+                                        crate::app::prompt_send_actions::first_prompt_send_proposal(
+                                            report,
+                                        );
+
+                                    let action = if accepting {
+                                        PendingAction::AcceptPromptSend { pane_idx }
+                                    } else {
+                                        PendingAction::RejectPromptSend { pane_idx }
+                                    };
+
+                                    let confirm_mode = ctx.config.ux.confirm_actions;
+                                    let should_open =
+                                        !matches!(confirm_mode, ConfirmActions::Never)
+                                            && proposal.is_some();
+
+                                    if should_open {
+                                        if let Some((_target, slash)) = proposal {
+                                            let view = if accepting {
+                                                build_accept_view(
+                                                    report,
+                                                    &slash,
+                                                    ctx.config.actions.mode,
+                                                    ctx.config.actions.allow_auto_prompt_send,
+                                                )
+                                            } else {
+                                                build_reject_view(report, &slash)
+                                            };
+                                            action_explainer.open(action, view);
+                                        }
+                                    } else {
+                                        let notice = handle_prompt_send_action(
+                                            &ctx.source,
+                                            &*ctx.sink,
+                                            &dashboard.reports,
+                                            Some(pane_idx),
+                                            accepting,
+                                            ctx.config.actions.mode,
+                                            ctx.config.actions.allow_auto_prompt_send,
+                                        );
+                                        dashboard.push_notice(notice, Instant::now());
+                                    }
                                 }
                                 _ => {}
                             }
@@ -506,4 +652,22 @@ where
 
     leave_terminal_session();
     result
+}
+
+/// v1.38 Phase D Task 20: when the Action Explainer modal is open and
+/// the operator presses the same key that opened it (`p` for accept,
+/// `d` for reject, `y` for copy), close the modal without executing —
+/// the originating key acts as a toggle/cancel rather than re-opening
+/// the same action.
+fn matches_originating_key(
+    pending: Option<&crate::app::action_explainer::PendingAction>,
+    c: char,
+) -> bool {
+    use crate::app::action_explainer::PendingAction;
+    matches!(
+        (pending, c),
+        (Some(PendingAction::AcceptPromptSend { .. }), 'p')
+            | (Some(PendingAction::RejectPromptSend { .. }), 'd')
+            | (Some(PendingAction::CopyAlertCommand { .. }), 'y')
+    )
 }

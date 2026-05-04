@@ -45,6 +45,7 @@ pub struct DashboardFrameView<'a> {
     pub settings_overlay: &'a SettingsOverlay,
     pub provider_setup_overlay: &'a ProviderSetupOverlay,
     pub metrics_overlay: &'a crate::ui::metrics::MetricsOverlay,
+    pub action_explainer: &'a crate::app::action_explainer::ActionExplainModal,
     pub config: &'a QmonsterConfig,
 }
 
@@ -126,5 +127,9 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
             view.target_label,
             view.reports,
         );
+    }
+
+    if let Some(view) = view.action_explainer.view() {
+        crate::ui::action_explainer::render_action_explainer_modal(frame, view);
     }
 }

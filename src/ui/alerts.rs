@@ -7,6 +7,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::app::event_loop::PaneReport;
 use crate::app::system_notice::SystemNotice;
+use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::{CrossPaneFinding, CrossPaneKind, Recommendation, Severity};
 use crate::ui::labels::source_kind_label;
 use crate::ui::theme;
@@ -275,6 +276,35 @@ pub fn selected_alert_suggested_command(
     .and_then(|item| item.suggested_command.clone())
 }
 
+/// v1.38 Phase D Task 20: extended companion to
+/// `selected_alert_suggested_command` that returns the metadata the
+/// Action Explainer modal needs to describe a `y`-copy action — alert
+/// title, the suggested command, severity, and source kind. Returns
+/// `None` if no alert is selected or the selected alert has no
+/// runnable command.
+pub fn selected_alert_suggested_command_meta(
+    state: &ListState,
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    fresh_alerts: &HashSet<String>,
+    alert_times: &HashMap<String, String>,
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> Option<(String, String, Severity, SourceKind)> {
+    let idx = state.selected()?;
+    let items = collect_items(
+        notices,
+        reports,
+        fresh_alerts,
+        alert_times,
+        hidden_until,
+        now,
+    );
+    let item = items.get(idx)?;
+    let cmd = item.suggested_command.as_ref()?.clone();
+    Some((item.title.clone(), cmd, item.severity, item.source_kind))
+}
+
 pub fn actionable_alert_keys_for_severity(
     notices: &[SystemNotice],
     reports: &[PaneReport],
@@ -353,6 +383,7 @@ struct AlertItem {
     headline: String,
     details: Vec<String>,
     suggested_command: Option<String>,
+    source_kind: SourceKind,
     color: Color,
     is_new: bool,
     hide_deadline: Option<Instant>,
@@ -404,6 +435,7 @@ fn collect_items(
             headline: format!("[{badge}] {}", n.body),
             details: vec![],
             suggested_command: None,
+            source_kind: n.source_kind,
             color,
             is_new,
             hide_deadline,
@@ -429,6 +461,7 @@ fn collect_items(
                 headline: format!("[{}] {}", source_kind_label(rec.source_kind), rec.reason),
                 details: recommendation_detail_lines(rec),
                 suggested_command: non_empty_command(rec.suggested_command.as_deref()),
+                source_kind: rec.source_kind,
                 color,
                 is_new,
                 hide_deadline,
@@ -477,6 +510,7 @@ fn collect_items(
                 ),
                 details,
                 suggested_command,
+                source_kind: f.source_kind,
                 color,
                 is_new,
                 hide_deadline,
@@ -503,6 +537,7 @@ fn collect_items(
                 headline: format!("[{}] {}", source_kind_label(rec.source_kind), rec.reason),
                 details: recommendation_detail_lines(rec),
                 suggested_command: non_empty_command(rec.suggested_command.as_deref()),
+                source_kind: rec.source_kind,
                 color,
                 is_new,
                 hide_deadline,
@@ -1593,6 +1628,7 @@ mod tests {
             headline: "[Heur] waiting".into(),
             details: vec![],
             suggested_command: None,
+            source_kind: SourceKind::Heuristic,
             color: Color::Yellow,
             is_new: false,
             hide_deadline: Some(Instant::now() + Duration::from_secs(9)),
@@ -1615,6 +1651,7 @@ mod tests {
             headline: "[Heur] waiting".into(),
             details: vec![],
             suggested_command: None,
+            source_kind: SourceKind::Heuristic,
             color: Color::Yellow,
             is_new: false,
             hide_deadline: None,

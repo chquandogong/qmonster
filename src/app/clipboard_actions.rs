@@ -29,6 +29,25 @@ pub fn copy_selected_alert_command_to_clipboard(view: AlertCommandCopyView<'_>) 
     copy_selected_alert_command(view, copy_text_to_clipboard)
 }
 
+/// v1.38 Phase D Task 20: lookup helper for the Action Explainer modal.
+/// Mirrors what `copy_selected_alert_command` does internally but
+/// returns `(alert_title, suggested_command, severity, source_kind)`
+/// instead of writing to the clipboard. Used by tui_loop's `y` arm
+/// to build a `build_copy_view` when `confirm_actions == Always`.
+pub fn selected_alert_suggested_command(
+    view: AlertCommandCopyView<'_>,
+) -> Option<(String, String, Severity, SourceKind)> {
+    crate::ui::alerts::selected_alert_suggested_command_meta(
+        view.alert_state,
+        view.notices,
+        view.reports,
+        view.fresh_alerts,
+        view.alert_times,
+        view.hidden_until,
+        view.now,
+    )
+}
+
 pub fn copy_selected_alert_command<F>(view: AlertCommandCopyView<'_>, copy_text: F) -> SystemNotice
 where
     F: FnOnce(&str) -> Result<(), String>,
