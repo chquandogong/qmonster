@@ -70,6 +70,7 @@ where
     let mut settings_overlay = crate::ui::settings::SettingsOverlay::new();
     let mut provider_setup_overlay =
         crate::ui::provider_setup::ProviderSetupOverlay::from_config(&ctx.config);
+    let mut metrics_overlay = crate::ui::metrics::MetricsOverlay::new();
 
     // Phase F F-6 (v1.32.0): spawn `codex app-server` once at TUI
     // startup when the operator opted in via the [provider_setup]
@@ -167,6 +168,7 @@ where
                             help_modal: &help_modal,
                             settings_overlay: &settings_overlay,
                             provider_setup_overlay: &provider_setup_overlay,
+                            metrics_overlay: &metrics_overlay,
                             config: &ctx.config,
                         },
                     );
@@ -264,6 +266,15 @@ where
                                 continue;
                             }
 
+                            if metrics_overlay.is_open() {
+                                crate::app::metrics_overlay::handle_metrics_overlay_key(
+                                    &mut metrics_overlay,
+                                    dashboard.reports.len(),
+                                    k.code,
+                                );
+                                continue;
+                            }
+
                             let now = Instant::now();
                             if matches!(k.code, KeyCode::Char('c') | KeyCode::Char('C')) {
                                 dashboard.clear_notices(now);
@@ -299,6 +310,13 @@ where
                                 KeyCode::Char('P') => {
                                     provider_setup_overlay.sync_from_config(&ctx.config);
                                     provider_setup_overlay.open();
+                                }
+                                KeyCode::Char('m') => {
+                                    if metrics_overlay.is_open() {
+                                        metrics_overlay.close();
+                                    } else {
+                                        metrics_overlay.open();
+                                    }
                                 }
                                 KeyCode::Char('t') => {
                                     open_target_picker(&ctx.source, target_picker.controller());
@@ -391,6 +409,17 @@ where
                                 handle_provider_setup_overlay_mouse(
                                     &mut provider_setup_overlay,
                                     viewport,
+                                    m,
+                                );
+                                continue;
+                            }
+
+                            if metrics_overlay.is_open() {
+                                dashboard_split_dragging = false;
+                                crate::app::metrics_overlay::handle_metrics_overlay_mouse(
+                                    &mut metrics_overlay,
+                                    viewport,
+                                    dashboard.reports.len(),
                                     m,
                                 );
                                 continue;

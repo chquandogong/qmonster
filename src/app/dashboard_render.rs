@@ -44,6 +44,7 @@ pub struct DashboardFrameView<'a> {
     pub help_modal: &'a ScrollModalState,
     pub settings_overlay: &'a SettingsOverlay,
     pub provider_setup_overlay: &'a ProviderSetupOverlay,
+    pub metrics_overlay: &'a crate::ui::metrics::MetricsOverlay,
     pub config: &'a QmonsterConfig,
 }
 
@@ -116,5 +117,14 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
 
     if view.provider_setup_overlay.is_open() {
         render_provider_setup_modal(frame, view.provider_setup_overlay);
+    }
+
+    if view.metrics_overlay.is_open() {
+        crate::ui::metrics::render_metrics_modal(
+            frame,
+            view.metrics_overlay,
+            view.target_label,
+            view.reports,
+        );
     }
 }
