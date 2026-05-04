@@ -77,7 +77,7 @@ pub struct CodexRateLimits {
 }
 
 /// A single Codex rate-limit window.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CodexRateWindow {
     /// Integer 0..=100 share of the window already consumed.
     pub used_percent: u8,
@@ -295,11 +295,23 @@ impl<IO: JsonRpcIo> CodexAppServer<IO> {
     }
 
     fn read_response(&mut self) -> Result<Value, String> {
-        let line = self
-            .io
-            .read_line()
-            .map_err(|e| format!("failed to read response: {e}"))?;
-        serde_json::from_str(&line).map_err(|e| format!("failed to parse response JSON: {e}"))
+        loop {
+            let line = self
+                .io
+                .read_line()
+                .map_err(|e| format!("failed to read response: {e}"))?;
+            let value: Value = serde_json::from_str(&line)
+                .map_err(|e| format!("failed to parse response JSON: {e}"))?;
+            // JSON-RPC 2.0 notification: has `method`, no `id`. Skip — the
+            // codex CLI v0.128.0 sends `remoteControl/status/changed`
+            // immediately after `initialize` and may push others between
+            // request/response pairs. Notifications are not addressed to
+            // any of our outstanding requests.
+            if value.get("id").is_none() && value.get("method").is_some() {
+                continue;
+            }
+            return Ok(value);
+        }
     }
 }
 
@@ -523,5 +535,46 @@ mod tests {
         let w = parse_window(Some(&v)).expect("valid window must parse");
         assert_eq!(w.used_percent, 100);
         assert_eq!(w.resets_at_unix_seconds, 12345);
+    }
+
+    #[test]
+    fn read_response_skips_jsonrpc_notification_between_request_and_response() {
+        let io = VecDequeIo::new(vec![
+            // init response
+            r#"{"id":1,"jsonrpc":"2.0","result":{"userAgent":"qm/0.128"}}"#,
+            // unsolicited notification (codex 0.128 emits this after init)
+            r#"{"method":"remoteControl/status/changed","jsonrpc":"2.0","params":{"status":"disabled","environmentId":null}}"#,
+            // rateLimits response
+            r#"{"id":2,"jsonrpc":"2.0","result":{"rateLimits":{"primary":{"usedPercent":1,"windowDurationMins":300,"resetsAt":1777896971},"secondary":{"usedPercent":9,"windowDurationMins":10080,"resetsAt":1777959698}}}}"#,
+        ]);
+        let mut client = CodexAppServer::new(io);
+        let user_agent = client
+            .initialize("qmonster", "1.x")
+            .expect("initialize should succeed");
+        assert!(user_agent.contains("qm/0.128"));
+        let rl = client
+            .read_rate_limits()
+            .expect("rateLimits/read should skip notification and parse the next line");
+        assert_eq!(rl.primary.unwrap().used_percent, 1);
+        assert_eq!(rl.secondary.unwrap().used_percent, 9);
+        assert_eq!(rl.primary.unwrap().resets_at_unix_seconds, 1777896971);
+        assert_eq!(rl.secondary.unwrap().resets_at_unix_seconds, 1777959698);
+    }
+
+    #[test]
+    fn read_response_skips_multiple_consecutive_notifications() {
+        // Defensive: codex may push more than one notification between
+        // request-response pairs. Skip them all.
+        let io = VecDequeIo::new(vec![
+            r#"{"id":1,"jsonrpc":"2.0","result":{"userAgent":""}}"#,
+            r#"{"method":"a","jsonrpc":"2.0","params":{}}"#,
+            r#"{"method":"b","jsonrpc":"2.0","params":{}}"#,
+            r#"{"method":"c","jsonrpc":"2.0","params":{}}"#,
+            r#"{"id":2,"jsonrpc":"2.0","result":{"rateLimits":{"primary":{"usedPercent":3,"windowDurationMins":300,"resetsAt":100}}}}"#,
+        ]);
+        let mut client = CodexAppServer::new(io);
+        client.initialize("qm", "1.x").unwrap();
+        let rl = client.read_rate_limits().unwrap();
+        assert_eq!(rl.primary.unwrap().used_percent, 3);
     }
 }
