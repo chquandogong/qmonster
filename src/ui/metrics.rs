@@ -146,7 +146,7 @@ fn consider(
     metric: &'static str,
     source: crate::domain::origin::SourceKind,
 ) {
-    let beats = best.as_ref().map_or(true, |(v, _, _, _)| value > *v);
+    let beats = best.as_ref().is_none_or(|(v, _, _, _)| value > *v);
     if beats {
         *best = Some((value, label.to_string(), metric, source));
     }
