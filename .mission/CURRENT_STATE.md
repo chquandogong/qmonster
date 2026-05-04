@@ -27,6 +27,16 @@ Five backwards-compatible themes are complete in the v1.39.0 source. None of the
 - Commit summary: `v1.39.0 metrics overlay v2 + action explainer hardening + codex 0.128 fix`.
 - Reference spec: `docs/superpowers/specs/2026-05-04-v1.38-ux-bundle-design.md` (the v1.38 UX-bundle spec; v1.39 layers correctness on top of the same surfaces).
 
+## Post-tag polish (on main, untagged)
+
+Five commits landed on main after `v1.39.0` was tagged. They will be picked up by the next tagged release.
+
+- `41cf54f` — post-publish CURRENT_STATE refresh (concrete workflow run IDs for v1.37/v1.38/v1.39).
+- `540c414` — MF-2 closure: `evolution_summary.current_phase` / `next_phase` tightened.
+- `d752204` — `★p` chip on pane card title when prompt-send proposal pending; `★y` chip on alert title when `suggested_command` present. Severity-colored.
+- `e8e1808` — footer pending counters (`★p:N · ★y:M`) always-visible. Dim on 0; severity-colored when N > 0.
+- `922bba9` — Pending Actions overlay (`a` key): unified modal listing every pane with a pending p/d proposal AND every alert with a y-copyable command. Enter jumps to the underlying item AND opens the Action Explainer modal so dispatch is one keypress away from anywhere on the dashboard. Help overlay + UI_MANUAL §8.7 document the new key.
+
 ## Known External State
 
 - v1.37.0 / v1.38.0 / v1.39.0 are all published (workflow runs `25159598038` / `25305201597` / `25311723861` all completed success). GitHub Release pages live at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39}.0`; `npm view qmonster versions` lists `1.37.0`, `1.38.0`, `1.39.0`.
