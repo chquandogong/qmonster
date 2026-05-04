@@ -608,17 +608,48 @@ side_effects (N):
 
 ### 8.5 Metrics Overlay
 
-`m`으로 열리는 비교 + 시계열 overlay. 위쪽 절반은 모든 pane의
-bounded 메트릭(CTX / 5H / 7D / CACHE) progress bar 비교 테이블,
-아래쪽 절반은 선택된 pane의 TOKENS in/out / COST / MEM / 5H · 7D
-reset 시계열입니다.
+`m`으로 열리는 per-pane card overlay. 모든 pane의 메트릭을 한 화면에
+인라인으로 보여주므로 ↑/↓로 pane을 따로 고를 필요가 없습니다.
 
-- **bounded** 값 (ratio %, reset window): 막대 (상한 가시)
-- **unbounded** 값 (cumulative tokens / cost / RSS): sparkline (추세만)
+각 카드:
 
-누락된 값은 `─` 한 글자로 표시합니다 (S3-4 honesty 규칙). 첫 줄에는
-가장 압박이 큰 pane이 `Hottest: <pane> · <metric> {pct}%` 형식으로
-표시됩니다. 닫기는 `m` / `Esc` / `q` / `[x]` 어느 것이든 가능합니다.
+- divider 한 줄 (`━ provider:instance:role · pane_id ━━…━`)
+- 4개 content 행 — 두 열로 분리 (`<left> │ <right>`)
+
+**왼쪽 열 (bounded)**: CTX / 5H / 7D / CACHE.
+
+- bar 길이는 modal 폭에 따라 8–24셀로 자동.
+- filled `█` cell: CTX/5H/7D는 severity 색 (SAFE 녹 / CONCERN 노 /
+  WARNING 주 / RISK 빨 — `theme::severity_color`), CACHE는 중립 흰색.
+- unfilled `░` cell: dim 회색 (`theme::TEXT_DIM`).
+- 누락값은 dim `─`.
+
+**오른쪽 열 (timeseries · counters)**: 4개 행으로 압축 —
+
+- 행 1: `5H reset ▸ <eta>  ·  7D reset ▸ <eta>` (텍스트 only, progress
+  bar 없음). 24h 이상은 `4d 6h` 형식, 미만은 `2h13m` / `45m` / `30s`.
+  둘 다 누락이면 dim `─`. 한 쪽만 누락이면 그 segment + 분리자 함께
+  drop.
+- 행 2/3: `TOKENS in/out  <sparkline>  <current>  Δ+<delta>`. sparkline은
+  modal 폭에 맞춰 동적 (~20셀+).
+- 행 4: `COST <sparkline> $<v> <trend> · MEM <v> MiB <arrow> · MEM-FILE <bytes> <arrow>`.
+  trend·arrow는 실측 ▲/▼/─ (per-poll MemObservation 트래커에서 산출
+  — 첫 관측은 ─, 다음 폴부터 변화 반영).
+
+상단 1줄에 `Hottest: <pane> · <metric> {pct}% [<source>]` 배너.
+Bounded pressure 데이터가 전혀 없으면 dim `Hottest: —`.
+
+조작:
+
+- `m`, `Esc`, `q`, `[x]` 클릭: 닫기.
+- `↑` / `↓` / `j` / `k`: body scroll (페인 선택 개념 없음 — 모든 pane이
+  항상 보임).
+- `[`: modal 5% 축소 (50%까지). `]`: 5% 확대 (99%까지). `=`: 기본
+  95×90으로 reset. 폭·높이 동시 적용. 운영자가 고른 크기는 close 후
+  재오픈에도 유지.
+- 마우스휠: body가 modal 본문 높이를 넘으면 scroll.
+
+누락된 값은 `─` 한 글자로 표시합니다 (S3-4 honesty 규칙).
 
 ### 8.6 Action Explainer
 
