@@ -287,6 +287,13 @@ cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
   승격됩니다. 이 advisory는 passive이며 Notify를 울리지 않습니다.
 - 선택된 pane는 recommendation과 provider profile payload를 아래로
   펼쳐서 보여줍니다.
+- 선택된 (펼쳐진) pane 카드에 pending prompt-send proposal이 있으면
+  카드 상세 영역에 `proposal:` 한 줄이 표시됩니다.
+  예: `proposal: /compact  → press p to accept · d to reject`.
+  `p` / `d`로 작용하기 전에 사전 explainer 모달이 뜨며, 빈도는
+  `~/.qmonster/config/qmonster.toml`의
+  `[ux] confirm_actions = "always" | "first_time" | "never"`로
+  조정합니다 (기본 `always`).
 
 ## 4. Source Label
 
@@ -342,7 +349,7 @@ side_effects (N):
 - `↑/↓`, `j/k`: 현재 focus된 리스트 한 칸 이동
 - `PgUp/PgDn`: 페이지 단위 이동
 - `Home/End`: 처음/끝으로 이동
-- `t`: target picker 열기
+- `t`: target picker 열기. 진입 키를 다시 누르면 overlay가 닫힙니다.
 - `Enter`: session 선택 후 window 단계로 이동, 또는 window 확정
 - `Left/Backspace`: window 단계에서 session 단계로 복귀
 - `?`: help/legend overlay
@@ -354,15 +361,28 @@ side_effects (N):
   pane 입력을 바꾸지 않기 위해 차단하고 `RuntimeRefreshBlocked`를 기록합니다.
   성공/실패는 `RuntimeRefreshRequested`, `RuntimeRefreshCompleted`,
   `RuntimeRefreshFailed`로 audit log에 남습니다.
+- `m`: Metrics overlay 토글. ↑/↓ 또는 j/k로 비교 테이블의 pane을 선택하면
+  아래 시계열 영역이 그 pane을 따라갑니다. m을 다시 누르거나 Esc / q /
+  [x] 클릭으로 닫습니다.
 - `y`: Alerts focus에서 선택된 alert의 `run` command를 system clipboard에
   복사합니다. 선택 항목에 `suggested_command`가 없거나 clipboard backend를
   열 수 없으면 `SystemNotice`로 이유를 표시합니다.
 - `c`: system notice clear
-- `p`: 선택된 pane의 pending prompt-send proposal 수락 (Phase 5 safer-actuation). audit chain은 actuation mode에 따라 달라짐:
+- `p` / `d` / `y`: 기본은 사전 explainer 모달이 떠서 무엇을 send/reject/copy
+  하는지, 왜 추천하는지(reason + source), audit chain, 그리고 현재
+  actuation mode가 차단 중일 때(observe_only 등)의 경고를 보여줍니다.
+  Enter로 확정, Esc / 같은 키 / [x] 클릭으로 취소. `[ux] confirm_actions`로
+  빈도를 조정합니다 (always / first_time / never).
+- `p` (확정 후 audit chain — Phase 5 safer-actuation): 선택된 pane의 pending
+  prompt-send proposal 수락. audit chain은 actuation mode에 따라 달라짐:
   - Execute (`allow_auto_prompt_send=true`, 비 observe_only) → `PromptSendAccepted → PromptSendCompleted` 또는 `PromptSendFailed`
   - AutoSendOff (`allow_auto_prompt_send=false`, 비 observe_only) → `PromptSendAccepted + PromptSendBlocked` (2 이벤트)
   - observe_only → `PromptSendBlocked` 단독 (`PromptSendAccepted` 없음)
-- `d`: 선택된 pane의 pending prompt-send proposal 기각 (audit: `PromptSendRejected`; 모든 actuation mode에서 가용)
+- `d` (확정 후 audit): 선택된 pane의 pending prompt-send proposal 기각
+  (audit: `PromptSendRejected`; 모든 actuation mode에서 가용)
+- `S`, `P`, `t`: 진입 키를 다시 누르면 overlay가 닫힙니다 (Settings는 숫자 편집
+  중에는 예외 — 편집 모드에서는 S가 닫지 않음). 기존 q / Esc / [x] 닫기는
+  그대로 유지됩니다.
 - `S`: settings overlay 열기.
   화살표로 필드 이동, `e` 또는 `Enter`로 편집 시작, 숫자 입력 후
   `Enter`로 commit, `Esc`로 편집 취소, provider override row에서 `c`로
@@ -577,14 +597,59 @@ side_effects (N):
       없음)
     - `snapshot_eta_secs = 300` (5분) — 같은 어드바이저리가 요구하는
       reset까지 남은 시간 상한값
-    `wait_for_reset` reason 문자열은 `gates.reset_wait_pressure`를
-    그대로 보간하므로 `wait_pressure_threshold = 0.75`로 조정하면
-    어드바이저리가 75% pressure에서 발화하고 reason에도 75%로
-    표시됩니다 (원본 85%가 아님). `S` Settings → `Parameters`는
-    현재 `[reset]` 값과 기본값 차이를 보여주고, `S` Settings → `Rules`
-    는 `wait_for_reset` / `snapshot_before_reset` 발화 조건을 보여줍니다.
-    편집은 아직 `qmonster.toml` 직접 수정 방식입니다. 다음 config 로드 시
-    Qmonster가 새 값을 읽어옵니다.
+      `wait_for_reset` reason 문자열은 `gates.reset_wait_pressure`를
+      그대로 보간하므로 `wait_pressure_threshold = 0.75`로 조정하면
+      어드바이저리가 75% pressure에서 발화하고 reason에도 75%로
+      표시됩니다 (원본 85%가 아님). `S` Settings → `Parameters`는
+      현재 `[reset]` 값과 기본값 차이를 보여주고, `S` Settings → `Rules`
+      는 `wait_for_reset` / `snapshot_before_reset` 발화 조건을 보여줍니다.
+      편집은 아직 `qmonster.toml` 직접 수정 방식입니다. 다음 config 로드 시
+      Qmonster가 새 값을 읽어옵니다.
+
+### 8.5 Metrics Overlay
+
+`m`으로 열리는 비교 + 시계열 overlay. 위쪽 절반은 모든 pane의
+bounded 메트릭(CTX / 5H / 7D / CACHE) progress bar 비교 테이블,
+아래쪽 절반은 선택된 pane의 TOKENS in/out / COST / MEM / 5H · 7D
+reset 시계열입니다.
+
+- **bounded** 값 (ratio %, reset window): 막대 (상한 가시)
+- **unbounded** 값 (cumulative tokens / cost / RSS): sparkline (추세만)
+
+누락된 값은 `─` 한 글자로 표시합니다 (S3-4 honesty 규칙). 첫 줄에는
+가장 압박이 큰 pane이 `Hottest: <pane> · <metric> {pct}%` 형식으로
+표시됩니다. 닫기는 `m` / `Esc` / `q` / `[x]` 어느 것이든 가능합니다.
+
+### 8.6 Action Explainer
+
+`p` / `d` / `y` 누름 시 사전 모달이 뜹니다. 표시되는 항목:
+
+- **Target pane**: `provider:instance:role · pane_id`
+- **What to send / What to reject / What to copy**: 실제로 보낼/거절할/복사할 텍스트
+- **Why now**: 추천 이유 + source label (`[Official]` / `[Qmonster]` / `[Heur]` / `[Estimate]`)
+- **Severity**: 해당 시 SAFE/GOOD/CONCERN/WARNING/RISK
+- **Audit chain**: 현재 actuation mode에 따라 발화될 audit event 시퀀스
+  (`Execute → PromptSendAccepted → PromptSendCompleted` 등)
+- **Mode now**: actuation mode가 차단 중일 때 (`observe_only`, AutoSendOff)
+  ⚠ 경고
+
+조작:
+
+- `Enter` 확정 → 기존 audit chain을 따라 동작 실행
+- `Esc` / 같은 키(`p`/`d`/`y`) / `[x]` 클릭 → 취소 (실행하지 않음)
+
+빈도 조정 (`~/.qmonster/config/qmonster.toml`):
+
+```toml
+[ux]
+# always       — 매번 모달 (기본, 가장 안전)
+# first_time   — 키 종류별로 한 번만, 그 이후는 즉시 실행
+# never        — v1.37.0 즉시 실행 동작 복원
+confirm_actions = "always"
+```
+
+`first_time`은 세션 로컬입니다 — Qmonster를 재시작하면 다시 모달이
+뜹니다. 영구 silence를 원하면 `never`로 설정하세요.
 
 ## 9. 운영 파일
 
