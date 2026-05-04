@@ -810,7 +810,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "y",
-            "copy the selected alert run command to the clipboard; opens Action Explainer modal first when [ux] confirm_actions != never",
+            "copy the selected alert run command to the clipboard; [ux] confirm_actions controls Action Explainer modal: always = every time, first_time = once per kind per session, never = skipped",
         ),
         ("c", "clear system notices"),
     ] {
@@ -819,7 +819,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
 
     lines.extend(help_wrapped_detail_lines(
         "p",
-        "accept pending prompt-send proposal (P5-3 safer-actuation); opens Action Explainer modal first when [ux] confirm_actions != never (Enter confirms, Esc / p / [x] click cancels)",
+        "accept pending prompt-send proposal (P5-3 safer-actuation); [ux] confirm_actions controls Action Explainer modal: always = every time, first_time = once per kind per session, never = skipped (Enter confirms, Esc / p / [x] click cancels)",
         total_width,
     ));
     lines.extend(help_wrapped_bullet_lines(
@@ -841,7 +841,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
 
     lines.extend(help_wrapped_detail_lines(
         "d",
-        &format!("dismiss pending prompt-send proposal (audit: {rejected}; every actuation mode); opens Action Explainer modal first when [ux] confirm_actions != never"),
+        &format!("dismiss pending prompt-send proposal (audit: {rejected}; every actuation mode); [ux] confirm_actions controls Action Explainer modal: always = every time, first_time = once per kind per session, never = skipped"),
         total_width,
     ));
 

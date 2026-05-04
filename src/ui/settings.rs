@@ -1714,7 +1714,7 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
         rule_row(
             "action explainer",
             format!(
-                "p/d/y opens modal when ux.confirm_actions != never and target exists; current = {}",
+                "p/d/y opens modal: always = every time, first_time = once per kind per session, never = skipped; target must exist; current = {}",
                 confirm_actions_label(config.ux.confirm_actions)
             ),
         ),

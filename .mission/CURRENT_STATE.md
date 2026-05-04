@@ -48,9 +48,27 @@ v1.38.0 was tagged. They will be picked up by the next tagged release
   proposal directly via `handle_prompt_send_action_for_proposal`
   (P2 round 2), closing the residual hole where a newly polled
   lex-lower proposal could divert the executed/dismissed command.
-
-Run `git describe --tags --always` on main to see the live polish
-count.
+- `de038d0` — `proposal_id` threaded through prompt-send audit
+  events so accepted/rejected/blocked entries carry the originating
+  Action Explainer snapshot id end-to-end.
+- `562d3e8` — drop the self-referential `git describe --tags --always`
+  value from the post-tag note so the ledger no longer claims to
+  describe itself.
+- `99337e0` — Settings Parameters tab synced with v1.37/v1.38 surface
+  area: `[ux] confirm_actions`, cost budget, profile_switch, and
+  cross-pane file knobs are now visible.
+- `d6130b4` — Settings Rules tab adds cost-budget, profile-switch,
+  cross-pane file, and action-explainer rule rows so operators can
+  read the gates that fire each advisory.
+- `53bcaf4` — Settings Badges legend refreshed with MEM trend arrow
+  semantics and the RESET 5H/7D day-format entry introduced by the
+  earlier `format_resets_eta` change.
+- `a95a352` — Provider Setup gains an F-7c reset-aware advisory
+  context line on the Claude and Codex tabs, plus an F-5b docstring
+  fix.
+- `9a0d5a5` — Help overlay sync: `m` Metrics overlay row, Action
+  Explainer for `p`/`d`/`y`, toggle-on-entry-key for `S`/`P`/`t`/`m`,
+  and the universal `[x]` modal close affordance are all documented.
 
 ## Latest Release Notes
 

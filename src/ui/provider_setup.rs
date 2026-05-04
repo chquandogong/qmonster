@@ -417,7 +417,7 @@ pub fn render_tab_content(
             ));
             out.push("      Read-only here. Change in S Settings -> Integrations.".into());
             out.push("      y copies the Claude snippet using this Settings value.".into());
-            out.push("      Sidefile resets_at also drives F-7c reset-aware advisories: 'quota: pause until 5h/weekly resets' and 'snapshot before reset' (configurable in S Settings -> Rules).".into());
+            out.push("      Sidefile resets_at also drives F-7c reset-aware advisories — wait-for-reset and snapshot-before-reset (5h and weekly windows; configurable in S Settings -> Rules).".into());
 
             append_copy_contract(&mut out, overlay);
             append_copied_preview(&mut out, overlay);
@@ -453,7 +453,7 @@ pub fn render_tab_content(
             out.push(
                 "      Restart Qmonster after saving ON; Qmonster auto-spawns app-server.".into(),
             );
-            out.push("      App-server resets_at also drives F-7c reset-aware advisories: 'quota: pause until 5h/weekly resets' and 'snapshot before reset' (configurable in S Settings -> Rules).".into());
+            out.push("      App-server resets_at also drives F-7c reset-aware advisories — wait-for-reset and snapshot-before-reset (5h and weekly windows; configurable in S Settings -> Rules).".into());
 
             append_copy_contract(&mut out, overlay);
             append_copied_preview(&mut out, overlay);
