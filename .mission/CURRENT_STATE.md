@@ -19,6 +19,21 @@ Four backwards-compatible UX features are complete in the v1.38.0 source. None o
 3. **F3 Action Explainer modal + inline previews + `[ux] confirm_actions`**: `src/app/action_explainer.rs` introduces `ActionExplainModal` state + view builders + `should_open_explainer` helper. `tui_loop` intercepts `p`/`d`/`y` through the explainer, which renders fields, audit chain, and a mode warning before dispatch. An inline `proposal:` line on the selected pane card and a `copy:` line on the selected alert (aligned with sibling rows) preview the pending action. The new `[ux] confirm_actions` config knob in `src/app/config.rs` accepts `always` (default — modal on every p/d/y), `first_time` (modal only on the first per-session invocation, tracked via `should_open_explainer`), or `never` (preserves v1.37.0 silent-execute).
 4. **Toggle-on-entry-key + `[x]` standardization**: `tui_loop` dispatch toggles `S` (Settings), `P` (Provider Setup), `t` (target picker), `m` (Metrics) on the entry key when the matching overlay is already open. `close_button_rect` renders an `[x]` glyph top-right on every overlay. Existing close keys (`Esc`, `q`) keep working. Redundant target picker mouse gate dropped.
 
+## Post-tag polish (on main, untagged)
+
+Two operator-facing iterations landed on main after v1.38.0 was tagged.
+They will be picked up by the next tagged release (v1.38.1 or v1.39.0).
+
+- `ff11717` — `format_resets_eta` uses `4d 6h` style for ≥24h etas
+  instead of `102h00m`. Affects panes card metric_row, RESET 5H/7D
+  badges, and metrics overlay reset rows.
+- `6355f8c` — real MEM RSS / MEM-FILE trend arrows (▲/▼/─) wired
+  through a per-poll `MemObservation` tracker in `tui_loop`. Replaces
+  the placeholder `─` introduced in v1.38.0.
+
+`git describe --tags --always` reports `v1.38.0-2-g6355f8c` as of this
+update.
+
 ## Latest Release Notes
 
 - `v1.38.0` is a minor UX-bundle release over the v1.37.0 feature line.
