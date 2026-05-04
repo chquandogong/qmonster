@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.37.0 - Multi-pane orchestration, dynamic profile switching, SQLite USD cost budget alerts, and Phase 6 Team Mode layered configuration."
+  mission_title: "Qmonster v1.38.0 - UX bundle: Metrics Overlay (m), pane card text wrap fix, Action Explainer modal for p/d/y with [ux] confirm_actions, and toggle-on-entry-key + [x] standardization across S/P/t/m + target picker."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 180
-  latest_version: "1.37.0"
+  total_revisions: 181
+  latest_version: "1.38.0"
 
 timeline:
   - change_id: "initial"
@@ -16484,9 +16484,115 @@ timeline:
       - "Phase 7 D2/D3 anomaly detection and subagent analysis implementation remains unstarted; preliminary spec lives at .docs/codex/phase7-anomaly-detection-spec.md."
       - "Per-subagent token attribution remains blocked until providers expose structured per-subagent counters."
 
+  - change_id: "v1.38.0-ux-bundle-metrics-wrap-explainer-toggle"
+    semantic_version: "1.38.0"
+    change_sequence: 181
+    date: "2026-05-04"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (Qmonster main pane, Opus 4.7 1M)"
+    change_type: "minor-feature-release"
+    motivation_type: "operator-directed-ux-bundle"
+    persistence: "permanent"
+    intent: >
+      Release four backwards-compatible UX improvements together as
+      v1.38.0: F1 Metrics Overlay (m) with bounded vs unbounded
+      visual split, F2 wrap_aligned_field pane card text wrap fix,
+      F3 Action Explainer modal for p/d/y with [ux] confirm_actions
+      config (always/first_time/never), and F4 toggle-on-entry-key
+      + [x] standardization across S/P/t/m + target picker. The
+      release is UI/UX layer only — no provider, audit, policy, or
+      SignalSet schema changes.
+    intent_ko: >
+      F1 Metrics Overlay (m) bounded/unbounded 시각 분리, F2
+      wrap_aligned_field pane card 텍스트 줄바꿈 수정, F3 p/d/y
+      Action Explainer 모달과 [ux] confirm_actions
+      (always/first_time/never) 설정, F4 S/P/t/m + target picker
+      에 대한 toggle-on-entry-key + [x] 표준화 네 가지 하위 호환
+      UX 개선을 v1.38.0 으로 묶어 릴리스한다. UI/UX 계층에만
+      국한되며 provider, audit, policy, SignalSet 스키마는
+      변경되지 않는다.
+    triggered_by: "Operator surfaced four UX gaps while running v1.37.0: no at-a-glance metrics view, pane card text truncation on narrow splits, opaque silent-execute behavior of p/d/y actions, and inconsistent overlay close UX. The v1.38 UX bundle spec (docs/superpowers/specs/2026-05-04-v1.38-ux-bundle-design.md) collapses all four into a single coordinated minor release."
+    changes:
+      added:
+        - "F1: src/ui/metrics.rs MetricsOverlay state + render_metrics_modal with hottest banner, comparison row, selected-pane detail (sparklines + reset bars), MEM trend placeholder, [x] close button, bounded vs unbounded visual split."
+        - "F1: src/app/metrics_overlay.rs handle_metrics_overlay_key/_mouse dispatchers wired into tui_loop; bound scroll, [x] click test."
+        - "F2: src/ui/panels.rs::wrap_aligned_field helper + threading wrap_width through path/cmd/status/state/severity reason/expanded detail rows; pane_index_at_row regression test under wrap."
+        - "F3: src/app/action_explainer.rs ActionExplainModal state + view builders + should_open_explainer helper covering always/first_time/never modes."
+        - "F3: ActionExplainModal renders modal with audit chain + mode warning; tui_loop intercepts p/d/y through the explainer; inline `proposal:` line on selected pane card and `copy:` line on selected alert preview the action."
+        - "F3: [ux] confirm_actions config knob in src/app/config.rs (always | first_time | never), default always; first_time gates only the first per-session invocation; never preserves v1.37.0 silent-execute behavior."
+        - "F4: tui_loop dispatch toggles S/P/t/m on entry-key when the matching overlay is open; close_button_rect renders [x] glyph top-right on every overlay; existing close keys (Esc/q) preserved."
+        - "docs: docs/ai/UI_MANUAL.md updates for new overlays + actions per spec §10."
+      modified:
+        - "src/ui/panels.rs: severity reason rows, expanded detail rows, state row now wrap via wrap_badge_line + wrap_aligned_field instead of using aligned_field directly."
+        - "src/app/tui_loop.rs: S (Settings) / P (Provider Setup) / t (target picker) / m (Metrics) entry keys toggle the overlay open/close; redundant target picker mouse gate removed."
+        - "package.json: public version surface bumped to 1.38.0."
+      removed: []
+    changed_sections:
+      - "src/ui/{metrics.rs,panels.rs,dashboard.rs}"
+      - "src/app/{metrics_overlay.rs,action_explainer.rs,tui_loop.rs,config.rs}"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/superpowers/specs/2026-05-04-v1.38-ux-bundle-design.md"
+      - "docs/superpowers/plans/2026-05-04-v1.38-ux-bundle.md"
+      - "package.json"
+    observable_effects:
+      added:
+        - "Operators press `m` to open the Metrics Overlay and see bounded ratios (context/quota/cache pressure with progress bars + tick marks at 60/75/85 and reset windows with inverse-progress bars) visually distinct from unbounded values (cumulative tokens/cost/RSS sparklines with Δ vs prior sample), plus per-pane comparison and selected-pane detail in one modal."
+        - "Pane card path/cmd/status/state/severity/expanded detail rows wrap with continuation indent on narrow splits instead of silently truncating off the right edge."
+        - "Pressing p/d/y opens the Action Explainer modal with audit chain + mode warning before dispatch (default `always`); inline `proposal:` line on selected pane card and `copy:` line on selected alert preview the pending action."
+        - "Operators can set [ux] confirm_actions = first_time to reduce the modal to once per session, or = never to restore v1.37.0 silent-execute."
+        - "S/P/t/m entry keys toggle their overlays closed when already open; every overlay renders an [x] close glyph top-right alongside existing Esc/q close keys."
+      modified:
+        - "Existing v1.37.0 actions (p/d/y) now dispatch through the Action Explainer by default; behavior is reachable unchanged via [ux] confirm_actions = never."
+        - "Pane card row count under narrow splits increases (wrap-induced); pane_index_at_row tracks Vec<Line> length so hit-testing stays correct."
+      removed: []
+    impact_scope:
+      runtime: "UI/UX layer only. No change to provider adapters, audit chain, policy gates, SignalSet schema, SQLite schema, or recommendation/effect dispatch. Action Explainer wraps existing p/d/y handlers; the underlying effects are unchanged."
+      tests: "Release commit reported 874 lib + 50 + 18 + 6 integration tests green (cargo fmt, cargo test --all-targets, cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args)."
+      ledger: "1 new timeline entry (sequence 181); meta total_revisions 180 -> 181, latest_version 1.37.0 -> 1.38.0; minor version bump for four backwards-compatible UX features."
+      npm: "package.json version 1.38.0; CI publication of v1.38.0 follows the same workflow as v1.37.0 and remains an external follow-up until verified."
+    breaking: false
+    risk: "low — every change is on the UI/UX layer with existing data sources. F3 Action Explainer adds an extra confirm step on p/d/y by default, but [ux] confirm_actions = never restores v1.37.0 behavior. F2 wrap fix changes pane card heights; pane_index_at_row regression test covers hit-testing under wrap. F4 toggle-on-entry-key keeps existing Esc/q close keys functional."
+    related_commits:
+      - "ea55d20 v1.38 wrap-fix: introduce wrap_aligned_field helper"
+      - "8cf9248 v1.38 wrap-fix: wrap path/cmd/status pane card lines"
+      - "7ac5d8f v1.38 wrap-fix: thread wrap_width through state row"
+      - "0022b4f v1.38 wrap-fix: apply wrap_badge_line to state row"
+      - "b45e2df v1.38 wrap-fix: wrap severity reason + expanded detail rows"
+      - "8acf81b v1.38 wrap-fix: regression test for pane_index_at_row with wrap"
+      - "8080e06 v1.38 toggle: S toggles Settings overlay open/close"
+      - "219c035 v1.38 toggle: P toggles Provider Setup overlay"
+      - "f872da9 v1.38 toggle: t toggles target picker + adds [x] button"
+      - "d3f37b8 v1.38 toggle: drop redundant target picker mouse gate"
+      - "a9ed4b4 v1.38 metrics: MetricsOverlay state struct"
+      - "0ed0bde v1.38 metrics: layout rects (banner/comparison/detail/hint)"
+      - "dd7a695 v1.38 metrics: hottest banner + comparison row renderers"
+      - "2d7e8d5 v1.38 metrics: selected-pane detail with sparklines + reset bars"
+      - "75973eb v1.38 metrics: align reset row with mockup + MEM trend placeholder"
+      - "b94aeb9 v1.38 metrics: render_metrics_modal + key/mouse dispatchers"
+      - "9ba4d97 v1.38 metrics: fix column alignment + bound scroll + [x] click test"
+      - "82ffc65 v1.38 metrics: wire MetricsOverlay into tui_loop dispatch"
+      - "3d6d4c3 v1.38 ux: [ux] confirm_actions config knob"
+      - "8d43587 v1.38 ux: inline proposal: line on selected pane card"
+      - "6ed64e9 v1.38 ux: inline copy: line on selected alert"
+      - "e265e29 v1.38 ux: align copy: line with sibling rows + clippy fix"
+      - "f17cc63 v1.38 metrics: use is_none_or for clippy parity"
+      - "59d593a v1.38 ux: ActionExplainModal state + view builders"
+      - "3b87a48 v1.38 ux: render Action Explainer modal"
+      - "8446800 v1.38 ux: intercept p/d/y through action explainer"
+      - "3cbb934 v1.38 ux: should_open_explainer helper + first_time coverage"
+      - "fd115dc v1.38 docs: UI_MANUAL updates for new overlays + actions"
+    follow_up:
+      - "v1.37.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until the workflow completes."
+      - "Phase 7 D2/D3 anomaly detection and subagent analysis implementation remains unstarted; spec lives at .docs/codex/phase7-anomaly-detection-spec.md."
+      - "Per-subagent token attribution remains blocked until providers expose structured per-subagent counters."
+      - "MF-2 evolution_summary.current_phase length cleanup remains deferred."
+      - "Phase H opt-in auto-snapshot at reset boundary remains unscoped."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+
 evolution_summary:
-  current_phase: "v1.37.0 is the current feature-release baseline. It bundles four backwards-compatible slices: F-8 file-level multi-pane orchestration, F-9 opt-in dynamic profile switching, F-9b SQLite USD cost budget tracking with 80%/100% one-shot alerts against the default $200 budget, and Phase 6 Team Mode layered configuration merging defaults, qmonster.toml, and sibling qmonster.local.toml. VERSION.md and package.json are at 1.37.0, and local tag v1.37.0 points at 1121a21. External GitHub/npm publication is CI-owned and should be verified before claiming release assets or registry publication complete."
-  next_phase: "First verify the CI-published v1.37.0 GitHub Release and npm package and record workflow run IDs/URLs in .mission/CURRENT_STATE.md. After release verification, Phase 7 can start from .docs/codex/phase7-anomaly-detection-spec.md: anomaly detection should reuse existing identity history, subagent hints, token/cost time series, and profile-switch error history before adding schema. Per-subagent token attribution remains blocked until providers expose structured counters. Tag protection/ruleset activation, MF-2 evolution_summary length cleanup, and Phase H auto-snapshot remain separate follow-ups."
+  current_phase: "v1.38.0 is the current feature-release baseline. It bundles four backwards-compatible UX slices on top of the v1.37.0 runtime: F1 Metrics Overlay (`m`) with bounded ratios (progress bars + tick marks at 60/75/85, reset window inverse bars) visually distinct from unbounded counters (sparklines + Δ vs prior sample) plus per-pane comparison and selected-pane detail; F2 wrap_aligned_field eliminating silent right-edge truncation on path/cmd/status/state/severity/expanded detail rows; F3 Action Explainer modal intercepting p/d/y with audit chain + mode warning, gated by [ux] confirm_actions (always/first_time/never, default always) and previewed via inline `proposal:` and `copy:` rows; F4 toggle-on-entry-key + `[x]` standardization across S/P/t/m + target picker, with existing Esc/q close keys preserved. UI/UX layer only — no provider, audit, policy, or SignalSet schema changes. package.json is at 1.38.0 and a local v1.38.0 tag is created. v1.37.0 CI publication verification remains an external follow-up."
+  next_phase: "Phase 7 (D2/D3 anomaly detection and subagent analysis) starts from .docs/codex/phase7-anomaly-detection-spec.md: reuse existing identity history, subagent hints, token/cost time series, and profile-switch error history before adding any new schema. Per-subagent token attribution remains blocked until providers expose structured counters. v1.37.0 CI publication verification, MF-2 evolution_summary length cleanup, Phase H opt-in auto-snapshot at reset boundary, and tag protection/ruleset activation remain separate follow-ups."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

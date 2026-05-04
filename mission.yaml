@@ -1,6 +1,6 @@
 mission:
-  version: "1.37.0"
-  title: "Qmonster v1.37.0 - Multi-pane orchestration, dynamic profile switching, SQLite USD cost budget alerts, and Phase 6 Team Mode layered configuration. Minor release over v1.36.x; tag/package metadata are at 1.37.0 while CI publication completes."
+  version: "1.38.0"
+  title: "Qmonster v1.38.0 - UX bundle: Metrics Overlay (m) with bounded vs unbounded visual split, pane card text wrap fix via wrap_aligned_field, Action Explainer modal for p/d/y with [ux] confirm_actions config, and toggle-on-entry-key + [x] standardization across S/P/t/m + target picker. Minor release over v1.37.0; UI/UX layer only — no provider, audit, policy, or SignalSet schema changes."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -20,6 +20,36 @@ mission:
     sibling qmonster.local.toml recursive TOML merge). The local
     v1.37.0 tag points at 1121a21; external GitHub/npm publication is
     CI-owned and should be verified after the workflow completes.
+
+    v1.38.0 ships a UX-only bundle layered on the v1.37.0 baseline.
+    F1 Metrics Overlay: pressing `m` opens src/ui/metrics.rs which
+    splits bounded values (context/quota/cache pressure ratios with
+    progress bars + tick marks at 60/75/85; reset windows with
+    inverse-progress bars) from unbounded values (cumulative tokens,
+    cost, RSS via 8-block sparklines + Δ vs prior sample); a hottest
+    banner + per-pane comparison row + selected-pane detail with
+    sparklines and reset bars cover comparison and time-series in
+    one modal. F2 wrap_aligned_field: a new helper in src/ui/panels.rs
+    threads wrap_width through path/cmd/status pane card lines,
+    severity reason rows, expanded detail rows, and the state row via
+    wrap_badge_line, eliminating silent right-edge truncation on
+    narrow splits; pane_index_at_row gains a regression test that
+    locks hit-testing under wrap. F3 Action Explainer: src/app/
+    action_explainer.rs intercepts p/d/y and renders a modal preview
+    with audit chain + mode warning before dispatch; an inline
+    `proposal:` line on the selected pane card and a `copy:` line on
+    the selected alert preview the action; the new [ux]
+    confirm_actions config (always | first_time | never) controls
+    frequency, with `always` as default, `first_time` gating only
+    the first per-session invocation via should_open_explainer, and
+    `never` preserving v1.37.0 silent-execute. F4 overlay toggle
+    standardization: tui_loop dispatch toggles S (Settings), P
+    (Provider Setup), t (target picker), m (Metrics) on entry-key
+    when the overlay is open; close_button_rect renders an `[x]`
+    glyph top-right on every overlay; existing close keys (Esc/q)
+    keep working. None of these slices change provider adapters,
+    audit chain, policy gates, or SignalSet schema. package.json
+    is at 1.38.0 and a local v1.38.0 tag is created.
 
     Phase 0 (planning) produced the canonical docs, mission ledger, thin
     routers, Claude plan r1, Codex r1 cross-check, Gemini r1 research,
@@ -1559,6 +1589,12 @@ mission:
     - "v1.37.0 F-9b: SqliteCostUsageSink records positive USD deltas from cumulative cost_usd into cost_usage_events and claims one-shot 80% / 100% budget alerts in cost_budget_alerts for [cost] budget_usd (default 200.0; 0 disables)"
     - "v1.37.0 Phase 6 Team Mode: config loading merges serialized defaults, shared qmonster.toml, then sibling qmonster.local.toml recursively; sparse local nested-table overrides are supported and qmonster.local.toml stays gitignored"
     - "v1.37.0 release metadata: VERSION.md and package.json are at 1.37.0, local tag v1.37.0 points at 1121a21, and CI publication/asset verification remains an external follow-up until the workflow completes"
+    - "v1.38.0 F1 Metrics Overlay (m): src/ui/metrics.rs renders a modal with bounded (progress bars + tick marks at 60/75/85, reset window inverse bars) vs unbounded (sparkline + delta) visual split; a comparison row across panes plus selected-pane detail with token sparklines, reset bars, and MEM trend placeholder; bound scroll, [x] close button, key/mouse dispatchers wired into tui_loop"
+    - "v1.38.0 F2 wrap_aligned_field pane card text wrap fix: src/ui/panels.rs::wrap_aligned_field helper threads wrap_width through path/cmd/status pane card lines, severity reason rows, expanded detail rows, and state row via wrap_badge_line; pane_index_at_row regression test locks hit-testing under wrap; no information silently dropped on narrow splits"
+    - "v1.38.0 F3 Action Explainer modal: src/app/action_explainer.rs gates p/d/y through ActionExplainModal with inline `proposal:` line on selected pane card and `copy:` line on selected alert; should_open_explainer helper covers always/first_time/never modes; first_time tracking; modal renders fields, audit chain, mode warning"
+    - "v1.38.0 F3 [ux] confirm_actions config: src/app/config.rs adds [ux] section with confirm_actions enum (always | first_time | never); always is default and gates every p/d/y action; first_time gates only the first invocation per session; never preserves the v1.37.0 silent-execute behavior"
+    - "v1.38.0 F4 toggle-on-entry-key + [x] standardization: tui_loop dispatch layer toggles S (Settings), P (Provider Setup), t (target picker), m (Metrics) on entry-key when overlay open; close_button_rect helper renders [x] glyph top-right on every overlay; existing close keys (Esc/q) preserved; target picker mouse gate redundancy removed"
+    - "v1.38.0 release metadata: package.json is at 1.38.0; UI_MANUAL.md updated for new overlays + actions; Cargo crate metadata stays at 0.1.0 (internal); local tag v1.38.0 created"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1645,18 +1681,19 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: 'Current working state is v1.37.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, and Phase 6 Team Mode are complete. v1.37.0 adds four backwards-compatible runtime/config features: F-8 file-level multi-pane orchestration, F-9 opt-in dynamic profile switching, F-9b SQLite USD cost budget alerts at 80%/100%, and recursive qmonster.toml + qmonster.local.toml layered configuration. VERSION.md/package.json are at 1.37.0 and the local v1.37.0 tag points at 1121a21; external CI publication verification is still a follow-up until workflow results are checked.'
+    topology: "Current working state is v1.38.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, and Phase 6 Team Mode are complete. v1.38.0 ships a UX-only bundle layered on the v1.37.0 baseline: F1 Metrics Overlay (m) with bounded vs unbounded visual split, F2 wrap_aligned_field pane card text wrap fix, F3 Action Explainer modal for p/d/y with [ux] confirm_actions config (always/first_time/never), and F4 toggle-on-entry-key + [x] standardization across S/P/t/m + target picker. No provider, audit, policy, or SignalSet schema changes. package.json is at 1.38.0; the local v1.38.0 tag is created. CI publication verification for v1.37.0 remains an external follow-up."
     suggested_approach: >
-      Treat v1.37.0 as the current runtime baseline. First verify
-      the CI-published GitHub Release and npm package, then update
-      .mission/CURRENT_STATE.md with concrete workflow run IDs and
-      release URLs. For implementation planning, keep Phase 7 focused
-      on D2/D3 anomaly detection and subagent analysis as drafted in
-      .docs/codex/phase7-anomaly-detection-spec.md: reuse existing
-      IdentitySnapshot, subagent_hint, token/cost time-series, and
-      profile_switch history surfaces before introducing any new
-      storage schema. Do not invent per-subagent token attribution
-      unless a provider exposes structured counters.
+      Treat v1.38.0 as the current runtime baseline. v1.38.0 is a UX
+      layer over v1.37.0 — provider, audit, policy, and SignalSet
+      schemas are unchanged. For implementation planning, keep Phase 7
+      focused on D2/D3 anomaly detection and subagent analysis as
+      drafted in .docs/codex/phase7-anomaly-detection-spec.md: reuse
+      existing IdentitySnapshot, subagent_hint, token/cost
+      time-series, and profile_switch history surfaces before
+      introducing any new storage schema. Do not invent per-subagent
+      token attribution unless a provider exposes structured counters.
+      v1.37.0 CI publication verification (GitHub Release + npm
+      package) remains an external follow-up.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1692,12 +1729,13 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.37.0 Phase 7 planning"
+    priority: "post-v1.38.0 Phase 7 planning"
     estimated_sessions: 1
-    scope: "v1.37.0 completes F-8 multi-pane file-level orchestration, F-9 dynamic profile switching, F-9b cost budget tracking, and Phase 6 Team Mode layered config; CI publication verification is the immediate release follow-up"
+    scope: "v1.38.0 ships a UX-only bundle: F1 Metrics Overlay (m), F2 wrap_aligned_field pane card wrap fix, F3 Action Explainer modal + [ux] confirm_actions config, F4 toggle-on-entry-key + [x] standardization. No provider, audit, policy, or SignalSet schema changes. v1.37.0 CI publication verification remains a separate follow-up."
     followups:
       - "Phase 7 D2/D3 anomaly detection and subagent analysis spec drafted in .docs/codex/phase7-anomaly-detection-spec.md; implementation remains unstarted"
       - "D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters"
+      - "v1.37.0 CI publication verification (GitHub Release + npm package) remains an external follow-up"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
   created: "2026-04-20"
@@ -1705,5 +1743,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 180
+    total_revisions: 181
     history: "mission-history.yaml"
