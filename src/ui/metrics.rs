@@ -10,9 +10,11 @@ use crate::app::event_loop::PaneReport;
 use crate::store::TokenSample;
 use crate::ui::dashboard::centered_rect;
 use crate::ui::theme;
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 #[derive(Debug, Default, Clone)]
 pub struct MetricsOverlay {
@@ -430,6 +432,96 @@ fn reset_line(label: &'static str, eta_unix: Option<u64>, window_secs: f64) -> L
     }
 }
 
+/// Pure helper that produces the modal body lines. Tested directly;
+/// `render_metrics_modal` uses this to feed a `Paragraph`.
+pub fn render_metrics_lines(
+    overlay: &MetricsOverlay,
+    _target_label: &str,
+    reports: &[PaneReport],
+    _body: Rect,
+) -> Vec<Line<'static>> {
+    let mut out = Vec::new();
+    out.push(hottest_banner_line(reports));
+    out.push(Line::from(""));
+    if !reports.is_empty() {
+        out.push(comparison_header_line());
+        for (i, r) in reports.iter().enumerate() {
+            out.push(comparison_row_line_with_cursor(r, i == overlay.selected()));
+        }
+        out.push(separator_line());
+        if let Some(sel) = reports.get(overlay.selected()) {
+            out.push(selected_header_line(sel));
+            out.extend(selected_detail_lines(sel));
+        }
+    }
+    out
+}
+
+fn comparison_header_line() -> Line<'static> {
+    Line::from(format!(
+        "{:<18} {:<11} {:<11} {:<11} {:<11} {}",
+        "Pane", "CTX", "5H", "7D", "CACHE", "COST"
+    ))
+}
+
+fn comparison_row_line_with_cursor(report: &PaneReport, selected: bool) -> Line<'static> {
+    let prefix = if selected { "▶ " } else { "  " };
+    let mut line = comparison_row_line(report);
+    line.spans.insert(0, Span::raw(prefix));
+    line
+}
+
+fn separator_line() -> Line<'static> {
+    Line::from(Span::styled(
+        "─".repeat(60),
+        Style::default().fg(theme::TEXT_DIM),
+    ))
+}
+
+fn selected_header_line(report: &PaneReport) -> Line<'static> {
+    Line::from(format!("Selected: {}", pane_label(report)))
+}
+
+pub fn render_metrics_modal(
+    frame: &mut Frame<'_>,
+    overlay: &MetricsOverlay,
+    target_label: &str,
+    reports: &[PaneReport],
+) {
+    let rects = metrics_modal_rects(frame.area());
+    frame.render_widget(Clear, rects.area);
+
+    let block = Block::default()
+        .title(format!(
+            "Metrics · target {target_label} · {} panes · m again to close",
+            reports.len()
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme::BORDER_ACTIVE));
+
+    let lines = render_metrics_lines(overlay, target_label, reports, rects.area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .scroll((overlay.scroll(), 0))
+            .block(block)
+            .wrap(Wrap { trim: false }),
+        rects.area,
+    );
+    frame.render_widget(
+        Paragraph::new("[x]").style(
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        ),
+        crate::ui::dashboard::close_button_rect(rects.area),
+    );
+    frame.render_widget(
+        Paragraph::new("↑/↓ select pane · m close · Esc close · click [x] close")
+            .style(Style::default().fg(theme::TEXT_DIM)),
+        rects.hint,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -573,6 +665,48 @@ mod tests {
                 .any(|l| line_to_string(l).contains("5H reset    ▸ —")),
             "expected literal `5H reset    ▸ —` prefix; got: {:?}",
             lines.iter().map(line_to_string).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn render_metrics_lines_includes_banner_comparison_and_detail() {
+        use ratatui::layout::Rect;
+        let panes = vec![
+            report_with_pressure("claude:1:main", 0.40, None, None),
+            report_with_pressure("codex:1:review", 0.70, Some(0.85), None),
+        ];
+        let mut overlay = MetricsOverlay::new();
+        overlay.open();
+        overlay.select_at(1, panes.len());
+        let body = Rect::new(0, 0, 120, 30);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body);
+        let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        assert!(dump.contains("Hottest:"), "missing banner; got:\n{dump}");
+        assert!(
+            dump.contains("claude:1:main"),
+            "missing comparison row; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("codex:1:review"),
+            "missing comparison row; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("5H reset"),
+            "missing selected detail reset row; got:\n{dump}"
+        );
+    }
+
+    #[test]
+    fn render_metrics_lines_handles_empty_reports() {
+        use ratatui::layout::Rect;
+        let panes: Vec<crate::app::event_loop::PaneReport> = Vec::new();
+        let overlay = MetricsOverlay::new();
+        let body = Rect::new(0, 0, 120, 30);
+        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body);
+        let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        assert!(
+            dump.contains("Hottest:") && dump.contains("—"),
+            "expected dim banner with em-dash"
         );
     }
 

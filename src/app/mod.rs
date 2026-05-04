@@ -8,6 +8,7 @@ pub mod effects;
 pub mod event_loop;
 pub mod git_info;
 pub mod keymap;
+pub mod metrics_overlay;
 pub mod modal_state;
 pub mod once_report;
 pub mod operator_actions;
