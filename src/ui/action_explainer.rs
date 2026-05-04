@@ -55,7 +55,7 @@ fn severity_label(sev: crate::domain::recommendation::Severity) -> String {
 
 pub fn render_action_explainer_modal(frame: &mut Frame<'_>, view: &ActionExplainView) {
     let viewport = frame.area();
-    let area = explainer_modal_rect(viewport);
+    let area = explainer_modal_area(viewport);
     frame.render_widget(Clear, area);
 
     let block = Block::default()
@@ -79,7 +79,12 @@ pub fn render_action_explainer_modal(frame: &mut Frame<'_>, view: &ActionExplain
     );
 }
 
-fn explainer_modal_rect(viewport: Rect) -> Rect {
+/// Centered ~70% × 60% modal area, clamped to a 60×14 minimum so the
+/// explainer renders predictably on small terminals. Promoted to
+/// `pub(crate)` (v1.38 Bug A fix) so the tui_loop mouse guard can
+/// derive the `[x]` close-button rect from the viewport without
+/// re-implementing the geometry.
+pub(crate) fn explainer_modal_area(viewport: Rect) -> Rect {
     let width = (viewport.width * 70 / 100).max(60).min(viewport.width);
     let height = (viewport.height * 60 / 100).max(14).min(viewport.height);
     let x = viewport.x + viewport.width.saturating_sub(width) / 2;

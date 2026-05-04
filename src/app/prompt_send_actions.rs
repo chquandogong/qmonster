@@ -31,6 +31,19 @@ pub fn handle_prompt_send_action<P: PaneSource>(
 }
 
 pub(crate) fn first_prompt_send_proposal(report: &PaneReport) -> Option<(String, String)> {
+    first_prompt_send_proposal_full(report).map(|(target, cmd, _)| (target, cmd))
+}
+
+/// v1.38 Bug B fix — sibling of `first_prompt_send_proposal` that also
+/// returns the `proposal_id`. The Action Explainer modal needs to
+/// snapshot the proposal_id at modal-open time so the confirm path
+/// can validate the proposal still exists in the live reports (and
+/// surface a "proposal vanished" notice if polling has since dropped
+/// it). Sort key matches the original helper — lowest proposal_id
+/// wins for deterministic operator selection.
+pub(crate) fn first_prompt_send_proposal_full(
+    report: &PaneReport,
+) -> Option<(String, String, String)> {
     let mut proposals: Vec<_> = report
         .effects
         .iter()
@@ -51,7 +64,7 @@ pub(crate) fn first_prompt_send_proposal(report: &PaneReport) -> Option<(String,
     proposals
         .into_iter()
         .next()
-        .map(|(_, target, cmd)| (target, cmd))
+        .map(|(pid, target, cmd)| (target, cmd, pid))
 }
 
 fn no_pending_notice(accepting: bool) -> SystemNotice {

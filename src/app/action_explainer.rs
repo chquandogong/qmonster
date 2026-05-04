@@ -11,13 +11,34 @@
 use crate::app::config::ActionsMode;
 use crate::app::event_loop::PaneReport;
 use crate::domain::origin::SourceKind;
-use crate::domain::recommendation::Severity;
+use crate::domain::recommendation::{RequestedEffect, Severity};
 
+/// Snapshot of the resolved action the operator confirmed via the
+/// Action Explainer modal. v1.38 Bug B fix: variants store identifying
+/// fields (pane_id + slash + proposal_id; or alert title + command)
+/// rather than lazy `pane_idx` / `alert_idx`. Indices drift if polling
+/// reorders reports/alerts between modal-open and Enter — snapshotting
+/// the target identity decouples the confirm payload from live state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PendingAction {
-    AcceptPromptSend { pane_idx: usize },
-    RejectPromptSend { pane_idx: usize },
-    CopyAlertCommand { alert_idx: usize },
+    AcceptPromptSend {
+        target_pane_id: String,
+        slash_command: String,
+        proposal_id: String,
+    },
+    RejectPromptSend {
+        target_pane_id: String,
+        slash_command: String,
+        proposal_id: String,
+    },
+    CopyAlertCommand {
+        /// What `Enter` actually writes to the clipboard. Snapshotted
+        /// at modal-open time so polling cannot drift the payload.
+        command: String,
+        /// Used only for matching `mark_seen` / `already_seen` and to
+        /// label any post-copy notice; not the clipboard payload.
+        alert_title: String,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -209,6 +230,79 @@ fn pane_label(report: &PaneReport) -> String {
     )
 }
 
+/// v1.38 Bug A fix — process a mouse event while the Action Explainer
+/// modal is open. Left-click on the `[x]` close button closes the
+/// modal; every other mouse event is swallowed so it cannot leak
+/// through to the dashboard (changing selection or grabbing the
+/// divider). Caller short-circuits with `continue` regardless of the
+/// returned value; the bool is exposed only for tests.
+///
+/// Returns `true` when the event closed the modal.
+pub fn handle_action_explainer_mouse(
+    modal: &mut ActionExplainModal,
+    viewport: ratatui::layout::Rect,
+    event: crossterm::event::MouseEvent,
+) -> bool {
+    if !modal.is_open() {
+        return false;
+    }
+    let close_rect = crate::ui::dashboard::close_button_rect(
+        crate::ui::action_explainer::explainer_modal_area(viewport),
+    );
+    if matches!(
+        event.kind,
+        crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left)
+    ) && crate::app::keymap::rect_contains(close_rect, event.column, event.row)
+    {
+        modal.close();
+        return true;
+    }
+    false
+}
+
+/// v1.38 Bug B fix — given an `AcceptPromptSend` / `RejectPromptSend`
+/// snapshot and the live reports, find the report index whose pane_id
+/// matches the snapshot AND still carries a `PromptSendProposed`
+/// effect with the same `proposal_id`. Returns `None` if either side
+/// has drifted (pane gone, proposal vanished, or it now points at a
+/// different command).
+///
+/// Confirm-time validation: the explainer modal builder snapshots the
+/// proposal_id at modal-open time; pressing Enter calls this resolver
+/// against the live reports. A `None` result triggers a "proposal
+/// vanished" `SystemNotice` instead of executing, so we never fire a
+/// command the operator didn't see in the modal.
+pub fn resolve_accept_target(action: &PendingAction, reports: &[PaneReport]) -> Option<usize> {
+    let (target, slash, proposal_id) = match action {
+        PendingAction::AcceptPromptSend {
+            target_pane_id,
+            slash_command,
+            proposal_id,
+        }
+        | PendingAction::RejectPromptSend {
+            target_pane_id,
+            slash_command,
+            proposal_id,
+        } => (target_pane_id, slash_command, proposal_id),
+        PendingAction::CopyAlertCommand { .. } => return None,
+    };
+    reports.iter().position(|r| {
+        if r.pane_id != *target {
+            return false;
+        }
+        r.effects.iter().any(|e| {
+            matches!(
+                e,
+                RequestedEffect::PromptSendProposed {
+                    proposal_id: pid,
+                    slash_command: s,
+                    ..
+                } if pid == proposal_id && s == slash
+            )
+        })
+    })
+}
+
 /// Helper — find the highest-severity recommendation whose
 /// `suggested_command` is a slash-style command and surface its reason /
 /// source / severity. The exact linkage from a `PromptSendProposed`
@@ -243,29 +337,43 @@ mod tests {
     use super::*;
     use crate::domain::origin::SourceKind;
 
+    fn sample_accept(pid: &str) -> PendingAction {
+        PendingAction::AcceptPromptSend {
+            target_pane_id: "%57".into(),
+            slash_command: "/compact".into(),
+            proposal_id: pid.into(),
+        }
+    }
+
+    fn sample_reject(pid: &str) -> PendingAction {
+        PendingAction::RejectPromptSend {
+            target_pane_id: "%57".into(),
+            slash_command: "/compact".into(),
+            proposal_id: pid.into(),
+        }
+    }
+
+    fn sample_copy(cmd: &str) -> PendingAction {
+        PendingAction::CopyAlertCommand {
+            command: cmd.into(),
+            alert_title: "alert title".into(),
+        }
+    }
+
     #[test]
     fn open_sets_pending_and_view() {
         let mut m = ActionExplainModal::new();
         assert!(!m.is_open());
-        m.open(
-            PendingAction::AcceptPromptSend { pane_idx: 0 },
-            sample_view(),
-        );
+        m.open(sample_accept("pid-1"), sample_view());
         assert!(m.is_open());
-        assert_eq!(
-            m.pending(),
-            Some(&PendingAction::AcceptPromptSend { pane_idx: 0 })
-        );
+        assert_eq!(m.pending(), Some(&sample_accept("pid-1")));
         assert!(m.view().is_some());
     }
 
     #[test]
     fn close_clears_state() {
         let mut m = ActionExplainModal::new();
-        m.open(
-            PendingAction::AcceptPromptSend { pane_idx: 0 },
-            sample_view(),
-        );
+        m.open(sample_accept("pid-1"), sample_view());
         m.close();
         assert!(!m.is_open());
         assert!(m.pending().is_none());
@@ -275,9 +383,9 @@ mod tests {
     #[test]
     fn first_time_seen_tracking_is_per_kind() {
         let mut m = ActionExplainModal::new();
-        let accept = PendingAction::AcceptPromptSend { pane_idx: 0 };
-        let reject = PendingAction::RejectPromptSend { pane_idx: 0 };
-        let copy = PendingAction::CopyAlertCommand { alert_idx: 0 };
+        let accept = sample_accept("pid-1");
+        let reject = sample_reject("pid-1");
+        let copy = sample_copy("/clear");
         assert!(!m.already_seen(&accept));
         assert!(!m.already_seen(&reject));
         assert!(!m.already_seen(&copy));
@@ -288,6 +396,150 @@ mod tests {
         m.mark_seen(&copy);
         assert!(m.already_seen(&copy));
         assert!(!m.already_seen(&reject));
+    }
+
+    #[test]
+    fn pending_action_snapshots_target_identity() {
+        let mut m = ActionExplainModal::new();
+        let action = PendingAction::AcceptPromptSend {
+            target_pane_id: "%57".into(),
+            slash_command: "/compact".into(),
+            proposal_id: "pid-1".into(),
+        };
+        m.open(action.clone(), sample_view());
+        match m.pending().expect("opened") {
+            PendingAction::AcceptPromptSend {
+                target_pane_id,
+                slash_command,
+                proposal_id,
+            } => {
+                assert_eq!(target_pane_id, "%57");
+                assert_eq!(slash_command, "/compact");
+                assert_eq!(proposal_id, "pid-1");
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn copy_pending_action_snapshots_command_at_open_time() {
+        let mut m = ActionExplainModal::new();
+        m.open(sample_copy("/clear"), sample_view());
+        match m.pending().expect("opened") {
+            PendingAction::CopyAlertCommand {
+                command,
+                alert_title,
+            } => {
+                assert_eq!(command, "/clear");
+                assert_eq!(alert_title, "alert title");
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn left_click_on_close_button_closes_modal() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+        let mut m = ActionExplainModal::new();
+        m.open(sample_accept("pid-1"), sample_view());
+        let viewport = Rect::new(0, 0, 120, 40);
+        let close_rect = crate::ui::dashboard::close_button_rect(
+            crate::ui::action_explainer::explainer_modal_area(viewport),
+        );
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: close_rect.x,
+            row: close_rect.y,
+            modifiers: KeyModifiers::empty(),
+        };
+        assert!(handle_action_explainer_mouse(&mut m, viewport, event));
+        assert!(!m.is_open(), "modal should close on [x] left-click");
+    }
+
+    #[test]
+    fn left_click_outside_close_button_swallowed_but_modal_stays_open() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+        let mut m = ActionExplainModal::new();
+        m.open(sample_accept("pid-1"), sample_view());
+        let viewport = Rect::new(0, 0, 120, 40);
+        // origin (0,0) is far from the close button rect
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::empty(),
+        };
+        assert!(!handle_action_explainer_mouse(&mut m, viewport, event));
+        assert!(
+            m.is_open(),
+            "modal must stay open after non-[x] click \u{2014} caller swallows the event"
+        );
+    }
+
+    #[test]
+    fn scroll_events_dont_close_modal() {
+        use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+        let mut m = ActionExplainModal::new();
+        m.open(sample_accept("pid-1"), sample_view());
+        let viewport = Rect::new(0, 0, 120, 40);
+        let close_rect = crate::ui::dashboard::close_button_rect(
+            crate::ui::action_explainer::explainer_modal_area(viewport),
+        );
+        // ScrollDown event at the close-button location: not a left-click,
+        // so the modal must stay open.
+        let event = MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: close_rect.x,
+            row: close_rect.y,
+            modifiers: KeyModifiers::empty(),
+        };
+        assert!(!handle_action_explainer_mouse(&mut m, viewport, event));
+        assert!(m.is_open());
+    }
+
+    #[test]
+    fn confirm_validates_proposal_still_present() {
+        use crate::domain::recommendation::RequestedEffect;
+        let snapshot = PendingAction::AcceptPromptSend {
+            target_pane_id: "%57".into(),
+            slash_command: "/compact".into(),
+            proposal_id: "%57:/compact".into(),
+        };
+        let mut matching = sample_pane_report();
+        matching.pane_id = "%57".into();
+        matching.effects.push(RequestedEffect::PromptSendProposed {
+            target_pane_id: "%57".into(),
+            slash_command: "/compact".into(),
+            proposal_id: "%57:/compact".into(),
+        });
+        let mut other = sample_pane_report();
+        other.pane_id = "%99".into();
+
+        // matching report is at index 1; resolver finds it
+        let reports = vec![other.clone(), matching.clone()];
+        assert_eq!(resolve_accept_target(&snapshot, &reports), Some(1));
+
+        // proposal vanished — only the non-matching pane remains
+        let reports = vec![other.clone()];
+        assert!(resolve_accept_target(&snapshot, &reports).is_none());
+
+        // pane present but the proposal_id has changed (engine re-emitted
+        // a new id, e.g. command changed): confirm must not fire.
+        let mut drifted = matching.clone();
+        drifted.effects = vec![RequestedEffect::PromptSendProposed {
+            target_pane_id: "%57".into(),
+            slash_command: "/compact".into(),
+            proposal_id: "different-id".into(),
+        }];
+        let reports = vec![drifted];
+        assert!(resolve_accept_target(&snapshot, &reports).is_none());
+
+        // copy actions are not address-resolvable here.
+        let copy = sample_copy("/clear");
+        assert!(resolve_accept_target(&copy, &[matching]).is_none());
     }
 
     #[test]

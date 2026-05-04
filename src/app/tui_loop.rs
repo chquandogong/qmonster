@@ -301,45 +301,14 @@ where
                                     KeyCode::Enter => {
                                         if let Some(action) = action_explainer.pending().cloned() {
                                             action_explainer.mark_seen(&action);
-                                            let notice = match action {
-                                                crate::app::action_explainer::PendingAction::AcceptPromptSend { pane_idx } => {
-                                                    handle_prompt_send_action(
-                                                        &ctx.source,
-                                                        &*ctx.sink,
-                                                        &dashboard.reports,
-                                                        Some(pane_idx),
-                                                        true,
-                                                        ctx.config.actions.mode,
-                                                        ctx.config.actions.allow_auto_prompt_send,
-                                                    )
-                                                }
-                                                crate::app::action_explainer::PendingAction::RejectPromptSend { pane_idx } => {
-                                                    handle_prompt_send_action(
-                                                        &ctx.source,
-                                                        &*ctx.sink,
-                                                        &dashboard.reports,
-                                                        Some(pane_idx),
-                                                        false,
-                                                        ctx.config.actions.mode,
-                                                        ctx.config.actions.allow_auto_prompt_send,
-                                                    )
-                                                }
-                                                crate::app::action_explainer::PendingAction::CopyAlertCommand { .. } => {
-                                                    let copy_view = AlertCommandCopyView {
-                                                        alert_state: &dashboard.alert_state,
-                                                        notices: &dashboard.notices,
-                                                        reports: &dashboard.reports,
-                                                        fresh_alerts: &dashboard.fresh_alerts,
-                                                        alert_times: &dashboard.alert_times,
-                                                        hidden_until:
-                                                            &dashboard.alert_hide_deadlines,
-                                                        now,
-                                                    };
-                                                    copy_selected_alert_command_to_clipboard(
-                                                        copy_view,
-                                                    )
-                                                }
-                                            };
+                                            let notice = confirm_pending_action(
+                                                &action,
+                                                &ctx.source,
+                                                &*ctx.sink,
+                                                &dashboard.reports,
+                                                ctx.config.actions.mode,
+                                                ctx.config.actions.allow_auto_prompt_send,
+                                            );
                                             action_explainer.close();
                                             dashboard.push_notice(notice, now);
                                         }
@@ -447,10 +416,9 @@ where
                                         PendingAction, build_copy_view,
                                     };
                                     let now = Instant::now();
-                                    let alert_idx = match dashboard.alert_state.selected() {
-                                        Some(i) => i,
-                                        None => continue,
-                                    };
+                                    if dashboard.alert_state.selected().is_none() {
+                                        continue;
+                                    }
                                     let suggested =
                                         crate::app::clipboard_actions::selected_alert_suggested_command(
                                             AlertCommandCopyView {
@@ -463,22 +431,30 @@ where
                                                 now,
                                             },
                                         );
+                                    // v1.38 Bug B fix: snapshot the (title, command) at
+                                    // modal-open time so a polling reorder between modal
+                                    // open and Enter cannot drift the clipboard payload.
+                                    let snapshot = suggested.as_ref().map(|(title, cmd, _, _)| {
+                                        PendingAction::CopyAlertCommand {
+                                            command: cmd.clone(),
+                                            alert_title: title.clone(),
+                                        }
+                                    });
                                     let should_open =
                                         crate::app::action_explainer::should_open_explainer(
                                             ctx.config.ux.confirm_actions,
-                                            action_explainer.already_seen(
-                                                &PendingAction::CopyAlertCommand { alert_idx },
-                                            ),
+                                            snapshot
+                                                .as_ref()
+                                                .is_some_and(|s| action_explainer.already_seen(s)),
                                             suggested.is_some(),
                                         );
                                     if should_open {
-                                        if let Some((title, cmd, sev, source)) = suggested {
+                                        if let (Some((title, cmd, sev, source)), Some(action)) =
+                                            (suggested, snapshot)
+                                        {
                                             let view =
                                                 build_copy_view(&title, &cmd, Some(sev), source);
-                                            action_explainer.open(
-                                                PendingAction::CopyAlertCommand { alert_idx },
-                                                view,
-                                            );
+                                            action_explainer.open(action, view);
                                         }
                                     } else {
                                         let view = AlertCommandCopyView {
@@ -509,25 +485,43 @@ where
                                         None => continue,
                                     };
                                     let proposal =
-                                        crate::app::prompt_send_actions::first_prompt_send_proposal(
+                                        crate::app::prompt_send_actions::first_prompt_send_proposal_full(
                                             report,
                                         );
 
-                                    let action = if accepting {
-                                        PendingAction::AcceptPromptSend { pane_idx }
-                                    } else {
-                                        PendingAction::RejectPromptSend { pane_idx }
-                                    };
+                                    // v1.38 Bug B fix: snapshot identifying fields at
+                                    // modal-open time. Confirm validates the proposal
+                                    // still exists rather than re-querying by index,
+                                    // so a polling reorder cannot drift the action.
+                                    let action = proposal.as_ref().map(|(target, slash, pid)| {
+                                        if accepting {
+                                            PendingAction::AcceptPromptSend {
+                                                target_pane_id: target.clone(),
+                                                slash_command: slash.clone(),
+                                                proposal_id: pid.clone(),
+                                            }
+                                        } else {
+                                            PendingAction::RejectPromptSend {
+                                                target_pane_id: target.clone(),
+                                                slash_command: slash.clone(),
+                                                proposal_id: pid.clone(),
+                                            }
+                                        }
+                                    });
 
                                     let should_open =
                                         crate::app::action_explainer::should_open_explainer(
                                             ctx.config.ux.confirm_actions,
-                                            action_explainer.already_seen(&action),
+                                            action
+                                                .as_ref()
+                                                .is_some_and(|a| action_explainer.already_seen(a)),
                                             proposal.is_some(),
                                         );
 
                                     if should_open {
-                                        if let Some((_target, slash)) = proposal {
+                                        if let (Some((_target, slash, _pid)), Some(action)) =
+                                            (proposal, action)
+                                        {
                                             let view = if accepting {
                                                 build_accept_view(
                                                     report,
@@ -588,6 +582,21 @@ where
                                     &mut metrics_overlay,
                                     viewport,
                                     dashboard.reports.len(),
+                                    m,
+                                );
+                                continue;
+                            }
+
+                            // v1.38 Bug A fix: while the Action Explainer modal is
+                            // open, swallow all mouse events so they don't leak
+                            // through to the dashboard (selection / divider drag).
+                            // A left-click on the `[x]` rect closes the modal —
+                            // matches the hint shown in the renderer footer.
+                            if action_explainer.is_open() {
+                                dashboard_split_dragging = false;
+                                crate::app::action_explainer::handle_action_explainer_mouse(
+                                    &mut action_explainer,
+                                    viewport,
                                     m,
                                 );
                                 continue;
@@ -692,4 +701,71 @@ fn matches_originating_key(
             | (Some(PendingAction::RejectPromptSend { .. }), 'd')
             | (Some(PendingAction::CopyAlertCommand { .. }), 'y')
     )
+}
+
+/// v1.38 Bug B fix: at Enter time, build a `SystemNotice` from the
+/// snapshotted `PendingAction` rather than re-querying the live
+/// `pane_state` / `alert_state`. For accept/reject this validates the
+/// proposal_id still matches a live `PromptSendProposed` effect on
+/// the same pane and surfaces a "proposal vanished" notice if not.
+/// For copy this writes the snapshotted command to the clipboard
+/// directly so polling can't drift the payload.
+fn confirm_pending_action<P: crate::tmux::polling::PaneSource>(
+    action: &crate::app::action_explainer::PendingAction,
+    source: &P,
+    sink: &dyn crate::store::EventSink,
+    reports: &[crate::app::event_loop::PaneReport],
+    mode: crate::app::config::ActionsMode,
+    allow_auto_prompt_send: bool,
+) -> SystemNotice {
+    use crate::app::action_explainer::{PendingAction, resolve_accept_target};
+    match action {
+        PendingAction::AcceptPromptSend {
+            target_pane_id,
+            slash_command,
+            proposal_id,
+        }
+        | PendingAction::RejectPromptSend {
+            target_pane_id,
+            slash_command,
+            proposal_id,
+        } => {
+            let accepting = matches!(action, PendingAction::AcceptPromptSend { .. });
+            match resolve_accept_target(action, reports) {
+                Some(idx) => handle_prompt_send_action(
+                    source,
+                    sink,
+                    reports,
+                    Some(idx),
+                    accepting,
+                    mode,
+                    allow_auto_prompt_send,
+                ),
+                None => SystemNotice {
+                    title: "proposal vanished".into(),
+                    body: format!(
+                        "{target_pane_id} \u{2192} `{slash_command}` (proposal_id `{proposal_id}` no longer present \u{2014} another agent or a poll cycle dropped it)"
+                    ),
+                    severity: crate::domain::recommendation::Severity::Warning,
+                    source_kind: crate::domain::origin::SourceKind::ProjectCanonical,
+                },
+            }
+        }
+        PendingAction::CopyAlertCommand { command, .. } => {
+            match crate::app::clipboard_actions::copy_text_to_clipboard(command) {
+                Ok(()) => SystemNotice {
+                    title: "command copied".into(),
+                    body: format!("`{command}`"),
+                    severity: crate::domain::recommendation::Severity::Good,
+                    source_kind: crate::domain::origin::SourceKind::ProjectCanonical,
+                },
+                Err(e) => SystemNotice {
+                    title: "clipboard unavailable".into(),
+                    body: format!("could not copy command: {e}"),
+                    severity: crate::domain::recommendation::Severity::Warning,
+                    source_kind: crate::domain::origin::SourceKind::ProjectCanonical,
+                },
+            }
+        }
+    }
 }
