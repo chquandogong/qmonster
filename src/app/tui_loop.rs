@@ -428,9 +428,7 @@ where
                                     use crate::app::action_explainer::{
                                         PendingAction, build_copy_view,
                                     };
-                                    use crate::app::config::ConfirmActions;
                                     let now = Instant::now();
-                                    let confirm_mode = ctx.config.ux.confirm_actions;
                                     let alert_idx = match dashboard.alert_state.selected() {
                                         Some(i) => i,
                                         None => continue,
@@ -448,8 +446,13 @@ where
                                             },
                                         );
                                     let should_open =
-                                        !matches!(confirm_mode, ConfirmActions::Never)
-                                            && suggested.is_some();
+                                        crate::app::action_explainer::should_open_explainer(
+                                            ctx.config.ux.confirm_actions,
+                                            action_explainer.already_seen(
+                                                &PendingAction::CopyAlertCommand { alert_idx },
+                                            ),
+                                            suggested.is_some(),
+                                        );
                                     if should_open {
                                         if let Some((title, cmd, sev, source)) = suggested {
                                             let view =
@@ -477,7 +480,6 @@ where
                                     use crate::app::action_explainer::{
                                         PendingAction, build_accept_view, build_reject_view,
                                     };
-                                    use crate::app::config::ConfirmActions;
 
                                     let accepting = k.code == KeyCode::Char('p');
                                     let pane_idx = match dashboard.pane_state.selected() {
@@ -499,10 +501,12 @@ where
                                         PendingAction::RejectPromptSend { pane_idx }
                                     };
 
-                                    let confirm_mode = ctx.config.ux.confirm_actions;
                                     let should_open =
-                                        !matches!(confirm_mode, ConfirmActions::Never)
-                                            && proposal.is_some();
+                                        crate::app::action_explainer::should_open_explainer(
+                                            ctx.config.ux.confirm_actions,
+                                            action_explainer.already_seen(&action),
+                                            proposal.is_some(),
+                                        );
 
                                     if should_open {
                                         if let Some((_target, slash)) = proposal {

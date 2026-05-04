@@ -79,6 +79,31 @@ impl ActionExplainModal {
     }
 }
 
+/// Returns `true` when the keystroke should open the Action Explainer
+/// modal vs execute immediately. Centralizes the Always / FirstTime /
+/// Never decision in one pure function. Spec §6.2.
+///
+/// `mode`: from `[ux] confirm_actions` config.
+/// `already_seen`: per-kind seen flag from `ActionExplainModal::already_seen`.
+/// `has_target`: true when there's something to confirm (proposal exists, or
+/// alert has suggested_command). When false, fall through to the underlying
+/// handler so it can emit its own "no proposal" / "nothing to copy" notice.
+pub fn should_open_explainer(
+    mode: crate::app::config::ConfirmActions,
+    already_seen: bool,
+    has_target: bool,
+) -> bool {
+    use crate::app::config::ConfirmActions;
+    if !has_target {
+        return false;
+    }
+    match mode {
+        ConfirmActions::Always => true,
+        ConfirmActions::FirstTime => !already_seen,
+        ConfirmActions::Never => false,
+    }
+}
+
 /// Build the explainer view for `p` (accept). The `target` and `payload`
 /// inputs already come from the existing `first_prompt_send_proposal`
 /// helper at the caller. The audit-chain string and mode-warning are
@@ -263,6 +288,30 @@ mod tests {
         m.mark_seen(&copy);
         assert!(m.already_seen(&copy));
         assert!(!m.already_seen(&reject));
+    }
+
+    #[test]
+    fn should_open_explainer_predicate_covers_all_modes() {
+        use crate::app::config::ConfirmActions;
+        // (mode, already_seen, has_target) -> expected open?
+        assert!(should_open_explainer(ConfirmActions::Always, false, true));
+        assert!(should_open_explainer(ConfirmActions::Always, true, true));
+        assert!(should_open_explainer(
+            ConfirmActions::FirstTime,
+            false,
+            true
+        ));
+        assert!(!should_open_explainer(
+            ConfirmActions::FirstTime,
+            true,
+            true
+        ));
+        assert!(!should_open_explainer(ConfirmActions::Never, false, true));
+        assert!(!should_open_explainer(ConfirmActions::Never, true, true));
+        assert!(
+            !should_open_explainer(ConfirmActions::Always, false, false),
+            "no target => skip modal"
+        );
     }
 
     #[test]
