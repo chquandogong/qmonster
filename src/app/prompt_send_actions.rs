@@ -30,6 +30,40 @@ pub fn handle_prompt_send_action<P: PaneSource>(
     }
 }
 
+/// Variant of `handle_prompt_send_action` that uses an explicit snapshot
+/// of the proposal to act on (rather than re-selecting the first proposal
+/// from the live report). Use this when an `ActionExplainModal` confirm
+/// path needs to honor exactly the proposal the operator saw in the
+/// modal, even if the live report's proposal ordering has changed.
+///
+/// Mirrors `handle_prompt_send_action`'s audit chain semantics — the
+/// underlying `accept_prompt_send` / `dismiss_prompt_send` helpers are
+/// reused directly.
+#[allow(clippy::too_many_arguments)]
+pub fn handle_prompt_send_action_for_proposal<P: PaneSource>(
+    source: &P,
+    sink: &dyn EventSink,
+    mode: ActionsMode,
+    allow_auto_prompt_send: bool,
+    target_pane_id: &str,
+    slash_command: &str,
+    _proposal_id: &str,
+    accepting: bool,
+) -> SystemNotice {
+    if accepting {
+        accept_prompt_send(
+            source,
+            sink,
+            mode,
+            allow_auto_prompt_send,
+            target_pane_id.to_string(),
+            slash_command.to_string(),
+        )
+    } else {
+        dismiss_prompt_send(sink, target_pane_id.to_string(), slash_command.to_string())
+    }
+}
+
 pub(crate) fn first_prompt_send_proposal(report: &PaneReport) -> Option<(String, String)> {
     first_prompt_send_proposal_full(report).map(|(target, cmd, _)| (target, cmd))
 }
@@ -432,6 +466,101 @@ mod tests {
         assert_eq!(notice.title, "proposal dismissed");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].kind, AuditEventKind::PromptSendRejected);
+        assert!(source.calls.lock().unwrap().is_empty());
+    }
+
+    /// v1.38 explainer regression: when the Action Explainer modal's
+    /// confirm path dispatches via `handle_prompt_send_action_for_proposal`,
+    /// the snapshotted `(target, slash_command)` must flow through to
+    /// `accept_prompt_send` unchanged — even if the live report carries
+    /// a lexicographically lower proposal_id that would win
+    /// `first_prompt_send_proposal`'s sort.
+    ///
+    /// Scenario: operator opened the modal on `pid-2`/`/clear`. Between
+    /// modal open and Enter, polling added `pid-1`/`/compact` (lex
+    /// first) to the same pane. The pre-fix code re-selected via
+    /// `first_prompt_send_proposal` inside `handle_prompt_send_action`
+    /// and would fire `/compact`. The new sibling helper bypasses that
+    /// lookup and fires the snapshotted `/clear`.
+    #[test]
+    fn snapshot_confirm_dispatches_snapshotted_command_not_first_proposal() {
+        let source = TestSource::default();
+        let sink = InMemorySink::new();
+
+        // Two proposals on the same pane; pid-1 sorts before pid-2,
+        // so first_prompt_send_proposal would pick `/compact`.
+        let _report = base_report(vec![
+            proposal("%1:pid-1", "/compact"),
+            proposal("%1:pid-2", "/clear"),
+        ]);
+
+        // Snapshot points at the lex-second proposal (pid-2 / /clear).
+        let notice = handle_prompt_send_action_for_proposal(
+            &source,
+            &sink,
+            ActionsMode::RecommendOnly,
+            true, // allow_auto_prompt_send -> Execute path
+            "%1",
+            "/clear",
+            "%1:pid-2",
+            true, // accepting
+        );
+
+        // Dispatch must use the snapshot, not first_prompt_send_proposal.
+        let calls = source.calls.lock().unwrap();
+        assert_eq!(
+            *calls,
+            vec![("%1".into(), "/clear".into())],
+            "snapshotted slash_command must reach send_keys, not lex-first proposal"
+        );
+        drop(calls);
+
+        let events = sink.snapshot();
+        assert_eq!(notice.title, "command sent");
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].kind, AuditEventKind::PromptSendAccepted);
+        assert!(
+            events[0].summary.contains("/clear"),
+            "audit accept event must reference snapshotted command, got: {}",
+            events[0].summary
+        );
+        assert_eq!(events[1].kind, AuditEventKind::PromptSendCompleted);
+        assert!(
+            events[1].summary.contains("/clear"),
+            "audit completion event must reference snapshotted command, got: {}",
+            events[1].summary
+        );
+    }
+
+    /// v1.38 explainer regression: the dismiss path must also honor the
+    /// snapshot — the audit `PromptSendRejected` event records the
+    /// snapshotted command, not whichever proposal `first_prompt_send_proposal`
+    /// would currently elect.
+    #[test]
+    fn snapshot_dismiss_records_rejected_for_snapshotted_command() {
+        let source = TestSource::default();
+        let sink = InMemorySink::new();
+
+        let notice = handle_prompt_send_action_for_proposal(
+            &source,
+            &sink,
+            ActionsMode::RecommendOnly,
+            true,
+            "%1",
+            "/clear",
+            "%1:pid-2",
+            false, // dismissing
+        );
+
+        let events = sink.snapshot();
+        assert_eq!(notice.title, "proposal dismissed");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, AuditEventKind::PromptSendRejected);
+        assert!(
+            events[0].summary.contains("/clear"),
+            "rejected audit must reference snapshotted command, got: {}",
+            events[0].summary
+        );
         assert!(source.calls.lock().unwrap().is_empty());
     }
 }

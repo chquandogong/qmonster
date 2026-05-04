@@ -731,16 +731,26 @@ fn confirm_pending_action<P: crate::tmux::polling::PaneSource>(
             proposal_id,
         } => {
             let accepting = matches!(action, PendingAction::AcceptPromptSend { .. });
+            // v1.38 explainer fix: `resolve_accept_target` is consulted only
+            // for vanished-proposal detection. Dispatch always uses the
+            // snapshot fields directly via
+            // `handle_prompt_send_action_for_proposal`, bypassing
+            // `first_prompt_send_proposal`'s lex-first re-selection so a
+            // newly polled lower-id proposal can't drift the executed
+            // command away from the modal-shown one.
             match resolve_accept_target(action, reports) {
-                Some(idx) => handle_prompt_send_action(
-                    source,
-                    sink,
-                    reports,
-                    Some(idx),
-                    accepting,
-                    mode,
-                    allow_auto_prompt_send,
-                ),
+                Some(_idx) => {
+                    crate::app::prompt_send_actions::handle_prompt_send_action_for_proposal(
+                        source,
+                        sink,
+                        mode,
+                        allow_auto_prompt_send,
+                        target_pane_id,
+                        slash_command,
+                        proposal_id,
+                        accepting,
+                    )
+                }
                 None => SystemNotice {
                     title: "proposal vanished".into(),
                     body: format!(
