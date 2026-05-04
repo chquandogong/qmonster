@@ -1661,20 +1661,22 @@ fn render_pane_state_row_with_flash(
     report: &PaneReport,
     now: Instant,
     flash: Option<&PaneStateFlash>,
-    _wrap_width: u16,
+    wrap_width: u16,
 ) -> Vec<Line<'static>> {
-    // `_wrap_width` is threaded through for parity with the other wrap-aware
-    // row builders (path/cmd/status — Task 2). The state row composes styled
-    // badge spans rather than a single plain-text value, so it cannot be
-    // expressed via `wrap_aligned_field` directly without losing styling.
-    // Spec §5.1 calls out the state row as an affected line; future work can
-    // implement span-aware wrapping if a narrow viewport ever truncates it.
+    // State row composes styled badge spans (idle glyph + label badge +
+    // persistent marker + elapsed clock), so wrap via `wrap_badge_line`
+    // (the same span-aware wrapper used by metric_badge_lines and
+    // signal_badge_lines), not `wrap_aligned_field` (plain-text only).
+    // Spec §5.1.
     let flash = matching_state_flash(report, now, flash);
     if let (Some(cause), Some(entered_at)) = (report.idle_state, report.idle_state_entered_at) {
-        vec![format_state_row_with_flash(cause, entered_at, now, flash)]
+        wrap_badge_line(
+            format_state_row_with_flash(cause, entered_at, now, flash),
+            wrap_width,
+        )
     } else if report.idle_state.is_none() {
         flash
-            .map(|flash| vec![format_active_state_row(now, flash)])
+            .map(|flash| wrap_badge_line(format_active_state_row(now, flash), wrap_width))
             .unwrap_or_default()
     } else {
         vec![]
@@ -3261,17 +3263,29 @@ mod tests {
         let mut rep = sample_pane_report();
         rep.idle_state = Some(crate::domain::signal::IdleCause::InputWait);
         let now = std::time::Instant::now();
-        // Required so `render_pane_state_row_with_flash` enters the
-        // `Some(cause), Some(entered_at)` branch and emits a state row;
-        // omitted from the Task 3 spec snippet — added here to keep the
-        // contract assertion meaningful.
         rep.idle_state_entered_at = Some(now);
         let flash = PaneStateFlash::new(rep.idle_state, now);
-        let lines =
+
+        // Narrow viewport: the state row's badge sequence (label + idle glyph
+        // + persistent marker + elapsed clock + CHANGED) totals ≥ 30 cells, so
+        // a 25-col wrap budget must produce ≥ 2 lines via wrap_badge_line.
+        let lines = render_pane_state_row_with_flash(&rep, now, Some(&flash), 25);
+        assert!(
+            lines.len() >= 2,
+            "state row must wrap on narrow width, got {} lines",
+            lines.len()
+        );
+
+        // First line begins with the "state   : " label column.
+        assert!(line_text(&lines[0]).starts_with("state"));
+
+        // Wide viewport: same row fits in one line.
+        let wide_lines =
             render_pane_state_row_with_flash(&rep, now, Some(&flash), BADGE_WRAP_FALLBACK_WIDTH);
-        // Confirm at least one line begins with the "state" label column.
-        assert!(lines.iter().any(|l| line_text(l).starts_with("state")));
-        // No assertion on wrap count here — Task 3 only swaps in the helper;
-        // this test guards regression of the contract (state row exists, label column "state").
+        assert_eq!(
+            wide_lines.len(),
+            1,
+            "state row must NOT wrap at default width"
+        );
     }
 }
