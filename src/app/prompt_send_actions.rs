@@ -17,16 +17,25 @@ pub fn handle_prompt_send_action<P: PaneSource>(
     mode: ActionsMode,
     allow_auto_prompt_send: bool,
 ) -> SystemNotice {
+    // v1.38 audit-plumb fix: lookup-path now uses the `_full` helper so the
+    // proposal_id flows into the audit chain alongside target + slash command,
+    // matching the snapshot-path's `handle_prompt_send_action_for_proposal`.
     let pending = selected
         .and_then(|i| reports.get(i))
-        .and_then(first_prompt_send_proposal);
+        .and_then(first_prompt_send_proposal_full);
 
     match pending {
         None => no_pending_notice(accepting),
-        Some((target, cmd)) if accepting => {
-            accept_prompt_send(source, sink, mode, allow_auto_prompt_send, target, cmd)
-        }
-        Some((target, cmd)) => dismiss_prompt_send(sink, target, cmd),
+        Some((target, cmd, proposal_id)) if accepting => accept_prompt_send(
+            source,
+            sink,
+            mode,
+            allow_auto_prompt_send,
+            target,
+            cmd,
+            proposal_id,
+        ),
+        Some((target, cmd, proposal_id)) => dismiss_prompt_send(sink, target, cmd, proposal_id),
     }
 }
 
@@ -47,7 +56,7 @@ pub fn handle_prompt_send_action_for_proposal<P: PaneSource>(
     allow_auto_prompt_send: bool,
     target_pane_id: &str,
     slash_command: &str,
-    _proposal_id: &str,
+    proposal_id: &str,
     accepting: bool,
 ) -> SystemNotice {
     if accepting {
@@ -58,9 +67,15 @@ pub fn handle_prompt_send_action_for_proposal<P: PaneSource>(
             allow_auto_prompt_send,
             target_pane_id.to_string(),
             slash_command.to_string(),
+            proposal_id.to_string(),
         )
     } else {
-        dismiss_prompt_send(sink, target_pane_id.to_string(), slash_command.to_string())
+        dismiss_prompt_send(
+            sink,
+            target_pane_id.to_string(),
+            slash_command.to_string(),
+            proposal_id.to_string(),
+        )
     }
 }
 
@@ -121,6 +136,7 @@ fn accept_prompt_send<P: PaneSource>(
     allow_auto_prompt_send: bool,
     target: String,
     cmd: String,
+    proposal_id: String,
 ) -> SystemNotice {
     match check_send_gate(mode, allow_auto_prompt_send) {
         PromptSendGate::Blocked => {
@@ -128,7 +144,9 @@ fn accept_prompt_send<P: PaneSource>(
                 kind: AuditEventKind::PromptSendBlocked,
                 pane_id: target.clone(),
                 severity: Severity::Warning,
-                summary: format!("{target} {cmd} (blocked; observe_only mode)"),
+                summary: format!(
+                    "{target} {cmd} (proposal {proposal_id}) (blocked; observe_only mode)"
+                ),
                 provider: None,
                 role: None,
             });
@@ -146,7 +164,9 @@ fn accept_prompt_send<P: PaneSource>(
                 kind: AuditEventKind::PromptSendAccepted,
                 pane_id: target.clone(),
                 severity: Severity::Warning,
-                summary: format!("{target} {cmd} (acknowledged by operator; auto-send disabled)"),
+                summary: format!(
+                    "{target} {cmd} (proposal {proposal_id}) (acknowledged by operator; auto-send disabled)"
+                ),
                 provider: None,
                 role: None,
             });
@@ -155,7 +175,7 @@ fn accept_prompt_send<P: PaneSource>(
                 pane_id: target.clone(),
                 severity: Severity::Warning,
                 summary: format!(
-                    "{target} {cmd} (execution blocked; allow_auto_prompt_send=false)"
+                    "{target} {cmd} (proposal {proposal_id}) (execution blocked; allow_auto_prompt_send=false)"
                 ),
                 provider: None,
                 role: None,
@@ -169,7 +189,7 @@ fn accept_prompt_send<P: PaneSource>(
                 source_kind: SourceKind::ProjectCanonical,
             }
         }
-        PromptSendGate::Execute => execute_prompt_send(source, sink, target, cmd),
+        PromptSendGate::Execute => execute_prompt_send(source, sink, target, cmd, proposal_id),
     }
 }
 
@@ -178,12 +198,15 @@ fn execute_prompt_send<P: PaneSource>(
     sink: &dyn EventSink,
     target: String,
     cmd: String,
+    proposal_id: String,
 ) -> SystemNotice {
     sink.record(AuditEvent {
         kind: AuditEventKind::PromptSendAccepted,
         pane_id: target.clone(),
         severity: Severity::Warning,
-        summary: format!("{target} {cmd} (acknowledged by operator; executing)"),
+        summary: format!(
+            "{target} {cmd} (proposal {proposal_id}) (acknowledged by operator; executing)"
+        ),
         provider: None,
         role: None,
     });
@@ -193,7 +216,9 @@ fn execute_prompt_send<P: PaneSource>(
                 kind: AuditEventKind::PromptSendCompleted,
                 pane_id: target.clone(),
                 severity: Severity::Safe,
-                summary: format!("{target} {cmd} (sent; operator-confirmed)"),
+                summary: format!(
+                    "{target} {cmd} (proposal {proposal_id}) (sent; operator-confirmed)"
+                ),
                 provider: None,
                 role: None,
             });
@@ -209,7 +234,7 @@ fn execute_prompt_send<P: PaneSource>(
                 kind: AuditEventKind::PromptSendFailed,
                 pane_id: target.clone(),
                 severity: Severity::Warning,
-                summary: format!("{target} {cmd} (send failed: {e})"),
+                summary: format!("{target} {cmd} (proposal {proposal_id}) (send failed: {e})"),
                 provider: None,
                 role: None,
             });
@@ -223,12 +248,17 @@ fn execute_prompt_send<P: PaneSource>(
     }
 }
 
-fn dismiss_prompt_send(sink: &dyn EventSink, target: String, cmd: String) -> SystemNotice {
+fn dismiss_prompt_send(
+    sink: &dyn EventSink,
+    target: String,
+    cmd: String,
+    proposal_id: String,
+) -> SystemNotice {
     sink.record(AuditEvent {
         kind: AuditEventKind::PromptSendRejected,
         pane_id: target.clone(),
         severity: Severity::Safe,
-        summary: format!("{target} {cmd} (dismissed by operator)"),
+        summary: format!("{target} {cmd} (proposal {proposal_id}) (dismissed by operator)"),
         provider: None,
         role: None,
     });
@@ -562,5 +592,98 @@ mod tests {
             events[0].summary
         );
         assert!(source.calls.lock().unwrap().is_empty());
+    }
+
+    /// v1.38 audit-plumb regression: the proposal_id threaded through
+    /// `handle_prompt_send_action_for_proposal` must appear in every
+    /// audit summary it produces — accept (via execute path) and reject
+    /// (via dismiss path) alike. Before this fix the helper accepted
+    /// `proposal_id` as `_proposal_id` and dropped it before reaching
+    /// `accept_prompt_send` / `dismiss_prompt_send`, leaving auditors
+    /// unable to link an event back to its source proposal.
+    #[test]
+    fn audit_summary_carries_proposal_id_for_accept_and_reject_paths() {
+        // Accept path: proposal_id `pid-42` must appear in both the
+        // PromptSendAccepted summary and the PromptSendCompleted summary.
+        let source_accept = TestSource::default();
+        let sink_accept = InMemorySink::new();
+        let _ = handle_prompt_send_action_for_proposal(
+            &source_accept,
+            &sink_accept,
+            ActionsMode::RecommendOnly,
+            true, // allow_auto_prompt_send -> Execute path
+            "%1",
+            "/compact",
+            "pid-42",
+            true, // accepting
+        );
+        let accept_events = sink_accept.snapshot();
+        assert_eq!(accept_events.len(), 2);
+        assert_eq!(accept_events[0].kind, AuditEventKind::PromptSendAccepted);
+        assert!(
+            accept_events[0].summary.contains("pid-42"),
+            "PromptSendAccepted summary must carry proposal_id; got: {}",
+            accept_events[0].summary
+        );
+        assert_eq!(accept_events[1].kind, AuditEventKind::PromptSendCompleted);
+        assert!(
+            accept_events[1].summary.contains("pid-42"),
+            "PromptSendCompleted summary must carry proposal_id; got: {}",
+            accept_events[1].summary
+        );
+
+        // Reject path: proposal_id `pid-99` must appear in the
+        // PromptSendRejected summary.
+        let source_reject = TestSource::default();
+        let sink_reject = InMemorySink::new();
+        let _ = handle_prompt_send_action_for_proposal(
+            &source_reject,
+            &sink_reject,
+            ActionsMode::RecommendOnly,
+            true,
+            "%1",
+            "/compact",
+            "pid-99",
+            false, // dismissing
+        );
+        let reject_events = sink_reject.snapshot();
+        assert_eq!(reject_events.len(), 1);
+        assert_eq!(reject_events[0].kind, AuditEventKind::PromptSendRejected);
+        assert!(
+            reject_events[0].summary.contains("pid-99"),
+            "PromptSendRejected summary must carry proposal_id; got: {}",
+            reject_events[0].summary
+        );
+
+        // Lookup-path coverage: `handle_prompt_send_action` (no
+        // _for_proposal suffix) now sources proposal_id from
+        // `first_prompt_send_proposal_full` and must propagate it just
+        // like the snapshot path. Cover the AutoSendOff branch (records
+        // both Accepted and Blocked) to lock both summaries.
+        let source_lookup = TestSource::default();
+        let sink_lookup = InMemorySink::new();
+        let _ = handle_prompt_send_action(
+            &source_lookup,
+            &sink_lookup,
+            &[base_report(vec![proposal("%1:pid-7", "/status")])],
+            Some(0),
+            true,                       // accepting
+            ActionsMode::RecommendOnly, // -> AutoSendOff path when allow_auto_prompt_send=false
+            false,
+        );
+        let lookup_events = sink_lookup.snapshot();
+        assert_eq!(lookup_events.len(), 2);
+        assert_eq!(lookup_events[0].kind, AuditEventKind::PromptSendAccepted);
+        assert!(
+            lookup_events[0].summary.contains("%1:pid-7"),
+            "lookup-path PromptSendAccepted must carry proposal_id; got: {}",
+            lookup_events[0].summary
+        );
+        assert_eq!(lookup_events[1].kind, AuditEventKind::PromptSendBlocked);
+        assert!(
+            lookup_events[1].summary.contains("%1:pid-7"),
+            "lookup-path PromptSendBlocked must carry proposal_id; got: {}",
+            lookup_events[1].summary
+        );
     }
 }
