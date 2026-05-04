@@ -294,22 +294,26 @@ fn pane_list_lines_with_flash(
 
     if expanded {
         for rec in report.recommendations.iter().take(3) {
-            lines.push(Line::from(aligned_field(
+            lines.extend(wrap_aligned_field(
                 severity_label(rec.severity),
                 &rec.reason,
-            )));
+                wrap_width,
+            ));
             for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
-                lines.push(Line::from(expanded_detail_field(&detail)));
+                let formatted = expanded_detail_field(&detail);
+                lines.extend(reflow_already_aligned(&formatted, wrap_width));
             }
             for line in format_profile_lines(rec) {
-                lines.push(Line::from(expanded_detail_field(&line)));
+                let formatted = expanded_detail_field(&line);
+                lines.extend(reflow_already_aligned(&formatted, wrap_width));
             }
         }
         if report.recommendations.is_empty() {
-            lines.push(Line::from(aligned_field(
+            lines.extend(wrap_aligned_field(
                 "status",
                 "no active recommendations",
-            )));
+                wrap_width,
+            ));
         }
     }
 
@@ -744,6 +748,19 @@ fn wrap_aligned_field(label: &str, value: &str, wrap_width: u16) -> Vec<Line<'st
         lines.push(Line::from(prefix));
     }
     lines
+}
+
+/// Re-wrap a string that already has the `label_col + ": " + value`
+/// shape produced by `expanded_detail_field`. Splits on the first
+/// `: ` and delegates to `wrap_aligned_field`.
+fn reflow_already_aligned(formatted: &str, wrap_width: u16) -> Vec<Line<'static>> {
+    if let Some(idx) = formatted.find(": ") {
+        let (label, rest) = formatted.split_at(idx);
+        let value = &rest[2..];
+        wrap_aligned_field(label.trim_end(), value, wrap_width)
+    } else {
+        vec![Line::from(formatted.to_string())]
+    }
 }
 
 fn expanded_detail_field(raw: &str) -> String {
@@ -3286,6 +3303,35 @@ mod tests {
             wide_lines.len(),
             1,
             "state row must NOT wrap at default width"
+        );
+    }
+
+    #[test]
+    fn pane_card_severity_reason_wraps_long_text() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::{Recommendation, Severity};
+
+        let mut rep = sample_pane_report();
+        rep.recommendations = vec![Recommendation {
+            action: "test",
+            reason: "x ".repeat(60), // 120 chars
+            severity: Severity::Concern,
+            source_kind: SourceKind::ProjectCanonical,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        }];
+        let lines = pane_list_lines_with_width(&rep, true, false, 40);
+        let reason_lines: Vec<&Line> = lines
+            .iter()
+            .filter(|l| line_text(l).contains("x x"))
+            .collect();
+        assert!(
+            reason_lines.len() >= 2,
+            "long reason must wrap, got {} matching lines",
+            reason_lines.len()
         );
     }
 }
