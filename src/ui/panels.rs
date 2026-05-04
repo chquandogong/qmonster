@@ -1097,12 +1097,15 @@ fn first_model_reset_fact(signals: &SignalSet) -> Option<&RuntimeFact> {
 }
 
 /// Phase F F-5b (v1.31.0): format a Unix timestamp `resets_at`
-/// (seconds since epoch) as a relative countdown like `2h13m` or
-/// `45m` or `30s`. Returns `None` when the timestamp is in the past
-/// or in the impossibly distant future (sentinel-style values that
-/// would render absurdly long countdowns). The countdown ticks once
-/// per poll cycle since the rendered text is rebuilt from the
-/// SignalSet on every frame.
+/// (seconds since epoch) as a relative countdown like `4d 6h`,
+/// `2h13m`, `45m`, or `30s`. Returns `None` when the timestamp is
+/// in the past or in the impossibly distant future (sentinel-style
+/// values that would render absurdly long countdowns). The countdown
+/// ticks once per poll cycle since the rendered text is rebuilt
+/// from the SignalSet on every frame.
+///
+/// v1.38 polish: etas >= 24h render as `<d>d <h>h` (e.g. `4d 6h`)
+/// rather than `102h00m`, which operators reported as awkward.
 pub(crate) fn format_resets_eta(resets_at_unix_seconds: u64) -> Option<String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1116,6 +1119,11 @@ pub(crate) fn format_resets_eta(resets_at_unix_seconds: u64) -> Option<String> {
     // a sentinel from a misconfigured surface, not a real ETA.
     if remaining > 14 * 24 * 3600 {
         return None;
+    }
+    if remaining >= 24 * 3600 {
+        let days = remaining / (24 * 3600);
+        let remaining_hours = (remaining % (24 * 3600)) / 3600;
+        return Some(format!("{days}d {remaining_hours}h"));
     }
     let hours = remaining / 3600;
     let minutes = (remaining % 3600) / 60;
@@ -3400,5 +3408,61 @@ mod tests {
             !lines.iter().any(|l| line_text(l).contains("proposal:")),
             "proposal line should only appear when expanded"
         );
+    }
+
+    #[test]
+    fn format_resets_eta_renders_hours_and_minutes_under_24h() {
+        // 2h 13m → "2h13m" (existing behavior, unchanged)
+        let ts = future_unix_seconds(std::time::Duration::from_secs(2 * 3600 + 13 * 60));
+        let out = format_resets_eta(ts).expect("eta should render");
+        assert_eq!(out, "2h13m", "got: {out}");
+    }
+
+    #[test]
+    fn format_resets_eta_renders_minutes_only_under_1h() {
+        // 45m → "45m"
+        let ts = future_unix_seconds(std::time::Duration::from_secs(45 * 60));
+        let out = format_resets_eta(ts).expect("eta should render");
+        assert_eq!(out, "45m", "got: {out}");
+    }
+
+    #[test]
+    fn format_resets_eta_renders_seconds_only_under_1m() {
+        // 30s → "30s"
+        let ts = future_unix_seconds(std::time::Duration::from_secs(30));
+        let out = format_resets_eta(ts).expect("eta should render");
+        assert_eq!(out, "30s", "got: {out}");
+    }
+
+    #[test]
+    fn format_resets_eta_renders_days_for_long_etas() {
+        // 4 days 6 hours from now → "4d 6h" (was "102h00m" pre-v1.38 polish).
+        let ts = future_unix_seconds(std::time::Duration::from_secs(4 * 24 * 3600 + 6 * 3600));
+        let out = format_resets_eta(ts).expect("eta should render");
+        assert_eq!(out, "4d 6h", "got: {out}");
+    }
+
+    #[test]
+    fn format_resets_eta_renders_days_at_exactly_24h_boundary() {
+        // 24h flat → "1d 0h"; verifies the >=24h branch fires at the boundary.
+        let ts = future_unix_seconds(std::time::Duration::from_secs(24 * 3600));
+        let out = format_resets_eta(ts).expect("eta should render");
+        assert_eq!(out, "1d 0h", "got: {out}");
+    }
+
+    #[test]
+    fn format_resets_eta_caps_at_14_days() {
+        // 14d + 1m is past the sentinel cap → None.
+        let ts = future_unix_seconds(std::time::Duration::from_secs(14 * 24 * 3600 + 60));
+        assert!(
+            format_resets_eta(ts).is_none(),
+            "14-day sentinel must reject"
+        );
+    }
+
+    #[test]
+    fn format_resets_eta_returns_none_for_past_timestamps() {
+        // A timestamp in the past → None.
+        assert!(format_resets_eta(0).is_none(), "past timestamp must reject");
     }
 }
