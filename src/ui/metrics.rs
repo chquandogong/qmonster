@@ -381,13 +381,20 @@ fn cost_sparkline_line(samples: &[TokenSample], current: Option<f64>) -> Option<
 
 fn mem_rss_line(s: &crate::domain::signal::SignalSet) -> Option<Line<'static>> {
     let m = s.process_memory_mb.as_ref()?;
-    Some(Line::from(format!("MEM RSS     {} MiB", m.value as i64)))
+    // TODO(v1.38.x): wire delta-vs-previous-poll source to render trend arrow + delta.
+    // Spec §4.5 calls for `▲ +3 MiB` style; today we render value only with a
+    // dim placeholder arrow ─ since no delta source exists yet.
+    Some(Line::from(format!(
+        "{:<11} {} MiB  ─",
+        "MEM RSS", m.value as i64
+    )))
 }
 
 fn mem_file_line(s: &crate::domain::signal::SignalSet) -> Option<Line<'static>> {
     let m = s.agent_memory_bytes.as_ref()?;
     let fmt = crate::ui::panels::format_agent_memory_bytes(m.value);
-    Some(Line::from(format!("MEM-FILE    {fmt}")))
+    // TODO(v1.38.x): same — delta arrow placeholder.
+    Some(Line::from(format!("{:<11} {fmt}  ─", "MEM-FILE")))
 }
 
 fn reset_line(label: &'static str, eta_unix: Option<u64>, window_secs: f64) -> Line<'static> {
@@ -405,16 +412,19 @@ fn reset_line(label: &'static str, eta_unix: Option<u64>, window_secs: f64) -> L
                     let remaining = eta.saturating_sub(now) as f64;
                     let bar_ratio = ((window_secs - remaining) / window_secs).clamp(0.0, 1.0);
                     let bar = render_pressure_bar(bar_ratio as f32);
-                    Line::from(format!("{label:<11} {bar} {eta_fmt}"))
+                    Line::from(format!(
+                        "{label:<11} ▸ {eta_fmt}  {bar} {pct}%",
+                        pct = (bar_ratio * 100.0).round() as i32
+                    ))
                 }
                 None => Line::from(Span::styled(
-                    format!("{label:<11} —"),
+                    format!("{label:<11} ▸ —"),
                     Style::default().fg(theme::TEXT_DIM),
                 )),
             }
         }
         None => Line::from(Span::styled(
-            format!("{label:<11} —"),
+            format!("{label:<11} ▸ —"),
             Style::default().fg(theme::TEXT_DIM),
         )),
     }
@@ -558,11 +568,11 @@ mod tests {
         let rep = base_test_report("g:1:r");
         let lines = selected_detail_lines(&rep);
         assert!(
-            lines.iter().any(|l| {
-                let t = line_to_string(l);
-                t.contains("5H reset") && t.contains("—")
-            }),
-            "expected em-dash for missing 5H reset"
+            lines
+                .iter()
+                .any(|l| line_to_string(l).contains("5H reset    ▸ —")),
+            "expected literal `5H reset    ▸ —` prefix; got: {:?}",
+            lines.iter().map(line_to_string).collect::<Vec<_>>()
         );
     }
 
