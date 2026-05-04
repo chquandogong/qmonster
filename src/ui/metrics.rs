@@ -1538,6 +1538,82 @@ mod tests {
     }
 
     #[test]
+    fn codex_pane_split_resets_at_renders_in_metrics_overlay() {
+        use ratatui::layout::Rect;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut rep = base_test_report("codex:1:review");
+        // Simulate F-6 App Server populating split resets_at:
+        rep.signals.quota_5h_resets_at = Some(crate::domain::signal::MetricValue::new(
+            now + 2 * 3600 + 13 * 60, // 2h13m from now
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        rep.signals.quota_weekly_resets_at = Some(crate::domain::signal::MetricValue::new(
+            now + 4 * 86400 + 6 * 3600, // 4d 6h from now
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
+        );
+        let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        assert!(
+            dump.contains("5H reset"),
+            "Codex with quota_5h_resets_at must show 5H reset; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("7D reset"),
+            "Codex with quota_weekly_resets_at must show 7D reset"
+        );
+        assert!(dump.contains("2h13m"), "5H eta should format to 2h13m");
+        assert!(
+            dump.contains("4d 6h"),
+            "7D eta should format to 4d 6h (>=24h day format)"
+        );
+    }
+
+    #[test]
+    fn codex_pane_without_resets_at_falls_back_to_dash() {
+        use ratatui::layout::Rect;
+        let rep = base_test_report("codex:1:review");
+        // No quota_*_resets_at populated (codex_app_server OFF scenario)
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
+        );
+        let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        // Right column row 1 should be em-dash, not "5H reset"/"7D reset"/"RESET ▸"
+        assert!(
+            !dump.contains("5H reset"),
+            "no resets_at should mean no 5H reset row"
+        );
+        assert!(
+            !dump.contains("7D reset"),
+            "no resets_at should mean no 7D reset row"
+        );
+        assert!(
+            !dump.contains("RESET ▸"),
+            "no Codex ModelReset (only Gemini emits it)"
+        );
+        // The reset slot should be em-dash
+        assert!(
+            dump.contains("─"),
+            "reset slot should be em-dash without resets_at"
+        );
+    }
+
+    #[test]
     fn gemini_pane_shows_quota_in_metrics_overlay() {
         use ratatui::layout::Rect;
         let mut rep = base_test_report("gemini:1:research");
