@@ -192,16 +192,20 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn context_new_initializes_empty_auto_snapshot_dedup() {
+    fn auto_snapshot_dedup_type_is_accessible() {
         // Context::new requires PaneSource + NotifyBackend type parameters
-        // with no lightweight fixtures available in this module.
-        // Fallback: prove the field type is correct and its default state
-        // is empty — mirrors exactly what Context::new does with
-        // `auto_snapshot_dedup: std::collections::HashMap::new()`.
+        // with no lightweight fixtures available in this module. This
+        // narrow fallback proves the type alias used at
+        // `Context.auto_snapshot_dedup` is importable and that
+        // `HashMap::new` produces an empty map.
         //
-        // The field-name reference is validated at compile time: if
-        // `Context.auto_snapshot_dedup` were absent or mis-typed this
-        // file would not compile and the test binary would not link.
+        // Limits of this test: it does NOT verify that
+        // `Context.auto_snapshot_dedup` exists as a field — a rename
+        // of the field would not break this test. The structural
+        // guarantee comes from (a) the field reference in the
+        // initializer block of `Context::new` (compile-checked) and
+        // (b) Task 7's integration test which calls
+        // `ctx.auto_snapshot_dedup.entry(...)` and observes its state.
         use crate::app::auto_snapshot::AutoSnapshotDedup;
         use std::collections::HashMap;
         let map: HashMap<String, AutoSnapshotDedup> = HashMap::new();
