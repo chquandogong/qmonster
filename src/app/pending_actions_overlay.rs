@@ -82,6 +82,107 @@ pub fn handle_pending_actions_overlay_mouse(
     false
 }
 
+use crate::app::action_explainer::{
+    ActionExplainView, PendingAction, build_accept_view, build_copy_view,
+};
+use crate::app::config::ActionsMode;
+use crate::app::event_loop::PaneReport;
+use crate::ui::pending_actions::PendingItem;
+
+/// Build the `AcceptPromptSend` action for a proposal item, or `None`
+/// if the item is not a proposal. Used by the bulk `p` dispatch in
+/// `tui_loop`.
+pub fn accept_action_for(item: &PendingItem) -> Option<PendingAction> {
+    match item {
+        PendingItem::Proposal {
+            target_pane_id,
+            slash_command,
+            proposal_id,
+            ..
+        } => Some(PendingAction::AcceptPromptSend {
+            target_pane_id: target_pane_id.clone(),
+            slash_command: slash_command.clone(),
+            proposal_id: proposal_id.clone(),
+        }),
+        PendingItem::Copy { .. } => None,
+    }
+}
+
+/// Build the `RejectPromptSend` action for a proposal item, or `None`
+/// for non-proposal items. Used by the bulk `d` dispatch when the
+/// item is a proposal (alerts use the hide path instead).
+pub fn reject_action_for(item: &PendingItem) -> Option<PendingAction> {
+    match item {
+        PendingItem::Proposal {
+            target_pane_id,
+            slash_command,
+            proposal_id,
+            ..
+        } => Some(PendingAction::RejectPromptSend {
+            target_pane_id: target_pane_id.clone(),
+            slash_command: slash_command.clone(),
+            proposal_id: proposal_id.clone(),
+        }),
+        PendingItem::Copy { .. } => None,
+    }
+}
+
+/// Build the `CopyAlertCommand` action for an alert item, or `None`
+/// for proposals. Used by the bulk `y` dispatch.
+pub fn copy_action_for(item: &PendingItem) -> Option<PendingAction> {
+    match item {
+        PendingItem::Copy {
+            command,
+            alert_title,
+            ..
+        } => Some(PendingAction::CopyAlertCommand {
+            command: command.clone(),
+            alert_title: alert_title.clone(),
+        }),
+        PendingItem::Proposal { .. } => None,
+    }
+}
+
+/// Build an `ActionExplainView` for the right-pane live panel. For
+/// proposals this is the accept-flavored view (the "primary" action a
+/// `p` keypress would do); the operator can still press `d` to reject
+/// without changing what the panel shows. Returns `None` when the
+/// caller should render the empty-state placeholder.
+pub fn build_explainer_view_for_item(
+    item: &PendingItem,
+    reports: &[PaneReport],
+    mode: ActionsMode,
+    allow_auto_prompt_send: bool,
+) -> Option<ActionExplainView> {
+    match item {
+        PendingItem::Proposal {
+            pane_idx,
+            slash_command,
+            ..
+        } => {
+            let report = reports.get(*pane_idx)?;
+            Some(build_accept_view(
+                report,
+                slash_command,
+                mode,
+                allow_auto_prompt_send,
+            ))
+        }
+        PendingItem::Copy {
+            command,
+            alert_title,
+            severity,
+            source,
+            ..
+        } => Some(build_copy_view(
+            alert_title,
+            command,
+            Some(*severity),
+            *source,
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,5 +262,95 @@ mod tests {
         let outcome = handle_pending_actions_overlay_key(&mut overlay, 0, KeyCode::Enter);
         assert_eq!(outcome, PendingActionsKeyOutcome::None);
         assert!(overlay.is_open());
+    }
+
+    #[test]
+    fn accept_action_for_proposal_returns_accept_variant() {
+        use crate::app::action_explainer::PendingAction;
+        use crate::domain::origin::SourceKind;
+        use crate::ui::pending_actions::PendingItem;
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let action = accept_action_for(&item).expect("proposal must produce an Accept action");
+        match action {
+            PendingAction::AcceptPromptSend {
+                target_pane_id,
+                slash_command,
+                proposal_id,
+            } => {
+                assert_eq!(target_pane_id, "%1");
+                assert_eq!(slash_command, "/compact");
+                assert_eq!(proposal_id, "%1:/compact");
+            }
+            _ => panic!("expected AcceptPromptSend"),
+        }
+    }
+
+    #[test]
+    fn accept_action_for_alert_returns_none() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::Severity;
+        use crate::ui::pending_actions::PendingItem;
+        let item = PendingItem::Copy {
+            alert_idx: 0,
+            command: "/clear".into(),
+            alert_title: "ctx".into(),
+            severity: Severity::Warning,
+            source: SourceKind::Estimated,
+            pane_idx: None,
+        };
+        assert!(accept_action_for(&item).is_none());
+    }
+
+    #[test]
+    fn reject_action_for_proposal_returns_reject_variant() {
+        use crate::app::action_explainer::PendingAction;
+        use crate::domain::origin::SourceKind;
+        use crate::ui::pending_actions::PendingItem;
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let action = reject_action_for(&item).expect("proposal must produce a Reject action");
+        assert!(matches!(action, PendingAction::RejectPromptSend { .. }));
+    }
+
+    #[test]
+    fn copy_action_for_alert_returns_copy_variant() {
+        use crate::app::action_explainer::PendingAction;
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::Severity;
+        use crate::ui::pending_actions::PendingItem;
+        let item = PendingItem::Copy {
+            alert_idx: 0,
+            command: "/clear".into(),
+            alert_title: "ctx".into(),
+            severity: Severity::Warning,
+            source: SourceKind::Estimated,
+            pane_idx: None,
+        };
+        let action = copy_action_for(&item).expect("alert must produce a Copy action");
+        match action {
+            PendingAction::CopyAlertCommand {
+                command,
+                alert_title,
+            } => {
+                assert_eq!(command, "/clear");
+                assert_eq!(alert_title, "ctx");
+            }
+            _ => panic!("expected CopyAlertCommand"),
+        }
     }
 }
