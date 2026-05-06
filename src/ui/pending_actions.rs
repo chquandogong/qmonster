@@ -310,15 +310,66 @@ fn pane_label(report: &PaneReport) -> String {
     )
 }
 
-/// Centered ~70% × 60% modal area, clamped to a 60×16 minimum so
-/// the overlay renders predictably on small terminals. Mirrors the
-/// Action Explainer geometry so the two modals feel consistent.
 pub(crate) fn pending_actions_modal_area(viewport: Rect) -> Rect {
-    let width = (viewport.width * 70 / 100).max(60).min(viewport.width);
-    let height = (viewport.height * 60 / 100).max(16).min(viewport.height);
+    let width = (viewport.width * 80 / 100).max(72).min(viewport.width);
+    let height = (viewport.height * 65 / 100).max(20).min(viewport.height);
     let x = viewport.x + viewport.width.saturating_sub(width) / 2;
     let y = viewport.y + viewport.height.saturating_sub(height) / 2;
     Rect::new(x, y, width, height)
+}
+
+/// Inner partition of the modal: list on the left (or top), explainer
+/// on the right (or bottom), one-row hint at the very bottom inside
+/// borders. Wide mode kicks in when the body width (modal width minus
+/// 2 for left/right borders) is at least 72 cells.
+#[derive(Debug, Clone, Copy)]
+pub struct PendingActionsModalRects {
+    pub area: Rect,
+    pub list: Rect,
+    pub explainer: Rect,
+    pub hint: Rect,
+}
+
+#[allow(dead_code)]
+const LIST_WIDTH_WIDE: u16 = 32;
+#[allow(dead_code)]
+const SPLIT_THRESHOLD_WIDE: u16 = 72;
+
+#[allow(dead_code)]
+pub(crate) fn pending_actions_modal_rects(viewport: Rect) -> PendingActionsModalRects {
+    let area = pending_actions_modal_area(viewport);
+    // Carve a 1-col / 1-row inset for the modal border (Borders::ALL).
+    let inner_x = area.x + 1;
+    let inner_y = area.y + 1;
+    let inner_w = area.width.saturating_sub(2);
+    let inner_h = area.height.saturating_sub(2);
+
+    // hint = last row inside the inner area.
+    let hint = Rect::new(inner_x, inner_y + inner_h.saturating_sub(1), inner_w, 1);
+    let body_h = inner_h.saturating_sub(1);
+    let body = Rect::new(inner_x, inner_y, inner_w, body_h);
+
+    let (list, explainer) = if body.width >= SPLIT_THRESHOLD_WIDE {
+        // Wide: list 32 cols, 1-col separator, explainer = rest.
+        let list = Rect::new(body.x, body.y, LIST_WIDTH_WIDE, body.height);
+        let exp_x = body.x + LIST_WIDTH_WIDE + 1;
+        let exp_w = body.width.saturating_sub(LIST_WIDTH_WIDE + 1);
+        let explainer = Rect::new(exp_x, body.y, exp_w, body.height);
+        (list, explainer)
+    } else {
+        // Narrow: list top half, explainer bottom half.
+        let half = body.height / 2;
+        let list = Rect::new(body.x, body.y, body.width, half);
+        let explainer = Rect::new(body.x, body.y + half, body.width, body.height - half);
+        (list, explainer)
+    };
+
+    PendingActionsModalRects {
+        area,
+        list,
+        explainer,
+        hint,
+    }
 }
 
 pub fn render_pending_actions_modal(
@@ -804,5 +855,52 @@ mod tests {
         // items now empty (the proposal vanished between polls)
         o.prune_to(&[]);
         assert_eq!(o.multi_len(), 0);
+    }
+
+    #[test]
+    fn modal_area_uses_80x65_with_min_72_20() {
+        let r = pending_actions_modal_area(Rect::new(0, 0, 200, 80));
+        assert_eq!(r.width, 200 * 80 / 100);
+        assert_eq!(r.height, 80 * 65 / 100);
+
+        // Tiny viewport falls back to the minimum.
+        let small = pending_actions_modal_area(Rect::new(0, 0, 60, 18));
+        // viewport.width=60 < 72 min: clamps to viewport width
+        assert_eq!(small.width, 60);
+        // viewport.height=18 < 20 min: clamps to viewport height
+        assert_eq!(small.height, 18);
+    }
+
+    #[test]
+    fn modal_rects_wide_mode_splits_vertically_with_32_col_list() {
+        let viewport = Rect::new(0, 0, 200, 80);
+        let rects = pending_actions_modal_rects(viewport);
+        // Wide mode: list width = 32, separator = 1 col, explainer = rest.
+        assert_eq!(rects.list.width, 32);
+        let sep_col = rects.list.x + rects.list.width;
+        assert_eq!(rects.explainer.x, sep_col + 1);
+        assert_eq!(
+            rects.explainer.x + rects.explainer.width,
+            rects.area.x + rects.area.width - 1, // -1: right border
+            "explainer extends to the right border"
+        );
+        // hint is the bottom row inside borders.
+        assert_eq!(rects.hint.height, 1);
+        assert_eq!(rects.hint.y, rects.area.y + rects.area.height - 2);
+    }
+
+    #[test]
+    fn modal_rects_narrow_mode_splits_horizontally() {
+        // body.width < 72 → list on top, explainer on bottom.
+        let viewport = Rect::new(0, 0, 80, 30);
+        let rects = pending_actions_modal_rects(viewport);
+        let body_width = rects.area.width - 2; // minus borders
+        assert!(body_width < 72, "this test requires narrow body width");
+        // list and explainer share the body height (minus hint).
+        assert_eq!(rects.list.x, rects.explainer.x);
+        assert_eq!(rects.list.width, rects.explainer.width);
+        assert!(rects.list.height >= 1);
+        assert!(rects.explainer.height >= 1);
+        assert_eq!(rects.list.y + rects.list.height, rects.explainer.y);
     }
 }
