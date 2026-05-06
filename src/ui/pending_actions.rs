@@ -549,18 +549,17 @@ pub const LIST_WIDTH_WIDE_STEP: u16 = 2;
 const SPLIT_THRESHOLD_WIDE: u16 = 72;
 
 pub(crate) fn wide_mode_list_width(body_width: u16, override_width: Option<u16>) -> u16 {
-    // Ensure the explainer keeps at least LIST_WIDTH_WIDE_MIN cells.
-    // The clamp range collapses to [MIN, MIN] on tiny bodies; that's
-    // fine — wide mode only kicks in when body >= SPLIT_THRESHOLD_WIDE.
-    let max_for_body = body_width
-        .saturating_sub(LIST_WIDTH_WIDE_MIN)
-        .min(LIST_WIDTH_WIDE_MAX);
-    let max_clamp = max_for_body.max(LIST_WIDTH_WIDE_MIN);
     if let Some(w) = override_width {
-        return w.clamp(LIST_WIDTH_WIDE_MIN, max_clamp);
+        // Operator override clamped to the same range as the auto-formula
+        // ([LIST_WIDTH_WIDE_MIN, LIST_WIDTH_WIDE_MAX]). Body width is not
+        // a factor here: the modal's SPLIT_THRESHOLD_WIDE (72) ensures
+        // body ≥ 72 in wide mode, so body - LIST_WIDTH_WIDE_MAX ≥ 8 cells
+        // remain for the explainer even at the operator's maximum
+        // override.
+        return w.clamp(LIST_WIDTH_WIDE_MIN, LIST_WIDTH_WIDE_MAX);
     }
     let scaled = (body_width as u32 * LIST_WIDTH_WIDE_RATIO / 100) as u16;
-    scaled.clamp(LIST_WIDTH_WIDE_MIN, max_clamp)
+    scaled.clamp(LIST_WIDTH_WIDE_MIN, LIST_WIDTH_WIDE_MAX)
 }
 
 pub(crate) fn pending_actions_modal_rects(
@@ -1304,15 +1303,12 @@ mod tests {
     }
 
     #[test]
-    fn wide_mode_list_width_keeps_explainer_at_least_min_cells() {
-        // 120-col terminal → modal 96, body 94. 60% = 56, but the
-        // body-aware clamp caps the list at body - LIST_WIDTH_WIDE_MIN
-        // = 50 so the explainer always has at least 44 cells. This
-        // protects the explainer on smaller terminals where the
-        // proportional formula would otherwise crowd it.
+    fn wide_mode_list_width_uses_60pct_in_mid_range() {
+        // 120-col terminal → modal 96, body 94. 60% = 56 (within
+        // [LIST_WIDTH_WIDE_MIN, LIST_WIDTH_WIDE_MAX]), so the proportional
+        // path drives the value.
         let list = wide_mode_list_width(94, None);
-        assert_eq!(list, 50);
-        assert!(94u16.saturating_sub(list) >= LIST_WIDTH_WIDE_MIN);
+        assert_eq!(list, 56);
     }
 
     #[test]
