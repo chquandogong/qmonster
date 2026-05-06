@@ -76,10 +76,11 @@ where
         crate::ui::provider_setup::ProviderSetupOverlay::from_config(&ctx.config);
     let mut metrics_overlay = crate::ui::metrics::MetricsOverlay::new();
     let mut action_explainer = crate::app::action_explainer::ActionExplainModal::new();
-    // v1.39 surface C: Pending Actions overlay (a key). Lists every
-    // pane with a pending prompt-send proposal AND every alert with a
-    // suggested_command, with severity color coding. Enter jumps +
-    // opens the Action Explainer modal.
+    // v1.39 surface C / v1.40 redesign: Pending Actions overlay (a key).
+    // Split list+live-explainer modal listing every pane with a pending
+    // prompt-send proposal AND every alert with a suggested_command, with
+    // severity color coding. Multi-select (Space / P / Y / A / c) +
+    // p/d/y dispatch in-place; Enter is silently swallowed.
     let mut pending_actions = crate::ui::pending_actions::PendingActionsOverlay::new();
 
     // Phase F F-6 (v1.32.0): spawn `codex app-server` once at TUI
