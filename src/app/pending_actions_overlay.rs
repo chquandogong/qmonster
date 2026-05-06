@@ -68,10 +68,10 @@ pub fn handle_pending_actions_overlay_key(
             overlay.clear_multi();
             PendingActionsOutcome::None
         }
-        KeyCode::Char('p') | KeyCode::Char('d') | KeyCode::Char('y') | KeyCode::Enter => {
-            // Dispatch keys filled in by Task 10.
-            PendingActionsOutcome::None
-        }
+        KeyCode::Char('p') => dispatch_accept(overlay, items),
+        KeyCode::Char('d') => dispatch_clear(overlay, items),
+        KeyCode::Char('y') => dispatch_copy(overlay, items),
+        KeyCode::Enter => PendingActionsOutcome::None,
         _ => PendingActionsOutcome::None,
     }
 }
@@ -195,6 +195,78 @@ pub fn build_explainer_view_for_item(
             Some(*severity),
             *source,
         )),
+    }
+}
+
+fn dispatch_accept(
+    overlay: &PendingActionsOverlay,
+    items: &[PendingItem],
+) -> PendingActionsOutcome {
+    let idxs = if overlay.multi_len() == 0 {
+        match items.get(overlay.selected()) {
+            Some(PendingItem::Proposal { .. }) => vec![overlay.selected()],
+            _ => Vec::new(),
+        }
+    } else {
+        let mut out: Vec<usize> = items
+            .iter()
+            .enumerate()
+            .filter(|(_, it)| matches!(it, PendingItem::Proposal { .. }))
+            .filter(|(_, it)| {
+                overlay.multi_contains(&crate::ui::pending_actions::pending_item_key(it))
+            })
+            .map(|(idx, _)| idx)
+            .collect();
+        out.sort_unstable();
+        out
+    };
+    if idxs.is_empty() {
+        PendingActionsOutcome::None
+    } else {
+        PendingActionsOutcome::AcceptItems(idxs)
+    }
+}
+
+fn dispatch_clear(overlay: &PendingActionsOverlay, items: &[PendingItem]) -> PendingActionsOutcome {
+    let idxs = if overlay.multi_len() == 0 {
+        if items.get(overlay.selected()).is_some() {
+            vec![overlay.selected()]
+        } else {
+            Vec::new()
+        }
+    } else {
+        let mut out: Vec<usize> = items
+            .iter()
+            .enumerate()
+            .filter(|(_, it)| {
+                overlay.multi_contains(&crate::ui::pending_actions::pending_item_key(it))
+            })
+            .map(|(idx, _)| idx)
+            .collect();
+        out.sort_unstable();
+        out
+    };
+    if idxs.is_empty() {
+        PendingActionsOutcome::None
+    } else {
+        PendingActionsOutcome::ClearItems(idxs)
+    }
+}
+
+fn dispatch_copy(overlay: &PendingActionsOverlay, items: &[PendingItem]) -> PendingActionsOutcome {
+    if overlay.multi_len() == 0 {
+        return match items.get(overlay.selected()) {
+            Some(PendingItem::Copy { .. }) => PendingActionsOutcome::CopyItem(overlay.selected()),
+            _ => PendingActionsOutcome::None,
+        };
+    }
+    let first = items.iter().enumerate().find(|(_, it)| {
+        matches!(it, PendingItem::Copy { .. })
+            && overlay.multi_contains(&crate::ui::pending_actions::pending_item_key(it))
+    });
+    match first {
+        Some((idx, _)) => PendingActionsOutcome::CopyItem(idx),
+        None => PendingActionsOutcome::None,
     }
 }
 
@@ -425,6 +497,112 @@ mod tests {
             KeyCode::Char('P'),
         );
         assert_eq!(overlay.multi_len(), 0);
+    }
+
+    fn fixture_proposal(id: &str, command: &str) -> crate::ui::pending_actions::PendingItem {
+        use crate::domain::origin::SourceKind;
+        use crate::ui::pending_actions::PendingItem;
+        PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: format!("claude:1:main · {id}"),
+            slash_command: command.into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: format!("{id}:{command}"),
+            target_pane_id: id.into(),
+        }
+    }
+
+    fn fixture_copy(title: &str, command: &str) -> crate::ui::pending_actions::PendingItem {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::Severity;
+        use crate::ui::pending_actions::PendingItem;
+        PendingItem::Copy {
+            alert_idx: 0,
+            command: command.into(),
+            alert_title: title.into(),
+            severity: Severity::Warning,
+            source: SourceKind::Estimated,
+            pane_idx: None,
+        }
+    }
+
+    #[test]
+    fn p_no_multi_returns_cursor_proposal() {
+        let items = vec![fixture_proposal("%1", "/compact")];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('p'));
+        assert_eq!(outcome, PendingActionsOutcome::AcceptItems(vec![0]));
+    }
+
+    #[test]
+    fn p_no_multi_with_alert_cursor_returns_none() {
+        let items = vec![fixture_copy("ctx", "/clear")];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('p'));
+        assert_eq!(outcome, PendingActionsOutcome::None);
+    }
+
+    #[test]
+    fn p_with_multi_returns_proposal_indices_only() {
+        let items = vec![
+            fixture_proposal("%1", "/compact"),
+            fixture_copy("ctx", "/clear"),
+            fixture_proposal("%2", "/clear"),
+        ];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        overlay.toggle_group_all(&items);
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('p'));
+        assert_eq!(outcome, PendingActionsOutcome::AcceptItems(vec![0, 2]));
+    }
+
+    #[test]
+    fn d_no_multi_returns_cursor() {
+        let items = vec![fixture_copy("ctx", "/clear")];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('d'));
+        assert_eq!(outcome, PendingActionsOutcome::ClearItems(vec![0]));
+    }
+
+    #[test]
+    fn d_with_multi_returns_all_indices_ascending() {
+        let items = vec![
+            fixture_proposal("%1", "/compact"),
+            fixture_copy("ctx", "/clear"),
+            fixture_proposal("%2", "/clear"),
+        ];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        overlay.toggle_group_all(&items);
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('d'));
+        assert_eq!(outcome, PendingActionsOutcome::ClearItems(vec![0, 1, 2]));
+    }
+
+    #[test]
+    fn y_with_multi_picks_first_alert() {
+        let items = vec![
+            fixture_proposal("%1", "/compact"),
+            fixture_copy("ctx-a", "/clear"),
+            fixture_copy("ctx-b", "/compact"),
+        ];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        overlay.toggle_group_all(&items);
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('y'));
+        assert_eq!(outcome, PendingActionsOutcome::CopyItem(1));
+    }
+
+    #[test]
+    fn y_no_multi_with_proposal_cursor_returns_none() {
+        let items = vec![fixture_proposal("%1", "/compact")];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('y'));
+        assert_eq!(outcome, PendingActionsOutcome::None);
     }
 
     #[test]
