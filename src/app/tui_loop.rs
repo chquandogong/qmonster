@@ -653,11 +653,26 @@ where
 
                             if pending_actions.is_open() {
                                 dashboard_split_dragging = false;
-                                handle_pending_actions_overlay_mouse(
+                                let outcome = handle_pending_actions_overlay_mouse(
                                     &mut pending_actions,
                                     viewport,
+                                    &pending_items,
                                     m,
                                 );
+                                match outcome {
+                                    PendingActionsOutcome::None | PendingActionsOutcome::Closed => {
+                                    }
+                                    PendingActionsOutcome::AcceptItems(_)
+                                    | PendingActionsOutcome::ClearItems(_)
+                                    | PendingActionsOutcome::CopyItem(_) => {
+                                        // Mouse never produces dispatch outcomes today; future-proof
+                                        // by debug-asserting if the contract drifts.
+                                        debug_assert!(
+                                            false,
+                                            "mouse outcomes should not include dispatch variants"
+                                        );
+                                    }
+                                }
                                 continue;
                             }
 

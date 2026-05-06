@@ -7,7 +7,7 @@ use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
 use crate::ui::dashboard::close_button_rect;
-use crate::ui::pending_actions::{PendingActionsOverlay, PendingItem, pending_actions_modal_area};
+use crate::ui::pending_actions::{PendingActionsOverlay, PendingItem, pending_actions_modal_rects};
 
 /// Outcome of a key press while the overlay is open.
 ///
@@ -76,26 +76,67 @@ pub fn handle_pending_actions_overlay_key(
     }
 }
 
-/// Process a mouse event while the overlay is open. Currently a
-/// left-click on the `[x]` close button closes the modal; every
-/// other mouse event is swallowed so it cannot leak through to the
-/// dashboard. Returns `true` if the event closed the overlay.
+/// Process a mouse event while the overlay is open.
+///
+/// - A left-click on the `[x]` close button closes the modal.
+/// - A left-click in the list pane on cols 0..4 from `list.x` toggles
+///   the multi-selection for that row without moving the cursor.
+/// - A left-click on cols 4+ moves the cursor to that row.
+/// - Scroll wheel moves the cursor up/down.
+/// - Every other event is swallowed so it cannot leak through to the
+///   dashboard.
 pub fn handle_pending_actions_overlay_mouse(
     overlay: &mut PendingActionsOverlay,
     viewport: Rect,
+    items: &[PendingItem],
     event: MouseEvent,
-) -> bool {
+) -> PendingActionsOutcome {
     if !overlay.is_open() {
-        return false;
+        return PendingActionsOutcome::None;
     }
-    let close_rect = close_button_rect(pending_actions_modal_area(viewport));
+    let rects = pending_actions_modal_rects(viewport);
+
+    // [x] close button
     if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
-        && crate::app::keymap::rect_contains(close_rect, event.column, event.row)
+        && crate::app::keymap::rect_contains(close_button_rect(rects.area), event.column, event.row)
     {
         overlay.close();
-        return true;
+        return PendingActionsOutcome::Closed;
     }
-    false
+
+    // List pane click: distinguish checkbox vs content.
+    if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
+        && crate::app::keymap::rect_contains(rects.list, event.column, event.row)
+    {
+        let leading_pad: u16 = 1;
+        if event.row >= rects.list.y + leading_pad {
+            let row_off = event.row - rects.list.y - leading_pad;
+            let idx = row_off as usize;
+            if idx < items.len() {
+                let col_off = event.column.saturating_sub(rects.list.x);
+                if col_off < 4 {
+                    // checkbox zone (cols 0..4 from list.x — `[x]` glyph + trailing space)
+                    if let Some(item) = items.get(idx) {
+                        overlay.toggle_multi(item);
+                    }
+                } else {
+                    // content / cursor zone (cols 4+)
+                    overlay.set_selected(idx);
+                }
+            }
+        }
+        return PendingActionsOutcome::None;
+    }
+
+    // Wheel: scroll the cursor.
+    match event.kind {
+        MouseEventKind::ScrollUp => overlay.select_prev(items.len()),
+        MouseEventKind::ScrollDown => overlay.select_next(items.len()),
+        _ => {}
+    }
+
+    // Swallow everything else (no leak to dashboard).
+    PendingActionsOutcome::None
 }
 
 use crate::app::action_explainer::{
@@ -634,5 +675,107 @@ mod tests {
         );
         assert_eq!(overlay.multi_len(), 0);
         assert_eq!(overlay.selected(), 0, "c does not move the cursor");
+    }
+
+    fn mouse_event(kind: MouseEventKind, column: u16, row: u16) -> crossterm::event::MouseEvent {
+        crossterm::event::MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: crossterm::event::KeyModifiers::empty(),
+        }
+    }
+
+    #[test]
+    fn click_checkbox_toggles_multi_keeps_cursor() {
+        use crate::ui::pending_actions::pending_actions_modal_rects;
+        let items = vec![fixture_proposal("%1", "/compact")];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        overlay.set_selected(0);
+        let viewport = Rect::new(0, 0, 200, 80);
+        let rects = pending_actions_modal_rects(viewport);
+        // Row 0 lives at rects.list.y + 1 (1-row top padding inside list pane).
+        let row = rects.list.y + 1;
+        let col = rects.list.x + 1; // inside [x] glyph (cols 0..3 from list.x)
+        let outcome = handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(MouseEventKind::Down(MouseButton::Left), col, row),
+        );
+        assert_eq!(outcome, PendingActionsOutcome::None);
+        assert_eq!(overlay.multi_len(), 1, "checkbox click toggles multi");
+        assert_eq!(overlay.selected(), 0, "cursor unchanged");
+    }
+
+    #[test]
+    fn click_content_moves_cursor() {
+        use crate::ui::pending_actions::pending_actions_modal_rects;
+        let items = vec![
+            fixture_proposal("%1", "/compact"),
+            fixture_proposal("%2", "/clear"),
+        ];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        overlay.set_selected(0);
+        let viewport = Rect::new(0, 0, 200, 80);
+        let rects = pending_actions_modal_rects(viewport);
+        let row = rects.list.y + 1 + 1; // second item
+        let col = rects.list.x + 10; // content area (>= 4)
+        handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(MouseEventKind::Down(MouseButton::Left), col, row),
+        );
+        assert_eq!(overlay.selected(), 1);
+        assert_eq!(overlay.multi_len(), 0);
+    }
+
+    #[test]
+    fn wheel_moves_cursor() {
+        let items = vec![
+            fixture_proposal("%1", "/compact"),
+            fixture_proposal("%2", "/clear"),
+        ];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        overlay.set_selected(0);
+        let viewport = Rect::new(0, 0, 200, 80);
+        handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(MouseEventKind::ScrollDown, 0, 0),
+        );
+        assert_eq!(overlay.selected(), 1);
+        handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(MouseEventKind::ScrollUp, 0, 0),
+        );
+        assert_eq!(overlay.selected(), 0);
+    }
+
+    #[test]
+    fn click_close_button_closes() {
+        use crate::ui::dashboard::close_button_rect;
+        use crate::ui::pending_actions::pending_actions_modal_rects;
+        let items = vec![fixture_proposal("%1", "/compact")];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let viewport = Rect::new(0, 0, 200, 80);
+        let rects = pending_actions_modal_rects(viewport);
+        let close = close_button_rect(rects.area);
+        let outcome = handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(MouseEventKind::Down(MouseButton::Left), close.x, close.y),
+        );
+        assert_eq!(outcome, PendingActionsOutcome::Closed);
+        assert!(!overlay.is_open());
     }
 }
