@@ -105,6 +105,17 @@ pub struct MetricsOverlay {
     scroll: u16,
     width_pct: u16,
     height_pct: u16,
+    offset_x: i16,
+    offset_y: i16,
+    drag_anchor: Option<DragAnchor>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DragAnchor {
+    pub start_col: u16,
+    pub start_row: u16,
+    pub start_offset_x: i16,
+    pub start_offset_y: i16,
 }
 
 impl Default for MetricsOverlay {
@@ -114,6 +125,9 @@ impl Default for MetricsOverlay {
             scroll: 0,
             width_pct: Self::DEFAULT_WIDTH_PCT,
             height_pct: Self::DEFAULT_HEIGHT_PCT,
+            offset_x: 0,
+            offset_y: 0,
+            drag_anchor: None,
         }
     }
 }
@@ -132,11 +146,15 @@ impl MetricsOverlay {
     pub fn open(&mut self) {
         self.open = true;
         self.scroll = 0;
+        self.drag_anchor = None;
+        // offset_x / offset_y intentionally preserved (mirrors size persistence)
     }
 
     pub fn close(&mut self) {
         self.open = false;
         self.scroll = 0;
+        self.drag_anchor = None;
+        // offset_x / offset_y preserved for next open
     }
 
     pub fn is_open(&self) -> bool {
@@ -145,11 +163,9 @@ impl MetricsOverlay {
     pub fn scroll(&self) -> u16 {
         self.scroll
     }
-
     pub fn scroll_up(&mut self) {
         self.scroll = self.scroll.saturating_sub(1);
     }
-
     pub fn scroll_down(&mut self, max: u16) {
         self.scroll = self.scroll.saturating_add(1).min(max);
     }
@@ -157,9 +173,30 @@ impl MetricsOverlay {
     pub fn width_pct(&self) -> u16 {
         self.width_pct
     }
-
     pub fn height_pct(&self) -> u16 {
         self.height_pct
+    }
+    pub fn offset_x(&self) -> i16 {
+        self.offset_x
+    }
+    pub fn offset_y(&self) -> i16 {
+        self.offset_y
+    }
+    pub fn drag_anchor(&self) -> Option<DragAnchor> {
+        self.drag_anchor
+    }
+
+    pub fn set_offset(&mut self, x: i16, y: i16) {
+        self.offset_x = x;
+        self.offset_y = y;
+    }
+
+    pub fn begin_drag(&mut self, anchor: DragAnchor) {
+        self.drag_anchor = Some(anchor);
+    }
+
+    pub fn end_drag(&mut self) {
+        self.drag_anchor = None;
     }
 
     pub fn grow(&mut self) {
@@ -181,6 +218,8 @@ impl MetricsOverlay {
     pub fn reset_size(&mut self) {
         self.width_pct = Self::DEFAULT_WIDTH_PCT;
         self.height_pct = Self::DEFAULT_HEIGHT_PCT;
+        self.offset_x = 0;
+        self.offset_y = 0;
     }
 }
 
@@ -191,13 +230,20 @@ pub struct MetricsModalRects {
     pub hint: Rect,
 }
 
-pub fn metrics_modal_rects(viewport: Rect, width_pct: u16, height_pct: u16) -> MetricsModalRects {
-    let area = centered_rect(width_pct, height_pct, viewport);
+pub fn metrics_modal_rects(
+    viewport: Rect,
+    width_pct: u16,
+    height_pct: u16,
+    offset_x: i16,
+    offset_y: i16,
+) -> MetricsModalRects {
+    let base = centered_rect(width_pct, height_pct, viewport);
+    let area = apply_clamped_offset(base, viewport, offset_x, offset_y);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // banner
-            Constraint::Min(6),    // body (per-pane cards, scrollable)
+            Constraint::Min(6),    // body
             Constraint::Length(1), // hint
         ])
         .split(area);
@@ -207,6 +253,36 @@ pub fn metrics_modal_rects(viewport: Rect, width_pct: u16, height_pct: u16) -> M
         body: chunks[1],
         hint: chunks[2],
     }
+}
+
+/// Apply `offset_x`/`offset_y` to `base`, clamping so at least 4 cells
+/// horizontally and 1 row vertically of the modal stay inside `viewport`.
+/// Pure helper — used by `metrics_modal_rects` and tested directly.
+fn apply_clamped_offset(base: Rect, viewport: Rect, offset_x: i16, offset_y: i16) -> Rect {
+    let min_x = (viewport.x as i32) + 4 - (base.width as i32);
+    let max_x = (viewport.x as i32) + (viewport.width as i32) - 4;
+    let min_y = viewport.y as i32;
+    let max_y = (viewport.y as i32) + (viewport.height as i32) - 1;
+
+    let x = ((base.x as i32) + (offset_x as i32)).clamp(min_x, max_x.max(min_x));
+    let y = ((base.y as i32) + (offset_y as i32)).clamp(min_y, max_y.max(min_y));
+
+    Rect::new(
+        x.max(0) as u16,
+        y.max(0) as u16,
+        base.width.min(
+            viewport
+                .width
+                .saturating_sub((x - viewport.x as i32).max(0) as u16)
+                .max(1),
+        ),
+        base.height.min(
+            viewport
+                .height
+                .saturating_sub((y - viewport.y as i32).max(0) as u16)
+                .max(1),
+        ),
+    )
 }
 
 /// Returns the "Hottest: <pane> · <metric> {pct}% [<source>]" header
@@ -820,7 +896,13 @@ pub fn render_metrics_modal(
     reports: &[PaneReport],
     mem_observations: &HashMap<String, MemObservation>,
 ) {
-    let rects = metrics_modal_rects(frame.area(), overlay.width_pct(), overlay.height_pct());
+    let rects = metrics_modal_rects(
+        frame.area(),
+        overlay.width_pct(),
+        overlay.height_pct(),
+        overlay.offset_x(),
+        overlay.offset_y(),
+    );
     frame.render_widget(Clear, rects.area);
 
     let block = Block::default()
@@ -887,7 +969,7 @@ mod tests {
     fn metrics_modal_rects_centered_95_by_90() {
         use ratatui::layout::Rect;
         let viewport = Rect::new(0, 0, 100, 50);
-        let r = metrics_modal_rects(viewport, 95, 90);
+        let r = metrics_modal_rects(viewport, 95, 90, 0, 0);
         assert_eq!(r.area.width, 95);
         assert_eq!(r.area.height, 45);
         // area is centered: x ≈ (100-95)/2 = 2..3, y ≈ (50-45)/2 = 2..3
@@ -900,7 +982,7 @@ mod tests {
     fn metrics_modal_rects_partition_sums_to_area() {
         use ratatui::layout::Rect;
         let viewport = Rect::new(0, 0, 120, 40);
-        let r = metrics_modal_rects(viewport, 95, 90);
+        let r = metrics_modal_rects(viewport, 95, 90, 0, 0);
         let bottom = r.banner.height + r.body.height + r.hint.height;
         assert_eq!(bottom, r.area.height);
         assert_eq!(r.banner.y, r.area.y);
@@ -1795,5 +1877,92 @@ mod tests {
 
     fn line_to_string(line: &ratatui::text::Line<'_>) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn metrics_modal_rects_zero_offset_matches_centered() {
+        let viewport = Rect::new(0, 0, 200, 80);
+        let with_offset = metrics_modal_rects(viewport, 95, 90, 0, 0);
+        let baseline = crate::ui::dashboard::centered_rect(95, 90, viewport);
+        assert_eq!(with_offset.area, baseline);
+    }
+
+    #[test]
+    fn metrics_modal_rects_positive_offset_moves_right_down() {
+        let viewport = Rect::new(0, 0, 200, 80);
+        let r0 = metrics_modal_rects(viewport, 95, 90, 0, 0);
+        let r1 = metrics_modal_rects(viewport, 95, 90, 5, 3);
+        assert_eq!(r1.area.x, r0.area.x + 5);
+        assert_eq!(r1.area.y, r0.area.y + 3);
+    }
+
+    #[test]
+    fn metrics_modal_rects_negative_offset_moves_left_up() {
+        let viewport = Rect::new(0, 0, 200, 80);
+        let r0 = metrics_modal_rects(viewport, 95, 90, 0, 0);
+        let r1 = metrics_modal_rects(viewport, 95, 90, -4, -2);
+        assert_eq!(r1.area.x, r0.area.x.saturating_sub(4));
+        assert_eq!(r1.area.y, r0.area.y.saturating_sub(2));
+    }
+
+    #[test]
+    fn metrics_modal_rects_right_clamp_keeps_4_cells_visible() {
+        let viewport = Rect::new(0, 0, 200, 80);
+        let r = metrics_modal_rects(viewport, 50, 50, i16::MAX, 0);
+        let visible_right = (viewport.x + viewport.width).saturating_sub(r.area.x);
+        assert!(
+            visible_right >= 4,
+            "right clamp leaves {visible_right} cells visible (expected >= 4)"
+        );
+    }
+
+    #[test]
+    fn metrics_modal_rects_left_clamp_keeps_4_cells_visible() {
+        let viewport = Rect::new(0, 0, 200, 80);
+        let r = metrics_modal_rects(viewport, 50, 50, i16::MIN, 0);
+        let visible_left = (r.area.x + r.area.width).saturating_sub(viewport.x);
+        assert!(
+            visible_left >= 4,
+            "left clamp leaves {visible_left} cells visible (expected >= 4)"
+        );
+    }
+
+    #[test]
+    fn metrics_modal_rects_bottom_clamp_keeps_1_row_visible() {
+        let viewport = Rect::new(0, 0, 200, 80);
+        let r = metrics_modal_rects(viewport, 50, 50, 0, i16::MAX);
+        let visible_height = (viewport.y + viewport.height).saturating_sub(r.area.y);
+        assert!(
+            visible_height >= 1,
+            "bottom clamp leaves {visible_height} row(s) visible (expected >= 1)"
+        );
+    }
+
+    #[test]
+    fn reset_size_also_zeros_offset() {
+        let mut o = MetricsOverlay::new();
+        o.set_offset(7, 4);
+        assert_eq!(o.offset_x(), 7);
+        assert_eq!(o.offset_y(), 4);
+        o.reset_size();
+        assert_eq!(o.offset_x(), 0);
+        assert_eq!(o.offset_y(), 0);
+        assert_eq!(o.width_pct(), MetricsOverlay::DEFAULT_WIDTH_PCT);
+        assert_eq!(o.height_pct(), MetricsOverlay::DEFAULT_HEIGHT_PCT);
+    }
+
+    #[test]
+    fn close_preserves_offset_and_size() {
+        let mut o = MetricsOverlay::new();
+        o.open();
+        o.set_offset(3, -2);
+        o.grow();
+        let (w, h, ox, oy) = (o.width_pct(), o.height_pct(), o.offset_x(), o.offset_y());
+        o.close();
+        o.open();
+        assert_eq!(o.width_pct(), w);
+        assert_eq!(o.height_pct(), h);
+        assert_eq!(o.offset_x(), ox);
+        assert_eq!(o.offset_y(), oy);
     }
 }

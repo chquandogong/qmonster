@@ -48,7 +48,13 @@ pub fn handle_metrics_overlay_mouse(
     if !overlay.is_open() {
         return;
     }
-    let rects = metrics_modal_rects(viewport, overlay.width_pct(), overlay.height_pct());
+    let rects = metrics_modal_rects(
+        viewport,
+        overlay.width_pct(),
+        overlay.height_pct(),
+        overlay.offset_x(),
+        overlay.offset_y(),
+    );
     if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
         && rect_contains(close_button_rect(rects.area), event.column, event.row)
     {
@@ -99,7 +105,13 @@ mod tests {
         let mut o = MetricsOverlay::new();
         o.open();
         let viewport = Rect::new(0, 0, 100, 50);
-        let rects = metrics_modal_rects(viewport, o.width_pct(), o.height_pct());
+        let rects = metrics_modal_rects(
+            viewport,
+            o.width_pct(),
+            o.height_pct(),
+            o.offset_x(),
+            o.offset_y(),
+        );
         let close_rect = close_button_rect(rects.area);
         let event = MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
