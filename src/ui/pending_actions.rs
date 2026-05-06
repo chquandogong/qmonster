@@ -338,8 +338,22 @@ pub struct PendingActionsModalRects {
     pub hint: Rect,
 }
 
-const LIST_WIDTH_WIDE: u16 = 32;
+// Wide-mode list pane occupies 60% of body width, clamped to [44, 64].
+// Rationale (operator feedback 2026-05-06): a fixed 32-cell list wrapped
+// every typical row (`[x] ▶ [p] CONCERN · /compact · pane:label · %ID`
+// runs ~50–55 chars). 60% gives the list comfortable room without
+// starving the explainer, the [44, 64] clamp keeps the explainer usable
+// on smaller terminals (~30 cells minimum) and prevents the list from
+// growing past the row content length on huge terminals.
+const LIST_WIDTH_WIDE_RATIO: u32 = 60;
+const LIST_WIDTH_WIDE_MIN: u16 = 44;
+const LIST_WIDTH_WIDE_MAX: u16 = 64;
 const SPLIT_THRESHOLD_WIDE: u16 = 72;
+
+fn wide_mode_list_width(body_width: u16) -> u16 {
+    let scaled = (body_width as u32 * LIST_WIDTH_WIDE_RATIO / 100) as u16;
+    scaled.clamp(LIST_WIDTH_WIDE_MIN, LIST_WIDTH_WIDE_MAX)
+}
 
 pub(crate) fn pending_actions_modal_rects(viewport: Rect) -> PendingActionsModalRects {
     let area = pending_actions_modal_area(viewport);
@@ -355,10 +369,12 @@ pub(crate) fn pending_actions_modal_rects(viewport: Rect) -> PendingActionsModal
     let body = Rect::new(inner_x, inner_y, inner_w, body_h);
 
     let (list, explainer) = if body.width >= SPLIT_THRESHOLD_WIDE {
-        // Wide: list 32 cols, 1-col separator, explainer = rest.
-        let list = Rect::new(body.x, body.y, LIST_WIDTH_WIDE, body.height);
-        let exp_x = body.x + LIST_WIDTH_WIDE;
-        let exp_w = body.width.saturating_sub(LIST_WIDTH_WIDE);
+        // Wide: list at 60% of body (clamped), 1-col separator,
+        // explainer = rest. Separator is the explainer's LEFT border.
+        let list_w = wide_mode_list_width(body.width);
+        let list = Rect::new(body.x, body.y, list_w, body.height);
+        let exp_x = body.x + list_w;
+        let exp_w = body.width.saturating_sub(list_w);
         let explainer = Rect::new(exp_x, body.y, exp_w, body.height);
         (list, explainer)
     } else {
@@ -1013,11 +1029,17 @@ mod tests {
     }
 
     #[test]
-    fn modal_rects_wide_mode_splits_vertically_with_32_col_list() {
+    fn modal_rects_wide_mode_splits_vertically_with_dynamic_list() {
+        // 200×80 viewport → modal 160×52, body width 158. List at 60%
+        // = 94, clamped to LIST_WIDTH_WIDE_MAX = 64. Explainer = body
+        // width − list = 94. Separator is the explainer's LEFT border.
         let viewport = Rect::new(0, 0, 200, 80);
         let rects = pending_actions_modal_rects(viewport);
-        // Wide mode: list width = 32, separator = 1 col, explainer = rest.
-        assert_eq!(rects.list.width, 32);
+        assert!(
+            (LIST_WIDTH_WIDE_MIN..=LIST_WIDTH_WIDE_MAX).contains(&rects.list.width),
+            "list width {} out of clamp range",
+            rects.list.width
+        );
         let sep_col = rects.list.x + rects.list.width;
         assert_eq!(
             rects.explainer.x, sep_col,
@@ -1028,9 +1050,35 @@ mod tests {
             rects.area.x + rects.area.width - 1, // -1: right border
             "explainer extends to the right border"
         );
-        // hint is the bottom row inside borders.
         assert_eq!(rects.hint.height, 1);
         assert_eq!(rects.hint.y, rects.area.y + rects.area.height - 2);
+    }
+
+    #[test]
+    fn wide_mode_list_width_clamps_at_min() {
+        // Body width just past the SPLIT_THRESHOLD_WIDE (72): 60% of
+        // 72 = 43, below the LIST_WIDTH_WIDE_MIN floor of 44 — so the
+        // clamp pulls list up to 44.
+        let list = wide_mode_list_width(72);
+        assert_eq!(list, LIST_WIDTH_WIDE_MIN);
+    }
+
+    #[test]
+    fn wide_mode_list_width_clamps_at_max() {
+        // Huge body (e.g., 158-cell body on a 200-col terminal): 60%
+        // = 94, capped at LIST_WIDTH_WIDE_MAX = 64 so the explainer
+        // still has plenty of room and the list doesn't grow past
+        // typical row content (~53 chars).
+        let list = wide_mode_list_width(158);
+        assert_eq!(list, LIST_WIDTH_WIDE_MAX);
+    }
+
+    #[test]
+    fn wide_mode_list_width_uses_60pct_in_mid_range() {
+        // 120-col terminal → modal 96, body 94. 60% = 56 (within
+        // [44, 64]), so the proportional path drives the value.
+        let list = wide_mode_list_width(94);
+        assert_eq!(list, 56);
     }
 
     #[test]
