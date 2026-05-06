@@ -17071,7 +17071,7 @@ timeline:
       - "e09777a phase H Task 7: code-review fixup — explicit gate, doc-comment accuracy"
       - "76f89af phase H: Settings Parameters/Rules rows for auto_snapshot"
       - "ddf394b phase H: docs (UI_MANUAL, ARCHITECTURE, VALIDATION, example.toml)"
-      - "[release commit SHA — populate after committing the v1.42.0 release ledger sync]"
+      - "c35dc86 v1.42.0 release ledger sync (commit pointed to by the v1.42.0 annotated tag)"
     follow_up:
       - "Phase 7 v1 anomaly overlay: spec committed at docs/superpowers/specs/2026-05-06-phase7-v1-anomaly-overlay-design.md; implementation plan needs to be written next cycle."
       - "D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters."
