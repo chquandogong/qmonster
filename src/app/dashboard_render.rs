@@ -145,6 +145,15 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
     // none of the higher-priority modals (action explainer / target /
     // help / etc.) are taking keystrokes.
     if view.pending_actions.is_open() {
-        render_pending_actions_modal(frame, view.pending_actions, view.pending_items);
+        render_pending_actions_modal(
+            frame,
+            crate::ui::pending_actions::PendingActionsRenderCtx {
+                overlay: view.pending_actions,
+                items: view.pending_items,
+                reports: view.reports,
+                mode: view.config.actions.mode,
+                allow_auto_prompt_send: view.config.actions.allow_auto_prompt_send,
+            },
+        );
     }
 }

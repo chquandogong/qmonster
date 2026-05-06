@@ -372,39 +372,177 @@ pub(crate) fn pending_actions_modal_rects(viewport: Rect) -> PendingActionsModal
     }
 }
 
-pub fn render_pending_actions_modal(
-    frame: &mut Frame<'_>,
+/// Top-border title, e.g. `"Pending Actions · 5 pending · 3 selected · a 다시로 닫기"`.
+/// The `· N selected` segment is omitted when multi-selected is empty.
+pub fn pending_actions_title(overlay: &PendingActionsOverlay, items: &[PendingItem]) -> String {
+    if overlay.multi_len() == 0 {
+        format!(
+            "Pending Actions \u{B7} {} pending \u{B7} a 다시로 닫기",
+            items.len()
+        )
+    } else {
+        format!(
+            "Pending Actions \u{B7} {} pending \u{B7} {} selected \u{B7} a 다시로 닫기",
+            items.len(),
+            overlay.multi_len(),
+        )
+    }
+}
+
+/// Bottom hint line text — multi-aware action counts.
+/// Returns the plain string. The renderer wraps it in dim/severity styles
+/// for `(0)` segments separately.
+pub fn pending_actions_hint_text(overlay: &PendingActionsOverlay, items: &[PendingItem]) -> String {
+    let (n_accept, n_clear, n_copy) = pending_actions_counts(overlay, items);
+    format!(
+        "Space toggle \u{B7} P/Y/A group \u{B7} c clear-sel \u{B7} p accept({n_accept}) \u{B7} d clear({n_clear}) \u{B7} y copy({n_copy}) \u{B7} a/Esc close"
+    )
+}
+
+fn pending_actions_counts(
     overlay: &PendingActionsOverlay,
     items: &[PendingItem],
-) {
-    let viewport = frame.area();
-    let area = pending_actions_modal_area(viewport);
-    frame.render_widget(Clear, area);
+) -> (usize, usize, usize) {
+    if overlay.multi_len() == 0 {
+        let cursor = items.get(overlay.selected());
+        let n_accept = match cursor {
+            Some(PendingItem::Proposal { .. }) => 1,
+            _ => 0,
+        };
+        let n_clear = if cursor.is_some() { 1 } else { 0 };
+        let n_copy = match cursor {
+            Some(PendingItem::Copy { .. }) => 1,
+            _ => 0,
+        };
+        return (n_accept, n_clear, n_copy);
+    }
+    let mut n_accept = 0;
+    let mut n_clear = 0;
+    let mut n_copy_present = 0;
+    for item in items {
+        let key = pending_item_key(item);
+        if !overlay.multi_contains(&key) {
+            continue;
+        }
+        match item {
+            PendingItem::Proposal { .. } => {
+                n_accept += 1;
+                n_clear += 1;
+            }
+            PendingItem::Copy { .. } => {
+                n_copy_present += 1;
+                n_clear += 1;
+            }
+        }
+    }
+    let n_copy = n_copy_present.min(1); // y dispatches the first one only
+    (n_accept, n_clear, n_copy)
+}
 
-    let title = format!(
-        "Pending Actions \u{B7} {} pending \u{B7} a again to close",
-        items.len()
-    );
+pub struct PendingActionsRenderCtx<'a> {
+    pub overlay: &'a PendingActionsOverlay,
+    pub items: &'a [PendingItem],
+    pub reports: &'a [crate::app::event_loop::PaneReport],
+    pub mode: crate::app::config::ActionsMode,
+    pub allow_auto_prompt_send: bool,
+}
+
+pub fn render_pending_actions_modal(frame: &mut Frame<'_>, ctx: PendingActionsRenderCtx<'_>) {
+    let PendingActionsRenderCtx {
+        overlay,
+        items,
+        reports,
+        mode,
+        allow_auto_prompt_send,
+    } = ctx;
+
+    let viewport = frame.area();
+    let rects = pending_actions_modal_rects(viewport);
+    frame.render_widget(Clear, rects.area);
+
+    let title = pending_actions_title(overlay, items);
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme::BORDER_ACTIVE));
+    frame.render_widget(block, rects.area);
 
-    let lines = pending_actions_lines(overlay, items);
+    // List pane.
+    let list_lines = pending_actions_lines(overlay, items);
     frame.render_widget(
-        Paragraph::new(lines)
-            .block(block)
-            .wrap(Wrap { trim: false }),
-        area,
+        Paragraph::new(list_lines).wrap(Wrap { trim: false }),
+        rects.list,
     );
+
+    // Separator + explainer pane.
+    let sep_block = if rects.explainer.x > rects.list.x + rects.list.width {
+        Block::default()
+            .borders(Borders::LEFT)
+            .border_style(Style::default().fg(theme::BORDER_ACTIVE))
+    } else {
+        Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(theme::BORDER_ACTIVE))
+    };
+    let inner_explainer = sep_block.inner(rects.explainer);
+    frame.render_widget(sep_block, rects.explainer);
+    let explainer_lines = explainer_lines_for_cursor(
+        overlay,
+        items,
+        reports,
+        mode,
+        allow_auto_prompt_send,
+        inner_explainer,
+    );
+    frame.render_widget(
+        Paragraph::new(explainer_lines).wrap(Wrap { trim: false }),
+        inner_explainer,
+    );
+
+    // Hint row.
+    let hint_text = pending_actions_hint_text(overlay, items);
+    frame.render_widget(
+        Paragraph::new(hint_text).style(Style::default().fg(theme::TEXT_DIM)),
+        rects.hint,
+    );
+
+    // [x] close button on the top border.
     frame.render_widget(
         Paragraph::new("[x]").style(
             Style::default()
                 .fg(theme::TEXT_PRIMARY)
                 .add_modifier(Modifier::BOLD),
         ),
-        close_button_rect(area),
+        close_button_rect(rects.area),
     );
+}
+
+fn explainer_lines_for_cursor(
+    overlay: &PendingActionsOverlay,
+    items: &[PendingItem],
+    reports: &[crate::app::event_loop::PaneReport],
+    mode: crate::app::config::ActionsMode,
+    allow_auto_prompt_send: bool,
+    body: Rect,
+) -> Vec<Line<'static>> {
+    use crate::app::pending_actions_overlay::build_explainer_view_for_item;
+    use crate::ui::action_explainer::render_explainer_lines;
+
+    let Some(cursor_item) = items.get(overlay.selected()) else {
+        return vec![Line::styled(
+            "Select an item to see what would happen.".to_string(),
+            Style::default().fg(theme::TEXT_DIM),
+        )];
+    };
+    let Some(view) =
+        build_explainer_view_for_item(cursor_item, reports, mode, allow_auto_prompt_send)
+    else {
+        return vec![Line::styled(
+            "(no live report available for this item)".to_string(),
+            Style::default().fg(theme::TEXT_DIM),
+        )];
+    };
+    render_explainer_lines(&view, body)
 }
 
 /// Build the styled body lines for the modal. Each item renders as
@@ -423,8 +561,6 @@ pub fn pending_actions_lines(
             "  No pending actions.".to_string(),
             Style::default().fg(theme::TEXT_DIM),
         ));
-        out.push(Line::from(""));
-        out.push(hint_line());
         return out;
     }
     out.push(Line::from(""));
@@ -482,16 +618,7 @@ pub fn pending_actions_lines(
         ];
         out.push(Line::from(spans));
     }
-    out.push(Line::from(""));
-    out.push(hint_line());
     out
-}
-
-fn hint_line() -> Line<'static> {
-    Line::styled(
-        "  Enter open explainer \u{B7} \u{2191}/\u{2193} navigate \u{B7} a close \u{B7} Esc close \u{B7} click [x] close".to_string(),
-        Style::default().fg(theme::TEXT_DIM),
-    )
 }
 
 fn severity_label(sev: Severity) -> &'static str {
@@ -696,10 +823,6 @@ mod tests {
             dump.contains("/clear"),
             "modal must show copy command: {dump}"
         );
-        assert!(
-            dump.contains("Enter open explainer"),
-            "modal must show hint row: {dump}"
-        );
     }
 
     #[test]
@@ -710,10 +833,6 @@ mod tests {
         assert!(
             dump.contains("No pending actions"),
             "empty state must render explanatory message: {dump}"
-        );
-        assert!(
-            dump.contains("Enter open explainer"),
-            "hint row stays even when empty: {dump}"
         );
     }
 
@@ -963,5 +1082,97 @@ mod tests {
             dump.contains("[x]"),
             "multi-selected row must render `[x]`: {dump}"
         );
+    }
+
+    #[test]
+    fn title_includes_selected_count_when_multi_non_empty() {
+        use crate::domain::origin::SourceKind;
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.toggle_multi(&item);
+        let title = pending_actions_title(&overlay, std::slice::from_ref(&item));
+        assert!(title.contains("1 pending"), "{title}");
+        assert!(title.contains("1 selected"), "{title}");
+    }
+
+    #[test]
+    fn title_omits_selected_count_when_empty() {
+        use crate::domain::origin::SourceKind;
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let overlay = PendingActionsOverlay::new();
+        let title = pending_actions_title(&overlay, std::slice::from_ref(&item));
+        assert!(title.contains("1 pending"));
+        assert!(
+            !title.contains("selected"),
+            "no selected segment when multi empty"
+        );
+    }
+
+    #[test]
+    fn hint_shows_action_counts_for_cursor_proposal_no_multi() {
+        use crate::domain::origin::SourceKind;
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let overlay = PendingActionsOverlay::new();
+        let hint = pending_actions_hint_text(&overlay, std::slice::from_ref(&item));
+        assert!(hint.contains("p accept(1)"), "{hint}");
+        assert!(hint.contains("d clear(1)"), "{hint}");
+        assert!(
+            hint.contains("y copy(0)"),
+            "cursor is proposal, not alert: {hint}"
+        );
+    }
+
+    #[test]
+    fn hint_shows_multi_counts() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::Severity;
+        let p = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let y = PendingItem::Copy {
+            alert_idx: 0,
+            command: "/clear".into(),
+            alert_title: "context-pressure".into(),
+            severity: Severity::Warning,
+            source: SourceKind::Estimated,
+            pane_idx: None,
+        };
+        let items = vec![p, y];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.toggle_group_all(&items);
+        let hint = pending_actions_hint_text(&overlay, &items);
+        assert!(hint.contains("p accept(1)"), "1 proposal in multi: {hint}");
+        assert!(hint.contains("d clear(2)"), "2 items in multi: {hint}");
+        assert!(hint.contains("y copy(1)"), "1 alert in multi: {hint}");
     }
 }
