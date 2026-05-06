@@ -21,8 +21,7 @@ use crate::app::modal_state::{
 };
 use crate::app::operator_actions::{version_refresh_notices, write_operator_snapshot};
 use crate::app::pending_actions_overlay::{
-    PendingActionsKeyOutcome, handle_pending_actions_overlay_key,
-    handle_pending_actions_overlay_mouse,
+    PendingActionsOutcome, handle_pending_actions_overlay_key, handle_pending_actions_overlay_mouse,
 };
 use crate::app::polling_tick::{PollTickState, handle_poll_tick};
 use crate::app::prompt_send_actions::handle_prompt_send_action;
@@ -334,21 +333,17 @@ where
                                 );
                                 let outcome = handle_pending_actions_overlay_key(
                                     &mut pending_actions,
-                                    items.len(),
+                                    &items,
                                     k.code,
                                 );
-                                if let PendingActionsKeyOutcome::EnterSelected(idx) = outcome {
-                                    dispatch_pending_action(
-                                        idx,
-                                        &items,
-                                        PendingActionDispatch {
-                                            dashboard: &mut dashboard,
-                                            action_explainer: &mut action_explainer,
-                                            pending_actions: &mut pending_actions,
-                                            focus: &mut focus,
-                                            config: &ctx.config,
-                                        },
-                                    );
+                                match outcome {
+                                    PendingActionsOutcome::None | PendingActionsOutcome::Closed => {
+                                    }
+                                    PendingActionsOutcome::AcceptItems(_)
+                                    | PendingActionsOutcome::ClearItems(_)
+                                    | PendingActionsOutcome::CopyItem(_) => {
+                                        // Filled in by Task 12.
+                                    }
                                 }
                                 continue;
                             }
@@ -773,6 +768,8 @@ where
 /// p/d/y-direct flows (snapshot identifying fields, build the same
 /// `ActionExplainView`) so confirm-time validation still catches a
 /// proposal vanish between Enter and `confirm_pending_action`.
+// Task 12 will delete this struct when it wires AcceptItems/ClearItems/CopyItem dispatch.
+#[allow(dead_code)]
 struct PendingActionDispatch<'a> {
     dashboard: &'a mut crate::app::dashboard_runtime::DashboardRuntimeState,
     action_explainer: &'a mut crate::app::action_explainer::ActionExplainModal,
@@ -781,6 +778,8 @@ struct PendingActionDispatch<'a> {
     config: &'a crate::app::config::QmonsterConfig,
 }
 
+// Task 12 will delete this function when it wires AcceptItems/ClearItems/CopyItem dispatch.
+#[allow(dead_code)]
 fn dispatch_pending_action(
     idx: usize,
     items: &[crate::ui::pending_actions::PendingItem],

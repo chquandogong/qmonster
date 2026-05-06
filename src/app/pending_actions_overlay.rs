@@ -1,62 +1,78 @@
-//! Phase v1.39 — key + mouse dispatchers for the Pending Actions
+//! Phase v1.40 — key + mouse dispatchers for the Pending Actions
 //! overlay. The overlay state and renderer live in
 //! `ui::pending_actions`; this module wires keystrokes to the
 //! overlay so `tui_loop` can stay slim.
-//!
-//! Pure dispatch — when the operator presses Enter, we return
-//! `EnterSelected(idx)` so the caller can look up the underlying
-//! `PendingItem`, drive `pane_state`/`alert_state` selection, and
-//! open the Action Explainer modal.
 
 use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
 use crate::ui::dashboard::close_button_rect;
-use crate::ui::pending_actions::{PendingActionsOverlay, pending_actions_modal_area};
+use crate::ui::pending_actions::{PendingActionsOverlay, PendingItem, pending_actions_modal_area};
 
-/// Outcome of a key press while the overlay is open. `None` = the
-/// dispatcher consumed the event but no action is needed; `Closed`
-/// = caller must mark the overlay closed (it's already closed in
-/// the overlay state by the time this returns); `EnterSelected(idx)`
-/// = caller must look up the item at `idx` and trigger the jump +
-/// Action Explainer flow.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PendingActionsKeyOutcome {
+/// Outcome of a key press while the overlay is open.
+///
+/// - `None`         — event consumed, no further action needed.
+/// - `Closed`       — overlay was closed (already reflected in overlay state).
+/// - `AcceptItems`  — operator confirmed accept for these item indices (Task 10/12).
+/// - `ClearItems`   — operator confirmed clear/reject for these item indices (Task 10/12).
+/// - `CopyItem`     — operator confirmed copy for this item index (Task 10/12).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PendingActionsOutcome {
     None,
     Closed,
-    EnterSelected(usize),
+    AcceptItems(Vec<usize>),
+    ClearItems(Vec<usize>),
+    CopyItem(usize),
 }
 
 pub fn handle_pending_actions_overlay_key(
     overlay: &mut PendingActionsOverlay,
-    items_len: usize,
+    items: &[PendingItem],
     code: KeyCode,
-) -> PendingActionsKeyOutcome {
+) -> PendingActionsOutcome {
     if !overlay.is_open() {
-        return PendingActionsKeyOutcome::None;
+        return PendingActionsOutcome::None;
     }
     match code {
         KeyCode::Char('a') | KeyCode::Char('q') | KeyCode::Esc => {
             overlay.close();
-            PendingActionsKeyOutcome::Closed
+            PendingActionsOutcome::Closed
         }
         KeyCode::Up | KeyCode::Char('k') => {
-            overlay.select_prev(items_len);
-            PendingActionsKeyOutcome::None
+            overlay.select_prev(items.len());
+            PendingActionsOutcome::None
         }
         KeyCode::Down | KeyCode::Char('j') => {
-            overlay.select_next(items_len);
-            PendingActionsKeyOutcome::None
+            overlay.select_next(items.len());
+            PendingActionsOutcome::None
         }
-        KeyCode::Enter => {
-            if items_len == 0 {
-                PendingActionsKeyOutcome::None
-            } else {
-                let idx = overlay.selected().min(items_len.saturating_sub(1));
-                PendingActionsKeyOutcome::EnterSelected(idx)
+        KeyCode::Char(' ') => {
+            if let Some(item) = items.get(overlay.selected()) {
+                overlay.toggle_multi(item);
             }
+            PendingActionsOutcome::None
         }
-        _ => PendingActionsKeyOutcome::None,
+        KeyCode::Char('P') => {
+            overlay.toggle_group_proposals(items);
+            PendingActionsOutcome::None
+        }
+        KeyCode::Char('Y') => {
+            overlay.toggle_group_alerts(items);
+            PendingActionsOutcome::None
+        }
+        KeyCode::Char('A') => {
+            overlay.toggle_group_all(items);
+            PendingActionsOutcome::None
+        }
+        KeyCode::Char('c') => {
+            overlay.clear_multi();
+            PendingActionsOutcome::None
+        }
+        KeyCode::Char('p') | KeyCode::Char('d') | KeyCode::Char('y') | KeyCode::Enter => {
+            // Dispatch keys filled in by Task 10.
+            PendingActionsOutcome::None
+        }
+        _ => PendingActionsOutcome::None,
     }
 }
 
@@ -87,7 +103,6 @@ use crate::app::action_explainer::{
 };
 use crate::app::config::ActionsMode;
 use crate::app::event_loop::PaneReport;
-use crate::ui::pending_actions::PendingItem;
 
 /// Build the `AcceptPromptSend` action for a proposal item, or `None`
 /// if the item is not a proposal. Used by the bulk `p` dispatch in
@@ -187,11 +202,27 @@ pub fn build_explainer_view_for_item(
 mod tests {
     use super::*;
 
+    fn make_three_proposals() -> Vec<crate::ui::pending_actions::PendingItem> {
+        use crate::domain::origin::SourceKind;
+        use crate::ui::pending_actions::PendingItem;
+        (0..3)
+            .map(|i| PendingItem::Proposal {
+                pane_idx: i,
+                pane_label: format!("pane {i}"),
+                slash_command: "/compact".into(),
+                severity: None,
+                source: SourceKind::ProjectCanonical,
+                proposal_id: format!("%{i}:/compact"),
+                target_pane_id: format!("%{i}"),
+            })
+            .collect()
+    }
+
     #[test]
     fn closed_overlay_swallows_keys() {
         let mut overlay = PendingActionsOverlay::new();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, 3, KeyCode::Enter);
-        assert_eq!(outcome, PendingActionsKeyOutcome::None);
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Enter);
+        assert_eq!(outcome, PendingActionsOutcome::None);
         assert!(!overlay.is_open());
     }
 
@@ -199,8 +230,8 @@ mod tests {
     fn a_key_closes_overlay() {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, 3, KeyCode::Char('a'));
-        assert_eq!(outcome, PendingActionsKeyOutcome::Closed);
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('a'));
+        assert_eq!(outcome, PendingActionsOutcome::Closed);
         assert!(!overlay.is_open());
     }
 
@@ -208,59 +239,48 @@ mod tests {
     fn q_and_esc_close_overlay() {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, 3, KeyCode::Esc);
-        assert_eq!(outcome, PendingActionsKeyOutcome::Closed);
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Esc);
+        assert_eq!(outcome, PendingActionsOutcome::Closed);
         assert!(!overlay.is_open());
 
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, 3, KeyCode::Char('q'));
-        assert_eq!(outcome, PendingActionsKeyOutcome::Closed);
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('q'));
+        assert_eq!(outcome, PendingActionsOutcome::Closed);
         assert!(!overlay.is_open());
     }
 
     #[test]
     fn arrow_keys_navigate() {
+        let items = make_three_proposals();
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, 3, KeyCode::Down);
-        assert_eq!(outcome, PendingActionsKeyOutcome::None);
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Down);
+        assert_eq!(outcome, PendingActionsOutcome::None);
         assert_eq!(overlay.selected(), 1);
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, 3, KeyCode::Up);
-        assert_eq!(outcome, PendingActionsKeyOutcome::None);
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Up);
+        assert_eq!(outcome, PendingActionsOutcome::None);
         assert_eq!(overlay.selected(), 0);
     }
 
     #[test]
     fn jk_navigates_like_arrows() {
+        let items = make_three_proposals();
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        handle_pending_actions_overlay_key(&mut overlay, 3, KeyCode::Char('j'));
-        handle_pending_actions_overlay_key(&mut overlay, 3, KeyCode::Char('j'));
+        handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('j'));
+        handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('j'));
         assert_eq!(overlay.selected(), 2);
-        handle_pending_actions_overlay_key(&mut overlay, 3, KeyCode::Char('k'));
+        handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('k'));
         assert_eq!(overlay.selected(), 1);
     }
 
     #[test]
-    fn enter_returns_selected_idx() {
+    fn enter_is_silently_swallowed() {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        handle_pending_actions_overlay_key(&mut overlay, 3, KeyCode::Down);
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, 3, KeyCode::Enter);
-        assert_eq!(outcome, PendingActionsKeyOutcome::EnterSelected(1));
-        assert!(
-            overlay.is_open(),
-            "Enter must NOT close the overlay; caller closes it after dispatch"
-        );
-    }
-
-    #[test]
-    fn enter_with_zero_items_is_no_op() {
-        let mut overlay = PendingActionsOverlay::new();
-        overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, 0, KeyCode::Enter);
-        assert_eq!(outcome, PendingActionsKeyOutcome::None);
+        let outcome = handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Enter);
+        assert_eq!(outcome, PendingActionsOutcome::None);
         assert!(overlay.is_open());
     }
 
@@ -352,5 +372,89 @@ mod tests {
             }
             _ => panic!("expected CopyAlertCommand"),
         }
+    }
+
+    #[test]
+    fn space_toggles_multi_on_cursor_item() {
+        use crate::domain::origin::SourceKind;
+        use crate::ui::pending_actions::{PendingItem, pending_item_key};
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            std::slice::from_ref(&item),
+            KeyCode::Char(' '),
+        );
+        assert_eq!(outcome, PendingActionsOutcome::None);
+        assert!(overlay.multi_contains(&pending_item_key(&item)));
+    }
+
+    #[test]
+    fn shift_p_toggles_proposal_group() {
+        use crate::domain::origin::SourceKind;
+        use crate::ui::pending_actions::PendingItem;
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        handle_pending_actions_overlay_key(
+            &mut overlay,
+            std::slice::from_ref(&item),
+            KeyCode::Char('P'),
+        );
+        assert_eq!(overlay.multi_len(), 1);
+        handle_pending_actions_overlay_key(
+            &mut overlay,
+            std::slice::from_ref(&item),
+            KeyCode::Char('P'),
+        );
+        assert_eq!(overlay.multi_len(), 0);
+    }
+
+    #[test]
+    fn c_clears_multi_only_keeps_cursor() {
+        use crate::domain::origin::SourceKind;
+        use crate::ui::pending_actions::PendingItem;
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        overlay.set_selected(0);
+        handle_pending_actions_overlay_key(
+            &mut overlay,
+            std::slice::from_ref(&item),
+            KeyCode::Char(' '),
+        );
+        assert_eq!(overlay.multi_len(), 1);
+        handle_pending_actions_overlay_key(
+            &mut overlay,
+            std::slice::from_ref(&item),
+            KeyCode::Char('c'),
+        );
+        assert_eq!(overlay.multi_len(), 0);
+        assert_eq!(overlay.selected(), 0, "c does not move the cursor");
     }
 }
