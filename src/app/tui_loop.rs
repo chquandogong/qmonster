@@ -478,9 +478,30 @@ where
                                     // Actions overlay. Toggle on `a`
                                     // again so the operator can dismiss
                                     // without reaching for Esc.
+                                    //
+                                    // v1.41 P1: on the FIRST open per
+                                    // session, also push a SystemNotice
+                                    // warning about the confirm_actions
+                                    // bypass (UI_MANUAL §8.7). Fires
+                                    // once per Qmonster process.
                                     if pending_actions.is_open() {
                                         pending_actions.close();
                                     } else {
+                                        if !pending_actions.seen_first_open() {
+                                            dashboard.push_notice(
+                                                crate::app::system_notice::SystemNotice {
+                                                    title: "a overlay: confirm_actions bypass"
+                                                        .into(),
+                                                    body: "p/d/y inside the Pending Actions overlay dispatch immediately, ignoring `[ux] confirm_actions`. The right-pane live explainer is the confirmation. (UI_MANUAL §8.7 — fired once per session.)".into(),
+                                                    severity:
+                                                        crate::domain::recommendation::Severity::Concern,
+                                                    source_kind:
+                                                        crate::domain::origin::SourceKind::ProjectCanonical,
+                                                },
+                                                Instant::now(),
+                                            );
+                                            pending_actions.mark_first_open_seen();
+                                        }
                                         pending_actions.open();
                                     }
                                 }

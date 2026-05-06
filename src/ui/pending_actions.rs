@@ -54,6 +54,11 @@ pub struct PendingActionsOverlay {
     // body, clamped to [LIST_WIDTH_WIDE_MIN, LIST_WIDTH_WIDE_MAX]).
     list_width_override: Option<u16>,
     resize_drag_anchor: Option<ResizeDragAnchor>,
+    /// v1.41: tracks whether the operator has opened this overlay at
+    /// least once in the current session. Used by `tui_loop` to fire
+    /// a one-time SystemNotice about the confirm_actions bypass.
+    /// Resets to false on Qmonster restart (not persisted).
+    seen_first_open: bool,
 }
 
 /// Anchor captured at title-row Down(Left). The drag handler computes
@@ -91,6 +96,7 @@ impl Default for PendingActionsOverlay {
             move_drag_anchor: None,
             list_width_override: None,
             resize_drag_anchor: None,
+            seen_first_open: false,
         }
     }
 }
@@ -119,6 +125,20 @@ impl PendingActionsOverlay {
     }
     pub fn is_open(&self) -> bool {
         self.open
+    }
+    /// v1.41: returns whether this overlay has been opened at least
+    /// once in the current session. `tui_loop` reads this on the `a`
+    /// key arm to decide whether to fire the one-time
+    /// confirm_actions-bypass SystemNotice. Resets to false on
+    /// Qmonster restart (not persisted).
+    pub fn seen_first_open(&self) -> bool {
+        self.seen_first_open
+    }
+    /// v1.41: marks the overlay as opened at least once in this
+    /// session. Call once, alongside the SystemNotice, on the FIRST
+    /// `a`-key open (not on subsequent opens, not on close).
+    pub fn mark_first_open_seen(&mut self) {
+        self.seen_first_open = true;
     }
     pub fn selected(&self) -> usize {
         self.selected
@@ -650,7 +670,7 @@ pub fn pending_actions_title(overlay: &PendingActionsOverlay, items: &[PendingIt
 pub fn pending_actions_hint_text(overlay: &PendingActionsOverlay, items: &[PendingItem]) -> String {
     let (n_accept, n_clear, n_copy) = pending_actions_counts(overlay, items);
     format!(
-        "Space toggle \u{B7} P/Y/A group \u{B7} c clear-sel \u{B7} p accept({n_accept}) \u{B7} d clear({n_clear}) \u{B7} y copy({n_copy}) \u{B7} [/]/, /. /= geom \u{B7} a/Esc close"
+        "Space toggle \u{B7} P/Y/A group \u{B7} c clear-sel \u{B7} p accept({n_accept}) \u{B7} d clear({n_clear}) \u{B7} y copy({n_copy}) \u{B7} [/]/, /. /= geom \u{B7} (confirm_actions bypass) \u{B7} a/Esc close"
     )
 }
 
@@ -1550,6 +1570,31 @@ mod tests {
             "must cap at 1 (y dispatches first only): {hint}"
         );
         assert!(!hint.contains("y copy(2)"), "must NOT show 2: {hint}");
+    }
+
+    #[test]
+    fn hint_text_includes_confirm_actions_bypass_chip() {
+        let overlay = PendingActionsOverlay::new();
+        let items: Vec<PendingItem> = Vec::new();
+        let hint = pending_actions_hint_text(&overlay, &items);
+        assert!(
+            hint.contains("(confirm_actions bypass)"),
+            "hint must surface the confirm_actions bypass chip: {hint}"
+        );
+    }
+
+    #[test]
+    fn seen_first_open_starts_false_and_persists_across_close_open() {
+        let mut o = PendingActionsOverlay::new();
+        assert!(!o.seen_first_open(), "fresh overlay starts with seen=false");
+        o.mark_first_open_seen();
+        o.open();
+        o.close();
+        o.open();
+        assert!(
+            o.seen_first_open(),
+            "seen flag persists across close/open in-session"
+        );
     }
 
     #[test]

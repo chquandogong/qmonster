@@ -773,12 +773,21 @@ dispatch로 확장되었습니다.
   처리할 수 있습니다.
 - 폴링 사이에 사라진 key는 자동 prune됩니다 (다음 render에서).
 
-**`[ux] confirm_actions` 무시**
+**⚠ `[ux] confirm_actions` 무시 (기본값 `always`와 의도적으로 다름)**
 
 a 오버레이 안의 `p`/`d`/`y`는 `confirm_actions = always | first_time | never`
-설정과 무관하게 즉시 dispatch됩니다 — 우측 라이브 explainer 패널이
-confirmation 역할을 합니다. 대시보드 직접 키(`p`/`d`/`y`)는 기존처럼
-설정값에 따라 Action Explainer 모달을 띄웁니다.
+설정과 **무관하게** 즉시 dispatch됩니다 — 우측 라이브 explainer 패널이
+confirmation 역할을 합니다. 운영자의 기본 안전 기대(`always`에서 모든
+dispatch는 별도 모달이 뜸)와 다른 부분이므로 다음을 확실히 인지하세요:
+
+- 대시보드 직접 키(`p`/`d`/`y`): 기존대로 `confirm_actions` 설정값에
+  따라 Action Explainer 모달을 띄움.
+- a 오버레이 안의 `p`/`d`/`y`: 즉시 dispatch. 우측 패널의
+  `Why now` / `Audit chain` / `Mode now` 줄로 "무엇이 일어날지"를
+  먼저 확인할 책임은 운영자에게 있음.
+
+`always`의 모달 대기 동작이 필요하다면 a 오버레이를 닫고 대시보드의
+직접 키를 사용하세요.
 
 **Mode 차단 표시**
 
