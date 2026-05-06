@@ -10,7 +10,7 @@
 //! the overlay and (potentially) future surfaces, so it lives here
 //! to avoid a circular dependency with `ui::alerts`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Instant;
 
 use ratatui::Frame;
@@ -33,6 +33,7 @@ use crate::ui::theme;
 pub struct PendingActionsOverlay {
     open: bool,
     selected: usize,
+    multi_selected: BTreeSet<String>,
 }
 
 impl PendingActionsOverlay {
@@ -42,16 +43,21 @@ impl PendingActionsOverlay {
     pub fn open(&mut self) {
         self.open = true;
         self.selected = 0;
+        // multi_selected stays empty (default already empty); explicit no-op.
     }
     pub fn close(&mut self) {
         self.open = false;
         self.selected = 0;
+        self.multi_selected.clear();
     }
     pub fn is_open(&self) -> bool {
         self.open
     }
     pub fn selected(&self) -> usize {
         self.selected
+    }
+    pub fn set_selected(&mut self, idx: usize) {
+        self.selected = idx;
     }
     /// Move the cursor down, clamping to the last item. `total = 0`
     /// keeps the cursor at 0 (no items, no selection drift).
@@ -66,6 +72,71 @@ impl PendingActionsOverlay {
     /// Move the cursor up, clamping to 0.
     pub fn select_prev(&mut self, _total: usize) {
         self.selected = self.selected.saturating_sub(1);
+    }
+
+    // --- multi-select ----------------------------------------------------
+
+    pub fn multi_len(&self) -> usize {
+        self.multi_selected.len()
+    }
+    pub fn multi_contains(&self, key: &str) -> bool {
+        self.multi_selected.contains(key)
+    }
+    pub fn multi_keys(&self) -> impl Iterator<Item = &String> {
+        self.multi_selected.iter()
+    }
+    pub fn clear_multi(&mut self) {
+        self.multi_selected.clear();
+    }
+    pub fn toggle_multi(&mut self, item: &PendingItem) {
+        let key = pending_item_key(item);
+        if !self.multi_selected.remove(&key) {
+            self.multi_selected.insert(key);
+        }
+    }
+
+    /// Toggle all proposal items: select-all if not all are selected, otherwise clear-all.
+    pub fn toggle_group_proposals(&mut self, items: &[PendingItem]) {
+        self.toggle_group_filtered(items, |it| matches!(it, PendingItem::Proposal { .. }));
+    }
+    /// Toggle all alert (copy) items.
+    pub fn toggle_group_alerts(&mut self, items: &[PendingItem]) {
+        self.toggle_group_filtered(items, |it| matches!(it, PendingItem::Copy { .. }));
+    }
+    /// Toggle every item in the list.
+    pub fn toggle_group_all(&mut self, items: &[PendingItem]) {
+        self.toggle_group_filtered(items, |_| true);
+    }
+
+    fn toggle_group_filtered(
+        &mut self,
+        items: &[PendingItem],
+        filter: impl Fn(&PendingItem) -> bool,
+    ) {
+        let group_keys: Vec<String> = items
+            .iter()
+            .filter(|it| filter(it))
+            .map(pending_item_key)
+            .collect();
+        if group_keys.is_empty() {
+            return;
+        }
+        let all_selected = group_keys.iter().all(|k| self.multi_selected.contains(k));
+        if all_selected {
+            for k in &group_keys {
+                self.multi_selected.remove(k);
+            }
+        } else {
+            for k in group_keys {
+                self.multi_selected.insert(k);
+            }
+        }
+    }
+
+    /// Drop multi-select keys whose item is not in `items`.
+    pub fn prune_to(&mut self, items: &[PendingItem]) {
+        let live: BTreeSet<String> = items.iter().map(pending_item_key).collect();
+        self.multi_selected.retain(|k| live.contains(k));
     }
 }
 
@@ -120,6 +191,20 @@ impl PendingItem {
             PendingItem::Proposal { pane_label, .. } => pane_label.as_str(),
             PendingItem::Copy { alert_title, .. } => alert_title.as_str(),
         }
+    }
+}
+
+/// Stable string key for a `PendingItem`, used to track multi-select
+/// across polling refreshes. `\u{1F}` (unit separator) prevents `:`
+/// collisions in alert titles that contain colons.
+pub fn pending_item_key(item: &PendingItem) -> String {
+    match item {
+        PendingItem::Proposal { proposal_id, .. } => format!("p:{proposal_id}"),
+        PendingItem::Copy {
+            alert_title,
+            command,
+            ..
+        } => format!("y:{alert_title}\u{1F}{command}"),
     }
 }
 
@@ -565,5 +650,159 @@ mod tests {
             dump.contains("Enter open explainer"),
             "hint row stays even when empty: {dump}"
         );
+    }
+
+    #[test]
+    fn pending_item_key_proposal_uses_proposal_id() {
+        use crate::domain::origin::SourceKind;
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        assert_eq!(pending_item_key(&item), "p:%1:/compact");
+    }
+
+    #[test]
+    fn pending_item_key_copy_uses_title_command() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::Severity;
+        let item = PendingItem::Copy {
+            alert_idx: 0,
+            command: "/clear".into(),
+            alert_title: "context-pressure".into(),
+            severity: Severity::Warning,
+            source: SourceKind::Estimated,
+            pane_idx: None,
+        };
+        let key = pending_item_key(&item);
+        assert!(key.starts_with("y:context-pressure"));
+        assert!(key.ends_with("/clear"));
+    }
+
+    #[test]
+    fn toggle_multi_adds_then_removes() {
+        use crate::domain::origin::SourceKind;
+        let mut o = PendingActionsOverlay::new();
+        o.open();
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let key = pending_item_key(&item);
+        o.toggle_multi(&item);
+        assert!(o.multi_contains(&key));
+        o.toggle_multi(&item);
+        assert!(!o.multi_contains(&key));
+    }
+
+    #[test]
+    fn close_clears_multi_selected() {
+        use crate::domain::origin::SourceKind;
+        let mut o = PendingActionsOverlay::new();
+        o.open();
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        o.toggle_multi(&item);
+        o.close();
+        assert_eq!(o.multi_len(), 0);
+    }
+
+    #[test]
+    fn group_toggle_p_selects_then_deselects_all_proposals() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::Severity;
+        let proposal = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let copy = PendingItem::Copy {
+            alert_idx: 0,
+            command: "/clear".into(),
+            alert_title: "context-pressure".into(),
+            severity: Severity::Warning,
+            source: SourceKind::Estimated,
+            pane_idx: None,
+        };
+        let items = vec![proposal, copy];
+
+        let mut o = PendingActionsOverlay::new();
+        o.open();
+        o.toggle_group_proposals(&items);
+        assert_eq!(o.multi_len(), 1, "all proposals selected");
+        o.toggle_group_proposals(&items);
+        assert_eq!(o.multi_len(), 0, "all proposals deselected");
+    }
+
+    #[test]
+    fn group_toggle_a_selects_then_deselects_all_items() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::Severity;
+        let proposal = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let copy = PendingItem::Copy {
+            alert_idx: 0,
+            command: "/clear".into(),
+            alert_title: "context-pressure".into(),
+            severity: Severity::Warning,
+            source: SourceKind::Estimated,
+            pane_idx: None,
+        };
+        let items = vec![proposal, copy];
+        let mut o = PendingActionsOverlay::new();
+        o.open();
+        o.toggle_group_all(&items);
+        assert_eq!(o.multi_len(), 2);
+        o.toggle_group_all(&items);
+        assert_eq!(o.multi_len(), 0);
+    }
+
+    #[test]
+    fn auto_prune_drops_keys_no_longer_in_items() {
+        use crate::domain::origin::SourceKind;
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let mut o = PendingActionsOverlay::new();
+        o.open();
+        o.toggle_multi(&item);
+        assert_eq!(o.multi_len(), 1);
+        // items now empty (the proposal vanished between polls)
+        o.prune_to(&[]);
+        assert_eq!(o.multi_len(), 0);
     }
 }
