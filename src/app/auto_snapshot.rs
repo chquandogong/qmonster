@@ -94,6 +94,9 @@ mod tests {
         assert!(!d.matches(QuotaKind::Weekly, 1_700_000_000));
         d.set(QuotaKind::Weekly, 1_700_000_000);
         assert!(d.matches(QuotaKind::Weekly, 1_700_000_000));
+        // Setting Weekly must NOT clear FiveHour — guards against a
+        // copy-paste field-swap regression in `set`.
+        assert!(d.matches(QuotaKind::FiveHour, 1_700_000_000));
     }
 
     #[test]
