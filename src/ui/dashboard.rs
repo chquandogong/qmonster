@@ -870,7 +870,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("Mouse double", "toggle hide on the clicked alert"),
         (
             "Mouse drag",
-            "drag the divider between Alerts and Panes to resize them; drag the m overlay's title row to move the modal",
+            "drag the divider between Alerts and Panes to resize them; drag the m or a overlay's title row to move the modal; drag the a overlay's list/explainer separator to resize the split",
         ),
         (
             "Severity chip",
@@ -908,7 +908,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "a",
-            "open Pending Actions overlay (live explainer + multi-select bulk dispatch): lists every pane with a pending p/d proposal AND every alert with a y-copyable command; Space=toggle selection, P/Y/A=group toggle, c=clear; p/d/y dispatch selected items bypassing confirm_actions; a again or Esc/q/[x] close",
+            "open Pending Actions overlay (live explainer + multi-select bulk dispatch + size/ratio adjustability): lists every pane with a pending p/d proposal AND every alert with a y-copyable command; Space=toggle selection, P/Y/A=group toggle, c=clear; p/d/y dispatch selected items bypassing confirm_actions; [/] resize modal, ,/. resize list pane, = reset all geometry; drag title row to move, drag separator to resize ratio; a again or Esc/q/[x] close",
         ),
         ("Space", "toggle multi-select on cursor item (a overlay)"),
         (

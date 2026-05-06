@@ -632,7 +632,7 @@ pub fn pending_actions_title(overlay: &PendingActionsOverlay, items: &[PendingIt
 pub fn pending_actions_hint_text(overlay: &PendingActionsOverlay, items: &[PendingItem]) -> String {
     let (n_accept, n_clear, n_copy) = pending_actions_counts(overlay, items);
     format!(
-        "Space toggle \u{B7} P/Y/A group \u{B7} c clear-sel \u{B7} p accept({n_accept}) \u{B7} d clear({n_clear}) \u{B7} y copy({n_copy}) \u{B7} a/Esc close"
+        "Space toggle \u{B7} P/Y/A group \u{B7} c clear-sel \u{B7} p accept({n_accept}) \u{B7} d clear({n_clear}) \u{B7} y copy({n_copy}) \u{B7} [/]/, /. /= geom \u{B7} a/Esc close"
     )
 }
 
@@ -1671,5 +1671,69 @@ mod tests {
         let overridden = wide_mode_list_width(158, Some(50));
         assert_ne!(auto, overridden);
         assert_eq!(overridden, 50);
+    }
+
+    #[test]
+    fn modal_area_zero_offset_centers_modal() {
+        let viewport = Rect::new(0, 0, 200, 80);
+        let r = pending_actions_modal_area(viewport, 80, 65, 0, 0);
+        let expected_w = 200 * 80 / 100;
+        let expected_h = 80 * 65 / 100;
+        assert_eq!(r.width, expected_w);
+        assert_eq!(r.height, expected_h);
+        assert_eq!(r.x, viewport.x + (viewport.width - expected_w) / 2);
+        assert_eq!(r.y, viewport.y + (viewport.height - expected_h) / 2);
+    }
+
+    #[test]
+    fn modal_area_positive_offset_moves_right_down() {
+        let viewport = Rect::new(0, 0, 200, 80);
+        let r0 = pending_actions_modal_area(viewport, 80, 65, 0, 0);
+        let r1 = pending_actions_modal_area(viewport, 80, 65, 5, 3);
+        assert_eq!(r1.x, r0.x + 5);
+        assert_eq!(r1.y, r0.y + 3);
+    }
+
+    #[test]
+    fn modal_area_left_clamp_snaps_to_viewport_x() {
+        // Non-origin viewport so the snap-to-zero shortcut can't hide a bug.
+        let viewport = Rect::new(20, 5, 200, 80);
+        let r = pending_actions_modal_area(viewport, 50, 50, i16::MIN, 0);
+        assert_eq!(
+            r.x, viewport.x,
+            "left edge is hard bound — modal can't extend past viewport.x"
+        );
+    }
+
+    #[test]
+    fn modal_area_right_clamp_keeps_4_cells_visible() {
+        let viewport = Rect::new(20, 5, 200, 80);
+        let r = pending_actions_modal_area(viewport, 50, 50, i16::MAX, 0);
+        let visible_right = (viewport.x + viewport.width).saturating_sub(r.x);
+        assert!(
+            visible_right >= 4,
+            "right clamp must leave ≥ 4 cells inside viewport (got {visible_right})"
+        );
+    }
+
+    #[test]
+    fn modal_area_top_clamp_snaps_to_viewport_y() {
+        let viewport = Rect::new(20, 5, 200, 80);
+        let r = pending_actions_modal_area(viewport, 50, 50, 0, i16::MIN);
+        assert_eq!(
+            r.y, viewport.y,
+            "top edge is hard bound — modal can't extend past viewport.y"
+        );
+    }
+
+    #[test]
+    fn modal_area_bottom_clamp_keeps_1_row_visible() {
+        let viewport = Rect::new(20, 5, 200, 80);
+        let r = pending_actions_modal_area(viewport, 50, 50, 0, i16::MAX);
+        let visible_height = (viewport.y + viewport.height).saturating_sub(r.y);
+        assert!(
+            visible_height >= 1,
+            "bottom clamp must leave ≥ 1 row inside viewport (got {visible_height})"
+        );
     }
 }

@@ -134,8 +134,8 @@ pub fn handle_pending_actions_overlay_mouse(
     if wide_mode {
         let separator_col = rects.explainer.x;
         if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
-            && event.row > rects.area.y // not the title row
-            && event.row + 1 < rects.area.y + rects.area.height // not the hint row
+            && event.row >= rects.list.y
+            && event.row < rects.list.y + rects.list.height
             && event.column + 1 >= separator_col
             && event.column < separator_col + 2
         {
@@ -1027,15 +1027,66 @@ mod tests {
     }
 
     #[test]
-    fn separator_drag_does_not_start_in_title_or_body() {
+    fn separator_drag_does_not_start_on_title_row() {
+        use crate::ui::pending_actions::pending_actions_modal_rects;
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let viewport = Rect::new(0, 0, 200, 80);
+        let rects = pending_actions_modal_rects(viewport, &overlay);
+        let separator_col = rects.explainer.x;
+        let title_row = rects.area.y; // top border row
+        let items: Vec<crate::ui::pending_actions::PendingItem> = Vec::new();
+        handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(
+                MouseEventKind::Down(MouseButton::Left),
+                separator_col,
+                title_row,
+            ),
+        );
+        assert!(
+            overlay.resize_drag_anchor().is_none(),
+            "click on title row at separator column must not start resize drag (title-row drag belongs to move)",
+        );
+    }
+
+    #[test]
+    fn separator_drag_does_not_start_on_hint_row() {
+        use crate::ui::pending_actions::pending_actions_modal_rects;
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let viewport = Rect::new(0, 0, 200, 80);
+        let rects = pending_actions_modal_rects(viewport, &overlay);
+        let separator_col = rects.explainer.x;
+        let hint_row = rects.hint.y;
+        let items: Vec<crate::ui::pending_actions::PendingItem> = Vec::new();
+        handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(
+                MouseEventKind::Down(MouseButton::Left),
+                separator_col,
+                hint_row,
+            ),
+        );
+        assert!(
+            overlay.resize_drag_anchor().is_none(),
+            "click on hint row at separator column must not start resize drag",
+        );
+    }
+
+    #[test]
+    fn separator_drag_does_not_start_in_list_body() {
         use crate::ui::pending_actions::pending_actions_modal_rects;
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
         let viewport = Rect::new(0, 0, 200, 80);
         let rects = pending_actions_modal_rects(viewport, &overlay);
         let items: Vec<crate::ui::pending_actions::PendingItem> = Vec::new();
-        // Click in the body, not on the separator zone.
-        let body_col = rects.list.x + 5; // well inside the list
+        let body_col = rects.list.x + 5; // well inside the list, not on the separator
         let body_row = rects.area.y + 3;
         handle_pending_actions_overlay_mouse(
             &mut overlay,
@@ -1045,7 +1096,7 @@ mod tests {
         );
         assert!(
             overlay.resize_drag_anchor().is_none(),
-            "click in list body must not start separator drag"
+            "click in list body must not start resize drag",
         );
     }
 }
