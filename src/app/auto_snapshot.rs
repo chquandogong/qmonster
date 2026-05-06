@@ -7,7 +7,12 @@
 //! nearest minute) so all ticks inside a single reset window
 //! agree on the same key.
 
-use crate::domain::recommendation::Recommendation;
+use crate::app::system_notice::SystemNotice;
+use crate::domain::audit::{AuditEvent, AuditEventKind};
+use crate::domain::origin::SourceKind;
+use crate::domain::recommendation::{Recommendation, Severity};
+use crate::store::sink::EventSink;
+use crate::store::{SnapshotInput, SnapshotWriter};
 
 /// Per-pane, per-quota-window dedup state for Phase H.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -30,7 +35,6 @@ pub enum QuotaKind {
 }
 
 impl QuotaKind {
-    #[allow(dead_code)] // used in Tasks 4-5 (Phase H)
     pub(crate) fn label(self) -> &'static str {
         match self {
             QuotaKind::FiveHour => "5h",
@@ -92,13 +96,6 @@ pub fn extract_quota_kind(rec: &Recommendation) -> Option<QuotaKind> {
         _ => None,
     }
 }
-
-use crate::app::system_notice::SystemNotice;
-use crate::domain::audit::{AuditEvent, AuditEventKind};
-use crate::domain::origin::SourceKind;
-use crate::domain::recommendation::Severity;
-use crate::store::sink::EventSink;
-use crate::store::{SnapshotInput, SnapshotWriter};
 
 /// Phase H entry point. Inspects `recs` for any
 /// `snapshot_before_reset` recommendations and, when
@@ -197,8 +194,8 @@ pub fn maybe_auto_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::origin::SourceKind;
-    use crate::domain::recommendation::{Recommendation, Severity};
+    use crate::store::{InMemorySink, paths::QmonsterPaths};
+    use tempfile::TempDir;
 
     fn make_rec(action: &'static str) -> Recommendation {
         Recommendation {
@@ -328,12 +325,6 @@ mod tests {
         assert_eq!(floor_to_minute(120), 120);
         assert_eq!(floor_to_minute(121), 120);
     }
-
-    use crate::app::system_notice::SystemNotice;
-    use crate::domain::audit::AuditEventKind;
-    use crate::store::paths::QmonsterPaths;
-    use crate::store::{InMemorySink, SnapshotWriter};
-    use tempfile::TempDir;
 
     fn make_snapshot_5h_rec() -> Recommendation {
         make_rec(SNAPSHOT_5H_ACTION)
