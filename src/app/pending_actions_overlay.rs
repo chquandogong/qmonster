@@ -128,11 +128,13 @@ pub fn handle_pending_actions_overlay_mouse(
         return PendingActionsOutcome::None;
     }
 
-    // Wheel: scroll the cursor.
-    match event.kind {
-        MouseEventKind::ScrollUp => overlay.select_prev(items.len()),
-        MouseEventKind::ScrollDown => overlay.select_next(items.len()),
-        _ => {}
+    // Wheel inside the modal scrolls the cursor (spec §5.9).
+    if crate::app::keymap::rect_contains(rects.area, event.column, event.row) {
+        match event.kind {
+            MouseEventKind::ScrollUp => overlay.select_prev(items.len()),
+            MouseEventKind::ScrollDown => overlay.select_next(items.len()),
+            _ => {}
+        }
     }
 
     // Swallow everything else (no leak to dashboard).
@@ -735,6 +737,7 @@ mod tests {
 
     #[test]
     fn wheel_moves_cursor() {
+        use crate::ui::pending_actions::pending_actions_modal_rects;
         let items = vec![
             fixture_proposal("%1", "/compact"),
             fixture_proposal("%2", "/clear"),
@@ -743,18 +746,21 @@ mod tests {
         overlay.open();
         overlay.set_selected(0);
         let viewport = Rect::new(0, 0, 200, 80);
+        let rects = pending_actions_modal_rects(viewport);
+        let inside_col = rects.area.x + 5;
+        let inside_row = rects.area.y + 5;
         handle_pending_actions_overlay_mouse(
             &mut overlay,
             viewport,
             &items,
-            mouse_event(MouseEventKind::ScrollDown, 0, 0),
+            mouse_event(MouseEventKind::ScrollDown, inside_col, inside_row),
         );
         assert_eq!(overlay.selected(), 1);
         handle_pending_actions_overlay_mouse(
             &mut overlay,
             viewport,
             &items,
-            mouse_event(MouseEventKind::ScrollUp, 0, 0),
+            mouse_event(MouseEventKind::ScrollUp, inside_col, inside_row),
         );
         assert_eq!(overlay.selected(), 0);
     }
@@ -777,5 +783,55 @@ mod tests {
         );
         assert_eq!(outcome, PendingActionsOutcome::Closed);
         assert!(!overlay.is_open());
+    }
+
+    #[test]
+    fn click_explainer_is_noop() {
+        use crate::ui::pending_actions::pending_actions_modal_rects;
+        let items = vec![fixture_proposal("%1", "/compact")];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let viewport = Rect::new(0, 0, 200, 80);
+        let rects = pending_actions_modal_rects(viewport);
+        let outcome = handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(
+                MouseEventKind::Down(MouseButton::Left),
+                rects.explainer.x + 5,
+                rects.explainer.y + 1,
+            ),
+        );
+        assert_eq!(outcome, PendingActionsOutcome::None);
+        assert_eq!(overlay.selected(), 0);
+        assert_eq!(overlay.multi_len(), 0);
+        assert!(
+            overlay.is_open(),
+            "click on explainer must NOT close the overlay"
+        );
+    }
+
+    #[test]
+    fn wheel_outside_modal_is_noop() {
+        let items = vec![
+            fixture_proposal("%1", "/compact"),
+            fixture_proposal("%2", "/clear"),
+        ];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        overlay.set_selected(0);
+        let viewport = Rect::new(0, 0, 200, 80);
+        handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(MouseEventKind::ScrollDown, 0, 0),
+        );
+        assert_eq!(
+            overlay.selected(),
+            0,
+            "wheel outside modal must not scroll the overlay's cursor"
+        );
     }
 }
