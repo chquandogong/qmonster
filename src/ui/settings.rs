@@ -1672,6 +1672,11 @@ fn build_parameter_body_lines(
             ),
         ),
         setting_row(
+            "reset auto_snapshot",
+            on_off(config.reset.auto_snapshot).to_string(),
+            on_off(defaults.reset.auto_snapshot).to_string(),
+        ),
+        setting_row(
             "cost budget_usd",
             format!("${:.2}", config.cost.budget_usd),
             format!("${:.2}", defaults.cost.budget_usd),
@@ -1772,7 +1777,7 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
         rule_row(
             "snapshot before reset",
             format!(
-                "any eta <= {} and pressure >= {}; suggests s snapshot",
+                "any eta <= {} and pressure >= {}; suggests s snapshot (auto when [reset] auto_snapshot = true)",
                 seconds_label(config.reset.snapshot_eta_secs),
                 pct_label(f64::from(config.reset.snapshot_pressure_threshold))
             ),
@@ -2497,6 +2502,43 @@ mod tests {
         assert!(rendered.contains("reset sources"));
         assert!(rendered.contains("identity drift"));
         assert!(rendered.contains("security.identity_drift_findings = on"));
+        // Phase H: annotation telling operators the rule has an actuation hook
+        assert!(rendered.contains("auto when [reset] auto_snapshot = true"));
+    }
+
+    #[test]
+    fn parameters_tab_shows_reset_auto_snapshot_row() {
+        // default: auto_snapshot = false
+        let config_default = cfg();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        let rendered_default = rendered_text(&build_body_lines(&s, &config_default));
+        assert!(
+            rendered_default.contains("reset auto_snapshot"),
+            "Parameters tab must have a reset auto_snapshot row"
+        );
+        assert!(
+            rendered_default.contains("off"),
+            "default auto_snapshot must render as 'off'"
+        );
+
+        // non-default: auto_snapshot = true
+        let mut config_on = cfg();
+        config_on.reset.auto_snapshot = true;
+        let rendered_on = rendered_text(&build_body_lines(&s, &config_on));
+        assert!(
+            rendered_on.contains("reset auto_snapshot"),
+            "Parameters tab must have a reset auto_snapshot row when enabled"
+        );
+        assert!(
+            rendered_on.contains("on"),
+            "enabled auto_snapshot must render as 'on'"
+        );
+        assert!(
+            rendered_on.contains("default off"),
+            "enabled auto_snapshot must show 'default off'"
+        );
     }
 
     #[test]
