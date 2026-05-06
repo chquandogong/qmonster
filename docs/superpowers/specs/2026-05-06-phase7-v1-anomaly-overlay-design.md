@@ -120,15 +120,28 @@ Mapping is detector-specific and documented in
 
 Each detector returns `None` when its upstream gate is off, when
 sample count is insufficient, or when the threshold is not met.
-The orchestrator collects the four `Option<AnomalySignal>` values,
-filters by `min_confidence`, and applies a per-`(pane_id, kind,
-window_start)` dedup so the same anomaly is not re-emitted while
-its window is still open.
+The orchestrator collects the four `Option<AnomalySignal>` values
+and filters by `min_confidence`.
 
-The `window_start` for dedup is derived as `now -
-(window_polls * poll_interval_secs)` rounded to the nearest minute.
-A new window begins when the rolling-history slice advances past
-the previously-seen `window_start`.
+Dedup is **edge-triggered**, not window-keyed. Per `(pane_id,
+kind)`, the runtime tracks `last_emitted_at: Option<u64>`:
+
+- Detector returns `Some` and `last_emitted_at` is `None` ⇒ emit
+  one `AnomalySignal`, set `last_emitted_at = now`.
+- Detector returns `Some` while `last_emitted_at` is `Some` ⇒
+  suppress (the anomaly is still active inside the same rolling
+  window, the operator already saw it).
+- Detector returns `None` while `last_emitted_at` is `Some` ⇒
+  clear `last_emitted_at = None` (window has closed; rearm).
+- Detector returns `Some` again after rearm ⇒ emit fresh.
+
+This avoids the floating-window problem of using
+`now − (window_polls * poll_interval)` as a key (the value slides
+every tick, so two ticks of the same anomaly would never agree on
+the same key). The state lives in `dashboard_runtime` next to
+the existing per-pane history maps. In-memory only; a process
+restart simply rearms every detector at startup, allowing one
+fresh emission for any still-active anomaly — acceptable for v1.
 
 ## 6. Data flow (per poll tick)
 
@@ -139,10 +152,14 @@ poll → SignalSet
      → rules::anomaly::eval_anomalies(pane_id, signals, runtime_history, gates, now)
          ├─ if !gates.anomaly_enabled                → return Vec::new()
          ├─ for kind in {IdentityChurn, ErrorBurst, CacheDiscontinuity, CrossPaneEditCluster}:
-         │   ├─ signal = detect_<kind>(history, gates)?  // Option<AnomalySignal>
+         │   ├─ raw = detect_<kind>(history, gates)  // Option<AnomalySignal>
+         │   ├─ apply edge-triggered dedup against last_emitted_at[(pane_id, kind)]:
+         │   │     - raw=Some + last_emitted=None  → emit; last_emitted_at = now
+         │   │     - raw=Some + last_emitted=Some  → suppress
+         │   │     - raw=None + last_emitted=Some  → rearm (last_emitted = None)
+         │   │     - raw=None + last_emitted=None  → no-op
          │   ├─ filter by gates.anomaly_min_confidence
-         │   ├─ check (pane_id, kind, window_start) dedup
-         │   └─ push when fresh
+         │   └─ push to result when emitted
          └─ return Vec<AnomalySignal>
  → PaneReport.anomalies = result          [new field]
  → ui render
@@ -213,22 +230,22 @@ per pane (in m overlay)` documenting the source ("aggregated
 
 ## 10. Test plan
 
-| Test                                             | Kind        | Asserts                                                                                                                                 |
-| ------------------------------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `anomaly_disabled_by_default`                    | unit        | `AnomalyConfig::default().enabled == false`. Missing `[anomaly]` section yields the same.                                               |
-| `anomaly_disabled_returns_empty`                 | unit        | `gates.anomaly_enabled = false` ⇒ `eval_anomalies` returns empty `Vec` regardless of input history.                                     |
-| `detect_identity_churn_positive`                 | unit        | Synthetic D2 history with 4 flips inside window ⇒ `Some(AnomalySignal { kind: IdentityChurn, confidence: Medium, evidence_count: 1 })`. |
-| `detect_identity_churn_below_threshold`          | unit        | 2 flips inside window ⇒ `None`.                                                                                                         |
-| `detect_error_burst_positive`                    | unit        | F-9 history with 12/20 errors ⇒ `Some(AnomalySignal { kind: ErrorBurst, … })`.                                                          |
-| `detect_error_burst_below_threshold`             | unit        | 6/20 errors ⇒ `None`.                                                                                                                   |
-| `detect_cache_discontinuity_drop_positive`       | unit        | Cache hit ratio drops 0.85 → 0.41 inside window ⇒ `Some(AnomalySignal { kind: CacheDiscontinuity, … })`.                                |
-| `detect_cache_discontinuity_repeated_drift`      | unit        | F-7b fires twice inside window without a 30 % drop ⇒ still `Some(AnomalySignal)` (alternate trigger path).                              |
-| `detect_cross_pane_edit_cluster_positive`        | unit        | F-8 emits 4 findings on `/abs/foo.rs` inside window ⇒ `Some(AnomalySignal { kind: CrossPaneEditCluster, … })`.                          |
-| `detect_cross_pane_edit_cluster_different_paths` | unit        | 4 findings spread across 4 different paths ⇒ `None` (cluster requires same path).                                                       |
-| `anomaly_min_confidence_filter`                  | unit        | Detector emits Medium signal; `gates.anomaly_min_confidence = High` ⇒ filtered out.                                                     |
-| `anomaly_dedup_window`                           | unit        | Same pane + kind + window_start across two ticks ⇒ second tick emits empty.                                                             |
-| `anomaly_event_loop_integration`                 | integration | Synthetic input drives an IdentityChurn detection ⇒ `PaneReport.anomalies` length 1, m-overlay snapshot shows the new row.              |
-| `anomaly_off_baseline_regression`                | integration | Default config (`enabled = false`) drives the same input ⇒ `PaneReport.anomalies` empty, m-overlay layout matches v1.42.0 baseline.     |
+| Test                                             | Kind        | Asserts                                                                                                                                               |
+| ------------------------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `anomaly_disabled_by_default`                    | unit        | `AnomalyConfig::default().enabled == false`. Missing `[anomaly]` section yields the same.                                                             |
+| `anomaly_disabled_returns_empty`                 | unit        | `gates.anomaly_enabled = false` ⇒ `eval_anomalies` returns empty `Vec` regardless of input history.                                                   |
+| `detect_identity_churn_positive`                 | unit        | Synthetic D2 history with 4 flips inside window ⇒ `Some(AnomalySignal { kind: IdentityChurn, confidence: Medium, evidence_count: 1 })`.               |
+| `detect_identity_churn_below_threshold`          | unit        | 2 flips inside window ⇒ `None`.                                                                                                                       |
+| `detect_error_burst_positive`                    | unit        | F-9 history with 12/20 errors ⇒ `Some(AnomalySignal { kind: ErrorBurst, … })`.                                                                        |
+| `detect_error_burst_below_threshold`             | unit        | 6/20 errors ⇒ `None`.                                                                                                                                 |
+| `detect_cache_discontinuity_drop_positive`       | unit        | Cache hit ratio drops 0.85 → 0.41 inside window ⇒ `Some(AnomalySignal { kind: CacheDiscontinuity, … })`.                                              |
+| `detect_cache_discontinuity_repeated_drift`      | unit        | F-7b fires twice inside window without a 30 % drop ⇒ still `Some(AnomalySignal)` (alternate trigger path).                                            |
+| `detect_cross_pane_edit_cluster_positive`        | unit        | F-8 emits 4 findings on `/abs/foo.rs` inside window ⇒ `Some(AnomalySignal { kind: CrossPaneEditCluster, … })`.                                        |
+| `detect_cross_pane_edit_cluster_different_paths` | unit        | 4 findings spread across 4 different paths ⇒ `None` (cluster requires same path).                                                                     |
+| `anomaly_min_confidence_filter`                  | unit        | Detector emits Medium signal; `gates.anomaly_min_confidence = High` ⇒ filtered out.                                                                   |
+| `anomaly_dedup_edge_triggered`                   | unit        | Detector returns Some on tick 1 (emit), Some on tick 2 (suppress), None on tick 3 (rearm), Some on tick 4 (emit). Asserts emit/suppress/emit pattern. |
+| `anomaly_event_loop_integration`                 | integration | Synthetic input drives an IdentityChurn detection ⇒ `PaneReport.anomalies` length 1, m-overlay snapshot shows the new row.                            |
+| `anomaly_off_baseline_regression`                | integration | Default config (`enabled = false`) drives the same input ⇒ `PaneReport.anomalies` empty, m-overlay layout matches v1.42.0 baseline.                   |
 
 Existing 1028 lib + 50 event-loop integration + 18 false-positive
 regression + 6 idle-state regression tests must remain green at the

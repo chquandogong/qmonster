@@ -44,19 +44,19 @@ recommendation; only the actuation step is automated.
 `snapshot_before_reset`. Phase H adds an actuation hook that
 consumes those recommendations after the policy stage and, when
 opted in, runs the snapshot writer once per `(pane_id, quota_kind,
-window_start)` triple.
+window_id)` triple.
 
-| Layer             | File                                                                                                       | Change                                                                                                                                                                                                                                                   |
-| ----------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Config surface    | `src/app/config.rs`                                                                                        | `ResetConfig` gains `auto_snapshot: bool` (`#[serde(default)]`, default `false`). Existing `[reset]` section, no new section.                                                                                                                            |
-| Policy gates      | `src/policy/gates.rs`                                                                                      | `PolicyGates` gains `reset_auto_snapshot: bool`, populated from `config.reset.auto_snapshot` in `from_inputs(PolicyGateInputs<'_>)` (existing pattern from F-7-config / F-7d).                                                                           |
-| Actuation module  | `src/app/auto_snapshot.rs` (new)                                                                           | Single entry point `pub fn maybe_auto_snapshot(pane_id, recs, gates, dedup, snapshot_sink, audit, notice_bus, now) -> ()`. Pure orchestrator that filters recommendations, checks dedup, dispatches snapshot+audit+notice, updates dedup on success.     |
-| Event-loop wiring | `src/app/event_loop.rs`                                                                                    | One call to `auto_snapshot::maybe_auto_snapshot` after `policy.evaluate(...)`, before `dashboard.push_recommendation`. The recommendation is still rendered in the dashboard recommendation panel — Phase H does not consume / hide / dedup the UI side. |
-| Dedup state       | `src/app/dashboard_state.rs` (or `dashboard_runtime.rs`)                                                   | `auto_snapshot_dedup: HashMap<PaneId, AutoSnapshotDedup>` where `AutoSnapshotDedup { quota_5h_window_start: Option<u64>, quota_weekly_window_start: Option<u64> }`. In-memory, cleared on process exit.                                                  |
-| Audit metadata    | `src/store/audit.rs`                                                                                       | No new variant. Existing `SnapshotWritten` event payload extended with optional metadata keys: `trigger = "auto_reset_boundary"`, `quota_kind = "5h" \| "weekly"`, `recommendation_id = …`. Manual snapshots omit these keys.                            |
-| Notice surface    | `src/app/system_notice.rs`                                                                                 | Concern-severity `SystemNotice` on every successful auto-snapshot ("auto-snapshot taken at 5h reset boundary, see snapshots/<file>"). Reuses the v1.41.0 `SystemNotice` push path.                                                                       |
-| Settings overlay  | `src/app/settings_overlay.rs`                                                                              | `Parameters` tab: `[reset]` section gets a row for `auto_snapshot`. `Rules` tab: existing `wait_for_reset` / `snapshot_before_reset` rows gain a one-line note "(auto-actuated when `[reset] auto_snapshot = true`)".                                    |
-| Docs              | `docs/ai/UI_MANUAL.md`, `docs/ai/ARCHITECTURE.md`, `docs/ai/VALIDATION.md`, `config/qmonster.example.toml` | Add a "Phase H auto-snapshot" subsection to UI_MANUAL; ARCHITECTURE picks up a Phase H paragraph below the F-7d entry; VALIDATION extends the reset checklist; example config shows `auto_snapshot = false` as a comment block.                          |
+| Layer             | File                                                                                                       | Change                                                                                                                                                                                                                                                     |
+| ----------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Config surface    | `src/app/config.rs`                                                                                        | `ResetConfig` gains `auto_snapshot: bool` (`#[serde(default)]`, default `false`). Existing `[reset]` section, no new section.                                                                                                                              |
+| Policy gates      | `src/policy/gates.rs`                                                                                      | `PolicyGates` gains `reset_auto_snapshot: bool`, populated from `config.reset.auto_snapshot` in `from_inputs(PolicyGateInputs<'_>)` (existing pattern from F-7-config / F-7d).                                                                             |
+| Actuation module  | `src/app/auto_snapshot.rs` (new)                                                                           | Single entry point `pub fn maybe_auto_snapshot(pane_id, recs, gates, dedup, snapshot_sink, audit, notice_bus, now) -> ()`. Pure orchestrator that filters recommendations, checks dedup, dispatches snapshot+audit+notice, updates dedup on success.       |
+| Event-loop wiring | `src/app/event_loop.rs`                                                                                    | One call to `auto_snapshot::maybe_auto_snapshot` after `policy.evaluate(...)`, before `dashboard.push_recommendation`. The recommendation is still rendered in the dashboard recommendation panel — Phase H does not consume / hide / dedup the UI side.   |
+| Dedup state       | `src/app/dashboard_state.rs` (or `dashboard_runtime.rs`)                                                   | `auto_snapshot_dedup: HashMap<PaneId, AutoSnapshotDedup>` where `AutoSnapshotDedup { quota_5h_window_id: Option<u64>, quota_weekly_window_id: Option<u64> }`. `window_id` = the provider-reported `quota_*_resets_at`. In-memory, cleared on process exit. |
+| Audit metadata    | `src/store/audit.rs`                                                                                       | No new variant. Existing `SnapshotWritten` event payload extended with optional metadata keys: `trigger = "auto_reset_boundary"`, `quota_kind = "5h" \| "weekly"`, `recommendation_id = …`. Manual snapshots omit these keys.                              |
+| Notice surface    | `src/app/system_notice.rs`                                                                                 | Concern-severity `SystemNotice` on every successful auto-snapshot ("auto-snapshot taken at 5h reset boundary, see snapshots/<file>"). Reuses the v1.41.0 `SystemNotice` push path.                                                                         |
+| Settings overlay  | `src/app/settings_overlay.rs`                                                                              | `Parameters` tab: `[reset]` section gets a row for `auto_snapshot`. `Rules` tab: existing `wait_for_reset` / `snapshot_before_reset` rows gain a one-line note "(auto-actuated when `[reset] auto_snapshot = true`)".                                      |
+| Docs              | `docs/ai/UI_MANUAL.md`, `docs/ai/ARCHITECTURE.md`, `docs/ai/VALIDATION.md`, `config/qmonster.example.toml` | Add a "Phase H auto-snapshot" subsection to UI_MANUAL; ARCHITECTURE picks up a Phase H paragraph below the F-7d entry; VALIDATION extends the reset checklist; example config shows `auto_snapshot = false` as a comment block.                            |
 
 Reused unchanged:
 
@@ -134,15 +134,15 @@ poll
  → auto_snapshot::maybe_auto_snapshot(...)
      ├─ if !gates.reset_auto_snapshot              → return
      ├─ for rec in recs where kind == snapshot_before_reset:
-     │   ├─ window_start = derive(now, pressure, quota_kind)
-     │   ├─ if dedup.matches(pane_id, quota_kind, window_start) → continue
+     │   ├─ window_id = signals.quota_<kind>_resets_at  (rounded to nearest minute)
+     │   ├─ if dedup.matches(pane_id, quota_kind, window_id) → continue
      │   ├─ snapshot_sink.write(pane_id, reason="auto_reset_boundary")
      │   │     on Err(e):
      │   │       ├─ notice_bus.push(Warning, "auto-snapshot failed: …")
      │   │       └─ continue   (do NOT update dedup; allow retry next tick)
      │   ├─ audit.write(SnapshotWritten { metadata: {trigger, quota_kind, recommendation_id} })
      │   ├─ notice_bus.push(Concern, "auto-snapshot taken at <kind> reset boundary, see snapshots/<file>")
-     │   └─ dedup.set(pane_id, quota_kind, window_start)
+     │   └─ dedup.set(pane_id, quota_kind, window_id)
  → dashboard.push_recommendation(...)               [unchanged — recommendation still rendered]
  → ui render
 ```
@@ -189,10 +189,10 @@ the existing dashboard hide path.
 | ----------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `auto_snapshot_disabled_by_default`       | unit        | `ResetConfig::default().auto_snapshot == false`. Config without `[reset]` block also yields `false`.                                                    |
 | `auto_snapshot_no_op_when_gate_off`       | unit        | `gates.reset_auto_snapshot = false` ⇒ `maybe_auto_snapshot` invokes `snapshot_sink` 0 times even with a positive recommendation set.                    |
-| `auto_snapshot_fires_once_per_window`     | unit        | Two consecutive ticks with the same recommendation + same `window_start` ⇒ snapshot_sink.write called once; dedup blocks the second.                    |
+| `auto_snapshot_fires_once_per_window`     | unit        | Two consecutive ticks with the same recommendation + same `window_id` ⇒ snapshot_sink.write called once; dedup blocks the second.                       |
 | `auto_snapshot_5h_and_weekly_independent` | unit        | One tick with both `snapshot_before_reset` recs ⇒ two writes, two audit events, two notices. Dedup tracks both quota_kinds.                             |
 | `auto_snapshot_failure_does_not_dedup`    | unit        | `snapshot_sink.write` returns `Err` ⇒ Warning notice, dedup NOT updated, no audit event. Next tick retries.                                             |
-| `auto_snapshot_new_window_resets_dedup`   | unit        | First window snapshots, then `window_start` changes ⇒ second snapshot fires successfully.                                                               |
+| `auto_snapshot_new_window_resets_dedup`   | unit        | First window snapshots, then `window_id` changes ⇒ second snapshot fires successfully.                                                                  |
 | `event_loop_auto_snapshot_integration`    | integration | Synthetic SignalSet with `quota_5h_pressure = 0.95, quota_5h_resets_at = now+60` and `auto_snapshot = true` ⇒ snapshot file present, audit row present. |
 | `auto_snapshot_off_baseline_regression`   | integration | Same input with `auto_snapshot = false` (default) ⇒ no snapshot file, recommendation still in `dashboard.recommendations`.                              |
 
