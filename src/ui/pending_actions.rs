@@ -431,13 +431,27 @@ pub fn pending_actions_lines(
     let selected = overlay.selected().min(items.len().saturating_sub(1));
     for (idx, item) in items.iter().enumerate() {
         let cursor = if idx == selected { "\u{25B6} " } else { "  " };
+        let checked = overlay.multi_contains(&pending_item_key(item));
+        let checkbox = if checked { "[x]" } else { "[ ]" };
         let kind = item.kind_letter();
         let sev_color = item
             .severity()
             .map(theme::severity_color)
             .unwrap_or(theme::TEXT_PRIMARY);
         let sev_label = item.severity().map(severity_label).unwrap_or("\u{2014}");
+
+        let checkbox_style = if checked {
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .bg(sev_color)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme::TEXT_DIM)
+        };
+
         let spans: Vec<Span<'static>> = vec![
+            Span::styled(checkbox.to_string(), checkbox_style),
+            Span::raw(" "),
             Span::raw(cursor.to_string()),
             Span::styled(
                 format!("[{kind}]"),
@@ -902,5 +916,52 @@ mod tests {
         assert!(rects.list.height >= 1);
         assert!(rects.explainer.height >= 1);
         assert_eq!(rects.list.y + rects.list.height, rects.explainer.y);
+    }
+
+    #[test]
+    fn lines_render_checkbox_unchecked_for_non_multi() {
+        use crate::domain::origin::SourceKind;
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let overlay = PendingActionsOverlay::new();
+        let lines = pending_actions_lines(&overlay, &[item]);
+        let dump: String = lines.iter().map(|l| line_text(l) + "\n").collect();
+        assert!(
+            dump.contains("[ ]"),
+            "non-multi row must render `[ ]`: {dump}"
+        );
+        assert!(
+            dump.contains("\u{25B6}"),
+            "first row gets the cursor mark: {dump}"
+        );
+    }
+
+    #[test]
+    fn lines_render_checkbox_checked_when_multi_selected() {
+        use crate::domain::origin::SourceKind;
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.toggle_multi(&item);
+        let lines = pending_actions_lines(&overlay, &[item]);
+        let dump: String = lines.iter().map(|l| line_text(l) + "\n").collect();
+        assert!(
+            dump.contains("[x]"),
+            "multi-selected row must render `[x]`: {dump}"
+        );
     }
 }
