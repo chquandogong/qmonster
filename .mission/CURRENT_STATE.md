@@ -1,46 +1,40 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-06 (Claude, v1.40.0 release ledger sync)_
+_Last updated: 2026-05-06 (Claude, v1.41.0 release ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.40.0 - operator-controlled overlay geometry: m drag-to-move + a overlay live-explainer-split + multi-select bulk dispatch + size/position/list-ratio adjustability across both overlays.
-- Version surfaces: mission ledger target `1.40.0`; npm package metadata `qmonster@1.40.0`; latest local Git tag `v1.40.0`.
-- Branch / worktree at handoff start: `main`, tag `v1.40.0`.
-- Release publication state: v1.40.0 is published. `Release and Package Mirror` workflow run `25421376056` (2026-05-06, 6m56s, success) created GitHub Release `v1.40.0` with full asset set (binary tarball, npm tarball, SBOM, sbom-diff, checksums, attestations) and published `qmonster@1.40.0` to npm + GitHub Packages mirror. Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), and v1.39.0 (`25311723861`) publications also remain live — `npm view qmonster versions` lists `1.37.0`, `1.38.0`, `1.39.0`, `1.40.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40}.0`.
-- Current phase: Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, the v1.38 UX bundle (F1/F2/F3/F4), the v1.39 polish + correctness round, and the v1.40 operator-controlled overlay geometry round are complete.
+- Title: Qmonster v1.41.0 - v1.40 a-overlay polish: cursor staleness fix + ,/. first-press direction fix + confirm_actions bypass surfacing (UI_MANUAL ⚠ + hint chip + first-open SystemNotice) + doc/git consistency audit.
+- Version surfaces: mission ledger target `1.41.0`; npm package metadata `qmonster@1.41.0`; latest local Git tag `v1.41.0`.
+- Branch / worktree at handoff start: `main`, tag `v1.41.0`.
+- Release publication state: v1.41.0 is locally tagged but not yet published. The `Release and Package Mirror` workflow run will trigger on the v1.41.0 tag push. Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), v1.39.0 (`25311723861`), v1.40.0 (`25421376056`) are all live — `npm view qmonster versions` lists `1.37.0`, `1.38.0`, `1.39.0`, `1.40.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40}.0`.
+- Current phase: Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, the v1.38 UX bundle (F1/F2/F3/F4), the v1.39 polish + correctness round, the v1.40 operator-controlled overlay geometry round, and the v1.41 a-overlay polish round are complete.
 
-## v1.40.0 Feature State
+## v1.41.0 Feature State
 
-Seven backwards-compatible themes are complete in the v1.40.0 source. None of them changes provider adapters, audit chain, policy gates, or the `SignalSet` schema; bulk dispatch routes per-item through the existing `confirm_pending_action(...)` path so the audit event chain (`PromptSendAccepted`/`Rejected`/`Completed`/`Blocked` + `AlertHidden` via `alert_hide_deadlines.insert`) is unchanged.
+Four backwards-compatible themes are complete in the v1.41.0 source. None of them changes provider adapters, audit chain, policy gates, or the `SignalSet` schema; the new `SystemNotice` flows through the existing `dashboard.push_notice` path, and the `seen_first_open` flag is overlay-local state reset on restart.
 
-1. **m overlay drag-to-move**: `src/ui/metrics.rs` `MetricsOverlay` gains `offset_x` / `offset_y` / `drag_anchor`; `metrics_modal_rects` becomes a 5-arg helper that calls `apply_clamped_offset` enforcing left/top hard bounds + right/bottom soft bounds (≥4 cells horizontal / ≥1 row vertical visible). `src/app/metrics_overlay.rs::handle_metrics_overlay_mouse` routes Down on the title row (excluding `[x]`) into drag-anchor capture, Drag into per-frame offset application, Up into release. `=` resets size + offset together. UI_MANUAL §8.5 + help overlay updated.
-2. **a overlay redesign — split layout + live Action Explainer**: `src/ui/pending_actions.rs` body splits into `{ area, list, explainer, hint }` via `pending_actions_modal_rects` (vertical when body width < 80, horizontal otherwise); the list pane is 60% of body clamped to `[44, 64]`. `render_modal` renders the cursor item's explainer view inline using `build_accept_view` (proposals) / `build_copy_view` (alerts) so the explainer pane is a live preview, not a separate modal; Enter is silently swallowed inside the overlay.
-3. **a overlay redesign — multi-select**: `src/app/pending_actions_overlay.rs::PendingActionsOverlay` gains `multi_selected: BTreeSet<String>` tracking stable keys (proposal_id for proposals, alert_id for alerts). Auto-prune at every render drops selections without a live row. New keys: Space (toggle cursor row), P/Y/A (group toggle: P=all proposals, Y=all alerts, A=everything), c (clear all selections). Mouse: cols 0–3 toggle multi-select; cols 4+ move the cursor.
-4. **a overlay redesign — bulk dispatch**: `PendingActionsOutcome` enum carries `AcceptItems` / `ClearItems` / `CopyItem`; p/d/y dispatch keys construct the outcome from `multi_selected` (priority) or the cursor row (fallback). `src/app/tui_loop.rs` routes each item per-call through `confirm_pending_action(...)` so no new audit event types are introduced. Notices push through `dashboard.push_notice(notice, now)` for top-of-queue + `fresh_alerts` / `alert_times` / `resync` parity with single-item dispatch. Bulk-clear iterates highest-index-first to avoid index-shift bugs.
-5. **a overlay TX-A — modal size + position adjustability**: `PendingActionsOverlay` gains `width_pct` / `height_pct` (defaults 80 / 65, range `[50, 99]`) and `offset_x` / `offset_y` / `drag_anchor`. `[`/`]` shrink/grow by 5%; `=` resets size + offset + ratio together; title-row drag (excluding `[x]`) moves the modal with the same asymmetric clamp as the m overlay; close+reopen preserves geometry, restart resets.
-6. **a overlay TX-B — list/explainer ratio adjustability**: `PendingActionsOverlay` gains `list_width_override`. `,` narrows / `.` widens the list pane in 2-cell steps; the list/explainer separator (3-cell hit zone, body rows only) drag resizes the split; override range stays inside the auto-formula's `[44, 64]` clamp so the explainer always has ≥8 cells; close+reopen preserves the override.
-7. **Ledger sync**: `package.json`, `VERSION.md`, README release table, `docs/ai/PROJECT_BRIEF.md` Date+Phase, `docs/ai/ARCHITECTURE.md` Date line, `docs/ai/VALIDATION.md` v1.40.0 reference, `mission.yaml`, `mission-history.yaml`, and this state file all updated to v1.40.0.
+1. **Cursor staleness fix**: `src/app/pending_actions_overlay.rs::prune_to()` now clamps `selected` against `items.len()` so polling-driven shrinks no longer leave the cursor stale. The proposal preview, dispatch, and explainer all read the clamped index, so the operator never sees a stale highlight on a removed row.
+2. **`,` / `.` first-press direction fix**: `src/app/pending_actions_overlay.rs::handle_pending_actions_overlay_key` signature gains a `viewport: Rect` param so `narrow_list` / `widen_list` can take the current effective list width as an argument and step in the correct direction from the auto-formula baseline. Previously the first press could move the wrong direction when the auto-formula list width exceeded the no-override default.
+3. **`confirm_actions` bypass surfacing (3 surfaces)**: The a overlay's intentional `[ux] confirm_actions` bypass becomes discoverable through three operator-facing surfaces. (a) `docs/ai/UI_MANUAL.md` §8.7's "confirm_actions 무시" subsection is rewritten as a ⚠ caution that contrasts the dashboard direct-key path (which still respects the setting) with the a overlay path (which doesn't). (b) `src/ui/pending_actions.rs` in-modal hint row gains a `(confirm_actions bypass)` chip surfacing the bypass at the moment of action. (c) `PendingActionsOverlay` gains a `seen_first_open: bool` flag that, on the first `a` press per session, fires a Concern-severity `SystemNotice` summarising the bypass.
+4. **Doc/git consistency audit + ledger sync**: At the v1.40.0 baseline — stale "Enter jumps + opens Action Explainer" module-doc cleanup, spec status (`docs/superpowers/specs/2026-05-06-mouse-drag-and-bulk-overlays-design.md`) flipped to "implementation shipped", plan checkboxes (`docs/superpowers/plans/2026-05-06-mouse-drag-and-bulk-overlays.md`) flipped to complete, CURRENT_STATE post-tag polish list refreshed. Plus `package.json`, `VERSION.md`, README release table, `docs/ai/PROJECT_BRIEF.md` Date+Phase, `docs/ai/ARCHITECTURE.md` Date line, `docs/ai/VALIDATION.md` v1.41.0 reference, `mission.yaml`, `mission-history.yaml`, and this state file all updated to v1.41.0.
 
 ## Latest Release Notes
 
-- `v1.40.0` is a minor release over the v1.39.0 polish + correctness baseline.
-- Local tag: `v1.40.0` points at the v1.40.0 release commit (recorded in `mission-history.yaml` `related_commits`).
-- Commit summary: `v1.40.0 release ledger sync`.
-- Reference spec: `docs/superpowers/specs/2026-05-06-mouse-drag-and-bulk-overlays-design.md`.
-- Reference plan: `docs/superpowers/plans/2026-05-06-mouse-drag-and-bulk-overlays.md`.
+- `v1.41.0` is a minor release over the v1.40.0 operator-controlled overlay geometry baseline.
+- Local tag: `v1.41.0` points at the v1.41.0 release commit (recorded in `mission-history.yaml` `related_commits`).
+- Commit summary: `v1.41.0 release ledger sync`.
+- Reference spec: `docs/superpowers/specs/2026-05-06-mouse-drag-and-bulk-overlays-design.md` (the v1.40 spec; v1.41 is a polish release without its own spec).
+- Reference plan: `docs/superpowers/plans/2026-05-06-mouse-drag-and-bulk-overlays.md` (the v1.40 plan; v1.41 is a polish release without its own plan).
 
 ## Post-tag polish (on main, untagged)
 
-Three commits landed on `main` after the `v1.40.0` tag:
-
-1. `c4dfeb3` — v1.40.0 publication verified: workflow run `25421376056` (2026-05-06, 6m56s, success) recorded in the ledger.
-2. `cd90b25` — v1.40 post-release fix: prune_to() now clamps `selected` against `items.len()` so polling-driven shrinks no longer leave the cursor stale (proposal/dispatch/explainer all read the clamped index); `narrow_list` / `widen_list` now take the current effective list width as an argument so first-press `,` / `.` step in the correct direction from the auto-formula baseline.
-3. `0bc944a` — v1.41 P1: surface the a overlay's `[ux] confirm_actions` bypass through three discoverability surfaces (UI_MANUAL §8.7 ⚠ caution rewrite; in-modal `(confirm_actions bypass)` hint chip; `PendingActionsOverlay::seen_first_open` flag firing a Concern-severity SystemNotice on the first `a` press per session).
+No genuinely-post-v1.41.0 work has landed yet. The v1.41.0 release commit is the immediate parent of the v1.41.0 tag.
 
 ## Known External State
 
 - v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 are all published (workflow runs `25159598038` / `25305201597` / `25311723861` / `25421376056` all completed success). GitHub Release pages live at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40}.0`; `npm view qmonster versions` lists `1.37.0`, `1.38.0`, `1.39.0`, `1.40.0` with `dist-tags.latest = 1.40.0`.
+- v1.41.0 is locally tagged but not yet published; the `Release and Package Mirror` workflow run will trigger on the v1.41.0 tag push.
 - `qmonster@1.36.2` remains deprecated on npm because its GitHub Release SBOM was incomplete.
 - GitHub Release `v1.36.2` remains marked prerelease with a warning banner.
 
@@ -53,17 +47,17 @@ Three commits landed on `main` after the `v1.40.0` tag:
 
 ## Validation Baseline
 
-Most recent v1.40.0 validation reported in the release commit:
+Most recent v1.41.0 validation reported in the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1022 lib tests + 50 event-loop integration tests + 18 false-positive regression tests + 6 idle-state regression tests, all green at the v1.40.0 release commit. Post-tag commits (`cd90b25` cursor-staleness + `,/.` direction fix, `0bc944a` v1.41 P1 confirm_actions bypass surface) bring the lib-test count to 1028 (+6) on current `main`; the other counts are unchanged.
+- `cargo test --all-targets` — 1028 lib tests + 50 event-loop integration tests + 18 false-positive regression tests + 6 idle-state regression tests, all green at the v1.41.0 release commit (+6 lib tests vs the v1.40.0 baseline of 1022).
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 / v1.38.0 / v1.39.0 still apply when the v1.40.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 still apply when the v1.41.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 
 ## Next First Action
 
-Pick the next follow-up from the Active Follow-Ups list. The closest concrete item is Phase H scoping (opt-in auto-snapshot at reset boundary). Phase 7 anomaly detection and tag protection both need either operator input (Phase 7 scope) or operator-side action (GitHub Settings). v1.40.0 CI publication verification is already complete (workflow run `25421376056`, recorded in `c4dfeb3`).
+Pick the next follow-up from the Active Follow-Ups list. The closest concrete item is Phase H scoping (opt-in auto-snapshot at reset boundary). Phase 7 anomaly detection and tag protection both need either operator input (Phase 7 scope) or operator-side action (GitHub Settings). v1.41.0 CI publication verification will trigger on the v1.41.0 tag push and is then a separate verification follow-up.

@@ -15,9 +15,9 @@ Current local verification (2026-05-06): `cargo fmt --all --check`,
 `git diff --check`, `cargo test --all-targets`,
 `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,
 `cargo build --release`, `npm pack --dry-run`, and
-`scripts/verify-shared.sh` pass for v1.40.0. Current code-level
-verification at the v1.40.0 release commit is
-`cargo test --all-targets` with 1022 lib tests, 50 event-loop
+`scripts/verify-shared.sh` pass for v1.41.0. Current code-level
+verification at the v1.41.0 release commit is
+`cargo test --all-targets` with 1028 lib tests, 50 event-loop
 integration tests, 18 false-positive regression tests, and 6
 idle-state regression tests passing, plus `cargo build --release`,
 `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,

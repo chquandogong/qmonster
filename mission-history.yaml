@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.40.0 - operator-controlled overlay geometry: m drag-to-move + a overlay live-explainer-split + multi-select bulk dispatch + size/position/list-ratio adjustability."
+  mission_title: "Qmonster v1.41.0 - v1.40 a-overlay polish: cursor staleness fix + ,/. first-press direction fix + confirm_actions bypass surfacing (UI_MANUAL ⚠ + hint chip + first-open SystemNotice) + doc/git consistency audit."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 183
-  latest_version: "1.40.0"
+  total_revisions: 184
+  latest_version: "1.41.0"
 
 timeline:
   - change_id: "initial"
@@ -16841,8 +16841,124 @@ timeline:
       - "Phase H opt-in auto-snapshot at reset boundary remains unscoped."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
 
+  - change_id: "v1.41.0-a-overlay-polish-and-confirm-actions-bypass-surfacing"
+    semantic_version: "1.41.0"
+    change_sequence: 184
+    date: "2026-05-06"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (Qmonster main pane, Opus 4.7 1M)"
+    change_type: "minor-feature-release"
+    motivation_type: "operator-directed-overlay-polish"
+    persistence: "permanent"
+    intent: >
+      v1.41.0 is a minor polish release on top of v1.40.0 that hardens
+      two operator-reported bugs in the v1.40 a overlay and elevates
+      the confirm_actions bypass to a first-class operator-facing
+      surface. prune_to() now clamps selected against items.len() so
+      polling-driven shrinks no longer leave the cursor stale; , / .
+      list-width keys take the current effective list width as an
+      argument so first-press direction is correct
+      (handle_pending_actions_overlay_key gains a viewport: Rect
+      param). Three discoverability surfaces warn about the a
+      overlay's intentional confirm_actions bypass: UI_MANUAL §8.7's
+      "confirm_actions 무시" subsection becomes a ⚠ caution that
+      contrasts the dashboard direct-key path (which still respects
+      the setting) with the a overlay path (which doesn't); the
+      in-modal hint row gets a (confirm_actions bypass) chip;
+      PendingActionsOverlay gains a seen_first_open flag that, on the
+      first 'a' press per session, fires a Concern-severity
+      SystemNotice summarising the bypass. Plus a doc/git consistency
+      audit at the v1.40.0 baseline (stale "Enter jumps + opens
+      Action Explainer" module-doc cleanup, spec status flipped to
+      "implementation shipped", plan checkboxes flipped to complete,
+      CURRENT_STATE post-tag polish list refreshed).
+    intent_ko: >
+      v1.41.0 은 v1.40.0 위의 마이너 폴리싱 릴리스로, v1.40 a 오버레이
+      에서 운영자가 보고한 두 가지 버그를 강화하고 confirm_actions
+      우회를 일급 운영자-가시 표면으로 끌어올린다. prune_to() 가 이제
+      selected 를 items.len() 에 대해 clamp 하므로 폴링 기반 축소가
+      더 이상 커서를 stale 상태로 남기지 않는다; , / . 리스트 폭 키는
+      현재 유효 리스트 폭을 인수로 받아 자동 공식 베이스라인에서
+      첫 누름 방향이 올바르다 (handle_pending_actions_overlay_key 가
+      viewport: Rect 인수를 얻는다). 세 가지 발견 가능성 표면이 a
+      오버레이의 의도적인 confirm_actions 우회를 경고한다: UI_MANUAL
+      §8.7 의 "confirm_actions 무시" 서브섹션이 ⚠ 경고로 재작성되어
+      대시보드 직접-키 경로 (여전히 설정 존중) 와 a 오버레이 경로
+      (존중하지 않음) 를 대비한다; 모달 내 힌트 행에
+      (confirm_actions bypass) 칩을 추가; PendingActionsOverlay 가
+      세션당 첫 'a' 누름에 우회를 요약하는 Concern 심각도
+      SystemNotice 를 발화하는 seen_first_open 플래그를 얻는다.
+      더불어 v1.40.0 베이스라인에서의 문서/git 일관성 감사
+      (stale "Enter jumps + opens Action Explainer" 모듈 문서 정리,
+      spec 상태를 "implementation shipped" 로 플립, plan 체크박스를
+      완료로 플립, CURRENT_STATE 태그 후 polish 리스트 갱신).
+    triggered_by: "Operator surfaced two v1.40 a-overlay regressions on main (cursor staleness when polling shrinks the list, ,/. first-press direction inversion when the auto-formula list width was wider than override) and asked for the confirm_actions bypass (which the v1.40 a overlay always intentionally skipped) to become discoverable instead of silent. v1.41.0 also closes a v1.40.0 doc/git consistency audit (module-doc, spec, plan, CURRENT_STATE polish list)."
+    changes:
+      added:
+        - "src/app/pending_actions_overlay.rs::PendingActionsOverlay::seen_first_open: bool flag that fires a Concern-severity SystemNotice on the first 'a' press per session summarising the a overlay's confirm_actions bypass."
+        - "src/app/pending_actions_overlay.rs::prune_to() clamps selected against items.len() so polling-driven shrinks no longer leave the cursor stale; proposal/dispatch/explainer all read the clamped index."
+        - "src/app/pending_actions_overlay.rs::handle_pending_actions_overlay_key signature gains a viewport: Rect param so ,/. list-width keys can read the current effective list width and step in the correct direction from the auto-formula baseline."
+        - "src/ui/pending_actions.rs in-modal hint row gets a (confirm_actions bypass) chip surfacing the bypass at the moment of action."
+        - "docs/ai/UI_MANUAL.md §8.7 'confirm_actions 무시' subsection rewritten as a ⚠ caution contrasting dashboard direct-key path (respects [ux] confirm_actions) vs a overlay path (always bypasses)."
+      modified:
+        - "src/app/pending_actions_overlay.rs::narrow_list / widen_list signatures: now take the current effective list width as an argument so first-press direction is correct from the auto-formula baseline."
+        - "docs/ai/UI_MANUAL.md §8.7 confirm_actions wording: explicit ⚠ caution + chip-row hint + first-open SystemNotice surfacing path."
+        - "docs/superpowers/specs/2026-05-06-mouse-drag-and-bulk-overlays-design.md: status flipped to 'implementation shipped' as part of the v1.40.0 doc/git consistency audit."
+        - "docs/superpowers/plans/2026-05-06-mouse-drag-and-bulk-overlays.md: plan checkboxes flipped to complete as part of the v1.40.0 doc/git consistency audit."
+        - ".mission/CURRENT_STATE.md: post-tag polish list refreshed at the v1.40.0 baseline; v1.41.0 release ledger sync rewrite."
+        - "package.json: public version surface bumped to 1.41.0."
+        - "VERSION.md, README.md, docs/ai/PROJECT_BRIEF.md, docs/ai/ARCHITECTURE.md, docs/ai/VALIDATION.md: ledger version surfaces synced to v1.41.0."
+        - "mission.yaml + mission-history.yaml: v1.41.0 release ledger sync."
+      removed:
+        - "Stale 'Enter jumps + opens Action Explainer' module-doc reference cleaned up as part of the v1.40.0 doc/git consistency audit (Enter is silently swallowed inside the live-explainer split per v1.40)."
+    changed_sections:
+      - "src/app/pending_actions_overlay.rs"
+      - "src/ui/pending_actions.rs"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/superpowers/specs/2026-05-06-mouse-drag-and-bulk-overlays-design.md"
+      - "docs/superpowers/plans/2026-05-06-mouse-drag-and-bulk-overlays.md"
+      - "docs/ai/{PROJECT_BRIEF.md,ARCHITECTURE.md,VALIDATION.md}"
+      - "README.md"
+      - "VERSION.md"
+      - "package.json"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - ".mission/CURRENT_STATE.md"
+    observable_effects:
+      added:
+        - "Polling-driven Pending Actions list shrinks no longer leave the cursor stale; the proposal preview, dispatch, and explainer all read the clamped index so the operator never sees a stale highlight on a removed row."
+        - ",/. list-width keys step in the correct direction on first press from the auto-formula baseline (previously: first press could move the wrong direction when the auto-formula list width exceeded the no-override default)."
+        - "UI_MANUAL §8.7 prominently warns that the a overlay path bypasses [ux] confirm_actions (still respected on the dashboard direct-key path), so operators don't conflate the two surfaces."
+        - "In-modal hint row carries a (confirm_actions bypass) chip at the moment of action, reinforcing the §8.7 caution at the point where it matters."
+        - "First 'a' press per session fires a Concern-severity SystemNotice summarising the bypass — ensures discoverability for operators who miss the docs."
+        - "Doc/git consistency at v1.40.0: stale module-doc references gone, spec/plan reflect shipped state, CURRENT_STATE polish list refreshed."
+      modified:
+        - "Existing v1.40 a overlay key/mouse contracts are preserved; ,/. semantics are unchanged but key handler now reads the live viewport so first-press direction is no longer inverted."
+        - "Existing v1.40 a overlay confirm_actions bypass is unchanged in behavior — it is now surfaced through three discoverability surfaces instead of silent."
+      removed:
+        - "Stale 'Enter jumps + opens Action Explainer' module-doc surface gone (Enter is silently swallowed inside the live-explainer split per v1.40)."
+    impact_scope:
+      runtime: "a overlay (Pending Actions) only. No change to provider adapters, audit chain, policy gates, SignalSet schema, SQLite schema, or recommendation/effect dispatch. The new SystemNotice flows through the existing dashboard.push_notice path; the seen_first_open flag is overlay-local state reset on restart."
+      tests: "1028 lib tests + 50 event-loop integration tests + 18 false-positive regression tests + 6 idle-state regression tests passing at the v1.41.0 release commit (+6 vs the v1.40.0 baseline of 1022); cargo fmt --all --check, cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args, cargo test --all-targets, git diff --check all green."
+      ledger: "1 new timeline entry (sequence 184); meta total_revisions 183 -> 184, latest_version 1.40.0 -> 1.41.0; minor version bump for the a-overlay polish round."
+      npm: "package.json version 1.41.0; CI publication of v1.41.0 follows the same workflow as v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 and remains an external follow-up until verified."
+    breaking: false
+    risk: "low — every change is on the a overlay UI/UX layer with existing data sources. The cursor staleness clamp is defensive; the ,/. viewport param is additive; the confirm_actions bypass surfacing only adds discoverability and does not change actuation. No new audit event types. 1028 lib tests cover the new clamp, viewport-aware key handler, and SystemNotice firing path."
+    related_commits:
+      - "cd90b25 v1.40 post-release: fix cursor staleness + ,/. first-press direction"
+      - "0bc944a v1.41 P1: surface confirm_actions bypass in a overlay (3 surfaces)"
+      - "7e5aa27 v1.41 P2: doc/git consistency audit at v1.40.0 baseline"
+      - "[release commit SHA — populate after committing the v1.41.0 release ledger sync]"
+    follow_up:
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+      - "Phase 7 D2/D3 anomaly detection and subagent analysis implementation remains unstarted; spec lives at .docs/codex/phase7-anomaly-detection-spec.md."
+      - "Per-subagent token attribution remains blocked until providers expose structured per-subagent counters."
+      - "Phase H opt-in auto-snapshot at reset boundary remains unscoped."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+
 evolution_summary:
-  current_phase: "v1.40.0 — operator-controlled overlay geometry: m drag-to-move + a overlay live-explainer-split + multi-select bulk dispatch + size/position/list-ratio adjustability across both overlays, layered on the v1.39.0 polish + correctness baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
+  current_phase: "v1.41.0 — v1.40 a-overlay polish: cursor staleness fix + ,/. first-press direction fix + confirm_actions bypass surfacing (UI_MANUAL ⚠ + hint chip + first-open SystemNotice) + doc/git consistency audit at the v1.40.0 baseline, layered on the v1.40.0 operator-controlled overlay geometry baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
   next_phase: "Phase 7 anomaly detection / subagent analysis (`.docs/codex/phase7-anomaly-detection-spec.md`) and Phase H opt-in auto-snapshot at reset boundary remain unscoped. D3 per-subagent token attribution is provider-blocked. Tag protection / ruleset activation is a GitHub Settings task."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
