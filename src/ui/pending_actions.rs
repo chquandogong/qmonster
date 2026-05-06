@@ -50,6 +50,10 @@ pub struct PendingActionsOverlay {
     offset_x: i16,
     offset_y: i16,
     move_drag_anchor: Option<MoveDragAnchor>,
+    // Operator-set list-pane width override. None = use auto (60% of
+    // body, clamped to [LIST_WIDTH_WIDE_MIN, LIST_WIDTH_WIDE_MAX]).
+    list_width_override: Option<u16>,
+    resize_drag_anchor: Option<ResizeDragAnchor>,
 }
 
 /// Anchor captured at title-row Down(Left). The drag handler computes
@@ -64,6 +68,16 @@ pub struct MoveDragAnchor {
     pub start_offset_y: i16,
 }
 
+/// Anchor captured at separator-zone Down(Left). The drag handler
+/// computes new list_width = (event.column - body.x). Stored as the
+/// column delta from `body.x` so it survives a modal-resize during
+/// drag (rare, but defensive).
+#[derive(Debug, Clone, Copy)]
+pub struct ResizeDragAnchor {
+    pub start_col: u16,
+    pub start_list_width: u16,
+}
+
 impl Default for PendingActionsOverlay {
     fn default() -> Self {
         Self {
@@ -75,6 +89,8 @@ impl Default for PendingActionsOverlay {
             offset_x: 0,
             offset_y: 0,
             move_drag_anchor: None,
+            list_width_override: None,
+            resize_drag_anchor: None,
         }
     }
 }
@@ -87,17 +103,19 @@ impl PendingActionsOverlay {
         self.open = true;
         self.selected = 0;
         self.move_drag_anchor = None;
+        self.resize_drag_anchor = None;
         // multi_selected stays empty (default already empty); explicit no-op.
-        // width_pct, height_pct, offset_x, offset_y intentionally preserved
-        // (mirrors m overlay size persistence — operator's chosen geometry
-        // survives close/open within a session).
+        // width_pct, height_pct, offset_x, offset_y, list_width_override
+        // intentionally preserved (mirrors m overlay size persistence —
+        // operator's chosen geometry survives close/open within a session).
     }
     pub fn close(&mut self) {
         self.open = false;
         self.selected = 0;
         self.multi_selected.clear();
         self.move_drag_anchor = None;
-        // size + offset preserved (same as open).
+        self.resize_drag_anchor = None;
+        // size + offset + list_width_override preserved (same as open).
     }
     pub fn is_open(&self) -> bool {
         self.open
@@ -225,6 +243,7 @@ impl PendingActionsOverlay {
 
     pub fn end_drag(&mut self) {
         self.move_drag_anchor = None;
+        self.resize_drag_anchor = None;
     }
 
     pub fn grow(&mut self) {
@@ -242,6 +261,46 @@ impl PendingActionsOverlay {
         self.height_pct = DEFAULT_HEIGHT_PCT;
         self.offset_x = 0;
         self.offset_y = 0;
+        self.list_width_override = None;
+    }
+
+    // --- list/explainer ratio controls ----------------------------------
+
+    pub fn list_width_override(&self) -> Option<u16> {
+        self.list_width_override
+    }
+
+    pub fn resize_drag_anchor(&self) -> Option<ResizeDragAnchor> {
+        self.resize_drag_anchor
+    }
+
+    pub fn set_list_width(&mut self, w: u16) {
+        self.list_width_override = Some(w.clamp(LIST_WIDTH_WIDE_MIN, LIST_WIDTH_WIDE_MAX));
+    }
+
+    /// Step the list pane wider by `LIST_WIDTH_WIDE_STEP`. First press
+    /// of `,`/`.` may produce a noticeable jump if no override was set
+    /// yet (we start from MIN/MAX rather than the auto-formula's
+    /// effective width — computing that needs body_width which the
+    /// overlay doesn't know); subsequent presses are smooth.
+    pub fn widen_list(&mut self) {
+        let current = self.list_width_override.unwrap_or(LIST_WIDTH_WIDE_MIN);
+        self.list_width_override = Some((current + LIST_WIDTH_WIDE_STEP).min(LIST_WIDTH_WIDE_MAX));
+    }
+
+    /// Step the list pane narrower by `LIST_WIDTH_WIDE_STEP`. See
+    /// `widen_list` for the no-override-yet jump caveat.
+    pub fn narrow_list(&mut self) {
+        let current = self.list_width_override.unwrap_or(LIST_WIDTH_WIDE_MAX);
+        self.list_width_override = Some(
+            current
+                .saturating_sub(LIST_WIDTH_WIDE_STEP)
+                .max(LIST_WIDTH_WIDE_MIN),
+        );
+    }
+
+    pub fn begin_resize_drag(&mut self, anchor: ResizeDragAnchor) {
+        self.resize_drag_anchor = Some(anchor);
     }
 }
 
@@ -484,13 +543,24 @@ pub struct PendingActionsModalRects {
 // on smaller terminals (~30 cells minimum) and prevents the list from
 // growing past the row content length on huge terminals.
 const LIST_WIDTH_WIDE_RATIO: u32 = 60;
-const LIST_WIDTH_WIDE_MIN: u16 = 44;
-const LIST_WIDTH_WIDE_MAX: u16 = 64;
+pub(crate) const LIST_WIDTH_WIDE_MIN: u16 = 44;
+pub(crate) const LIST_WIDTH_WIDE_MAX: u16 = 64;
+pub const LIST_WIDTH_WIDE_STEP: u16 = 2;
 const SPLIT_THRESHOLD_WIDE: u16 = 72;
 
-fn wide_mode_list_width(body_width: u16) -> u16 {
+pub(crate) fn wide_mode_list_width(body_width: u16, override_width: Option<u16>) -> u16 {
+    // Ensure the explainer keeps at least LIST_WIDTH_WIDE_MIN cells.
+    // The clamp range collapses to [MIN, MIN] on tiny bodies; that's
+    // fine — wide mode only kicks in when body >= SPLIT_THRESHOLD_WIDE.
+    let max_for_body = body_width
+        .saturating_sub(LIST_WIDTH_WIDE_MIN)
+        .min(LIST_WIDTH_WIDE_MAX);
+    let max_clamp = max_for_body.max(LIST_WIDTH_WIDE_MIN);
+    if let Some(w) = override_width {
+        return w.clamp(LIST_WIDTH_WIDE_MIN, max_clamp);
+    }
     let scaled = (body_width as u32 * LIST_WIDTH_WIDE_RATIO / 100) as u16;
-    scaled.clamp(LIST_WIDTH_WIDE_MIN, LIST_WIDTH_WIDE_MAX)
+    scaled.clamp(LIST_WIDTH_WIDE_MIN, max_clamp)
 }
 
 pub(crate) fn pending_actions_modal_rects(
@@ -518,7 +588,7 @@ pub(crate) fn pending_actions_modal_rects(
     let (list, explainer) = if body.width >= SPLIT_THRESHOLD_WIDE {
         // Wide: list at 60% of body (clamped), 1-col separator,
         // explainer = rest. Separator is the explainer's LEFT border.
-        let list_w = wide_mode_list_width(body.width);
+        let list_w = wide_mode_list_width(body.width, overlay.list_width_override());
         let list = Rect::new(body.x, body.y, list_w, body.height);
         let exp_x = body.x + list_w;
         let exp_w = body.width.saturating_sub(list_w);
@@ -1219,7 +1289,7 @@ mod tests {
         // Body width just past the SPLIT_THRESHOLD_WIDE (72): 60% of
         // 72 = 43, below the LIST_WIDTH_WIDE_MIN floor of 44 — so the
         // clamp pulls list up to 44.
-        let list = wide_mode_list_width(72);
+        let list = wide_mode_list_width(72, None);
         assert_eq!(list, LIST_WIDTH_WIDE_MIN);
     }
 
@@ -1229,16 +1299,20 @@ mod tests {
         // = 94, capped at LIST_WIDTH_WIDE_MAX = 64 so the explainer
         // still has plenty of room and the list doesn't grow past
         // typical row content (~53 chars).
-        let list = wide_mode_list_width(158);
+        let list = wide_mode_list_width(158, None);
         assert_eq!(list, LIST_WIDTH_WIDE_MAX);
     }
 
     #[test]
-    fn wide_mode_list_width_uses_60pct_in_mid_range() {
-        // 120-col terminal → modal 96, body 94. 60% = 56 (within
-        // [44, 64]), so the proportional path drives the value.
-        let list = wide_mode_list_width(94);
-        assert_eq!(list, 56);
+    fn wide_mode_list_width_keeps_explainer_at_least_min_cells() {
+        // 120-col terminal → modal 96, body 94. 60% = 56, but the
+        // body-aware clamp caps the list at body - LIST_WIDTH_WIDE_MIN
+        // = 50 so the explainer always has at least 44 cells. This
+        // protects the explainer on smaller terminals where the
+        // proportional formula would otherwise crowd it.
+        let list = wide_mode_list_width(94, None);
+        assert_eq!(list, 50);
+        assert!(94u16.saturating_sub(list) >= LIST_WIDTH_WIDE_MIN);
     }
 
     #[test]
@@ -1548,5 +1622,58 @@ mod tests {
             (o.width_pct(), o.height_pct(), o.offset_x(), o.offset_y()),
             (w, h, ox, oy)
         );
+    }
+
+    #[test]
+    fn list_width_override_clamps_to_min_max() {
+        let mut o = PendingActionsOverlay::new();
+        o.set_list_width(10);
+        assert_eq!(o.list_width_override(), Some(LIST_WIDTH_WIDE_MIN));
+        o.set_list_width(200);
+        assert_eq!(o.list_width_override(), Some(LIST_WIDTH_WIDE_MAX));
+    }
+
+    #[test]
+    fn widen_narrow_step_by_two() {
+        let mut o = PendingActionsOverlay::new();
+        // Start with an explicit override so widen_list is deterministic.
+        o.set_list_width(50);
+        assert_eq!(o.list_width_override(), Some(50));
+        o.widen_list();
+        assert_eq!(o.list_width_override(), Some(52));
+        o.narrow_list();
+        o.narrow_list();
+        assert_eq!(o.list_width_override(), Some(48));
+    }
+
+    #[test]
+    fn reset_size_also_clears_list_override() {
+        let mut o = PendingActionsOverlay::new();
+        o.set_list_width(50);
+        o.set_offset(3, -1);
+        o.reset_size();
+        assert_eq!(o.list_width_override(), None);
+        assert_eq!(o.offset_x(), 0);
+        assert_eq!(o.offset_y(), 0);
+    }
+
+    #[test]
+    fn close_preserves_list_width_override() {
+        let mut o = PendingActionsOverlay::new();
+        o.open();
+        o.set_list_width(50);
+        o.close();
+        o.open();
+        assert_eq!(o.list_width_override(), Some(50));
+    }
+
+    #[test]
+    fn wide_mode_list_width_uses_override_when_set() {
+        // Wide body so the auto path hits LIST_WIDTH_WIDE_MAX (64);
+        // the override (Some(50)) should land at 50.
+        let auto = wide_mode_list_width(158, None);
+        let overridden = wide_mode_list_width(158, Some(50));
+        assert_ne!(auto, overridden);
+        assert_eq!(overridden, 50);
     }
 }

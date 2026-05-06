@@ -46,6 +46,14 @@ pub fn handle_pending_actions_overlay_key(
             overlay.reset_size();
             PendingActionsOutcome::None
         }
+        KeyCode::Char(',') => {
+            overlay.narrow_list();
+            PendingActionsOutcome::None
+        }
+        KeyCode::Char('.') => {
+            overlay.widen_list();
+            PendingActionsOutcome::None
+        }
         KeyCode::Char('a') | KeyCode::Char('q') | KeyCode::Esc => {
             overlay.close();
             PendingActionsOutcome::Closed
@@ -116,6 +124,29 @@ pub fn handle_pending_actions_overlay_mouse(
         return PendingActionsOutcome::Closed;
     }
 
+    // Separator-zone resize drag. Active only in wide mode (when the
+    // explainer pane is to the right of the list pane). Hit zone is
+    // 3 cells: [separator_col - 1, separator_col + 2). We check this
+    // BEFORE the title-row drag so a click on the separator never
+    // accidentally starts a move-drag (separator lives in body rows
+    // anyway, but the ordering keeps intent explicit).
+    let wide_mode = rects.explainer.x > rects.list.x;
+    if wide_mode {
+        let separator_col = rects.explainer.x;
+        if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
+            && event.row > rects.area.y // not the title row
+            && event.row + 1 < rects.area.y + rects.area.height // not the hint row
+            && event.column + 1 >= separator_col
+            && event.column < separator_col + 2
+        {
+            overlay.begin_resize_drag(crate::ui::pending_actions::ResizeDragAnchor {
+                start_col: event.column,
+                start_list_width: rects.list.width,
+            });
+            return PendingActionsOutcome::None;
+        }
+    }
+
     // Title-row drag (move modal). Down(Left) on top border row outside [x]
     // starts the drag; Drag(Left) updates offset; Up(Left) (or any non-Drag)
     // clears the anchor. Mirrors `handle_metrics_overlay_mouse`.
@@ -135,18 +166,27 @@ pub fn handle_pending_actions_overlay_mouse(
         return PendingActionsOutcome::None;
     }
 
-    if let MouseEventKind::Drag(MouseButton::Left) = event.kind
-        && let Some(anchor) = overlay.move_drag_anchor()
-    {
-        let dx = (event.column as i32) - (anchor.start_col as i32);
-        let dy = (event.row as i32) - (anchor.start_row as i32);
-        let new_x = (anchor.start_offset_x as i32 + dx).clamp(i16::MIN as i32, i16::MAX as i32);
-        let new_y = (anchor.start_offset_y as i32 + dy).clamp(i16::MIN as i32, i16::MAX as i32);
-        overlay.set_offset(new_x as i16, new_y as i16);
-        return PendingActionsOutcome::None;
+    // Drag dispatch — resize first (so a separator drag can't be
+    // shadowed by a stray move anchor), then move. Each branch only
+    // fires when its anchor is set.
+    if let MouseEventKind::Drag(MouseButton::Left) = event.kind {
+        if let Some(anchor) = overlay.resize_drag_anchor() {
+            let delta = (event.column as i32) - (anchor.start_col as i32);
+            let new_w = (anchor.start_list_width as i32 + delta).max(0) as u16;
+            overlay.set_list_width(new_w);
+            return PendingActionsOutcome::None;
+        }
+        if let Some(anchor) = overlay.move_drag_anchor() {
+            let dx = (event.column as i32) - (anchor.start_col as i32);
+            let dy = (event.row as i32) - (anchor.start_row as i32);
+            let new_x = (anchor.start_offset_x as i32 + dx).clamp(i16::MIN as i32, i16::MAX as i32);
+            let new_y = (anchor.start_offset_y as i32 + dy).clamp(i16::MIN as i32, i16::MAX as i32);
+            overlay.set_offset(new_x as i16, new_y as i16);
+            return PendingActionsOutcome::None;
+        }
     }
 
-    // Drag end / non-Drag event clears anchor.
+    // Drag end / non-Drag event clears both anchors.
     if !matches!(event.kind, MouseEventKind::Drag(_)) {
         overlay.end_drag();
     }
@@ -929,5 +969,83 @@ mod tests {
         );
         assert_eq!(overlay.offset_x(), 4);
         assert_eq!(overlay.offset_y(), 2);
+    }
+
+    #[test]
+    fn comma_period_keys_resize_list() {
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char(','));
+        let after_narrow = overlay.list_width_override();
+        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('.'));
+        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('.'));
+        let after_widen = overlay.list_width_override();
+        assert!(after_narrow.is_some() && after_widen.is_some());
+        assert!(after_widen.unwrap() > after_narrow.unwrap());
+    }
+
+    #[test]
+    fn separator_drag_updates_list_width() {
+        use crate::ui::pending_actions::{
+            LIST_WIDTH_WIDE_MAX, pending_actions_modal_rects, wide_mode_list_width,
+        };
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let viewport = Rect::new(0, 0, 200, 80);
+        let rects = pending_actions_modal_rects(viewport, &overlay);
+        let separator_col = rects.explainer.x;
+        let drag_row = rects.area.y + 5;
+        let items: Vec<crate::ui::pending_actions::PendingItem> = Vec::new();
+        handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(
+                MouseEventKind::Down(MouseButton::Left),
+                separator_col,
+                drag_row,
+            ),
+        );
+        handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(
+                MouseEventKind::Drag(MouseButton::Left),
+                separator_col + 5,
+                drag_row,
+            ),
+        );
+        // List width should have grown (clamped to range).
+        assert!(overlay.list_width_override().is_some());
+        let new_w = overlay.list_width_override().unwrap();
+        let auto_w = wide_mode_list_width(rects.area.width.saturating_sub(2), None);
+        assert!(
+            new_w > auto_w || new_w == LIST_WIDTH_WIDE_MAX,
+            "drag right should widen list (or hit max): auto={auto_w}, new={new_w}"
+        );
+    }
+
+    #[test]
+    fn separator_drag_does_not_start_in_title_or_body() {
+        use crate::ui::pending_actions::pending_actions_modal_rects;
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let viewport = Rect::new(0, 0, 200, 80);
+        let rects = pending_actions_modal_rects(viewport, &overlay);
+        let items: Vec<crate::ui::pending_actions::PendingItem> = Vec::new();
+        // Click in the body, not on the separator zone.
+        let body_col = rects.list.x + 5; // well inside the list
+        let body_row = rects.area.y + 3;
+        handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(MouseEventKind::Down(MouseButton::Left), body_col, body_row),
+        );
+        assert!(
+            overlay.resize_drag_anchor().is_none(),
+            "click in list body must not start separator drag"
+        );
     }
 }
