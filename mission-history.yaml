@@ -16833,7 +16833,7 @@ timeline:
       - "610c1bc v1.40 a overlay: revert TX-B auto-formula body-aware clamp"
       - "6ae18f5 v1.40 a overlay: hint-row leak fix + geometry doc/help/hint + clamp boundary tests"
       - "aa45584 v1.40 ledger: track widening + TX-A + TX-B in CURRENT_STATE polish list"
-      - "[release commit SHA — populate after committing the v1.40.0 release ledger sync]"
+      - "5b0e856 v1.40.0 release ledger sync (commit pointed to by the v1.40.0 annotated tag)"
     follow_up:
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
       - "Phase 7 D2/D3 anomaly detection and subagent analysis implementation remains unstarted; spec lives at .docs/codex/phase7-anomaly-detection-spec.md."
