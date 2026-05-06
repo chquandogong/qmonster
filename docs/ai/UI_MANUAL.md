@@ -605,6 +605,24 @@ side_effects (N):
       는 `wait_for_reset` / `snapshot_before_reset` 발화 조건을 보여줍니다.
       편집은 아직 `qmonster.toml` 직접 수정 방식입니다. 다음 config 로드 시
       Qmonster가 새 값을 읽어옵니다.
+  - **v1.42.0 업데이트 (Phase H) — opt-in auto-snapshot at reset boundary**:
+    `[reset] auto_snapshot = true`로 설정하면 Qmonster는 F-7c
+    `recommend_snapshot_before_reset` 어드바이저리가 발화할 때마다
+    `(pane, quota window)`당 snapshot을 자동으로 한 번 기록합니다.
+    snapshot은 `<qmonster-root>/snapshots/<timestamp>.json`에 저장되며,
+    `SnapshotWritten` audit 이벤트에는 `trigger=auto_reset_boundary` 및
+    `quota_kind=5h|weekly` 메타데이터가 summary 문자열로 기록됩니다.
+    쓰기가 완료되면 Concern-severity `SystemNotice`가 한 번 표시되어
+    operator가 경로를 확인할 수 있습니다. recommendation 자체는 대시보드
+    recommendation 패널에 계속 표시됩니다 — Phase H는 이를 소비하거나
+    숨기지 않습니다.
+
+    기본값: `auto_snapshot = false`. `[reset]` 섹션이 없는 v1.41.0
+    operator는 동작 변화가 없습니다.
+
+    F-7d의 operator-tunable 임계값(`snapshot_pressure_threshold`,
+    `snapshot_eta_secs`)이 recommendation 발화 조건을 제어합니다;
+    Phase H는 별도의 임계값 없이 이 값들을 그대로 재사용합니다.
 
 ### 8.5 Metrics Overlay
 

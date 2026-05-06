@@ -24,6 +24,8 @@
 # - [cache]   hot_ratio_threshold, cold_ratio_threshold, hot_low_ctx_threshold,
 #             cold_high_ctx_threshold, drift_drop_threshold, drift_min_samples
 # - [ux]      confirm_actions
+# - [reset]   wait_pressure_threshold, wait_eta_secs, snapshot_pressure_threshold,
+#             snapshot_eta_secs, auto_snapshot
 #
 # Everything else belongs in docs/ai/* or tmux launcher conventions,
 # not in runtime TOML.
@@ -236,3 +238,20 @@ policy = "manual_only"
 # How often to show the action-explainer modal before executing p / d / y.
 # always | first_time | never
 confirm_actions = "always"
+
+# Phase F F-7d (v1.35.0): operator-tunable thresholds for the reset-aware
+# advisories. Defaults match the v1.34.0 (F-7c) hardcoded values exactly;
+# operators who never edit this section see no behavior change.
+[reset]
+wait_pressure_threshold = 0.85   # quota pressure floor for "pause until reset" advisory
+wait_eta_secs = 1800              # reset ETA ceiling (secs) for the same advisory (30 min)
+snapshot_pressure_threshold = 0.50  # quota pressure floor for "snapshot before reset" advisory
+snapshot_eta_secs = 300           # reset ETA ceiling (secs) for the same advisory (5 min)
+
+# Phase H opt-in auto-snapshot at reset boundary (v1.42.0).
+# When true, Qmonster writes one snapshot per (pane, quota window)
+# whenever the F-7c recommend_snapshot_before_reset advisory fires.
+# The snapshot lands under ~/.qmonster/snapshots/<timestamp>.json
+# and records a SnapshotWritten audit event. Default false — existing
+# v1.41.0 operators see no behavior change.
+# auto_snapshot = false

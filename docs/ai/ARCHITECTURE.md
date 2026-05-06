@@ -835,6 +835,24 @@ cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
   deterministic now-injection. Tests grew to 765 lib + 68 integration
   green.
 
+v1.42.0 ships **Phase H opt-in auto-snapshot at reset boundary**.
+A new `app::auto_snapshot::maybe_auto_snapshot` hook in
+`src/app/auto_snapshot.rs` runs after `policy.evaluate(...)` in
+the event loop. When `[reset] auto_snapshot = true` AND the F-7c
+`recommend_snapshot_before_reset` advisory fires, the hook writes
+one snapshot per `(pane_id, quota_kind, window_id)` where
+`window_id = quota_*_resets_at` floored to the nearest minute.
+The hook reuses the `SnapshotWriter` and the `SnapshotWritten`
+audit kind unchanged; metadata (`trigger=auto_reset_boundary`,
+`quota_kind`, `window_id`) is encoded in the audit `summary`
+string. Failures push a Warning `SystemNotice` and leave dedup
+untouched so the next tick can retry. Restart inside a window
+resets in-memory dedup, permitting one extra snapshot for that
+window — acceptable: the snapshot is harmless, and persisting
+dedup to disk is not worth the schema change in v1. The policy
+code, the F-7d thresholds, and the existing dashboard
+recommendation flow are all untouched.
+
 v1.37.0 ships four feature slices as the current runtime baseline.
 F-8 extends cross-pane orchestration from same-path/branch heuristics
 to file-level Claude tool-call observations: when the operator enables

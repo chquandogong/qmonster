@@ -288,6 +288,12 @@ through_sqlite` test in `src/store/audit.rs`)
       explicit operator `p` keystroke + `allow_auto_prompt_send = true`
       can reach `send_keys`; observe_only and recommend_only defaults
       both gate before `Execute` branch; no auto-trigger path exists)
+- [x] Phase H opt-in auto-snapshot (v1.42.0): `[reset] auto_snapshot = false`
+      by default; `auto_snapshot = true` writes one snapshot per
+      `(pane_id, quota_kind, window_id)` triple via
+      `app::auto_snapshot::maybe_auto_snapshot`; `SnapshotWritten`
+      audit summary carries `trigger=auto_reset_boundary` and
+      `quota_kind`.
 
 ## Non-functional checks (all phases)
 
