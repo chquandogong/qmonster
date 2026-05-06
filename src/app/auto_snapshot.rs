@@ -7,6 +7,8 @@
 //! nearest minute) so all ticks inside a single reset window
 //! agree on the same key.
 
+use crate::domain::recommendation::Recommendation;
+
 /// Per-pane, per-quota-window dedup state for Phase H.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct AutoSnapshotDedup {
@@ -66,8 +68,6 @@ pub fn floor_to_minute(unix_seconds: u64) -> u64 {
     unix_seconds - (unix_seconds % 60)
 }
 
-use crate::domain::recommendation::Recommendation;
-
 /// `Recommendation.action` constant emitted by
 /// `recommend_snapshot_before_reset` for the 5h window.
 const SNAPSHOT_5H_ACTION: &str = "snapshot before 5h window resets";
@@ -80,6 +80,11 @@ const SNAPSHOT_WEEKLY_ACTION: &str = "snapshot before weekly window resets";
 /// `snapshot_before_reset` advisory (5h or weekly), `None` otherwise.
 /// Phase H acts only on these two action strings; every other
 /// recommendation flows through unchanged.
+///
+/// See `policy::rules::reset::recommend_snapshot_before_reset` (F-7c)
+/// for the rule that emits these action strings; the drift guard
+/// test `action_constants_match_reset_rule_output` in this module
+/// pins the constants against live rule output.
 pub fn extract_quota_kind(rec: &Recommendation) -> Option<QuotaKind> {
     match rec.action {
         SNAPSHOT_5H_ACTION => Some(QuotaKind::FiveHour),
@@ -110,13 +115,13 @@ mod tests {
 
     #[test]
     fn extract_kind_returns_5h_for_5h_action() {
-        let rec = make_rec("snapshot before 5h window resets");
+        let rec = make_rec(SNAPSHOT_5H_ACTION);
         assert_eq!(extract_quota_kind(&rec), Some(QuotaKind::FiveHour));
     }
 
     #[test]
     fn extract_kind_returns_weekly_for_weekly_action() {
-        let rec = make_rec("snapshot before weekly window resets");
+        let rec = make_rec(SNAPSHOT_WEEKLY_ACTION);
         assert_eq!(extract_quota_kind(&rec), Some(QuotaKind::Weekly));
     }
 
