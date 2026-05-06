@@ -29,13 +29,20 @@ Five backwards-compatible themes are complete in the v1.39.0 source. None of the
 
 ## Post-tag polish (on main, untagged)
 
-Five commits landed on main after `v1.39.0` was tagged. They will be picked up by the next tagged release.
+Five v1.39-era commits + the v1.40 feature stack landed on main after `v1.39.0` was tagged. All will be picked up by the next tagged release.
+
+v1.39 polish:
 
 - `41cf54f` — post-publish CURRENT_STATE refresh (concrete workflow run IDs for v1.37/v1.38/v1.39).
 - `540c414` — MF-2 closure: `evolution_summary.current_phase` / `next_phase` tightened.
 - `d752204` — `★p` chip on pane card title when prompt-send proposal pending; `★y` chip on alert title when `suggested_command` present. Severity-colored.
 - `e8e1808` — footer pending counters (`★p:N · ★y:M`) always-visible. Dim on 0; severity-colored when N > 0.
-- `922bba9` — Pending Actions overlay (`a` key): unified modal listing every pane with a pending p/d proposal AND every alert with a y-copyable command. Enter jumps to the underlying item AND opens the Action Explainer modal so dispatch is one keypress away from anywhere on the dashboard. Help overlay + UI_MANUAL §8.7 document the new key.
+- `922bba9` — Pending Actions overlay (`a` key) v1: unified modal listing every pane with a pending p/d proposal AND every alert with a y-copyable command. Enter jumps + opens the Action Explainer modal.
+
+v1.40 feature stack (spec: `docs/superpowers/specs/2026-05-06-mouse-drag-and-bulk-overlays-design.md`, plan: `docs/superpowers/plans/2026-05-06-mouse-drag-and-bulk-overlays.md`):
+
+- **m overlay drag-to-move**: `MetricsOverlay` gains `offset_x` / `offset_y` / `drag_anchor`; `metrics_modal_rects` is 5-arg with `apply_clamped_offset` enforcing left/top hard bounds + right/bottom soft bounds (≥ 4 cells horizontal / ≥ 1 row vertical visible). `=` resets size + position together. Drag handle = top border row, excluding `[x]`. UI_MANUAL §8.5 + help overlay updated. Commits `f795660`, `5766283`, `20cd127`, `19a769b`.
+- **a overlay live explainer + multi-select + bulk dispatch (v1.40 redesign)**: split modal layout (`{ area, list, explainer, hint }`) with vertical or horizontal split based on body width. `multi_selected: BTreeSet<String>` with stable-key tracking. New keys: `Space` toggle, `P/Y/A` group toggle, `c` clear-sel, `p`/`d`/`y` dispatch (multi-priority + cursor fallback), `Enter` silently swallowed. Mouse: cols 0–3 toggle multi, cols 4+ move cursor. Bulk dispatch routes per-item through existing `confirm_pending_action(...)` so no new audit event types — proposal accepts/rejects fire `PromptSendAccepted`/`Rejected`/`Completed`/`Blocked` per item; alert hides use `alert_hide_deadlines.insert(...)`. Notices push through `dashboard.push_notice(notice, now)` for top-of-queue + `fresh_alerts` / `alert_times` / `resync` parity with single-item dispatch. Auto-prune of stale multi-keys at every render. UI_MANUAL §8.7 fully rewritten + help overlay refreshed. Commits `9708e0c`, `08f1b00`, `a3a494d`, `5300f08`, `40e645f`, `290134c`, `dad3060`, `37595bd`, `88f65e1`, `62d2de4`, `3c9173f`, `5e98d44`, `8c35b8e`, `2040786`, `b0a64b7`.
 
 ## Known External State
 

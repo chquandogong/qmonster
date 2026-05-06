@@ -870,7 +870,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("Mouse double", "toggle hide on the clicked alert"),
         (
             "Mouse drag",
-            "drag the divider between Alerts and Panes to resize them",
+            "drag the divider between Alerts and Panes to resize them; drag the m overlay's title row to move the modal",
         ),
         (
             "Severity chip",
@@ -904,7 +904,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "m",
-            "open the Metrics overlay (per-pane card layout); ↑/↓ scroll the body; [ / ] resize the modal; = reset to default; m again, Esc, q, or [x] click to close",
+            "open the Metrics overlay (per-pane card layout); ↑/↓ scroll the body; [ / ] resize the modal; = reset size + position to default; drag the title row to move the modal (left/top hard bound, right/bottom soft bound); m again, Esc, q, or [x] click to close",
         ),
         (
             "a",
