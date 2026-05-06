@@ -138,6 +138,14 @@ impl PendingActionsOverlay {
         let live: BTreeSet<String> = items.iter().map(pending_item_key).collect();
         self.multi_selected.retain(|k| live.contains(k));
     }
+
+    /// Retain only multi-select keys for which `pred` returns true.
+    /// Used by the bulk dispatchers to drop keys that were just
+    /// dispatched, while keeping the rest of the multi-selection
+    /// intact (spec §5.10: "only dispatched keys are removed").
+    pub fn retain_multi(&mut self, mut pred: impl FnMut(&String) -> bool) {
+        self.multi_selected.retain(|k| pred(k));
+    }
 }
 
 /// One actionable item the overlay lists. `Proposal` matches a pane

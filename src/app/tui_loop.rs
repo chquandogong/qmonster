@@ -21,7 +21,8 @@ use crate::app::modal_state::{
 };
 use crate::app::operator_actions::{version_refresh_notices, write_operator_snapshot};
 use crate::app::pending_actions_overlay::{
-    PendingActionsOutcome, handle_pending_actions_overlay_key, handle_pending_actions_overlay_mouse,
+    PendingActionsOutcome, accept_action_for, copy_action_for, handle_pending_actions_overlay_key,
+    handle_pending_actions_overlay_mouse, reject_action_for,
 };
 use crate::app::polling_tick::{PollTickState, handle_poll_tick};
 use crate::app::prompt_send_actions::handle_prompt_send_action;
@@ -180,6 +181,10 @@ where
                     &dashboard.alert_hide_deadlines,
                     now,
                 );
+                // v1.40 Task 12 §5.10: auto-prune stale multi-select keys
+                // every frame so a proposal accepted last tick cannot
+                // linger in `multi_selected` and re-dispatch.
+                pending_actions.prune_to(&pending_items);
                 terminal.draw(|frame| {
                     render_dashboard_frame(
                         frame,
@@ -331,6 +336,7 @@ where
                                     &dashboard.alert_hide_deadlines,
                                     now,
                                 );
+                                pending_actions.prune_to(&items);
                                 let outcome = handle_pending_actions_overlay_key(
                                     &mut pending_actions,
                                     &items,
@@ -339,10 +345,47 @@ where
                                 match outcome {
                                     PendingActionsOutcome::None | PendingActionsOutcome::Closed => {
                                     }
-                                    PendingActionsOutcome::AcceptItems(_)
-                                    | PendingActionsOutcome::ClearItems(_)
-                                    | PendingActionsOutcome::CopyItem(_) => {
-                                        // Filled in by Task 12.
+                                    PendingActionsOutcome::AcceptItems(idxs) => {
+                                        dispatch_bulk_proposals(
+                                            &idxs,
+                                            &items,
+                                            &mut pending_actions,
+                                            &mut dashboard.notices,
+                                            &ctx.source,
+                                            &*ctx.sink,
+                                            &dashboard.reports,
+                                            ctx.config.actions.mode,
+                                            ctx.config.actions.allow_auto_prompt_send,
+                                            DispatchKind::Accept,
+                                        );
+                                    }
+                                    PendingActionsOutcome::ClearItems(idxs) => {
+                                        dispatch_bulk_clear(
+                                            &idxs,
+                                            &items,
+                                            &mut pending_actions,
+                                            &mut dashboard.notices,
+                                            &mut dashboard.alert_hide_deadlines,
+                                            &dashboard.reports,
+                                            &ctx.source,
+                                            &*ctx.sink,
+                                            ctx.config.actions.mode,
+                                            ctx.config.actions.allow_auto_prompt_send,
+                                            Instant::now(),
+                                        );
+                                    }
+                                    PendingActionsOutcome::CopyItem(idx) => {
+                                        dispatch_bulk_copy(
+                                            idx,
+                                            &items,
+                                            &mut pending_actions,
+                                            &mut dashboard.notices,
+                                            &ctx.source,
+                                            &*ctx.sink,
+                                            &dashboard.reports,
+                                            ctx.config.actions.mode,
+                                            ctx.config.actions.allow_auto_prompt_send,
+                                        );
                                     }
                                 }
                                 continue;
@@ -774,100 +817,6 @@ where
     result
 }
 
-/// v1.39 surface C dispatch — Enter on a Pending Actions overlay row
-/// jumps the underlying selection (pane_state for Proposal items,
-/// alert_state for Copy items), opens the Action Explainer modal
-/// for the matching action, and closes the overlay so the operator
-/// confirms / cancels without leaving the keyboard. Deliberately
-/// keeps the action_explainer payload identical to the
-/// p/d/y-direct flows (snapshot identifying fields, build the same
-/// `ActionExplainView`) so confirm-time validation still catches a
-/// proposal vanish between Enter and `confirm_pending_action`.
-// Task 12 will delete this struct when it wires AcceptItems/ClearItems/CopyItem dispatch.
-#[allow(dead_code)]
-struct PendingActionDispatch<'a> {
-    dashboard: &'a mut crate::app::dashboard_runtime::DashboardRuntimeState,
-    action_explainer: &'a mut crate::app::action_explainer::ActionExplainModal,
-    pending_actions: &'a mut crate::ui::pending_actions::PendingActionsOverlay,
-    focus: &'a mut FocusedPanel,
-    config: &'a crate::app::config::QmonsterConfig,
-}
-
-// Task 12 will delete this function when it wires AcceptItems/ClearItems/CopyItem dispatch.
-#[allow(dead_code)]
-fn dispatch_pending_action(
-    idx: usize,
-    items: &[crate::ui::pending_actions::PendingItem],
-    cx: PendingActionDispatch<'_>,
-) {
-    use crate::app::action_explainer::{PendingAction, build_accept_view, build_copy_view};
-    use crate::ui::pending_actions::PendingItem;
-
-    let PendingActionDispatch {
-        dashboard,
-        action_explainer,
-        pending_actions,
-        focus,
-        config,
-    } = cx;
-
-    let Some(item) = items.get(idx) else {
-        pending_actions.close();
-        return;
-    };
-    match item {
-        PendingItem::Proposal {
-            pane_idx,
-            slash_command,
-            proposal_id,
-            target_pane_id,
-            ..
-        } => {
-            // Jump pane selection to the item's pane so the operator's
-            // mental model lines up with the Action Explainer's
-            // "Target pane" row.
-            dashboard.pane_state.select(Some(*pane_idx));
-            *focus = FocusedPanel::Panes;
-            // Re-fetch the report so build_accept_view sees the live
-            // recommendations for the "Why now" reason text.
-            let Some(report) = dashboard.reports.get(*pane_idx) else {
-                pending_actions.close();
-                return;
-            };
-            let action = PendingAction::AcceptPromptSend {
-                target_pane_id: target_pane_id.clone(),
-                slash_command: slash_command.clone(),
-                proposal_id: proposal_id.clone(),
-            };
-            let view = build_accept_view(
-                report,
-                slash_command,
-                config.actions.mode,
-                config.actions.allow_auto_prompt_send,
-            );
-            action_explainer.open(action, view);
-        }
-        PendingItem::Copy {
-            alert_idx,
-            command,
-            alert_title,
-            severity,
-            source,
-            ..
-        } => {
-            dashboard.alert_state.select(Some(*alert_idx));
-            *focus = FocusedPanel::Alerts;
-            let action = PendingAction::CopyAlertCommand {
-                command: command.clone(),
-                alert_title: alert_title.clone(),
-            };
-            let view = build_copy_view(alert_title, command, Some(*severity), *source);
-            action_explainer.open(action, view);
-        }
-    }
-    pending_actions.close();
-}
-
 /// v1.38 Phase D Task 20: when the Action Explainer modal is open and
 /// the operator presses the same key that opened it (`p` for accept,
 /// `d` for reject, `y` for copy), close the modal without executing —
@@ -961,4 +910,144 @@ fn confirm_pending_action<P: crate::tmux::polling::PaneSource>(
             }
         }
     }
+}
+
+/// Tag for the bulk-proposal dispatcher: accept routes to the
+/// `AcceptPromptSend` action; reject routes to `RejectPromptSend`. The
+/// alert-only `Clear` path is handled in `dispatch_bulk_clear`.
+///
+/// `Reject` is currently unused — the `d` keypath routes through
+/// `dispatch_bulk_clear` (which calls `reject_action_for` directly per
+/// item so it can also handle alerts via the hide path). Kept here
+/// for API symmetry with future refactors.
+#[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
+enum DispatchKind {
+    Accept,
+    Reject,
+}
+
+/// v1.40 surface C: bulk accept/reject dispatcher for the Pending
+/// Actions overlay's `p` (Accept) and `d`-on-proposals paths. Routes
+/// every selected proposal through the same `confirm_pending_action`
+/// hardening as the dashboard direct keys, then drops only the
+/// dispatched keys from `multi_selected` (per spec §5.10 — surviving
+/// keys stay selected so the operator can retry next tick).
+#[allow(clippy::too_many_arguments)]
+fn dispatch_bulk_proposals<P: crate::tmux::polling::PaneSource>(
+    idxs: &[usize],
+    items: &[crate::ui::pending_actions::PendingItem],
+    overlay: &mut crate::ui::pending_actions::PendingActionsOverlay,
+    notices: &mut Vec<SystemNotice>,
+    source: &P,
+    sink: &dyn crate::store::EventSink,
+    reports: &[crate::app::event_loop::PaneReport],
+    mode: crate::app::config::ActionsMode,
+    allow_auto_prompt_send: bool,
+    kind: DispatchKind,
+) {
+    use crate::ui::pending_actions::pending_item_key;
+
+    let mut dispatched_keys: Vec<String> = Vec::new();
+    for &idx in idxs {
+        let Some(item) = items.get(idx) else { continue };
+        let action = match kind {
+            DispatchKind::Accept => accept_action_for(item),
+            DispatchKind::Reject => reject_action_for(item),
+        };
+        let Some(action) = action else { continue };
+        let notice =
+            confirm_pending_action(&action, source, sink, reports, mode, allow_auto_prompt_send);
+        notices.push(notice);
+        dispatched_keys.push(pending_item_key(item));
+    }
+    overlay.retain_multi(|k| !dispatched_keys.iter().any(|dk| dk == k));
+}
+
+/// v1.40 surface C: bulk clear dispatcher for the `d` path. Proposal
+/// items take the reject path (same hardening as direct `d`); copy
+/// items take the alert-hide path so a `d`-on-alert dismisses the
+/// alert via `alert_hide_deadlines` rather than rejecting a proposal.
+/// Only dispatched keys are dropped from `multi_selected`.
+#[allow(clippy::too_many_arguments)]
+fn dispatch_bulk_clear<P: crate::tmux::polling::PaneSource>(
+    idxs: &[usize],
+    items: &[crate::ui::pending_actions::PendingItem],
+    overlay: &mut crate::ui::pending_actions::PendingActionsOverlay,
+    notices: &mut Vec<SystemNotice>,
+    alert_hide_deadlines: &mut std::collections::HashMap<String, std::time::Instant>,
+    reports: &[crate::app::event_loop::PaneReport],
+    source: &P,
+    sink: &dyn crate::store::EventSink,
+    mode: crate::app::config::ActionsMode,
+    allow_auto_prompt_send: bool,
+    now: std::time::Instant,
+) {
+    use crate::ui::pending_actions::{PendingItem, pending_item_key};
+
+    let mut dispatched_keys: Vec<String> = Vec::new();
+    // idxs is already sorted ascending by the dispatcher (see Task 10).
+    for &idx in idxs {
+        let Some(item) = items.get(idx) else { continue };
+        match item {
+            PendingItem::Proposal { .. } => {
+                if let Some(action) = reject_action_for(item) {
+                    let notice = confirm_pending_action(
+                        &action,
+                        source,
+                        sink,
+                        reports,
+                        mode,
+                        allow_auto_prompt_send,
+                    );
+                    notices.push(notice);
+                    dispatched_keys.push(pending_item_key(item));
+                }
+            }
+            PendingItem::Copy { alert_idx, .. } => {
+                if let Some(key) = crate::app::dashboard_state::alert_key_at_index(
+                    notices,
+                    reports,
+                    alert_hide_deadlines,
+                    now,
+                    *alert_idx,
+                ) {
+                    alert_hide_deadlines
+                        .insert(key, now + crate::ui::alerts::ALERT_AUTO_HIDE_DELAY);
+                }
+                dispatched_keys.push(pending_item_key(item));
+            }
+        }
+    }
+    overlay.retain_multi(|k| !dispatched_keys.iter().any(|dk| dk == k));
+}
+
+/// v1.40 surface C: bulk copy dispatcher for the `y` path. Always
+/// targets a single alert (the first selected `Copy` item, per
+/// `dispatch_copy` in `pending_actions_overlay`). Routes through
+/// `confirm_pending_action` so the clipboard write reuses the
+/// snapshotted command (no drift).
+#[allow(clippy::too_many_arguments)]
+fn dispatch_bulk_copy<P: crate::tmux::polling::PaneSource>(
+    idx: usize,
+    items: &[crate::ui::pending_actions::PendingItem],
+    overlay: &mut crate::ui::pending_actions::PendingActionsOverlay,
+    notices: &mut Vec<SystemNotice>,
+    source: &P,
+    sink: &dyn crate::store::EventSink,
+    reports: &[crate::app::event_loop::PaneReport],
+    mode: crate::app::config::ActionsMode,
+    allow_auto_prompt_send: bool,
+) {
+    use crate::ui::pending_actions::pending_item_key;
+
+    let Some(item) = items.get(idx) else { return };
+    let Some(action) = copy_action_for(item) else {
+        return;
+    };
+    let notice =
+        confirm_pending_action(&action, source, sink, reports, mode, allow_auto_prompt_send);
+    notices.push(notice);
+    let key = pending_item_key(item);
+    overlay.retain_multi(|k| k != &key);
 }
