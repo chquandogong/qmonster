@@ -128,6 +128,11 @@ where
             // Carrying the old error rate forward would let a stale
             // burst trip the profile-switch rule on the new lifetime.
             ctx.recent_error_observations.remove(&pane.pane_id);
+            // Phase H (v1.42.0): a re-spawned pane starts a fresh
+            // auto-snapshot dedup window. Stale dedup state from the
+            // previous lifetime would suppress the first snapshot of
+            // the new lifetime.
+            ctx.auto_snapshot_dedup.remove(&pane.pane_id);
         }
 
         if pane.dead {
