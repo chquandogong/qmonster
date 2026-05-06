@@ -346,17 +346,16 @@ where
                                     PendingActionsOutcome::None | PendingActionsOutcome::Closed => {
                                     }
                                     PendingActionsOutcome::AcceptItems(idxs) => {
-                                        dispatch_bulk_proposals(
+                                        dispatch_bulk_accept(
                                             &idxs,
                                             &items,
                                             &mut pending_actions,
-                                            &mut dashboard.notices,
+                                            &mut dashboard,
                                             &ctx.source,
                                             &*ctx.sink,
-                                            &dashboard.reports,
                                             ctx.config.actions.mode,
                                             ctx.config.actions.allow_auto_prompt_send,
-                                            DispatchKind::Accept,
+                                            Instant::now(),
                                         );
                                     }
                                     PendingActionsOutcome::ClearItems(idxs) => {
@@ -364,9 +363,7 @@ where
                                             &idxs,
                                             &items,
                                             &mut pending_actions,
-                                            &mut dashboard.notices,
-                                            &mut dashboard.alert_hide_deadlines,
-                                            &dashboard.reports,
+                                            &mut dashboard,
                                             &ctx.source,
                                             &*ctx.sink,
                                             ctx.config.actions.mode,
@@ -379,12 +376,12 @@ where
                                             idx,
                                             &items,
                                             &mut pending_actions,
-                                            &mut dashboard.notices,
+                                            &mut dashboard,
                                             &ctx.source,
                                             &*ctx.sink,
-                                            &dashboard.reports,
                                             ctx.config.actions.mode,
                                             ctx.config.actions.allow_auto_prompt_send,
+                                            Instant::now(),
                                         );
                                     }
                                 }
@@ -912,53 +909,49 @@ fn confirm_pending_action<P: crate::tmux::polling::PaneSource>(
     }
 }
 
-/// Tag for the bulk-proposal dispatcher: accept routes to the
-/// `AcceptPromptSend` action; reject routes to `RejectPromptSend`. The
-/// alert-only `Clear` path is handled in `dispatch_bulk_clear`.
+/// v1.40 surface C: bulk accept dispatcher for the Pending Actions
+/// overlay's `p` path. Routes every selected proposal through the same
+/// `confirm_pending_action` hardening as the dashboard direct keys,
+/// then drops only the dispatched keys from `multi_selected` (per spec
+/// §5.10 — surviving keys stay selected so the operator can retry next
+/// tick).
 ///
-/// `Reject` is currently unused — the `d` keypath routes through
-/// `dispatch_bulk_clear` (which calls `reject_action_for` directly per
-/// item so it can also handle alerts via the hide path). Kept here
-/// for API symmetry with future refactors.
-#[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
-enum DispatchKind {
-    Accept,
-    Reject,
-}
-
-/// v1.40 surface C: bulk accept/reject dispatcher for the Pending
-/// Actions overlay's `p` (Accept) and `d`-on-proposals paths. Routes
-/// every selected proposal through the same `confirm_pending_action`
-/// hardening as the dashboard direct keys, then drops only the
-/// dispatched keys from `multi_selected` (per spec §5.10 — surviving
-/// keys stay selected so the operator can retry next tick).
+/// v1.40.1 review fix (Critical 2): notices are pushed via
+/// `dashboard.push_notice(notice, now)` so they land at the top of the
+/// queue with `fresh_alerts` / `alert_times` updated and the alert
+/// selection resynced — same hardening the single-item Action
+/// Explainer path uses. Previously `notices.push(notice)` appended at
+/// the bottom and skipped the resync, so bulk notices never got "NEW"
+/// badges and the list selection could drift.
 #[allow(clippy::too_many_arguments)]
-fn dispatch_bulk_proposals<P: crate::tmux::polling::PaneSource>(
+fn dispatch_bulk_accept<P: crate::tmux::polling::PaneSource>(
     idxs: &[usize],
     items: &[crate::ui::pending_actions::PendingItem],
     overlay: &mut crate::ui::pending_actions::PendingActionsOverlay,
-    notices: &mut Vec<SystemNotice>,
+    dashboard: &mut crate::app::dashboard_runtime::DashboardRuntimeState,
     source: &P,
     sink: &dyn crate::store::EventSink,
-    reports: &[crate::app::event_loop::PaneReport],
     mode: crate::app::config::ActionsMode,
     allow_auto_prompt_send: bool,
-    kind: DispatchKind,
+    now: std::time::Instant,
 ) {
     use crate::ui::pending_actions::pending_item_key;
 
     let mut dispatched_keys: Vec<String> = Vec::new();
     for &idx in idxs {
         let Some(item) = items.get(idx) else { continue };
-        let action = match kind {
-            DispatchKind::Accept => accept_action_for(item),
-            DispatchKind::Reject => reject_action_for(item),
+        let Some(action) = accept_action_for(item) else {
+            continue;
         };
-        let Some(action) = action else { continue };
-        let notice =
-            confirm_pending_action(&action, source, sink, reports, mode, allow_auto_prompt_send);
-        notices.push(notice);
+        let notice = confirm_pending_action(
+            &action,
+            source,
+            sink,
+            &dashboard.reports,
+            mode,
+            allow_auto_prompt_send,
+        );
+        dashboard.push_notice(notice, now);
         dispatched_keys.push(pending_item_key(item));
     }
     overlay.retain_multi(|k| !dispatched_keys.iter().any(|dk| dk == k));
@@ -969,14 +962,24 @@ fn dispatch_bulk_proposals<P: crate::tmux::polling::PaneSource>(
 /// items take the alert-hide path so a `d`-on-alert dismisses the
 /// alert via `alert_hide_deadlines` rather than rejecting a proposal.
 /// Only dispatched keys are dropped from `multi_selected`.
+///
+/// v1.40.1 review fix (Critical 1): `alert_key_at_index` resolves
+/// against `visible_alert_keys`, which is computed from the live
+/// `alert_hide_deadlines` map. Hiding one alert in iteration N would
+/// shift the indices for iteration N+1, so bulk-clearing two or more
+/// alerts hid only the first plus a wrong subsequent one. Fix:
+/// resolve all alert keys upfront against the original snapshot in
+/// Phase 1, then apply per-item dispatch (rejects + hides) in
+/// subsequent phases. This also addresses Important 3 — alerts that
+/// vanished between selection and dispatch no longer claim a
+/// `dispatched_keys` slot, so they stay in the multi-select set and
+/// the operator can retry next tick.
 #[allow(clippy::too_many_arguments)]
 fn dispatch_bulk_clear<P: crate::tmux::polling::PaneSource>(
     idxs: &[usize],
     items: &[crate::ui::pending_actions::PendingItem],
     overlay: &mut crate::ui::pending_actions::PendingActionsOverlay,
-    notices: &mut Vec<SystemNotice>,
-    alert_hide_deadlines: &mut std::collections::HashMap<String, std::time::Instant>,
-    reports: &[crate::app::event_loop::PaneReport],
+    dashboard: &mut crate::app::dashboard_runtime::DashboardRuntimeState,
     source: &P,
     sink: &dyn crate::store::EventSink,
     mode: crate::app::config::ActionsMode,
@@ -985,40 +988,91 @@ fn dispatch_bulk_clear<P: crate::tmux::polling::PaneSource>(
 ) {
     use crate::ui::pending_actions::{PendingItem, pending_item_key};
 
-    let mut dispatched_keys: Vec<String> = Vec::new();
-    // idxs is already sorted ascending by the dispatcher (see Task 10).
+    // Phase 1: resolve all dispatch targets up front against the
+    // original snapshot. We MUST do this before any mutation because
+    // `alert_key_at_index` resolves against `visible_alert_keys`,
+    // which is computed from the live `alert_hide_deadlines` map.
+    // Hiding one alert in iteration N would shift the index for
+    // iteration N+1.
+    struct PreparedReject {
+        item_key: String,
+        action: crate::app::action_explainer::PendingAction,
+    }
+    struct PreparedHide {
+        item_key: String,
+        alert_key: String,
+    }
+
+    let mut reject_targets: Vec<PreparedReject> = Vec::new();
+    let mut hide_targets: Vec<PreparedHide> = Vec::new();
     for &idx in idxs {
         let Some(item) = items.get(idx) else { continue };
         match item {
             PendingItem::Proposal { .. } => {
                 if let Some(action) = reject_action_for(item) {
-                    let notice = confirm_pending_action(
-                        &action,
-                        source,
-                        sink,
-                        reports,
-                        mode,
-                        allow_auto_prompt_send,
-                    );
-                    notices.push(notice);
-                    dispatched_keys.push(pending_item_key(item));
+                    reject_targets.push(PreparedReject {
+                        item_key: pending_item_key(item),
+                        action,
+                    });
                 }
             }
             PendingItem::Copy { alert_idx, .. } => {
-                if let Some(key) = crate::app::dashboard_state::alert_key_at_index(
-                    notices,
-                    reports,
-                    alert_hide_deadlines,
+                if let Some(alert_key) = crate::app::dashboard_state::alert_key_at_index(
+                    &dashboard.notices,
+                    &dashboard.reports,
+                    &dashboard.alert_hide_deadlines,
                     now,
                     *alert_idx,
                 ) {
-                    alert_hide_deadlines
-                        .insert(key, now + crate::ui::alerts::ALERT_AUTO_HIDE_DELAY);
+                    hide_targets.push(PreparedHide {
+                        item_key: pending_item_key(item),
+                        alert_key,
+                    });
                 }
-                dispatched_keys.push(pending_item_key(item));
+                // else: alert vanished between selection and dispatch
+                // (review Important 3 — do NOT add to dispatched_keys
+                // so the entry stays in multi-select for retry).
             }
         }
     }
+
+    let mut dispatched_keys: Vec<String> = Vec::new();
+
+    // Phase 2: apply rejects (per-item, may emit "vanished" notices
+    // via confirm_pending_action). Each push_notice resyncs the
+    // dashboard so subsequent calls observe the new state.
+    for prep in reject_targets {
+        let notice = confirm_pending_action(
+            &prep.action,
+            source,
+            sink,
+            &dashboard.reports,
+            mode,
+            allow_auto_prompt_send,
+        );
+        dashboard.push_notice(notice, now);
+        dispatched_keys.push(prep.item_key);
+    }
+
+    // Phase 3: apply alert hides (deadlines map only — no notice).
+    // The keys were captured against the pre-dispatch snapshot, so
+    // they are stable regardless of any resyncs done in Phase 2.
+    let any_hides = !hide_targets.is_empty();
+    for prep in hide_targets {
+        dashboard.alert_hide_deadlines.insert(
+            prep.alert_key,
+            now + crate::ui::alerts::ALERT_AUTO_HIDE_DELAY,
+        );
+        dispatched_keys.push(prep.item_key);
+    }
+
+    // Phase 4: if we mutated alert_hide_deadlines without going
+    // through push_notice, run a final resync so fresh_alerts /
+    // alert_times / alert_state pick up the hidden entries.
+    if any_hides {
+        dashboard.resync(now);
+    }
+
     overlay.retain_multi(|k| !dispatched_keys.iter().any(|dk| dk == k));
 }
 
@@ -1027,17 +1081,21 @@ fn dispatch_bulk_clear<P: crate::tmux::polling::PaneSource>(
 /// `dispatch_copy` in `pending_actions_overlay`). Routes through
 /// `confirm_pending_action` so the clipboard write reuses the
 /// snapshotted command (no drift).
+///
+/// v1.40.1 review fix (Critical 2): notice routed through
+/// `dashboard.push_notice(notice, now)` for ordering / NEW badge
+/// parity with the dashboard direct path.
 #[allow(clippy::too_many_arguments)]
 fn dispatch_bulk_copy<P: crate::tmux::polling::PaneSource>(
     idx: usize,
     items: &[crate::ui::pending_actions::PendingItem],
     overlay: &mut crate::ui::pending_actions::PendingActionsOverlay,
-    notices: &mut Vec<SystemNotice>,
+    dashboard: &mut crate::app::dashboard_runtime::DashboardRuntimeState,
     source: &P,
     sink: &dyn crate::store::EventSink,
-    reports: &[crate::app::event_loop::PaneReport],
     mode: crate::app::config::ActionsMode,
     allow_auto_prompt_send: bool,
+    now: std::time::Instant,
 ) {
     use crate::ui::pending_actions::pending_item_key;
 
@@ -1045,9 +1103,210 @@ fn dispatch_bulk_copy<P: crate::tmux::polling::PaneSource>(
     let Some(action) = copy_action_for(item) else {
         return;
     };
-    let notice =
-        confirm_pending_action(&action, source, sink, reports, mode, allow_auto_prompt_send);
-    notices.push(notice);
+    let notice = confirm_pending_action(
+        &action,
+        source,
+        sink,
+        &dashboard.reports,
+        mode,
+        allow_auto_prompt_send,
+    );
+    dashboard.push_notice(notice, now);
     let key = pending_item_key(item);
     overlay.retain_multi(|k| k != &key);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::dashboard_runtime::DashboardRuntimeState;
+    use crate::app::system_notice::SystemNotice;
+    use crate::domain::origin::SourceKind;
+    use crate::domain::recommendation::Severity;
+    use crate::store::NoopSink;
+    use crate::tmux::polling::{PaneSource, PollingError};
+    use crate::tmux::types::{RawPaneSnapshot, WindowTarget};
+    use crate::ui::pending_actions::{PendingActionsOverlay, PendingItem};
+    use std::time::Instant;
+
+    /// Minimal `PaneSource` that returns empty data for every query —
+    /// enough to satisfy the type bound in `dispatch_bulk_clear`. The
+    /// alert-hide path under test does NOT invoke any send_keys /
+    /// list_panes calls, so this never fires in practice.
+    struct StubSource;
+
+    impl PaneSource for StubSource {
+        fn list_panes(
+            &self,
+            _target: Option<&WindowTarget>,
+        ) -> Result<Vec<RawPaneSnapshot>, PollingError> {
+            Ok(vec![])
+        }
+
+        fn current_target(&self) -> Result<Option<WindowTarget>, PollingError> {
+            Ok(None)
+        }
+
+        fn available_targets(&self) -> Result<Vec<WindowTarget>, PollingError> {
+            Ok(vec![])
+        }
+
+        fn capture_tail(&self, _pane_id: &str, _lines: usize) -> Result<String, PollingError> {
+            Ok(String::new())
+        }
+
+        fn send_keys(&self, _pane_id: &str, _text: &str) -> Result<(), PollingError> {
+            Ok(())
+        }
+    }
+
+    fn alertable_notice(title: &str, body: &str) -> SystemNotice {
+        SystemNotice {
+            title: title.into(),
+            body: body.into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Estimated,
+        }
+    }
+
+    /// v1.40.1 review fix Critical 1 regression: bulk-clearing two
+    /// alerts must hide BOTH alert keys. Before the fix,
+    /// `alert_key_at_index` resolved against the live
+    /// `alert_hide_deadlines` map and the second iteration's index
+    /// shifted after the first hide — so the second hide either
+    /// targeted the wrong alert or missed entirely. The fix snapshots
+    /// the keys upfront against the original state and applies the
+    /// hides afterward.
+    #[test]
+    fn dispatch_bulk_clear_two_alerts_hides_both() {
+        let now = Instant::now();
+        // Build a dashboard with 2 system notices. Both end up as
+        // alerts in `visible_alert_keys`.
+        let mut dashboard = DashboardRuntimeState::new(
+            vec![
+                alertable_notice("ctx-a", "/clear"),
+                alertable_notice("ctx-b", "/compact"),
+            ],
+            now,
+        );
+
+        // Sanity check: both alerts visible at indexes 0 and 1.
+        let visible = crate::ui::alerts::visible_alert_keys(
+            &dashboard.notices,
+            &dashboard.reports,
+            &dashboard.alert_hide_deadlines,
+            now,
+        );
+        assert_eq!(visible.len(), 2, "test setup must produce 2 visible alerts",);
+        let key_at_0 = visible[0].clone();
+        let key_at_1 = visible[1].clone();
+        assert_ne!(key_at_0, key_at_1);
+
+        // Build PendingItem::Copy entries that point at indexes 0
+        // and 1 of the live alert list.
+        let items = vec![
+            PendingItem::Copy {
+                alert_idx: 0,
+                command: "/clear".into(),
+                alert_title: "ctx-a".into(),
+                severity: Severity::Warning,
+                source: SourceKind::Estimated,
+                pane_idx: None,
+            },
+            PendingItem::Copy {
+                alert_idx: 1,
+                command: "/compact".into(),
+                alert_title: "ctx-b".into(),
+                severity: Severity::Warning,
+                source: SourceKind::Estimated,
+                pane_idx: None,
+            },
+        ];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        overlay.toggle_group_all(&items);
+        assert_eq!(overlay.multi_len(), 2);
+
+        let source = StubSource;
+        let sink = NoopSink;
+
+        dispatch_bulk_clear(
+            &[0, 1],
+            &items,
+            &mut overlay,
+            &mut dashboard,
+            &source,
+            &sink,
+            crate::app::config::ActionsMode::ObserveOnly,
+            true,
+            now,
+        );
+
+        // Both alert keys must be present in alert_hide_deadlines —
+        // catching the index-shift bug where only one (or one + a
+        // wrong key) ended up hidden.
+        assert_eq!(
+            dashboard.alert_hide_deadlines.len(),
+            2,
+            "both alert keys must be hidden (catches index-shift bug)",
+        );
+        assert!(
+            dashboard.alert_hide_deadlines.contains_key(&key_at_0),
+            "first alert key (index 0 in original snapshot) must be hidden",
+        );
+        assert!(
+            dashboard.alert_hide_deadlines.contains_key(&key_at_1),
+            "second alert key (index 1 in original snapshot) must be hidden",
+        );
+        // All dispatched keys removed from multi-select.
+        assert_eq!(overlay.multi_len(), 0);
+    }
+
+    /// v1.40.1 review fix Important 3: an alert that vanishes
+    /// between selection and dispatch must NOT claim a
+    /// `dispatched_keys` slot. The pending-item key stays in the
+    /// multi-select set so the operator can retry next tick once
+    /// the alert reappears.
+    #[test]
+    fn dispatch_bulk_clear_skips_vanished_alert_index() {
+        let now = Instant::now();
+        // Dashboard has 0 notices — every alert_idx resolves to None.
+        let mut dashboard = DashboardRuntimeState::new(Vec::new(), now);
+
+        let item = PendingItem::Copy {
+            alert_idx: 7, // out of range vs the empty alert list
+            command: "/clear".into(),
+            alert_title: "ctx-vanished".into(),
+            severity: Severity::Warning,
+            source: SourceKind::Estimated,
+            pane_idx: None,
+        };
+        let items = vec![item.clone()];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        overlay.toggle_multi(&item);
+        assert_eq!(overlay.multi_len(), 1);
+
+        dispatch_bulk_clear(
+            &[0],
+            &items,
+            &mut overlay,
+            &mut dashboard,
+            &StubSource,
+            &NoopSink,
+            crate::app::config::ActionsMode::ObserveOnly,
+            true,
+            now,
+        );
+
+        assert!(
+            dashboard.alert_hide_deadlines.is_empty(),
+            "vanished alert must NOT be added to alert_hide_deadlines",
+        );
+        assert_eq!(
+            overlay.multi_len(),
+            1,
+            "vanished alert key must stay in multi-select for retry",
+        );
+    }
 }
