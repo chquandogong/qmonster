@@ -28,6 +28,7 @@ pub enum PendingActionsOutcome {
 pub fn handle_pending_actions_overlay_key(
     overlay: &mut PendingActionsOverlay,
     items: &[PendingItem],
+    viewport: Rect,
     code: KeyCode,
 ) -> PendingActionsOutcome {
     if !overlay.is_open() {
@@ -47,11 +48,17 @@ pub fn handle_pending_actions_overlay_key(
             PendingActionsOutcome::None
         }
         KeyCode::Char(',') => {
-            overlay.narrow_list();
+            // v1.40 post-release fix: thread the current effective list
+            // width through `narrow_list` so the first press steps in
+            // the correct direction from the auto-formula baseline.
+            let current = pending_actions_modal_rects(viewport, overlay).list.width;
+            overlay.narrow_list(current);
             PendingActionsOutcome::None
         }
         KeyCode::Char('.') => {
-            overlay.widen_list();
+            // See `,` arm above — same rationale (mirror direction).
+            let current = pending_actions_modal_rects(viewport, overlay).list.width;
+            overlay.widen_list(current);
             PendingActionsOutcome::None
         }
         KeyCode::Char('a') | KeyCode::Char('q') | KeyCode::Esc => {
@@ -404,6 +411,12 @@ fn dispatch_copy(overlay: &PendingActionsOverlay, items: &[PendingItem]) -> Pend
 mod tests {
     use super::*;
 
+    /// Default test viewport — matches the value used by the mouse-handler
+    /// tests so the modal-rect calculations land on the same auto widths.
+    fn test_viewport() -> Rect {
+        Rect::new(0, 0, 200, 80)
+    }
+
     fn make_three_proposals() -> Vec<crate::ui::pending_actions::PendingItem> {
         use crate::domain::origin::SourceKind;
         use crate::ui::pending_actions::PendingItem;
@@ -423,7 +436,8 @@ mod tests {
     #[test]
     fn closed_overlay_swallows_keys() {
         let mut overlay = PendingActionsOverlay::new();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Enter);
+        let outcome =
+            handle_pending_actions_overlay_key(&mut overlay, &[], test_viewport(), KeyCode::Enter);
         assert_eq!(outcome, PendingActionsOutcome::None);
         assert!(!overlay.is_open());
     }
@@ -432,7 +446,12 @@ mod tests {
     fn a_key_closes_overlay() {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('a'));
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            &[],
+            test_viewport(),
+            KeyCode::Char('a'),
+        );
         assert_eq!(outcome, PendingActionsOutcome::Closed);
         assert!(!overlay.is_open());
     }
@@ -441,13 +460,19 @@ mod tests {
     fn q_and_esc_close_overlay() {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Esc);
+        let outcome =
+            handle_pending_actions_overlay_key(&mut overlay, &[], test_viewport(), KeyCode::Esc);
         assert_eq!(outcome, PendingActionsOutcome::Closed);
         assert!(!overlay.is_open());
 
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('q'));
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            &[],
+            test_viewport(),
+            KeyCode::Char('q'),
+        );
         assert_eq!(outcome, PendingActionsOutcome::Closed);
         assert!(!overlay.is_open());
     }
@@ -457,10 +482,16 @@ mod tests {
         let items = make_three_proposals();
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Down);
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Down,
+        );
         assert_eq!(outcome, PendingActionsOutcome::None);
         assert_eq!(overlay.selected(), 1);
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Up);
+        let outcome =
+            handle_pending_actions_overlay_key(&mut overlay, &items, test_viewport(), KeyCode::Up);
         assert_eq!(outcome, PendingActionsOutcome::None);
         assert_eq!(overlay.selected(), 0);
     }
@@ -470,10 +501,25 @@ mod tests {
         let items = make_three_proposals();
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('j'));
-        handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('j'));
+        handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Char('j'),
+        );
+        handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Char('j'),
+        );
         assert_eq!(overlay.selected(), 2);
-        handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('k'));
+        handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Char('k'),
+        );
         assert_eq!(overlay.selected(), 1);
     }
 
@@ -481,7 +527,8 @@ mod tests {
     fn enter_is_silently_swallowed() {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Enter);
+        let outcome =
+            handle_pending_actions_overlay_key(&mut overlay, &[], test_viewport(), KeyCode::Enter);
         assert_eq!(outcome, PendingActionsOutcome::None);
         assert!(overlay.is_open());
     }
@@ -594,6 +641,7 @@ mod tests {
         let outcome = handle_pending_actions_overlay_key(
             &mut overlay,
             std::slice::from_ref(&item),
+            test_viewport(),
             KeyCode::Char(' '),
         );
         assert_eq!(outcome, PendingActionsOutcome::None);
@@ -618,12 +666,14 @@ mod tests {
         handle_pending_actions_overlay_key(
             &mut overlay,
             std::slice::from_ref(&item),
+            test_viewport(),
             KeyCode::Char('P'),
         );
         assert_eq!(overlay.multi_len(), 1);
         handle_pending_actions_overlay_key(
             &mut overlay,
             std::slice::from_ref(&item),
+            test_viewport(),
             KeyCode::Char('P'),
         );
         assert_eq!(overlay.multi_len(), 0);
@@ -662,7 +712,12 @@ mod tests {
         let items = vec![fixture_proposal("%1", "/compact")];
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('p'));
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Char('p'),
+        );
         assert_eq!(outcome, PendingActionsOutcome::AcceptItems(vec![0]));
     }
 
@@ -671,7 +726,12 @@ mod tests {
         let items = vec![fixture_copy("ctx", "/clear")];
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('p'));
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Char('p'),
+        );
         assert_eq!(outcome, PendingActionsOutcome::None);
     }
 
@@ -685,7 +745,12 @@ mod tests {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
         overlay.toggle_group_all(&items);
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('p'));
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Char('p'),
+        );
         assert_eq!(outcome, PendingActionsOutcome::AcceptItems(vec![0, 2]));
     }
 
@@ -694,7 +759,12 @@ mod tests {
         let items = vec![fixture_copy("ctx", "/clear")];
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('d'));
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Char('d'),
+        );
         assert_eq!(outcome, PendingActionsOutcome::ClearItems(vec![0]));
     }
 
@@ -708,7 +778,12 @@ mod tests {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
         overlay.toggle_group_all(&items);
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('d'));
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Char('d'),
+        );
         assert_eq!(outcome, PendingActionsOutcome::ClearItems(vec![0, 1, 2]));
     }
 
@@ -722,7 +797,12 @@ mod tests {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
         overlay.toggle_group_all(&items);
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('y'));
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Char('y'),
+        );
         assert_eq!(outcome, PendingActionsOutcome::CopyItem(1));
     }
 
@@ -731,7 +811,12 @@ mod tests {
         let items = vec![fixture_proposal("%1", "/compact")];
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        let outcome = handle_pending_actions_overlay_key(&mut overlay, &items, KeyCode::Char('y'));
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Char('y'),
+        );
         assert_eq!(outcome, PendingActionsOutcome::None);
     }
 
@@ -754,12 +839,14 @@ mod tests {
         handle_pending_actions_overlay_key(
             &mut overlay,
             std::slice::from_ref(&item),
+            test_viewport(),
             KeyCode::Char(' '),
         );
         assert_eq!(overlay.multi_len(), 1);
         handle_pending_actions_overlay_key(
             &mut overlay,
             std::slice::from_ref(&item),
+            test_viewport(),
             KeyCode::Char('c'),
         );
         assert_eq!(overlay.multi_len(), 0);
@@ -927,12 +1014,12 @@ mod tests {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
         let (w0, _h0) = (overlay.width_pct(), overlay.height_pct());
-        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('['));
+        handle_pending_actions_overlay_key(&mut overlay, &[], test_viewport(), KeyCode::Char('['));
         assert!(overlay.width_pct() < w0);
-        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char(']'));
-        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char(']'));
+        handle_pending_actions_overlay_key(&mut overlay, &[], test_viewport(), KeyCode::Char(']'));
+        handle_pending_actions_overlay_key(&mut overlay, &[], test_viewport(), KeyCode::Char(']'));
         assert!(overlay.width_pct() > w0);
-        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('='));
+        handle_pending_actions_overlay_key(&mut overlay, &[], test_viewport(), KeyCode::Char('='));
         assert_eq!(overlay.width_pct(), 80);
         assert_eq!(overlay.height_pct(), 65);
     }
@@ -975,10 +1062,10 @@ mod tests {
     fn comma_period_keys_resize_list() {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
-        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char(','));
+        handle_pending_actions_overlay_key(&mut overlay, &[], test_viewport(), KeyCode::Char(','));
         let after_narrow = overlay.list_width_override();
-        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('.'));
-        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('.'));
+        handle_pending_actions_overlay_key(&mut overlay, &[], test_viewport(), KeyCode::Char('.'));
+        handle_pending_actions_overlay_key(&mut overlay, &[], test_viewport(), KeyCode::Char('.'));
         let after_widen = overlay.list_width_override();
         assert!(after_narrow.is_some() && after_widen.is_some());
         assert!(after_widen.unwrap() > after_narrow.unwrap());
@@ -1098,5 +1185,63 @@ mod tests {
             overlay.resize_drag_anchor().is_none(),
             "click in list body must not start resize drag",
         );
+    }
+
+    /// v1.40 post-release Bug 1 regression: even when the cursor is
+    /// stale (e.g. polling shrunk the items between draw and key), the
+    /// dispatch helpers must operate on the clamped index because
+    /// `prune_to` is run first in `tui_loop`. Without the clamp, a `p`
+    /// keypress on an out-of-range cursor would silently no-op.
+    #[test]
+    fn dispatch_accept_after_prune_uses_clamped_cursor() {
+        let p = fixture_proposal("%1", "/compact");
+        let items = vec![p.clone()];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        overlay.set_selected(5); // stale (was on a longer list)
+        overlay.prune_to(&items); // shrink to 1 item — selected gets clamped to 0
+        let outcome = handle_pending_actions_overlay_key(
+            &mut overlay,
+            &items,
+            test_viewport(),
+            KeyCode::Char('p'),
+        );
+        assert_eq!(outcome, PendingActionsOutcome::AcceptItems(vec![0]));
+    }
+
+    /// v1.40 post-release Bug 2 regression: locks the first-press
+    /// direction of the `.` (widen) key. With viewport 200x80 the auto
+    /// list width sits at MAX=64; widening from there must clamp at
+    /// MAX (no change) and absolutely must not collapse to MIN+2 the
+    /// way the buggy fallback did.
+    #[test]
+    fn first_widen_press_grows_from_auto_width() {
+        use crate::ui::pending_actions::{LIST_WIDTH_WIDE_MAX, LIST_WIDTH_WIDE_MIN};
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        // body ~158 → auto list = 64 (clamp max)
+        let viewport = Rect::new(0, 0, 200, 80);
+        handle_pending_actions_overlay_key(&mut overlay, &[], viewport, KeyCode::Char('.'));
+        // At auto = 64, widen should clamp at MAX (no change). At least: not below MIN.
+        let after = overlay
+            .list_width_override()
+            .expect("override should be set");
+        assert!(after >= LIST_WIDTH_WIDE_MIN);
+        assert!(after <= LIST_WIDTH_WIDE_MAX);
+    }
+
+    /// v1.40 post-release Bug 2 regression: locks the first-press
+    /// direction of the `,` (narrow) key. With viewport 120x50 the
+    /// auto list width is 56; narrowing must step down to 54 (NOT up
+    /// to MAX-2 = 62 the way the buggy fallback did).
+    #[test]
+    fn first_narrow_press_shrinks_from_auto_width() {
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        // Use a body width where auto = 56 (mid-range), so we can verify direction
+        let viewport = Rect::new(0, 0, 120, 50); // body ~94 → auto list = 56
+        handle_pending_actions_overlay_key(&mut overlay, &[], viewport, KeyCode::Char(','));
+        // First narrow: 56 - 2 = 54
+        assert_eq!(overlay.list_width_override(), Some(54));
     }
 }

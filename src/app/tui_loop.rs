@@ -338,9 +338,17 @@ where
                                     now,
                                 );
                                 pending_actions.prune_to(&items);
+                                // v1.40 post-release fix: thread viewport
+                                // through the key handler so the `,`/`.`
+                                // arms can compute the current effective
+                                // list width (needed to step in the right
+                                // direction from the auto-formula baseline).
+                                let size = terminal.size()?;
+                                let viewport = Rect::new(0, 0, size.width, size.height);
                                 let outcome = handle_pending_actions_overlay_key(
                                     &mut pending_actions,
                                     &items,
+                                    viewport,
                                     k.code,
                                 );
                                 match outcome {

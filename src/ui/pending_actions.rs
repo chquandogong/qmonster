@@ -200,10 +200,24 @@ impl PendingActionsOverlay {
         }
     }
 
-    /// Drop multi-select keys whose item is not in `items`.
+    /// Drop multi-select keys whose item is not in `items`, and clamp
+    /// `selected` to a valid index for the new `items.len()`.
+    ///
+    /// v1.40 post-release fix: the renderer was already clamping the
+    /// visual cursor for display, but `dispatch_accept` / `dispatch_clear`
+    /// / `dispatch_copy` (and the live explainer panel) read the raw
+    /// `selected()` and would silently produce no-op outcomes when a
+    /// polling tick shrunk `items.len()` past the previously-selected
+    /// index. Clamping here propagates everywhere because `tui_loop`
+    /// invokes `prune_to` after every `collect_pending_items(...)` call.
     pub fn prune_to(&mut self, items: &[PendingItem]) {
         let live: BTreeSet<String> = items.iter().map(pending_item_key).collect();
         self.multi_selected.retain(|k| live.contains(k));
+        if items.is_empty() {
+            self.selected = 0;
+        } else if self.selected >= items.len() {
+            self.selected = items.len() - 1;
+        }
     }
 
     /// Retain only multi-select keys for which `pred` returns true.
@@ -278,25 +292,29 @@ impl PendingActionsOverlay {
         self.list_width_override = Some(w.clamp(LIST_WIDTH_WIDE_MIN, LIST_WIDTH_WIDE_MAX));
     }
 
-    /// Step the list pane wider by `LIST_WIDTH_WIDE_STEP`. First press
-    /// of `,`/`.` may produce a noticeable jump if no override was set
-    /// yet (we start from MIN/MAX rather than the auto-formula's
-    /// effective width — computing that needs body_width which the
-    /// overlay doesn't know); subsequent presses are smooth.
-    pub fn widen_list(&mut self) {
-        let current = self.list_width_override.unwrap_or(LIST_WIDTH_WIDE_MIN);
-        self.list_width_override = Some((current + LIST_WIDTH_WIDE_STEP).min(LIST_WIDTH_WIDE_MAX));
+    /// Step the list pane wider by `LIST_WIDTH_WIDE_STEP`, starting
+    /// from `current` (the effective list width seen on screen). The
+    /// caller is expected to compute `current` via
+    /// `pending_actions_modal_rects(viewport, &overlay).list.width` so
+    /// that the first press relative to the auto-formula's effective
+    /// width steps in the right direction.
+    ///
+    /// v1.40 post-release fix: the previous implementation used
+    /// `LIST_WIDTH_WIDE_MIN` as the no-override fallback, which made
+    /// the first press of `.` jump to MIN+2 (a shrink) on a typical
+    /// 120-col terminal where auto width sits mid-range.
+    pub fn widen_list(&mut self, current: u16) {
+        let next = (current + LIST_WIDTH_WIDE_STEP).min(LIST_WIDTH_WIDE_MAX);
+        self.list_width_override = Some(next.max(LIST_WIDTH_WIDE_MIN));
     }
 
     /// Step the list pane narrower by `LIST_WIDTH_WIDE_STEP`. See
-    /// `widen_list` for the no-override-yet jump caveat.
-    pub fn narrow_list(&mut self) {
-        let current = self.list_width_override.unwrap_or(LIST_WIDTH_WIDE_MAX);
-        self.list_width_override = Some(
-            current
-                .saturating_sub(LIST_WIDTH_WIDE_STEP)
-                .max(LIST_WIDTH_WIDE_MIN),
-        );
+    /// [`widen_list`] for the rationale on threading `current`.
+    pub fn narrow_list(&mut self, current: u16) {
+        let next = current
+            .saturating_sub(LIST_WIDTH_WIDE_STEP)
+            .max(LIST_WIDTH_WIDE_MIN);
+        self.list_width_override = Some(next.min(LIST_WIDTH_WIDE_MAX));
     }
 
     pub fn begin_resize_drag(&mut self, anchor: ResizeDragAnchor) {
@@ -1231,6 +1249,43 @@ mod tests {
     }
 
     #[test]
+    fn prune_to_clamps_selected_when_items_shrink() {
+        use crate::domain::origin::SourceKind;
+        let p1 = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let p2 = PendingItem::Proposal {
+            pane_idx: 1,
+            pane_label: "claude:1:review · %2".into(),
+            slash_command: "/clear".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%2:/clear".into(),
+            target_pane_id: "%2".into(),
+        };
+        let _ = &p1; // p1 is here for clarity; the shrink uses just p2
+        let mut o = PendingActionsOverlay::new();
+        o.set_selected(1); // pointing at the second item
+        o.prune_to(std::slice::from_ref(&p2)); // items shrink to one
+        assert_eq!(
+            o.selected(),
+            0,
+            "selected must clamp to items.len() - 1 = 0"
+        );
+
+        let mut o2 = PendingActionsOverlay::new();
+        o2.set_selected(5);
+        o2.prune_to(&[]); // items shrink to empty
+        assert_eq!(o2.selected(), 0, "empty items resets selected to 0");
+    }
+
+    #[test]
     fn modal_area_uses_80x65_with_min_72_20() {
         let r = pending_actions_modal_area(
             Rect::new(0, 0, 200, 80),
@@ -1632,14 +1687,13 @@ mod tests {
     #[test]
     fn widen_narrow_step_by_two() {
         let mut o = PendingActionsOverlay::new();
-        // Start with an explicit override so widen_list is deterministic.
-        o.set_list_width(50);
-        assert_eq!(o.list_width_override(), Some(50));
-        o.widen_list();
-        assert_eq!(o.list_width_override(), Some(52));
-        o.narrow_list();
-        o.narrow_list();
-        assert_eq!(o.list_width_override(), Some(48));
+        // Start from a typical 120-col-terminal auto width (56) and
+        // verify both directions move by LIST_WIDTH_WIDE_STEP from
+        // whatever `current` the caller threads in.
+        o.widen_list(56);
+        assert_eq!(o.list_width_override(), Some(58));
+        o.narrow_list(58);
+        assert_eq!(o.list_width_override(), Some(56));
     }
 
     #[test]
