@@ -26,14 +26,57 @@ use crate::domain::recommendation::Severity;
 use crate::ui::dashboard::close_button_rect;
 use crate::ui::theme;
 
+// Modal size + position adjustability (parity with the m overlay).
+// `[`/`]` shrink/grow by SIZE_STEP percent (clamped to [SIZE_MIN, SIZE_MAX]).
+// `=` resets to defaults AND zeros offsets. Title-row drag updates offsets.
+// Mirrors `MetricsOverlay` (src/ui/metrics.rs) so the operator's mental
+// model of "modal geometry controls" is the same across overlays.
+pub const SIZE_STEP: u16 = 5;
+pub const SIZE_MIN: u16 = 50;
+pub const SIZE_MAX: u16 = 99;
+pub const DEFAULT_WIDTH_PCT: u16 = 80;
+pub const DEFAULT_HEIGHT_PCT: u16 = 65;
+
 /// Open/closed state + selection cursor for the Pending Actions
 /// overlay. Pure — mirrors the discipline of
 /// `ScrollModalState` / `ActionExplainModal`.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct PendingActionsOverlay {
     open: bool,
     selected: usize,
     multi_selected: BTreeSet<String>,
+    width_pct: u16,
+    height_pct: u16,
+    offset_x: i16,
+    offset_y: i16,
+    move_drag_anchor: Option<MoveDragAnchor>,
+}
+
+/// Anchor captured at title-row Down(Left). The drag handler computes
+/// new offset = `start_offset_*` + (current_event - start_*). Named
+/// `MoveDragAnchor` (not `DragAnchor`) so a future TX-B can introduce
+/// a `ResizeDragAnchor` without renaming.
+#[derive(Debug, Clone, Copy)]
+pub struct MoveDragAnchor {
+    pub start_col: u16,
+    pub start_row: u16,
+    pub start_offset_x: i16,
+    pub start_offset_y: i16,
+}
+
+impl Default for PendingActionsOverlay {
+    fn default() -> Self {
+        Self {
+            open: false,
+            selected: 0,
+            multi_selected: BTreeSet::new(),
+            width_pct: DEFAULT_WIDTH_PCT,
+            height_pct: DEFAULT_HEIGHT_PCT,
+            offset_x: 0,
+            offset_y: 0,
+            move_drag_anchor: None,
+        }
+    }
 }
 
 impl PendingActionsOverlay {
@@ -43,12 +86,18 @@ impl PendingActionsOverlay {
     pub fn open(&mut self) {
         self.open = true;
         self.selected = 0;
+        self.move_drag_anchor = None;
         // multi_selected stays empty (default already empty); explicit no-op.
+        // width_pct, height_pct, offset_x, offset_y intentionally preserved
+        // (mirrors m overlay size persistence — operator's chosen geometry
+        // survives close/open within a session).
     }
     pub fn close(&mut self) {
         self.open = false;
         self.selected = 0;
         self.multi_selected.clear();
+        self.move_drag_anchor = None;
+        // size + offset preserved (same as open).
     }
     pub fn is_open(&self) -> bool {
         self.open
@@ -145,6 +194,54 @@ impl PendingActionsOverlay {
     /// intact (spec §5.10: "only dispatched keys are removed").
     pub fn retain_multi(&mut self, mut pred: impl FnMut(&String) -> bool) {
         self.multi_selected.retain(|k| pred(k));
+    }
+
+    // --- size + position controls ---------------------------------------
+
+    pub fn width_pct(&self) -> u16 {
+        self.width_pct
+    }
+    pub fn height_pct(&self) -> u16 {
+        self.height_pct
+    }
+    pub fn offset_x(&self) -> i16 {
+        self.offset_x
+    }
+    pub fn offset_y(&self) -> i16 {
+        self.offset_y
+    }
+    pub fn move_drag_anchor(&self) -> Option<MoveDragAnchor> {
+        self.move_drag_anchor
+    }
+
+    pub fn set_offset(&mut self, x: i16, y: i16) {
+        self.offset_x = x;
+        self.offset_y = y;
+    }
+
+    pub fn begin_move_drag(&mut self, anchor: MoveDragAnchor) {
+        self.move_drag_anchor = Some(anchor);
+    }
+
+    pub fn end_drag(&mut self) {
+        self.move_drag_anchor = None;
+    }
+
+    pub fn grow(&mut self) {
+        self.width_pct = (self.width_pct + SIZE_STEP).min(SIZE_MAX);
+        self.height_pct = (self.height_pct + SIZE_STEP).min(SIZE_MAX);
+    }
+
+    pub fn shrink(&mut self) {
+        self.width_pct = self.width_pct.saturating_sub(SIZE_STEP).max(SIZE_MIN);
+        self.height_pct = self.height_pct.saturating_sub(SIZE_STEP).max(SIZE_MIN);
+    }
+
+    pub fn reset_size(&mut self) {
+        self.width_pct = DEFAULT_WIDTH_PCT;
+        self.height_pct = DEFAULT_HEIGHT_PCT;
+        self.offset_x = 0;
+        self.offset_y = 0;
     }
 }
 
@@ -318,12 +415,53 @@ fn pane_label(report: &PaneReport) -> String {
     )
 }
 
-pub(crate) fn pending_actions_modal_area(viewport: Rect) -> Rect {
-    let width = (viewport.width * 80 / 100).max(72).min(viewport.width);
-    let height = (viewport.height * 65 / 100).max(20).min(viewport.height);
-    let x = viewport.x + viewport.width.saturating_sub(width) / 2;
-    let y = viewport.y + viewport.height.saturating_sub(height) / 2;
-    Rect::new(x, y, width, height)
+pub(crate) fn pending_actions_modal_area(
+    viewport: Rect,
+    width_pct: u16,
+    height_pct: u16,
+    offset_x: i16,
+    offset_y: i16,
+) -> Rect {
+    let width = (viewport.width * width_pct / 100)
+        .max(72)
+        .min(viewport.width);
+    let height = (viewport.height * height_pct / 100)
+        .max(20)
+        .min(viewport.height);
+    let base_x = viewport.x + viewport.width.saturating_sub(width) / 2;
+    let base_y = viewport.y + viewport.height.saturating_sub(height) / 2;
+    let base = Rect::new(base_x, base_y, width, height);
+    apply_clamped_offset(base, viewport, offset_x, offset_y)
+}
+
+/// Apply offset_x/offset_y to base, keeping >= 4 cells horizontally
+/// and >= 1 row vertically inside viewport. Asymmetric: left/top are
+/// hard bounds (modal can't extend past viewport.x or viewport.y),
+/// right/bottom are soft bounds (can extend past with a sliver visible).
+/// Mirrors `apply_clamped_offset` on the m overlay (src/ui/metrics.rs).
+fn apply_clamped_offset(base: Rect, viewport: Rect, offset_x: i16, offset_y: i16) -> Rect {
+    let min_x = viewport.x as i32;
+    let max_x = (viewport.x as i32) + (viewport.width as i32) - 4;
+    let min_y = viewport.y as i32;
+    let max_y = (viewport.y as i32) + (viewport.height as i32) - 1;
+    let x = ((base.x as i32) + (offset_x as i32)).clamp(min_x, max_x.max(min_x));
+    let y = ((base.y as i32) + (offset_y as i32)).clamp(min_y, max_y.max(min_y));
+    Rect::new(
+        x.max(0) as u16,
+        y.max(0) as u16,
+        base.width.min(
+            viewport
+                .width
+                .saturating_sub((x - viewport.x as i32).max(0) as u16)
+                .max(1),
+        ),
+        base.height.min(
+            viewport
+                .height
+                .saturating_sub((y - viewport.y as i32).max(0) as u16)
+                .max(1),
+        ),
+    )
 }
 
 /// Inner partition of the modal: list on the left (or top), explainer
@@ -355,8 +493,17 @@ fn wide_mode_list_width(body_width: u16) -> u16 {
     scaled.clamp(LIST_WIDTH_WIDE_MIN, LIST_WIDTH_WIDE_MAX)
 }
 
-pub(crate) fn pending_actions_modal_rects(viewport: Rect) -> PendingActionsModalRects {
-    let area = pending_actions_modal_area(viewport);
+pub(crate) fn pending_actions_modal_rects(
+    viewport: Rect,
+    overlay: &PendingActionsOverlay,
+) -> PendingActionsModalRects {
+    let area = pending_actions_modal_area(
+        viewport,
+        overlay.width_pct(),
+        overlay.height_pct(),
+        overlay.offset_x(),
+        overlay.offset_y(),
+    );
     // Carve a 1-col / 1-row inset for the modal border (Borders::ALL).
     let inner_x = area.x + 1;
     let inner_y = area.y + 1;
@@ -478,7 +625,7 @@ pub fn render_pending_actions_modal(frame: &mut Frame<'_>, ctx: PendingActionsRe
     } = ctx;
 
     let viewport = frame.area();
-    let rects = pending_actions_modal_rects(viewport);
+    let rects = pending_actions_modal_rects(viewport, overlay);
     frame.render_widget(Clear, rects.area);
 
     let title = pending_actions_title(overlay, items);
@@ -1016,12 +1163,24 @@ mod tests {
 
     #[test]
     fn modal_area_uses_80x65_with_min_72_20() {
-        let r = pending_actions_modal_area(Rect::new(0, 0, 200, 80));
+        let r = pending_actions_modal_area(
+            Rect::new(0, 0, 200, 80),
+            DEFAULT_WIDTH_PCT,
+            DEFAULT_HEIGHT_PCT,
+            0,
+            0,
+        );
         assert_eq!(r.width, 200 * 80 / 100);
         assert_eq!(r.height, 80 * 65 / 100);
 
         // Tiny viewport falls back to the minimum.
-        let small = pending_actions_modal_area(Rect::new(0, 0, 60, 18));
+        let small = pending_actions_modal_area(
+            Rect::new(0, 0, 60, 18),
+            DEFAULT_WIDTH_PCT,
+            DEFAULT_HEIGHT_PCT,
+            0,
+            0,
+        );
         // viewport.width=60 < 72 min: clamps to viewport width
         assert_eq!(small.width, 60);
         // viewport.height=18 < 20 min: clamps to viewport height
@@ -1034,7 +1193,8 @@ mod tests {
         // = 94, clamped to LIST_WIDTH_WIDE_MAX = 64. Explainer = body
         // width − list = 94. Separator is the explainer's LEFT border.
         let viewport = Rect::new(0, 0, 200, 80);
-        let rects = pending_actions_modal_rects(viewport);
+        let overlay = PendingActionsOverlay::new();
+        let rects = pending_actions_modal_rects(viewport, &overlay);
         assert!(
             (LIST_WIDTH_WIDE_MIN..=LIST_WIDTH_WIDE_MAX).contains(&rects.list.width),
             "list width {} out of clamp range",
@@ -1085,7 +1245,8 @@ mod tests {
     fn modal_rects_narrow_mode_splits_horizontally() {
         // body.width < 72 → list on top, explainer on bottom.
         let viewport = Rect::new(0, 0, 80, 30);
-        let rects = pending_actions_modal_rects(viewport);
+        let overlay = PendingActionsOverlay::new();
+        let rects = pending_actions_modal_rects(viewport, &overlay);
         let body_width = rects.area.width - 2; // minus borders
         assert!(body_width < 72, "this test requires narrow body width");
         // list and explainer share the body height (minus hint).
@@ -1288,7 +1449,7 @@ mod tests {
             })
             .expect("draw must succeed");
         let buffer = terminal.backend().buffer();
-        let rects = pending_actions_modal_rects(Rect::new(0, 0, 200, 80));
+        let rects = pending_actions_modal_rects(Rect::new(0, 0, 200, 80), &overlay);
         // In wide mode explainer.x > list.x — confirm this viewport is wide.
         assert!(
             rects.explainer.x > rects.list.x,
@@ -1328,7 +1489,7 @@ mod tests {
             })
             .expect("draw must succeed");
         let buffer = terminal.backend().buffer();
-        let rects = pending_actions_modal_rects(Rect::new(0, 0, 80, 30));
+        let rects = pending_actions_modal_rects(Rect::new(0, 0, 80, 30), &overlay);
         // Sanity: confirm narrow mode (list.x == explainer.x).
         assert_eq!(
             rects.list.x, rects.explainer.x,
@@ -1342,6 +1503,50 @@ mod tests {
             "\u{2500}",
             "narrow mode must render '─' at separator row {sep_row} col {mid_x}; got {:?}",
             cell.symbol()
+        );
+    }
+
+    #[test]
+    fn shrink_grow_clamp_to_min_max() {
+        let mut o = PendingActionsOverlay::new();
+        // shrink past min
+        for _ in 0..20 {
+            o.shrink();
+        }
+        assert_eq!(o.width_pct(), SIZE_MIN);
+        assert_eq!(o.height_pct(), SIZE_MIN);
+        // grow back to max
+        for _ in 0..20 {
+            o.grow();
+        }
+        assert_eq!(o.width_pct(), SIZE_MAX);
+        assert_eq!(o.height_pct(), SIZE_MAX);
+    }
+
+    #[test]
+    fn reset_size_returns_to_defaults_and_zeros_offset() {
+        let mut o = PendingActionsOverlay::new();
+        o.shrink();
+        o.set_offset(7, 3);
+        o.reset_size();
+        assert_eq!(o.width_pct(), DEFAULT_WIDTH_PCT);
+        assert_eq!(o.height_pct(), DEFAULT_HEIGHT_PCT);
+        assert_eq!(o.offset_x(), 0);
+        assert_eq!(o.offset_y(), 0);
+    }
+
+    #[test]
+    fn close_preserves_size_and_offset() {
+        let mut o = PendingActionsOverlay::new();
+        o.open();
+        o.shrink();
+        o.set_offset(3, -2);
+        let (w, h, ox, oy) = (o.width_pct(), o.height_pct(), o.offset_x(), o.offset_y());
+        o.close();
+        o.open();
+        assert_eq!(
+            (o.width_pct(), o.height_pct(), o.offset_x(), o.offset_y()),
+            (w, h, ox, oy)
         );
     }
 }

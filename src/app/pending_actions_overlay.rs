@@ -34,6 +34,18 @@ pub fn handle_pending_actions_overlay_key(
         return PendingActionsOutcome::None;
     }
     match code {
+        KeyCode::Char('[') => {
+            overlay.shrink();
+            PendingActionsOutcome::None
+        }
+        KeyCode::Char(']') => {
+            overlay.grow();
+            PendingActionsOutcome::None
+        }
+        KeyCode::Char('=') => {
+            overlay.reset_size();
+            PendingActionsOutcome::None
+        }
         KeyCode::Char('a') | KeyCode::Char('q') | KeyCode::Esc => {
             overlay.close();
             PendingActionsOutcome::Closed
@@ -94,7 +106,7 @@ pub fn handle_pending_actions_overlay_mouse(
     if !overlay.is_open() {
         return PendingActionsOutcome::None;
     }
-    let rects = pending_actions_modal_rects(viewport);
+    let rects = pending_actions_modal_rects(viewport, overlay);
 
     // [x] close button
     if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
@@ -102,6 +114,41 @@ pub fn handle_pending_actions_overlay_mouse(
     {
         overlay.close();
         return PendingActionsOutcome::Closed;
+    }
+
+    // Title-row drag (move modal). Down(Left) on top border row outside [x]
+    // starts the drag; Drag(Left) updates offset; Up(Left) (or any non-Drag)
+    // clears the anchor. Mirrors `handle_metrics_overlay_mouse`.
+    let close = close_button_rect(rects.area);
+    if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
+        && event.row == rects.area.y
+        && event.column >= rects.area.x
+        && event.column < rects.area.x + rects.area.width
+        && !crate::app::keymap::rect_contains(close, event.column, event.row)
+    {
+        overlay.begin_move_drag(crate::ui::pending_actions::MoveDragAnchor {
+            start_col: event.column,
+            start_row: event.row,
+            start_offset_x: overlay.offset_x(),
+            start_offset_y: overlay.offset_y(),
+        });
+        return PendingActionsOutcome::None;
+    }
+
+    if let MouseEventKind::Drag(MouseButton::Left) = event.kind
+        && let Some(anchor) = overlay.move_drag_anchor()
+    {
+        let dx = (event.column as i32) - (anchor.start_col as i32);
+        let dy = (event.row as i32) - (anchor.start_row as i32);
+        let new_x = (anchor.start_offset_x as i32 + dx).clamp(i16::MIN as i32, i16::MAX as i32);
+        let new_y = (anchor.start_offset_y as i32 + dy).clamp(i16::MIN as i32, i16::MAX as i32);
+        overlay.set_offset(new_x as i16, new_y as i16);
+        return PendingActionsOutcome::None;
+    }
+
+    // Drag end / non-Drag event clears anchor.
+    if !matches!(event.kind, MouseEventKind::Drag(_)) {
+        overlay.end_drag();
     }
 
     // List pane click: distinguish checkbox vs content.
@@ -696,7 +743,7 @@ mod tests {
         overlay.open();
         overlay.set_selected(0);
         let viewport = Rect::new(0, 0, 200, 80);
-        let rects = pending_actions_modal_rects(viewport);
+        let rects = pending_actions_modal_rects(viewport, &overlay);
         // Row 0 lives at rects.list.y + 1 (1-row top padding inside list pane).
         let row = rects.list.y + 1;
         let col = rects.list.x + 1; // inside [x] glyph (cols 0..3 from list.x)
@@ -722,7 +769,7 @@ mod tests {
         overlay.open();
         overlay.set_selected(0);
         let viewport = Rect::new(0, 0, 200, 80);
-        let rects = pending_actions_modal_rects(viewport);
+        let rects = pending_actions_modal_rects(viewport, &overlay);
         let row = rects.list.y + 1 + 1; // second item
         let col = rects.list.x + 10; // content area (>= 4)
         handle_pending_actions_overlay_mouse(
@@ -746,7 +793,7 @@ mod tests {
         overlay.open();
         overlay.set_selected(0);
         let viewport = Rect::new(0, 0, 200, 80);
-        let rects = pending_actions_modal_rects(viewport);
+        let rects = pending_actions_modal_rects(viewport, &overlay);
         let inside_col = rects.area.x + 5;
         let inside_row = rects.area.y + 5;
         handle_pending_actions_overlay_mouse(
@@ -773,7 +820,7 @@ mod tests {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
         let viewport = Rect::new(0, 0, 200, 80);
-        let rects = pending_actions_modal_rects(viewport);
+        let rects = pending_actions_modal_rects(viewport, &overlay);
         let close = close_button_rect(rects.area);
         let outcome = handle_pending_actions_overlay_mouse(
             &mut overlay,
@@ -792,7 +839,7 @@ mod tests {
         let mut overlay = PendingActionsOverlay::new();
         overlay.open();
         let viewport = Rect::new(0, 0, 200, 80);
-        let rects = pending_actions_modal_rects(viewport);
+        let rects = pending_actions_modal_rects(viewport, &overlay);
         let outcome = handle_pending_actions_overlay_mouse(
             &mut overlay,
             viewport,
@@ -833,5 +880,54 @@ mod tests {
             0,
             "wheel outside modal must not scroll the overlay's cursor"
         );
+    }
+
+    #[test]
+    fn bracket_keys_resize_modal() {
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let (w0, _h0) = (overlay.width_pct(), overlay.height_pct());
+        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('['));
+        assert!(overlay.width_pct() < w0);
+        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char(']'));
+        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char(']'));
+        assert!(overlay.width_pct() > w0);
+        handle_pending_actions_overlay_key(&mut overlay, &[], KeyCode::Char('='));
+        assert_eq!(overlay.width_pct(), 80);
+        assert_eq!(overlay.height_pct(), 65);
+    }
+
+    #[test]
+    fn title_row_drag_updates_offset() {
+        use crate::ui::pending_actions::pending_actions_modal_rects;
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.open();
+        let viewport = Rect::new(0, 0, 200, 80);
+        let rects = pending_actions_modal_rects(viewport, &overlay);
+        let title_col = rects.area.x + 5;
+        let title_row = rects.area.y;
+        let items: Vec<crate::ui::pending_actions::PendingItem> = Vec::new();
+        handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(
+                MouseEventKind::Down(MouseButton::Left),
+                title_col,
+                title_row,
+            ),
+        );
+        handle_pending_actions_overlay_mouse(
+            &mut overlay,
+            viewport,
+            &items,
+            mouse_event(
+                MouseEventKind::Drag(MouseButton::Left),
+                title_col + 4,
+                title_row + 2,
+            ),
+        );
+        assert_eq!(overlay.offset_x(), 4);
+        assert_eq!(overlay.offset_y(), 2);
     }
 }
