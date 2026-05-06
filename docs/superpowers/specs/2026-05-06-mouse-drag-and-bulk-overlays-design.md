@@ -91,16 +91,20 @@ pub fn metrics_modal_rects(viewport: Rect, w_pct: u16, h_pct: u16,
 }
 ```
 
-Clamp guarantees: at least **4 cells horizontally** and **1 cell
-vertically** of the modal stay inside the viewport. The clamp runs on
-every render so a terminal resize that shrinks the viewport pulls the
-modal back into the safe area. Concretely:
+Left and top edges are hard bounds — the modal cannot extend past them,
+because Ratatui's u16-based `Rect` cannot represent a partial off-screen
+render at negative coordinates. Right and bottom edges are soft bounds —
+the modal may extend past, with at least 4 cells (horizontally) / 1 row
+(vertically) remaining inside the viewport.
+
+The clamp runs on every render so a terminal resize that shrinks the
+viewport pulls the modal back into the safe area. Concretely:
 
 ```text
-min_x = viewport.x as i32 + 4 - base.width as i32
-max_x = viewport.x as i32 + viewport.width as i32 - 4
-min_y = viewport.y as i32                                         // top edge ok
-max_y = viewport.y as i32 + viewport.height as i32 - 1            // 1 row visible
+min_x = viewport.x as i32                                         // hard bound: left edge
+max_x = viewport.x as i32 + viewport.width as i32 - 4            // soft bound: >= 4 cells visible
+min_y = viewport.y as i32                                         // hard bound: top edge
+max_y = viewport.y as i32 + viewport.height as i32 - 1            // soft bound: >= 1 row visible
 ```
 
 ### 4.3 Drag state machine (in `app::metrics_overlay`)
@@ -126,7 +130,7 @@ area.width, 1)` minus `close_button_rect(area)`.
 
 - `metrics_modal_rects(_, _, _, 0, 0)` returns the same rect as the existing centered helper (regression).
 - Positive offset moves area right/down; negative moves left/up (within clamp).
-- Right clamp leaves ≥ 4 cells visible; left clamp same. Bottom clamp leaves ≥ 1 row visible.
+- Right clamp leaves ≥ 4 cells visible (soft bound); left clamp snaps flush to viewport.x (hard bound). Bottom clamp leaves ≥ 1 row visible (soft bound); top clamp snaps flush to viewport.y (hard bound).
 - `Down(Left)` on title row (not `[x]`) sets anchor; subsequent `Drag(Left)` updates offset; `Up(Left)` clears anchor.
 - `Down(Left)` on body / hint does NOT set anchor (wheel scroll still works).
 - `Down(Left)` on `[x]` closes overlay (anchor untouched, overlay closed wins).

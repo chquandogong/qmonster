@@ -255,11 +255,20 @@ pub fn metrics_modal_rects(
     }
 }
 
-/// Apply `offset_x`/`offset_y` to `base`, clamping so at least 4 cells
-/// horizontally and 1 row vertically of the modal stay inside `viewport`.
+/// Apply `offset_x`/`offset_y` to `base`, clamping the result into a safe
+/// area relative to `viewport`.
+///
+/// **Asymmetric clamp** — left and top edges are *hard* bounds: the modal
+/// cannot extend past them, because Ratatui's u16-based `Rect` cannot
+/// represent a partial off-screen render at negative coordinates. Right
+/// and bottom edges are *soft* bounds: the modal may extend past them with
+/// at least 4 cells (horizontally) / 1 row (vertically) remaining inside
+/// the viewport. See `docs/superpowers/specs/2026-05-06-mouse-drag-and-bulk-overlays-design.md`
+/// §4.2.
+///
 /// Pure helper — used by `metrics_modal_rects` and tested directly.
 fn apply_clamped_offset(base: Rect, viewport: Rect, offset_x: i16, offset_y: i16) -> Rect {
-    let min_x = (viewport.x as i32) + 4 - (base.width as i32);
+    let min_x = viewport.x as i32; // hard bound: modal cannot extend past left edge
     let max_x = (viewport.x as i32) + (viewport.width as i32) - 4;
     let min_y = viewport.y as i32;
     let max_y = (viewport.y as i32) + (viewport.height as i32) - 1;
@@ -1907,34 +1916,51 @@ mod tests {
 
     #[test]
     fn metrics_modal_rects_right_clamp_keeps_4_cells_visible() {
-        let viewport = Rect::new(0, 0, 200, 80);
+        // Non-origin viewport so a viewport-origin bug cannot hide the clamp.
+        let viewport = Rect::new(20, 5, 200, 80);
         let r = metrics_modal_rects(viewport, 50, 50, i16::MAX, 0);
         let visible_right = (viewport.x + viewport.width).saturating_sub(r.area.x);
         assert!(
             visible_right >= 4,
-            "right clamp leaves {visible_right} cells visible (expected >= 4)"
+            "right clamp must leave >= 4 cells inside viewport (got {visible_right})"
         );
     }
 
     #[test]
-    fn metrics_modal_rects_left_clamp_keeps_4_cells_visible() {
-        let viewport = Rect::new(0, 0, 200, 80);
+    fn metrics_modal_rects_left_clamp_snaps_to_viewport_x() {
+        // Non-origin viewport so the snap-to-zero shortcut can't hide a bug.
+        // The modal cannot extend past viewport.x (left is a hard bound —
+        // Ratatui u16-Rect cannot represent negative coordinates).
+        let viewport = Rect::new(20, 5, 200, 80);
         let r = metrics_modal_rects(viewport, 50, 50, i16::MIN, 0);
-        let visible_left = (r.area.x + r.area.width).saturating_sub(viewport.x);
-        assert!(
-            visible_left >= 4,
-            "left clamp leaves {visible_left} cells visible (expected >= 4)"
+        assert_eq!(
+            r.area.x, viewport.x,
+            "modal must not extend past viewport.x (left is hard bound)"
         );
     }
 
     #[test]
     fn metrics_modal_rects_bottom_clamp_keeps_1_row_visible() {
-        let viewport = Rect::new(0, 0, 200, 80);
+        // Non-origin viewport so a viewport-origin bug cannot hide the clamp.
+        let viewport = Rect::new(20, 5, 200, 80);
         let r = metrics_modal_rects(viewport, 50, 50, 0, i16::MAX);
         let visible_height = (viewport.y + viewport.height).saturating_sub(r.area.y);
         assert!(
             visible_height >= 1,
-            "bottom clamp leaves {visible_height} row(s) visible (expected >= 1)"
+            "bottom clamp must leave >= 1 row inside viewport (got {visible_height})"
+        );
+    }
+
+    #[test]
+    fn metrics_modal_rects_top_clamp_snaps_to_viewport_y() {
+        // Non-origin viewport so the snap-to-zero shortcut can't hide a bug.
+        // The modal cannot extend past viewport.y (top is a hard bound —
+        // Ratatui u16-Rect cannot represent negative coordinates).
+        let viewport = Rect::new(20, 5, 200, 80);
+        let r = metrics_modal_rects(viewport, 50, 50, 0, i16::MIN);
+        assert_eq!(
+            r.area.y, viewport.y,
+            "modal must not extend past viewport.y (top is hard bound)"
         );
     }
 
