@@ -330,12 +330,9 @@ pub struct PendingActionsModalRects {
     pub hint: Rect,
 }
 
-#[allow(dead_code)]
 const LIST_WIDTH_WIDE: u16 = 32;
-#[allow(dead_code)]
 const SPLIT_THRESHOLD_WIDE: u16 = 72;
 
-#[allow(dead_code)]
 pub(crate) fn pending_actions_modal_rects(viewport: Rect) -> PendingActionsModalRects {
     let area = pending_actions_modal_area(viewport);
     // Carve a 1-col / 1-row inset for the modal border (Borders::ALL).
@@ -352,8 +349,8 @@ pub(crate) fn pending_actions_modal_rects(viewport: Rect) -> PendingActionsModal
     let (list, explainer) = if body.width >= SPLIT_THRESHOLD_WIDE {
         // Wide: list 32 cols, 1-col separator, explainer = rest.
         let list = Rect::new(body.x, body.y, LIST_WIDTH_WIDE, body.height);
-        let exp_x = body.x + LIST_WIDTH_WIDE + 1;
-        let exp_w = body.width.saturating_sub(LIST_WIDTH_WIDE + 1);
+        let exp_x = body.x + LIST_WIDTH_WIDE;
+        let exp_w = body.width.saturating_sub(LIST_WIDTH_WIDE);
         let explainer = Rect::new(exp_x, body.y, exp_w, body.height);
         (list, explainer)
     } else {
@@ -782,7 +779,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_actions_overlay_renders_proposal_and_copy_rows() {
+    fn list_lines_render_proposal_and_copy_rows() {
         use crate::domain::origin::SourceKind;
         use crate::domain::recommendation::Severity;
         let rec_with_cmd = Recommendation {
@@ -826,7 +823,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_modal_renders_no_pending_actions_message() {
+    fn empty_list_renders_no_pending_actions_message() {
         let overlay = PendingActionsOverlay::new();
         let lines = pending_actions_lines(&overlay, &[]);
         let dump: String = lines.iter().map(|l| line_text(l) + "\n").collect();
@@ -1011,7 +1008,10 @@ mod tests {
         // Wide mode: list width = 32, separator = 1 col, explainer = rest.
         assert_eq!(rects.list.width, 32);
         let sep_col = rects.list.x + rects.list.width;
-        assert_eq!(rects.explainer.x, sep_col + 1);
+        assert_eq!(
+            rects.explainer.x, sep_col,
+            "explainer rect's left edge IS the separator column (Borders::LEFT paints there)"
+        );
         assert_eq!(
             rects.explainer.x + rects.explainer.width,
             rects.area.x + rects.area.width - 1, // -1: right border
@@ -1174,5 +1174,36 @@ mod tests {
         assert!(hint.contains("p accept(1)"), "1 proposal in multi: {hint}");
         assert!(hint.contains("d clear(2)"), "2 items in multi: {hint}");
         assert!(hint.contains("y copy(1)"), "1 alert in multi: {hint}");
+    }
+
+    #[test]
+    fn hint_caps_copy_count_at_one_when_multi_has_two_alerts() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::Severity;
+        let y1 = PendingItem::Copy {
+            alert_idx: 0,
+            command: "/clear".into(),
+            alert_title: "context-pressure".into(),
+            severity: Severity::Warning,
+            source: SourceKind::Estimated,
+            pane_idx: None,
+        };
+        let y2 = PendingItem::Copy {
+            alert_idx: 1,
+            command: "/compact".into(),
+            alert_title: "cache-drift".into(),
+            severity: Severity::Concern,
+            source: SourceKind::Estimated,
+            pane_idx: None,
+        };
+        let items = vec![y1, y2];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.toggle_group_all(&items);
+        let hint = pending_actions_hint_text(&overlay, &items);
+        assert!(
+            hint.contains("y copy(1)"),
+            "must cap at 1 (y dispatches first only): {hint}"
+        );
+        assert!(!hint.contains("y copy(2)"), "must NOT show 2: {hint}");
     }
 }
