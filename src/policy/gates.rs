@@ -62,6 +62,10 @@ pub struct PolicyGates {
     pub reset_wait_eta_secs: u64,
     pub reset_snapshot_pressure: f32,
     pub reset_snapshot_eta_secs: u64,
+    /// Phase H (v1.42.0): when `true`, `app::auto_snapshot::maybe_auto_snapshot`
+    /// auto-actuates the matching `Recommendation` once per
+    /// `(pane_id, quota_kind, window_id)`. Mirrors `[reset] auto_snapshot`.
+    pub reset_auto_snapshot: bool,
     /// Phase D D1 (v1.17.0): opt-in cross-window concurrent-work
     /// detection. When `true`, the cross-pane rule emits
     /// `CrossPaneKind::CrossWindowConcurrentWork` for groups whose panes
@@ -141,6 +145,7 @@ impl Default for PolicyGates {
             reset_wait_eta_secs: 30 * 60,
             reset_snapshot_pressure: 0.50,
             reset_snapshot_eta_secs: 5 * 60,
+            reset_auto_snapshot: false,
             cross_window_findings: false,
             identity_drift_findings: false,
             cross_pane_file_findings: false,
@@ -213,6 +218,7 @@ impl PolicyGates {
             reset_wait_eta_secs: reset.wait_eta_secs,
             reset_snapshot_pressure: reset.snapshot_pressure_threshold,
             reset_snapshot_eta_secs: reset.snapshot_eta_secs,
+            reset_auto_snapshot: reset.auto_snapshot,
             cross_window_findings: security.cross_window_findings,
             identity_drift_findings: security.identity_drift_findings,
             cross_pane_file_findings: security.cross_pane_file_findings,
@@ -322,6 +328,7 @@ mod tests {
             reset_wait_eta_secs: 30 * 60,
             reset_snapshot_pressure: 0.50,
             reset_snapshot_eta_secs: 5 * 60,
+            reset_auto_snapshot: false,
             cross_window_findings: false,
             identity_drift_findings: false,
             cross_pane_file_findings: false,
@@ -429,7 +436,7 @@ mod tests {
             wait_eta_secs: 45 * 60,
             snapshot_pressure_threshold: 0.40,
             snapshot_eta_secs: 10 * 60,
-            auto_snapshot: false,
+            ..ResetConfig::default()
         };
         let profile_switch = crate::app::config::ProfileSwitchConfig::default();
         let gates = PolicyGates::from_inputs(PolicyGateInputs {
@@ -448,6 +455,58 @@ mod tests {
         assert_eq!(gates.reset_wait_eta_secs, 45 * 60);
         assert!((gates.reset_snapshot_pressure - 0.40).abs() < f32::EPSILON);
         assert_eq!(gates.reset_snapshot_eta_secs, 10 * 60);
+    }
+
+    #[test]
+    fn from_inputs_propagates_reset_auto_snapshot() {
+        use crate::app::config::{
+            CacheConfig, ContextConfig, CostConfig, QuotaConfig, ResetConfig, SecurityConfig,
+            TokenConfig,
+        };
+        use crate::domain::identity::Provider;
+        let cfg = TokenConfig::default();
+        let cost = CostConfig::default();
+        let context = ContextConfig::default();
+        let quota = QuotaConfig::default();
+        let security = SecurityConfig::default();
+        let cache = CacheConfig::default();
+        let profile_switch = crate::app::config::ProfileSwitchConfig::default();
+
+        let reset_on = ResetConfig {
+            auto_snapshot: true,
+            ..ResetConfig::default()
+        };
+        let gates = PolicyGates::from_inputs(PolicyGateInputs {
+            token: &cfg,
+            cost: &cost,
+            context: &context,
+            quota: &quota,
+            security: &security,
+            cache: &cache,
+            reset: &reset_on,
+            profile_switch: &profile_switch,
+            provider: Provider::Claude,
+            confidence: IdentityConfidence::High,
+        });
+        assert!(gates.reset_auto_snapshot);
+
+        let reset_off = ResetConfig {
+            auto_snapshot: false,
+            ..ResetConfig::default()
+        };
+        let gates_off = PolicyGates::from_inputs(PolicyGateInputs {
+            token: &cfg,
+            cost: &cost,
+            context: &context,
+            quota: &quota,
+            security: &security,
+            cache: &cache,
+            reset: &reset_off,
+            profile_switch: &profile_switch,
+            provider: Provider::Claude,
+            confidence: IdentityConfidence::High,
+        });
+        assert!(!gates_off.reset_auto_snapshot);
     }
 
     #[test]
