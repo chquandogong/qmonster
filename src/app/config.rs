@@ -269,6 +269,15 @@ pub struct ResetConfig {
     /// `recommend_snapshot_before_reset` requires the resets_at
     /// countdown to be ≤ `snapshot_eta_secs`. Default 300 (5 mins).
     pub snapshot_eta_secs: u64,
+    /// Phase H (v1.42.0): when `true`, the actuation hook in
+    /// `src/app/auto_snapshot.rs` automatically writes one snapshot per
+    /// `(pane_id, quota_kind, window_id)` whenever
+    /// `recommend_snapshot_before_reset` fires. Default `false` —
+    /// existing v1.41.0 operators see no behavior change. Reuses the
+    /// F-7d `snapshot_pressure_threshold` / `snapshot_eta_secs`
+    /// thresholds; this flag is the actuation gate, not a new
+    /// detection threshold.
+    pub auto_snapshot: bool,
 }
 
 impl Default for ResetConfig {
@@ -278,6 +287,7 @@ impl Default for ResetConfig {
             wait_eta_secs: 30 * 60,
             snapshot_pressure_threshold: 0.50,
             snapshot_eta_secs: 5 * 60,
+            auto_snapshot: false,
         }
     }
 }
@@ -1285,5 +1295,41 @@ critical_pct = 0.90
                 .abs()
                 < f32::EPSILON
         );
+    }
+
+    #[test]
+    fn reset_config_auto_snapshot_defaults_false() {
+        let r = ResetConfig::default();
+        assert!(!r.auto_snapshot);
+    }
+
+    #[test]
+    fn reset_config_auto_snapshot_loads_from_toml() {
+        let toml = r#"
+[reset]
+auto_snapshot = true
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).expect("parse");
+        assert!(cfg.reset.auto_snapshot);
+    }
+
+    #[test]
+    fn reset_config_missing_section_keeps_auto_snapshot_false() {
+        let cfg: QmonsterConfig = toml::from_str("").expect("parse");
+        assert!(!cfg.reset.auto_snapshot);
+    }
+
+    #[test]
+    fn reset_config_partial_section_keeps_other_defaults() {
+        let toml = r#"
+[reset]
+auto_snapshot = true
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).expect("parse");
+        assert!(cfg.reset.auto_snapshot);
+        assert!((cfg.reset.wait_pressure_threshold - 0.85).abs() < f32::EPSILON);
+        assert_eq!(cfg.reset.wait_eta_secs, 30 * 60);
+        assert!((cfg.reset.snapshot_pressure_threshold - 0.50).abs() < f32::EPSILON);
+        assert_eq!(cfg.reset.snapshot_eta_secs, 5 * 60);
     }
 }

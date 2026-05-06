@@ -429,6 +429,7 @@ mod tests {
             wait_eta_secs: 45 * 60,
             snapshot_pressure_threshold: 0.40,
             snapshot_eta_secs: 10 * 60,
+            auto_snapshot: false,
         };
         let profile_switch = crate::app::config::ProfileSwitchConfig::default();
         let gates = PolicyGates::from_inputs(PolicyGateInputs {
