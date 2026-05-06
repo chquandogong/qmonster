@@ -908,7 +908,16 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "a",
-            "open Pending Actions overlay listing every pane with a pending p/d proposal AND every alert with a y-copyable command; ↑/↓ select, Enter jumps to that pane/alert and opens the Action Explainer modal, a again or Esc/q/[x] close",
+            "open Pending Actions overlay (live explainer + multi-select bulk dispatch): lists every pane with a pending p/d proposal AND every alert with a y-copyable command; Space=toggle selection, P/Y/A=group toggle, c=clear; p/d/y dispatch selected items bypassing confirm_actions; a again or Esc/q/[x] close",
+        ),
+        ("Space", "toggle multi-select on cursor item (a overlay)"),
+        (
+            "P / Y / A",
+            "toggle proposal / alert / all group selection (a overlay)",
+        ),
+        (
+            "c (a overlay)",
+            "clear multi-select set, cursor stays (a overlay)",
         ),
         (
             "Enter",

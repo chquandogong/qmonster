@@ -691,32 +691,89 @@ confirm_actions = "always"
 
 ### 8.7 Pending Actions Overlay
 
-`a` 키로 토글합니다. v1.39에서 추가된 수면 가능한 디스커버리 layer로,
-다음 항목을 한 번에 보여줍니다:
+`a` 키로 토글합니다. v1.39에서 추가된 디스커버리 layer가
+v1.40에서 좌/우 split + 멀티 선택 + 라이브 explainer + 벌크
+dispatch로 확장되었습니다.
 
-- pending prompt-send proposal을 보유한 모든 pane (operator가 `p`/`d`로
-  처리할 수 있는 항목)
-- `suggested_command`가 있는 모든 alert (operator가 `y`로 복사할 수
-  있는 항목)
+다음 항목을 한 화면에 보여줍니다:
+
+- pending prompt-send proposal을 보유한 모든 pane (operator가
+  `p`/`d`로 처리할 수 있는 항목)
+- `suggested_command`가 있는 모든 alert (operator가 `y`로 복사할
+  수 있는 항목)
 
 본 overlay 외에도 항목 존재는 두 가지 다른 surface로 노출됩니다:
 
-- **Header chip** — pane card 제목에 `★p`, alert 제목에 `★y`가 붙고
-  severity 색으로 강조됩니다.
+- **Header chip** — pane card 제목에 `★p`, alert 제목에 `★y`가
+  붙고 severity 색으로 강조됩니다.
 - **Footer counter** — 화면 하단에 `★p:N · ★y:M` 카운터가 항상
   표시됩니다 (0이면 dim, 양수면 severity 색).
 
-Overlay 행 형식: `<cursor> [p|y] <severity> · <command> · <context>`
+**모달 layout**
 
-조작:
+- 좌측 (또는 좁은 폭에서는 상단): 항목 리스트
+- 우측 (또는 좁은 폭에서는 하단): 커서 항목의 라이브 Action
+  Explainer 패널 — `Why now`, `Severity`, `Audit chain`, `Mode now`
+  등 기존 Action Explainer 모달과 동일한 정보를 그대로 표시합니다.
+- 하단 1줄: 키 안내 + 멀티 선택 카운트
+- 모달 폭 ≥ 72셀이면 좌/우 split, 그 미만이면 상/하 split
 
-- `↑` / `↓` 또는 `j` / `k` — 항목 이동
-- `Enter` — 해당 pane/alert로 selection을 점프시키고 Action Explainer
-  modal을 자동으로 엽니다 (실제 dispatch는 Action Explainer에서
-  Enter로 확정)
-- `a` 다시, `Esc`, `q`, `[x]` 클릭 — overlay 닫기
+**행 형식**: `[x|space] ▶ [p|y] severity · command · context`
 
-항목이 없을 때는 `No pending actions.` 안내 줄이 표시됩니다.
+- 좌측 `[x]` / `[ ]` = 멀티 선택 체크박스 (severity 색)
+- `▶` = 현재 커서 행
+- `[p]` proposal / `[y]` copyable alert
+- `command`는 backtick으로 감싼 슬래시 명령
+- `context`는 pane 식별자 또는 alert 제목
+
+**제목**: `"Pending Actions · {N} pending · {S} selected · a 다시로 닫기"`
+(멀티 선택이 비어있으면 `· {S} selected` 부분 생략)
+
+**조작 — 키보드**
+
+| 키                             | 동작                                                                |
+| ------------------------------ | ------------------------------------------------------------------- |
+| `↑/↓` · `j/k`                  | 커서 이동 → 우측 explainer 즉시 갱신                                |
+| `Space`                        | 커서 항목 멀티 선택 토글                                            |
+| `P` / `Y` / `A`                | proposal / alert / 전체 그룹 토글 (모두 선택 ↔ 모두 해제)           |
+| `c`                            | 멀티 선택 비움 (커서는 유지)                                        |
+| `p`                            | accept — 멀티에 proposal이 있으면 일괄, 없으면 커서 (proposal일 때) |
+| `d`                            | clear — proposal=reject, alert=hide. 멀티 우선, 없으면 커서         |
+| `y`                            | copy — 멀티의 첫 alert 또는 커서 alert (클립보드는 한 줄)           |
+| `Enter`                        | silently no-op (실수 입력 방지)                                     |
+| `Esc` · `q` · `a` · `[x]` 클릭 | overlay 닫기 (멀티 선택 비움)                                       |
+
+**조작 — 마우스**
+
+| 이벤트                        | 동작                                  |
+| ----------------------------- | ------------------------------------- |
+| 행 좌측 `[ ]` 영역 (cols 0–3) | 멀티 선택 토글, 커서 변경 없음        |
+| 행 cols 4 이상 (커서/내용)    | 커서를 그 행으로 이동, explainer 갱신 |
+| 휠 (모달 안)                  | 커서 이동                             |
+| `[x]` 클릭                    | 닫기                                  |
+
+**dispatch 후 처리**
+
+- 멀티 선택의 dispatch된 key**만** 제거됩니다. 예: `p` 누름 시
+  proposal key만 빠지고 alert key는 그대로 남아 다음에 `d`나 `y`로
+  처리할 수 있습니다.
+- 폴링 사이에 사라진 key는 자동 prune됩니다 (다음 render에서).
+
+**`[ux] confirm_actions` 무시**
+
+a 오버레이 안의 `p`/`d`/`y`는 `confirm_actions = always | first_time | never`
+설정과 무관하게 즉시 dispatch됩니다 — 우측 라이브 explainer 패널이
+confirmation 역할을 합니다. 대시보드 직접 키(`p`/`d`/`y`)는 기존처럼
+설정값에 따라 Action Explainer 모달을 띄웁니다.
+
+**Mode 차단 표시**
+
+`observe_only` / `AutoSendOff`와 같이 actuation mode가 차단 중일
+때는 우측 explainer 패널의 `Mode now` 줄에 ⚠ 경고가 표시되어,
+operator가 dispatch 전에 확인할 수 있습니다.
+
+항목이 없을 때는 `Select an item to see what would happen.` 라는
+dim 안내 줄이 explainer 패널에 표시됩니다.
 
 ## 9. 운영 파일
 
