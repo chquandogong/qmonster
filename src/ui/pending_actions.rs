@@ -472,7 +472,10 @@ pub fn render_pending_actions_modal(frame: &mut Frame<'_>, ctx: PendingActionsRe
     );
 
     // Separator + explainer pane.
-    let sep_block = if rects.explainer.x > rects.list.x + rects.list.width {
+    // Wide mode: explainer is shifted right of the list — use a vertical separator.
+    // Narrow mode: explainer sits below the list (same x) — use a horizontal separator.
+    let wide_mode = rects.explainer.x > rects.list.x;
+    let sep_block = if wide_mode {
         Block::default()
             .borders(Borders::LEFT)
             .border_style(Style::default().fg(theme::BORDER_ACTIVE))
@@ -1205,5 +1208,84 @@ mod tests {
             "must cap at 1 (y dispatches first only): {hint}"
         );
         assert!(!hint.contains("y copy(2)"), "must NOT show 2: {hint}");
+    }
+
+    #[test]
+    fn wide_mode_renders_vertical_separator_at_list_right_edge() {
+        use crate::app::config::ActionsMode;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let mut terminal = Terminal::new(TestBackend::new(200, 80)).expect("new TestBackend");
+        let overlay = PendingActionsOverlay::new();
+        terminal
+            .draw(|f| {
+                render_pending_actions_modal(
+                    f,
+                    PendingActionsRenderCtx {
+                        overlay: &overlay,
+                        items: &[],
+                        reports: &[],
+                        mode: ActionsMode::RecommendOnly,
+                        allow_auto_prompt_send: true,
+                    },
+                );
+            })
+            .expect("draw must succeed");
+        let buffer = terminal.backend().buffer();
+        let rects = pending_actions_modal_rects(Rect::new(0, 0, 200, 80));
+        // In wide mode explainer.x > list.x — confirm this viewport is wide.
+        assert!(
+            rects.explainer.x > rects.list.x,
+            "this test requires wide mode (200 cols)"
+        );
+        let sep_col = rects.list.x + rects.list.width;
+        let mid_y = rects.list.y + rects.list.height / 2;
+        let cell = buffer.cell((sep_col, mid_y)).expect("cell in bounds");
+        assert_eq!(
+            cell.symbol(),
+            "\u{2502}",
+            "wide mode must render '│' at separator column {sep_col} row {mid_y}; got {:?}",
+            cell.symbol()
+        );
+    }
+
+    #[test]
+    fn narrow_mode_renders_horizontal_separator_at_explainer_top() {
+        use crate::app::config::ActionsMode;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        // Narrow viewport so the modal body width < SPLIT_THRESHOLD_WIDE (72).
+        let mut terminal = Terminal::new(TestBackend::new(80, 30)).expect("new TestBackend");
+        let overlay = PendingActionsOverlay::new();
+        terminal
+            .draw(|f| {
+                render_pending_actions_modal(
+                    f,
+                    PendingActionsRenderCtx {
+                        overlay: &overlay,
+                        items: &[],
+                        reports: &[],
+                        mode: ActionsMode::RecommendOnly,
+                        allow_auto_prompt_send: true,
+                    },
+                );
+            })
+            .expect("draw must succeed");
+        let buffer = terminal.backend().buffer();
+        let rects = pending_actions_modal_rects(Rect::new(0, 0, 80, 30));
+        // Sanity: confirm narrow mode (list.x == explainer.x).
+        assert_eq!(
+            rects.list.x, rects.explainer.x,
+            "this test requires narrow mode"
+        );
+        let sep_row = rects.explainer.y;
+        let mid_x = rects.explainer.x + rects.explainer.width / 2;
+        let cell = buffer.cell((mid_x, sep_row)).expect("cell in bounds");
+        assert_eq!(
+            cell.symbol(),
+            "\u{2500}",
+            "narrow mode must render '─' at separator row {sep_row} col {mid_x}; got {:?}",
+            cell.symbol()
+        );
     }
 }
