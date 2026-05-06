@@ -32,7 +32,11 @@ Seven backwards-compatible themes are complete in the v1.40.0 source. None of th
 
 ## Post-tag polish (on main, untagged)
 
-No genuinely-post-v1.40.0 work has landed yet. The v1.40.0 release commit is the immediate parent of the `v1.40.0` tag.
+Three commits landed on `main` after the `v1.40.0` tag:
+
+1. `c4dfeb3` — v1.40.0 publication verified: workflow run `25421376056` (2026-05-06, 6m56s, success) recorded in the ledger.
+2. `cd90b25` — v1.40 post-release fix: prune_to() now clamps `selected` against `items.len()` so polling-driven shrinks no longer leave the cursor stale (proposal/dispatch/explainer all read the clamped index); `narrow_list` / `widen_list` now take the current effective list width as an argument so first-press `,` / `.` step in the correct direction from the auto-formula baseline.
+3. `0bc944a` — v1.41 P1: surface the a overlay's `[ux] confirm_actions` bypass through three discoverability surfaces (UI_MANUAL §8.7 ⚠ caution rewrite; in-modal `(confirm_actions bypass)` hint chip; `PendingActionsOverlay::seen_first_open` flag firing a Concern-severity SystemNotice on the first `a` press per session).
 
 ## Known External State
 
@@ -52,7 +56,7 @@ No genuinely-post-v1.40.0 work has landed yet. The v1.40.0 release commit is the
 Most recent v1.40.0 validation reported in the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1022 lib tests + 50 event-loop integration tests + 18 false-positive regression tests + 6 idle-state regression tests, all green.
+- `cargo test --all-targets` — 1022 lib tests + 50 event-loop integration tests + 18 false-positive regression tests + 6 idle-state regression tests, all green at the v1.40.0 release commit. Post-tag commits (`cd90b25` cursor-staleness + `,/.` direction fix, `0bc944a` v1.41 P1 confirm_actions bypass surface) bring the lib-test count to 1028 (+6) on current `main`; the other counts are unchanged.
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
@@ -62,4 +66,4 @@ Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged rele
 
 ## Next First Action
 
-Pick the next follow-up from the Active Follow-Ups list. The closest concrete items are Phase H scoping (opt-in auto-snapshot at reset boundary) and the v1.40.0 CI publication verification once the `v1.40.0` tag is pushed and the `Release and Package Mirror` workflow run completes. Phase 7 anomaly detection and tag protection both need either operator input (Phase 7 scope) or operator-side action (GitHub Settings).
+Pick the next follow-up from the Active Follow-Ups list. The closest concrete item is Phase H scoping (opt-in auto-snapshot at reset boundary). Phase 7 anomaly detection and tag protection both need either operator input (Phase 7 scope) or operator-side action (GitHub Settings). v1.40.0 CI publication verification is already complete (workflow run `25421376056`, recorded in `c4dfeb3`).

@@ -1,8 +1,8 @@
 # 2026-05-06 — m drag + a overlay live explainer & bulk clear (design)
 
-Status: design accepted, plan pending.
+Status: design accepted, plan completed (shipped in v1.40.0; reference plan: `docs/superpowers/plans/2026-05-06-mouse-drag-and-bulk-overlays.md`).
 Audience: Qmonster TUI maintainers and the Claude/Codex/Gemini implementers.
-Baseline: `main` at `9cc5bfe` (post-v1.39 polish, untagged).
+Baseline: `main` at `9cc5bfe` (post-v1.39 polish, untagged at design time; v1.40.0 tag commit is `5b0e856`).
 
 ## 1. Goal
 

@@ -1,9 +1,12 @@
-//! Phase v1.39 — Pending Actions overlay (`a` key).
+//! Phase v1.39 surface C / v1.40 redesign — Pending Actions overlay (`a` key).
 //!
 //! Lists every pane with a pending prompt-send proposal AND every
-//! alert with a `suggested_command`, in one scrollable modal. Enter
-//! jumps to the selected item and opens the Action Explainer modal
-//! so operators can dispatch from anywhere without navigating.
+//! alert with a `suggested_command` in a split modal: list pane on
+//! the left, live Action Explainer panel on the right (or top/bottom
+//! when the body is narrow). Multi-select via Space / P / Y / A / c
+//! with stable-key tracking; p / d / y dispatch in-place through the
+//! existing `confirm_pending_action(...)` path; Enter is silently
+//! swallowed (the live explainer panel is the confirmation).
 //!
 //! Pure state + render. The tui_loop key + mouse handlers live in
 //! `app::pending_actions_overlay`. Item collection is shared between

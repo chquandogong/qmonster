@@ -1,5 +1,7 @@
 # Mouse Drag & Bulk Overlays Implementation Plan
 
+Status: completed in v1.40.0 (release commit `5b0e856`, all 83 step checkboxes ticked). Post-tag fixes against the same surface live in `cd90b25` (cursor staleness + `,/.` direction) and `0bc944a` (v1.41 P1 confirm_actions bypass surface).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add mouse drag to the m (Metrics) overlay and rebuild the a (Pending Actions) overlay with a left/right split, live Action Explainer panel, multi-select, and bulk dispatch keys.
@@ -40,7 +42,7 @@ If any gate fails, fix before committing the task. Each task's "Commit" step ass
 
 - Modify: `src/ui/metrics.rs:102-185` (struct + impl), `src/ui/metrics.rs:194-210` (`metrics_modal_rects`), `src/ui/metrics.rs:817-825` (renderer call site), `src/ui/metrics.rs:887-963` (existing tests pinned to old signature).
 
-- [ ] **Step 1: Write the failing offset + clamp tests**
+- [x] **Step 1: Write the failing offset + clamp tests**
 
 Append inside the existing `#[cfg(test)] mod tests` block in `src/ui/metrics.rs`:
 
@@ -106,7 +108,7 @@ fn metrics_modal_rects_bottom_clamp_keeps_1_row_visible() {
 }
 ```
 
-- [ ] **Step 2: Run the new tests to confirm they fail**
+- [x] **Step 2: Run the new tests to confirm they fail**
 
 ```bash
 cargo test --lib metrics::tests::metrics_modal_rects -- --nocapture
@@ -114,7 +116,7 @@ cargo test --lib metrics::tests::metrics_modal_rects -- --nocapture
 
 Expected: compilation error — `metrics_modal_rects` takes 3 args, tests pass 5.
 
-- [ ] **Step 3: Update struct + impl with offset and drag anchor (no behavioral change yet for drag)**
+- [x] **Step 3: Update struct + impl with offset and drag anchor (no behavioral change yet for drag)**
 
 Replace the existing `pub struct MetricsOverlay { ... }` and its `Default` / `impl` blocks (`src/ui/metrics.rs:102-185`) with:
 
@@ -224,7 +226,7 @@ impl MetricsOverlay {
 }
 ```
 
-- [ ] **Step 4: Update `metrics_modal_rects` signature with offset + clamp**
+- [x] **Step 4: Update `metrics_modal_rects` signature with offset + clamp**
 
 Replace the function in `src/ui/metrics.rs:194-210` with:
 
@@ -277,7 +279,7 @@ fn apply_clamped_offset(base: Rect, viewport: Rect, offset_x: i16, offset_y: i16
 
 Note: the width / height shrink in the `Rect::new` call is defensive — it prevents a sub-zero rect when the offset pushes the modal so far that the visible portion is smaller than `base`. It is not strictly required for the spec's clamp guarantee, but keeps `metrics_modal_rects` returning a valid `Rect`.
 
-- [ ] **Step 5: Update existing call sites + tests to the new signature**
+- [x] **Step 5: Update existing call sites + tests to the new signature**
 
 In `src/ui/metrics.rs:823`, change:
 
@@ -349,7 +351,7 @@ let rects = metrics_modal_rects(
 
 Search for any remaining `metrics_modal_rects(` call sites with `grep -rn 'metrics_modal_rects(' src/ tests/` and apply the same 4-arg → 5-arg change.
 
-- [ ] **Step 6: Add reset-size offset test inside `MetricsOverlay` impl tests**
+- [x] **Step 6: Add reset-size offset test inside `MetricsOverlay` impl tests**
 
 Append inside the same `#[cfg(test)] mod tests` block:
 
@@ -383,7 +385,7 @@ fn close_preserves_offset_and_size() {
 }
 ```
 
-- [ ] **Step 7: Run tests + clippy + fmt**
+- [x] **Step 7: Run tests + clippy + fmt**
 
 ```bash
 cargo fmt --all
@@ -393,7 +395,7 @@ cargo test --lib metrics
 
 Expected: all tests pass (including the 8 new ones added in Steps 1 and 6). If any test fails because the offset clamp pushes the rect off-screen unexpectedly, re-check the clamp formula in Step 4 against §4.2 of the spec.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ui/metrics.rs src/app/metrics_overlay.rs
@@ -409,7 +411,7 @@ git commit -m "v1.40 m overlay: offset+clamp scaffolding for drag-to-move"
 - Modify: `src/app/metrics_overlay.rs:42-63` (`handle_metrics_overlay_mouse`).
 - Add: tests in the same file.
 
-- [ ] **Step 1: Write failing drag state machine tests**
+- [x] **Step 1: Write failing drag state machine tests**
 
 Append inside the existing `#[cfg(test)] mod tests` block in `src/app/metrics_overlay.rs`:
 
@@ -563,7 +565,7 @@ fn drag_does_not_start_on_close_button_and_close_wins() {
 }
 ```
 
-- [ ] **Step 2: Run new tests to confirm they fail**
+- [x] **Step 2: Run new tests to confirm they fail**
 
 ```bash
 cargo test --lib app::metrics_overlay
@@ -571,7 +573,7 @@ cargo test --lib app::metrics_overlay
 
 Expected: at least one of `drag_down_on_title_row_sets_anchor`, `drag_event_updates_offset_relative_to_anchor`, `up_event_clears_anchor` fails because the existing handler doesn't manipulate drag state.
 
-- [ ] **Step 3: Implement the drag state machine**
+- [x] **Step 3: Implement the drag state machine**
 
 Replace `handle_metrics_overlay_mouse` (`src/app/metrics_overlay.rs:42-63`) with:
 
@@ -652,7 +654,7 @@ use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 
 (The existing `use` already covers this — verify but do not add duplicates.)
 
-- [ ] **Step 4: Run all tests**
+- [x] **Step 4: Run all tests**
 
 ```bash
 cargo test --lib
@@ -660,7 +662,7 @@ cargo test --lib
 
 Expected: drag tests pass, the existing `x_click_closes_overlay` test still passes, and the existing `arrows_scroll_body` / `bracket_keys_resize_overlay` tests still pass.
 
-- [ ] **Step 5: Lint + format**
+- [x] **Step 5: Lint + format**
 
 ```bash
 cargo fmt --all
@@ -669,7 +671,7 @@ cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 
 Expected: no warnings.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/metrics_overlay.rs
@@ -684,7 +686,7 @@ git commit -m "v1.40 m overlay: drag-to-move state machine on title row"
 
 - Modify: `docs/ai/UI_MANUAL.md` §8.5 (around line 645–650, after the existing `[`/`]`/`=` resize description).
 
-- [ ] **Step 1: Locate the §8.5 section**
+- [x] **Step 1: Locate the §8.5 section**
 
 ```bash
 grep -n "운영자가 고른 크기는 close" docs/ai/UI_MANUAL.md
@@ -692,7 +694,7 @@ grep -n "운영자가 고른 크기는 close" docs/ai/UI_MANUAL.md
 
 Expected: one hit on the line that ends “close 후 재오픈에도 유지.”
 
-- [ ] **Step 2: Add the drag paragraph**
+- [x] **Step 2: Add the drag paragraph**
 
 Open `docs/ai/UI_MANUAL.md` and replace the existing line:
 
@@ -716,7 +718,7 @@ with:
   고정됩니다.
 ```
 
-- [ ] **Step 3: Verify Markdown still parses cleanly**
+- [x] **Step 3: Verify Markdown still parses cleanly**
 
 ```bash
 grep -n "마우스로 모달" docs/ai/UI_MANUAL.md
@@ -724,7 +726,7 @@ grep -n "마우스로 모달" docs/ai/UI_MANUAL.md
 
 Expected: one hit on the new line.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/ai/UI_MANUAL.md
@@ -741,7 +743,7 @@ git commit -m "v1.40 docs: UI_MANUAL §8.5 m overlay drag-to-move"
 
 - Modify: `src/ui/pending_actions.rs:32-70` (struct + impl), add free `pending_item_key` and group helpers.
 
-- [ ] **Step 1: Write failing key + multi-select tests**
+- [x] **Step 1: Write failing key + multi-select tests**
 
 Append inside the existing `#[cfg(test)] mod tests` block in `src/ui/pending_actions.rs`:
 
@@ -901,7 +903,7 @@ fn auto_prune_drops_keys_no_longer_in_items() {
 }
 ```
 
-- [ ] **Step 2: Run new tests to confirm they fail**
+- [x] **Step 2: Run new tests to confirm they fail**
 
 ```bash
 cargo test --lib pending_actions
@@ -909,7 +911,7 @@ cargo test --lib pending_actions
 
 Expected: compile errors — `pending_item_key`, `toggle_multi`, `multi_contains`, `multi_len`, `toggle_group_proposals`, `toggle_group_all`, `prune_to` do not exist yet.
 
-- [ ] **Step 3: Update struct + impl with multi-select set**
+- [x] **Step 3: Update struct + impl with multi-select set**
 
 Replace the existing struct + impl in `src/ui/pending_actions.rs:32-70` with:
 
@@ -1041,7 +1043,7 @@ pub fn pending_item_key(item: &PendingItem) -> String {
 
 Remove the now-redundant `use std::collections::{HashMap, HashSet};` if those are only used elsewhere — `grep -n "HashSet\|HashMap" src/ui/pending_actions.rs` and prune unused imports. (BTreeSet is the only new import.)
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 cargo test --lib pending_actions
@@ -1049,14 +1051,14 @@ cargo test --lib pending_actions
 
 Expected: 7 new tests pass. Existing tests in the file still pass (open/close round-trip, select_clamps, etc).
 
-- [ ] **Step 5: Lint + format**
+- [x] **Step 5: Lint + format**
 
 ```bash
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ui/pending_actions.rs
@@ -1071,7 +1073,7 @@ git commit -m "v1.40 a overlay: stable-key multi-select state + group toggles"
 
 - Modify: `src/ui/pending_actions.rs` — bump `pending_actions_modal_area`, add `pending_actions_modal_rects`.
 
-- [ ] **Step 1: Write failing layout tests**
+- [x] **Step 1: Write failing layout tests**
 
 Append inside the existing `#[cfg(test)] mod tests` block in `src/ui/pending_actions.rs`:
 
@@ -1124,7 +1126,7 @@ fn modal_rects_narrow_mode_splits_horizontally() {
 }
 ```
 
-- [ ] **Step 2: Run new tests to confirm they fail**
+- [x] **Step 2: Run new tests to confirm they fail**
 
 ```bash
 cargo test --lib pending_actions::tests::modal
@@ -1132,7 +1134,7 @@ cargo test --lib pending_actions::tests::modal
 
 Expected: compile failures — `pending_actions_modal_rects` and the new struct don't exist yet, and the size assertions don't match.
 
-- [ ] **Step 3: Bump modal size + add the split helper**
+- [x] **Step 3: Bump modal size + add the split helper**
 
 In `src/ui/pending_actions.rs`, replace the existing `pending_actions_modal_area`:
 
@@ -1197,7 +1199,7 @@ pub(crate) fn pending_actions_modal_rects(viewport: Rect) -> PendingActionsModal
 }
 ```
 
-- [ ] **Step 4: Run new tests**
+- [x] **Step 4: Run new tests**
 
 ```bash
 cargo test --lib pending_actions::tests::modal
@@ -1205,14 +1207,14 @@ cargo test --lib pending_actions::tests::modal
 
 Expected: 3 new tests pass.
 
-- [ ] **Step 5: Lint + format**
+- [x] **Step 5: Lint + format**
 
 ```bash
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ui/pending_actions.rs
@@ -1243,7 +1245,7 @@ pub fn build_copy_view(alert_title: &str, command: &str, severity: Option<Severi
 
 The live explainer view for a proposal cursor item therefore needs the live `&PaneReport` (looked up by `pane_idx`), plus `mode` and `allow_auto_prompt_send` for the "Mode now" warning. We thread those through from `tui_loop` at render time.
 
-- [ ] **Step 1: Write failing tests for `build_explainer_view_for_item` and the per-key action constructors**
+- [x] **Step 1: Write failing tests for `build_explainer_view_for_item` and the per-key action constructors**
 
 Append to the existing `#[cfg(test)] mod tests` block in `src/app/pending_actions_overlay.rs`:
 
@@ -1334,7 +1336,7 @@ fn copy_action_for_alert_returns_copy_variant() {
 
 The view-builder is exercised indirectly in Task 8's renderer tests — no separate unit test needed here.
 
-- [ ] **Step 2: Run the new tests to confirm they fail**
+- [x] **Step 2: Run the new tests to confirm they fail**
 
 ```bash
 cargo test --lib app::pending_actions_overlay::tests::accept_action_for_proposal_returns_accept_variant
@@ -1342,7 +1344,7 @@ cargo test --lib app::pending_actions_overlay::tests::accept_action_for_proposal
 
 Expected: compile error — `accept_action_for`, `reject_action_for`, `copy_action_for` do not exist.
 
-- [ ] **Step 3: Add the helpers**
+- [x] **Step 3: Add the helpers**
 
 Append to `src/app/pending_actions_overlay.rs` (at the bottom of the module, before `#[cfg(test)]`):
 
@@ -1449,7 +1451,7 @@ pub fn build_explainer_view_for_item(
 }
 ```
 
-- [ ] **Step 4: Run the new tests**
+- [x] **Step 4: Run the new tests**
 
 ```bash
 cargo test --lib app::pending_actions_overlay
@@ -1457,14 +1459,14 @@ cargo test --lib app::pending_actions_overlay
 
 Expected: 4 new tests pass. Existing tests still pass.
 
-- [ ] **Step 5: Lint + format**
+- [x] **Step 5: Lint + format**
 
 ```bash
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/pending_actions_overlay.rs
@@ -1481,7 +1483,7 @@ git commit -m "v1.40 a overlay: per-key action constructors + live-explainer vie
 
 - Modify: `src/ui/pending_actions.rs:279-345` (`pending_actions_lines`).
 
-- [ ] **Step 1: Write failing row-layout tests**
+- [x] **Step 1: Write failing row-layout tests**
 
 Append to the test module:
 
@@ -1527,7 +1529,7 @@ fn lines_render_checkbox_checked_when_multi_selected() {
 
 (The existing `line_text` helper in the same `mod tests` is already used by other tests.)
 
-- [ ] **Step 2: Run new tests to confirm they fail**
+- [x] **Step 2: Run new tests to confirm they fail**
 
 ```bash
 cargo test --lib pending_actions::tests::lines_render_checkbox
@@ -1535,7 +1537,7 @@ cargo test --lib pending_actions::tests::lines_render_checkbox
 
 Expected: assertion failures — current code does not render `[ ]` / `[x]`.
 
-- [ ] **Step 3: Replace the row construction in `pending_actions_lines`**
+- [x] **Step 3: Replace the row construction in `pending_actions_lines`**
 
 Replace the body of the per-item `for (idx, item)` loop in `pending_actions_lines` (around `src/ui/pending_actions.rs:295-334`) with:
 
@@ -1595,7 +1597,7 @@ out.push(Line::from(spans));
 
 The new layout: `[x] ` (cols 0-3) → `▶ ` (cols 4-5) → kind/severity/command/context (cols 6+).
 
-- [ ] **Step 4: Run pending_actions tests**
+- [x] **Step 4: Run pending_actions tests**
 
 ```bash
 cargo test --lib pending_actions
@@ -1603,14 +1605,14 @@ cargo test --lib pending_actions
 
 Expected: 2 new tests pass + every existing rendering test still passes (existing tests check for substrings like `[p]` and `/compact` — those still appear).
 
-- [ ] **Step 5: Lint + format**
+- [x] **Step 5: Lint + format**
 
 ```bash
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ui/pending_actions.rs
@@ -1625,7 +1627,7 @@ git commit -m "v1.40 a overlay: row layout adds [x]/[ ] checkbox + preserved cur
 
 - Modify: `src/ui/pending_actions.rs:239-272` (`render_pending_actions_modal`), `src/ui/pending_actions.rs:340-345` (`hint_line`).
 
-- [ ] **Step 1: Write failing title + hint tests**
+- [x] **Step 1: Write failing title + hint tests**
 
 Append:
 
@@ -1717,7 +1719,7 @@ fn hint_shows_multi_counts() {
 }
 ```
 
-- [ ] **Step 2: Run new tests to confirm they fail**
+- [x] **Step 2: Run new tests to confirm they fail**
 
 ```bash
 cargo test --lib pending_actions::tests::title pending_actions::tests::hint_shows
@@ -1725,7 +1727,7 @@ cargo test --lib pending_actions::tests::title pending_actions::tests::hint_show
 
 Expected: compile failures — `pending_actions_title` and `pending_actions_hint_text` don't exist yet.
 
-- [ ] **Step 3: Add the title + hint text builders**
+- [x] **Step 3: Add the title + hint text builders**
 
 Insert just above `render_pending_actions_modal` in `src/ui/pending_actions.rs`:
 
@@ -1804,7 +1806,7 @@ fn pending_actions_counts(
 }
 ```
 
-- [ ] **Step 4: Rewrite `render_pending_actions_modal` to use the new layout**
+- [x] **Step 4: Rewrite `render_pending_actions_modal` to use the new layout**
 
 The renderer now takes a context struct so it can build the live explainer view. Replace the existing function (`src/ui/pending_actions.rs:239-272`) with:
 
@@ -1919,7 +1921,7 @@ If `build_accept_view` / `build_copy_view` actually take ownership instead of `&
 
 The `pending_actions_lines` function keeps emitting just the data rows (no leading blank, no trailing hint), since the new layout pushes the hint into its own `rects.hint` and the leading blank into the renderer if desired. To preserve the existing 1-row top padding the mouse handler relies on (Section 5.9 of the spec), keep the existing leading blank in `pending_actions_lines` as the first `Line::from("")`. Verify by re-running tests.
 
-- [ ] **Step 5: Run all pending_actions tests**
+- [x] **Step 5: Run all pending_actions tests**
 
 ```bash
 cargo test --lib pending_actions
@@ -1934,14 +1936,14 @@ assert!(dump.contains("[p]"), "modal must label proposal rows: {dump}");
 
 Also update `empty_modal_renders_no_pending_actions_message` — same removal of the old hint assertion.
 
-- [ ] **Step 6: Lint + format**
+- [x] **Step 6: Lint + format**
 
 ```bash
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ui/pending_actions.rs
@@ -1958,7 +1960,7 @@ git commit -m "v1.40 a overlay: split-render with live explainer + multi-aware t
 
 - Modify: `src/app/pending_actions_overlay.rs:23-61` (outcome enum + key handler).
 
-- [ ] **Step 1: Write failing tests for the new enum + selection keys**
+- [x] **Step 1: Write failing tests for the new enum + selection keys**
 
 Append to the existing `#[cfg(test)] mod tests` block in `src/app/pending_actions_overlay.rs`:
 
@@ -2050,7 +2052,7 @@ fn c_clears_multi_only_keeps_cursor() {
 
 Existing tests in this module still use the old `PendingActionsKeyOutcome` enum and the old `(items_len: usize)` handler signature. They will fail to compile in Step 3; update them as part of Step 3's edit.
 
-- [ ] **Step 2: Run new tests to confirm they fail**
+- [x] **Step 2: Run new tests to confirm they fail**
 
 ```bash
 cargo test --lib app::pending_actions_overlay
@@ -2058,7 +2060,7 @@ cargo test --lib app::pending_actions_overlay
 
 Expected: compile errors — outcome variant `None` already exists but `PendingActionsKeyOutcome` is the wrong name; we need `PendingActionsOutcome`. Also the handler signature needs to take `items: &[PendingItem]` rather than `items_len: usize`.
 
-- [ ] **Step 3: Replace the outcome enum and the key handler**
+- [x] **Step 3: Replace the outcome enum and the key handler**
 
 In `src/app/pending_actions_overlay.rs`, replace the existing enum + `handle_pending_actions_overlay_key`:
 
@@ -2151,7 +2153,7 @@ fn enter_is_silently_swallowed() {
 }
 ```
 
-- [ ] **Step 4: Run all tests**
+- [x] **Step 4: Run all tests**
 
 ```bash
 cargo test --lib app::pending_actions_overlay
@@ -2159,14 +2161,14 @@ cargo test --lib app::pending_actions_overlay
 
 Expected: all pass. The 3 new tests (`space_toggles_multi_on_cursor_item`, `shift_p_toggles_proposal_group`, `c_clears_multi_only_keeps_cursor`) plus the rewritten existing tests.
 
-- [ ] **Step 5: Lint + format**
+- [x] **Step 5: Lint + format**
 
 ```bash
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/pending_actions_overlay.rs
@@ -2181,7 +2183,7 @@ git commit -m "v1.40 a overlay: PendingActionsOutcome enum + multi-toggle key ha
 
 - Modify: `src/app/pending_actions_overlay.rs` — extend the `'p'` / `'d'` / `'y'` arm.
 
-- [ ] **Step 1: Write failing dispatch-key tests**
+- [x] **Step 1: Write failing dispatch-key tests**
 
 Append:
 
@@ -2293,7 +2295,7 @@ fn y_no_multi_with_proposal_cursor_returns_none() {
 }
 ```
 
-- [ ] **Step 2: Run new tests to confirm they fail**
+- [x] **Step 2: Run new tests to confirm they fail**
 
 ```bash
 cargo test --lib app::pending_actions_overlay::tests::p_no_multi_returns_cursor_proposal
@@ -2301,7 +2303,7 @@ cargo test --lib app::pending_actions_overlay::tests::p_no_multi_returns_cursor_
 
 Expected: assertion failure — current handler returns `None` for `p`/`d`/`y`.
 
-- [ ] **Step 3: Replace the dispatch-key arm with the real logic**
+- [x] **Step 3: Replace the dispatch-key arm with the real logic**
 
 In `handle_pending_actions_overlay_key`, replace:
 
@@ -2402,7 +2404,7 @@ fn dispatch_copy(
 }
 ```
 
-- [ ] **Step 4: Run all tests**
+- [x] **Step 4: Run all tests**
 
 ```bash
 cargo test --lib app::pending_actions_overlay
@@ -2410,14 +2412,14 @@ cargo test --lib app::pending_actions_overlay
 
 Expected: 7 new tests pass.
 
-- [ ] **Step 5: Lint + format**
+- [x] **Step 5: Lint + format**
 
 ```bash
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/pending_actions_overlay.rs
@@ -2432,7 +2434,7 @@ git commit -m "v1.40 a overlay: p/d/y dispatch keys return AcceptItems/ClearItem
 
 - Modify: `src/app/pending_actions_overlay.rs` — `handle_pending_actions_overlay_mouse`.
 
-- [ ] **Step 1: Write failing mouse tests**
+- [x] **Step 1: Write failing mouse tests**
 
 Append:
 
@@ -2544,7 +2546,7 @@ fn click_close_button_closes() {
 }
 ```
 
-- [ ] **Step 2: Run new tests to confirm they fail**
+- [x] **Step 2: Run new tests to confirm they fail**
 
 ```bash
 cargo test --lib app::pending_actions_overlay::tests::click_checkbox
@@ -2552,7 +2554,7 @@ cargo test --lib app::pending_actions_overlay::tests::click_checkbox
 
 Expected: compile error — mouse handler still has the old signature `(overlay, viewport, event)`.
 
-- [ ] **Step 3: Replace `handle_pending_actions_overlay_mouse`**
+- [x] **Step 3: Replace `handle_pending_actions_overlay_mouse`**
 
 Replace the existing function with:
 
@@ -2637,7 +2639,7 @@ use crate::ui::pending_actions::PendingItem;
 
 (Drop the previous `pending_actions_modal_area` import if present — it lives behind `pending_actions_modal_rects.area` now.)
 
-- [ ] **Step 4: Run all tests**
+- [x] **Step 4: Run all tests**
 
 ```bash
 cargo test --lib app::pending_actions_overlay
@@ -2645,14 +2647,14 @@ cargo test --lib app::pending_actions_overlay
 
 Expected: 4 new mouse tests pass. The old `closed_overlay_swallows_keys` test (single arg version) should still pass — it predates mouse handling.
 
-- [ ] **Step 5: Lint + format**
+- [x] **Step 5: Lint + format**
 
 ```bash
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/pending_actions_overlay.rs
@@ -2669,7 +2671,7 @@ git commit -m "v1.40 a overlay: mouse handler with checkbox/content hit-test, wh
 
 - Modify: `src/app/tui_loop.rs` — outcome dispatch (~line 320–360), `dispatch_pending_action` + `PendingActionDispatch` deletion (~line 770–855), key/mouse signature updates, `render_pending_actions_modal` call site, `metrics_modal_rects` call sites.
 
-- [ ] **Step 1: Locate outcome dispatch and the helper**
+- [x] **Step 1: Locate outcome dispatch and the helper**
 
 ```bash
 grep -n "PendingActionsKeyOutcome\|EnterSelected\|dispatch_pending_action\|PendingActionDispatch\|handle_pending_actions_overlay_mouse\|handle_pending_actions_overlay_key" src/app/tui_loop.rs
@@ -2677,7 +2679,7 @@ grep -n "PendingActionsKeyOutcome\|EnterSelected\|dispatch_pending_action\|Pendi
 
 Capture the exact line numbers — they will move slightly each commit, so resolve them at edit time.
 
-- [ ] **Step 2: Update the `use` import**
+- [x] **Step 2: Update the `use` import**
 
 Replace:
 
@@ -2698,7 +2700,7 @@ use crate::app::pending_actions_overlay::{
 };
 ```
 
-- [ ] **Step 3: Add a `retain_multi` method on `PendingActionsOverlay`**
+- [x] **Step 3: Add a `retain_multi` method on `PendingActionsOverlay`**
 
 In `src/ui/pending_actions.rs`'s `impl PendingActionsOverlay`, add:
 
@@ -2710,7 +2712,7 @@ pub fn retain_multi(&mut self, mut pred: impl FnMut(&String) -> bool) {
 
 This is called from the bulk-dispatch helpers below to prune only the dispatched keys (per spec §5.10).
 
-- [ ] **Step 4: Replace the key-outcome match in `tui_loop`**
+- [x] **Step 4: Replace the key-outcome match in `tui_loop`**
 
 Find the block that matches on `PendingActionsKeyOutcome` (currently around `tui_loop.rs:340`). Replace the inner `if let ... EnterSelected(idx)` arm with a full `match` that handles every variant of `PendingActionsOutcome`. The bulk dispatchers route each item through the existing `confirm_pending_action(...)` (proposals) or the alert-hide deadline path (alerts):
 
@@ -2770,7 +2772,7 @@ continue;
 
 (`continue` mirrors the existing `EnterSelected` branch which also continued. Remove the previous `EnterSelected` block in the same edit.)
 
-- [ ] **Step 5: Add the bulk dispatch helpers at the bottom of `tui_loop.rs`**
+- [x] **Step 5: Add the bulk dispatch helpers at the bottom of `tui_loop.rs`**
 
 ```rust
 #[derive(Debug, Clone, Copy)]
@@ -2885,7 +2887,7 @@ For the `AcceptItems` arm, ensure the call passes `DispatchKind::Accept`. The sa
 
 If the `notices: &mut Vec<SystemNotice>` field on `dashboard` is wrapped (e.g. behind a `push_notice` method), substitute that call shape in place of `notices.push(notice)`. The structure of the bulk dispatch is unchanged.
 
-- [ ] **Step 6: Update mouse handler call site**
+- [x] **Step 6: Update mouse handler call site**
 
 Find the existing call to `handle_pending_actions_overlay_mouse(&mut pending_actions, viewport, event)` and update it:
 
@@ -2908,7 +2910,7 @@ match outcome {
 }
 ```
 
-- [ ] **Step 7: Delete `dispatch_pending_action` and the `EnterSelected` branch**
+- [x] **Step 7: Delete `dispatch_pending_action` and the `EnterSelected` branch**
 
 The previous wiring routed `EnterSelected(idx)` through `dispatch_pending_action(...)` (currently `tui_loop.rs:340-353` and `tui_loop.rs:776-855`), which opened the Action Explainer modal. With Enter as a no-op and the live panel rendering inline, that path is dead. Delete:
 
@@ -2923,7 +2925,7 @@ grep -n "PendingActionsKeyOutcome\|EnterSelected\|dispatch_pending_action\b" src
 
 Expected: no hits.
 
-- [ ] **Step 8: Update the `render_pending_actions_modal` call site**
+- [x] **Step 8: Update the `render_pending_actions_modal` call site**
 
 The renderer now takes a `PendingActionsRenderCtx<'_>` (Task 8). Find the existing call (the renderer is invoked once per frame inside the `pending_actions.is_open()` render branch) and replace its argument list:
 
@@ -2940,7 +2942,7 @@ crate::ui::pending_actions::render_pending_actions_modal(
 );
 ```
 
-- [ ] **Step 9: Auto-prune multi-select on every frame**
+- [x] **Step 9: Auto-prune multi-select on every frame**
 
 Right after `collect_pending_items(...)` returns the `pending_items` vector for the frame, call:
 
@@ -2950,7 +2952,7 @@ pending_actions.prune_to(&pending_items);
 
 so stale keys (proposal accepted last tick / alert hidden last tick) drop before the next render paints.
 
-- [ ] **Step 10: Run the full validation gates**
+- [x] **Step 10: Run the full validation gates**
 
 ```bash
 cargo fmt --all
@@ -2961,7 +2963,7 @@ cargo test --all-targets
 
 Expected: every test passes. If any integration or doc test fails because the `EnterSelected` outcome is gone, update it to assert the new outcome variants or delete it as obsolete.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/app/tui_loop.rs src/ui/pending_actions.rs src/app/pending_actions_overlay.rs
@@ -2979,7 +2981,7 @@ git commit -m "v1.40 a overlay: bulk dispatch wiring through confirm_pending_act
 - Modify: `docs/ai/UI_MANUAL.md` §8.7 (around lines 686-712).
 - Modify: help overlay key list — locate via `grep -n "Pending Actions\|action_explainer\|render_help" src/ui/dashboard.rs src/app/*.rs`.
 
-- [ ] **Step 1: Rewrite UI_MANUAL §8.7**
+- [x] **Step 1: Rewrite UI_MANUAL §8.7**
 
 Locate §8.7 — find the line that starts `### 8.7 Pending Actions Overlay` in `docs/ai/UI_MANUAL.md` and replace the entire section (until the next `## 9. 운영 파일`) with:
 
@@ -3071,7 +3073,7 @@ operator가 dispatch 전에 확인할 수 있습니다.
 dim 안내 줄이 explainer 패널에 표시됩니다.
 ```
 
-- [ ] **Step 2: Refresh help overlay key entries**
+- [x] **Step 2: Refresh help overlay key entries**
 
 ```bash
 grep -n "★p\|★y\|Pending Actions\|render_help_overlay\|fn help_lines" src/ src/ui/ src/app/ -R | head
@@ -3096,7 +3098,7 @@ If the help overlay uses a structured `(label, description)` list, encode each a
 
 Update existing entries that mentioned "Enter open explainer" — that text is gone.
 
-- [ ] **Step 3: Run a quick build to ensure nothing imports moved**
+- [x] **Step 3: Run a quick build to ensure nothing imports moved**
 
 ```bash
 cargo build
@@ -3104,7 +3106,7 @@ cargo build
 
 Expected: clean build.
 
-- [ ] **Step 4: Manual smoke (optional but recommended)**
+- [x] **Step 4: Manual smoke (optional but recommended)**
 
 ```bash
 scripts/run-qmonster.sh
@@ -3112,7 +3114,7 @@ scripts/run-qmonster.sh
 
 Open `a`, scroll, Space-toggle, press `P`, press `d`, watch audit log + system notices. Close. Open `m`, drag the title bar, press `=`. (Mouse drag manual smoke is hard to TDD; this manual step is the spec's compliance check for §4.3.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/ai/UI_MANUAL.md src/
