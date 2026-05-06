@@ -93,6 +93,107 @@ pub fn extract_quota_kind(rec: &Recommendation) -> Option<QuotaKind> {
     }
 }
 
+use crate::app::system_notice::SystemNotice;
+use crate::domain::audit::{AuditEvent, AuditEventKind};
+use crate::domain::origin::SourceKind;
+use crate::domain::recommendation::Severity;
+use crate::store::sink::EventSink;
+use crate::store::{SnapshotInput, SnapshotWriter};
+
+/// Phase H entry point. Inspects `recs` for any
+/// `snapshot_before_reset` recommendations and, when
+/// `auto_snapshot_enabled` is true and the matching
+/// `quota_*_resets_at` value is fresh (different from the dedup
+/// state), writes a snapshot, records a `SnapshotWritten` audit
+/// event, and pushes a Concern-severity `SystemNotice`. On
+/// snapshot-writer failure, pushes a Warning `SystemNotice` and
+/// leaves dedup untouched so the next tick can retry.
+///
+/// Pure over `dedup`, `writer`, `sink`, `notices` — none of the
+/// callers' surfaces are mutated except via these arguments.
+#[allow(clippy::too_many_arguments)]
+pub fn maybe_auto_snapshot(
+    pane_id: &str,
+    recs: &[Recommendation],
+    auto_snapshot_enabled: bool,
+    quota_5h_resets_at: Option<u64>,
+    quota_weekly_resets_at: Option<u64>,
+    dedup: &mut AutoSnapshotDedup,
+    writer: &SnapshotWriter,
+    sink: &dyn EventSink,
+    notices: &mut Vec<SystemNotice>,
+) {
+    if !auto_snapshot_enabled {
+        return;
+    }
+
+    for rec in recs {
+        let kind = match extract_quota_kind(rec) {
+            Some(k) => k,
+            None => continue,
+        };
+
+        let resets_at = match kind {
+            QuotaKind::FiveHour => quota_5h_resets_at,
+            QuotaKind::Weekly => quota_weekly_resets_at,
+        };
+        let resets_at = match resets_at {
+            Some(v) => v,
+            // Rule fired but signal absent — the rule body checks
+            // `resets_at` itself, so this path should be unreachable
+            // in practice. Be defensive and skip.
+            None => continue,
+        };
+        let window_id = floor_to_minute(resets_at);
+
+        if dedup.matches(kind, window_id) {
+            continue;
+        }
+
+        let input = SnapshotInput {
+            reason: format!(
+                "auto_reset_boundary (kind={}, window_id={window_id})",
+                kind.label()
+            ),
+            pane_summaries: vec![],
+            notices: vec![],
+        };
+
+        match writer.write(&input) {
+            Ok(path) => {
+                sink.record(AuditEvent {
+                    kind: AuditEventKind::SnapshotWritten,
+                    pane_id: pane_id.to_string(),
+                    severity: Severity::Safe,
+                    summary: format!(
+                        "auto-snapshot trigger=auto_reset_boundary quota_kind={} window_id={window_id} path={}",
+                        kind.label(),
+                        path.display()
+                    ),
+                    provider: None,
+                    role: None,
+                });
+                notices.push(SystemNotice {
+                    title: format!("auto-snapshot taken at {} reset boundary", kind.label()),
+                    body: format!("see {}", path.display()),
+                    severity: Severity::Concern,
+                    source_kind: SourceKind::ProjectCanonical,
+                });
+                dedup.set(kind, window_id);
+            }
+            Err(e) => {
+                notices.push(SystemNotice {
+                    title: format!("auto-snapshot failed at {} reset boundary", kind.label()),
+                    body: e.to_string(),
+                    severity: Severity::Warning,
+                    source_kind: SourceKind::ProjectCanonical,
+                });
+                // Do NOT update dedup — let the next tick retry.
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,5 +327,225 @@ mod tests {
         assert_eq!(floor_to_minute(59), 0);
         assert_eq!(floor_to_minute(120), 120);
         assert_eq!(floor_to_minute(121), 120);
+    }
+
+    use crate::app::system_notice::SystemNotice;
+    use crate::domain::audit::AuditEventKind;
+    use crate::store::paths::QmonsterPaths;
+    use crate::store::{InMemorySink, SnapshotWriter};
+    use tempfile::TempDir;
+
+    fn make_snapshot_5h_rec() -> Recommendation {
+        make_rec(SNAPSHOT_5H_ACTION)
+    }
+    fn make_snapshot_weekly_rec() -> Recommendation {
+        make_rec(SNAPSHOT_WEEKLY_ACTION)
+    }
+
+    fn ctx_paths() -> (TempDir, QmonsterPaths) {
+        let td = TempDir::new().unwrap();
+        let paths = QmonsterPaths::at(td.path());
+        paths.ensure().unwrap();
+        (td, paths)
+    }
+
+    #[test]
+    fn auto_snapshot_no_op_when_gate_off() {
+        let (_td, paths) = ctx_paths();
+        let writer = SnapshotWriter::new(paths.clone());
+        let sink = InMemorySink::new();
+        let mut dedup = AutoSnapshotDedup::default();
+        let mut notices: Vec<SystemNotice> = vec![];
+
+        let recs = vec![make_snapshot_5h_rec()];
+        let now: u64 = 1_700_000_000;
+        let resets_at: u64 = now + 60;
+
+        maybe_auto_snapshot(
+            "%1",
+            &recs,
+            /* auto_snapshot_enabled = */ false,
+            Some(resets_at),
+            None,
+            &mut dedup,
+            &writer,
+            &sink,
+            &mut notices,
+        );
+
+        assert!(notices.is_empty());
+        assert!(sink.snapshot().is_empty());
+        assert_eq!(dedup, AutoSnapshotDedup::default());
+    }
+
+    #[test]
+    fn auto_snapshot_fires_once_per_window() {
+        let (_td, paths) = ctx_paths();
+        let writer = SnapshotWriter::new(paths.clone());
+        let sink = InMemorySink::new();
+        let mut dedup = AutoSnapshotDedup::default();
+        let mut notices: Vec<SystemNotice> = vec![];
+
+        let recs = vec![make_snapshot_5h_rec()];
+        let resets_at: u64 = 1_700_000_060;
+
+        // Tick 1: fires.
+        maybe_auto_snapshot(
+            "%1",
+            &recs,
+            true,
+            Some(resets_at),
+            None,
+            &mut dedup,
+            &writer,
+            &sink,
+            &mut notices,
+        );
+        // Tick 2: dedup blocks.
+        maybe_auto_snapshot(
+            "%1",
+            &recs,
+            true,
+            Some(resets_at),
+            None,
+            &mut dedup,
+            &writer,
+            &sink,
+            &mut notices,
+        );
+
+        let events = sink.snapshot();
+        let snapshot_events: Vec<_> = events
+            .iter()
+            .filter(|e| e.kind == AuditEventKind::SnapshotWritten)
+            .collect();
+        assert_eq!(snapshot_events.len(), 1, "dedup should block tick 2");
+        assert_eq!(notices.len(), 1, "one notice per actuation");
+    }
+
+    #[test]
+    fn auto_snapshot_5h_and_weekly_independent() {
+        let (_td, paths) = ctx_paths();
+        let writer = SnapshotWriter::new(paths.clone());
+        let sink = InMemorySink::new();
+        let mut dedup = AutoSnapshotDedup::default();
+        let mut notices: Vec<SystemNotice> = vec![];
+
+        let recs = vec![make_snapshot_5h_rec(), make_snapshot_weekly_rec()];
+        let resets_5h: u64 = 1_700_000_060;
+        let resets_weekly: u64 = 1_700_500_060;
+
+        maybe_auto_snapshot(
+            "%1",
+            &recs,
+            true,
+            Some(resets_5h),
+            Some(resets_weekly),
+            &mut dedup,
+            &writer,
+            &sink,
+            &mut notices,
+        );
+
+        let events = sink.snapshot();
+        let snapshot_events: Vec<_> = events
+            .iter()
+            .filter(|e| e.kind == AuditEventKind::SnapshotWritten)
+            .collect();
+        assert_eq!(snapshot_events.len(), 2, "both kinds run on the same tick");
+        assert_eq!(notices.len(), 2);
+        assert_eq!(dedup.quota_5h_window_id, Some(floor_to_minute(resets_5h)));
+        assert_eq!(
+            dedup.quota_weekly_window_id,
+            Some(floor_to_minute(resets_weekly))
+        );
+    }
+
+    #[test]
+    fn auto_snapshot_new_window_resets_dedup() {
+        let (_td, paths) = ctx_paths();
+        let writer = SnapshotWriter::new(paths.clone());
+        let sink = InMemorySink::new();
+        let mut dedup = AutoSnapshotDedup::default();
+        let mut notices: Vec<SystemNotice> = vec![];
+
+        let recs = vec![make_snapshot_5h_rec()];
+        // First window.
+        maybe_auto_snapshot(
+            "%1",
+            &recs,
+            true,
+            Some(1_700_000_060),
+            None,
+            &mut dedup,
+            &writer,
+            &sink,
+            &mut notices,
+        );
+        // Second window — new resets_at differs by more than a minute.
+        maybe_auto_snapshot(
+            "%1",
+            &recs,
+            true,
+            Some(1_700_018_000),
+            None,
+            &mut dedup,
+            &writer,
+            &sink,
+            &mut notices,
+        );
+
+        let events = sink.snapshot();
+        let snapshot_events: Vec<_> = events
+            .iter()
+            .filter(|e| e.kind == AuditEventKind::SnapshotWritten)
+            .collect();
+        assert_eq!(
+            snapshot_events.len(),
+            2,
+            "second window allows a fresh snapshot"
+        );
+    }
+
+    #[test]
+    fn auto_snapshot_failure_does_not_dedup() {
+        // SnapshotWriter pointed at a path whose snapshot_dir creation
+        // succeeds but write fails — same trick as
+        // `write_operator_snapshot_failure_returns_warning_without_audit`
+        // in src/app/operator_actions.rs.
+        use tempfile::NamedTempFile;
+        let file = NamedTempFile::new().unwrap();
+        let writer = SnapshotWriter::new(QmonsterPaths::at(file.path()));
+        let sink = InMemorySink::new();
+        let mut dedup = AutoSnapshotDedup::default();
+        let mut notices: Vec<SystemNotice> = vec![];
+
+        let recs = vec![make_snapshot_5h_rec()];
+        maybe_auto_snapshot(
+            "%1",
+            &recs,
+            true,
+            Some(1_700_000_060),
+            None,
+            &mut dedup,
+            &writer,
+            &sink,
+            &mut notices,
+        );
+
+        assert!(
+            sink.snapshot().is_empty(),
+            "no audit event on write failure"
+        );
+        assert_eq!(
+            dedup,
+            AutoSnapshotDedup::default(),
+            "dedup must NOT update on failure"
+        );
+        assert_eq!(notices.len(), 1, "operator sees a Warning notice");
+        assert_eq!(
+            notices[0].severity,
+            crate::domain::recommendation::Severity::Warning
+        );
     }
 }
