@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.41.0 - v1.40 a-overlay polish: cursor staleness fix + ,/. first-press direction fix + confirm_actions bypass surfacing (UI_MANUAL ⚠ + hint chip + first-open SystemNotice) + doc/git consistency audit."
+  mission_title: "Qmonster v1.42.0 - Phase H: opt-in auto-snapshot at reset boundary ([reset] auto_snapshot)."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 184
-  latest_version: "1.41.0"
+  total_revisions: 185
+  latest_version: "1.42.0"
 
 timeline:
   - change_id: "initial"
@@ -16957,9 +16957,130 @@ timeline:
       - "Phase H opt-in auto-snapshot at reset boundary remains unscoped."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
 
+  - change_id: "v1.42.0-phase-h-opt-in-auto-snapshot"
+    semantic_version: "1.42.0"
+    change_sequence: 185
+    date: "2026-05-06"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (Qmonster main pane, Sonnet 4.6)"
+    change_type: "minor-feature-release"
+    motivation_type: "operator-directed-feature-addition"
+    persistence: "permanent"
+    intent: >
+      v1.42.0 ships Phase H: opt-in auto-snapshot at the reset
+      boundary. When [reset] auto_snapshot = true (default false),
+      Qmonster automatically archives a snapshot at each reset event
+      before the reset fires. The implementation adds
+      ResetConfig.auto_snapshot (bool field), PolicyGates.reset_auto_snapshot
+      (wired from ResetConfig), AutoSnapshotDedup (HashMap keyed by
+      (target, QuotaKind) with floor_to_minute deduplication window
+      to prevent duplicate snapshots within the same minute),
+      extract_quota_kind (maps ResetKind to QuotaKind for dedup
+      keying) with a drift guard preventing the reset rule from
+      silently bypassing its own auto-snapshot, maybe_auto_snapshot
+      (orchestrator: gate check → dedup check → archive call),
+      Context.auto_snapshot_dedup (per-session HashMap), and wires
+      maybe_auto_snapshot into run_once_with_target before the reset
+      fires. Settings overlay gains Parameters and Rules rows for the
+      new field. No provider adapter, audit chain, or SignalSet schema
+      changes; the snapshot call routes through the existing
+      ArchiveWritten audit path.
+    intent_ko: >
+      v1.42.0 은 Phase H 를 출하한다: 리셋 경계에서의 옵트인
+      자동 스냅샷. [reset] auto_snapshot = true (기본값 false) 시
+      Qmonster 는 리셋 이벤트마다 리셋이 발생하기 전에 자동으로
+      스냅샷을 아카이브한다. 구현은 ResetConfig.auto_snapshot (bool
+      필드), PolicyGates.reset_auto_snapshot (ResetConfig 에서
+      연결), AutoSnapshotDedup (QuotaKind 별 floor_to_minute 중복
+      제거 창을 가진 HashMap), extract_quota_kind (ResetKind 를
+      QuotaKind 로 매핑, 드리프트 가드 포함),
+      maybe_auto_snapshot (게이트 → 중복제거 → 아카이브 호출
+      오케스트레이터), Context.auto_snapshot_dedup (세션별
+      HashMap) 을 추가하고, run_once_with_target 에 리셋 발생
+      전 maybe_auto_snapshot 을 연결한다. Settings 오버레이에
+      Parameters/Rules 행 추가. 프로바이더 어댑터, 감사 체인,
+      SignalSet 스키마 변경 없음.
+    triggered_by: "Operator scoped Phase H (opt-in auto-snapshot at reset boundary) as a discrete feature addition; the spec was committed at the plan stage (bbab2bf). Phase H is shipped in v1.42.0 with a 10-task implementation sequence (Tasks 1-9 = impl commits, Task 10 = ledger sync)."
+    changes:
+      added:
+        - "src/domain/config.rs::ResetConfig.auto_snapshot: bool field (default false); serde default = false so existing configs without the field remain unaffected."
+        - "src/policy/gates.rs::PolicyGates.reset_auto_snapshot: bool field wired from ResetConfig.auto_snapshot."
+        - "src/app/auto_snapshot.rs: new module — AutoSnapshotDedup struct (HashMap<(String, QuotaKind), NaiveDateTime>), QuotaKind enum (FiveHour / Weekly), floor_to_minute helper, and maybe_auto_snapshot orchestrator. extract_quota_kind maps ResetKind to QuotaKind with a drift guard that returns None if the reset rule would silently bypass its own auto-snapshot logic."
+        - "src/app/context.rs::Context.auto_snapshot_dedup: HashMap<(String, QuotaKind), NaiveDateTime> for per-session dedup state."
+        - "src/app/event_loop.rs::run_once_with_target: calls maybe_auto_snapshot before firing the reset, gated by PolicyGates.reset_auto_snapshot."
+        - "src/ui/settings.rs: Parameters row for [reset] auto_snapshot; Rules row describing the opt-in auto-snapshot trigger condition."
+        - "docs/ai/UI_MANUAL.md: [reset] auto_snapshot parameter entry in §Settings."
+        - "docs/ai/ARCHITECTURE.md: Phase H paragraph in the phase-notes section."
+        - "docs/ai/VALIDATION.md: v1.42.0 test-count reference."
+        - "config/example.toml: auto_snapshot = false entry under [reset] with a comment."
+      modified:
+        - "src/domain/config.rs::ResetConfig: gains auto_snapshot field."
+        - "src/policy/gates.rs::PolicyGates: gains reset_auto_snapshot field wired from ResetConfig."
+        - ".mission/CURRENT_STATE.md: full refresh for v1.42.0 Phase H release."
+        - "package.json: public version surface bumped to 1.42.0."
+        - "VERSION.md, README.md, docs/ai/PROJECT_BRIEF.md, docs/ai/ARCHITECTURE.md: ledger version surfaces synced to v1.42.0."
+        - "mission.yaml + mission-history.yaml: v1.42.0 release ledger sync."
+      removed: []
+    changed_sections:
+      - "src/domain/config.rs"
+      - "src/policy/gates.rs"
+      - "src/app/auto_snapshot.rs"
+      - "src/app/context.rs"
+      - "src/app/event_loop.rs"
+      - "src/ui/settings.rs"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/VALIDATION.md"
+      - "config/example.toml"
+      - "docs/ai/{PROJECT_BRIEF.md,ARCHITECTURE.md}"
+      - "README.md"
+      - "VERSION.md"
+      - "package.json"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - ".mission/CURRENT_STATE.md"
+    observable_effects:
+      added:
+        - "When [reset] auto_snapshot = true, a snapshot is automatically archived at each reset boundary before the reset fires; the operator gets a pre-reset archive without manual intervention."
+        - "AutoSnapshotDedup prevents duplicate snapshots within the same floor_to_minute window for a given (target, QuotaKind) pair, so rapid successive resets don't spam the archive."
+        - "Settings overlay now surfaces [reset] auto_snapshot in Parameters and Rules rows for discoverability."
+        - "config/example.toml documents the new field with a descriptive comment."
+      modified:
+        - "Existing reset behavior is unchanged when auto_snapshot = false (the default); the gate is a pure additive opt-in."
+      removed: []
+    impact_scope:
+      runtime: "Reset path in run_once_with_target only. No change to provider adapters, audit chain (snapshot routes through existing ArchiveWritten path), policy gates set, SignalSet schema, or SQLite schema. The auto_snapshot_dedup HashMap is overlay-local state reset on restart."
+      tests: "~1049 lib tests + ~52 event-loop integration tests + 18 false-positive regression tests + 6 idle-state regression tests passing at the v1.42.0 release commit (+21 lib tests vs the v1.41.0 baseline of 1028; +2 event-loop integration tests vs the v1.41.0 baseline of 50); cargo fmt --all --check, cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args, cargo test --all-targets, git diff --check all green."
+      ledger: "1 new timeline entry (sequence 185); meta total_revisions 184 -> 185, latest_version 1.41.0 -> 1.42.0; minor version bump for Phase H."
+      npm: "package.json version 1.42.0; CI publication of v1.42.0 follows the same workflow as v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 and remains an external follow-up until verified."
+    breaking: false
+    risk: "low — the feature is entirely opt-in (auto_snapshot = false by default). The dedup guard prevents archive spam. The snapshot call routes through the existing ArchiveWritten audit path with no new audit event types. The drift guard in extract_quota_kind prevents silent bypass of the auto-snapshot logic."
+    related_commits:
+      - "139c880 phase H: ResetConfig auto_snapshot field"
+      - "704f4cc phase H: PolicyGates.reset_auto_snapshot wired from ResetConfig"
+      - "c43fbad phase H: AutoSnapshotDedup + QuotaKind + floor_to_minute"
+      - "c597e4b phase H Task 3: code-review fixup — assert FiveHour survives Weekly set"
+      - "7265f11 phase H: extract_quota_kind + drift guard against reset rule"
+      - "f65b5af phase H Task 4: code-review fixup — use import top, positive tests use constants, doc link"
+      - "ba4ae0c phase H: maybe_auto_snapshot orchestrator + dedup tests"
+      - "6c3dcda phase H Task 5: code-review fixup — consolidate use blocks, drop stale dead_code"
+      - "4ab8540 phase H: Context.auto_snapshot_dedup HashMap"
+      - "f8e07a5 phase H Task 6: code-review fixup — correct test comment + rename"
+      - "1896a64 phase H: wire maybe_auto_snapshot into run_once_with_target"
+      - "e09777a phase H Task 7: code-review fixup — explicit gate, doc-comment accuracy"
+      - "76f89af phase H: Settings Parameters/Rules rows for auto_snapshot"
+      - "ddf394b phase H: docs (UI_MANUAL, ARCHITECTURE, VALIDATION, example.toml)"
+      - "[release commit SHA — populate after committing the v1.42.0 release ledger sync]"
+    follow_up:
+      - "Phase 7 v1 anomaly overlay: spec committed at docs/superpowers/specs/2026-05-06-phase7-v1-anomaly-overlay-design.md; implementation plan needs to be written next cycle."
+      - "D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
 evolution_summary:
-  current_phase: "v1.41.0 — v1.40 a-overlay polish: cursor staleness fix + ,/. first-press direction fix + confirm_actions bypass surfacing (UI_MANUAL ⚠ + hint chip + first-open SystemNotice) + doc/git consistency audit at the v1.40.0 baseline, layered on the v1.40.0 operator-controlled overlay geometry baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
-  next_phase: "Phase 7 anomaly detection / subagent analysis (`.docs/codex/phase7-anomaly-detection-spec.md`) and Phase H opt-in auto-snapshot at reset boundary remain unscoped. D3 per-subagent token attribution is provider-blocked. Tag protection / ruleset activation is a GitHub Settings task."
+  current_phase: "v1.42.0 — Phase H: opt-in auto-snapshot at reset boundary ([reset] auto_snapshot). Adds ResetConfig.auto_snapshot, PolicyGates.reset_auto_snapshot, AutoSnapshotDedup with QuotaKind + floor_to_minute dedup, extract_quota_kind + drift guard, maybe_auto_snapshot orchestrator, Context.auto_snapshot_dedup, run_once_with_target wiring, and Settings overlay rows. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
+  next_phase: "Phase 7 v1 anomaly overlay — spec committed at docs/superpowers/specs/2026-05-06-phase7-v1-anomaly-overlay-design.md; implementation plan needs to be written next cycle. D3 per-subagent token attribution is provider-blocked. Tag protection / ruleset activation is a GitHub Settings task."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

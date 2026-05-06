@@ -1,6 +1,6 @@
 mission:
-  version: "1.41.0"
-  title: "Qmonster v1.41.0 - v1.40 a-overlay polish: cursor staleness fix + ,/. first-press direction fix + confirm_actions bypass surfacing (UI_MANUAL ⚠ + hint chip + first-open SystemNotice) + doc/git consistency audit."
+  version: "1.42.0"
+  title: "Qmonster v1.42.0 - Phase H: opt-in auto-snapshot at reset boundary ([reset] auto_snapshot)."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1741,25 +1741,23 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.41.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, and Phase 6 Team Mode are complete. v1.40.0 layered operator-controlled overlay geometry on top of the v1.39.0 baseline; v1.41.0 is a polish release on top that hardens two operator-reported bugs in the v1.40 a overlay (cursor staleness via prune_to() clamping selected against items.len(); ,/. list-width keys taking current effective list width as an argument so first-press direction is correct, with handle_pending_actions_overlay_key gaining a viewport: Rect param) and elevates the a overlay's confirm_actions bypass to a first-class operator-facing surface through three discoverability surfaces: UI_MANUAL §8.7 ⚠ caution rewrite, in-modal (confirm_actions bypass) hint chip, and PendingActionsOverlay::seen_first_open firing a Concern-severity SystemNotice on the first a press per session. v1.41.0 also ships a doc/git consistency audit at the v1.40.0 baseline (module-doc cleanup, spec status flip, plan checkbox flip, CURRENT_STATE refresh). No provider adapter, audit schema, policy gate, or SignalSet schema changes. package.json is at 1.41.0; the local v1.41.0 tag is created at the release ledger sync commit. CI publication verification for v1.41.0 follows the v1.37/v1.38/v1.39/v1.40 workflow path."
+    topology: "Current working state is v1.42.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, and Phase H are complete. v1.41.0 was the a-overlay polish release; v1.42.0 ships Phase H — opt-in auto-snapshot at the reset boundary behind [reset] auto_snapshot. ResetConfig gains auto_snapshot: bool (default false); PolicyGates.reset_auto_snapshot gates activation; AutoSnapshotDedup (HashMap keyed by (target, QuotaKind)) deduplicates snapshots within a floor_to_minute window; maybe_auto_snapshot orchestrates the full dedup → gate → archive call; Context.auto_snapshot_dedup holds per-session state; run_once_with_target wires maybe_auto_snapshot before returning. No provider adapter, audit schema, or SignalSet schema changes. Settings overlay gained Parameters and Rules rows. package.json is at 1.42.0; the local v1.42.0 tag is created at the release ledger sync commit. CI publication verification for v1.42.0 follows the v1.37/v1.38/v1.39/v1.40/v1.41 workflow path."
     suggested_approach: >
-      Treat v1.41.0 as the current runtime baseline. v1.41.0 is an
-      a-overlay polish release on top of v1.40.0 (which itself layered
-      operator-controlled overlay geometry on v1.39.0). v1.41.0 fixes
-      two operator-reported v1.40 a-overlay bugs (cursor staleness via
-      prune_to() clamping selected, ,/. first-press direction via
-      viewport-aware key handler) and surfaces the a overlay's
-      intentional confirm_actions bypass through three discoverability
-      surfaces (UI_MANUAL §8.7 ⚠, in-modal hint chip, first-open
-      Concern SystemNotice). For implementation planning, keep Phase 7
-      focused on D2/D3 anomaly detection and subagent analysis as
-      drafted in .docs/codex/phase7-anomaly-detection-spec.md: reuse
-      existing IdentitySnapshot, subagent_hint, token/cost time-series,
-      and profile_switch history surfaces before introducing any new
-      storage schema. Do not invent per-subagent token attribution
-      unless a provider exposes structured counters. v1.37.0 / v1.38.0
-      / v1.39.0 / v1.40.0 / v1.41.0 CI publication verification
-      (GitHub Release + npm package) remains an external follow-up.
+      Treat v1.42.0 as the current runtime baseline. Phase H is
+      shipped: [reset] auto_snapshot = true enables opt-in
+      auto-snapshot at the reset boundary. The Phase 7 v1 anomaly
+      overlay design spec is already committed at
+      docs/superpowers/specs/2026-05-06-phase7-v1-anomaly-overlay-design.md;
+      the next cycle should write the implementation plan for Phase 7 v1
+      (anomaly overlay, per-pane D2/D3 anomaly detection and subagent
+      analysis). For implementation planning, reuse existing
+      IdentitySnapshot, subagent_hint, token/cost time-series, and
+      profile_switch history surfaces before introducing any new storage
+      schema. Do not invent per-subagent token attribution unless a
+      provider exposes structured counters. v1.37.0 / v1.38.0
+      / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 CI publication
+      verification (GitHub Release + npm package) remains an external
+      follow-up.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1795,15 +1793,14 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.41.0 Phase 7 planning"
+    priority: "post-v1.42.0 Phase 7 v1 plan + impl"
     estimated_sessions: 1
-    scope: "v1.41.0 is an a-overlay polish release on top of v1.40.0: cursor staleness fix via prune_to() clamping selected, ,/. first-press direction fix via viewport-aware key handler, confirm_actions bypass surfaced through UI_MANUAL ⚠ + in-modal hint chip + first-open Concern SystemNotice, and a doc/git consistency audit at the v1.40.0 baseline. No provider adapter or audit schema changes. v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 CI publication verification remains a separate follow-up."
+    scope: "v1.42.0 ships Phase H: opt-in auto-snapshot at the reset boundary. ResetConfig.auto_snapshot (bool, default false) is the operator lever; PolicyGates.reset_auto_snapshot gates it; AutoSnapshotDedup deduplicates within a floor_to_minute window keyed by (target, QuotaKind); maybe_auto_snapshot orchestrates gate + dedup + archive call; Context.auto_snapshot_dedup holds per-session state; run_once_with_target wires the call. Settings overlay Parameters + Rules rows added. No provider adapter, audit chain, policy gate set, or SignalSet schema changes. v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 CI publication verification remains a separate follow-up."
     followups:
-      - "Phase 7 D2/D3 anomaly detection and subagent analysis spec drafted in .docs/codex/phase7-anomaly-detection-spec.md; implementation remains unstarted"
+      - "Phase 7 v1 anomaly overlay: spec committed at docs/superpowers/specs/2026-05-06-phase7-v1-anomaly-overlay-design.md; implementation plan needs to be written next cycle"
       - "D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters"
-      - "Phase H opt-in auto-snapshot at reset boundary remains unscoped"
       - "Tag protection / ruleset activation remains a GitHub Settings task"
-      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 CI publication verification (GitHub Release + npm package) remains an external follow-up"
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 CI publication verification (GitHub Release + npm package) remains an external follow-up"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
   created: "2026-04-20"
@@ -1811,5 +1808,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 184
+    total_revisions: 185
     history: "mission-history.yaml"
