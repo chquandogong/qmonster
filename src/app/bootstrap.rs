@@ -35,10 +35,15 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     pub sink: Box<dyn EventSink>,
     pub archive: Option<ArchiveWriter>,
     /// Phase H (v1.42.0): persistent `SnapshotWriter` for the
-    /// `maybe_auto_snapshot` hook. `None` when the operator has not
-    /// opted in (default) or when the writer could not be initialized.
-    /// Mirrors `archive: Option<ArchiveWriter>` in both meaning and
-    /// initialization pattern.
+    /// `maybe_auto_snapshot` hook. `None` only when no `QmonsterPaths`
+    /// were resolved at startup (i.e., test fixtures without a
+    /// snapshot dir). The runtime always populates this at startup
+    /// regardless of `[reset] auto_snapshot`; the actual gating of
+    /// auto-snapshot writes lives in `PolicyGates::reset_auto_snapshot`
+    /// (mirrored from `[reset] auto_snapshot` config). Constructing a
+    /// `SnapshotWriter` is cheap (it just wraps a `QmonsterPaths`
+    /// clone) so this lazy gate ships zero overhead when the operator
+    /// hasn't opted in.
     pub snapshot_writer: Option<SnapshotWriter>,
     pub resolver: IdentityResolver,
     pub policy: Engine,

@@ -396,10 +396,17 @@ where
                 .auto_snapshot_dedup
                 .entry(pane.pane_id.clone())
                 .or_default();
+            // Pass `gates.reset_auto_snapshot` rather than `true` so the
+            // dual-gate is explicit and self-documenting. The outer
+            // `if let Some(writer) ... && gates.reset_auto_snapshot`
+            // ensures we only allocate the dedup entry when both
+            // conditions hold; the inner argument lets
+            // `maybe_auto_snapshot` remain a self-contained unit-testable
+            // function whose contract works in any caller context.
             maybe_auto_snapshot(
                 &pane.pane_id,
                 &recs,
-                true,
+                gates.reset_auto_snapshot,
                 quota_5h_resets_at,
                 quota_weekly_resets_at,
                 dedup,
