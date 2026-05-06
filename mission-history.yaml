@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.39.0 - metrics overlay v2 polish + Action Explainer hardening + Codex App Server v0.128 JSON-RPC compatibility + discoverability sync."
+  mission_title: "Qmonster v1.40.0 - operator-controlled overlay geometry: m drag-to-move + a overlay live-explainer-split + multi-select bulk dispatch + size/position/list-ratio adjustability."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 182
-  latest_version: "1.39.0"
+  total_revisions: 183
+  latest_version: "1.40.0"
 
 timeline:
   - change_id: "initial"
@@ -16715,8 +16715,134 @@ timeline:
       - "Phase H opt-in auto-snapshot at reset boundary remains unscoped."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
 
+  - change_id: "v1.40.0-operator-controlled-overlay-geometry"
+    semantic_version: "1.40.0"
+    change_sequence: 183
+    date: "2026-05-06"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (Qmonster main pane, Opus 4.7 1M)"
+    change_type: "minor-feature-release"
+    motivation_type: "operator-directed-overlay-geometry"
+    persistence: "permanent"
+    intent: >
+      Lift the m and a overlays from fixed-geometry surfaces to
+      operator-controlled. m overlay drag-to-move (title-row drag,
+      asymmetric clamp: left/top hard / right/bottom ≥4-cell soft).
+      The a overlay (Pending Actions) is rebuilt as a left/right
+      split with a live Action Explainer panel for the cursor item,
+      multi-select via Space/P/Y/A/c with stable-key tracking,
+      in-place p/d/y bulk dispatch through the existing
+      confirm_pending_action path (no new audit event types),
+      notice-routing parity with single-item dispatch via
+      dashboard.push_notice, and full geometry controls
+      ([/]/=/, /. / title-drag / separator-drag) mirroring the m
+      overlay's discoverability. UI_MANUAL §8.5 + §8.7 + help
+      overlay updated.
+    intent_ko: >
+      m / a 오버레이를 고정 geometry 에서 operator 제어 가능한
+      오버레이로 끌어올린다. m 오버레이는 타이틀행 드래그-이동
+      (left/top 하드, right/bottom ≥4셀 소프트 비대칭 클램프)을
+      얻는다. a 오버레이 (Pending Actions) 는 좌/우 분할로
+      재설계되어 커서 항목의 라이브 Action Explainer 패널,
+      Space/P/Y/A/c 다중선택 (stable-key 추적), 기존
+      confirm_pending_action 경로를 통한 항목별 p/d/y 일괄
+      디스패치 (새 audit 이벤트 타입 없음), 단일 항목 디스패치와
+      동일한 dashboard.push_notice 경로 알림 라우팅, m 오버레이와
+      대칭인 전체 geometry 제어 ([/]/=/, /. / 타이틀-드래그 /
+      구분자-드래그) 를 갖춘다. UI_MANUAL §8.5 + §8.7 + 도움말
+      오버레이가 갱신된다.
+    triggered_by: "Operator surfaced overlay-geometry friction in v1.39.0 — the m overlay was non-movable, the a overlay was a single-pane action list with no live explainer + no multi-select + no operator-tunable geometry. The v1.40 spec (docs/superpowers/specs/2026-05-06-mouse-drag-and-bulk-overlays-design.md) and plan (docs/superpowers/plans/2026-05-06-mouse-drag-and-bulk-overlays.md) collapse the work into one minor release."
+    changes:
+      added:
+        - "m overlay drag-to-move: src/ui/metrics.rs MetricsOverlay gains offset_x / offset_y / drag_anchor; metrics_modal_rects becomes a 5-arg helper; apply_clamped_offset enforces left/top hard bounds + right/bottom soft bounds (≥4 cells horizontal / ≥1 row vertical visible); src/app/metrics_overlay.rs::handle_metrics_overlay_mouse routes Down on title row (excluding [x]) into drag-anchor capture, Drag into per-frame offset application, Up into release; `=` resets size + offset together."
+        - "a overlay redesign — split layout: src/ui/pending_actions.rs body splits into { area, list, explainer, hint } via pending_actions_modal_rects; vertical split when body width < 80, horizontal otherwise; list pane = 60% of body clamped [44, 64] with auto-formula scaling 32→48 cells across the supported widths."
+        - "a overlay redesign — live Action Explainer panel: render_modal renders the cursor item's explainer view inline using build_accept_view (proposals) / build_copy_view (alerts); the explainer pane is a live preview, not a separate modal; Enter is silently swallowed inside the overlay (no longer pops a separate Action Explainer window)."
+        - "a overlay redesign — multi-select state: PendingActionsOverlay gains multi_selected: BTreeSet<String> tracking stable keys (proposal_id for proposals, alert_id for alerts); auto-prune at every render drops selections without a live row; new keys: Space (toggle cursor), P/Y/A (group toggle: P=all proposals, Y=all alerts, A=everything), c (clear all selections)."
+        - "a overlay redesign — bulk dispatch: PendingActionsOutcome enum carries AcceptItems / ClearItems / CopyItem; p/d/y dispatch keys construct the outcome from multi_selected (priority) or the cursor row (fallback); src/app/tui_loop.rs routes each item per-call through confirm_pending_action(...) so no new audit event types are introduced — proposals fire the existing PromptSendAccepted/Rejected/Completed/Blocked chain, alert hides set alert_hide_deadlines.insert(...); notices push through dashboard.push_notice(notice, now) for top-of-queue + fresh_alerts/alert_times/resync parity with single-item dispatch; bulk-clear iterates highest-index-first to avoid index-shift bugs."
+        - "a overlay TX-A — modal size + position adjustability: PendingActionsOverlay gains width_pct / height_pct (defaults 80 / 65, range [50, 99]) and offset_x / offset_y / drag_anchor; `[`/`]` shrink/grow by 5%; `=` resets size + offset + ratio together; title-row drag (excluding [x]) moves the modal with the same asymmetric clamp as the m overlay."
+        - "a overlay TX-B — list/explainer ratio adjustability: PendingActionsOverlay gains list_width_override; `,` narrows / `.` widens the list pane in 2-cell steps; the list/explainer separator (3-cell hit zone, body rows only) drag resizes the split; override range stays inside the auto-formula's [44, 64] clamp so the explainer always has ≥8 cells; close+reopen preserves the override."
+        - "docs: docs/ai/UI_MANUAL.md §8.5 (m overlay drag-to-move) + §8.7 (a overlay split-with-live-explainer + multi-select + bulk dispatch + geometry table) updated; help overlay key entries refreshed."
+      modified:
+        - "src/ui/metrics.rs: metrics_modal_rects signature widened from 4-arg to 5-arg; clamp asymmetry tightened in src/ui/metrics.rs apply_clamped_offset (left/top hard, right/bottom soft)."
+        - "src/ui/pending_actions.rs: row layout adds [x]/[ ] checkbox + preserved cursor mark; wide-mode separator regression fix after rect math fix; hint-row leak fix; 1-col separator fix + dead allows + test renames."
+        - "src/app/pending_actions_overlay.rs: keys overhauled — Space/P/Y/A/c added; p/d/y dispatch keys return AcceptItems/ClearItems/CopyItem; mouse handler with checkbox/content hit-test, wheel scope tightened to inside modal, and close button; doc comment in tui_loop refreshed."
+        - "src/app/tui_loop.rs: bulk dispatch wiring through confirm_pending_action; legacy dispatch_pending_action removed; bulk-clear index shift fix + dashboard.push_notice routing."
+        - "package.json: public version surface bumped to 1.40.0."
+        - "VERSION.md, README.md, docs/ai/PROJECT_BRIEF.md, docs/ai/ARCHITECTURE.md, docs/ai/VALIDATION.md: ledger version surfaces synced to v1.40.0."
+        - "mission.yaml + mission-history.yaml + .mission/CURRENT_STATE.md: v1.40.0 release ledger sync."
+      removed:
+        - "src/app/tui_loop.rs::dispatch_pending_action superseded by per-item routing through confirm_pending_action; the legacy helper is removed in this release."
+    changed_sections:
+      - "src/ui/{metrics.rs,pending_actions.rs}"
+      - "src/app/{metrics_overlay.rs,pending_actions_overlay.rs,tui_loop.rs}"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/superpowers/specs/2026-05-06-mouse-drag-and-bulk-overlays-design.md"
+      - "docs/superpowers/plans/2026-05-06-mouse-drag-and-bulk-overlays.md"
+      - "docs/ai/{PROJECT_BRIEF.md,ARCHITECTURE.md,VALIDATION.md}"
+      - "README.md"
+      - "VERSION.md"
+      - "package.json"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - ".mission/CURRENT_STATE.md"
+    observable_effects:
+      added:
+        - "Operators pressing `m` can drag the title row (excluding [x]) to reposition the metrics modal; the modal is clamp-bound left/top hard but stays ≥4 cells horizontally / ≥1 row vertically inside the viewport on the right/bottom edges; `=` resets size + position together."
+        - "Pressing `a` opens the redesigned Pending Actions overlay with a left/right split (vertical when body width < 80, horizontal otherwise): the list shows every pane with a pending p/d proposal AND every alert with a y-copyable command; the right (or bottom) pane shows a live Action Explainer view of the cursor item."
+        - "Multi-select inside the a overlay: Space toggles the cursor row, P toggles all proposals, Y toggles all alerts, A toggles everything, c clears the selection. Mouse cols 0–3 toggle multi-select on click; cols 4+ move the cursor."
+        - "p/d/y inside the a overlay dispatch over the multi-selection (priority) or the cursor row (fallback); each item fires the existing confirm_pending_action(...) path so notices, audit events, fresh_alerts, alert_times, and resync behavior all match single-item dispatch."
+        - "Geometry controls inside the a overlay: `[`/`]` shrink/grow by 5% (defaults 80×65, range [50, 99]); `=` resets size + offset + list/explainer ratio together; title-row drag moves the modal with the same asymmetric clamp as the m overlay; `,` narrows / `.` widens the list pane; the list/explainer separator drag (3-cell hit zone) resizes the split; close+reopen preserves geometry, restart resets."
+        - "Help overlay lists the new key entries (m drag-to-move, a overlay Space/P/Y/A/c, [/]/=, ,/., title-drag, separator-drag); UI_MANUAL §8.5 + §8.7 document the geometry."
+      modified:
+        - "Existing v1.39.0 m overlay key/mouse contracts are preserved; the title-row mouse-down semantic now also captures a drag anchor."
+        - "Existing v1.39.0 a overlay (Pending Actions) Enter-to-Action-Explainer flow is replaced by inline live-preview in the explainer pane; bulk dispatch is the new primary action path."
+      removed:
+        - "src/app/tui_loop.rs::dispatch_pending_action helper is removed; callers route per-item through confirm_pending_action(...)."
+    impact_scope:
+      runtime: "UI/UX layer only. No change to provider adapters, audit chain, policy gates, SignalSet schema, SQLite schema, or recommendation/effect dispatch. Bulk dispatch routes per-item through the existing confirm_pending_action(...) path so the audit event chain (PromptSendAccepted/Rejected/Completed/Blocked + AlertHidden via alert_hide_deadlines.insert) is unchanged. Geometry state lives only in the overlay structs and is reset on restart."
+      tests: "1022 lib tests + 50 event-loop integration tests + 18 false-positive regression tests + 6 idle-state regression tests passing; cargo fmt --all --check, cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args, cargo test --all-targets, git diff --check all green."
+      ledger: "1 new timeline entry (sequence 183); meta total_revisions 182 -> 183, latest_version 1.39.0 -> 1.40.0; minor version bump for the overlay-geometry round."
+      npm: "package.json version 1.40.0; CI publication of v1.40.0 follows the same workflow as v1.37.0 / v1.38.0 / v1.39.0 and remains an external follow-up until verified."
+    breaking: false
+    risk: "low — every change is on the UI/UX layer with existing data sources. Bulk dispatch routes per-item through confirm_pending_action so audit event chain is unchanged; legacy dispatch_pending_action helper is removed but had no external callers. Geometry state is reset on restart. The asymmetric clamp keeps the overlay reachable on every viewport size. 1022 lib tests cover the new clamp boundaries, multi-select state machine, and bulk dispatch index iteration."
+    related_commits:
+      - "f795660 v1.40 m overlay: offset+clamp scaffolding for drag-to-move"
+      - "5766283 v1.40 m overlay: tighten clamp asymmetry — left/top hard, right/bottom soft"
+      - "20cd127 v1.40 m overlay: drag-to-move state machine on title row"
+      - "19a769b v1.40 docs: UI_MANUAL §8.5 m overlay drag-to-move"
+      - "fd1aa77 v1.40 a overlay: widen wide-mode list pane (60% of body, clamp 44–64)"
+      - "9708e0c v1.40 a overlay: stable-key multi-select state + group toggles"
+      - "08f1b00 v1.40 a overlay: 80x65 modal + split layout helper (list/explainer/hint)"
+      - "a3a494d v1.40 a overlay: per-key action constructors + live-explainer view builder"
+      - "5300f08 v1.40 a overlay: row layout adds [x]/[ ] checkbox + preserved cursor mark"
+      - "40e645f v1.40 a overlay: split-render with live explainer + multi-aware title/hint"
+      - "290134c v1.40 a overlay: fix wide-mode 1-col separator + dead allows + test renames"
+      - "dad3060 v1.40 a overlay: fix wide-mode separator regression after rect math fix"
+      - "37595bd v1.40 a overlay: PendingActionsOutcome enum + multi-toggle key handlers"
+      - "88f65e1 v1.40 a overlay: p/d/y dispatch keys return AcceptItems/ClearItems/CopyItem"
+      - "62d2de4 v1.40 a overlay: mouse handler with checkbox/content hit-test, wheel, close"
+      - "3c9173f v1.40 a overlay: tighten wheel-scope to inside modal + missing mouse tests"
+      - "5e98d44 v1.40 a overlay: bulk dispatch wiring through confirm_pending_action + remove dispatch_pending_action"
+      - "8c35b8e v1.40 a overlay: fix bulk-clear index shift + use dashboard.push_notice"
+      - "2040786 v1.40 docs: UI_MANUAL §8.7 rewrite + help overlay key entries"
+      - "b0a64b7 v1.40 a overlay: refresh stale doc comment in tui_loop"
+      - "eb88753 v1.40 ledger: CURRENT_STATE polish list + help overlay m drag"
+      - "b20f260 v1.40 a overlay: modal size + position adjustability ([/]/=, title-row drag)"
+      - "e134e3a v1.40 a overlay: list/explainer ratio adjustability (,/. + separator drag)"
+      - "610c1bc v1.40 a overlay: revert TX-B auto-formula body-aware clamp"
+      - "6ae18f5 v1.40 a overlay: hint-row leak fix + geometry doc/help/hint + clamp boundary tests"
+      - "aa45584 v1.40 ledger: track widening + TX-A + TX-B in CURRENT_STATE polish list"
+      - "[release commit SHA — populate after committing the v1.40.0 release ledger sync]"
+    follow_up:
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+      - "Phase 7 D2/D3 anomaly detection and subagent analysis implementation remains unstarted; spec lives at .docs/codex/phase7-anomaly-detection-spec.md."
+      - "Per-subagent token attribution remains blocked until providers expose structured per-subagent counters."
+      - "Phase H opt-in auto-snapshot at reset boundary remains unscoped."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+
 evolution_summary:
-  current_phase: "v1.39.0 — metrics overlay v2 polish, Action Explainer hardening (mouse guard + snapshot dispatch + proposal_id audit), and Codex App Server v0.128 JSON-RPC compatibility, layered on the v1.38.0 UX bundle. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
+  current_phase: "v1.40.0 — operator-controlled overlay geometry: m drag-to-move + a overlay live-explainer-split + multi-select bulk dispatch + size/position/list-ratio adjustability across both overlays, layered on the v1.39.0 polish + correctness baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
   next_phase: "Phase 7 anomaly detection / subagent analysis (`.docs/codex/phase7-anomaly-detection-spec.md`) and Phase H opt-in auto-snapshot at reset boundary remain unscoped. D3 per-subagent token attribution is provider-blocked. Tag protection / ruleset activation is a GitHub Settings task."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"

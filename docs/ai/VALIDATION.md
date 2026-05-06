@@ -11,13 +11,13 @@ lives in `REVIEW_GUIDE.md`. Every displayed metric must carry a
 Checkboxes below represent phase acceptance evidence. Later phases may
 supersede an earlier phase's negative scope item; those cases are
 called out inline.
-Current local verification (2026-04-30): `cargo fmt --all --check`,
+Current local verification (2026-05-06): `cargo fmt --all --check`,
 `git diff --check`, `cargo test --all-targets`,
 `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,
 `cargo build --release`, `npm pack --dry-run`, and
-`scripts/verify-shared.sh` pass for v1.39.0. Current code-level
-verification at the v1.39.0 release commit is
-`cargo test --all-targets` with 921 lib tests, 50 event-loop
+`scripts/verify-shared.sh` pass for v1.40.0. Current code-level
+verification at the v1.40.0 release commit is
+`cargo test --all-targets` with 1022 lib tests, 50 event-loop
 integration tests, 18 false-positive regression tests, and 6
 idle-state regression tests passing, plus `cargo build --release`,
 `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,
