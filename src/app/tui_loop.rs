@@ -146,6 +146,11 @@ where
                     if let Some(notice) = outcome.notice {
                         dashboard.notices.insert(0, notice);
                     }
+                    // Phase H (v1.42.0): auto-snapshot notices arrive
+                    // newest-first so prepending preserves temporal order.
+                    for auto_notice in outcome.auto_notices.into_iter().rev() {
+                        dashboard.notices.insert(0, auto_notice);
+                    }
                     if let Some(reports) = outcome.reports {
                         dashboard.set_reports(reports);
                     }

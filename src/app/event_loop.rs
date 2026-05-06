@@ -1,7 +1,9 @@
 use std::time::Instant;
 
+use crate::app::auto_snapshot::maybe_auto_snapshot;
 use crate::app::bootstrap::{Context, PanePressureCache};
 use crate::app::effects::EffectRunner;
+use crate::app::system_notice::SystemNotice;
 use crate::domain::audit::{AuditEvent, AuditEventKind};
 use crate::domain::identity::Provider;
 use crate::domain::recommendation::{Recommendation, RequestedEffect, Severity};
@@ -22,6 +24,9 @@ struct EffectPermits {
 
 /// One iteration of the observe loop. Pure over the side-effect
 /// interfaces (ctx.sink, ctx.notifier) so tests can swap them out.
+/// Auto-snapshot notices are discarded — `--once` mode has no
+/// dashboard to display them, and callers that need them use
+/// `run_once_with_target` directly.
 pub fn run_once<P, N>(
     ctx: &mut Context<P, N>,
     now: Instant,
@@ -30,20 +35,24 @@ where
     P: PaneSource,
     N: NotifyBackend,
 {
-    run_once_with_target(ctx, now, None)
+    run_once_with_target(ctx, now, None).map(|(reports, _notices)| reports)
 }
 
+/// Returns `(Vec<PaneReport>, Vec<SystemNotice>)`. The second element
+/// carries any `SystemNotice`s emitted by `maybe_auto_snapshot` this
+/// tick; callers route them to the dashboard.
 pub fn run_once_with_target<P, N>(
     ctx: &mut Context<P, N>,
     now: Instant,
     target: Option<&crate::tmux::types::WindowTarget>,
-) -> Result<Vec<PaneReport>, PollingError>
+) -> Result<(Vec<PaneReport>, Vec<SystemNotice>), PollingError>
 where
     P: PaneSource,
     N: NotifyBackend,
 {
     let panes = ctx.source.list_panes(target)?;
     let mut reports = Vec::with_capacity(panes.len());
+    let mut all_auto_notices: Vec<SystemNotice> = Vec::new();
 
     // Lifecycle bookkeeping (zombie pane / re-attach reset).
     let current_ids: Vec<String> = panes.iter().map(|p| p.pane_id.clone()).collect();
@@ -367,6 +376,39 @@ where
         let idle_state = signals.idle_state;
         let entered_at = ctx.idle_entered_at.get(&pane.pane_id).copied();
 
+        // Phase H (v1.42.0): opt-in actuation hook on the F-7c
+        // recommend_snapshot_before_reset advisory. Reads from the
+        // recommendations the rule just produced; writes one snapshot
+        // per (pane_id, quota_kind, window_id) triple where window_id
+        // = quota_*_resets_at floored to the nearest minute. Notices
+        // are forwarded to the dashboard via the caller's return value.
+        // Both conditions gate before touching the dedup map so the
+        // baseline (disabled) regression sees an empty map.
+        if let Some(writer) = ctx.snapshot_writer.as_ref()
+            && gates.reset_auto_snapshot
+        {
+            // Extract the fields we need before any mutable borrow of ctx
+            // so the borrow checker can verify disjoint access.
+            let quota_5h_resets_at = signals.quota_5h_resets_at.as_ref().map(|m| m.value);
+            let quota_weekly_resets_at = signals.quota_weekly_resets_at.as_ref().map(|m| m.value);
+            let recs: Vec<Recommendation> = out.recommendations.clone();
+            let dedup = ctx
+                .auto_snapshot_dedup
+                .entry(pane.pane_id.clone())
+                .or_default();
+            maybe_auto_snapshot(
+                &pane.pane_id,
+                &recs,
+                true,
+                quota_5h_resets_at,
+                quota_weekly_resets_at,
+                dedup,
+                writer,
+                &*ctx.sink,
+                &mut all_auto_notices,
+            );
+        }
+
         deliver_effects(permits, &out, &pane.pane_id, &pane.tail, now, ctx);
 
         for rec in &out.recommendations {
@@ -428,7 +470,7 @@ where
         }
     }
 
-    Ok(reports)
+    Ok((reports, all_auto_notices))
 }
 
 /// Phase F F-6 (v1.32.0): write the account-level rate-limits

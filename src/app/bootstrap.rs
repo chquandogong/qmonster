@@ -8,7 +8,7 @@ use crate::policy::engine::Engine;
 use crate::policy::pricing::PricingTable;
 use crate::store::archive_fs::ArchiveWriter;
 use crate::store::sink::EventSink;
-use crate::store::{SqliteCostUsageSink, SqliteTokenUsageSink};
+use crate::store::{SnapshotWriter, SqliteCostUsageSink, SqliteTokenUsageSink};
 use crate::tmux::polling::PaneSource;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -34,6 +34,12 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     pub notifier: N,
     pub sink: Box<dyn EventSink>,
     pub archive: Option<ArchiveWriter>,
+    /// Phase H (v1.42.0): persistent `SnapshotWriter` for the
+    /// `maybe_auto_snapshot` hook. `None` when the operator has not
+    /// opted in (default) or when the writer could not be initialized.
+    /// Mirrors `archive: Option<ArchiveWriter>` in both meaning and
+    /// initialization pattern.
+    pub snapshot_writer: Option<SnapshotWriter>,
     pub resolver: IdentityResolver,
     pub policy: Engine,
     pub lifecycle: PaneLifecycle,
@@ -127,6 +133,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             notifier,
             sink,
             archive: None,
+            snapshot_writer: None,
             resolver: IdentityResolver::new(),
             policy: Engine,
             lifecycle: PaneLifecycle::new(),
@@ -157,6 +164,11 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
 
     pub fn with_archive(mut self, writer: ArchiveWriter) -> Self {
         self.archive = Some(writer);
+        self
+    }
+
+    pub fn with_snapshot_writer(mut self, writer: SnapshotWriter) -> Self {
+        self.snapshot_writer = Some(writer);
         self
     }
 

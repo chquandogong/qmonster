@@ -113,8 +113,10 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
     let pricing = load_pricing(&paths, &*sink);
     let claude_settings = load_claude_settings(&*sink);
 
+    let snapshot_writer = SnapshotWriter::new(paths.clone());
     let mut ctx = Context::new(config, source_build.source, notifier, sink)
         .with_archive(archive)
+        .with_snapshot_writer(snapshot_writer)
         .with_pricing(pricing)
         .with_claude_settings(claude_settings)
         .with_config_path(writable_config_path);
@@ -144,6 +146,9 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
     if let Some(notice) = source_build.startup_notice {
         startup_notices.insert(0, notice);
     }
+    // Phase H: build a second SnapshotWriter for the operator 's' key
+    // (tui_loop.rs). ctx.snapshot_writer carries the same paths for the
+    // auto-snapshot hook; both are cheap (just a `QmonsterPaths` clone).
     let snapshot_writer = SnapshotWriter::new(paths.clone());
 
     Ok(StartupRuntime {

@@ -22,6 +22,10 @@ pub struct PollTickState<'a> {
 pub struct PollTickOutcome {
     pub reports: Option<Vec<PaneReport>>,
     pub notice: Option<SystemNotice>,
+    /// Phase H (v1.42.0): zero or more `SystemNotice`s produced by
+    /// `maybe_auto_snapshot` during this tick. Forwarded to the
+    /// dashboard by the TUI loop alongside `notice`.
+    pub auto_notices: Vec<SystemNotice>,
     pub resync_dashboard: bool,
 }
 
@@ -36,7 +40,7 @@ where
     N: NotifyBackend,
 {
     match run_once_with_target(ctx, now, selected_target) {
-        Ok(reports) => {
+        Ok((reports, auto_notices)) => {
             let notice = route_tmux_source_recovered(state.last_source_error);
             update_pane_state_flashes(
                 &reports,
@@ -47,6 +51,7 @@ where
             PollTickOutcome {
                 reports: Some(reports),
                 notice,
+                auto_notices,
                 resync_dashboard: true,
             }
         }
@@ -56,6 +61,7 @@ where
             PollTickOutcome {
                 reports: None,
                 notice,
+                auto_notices: vec![],
                 resync_dashboard,
             }
         }
