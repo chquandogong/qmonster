@@ -120,6 +120,70 @@ pub fn detect_identity_churn(
     })
 }
 
+/// ErrorBurst: error rate over the most recent `window_polls` of
+/// `signals.error_hint`. Returns None when the buffer is shorter
+/// than `window_polls` (no false-positive on cold start) or when
+/// the rate is below `threshold`. Confidence is `Medium` at
+/// threshold, `High` at ≥ 1.5× threshold.
+///
+/// Evidence captures the first-half vs second-half rate within the
+/// window so the operator can see the trend direction; the window
+/// is most-recent-first, so the second half (`window[..half]`) is
+/// the newer slice and the first half (`window[half..]`) is older.
+pub fn detect_error_burst(
+    history: &AnomalyHistory,
+    window_polls: usize,
+    threshold: f32,
+    now_unix_seconds: u64,
+) -> Option<AnomalySignal> {
+    if history.error_hints.len() < window_polls {
+        return None;
+    }
+    let window: Vec<bool> = history
+        .error_hints
+        .iter()
+        .take(window_polls)
+        .copied()
+        .collect();
+    let count = window.iter().filter(|b| **b).count();
+    let rate = count as f32 / window_polls as f32;
+    if rate < threshold {
+        return None;
+    }
+    let confidence = if rate >= threshold * 1.5 {
+        AnomalyConfidence::High
+    } else {
+        AnomalyConfidence::Medium
+    };
+    let half = window_polls / 2;
+    let newer_count = window[..half].iter().filter(|b| **b).count();
+    let older_count = window[half..].iter().filter(|b| **b).count();
+    let newer_rate = if half == 0 {
+        0.0
+    } else {
+        newer_count as f32 / half as f32
+    };
+    let older_rate = if window_polls - half == 0 {
+        0.0
+    } else {
+        older_count as f32 / (window_polls - half) as f32
+    };
+    Some(AnomalySignal {
+        kind: AnomalyKind::ErrorBurst,
+        confidence,
+        severity: Severity::Concern,
+        evidence: vec![AnomalyEvidence {
+            metric_name: "error_rate",
+            before: format!("{older_rate:.2}"),
+            after: format!("{newer_rate:.2}"),
+            sample_count: window_polls,
+            source_kind: SourceKind::Estimated,
+        }],
+        window_polls,
+        detected_at: now_unix_seconds,
+    })
+}
+
 /// Stub — Tasks 5–9 fill in the detectors and orchestrator.
 #[allow(dead_code)]
 pub fn eval_anomalies() -> Vec<AnomalySignal> {
@@ -202,6 +266,43 @@ mod tests {
         assert!(h.cache_hit_ratios.is_empty());
         assert!(h.cache_drift_fires.is_empty());
         assert!(h.cross_pane_edit_paths.is_empty());
+    }
+
+    fn errors_history(bools: Vec<bool>) -> AnomalyHistory {
+        let mut h = AnomalyHistory::default();
+        // bools is newest-first; push them in reverse so push_front gives the same ordering
+        for b in bools.into_iter().rev() {
+            h.error_hints.push_front(b);
+        }
+        h
+    }
+
+    #[test]
+    fn detect_error_burst_fires_above_threshold() {
+        // 12 errors in 20 ticks → 0.60 ≥ 0.5
+        let mut bools = vec![true; 12];
+        bools.extend(vec![false; 8]);
+        let h = errors_history(bools);
+        let sig = detect_error_burst(&h, 20, 0.5, 1_700_000_000);
+        let s = sig.expect("should fire at 60% > 50%");
+        assert_eq!(s.kind, AnomalyKind::ErrorBurst);
+        assert_eq!(s.evidence[0].metric_name, "error_rate");
+        assert_eq!(s.evidence[0].sample_count, 20);
+    }
+
+    #[test]
+    fn detect_error_burst_below_threshold() {
+        let mut bools = vec![true; 6];
+        bools.extend(vec![false; 14]);
+        let h = errors_history(bools);
+        assert!(detect_error_burst(&h, 20, 0.5, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn detect_error_burst_insufficient_samples() {
+        // only 3 samples; window 20 — must return None
+        let h = errors_history(vec![true, true, true]);
+        assert!(detect_error_burst(&h, 20, 0.5, 1_700_000_000).is_none());
     }
 
     #[test]
