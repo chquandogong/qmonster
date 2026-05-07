@@ -33,6 +33,9 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// — in that case the overlay's save action is gated off.
     pub config_path: Option<std::path::PathBuf>,
     pub insights_db_path: Option<std::path::PathBuf>,
+    pub insights_load_tx: std::sync::mpsc::Sender<crate::app::insights_load::InsightsLoadOutcome>,
+    pub insights_load_rx: std::sync::mpsc::Receiver<crate::app::insights_load::InsightsLoadOutcome>,
+    pub next_insights_request_id: u64,
     pub source: P,
     pub notifier: N,
     pub sink: Box<dyn EventSink>,
@@ -170,10 +173,14 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
 
 impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
     pub fn new(config: QmonsterConfig, source: P, notifier: N, sink: Box<dyn EventSink>) -> Self {
+        let (insights_load_tx, insights_load_rx) = std::sync::mpsc::channel();
         Self {
             config,
             config_path: None,
             insights_db_path: None,
+            insights_load_tx,
+            insights_load_rx,
+            next_insights_request_id: 0,
             source,
             notifier,
             sink,

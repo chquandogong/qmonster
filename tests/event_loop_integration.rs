@@ -3329,3 +3329,21 @@ fn event_loop_replays_anomaly_history_on_first_observation() {
         history.cost_usd_samples.len()
     );
 }
+
+#[test]
+fn context_initializes_insights_load_channel_and_request_id() {
+    let source = FixturePaneSource { panes: vec![] };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    assert_eq!(ctx.next_insights_request_id, 0);
+    ctx.insights_load_tx
+        .send(qmonster::app::insights_load::InsightsLoadOutcome {
+            request_id: 99,
+            result: Err("ping".into()),
+        })
+        .unwrap();
+    let outcome = ctx.insights_load_rx.recv().unwrap();
+    assert_eq!(outcome.request_id, 99);
+}
