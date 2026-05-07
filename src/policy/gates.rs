@@ -793,6 +793,7 @@ mod tests {
             cost_slope_usd_per_hour: 20.0,
             token_slope_input_per_poll: 20_000,
             memory_growth_mb: 1024.0,
+            promote: crate::app::config::AnomalyPromoteConfig::default(),
         };
 
         let gates = PolicyGates::from_inputs(PolicyGateInputs {

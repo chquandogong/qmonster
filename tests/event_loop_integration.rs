@@ -2702,7 +2702,7 @@ fn event_loop_anomalies_fire_when_enabled_and_history_full() {
     // identity_churn_min_flips=2. Run one tick; the BEFORE push in
     // run_once_with_target adds a 4th entry (a 3rd flip), so the
     // detector fires at High confidence.
-    use qmonster::app::config::AnomalyConfig;
+    use qmonster::app::config::{AnomalyConfig, AnomalyPromoteConfig};
     use qmonster::app::event_loop::run_once_with_target;
     use qmonster::domain::anomaly::AnomalyKind;
     use qmonster::policy::rules::anomaly::AnomalyHistory;
@@ -2723,6 +2723,7 @@ fn event_loop_anomalies_fire_when_enabled_and_history_full() {
         cost_slope_usd_per_hour: 20.0,
         token_slope_input_per_poll: 20_000,
         memory_growth_mb: 1024.0,
+        promote: AnomalyPromoteConfig::default(),
     };
     let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
 
@@ -2828,7 +2829,7 @@ fn event_loop_promotes_warning_anomalies_to_recommendations_and_notify() {
     // run_once_with_target adds a 4th entry; the detector fires
     // IdentityChurn at High confidence → severity=Warning.
     // The promote block must then add a Recommendation and Notify effect.
-    use qmonster::app::config::AnomalyConfig;
+    use qmonster::app::config::{AnomalyConfig, AnomalyPromoteConfig};
     use qmonster::app::event_loop::run_once_with_target;
     use qmonster::domain::anomaly::AnomalyKind;
     use qmonster::domain::recommendation::RequestedEffect;
@@ -2850,6 +2851,7 @@ fn event_loop_promotes_warning_anomalies_to_recommendations_and_notify() {
         cost_slope_usd_per_hour: 20.0,
         token_slope_input_per_poll: 20_000,
         memory_growth_mb: 1024.0,
+        promote: AnomalyPromoteConfig::default(),
     };
     let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
 
@@ -2975,7 +2977,7 @@ fn event_loop_v2_detector_history_push_does_not_panic() {
     // a specific v2 anomaly fires (synthetic FixturePaneSource doesn't
     // populate cost_usd/input_tokens/etc. signals), only that the live
     // tick completes and PaneReport.anomalies is a valid slice.
-    use qmonster::app::config::AnomalyConfig;
+    use qmonster::app::config::{AnomalyConfig, AnomalyPromoteConfig};
     use qmonster::app::event_loop::run_once_with_target;
 
     let source = FixturePaneSource {
@@ -2994,6 +2996,7 @@ fn event_loop_v2_detector_history_push_does_not_panic() {
         cost_slope_usd_per_hour: 20.0,
         token_slope_input_per_poll: 20_000,
         memory_growth_mb: 1024.0,
+        promote: AnomalyPromoteConfig::default(),
     };
     let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
 

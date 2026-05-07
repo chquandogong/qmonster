@@ -338,6 +338,45 @@ pub struct AnomalyConfig {
     /// `process_memory_mb_now - process_memory_mb_oldest >= memory_growth_mb`.
     /// Default 1024.0 (matches prelim spec § Configuration).
     pub memory_growth_mb: f64,
+    /// Phase 7 v3 (v1.46.0): per-kind promotion-gate thresholds.
+    pub promote: AnomalyPromoteConfig,
+}
+
+/// Phase 7 v3 (v1.46.0): per-`AnomalyKind` minimum-confidence
+/// threshold for promoting an `AnomalySignal` to a `Recommendation`.
+/// Distinct from the global `AnomalyConfig.min_confidence` (visibility
+/// filter) — `[anomaly.promote]` gates promotion only.
+///
+/// Defaults preserve v1.45.0 behavior for the 7 kinds that today
+/// promote only at High confidence; `subagent_side_effect = "medium"`
+/// activates the previously-unreachable v1.45.0 promote-matrix branch
+/// for `SubagentSideEffect`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AnomalyPromoteConfig {
+    pub identity_churn: String,
+    pub error_burst: String,
+    pub cache_discontinuity: String,
+    pub cross_pane_edit_cluster: String,
+    pub cost_slope: String,
+    pub token_slope: String,
+    pub memory_growth: String,
+    pub subagent_side_effect: String,
+}
+
+impl Default for AnomalyPromoteConfig {
+    fn default() -> Self {
+        Self {
+            identity_churn: "high".to_string(),
+            error_burst: "high".to_string(),
+            cache_discontinuity: "high".to_string(),
+            cross_pane_edit_cluster: "high".to_string(),
+            cost_slope: "high".to_string(),
+            token_slope: "high".to_string(),
+            memory_growth: "high".to_string(),
+            subagent_side_effect: "medium".to_string(),
+        }
+    }
 }
 
 impl Default for AnomalyConfig {
@@ -353,6 +392,7 @@ impl Default for AnomalyConfig {
             cost_slope_usd_per_hour: 20.0,
             token_slope_input_per_poll: 20_000,
             memory_growth_mb: 1024.0,
+            promote: AnomalyPromoteConfig::default(),
         }
     }
 }
@@ -1459,5 +1499,40 @@ memory_growth_mb = 2048
         assert!((cfg.anomaly.cost_slope_usd_per_hour - 20.0).abs() < f64::EPSILON);
         assert_eq!(cfg.anomaly.token_slope_input_per_poll, 20_000);
         assert!((cfg.anomaly.memory_growth_mb - 1024.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn anomaly_promote_config_defaults_match_spec() {
+        let p = AnomalyPromoteConfig::default();
+        assert_eq!(p.identity_churn, "high");
+        assert_eq!(p.error_burst, "high");
+        assert_eq!(p.cache_discontinuity, "high");
+        assert_eq!(p.cross_pane_edit_cluster, "high");
+        assert_eq!(p.cost_slope, "high");
+        assert_eq!(p.token_slope, "high");
+        assert_eq!(p.memory_growth, "high");
+        assert_eq!(p.subagent_side_effect, "medium");
+    }
+
+    #[test]
+    fn anomaly_config_includes_promote_default() {
+        let c = AnomalyConfig::default();
+        assert_eq!(c.promote.identity_churn, "high");
+        assert_eq!(c.promote.subagent_side_effect, "medium");
+    }
+
+    #[test]
+    fn anomaly_config_omitting_promote_section_uses_defaults() {
+        // Pre-v1.46.0 toml file (no [anomaly.promote] section) loads
+        // cleanly with v1.46.0 defaults applied.
+        let toml = r#"
+            [anomaly]
+            enabled = true
+            window_polls = 20
+            min_confidence = "medium"
+        "#;
+        let cfg: QmonsterConfig = toml::from_str(toml).expect("parse");
+        assert_eq!(cfg.anomaly.promote.cost_slope, "high");
+        assert_eq!(cfg.anomaly.promote.subagent_side_effect, "medium");
     }
 }
