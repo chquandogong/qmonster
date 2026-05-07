@@ -971,6 +971,14 @@ snapshot outcomes, `hidden` alert-dismiss outcomes, and TTL-classified
 `ignored` recommendations. `ignored` is a Qmonster classification after
 `[insights] ignored_ttl_secs`; it is not treated as an operator rejection.
 
+v1.50.0 부터 `i` open / `r` refresh 는 worker thread 로 SQLite snapshot
+을 비동기 fetch 합니다. 결과가 도착하기 전까지 본문 가운데에
+`Aggregating insights ⠋` placeholder 가 회전 글리프 (10 프레임
+braille, 100ms 간격) 와 함께 표시됩니다. 로딩 중에는 6-패널 본문이
+숨겨지고 scroll keys (↑/↓/j/k/wheel) 가 일시적으로 비활성됩니다.
+`r` 을 빠르게 두 번 누르면 첫 번째 결과는 자동으로 드롭되고 두 번째
+결과만 반영됩니다 (request_id 기반 stale-drop).
+
 ## 9. 운영 파일
 
 - 표준 runtime root는 `~/.qmonster/`입니다.

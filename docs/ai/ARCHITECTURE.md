@@ -835,6 +835,24 @@ cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
   deterministic now-injection. Tests grew to 765 lib + 68 integration
   green.
 
+**v1.50.0 (operator UX polish):** the `i` Token Insights overlay
+moves from synchronous SQLite snapshot to a worker-thread fetch. Each
+`i` open / `r` refresh increments `Context.next_insights_request_id`
+and spawns a `std::thread` that opens `SqliteInsightsStore` read-only
+and emits an `InsightsLoadOutcome` on the per-Context
+`insights_load_tx` channel. The TUI main loop drains the receiver
+each `event::poll` iteration and calls
+`InsightsOverlay::set_snapshot_for(id, result, label)`; outcomes whose
+id is not the current `pending_request_id` are dropped silently. While
+the overlay is loading, `render_insights_modal` shows a centered
+`Aggregating insights ⠋` line with phase rotating across 10 braille
+glyphs at 100 ms cadence (the existing event-loop poll period). The
+6-situation panels are suppressed during load. No provider adapter,
+audit chain, or SignalSet changes; the SQLite read-only path is
+unchanged. New module `src/app/insights_load.rs` isolates the spawn
+logic with a `catch_unwind` guard so a worker-thread panic surfaces
+as `Err` instead of leaving the overlay stuck in Loading.
+
 **v1.48.0 (Token Insights Phase 8):** recommendation lifecycle data is
 now written from the live runtime path, not only through offline
 reports. `Context.recommendation_lifecycle_sink` opens alongside the
