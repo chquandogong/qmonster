@@ -135,6 +135,35 @@ impl ProviderParser for GeminiAdapter {
                 set.cached_input_tokens = Some(metric(n));
             }
         }
+        // v1.50.0 post-tag polish: parallel to the Codex cost branch in
+        // `adapters/codex.rs`. When the pane carries a model + both
+        // input and output token counts, look the model up in the
+        // operator-curated pricing table and compute cost. With rates
+        // 0.00 (the v1.50.0 placeholder default), `pricing.lookup`
+        // returns `None` and `cost_usd` stays `None` — operators get
+        // COST badges + cost_slope detector activation as a single-line
+        // edit to `~/.qmonster/config/pricing.toml` instead of a code
+        // change. Provider-coverage matrix flips Gemini cost from
+        // "deferred" to "operator-tunable".
+        if let Some(model_metric) = set.model_name.as_ref()
+            && let (Some(input_tokens), Some(output_tokens)) = (
+                set.input_tokens.as_ref().map(|m| m.value),
+                set.output_tokens.as_ref().map(|m| m.value),
+            )
+            && set.cost_usd.is_none()
+        {
+            set.cost_usd = ctx
+                .pricing
+                .lookup(Provider::Gemini, &model_metric.value)
+                .map(|rates| {
+                    let cost = (input_tokens as f64 * rates.input_per_1m
+                        + output_tokens as f64 * rates.output_per_1m)
+                        / 1_000_000.0;
+                    MetricValue::new(cost, SourceKind::Estimated)
+                        .with_confidence(0.7)
+                        .with_provider(Provider::Gemini)
+                });
+        }
         if set.idle_state.is_none() {
             set.idle_state = classify_idle_gemini(ctx.tail, ctx.history);
         }
@@ -1667,6 +1696,82 @@ Reset: 5:00 PM";
         assert_eq!(cached.value, 234_567);
         assert_eq!(cached.source_kind, SourceKind::ProviderOfficial);
         assert_eq!(cached.provider, Some(Provider::Gemini));
+    }
+
+    #[test]
+    fn gemini_adapter_computes_cost_when_pricing_table_has_model_entry() {
+        // v1.50.0 post-tag polish: cost activation contract.
+        // Combines a status table (model = `gemini-3.1-pro-preview`)
+        // with a /stats model panel (input/output tokens) and a
+        // PricingTable that has a non-zero rate for that exact model.
+        // The adapter must compute cost_usd = input × rate + output × rate.
+        let id = id();
+        let pricing_file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(
+            &mut std::fs::File::create(pricing_file.path()).unwrap(),
+            br#"
+[[entries]]
+provider = "gemini"
+model = "gemini-3.1-pro-preview"
+input_per_1m = 1.25
+output_per_1m = 5.00
+"#,
+        )
+        .unwrap();
+        let pricing = PricingTable::load_from_toml(pricing_file.path()).unwrap();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
+main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec      47% used      63% used     118.8 MB     cdf3f5ed      user@example.com
+╭─ Model Usage ────────────────────────────────────────────────────╮
+│  Tokens                                                          │
+│    Total                                                 1,514,812│
+│    Input                                                 1,000,000│
+│    Output                                                  500,000│
+╰──────────────────────────────────────────────────────────────────╯";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+
+        let cost = set
+            .cost_usd
+            .as_ref()
+            .expect("cost must compute when pricing entry exists for parsed model");
+        // 1,000,000 × 1.25 / 1M + 500,000 × 5.00 / 1M = 1.25 + 2.50 = 3.75
+        assert!(
+            (cost.value - 3.75).abs() < 1e-9,
+            "expected 3.75 USD, got {}",
+            cost.value
+        );
+        assert_eq!(cost.source_kind, SourceKind::Estimated);
+        assert_eq!(cost.provider, Some(Provider::Gemini));
+    }
+
+    #[test]
+    fn gemini_adapter_skips_cost_when_pricing_table_lacks_model_entry() {
+        // Empty PricingTable → cost_usd stays None even when the pane
+        // surfaces model + tokens. Mirrors the Codex contract: the COST
+        // badge / cost_slope detector are operator-tunable, not
+        // automatic. This is the v1.49.0 baseline behaviour for Gemini.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "\
+branch      sandbox         /model                     workspace (/directory)       quota         context      memory       session                    /auth
+main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec      47% used      63% used     118.8 MB     cdf3f5ed      user@example.com
+╭─ Model Usage ────────────────────────────────────────────────────╮
+│  Tokens                                                          │
+│    Total                                                 1,514,812│
+│    Input                                                 1,000,000│
+│    Output                                                  500,000│
+╰──────────────────────────────────────────────────────────────────╯";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = GeminiAdapter.parse(&c);
+        assert!(
+            set.cost_usd.is_none(),
+            "cost_usd must stay None when pricing table is empty",
+        );
     }
 
     #[test]
