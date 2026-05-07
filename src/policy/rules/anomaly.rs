@@ -547,6 +547,55 @@ pub fn detect_token_slope(
     })
 }
 
+/// MemoryGrowth: simple delta of `process_memory_mb` over the window
+/// in MB. Fires when growth ≥ `threshold_mb`. `agent_memory_bytes`
+/// is evidence-only. Confidence: `High` at ≥ 1.5× threshold,
+/// otherwise `Medium`.
+pub fn detect_memory_growth(
+    history: &AnomalyHistory,
+    window_polls: usize,
+    threshold_mb: f64,
+    now_unix_seconds: u64,
+) -> Option<AnomalySignal> {
+    if history.process_memory_samples.len() < window_polls {
+        return None;
+    }
+    let window: Vec<f64> = history
+        .process_memory_samples
+        .iter()
+        .take(window_polls)
+        .filter_map(|s| *s)
+        .collect();
+    if window.len() < 2 {
+        return None;
+    }
+    let newest = window.first().copied().unwrap();
+    let oldest = window.last().copied().unwrap();
+    let growth_mb = newest - oldest;
+    if growth_mb < threshold_mb {
+        return None;
+    }
+    let confidence = if growth_mb >= threshold_mb * 1.5 {
+        AnomalyConfidence::High
+    } else {
+        AnomalyConfidence::Medium
+    };
+    Some(AnomalySignal {
+        kind: AnomalyKind::MemoryGrowth,
+        confidence,
+        severity: severity_for(confidence),
+        evidence: vec![AnomalyEvidence {
+            metric_name: "process_memory_mb",
+            before: format!("{oldest:.0}"),
+            after: format!("{newest:.0}"),
+            sample_count: window.len(),
+            source_kind: SourceKind::Estimated,
+        }],
+        window_polls,
+        detected_at: now_unix_seconds,
+    })
+}
+
 /// Phase 7 v2 (v1.44.0): promote Warning+ `AnomalySignal`s into
 /// `Recommendation`s so they reach the dashboard recommendation
 /// panel and (via the caller's `RequestedEffect::Notify` push)
@@ -1296,5 +1345,61 @@ mod tests {
     fn detect_token_slope_insufficient_samples_returns_none() {
         let h = token_history(vec![Some(1_000_000u64)], vec![]);
         assert!(detect_token_slope(&h, 20, 20_000, 1_700_000_000).is_none());
+    }
+
+    fn memory_history(process: Vec<Option<f64>>, agent: Vec<Option<u64>>) -> AnomalyHistory {
+        let mut h = AnomalyHistory::default();
+        for s in process.into_iter().rev() {
+            h.process_memory_samples.push_front(s);
+        }
+        for s in agent.into_iter().rev() {
+            h.agent_memory_samples.push_front(s);
+        }
+        h
+    }
+
+    #[test]
+    fn detect_memory_growth_pure_positive_high_confidence() {
+        // grew 1600 MB ≥ 1.5 × 1024 = 1536 → High.
+        let mut process = vec![Some(2000.0)];
+        for i in (0..19).rev() {
+            process.push(Some(400.0 + (i as f64) * (1600.0 / 19.0)));
+        }
+        let h = memory_history(process, vec![None; 20]);
+        let sig = detect_memory_growth(&h, 20, 1024.0, 1_700_000_000).unwrap();
+        assert_eq!(sig.kind, AnomalyKind::MemoryGrowth);
+        assert_eq!(sig.confidence, AnomalyConfidence::High);
+        assert_eq!(sig.severity, Severity::Warning);
+        assert_eq!(sig.evidence[0].metric_name, "process_memory_mb");
+    }
+
+    #[test]
+    fn detect_memory_growth_pure_positive_medium_confidence() {
+        // grew 1100 MB ≥ 1024 but < 1536 → Medium.
+        let mut process = vec![Some(1500.0)];
+        for i in (0..19).rev() {
+            process.push(Some(400.0 + (i as f64) * (1100.0 / 19.0)));
+        }
+        let h = memory_history(process, vec![None; 20]);
+        let sig = detect_memory_growth(&h, 20, 1024.0, 1_700_000_000).unwrap();
+        assert_eq!(sig.confidence, AnomalyConfidence::Medium);
+        assert_eq!(sig.severity, Severity::Concern);
+    }
+
+    #[test]
+    fn detect_memory_growth_below_threshold_returns_none() {
+        // grew 500 MB < 1024 → None.
+        let mut process = vec![Some(900.0)];
+        for i in (0..19).rev() {
+            process.push(Some(400.0 + (i as f64) * (500.0 / 19.0)));
+        }
+        let h = memory_history(process, vec![None; 20]);
+        assert!(detect_memory_growth(&h, 20, 1024.0, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn detect_memory_growth_insufficient_samples_returns_none() {
+        let h = memory_history(vec![Some(2000.0), Some(400.0)], vec![]);
+        assert!(detect_memory_growth(&h, 20, 1024.0, 1_700_000_000).is_none());
     }
 }
