@@ -16,13 +16,13 @@ Phase 7 v2 promotion wires anomaly signals into the Recommendation + Notify path
 
 1. **severity_for** (`src/policy/rules/anomaly.rs`): Pure helper that maps `AnomalyConfidence::High` → `Severity::Warning` and `AnomalyConfidence::Medium` / `AnomalyConfidence::Low` → `Severity::Concern`. Used by all four detectors when constructing the `Recommendation` payload.
 
-2. **promote_anomalies_to_recommendations** (`src/policy/rules/anomaly.rs`): Converts a `&[AnomalySignal]` slice into a `Vec<Recommendation>`, applying `severity_for` to each signal. Each resulting `Recommendation` carries the anomaly kind and confidence in its `reason` field. The function is pure (no IO, no state mutation).
+2. **promote_anomalies_to_recommendations** (`src/policy/rules/anomaly.rs`): Converts a `&[AnomalySignal]` slice into a `Vec<Recommendation>`. Filters out signals with `severity < Warning` (Concern-severity signals are skipped entirely; severity was already stamped on each signal by the detector via `severity_for`). For surviving Warning+ signals, copies `sig.severity` and `evidence[0].source_kind` directly to each emitted `Recommendation` and builds kind-specific `(action, reason, next_step)` from the matrix in the spec. Pure (no IO, no state mutation).
 
-3. **event_loop wiring** (`src/app/event_loop.rs`): `run_once_with_target` calls `promote_anomalies_to_recommendations` on the `PaneReport.anomalies` slice produced by `eval_anomalies`. Resulting recommendations are merged into the `PaneReport.recommendations` vec. The existing `EffectRunner` Notify gate (`Severity >= Warning`) ensures only `High`-confidence anomalies reach the desktop notifier — `Medium`/`Low` anomalies flow through as passive `Concern` advisories.
+3. **event_loop wiring** (`src/app/event_loop.rs`): `run_once_with_target` calls `eval_anomalies` and then `promote_anomalies_to_recommendations` BEFORE `deliver_effects` and the audit `alert_event` loop — mirroring the F-9b cost-budget pattern at lines 345-362. The promote block explicitly pushes `RequestedEffect::Notify` when any promoted recommendation has `severity >= Warning`. Promoted recommendations land in `out.recommendations` and from there flow through the same audit and Notify-dispatch paths every other rule's recommendations use.
 
 4. **Settings annotation** (`src/ui/settings.rs`): The Rules tab row for each of the four anomaly detectors (`detect_error_burst`, `detect_identity_churn`, `detect_cache_discontinuity`, `detect_cross_pane_edit_cluster`) now includes the text "promotes to Recommendation when confidence=High", making the promotion behavior discoverable without reading source code.
 
-5. **Behavior when off**: when `[anomaly] enabled = false` (the default), `eval_anomalies` returns an empty vec, `promote_anomalies_to_recommendations` receives an empty slice and returns an empty vec, and zero behavior change from v1.43.0 applies. Behavior when on: `High`-confidence anomalies now trigger `Warning`-severity recommendations and desktop notifications; `Medium`/`Low`-confidence anomalies produce `Concern`-severity recommendations with no Notify.
+5. **Behavior when off**: when `[anomaly] enabled = false` (the default), `eval_anomalies` returns an empty vec, `promote_anomalies_to_recommendations` receives an empty slice and returns an empty vec, and zero behavior change from v1.43.0 applies. Behavior when on: `High`-confidence anomalies now trigger `Warning`-severity recommendations and desktop notifications. `Medium`/`Low`-confidence anomalies produce NO recommendations (filtered out by `promote_anomalies_to_recommendations`); they remain visible only in the m overlay ANOMALIES row as passive observation, with no Recommendation and no Notify.
 
 ## Latest Release Notes
 
@@ -30,7 +30,7 @@ Phase 7 v2 promotion wires anomaly signals into the Recommendation + Notify path
 - Local tag: `v1.44.0` points at the v1.44.0 release commit (recorded in `mission-history.yaml` `related_commits`).
 - Commit summary: `v1.44.0 release ledger sync`.
 - Reference plan: `docs/superpowers/plans/2026-05-07-phase7-v2-promotion.md`.
-- Reference spec: `.docs/final/2026-05-07-phase7-v2-promotion-spec.md`.
+- Reference spec: `docs/superpowers/specs/2026-05-07-phase7-v2-promotion-design.md`.
 
 ## Post-tag polish (on main, untagged)
 

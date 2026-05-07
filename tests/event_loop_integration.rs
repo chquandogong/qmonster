@@ -2887,6 +2887,16 @@ fn event_loop_promotes_warning_anomalies_to_recommendations_and_notify() {
         "expected RequestedEffect::Notify in effects; got: {:?}",
         pane_report.effects
     );
+
+    // M-1: deliver_effects must have actually invoked the notifier
+    // backend (not merely queued the effect). This guards against the
+    // sequencing bug where the promote block ran AFTER deliver_effects,
+    // silently dropping desktop notifications.
+    let recorded = ctx.notifier.0.lock().unwrap();
+    assert!(
+        !recorded.is_empty(),
+        "RecordingNotifier must have been called for Warning+ anomaly; got: {recorded:?}"
+    );
 }
 
 #[test]

@@ -444,13 +444,6 @@ where
             );
         }
 
-        deliver_effects(permits, &out, &pane.pane_id, &pane.tail, now, ctx);
-
-        for rec in &out.recommendations {
-            ctx.sink
-                .record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
-        }
-
         // Phase 7 v1: push post-rule observations and run eval_anomalies.
         // cache_drift_fires: F-7b action string starts with
         // "cache: drift detected" (src/policy/rules/cache.rs line ~210).
@@ -460,6 +453,13 @@ where
         // history window accumulates; the previous tick's paths are
         // already in the deque. One-tick lag is acceptable for v1 — the
         // detector tolerates it because it works on the rolling window.
+        //
+        // v1.44.0 (Phase 7 v2): this block was moved up to run BEFORE
+        // deliver_effects + the audit alert_event loop, matching the
+        // F-9b cost-budget pattern at lines 345-362. Otherwise the
+        // promote block (below) pushes Notify after deliver_effects
+        // already ran, silently dropping desktop notifications, and
+        // promoted recommendations never reach the audit log.
         let anomalies = {
             let cache_drift_fired = out
                 .recommendations
@@ -492,6 +492,8 @@ where
         // and trigger Notify, mirroring F-9b cost-budget pattern.
         // Edge-triggered dedup is already enforced by eval_anomalies, so each
         // anomaly emits its Recommendation once per active window naturally.
+        // Runs BEFORE deliver_effects + audit so promoted recs flow through
+        // both the desktop notifier and the audit log.
         let mut should_notify_anomaly = false;
         for promoted in
             crate::policy::rules::anomaly::promote_anomalies_to_recommendations(&anomalies)
@@ -501,6 +503,13 @@ where
         }
         if should_notify_anomaly && !out.effects.contains(&RequestedEffect::Notify) {
             out.effects.push(RequestedEffect::Notify);
+        }
+
+        deliver_effects(permits, &out, &pane.pane_id, &pane.tail, now, ctx);
+
+        for rec in &out.recommendations {
+            ctx.sink
+                .record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
         }
 
         reports.push(PaneReport {

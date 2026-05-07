@@ -17227,8 +17227,8 @@ timeline:
     changes:
       added:
         - "src/policy/rules/anomaly.rs::severity_for: pure helper mapping AnomalyConfidence::High → Severity::Warning and Medium/Low → Severity::Concern."
-        - "src/policy/rules/anomaly.rs::promote_anomalies_to_recommendations: converts &[AnomalySignal] into Vec<Recommendation> applying severity_for to each signal."
-        - "src/app/event_loop.rs: run_once_with_target calls promote_anomalies_to_recommendations on PaneReport.anomalies and merges results into PaneReport.recommendations; Warning-severity anomaly recs reach the existing EffectRunner Notify gate."
+        - "src/policy/rules/anomaly.rs::promote_anomalies_to_recommendations: converts &[AnomalySignal] into Vec<Recommendation>. Filters out signals with severity < Warning (Concern signals are skipped entirely; severity was already stamped on each signal by the detector via severity_for). Surviving Warning+ signals copy sig.severity and evidence[0].source_kind to each emitted Recommendation."
+        - "src/app/event_loop.rs: run_once_with_target calls eval_anomalies and then promote_anomalies_to_recommendations BEFORE deliver_effects + the audit alert_event loop (mirroring F-9b cost-budget pattern at lines 345-362); the promote block explicitly pushes RequestedEffect::Notify when any promoted is Warning+. Promoted recs flow through the same audit and Notify-dispatch paths as every other rule's recs."
         - "src/ui/settings.rs: Rules tab rows for all 4 anomaly detectors (detect_error_burst, detect_identity_churn, detect_cache_discontinuity, detect_cross_pane_edit_cluster) now include 'promotes to Recommendation when confidence=High' annotation."
       modified:
         - "docs/ai/UI_MANUAL.md: promotion subsection added."
@@ -17244,10 +17244,10 @@ timeline:
       removed: []
     observable_effects:
       added:
-        - "High-confidence anomalies (AnomalyConfidence::High) now produce Warning-severity Recommendations and trigger desktop notifications via the existing EffectRunner Notify gate."
+        - "High-confidence anomalies (AnomalyConfidence::High) now produce Warning-severity Recommendations and trigger desktop notifications via RequestedEffect::Notify pushed inline by the promote block, dispatched by deliver_effects."
         - "Settings Rules tab shows 'promotes to Recommendation when confidence=High' for all 4 anomaly detector rows."
       modified:
-        - "Medium/Low-confidence anomalies produce Concern-severity Recommendations (passive advisory, no Notify) — behavioral upgrade from silent detection-only."
+        - "Medium/Low-confidence anomalies produce NO Recommendations (filtered out by promote_anomalies_to_recommendations); they remain visible only in the m overlay ANOMALIES row as passive observation, with no Recommendation and no Notify."
       removed: []
     impact_scope:
       runtime: "promote_anomalies_to_recommendations is called once per pane per poll tick when anomalies are present. No change to provider adapters, audit chain, policy gates set, SignalSet schema, or SQLite schema. AnomalyHistory and dedup state are unchanged."
