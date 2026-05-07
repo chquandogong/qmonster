@@ -168,6 +168,7 @@ where
                 idle_state: None,
                 idle_state_entered_at: None,
                 recent_token_samples: Vec::new(), // F-3: dead pane; no samples needed
+                anomalies: vec![],                // Phase 7 v1: dead pane; no anomaly eval
             });
             continue;
         }
@@ -268,6 +269,25 @@ where
             }
             entry.iter().copied().collect()
         };
+
+        // Phase 7 v1: push pre-rule observations into the pane's
+        // AnomalyHistory. The post-rule observations (cache_drift_fires,
+        // cross_pane_edit_paths) are pushed below after policy.evaluate.
+        {
+            let cap = gates.anomaly_window_polls.max(1);
+            let entry = ctx.anomaly_history.entry(pane.pane_id.clone()).or_default();
+            let provider_label = format!("{:?}", resolved.identity.provider);
+            entry
+                .identity_snapshots
+                .push_front((provider_label, pane.current_path.clone()));
+            entry.error_hints.push_front(signals.error_hint);
+            // signals.cache_hit_ratio is Option<MetricValue<f64>>; cast to
+            // f32 to match AnomalyHistory.cache_hit_ratios: VecDeque<Option<f32>>.
+            entry
+                .cache_hit_ratios
+                .push_front(signals.cache_hit_ratio.as_ref().map(|m| m.value as f32));
+            entry.trim(cap);
+        }
 
         let mut out: EvalOutput = ctx.policy.evaluate(
             &resolved,
@@ -431,6 +451,43 @@ where
                 .record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
         }
 
+        // Phase 7 v1: push post-rule observations and run eval_anomalies.
+        // cache_drift_fires: F-7b action string starts with
+        // "cache: drift detected" (src/policy/rules/cache.rs line ~210).
+        // cross_pane_edit_paths: F-8 ConcurrentFileEdit runs AFTER the
+        // per-pane loop (line ~480+), so this tick's cross-pane findings
+        // are not yet available. Option A: push Vec::new() here so the
+        // history window accumulates; the previous tick's paths are
+        // already in the deque. One-tick lag is acceptable for v1 — the
+        // detector tolerates it because it works on the rolling window.
+        let anomalies = {
+            let cache_drift_fired = out
+                .recommendations
+                .iter()
+                .any(|r| r.action.starts_with("cache: drift detected"));
+            let cap = gates.anomaly_window_polls.max(1);
+            {
+                let entry = ctx.anomaly_history.entry(pane.pane_id.clone()).or_default();
+                entry.cache_drift_fires.push_front(cache_drift_fired);
+                // Option A: empty Vec this tick; cross-pane findings from
+                // this tick are not available until after the per-pane loop.
+                entry.cross_pane_edit_paths.push_front(Vec::new());
+                entry.trim(cap);
+            }
+            let history = ctx
+                .anomaly_history
+                .get(&pane.pane_id)
+                .cloned()
+                .unwrap_or_default();
+            crate::policy::rules::anomaly::eval_anomalies(
+                &pane.pane_id,
+                &history,
+                &gates,
+                &mut ctx.anomaly_dedup,
+                (current_unix_ms() / 1000) as u64,
+            )
+        };
+
         reports.push(PaneReport {
             pane_id: pane.pane_id,
             session_name: pane.session_name,
@@ -447,6 +504,7 @@ where
             idle_state,
             idle_state_entered_at: entered_at,
             recent_token_samples,
+            anomalies,
         });
     }
 
@@ -753,6 +811,15 @@ pub struct PaneReport {
     /// this pane yet. Consumed by the UI sparkline to compute deltas
     /// between adjacent samples.
     pub recent_token_samples: Vec<crate::store::TokenSample>,
+    /// Phase 7 v1 (v1.43.0): anomaly signals for this pane this
+    /// tick, after edge-triggered dedup. Empty Vec when
+    /// `[anomaly] enabled = false` (default), when no detector
+    /// fired, or when `gates.anomaly_enabled` is false. One-tick
+    /// lag on `CrossPaneEditCluster` — cross-pane findings are
+    /// computed after the per-pane loop; this tick's
+    /// `cross_pane_edit_paths` push carries `Vec::new()` and the
+    /// previous tick's paths are already in the history window.
+    pub anomalies: Vec<crate::domain::anomaly::AnomalySignal>,
 }
 
 #[cfg(test)]

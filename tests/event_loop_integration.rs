@@ -2690,3 +2690,125 @@ fn event_loop_auto_snapshot_off_baseline_regression() {
         "rec must still appear in PaneReport even when auto_snapshot = false"
     );
 }
+
+#[test]
+fn event_loop_anomalies_fire_when_enabled_and_history_full() {
+    // Phase 7 v1 Task 10: verify PaneReport.anomalies is populated when
+    // [anomaly] enabled=true and AnomalyHistory already contains enough
+    // identity-churn history to fire the IdentityChurn detector.
+    //
+    // Strategy: pre-populate ctx.anomaly_history with 3 alternating
+    // (provider, path) snapshots — that gives 2 flips, which meets
+    // identity_churn_min_flips=2. Run one tick; the BEFORE push in
+    // run_once_with_target adds a 4th entry (a 3rd flip), so the
+    // detector fires at High confidence.
+    use qmonster::app::config::AnomalyConfig;
+    use qmonster::app::event_loop::run_once_with_target;
+    use qmonster::domain::anomaly::AnomalyKind;
+    use qmonster::policy::rules::anomaly::AnomalyHistory;
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%99", "claude:1:main", "claude", "✦ Idle", false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let mut config = QmonsterConfig::defaults();
+    config.anomaly = AnomalyConfig {
+        enabled: true,
+        window_polls: 5,
+        min_confidence: "medium".to_string(),
+        identity_churn_min_flips: 2,
+        error_burst_threshold: 0.5,
+        cache_discontinuity_drop: 0.30,
+        cross_pane_cluster_min_findings: 3,
+    };
+    let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
+
+    // Pre-populate 3 alternating (provider, path) entries → 2 flips.
+    // The live-path BEFORE push will add a 4th entry (same direction as
+    // entry 0, so flip count stays at 2 or grows to 3 depending on
+    // provider resolution from the tail — either way it meets min_flips=2).
+    let mut h = AnomalyHistory::default();
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    h.identity_snapshots
+        .push_back(("Claude".to_string(), "/a".to_string()));
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    ctx.anomaly_history.insert("%99".to_string(), h);
+
+    let (reports, _notices) = run_once_with_target(&mut ctx, Instant::now(), None).expect("run ok");
+
+    let pane_report = reports.iter().find(|r| r.pane_id == "%99").unwrap();
+
+    assert!(
+        !pane_report.anomalies.is_empty(),
+        "PaneReport.anomalies must be non-empty when enabled=true and history has 2+ flips; \
+         got: {:?}",
+        pane_report.anomalies
+    );
+    assert!(
+        pane_report
+            .anomalies
+            .iter()
+            .any(|s| s.kind == AnomalyKind::IdentityChurn),
+        "expected IdentityChurn signal; got: {:?}",
+        pane_report.anomalies
+    );
+}
+
+#[test]
+fn event_loop_anomalies_off_baseline_regression() {
+    // Phase 7 v1 Task 10: with [anomaly] enabled=false (default), the
+    // eval_anomalies call must be a no-op: PaneReport.anomalies is empty
+    // and ctx.anomaly_dedup remains empty even when history is full of
+    // churn-worthy snapshots.
+    use qmonster::app::event_loop::run_once_with_target;
+    use qmonster::domain::anomaly::AnomalyKind;
+    use qmonster::policy::rules::anomaly::AnomalyHistory;
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%99", "claude:1:main", "claude", "✦ Idle", false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    // Default config — anomaly.enabled is false.
+    let mut ctx = Context::new(
+        QmonsterConfig::defaults(),
+        source,
+        notifier,
+        Box::new(InMemorySink::new()),
+    );
+
+    // Pre-populate the same churn-worthy history as the enabled test.
+    let mut h = AnomalyHistory::default();
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    h.identity_snapshots
+        .push_back(("Claude".to_string(), "/a".to_string()));
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    ctx.anomaly_history.insert("%99".to_string(), h);
+
+    let (reports, _notices) = run_once_with_target(&mut ctx, Instant::now(), None).expect("run ok");
+
+    let pane_report = reports.iter().find(|r| r.pane_id == "%99").unwrap();
+
+    assert!(
+        pane_report.anomalies.is_empty(),
+        "PaneReport.anomalies must be empty when anomaly.enabled=false; \
+         got: {:?}",
+        pane_report.anomalies
+    );
+
+    // Dedup map must remain empty — eval_anomalies is a no-op, so
+    // no (pane_id, AnomalyKind) entries should be inserted.
+    assert!(
+        ctx.anomaly_dedup
+            .keys()
+            .filter(|(_, k)| *k == AnomalyKind::IdentityChurn)
+            .count()
+            == 0,
+        "anomaly_dedup must have no IdentityChurn entries when disabled; \
+         keys: {:?}",
+        ctx.anomaly_dedup.keys().collect::<Vec<_>>()
+    );
+}

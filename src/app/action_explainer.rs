@@ -632,6 +632,7 @@ mod tests {
             idle_state: None,
             idle_state_entered_at: None,
             recent_token_samples: Vec::new(),
+            anomalies: vec![],
         }
     }
 }
