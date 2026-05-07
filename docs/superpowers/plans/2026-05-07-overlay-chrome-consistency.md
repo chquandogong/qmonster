@@ -926,9 +926,7 @@ In `handle_anomaly_overlay_mouse`, replace the left-down branch with:
 MouseEventKind::Down(MouseButton::Left) => {
     let area = crate::ui::anomaly_overlay::anomaly_modal_area_for(viewport, overlay);
     let close = close_button_rect(area);
-    if rect_contains(close, event.column, event.row)
-        || !rect_contains(area, event.column, event.row)
-    {
+    if rect_contains(close, event.column, event.row) {
         overlay.close();
         return true;
     }
@@ -1045,12 +1043,13 @@ Add this subsection under the controls/overlays area:
 
 Large persistent overlays share the same chrome controls:
 `[` / `]` resize, `=` resets size and position, title-row drag moves
-the modal, mouse wheel and `↑` / `↓` scroll, the same entry key closes
-the overlay, and `[x]` / `Esc` / `q` close where the overlay is not in
-an edit sub-mode. In the first chrome-consistency slice this applies to
-`m` Metrics, `a` Pending Actions, `i` Token Insights, and `n` Anomaly
-Events. `S` Settings keeps edit-mode guards, and short confirmation
-modals intentionally remain non-resizable.
+the modal, mouse wheel over the modal body and `↑` / `↓` scroll, the
+same entry key closes the overlay, and `[x]` / `Esc` / `q` close where
+the overlay is not in an edit sub-mode. In the first
+chrome-consistency slice this applies to `m` Metrics, `a` Pending
+Actions, `i` Token Insights, and `n` Anomaly Events. `S` Settings keeps
+edit-mode guards, and short confirmation modals intentionally remain
+non-resizable.
 ```
 
 - [ ] **Step 5: Update `docs/ai/ARCHITECTURE.md`**
@@ -1072,8 +1071,9 @@ Add this checklist item near the Phase 8 UI validation items:
 - [x] Overlay chrome first slice: shared `[x]` style uses active-border
       color rather than severity color; `i` Token Insights and `n`
       Anomaly Events support `[`/`]` resize, `=` geometry reset,
-      title-row drag, same-key close, wheel/arrow scroll, and `[x]`
-      close parity with `m`/`a`.
+      title-row drag, same-key close, body-local wheel/arrow scroll,
+      `[x]` close parity with `m`/`a`, and footer `focus: overlay`
+      while any key-owning overlay is open.
 ```
 
 - [ ] **Step 7: Run docs/help tests**

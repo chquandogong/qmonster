@@ -24,12 +24,13 @@
 
 Large persistent overlays share the same chrome controls:
 `[` / `]` resize, `=` resets size and position, title-row drag moves
-the modal, mouse wheel and `↑` / `↓` scroll, the same entry key closes
-the overlay, and `[x]` / `Esc` / `q` close where the overlay is not in
-an edit sub-mode. In the first chrome-consistency slice this applies to
-`m` Metrics, `a` Pending Actions, `i` Token Insights, and `n` Anomaly
-Events. `S` Settings keeps edit-mode guards, and short confirmation
-modals intentionally remain non-resizable.
+the modal, mouse wheel over the modal body and `↑` / `↓` scroll, the
+same entry key closes the overlay, and `[x]` / `Esc` / `q` close where
+the overlay is not in an edit sub-mode. In the first
+chrome-consistency slice this applies to `m` Metrics, `a` Pending
+Actions, `i` Token Insights, and `n` Anomaly Events. `S` Settings keeps
+edit-mode guards, and short confirmation modals intentionally remain
+non-resizable.
 
 ## 2. Alerts 읽는 법
 
@@ -927,8 +928,8 @@ Time / Pane / Kind / Conf / Promoted / Reason.
 - `=`: reset size and position to the default overlay geometry.
 - Drag the title row: move the overlay.
 - `Up` / `Down` (or `j` / `k`): scroll one row.
-- Mouse wheel: scroll.
-- Click `[x]` or outside the overlay: close.
+- Mouse wheel over the modal body: scroll.
+- Click `[x]`: close.
 - `h`: toggle between Ring view (this session, in-memory) and History view (last 200 from disk).
 
 **View modes:**
@@ -957,8 +958,7 @@ lifecycle timeline, and action ledger counts.
 - Drag the title row: move the overlay.
 - `r`: refresh the current `[insights] default_window_secs` window.
 - `Up` / `Down` (or `j` / `k`): scroll one row.
-- Mouse wheel: scroll.
-- Mouse down outside the report body: close.
+- Mouse wheel over the report body: scroll.
 
 The action ledger includes `emitted`, prompt-send outcomes
 (`accepted`/`rejected`/`blocked`/`completed`/`failed`), archive and

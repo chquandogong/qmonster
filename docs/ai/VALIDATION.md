@@ -324,8 +324,9 @@ through_sqlite` test in `src/store/audit.rs`)
 - [x] Overlay chrome first slice: shared `[x]` style uses active-border
       color rather than severity color; `i` Token Insights and `n`
       Anomaly Events support `[`/`]` resize, `=` geometry reset,
-      title-row drag, same-key close, wheel/arrow scroll, and `[x]`
-      close parity with `m`/`a`.
+      title-row drag, same-key close, body-local wheel/arrow scroll,
+      `[x]` close parity with `m`/`a`, and footer `focus: overlay`
+      while any key-owning overlay is open.
 - [x] Token optimization discoverability: footer/help list `s` snapshot,
       `n` Anomaly Events, `m` Metrics, `a` Pending Actions, and `i`
       Token Insights in a stable cluster; `S` Settings documents

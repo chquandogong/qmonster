@@ -58,7 +58,52 @@ pub struct DashboardFrameView<'a> {
     pub config: &'a QmonsterConfig,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct OverlayFocusFlags {
+    target_picker_open: bool,
+    git_modal_open: bool,
+    help_modal_open: bool,
+    settings_overlay_open: bool,
+    provider_setup_overlay_open: bool,
+    metrics_overlay_open: bool,
+    anomaly_overlay_open: bool,
+    insights_overlay_open: bool,
+    action_explainer_open: bool,
+    pending_actions_open: bool,
+}
+
+impl OverlayFocusFlags {
+    fn from_view(view: &DashboardFrameView<'_>) -> Self {
+        Self {
+            target_picker_open: view.target_picker_open,
+            git_modal_open: view.git_modal.is_open(),
+            help_modal_open: view.help_modal.is_open(),
+            settings_overlay_open: view.settings_overlay.is_open(),
+            provider_setup_overlay_open: view.provider_setup_overlay.is_open(),
+            metrics_overlay_open: view.metrics_overlay.is_open(),
+            anomaly_overlay_open: view.anomaly_overlay.is_open(),
+            insights_overlay_open: view.insights_overlay.is_open(),
+            action_explainer_open: view.action_explainer.is_open(),
+            pending_actions_open: view.pending_actions.is_open(),
+        }
+    }
+}
+
+fn overlay_owns_keyboard(flags: OverlayFocusFlags) -> bool {
+    flags.target_picker_open
+        || flags.git_modal_open
+        || flags.help_modal_open
+        || flags.settings_overlay_open
+        || flags.provider_setup_overlay_open
+        || flags.metrics_overlay_open
+        || flags.anomaly_overlay_open
+        || flags.insights_overlay_open
+        || flags.action_explainer_open
+        || flags.pending_actions_open
+}
+
 pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_>) {
+    let overlay_owns_keyboard = overlay_owns_keyboard(OverlayFocusFlags::from_view(&view));
     render_dashboard(
         frame,
         view.alert_state,
@@ -73,18 +118,8 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
             now: view.now,
             target_label: view.target_label,
             split: view.split,
-            alerts_focused: !view.target_picker_open
-                && !view.help_modal.is_open()
-                && !view.settings_overlay.is_open()
-                && !view.provider_setup_overlay.is_open()
-                && !view.insights_overlay.is_open()
-                && view.focus == FocusedPanel::Alerts,
-            panes_focused: !view.target_picker_open
-                && !view.help_modal.is_open()
-                && !view.settings_overlay.is_open()
-                && !view.provider_setup_overlay.is_open()
-                && !view.insights_overlay.is_open()
-                && view.focus == FocusedPanel::Panes,
+            alerts_focused: !overlay_owns_keyboard && view.focus == FocusedPanel::Alerts,
+            panes_focused: !overlay_owns_keyboard && view.focus == FocusedPanel::Panes,
         },
     );
 
@@ -169,5 +204,68 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
                 allow_auto_prompt_send: view.config.actions.allow_auto_prompt_send,
             },
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OverlayFocusFlags, overlay_owns_keyboard};
+
+    #[test]
+    fn overlay_focus_blocks_dashboard_for_each_modal_owner() {
+        let cases = [
+            OverlayFocusFlags {
+                target_picker_open: true,
+                ..OverlayFocusFlags::default()
+            },
+            OverlayFocusFlags {
+                git_modal_open: true,
+                ..OverlayFocusFlags::default()
+            },
+            OverlayFocusFlags {
+                help_modal_open: true,
+                ..OverlayFocusFlags::default()
+            },
+            OverlayFocusFlags {
+                settings_overlay_open: true,
+                ..OverlayFocusFlags::default()
+            },
+            OverlayFocusFlags {
+                provider_setup_overlay_open: true,
+                ..OverlayFocusFlags::default()
+            },
+            OverlayFocusFlags {
+                metrics_overlay_open: true,
+                ..OverlayFocusFlags::default()
+            },
+            OverlayFocusFlags {
+                anomaly_overlay_open: true,
+                ..OverlayFocusFlags::default()
+            },
+            OverlayFocusFlags {
+                insights_overlay_open: true,
+                ..OverlayFocusFlags::default()
+            },
+            OverlayFocusFlags {
+                action_explainer_open: true,
+                ..OverlayFocusFlags::default()
+            },
+            OverlayFocusFlags {
+                pending_actions_open: true,
+                ..OverlayFocusFlags::default()
+            },
+        ];
+
+        for flags in cases {
+            assert!(
+                overlay_owns_keyboard(flags),
+                "open overlay should force footer focus: overlay; flags={flags:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn overlay_focus_does_not_block_dashboard_when_all_closed() {
+        assert!(!overlay_owns_keyboard(OverlayFocusFlags::default()));
     }
 }

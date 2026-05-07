@@ -4,7 +4,7 @@ use ratatui::layout::Rect;
 use crate::app::keymap::rect_contains;
 use crate::ui::dashboard::close_button_rect;
 use crate::ui::insights::InsightsOverlay;
-use crate::ui::modal_chrome::{DragAnchor, title_row_contains};
+use crate::ui::modal_chrome::{DragAnchor, modal_body_rect, title_row_contains};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InsightsOverlayAction {
@@ -59,21 +59,24 @@ pub fn handle_insights_overlay_mouse(
     }
     let area = crate::ui::insights::insights_modal_area_for(viewport, overlay);
     let close = close_button_rect(area);
+    let body = modal_body_rect(area);
     match event.kind {
         MouseEventKind::ScrollDown => {
             overlay.end_drag();
-            overlay.scroll_down(overlay.line_count().saturating_sub(1) as u16);
+            if rect_contains(body, event.column, event.row) {
+                overlay.scroll_down(overlay.line_count().saturating_sub(1) as u16);
+            }
             InsightsOverlayAction::None
         }
         MouseEventKind::ScrollUp => {
             overlay.end_drag();
-            overlay.scroll_up();
+            if rect_contains(body, event.column, event.row) {
+                overlay.scroll_up();
+            }
             InsightsOverlayAction::None
         }
         MouseEventKind::Down(MouseButton::Left) => {
-            if rect_contains(close, event.column, event.row)
-                || !rect_contains(area, event.column, event.row)
-            {
+            if rect_contains(close, event.column, event.row) {
                 overlay.close();
             } else if title_row_contains(area, event.column, event.row) {
                 overlay.begin_drag(DragAnchor {
@@ -261,7 +264,59 @@ mod tests {
     }
 
     #[test]
-    fn mouse_scroll_clears_drag_anchor_before_scrolling() {
+    fn mouse_left_outside_overlay_is_swallowed_without_closing() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(MouseEventKind::Down(MouseButton::Left), 0, 0),
+        );
+
+        assert!(overlay.is_open());
+        assert!(overlay.drag_anchor().is_none());
+    }
+
+    #[test]
+    fn mouse_scroll_inside_body_clears_drag_anchor_before_scrolling() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        let area = crate::ui::insights::insights_modal_area_for(viewport, &overlay);
+        let body = crate::ui::modal_chrome::modal_body_rect(area);
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(MouseEventKind::Down(MouseButton::Left), area.x + 2, area.y),
+        );
+        assert!(overlay.drag_anchor().is_some());
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(MouseEventKind::ScrollDown, body.x, body.y),
+        );
+        assert!(overlay.drag_anchor().is_none());
+        assert_eq!(overlay.scroll(), 1);
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(
+                MouseEventKind::Drag(MouseButton::Left),
+                area.x + 10,
+                area.y + 4,
+            ),
+        );
+        assert_eq!(overlay.offset_x(), 0);
+        assert_eq!(overlay.offset_y(), 0);
+    }
+
+    #[test]
+    fn mouse_scroll_outside_body_clears_drag_anchor_without_scrolling() {
         let viewport = Rect::new(0, 0, 100, 40);
         let mut overlay = InsightsOverlay::new();
         overlay.open();
@@ -279,20 +334,10 @@ mod tests {
             viewport,
             mouse(MouseEventKind::ScrollDown, 0, 0),
         );
-        assert!(overlay.drag_anchor().is_none());
-        assert_eq!(overlay.scroll(), 1);
 
-        handle_insights_overlay_mouse(
-            &mut overlay,
-            viewport,
-            mouse(
-                MouseEventKind::Drag(MouseButton::Left),
-                area.x + 10,
-                area.y + 4,
-            ),
-        );
-        assert_eq!(overlay.offset_x(), 0);
-        assert_eq!(overlay.offset_y(), 0);
+        assert!(overlay.drag_anchor().is_none());
+        assert_eq!(overlay.scroll(), 0);
+        assert!(overlay.is_open());
     }
 
     #[test]

@@ -171,6 +171,15 @@ pub fn title_row_contains(area: Rect, col: u16, row: u16) -> bool {
     row == area.y && col >= area.x && col < area.x.saturating_add(area.width)
 }
 
+pub fn modal_body_rect(area: Rect) -> Rect {
+    Rect::new(
+        area.x.saturating_add(1),
+        area.y.saturating_add(1),
+        area.width.saturating_sub(2),
+        area.height.saturating_sub(2),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,6 +228,20 @@ mod tests {
         assert!(!title_row_contains(area, 10, 6));
         assert!(!title_row_contains(area, 9, 5));
         assert!(!title_row_contains(area, 30, 5));
+    }
+
+    #[test]
+    fn modal_body_rect_excludes_border_and_title_row() {
+        let body = modal_body_rect(Rect::new(10, 5, 20, 8));
+
+        assert_eq!(body, Rect::new(11, 6, 18, 6));
+    }
+
+    #[test]
+    fn modal_body_rect_saturates_for_tiny_areas() {
+        let body = modal_body_rect(Rect::new(10, 5, 1, 1));
+
+        assert_eq!(body, Rect::new(11, 6, 0, 0));
     }
 
     #[test]

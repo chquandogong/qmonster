@@ -870,7 +870,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "Overlay chrome",
-            "large overlays (m/a/i/n) use [/] resize, = reset geometry, title drag move, wheel/↑/↓ scroll, same entry key/Esc/q/[x] close; S edit mode and short confirmation modals are exceptions",
+            "large overlays (m/a/i/n) use [/] resize, = reset geometry, title drag move, body-wheel/↑/↓ scroll, same entry key/Esc/q/[x] close; S edit mode and short confirmation modals are exceptions",
         ),
         ("Tab", "switch focus between alerts and pane list"),
         ("Up / Down", "move one item in the focused list"),
@@ -896,7 +896,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "n",
-            "open the resizable Anomaly Events overlay; [/] resize, = reset geometry, title drag move, wheel/↑/↓ scroll, h toggles Ring/History, n again or Esc/q/[x] close",
+            "open the resizable Anomaly Events overlay; [/] resize, = reset geometry, title drag move, body-wheel/↑/↓ scroll, h toggles Ring/History, n again or Esc/q/[x] close",
         ),
         (
             "a",
@@ -904,7 +904,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "i",
-            "open the resizable Token Insights overlay for the configured insight ledger window; [/] resize, = reset geometry, title drag move, r refreshes while open, wheel/Up/Down scroll, i again or Esc/q/[x] close",
+            "open the resizable Token Insights overlay for the configured insight ledger window; [/] resize, = reset geometry, title drag move, r refreshes while open, body-wheel/Up/Down scroll, i again or Esc/q/[x] close",
         ),
         ("Space", "toggle multi-select on cursor item (a overlay)"),
         (
@@ -1970,7 +1970,8 @@ mod tests {
             overlay.contains("m/a/i/n")
                 && overlay.contains("[/] resize")
                 && overlay.contains("= reset geometry")
-                && overlay.contains("title drag move"),
+                && overlay.contains("title drag move")
+                && overlay.contains("body-wheel"),
             "Help Overlay chrome row should scope the shared contract to m/a/i/n; got: {overlay}\nfull help:\n{dump}"
         );
         assert!(
@@ -1982,6 +1983,7 @@ mod tests {
                 && anomaly.contains("[/] resize")
                 && anomaly.contains("= reset geometry")
                 && anomaly.contains("title drag move")
+                && anomaly.contains("body-wheel")
                 && anomaly.contains("h toggles Ring/History"),
             "Help n row should document the resizable Anomaly Events contract; got: {anomaly}\nfull help:\n{dump}"
         );
@@ -1990,6 +1992,7 @@ mod tests {
                 && insights.contains("[/] resize")
                 && insights.contains("= reset geometry")
                 && insights.contains("title drag move")
+                && insights.contains("body-wheel")
                 && insights.contains("r refreshes"),
             "Help i row should document the resizable Token Insights contract; got: {insights}\nfull help:\n{dump}"
         );
