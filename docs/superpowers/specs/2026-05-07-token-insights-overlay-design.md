@@ -4,6 +4,8 @@ Status: design accepted, implementation plan pending.
 Audience: Qmonster TUI maintainers and Claude/Codex/Gemini implementers.
 Baseline: `main` at `160fba1` (v1.42.0 publication verified) with
 existing local `.mission/CURRENT_STATE.md` edits left untouched.
+Merged input: Gemini's
+`docs/superpowers/specs/2026-05-07-optimization-overlay-design.md`.
 
 This design adds an operator-facing insight surface for Qmonster's
 second core axis: token optimization. The feature is not another raw
@@ -42,6 +44,21 @@ Rationale:
 
 The first implementation should still prove the data path with a
 read-only query/report slice before the full TUI overlay lands.
+
+Gemini draft decisions reviewed:
+
+- Accepted: the Overview tab should use a simple three-part shape:
+  top token/cache/cost summary, middle six-situation counters, bottom
+  recent actions feed.
+- Accepted with adjustment: cache hit ratio trend can use sparklines,
+  but the label must be cache reuse/trend, not exact token savings.
+- Accepted with adjustment: SQLite queries must not block rendering.
+  The final design uses a cached `InsightsSnapshot` refreshed outside
+  the `ui/` render function rather than requiring async runtime wiring
+  in v1.
+- Not accepted: `o` key and `optimization_*` module names. The accepted
+  product is an Insights surface, so the key and module names stay
+  `i`, `app/insights_overlay.rs`, and `ui/insights.rs`.
 
 ## 3. Non-goals
 
@@ -230,6 +247,16 @@ Core structs:
 The query layer is pure read/aggregation code over SQLite. It should not
 depend on ratatui.
 
+The TUI render path must not run SQLite queries directly. The app layer
+owns an `InsightsRuntimeState` containing the most recent
+`InsightsSnapshot`, a refresh timestamp, and an optional error summary.
+Opening the overlay or changing the time window requests a refresh; the
+renderer consumes the cached snapshot only. The first implementation may
+perform the refresh synchronously in the event loop if the query is
+bounded and cheap, but the `ui/` module must remain pure. If fixture
+data shows refresh cost can exceed the poll budget, move the refresh to
+a small background worker before shipping the TUI slice.
+
 ## 10. UI Design
 
 New key:
@@ -241,8 +268,12 @@ Tabs:
 
 1. **Overview**
    - Time window selector label: last 1h / 24h / session / all.
-   - Six-situation matrix.
-   - Cache and token-impact summary.
+   - Three vertical sections:
+     top token/cache/cost summary, middle six-situation matrix, bottom
+     recent actions feed.
+   - Summary labels: "cache reuse", "token growth", "cost delta", and
+     "estimated opportunity"; never "total token savings".
+   - Cache hit ratio trend sparkline over the selected window.
    - Hottest current pane link back to metrics.
 2. **Situations**
    - Situation -> signals -> rule modules -> outcomes.
@@ -302,8 +333,9 @@ rendering work begins.
    - Add `qmonster insights --since ...` or `--once --insights`.
    - Add golden text tests.
 4. **TUI `i` overlay**
-   - Add `app/insights_overlay.rs`, `ui/insights.rs`, key dispatch,
-     help footer chip, and help overlay row.
+   - Add `app/insights_overlay.rs`, `ui/insights.rs`,
+     `InsightsRuntimeState`, key dispatch, help footer chip, and help
+     overlay row.
    - Reuse existing overlay geometry patterns where practical.
 5. **Docs and validation**
    - Update `UI_MANUAL`, `ARCHITECTURE`, `VALIDATION`, README key list,
@@ -352,6 +384,8 @@ The overlay must not claim:
 
 - SQLite read failure: show a Warning system notice and render an empty
   overlay state with the error summary.
+- Slow SQLite refresh: keep rendering the previous `InsightsSnapshot`
+  and show a stale-data badge with the last successful refresh time.
 - Missing lifecycle table during first migration: create it through the
   normal `AuditDb::open` schema path.
 - Correlation ambiguity: do not attach the outcome; let TTL classify.
@@ -372,6 +406,8 @@ The overlay must not claim:
 | `ttl_marks_unresolved_recommendation_ignored` | unit | No outcome after TTL creates `ignored`. |
 | `hidden_outcome_is_recorded_not_inferred` | unit | Hide/dismiss writes a lifecycle outcome row. |
 | `insights_report_renders_action_ledger` | integration/golden | Text report contains emitted/accepted/ignored counts. |
+| `insights_snapshot_refresh_not_in_ui_renderer` | unit | `ui/insights.rs` renders from an `InsightsSnapshot` and does not depend on SQLite types. |
+| `insights_overlay_stale_snapshot_badge` | UI unit | Failed/slow refresh preserves prior snapshot and renders stale/error status. |
 | `insights_overlay_key_toggles` | UI unit | `i` opens and closes the overlay. |
 | `insights_overlay_lines_do_not_overflow` | UI unit | Narrow viewport truncates/wraps without overflow. |
 

@@ -1,5 +1,22 @@
 # Optimization Insights Overlay Design
 
+Status: reviewed and merged into
+`docs/superpowers/specs/2026-05-07-token-insights-overlay-design.md`.
+
+This Gemini-authored draft is retained as an input artifact. The merged
+design keeps the operations-insight goal and the three-part dashboard
+shape, but changes several details:
+
+- Final key is `i` (Insights), not `o`, to match the accepted Token
+  Insights product shape.
+- Final module names use `insights`, not `optimization`, to avoid
+  implying automatic optimization actions.
+- "Total token savings" is not claimed. The merged design shows
+  measured cache reuse, token growth, and estimated opportunity with
+  SourceKind labels.
+- SQLite reads must not block render; the merged design requires a
+  cached `InsightsSnapshot` refreshed outside `ui/` rendering.
+
 ## Purpose
 To visualize Qmonster's token optimization and policy actions across 6 key situations, giving operators insight into what actions are being taken (and ignored) and the resulting token/cache savings. This addresses the need to expose the "invisible" work Qmonster does to optimize context and cost.
 
