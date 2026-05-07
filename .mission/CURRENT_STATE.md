@@ -1,13 +1,13 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-07 (Claude, v1.47.0 release ledger sync)_
+_Last updated: 2026-05-07 (Claude, v1.47.0 publication verified)_
 
 ## Mission
 
 - Title: Qmonster v1.47.0 - Phase 7 v3 (c): SQLite persistence for anomaly events + history
 - Version surfaces: mission ledger target `1.47.0`; npm package metadata `qmonster@1.47.0`; latest local Git tag `v1.47.0`.
 - Branch / worktree at handoff start: `main`, tag `v1.47.0`.
-- Release publication state: v1.46.0 is published. `Release and Package Mirror` workflow run `25485133895` (2026-05-07, 7m12s, success) created GitHub Release `v1.46.0` with full asset set (binary tarball, npm tarball, SBOM, sbom-diff, checksums) and published `qmonster@1.46.0` to npm + GitHub Packages mirror. Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), v1.39.0 (`25311723861`), v1.40.0 (`25421376056`), v1.41.0 (`25424418078`), v1.42.0 (`25472444159`), v1.43.0 (`25474748447`), v1.44.0 (`25476534645`), v1.45.0 (`25478893257`) publications also remain live. v1.47.0 publication pending (CI workflow not yet triggered).
+- Release publication state: v1.47.0 is published. `Release and Package Mirror` workflow run `25490555532` (2026-05-07, 7m16s, success) created GitHub Release `v1.47.0` with full asset set (binary tarball, npm tarball, SBOM, sbom-diff, checksums) and published `qmonster@1.47.0` to npm + GitHub Packages mirror. Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), v1.39.0 (`25311723861`), v1.40.0 (`25421376056`), v1.41.0 (`25424418078`), v1.42.0 (`25472444159`), v1.43.0 (`25474748447`), v1.44.0 (`25476534645`), v1.45.0 (`25478893257`), v1.46.0 (`25485133895`) publications also remain live — `npm view qmonster versions` lists `1.37.0` through `1.47.0` with `dist-tags.latest = 1.47.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47}.0`.
 - Current phase: Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, the v1.38 UX bundle (F1/F2/F3/F4), the v1.39 polish + correctness round, the v1.40 operator-controlled overlay geometry round, the v1.41 a-overlay polish round, Phase H opt-in auto-snapshot, Phase 7 v1 anomaly observation surface, Phase 7 v2 promotion, Phase 7 v2 detectors, Phase 7 v3 (a+b), and Phase 7 v3 (c) are complete.
 
 ## v1.47.0 Feature State
@@ -48,11 +48,11 @@ Phase 7 v3 (c) adds SQLite persistence for anomaly events and history snapshots 
 
 ## Post-tag polish (on main, untagged)
 
-No genuinely-post-v1.47.0 work has landed yet.
+- `d699694 v1.47.0 review fixup: CURRENT_STATE.md Feature Item 8 accuracy` — corrected AnomalyOverlayView variants ("Live | History" → "Ring | History") and history_cache type ("Vec<AnomalyHistorySnapshot>" → "Vec<AnomalyEvent>") in the Feature State description. Docs-only; matches the v1.42-v1.46 ledger-fixup post-tag pattern (no re-tag needed).
 
 ## Known External State
 
-- v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 are all published (workflow runs `25159598038` / `25305201597` / `25311723861` / `25421376056` / `25424418078` / `25472444159` / `25474748447` / `25476534645` / `25478893257` / `25485133895` all completed success). GitHub Release pages live at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46}.0`; `npm view qmonster versions` lists `1.37.0` through `1.46.0` with `dist-tags.latest = 1.46.0`. v1.47.0 publication pending.
+- v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 are all published (workflow runs `25159598038` / `25305201597` / `25311723861` / `25421376056` / `25424418078` / `25472444159` / `25474748447` / `25476534645` / `25478893257` / `25485133895` / `25490555532` all completed success). GitHub Release pages live at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47}.0`; `npm view qmonster versions` lists `1.37.0` through `1.47.0` with `dist-tags.latest = 1.47.0`.
 - `qmonster@1.36.2` remains deprecated on npm because its GitHub Release SBOM was incomplete.
 - GitHub Release `v1.36.2` remains marked prerelease with a warning banner.
 
