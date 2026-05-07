@@ -704,6 +704,25 @@ Operator는 `qmonster.toml`에 `[anomaly] enabled = true`를 추가하여 활성
 최소화하도록 설계되었습니다 — 전체 기본값 블록은 `config/qmonster.example.toml`을
 참조하세요.
 
+### Phase 7 v2: anomaly promotion (v1.44.0)
+
+When a v1 detector fires with `confidence = High`, the resulting
+`AnomalySignal` is promoted into the dashboard recommendation
+panel as a `Recommendation` and triggers a desktop notification
+via `RequestedEffect::Notify` (the same path F-9b cost-budget
+alerts use). The m overlay ANOMALIES row remains the underlying
+observation surface — promoted signals show up in both places at
+once.
+
+Promotion criteria: detector severity is `Warning` (which happens
+exactly when confidence is `High`); detector severity is `Concern`
+when confidence is `Medium` or `Low`, and Concern signals are
+observation-only — they appear in the m overlay row but do NOT
+emit a Recommendation or fire Notify.
+
+Operator opts in with the same `[anomaly] enabled = true` from
+v1.43.0 — there are no new knobs.
+
 ### 8.6 Action Explainer
 
 `p` / `d` / `y` 누름 시 사전 모달이 뜹니다. 표시되는 항목:

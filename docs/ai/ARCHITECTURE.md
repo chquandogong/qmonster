@@ -835,6 +835,25 @@ cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
   deterministic now-injection. Tests grew to 765 lib + 68 integration
   green.
 
+v1.44.0 ships **Phase 7 v2 promotion**. New
+`policy::rules::anomaly::promote_anomalies_to_recommendations`
+pure function maps Warning+ `AnomalySignal`s to `Recommendation`s
+via a static `(action, reason, next_step)` matrix per
+`AnomalyKind`. New `severity_for(confidence)` helper makes
+detector severity a function of confidence
+(`High → Warning`, otherwise `Concern`); the four v1 detectors
+swap their hardcoded `Severity::Concern` for
+`severity_for(confidence)` (one-line change each). The event
+loop calls `promote_anomalies_to_recommendations` after
+`eval_anomalies`, extends `out.recommendations`, and pushes
+`RequestedEffect::Notify` when any promoted is Warning+ —
+mirroring the F-9b cost-budget pattern at
+`src/app/event_loop.rs:347-357`. No `AuditEventKind` or
+`RequestedEffect` variant changes; no new config knobs; no
+schema changes. Edge-triggered dedup from v1 carries through
+naturally — promoted Recommendations and Notify fire once per
+active window.
+
 v1.43.0 ships **Phase 7 v1 anomaly observation surface**. New
 domain types in `src/domain/anomaly.rs` (`AnomalySignal`,
 `AnomalyKind` with 4 v1 variants, `AnomalyConfidence`,

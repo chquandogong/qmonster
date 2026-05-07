@@ -294,11 +294,15 @@ through_sqlite` test in `src/store/audit.rs`)
       `app::auto_snapshot::maybe_auto_snapshot`; `SnapshotWritten`
       audit summary carries `trigger=auto_reset_boundary` and
       `quota_kind`.
-- [x] Phase 7 v1 anomaly observation (v1.43.0): `[anomaly] enabled = false`
-      by default; `enabled = true` opens the m overlay ANOMALIES row
-      per pane via `policy::rules::anomaly::eval_anomalies` over a
-      per-pane rolling `AnomalyHistory`; edge-triggered dedup keeps
-      one emission per active window.
+- [x] Phase 7 v1 anomaly observation (v1.43.0) + Phase 7 v2 promotion (v1.44.0):
+      `[anomaly] enabled = false` by default; `enabled = true` opens the
+      m overlay ANOMALIES row per pane via
+      `policy::rules::anomaly::eval_anomalies` over a per-pane rolling
+      `AnomalyHistory`; edge-triggered dedup keeps one emission per
+      active window. v1.44.0 adds Recommendation + Notify promotion
+      via `promote_anomalies_to_recommendations` for signals at
+      confidence=High (Severity::Warning). No new knobs; no schema
+      changes; no AuditEventKind or RequestedEffect additions.
 
 ## Non-functional checks (all phases)
 
