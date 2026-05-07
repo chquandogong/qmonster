@@ -107,6 +107,18 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
             }
         };
 
+    let anomaly_sink: Option<crate::store::SqliteAnomalySink> =
+        match crate::store::SqliteAnomalySink::open(&paths.sqlite_path()) {
+            Ok(sink) => Some(sink),
+            Err(e) => {
+                eprintln!(
+                    "qmonster: anomaly sink open failed ({e}); anomaly events \
+                     and history snapshots will not be persisted this session"
+                );
+                None
+            }
+        };
+
     let source_build = build_tmux_source(&config)?;
     let notifier = DesktopNotifier;
     let archive = ArchiveWriter::new(paths.clone(), config.logging.big_output_chars);
@@ -125,6 +137,9 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
     }
     if let Some(sink) = cost_usage_sink {
         ctx = ctx.with_cost_usage_sink(sink);
+    }
+    if let Some(sink) = anomaly_sink {
+        ctx = ctx.with_anomaly_sink(sink);
     }
 
     if !pairs.is_empty() {

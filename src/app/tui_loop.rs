@@ -333,6 +333,22 @@ where
                             }
 
                             if anomaly_overlay.is_open() {
+                                if matches!(k.code, KeyCode::Char('h')) {
+                                    match anomaly_overlay.view() {
+                                        crate::ui::anomaly_overlay::AnomalyOverlayView::Ring => {
+                                            let events = ctx
+                                                .anomaly_sink
+                                                .as_ref()
+                                                .map(|sink| sink.fetch_recent_anomaly_events(200))
+                                                .unwrap_or_default();
+                                            anomaly_overlay.toggle_view(events);
+                                        }
+                                        crate::ui::anomaly_overlay::AnomalyOverlayView::History => {
+                                            anomaly_overlay.toggle_view(Vec::new());
+                                        }
+                                    }
+                                    continue;
+                                }
                                 let _ = crate::app::anomaly_overlay::handle_anomaly_overlay_key(
                                     &mut anomaly_overlay,
                                     ctx.anomaly_events_ring.len(),
