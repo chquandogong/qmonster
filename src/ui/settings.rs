@@ -264,6 +264,7 @@ pub struct SettingsOverlay {
     tab: SettingsTab,
     selected: FieldId,
     selected_integration: IntegrationField,
+    scroll_offset: u16,
     edit_buffer: Option<String>,
     status: SettingsStatus,
     /// Tracks dirty-since-open so `is_dirty()` survives a transient
@@ -278,6 +279,7 @@ impl Default for SettingsOverlay {
             tab: SettingsTab::Thresholds,
             selected: FieldId::new(Section::Cost, Scope::Default, Bound::Warning),
             selected_integration: IntegrationField::ClaudeSidefile,
+            scroll_offset: 0,
             edit_buffer: None,
             status: SettingsStatus::Idle,
             dirty: false,
@@ -306,11 +308,16 @@ impl SettingsOverlay {
         self.selected_integration
     }
 
+    pub fn scroll_offset(&self) -> u16 {
+        self.scroll_offset
+    }
+
     pub fn switch_tab(&mut self, tab: SettingsTab) {
         if self.edit_buffer.is_some() {
             return;
         }
         self.tab = tab;
+        self.scroll_offset = 0;
     }
 
     pub fn next_tab(&mut self) {
@@ -318,6 +325,7 @@ impl SettingsOverlay {
             return;
         }
         self.tab = self.tab.next();
+        self.scroll_offset = 0;
     }
 
     pub fn previous_tab(&mut self) {
@@ -325,6 +333,7 @@ impl SettingsOverlay {
             return;
         }
         self.tab = self.tab.previous();
+        self.scroll_offset = 0;
     }
 
     pub fn select_field(&mut self, field: FieldId) {
@@ -360,6 +369,7 @@ impl SettingsOverlay {
         self.tab = SettingsTab::Thresholds;
         self.selected = FieldId::new(Section::Cost, Scope::Default, Bound::Warning);
         self.selected_integration = IntegrationField::ClaudeSidefile;
+        self.scroll_offset = 0;
         self.edit_buffer = None;
         self.status = SettingsStatus::Idle;
         self.dirty = false;
@@ -405,6 +415,48 @@ impl SettingsOverlay {
             return;
         }
         self.selected_integration = self.selected_integration.previous();
+    }
+
+    pub fn scroll_up(&mut self) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        self.scroll_offset = self.scroll_offset.saturating_sub(1);
+    }
+
+    pub fn scroll_down(&mut self, max: u16) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        self.scroll_offset = self.scroll_offset.saturating_add(1).min(max);
+    }
+
+    pub fn page_up(&mut self, rows: u16) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        self.scroll_offset = self.scroll_offset.saturating_sub(rows.max(1));
+    }
+
+    pub fn page_down(&mut self, rows: u16, max: u16) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        self.scroll_offset = self.scroll_offset.saturating_add(rows.max(1)).min(max);
+    }
+
+    pub fn scroll_top(&mut self) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        self.scroll_offset = 0;
+    }
+
+    pub fn scroll_bottom(&mut self, max: u16) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        self.scroll_offset = max;
     }
 
     pub fn toggle_integration(&mut self, config: &mut QmonsterConfig) {
@@ -1161,6 +1213,22 @@ pub fn settings_modal_rects(viewport: Rect) -> SettingsModalRects {
     }
 }
 
+pub fn settings_visible_body_rows(viewport: Rect) -> u16 {
+    settings_modal_rects(viewport).body.height.saturating_sub(2)
+}
+
+pub fn settings_max_scroll(
+    overlay: &SettingsOverlay,
+    config: &QmonsterConfig,
+    viewport: Rect,
+) -> u16 {
+    let visible = settings_visible_body_rows(viewport) as usize;
+    build_body_lines(overlay, config)
+        .len()
+        .saturating_sub(visible)
+        .min(u16::MAX as usize) as u16
+}
+
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let popup = Layout::default()
         .direction(Direction::Vertical)
@@ -1213,16 +1281,22 @@ pub fn render_settings_modal(
     frame.render_widget(tabs, rects.tabs);
 
     let body_lines = build_body_lines(overlay, config);
+    let scroll = overlay
+        .scroll_offset()
+        .min(settings_max_scroll(overlay, config, frame.area()));
     frame.render_widget(
-        Paragraph::new(body_lines).wrap(Wrap { trim: false }).block(
-            Block::default()
-                .title(Span::styled(
-                    settings_body_title(overlay.tab()),
-                    Style::default().add_modifier(Modifier::BOLD),
-                ))
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
-        ),
+        Paragraph::new(body_lines)
+            .scroll((scroll, 0))
+            .wrap(Wrap { trim: false })
+            .block(
+                Block::default()
+                    .title(Span::styled(
+                        settings_body_title(overlay.tab()),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ))
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+            ),
         rects.body,
     );
 
@@ -1283,6 +1357,15 @@ pub fn settings_tab_index_at(tabs: Rect, column: u16) -> Option<usize> {
 }
 
 pub fn settings_field_at(body: Rect, column: u16, row: u16) -> Option<FieldId> {
+    settings_field_at_with_scroll(body, column, row, 0)
+}
+
+pub fn settings_field_at_with_scroll(
+    body: Rect,
+    column: u16,
+    row: u16,
+    scroll_offset: u16,
+) -> Option<FieldId> {
     let inner = body.inner(Margin {
         vertical: 1,
         horizontal: 1,
@@ -1290,7 +1373,7 @@ pub fn settings_field_at(body: Rect, column: u16, row: u16) -> Option<FieldId> {
     if !rect_contains(inner, column, row) {
         return None;
     }
-    let mut line_idx = row.saturating_sub(inner.y);
+    let mut line_idx = row.saturating_sub(inner.y).saturating_add(scroll_offset);
     let rel_col = column.saturating_sub(inner.x) as usize;
     for (section_idx, section) in [Section::Cost, Section::Context, Section::Quota]
         .into_iter()
@@ -1326,6 +1409,15 @@ pub fn settings_integration_field_at(
     column: u16,
     row: u16,
 ) -> Option<IntegrationField> {
+    settings_integration_field_at_with_scroll(body, column, row, 0)
+}
+
+pub fn settings_integration_field_at_with_scroll(
+    body: Rect,
+    column: u16,
+    row: u16,
+    scroll_offset: u16,
+) -> Option<IntegrationField> {
     let inner = body.inner(Margin {
         vertical: 1,
         horizontal: 1,
@@ -1333,7 +1425,7 @@ pub fn settings_integration_field_at(
     if !rect_contains(inner, column, row) {
         return None;
     }
-    match row.saturating_sub(inner.y) {
+    match row.saturating_sub(inner.y).saturating_add(scroll_offset) {
         1 => Some(IntegrationField::ClaudeSidefile),
         2 => Some(IntegrationField::CodexAppServer),
         _ => None,
@@ -2416,7 +2508,7 @@ fn hint_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
     } else if overlay.tab() == SettingsTab::Integrations {
         "  [1]-[5]/[Tab] tab · ↑/↓ select · Space/e/Enter toggle · w write · q/Esc close"
     } else {
-        "  [1]-[5]/[Tab] tab · click tabs · w write dirty edits · q/Esc close"
+        "  [1]-[5]/[Tab] tab · ↑/↓/j/k/wheel scroll · PgUp/PgDn · Home/End · q/Esc close"
     };
     let line2 =
         if overlay.tab() == SettingsTab::Thresholds || overlay.tab() == SettingsTab::Integrations {

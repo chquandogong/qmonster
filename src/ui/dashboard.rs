@@ -845,7 +845,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
     for (label, value) in [
         (
             "Mouse wheel",
-            "scroll the list, modal, or settings fields under the pointer",
+            "scroll the list, modal, settings read-only body, or settings fields under the pointer",
         ),
         (
             "Mouse left",
@@ -968,7 +968,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
 
     lines.extend(help_wrapped_detail_lines(
         "S",
-        "open the settings overlay (Thresholds / Integrations / Parameters / Rules / Badges; includes [insights], [anomaly], [reset], and [provider_setup] surfaces); press 'w' inside to write back to the loaded TOML; press S again (when not editing), Esc, q, or click [x] to close",
+        "open the settings overlay (Thresholds / Integrations / Parameters / Rules / Badges; includes [insights], [anomaly], [reset], and [provider_setup] surfaces); Thresholds/Integrations use ↑/↓/wheel for selection, read-only tabs use ↑/↓/j/k/wheel/PgUp/PgDn/Home/End for body scroll; press 'w' inside to write back to the loaded TOML; press S again (when not editing), Esc, q, or click [x] to close",
         total_width,
     ));
 

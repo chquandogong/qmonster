@@ -410,8 +410,11 @@ side_effects (N):
 - `S`: settings overlay 열기.
   화살표로 필드 이동, `e` 또는 `Enter`로 편집 시작, 숫자 입력 후
   `Enter`로 commit, `Esc`로 편집 취소, provider override row에서 `c`로
-  override 제거, `w`로 loaded TOML에 저장합니다. `--config` 없이 시작해도
-  표준 저장 경로는 `~/.qmonster/config/qmonster.toml`입니다.
+  override 제거, `w`로 loaded TOML에 저장합니다. `Parameters` / `Rules` /
+  `Badges` read-only 탭에서는 `↑` / `↓` / `j` / `k` / mouse wheel로 body
+  scroll, `PgUp` / `PgDn` page scroll, `Home` / `End` 처음/끝 이동을
+  지원합니다. `--config` 없이 시작해도 표준 저장 경로는
+  `~/.qmonster/config/qmonster.toml`입니다.
 - `q`, `Esc`: 종료 또는 overlay 닫기
 
 ## 8. Overlay
@@ -440,7 +443,9 @@ side_effects (N):
   `Badges`는 `CTX`, `COST`,
   `TOKENS`, `CACHE`, `RESET`, `CALLS`, `token io`, `cache io`와
   `[Official]` / `[Estimate]` / `[Heur]` / `[Qmonster]` source label의
-  뜻을 설명합니다. modal 오른쪽 위 `[x]`를 클릭하거나
+  뜻을 설명합니다. `Parameters` / `Rules` / `Badges`는 read-only body가
+  modal 높이를 넘을 때 `↑` / `↓` / `j` / `k` / wheel / `PgUp` / `PgDn` /
+  `Home` / `End`로 스크롤합니다. modal 오른쪽 위 `[x]`를 클릭하거나
   `S`를 다시 누르거나 (`숫자 편집 중 제외`) `q` / `Esc`로 닫습니다. `w` 저장은 로드된 TOML의 코멘트와
   관련 없는 섹션을 보존하면서 Settings가 소유한 key만 갱신합니다.
 - **Provider Setup (G-1, v1.29.0)**:

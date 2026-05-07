@@ -29,7 +29,9 @@ use crate::app::provider_setup_overlay::{
     copy_active_tab_snippet, handle_provider_setup_overlay_key, handle_provider_setup_overlay_mouse,
 };
 use crate::app::runtime_refresh::handle_runtime_refresh_action;
-use crate::app::settings_overlay::{handle_settings_overlay_key, handle_settings_overlay_mouse};
+use crate::app::settings_overlay::{
+    handle_settings_overlay_key_with_viewport, handle_settings_overlay_mouse,
+};
 use crate::app::system_notice::SystemNotice;
 use crate::app::target_picker::{
     TargetPickerAction, TargetPickerRuntimeState, handle_target_picker_key,
@@ -292,10 +294,12 @@ where
                                     continue;
                                 }
                                 let config_path = ctx.config_path.clone();
-                                handle_settings_overlay_key(
+                                let size = terminal.size()?;
+                                handle_settings_overlay_key_with_viewport(
                                     &mut settings_overlay,
                                     &mut ctx.config,
                                     config_path.as_deref(),
+                                    Rect::new(0, 0, size.width, size.height),
                                     k.code,
                                 );
                                 continue;

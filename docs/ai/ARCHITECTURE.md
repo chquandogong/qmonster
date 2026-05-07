@@ -858,8 +858,12 @@ Provider Setup names the downstream `m` Metrics / `n` Anomaly Events /
 same `[x]` close affordance as the other overlays.
 The overlay chrome consistency slice adds a shared UI-only geometry
 layer for modal size, offset, close styling, and title-row dragging.
-It does not change provider adapters, policy evaluation, audit schema,
-or recommendation semantics.
+The follow-up polish keeps `i` Token Insights and `n` Anomaly Events on
+the same active-border line color as existing modals, and gives `S`
+Settings a body scroll offset for long read-only tabs without changing
+Thresholds / Integrations field-selection behavior. It does not change
+provider adapters, policy evaluation, audit schema, or recommendation
+semantics.
 
 **v1.47.0 (Phase 7 v3 c — closes Phase 7):** SQLite persistence for
 anomaly events and per-pane history. Two new tables in `audit.db`:

@@ -191,7 +191,8 @@ pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
-        .title_style(Style::default().add_modifier(Modifier::BOLD));
+        .title_style(Style::default().add_modifier(Modifier::BOLD))
+        .border_style(Style::default().fg(theme::BORDER_ACTIVE));
     let inner = block.inner(area);
     frame.render_widget(block, area);
     frame.render_widget(
@@ -246,5 +247,29 @@ mod tests {
         let joined = overlay.lines().join("\n");
         assert!(joined.contains("Action Ledger"));
         assert!(joined.contains("refreshed: 12:00:00"));
+    }
+
+    #[test]
+    fn render_uses_active_border_style() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let viewport = ratatui::layout::Rect::new(0, 0, 100, 40);
+        let mut terminal =
+            Terminal::new(TestBackend::new(viewport.width, viewport.height)).unwrap();
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        let area = insights_modal_area_for(viewport, &overlay);
+
+        terminal
+            .draw(|frame| render_insights_modal(frame, &overlay))
+            .unwrap();
+        let cell = terminal
+            .backend()
+            .buffer()
+            .cell((area.x, area.y))
+            .expect("top-left border cell in bounds");
+
+        assert_eq!(cell.fg, theme::BORDER_ACTIVE);
     }
 }

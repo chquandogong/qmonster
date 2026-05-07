@@ -331,7 +331,8 @@ through_sqlite` test in `src/store/audit.rs`)
       `n` Anomaly Events, `m` Metrics, `a` Pending Actions, and `i`
       Token Insights in a stable cluster; `S` Settings documents
       `[insights]`, `[anomaly]`, `[reset]`, and `[provider_setup]`
-      surfaces; `P` Provider Setup states that configured telemetry
+      surfaces and scrolls read-only tabs with body-local wheel /
+      arrow / page keys; `P` Provider Setup states that configured telemetry
       feeds `m`/`n`/`i`; Anomaly Events supports `[x]` close parity.
 
 ## Non-functional checks (all phases)

@@ -202,7 +202,10 @@ impl AnomalyOverlay {
                 self.history_cache.len(),
             ),
         };
-        let block = Block::default().borders(Borders::ALL).title(title);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(title)
+            .border_style(Style::default().fg(theme::BORDER_ACTIVE));
         let close = Paragraph::new("[x]").style(theme::modal_close_style());
 
         if total_count == 0 {
@@ -393,6 +396,32 @@ mod tests {
             rendered.contains("[anomaly] enabled = true"),
             "help hint missing: {rendered}"
         );
+    }
+
+    #[test]
+    fn render_uses_active_border_style() {
+        use crate::app::anomaly_events_ring::AnomalyEventsRing;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut terminal =
+            Terminal::new(TestBackend::new(viewport.width, viewport.height)).unwrap();
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let area = anomaly_modal_area_for(viewport, &overlay);
+        let ring = AnomalyEventsRing::new();
+
+        terminal
+            .draw(|frame| overlay.render(frame, frame.area(), &ring))
+            .unwrap();
+        let cell = terminal
+            .backend()
+            .buffer()
+            .cell((area.x, area.y))
+            .expect("top-left border cell in bounds");
+
+        assert_eq!(cell.fg, theme::BORDER_ACTIVE);
     }
 
     #[test]
