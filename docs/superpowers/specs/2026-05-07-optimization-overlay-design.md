@@ -40,7 +40,8 @@ optimize context and cost.
   `token_usage_samples` table. The merged design shows cache hit ratio
   trends and measured token growth; it does not calculate exact total
   token savings.
-- **The 6 Situations (Policy Actions)**: Qmonster evaluates 11 policy rules. The overlay will map these evaluations into the 6 core design situations:
+- **The 6 Situations (Policy Actions)**: Qmonster evaluates policy
+  rules and maps them into the 6 core design situations:
   1. **Log Storm**: Repeated output detection (Phase 1·3).
   2. **Code Exploration**: Deep code-graph heuristics (Advisories).
   3. **Context Pressure**: Cache hot/cold rules + snapshot/reset (F-7).
@@ -62,4 +63,5 @@ The TUI overlay will be structured into three main vertical sections:
 
 3. **Bottom: Recent Actions Feed**
    - A short chronological list (e.g., last 3-5 events) of tangible actions taken.
-   - Example: `[Log Storm] Prompted /compact (10m ago)` or `[Quota-Tight] Switched to review (2h ago)`.
+   - Example: `[Context Pressure] proposed /compact (10m ago)` or
+     `[Quota-Tight] recommended review profile (2h ago)`.
