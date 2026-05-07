@@ -835,6 +835,29 @@ cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
   deterministic now-injection. Tests grew to 765 lib + 68 integration
   green.
 
+v1.43.0 ships **Phase 7 v1 anomaly observation surface**. New
+domain types in `src/domain/anomaly.rs` (`AnomalySignal`,
+`AnomalyKind` with 4 v1 variants, `AnomalyConfidence`,
+`AnomalyEvidence`) and a new pure rule module
+`src/policy/rules/anomaly.rs` with four detectors plus the
+`eval_anomalies` orchestrator. Detectors consume `AnomalyHistory`
+(per-pane rolling window kept in `Context.anomaly_history`); each
+tick the event loop pushes the current observations
+(provider/path snapshot, `error_hint`, `cache_hit_ratio`, F-7b
+cache-drift fire flag, F-8 ConcurrentFileEdit paths with a
+one-tick lag) and trims to `gates.anomaly_window_polls`.
+Edge-triggered dedup lives in `Context.anomaly_dedup:
+HashMap<(pane_id, AnomalyKind), Option<u64>>` — emit on
+Some-after-None edge, suppress while the detector continues to
+return Some, rearm when it returns None, emit fresh after rearm.
+Output rides on a new `PaneReport.anomalies:
+Vec<AnomalySignal>` field; the m overlay pane card renders one
+new line when the vec is non-empty. v1 emits no `Recommendation`,
+no `Notify`, no audit event — pure observation surface. v2 plans
+add `CostSlope`, `TokenSlope`, `MemoryGrowth`, `SubagentSideEffect`
+detectors plus Recommendation/Notify promotion gated on
+confidence + severity.
+
 v1.42.0 ships **Phase H opt-in auto-snapshot at reset boundary**.
 A new `app::auto_snapshot::maybe_auto_snapshot` hook in
 `src/app/auto_snapshot.rs` runs after `policy.evaluate(...)` in

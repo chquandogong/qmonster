@@ -676,6 +676,34 @@ Bounded pressure 데이터가 전혀 없으면 dim `Hottest: —`.
 
 누락된 값은 `─` 한 글자로 표시합니다 (S3-4 honesty 규칙).
 
+### Phase 7 v1: anomaly observation surface (v1.43.0)
+
+`[anomaly] enabled = true`로 설정하면 m (Metrics) overlay의 각 pane 카드
+하단에 새 행이 추가됩니다:
+
+```
+ANOMALIES <n> <kind>:<conf>[, ...]
+```
+
+이 행은 `pane.anomalies`가 비어 있지 않을 때만 렌더링됩니다 —
+레이어를 비활성화한 operator는 레이아웃 변화를 전혀 보지 않습니다.
+
+Detector 목록:
+
+- IdentityChurn — rolling window 내 provider/path 전환
+- ErrorBurst — rolling window 내 error_hint 비율
+- CacheDiscontinuity — cache_hit_ratio 하락, 또는 F-7b가 2회 이상 발화
+- CrossPaneEditCluster — 같은 경로의 ConcurrentFileEdit findings (1-tick 지연)
+
+v1 severity는 항상 `Concern`; v2에서 신뢰도 High + severity Warning 이상일
+때 Recommendation 승격 + Notify를 추가할 예정입니다. v1은 audit event와
+Notify를 일체 발화하지 않습니다 — 순수 관찰 표면.
+
+Operator는 `qmonster.toml`에 `[anomaly] enabled = true`를 추가하여 활성화합니다.
+기본값(window_polls=20, min_confidence=medium, 검출기별 임계값)은 노이즈를
+최소화하도록 설계되었습니다 — 전체 기본값 블록은 `config/qmonster.example.toml`을
+참조하세요.
+
 ### 8.6 Action Explainer
 
 `p` / `d` / `y` 누름 시 사전 모달이 뜹니다. 표시되는 항목:

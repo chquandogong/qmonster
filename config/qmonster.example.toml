@@ -255,3 +255,17 @@ snapshot_eta_secs = 300           # reset ETA ceiling (secs) for the same adviso
 # and records a SnapshotWritten audit event. Default false — existing
 # v1.41.0 operators see no behavior change.
 # auto_snapshot = false
+
+# Phase 7 v1 anomaly observation surface (v1.43.0).
+# Master switch + four conservative-default detectors. When enabled,
+# the m overlay grows an "ANOMALIES" row per pane card. v1 emits no
+# Recommendation, no Notify, no audit event — observation only.
+# Operators wanting Recommendation promotion / Notify wait for v2.
+# [anomaly]
+# enabled                          = false
+# window_polls                     = 20
+# min_confidence                   = "medium"
+# identity_churn_min_flips         = 3
+# error_burst_threshold            = 0.5
+# cache_discontinuity_drop         = 0.30
+# cross_pane_cluster_min_findings  = 3

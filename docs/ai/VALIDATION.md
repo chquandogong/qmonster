@@ -294,6 +294,11 @@ through_sqlite` test in `src/store/audit.rs`)
       `app::auto_snapshot::maybe_auto_snapshot`; `SnapshotWritten`
       audit summary carries `trigger=auto_reset_boundary` and
       `quota_kind`.
+- [x] Phase 7 v1 anomaly observation (v1.43.0): `[anomaly] enabled = false`
+      by default; `enabled = true` opens the m overlay ANOMALIES row
+      per pane via `policy::rules::anomaly::eval_anomalies` over a
+      per-pane rolling `AnomalyHistory`; edge-triggered dedup keeps
+      one emission per active window.
 
 ## Non-functional checks (all phases)
 
