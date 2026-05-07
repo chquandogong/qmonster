@@ -67,13 +67,29 @@ impl AnomalyHistorySnapshot {
 /// Push one snapshot's fields into the corresponding `AnomalyHistory` deques
 /// (newest-to-front, matching the existing per-tick push order in
 /// `event_loop`). Used by the lazy replay path.
+///
+/// # Push contract
+///
+/// `identity_snapshots` and `error_hints` are pushed **unconditionally** on
+/// every tick in `event_loop`: the event loop always has a resolved identity
+/// and a bool `signals.error_hint`, so these two deques always grow by one
+/// per tick.  To preserve that invariant during replay we push unconditionally
+/// here as well.  When the snapshot holds `None` (e.g. captured from an empty
+/// history before the first event-loop tick) we push the same sentinel values
+/// the live path would produce in that situation: `("", "")` for identity and
+/// `false` for error_hint.  This keeps all deque lengths equal across live and
+/// replayed paths.
 pub fn push_snapshot_into_history(history: &mut AnomalyHistory, snap: &AnomalyHistorySnapshot) {
-    if let Some(id) = &snap.identity {
-        history.identity_snapshots.push_front(id.clone());
-    }
-    if let Some(eh) = snap.error_hint {
-        history.error_hints.push_front(eh);
-    }
+    // Unconditional: mirrors event_loop which always pushes identity and
+    // error_hint regardless of signal presence.
+    let id = snap
+        .identity
+        .clone()
+        .unwrap_or_else(|| (String::new(), String::new()));
+    history.identity_snapshots.push_front(id);
+    history
+        .error_hints
+        .push_front(snap.error_hint.unwrap_or(false));
     history.cache_hit_ratios.push_front(snap.cache_hit_ratio);
     history.cache_drift_fires.push_front(snap.cache_drift_fire);
     history
@@ -178,7 +194,11 @@ mod tests {
     }
 
     #[test]
-    fn replay_skips_absent_optional_fields() {
+    fn replay_pushes_sentinel_for_absent_identity_and_error_hint() {
+        // identity and error_hint are unconditionally pushed by event_loop
+        // (resolved identity + bool are always present).  replay must mirror
+        // this so deque lengths stay in sync.  When the snapshot carries None
+        // (captured from an empty history) the sentinel ("","") / false is used.
         let snap = AnomalyHistorySnapshot {
             identity: None,
             error_hint: None,
@@ -194,15 +214,99 @@ mod tests {
         };
         let mut h = AnomalyHistory::default();
         push_snapshot_into_history(&mut h, &snap);
-        assert!(
-            h.identity_snapshots.is_empty(),
-            "no identity push when None"
+        // Unconditional push: sentinel values used when snapshot holds None.
+        assert_eq!(
+            h.identity_snapshots.front(),
+            Some(&("".to_string(), "".to_string())),
+            "sentinel pushed for absent identity"
         );
-        assert!(h.error_hints.is_empty(), "no error_hint push when None");
+        assert_eq!(
+            h.error_hints.front(),
+            Some(&false),
+            "sentinel pushed for absent error_hint"
+        );
         // Non-Option fields always push:
         assert_eq!(h.cache_hit_ratios.front(), Some(&None));
         assert_eq!(h.cache_drift_fires.front(), Some(&false));
         assert_eq!(h.cross_pane_edit_paths.front(), Some(&Vec::<String>::new()));
         assert_eq!(h.subagent_hint_samples.front(), Some(&false));
+    }
+
+    #[test]
+    fn replay_preserves_deque_length_across_present_and_absent_ticks() {
+        // Simulate N ticks: some with a real identity/error_hint, some where
+        // the snapshot was captured from an empty history (None).  After
+        // replaying all N snapshots, every deque must have length N — matching
+        // the unconditional-push contract in event_loop.
+        let ticks: Vec<AnomalyHistorySnapshot> = vec![
+            AnomalyHistorySnapshot {
+                identity: Some(("Codex".to_string(), "/a".to_string())),
+                error_hint: Some(true),
+                cache_hit_ratio: Some(0.8),
+                cache_drift_fire: false,
+                cross_pane_edit_paths: Vec::new(),
+                cost_usd: None,
+                input_tokens: None,
+                output_tokens: None,
+                process_memory_mb: None,
+                agent_memory_bytes: None,
+                subagent_hint: false,
+            },
+            AnomalyHistorySnapshot {
+                identity: None,
+                error_hint: None,
+                cache_hit_ratio: None,
+                cache_drift_fire: false,
+                cross_pane_edit_paths: Vec::new(),
+                cost_usd: None,
+                input_tokens: None,
+                output_tokens: None,
+                process_memory_mb: None,
+                agent_memory_bytes: None,
+                subagent_hint: false,
+            },
+            AnomalyHistorySnapshot {
+                identity: Some(("Claude".to_string(), "/b".to_string())),
+                error_hint: Some(false),
+                cache_hit_ratio: None,
+                cache_drift_fire: true,
+                cross_pane_edit_paths: vec!["src/c.rs".to_string()],
+                cost_usd: Some(0.5),
+                input_tokens: Some(200),
+                output_tokens: Some(100),
+                process_memory_mb: Some(64.0),
+                agent_memory_bytes: Some(1_000_000),
+                subagent_hint: true,
+            },
+        ];
+
+        let mut replayed = AnomalyHistory::default();
+        for snap in &ticks {
+            push_snapshot_into_history(&mut replayed, snap);
+        }
+
+        let n = ticks.len();
+        assert_eq!(
+            replayed.identity_snapshots.len(),
+            n,
+            "identity_snapshots deque length must equal tick count"
+        );
+        assert_eq!(
+            replayed.error_hints.len(),
+            n,
+            "error_hints deque length must equal tick count"
+        );
+        // Spot-check that real values were preserved (most-recent-first).
+        assert_eq!(
+            replayed.identity_snapshots.front(),
+            Some(&("Claude".to_string(), "/b".to_string()))
+        );
+        assert_eq!(replayed.error_hints.front(), Some(&false));
+        // Second entry (the None tick) should be the sentinel.
+        assert_eq!(
+            replayed.identity_snapshots.get(1),
+            Some(&("".to_string(), "".to_string()))
+        );
+        assert_eq!(replayed.error_hints.get(1), Some(&false));
     }
 }
