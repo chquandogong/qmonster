@@ -75,6 +75,7 @@ where
     let mut provider_setup_overlay =
         crate::ui::provider_setup::ProviderSetupOverlay::from_config(&ctx.config);
     let mut metrics_overlay = crate::ui::metrics::MetricsOverlay::new();
+    let mut anomaly_overlay = crate::ui::anomaly_overlay::AnomalyOverlay::new();
     let mut action_explainer = crate::app::action_explainer::ActionExplainModal::new();
     // v1.39 surface C / v1.40 redesign: Pending Actions overlay (a key).
     // Split list+live-explainer modal listing every pane with a pending
@@ -219,6 +220,8 @@ where
                             settings_overlay: &settings_overlay,
                             provider_setup_overlay: &provider_setup_overlay,
                             metrics_overlay: &metrics_overlay,
+                            anomaly_overlay: &anomaly_overlay,
+                            anomaly_events_ring: &ctx.anomaly_events_ring,
                             mem_observations: &mem_observations,
                             action_explainer: &action_explainer,
                             pending_actions: &pending_actions,
@@ -326,6 +329,16 @@ where
                                     dashboard.reports.len(),
                                     k.code,
                                 );
+                                continue;
+                            }
+
+                            if anomaly_overlay.is_open()
+                                && crate::app::anomaly_overlay::handle_anomaly_overlay_key(
+                                    &mut anomaly_overlay,
+                                    ctx.anomaly_events_ring.len(),
+                                    k.code,
+                                )
+                            {
                                 continue;
                             }
 
@@ -476,6 +489,13 @@ where
                                         metrics_overlay.close();
                                     } else {
                                         metrics_overlay.open();
+                                    }
+                                }
+                                KeyCode::Char('n') => {
+                                    if anomaly_overlay.is_open() {
+                                        anomaly_overlay.close();
+                                    } else {
+                                        anomaly_overlay.open();
                                     }
                                 }
                                 KeyCode::Char('a') => {
@@ -721,6 +741,17 @@ where
                                     &mut metrics_overlay,
                                     viewport,
                                     dashboard.reports.len(),
+                                    m,
+                                );
+                                continue;
+                            }
+
+                            if anomaly_overlay.is_open() {
+                                dashboard_split_dragging = false;
+                                crate::app::anomaly_overlay::handle_anomaly_overlay_mouse(
+                                    &mut anomaly_overlay,
+                                    viewport,
+                                    ctx.anomaly_events_ring.len(),
                                     m,
                                 );
                                 continue;

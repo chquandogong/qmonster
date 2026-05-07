@@ -48,6 +48,8 @@ pub struct DashboardFrameView<'a> {
     pub settings_overlay: &'a SettingsOverlay,
     pub provider_setup_overlay: &'a ProviderSetupOverlay,
     pub metrics_overlay: &'a crate::ui::metrics::MetricsOverlay,
+    pub anomaly_overlay: &'a crate::ui::anomaly_overlay::AnomalyOverlay,
+    pub anomaly_events_ring: &'a crate::app::anomaly_events_ring::AnomalyEventsRing,
     pub mem_observations: &'a HashMap<String, crate::ui::metrics::MemObservation>,
     pub action_explainer: &'a crate::app::action_explainer::ActionExplainModal,
     pub pending_actions: &'a PendingActionsOverlay,
@@ -134,6 +136,11 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
             view.reports,
             view.mem_observations,
         );
+    }
+
+    if view.anomaly_overlay.is_open() {
+        view.anomaly_overlay
+            .render(frame, frame.area(), view.anomaly_events_ring);
     }
 
     if let Some(view) = view.action_explainer.view() {
