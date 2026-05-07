@@ -353,10 +353,14 @@ side_effects (N):
 - `Mouse wheel`: 포인터 아래 리스트나 modal 스크롤
 - `Mouse left`: alert, pane, target 선택
 - `Mouse double`: alert hide 토글
-- `Mouse drag`: Alerts/Panes divider 드래그로 두 창 높이 조절
-- `[` / `]`: Alerts 창 높이 줄이기 / 키우기 (Panes는 남은 높이 사용)
+- `Mouse drag`: Alerts/Panes divider로 두 창 높이 조절, 큰 overlay(`m/a/i/n`)의
+  제목 줄 드래그로 modal 이동, `a` overlay separator 드래그로 list/explainer
+  비율 조절
+- `[` / `]`: Alerts 창 높이 줄이기 / 키우기 (Panes는 남은 높이 사용). `m/a/i/n`
+  overlay가 열려 있으면 해당 modal을 5% 단계로 resize
 - `/`: Alerts/Panes split 비율 한 단계씩 순환
-- `=`: Alerts/Panes split 기본값으로 reset
+- `=`: Alerts/Panes split 기본값으로 reset. `m/a/i/n` overlay가 열려 있으면
+  해당 modal geometry도 기본 size + position으로 reset
 - `Enter/Space`: 선택된 alert hide 토글
 - `Tab`: alerts / panes focus 전환
 - `↑/↓`, `j/k`: 현재 focus된 리스트 한 칸 이동
@@ -374,16 +378,15 @@ side_effects (N):
   pane 입력을 바꾸지 않기 위해 차단하고 `RuntimeRefreshBlocked`를 기록합니다.
   성공/실패는 `RuntimeRefreshRequested`, `RuntimeRefreshCompleted`,
   `RuntimeRefreshFailed`로 audit log에 남습니다.
-- `m`: Metrics overlay 토글. ↑/↓ 또는 j/k로 비교 테이블의 pane을 선택하면
-  아래 시계열 영역이 그 pane을 따라갑니다. m을 다시 누르거나 Esc / q /
-  [x] 클릭으로 닫습니다.
-- `n`: Anomaly Events overlay 토글. ↑/↓ 또는 j/k로 event row를 스크롤하고,
-  `h`로 Ring/History view를 전환합니다. n을 다시 누르거나 Esc / q /
-  [x] 클릭으로 닫습니다.
+- `m`: Metrics overlay 토글. `[` / `]` resize, `=` geometry reset, 제목 줄
+  drag move, wheel/↑/↓ scroll, `m`/`Esc`/`q`/`[x]`로 닫기
+- `n`: Anomaly Events overlay 토글. `[` / `]` resize, `=` geometry reset,
+  제목 줄 drag move, wheel/↑/↓ scroll, `h` Ring/History 전환,
+  `n`/`Esc`/`q`/`[x]`로 닫기
 - `i`: Token Insights overlay 토글. 현재 `[insights] default_window_secs`
   창의 recommendation lifecycle / cache / action ledger를 SQLite에서 읽어
-  보여줍니다. overlay 안에서 `r`은 즉시 refresh, ↑/↓ 또는 j/k와 mouse wheel은
-  스크롤입니다.
+  보여줍니다. `[` / `]` resize, `=` geometry reset, 제목 줄 drag move,
+  `r` refresh, wheel/↑/↓ scroll, `i`/`Esc`/`q`/`[x]`로 닫기
 - `y`: Alerts focus에서 선택된 alert의 `run` command를 system clipboard에
   복사합니다. 선택 항목에 `suggested_command`가 없거나 clipboard backend를
   열 수 없으면 `SystemNotice`로 이유를 표시합니다.
