@@ -379,19 +379,9 @@ through_sqlite` test in `src/store/audit.rs`)
 
 ## Release validation log
 
-- v1.50.0 (operator UX polish): `i` Token Insights overlay moved to
-  worker-thread fetch. Evidence: `loading_state_renders_centered_
-spinner_and_text` (renders `Aggregating insights ⠋` in the body
-  midpoint, suppresses panel labels);
-  `set_snapshot_for_drops_stale_request_id` (stale outcomes ignored);
-  `spawn_insights_load_emits_outcome_with_matching_request_id`
-  (worker delivers via channel). `cargo fmt --all --check`,
-  `cargo test --all-targets`, `cargo clippy --all-targets -- -D
-warnings -A clippy::uninlined_format_args`, `git diff --check` all
-  green at the release commit.
-
-| Version | Scope                                                 | Gates passed                                                                          |
-| ------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| v1.48.x | Token Insights Phase 8 + UI discoverability           | cargo fmt --check + clippy + test --all-targets (1211 lib tests + integration suites) |
-| v1.47.0 | Phase 7 v3 (c): SQLite persistence (closes Phase 7)   | cargo fmt + clippy + test --all-targets (lib ~1200, integration 60); SBOM diff guard  |
-| v1.46.0 | Phase 7 v3 (a+b): per-kind promotion gate + n overlay | cargo fmt + clippy + test --all-targets (lib ~1162, integration 58); SBOM diff guard  |
+| Version | Scope                                                 | Gates passed                                                                                                                                                                                                                                  |
+| ------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1.50.0 | Insights overlay async fetch + spinner placeholder    | cargo fmt --check + clippy + test --all-targets (lib ~1278, integration 63); evidence: loading_state_renders_centered_spinner_and_text + set_snapshot_for_drops_stale_request_id + spawn_insights_load_emits_outcome_with_matching_request_id |
+| v1.48.x | Token Insights Phase 8 + UI discoverability           | cargo fmt --check + clippy + test --all-targets (1211 lib tests + integration suites)                                                                                                                                                         |
+| v1.47.0 | Phase 7 v3 (c): SQLite persistence (closes Phase 7)   | cargo fmt + clippy + test --all-targets (lib ~1200, integration 60); SBOM diff guard                                                                                                                                                          |
+| v1.46.0 | Phase 7 v3 (a+b): per-kind promotion gate + n overlay | cargo fmt + clippy + test --all-targets (lib ~1162, integration 58); SBOM diff guard                                                                                                                                                          |
