@@ -150,7 +150,7 @@ fn action_from_known_family(summary: &str) -> Option<&str> {
 fn action_from_summary(summary: &str) -> &str {
     for prefix in KNOWN_ACTION_PREFIXES {
         if summary_has_action_prefix(summary, prefix) {
-            return *prefix;
+            return prefix;
         }
     }
     if let Some(action) = action_from_known_family(summary) {
@@ -346,16 +346,23 @@ impl SqliteInsightsStore {
         for row in rows {
             let (input_tokens, cached_input_tokens) =
                 row.map_err(|e| SqliteError::Query(e.to_string()))?;
-            if first_input.is_none() {
-                first_input = input_tokens;
+            if let Some(input_tokens) = input_tokens {
+                if first_input.is_none() {
+                    first_input = Some(input_tokens);
+                }
+                latest_input = Some(input_tokens);
             }
-            latest_input = input_tokens;
-            latest_ratio = cache_ratio(input_tokens, cached_input_tokens);
+            if let Some(ratio) = cache_ratio(input_tokens, cached_input_tokens) {
+                latest_ratio = Some(ratio);
+            }
         }
         cache.latest_cache_ratio = latest_ratio;
-        cache.token_growth = first_input
-            .zip(latest_input)
-            .map(|(first, latest)| latest - first);
+        cache.token_growth =
+            first_input.zip(latest_input).map(
+                |(first, latest)| {
+                    if latest >= first { latest - first } else { 0 }
+                },
+            );
 
         cache.cost_delta_usd = _conn
             .query_row(

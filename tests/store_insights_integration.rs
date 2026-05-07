@@ -344,3 +344,97 @@ fn cache_summary_reports_cache_states_latest_ratio_token_growth_and_cost_delta()
     assert_eq!(snapshot.cache.token_growth, Some(200));
     assert!((snapshot.cache.cost_delta_usd.unwrap() - 0.08).abs() < 0.000_001);
 }
+
+#[test]
+fn cache_summary_ignores_trailing_sparse_token_row_for_ratio_and_growth() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+
+    let tokens = SqliteTokenUsageSink::open(&db_path).unwrap();
+    tokens
+        .record_sample(&TokenSample {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(100),
+            output_tokens: Some(10),
+            cost_usd: None,
+            cached_input_tokens: Some(100),
+        })
+        .unwrap();
+    tokens
+        .record_sample(&TokenSample {
+            ts_unix_ms: 2_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(300),
+            output_tokens: Some(20),
+            cost_usd: None,
+            cached_input_tokens: Some(900),
+        })
+        .unwrap();
+    tokens
+        .record_sample(&TokenSample {
+            ts_unix_ms: 3_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: None,
+            output_tokens: Some(30),
+            cost_usd: Some(0.12),
+            cached_input_tokens: None,
+        })
+        .unwrap();
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: now_ms + 60_000,
+        })
+        .unwrap();
+
+    assert_eq!(snapshot.cache.latest_cache_ratio, Some(0.75));
+    assert_eq!(snapshot.cache.token_growth, Some(200));
+}
+
+#[test]
+fn cache_summary_saturates_token_growth_on_counter_reset() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+
+    let tokens = SqliteTokenUsageSink::open(&db_path).unwrap();
+    tokens
+        .record_sample(&TokenSample {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(1_000),
+            output_tokens: Some(10),
+            cost_usd: None,
+            cached_input_tokens: Some(500),
+        })
+        .unwrap();
+    tokens
+        .record_sample(&TokenSample {
+            ts_unix_ms: 2_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(100),
+            output_tokens: Some(20),
+            cost_usd: None,
+            cached_input_tokens: Some(50),
+        })
+        .unwrap();
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: now_ms + 60_000,
+        })
+        .unwrap();
+
+    assert_eq!(snapshot.cache.token_growth, Some(0));
+}
