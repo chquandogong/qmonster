@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.48.0 - Token Insights Phase 8 (v1 + v2 consolidated): qmonster insights --since CLI + recommendation lifecycle ledger + TTL ignored classifier + i overlay"
+  mission_title: "Qmonster v1.49.0 - Operator UX polish: pane CMD argv resolution + overlay chrome consistency + TokenUsageReadFailed audit + Settings tab body scroll"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 191
-  latest_version: "1.48.0"
+  total_revisions: 192
+  latest_version: "1.49.0"
 
 timeline:
   - change_id: "initial"
@@ -17774,8 +17774,159 @@ timeline:
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
+  - change_id: "v1.49.0-operator-ux-polish"
+    semantic_version: "1.49.0"
+    change_sequence: 192
+    date: "2026-05-07"
+    author: "CHENGHAO QUAN + Claude Code (parallel-track UX polish + main-pane long-tail closure; consolidated release ledger)"
+    summary: >
+      v1.49.0 is an operator UX polish bundle on top of v1.48.0. Four
+      themes ship together: (1) Pane CMD column wrapper-interpreter
+      resolution. read_descendant_cmdline (and the read_descendant_cmdline_
+      with_proc_root variant for tests) walk /proc/<pid>/cmdline and pick
+      the shallowest known CLI inside the descendant tree to render the
+      pane CMD column with full argv. KNOWN_CLI_COMMS extended with
+      `qmonster` so the qmonster pane resolves correctly. The within-class
+      BFS rule changed from "deepest CLI wins" to "shallowest CLI wins"
+      so when a CLI spawns a CLI tool subprocess (e.g. claude → node MCP
+      server), the parent CLI's argv is preserved instead of being
+      overwritten. CMD column display goal (shallowest CLI) is kept
+      separate from RSS attribution goal (highest-RSS within class).
+      enhance_command_with_descendant_cmdline is wired at the PaneReport
+      push site in src/app/event_loop.rs. The pane card's CMD column
+      switches from aligned_field (single-line ellipsized) to
+      wrap_aligned_field so the full argv stays visible at narrow widths.
+      (2) Long-tail TODO closure: F-3 TokenUsageReadFailed audit event.
+      AuditEventKind enum gains a TokenUsageReadFailed variant; as_str()
+      and parse_kind() updated; both contract tests
+      (audit_event_kind_as_str_contract_locks_every_variant_string and
+      parse_kind_inverts_as_str_for_every_variant) lock the new variant
+      string. Context.token_usage_read_failed_logged: HashSet<String>
+      provides per-pane dedup so a chronic read failure emits once per
+      pane per session. event_loop emits the audit event when token_usage
+      provider read fails. Stale "Gemini UX TODO" attribution removed
+      from src/ui/alerts.rs format_prompt_send_proposal_hides_accept_key_
+      when_gate_denies test comment (feature already shipped). (3) Overlay
+      chrome consistency slice (parallel-track work). Shared modal-
+      geometry helpers (close styling, clamp sizing, title-row drag) so
+      i Token Insights and n Anomaly Events match m Metrics and a
+      Pending Actions overlays. Both new overlays adopt the
+      BORDER_ACTIVE line color and become resizable via the same
+      [/]/=//,/. + title-drag controls. Drag anchors clear on all non-
+      drag mouse events. Anomaly history scroll bounded by the active
+      view. (4) Settings tab body scroll. SettingsOverlay gains
+      scroll_offset + scroll_up/scroll_down/page_up/page_down/scroll_top/
+      scroll_bottom helpers; settings_max_scroll/settings_visible_body_
+      rows compute geometry; settings_field_at_with_scroll/settings_
+      integration_field_at_with_scroll handle mouse hit-testing with
+      scroll offset; new handle_settings_overlay_key_with_viewport in
+      src/app/settings_overlay.rs intercepts ↑/↓/j/k/wheel/PgUp/PgDn/
+      Home/End for read-only Parameters/Rules/Badges tabs only.
+      Thresholds/Integrations preserve arrow/wheel field-selection
+      semantics. No provider adapter, audit chain core, or SignalSet
+      schema changes beyond the new audit-event variant.
+    intent_ko: >
+      v1.49.0 은 v1.48.0 위에 얹히는 운영자 UX 마감 묶음. 네 가지 테마:
+      (1) panes CMD 컬럼이 wrapper interpreter 를 해석하도록 개선.
+      read_descendant_cmdline 가 /proc/<pid>/cmdline 을 BFS 로 걷고
+      descendant tree 안의 shallowest known CLI 를 골라 full argv 를 표시.
+      KNOWN_CLI_COMMS 에 `qmonster` 추가; class 동등시 deepest 가 아니라
+      shallowest CLI 가 이긴다 (claude 가 node MCP server 도구를 spawn 해도
+      부모 CLI argv 를 덮지 않음). CMD 표시 목적 (shallowest CLI) 은 RSS
+      attribution 목적 (class 내 최대 RSS) 과 분리. event_loop 에서 PaneReport
+      push 시점에 enhance_command_with_descendant_cmdline 호출. CMD 컬럼은
+      aligned_field 대신 wrap_aligned_field 로 줄바꿈 처리하여 좁은 폭에서도
+      argv 가 잘리지 않음. (2) Long-tail TODO 청산: F-3 TokenUsageReadFailed
+      audit event 추가. AuditEventKind enum + as_str + parse_kind round-trip
+      + 두 contract test 모두 새 variant 문자열 잠금. per-pane dedup HashSet
+      으로 만성 실패가 세션당 1번 emit. format_prompt_send_proposal_hides_
+      accept_key_when_gate_denies 테스트의 stale Gemini UX TODO 마커 제거.
+      (3) Overlay chrome consistency: i Token Insights + n Anomaly Events
+      가 m / a 와 동일한 BORDER_ACTIVE 컬러와 resize 컨트롤 ([/]/=//,/.
+      title-drag) 채택. drag anchor 가 비드래그 mouse event 에서 clear.
+      anomaly history scroll 이 active view 에 의해 bound. (4) Settings tab
+      body scroll: SettingsOverlay 에 scroll_offset + scroll/page/top/bottom
+      helper, settings_max_scroll, settings_field_at_with_scroll 등 추가.
+      handle_settings_overlay_key_with_viewport 가 read-only Parameters/
+      Rules/Badges 에서만 ↑/↓/j/k/wheel/PgUp/PgDn/Home/End 를 body scroll 로
+      처리; Thresholds/Integrations 는 기존 field-selection 유지. 프로바이더
+      adapter, audit chain core, SignalSet schema 는 새 audit-event variant
+      외에 변경 없음.
+    triggered_by: "Operator-reported pane CMD swap bug (claude/codex/qmonster argv mixed up at narrow widths) + long-tail TODO closure + parallel-track overlay chrome consistency slice landed across many small commits between v1.48.0 publication and the v1.49.0 ledger sync. Overlay chrome spec: docs/superpowers/specs/2026-05-07-overlay-chrome-consistency-design.md. Plan: docs/superpowers/plans/2026-05-07-overlay-chrome-consistency.md."
+    changes:
+      added:
+        - "src/adapters/process_memory.rs: read_descendant_cmdline + read_descendant_cmdline_with_proc_root helpers; KNOWN_CLI_COMMS extended with `qmonster`; within-class BFS rule changed to shallowest-CLI-wins; 6 new tests including cmdline_keeps_shallowest_cli_when_cli_spawns_cli_tool, cmdline_resolves_qmonster_pane, cmdline_upgrades_non_cli_wrapper_to_deeper_cli."
+        - "src/app/event_loop.rs: enhance_command_with_descendant_cmdline helper wired at PaneReport push site; F-3 TokenUsageReadFailed audit event emitted on token_usage read failure with per-pane dedup."
+        - "src/app/bootstrap.rs: Context.token_usage_read_failed_logged: HashSet<String> dedup field initialized in Context::new."
+        - "src/domain/audit.rs + src/store/audit.rs: AuditEventKind::TokenUsageReadFailed variant added; as_str() + parse_kind() mappings updated; both contract tests (audit_event_kind_as_str_contract_locks_every_variant_string + parse_kind_inverts_as_str_for_every_variant) extended."
+        - "src/ui/settings.rs: SettingsOverlay.scroll_offset + scroll_up/scroll_down/page_up/page_down/scroll_top/scroll_bottom helpers; settings_max_scroll/settings_visible_body_rows; settings_field_at_with_scroll/settings_integration_field_at_with_scroll. Body Paragraph scrolls via .scroll((scroll_offset, 0)). Hint line documents the new keys."
+        - "src/app/settings_overlay.rs: handle_settings_overlay_key_with_viewport intercepts ↑/↓/j/k/wheel/PgUp/PgDn/Home/End for read-only Parameters/Rules/Badges only. Mouse hit-testing routed through *_with_scroll variants. tab_uses_body_scroll() helper. 3 new tests: read_only_tabs_scroll_body_with_keyboard, mouse_wheel_scrolls_read_only_body, editable_tabs_keep_arrow_and_wheel_selection_without_body_scroll."
+        - "src/ui/insights.rs: render_insights_modal adopts BORDER_ACTIVE line color; render_uses_active_border_style test."
+        - "src/ui/anomaly_overlay.rs: render adopts BORDER_ACTIVE; render_uses_active_border_style test; resizable geometry."
+        - "src/ui/panels.rs: CMD column rendered via wrap_aligned_field (multi-line ListItems) instead of aligned_field so argv with options does not get right-edge cut off; display_command no longer ellipsizes."
+      modified:
+        - "src/adapters/process_memory.rs: existing tests updated to reflect shallowest-wins rule; module doc clarifies cmdline display goal vs RSS attribution goal."
+        - "src/app/tui_loop.rs: handle_settings_overlay_key replaced with handle_settings_overlay_key_with_viewport at the dispatch site (passes terminal.size() viewport)."
+        - "src/ui/dashboard.rs: help overlay text documents the Settings read-only body scroll keys."
+        - "src/ui/alerts.rs: format_prompt_send_proposal_hides_accept_key_when_gate_denies test comment cleaned (stale Gemini UX TODO marker removed; describes shipped behavior directly)."
+        - "src/ui/settings.rs (other): tab switch / next_tab / previous_tab / open / reset zero scroll_offset so opening a tab always starts at row 0."
+        - "src/app/insights_overlay.rs + src/ui/insights.rs: drag anchor clearing on all non-drag mouse events; resizable geometry shared with anomaly_overlay."
+        - "src/ui/anomaly_overlay.rs (other): history scroll bounded by active view; size persistence test."
+        - "docs/ai/UI_MANUAL.md: §S settings overlay subsection + §8 overlay chrome subsection document body-scroll keys for read-only Parameters/Rules/Badges."
+        - "docs/ai/ARCHITECTURE.md: v1.48.0 paragraph extended with the polish slice (active-border parity for i and n; Settings body scroll for read-only tabs)."
+        - "docs/ai/VALIDATION.md: row notes the body-local wheel/arrow/page keys for Settings read-only tabs."
+        - "docs/ai/PROJECT_BRIEF.md: Date line gains v1.49.0 segment."
+        - "README.md: release table bumped to v1.49.0 / qmonster@1.49.0."
+        - "VERSION.md: bumped to v1.49.0."
+        - "package.json: version 1.49.0."
+        - "mission.yaml: title, topology, suggested_approach, budget_hint updated for v1.49.0; total_revisions 191 → 192."
+        - "mission-history.yaml: v1.49.0 entry appended (this entry); meta updated."
+        - ".mission/CURRENT_STATE.md: full refresh for v1.49.0."
+      removed: []
+    observable_effects:
+      - "panes CMD column shows the actual CLI command line for wrapper-interpreter CLIs (claude / codex / gemini) instead of `node` or `python`. The qmonster pane resolves correctly. CLI options stay visible because the pane card wraps instead of ellipsizing."
+      - "Token usage read failures emit a TokenUsageReadFailed audit event once per pane per session; chronic failures no longer spam the audit log."
+      - "Token Insights (i) and Anomaly Events (n) overlays use the same active-border line color as Metrics (m) and Pending Actions (a); both gain the same resize controls."
+      - "Settings overlay's read-only Parameters / Rules / Badges tabs scroll the body with ↑/↓/j/k/wheel/PgUp/PgDn/Home/End so the full TOML reference fits on smaller terminals. Thresholds / Integrations field selection unchanged."
+    impact_scope:
+      runtime: "Pane CMD column resolution does additional /proc/<pid>/cmdline reads at PaneReport push time (cached per-poll). New audit-event emission has per-pane dedup via Context HashSet. New SettingsOverlay scroll state is in-memory only and resets on tab change."
+      tests: "1265 lib tests + 61 integration tests passing at the v1.49.0 release commit."
+      ledger: "1 new timeline entry (sequence 192); meta total_revisions 191 → 192, latest_version 1.48.0 → 1.49.0."
+      npm: "package.json version 1.49.0; CI publication of v1.49.0 follows the same workflow as prior releases."
+    breaking: false
+    risk: "low — additive: new audit-event variant via existing as_str/parse_kind contract; pane CMD resolution preserves the fallback to tmux pane_current_command when /proc walk fails; Settings body scroll defaults to 0 so existing read-only tabs render identically when scroll_offset is 0; overlay chrome polish is presentation-only."
+    related_commits:
+      - "097e7c2 v1.48.0 publication verified (run 25491535211, 7m10s, success)"
+      - "08a28a4 ui: surface snapshot and anomaly controls"
+      - "3dbc6ea docs: design overlay chrome consistency"
+      - "8f525ed docs: plan overlay chrome consistency slice"
+      - "2131c59 ui: centralize modal close styling"
+      - "a419a5e ui: add shared modal geometry helpers"
+      - "598bdc4 fix: preserve modal clamp sizing parity"
+      - "7cc399a long-tail TODO cleanup: F-3 audit event + stale Gemini UX marker"
+      - "c18c384 chore(ai): apply Claude edit"
+      - "6a433fa fix: harden shared modal geometry"
+      - "c7e7a77 ui: make token insights overlay resizable"
+      - "f40734a feat(panes): show full cmdline for node/python wrapper CLIs"
+      - "eb2847c fix: clear insights overlay drag anchors"
+      - "12fe16f fix: clear insights drag on all non-drag mouse events"
+      - "839e6bc ui: make anomaly events overlay resizable"
+      - "85ee4ab test: cover anomaly overlay size persistence"
+      - "ec9dbd1 feat(panes): show full cmdline for all CLIs + wrap to avoid right-edge cut-off"
+      - "30f1d67 fix: bound anomaly history scroll by active view"
+      - "52b84b7 fix(panes): cmdline picks shallowest CLI, not deepest tool subprocess"
+      - "bbf87d8 docs: document overlay chrome contract"
+      - "c19da6d docs: align UI manual overlay controls"
+      - "3c34273 docs: tighten overlay chrome help scope"
+      - "a288244 fix: align overlay mouse and footer focus contracts"
+      - "2179ac2 feat(settings): add body scroll for read-only Parameters/Rules/Badges tabs"
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters (only outstanding Phase 7 follow-up)."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
 evolution_summary:
-  current_phase: "v1.48.0 — Token Insights Phase 8 (v1 + v2 consolidated): qmonster insights --since CLI + recommendation lifecycle ledger + TTL ignored classifier + i overlay. SqliteInsightsStore (read-only) aggregates existing audit/token/cost tables; recommendation_events + recommendation_outcomes ledgered from live runtime path; insert_correlated_recommendation_outcome correlates outcomes to prior events; [insights] ignored_ttl_secs (default 1800) suppresses ignored classification when unlinked outcomes appear. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
+  current_phase: "v1.49.0 — operator UX polish bundle on top of v1.48.0. Pane CMD column wrapper-interpreter resolution (read_descendant_cmdline walks /proc/<pid>/cmdline; KNOWN_CLI_COMMS extended with qmonster; shallowest-CLI-wins within class), F-3 TokenUsageReadFailed audit event with per-pane dedup, overlay chrome consistency for i and n (active border + resize), Settings tab body scroll for read-only Parameters/Rules/Badges. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
   next_phase: "Phase 7 D3 per-subagent token attribution remains provider-blocked. Pick from upstream backlog. Tag protection / ruleset activation is a GitHub Settings task."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
