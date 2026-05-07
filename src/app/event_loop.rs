@@ -596,11 +596,7 @@ where
         let mut events_pushed_this_tick: Vec<crate::domain::anomaly::AnomalyEvent> = Vec::new();
         for sig in &anomalies {
             let promoted_bool = sig.confidence >= gates.promote_min_confidence(sig.kind);
-            let reason = sig
-                .evidence
-                .first()
-                .map(|e| format!("{}: {} → {}", e.metric_name, e.before, e.after))
-                .unwrap_or_default();
+            let reason = anomaly_event_reason(sig);
             let event = crate::domain::anomaly::AnomalyEvent {
                 timestamp: now_secs,
                 pane_id: pane.pane_id.clone(),
@@ -762,6 +758,20 @@ where
     }
 
     Ok((reports, all_auto_notices))
+}
+
+/// Build the `reason` string the `n` overlay and the `anomaly_events`
+/// SQLite table store for a visible `AnomalySignal`. Joins every
+/// `AnomalyEvidence` row with ` | ` so multi-row detectors (today only
+/// `ErrorBurst`, which adds a `dominant_kind` row alongside its rate
+/// delta) keep both pieces of evidence visible end-to-end. Single-row
+/// detectors keep their pre-v1.50.0 reason unchanged.
+pub(crate) fn anomaly_event_reason(sig: &crate::domain::anomaly::AnomalySignal) -> String {
+    sig.evidence
+        .iter()
+        .map(|e| format!("{}: {} → {}", e.metric_name, e.before, e.after))
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
 /// Close the Phase 7 v2 `CrossPaneEditCluster` detector loop: the
@@ -1338,5 +1348,96 @@ mod tests {
             sig.is_some(),
             "detector must fire when fold-back has populated the deque across the threshold window",
         );
+    }
+
+    #[test]
+    fn anomaly_event_reason_joins_every_evidence_row() {
+        // ErrorBurst (the only multi-row detector today) must surface BOTH
+        // the rate row AND the dominant_kind row so the n overlay tells
+        // the operator what kind of error spiked, not just a rate change.
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyKind};
+        use crate::domain::anomaly::{AnomalyEvidence, AnomalySignal};
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::Severity;
+
+        let sig = AnomalySignal {
+            kind: AnomalyKind::ErrorBurst,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            evidence: vec![
+                AnomalyEvidence {
+                    metric_name: "error_rate",
+                    before: "0.30".into(),
+                    after: "0.65".into(),
+                    sample_count: 20,
+                    source_kind: SourceKind::Estimated,
+                },
+                AnomalyEvidence {
+                    metric_name: "dominant_kind",
+                    before: "rust_panic".into(),
+                    after: "8/13".into(),
+                    sample_count: 13,
+                    source_kind: SourceKind::Estimated,
+                },
+            ],
+            window_polls: 20,
+            detected_at: 1_700_000_000,
+        };
+        assert_eq!(
+            anomaly_event_reason(&sig),
+            "error_rate: 0.30 → 0.65 | dominant_kind: rust_panic → 8/13",
+        );
+    }
+
+    #[test]
+    fn anomaly_event_reason_single_row_detector_unchanged_pre_v1_50() {
+        // Most detectors (IdentityChurn, CacheDiscontinuity, CrossPaneEditCluster,
+        // CostSlope, TokenSlope, MemoryGrowth, SubagentSideEffect) emit
+        // exactly one evidence row. Their pre-v1.50.0 reason format must
+        // stay byte-identical so SQLite anomaly_events.reason readers don't
+        // observe a change.
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyKind};
+        use crate::domain::anomaly::{AnomalyEvidence, AnomalySignal};
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::Severity;
+
+        let sig = AnomalySignal {
+            kind: AnomalyKind::IdentityChurn,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            evidence: vec![AnomalyEvidence {
+                metric_name: "provider:path",
+                before: "Codex:/b".into(),
+                after: "Claude:/a".into(),
+                sample_count: 3,
+                source_kind: SourceKind::ProviderOfficial,
+            }],
+            window_polls: 20,
+            detected_at: 1_700_000_000,
+        };
+        assert_eq!(
+            anomaly_event_reason(&sig),
+            "provider:path: Codex:/b → Claude:/a",
+        );
+    }
+
+    #[test]
+    fn anomaly_event_reason_empty_evidence_returns_empty_string() {
+        // Defensive: evidence is non-empty in all current detectors, but
+        // the function used to fall back to String::new() via unwrap_or_default.
+        // Preserve that contract.
+        use crate::domain::anomaly::AnomalySignal;
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+
+        let sig = AnomalySignal {
+            kind: AnomalyKind::SubagentSideEffect,
+            confidence: AnomalyConfidence::Medium,
+            severity: Severity::Concern,
+            evidence: vec![],
+            window_polls: 20,
+            detected_at: 1_700_000_000,
+        };
+        assert_eq!(anomaly_event_reason(&sig), "");
     }
 }
