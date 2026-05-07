@@ -61,10 +61,12 @@ pub fn handle_insights_overlay_mouse(
     let close = close_button_rect(area);
     match event.kind {
         MouseEventKind::ScrollDown => {
+            overlay.end_drag();
             overlay.scroll_down(overlay.line_count().saturating_sub(1) as u16);
             InsightsOverlayAction::None
         }
         MouseEventKind::ScrollUp => {
+            overlay.end_drag();
             overlay.scroll_up();
             InsightsOverlayAction::None
         }
@@ -80,6 +82,8 @@ pub fn handle_insights_overlay_mouse(
                     start_offset_x: overlay.offset_x(),
                     start_offset_y: overlay.offset_y(),
                 });
+            } else {
+                overlay.end_drag();
             }
             InsightsOverlayAction::None
         }
@@ -115,6 +119,30 @@ mod tests {
             row,
             modifiers: KeyModifiers::empty(),
         }
+    }
+
+    fn drag_overlay_by(
+        overlay: &mut InsightsOverlay,
+        viewport: Rect,
+        delta_x: u16,
+        delta_y: u16,
+    ) -> Rect {
+        let area = crate::ui::insights::insights_modal_area_for(viewport, overlay);
+        handle_insights_overlay_mouse(
+            overlay,
+            viewport,
+            mouse(MouseEventKind::Down(MouseButton::Left), area.x + 2, area.y),
+        );
+        handle_insights_overlay_mouse(
+            overlay,
+            viewport,
+            mouse(
+                MouseEventKind::Drag(MouseButton::Left),
+                area.x + 2 + delta_x,
+                area.y + delta_y,
+            ),
+        );
+        crate::ui::insights::insights_modal_area_for(viewport, overlay)
     }
 
     #[test]
@@ -195,10 +223,10 @@ mod tests {
     #[test]
     fn mouse_left_on_close_button_closes_overlay() {
         let viewport = Rect::new(0, 0, 100, 40);
-        let area = crate::ui::insights::insights_modal_area(viewport);
-        let close = crate::ui::dashboard::close_button_rect(area);
         let mut overlay = InsightsOverlay::new();
         overlay.open();
+        let area = crate::ui::insights::insights_modal_area_for(viewport, &overlay);
+        let close = crate::ui::dashboard::close_button_rect(area);
 
         handle_insights_overlay_mouse(
             &mut overlay,
@@ -212,9 +240,9 @@ mod tests {
     #[test]
     fn mouse_left_inside_body_keeps_overlay_open() {
         let viewport = Rect::new(0, 0, 100, 40);
-        let area = crate::ui::insights::insights_modal_area(viewport);
         let mut overlay = InsightsOverlay::new();
         overlay.open();
+        let area = crate::ui::insights::insights_modal_area_for(viewport, &overlay);
 
         handle_insights_overlay_mouse(
             &mut overlay,
@@ -227,5 +255,98 @@ mod tests {
         );
 
         assert!(overlay.is_open());
+    }
+
+    #[test]
+    fn mouse_scroll_clears_drag_anchor_before_scrolling() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        let area = crate::ui::insights::insights_modal_area_for(viewport, &overlay);
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(MouseEventKind::Down(MouseButton::Left), area.x + 2, area.y),
+        );
+        assert!(overlay.drag_anchor().is_some());
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(MouseEventKind::ScrollDown, 0, 0),
+        );
+        assert!(overlay.drag_anchor().is_none());
+        assert_eq!(overlay.scroll(), 1);
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(
+                MouseEventKind::Drag(MouseButton::Left),
+                area.x + 10,
+                area.y + 4,
+            ),
+        );
+        assert_eq!(overlay.offset_x(), 0);
+        assert_eq!(overlay.offset_y(), 0);
+    }
+
+    #[test]
+    fn mouse_left_on_close_button_closes_overlay_after_move() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        let area = drag_overlay_by(&mut overlay, viewport, 5, 3);
+        let close = crate::ui::dashboard::close_button_rect(area);
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(MouseEventKind::Down(MouseButton::Left), close.x, close.y),
+        );
+
+        assert!(!overlay.is_open());
+    }
+
+    #[test]
+    fn mouse_left_inside_moved_body_keeps_overlay_open() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        let area = drag_overlay_by(&mut overlay, viewport, 5, 3);
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(
+                MouseEventKind::Down(MouseButton::Left),
+                area.x.saturating_add(2),
+                area.y.saturating_add(2),
+            ),
+        );
+
+        assert!(overlay.is_open());
+        assert!(overlay.drag_anchor().is_none());
+    }
+
+    #[test]
+    fn close_reopen_preserves_geometry_but_clears_drag() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        drag_overlay_by(&mut overlay, viewport, 5, 3);
+        assert_eq!(overlay.offset_x(), 5);
+        assert_eq!(overlay.offset_y(), 3);
+        assert!(overlay.drag_anchor().is_some());
+
+        overlay.scroll_down(10);
+        overlay.close();
+        overlay.open();
+
+        assert_eq!(overlay.offset_x(), 5);
+        assert_eq!(overlay.offset_y(), 3);
+        assert!(overlay.drag_anchor().is_none());
+        assert_eq!(overlay.scroll(), 0);
     }
 }
