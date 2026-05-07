@@ -54,7 +54,7 @@ fn main() -> anyhow::Result<()> {
     let env_root = std::env::var("QMONSTER_ROOT").ok();
     if let Some(CliCommand::Insights { since }) = cli.command.as_ref() {
         let since_secs = parse_since_arg(since)?;
-        let (paths, root_source, _config) = resolve_insights_paths(
+        let (paths, root_source, config) = resolve_insights_paths(
             cli.config.as_deref(),
             cli.root.as_deref(),
             &cli.set,
@@ -74,7 +74,7 @@ fn main() -> anyhow::Result<()> {
         let snapshot = if sqlite_path.exists() {
             let store = SqliteInsightsStore::open_read_only(&sqlite_path)
                 .with_context(|| format!("open insights store at {}", sqlite_path.display()))?;
-            store.snapshot(window)?
+            store.snapshot_with_ignored_ttl(window, config.insights.ignored_ttl_secs)?
         } else {
             empty_insights_snapshot(window)
         };

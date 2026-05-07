@@ -3,8 +3,9 @@ use qmonster::domain::audit::{AuditEvent, AuditEventKind};
 use qmonster::domain::identity::{Provider, Role};
 use qmonster::domain::recommendation::Severity;
 use qmonster::store::{
-    CostObservation, EventSink, InsightsWindow, SqliteAuditSink, SqliteCostUsageSink,
-    SqliteInsightsStore, SqliteTokenUsageSink, TokenSample,
+    CostObservation, EventSink, InsightsWindow, RecommendationEventRecord, RecommendationOutcome,
+    RecommendationOutcomeRecord, SqliteAuditSink, SqliteCostUsageSink, SqliteInsightsStore,
+    SqliteRecommendationLifecycleSink, SqliteTokenUsageSink, TokenSample,
 };
 use rusqlite::Connection;
 use tempfile::tempdir;
@@ -594,5 +595,119 @@ fn action_ledger_counts_prompt_send_terminal_outcomes() {
             .timeline
             .iter()
             .any(|item| item.outcome == "completed" && item.action == "/compact")
+    );
+}
+
+#[test]
+fn insights_lifecycle_counts_outcomes_and_ttl_ignored() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+
+    let compact_id = lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 2_000,
+            pane_id: "%1".into(),
+            provider: Some("Codex".into()),
+            role: Some("Review".into()),
+            situation: "Context pressure".into(),
+            action: "/compact".into(),
+            severity: "warning".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "context near critical".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%1:/compact".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: 3_000,
+            recommendation_event_id: Some(compact_id),
+            pane_id: "%1".into(),
+            action: "/compact".into(),
+            outcome: RecommendationOutcome::Completed,
+            audit_event_id: Some(42),
+            summary: "prompt sent".into(),
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 1_000,
+            pane_id: "%2".into(),
+            provider: Some("Codex".into()),
+            role: Some("Main".into()),
+            situation: "Context pressure".into(),
+            action: "cache: avoid /compact while cache is hot".into(),
+            severity: "concern".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "cache is hot".into(),
+            suggested_command: None,
+            is_strong: false,
+            dedup_key: "%2:cache-hot".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 9_000,
+            pane_id: "%3".into(),
+            provider: Some("Codex".into()),
+            role: Some("Main".into()),
+            situation: "Quota-tight / cost".into(),
+            action: "quota-pressure: pace requests".into(),
+            severity: "concern".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "quota pressure is high".into(),
+            suggested_command: None,
+            is_strong: false,
+            dedup_key: "%3:quota-pressure".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot_with_ignored_ttl(
+            InsightsWindow {
+                since_ms: 0,
+                until_ms: 10_000,
+            },
+            5,
+        )
+        .unwrap();
+
+    assert!(snapshot.ignored_available);
+    let compact = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "/compact")
+        .unwrap();
+    assert_eq!(compact.emitted, 1);
+    assert_eq!(compact.completed, 1);
+    assert_eq!(compact.ignored, 0);
+
+    let cache = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "cache: avoid /compact while cache is hot")
+        .unwrap();
+    assert_eq!(cache.emitted, 1);
+    assert_eq!(cache.ignored, 1);
+
+    let quota = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "quota-pressure: pace requests")
+        .unwrap();
+    assert_eq!(quota.emitted, 1);
+    assert_eq!(quota.ignored, 0);
+
+    assert!(
+        snapshot
+            .timeline
+            .iter()
+            .any(|item| item.outcome == "ignored" && item.action.contains("cache"))
     );
 }

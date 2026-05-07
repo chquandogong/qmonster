@@ -223,6 +223,20 @@ fn outcome_for_kind(kind: &str) -> &'static str {
     }
 }
 
+fn apply_lifecycle_outcome(row: &mut ActionLedgerRow, outcome: &str) {
+    match outcome {
+        "accepted" => row.accepted += 1,
+        "rejected" => row.rejected += 1,
+        "completed" => row.completed += 1,
+        "failed" => row.failed += 1,
+        "blocked" => row.blocked += 1,
+        "archived" => row.archived += 1,
+        "snapshot_written" | "auto_snapshot_written" => row.snapshot_written += 1,
+        "ignored" => row.ignored += 1,
+        _ => {}
+    }
+}
+
 fn rfc3339_from_ms(ms: i64) -> String {
     chrono::Utc
         .timestamp_millis_opt(ms)
@@ -353,6 +367,37 @@ fn situation_for_action(action: &str) -> &'static str {
     }
 }
 
+fn static_situation_label(situation: &str, action: &str) -> &'static str {
+    match situation {
+        "Log storm / repeated output" => "Log storm / repeated output",
+        "Code exploration" => "Code exploration",
+        "Context pressure" => "Context pressure",
+        "Verbose review" => "Verbose review",
+        "Input / permission wait" => "Input / permission wait",
+        "Quota-tight / cost" => "Quota-tight / cost",
+        "Other" => "Other",
+        _ => situation_for_action(action),
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LifecycleEventRow {
+    id: i64,
+    ts_unix_ms: i64,
+    pane_id: String,
+    situation: &'static str,
+    action: String,
+}
+
+#[derive(Debug, Clone)]
+struct LifecycleOutcomeRow {
+    ts_unix_ms: i64,
+    recommendation_event_id: Option<i64>,
+    pane_id: String,
+    action: String,
+    outcome: String,
+}
+
 impl SqliteInsightsStore {
     pub fn open(path: &Path) -> Result<Self, SqliteError> {
         Ok(Self {
@@ -367,6 +412,37 @@ impl SqliteInsightsStore {
     }
 
     pub fn snapshot(&self, window: InsightsWindow) -> Result<InsightsSnapshot, SqliteError> {
+        self.snapshot_with_ignored_ttl(window, 30 * 60)
+    }
+
+    pub fn snapshot_with_ignored_ttl(
+        &self,
+        window: InsightsWindow,
+        ignored_ttl_secs: u64,
+    ) -> Result<InsightsSnapshot, SqliteError> {
+        let mut snapshot = self.snapshot_audit_only(window)?;
+        let _conn = self
+            .db
+            .connection()
+            .lock()
+            .expect("insights db lock poisoned");
+        if !table_exists(&_conn, "recommendation_events")?
+            || !table_exists(&_conn, "recommendation_outcomes")?
+        {
+            return Ok(snapshot);
+        }
+
+        let lifecycle = lifecycle_snapshot(&_conn, window, ignored_ttl_secs)?;
+        if lifecycle.events_seen {
+            snapshot.situations = lifecycle.situations;
+            snapshot.actions = lifecycle.actions;
+            snapshot.timeline = lifecycle.timeline;
+            snapshot.ignored_available = true;
+        }
+        Ok(snapshot)
+    }
+
+    fn snapshot_audit_only(&self, window: InsightsWindow) -> Result<InsightsSnapshot, SqliteError> {
         let _conn = self
             .db
             .connection()
@@ -554,4 +630,166 @@ impl SqliteInsightsStore {
             ignored_available: false,
         })
     }
+}
+
+struct LifecycleSnapshotParts {
+    events_seen: bool,
+    situations: Vec<SituationSummary>,
+    timeline: Vec<RecommendationTimelineItem>,
+    actions: Vec<ActionLedgerRow>,
+}
+
+fn lifecycle_snapshot(
+    conn: &Connection,
+    window: InsightsWindow,
+    ignored_ttl_secs: u64,
+) -> Result<LifecycleSnapshotParts, SqliteError> {
+    let mut event_stmt = conn
+        .prepare_cached(
+            "SELECT id, ts_unix_ms, pane_id, situation, action
+             FROM recommendation_events
+             WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2
+             ORDER BY id ASC",
+        )
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    let event_rows = event_stmt
+        .query_map(params![window.since_ms, window.until_ms], |row| {
+            let action: String = row.get(4)?;
+            let situation: String = row.get(3)?;
+            Ok(LifecycleEventRow {
+                id: row.get(0)?,
+                ts_unix_ms: row.get(1)?,
+                pane_id: row.get(2)?,
+                situation: static_situation_label(&situation, &action),
+                action,
+            })
+        })
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+
+    let mut events = Vec::new();
+    for row in event_rows {
+        events.push(row.map_err(|e| SqliteError::Query(e.to_string()))?);
+    }
+    if events.is_empty() {
+        return Ok(LifecycleSnapshotParts {
+            events_seen: false,
+            situations: Vec::new(),
+            timeline: Vec::new(),
+            actions: Vec::new(),
+        });
+    }
+
+    let mut outcome_stmt = conn
+        .prepare_cached(
+            "SELECT ts_unix_ms, recommendation_event_id, pane_id, action, outcome
+             FROM recommendation_outcomes
+             WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2
+             ORDER BY id ASC",
+        )
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    let outcome_rows = outcome_stmt
+        .query_map(params![window.since_ms, window.until_ms], |row| {
+            Ok(LifecycleOutcomeRow {
+                ts_unix_ms: row.get(0)?,
+                recommendation_event_id: row.get(1)?,
+                pane_id: row.get(2)?,
+                action: row.get(3)?,
+                outcome: row.get(4)?,
+            })
+        })
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+
+    let mut outcomes = Vec::new();
+    for row in outcome_rows {
+        outcomes.push(row.map_err(|e| SqliteError::Query(e.to_string()))?);
+    }
+
+    let mut situations_by_name = std::collections::BTreeMap::<&'static str, u64>::new();
+    let mut actions_by_name = std::collections::BTreeMap::<String, ActionLedgerRow>::new();
+    let mut event_situations = std::collections::HashMap::<i64, &'static str>::new();
+    let mut event_has_outcome = std::collections::BTreeSet::<i64>::new();
+    let mut timeline = Vec::new();
+
+    for event in &events {
+        *situations_by_name.entry(event.situation).or_default() += 1;
+        event_situations.insert(event.id, event.situation);
+        let entry = actions_by_name
+            .entry(event.action.clone())
+            .or_insert_with(|| ActionLedgerRow {
+                action: event.action.clone(),
+                ..ActionLedgerRow::default()
+            });
+        entry.emitted += 1;
+        timeline.push(RecommendationTimelineItem {
+            ts_label: rfc3339_from_ms(event.ts_unix_ms),
+            pane_id: event.pane_id.clone(),
+            situation: event.situation,
+            action: event.action.clone(),
+            outcome: "emitted".into(),
+        });
+    }
+
+    for outcome in &outcomes {
+        if let Some(event_id) = outcome.recommendation_event_id {
+            event_has_outcome.insert(event_id);
+        }
+        let situation = outcome
+            .recommendation_event_id
+            .and_then(|id| event_situations.get(&id).copied())
+            .unwrap_or_else(|| situation_for_action(&outcome.action));
+        let entry = actions_by_name
+            .entry(outcome.action.clone())
+            .or_insert_with(|| ActionLedgerRow {
+                action: outcome.action.clone(),
+                ..ActionLedgerRow::default()
+            });
+        apply_lifecycle_outcome(entry, &outcome.outcome);
+        timeline.push(RecommendationTimelineItem {
+            ts_label: rfc3339_from_ms(outcome.ts_unix_ms),
+            pane_id: outcome.pane_id.clone(),
+            situation,
+            action: outcome.action.clone(),
+            outcome: outcome.outcome.clone(),
+        });
+    }
+
+    let ttl_ms =
+        i64::try_from(u128::from(ignored_ttl_secs).saturating_mul(1000)).unwrap_or(i64::MAX);
+    for event in &events {
+        if event_has_outcome.contains(&event.id) {
+            continue;
+        }
+        if window.until_ms.saturating_sub(event.ts_unix_ms) < ttl_ms {
+            continue;
+        }
+        let entry = actions_by_name
+            .entry(event.action.clone())
+            .or_insert_with(|| ActionLedgerRow {
+                action: event.action.clone(),
+                ..ActionLedgerRow::default()
+            });
+        entry.ignored += 1;
+        timeline.push(RecommendationTimelineItem {
+            ts_label: rfc3339_from_ms(window.until_ms),
+            pane_id: event.pane_id.clone(),
+            situation: event.situation,
+            action: event.action.clone(),
+            outcome: "ignored".into(),
+        });
+    }
+
+    let situations = situations_by_name
+        .into_iter()
+        .map(|(situation, emitted)| SituationSummary { situation, emitted })
+        .collect();
+    let actions = actions_by_name.into_values().collect();
+    timeline.reverse();
+    timeline.truncate(10);
+
+    Ok(LifecycleSnapshotParts {
+        events_seen: true,
+        situations,
+        timeline,
+        actions,
+    })
 }
