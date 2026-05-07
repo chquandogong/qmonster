@@ -1020,12 +1020,12 @@ fn newly_hidden_alert_keys(
 
 fn refresh_insights_overlay<P, N>(
     overlay: &mut crate::ui::insights::InsightsOverlay,
-    ctx: &Context<P, N>,
+    ctx: &mut Context<P, N>,
 ) where
     P: PaneSource,
     N: NotifyBackend,
 {
-    let Some(path) = ctx.insights_db_path.as_ref() else {
+    let Some(path) = ctx.insights_db_path.clone() else {
         overlay.set_error("insights database path is unavailable in this runtime");
         return;
     };
@@ -1036,21 +1036,16 @@ fn refresh_insights_overlay<P, N>(
         since_ms: now_ms.saturating_sub(window_ms),
         until_ms: now_ms,
     };
-    let snapshot = if path.exists() {
-        match crate::store::SqliteInsightsStore::open_read_only(path).and_then(|store| {
-            store.snapshot_with_ignored_ttl(window, ctx.config.insights.ignored_ttl_secs)
-        }) {
-            Ok(snapshot) => snapshot,
-            Err(e) => {
-                overlay.set_error(format!("open/query {} failed: {e}", path.display()));
-                return;
-            }
-        }
-    } else {
-        crate::insights_report::empty_insights_snapshot(window)
-    };
-    let refreshed_label = chrono::Local::now().format("%H:%M:%S").to_string();
-    overlay.set_snapshot(snapshot, refreshed_label);
+    ctx.next_insights_request_id = ctx.next_insights_request_id.wrapping_add(1);
+    let request_id = ctx.next_insights_request_id;
+    overlay.mark_loading(request_id);
+    crate::app::insights_load::spawn_insights_load(
+        path,
+        window,
+        ctx.config.insights.ignored_ttl_secs,
+        ctx.insights_load_tx.clone(),
+        request_id,
+    );
 }
 
 /// v1.38 Bug B fix: at Enter time, build a `SystemNotice` from the
