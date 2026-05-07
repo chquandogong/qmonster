@@ -1,21 +1,48 @@
 use crate::insights_report::format_insights_report_lines;
 use crate::store::InsightsSnapshot;
-use crate::ui::dashboard::{centered_rect, close_button_rect};
+use crate::ui::dashboard::close_button_rect;
+use crate::ui::modal_chrome::{DragAnchor, ModalGeometry};
 use crate::ui::theme;
 use ratatui::Frame;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct InsightsOverlay {
     open: bool,
     scroll: u16,
+    geometry: ModalGeometry,
     snapshot: Option<InsightsSnapshot>,
     error: Option<String>,
     refreshed_label: Option<String>,
 }
 
+impl Default for InsightsOverlay {
+    fn default() -> Self {
+        Self {
+            open: false,
+            scroll: 0,
+            geometry: ModalGeometry::new(
+                Self::DEFAULT_WIDTH_PCT,
+                Self::DEFAULT_HEIGHT_PCT,
+                Self::SIZE_MIN,
+                Self::SIZE_MAX,
+                Self::SIZE_STEP,
+            ),
+            snapshot: None,
+            error: None,
+            refreshed_label: None,
+        }
+    }
+}
+
 impl InsightsOverlay {
+    pub const SIZE_STEP: u16 = 5;
+    pub const SIZE_MIN: u16 = 50;
+    pub const SIZE_MAX: u16 = 99;
+    pub const DEFAULT_WIDTH_PCT: u16 = 86;
+    pub const DEFAULT_HEIGHT_PCT: u16 = 78;
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -27,11 +54,13 @@ impl InsightsOverlay {
     pub fn open(&mut self) {
         self.open = true;
         self.scroll = 0;
+        self.geometry.end_drag();
     }
 
     pub fn close(&mut self) {
         self.open = false;
         self.scroll = 0;
+        self.geometry.end_drag();
     }
 
     pub fn scroll(&self) -> u16 {
@@ -44,6 +73,50 @@ impl InsightsOverlay {
 
     pub fn scroll_down(&mut self, max: u16) {
         self.scroll = self.scroll.saturating_add(1).min(max);
+    }
+
+    pub fn width_pct(&self) -> u16 {
+        self.geometry.width_pct()
+    }
+
+    pub fn height_pct(&self) -> u16 {
+        self.geometry.height_pct()
+    }
+
+    pub fn offset_x(&self) -> i16 {
+        self.geometry.offset_x()
+    }
+
+    pub fn offset_y(&self) -> i16 {
+        self.geometry.offset_y()
+    }
+
+    pub fn drag_anchor(&self) -> Option<DragAnchor> {
+        self.geometry.drag_anchor()
+    }
+
+    pub fn shrink(&mut self) {
+        self.geometry.shrink();
+    }
+
+    pub fn grow(&mut self) {
+        self.geometry.grow();
+    }
+
+    pub fn reset_geometry(&mut self) {
+        self.geometry.reset();
+    }
+
+    pub fn begin_drag(&mut self, anchor: DragAnchor) {
+        self.geometry.begin_drag(anchor);
+    }
+
+    pub fn set_offset(&mut self, x: i16, y: i16) {
+        self.geometry.set_offset(x, y);
+    }
+
+    pub fn end_drag(&mut self) {
+        self.geometry.end_drag();
     }
 
     pub fn set_snapshot(&mut self, snapshot: InsightsSnapshot, refreshed_label: String) {
@@ -89,11 +162,30 @@ impl InsightsOverlay {
 }
 
 pub fn insights_modal_area(viewport: ratatui::layout::Rect) -> ratatui::layout::Rect {
-    centered_rect(86, 78, viewport)
+    crate::ui::modal_chrome::modal_area(
+        viewport,
+        InsightsOverlay::DEFAULT_WIDTH_PCT,
+        InsightsOverlay::DEFAULT_HEIGHT_PCT,
+        0,
+        0,
+    )
+}
+
+pub fn insights_modal_area_for(
+    viewport: ratatui::layout::Rect,
+    overlay: &InsightsOverlay,
+) -> ratatui::layout::Rect {
+    crate::ui::modal_chrome::modal_area(
+        viewport,
+        overlay.width_pct(),
+        overlay.height_pct(),
+        overlay.offset_x(),
+        overlay.offset_y(),
+    )
 }
 
 pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
-    let area = insights_modal_area(frame.area());
+    let area = insights_modal_area_for(frame.area(), overlay);
     frame.render_widget(Clear, area);
     let title = " Token Insights [i/Esc/q close] [r refresh] ";
     let block = Block::default()
