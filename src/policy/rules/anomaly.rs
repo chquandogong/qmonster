@@ -10,7 +10,7 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal};
 use crate::domain::origin::SourceKind;
-use crate::domain::recommendation::Severity;
+use crate::domain::recommendation::{Recommendation, Severity};
 use crate::policy::gates::PolicyGates;
 
 /// Phase 7 v2 (v1.44.0): map detector confidence to severity.
@@ -403,6 +403,97 @@ pub fn detect_cross_pane_edit_cluster(
         window_polls,
         detected_at: now_unix_seconds,
     })
+}
+
+/// Phase 7 v2 (v1.44.0): promote Warning+ `AnomalySignal`s into
+/// `Recommendation`s so they reach the dashboard recommendation
+/// panel and (via the caller's `RequestedEffect::Notify` push)
+/// the desktop notification path. Concern-severity signals are
+/// observation-only and skipped. Pure over its inputs.
+///
+/// Each kind maps to a static `(action, reason format, next_step)`
+/// triple; severity and source_kind copy from the input signal.
+/// `is_strong = false`, `suggested_command = None`,
+/// `profile = None`, `side_effects = vec![]`.
+pub fn promote_anomalies_to_recommendations(signals: &[AnomalySignal]) -> Vec<Recommendation> {
+    let mut out = Vec::new();
+    for sig in signals {
+        if sig.severity < Severity::Warning {
+            continue;
+        }
+        let evidence = sig.evidence.first();
+        let source_kind = evidence
+            .map(|e| e.source_kind)
+            .unwrap_or(SourceKind::Estimated);
+        let (action, reason, next_step) = match sig.kind {
+            AnomalyKind::IdentityChurn => {
+                let (sample_count, before, after) = evidence
+                    .map(|e| (e.sample_count, e.before.clone(), e.after.clone()))
+                    .unwrap_or((0, String::new(), String::new()));
+                (
+                    "anomaly: identity churn detected",
+                    format!(
+                        "pane identity flipped {sample_count} times in {} polls — verify operator intent or pane reuse; latest flip: {before} → {after}",
+                        sig.window_polls
+                    ),
+                    "pause provider switching; review pane assignments".to_string(),
+                )
+            }
+            AnomalyKind::ErrorBurst => {
+                let (newer, older) = evidence
+                    .map(|e| (e.after.clone(), e.before.clone()))
+                    .unwrap_or((String::new(), String::new()));
+                (
+                    "anomaly: error burst detected",
+                    format!(
+                        "error rate {newer} over the most recent half of the {}-poll window (baseline {older}); confidence {}",
+                        sig.window_polls,
+                        sig.confidence.label()
+                    ),
+                    "check the recent provider output; consider profile_switch if errors persist"
+                        .to_string(),
+                )
+            }
+            AnomalyKind::CacheDiscontinuity => {
+                let (before, after) = evidence
+                    .map(|e| (e.before.clone(), e.after.clone()))
+                    .unwrap_or((String::new(), String::new()));
+                (
+                    "anomaly: cache discontinuity detected",
+                    format!(
+                        "cache hit ratio dropped from {before} to {after} (or F-7b cache-drift fired ≥ 2× in {} polls)",
+                        sig.window_polls
+                    ),
+                    "press 's' to snapshot before reset; consider /compact when conversation is large".to_string(),
+                )
+            }
+            AnomalyKind::CrossPaneEditCluster => {
+                let (count, path) = evidence
+                    .map(|e| (e.after.clone(), e.before.clone()))
+                    .unwrap_or((String::new(), String::new()));
+                (
+                    "anomaly: cross-pane edit cluster detected",
+                    format!(
+                        "{count} concurrent file-edit findings on `{path}` in {} polls — multiple panes editing the same file",
+                        sig.window_polls
+                    ),
+                    "coordinate edits between panes; the existing F-8 ConcurrentFileEdit findings panel lists which panes".to_string(),
+                )
+            }
+        };
+        out.push(Recommendation {
+            action,
+            reason,
+            severity: sig.severity,
+            source_kind,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: Some(next_step),
+            profile: None,
+        });
+    }
+    out
 }
 
 #[cfg(test)]
@@ -811,5 +902,103 @@ mod tests {
         let sig = detect_cross_pane_edit_cluster(&h, 20, 3, 1_700_000_000).unwrap();
         assert_eq!(sig.confidence, AnomalyConfidence::Medium);
         assert_eq!(sig.severity, Severity::Concern);
+    }
+
+    fn make_signal(kind: AnomalyKind, confidence: AnomalyConfidence) -> AnomalySignal {
+        let severity = severity_for(confidence);
+        let (metric_name, before, after) = match kind {
+            AnomalyKind::IdentityChurn => (
+                "provider_path",
+                "claude:/r".to_string(),
+                "codex:/r".to_string(),
+            ),
+            AnomalyKind::ErrorBurst => ("error_rate", "0.10".to_string(), "0.80".to_string()),
+            AnomalyKind::CacheDiscontinuity => {
+                ("cache_hit_ratio", "0.85".to_string(), "0.40".to_string())
+            }
+            AnomalyKind::CrossPaneEditCluster => (
+                "concurrent_edit_path",
+                "/r/foo.rs".to_string(),
+                "6".to_string(),
+            ),
+        };
+        AnomalySignal {
+            kind,
+            confidence,
+            severity,
+            evidence: vec![AnomalyEvidence {
+                metric_name,
+                before,
+                after,
+                sample_count: 6,
+                source_kind: SourceKind::Estimated,
+            }],
+            window_polls: 20,
+            detected_at: 1_700_000_000,
+        }
+    }
+
+    #[test]
+    fn promote_returns_empty_for_concern_only() {
+        let signals = vec![
+            make_signal(AnomalyKind::IdentityChurn, AnomalyConfidence::Medium),
+            make_signal(AnomalyKind::ErrorBurst, AnomalyConfidence::Low),
+        ];
+        let promoted = promote_anomalies_to_recommendations(&signals);
+        assert!(promoted.is_empty());
+    }
+
+    #[test]
+    fn promote_emits_recommendation_for_warning_signal() {
+        let signals = vec![make_signal(
+            AnomalyKind::IdentityChurn,
+            AnomalyConfidence::High,
+        )];
+        let promoted = promote_anomalies_to_recommendations(&signals);
+        assert_eq!(promoted.len(), 1);
+        assert_eq!(promoted[0].action, "anomaly: identity churn detected");
+        assert_eq!(promoted[0].severity, Severity::Warning);
+    }
+
+    #[test]
+    fn promote_maps_each_kind_to_distinct_action() {
+        let signals = vec![
+            make_signal(AnomalyKind::IdentityChurn, AnomalyConfidence::High),
+            make_signal(AnomalyKind::ErrorBurst, AnomalyConfidence::High),
+            make_signal(AnomalyKind::CacheDiscontinuity, AnomalyConfidence::High),
+            make_signal(AnomalyKind::CrossPaneEditCluster, AnomalyConfidence::High),
+        ];
+        let promoted = promote_anomalies_to_recommendations(&signals);
+        assert_eq!(promoted.len(), 4);
+        let actions: Vec<&str> = promoted.iter().map(|r| r.action).collect();
+        assert!(actions.contains(&"anomaly: identity churn detected"));
+        assert!(actions.contains(&"anomaly: error burst detected"));
+        assert!(actions.contains(&"anomaly: cache discontinuity detected"));
+        assert!(actions.contains(&"anomaly: cross-pane edit cluster detected"));
+        // All four must be distinct
+        let mut sorted = actions.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), 4, "all 4 actions must be distinct");
+    }
+
+    #[test]
+    fn promote_recommendation_severity_matches_signal() {
+        let signals = vec![make_signal(
+            AnomalyKind::ErrorBurst,
+            AnomalyConfidence::High,
+        )];
+        let promoted = promote_anomalies_to_recommendations(&signals);
+        assert_eq!(promoted[0].severity, signals[0].severity);
+    }
+
+    #[test]
+    fn promote_recommendation_source_kind_matches_evidence() {
+        let signals = vec![make_signal(
+            AnomalyKind::CacheDiscontinuity,
+            AnomalyConfidence::High,
+        )];
+        let promoted = promote_anomalies_to_recommendations(&signals);
+        assert_eq!(promoted[0].source_kind, signals[0].evidence[0].source_kind);
     }
 }
