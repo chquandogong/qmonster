@@ -20,7 +20,7 @@ pub fn handle_anomaly_overlay_key(
             true
         }
         KeyCode::Down | KeyCode::Char('j') if overlay.is_open() => {
-            overlay.scroll_down(ring_len.saturating_sub(1));
+            overlay.scroll_down(ring_len.saturating_sub(1) as u16);
             true
         }
         KeyCode::Up | KeyCode::Char('k') if overlay.is_open() => {

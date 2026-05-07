@@ -8,7 +8,7 @@ use ratatui::layout::Rect;
 #[derive(Debug, Default, Clone)]
 pub struct AnomalyOverlay {
     open: bool,
-    scroll: usize,
+    scroll: u16,
 }
 
 impl AnomalyOverlay {
@@ -27,6 +27,7 @@ impl AnomalyOverlay {
 
     pub fn close(&mut self) {
         self.open = false;
+        self.scroll = 0;
     }
 
     pub fn toggle(&mut self) {
@@ -37,11 +38,11 @@ impl AnomalyOverlay {
         }
     }
 
-    pub fn scroll(&self) -> usize {
+    pub fn scroll(&self) -> u16 {
         self.scroll
     }
 
-    pub fn scroll_down(&mut self, max: usize) {
+    pub fn scroll_down(&mut self, max: u16) {
         if self.scroll < max {
             self.scroll += 1;
         }
