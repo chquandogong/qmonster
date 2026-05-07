@@ -119,7 +119,7 @@ impl SqliteAnomalySink {
                 return Vec::new();
             }
         };
-        let mut stmt = match conn.prepare(
+        let mut stmt = match conn.prepare_cached(
             "SELECT ts_unix_secs, pane_id, kind, confidence, severity, promoted, reason
              FROM anomaly_events
              ORDER BY ts_unix_secs DESC, id DESC
@@ -185,7 +185,7 @@ impl SqliteAnomalySink {
                 return Vec::new();
             }
         };
-        let mut stmt = match conn.prepare(
+        let mut stmt = match conn.prepare_cached(
             "SELECT tick_unix_secs, identity_provider, identity_path, error_hint,
                     cache_hit_ratio, cache_drift_fire, cross_pane_edit_paths_json,
                     cost_usd, input_tokens, output_tokens, process_memory_mb,
@@ -492,5 +492,20 @@ mod tests {
         .unwrap();
         let fetched = sink.fetch_recent_anomaly_events(10);
         assert_eq!(fetched.len(), 1);
+    }
+
+    #[test]
+    fn upsert_then_fetch_history_snapshot_roundtrip_full_fixture() {
+        let (_tmp, sink) = temp_sink();
+        let snap = fixture_snapshot();
+        sink.upsert_anomaly_history_snapshot("%1", 1_700_000_000, &snap)
+            .unwrap();
+        let fetched = sink.fetch_recent_history_snapshots("%1", 10);
+        assert_eq!(fetched.len(), 1);
+        assert_eq!(fetched[0].0, 1_700_000_000);
+        assert_eq!(
+            fetched[0].1, snap,
+            "full snapshot fields must roundtrip exactly"
+        );
     }
 }

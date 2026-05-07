@@ -338,6 +338,9 @@ pub struct AnomalyConfig {
     /// `process_memory_mb_now - process_memory_mb_oldest >= memory_growth_mb`.
     /// Default 1024.0 (matches prelim spec § Configuration).
     pub memory_growth_mb: f64,
+    /// Phase 7 v3(c): retention horizon for anomaly_events rows;
+    /// default 30; 100K hard cap handled by sink.
+    pub retention_days: u64,
     /// Phase 7 v3 (v1.46.0): per-kind promotion-gate thresholds.
     pub promote: AnomalyPromoteConfig,
 }
@@ -392,6 +395,7 @@ impl Default for AnomalyConfig {
             cost_slope_usd_per_hour: 20.0,
             token_slope_input_per_poll: 20_000,
             memory_growth_mb: 1024.0,
+            retention_days: 30,
             promote: AnomalyPromoteConfig::default(),
         }
     }
@@ -1499,6 +1503,35 @@ memory_growth_mb = 2048
         assert!((cfg.anomaly.cost_slope_usd_per_hour - 20.0).abs() < f64::EPSILON);
         assert_eq!(cfg.anomaly.token_slope_input_per_poll, 20_000);
         assert!((cfg.anomaly.memory_growth_mb - 1024.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn anomaly_config_default_retention_is_30_days() {
+        let c = AnomalyConfig::default();
+        assert_eq!(c.retention_days, 30);
+    }
+
+    #[test]
+    fn anomaly_config_omitting_retention_uses_default() {
+        let toml = r#"
+[anomaly]
+enabled = true
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).expect("parse");
+        assert_eq!(cfg.anomaly.retention_days, 30);
+    }
+
+    #[test]
+    fn anomaly_config_retention_days_round_trips_via_toml() {
+        let toml = r#"
+[anomaly]
+retention_days = 45
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).expect("parse");
+        assert_eq!(cfg.anomaly.retention_days, 45);
+        let emitted = toml::to_string(&cfg).expect("serialize");
+        let reparsed: QmonsterConfig = toml::from_str(&emitted).expect("reparse");
+        assert_eq!(reparsed.anomaly.retention_days, 45);
     }
 
     #[test]

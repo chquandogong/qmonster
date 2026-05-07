@@ -844,6 +844,7 @@ mod tests {
             cost_slope_usd_per_hour: 20.0,
             token_slope_input_per_poll: 20_000,
             memory_growth_mb: 1024.0,
+            retention_days: 30,
             promote: crate::app::config::AnomalyPromoteConfig::default(),
         };
 
