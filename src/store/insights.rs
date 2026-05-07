@@ -1,5 +1,8 @@
 use std::path::Path;
 
+use chrono::TimeZone as _;
+use rusqlite::params;
+
 use crate::store::sqlite::{AuditDb, SqliteError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +64,100 @@ pub struct SqliteInsightsStore {
     db: AuditDb,
 }
 
+const KNOWN_ACTION_PREFIXES: &[&str] = &[
+    "archive-preview-suggested",
+    "repeated-output-cache",
+    "log-storm: ingress filter + summary",
+    "repeated-output: result-hash cache",
+    "code-exploration: graph/symbol",
+    "context-pressure: checkpoint",
+    "context-pressure: act now",
+    "cache: avoid /compact while cache is hot",
+    "cache: /compact is safe - cache is cold",
+    "cache: drift detected - /compact will let cache rebuild",
+    "quota: pause until 5h window resets",
+    "quota: pause until weekly window resets",
+    "snapshot before 5h window resets",
+    "snapshot before weekly window resets",
+    "verbose-output",
+    "verbose-review: terse profile",
+    "pane-state",
+    "quota-tight: consider enabling",
+    "quota-pressure: pace requests",
+    "cost-budget: 80% reached",
+    "cost-budget: exhausted",
+    "profile-switch: elevated error rate",
+    "provider-profile: switch suggested",
+];
+
+fn summary_has_action_prefix(summary: &str, prefix: &str) -> bool {
+    summary == prefix
+        || summary
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.starts_with(": "))
+}
+
+fn action_from_summary(summary: &str) -> &str {
+    for prefix in KNOWN_ACTION_PREFIXES {
+        if summary_has_action_prefix(summary, prefix) {
+            return *prefix;
+        }
+    }
+    summary
+        .split_once(": ")
+        .map(|(action, _)| action)
+        .unwrap_or(summary)
+}
+
+fn rfc3339_from_ms(ms: i64) -> String {
+    chrono::Utc
+        .timestamp_millis_opt(ms)
+        .single()
+        .unwrap_or_else(|| chrono::Utc.timestamp_millis_opt(0).single().unwrap())
+        .to_rfc3339()
+}
+
+fn window_rfc3339_bounds(window: InsightsWindow) -> (String, String) {
+    (
+        rfc3339_from_ms(window.since_ms),
+        rfc3339_from_ms(window.until_ms),
+    )
+}
+
+fn situation_for_action(action: &str) -> &'static str {
+    if action.contains("log-storm")
+        || action == "archive-preview-suggested"
+        || action.contains("repeated-output")
+    {
+        "Log storm / repeated output"
+    } else if action.contains("code-exploration")
+        || action.contains("cross-pane")
+        || action.contains("ConcurrentFileEdit")
+    {
+        "Code exploration"
+    } else if action.contains("context-pressure")
+        || action.starts_with("cache")
+        || action.starts_with("quota: pause")
+        || action.starts_with("snapshot before")
+    {
+        "Context pressure"
+    } else if action.contains("verbose-review") || action == "verbose-output" {
+        "Verbose review"
+    } else if action == "pane-state" || action.contains("permission") || action.contains("input") {
+        "Input / permission wait"
+    } else if action.contains("quota-pressure")
+        || action.contains("quota-tight")
+        || action.contains("cost-budget")
+        || action.contains("cost-pressure")
+        || action.contains("profile-switch")
+        || action.contains("provider-profile")
+    {
+        "Quota-tight / cost"
+    } else {
+        "Other"
+    }
+}
+
 impl SqliteInsightsStore {
     pub fn open(path: &Path) -> Result<Self, SqliteError> {
         Ok(Self {
@@ -74,9 +171,35 @@ impl SqliteInsightsStore {
             .connection()
             .lock()
             .expect("insights db lock poisoned");
+        let (since_ts, until_ts) = window_rfc3339_bounds(window);
+        let mut stmt = _conn
+            .prepare_cached(
+                "SELECT summary FROM audit_events \
+                 WHERE kind IN ('RecommendationEmitted', 'AlertFired') \
+                   AND ts_utc >= ?1 \
+                   AND ts_utc <= ?2 \
+                 ORDER BY id ASC",
+            )
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![&since_ts, &until_ts], |row| row.get::<_, String>(0))
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let mut counts = std::collections::BTreeMap::<&'static str, u64>::new();
+        for row in rows {
+            let summary = row.map_err(|e| SqliteError::Query(e.to_string()))?;
+            let action = action_from_summary(&summary);
+            let situation = situation_for_action(action);
+            if situation != "Other" {
+                *counts.entry(situation).or_default() += 1;
+            }
+        }
+        let situations = counts
+            .into_iter()
+            .map(|(situation, emitted)| SituationSummary { situation, emitted })
+            .collect();
         Ok(InsightsSnapshot {
             window,
-            situations: Vec::new(),
+            situations,
             cache: CacheInsightSummary::default(),
             timeline: Vec::new(),
             actions: Vec::new(),
