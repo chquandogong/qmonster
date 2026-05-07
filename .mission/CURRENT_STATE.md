@@ -43,8 +43,8 @@ Phase 7 v3 (a+b) adds per-kind promotion gate and the `n` overlay for anomaly ev
 - `v1.46.0` is a minor feature release over the v1.45.0 Phase 7 v2 detectors baseline.
 - Local tag: `v1.46.0` points at the v1.46.0 release commit (recorded in `mission-history.yaml` `related_commits`).
 - Commit summary: `v1.46.0 release ledger sync`.
-- Reference plan: `docs/superpowers/plans/2026-05-07-phase7-v3-a-b-promote-and-overlay.md`.
-- Reference spec: `docs/superpowers/specs/2026-05-07-phase7-v3-a-b-promote-and-overlay-design.md`.
+- Reference plan: `docs/superpowers/plans/2026-05-07-phase7-v3-promote-and-overlay.md`.
+- Reference spec: `docs/superpowers/specs/2026-05-07-phase7-v3-promote-and-overlay-design.md`.
 
 ## Post-tag polish (on main, untagged)
 
