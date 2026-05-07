@@ -16,21 +16,21 @@ Phase 7 v1 adds the anomaly observation surface. It does not change provider ada
 
 1. **AnomalySignal / AnomalyKind / AnomalyConfidence / AnomalyEvidence** (`src/domain/anomaly.rs`): Core types. `AnomalyKind` variants: `ErrorBurst`, `IdentityChurn`, `CacheDiscontinuity`, `CrossPaneEditCluster`. `AnomalyConfidence` variants: `High`, `Medium`, `Low`. `AnomalyEvidence` carries the supporting metric values that triggered the anomaly.
 
-2. **AnomalyConfig + `[anomaly]` section** (`src/domain/config.rs`): `enabled` (bool, default false), `min_confidence` (default `Low`), and per-detector threshold fields. Serde defaults preserve v1.42.0 behavior when the section is absent.
+2. **AnomalyConfig + `[anomaly]` section** (`src/app/config.rs`): `enabled` (bool, default false), `window_polls` (default 20), `min_confidence` (default `"medium"`), and per-detector threshold fields (`identity_churn_min_flips`, `error_burst_threshold`, `cache_discontinuity_drop`, `cross_pane_cluster_min_findings`). Serde defaults preserve v1.42.0 behavior when the section is absent.
 
 3. **PolicyGates anomaly_\* fields + PolicyGateInputs.anomaly** (`src/policy/gates.rs`): `PolicyGates` gains `anomaly_enabled`, `anomaly_min_confidence`, and per-threshold fields wired from `AnomalyConfig`. `PolicyGateInputs` gains an `anomaly` field carrying the current `PaneReport` anomalies into the policy layer.
 
-4. **AnomalyHistory + Context.anomaly_history / anomaly_dedup** (`src/app/anomaly_history.rs`, `src/app/context.rs`): `AnomalyHistory` holds per-pane, per-`AnomalyKind` edge-triggered dedup state so each anomaly fires only on the rising edge (state change from absent → present). `Context` gains `anomaly_history` and `anomaly_dedup` fields.
+4. **AnomalyHistory + Context.anomaly_history / anomaly_dedup** (`src/policy/rules/anomaly.rs`, `src/app/bootstrap.rs`): `AnomalyHistory` (in `policy::rules::anomaly`) holds per-pane rolling-window observation history; `Context.anomaly_dedup: HashMap<(String, AnomalyKind), Option<u64>>` (in `bootstrap.rs`) holds per-`(pane_id, AnomalyKind)` edge-triggered dedup so each anomaly fires only on the rising edge (Some-after-None). `Context.anomaly_history: HashMap<String, AnomalyHistory>` holds the per-pane window. Both evicted on `BecameDead | Reappeared`.
 
-5. **Four detectors** (`src/domain/detectors/`):
+5. **Four detectors** (`src/policy/rules/anomaly.rs`):
    - `detect_error_burst`: fires when recent error count exceeds the configured threshold within the observation window.
    - `detect_identity_churn`: fires when pane identity resolution flips repeatedly within the window.
    - `detect_cache_discontinuity`: fires when cache hit ratio drops sharply across recent samples.
    - `detect_cross_pane_edit_cluster`: fires when multiple panes edit overlapping file sets within the window.
 
-6. **eval_anomalies orchestrator** (`src/app/eval_anomalies.rs`): dispatches to the four detectors, applies `min_confidence` gating, and runs edge-triggered dedup via `AnomalyHistory`. Returns only rising-edge anomalies per poll tick.
+6. **eval_anomalies orchestrator** (`src/policy/rules/anomaly.rs`): dispatches to the four detectors, applies `min_confidence` gating, and runs edge-triggered dedup via the caller-owned `Context.anomaly_dedup` map. Returns only rising-edge anomalies per poll tick.
 
-7. **PaneReport.anomalies + event_loop wiring** (`src/app/event_loop.rs`): `PaneReport` gains an `anomalies` field populated by `eval_anomalies`. `run_once_with_target` feeds anomalies into `PolicyGateInputs.anomaly`.
+7. **PaneReport.anomalies + event_loop wiring** (`src/app/event_loop.rs`): `PaneReport` gains an `anomalies: Vec<AnomalySignal>` field. `run_once_with_target` pushes per-tick observations (identity snapshot, error_hint, cache_hit_ratio, F-7b cache-drift fire flag, F-8 paths with one-tick lag) into `Context.anomaly_history`, then calls `eval_anomalies` to populate the field. `PolicyGateInputs.anomaly` carries the `[anomaly]` config (not the anomaly results) into `PolicyGates::from_inputs`.
 
 8. **m overlay pane card ANOMALIES row** (`src/ui/metrics.rs`): when anomalies are present for a pane, the m overlay pane card shows an `ANOMALIES` row listing active `AnomalyKind` labels with confidence annotations.
 
@@ -41,7 +41,7 @@ Phase 7 v1 adds the anomaly observation surface. It does not change provider ada
 - `v1.43.0` is a minor feature release over the v1.42.0 Phase H baseline.
 - Local tag: `v1.43.0` points at the v1.43.0 release commit (recorded in `mission-history.yaml` `related_commits`).
 - Commit summary: `v1.43.0 release ledger sync`.
-- Reference plan: `docs/superpowers/plans/2026-05-07-phase7-v1-anomaly-observation.md`.
+- Reference plan: `docs/superpowers/plans/2026-05-06-phase7-v1-anomaly-overlay.md`.
 - Reference spec: `docs/superpowers/specs/2026-05-06-phase7-v1-anomaly-overlay-design.md`.
 
 ## Post-tag polish (on main, untagged)

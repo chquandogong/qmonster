@@ -1,6 +1,6 @@
 mission:
   version: "1.43.0"
-  title: "Qmonster v1.43.0 - Phase 7 v1: anomaly observation surface (AnomalySignal + 5 detectors + m overlay ANOMALIES row)."
+  title: "Qmonster v1.43.0 - Phase 7 v1: anomaly observation surface (AnomalySignal + 4 detectors + eval_anomalies orchestrator + m overlay ANOMALIES row)."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
