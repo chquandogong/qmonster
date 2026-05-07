@@ -854,7 +854,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("Mouse double", "toggle hide on the clicked alert"),
         (
             "Mouse drag",
-            "drag the divider between Alerts and Panes to resize them; drag the m or a overlay's title row to move the modal; drag the a overlay's list/explainer separator to resize the split",
+            "drag the divider between Alerts and Panes to resize them; drag a large overlay title row to move the modal (m/a/i/n); drag the a overlay's list/explainer separator to resize the split",
         ),
         (
             "Severity chip",
@@ -868,6 +868,10 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
             "Modal [x]",
             "every overlay (Help / Settings / Provider Setup / Metrics / Anomaly Events / Pending Actions / Token Insights / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
         ),
+        (
+            "Overlay chrome",
+            "large overlays use [/] resize, = reset geometry, title drag move, wheel/↑/↓ scroll, same entry key/Esc/q/[x] close",
+        ),
         ("Tab", "switch focus between alerts and pane list"),
         ("Up / Down", "move one item in the focused list"),
         ("j / k", "alternate list scroll keys"),
@@ -875,12 +879,12 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("Home / End", "jump to the first or last item"),
         (
             "[ and ]",
-            "shrink or grow Alerts (Panes uses remaining height); when Metrics overlay is open, also resize that modal in 5% steps",
+            "shrink or grow Alerts (Panes uses remaining height); when a large overlay is open (m/a/i/n), resize that modal in 5% steps",
         ),
         ("/", "cycle the Alerts/Panes split by one resize step"),
         (
             "=",
-            "reset the Alerts/Panes split; when Metrics overlay is open, also reset its size to default 95×90%",
+            "reset the Alerts/Panes split; when a large overlay is open (m/a/i/n), also reset modal geometry to its default size + position",
         ),
         (
             "t",
@@ -892,7 +896,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "n",
-            "open the Anomaly Events overlay; ↑/↓ scroll, h toggles Ring/History, n again or Esc/q/[x] close",
+            "open the resizable Anomaly Events overlay; [/] resize, = reset geometry, title drag move, wheel/↑/↓ scroll, h toggles Ring/History, n again or Esc/q/[x] close",
         ),
         (
             "a",
@@ -900,7 +904,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "i",
-            "open Token Insights overlay for the configured insight ledger window; r refreshes while open, wheel/Up/Down scroll, i again or Esc/q/[x] close",
+            "open the resizable Token Insights overlay for the configured insight ledger window; [/] resize, = reset geometry, title drag move, r refreshes while open, wheel/Up/Down scroll, i again or Esc/q/[x] close",
         ),
         ("Space", "toggle multi-select on cursor item (a overlay)"),
         (
@@ -1937,6 +1941,22 @@ mod tests {
         assert!(
             dump.contains("Anomaly Events") && dump.contains("Token Insights"),
             "Help modal [x] row should include newer n/i overlays; got:\n{dump}"
+        );
+    }
+
+    #[test]
+    fn help_documents_overlay_chrome_contract() {
+        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
+        let dump = lines.join("\n");
+        assert!(
+            dump.contains("[/] resize")
+                && dump.contains("title drag move")
+                && dump.contains("= reset geometry"),
+            "Help should document the shared overlay chrome contract; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("i") && dump.contains("n") && dump.contains("resizable"),
+            "Help should mark Token Insights and Anomaly Events as resizable overlays; got:\n{dump}"
         );
     }
 

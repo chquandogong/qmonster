@@ -856,6 +856,10 @@ aligned: footer/help advertise `s` snapshot and `n` Anomaly Events,
 Provider Setup names the downstream `m` Metrics / `n` Anomaly Events /
 `i` Token Insights surfaces, and the Anomaly Events modal exposes the
 same `[x]` close affordance as the other overlays.
+The overlay chrome consistency slice adds a shared UI-only geometry
+layer for modal size, offset, close styling, and title-row dragging.
+It does not change provider adapters, policy evaluation, audit schema,
+or recommendation semantics.
 
 **v1.47.0 (Phase 7 v3 c — closes Phase 7):** SQLite persistence for
 anomaly events and per-pane history. Two new tables in `audit.db`:

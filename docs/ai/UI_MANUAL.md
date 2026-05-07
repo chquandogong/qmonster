@@ -20,6 +20,17 @@
   Token Insights overlay, `?`로 help, footer 오른쪽 아래 버전 배지를
   클릭하면 Git overlay가 열립니다.
 
+### Overlay chrome contract
+
+Large persistent overlays share the same chrome controls:
+`[` / `]` resize, `=` resets size and position, title-row drag moves
+the modal, mouse wheel and `↑` / `↓` scroll, the same entry key closes
+the overlay, and `[x]` / `Esc` / `q` close where the overlay is not in
+an edit sub-mode. In the first chrome-consistency slice this applies to
+`m` Metrics, `a` Pending Actions, `i` Token Insights, and `n` Anomaly
+Events. `S` Settings keeps edit-mode guards, and short confirmation
+modals intentionally remain non-resizable.
+
 ## 2. Alerts 읽는 법
 
 - Alerts는 **심각도 우선**으로 정렬됩니다.
@@ -677,10 +688,9 @@ Bounded pressure 데이터가 전혀 없으면 dim `Hottest: —`.
 - `m`, `Esc`, `q`, `[x]` 클릭: 닫기.
 - `↑` / `↓` / `j` / `k`: body scroll (페인 선택 개념 없음 — 모든 pane이
   항상 보임).
-- `[`: modal 5% 축소 (50%까지). `]`: 5% 확대 (99%까지). `=`: 기본
-  95×90으로 reset하면서 드래그 위치도 함께 (0, 0)로 reset. 폭·높이
-  동시 적용. 운영자가 고른 크기·위치는 close 후 재오픈에도 유지
-  (Qmonster 재시작 시에는 기본값으로 초기화).
+- `[` / `]`: modal 5% 축소/확대. `=`: 기본 95×90으로 reset하면서
+  드래그 위치도 함께 (0, 0)로 reset. 운영자가 고른 크기·위치는 close 후
+  재오픈에도 유지 (Qmonster 재시작 시에는 기본값으로 초기화).
 - 마우스로 모달 **상단 제목 줄**(`[x]` 닫기 버튼 영역 제외)을 드래그하면
   modal 위치를 옮길 수 있습니다. 좌/상 가장자리는 hard bound로 viewport
   바깥으로 나가지 않도록 정확히 멈추고, 우/하 가장자리는 soft bound로
@@ -910,6 +920,9 @@ Press `n` to open the Anomaly Events overlay. Shows the last 100
 Time / Pane / Kind / Conf / Promoted / Reason.
 
 - `n` (or `Esc` / `q` / `[x]`): close.
+- `[` / `]`: resize the overlay by 5% steps.
+- `=`: reset size and position to the default overlay geometry.
+- Drag the title row: move the overlay.
 - `Up` / `Down` (or `j` / `k`): scroll one row.
 - Mouse wheel: scroll.
 - Click `[x]` or outside the overlay: close.
@@ -918,7 +931,7 @@ Time / Pane / Kind / Conf / Promoted / Reason.
 **View modes:**
 
 - **Ring (default):** shows the in-memory ring buffer (capacity 100, this session only).
-- **History:** queries `anomaly_events` SQLite table for the last 200 rows. Includes events from earlier sessions.
+- **History:** queries `anomaly_events` SQLite table for the last 200 rows. Includes events from earlier sessions; wheel / `↑` / `↓` scrolling clamps to the active history length.
 
 The persistent `anomaly_events` table is pruned on startup by `[anomaly] retention_days` (default 30) and an emergency 100K-row cap.
 
@@ -935,7 +948,10 @@ Qmonster SQLite DB and renders the same Token Insights report shape used
 by the CLI: situation counts, cache reuse/cost/token deltas, recent
 lifecycle timeline, and action ledger counts.
 
-- `i` (or `Esc` / `q`): close.
+- `i` (or `Esc` / `q` / `[x]`): close.
+- `[` / `]`: resize the overlay by 5% steps.
+- `=`: reset size and position to the default overlay geometry.
+- Drag the title row: move the overlay.
 - `r`: refresh the current `[insights] default_window_secs` window.
 - `Up` / `Down` (or `j` / `k`): scroll one row.
 - Mouse wheel: scroll.
