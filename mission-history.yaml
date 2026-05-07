@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.43.0 - Phase 7 v1: anomaly observation surface (AnomalySignal + 4 detectors + eval_anomalies orchestrator + m overlay ANOMALIES row)."
+  mission_title: "Qmonster v1.44.0 - Phase 7 v2 promotion: anomaly → Recommendation + Notify (severity_for + promote_anomalies_to_recommendations + event_loop wiring)."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 186
-  latest_version: "1.43.0"
+  total_revisions: 187
+  latest_version: "1.44.0"
 
 timeline:
   - change_id: "initial"
@@ -17202,9 +17202,75 @@ timeline:
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
+  - change_id: "v1.44.0-phase-7-v2-promotion"
+    semantic_version: "1.44.0"
+    change_sequence: 187
+    date: "2026-05-07"
+    author: "Claude Sonnet 4.6"
+    summary: >
+      v1.44.0 ships Phase 7 v2 promotion: anomaly → Recommendation + Notify.
+      severity_for(AnomalyConfidence) maps High → Warning and Medium/Low →
+      Concern; promote_anomalies_to_recommendations converts AnomalySignal
+      slices into Recommendation vecs; event_loop wires the call and routes
+      Warning-severity results through the Notify path; Settings Rules tab
+      gains 'promotes to Recommendation when confidence=High' annotation on
+      all 4 anomaly rule rows. No provider adapter, audit chain, policy gate
+      set, or SignalSet schema changes.
+    intent_ko: >
+      v1.44.0 은 Phase 7 v2 프로모션을 출하한다: 이상 → Recommendation + Notify.
+      severity_for 가 High → Warning, Medium/Low → Concern 으로 매핑한다.
+      promote_anomalies_to_recommendations 가 AnomalySignal 슬라이스를
+      Recommendation vec 으로 변환한다. event_loop 가 호출을 연결하고
+      Warning 심각도 결과를 Notify 경로로 라우팅한다.
+      Settings Rules 탭에 4개 이상 규칙 행에 프로모션 어노테이션 추가.
+    triggered_by: "Operator scoped Phase 7 v2 promotion as a 6-task implementation sequence (Tasks 1-5 = impl commits, Task 6 = ledger sync)."
+    changes:
+      added:
+        - "src/policy/rules/anomaly.rs::severity_for: pure helper mapping AnomalyConfidence::High → Severity::Warning and Medium/Low → Severity::Concern."
+        - "src/policy/rules/anomaly.rs::promote_anomalies_to_recommendations: converts &[AnomalySignal] into Vec<Recommendation> applying severity_for to each signal."
+        - "src/app/event_loop.rs: run_once_with_target calls promote_anomalies_to_recommendations on PaneReport.anomalies and merges results into PaneReport.recommendations; Warning-severity anomaly recs reach the existing EffectRunner Notify gate."
+        - "src/ui/settings.rs: Rules tab rows for all 4 anomaly detectors (detect_error_burst, detect_identity_churn, detect_cache_discontinuity, detect_cross_pane_edit_cluster) now include 'promotes to Recommendation when confidence=High' annotation."
+      modified:
+        - "docs/ai/UI_MANUAL.md: promotion subsection added."
+        - "docs/ai/ARCHITECTURE.md: v1.44.0 paragraph appended to Date line."
+        - "docs/ai/VALIDATION.md: Phase 7 v2 promotion row added."
+        - "docs/ai/PROJECT_BRIEF.md: Phase line and Date line updated with v1.44.0 segment."
+        - "README.md: release table bumped to v1.44.0."
+        - "VERSION.md: bumped to v1.44.0."
+        - "package.json: version 1.44.0."
+        - "mission.yaml: title, topology, suggested_approach, budget_hint updated for v1.44.0."
+        - "mission-history.yaml: v1.44.0 entry appended."
+        - ".mission/CURRENT_STATE.md: full refresh for v1.44.0."
+      removed: []
+    observable_effects:
+      added:
+        - "High-confidence anomalies (AnomalyConfidence::High) now produce Warning-severity Recommendations and trigger desktop notifications via the existing EffectRunner Notify gate."
+        - "Settings Rules tab shows 'promotes to Recommendation when confidence=High' for all 4 anomaly detector rows."
+      modified:
+        - "Medium/Low-confidence anomalies produce Concern-severity Recommendations (passive advisory, no Notify) — behavioral upgrade from silent detection-only."
+      removed: []
+    impact_scope:
+      runtime: "promote_anomalies_to_recommendations is called once per pane per poll tick when anomalies are present. No change to provider adapters, audit chain, policy gates set, SignalSet schema, or SQLite schema. AnomalyHistory and dedup state are unchanged."
+      tests: "1097 lib tests + 56 event-loop integration tests passing at the v1.44.0 release commit (+16 lib tests vs the v1.43.0 baseline of 1081; +2 event-loop integration tests vs the v1.43.0 baseline of 54); cargo fmt --all --check, cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args, cargo test --all-targets all green."
+      ledger: "1 new timeline entry (sequence 187); meta total_revisions 186 -> 187, latest_version 1.43.0 -> 1.44.0; minor version bump for Phase 7 v2 promotion."
+      npm: "package.json version 1.44.0; CI publication of v1.44.0 follows the same workflow as v1.37.0 through v1.43.0 and remains an external follow-up until verified."
+    breaking: false
+    risk: "low — promotion is additive: anomaly detection was already happening. The severity_for / promote_anomalies_to_recommendations path is pure (no IO). The Notify gate (Severity >= Warning) is the same gate used by all other Warning-level recs. Opt-in via [anomaly] enabled = false (default) means zero behavior change when disabled."
+    related_commits:
+      - "2106b55 phase 7 v2: severity_for helper + 4 detector severity bumps (Warning at High)"
+      - "51f123b phase 7 v2: promote_anomalies_to_recommendations + kind matrix + 5 tests"
+      - "de8e990 phase 7 v2: wire promote_anomalies into event_loop + 2 integration tests"
+      - "5754021 phase 7 v2: Settings Rules tab — promotion annotation on 4 anomaly rows"
+      - "e3a2b59 phase 7 v2: docs (UI_MANUAL promotion subsection, ARCHITECTURE v1.44.0 paragraph, VALIDATION row)"
+    follow_up:
+      - "Phase 7 v2 detectors (CostSlope/TokenSlope/MemoryGrowth/SubagentSideEffect): add new AnomalyKind variants using the same severity_for + promote_anomalies_to_recommendations pattern."
+      - "D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
 evolution_summary:
-  current_phase: "v1.43.0 — Phase 7 v1: anomaly observation surface. Adds AnomalySignal/AnomalyKind/AnomalyConfidence/AnomalyEvidence schema, AnomalyHistory edge-triggered dedup, 4 detectors (error_burst/identity_churn/cache_discontinuity/cross_pane_edit_cluster), eval_anomalies orchestrator, PolicyGates anomaly_* fields, PaneReport.anomalies event-loop wiring, m overlay ANOMALIES row, and Settings rows. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
-  next_phase: "Phase 7 v2 — promote high-confidence anomalies to Recommendations and Notify-level alerts; add new detector kinds (e.g. token_spike, stall_burst). D3 per-subagent token attribution is provider-blocked. Tag protection / ruleset activation is a GitHub Settings task."
+  current_phase: "v1.44.0 — Phase 7 v2 promotion: anomaly → Recommendation + Notify. Adds severity_for (High → Warning, Medium/Low → Concern), promote_anomalies_to_recommendations, event_loop wiring, and Settings Rules tab annotation. Builds on Phase 7 v1 anomaly observation surface. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
+  next_phase: "Phase 7 v2 detectors — add new AnomalyKind variants (CostSlope/TokenSlope/MemoryGrowth/SubagentSideEffect) using the same severity_for + promote_anomalies_to_recommendations pattern. D3 per-subagent token attribution is provider-blocked. Tag protection / ruleset activation is a GitHub Settings task."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
