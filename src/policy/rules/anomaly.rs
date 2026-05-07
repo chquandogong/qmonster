@@ -184,6 +184,80 @@ pub fn detect_error_burst(
     })
 }
 
+/// CacheDiscontinuity: fires either when `cache_hit_ratio` drops by
+/// at least `min_drop` over the window (oldest→newest), OR when
+/// F-7b cache-drift fires `>= 2` times inside the window. Confidence
+/// is `High` when the drop is `>= 1.5 * min_drop` or when F-7b
+/// fired `>= 4` times; otherwise `Medium`. The evidence row
+/// records the cache_hit_ratio drop when present, else falls
+/// back to the drift-fires count.
+pub fn detect_cache_discontinuity(
+    history: &AnomalyHistory,
+    window_polls: usize,
+    min_drop: f32,
+    now_unix_seconds: u64,
+) -> Option<AnomalySignal> {
+    let drift_count = history
+        .cache_drift_fires
+        .iter()
+        .take(window_polls)
+        .filter(|b| **b)
+        .count();
+    let alternate_trigger = drift_count >= 2;
+
+    let ratios: Vec<f32> = history
+        .cache_hit_ratios
+        .iter()
+        .take(window_polls)
+        .filter_map(|r| *r)
+        .collect();
+
+    let mut drop_value: Option<f32> = None;
+    let mut before_ratio: Option<f32> = None;
+    let mut after_ratio: Option<f32> = None;
+    if ratios.len() >= 2 {
+        let newest = ratios.first().copied().unwrap();
+        let oldest = ratios.last().copied().unwrap();
+        if oldest - newest >= min_drop {
+            drop_value = Some(oldest - newest);
+            before_ratio = Some(oldest);
+            after_ratio = Some(newest);
+        }
+    }
+
+    if !alternate_trigger && drop_value.is_none() {
+        return None;
+    }
+
+    let confidence = if drop_value.map(|d| d >= min_drop * 1.5).unwrap_or(false) || drift_count >= 4
+    {
+        AnomalyConfidence::High
+    } else {
+        AnomalyConfidence::Medium
+    };
+
+    let evidence = AnomalyEvidence {
+        metric_name: "cache_hit_ratio",
+        before: before_ratio
+            .map(|r| format!("{r:.2}"))
+            .unwrap_or_else(|| format!("drift_fires={drift_count}")),
+        after: after_ratio
+            .map(|r| format!("{r:.2}"))
+            .unwrap_or_else(|| format!("drift_fires={drift_count}")),
+        sample_count: ratios.len(),
+        source_kind: SourceKind::ProviderOfficial,
+    };
+
+    Some(AnomalySignal {
+        kind: AnomalyKind::CacheDiscontinuity,
+        confidence,
+        severity: Severity::Concern,
+        evidence: vec![evidence],
+        window_polls,
+        detected_at: now_unix_seconds,
+    })
+}
+
 /// Stub — Tasks 5–9 fill in the detectors and orchestrator.
 #[allow(dead_code)]
 pub fn eval_anomalies() -> Vec<AnomalySignal> {
@@ -323,5 +397,46 @@ mod tests {
         assert_eq!(h.cache_hit_ratios.len(), 20);
         assert_eq!(h.cache_drift_fires.len(), 20);
         assert_eq!(h.cross_pane_edit_paths.len(), 20);
+    }
+
+    fn cache_history(ratios: Vec<Option<f32>>, drift_fires: Vec<bool>) -> AnomalyHistory {
+        let mut h = AnomalyHistory::default();
+        for r in ratios.into_iter().rev() {
+            h.cache_hit_ratios.push_front(r);
+        }
+        for d in drift_fires.into_iter().rev() {
+            h.cache_drift_fires.push_front(d);
+        }
+        h
+    }
+
+    #[test]
+    fn detect_cache_discontinuity_fires_on_30pp_drop() {
+        // Newest 10 ticks @ 0.41, older 10 ticks @ 0.85 → drop = 0.44 ≥ 0.30
+        // Order: newest first. So [0.41 × 10, 0.85 × 10] is what we pass.
+        let mut ratios = vec![Some(0.41); 10];
+        ratios.extend(vec![Some(0.85); 10]);
+        let h = cache_history(ratios, vec![false; 20]);
+        let sig = detect_cache_discontinuity(&h, 20, 0.30, 1_700_000_000);
+        let s = sig.expect("0.44 drop should fire");
+        assert_eq!(s.kind, AnomalyKind::CacheDiscontinuity);
+        assert_eq!(s.evidence[0].metric_name, "cache_hit_ratio");
+    }
+
+    #[test]
+    fn detect_cache_discontinuity_fires_on_repeated_drift() {
+        // No 30pp drop, but F-7b fired twice in window
+        let mut drift = vec![false; 20];
+        drift[0] = true;
+        drift[5] = true;
+        let h = cache_history(vec![Some(0.50); 20], drift);
+        let sig = detect_cache_discontinuity(&h, 20, 0.30, 1_700_000_000);
+        assert!(sig.is_some(), "alternate trigger: F-7b fired ≥ 2 times");
+    }
+
+    #[test]
+    fn detect_cache_discontinuity_quiet_window_no_fire() {
+        let h = cache_history(vec![Some(0.50); 20], vec![false; 20]);
+        assert!(detect_cache_discontinuity(&h, 20, 0.30, 1_700_000_000).is_none());
     }
 }
