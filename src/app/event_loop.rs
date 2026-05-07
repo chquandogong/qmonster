@@ -805,22 +805,17 @@ pub fn current_unix_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// Generic interpreter wrappers that hide the actual CLI in argv.
-/// When `pane_current_command` is one of these, the descendant cmdline
-/// is the operator-meaningful identity (e.g. `node /usr/bin/codex`).
-/// Shells (`bash`, `zsh`, …) are intentionally excluded — those mean
-/// the operator is at a prompt with no CLI running.
-const GENERIC_INTERPRETER_WRAPPERS: &[&str] = &["node", "python", "python3", "deno", "bun", "ruby"];
-
-/// Phase F F-1 enhancement: replace generic interpreter `current_command`
-/// (e.g. `node` for Codex/Gemini panes) with the descendant's full
-/// `/proc/<pid>/cmdline` (`node /usr/bin/codex`). Returns the original
-/// command unchanged when the wrapper list does not match, when
-/// `pane_pid` is missing, or when the descendant walk fails.
+/// Replace `pane_current_command` (the foreground process's basename
+/// returned by tmux `#{pane_current_command}`) with the descendant's
+/// full `/proc/<pid>/cmdline`. Applies to all panes — native binaries
+/// (`claude`) get their argv flags, generic interpreters (`node`,
+/// `python3`) resolve to the actual CLI script (`node /usr/bin/codex`).
+///
+/// Returns the original command unchanged when `pane_pid` is missing
+/// or when the descendant walk fails (no descendants, walk error,
+/// pane just exited). Operators still see the basename in those
+/// cases — never blank.
 fn enhance_command_with_descendant_cmdline(current_command: &str, pane_pid: Option<u32>) -> String {
-    if !GENERIC_INTERPRETER_WRAPPERS.contains(&current_command) {
-        return current_command.to_string();
-    }
     let Some(pid) = pane_pid else {
         return current_command.to_string();
     };
@@ -833,22 +828,12 @@ mod enhance_command_tests {
     use super::enhance_command_with_descendant_cmdline;
 
     #[test]
-    fn passthrough_when_command_is_not_generic_wrapper() {
-        // Native binary (claude) → unchanged regardless of pid.
+    fn passthrough_when_pane_pid_missing() {
+        // No pid to walk → unchanged regardless of basename.
         assert_eq!(
-            enhance_command_with_descendant_cmdline("claude", Some(1234)),
+            enhance_command_with_descendant_cmdline("claude", None),
             "claude"
         );
-        // Shell at prompt → unchanged.
-        assert_eq!(
-            enhance_command_with_descendant_cmdline("bash", Some(1234)),
-            "bash"
-        );
-    }
-
-    #[test]
-    fn passthrough_when_pane_pid_missing() {
-        // Generic wrapper but no pid to walk → unchanged.
         assert_eq!(
             enhance_command_with_descendant_cmdline("node", None),
             "node"
@@ -857,7 +842,11 @@ mod enhance_command_tests {
 
     #[test]
     fn passthrough_when_descendant_walk_fails() {
-        // Generic wrapper + bogus pid → walk returns None → unchanged.
+        // Bogus pid → walk returns None → unchanged.
+        assert_eq!(
+            enhance_command_with_descendant_cmdline("claude", Some(99_999_999)),
+            "claude"
+        );
         assert_eq!(
             enhance_command_with_descendant_cmdline("node", Some(99_999_999)),
             "node"

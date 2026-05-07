@@ -517,10 +517,9 @@ fn panel_body_with_width(report: &PaneReport, wrap_width: u16) -> Vec<ListItem<'
         "path",
         &display_path(&report.current_path),
     )));
-    items.push(ListItem::new(aligned_field(
-        "cmd",
-        &display_command(&report.current_command),
-    )));
+    for line in wrap_aligned_field("cmd", &display_command(&report.current_command), wrap_width) {
+        items.push(ListItem::new(line));
+    }
     items.push(ListItem::new(aligned_field(
         "status",
         &state_summary_line(report),
@@ -829,7 +828,11 @@ fn display_command(command: &str) -> String {
     if command.is_empty() {
         "unknown command".into()
     } else {
-        ellipsize(command, 80)
+        // Return full cmdline; both call sites use `wrap_aligned_field`
+        // which wraps at the active card width so long argv (e.g.
+        // `node /home/u/.nvm/versions/node/v22/bin/codex --foo --bar …`)
+        // never truncates on the right edge.
+        command.to_string()
     }
 }
 
