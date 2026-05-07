@@ -82,6 +82,12 @@ pub struct PolicyGates {
     pub anomaly_cache_discontinuity_drop: f32,
     /// CrossPaneEditCluster detector: minimum same-path findings.
     pub anomaly_cross_pane_cluster_min_findings: usize,
+    /// Phase 7 v2 (v1.45.0): CostSlope detector threshold (USD/hour).
+    pub anomaly_cost_slope_usd_per_hour: f64,
+    /// Phase 7 v2 (v1.45.0): TokenSlope detector threshold (tokens/poll).
+    pub anomaly_token_slope_input_per_poll: u64,
+    /// Phase 7 v2 (v1.45.0): MemoryGrowth detector threshold (MB).
+    pub anomaly_memory_growth_mb: f64,
     /// Phase D D1 (v1.17.0): opt-in cross-window concurrent-work
     /// detection. When `true`, the cross-pane rule emits
     /// `CrossPaneKind::CrossWindowConcurrentWork` for groups whose panes
@@ -169,6 +175,9 @@ impl Default for PolicyGates {
             anomaly_error_burst_threshold: 0.5,
             anomaly_cache_discontinuity_drop: 0.30,
             anomaly_cross_pane_cluster_min_findings: 3,
+            anomaly_cost_slope_usd_per_hour: 20.0,
+            anomaly_token_slope_input_per_poll: 20_000,
+            anomaly_memory_growth_mb: 1024.0,
             cross_window_findings: false,
             identity_drift_findings: false,
             cross_pane_file_findings: false,
@@ -259,6 +268,9 @@ impl PolicyGates {
             anomaly_error_burst_threshold: anomaly.error_burst_threshold,
             anomaly_cache_discontinuity_drop: anomaly.cache_discontinuity_drop,
             anomaly_cross_pane_cluster_min_findings: anomaly.cross_pane_cluster_min_findings,
+            anomaly_cost_slope_usd_per_hour: anomaly.cost_slope_usd_per_hour,
+            anomaly_token_slope_input_per_poll: anomaly.token_slope_input_per_poll,
+            anomaly_memory_growth_mb: anomaly.memory_growth_mb,
             cross_window_findings: security.cross_window_findings,
             identity_drift_findings: security.identity_drift_findings,
             cross_pane_file_findings: security.cross_pane_file_findings,
@@ -376,6 +388,9 @@ mod tests {
             anomaly_error_burst_threshold: 0.5,
             anomaly_cache_discontinuity_drop: 0.30,
             anomaly_cross_pane_cluster_min_findings: 3,
+            anomaly_cost_slope_usd_per_hour: 20.0,
+            anomaly_token_slope_input_per_poll: 20_000,
+            anomaly_memory_growth_mb: 1024.0,
             cross_window_findings: false,
             identity_drift_findings: false,
             cross_pane_file_findings: false,
@@ -883,5 +898,45 @@ mod tests {
             });
             assert_eq!(gates.anomaly_min_confidence, expected, "mapping for {s}");
         }
+    }
+
+    #[test]
+    fn from_inputs_propagates_v2_anomaly_thresholds() {
+        use crate::app::config::{
+            CacheConfig, ContextConfig, CostConfig, QuotaConfig, ResetConfig, SecurityConfig,
+            TokenConfig,
+        };
+        use crate::domain::identity::Provider;
+        let cfg = TokenConfig::default();
+        let cost = CostConfig::default();
+        let context = ContextConfig::default();
+        let quota = QuotaConfig::default();
+        let security = SecurityConfig::default();
+        let cache = CacheConfig::default();
+        let reset = ResetConfig::default();
+        let profile_switch = crate::app::config::ProfileSwitchConfig::default();
+        let anomaly = crate::app::config::AnomalyConfig {
+            cost_slope_usd_per_hour: 40.0,
+            token_slope_input_per_poll: 60_000,
+            memory_growth_mb: 2048.0,
+            ..crate::app::config::AnomalyConfig::default()
+        };
+
+        let gates = PolicyGates::from_inputs(PolicyGateInputs {
+            token: &cfg,
+            cost: &cost,
+            context: &context,
+            quota: &quota,
+            security: &security,
+            cache: &cache,
+            reset: &reset,
+            profile_switch: &profile_switch,
+            anomaly: &anomaly,
+            provider: Provider::Claude,
+            confidence: IdentityConfidence::High,
+        });
+        assert!((gates.anomaly_cost_slope_usd_per_hour - 40.0).abs() < f64::EPSILON);
+        assert_eq!(gates.anomaly_token_slope_input_per_poll, 60_000);
+        assert!((gates.anomaly_memory_growth_mb - 2048.0).abs() < f64::EPSILON);
     }
 }
