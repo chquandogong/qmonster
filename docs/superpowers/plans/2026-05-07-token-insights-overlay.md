@@ -4,7 +4,7 @@
 
 **Goal:** Build the Phase 8 v1 proof for Token Insights: a read-only SQLite query layer plus `qmonster insights --since 24h` text report.
 
-**Architecture:** This plan implements the first rollout slice from `docs/superpowers/specs/2026-05-07-token-insights-overlay-design.md`: no lifecycle ledger, no ignored classifier, and no TUI `i` overlay yet. `src/store/insights.rs` owns SQLite reads and aggregation into an `InsightsSnapshot`; `src/app/insights_report.rs` owns window parsing, storage-path resolution, and report formatting; `src/main.rs` adds the `insights` subcommand without starting tmux.
+**Architecture:** This plan implements the first rollout slice from `docs/superpowers/specs/2026-05-07-token-insights-overlay-design.md`: no lifecycle ledger, no ignored classifier, and no TUI `i` overlay yet. `src/store/insights.rs` owns SQLite reads and aggregation into an `InsightsSnapshot`; `src/insights_report.rs` owns window parsing, storage-path resolution, and report formatting; `src/main.rs` adds the `insights` subcommand without starting tmux.
 
 **Tech Stack:** Rust 1.88, clap derive, rusqlite, tempfile integration tests, existing Qmonster storage path/config helpers.
 
@@ -21,6 +21,7 @@ This plan intentionally implements **Phase 8 v1 only**:
 
 Phase 8 v1 does not estimate ignored recommendations. The action ledger keeps `ignored = 0` and the report labels ignored classification as unavailable because the lifecycle ledger does not exist yet.
 Prompt-send outcomes are shown as observed action rows in this phase; exact recommendation-to-outcome correlation starts with the Phase 8 v2 lifecycle ledger.
+Phase 7 v3 now owns anomaly runtime state, promotion gates, and the `n` overlay. Phase 8 v1 must not touch `src/domain/anomaly.rs`, `src/policy/rules/anomaly.rs`, anomaly overlay modules, `src/app/mod.rs`, shared UI overlay routing, or shared release ledger/docs while that workstream is active.
 
 ## File Structure
 
@@ -30,11 +31,11 @@ Prompt-send outcomes are shown as observed action rows in this phase; exact reco
   - Queries only existing tables.
 - Modify `src/store/mod.rs`
   - Exposes `pub mod insights` and re-exports public insights types.
-- Create `src/app/insights_report.rs`
+- Create `src/insights_report.rs`
   - Parses `--since` values.
   - Resolves storage paths without starting tmux.
   - Formats `InsightsSnapshot` into stable report lines.
-- Modify `src/app/mod.rs`
+- Modify `src/lib.rs`
   - Exposes `pub mod insights_report`.
 - Modify `src/main.rs`
   - Adds `CliCommand::Insights`.
@@ -43,6 +44,12 @@ Prompt-send outcomes are shown as observed action rows in this phase; exact reco
   - Exercises SQLite-backed aggregation with fixture rows.
 - Add `tests/insights_report_integration.rs`
   - Exercises report formatting and the `--since` parser helper.
+
+## Execution Cutline
+
+- Active in this subagent-driven run: Tasks 1 through 6.
+- Deferred until Phase 7 v3 docs/ledger work lands: user-facing docs and mission ledger synchronization.
+- Avoid in this run: `src/app/mod.rs`, `src/app/tui_loop.rs`, `src/app/dashboard_render.rs`, `src/ui/*overlay*`, `docs/ai/*`, `README.md`, `mission.yaml`, `mission-history.yaml`, and `.mission/CURRENT_STATE.md`.
 
 ---
 
@@ -910,8 +917,8 @@ git commit -m "feat(store): aggregate token insight action ledger"
 ### Task 5: Add Report Formatting and Since Parser
 
 **Files:**
-- Create: `src/app/insights_report.rs`
-- Modify: `src/app/mod.rs`
+- Create: `src/insights_report.rs`
+- Modify: `src/lib.rs`
 - Test: `tests/insights_report_integration.rs`
 
 - [ ] **Step 1: Write failing report tests**
@@ -919,7 +926,7 @@ git commit -m "feat(store): aggregate token insight action ledger"
 Create `tests/insights_report_integration.rs`:
 
 ```rust
-use qmonster::app::insights_report::{format_insights_report_lines, parse_since_arg};
+use qmonster::insights_report::{format_insights_report_lines, parse_since_arg};
 use qmonster::store::{
     ActionLedgerRow, CacheInsightSummary, InsightsSnapshot, InsightsWindow,
     RecommendationTimelineItem, SituationSummary,
@@ -997,11 +1004,11 @@ Run:
 cargo test --test insights_report_integration
 ```
 
-Expected: compile failure because `app::insights_report` does not exist.
+Expected: compile failure because `insights_report` does not exist.
 
 - [ ] **Step 3: Implement report helpers**
 
-Create `src/app/insights_report.rs`:
+Create `src/insights_report.rs`:
 
 ```rust
 use anyhow::{Context as _, Result};
@@ -1110,13 +1117,13 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
 }
 ```
 
-Modify `src/app/mod.rs`:
+Modify `src/lib.rs`:
 
 ```rust
 pub mod insights_report;
 ```
 
-Insert the module line near the other app helper modules.
+Insert the module line after the existing `pub mod domain;` line.
 
 - [ ] **Step 4: Run report tests**
 
@@ -1131,7 +1138,7 @@ Expected: all report integration tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/app/insights_report.rs src/app/mod.rs tests/insights_report_integration.rs
+git add src/insights_report.rs src/lib.rs tests/insights_report_integration.rs
 git commit -m "feat(app): format token insights report"
 ```
 
@@ -1141,7 +1148,7 @@ git commit -m "feat(app): format token insights report"
 
 **Files:**
 - Modify: `src/main.rs`
-- Modify: `src/app/insights_report.rs`
+- Modify: `src/insights_report.rs`
 - Test: `tests/insights_report_integration.rs`
 
 - [ ] **Step 1: Add a failing test for report path resolution**
@@ -1149,7 +1156,7 @@ git commit -m "feat(app): format token insights report"
 Append to `tests/insights_report_integration.rs`:
 
 ```rust
-use qmonster::app::insights_report::resolve_insights_paths;
+use qmonster::insights_report::resolve_insights_paths;
 
 #[test]
 fn resolve_insights_paths_uses_cli_root_without_tmux() {
@@ -1175,7 +1182,7 @@ Expected: compile failure because `resolve_insights_paths` does not exist.
 
 - [ ] **Step 3: Implement storage-only path resolution**
 
-Add to `src/app/insights_report.rs`:
+Add to `src/insights_report.rs`:
 
 ```rust
 use std::path::Path;
@@ -1236,7 +1243,7 @@ Change imports:
 
 ```rust
 use clap::{Parser, Subcommand};
-use qmonster::app::insights_report::{
+use qmonster::insights_report::{
     format_insights_report_lines, parse_since_arg, resolve_insights_paths,
 };
 use qmonster::store::{InsightsWindow, SqliteInsightsStore};
@@ -1313,19 +1320,21 @@ Expected: tests pass. The command prints `qmonster paths:` and `Token Insights`;
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/main.rs src/app/insights_report.rs tests/insights_report_integration.rs
+git add src/main.rs src/insights_report.rs tests/insights_report_integration.rs
 git commit -m "feat(cli): add token insights report command"
 ```
 
 ---
 
-### Task 7: Document and Validate Phase 8 v1
+### Deferred Task 7: Document Phase 8 v1 After Phase 7 v3 Docs Land
 
 **Files:**
 - Modify: `docs/ai/UI_MANUAL.md`
 - Modify: `docs/ai/VALIDATION.md`
 - Modify: `README.md`
 - Test: documentation and full focused test set
+
+Do not execute this deferred task in the current subagent-driven run. Phase 7 v3 is actively updating shared docs and ledger surfaces.
 
 - [ ] **Step 1: Update user-facing docs**
 
@@ -1401,4 +1410,4 @@ Expected:
 - Clippy exits 0.
 - Diff check exits 0.
 
-If these pass, Phase 8 v1 is ready for review. Do not start the lifecycle ledger or TUI overlay in the same implementation run; those are Phase 8 v2/v3 and need their own plan after this report proof is evaluated.
+If these pass, Phase 8 v1 code is ready for review. Do not start the lifecycle ledger, docs/ledger sync, or TUI overlay in the same implementation run; those are Phase 8 v2/v3 or post-Phase-7-v3 follow-up work after this report proof is evaluated.
