@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.46.0 - Phase 7 v3 (a+b): per-kind promotion gate + n overlay (anomaly events ring buffer)"
+  mission_title: "Qmonster v1.47.0 - Phase 7 v3 (c): SQLite persistence for anomaly events + history; closes Phase 7"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 189
-  latest_version: "1.46.0"
+  total_revisions: 190
+  latest_version: "1.47.0"
 
 timeline:
   - change_id: "initial"
@@ -17494,9 +17494,134 @@ timeline:
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
+  - change_id: "v1.47.0-phase-7-v3-c-sqlite-persistence"
+    semantic_version: "1.47.0"
+    change_sequence: 190
+    date: "2026-05-07"
+    author: "Claude Sonnet 4.6"
+    summary: >
+      v1.47.0 ships Phase 7 v3 (c): SQLite persistence for anomaly events +
+      history. SqliteAnomalySink (src/store/anomaly_sink.rs) adds two new
+      tables (anomaly_events, anomaly_history_snapshots) to audit.db, mirroring
+      the SqliteTokenUsageSink/SqliteCostUsageSink pattern.
+      AnomalyKind/Confidence/Severity gain label/try_from_label helpers for
+      round-trip SQLite serialization (src/domain/anomaly.rs,
+      src/domain/recommendation.rs).
+      AnomalyHistorySnapshot + capture_tick + push_snapshot_into_history
+      (src/store/anomaly_history.rs) enable snapshot-based replay on startup.
+      SqliteAnomalySink: open/insert/upsert/with_transaction/fetches/run_retention;
+      time-based retention (retention_days, default 30) + 100K-row emergency
+      cap on events; snapshots auto-purge at 4× window.
+      AnomalyConfig gains retention_days = 30 default (src/app/config.rs).
+      Context.anomaly_sink + anomaly_history_replayed + with_anomaly_sink
+      builder (src/app/bootstrap.rs).
+      event_loop per-tick transaction wraps anomaly_events INSERT + snapshot
+      UPSERT in single fsync (src/app/event_loop.rs).
+      Lazy AnomalyHistory replay on first-pane-observation: staleness gate
+      ≤ 2× window × tick (src/app/event_loop.rs).
+      AnomalyOverlay gains view enum (Live | History) + history_cache +
+      toggle_view + close_resets (src/ui/anomaly_overlay.rs).
+      History view renders stored snapshots in overlay modal
+      (src/ui/anomaly_overlay.rs).
+      tui_loop wires SqliteAnomalySink + `h` key history-view dispatch
+      (src/app/startup.rs, src/app/tui_loop.rs).
+      Settings Parameters tab gains anomaly retention_days row
+      (src/ui/settings.rs).
+      Phase 7 v3 closes: (a+b) shipped v1.46.0; (c) ships now.
+      Only outstanding Phase 7 follow-up is D3 per-subagent token
+      attribution (provider-blocked).
+    intent_ko: >
+      v1.47.0 은 Phase 7 v3 (c) 를 출하한다: anomaly 이벤트 + 히스토리에 대한
+      SQLite 영속화. SqliteAnomalySink 가 audit.db 에 두 개의 새 테이블
+      (anomaly_events, anomaly_history_snapshots) 을 추가한다 (SqliteTokenUsageSink/
+      SqliteCostUsageSink 패턴을 따름).
+      AnomalyKind/Confidence/Severity 에 label/try_from_label 헬퍼 추가
+      (SQLite 텍스트 컬럼 왕복 직렬화).
+      AnomalyHistorySnapshot + capture_tick + push_snapshot_into_history 로
+      시작 시 스냅샷 기반 재생을 지원.
+      retention_days 기본값 30; 이벤트 100K행 상한; 스냅샷 4×window 자동 제거.
+      Context 에 anomaly_sink + anomaly_history_replayed 필드 추가.
+      event_loop 는 퍽 트랜잭션으로 INSERT + UPSERT 를 단일 fsync 로 묶음.
+      첫 관찰 시 lazy 재생: 구식 게이트 ≤ 2×window×tick.
+      AnomalyOverlay 에 view 열거형 + history_cache + toggle_view + close_resets 추가.
+      `h` 키로 History 뷰 전환. Settings Parameters 탭에 retention_days 행 추가.
+      Phase 7 v3 (a+b) 는 v1.46.0; (c) 는 지금 출하. Phase 7 의 유일한 잔여
+      follow-up 은 D3 per-subagent 토큰 귀속 (provider-blocked).
+    triggered_by: "Operator scoped Phase 7 v3 (c) as a 14-task implementation sequence (Tasks 1-13 = impl commits, Task 14 = ledger sync). Closes Phase 7 v3 cycle (a/b shipped in v1.46.0, c ships now)."
+    changes:
+      added:
+        - "src/store/anomaly_sink.rs: SqliteAnomalySink — open/insert/upsert/with_transaction/fetch_events/fetch_snapshots/run_retention. Two new schemas in AuditDb::open: anomaly_events (pane_id, kind, confidence, reason, ts) + anomaly_history_snapshots (pane_id, kind, snapshot_json, ts). +11 unit tests."
+        - "src/store/anomaly_history.rs: AnomalyHistorySnapshot struct + capture_tick + push_snapshot_into_history helpers. +3 unit tests."
+        - "src/domain/anomaly.rs: label() + try_from_label() on AnomalyKind and Confidence for SQLite round-trip serialization."
+        - "src/domain/recommendation.rs: label() + try_from_label() on Severity for SQLite round-trip serialization."
+        - "src/app/bootstrap.rs: Context.anomaly_sink: Option<SqliteAnomalySink> field + Context.anomaly_history_replayed: HashSet<PaneId> field + with_anomaly_sink builder method."
+        - "src/app/config.rs: AnomalyConfig.retention_days: u32 field, default 30."
+        - "src/ui/anomaly_overlay.rs: AnomalyOverlayView enum (Live | History) + view field + history_cache: Vec<AnomalyHistorySnapshot> + toggle_view() + close() resets to Live view. +4 unit tests."
+        - "src/ui/anomaly_overlay.rs: History view render branch — renders stored snapshots from history_cache in overlay modal. +3 unit tests."
+        - "src/app/startup.rs: constructs SqliteAnomalySink and wires via Context::with_anomaly_sink."
+        - "src/app/tui_loop.rs: `h` key dispatch to toggle_view on AnomalyOverlay when overlay is open."
+        - "src/ui/settings.rs: Parameters tab [anomaly] section gains retention_days row. +1 unit test."
+      modified:
+        - "src/store/sqlite.rs: AuditDb::open creates anomaly_events + anomaly_history_snapshots tables."
+        - "src/store/mod.rs: anomaly_sink + anomaly_history modules exported."
+        - "src/domain/anomaly.rs: AnomalyKind + Confidence label/try_from_label helpers."
+        - "src/domain/recommendation.rs: Severity label/try_from_label helpers."
+        - "src/app/config.rs: AnomalyConfig gains retention_days field."
+        - "src/app/bootstrap.rs: Context initialization adds anomaly_sink + anomaly_history_replayed."
+        - "src/app/event_loop.rs: run_once_with_target per-tick transaction wrapping anomaly_events INSERT + snapshot UPSERT; lazy replay on first-pane-observation. +2 integration tests."
+        - "src/app/startup.rs: SqliteAnomalySink construction + with_anomaly_sink wiring."
+        - "src/app/tui_loop.rs: `h` key dispatch when overlay open."
+        - "src/ui/anomaly_overlay.rs: AnomalyOverlayView enum + view + history_cache + toggle_view + close_resets + History render branch."
+        - "src/ui/settings.rs: retention_days row."
+        - "docs/ai/UI_MANUAL.md: h-key + retention_days documentation."
+        - "docs/ai/ARCHITECTURE.md: v1.47.0 paragraph appended."
+        - "docs/ai/VALIDATION.md: Phase 7 v3 (c) row added."
+        - "config/qmonster.example.toml: retention_days entry + version surfaces."
+        - "README.md: release table bumped to v1.47.0 / qmonster@1.47.0."
+        - "VERSION.md: bumped to v1.47.0."
+        - "package.json: version 1.47.0."
+        - "mission.yaml: title, topology, suggested_approach, budget_hint updated for v1.47.0."
+        - "mission-history.yaml: v1.47.0 entry appended."
+        - ".mission/CURRENT_STATE.md: full refresh for v1.47.0."
+      removed: []
+    observable_effects:
+      - "Anomaly events persisted across restarts in `~/.qmonster/audit.db` (anomaly_events table); accessible via `n` overlay `h` key."
+      - "Per-pane AnomalyHistory deques replay from disk on first observation per session (staleness gate: ≤2× window)."
+      - "Retention runs lazily on Context::with_anomaly_sink: time-based (`retention_days`, default 30) + 100K-row emergency cap."
+      - "Settings Parameters tab gains `anomaly retention_days` row."
+    impact_scope:
+      runtime: "Per-tick SQLite transaction (1 INSERT per visible signal + 1 UPSERT per pane). Lazy replay query on first observation per pane per session."
+      tests: "~1200 lib tests + 60 integration tests passing at the v1.47.0 release commit."
+      ledger: "1 new timeline entry (sequence 190); meta total_revisions 189 → 190, latest_version 1.46.0 → 1.47.0."
+      npm: "package.json version 1.47.0; CI publication of v1.47.0 follows the same workflow."
+    breaking: false
+    risk: "low — additive: no migration of existing tables; CREATE TABLE IF NOT EXISTS is idempotent. Detection logic unchanged. When ctx.anomaly_sink is None, behavior is identical to v1.46.0."
+    related_commits:
+      - "2edfd29 phase 7 v3 (c): spec — SQLite persistence for anomaly events + history (v1.47.0)"
+      - "5a30cf5 phase 7 v3 (c): plan — 14 tasks (v1.47.0)"
+      - "3dcb157 phase 7 v3 (c): label/try_from_label helpers for AnomalyKind/Confidence/Severity"
+      - "60bd86f phase 7 v3 (c): AnomalyHistorySnapshot + capture/replay helpers + 3 tests"
+      - "546c347 phase 7 v3 (c) T2 fixup: align identity/error_hint push semantics with event_loop"
+      - "875a15d phase 7 v3 (c): SqliteAnomalySink + two schema tables (anomaly_events, anomaly_history_snapshots) + 11 tests"
+      - "72e2b8c phase 7 v3 (c): AnomalyConfig.retention_days = 30 default + 3 tests"
+      - "a4bf07d fix(test): add anomaly retention default to event-loop fixtures"
+      - "410ab45 phase 7 v3 (c): Context.anomaly_sink + anomaly_history_replayed + with_anomaly_sink builder"
+      - "00070c9 phase 7 v3 (c): event_loop per-tick transaction (anomaly_events INSERT + snapshot UPSERT)"
+      - "832f310 phase 8 v2: add insights TTL config (bundled with T7 phase 8 v2 insights TTL config — parallel track)"
+      - "c681d7c phase 7 v3 (c): AnomalyOverlay gains view enum + history_cache + toggle_view + 4 tests"
+      - "6384487 phase 7 v3 (c): AnomalyOverlay render branch for History view + 3 tests"
+      - "65bbb55 phase 7 v3 (c): tui_loop wires SqliteAnomalySink + 'h' key history-view dispatch"
+      - "c6b6772 phase 7 v3 (c): Settings Parameters [anomaly] retention_days row + 1 test"
+      - "b334fa7 phase 7 v3 (c): event_loop integration tests — persist + replay (+2 integration) (bundled with T12 phase 8 v2 recommendation_lifecycle method — parallel track)"
+      - "2516353 phase 7 v3 (c): docs (UI_MANUAL h-key + retention_days, ARCHITECTURE v1.47.0 paragraph, VALIDATION row, example.toml + version surfaces)"
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters (only outstanding Phase 7 follow-up)."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
 evolution_summary:
-  current_phase: "v1.46.0 — Phase 7 v3 (a+b): per-kind promotion gate + n overlay (anomaly events ring buffer). AnomalyPromoteConfig adds 8 per-kind min_confidence thresholds replacing the hardcoded severity >= Warning filter. AnomalyEventsRing (in-memory, capacity 100, session-only) + AnomalyOverlay (n key). SubagentSideEffect default min_confidence='medium' fixes v1.45.0 latent dead-code branch. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
-  next_phase: "Phase 7 v3 (c) — SQLite persistence for anomaly history (deferred from v1.46.0; audit-grade / replay / retention design). D3 per-subagent token attribution is provider-blocked. Tag protection / ruleset activation is a GitHub Settings task."
+  current_phase: "v1.47.0 — Phase 7 v3 (c): SQLite persistence for anomaly events + history. SqliteAnomalySink adds anomaly_events + anomaly_history_snapshots tables to audit.db. Per-tick transaction batching, lazy replay on first-pane-observation, 30-day default retention + 100K-row hard cap, n overlay gains `h` key History view. Phase 7 closes with this release. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
+  next_phase: "Phase 7 D3 per-subagent token attribution remains provider-blocked (only outstanding Phase 7 follow-up). Pick from upstream backlog. Tag protection / ruleset activation is a GitHub Settings task."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

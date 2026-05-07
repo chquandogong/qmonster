@@ -1741,23 +1741,23 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.46.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, Phase H, Phase 7 v1, Phase 7 v2 promotion, Phase 7 v2 detectors, and Phase 7 v3 (a+b) are complete. v1.46.0 ships per-kind promotion gate (replaces hardcoded `severity >= Warning` filter with per-AnomalyKind min_confidence threshold from `[anomaly.promote]` config) + new `n` overlay for anomaly events history. AnomalyEvent record + AnomalyEventsRing (in-memory, capacity 100, session-only) + AnomalyOverlay state/key/mouse/render. SubagentSideEffect default min_confidence='medium' fixes a v1.45.0 latent dead-code branch. SQLite persistence for the ring is the (c) sub-feature, deferred to v1.47+."
+    topology: "Current working state is v1.47.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, Phase H, Phase 7 v1, Phase 7 v2 promotion, Phase 7 v2 detectors, Phase 7 v3 (a+b), Phase 7 v3 (c) are complete. v1.47.0 ships SQLite persistence for anomaly events + history. Two new tables (anomaly_events, anomaly_history_snapshots) added to audit.db via SqliteAnomalySink (mirrors SqliteTokenUsageSink/SqliteCostUsageSink pattern). Per-tick transaction batching, lazy AnomalyHistory replay on first-pane-observation (staleness ≤ 2× window), 30-day default retention + 100K-row hard cap on events, snapshots auto-purge at 4× window. n overlay gains `h` key for History view. Phase 7 closes after this release; D3 per-subagent token attribution remains the only outstanding Phase 7 follow-up (provider-blocked)."
     suggested_approach: >
-      Treat v1.46.0 as the current runtime baseline. Phase 7 v3 (a+b)
-      is shipped: AnomalyPromoteConfig adds 8 per-kind min_confidence
-      thresholds (7 × "high", subagent_side_effect = "medium") replacing
-      the hardcoded severity >= Warning filter.
-      AnomalyEventsRing (in-memory, capacity 100, session-only) captures
-      all detected anomalies. AnomalyOverlay (n key) displays newest-first
-      history. SubagentSideEffect dead-code branch is now reachable.
-      The next cycle should design Phase 7 v3 (c) — SQLite persistence
-      for anomaly history (audit-grade, replay, retention). Reuse
-      AnomalyEventsRing and the existing SQLite audit infrastructure
-      before introducing any new schema. Do not invent per-subagent token
-      attribution unless a provider exposes structured counters.
+      Treat v1.47.0 as the current runtime baseline. Phase 7 v3 (c)
+      is shipped: SqliteAnomalySink (src/store/anomaly_sink.rs) adds two
+      new tables (anomaly_events, anomaly_history_snapshots) to audit.db.
+      Per-tick transaction batches anomaly_events INSERT + snapshot UPSERT.
+      Lazy AnomalyHistory replay on first-pane-observation (staleness ≤ 2×
+      window × tick). 30-day default retention + 100K-row hard cap on events;
+      snapshots auto-purge at 4× window. n overlay gains `h` key for History
+      view. Phase 7 closes; D3 per-subagent token attribution remains the only
+      outstanding Phase 7 follow-up (provider-blocked). Do not invent
+      per-subagent token attribution unless a provider exposes structured
+      counters.
       v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 /
-      v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 CI publication verification
-      (GitHub Release + npm package) remains an external follow-up.
+      v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 CI publication
+      verification (GitHub Release + npm package) remains an external
+      follow-up.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1793,14 +1793,12 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.46.0 Phase 7 v3 (c) — SQLite persistence for anomaly history (audit-grade / replay / retention design)"
+    priority: "post-v1.47.0 — pick from upstream backlog. Phase 7 D3 stays provider-blocked."
     estimated_sessions: 1
-    scope: "v1.46.0 ships Phase 7 v3 (a+b): per-kind promotion gate + n overlay. AnomalyPromoteConfig (src/app/config.rs) adds 8 per-kind min_confidence fields (7 × 'high', subagent_side_effect = 'medium') replacing the hardcoded severity >= Warning filter. AnomalyEventsRing (src/app/anomaly_events_ring.rs) is an in-memory ring buffer, capacity 100, session-only. PolicyGates (src/policy/gates.rs) gains 8 anomaly_promote_* fields + promote_min_confidence(kind) helper. promote_anomalies_to_recommendations (src/policy/rules/anomaly.rs) updated to per-kind gate predicate. Context.anomaly_events_ring + push site (src/app/bootstrap.rs, src/app/event_loop.rs). AnomalyOverlay state/key/mouse/render (src/app/anomaly_overlay.rs, src/ui/anomaly_overlay.rs); n key. tui_loop.rs + dashboard_render.rs wired. Settings Parameters [anomaly.promote] +8 rows + Rules reads from config (src/ui/settings.rs). SubagentSideEffect dead-code branch now reachable. Deferred (c) sub-feature: SQLite persistence for anomaly history. 1162 lib tests + 58 integration tests. v1.37.0 through v1.46.0 CI publication verification remains a separate follow-up."
+    scope: "v1.47.0 ships Phase 7 v3 (c): SQLite persistence for anomaly events + history. SqliteAnomalySink (src/store/anomaly_sink.rs) adds anomaly_events and anomaly_history_snapshots tables to audit.db. Per-tick transaction batching (anomaly_events INSERT + snapshot UPSERT). Lazy AnomalyHistory replay on first-pane-observation (staleness ≤ 2× window). 30-day default retention + 100K-row hard cap on events; snapshots auto-purge at 4× window. Context.anomaly_sink + anomaly_history_replayed fields. n overlay gains `h` key for History view. Settings Parameters tab gains anomaly retention_days row. Phase 7 closes after this release. ~1200 lib tests + 60 integration tests. v1.37.0 through v1.47.0 CI publication verification remains a separate follow-up."
     followups:
-      - "Phase 7 v3 (c) — SQLite persistence for anomaly history (deferred from v1.46.0; audit-grade / replay / retention design)"
-      - "D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters"
-      - "Tag protection / ruleset activation remains a GitHub Settings task"
-      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 CI publication verification (GitHub Release + npm package) remains an external follow-up"
+      - "Phase 7 D3 per-subagent token attribution (provider-blocked)"
+      - "Tag protection/ruleset activation (GitHub Settings task)"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
   created: "2026-04-20"
