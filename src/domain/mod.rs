@@ -1,3 +1,4 @@
+pub mod anomaly;
 pub mod audit;
 pub mod identity;
 pub mod lifecycle;
