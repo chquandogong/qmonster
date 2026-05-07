@@ -1729,6 +1729,48 @@ fn build_parameter_body_lines(
             format!("{:.0}", defaults.anomaly.memory_growth_mb),
         ),
         Line::from(""),
+        reference_header_line("Anomaly Promote (per-kind threshold)"),
+        setting_row(
+            "anomaly.promote identity_churn",
+            config.anomaly.promote.identity_churn.clone(),
+            defaults.anomaly.promote.identity_churn.clone(),
+        ),
+        setting_row(
+            "anomaly.promote error_burst",
+            config.anomaly.promote.error_burst.clone(),
+            defaults.anomaly.promote.error_burst.clone(),
+        ),
+        setting_row(
+            "anomaly.promote cache_discontinuity",
+            config.anomaly.promote.cache_discontinuity.clone(),
+            defaults.anomaly.promote.cache_discontinuity.clone(),
+        ),
+        setting_row(
+            "anomaly.promote cross_pane_edit_cluster",
+            config.anomaly.promote.cross_pane_edit_cluster.clone(),
+            defaults.anomaly.promote.cross_pane_edit_cluster.clone(),
+        ),
+        setting_row(
+            "anomaly.promote cost_slope",
+            config.anomaly.promote.cost_slope.clone(),
+            defaults.anomaly.promote.cost_slope.clone(),
+        ),
+        setting_row(
+            "anomaly.promote token_slope",
+            config.anomaly.promote.token_slope.clone(),
+            defaults.anomaly.promote.token_slope.clone(),
+        ),
+        setting_row(
+            "anomaly.promote memory_growth",
+            config.anomaly.promote.memory_growth.clone(),
+            defaults.anomaly.promote.memory_growth.clone(),
+        ),
+        setting_row(
+            "anomaly.promote subagent_side_effect",
+            config.anomaly.promote.subagent_side_effect.clone(),
+            defaults.anomaly.promote.subagent_side_effect.clone(),
+        ),
+        Line::from(""),
         reference_header_line("Cost / Profile"),
         setting_row(
             "cost budget_usd",
@@ -1909,59 +1951,71 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
         rule_row(
             "anomaly: IdentityChurn",
             format!(
-                "fires when (provider, path) flips >= {} times in {} polls; promotes to Recommendation when confidence=High",
-                config.anomaly.identity_churn_min_flips, config.anomaly.window_polls,
+                "fires when (provider, path) flips >= {} times in {} polls; promotes to Recommendation when confidence >= {}",
+                config.anomaly.identity_churn_min_flips,
+                config.anomaly.window_polls,
+                config.anomaly.promote.identity_churn,
             ),
         ),
         rule_row(
             "anomaly: ErrorBurst",
             format!(
-                "fires when error rate >= {:.0}% over {} polls; promotes to Recommendation when confidence=High",
+                "fires when error rate >= {:.0}% over {} polls; promotes to Recommendation when confidence >= {}",
                 config.anomaly.error_burst_threshold * 100.0,
                 config.anomaly.window_polls,
+                config.anomaly.promote.error_burst,
             ),
         ),
         rule_row(
             "anomaly: CacheDiscontinuity",
             format!(
-                "fires when cache_hit_ratio drops >= {:.0}pp OR F-7b fires >= 2x in {} polls; promotes to Recommendation when confidence=High",
+                "fires when cache_hit_ratio drops >= {:.0}pp OR F-7b fires >= 2x in {} polls; promotes to Recommendation when confidence >= {}",
                 config.anomaly.cache_discontinuity_drop * 100.0,
                 config.anomaly.window_polls,
+                config.anomaly.promote.cache_discontinuity,
             ),
         ),
         rule_row(
             "anomaly: CrossPaneEditCluster",
             format!(
-                "fires when >= {} ConcurrentFileEdit findings target the same path in {} polls; promotes to Recommendation when confidence=High",
-                config.anomaly.cross_pane_cluster_min_findings, config.anomaly.window_polls,
+                "fires when >= {} ConcurrentFileEdit findings target the same path in {} polls; promotes to Recommendation when confidence >= {}",
+                config.anomaly.cross_pane_cluster_min_findings,
+                config.anomaly.window_polls,
+                config.anomaly.promote.cross_pane_edit_cluster,
             ),
         ),
         rule_row(
             "anomaly: CostSlope",
             format!(
-                "fires when cost slope >= {:.2} USD/hour over {} polls; promotes to Recommendation when confidence=High",
-                config.anomaly.cost_slope_usd_per_hour, config.anomaly.window_polls,
+                "fires when cost slope >= {:.2} USD/hour over {} polls; promotes to Recommendation when confidence >= {}",
+                config.anomaly.cost_slope_usd_per_hour,
+                config.anomaly.window_polls,
+                config.anomaly.promote.cost_slope,
             ),
         ),
         rule_row(
             "anomaly: TokenSlope",
             format!(
-                "fires when input_tokens slope >= {} per poll over {} polls; promotes to Recommendation when confidence=High",
-                config.anomaly.token_slope_input_per_poll, config.anomaly.window_polls,
+                "fires when input_tokens slope >= {} per poll over {} polls; promotes to Recommendation when confidence >= {}",
+                config.anomaly.token_slope_input_per_poll,
+                config.anomaly.window_polls,
+                config.anomaly.promote.token_slope,
             ),
         ),
         rule_row(
             "anomaly: MemoryGrowth",
             format!(
-                "fires when process_memory_mb grows >= {:.0} MB over {} polls; promotes to Recommendation when confidence=High",
-                config.anomaly.memory_growth_mb, config.anomaly.window_polls,
+                "fires when process_memory_mb grows >= {:.0} MB over {} polls; promotes to Recommendation when confidence >= {}",
+                config.anomaly.memory_growth_mb,
+                config.anomaly.window_polls,
+                config.anomaly.promote.memory_growth,
             ),
         ),
         rule_row(
             "anomaly: SubagentSideEffect",
             format!(
-                "fires when subagent_hint observed in {} polls AND another anomaly fires (correlation, not attribution); promotes when subagent_hint co-occurs with another anomaly",
-                config.anomaly.window_polls,
+                "fires when subagent_hint observed in {} polls AND another anomaly fires (correlation, not attribution); promotes when subagent_hint co-occurs with another anomaly (confidence >= {})",
+                config.anomaly.window_polls, config.anomaly.promote.subagent_side_effect,
             ),
         ),
         Line::from(""),
@@ -3288,7 +3342,7 @@ mod tests {
         s.switch_tab(SettingsTab::Rules);
         let lines = build_body_lines(&s, &config);
         let rendered = rendered_text(&lines);
-        let expected_phrase = "promotes to Recommendation when confidence=High";
+        let expected_phrase = "promotes to Recommendation when confidence >= high";
         let count = rendered.matches(expected_phrase).count();
         assert_eq!(
             count, 7,
@@ -3353,6 +3407,48 @@ mod tests {
         assert!(
             rendered.contains("anomaly: SubagentSideEffect"),
             "missing SubagentSideEffect: {rendered}"
+        );
+    }
+
+    #[test]
+    fn parameters_tab_includes_anomaly_promote_section() {
+        let config = QmonsterConfig::defaults();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        let lines = build_body_lines(&s, &config);
+        let rendered = rendered_text(&lines);
+        assert!(
+            rendered.contains("Anomaly Promote (per-kind threshold)"),
+            "section header missing: {rendered}"
+        );
+        assert!(
+            rendered.contains("anomaly.promote subagent_side_effect"),
+            "subagent_side_effect row missing"
+        );
+        assert!(
+            rendered.contains("anomaly.promote cost_slope"),
+            "cost_slope row missing"
+        );
+    }
+
+    #[test]
+    fn rules_tab_anomaly_rows_use_configured_threshold_value() {
+        let config = QmonsterConfig::defaults();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Rules);
+        let lines = build_body_lines(&s, &config);
+        let rendered = rendered_text(&lines);
+        // 7 slope-style detectors use the standard phrase with the dynamic threshold value
+        assert!(
+            rendered.contains("promotes to Recommendation when confidence >= high"),
+            "default 'high' threshold missing in rules tab: {rendered}"
+        );
+        // SubagentSideEffect uses 'medium' default
+        assert!(
+            rendered.contains("(confidence >= medium)"),
+            "subagent_side_effect medium default missing: {rendered}"
         );
     }
 }
