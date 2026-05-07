@@ -6,7 +6,7 @@
 //! v1 ships four kinds. v2 adds CostSlope, TokenSlope,
 //! MemoryGrowth, SubagentSideEffect.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal};
 use crate::domain::origin::SourceKind;
@@ -264,6 +264,48 @@ pub fn eval_anomalies() -> Vec<AnomalySignal> {
     Vec::new()
 }
 
+/// CrossPaneEditCluster: count `ConcurrentFileEdit` findings per
+/// path across the window. Fires when any single path appears
+/// `>= min_findings` times. Confidence is `Medium` at threshold,
+/// `High` at `>= 2× min_findings`. Evidence records the winning
+/// path and its count.
+pub fn detect_cross_pane_edit_cluster(
+    history: &AnomalyHistory,
+    window_polls: usize,
+    min_findings: usize,
+    now_unix_seconds: u64,
+) -> Option<AnomalySignal> {
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for tick_paths in history.cross_pane_edit_paths.iter().take(window_polls) {
+        for path in tick_paths {
+            *counts.entry(path.as_str()).or_insert(0) += 1;
+        }
+    }
+    let (winning_path, winning_count) = counts.iter().max_by_key(|(_, c)| **c)?;
+    if *winning_count < min_findings {
+        return None;
+    }
+    let confidence = if *winning_count >= min_findings * 2 {
+        AnomalyConfidence::High
+    } else {
+        AnomalyConfidence::Medium
+    };
+    Some(AnomalySignal {
+        kind: AnomalyKind::CrossPaneEditCluster,
+        confidence,
+        severity: Severity::Concern,
+        evidence: vec![AnomalyEvidence {
+            metric_name: "concurrent_edit_path",
+            before: winning_path.to_string(),
+            after: winning_count.to_string(),
+            sample_count: *winning_count,
+            source_kind: SourceKind::Estimated,
+        }],
+        window_polls,
+        detected_at: now_unix_seconds,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,5 +480,43 @@ mod tests {
     fn detect_cache_discontinuity_quiet_window_no_fire() {
         let h = cache_history(vec![Some(0.50); 20], vec![false; 20]);
         assert!(detect_cache_discontinuity(&h, 20, 0.30, 1_700_000_000).is_none());
+    }
+
+    fn cross_pane_history(per_tick_paths: Vec<Vec<&str>>) -> AnomalyHistory {
+        let mut h = AnomalyHistory::default();
+        for tick in per_tick_paths.into_iter().rev() {
+            h.cross_pane_edit_paths
+                .push_front(tick.into_iter().map(String::from).collect());
+        }
+        h
+    }
+
+    #[test]
+    fn detect_cross_pane_edit_cluster_same_path_threshold() {
+        // 4 ticks each emitting `/r/foo.rs` → 4 findings on same path
+        let mut ticks: Vec<Vec<&str>> = vec![vec!["/r/foo.rs"]; 4];
+        ticks.extend(vec![vec![]; 16]);
+        let h = cross_pane_history(ticks);
+        let sig = detect_cross_pane_edit_cluster(&h, 20, 3, 1_700_000_000);
+        let s = sig.expect("4 same-path findings ≥ 3 threshold");
+        assert_eq!(s.kind, AnomalyKind::CrossPaneEditCluster);
+        assert_eq!(s.evidence[0].metric_name, "concurrent_edit_path");
+    }
+
+    #[test]
+    fn detect_cross_pane_edit_cluster_different_paths_no_fire() {
+        let h = cross_pane_history(vec![
+            vec!["/r/a.rs"],
+            vec!["/r/b.rs"],
+            vec!["/r/c.rs"],
+            vec!["/r/d.rs"],
+        ]);
+        assert!(detect_cross_pane_edit_cluster(&h, 20, 3, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn detect_cross_pane_edit_cluster_below_threshold() {
+        let h = cross_pane_history(vec![vec!["/r/foo.rs"], vec!["/r/foo.rs"]]); // only 2
+        assert!(detect_cross_pane_edit_cluster(&h, 20, 3, 1_700_000_000).is_none());
     }
 }
