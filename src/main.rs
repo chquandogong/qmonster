@@ -9,8 +9,7 @@ use qmonster::app::once_report::print_once_reports;
 use qmonster::app::startup::{StartupOptions, build_startup_runtime};
 use qmonster::app::tui_loop::run_tui;
 use qmonster::insights_report::{
-    empty_insights_snapshot, format_insights_report_lines, parse_since_arg,
-    resolve_insights_paths,
+    empty_insights_snapshot, format_insights_report_lines, parse_since_arg, resolve_insights_paths,
 };
 use qmonster::store::{InsightsWindow, SqliteInsightsStore};
 

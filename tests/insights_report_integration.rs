@@ -1,6 +1,5 @@
 use qmonster::insights_report::{
-    empty_insights_snapshot, format_insights_report_lines, parse_since_arg,
-    resolve_insights_paths,
+    empty_insights_snapshot, format_insights_report_lines, parse_since_arg, resolve_insights_paths,
 };
 use qmonster::store::{
     ActionLedgerRow, CacheInsightSummary, InsightsSnapshot, InsightsWindow,
