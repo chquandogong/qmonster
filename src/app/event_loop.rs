@@ -533,7 +533,12 @@ where
         // `anomalies` holds the post-eval_anomalies signal vec (visible
         // signals, post-visibility-filter); `gates` is the same
         // PolicyGates value used by the promote call above.
-        let now_secs = current_unix_ms() / 1000;
+        // NOTE: this `promoted_bool` mirrors the gate inside
+        // `promote_anomalies_to_recommendations`. Keep the two predicates
+        // in sync — if one changes (e.g., per-pane override), update the
+        // other in the same commit. Task 12's integration test verifies
+        // they agree at default config.
+        let now_secs: u64 = (current_unix_ms() / 1000) as u64;
         for sig in &anomalies {
             let promoted_bool = sig.confidence >= gates.promote_min_confidence(sig.kind);
             let reason = sig
@@ -543,7 +548,7 @@ where
                 .unwrap_or_default();
             ctx.anomaly_events_ring
                 .push(crate::domain::anomaly::AnomalyEvent {
-                    timestamp: now_secs as u64,
+                    timestamp: now_secs,
                     pane_id: pane.pane_id.clone(),
                     kind: sig.kind,
                     confidence: sig.confidence,

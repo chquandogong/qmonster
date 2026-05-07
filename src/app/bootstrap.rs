@@ -115,6 +115,9 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// `AnomalyEvent`s, populated by `run_once_with_target` after
     /// the per-kind promotion gate runs. Rendered by the `n` overlay.
     /// Capacity 100 (see `AnomalyEventsRing::CAPACITY`); session-only.
+    /// Events from dead or re-attached panes are intentionally retained
+    /// for historical display — only `anomaly_history` / `anomaly_dedup`
+    /// are evicted on pane lifecycle changes.
     pub anomaly_events_ring: crate::app::anomaly_events_ring::AnomalyEventsRing,
     /// Phase F F-3 (v1.24.0): token-usage time-series sink for the
     /// per-pane sparkline. `None` when the SQLite open failed at
