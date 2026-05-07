@@ -480,6 +480,12 @@ pub fn promote_anomalies_to_recommendations(signals: &[AnomalySignal]) -> Vec<Re
                     "coordinate edits between panes; the existing F-8 ConcurrentFileEdit findings panel lists which panes".to_string(),
                 )
             }
+            AnomalyKind::CostSlope => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
+            AnomalyKind::TokenSlope => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
+            AnomalyKind::MemoryGrowth => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
+            AnomalyKind::SubagentSideEffect => {
+                unreachable!("Phase 7 v2 detectors land in Tasks 5-9")
+            }
         };
         out.push(Recommendation {
             action,
@@ -921,6 +927,12 @@ mod tests {
                 "/r/foo.rs".to_string(),
                 "6".to_string(),
             ),
+            AnomalyKind::CostSlope => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
+            AnomalyKind::TokenSlope => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
+            AnomalyKind::MemoryGrowth => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
+            AnomalyKind::SubagentSideEffect => {
+                unreachable!("Phase 7 v2 detectors land in Tasks 5-9")
+            }
         };
         AnomalySignal {
             kind,

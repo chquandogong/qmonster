@@ -31,6 +31,10 @@ pub enum AnomalyKind {
     ErrorBurst,
     CacheDiscontinuity,
     CrossPaneEditCluster,
+    CostSlope,
+    TokenSlope,
+    MemoryGrowth,
+    SubagentSideEffect,
 }
 
 impl AnomalyKind {
@@ -40,6 +44,10 @@ impl AnomalyKind {
             AnomalyKind::ErrorBurst => "ErrorBurst",
             AnomalyKind::CacheDiscontinuity => "CacheDiscontinuity",
             AnomalyKind::CrossPaneEditCluster => "CrossPaneEditCluster",
+            AnomalyKind::CostSlope => "CostSlope",
+            AnomalyKind::TokenSlope => "TokenSlope",
+            AnomalyKind::MemoryGrowth => "MemoryGrowth",
+            AnomalyKind::SubagentSideEffect => "SubagentSideEffect",
         }
     }
 }
@@ -98,5 +106,16 @@ mod tests {
     fn confidence_orders_low_lt_medium_lt_high() {
         assert!(AnomalyConfidence::Low < AnomalyConfidence::Medium);
         assert!(AnomalyConfidence::Medium < AnomalyConfidence::High);
+    }
+
+    #[test]
+    fn kind_labels_cover_v2_variants() {
+        assert_eq!(AnomalyKind::CostSlope.label(), "CostSlope");
+        assert_eq!(AnomalyKind::TokenSlope.label(), "TokenSlope");
+        assert_eq!(AnomalyKind::MemoryGrowth.label(), "MemoryGrowth");
+        assert_eq!(
+            AnomalyKind::SubagentSideEffect.label(),
+            "SubagentSideEffect"
+        );
     }
 }
