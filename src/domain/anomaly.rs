@@ -84,6 +84,21 @@ pub struct AnomalyEvidence {
     pub source_kind: SourceKind,
 }
 
+/// Phase 7 v3 (v1.46.0): record pushed into the in-memory
+/// `AnomalyEventsRing` for every visible `AnomalySignal`. Carries the
+/// promotion-gate result so the `n` overlay can show which signals
+/// became Recommendations and which stayed at passive observation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnomalyEvent {
+    pub timestamp: i64,
+    pub pane_id: String,
+    pub kind: AnomalyKind,
+    pub confidence: AnomalyConfidence,
+    pub severity: Severity,
+    pub promoted: bool,
+    pub reason: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,5 +132,21 @@ mod tests {
             AnomalyKind::SubagentSideEffect.label(),
             "SubagentSideEffect"
         );
+    }
+
+    #[test]
+    fn anomaly_event_construction_smoke() {
+        let event = AnomalyEvent {
+            timestamp: 1_700_000_000,
+            pane_id: "%1".to_string(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "cost_usd: 0.10 → 25.40".to_string(),
+        };
+        assert_eq!(event.timestamp, 1_700_000_000);
+        assert_eq!(event.kind, AnomalyKind::CostSlope);
+        assert!(event.promoted);
     }
 }
