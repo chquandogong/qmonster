@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-07 (Claude, v1.49.0 publication verified)_
+_Last updated: 2026-05-08 (Claude, post-v1.49.0 audit + cross-pane fold-back + provider matrix + pricing extension landed; v1.50.0 Insights Spinner work landed on main untagged)_
 
 ## Mission
 
@@ -52,7 +52,70 @@ Reference docs in tree: `docs/superpowers/specs/2026-05-07-overlay-chrome-consis
 
 ## Post-tag polish (on main, untagged)
 
-No genuinely-post-v1.49.0 work has landed yet.
+Five rounds layered on top of `v1.49.0` and not yet release-ledger-synced
+into a tagged version:
+
+1. **v1.50.0 Insights Overlay Loading Spinner (12-task TDD plan complete)**
+   — design + plan committed `2ac1c34` / `47a1bd6`; implementation landed
+   across `cff0314` → `8e4ebe8`. `i` Token Insights opens / `r` refresh
+   now dispatches a worker thread + mpsc channel fetch, drained per
+   tick. Center-aligned `Aggregating insights {SPINNER_FRAMES[phase]}`
+   placeholder while loading; phase advances at the existing 100 ms
+   `event::poll` cadence. Stale-id drop on `set_snapshot_for` so a
+   slow first load does not overwrite a fast second load. Tests cover
+   mark_loading / spinner cycle / set_snapshot_for matrix /
+   line_count-zero-while-loading / spawn_insights_load round-trip.
+   Canonical reference: `docs/superpowers/specs/2026-05-07-insights-overlay-loading-spinner-design.md`
+   + `docs/superpowers/plans/2026-05-07-insights-overlay-loading-spinner.md`.
+
+2. **Phase 7 v2 `CrossPaneEditCluster` fold-back loop closure** (`458a931`
+   + `3b93330`). `CrossPaneFinding` gains a `paths: Vec<String>` field;
+   `eval_concurrent_files` populates it for every `ConcurrentFileEdit`
+   finding; the event loop's new `fold_finding_paths_into_history`
+   helper appends those paths to the front entry of every attributed
+   pane's `AnomalyHistory.cross_pane_edit_paths` deque. The Option A
+   1-tick-lag pattern at `event_loop.rs:495-500` is preserved; the
+   detector running on tick T sees tick T-1's fold-back. Three new
+   unit tests in `event_loop.rs::tests` lock the contract end-to-end
+   including the round-trip-fires-detector case. Closes the dead-pipe
+   gap that surfaced during the Claude-led v1.49.0 audit (Phase 7 v2
+   detector existed but `cross_pane_edit_paths` was always
+   `Vec::new()`).
+
+3. **`docs/ai/ARCHITECTURE.md` provider-coverage matrix** (`a5f4c7e`).
+   Adds a v1.49.0-baseline matrix of every signal the policy + anomaly
+   stack reads against Claude / Codex / Gemini availability, plus
+   detector/rule reach implications (e.g. cache rule = Claude+Codex,
+   `auto_memory` / `agent_memory` = Claude-only,
+   `CrossPaneEditCluster` = Claude-only until other adapters emit
+   `active_files`). Also documents canonical "render as em-dash, omit
+   silently, exclude from aggregations" rules so surfaces stay honest
+   about provider gaps instead of silently emitting `None`.
+
+4. **`config/pricing.example.toml` Gemini + Claude Opus rows** (`013d9f0`).
+   Adds `claude-opus-4-7`, `gemini-3.1-pro`, `gemini-3.1-flash`
+   placeholder entries (rates 0.00 → `lookup()` returns `None`, no
+   v1.49.0 behaviour change). Operators no longer have to discover the
+   `(provider, model)` keying convention themselves to enable the COST
+   badge / `cost_slope` anomaly detector on those panes — it becomes a
+   single-line edit. Closes the matrix's "deferred until Gemini
+   pricing is curated" gap from a code change to a config change.
+
+5. **Codex parallel parameter-edit affordance for Settings overlay**
+   (in flight at handoff time, lands as `chore(ai): apply Claude
+   edit` `458a931` mixed with item 2 above). `src/ui/settings.rs`
+   gains `ParameterField` / `ParameterEditKind` editors, parameter
+   keystroke routing, and the activate/commit pipeline; the existing
+   1265 → 1285 lib test count delta covers the new Settings tests
+   plus the three `fold_finding_paths_into_history` unit tests. Codex
+   may continue layering polish on this slice; treat the `settings.rs`
+   diff as Codex-owned until they ship a release-ledger sync entry.
+
+Reference docs in tree:
+`docs/superpowers/specs/2026-05-07-insights-overlay-loading-spinner-design.md`,
+`docs/superpowers/plans/2026-05-07-insights-overlay-loading-spinner.md`,
+`.docs/claude/Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md`
+(audit + slice-1 outcome, working doc not in git).
 
 ## Known External State
 
@@ -70,7 +133,7 @@ No genuinely-post-v1.49.0 work has landed yet.
 Most recent v1.49.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1265 lib tests + 61 integration tests, all green (lib up from 1209 at v1.48.0 baseline as new Settings scroll / overlay chrome / cmdline walker / audit-variant tests landed).
+- `cargo test --all-targets` — 1265 lib tests + 61 integration tests at the v1.49.0 release commit; **post-tag polish bumps lib to 1285** (Settings parameter-edit affordance + `fold_finding_paths_into_history` round-trip tests). Integration count unchanged.
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
@@ -80,4 +143,20 @@ Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged rele
 
 ## Next First Action
 
-Pick the next follow-up from the Active Follow-Ups list. Phase 7 D3 stays provider-blocked; tag protection / ruleset activation is operator-side. Otherwise pick from upstream backlog (no formal next-phase planning queued at the moment).
+Decide on a v1.50.0 release ledger sync window once Codex's Settings
+parameter-edit polish stabilizes. The Insights Spinner work is the
+named v1.50.0 line item; the cross-pane fold-back / provider matrix /
+pricing extension / parameter-edit affordance fold in as polish. Until
+then, `main` is the canonical ref for both Claude- and Codex-led work.
+
+Otherwise pick the next slice from the post-v1.49.0 audit's recommended
+list (`.docs/claude/Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md`):
+`error_burst` evidence enrichment (signal shape change, distinct from
+threshold tuning), an `m`-overlay smoke render test that exercises a
+Gemini pane with pricing entered to lock the cost_slope activation
+contract, or a `docs/ai/REVIEW_GUIDE.md` paragraph noting the
+provider-coverage matrix as the canonical reference reviewers should
+cite when a metric chip is empty.
+
+Phase 7 D3 stays provider-blocked; tag protection / ruleset activation
+is operator-side.
