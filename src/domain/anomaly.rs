@@ -90,7 +90,7 @@ pub struct AnomalyEvidence {
 /// became Recommendations and which stayed at passive observation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnomalyEvent {
-    pub timestamp: i64,
+    pub timestamp: u64,
     pub pane_id: String,
     pub kind: AnomalyKind,
     pub confidence: AnomalyConfidence,
@@ -148,5 +148,6 @@ mod tests {
         assert_eq!(event.timestamp, 1_700_000_000);
         assert_eq!(event.kind, AnomalyKind::CostSlope);
         assert!(event.promoted);
+        assert_eq!(event.reason, "cost_usd: 0.10 → 25.40");
     }
 }
