@@ -452,12 +452,12 @@ fn action_ledger_counts_prompt_send_terminal_outcomes() {
     audit.record(audit_event(
         AuditEventKind::PromptSendAccepted,
         "%1",
-        "%1 -> `/compact` (proposal_id `%1:/compact`)",
+        "%1 /compact (proposal pid-42) (acknowledged by operator; executing)",
     ));
     audit.record(audit_event(
         AuditEventKind::PromptSendCompleted,
         "%1",
-        "%1 -> `/compact` completed (proposal_id `%1:/compact`)",
+        "%1 /compact (proposal pid-42) (sent; operator-confirmed)",
     ));
     audit.record(audit_event(
         AuditEventKind::SnapshotWritten,
@@ -482,6 +482,12 @@ fn action_ledger_counts_prompt_send_terminal_outcomes() {
     assert_eq!(compact.accepted, 1);
     assert_eq!(compact.completed, 1);
     assert_eq!(compact.ignored, 0);
+    assert!(
+        snapshot
+            .actions
+            .iter()
+            .all(|row| row.action != "prompt-send")
+    );
 
     let snapshot_row = snapshot
         .actions

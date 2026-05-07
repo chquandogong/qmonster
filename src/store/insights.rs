@@ -163,12 +163,21 @@ fn action_from_summary(summary: &str) -> &str {
 }
 
 fn prompt_command_from_summary(summary: &str) -> Option<String> {
-    let arrow = summary.find("->")?;
-    let after_arrow = &summary[arrow + 2..];
-    let start = after_arrow.find('`')?;
-    let rest = &after_arrow[start + 1..];
-    let end = rest.find('`')?;
-    Some(rest[..end].to_string())
+    if let Some(arrow) = summary.find("->") {
+        let after_arrow = &summary[arrow + 2..];
+        let start = after_arrow.find('`')?;
+        let rest = &after_arrow[start + 1..];
+        let end = rest.find('`')?;
+        return Some(rest[..end].to_string());
+    }
+
+    let mut tokens = summary.split_whitespace();
+    let _target = tokens.next()?;
+    let command = tokens.next()?;
+    let command = command
+        .trim_matches('`')
+        .trim_end_matches(&[',', '.', ';', ':', '!', '?', ')', ']', '}'][..]);
+    command.starts_with('/').then(|| command.to_string())
 }
 
 fn action_for_audit(kind: &str, summary: &str) -> String {
