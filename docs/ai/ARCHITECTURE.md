@@ -702,6 +702,78 @@ value. Color is never used alone.
 5. **Limited actuation** (see "Actuation policy"). Destructive code
    paths are not created until the phase that owns them is approved.
 
+## Provider-coverage matrix (v1.49.0 baseline)
+
+The five-layer token-optimization architecture and the eight-detector
+anomaly surface are **only as useful as the provider signals that feed
+them**. The matrix below is the canonical reference for which signals
+exist on which provider and which surfaces consume them. Operators
+reading the dashboard should consult this table when a metric appears
+empty: an empty value can mean _not collected this tick_ (Claude /
+Codex), _no upstream surface today_ (Gemini), or _gated behind a
+sidefile/app-server channel that hasn't been wired_ (Codex
+`resets_at_unix_seconds` for the weekly window).
+
+| Signal                                                            |                  Claude                  |                            Codex                             |               Gemini               | Notes                                                             |
+| ----------------------------------------------------------------- | :--------------------------------------: | :----------------------------------------------------------: | :--------------------------------: | ----------------------------------------------------------------- |
+| `context_pressure`                                                |       ✅ statusline + USAGE block        |                    ✅ `Context %` footer                     | ✅ `parse_gemini_context_pressure` | All three providers expose this.                                  |
+| `input_tokens`                                                    |              ✅ USAGE block              |                        ✅ status line                        |          ✅ model summary          | All three providers expose this.                                  |
+| `output_tokens`                                                   |       ✅ `↓ N tokens` + Done line        |                        ✅ status line                        |          ✅ model summary          | All three providers expose this.                                  |
+| `cached_input_tokens`                                             |              ✅ USAGE block              |              ✅ `Token usage: ... (+ N cached)`              |           ❌ no surface            | Required denominator for `cache_hit_ratio` derivation.            |
+| `cache_hit_ratio`                                                 |           ✅ `cache N%` direct           |             ✅ derived from cached/input counts              |           ❌ no surface            | The `cache` rule (hot/cold/drift) is therefore Claude+Codex only. |
+| `cost_usd`                                                        |        ✅ pricing × token counts         |  ✅ pricing × token counts (when both input+output present)  |          ❌ no token rate          | `Estimated` (project pricing table).                              |
+| `quota_5h_pressure`                                               |             ✅ sidefile JSON             |                    ✅ statusline `5h N%`                     |           ❌ no surface            | Codex statusline takes priority over app-server snapshot.         |
+| `quota_weekly_pressure`                                           |             ✅ sidefile JSON             |                  ✅ statusline `weekly N%`                   |           ❌ no surface            | Same precedence rule as the 5h window.                            |
+| `quota_*_resets_at`                                               |             ✅ sidefile JSON             | ⚠️ app-server only (statusline carries % but not reset time) |           ❌ no surface            | Phase F-6 broadcast wires the app-server values into Codex panes. |
+| `process_memory_mb` (RSS)                                         |       ✅ `/proc/<pid>/status` walk       |                           ✅ same                            |              ✅ same               | OS-level signal, provider-agnostic.                               |
+| `agent_memory_bytes`                                              | ✅ `~/.claude/f<pane>/agent-*.yaml` scan |                   ❌ no equivalent surface                   |      ❌ no equivalent surface      | Claude-only by file-path convention.                              |
+| `idle_state` (PermissionWait / InputWait / Working / Idle)        |              ✅ classifier               |  ✅ classifier (Codex-specific cursor + 5h-limit detection)  |           ✅ classifier            | Common-tier markers populate the obvious cases first.             |
+| `error_hint` / `verbose_answer` / `repeated_output` / `log_storm` |             ✅ tail patterns             |                       ✅ tail patterns                       |          ✅ tail patterns          | All `Heuristic`.                                                  |
+| `active_files` (tool-call markers)                                |       ✅ Claude tool-call markers        |                 ❌ no marker contract today                  |    ❌ no marker contract today     | Fuels F-8 `ConcurrentFileEdit` + Phase 7 `CrossPaneEditCluster`.  |
+
+### Detector / rule reach implications
+
+- `cache` rule (hot warning, cold compact, drift compact) — **Claude +
+  Codex**. Gemini panes never receive `/compact` recommendations from
+  the cache rule because cache_hit_ratio is missing.
+- `auto_memory` / `agent_memory` rules — **Claude only**. The sidefile
+  - agent-memory paths are Claude-by-convention; other providers never
+    fire these rules.
+- `cost_slope` anomaly detector — **Claude + Codex**. Skipped on
+  Gemini because `cost_usd` requires token counts that are present on
+  Gemini but no pricing-table coverage today; status: deferred until
+  Gemini pricing is curated in `policy/pricing.rs`.
+- `CrossPaneEditCluster` anomaly detector — **Claude only** today
+  because `active_files` is sourced from Claude tool-call markers; the
+  detector itself is provider-agnostic and will pick up Codex/Gemini
+  panes the moment those adapters emit `active_files`.
+- `error_burst` / `memory_growth` / `token_slope` / `identity_churn` /
+  `cache_discontinuity` / `subagent_side_effect` — provider-agnostic
+  modulo the underlying signal availability above.
+
+### How surfaces should treat unavailable signals
+
+- Pane card metric chips (`src/ui/panels.rs`): omit silently. Adding
+  "n/a" chips for every missing structural signal would clutter every
+  Gemini pane indefinitely.
+- `m` Metrics overlay (`src/ui/metrics.rs`): row labels render as
+  em-dash (`—`) when the value is structurally absent. The em-dash is
+  the canonical "no value, by design" marker.
+- `i` Token Insights overlay (`src/ui/insights.rs`,
+  `src/insights_report.rs`): aggregations naturally exclude missing
+  panes (counts are zero, ratios undefined). Operators reading the
+  Action Ledger should cross-reference this matrix when a count looks
+  unexpectedly low — the rule may simply not apply to the panes in
+  question.
+- `n` Anomaly Events overlay: detectors that cannot fire on a given
+  provider produce no rows, which is correct. Operators should not
+  interpret an empty row count as "no anomalies"; consult this matrix
+  to confirm coverage.
+
+When the matrix changes (a new adapter parsing path lands, a new
+sidefile or app-server channel wires up), update this section in the
+same commit so the canonical reference stays truthful.
+
 ## MVP reference code — warning
 
 `.docs/init/qmonster_adaptive_token_optimizer_mvp.rs` is a **signal
