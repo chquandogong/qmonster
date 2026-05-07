@@ -12,6 +12,7 @@ pub mod effects;
 pub mod event_loop;
 pub mod git_info;
 pub mod insights_lifecycle;
+pub mod insights_load;
 pub mod insights_overlay;
 pub mod keymap;
 pub mod metrics_overlay;
