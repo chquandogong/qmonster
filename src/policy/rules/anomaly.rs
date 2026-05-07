@@ -46,6 +46,25 @@ pub struct AnomalyHistory {
     /// findings emitted this tick, if any. Most-recent-first; each
     /// entry is the set of paths that fired together.
     pub cross_pane_edit_paths: VecDeque<Vec<String>>,
+    /// Phase 7 v2 (v1.45.0): CostSlope detector input. Cumulative
+    /// cost_usd from `signals.cost_usd`, most-recent-first. `None`
+    /// when the signal was absent that tick.
+    pub cost_usd_samples: VecDeque<Option<f64>>,
+    /// Phase 7 v2 (v1.45.0): TokenSlope detector primary input.
+    /// Cumulative `signals.input_tokens`, most-recent-first.
+    pub input_token_samples: VecDeque<Option<u64>>,
+    /// Phase 7 v2 (v1.45.0): TokenSlope detector evidence-only secondary.
+    /// Cumulative `signals.output_tokens`, most-recent-first.
+    pub output_token_samples: VecDeque<Option<u64>>,
+    /// Phase 7 v2 (v1.45.0): MemoryGrowth detector primary input.
+    /// `signals.process_memory_mb` (RSS), most-recent-first.
+    pub process_memory_samples: VecDeque<Option<f64>>,
+    /// Phase 7 v2 (v1.45.0): MemoryGrowth detector evidence-only secondary.
+    /// `signals.agent_memory_bytes`, most-recent-first.
+    pub agent_memory_samples: VecDeque<Option<u64>>,
+    /// Phase 7 v2 (v1.45.0): SubagentSideEffect detector input.
+    /// `signals.subagent_hint` per tick, most-recent-first.
+    pub subagent_hint_samples: VecDeque<bool>,
 }
 
 impl AnomalyHistory {
@@ -65,6 +84,24 @@ impl AnomalyHistory {
         }
         while self.cross_pane_edit_paths.len() > cap {
             self.cross_pane_edit_paths.pop_back();
+        }
+        while self.cost_usd_samples.len() > cap {
+            self.cost_usd_samples.pop_back();
+        }
+        while self.input_token_samples.len() > cap {
+            self.input_token_samples.pop_back();
+        }
+        while self.output_token_samples.len() > cap {
+            self.output_token_samples.pop_back();
+        }
+        while self.process_memory_samples.len() > cap {
+            self.process_memory_samples.pop_back();
+        }
+        while self.agent_memory_samples.len() > cap {
+            self.agent_memory_samples.pop_back();
+        }
+        while self.subagent_hint_samples.len() > cap {
+            self.subagent_hint_samples.pop_back();
         }
     }
 }
@@ -1012,5 +1049,36 @@ mod tests {
         )];
         let promoted = promote_anomalies_to_recommendations(&signals);
         assert_eq!(promoted[0].source_kind, signals[0].evidence[0].source_kind);
+    }
+
+    #[test]
+    fn anomaly_history_v2_fields_default_empty() {
+        let h = AnomalyHistory::default();
+        assert!(h.cost_usd_samples.is_empty());
+        assert!(h.input_token_samples.is_empty());
+        assert!(h.output_token_samples.is_empty());
+        assert!(h.process_memory_samples.is_empty());
+        assert!(h.agent_memory_samples.is_empty());
+        assert!(h.subagent_hint_samples.is_empty());
+    }
+
+    #[test]
+    fn anomaly_history_trim_caps_v2_deques() {
+        let mut h = AnomalyHistory::default();
+        for i in 0..30 {
+            h.cost_usd_samples.push_front(Some(i as f64 * 0.5));
+            h.input_token_samples.push_front(Some(i as u64 * 1000));
+            h.output_token_samples.push_front(Some(i as u64 * 800));
+            h.process_memory_samples.push_front(Some(i as f64 * 10.0));
+            h.agent_memory_samples.push_front(Some(i as u64 * 1024));
+            h.subagent_hint_samples.push_front(i % 4 == 0);
+        }
+        h.trim(20);
+        assert_eq!(h.cost_usd_samples.len(), 20);
+        assert_eq!(h.input_token_samples.len(), 20);
+        assert_eq!(h.output_token_samples.len(), 20);
+        assert_eq!(h.process_memory_samples.len(), 20);
+        assert_eq!(h.agent_memory_samples.len(), 20);
+        assert_eq!(h.subagent_hint_samples.len(), 20);
     }
 }
