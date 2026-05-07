@@ -2,6 +2,12 @@ use anyhow::{Context as _, Result};
 
 use crate::store::InsightsSnapshot;
 
+fn checked_seconds(value: u64, multiplier: u64, unit: &str) -> Result<u64> {
+    value
+        .checked_mul(multiplier)
+        .ok_or_else(|| anyhow::anyhow!("--since {unit} value is too large"))
+}
+
 pub fn parse_since_arg(input: &str) -> Result<u64> {
     let trimmed = input.trim();
     if trimmed.len() < 2 {
@@ -13,9 +19,9 @@ pub fn parse_since_arg(input: &str) -> Result<u64> {
         .with_context(|| format!("invalid --since value {input:?}"))?;
     let seconds = match unit {
         "s" => value,
-        "m" => value * 60,
-        "h" => value * 60 * 60,
-        "d" => value * 24 * 60 * 60,
+        "m" => checked_seconds(value, 60, unit)?,
+        "h" => checked_seconds(value, 60 * 60, unit)?,
+        "d" => checked_seconds(value, 24 * 60 * 60, unit)?,
         _ => anyhow::bail!("--since unit must be one of s, m, h, d"),
     };
     if seconds == 0 {
@@ -102,6 +108,10 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
     lines.push(String::new());
     lines.push("Evidence".into());
     lines.push("  source tables: audit_events, token_usage_samples, cost_usage_events".into());
-    lines.push("  lifecycle: audit-only, recommendation correlation unavailable".into());
+    lines.push(if snapshot.ignored_available {
+        "  lifecycle: recommendation outcomes available".into()
+    } else {
+        "  lifecycle: audit-only, recommendation correlation unavailable".into()
+    });
     lines
 }

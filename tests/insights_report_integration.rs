@@ -12,9 +12,21 @@ fn parse_since_accepts_hours_and_days() {
 }
 
 #[test]
+fn parse_since_accepts_minutes() {
+    assert_eq!(parse_since_arg("30m").unwrap(), 1_800);
+}
+
+#[test]
 fn parse_since_rejects_empty_or_unknown_units() {
     assert!(parse_since_arg("").is_err());
     assert!(parse_since_arg("24x").is_err());
+    assert!(parse_since_arg("0s").is_err());
+    assert!(parse_since_arg("0m").is_err());
+}
+
+#[test]
+fn parse_since_rejects_overflow() {
+    assert!(parse_since_arg(&format!("{}d", u64::MAX)).is_err());
 }
 
 #[test]
@@ -65,4 +77,26 @@ fn insights_report_renders_action_ledger() {
     assert!(joined.contains("ignored classification: unavailable"));
     assert!(joined.contains("Evidence"));
     assert!(joined.contains("source tables: audit_events, token_usage_samples, cost_usage_events"));
+}
+
+#[test]
+fn insights_report_renders_available_recommendation_lifecycle() {
+    let snapshot = InsightsSnapshot {
+        window: InsightsWindow {
+            since_ms: 0,
+            until_ms: 86_400_000,
+        },
+        situations: vec![],
+        cache: CacheInsightSummary::default(),
+        timeline: vec![],
+        actions: vec![],
+        ignored_available: true,
+    };
+
+    let lines = format_insights_report_lines(&snapshot);
+    let joined = lines.join("\n");
+
+    assert!(joined.contains("ignored classification: available"));
+    assert!(joined.contains("lifecycle: recommendation outcomes available"));
+    assert!(!joined.contains("correlation unavailable"));
 }
