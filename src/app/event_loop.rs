@@ -483,6 +483,10 @@ where
         // promote block (below) pushes Notify after deliver_effects
         // already ran, silently dropping desktop notifications, and
         // promoted recommendations never reach the audit log.
+        // Phase 7 v3 (c) (v1.47.0): `tick_history` is hoisted out of the
+        // `anomalies` block so it remains available for the persistence
+        // snapshot taken after the ring push below.
+        let tick_history: crate::policy::rules::anomaly::AnomalyHistory;
         let anomalies = {
             let cache_drift_fired = out
                 .recommendations
@@ -502,13 +506,15 @@ where
                 .get(&pane.pane_id)
                 .cloned()
                 .unwrap_or_default();
-            crate::policy::rules::anomaly::eval_anomalies(
+            let result = crate::policy::rules::anomaly::eval_anomalies(
                 &pane.pane_id,
                 &history,
                 &gates,
                 &mut ctx.anomaly_dedup,
                 (current_unix_ms() / 1000) as u64,
-            )
+            );
+            tick_history = history;
+            result
         };
 
         // Phase 7 v2 (v1.44.0): promote Warning+ anomalies to Recommendations
@@ -539,6 +545,7 @@ where
         // other in the same commit. Task 12's integration test verifies
         // they agree at default config.
         let now_secs: u64 = (current_unix_ms() / 1000) as u64;
+        let mut events_pushed_this_tick: Vec<crate::domain::anomaly::AnomalyEvent> = Vec::new();
         for sig in &anomalies {
             let promoted_bool = sig.confidence >= gates.promote_min_confidence(sig.kind);
             let reason = sig
@@ -546,16 +553,81 @@ where
                 .first()
                 .map(|e| format!("{}: {} → {}", e.metric_name, e.before, e.after))
                 .unwrap_or_default();
-            ctx.anomaly_events_ring
-                .push(crate::domain::anomaly::AnomalyEvent {
-                    timestamp: now_secs,
-                    pane_id: pane.pane_id.clone(),
-                    kind: sig.kind,
-                    confidence: sig.confidence,
-                    severity: sig.severity,
-                    promoted: promoted_bool,
-                    reason,
-                });
+            let event = crate::domain::anomaly::AnomalyEvent {
+                timestamp: now_secs,
+                pane_id: pane.pane_id.clone(),
+                kind: sig.kind,
+                confidence: sig.confidence,
+                severity: sig.severity,
+                promoted: promoted_bool,
+                reason,
+            };
+            ctx.anomaly_events_ring.push(event.clone());
+            events_pushed_this_tick.push(event);
+        }
+
+        // Phase 7 v3 (c) (v1.47.0): persist visible anomalies + history
+        // snapshot for this pane this tick. Single transaction for fsync
+        // batching. Failures degrade gracefully (logged, do not block).
+        if let Some(anomaly_sink) = ctx.anomaly_sink.as_ref() {
+            let snap = crate::store::AnomalyHistorySnapshot::capture_tick(&tick_history);
+            let result = anomaly_sink.with_transaction(|tx| {
+                for sig_event in &events_pushed_this_tick {
+                    tx.execute(
+                        "INSERT INTO anomaly_events
+                         (ts_unix_secs, pane_id, kind, confidence, severity, promoted, reason)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                        rusqlite::params![
+                            sig_event.timestamp as i64,
+                            sig_event.pane_id,
+                            sig_event.kind.label(),
+                            sig_event.confidence.label(),
+                            sig_event.severity.label(),
+                            sig_event.promoted as i64,
+                            sig_event.reason,
+                        ],
+                    )
+                    .map_err(|e| crate::store::sqlite::SqliteError::Query(e.to_string()))?;
+                }
+                let cross_paths_json = serde_json::to_string(&snap.cross_pane_edit_paths)
+                    .map_err(|e| crate::store::sqlite::SqliteError::Query(format!("json: {e}")))?;
+                let (id_provider, id_path) = match &snap.identity {
+                    Some((p, path)) => (Some(p.as_str()), Some(path.as_str())),
+                    None => (None, None),
+                };
+                tx.execute(
+                    "INSERT OR REPLACE INTO anomaly_history_snapshots
+                     (pane_id, tick_unix_secs, identity_provider, identity_path,
+                      error_hint, cache_hit_ratio, cache_drift_fire,
+                      cross_pane_edit_paths_json, cost_usd, input_tokens, output_tokens,
+                      process_memory_mb, agent_memory_bytes, subagent_hint)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                    rusqlite::params![
+                        pane.pane_id,
+                        now_secs as i64,
+                        id_provider,
+                        id_path,
+                        snap.error_hint.map(|b| b as i64),
+                        snap.cache_hit_ratio.map(|r| r as f64),
+                        snap.cache_drift_fire as i64,
+                        cross_paths_json,
+                        snap.cost_usd,
+                        snap.input_tokens.map(|n| n as i64),
+                        snap.output_tokens.map(|n| n as i64),
+                        snap.process_memory_mb,
+                        snap.agent_memory_bytes.map(|n| n as i64),
+                        snap.subagent_hint as i64,
+                    ],
+                )
+                .map_err(|e| crate::store::sqlite::SqliteError::Query(e.to_string()))?;
+                Ok(())
+            });
+            if let Err(e) = result {
+                eprintln!(
+                    "anomaly_sink persistence failed (pane={}): {e}",
+                    pane.pane_id
+                );
+            }
         }
 
         deliver_effects(permits, &out, &pane.pane_id, &pane.tail, now, ctx);
