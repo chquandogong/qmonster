@@ -19,7 +19,7 @@ This plan intentionally implements **Phase 8 v1 only**:
 - Included: conservative situation/action mapping and cache trend reporting.
 - Deferred to a later plan: `recommendation_events`, `recommendation_outcomes`, TTL ignored classification, UI-only hide outcome capture, `InsightsRuntimeState`, and the TUI `i` overlay.
 
-Phase 8 v1 reports `ignored = 0` and labels ignored classification as unavailable because the lifecycle ledger does not exist yet.
+Phase 8 v1 does not estimate ignored recommendations. The action ledger keeps `ignored = 0` and the report labels ignored classification as unavailable because the lifecycle ledger does not exist yet.
 
 ## File Structure
 
@@ -123,6 +123,7 @@ pub struct CacheInsightSummary {
     pub drift_count: u64,
     pub latest_cache_ratio: Option<f64>,
     pub token_growth: Option<i64>,
+    pub cost_delta_usd: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -194,7 +195,7 @@ pub use insights::{
 };
 ```
 
-Insert the `pub mod insights;` line with the other public store modules, and insert the `pub use insights::{...};` block after the existing `pub use cost_usage::{...};` block.
+Insert the `pub mod insights;` line with the other public store modules, and insert the exact `pub use insights::{ ActionLedgerRow, CacheInsightSummary, InsightsSnapshot, InsightsWindow, RecommendationTimelineItem, SituationSummary, SqliteInsightsStore };` block after the existing cost-usage re-export.
 
 - [ ] **Step 4: Run the focused test and confirm it passes**
 
@@ -263,11 +264,12 @@ fn insights_counts_recommendations_by_situation() {
         "pane-state: Codex pane state: WAIT (input)",
     ));
 
+    let now_ms = chrono::Utc::now().timestamp_millis();
     let store = SqliteInsightsStore::open(&db_path).unwrap();
     let snapshot = store
         .snapshot(InsightsWindow {
-            since_ms: 0,
-            until_ms: i64::MAX,
+            since_ms: now_ms - 60_000,
+            until_ms: now_ms + 60_000,
         })
         .unwrap();
 
@@ -305,11 +307,70 @@ Expected: test fails because `snapshot.situations` is empty.
 
 - [ ] **Step 3: Add action parsing and situation aggregation**
 
-In `src/store/insights.rs`, add these helpers above `impl SqliteInsightsStore`:
+In `src/store/insights.rs`, extend the imports:
 
 ```rust
+use chrono::TimeZone as _;
+use rusqlite::params;
+```
+
+Then add these helpers above `impl SqliteInsightsStore`:
+
+```rust
+const KNOWN_ACTION_PREFIXES: &[&str] = &[
+    "archive-preview-suggested",
+    "repeated-output-cache",
+    "log-storm: ingress filter + summary",
+    "repeated-output: result-hash cache",
+    "code-exploration: graph/symbol",
+    "context-pressure: checkpoint",
+    "context-pressure: act now",
+    "cache: avoid /compact while cache is hot",
+    "cache: /compact is safe - cache is cold",
+    "cache: drift detected - /compact will let cache rebuild",
+    "quota: pause until 5h window resets",
+    "quota: pause until weekly window resets",
+    "snapshot before 5h window resets",
+    "snapshot before weekly window resets",
+    "verbose-output",
+    "verbose-review: terse profile",
+    "pane-state",
+    "quota-tight: consider enabling",
+    "quota-pressure: pace requests",
+    "cost-budget: 80% reached",
+    "cost-budget: exhausted",
+    "profile-switch: elevated error rate",
+    "provider-profile: switch suggested",
+];
+
+fn summary_has_action_prefix(summary: &str, prefix: &str) -> bool {
+    summary == prefix || summary
+        .strip_prefix(prefix)
+        .is_some_and(|rest| rest.starts_with(": "))
+}
+
 fn action_from_summary(summary: &str) -> &str {
-    summary.split_once(':').map(|(action, _)| action).unwrap_or(summary)
+    for prefix in KNOWN_ACTION_PREFIXES {
+        if summary_has_action_prefix(summary, prefix) {
+            return prefix;
+        }
+    }
+    summary
+        .split_once(": ")
+        .map(|(action, _)| action)
+        .unwrap_or(summary)
+}
+
+fn rfc3339_from_ms(ms: i64) -> String {
+    chrono::Utc
+        .timestamp_millis_opt(ms)
+        .single()
+        .unwrap_or_else(|| chrono::Utc.timestamp_millis_opt(0).single().unwrap())
+        .to_rfc3339()
+}
+
+fn window_rfc3339_bounds(window: InsightsWindow) -> (String, String) {
+    (rfc3339_from_ms(window.since_ms), rfc3339_from_ms(window.until_ms))
 }
 
 fn situation_for_action(action: &str) -> &'static str {
@@ -351,15 +412,18 @@ fn situation_for_action(action: &str) -> &'static str {
 Replace the empty `situations: Vec::new(),` assignment in `snapshot()` with:
 
 ```rust
+let (since_ts, until_ts) = window_rfc3339_bounds(window);
 let mut stmt = _conn
     .prepare_cached(
         "SELECT summary FROM audit_events \
          WHERE kind IN ('RecommendationEmitted', 'AlertFired') \
+           AND ts_utc >= ?1 \
+           AND ts_utc <= ?2 \
          ORDER BY id ASC",
     )
     .map_err(|e| SqliteError::Query(e.to_string()))?;
 let rows = stmt
-    .query_map([], |row| row.get::<_, String>(0))
+    .query_map(params![&since_ts, &until_ts], |row| row.get::<_, String>(0))
     .map_err(|e| SqliteError::Query(e.to_string()))?;
 let mut counts = std::collections::BTreeMap::<&'static str, u64>::new();
 for row in rows {
@@ -383,7 +447,7 @@ Then return `situations,` in `InsightsSnapshot`.
 Run:
 
 ```bash
-cargo test --test store_insights_integration insights_query_empty_db_returns_zero_state insights_counts_recommendations_by_situation
+cargo test --test store_insights_integration
 ```
 
 Expected: both tests pass.
@@ -397,7 +461,7 @@ git commit -m "feat(store): aggregate insights by situation"
 
 ---
 
-### Task 3: Aggregate Cache Trend and Token Growth
+### Task 3: Aggregate Cache Trend, Token Growth, and Cost Delta
 
 **Files:**
 - Modify: `src/store/insights.rs`
@@ -409,12 +473,29 @@ Append to `tests/store_insights_integration.rs`:
 
 ```rust
 use qmonster::domain::identity::Provider;
-use qmonster::store::{SqliteTokenUsageSink, TokenSample};
+use qmonster::store::{CostObservation, SqliteCostUsageSink, SqliteTokenUsageSink, TokenSample};
 
 #[test]
-fn cache_summary_reports_latest_ratio_and_token_growth() {
+fn cache_summary_reports_cache_states_latest_ratio_token_growth_and_cost_delta() {
     let td = tempdir().unwrap();
     let db_path = td.path().join("qmonster.db");
+    let audit = SqliteAuditSink::open(&db_path).unwrap();
+    audit.record(audit_event(
+        AuditEventKind::RecommendationEmitted,
+        "%1",
+        "cache: avoid /compact while cache is hot: cache hit ratio 88%",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::RecommendationEmitted,
+        "%1",
+        "cache: /compact is safe - cache is cold: cache hit ratio 12%",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::RecommendationEmitted,
+        "%1",
+        "cache: drift detected - /compact will let cache rebuild: cache hit ratio dropped",
+    ));
+
     let tokens = SqliteTokenUsageSink::open(&db_path).unwrap();
     tokens
         .record_sample(&TokenSample {
@@ -439,16 +520,39 @@ fn cache_summary_reports_latest_ratio_and_token_growth() {
         })
         .unwrap();
 
+    let costs = SqliteCostUsageSink::open(&db_path).unwrap();
+    costs
+        .record_observation(&CostObservation {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            cumulative_cost_usd: 0.05,
+        })
+        .unwrap();
+    costs
+        .record_observation(&CostObservation {
+            ts_unix_ms: 2_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            cumulative_cost_usd: 0.08,
+        })
+        .unwrap();
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
     let store = SqliteInsightsStore::open(&db_path).unwrap();
     let snapshot = store
         .snapshot(InsightsWindow {
             since_ms: 0,
-            until_ms: 3_000,
+            until_ms: now_ms + 60_000,
         })
         .unwrap();
 
+    assert_eq!(snapshot.cache.hot_count, 1);
+    assert_eq!(snapshot.cache.cold_count, 1);
+    assert_eq!(snapshot.cache.drift_count, 1);
     assert_eq!(snapshot.cache.latest_cache_ratio, Some(0.75));
     assert_eq!(snapshot.cache.token_growth, Some(200));
+    assert!((snapshot.cache.cost_delta_usd.unwrap() - 0.08).abs() < 0.000_001);
 }
 ```
 
@@ -457,7 +561,7 @@ fn cache_summary_reports_latest_ratio_and_token_growth() {
 Run:
 
 ```bash
-cargo test --test store_insights_integration cache_summary_reports_latest_ratio_and_token_growth
+cargo test --test store_insights_integration cache_summary_reports_cache_states_latest_ratio_token_growth_and_cost_delta
 ```
 
 Expected: test fails because cache summary returns defaults.
@@ -475,6 +579,17 @@ fn cache_ratio(input: Option<i64>, cached: Option<i64>) -> Option<f64> {
         None
     } else {
         Some((cached / total * 100.0).round() / 100.0)
+}
+
+fn cache_state_from_action(action: &str) -> Option<&'static str> {
+    if action == "cache: avoid /compact while cache is hot" {
+        Some("hot")
+    } else if action == "cache: /compact is safe - cache is cold" {
+        Some("cold")
+    } else if action == "cache: drift detected - /compact will let cache rebuild" {
+        Some("drift")
+    } else {
+        None
     }
 }
 ```
@@ -482,6 +597,30 @@ fn cache_ratio(input: Option<i64>, cached: Option<i64>) -> Option<f64> {
 In `snapshot()`, after building `situations`, add:
 
 ```rust
+let mut cache = CacheInsightSummary::default();
+let mut cache_state_stmt = _conn
+    .prepare_cached(
+        "SELECT summary FROM audit_events \
+         WHERE kind IN ('RecommendationEmitted', 'AlertFired') \
+           AND ts_utc >= ?1 \
+           AND ts_utc <= ?2 \
+         ORDER BY id ASC",
+    )
+    .map_err(|e| SqliteError::Query(e.to_string()))?;
+let cache_state_rows = cache_state_stmt
+    .query_map(params![&since_ts, &until_ts], |row| row.get::<_, String>(0))
+    .map_err(|e| SqliteError::Query(e.to_string()))?;
+for row in cache_state_rows {
+    let summary = row.map_err(|e| SqliteError::Query(e.to_string()))?;
+    let action = action_from_summary(&summary);
+    match cache_state_from_action(action) {
+        Some("hot") => cache.hot_count += 1,
+        Some("cold") => cache.cold_count += 1,
+        Some("drift") => cache.drift_count += 1,
+        _ => {}
+    }
+}
+
 let mut token_stmt = _conn
     .prepare_cached(
         "SELECT ts_unix_ms, input_tokens, cached_input_tokens \
@@ -514,11 +653,19 @@ let token_growth = match (first_input, latest_input) {
     (Some(first), Some(latest)) => Some(latest.saturating_sub(first)),
     _ => None,
 };
-let cache = CacheInsightSummary {
-    latest_cache_ratio: latest_ratio,
-    token_growth,
-    ..CacheInsightSummary::default()
-};
+let mut cost_stmt = _conn
+    .prepare_cached(
+        "SELECT SUM(cost_usd_delta) \
+         FROM cost_usage_events \
+         WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2",
+    )
+    .map_err(|e| SqliteError::Query(e.to_string()))?;
+let cost_delta_usd = cost_stmt
+    .query_row([window.since_ms, window.until_ms], |row| row.get::<_, Option<f64>>(0))
+    .map_err(|e| SqliteError::Query(e.to_string()))?;
+cache.latest_cache_ratio = latest_ratio;
+cache.token_growth = token_growth;
+cache.cost_delta_usd = cost_delta_usd;
 ```
 
 Return `cache,` in `InsightsSnapshot`.
@@ -537,7 +684,7 @@ Expected: all tests in `store_insights_integration` pass.
 
 ```bash
 git add src/store/insights.rs tests/store_insights_integration.rs
-git commit -m "feat(store): summarize cache reuse and token growth"
+git commit -m "feat(store): summarize cache reuse token growth and cost"
 ```
 
 ---
@@ -579,11 +726,12 @@ fn action_ledger_counts_prompt_send_terminal_outcomes() {
         "snapshot written to /tmp/demo.json",
     ));
 
+    let now_ms = chrono::Utc::now().timestamp_millis();
     let store = SqliteInsightsStore::open(&db_path).unwrap();
     let snapshot = store
         .snapshot(InsightsWindow {
-            since_ms: 0,
-            until_ms: i64::MAX,
+            since_ms: now_ms - 60_000,
+            until_ms: now_ms + 60_000,
         })
         .unwrap();
 
@@ -685,11 +833,13 @@ let mut ledger_stmt = _conn
            'PromptSendFailed', 'PromptSendBlocked',
            'ArchiveWritten', 'SnapshotWritten'
          ) \
+           AND ts_utc >= ?1 \
+           AND ts_utc <= ?2 \
          ORDER BY id ASC",
     )
     .map_err(|e| SqliteError::Query(e.to_string()))?;
 let ledger_rows = ledger_stmt
-    .query_map([], |row| {
+    .query_map(params![&since_ts, &until_ts], |row| {
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
@@ -791,6 +941,7 @@ fn insights_report_renders_action_ledger() {
             drift_count: 0,
             latest_cache_ratio: Some(0.75),
             token_growth: Some(200),
+            cost_delta_usd: Some(0.08),
         },
         timeline: vec![RecommendationTimelineItem {
             ts_label: "2026-05-07T12:00:00Z".into(),
@@ -816,6 +967,7 @@ fn insights_report_renders_action_ledger() {
     assert!(joined.contains("Context pressure"));
     assert!(joined.contains("cache reuse: 75.0%"));
     assert!(joined.contains("token growth: +200"));
+    assert!(joined.contains("cost delta: $0.0800"));
     assert!(joined.contains("/compact"));
     assert!(joined.contains("ignored classification: unavailable"));
 }
@@ -895,6 +1047,10 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
     match snapshot.cache.token_growth {
         Some(growth) => lines.push(format!("  token growth: +{growth}")),
         None => lines.push("  token growth: n/a".into()),
+    }
+    match snapshot.cache.cost_delta_usd {
+        Some(cost) => lines.push(format!("  cost delta: ${cost:.4}")),
+        None => lines.push("  cost delta: n/a".into()),
     }
     lines.push(format!("  hot/cold/drift: {}/{}/{}", snapshot.cache.hot_count, snapshot.cache.cold_count, snapshot.cache.drift_count));
     lines.push(String::new());
@@ -1121,6 +1277,7 @@ At the start of `main()`, after `let env_root = std::env::var("QMONSTER_ROOT").o
 ```
 
 This block must run before `build_startup_runtime(...)`.
+Parent-level options such as `--root`, `--config`, and `--set` stay before the subcommand, for example `qmonster --root /tmp/qmonster insights --since 24h`.
 
 - [ ] **Step 5: Run tests and command help**
 
@@ -1128,7 +1285,7 @@ Run:
 
 ```bash
 cargo test --test insights_report_integration
-cargo run -- insights --since 24h --root /tmp/qmonster-insights-smoke
+cargo run -- --root /tmp/qmonster-insights-smoke insights --since 24h
 ```
 
 Expected: tests pass. The command prints `qmonster paths:` and `Token Insights`; it does not require tmux.
@@ -1160,23 +1317,23 @@ In `docs/ai/UI_MANUAL.md`, add a short subsection after the Metrics Overlay sect
 `qmonster insights --since 24h` prints a read-only token optimization
 report from the local SQLite store. It does not start tmux and does not
 classify ignored recommendations yet. The report includes situation
-counts, cache reuse, token growth, action ledger counts, and a recent
-timeline. Exact token savings and per-subagent attribution remain
-unsupported.
+counts, cache reuse, token growth, cost delta, action ledger counts, and
+a recent timeline. Exact token savings and per-subagent attribution
+remain unsupported.
 ```
 
 In `docs/ai/VALIDATION.md`, add:
 
 ```markdown
 - Token Insights report smoke:
-  `cargo run -- insights --since 24h --root /tmp/qmonster-insights-smoke`
+  `cargo run -- --root /tmp/qmonster-insights-smoke insights --since 24h`
   must print `Token Insights` without requiring a tmux session.
 ```
 
 In `README.md`, add the command near the existing smoke checks:
 
 ```bash
-cargo run -- insights --since 24h --root /tmp/qmonster-insights-smoke
+cargo run -- --root /tmp/qmonster-insights-smoke insights --since 24h
 ```
 
 - [ ] **Step 2: Run the focused validation**
@@ -1187,7 +1344,7 @@ Run:
 cargo fmt --all --check
 cargo test --test store_insights_integration
 cargo test --test insights_report_integration
-cargo run -- insights --since 24h --root /tmp/qmonster-insights-smoke
+cargo run -- --root /tmp/qmonster-insights-smoke insights --since 24h
 git diff --check
 ```
 
