@@ -702,10 +702,13 @@ pub fn detect_subagent_side_effect(
 /// triple; severity and source_kind copy from the input signal.
 /// `is_strong = false`, `suggested_command = None`,
 /// `profile = None`, `side_effects = vec![]`.
-pub fn promote_anomalies_to_recommendations(signals: &[AnomalySignal]) -> Vec<Recommendation> {
+pub fn promote_anomalies_to_recommendations(
+    signals: &[AnomalySignal],
+    gates: &crate::policy::gates::PolicyGates,
+) -> Vec<Recommendation> {
     let mut out = Vec::new();
     for sig in signals {
-        if sig.severity < Severity::Warning {
+        if sig.confidence < gates.promote_min_confidence(sig.kind) {
             continue;
         }
         let evidence = sig.evidence.first();
@@ -1293,7 +1296,7 @@ mod tests {
             make_signal(AnomalyKind::IdentityChurn, AnomalyConfidence::Medium),
             make_signal(AnomalyKind::ErrorBurst, AnomalyConfidence::Low),
         ];
-        let promoted = promote_anomalies_to_recommendations(&signals);
+        let promoted = promote_anomalies_to_recommendations(&signals, &fixture_gates());
         assert!(promoted.is_empty());
     }
 
@@ -1303,7 +1306,7 @@ mod tests {
             AnomalyKind::IdentityChurn,
             AnomalyConfidence::High,
         )];
-        let promoted = promote_anomalies_to_recommendations(&signals);
+        let promoted = promote_anomalies_to_recommendations(&signals, &fixture_gates());
         assert_eq!(promoted.len(), 1);
         assert_eq!(promoted[0].action, "anomaly: identity churn detected");
         assert_eq!(promoted[0].severity, Severity::Warning);
@@ -1317,7 +1320,7 @@ mod tests {
             make_signal(AnomalyKind::CacheDiscontinuity, AnomalyConfidence::High),
             make_signal(AnomalyKind::CrossPaneEditCluster, AnomalyConfidence::High),
         ];
-        let promoted = promote_anomalies_to_recommendations(&signals);
+        let promoted = promote_anomalies_to_recommendations(&signals, &fixture_gates());
         assert_eq!(promoted.len(), 4);
         let actions: Vec<&str> = promoted.iter().map(|r| r.action).collect();
         assert!(actions.contains(&"anomaly: identity churn detected"));
@@ -1337,7 +1340,7 @@ mod tests {
             AnomalyKind::ErrorBurst,
             AnomalyConfidence::High,
         )];
-        let promoted = promote_anomalies_to_recommendations(&signals);
+        let promoted = promote_anomalies_to_recommendations(&signals, &fixture_gates());
         assert_eq!(promoted[0].severity, signals[0].severity);
     }
 
@@ -1347,7 +1350,7 @@ mod tests {
             AnomalyKind::CacheDiscontinuity,
             AnomalyConfidence::High,
         )];
-        let promoted = promote_anomalies_to_recommendations(&signals);
+        let promoted = promote_anomalies_to_recommendations(&signals, &fixture_gates());
         assert_eq!(promoted[0].source_kind, signals[0].evidence[0].source_kind);
     }
 
@@ -1678,7 +1681,7 @@ mod tests {
             detected_at: 1_700_000_000,
         })
         .collect();
-        let promoted = promote_anomalies_to_recommendations(&signals);
+        let promoted = promote_anomalies_to_recommendations(&signals, &fixture_gates());
         assert_eq!(promoted.len(), 8);
         let mut actions: Vec<&str> = promoted.iter().map(|r| r.action).collect();
         actions.sort();
@@ -1687,6 +1690,192 @@ mod tests {
             actions.len(),
             8,
             "all 8 actions must be distinct: {actions:?}"
+        );
+    }
+
+    #[test]
+    fn promote_gate_blocks_below_per_kind_threshold() {
+        use crate::domain::anomaly::{
+            AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal,
+        };
+        use crate::domain::origin::SourceKind;
+        let gates = fixture_gates(); // defaults: cost_slope = High
+        let signal = AnomalySignal {
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::Medium,
+            severity: severity_for(AnomalyConfidence::Medium),
+            window_polls: 20,
+            evidence: vec![AnomalyEvidence {
+                metric_name: "cost_usd",
+                before: "0.10".to_string(),
+                after: "25.40".to_string(),
+                sample_count: 20,
+                source_kind: SourceKind::Estimated,
+            }],
+            detected_at: 1_700_000_000,
+        };
+        let recs = promote_anomalies_to_recommendations(&[signal], &gates);
+        assert!(
+            recs.is_empty(),
+            "Medium CostSlope must NOT promote at default High threshold"
+        );
+    }
+
+    #[test]
+    fn promote_gate_admits_at_per_kind_threshold() {
+        use crate::domain::anomaly::{
+            AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal,
+        };
+        use crate::domain::origin::SourceKind;
+        let gates = PolicyGates {
+            anomaly_promote_cost_slope: AnomalyConfidence::Medium,
+            ..fixture_gates()
+        };
+        let signal = AnomalySignal {
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::Medium,
+            severity: severity_for(AnomalyConfidence::Medium),
+            window_polls: 20,
+            evidence: vec![AnomalyEvidence {
+                metric_name: "cost_usd",
+                before: "0.10".to_string(),
+                after: "25.40".to_string(),
+                sample_count: 20,
+                source_kind: SourceKind::Estimated,
+            }],
+            detected_at: 1_700_000_000,
+        };
+        let recs = promote_anomalies_to_recommendations(&[signal], &gates);
+        assert_eq!(
+            recs.len(),
+            1,
+            "Medium CostSlope must promote at Medium threshold"
+        );
+    }
+
+    #[test]
+    fn promote_gate_subagent_side_effect_default_medium_admits() {
+        use crate::domain::anomaly::{
+            AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal,
+        };
+        use crate::domain::origin::SourceKind;
+        let gates = fixture_gates(); // default subagent_side_effect = Medium
+        let signal = AnomalySignal {
+            kind: AnomalyKind::SubagentSideEffect,
+            confidence: AnomalyConfidence::Medium,
+            severity: severity_for(AnomalyConfidence::Medium),
+            window_polls: 20,
+            evidence: vec![AnomalyEvidence {
+                metric_name: "subagent_hint",
+                before: "0".to_string(),
+                after: "3".to_string(),
+                sample_count: 20,
+                source_kind: SourceKind::Estimated,
+            }],
+            detected_at: 1_700_000_000,
+        };
+        let recs = promote_anomalies_to_recommendations(&[signal], &gates);
+        assert_eq!(
+            recs.len(),
+            1,
+            "Medium SubagentSideEffect must promote at default Medium threshold (v1.45.0 dead-code fix)"
+        );
+    }
+
+    #[test]
+    fn promote_gate_subagent_side_effect_high_setting_blocks_medium() {
+        use crate::domain::anomaly::{
+            AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal,
+        };
+        use crate::domain::origin::SourceKind;
+        let gates = PolicyGates {
+            anomaly_promote_subagent_side_effect: AnomalyConfidence::High,
+            ..fixture_gates()
+        };
+        let signal = AnomalySignal {
+            kind: AnomalyKind::SubagentSideEffect,
+            confidence: AnomalyConfidence::Medium,
+            severity: severity_for(AnomalyConfidence::Medium),
+            window_polls: 20,
+            evidence: vec![AnomalyEvidence {
+                metric_name: "subagent_hint",
+                before: "0".to_string(),
+                after: "3".to_string(),
+                sample_count: 20,
+                source_kind: SourceKind::Estimated,
+            }],
+            detected_at: 1_700_000_000,
+        };
+        let recs = promote_anomalies_to_recommendations(&[signal], &gates);
+        assert!(
+            recs.is_empty(),
+            "Operator override to High blocks Medium SubagentSideEffect"
+        );
+    }
+
+    #[test]
+    fn promote_gate_high_threshold_admits_high() {
+        use crate::domain::anomaly::{
+            AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal,
+        };
+        use crate::domain::origin::SourceKind;
+        let gates = fixture_gates(); // default cost_slope = High
+        let signal = AnomalySignal {
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: severity_for(AnomalyConfidence::High),
+            window_polls: 20,
+            evidence: vec![AnomalyEvidence {
+                metric_name: "cost_usd",
+                before: "0.10".to_string(),
+                after: "25.40".to_string(),
+                sample_count: 20,
+                source_kind: SourceKind::Estimated,
+            }],
+            detected_at: 1_700_000_000,
+        };
+        let recs = promote_anomalies_to_recommendations(&[signal], &gates);
+        assert_eq!(
+            recs.len(),
+            1,
+            "High CostSlope must promote at default High threshold"
+        );
+    }
+
+    #[test]
+    fn promote_gate_low_threshold_admits_all_levels() {
+        use crate::domain::anomaly::{
+            AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal,
+        };
+        use crate::domain::origin::SourceKind;
+        let gates = PolicyGates {
+            anomaly_promote_cost_slope: AnomalyConfidence::Low,
+            ..fixture_gates()
+        };
+        let make = |conf: AnomalyConfidence| AnomalySignal {
+            kind: AnomalyKind::CostSlope,
+            confidence: conf,
+            severity: severity_for(conf),
+            window_polls: 20,
+            evidence: vec![AnomalyEvidence {
+                metric_name: "cost_usd",
+                before: "0.10".to_string(),
+                after: "25.40".to_string(),
+                sample_count: 20,
+                source_kind: SourceKind::Estimated,
+            }],
+            detected_at: 1_700_000_000,
+        };
+        let signals = vec![
+            make(AnomalyConfidence::Low),
+            make(AnomalyConfidence::Medium),
+            make(AnomalyConfidence::High),
+        ];
+        let recs = promote_anomalies_to_recommendations(&signals, &gates);
+        assert_eq!(
+            recs.len(),
+            3,
+            "Low threshold admits all three confidence levels"
         );
     }
 }

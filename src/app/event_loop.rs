@@ -519,7 +519,7 @@ where
         // both the desktop notifier and the audit log.
         let mut should_notify_anomaly = false;
         for promoted in
-            crate::policy::rules::anomaly::promote_anomalies_to_recommendations(&anomalies)
+            crate::policy::rules::anomaly::promote_anomalies_to_recommendations(&anomalies, &gates)
         {
             should_notify_anomaly |= promoted.severity >= Severity::Warning;
             out.recommendations.push(promoted);
