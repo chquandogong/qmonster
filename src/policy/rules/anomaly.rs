@@ -11,6 +11,7 @@ use std::collections::{HashMap, VecDeque};
 use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal};
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Severity;
+use crate::policy::gates::PolicyGates;
 
 /// Per-pane rolling history the detectors consume. The event loop
 /// pushes one observation per tick (newest pushed to front, trim
@@ -258,10 +259,95 @@ pub fn detect_cache_discontinuity(
     })
 }
 
-/// Stub — Tasks 5–9 fill in the detectors and orchestrator.
-#[allow(dead_code)]
-pub fn eval_anomalies() -> Vec<AnomalySignal> {
-    Vec::new()
+/// Phase 7 v1 orchestrator. Runs every detector against `history`,
+/// applies edge-triggered dedup against `dedup` (per `(pane_id,
+/// kind)` key), filters by `gates.anomaly_min_confidence`, and
+/// returns the surviving signals. Mutates `dedup` in place per the
+/// edge-triggered semantics:
+///
+/// - detector Some + dedup None  → emit; record now in dedup
+/// - detector Some + dedup Some  → suppress (still active)
+/// - detector None + dedup Some  → rearm (clear dedup)
+/// - detector None + dedup None  → no-op
+///
+/// A signal filtered out by `min_confidence` does NOT record in
+/// dedup so a future high-confidence emission can still fire.
+pub fn eval_anomalies(
+    pane_id: &str,
+    history: &AnomalyHistory,
+    gates: &PolicyGates,
+    dedup: &mut HashMap<(String, AnomalyKind), Option<u64>>,
+    now_unix_seconds: u64,
+) -> Vec<AnomalySignal> {
+    if !gates.anomaly_enabled {
+        return Vec::new();
+    }
+
+    let kinds_with_results: Vec<(AnomalyKind, Option<AnomalySignal>)> = vec![
+        (
+            AnomalyKind::IdentityChurn,
+            detect_identity_churn(
+                history,
+                gates.anomaly_window_polls,
+                gates.anomaly_identity_churn_min_flips,
+                now_unix_seconds,
+            ),
+        ),
+        (
+            AnomalyKind::ErrorBurst,
+            detect_error_burst(
+                history,
+                gates.anomaly_window_polls,
+                gates.anomaly_error_burst_threshold,
+                now_unix_seconds,
+            ),
+        ),
+        (
+            AnomalyKind::CacheDiscontinuity,
+            detect_cache_discontinuity(
+                history,
+                gates.anomaly_window_polls,
+                gates.anomaly_cache_discontinuity_drop,
+                now_unix_seconds,
+            ),
+        ),
+        (
+            AnomalyKind::CrossPaneEditCluster,
+            detect_cross_pane_edit_cluster(
+                history,
+                gates.anomaly_window_polls,
+                gates.anomaly_cross_pane_cluster_min_findings,
+                now_unix_seconds,
+            ),
+        ),
+    ];
+
+    let mut out = Vec::new();
+    for (kind, raw) in kinds_with_results {
+        let key = (pane_id.to_string(), kind);
+        let prev = dedup.get(&key).copied().flatten();
+        match (raw, prev) {
+            (Some(sig), None) => {
+                if sig.confidence >= gates.anomaly_min_confidence {
+                    dedup.insert(key, Some(now_unix_seconds));
+                    out.push(sig);
+                }
+                // If filtered by confidence, do NOT record in dedup so
+                // a future High-confidence emit can still fire.
+            }
+            (Some(_sig), Some(_)) => {
+                // Suppress — still active in this window.
+            }
+            (None, Some(_)) => {
+                // Rearm: detector returned None this tick.
+                dedup.insert(key, None);
+            }
+            (None, None) => {
+                // No-op.
+            }
+        }
+    }
+    out
 }
 
 /// CrossPaneEditCluster: count `ConcurrentFileEdit` findings per
@@ -310,6 +396,93 @@ pub fn detect_cross_pane_edit_cluster(
 mod tests {
     use super::*;
     use crate::domain::anomaly::{AnomalyConfidence, AnomalyKind};
+    use crate::policy::gates::PolicyGates;
+    use std::collections::HashMap;
+
+    fn fixture_gates() -> PolicyGates {
+        PolicyGates {
+            anomaly_enabled: true,
+            anomaly_window_polls: 20,
+            anomaly_min_confidence: AnomalyConfidence::Medium,
+            anomaly_identity_churn_min_flips: 3,
+            anomaly_error_burst_threshold: 0.5,
+            anomaly_cache_discontinuity_drop: 0.30,
+            anomaly_cross_pane_cluster_min_findings: 3,
+            ..PolicyGates::default()
+        }
+    }
+
+    #[test]
+    fn eval_anomalies_returns_empty_when_disabled() {
+        let mut gates = fixture_gates();
+        gates.anomaly_enabled = false;
+        let history = churn_history(vec![
+            ("claude", "/r"),
+            ("codex", "/r"),
+            ("claude", "/r"),
+            ("codex", "/r"),
+        ]);
+        let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
+        let result = eval_anomalies("%1", &history, &gates, &mut dedup, 1_700_000_000);
+        assert!(result.is_empty());
+        assert!(dedup.is_empty());
+    }
+
+    #[test]
+    fn eval_anomalies_edge_triggered_emit_then_suppress_then_rearm_then_emit() {
+        let gates = fixture_gates();
+        let history = churn_history(vec![
+            ("claude", "/r"),
+            ("codex", "/r"),
+            ("claude", "/r"),
+            ("codex", "/r"),
+        ]);
+        let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
+
+        // Tick 1: detector returns Some, dedup empty → emit, dedup set
+        let r1 = eval_anomalies("%1", &history, &gates, &mut dedup, 1_700_000_000);
+        assert_eq!(r1.len(), 1);
+        assert_eq!(r1[0].kind, AnomalyKind::IdentityChurn);
+
+        // Tick 2: detector still Some, dedup occupied → suppress
+        let r2 = eval_anomalies("%1", &history, &gates, &mut dedup, 1_700_000_005);
+        assert!(r2.is_empty());
+
+        // Tick 3: history clears (only one snapshot left) → detector None, rearm
+        let quiet = churn_history(vec![("claude", "/r")]);
+        let r3 = eval_anomalies("%1", &quiet, &gates, &mut dedup, 1_700_000_010);
+        assert!(r3.is_empty());
+
+        // Tick 4: detector Some again, dedup rearmed → emit
+        let r4 = eval_anomalies("%1", &history, &gates, &mut dedup, 1_700_000_015);
+        assert_eq!(r4.len(), 1, "should re-emit after rearm");
+    }
+
+    #[test]
+    fn eval_anomalies_min_confidence_filters_medium() {
+        let mut gates = fixture_gates();
+        gates.anomaly_min_confidence = AnomalyConfidence::High;
+        // Exactly threshold flips → Medium (filtered out at min_confidence=High)
+        let history = churn_history(vec![
+            ("claude", "/r"),
+            ("codex", "/r"),
+            ("claude", "/r"),
+            ("codex", "/r"),
+        ]);
+        let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
+        let result = eval_anomalies("%1", &history, &gates, &mut dedup, 1_700_000_000);
+        assert!(
+            result.is_empty(),
+            "Medium signal filtered at min_confidence=High"
+        );
+        // Critical: a future High signal should still be allowed to emit because
+        // the filtered Medium did NOT record dedup.
+        let key = ("%1".to_string(), AnomalyKind::IdentityChurn);
+        assert!(
+            !matches!(dedup.get(&key), Some(Some(_))),
+            "filtered signal must not lock dedup"
+        );
+    }
 
     fn snap(provider: &str, path: &str) -> (String, String) {
         (provider.to_string(), path.to_string())
