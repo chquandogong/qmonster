@@ -1676,6 +1676,45 @@ fn build_parameter_body_lines(
             on_off(config.reset.auto_snapshot).to_string(),
             on_off(defaults.reset.auto_snapshot).to_string(),
         ),
+        Line::from(""),
+        reference_header_line("Anomaly"),
+        setting_row(
+            "anomaly enabled",
+            on_off(config.anomaly.enabled).to_string(),
+            on_off(defaults.anomaly.enabled).to_string(),
+        ),
+        setting_row(
+            "anomaly window_polls",
+            config.anomaly.window_polls.to_string(),
+            defaults.anomaly.window_polls.to_string(),
+        ),
+        setting_row(
+            "anomaly min_confidence",
+            config.anomaly.min_confidence.clone(),
+            defaults.anomaly.min_confidence.clone(),
+        ),
+        setting_row(
+            "anomaly identity_churn_min_flips",
+            config.anomaly.identity_churn_min_flips.to_string(),
+            defaults.anomaly.identity_churn_min_flips.to_string(),
+        ),
+        setting_row(
+            "anomaly error_burst_threshold",
+            format!("{:.2}", config.anomaly.error_burst_threshold),
+            format!("{:.2}", defaults.anomaly.error_burst_threshold),
+        ),
+        setting_row(
+            "anomaly cache_discontinuity_drop",
+            format!("{:.2}", config.anomaly.cache_discontinuity_drop),
+            format!("{:.2}", defaults.anomaly.cache_discontinuity_drop),
+        ),
+        setting_row(
+            "anomaly cross_pane_cluster_min",
+            config.anomaly.cross_pane_cluster_min_findings.to_string(),
+            defaults.anomaly.cross_pane_cluster_min_findings.to_string(),
+        ),
+        Line::from(""),
+        reference_header_line("Cost / Profile"),
         setting_row(
             "cost budget_usd",
             format!("${:.2}", config.cost.budget_usd),
@@ -1851,6 +1890,38 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
             ),
         ),
         Line::from(""),
+        reference_header_line("Anomaly Detectors"),
+        rule_row(
+            "anomaly: IdentityChurn",
+            format!(
+                "fires when (provider, path) flips >= {} times in {} polls",
+                config.anomaly.identity_churn_min_flips, config.anomaly.window_polls,
+            ),
+        ),
+        rule_row(
+            "anomaly: ErrorBurst",
+            format!(
+                "fires when error rate >= {:.0}% over {} polls",
+                config.anomaly.error_burst_threshold * 100.0,
+                config.anomaly.window_polls,
+            ),
+        ),
+        rule_row(
+            "anomaly: CacheDiscontinuity",
+            format!(
+                "fires when cache_hit_ratio drops >= {:.0}pp OR F-7b fires >= 2x in {} polls",
+                config.anomaly.cache_discontinuity_drop * 100.0,
+                config.anomaly.window_polls,
+            ),
+        ),
+        rule_row(
+            "anomaly: CrossPaneEditCluster",
+            format!(
+                "fires when >= {} ConcurrentFileEdit findings target the same path in {} polls",
+                config.anomaly.cross_pane_cluster_min_findings, config.anomaly.window_polls,
+            ),
+        ),
+        Line::from(""),
         status_line(overlay),
     ]
 }
@@ -1954,6 +2025,12 @@ fn build_badge_body_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
         badge_row(
             "TOOL / SKILL",
             "loaded or observed tool/skill/plugin/runtime capability",
+        ),
+        Line::from(""),
+        reference_header_line("Anomaly"),
+        badge_row(
+            "ANOMALIES",
+            "anomaly count and kinds per pane (in m overlay); aggregated from D2/F-9/F-3+F-7b/F-8 history",
         ),
         Line::from(""),
         status_line(overlay),
@@ -3086,5 +3163,77 @@ mod tests {
         let rect = settings_close_button_rect(body);
         assert!(rect.x + rect.width <= body.x + body.width);
         assert!(rect.y + rect.height <= body.y + body.height);
+    }
+
+    // -----------------------------------------------------------------
+    // Cluster: Phase 7 anomaly settings rows
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn parameters_tab_shows_anomaly_section() {
+        let mut config = QmonsterConfig::defaults();
+        config.anomaly.enabled = true;
+        config.anomaly.window_polls = 25;
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        let lines = build_body_lines(&s, &config);
+        let rendered = rendered_text(&lines);
+        assert!(
+            rendered.contains("anomaly enabled"),
+            "missing enabled row: {rendered}"
+        );
+        assert!(
+            rendered.contains("on"),
+            "expected on for enabled=true: {rendered}"
+        );
+        assert!(
+            rendered.contains("anomaly window_polls"),
+            "missing window_polls row: {rendered}"
+        );
+        assert!(
+            rendered.contains("25"),
+            "expected 25 for window_polls: {rendered}"
+        );
+    }
+
+    #[test]
+    fn rules_tab_shows_four_anomaly_rows() {
+        let config = QmonsterConfig::defaults();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Rules);
+        let lines = build_body_lines(&s, &config);
+        let rendered = rendered_text(&lines);
+        assert!(
+            rendered.contains("anomaly: IdentityChurn"),
+            "missing IdentityChurn: {rendered}"
+        );
+        assert!(
+            rendered.contains("anomaly: ErrorBurst"),
+            "missing ErrorBurst: {rendered}"
+        );
+        assert!(
+            rendered.contains("anomaly: CacheDiscontinuity"),
+            "missing CacheDiscontinuity: {rendered}"
+        );
+        assert!(
+            rendered.contains("anomaly: CrossPaneEditCluster"),
+            "missing CrossPaneEditCluster: {rendered}"
+        );
+    }
+
+    #[test]
+    fn badges_tab_includes_anomalies_description() {
+        let config = QmonsterConfig::defaults();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Badges);
+        let lines = build_body_lines(&s, &config);
+        let rendered = rendered_text(&lines);
+        assert!(
+            rendered.contains("ANOMALIES"),
+            "missing ANOMALIES badge: {rendered}"
+        );
     }
 }
