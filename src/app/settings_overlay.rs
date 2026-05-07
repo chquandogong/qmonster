@@ -443,6 +443,25 @@ mod tests {
     }
 
     #[test]
+    fn key_handler_commits_numeric_parameter_edit() {
+        use crate::ui::settings::ParameterField;
+
+        let mut overlay = SettingsOverlay::new();
+        let mut config = QmonsterConfig::defaults();
+        overlay.open();
+        overlay.switch_tab(SettingsTab::Parameters);
+        overlay.select_parameter(ParameterField::InsightsIgnoredTtlSecs);
+
+        handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('e'));
+        assert!(overlay.edit_buffer().is_some());
+        overlay.replace_edit_buffer_for_test("120");
+        handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Enter);
+
+        assert_eq!(config.insights.ignored_ttl_secs, 120);
+        assert!(overlay.edit_buffer().is_none());
+    }
+
+    #[test]
     fn mouse_handler_closes_on_close_button() {
         let mut overlay = SettingsOverlay::new();
         let mut config = QmonsterConfig::defaults();
@@ -718,7 +737,7 @@ mod tests {
         let mut overlay = SettingsOverlay::new();
         let mut config = QmonsterConfig::defaults();
         overlay.open();
-        overlay.switch_tab(SettingsTab::Parameters);
+        overlay.switch_tab(SettingsTab::Rules);
         let viewport = Rect::new(0, 0, 80, 12);
         let rects = settings_modal_rects(viewport);
         let body_inner = rects.body.inner(ratatui::layout::Margin {

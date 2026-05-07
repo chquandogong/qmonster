@@ -16,7 +16,7 @@
 
 use crate::app::config::{
     ActionsMode, ConfirmActions, ContextConfig, CostConfig, CostProviderConfig, LogSensitivity,
-    PressureProviderConfig, QmonsterConfig, QuotaConfig, RefreshPolicy,
+    PressureProviderConfig, QmonsterConfig, QuotaConfig, RefreshPolicy, TmuxSourceMode,
 };
 use crate::domain::recommendation::Severity;
 use crate::ui::theme;
@@ -240,6 +240,139 @@ impl IntegrationField {
             IntegrationField::CodexAppServer => IntegrationField::ClaudeSidefile,
         }
     }
+}
+
+/// Editable fields shown on Settings > Parameters. Threshold rows keep
+/// their older dedicated editor; this enum covers the remaining
+/// runtime config surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParameterField {
+    TmuxSource,
+    TmuxPollIntervalMs,
+    TmuxCaptureLines,
+    RefreshPolicy,
+    IdleStillnessPolls,
+    LoggingSensitivity,
+    LoggingRetentionDays,
+    LoggingBigOutputChars,
+    StorageRoot,
+    ActionsMode,
+    ActionsAutoNotifications,
+    ActionsAutoArchive,
+    ActionsAutoPromptSend,
+    ActionsDestructive,
+    UxConfirmActions,
+    InsightsIgnoredTtlSecs,
+    InsightsDefaultWindowSecs,
+    TokenQuotaTight,
+    SecurityPostureAdvisories,
+    SecurityCrossWindowFindings,
+    SecurityIdentityDriftFindings,
+    SecurityCrossPaneFileFindings,
+    CacheHotRatioThreshold,
+    CacheColdRatioThreshold,
+    CacheHotLowCtxThreshold,
+    CacheColdHighCtxThreshold,
+    CacheDriftDropThreshold,
+    CacheDriftMinSamples,
+    ResetWaitPressureThreshold,
+    ResetWaitEtaSecs,
+    ResetSnapshotPressureThreshold,
+    ResetSnapshotEtaSecs,
+    ResetAutoSnapshot,
+    AnomalyEnabled,
+    AnomalyWindowPolls,
+    AnomalyMinConfidence,
+    AnomalyIdentityChurnMinFlips,
+    AnomalyErrorBurstThreshold,
+    AnomalyCacheDiscontinuityDrop,
+    AnomalyCrossPaneClusterMinFindings,
+    AnomalyCostSlopeUsdPerHour,
+    AnomalyTokenSlopeInputPerPoll,
+    AnomalyMemoryGrowthMb,
+    AnomalyRetentionDays,
+    AnomalyPromoteIdentityChurn,
+    AnomalyPromoteErrorBurst,
+    AnomalyPromoteCacheDiscontinuity,
+    AnomalyPromoteCrossPaneEditCluster,
+    AnomalyPromoteCostSlope,
+    AnomalyPromoteTokenSlope,
+    AnomalyPromoteMemoryGrowth,
+    AnomalyPromoteSubagentSideEffect,
+    CostBudgetUsd,
+    ProfileSwitchEnabled,
+    ProfileSwitchWindowPolls,
+    ProfileSwitchErrorRateThreshold,
+}
+
+pub fn all_parameter_fields() -> Vec<ParameterField> {
+    use ParameterField::*;
+    vec![
+        TmuxSource,
+        TmuxPollIntervalMs,
+        TmuxCaptureLines,
+        RefreshPolicy,
+        IdleStillnessPolls,
+        LoggingSensitivity,
+        LoggingRetentionDays,
+        LoggingBigOutputChars,
+        StorageRoot,
+        ActionsMode,
+        ActionsAutoNotifications,
+        ActionsAutoArchive,
+        ActionsAutoPromptSend,
+        ActionsDestructive,
+        UxConfirmActions,
+        InsightsIgnoredTtlSecs,
+        InsightsDefaultWindowSecs,
+        TokenQuotaTight,
+        SecurityPostureAdvisories,
+        SecurityCrossWindowFindings,
+        SecurityIdentityDriftFindings,
+        SecurityCrossPaneFileFindings,
+        CacheHotRatioThreshold,
+        CacheColdRatioThreshold,
+        CacheHotLowCtxThreshold,
+        CacheColdHighCtxThreshold,
+        CacheDriftDropThreshold,
+        CacheDriftMinSamples,
+        ResetWaitPressureThreshold,
+        ResetWaitEtaSecs,
+        ResetSnapshotPressureThreshold,
+        ResetSnapshotEtaSecs,
+        ResetAutoSnapshot,
+        AnomalyEnabled,
+        AnomalyWindowPolls,
+        AnomalyMinConfidence,
+        AnomalyIdentityChurnMinFlips,
+        AnomalyErrorBurstThreshold,
+        AnomalyCacheDiscontinuityDrop,
+        AnomalyCrossPaneClusterMinFindings,
+        AnomalyCostSlopeUsdPerHour,
+        AnomalyTokenSlopeInputPerPoll,
+        AnomalyMemoryGrowthMb,
+        AnomalyRetentionDays,
+        AnomalyPromoteIdentityChurn,
+        AnomalyPromoteErrorBurst,
+        AnomalyPromoteCacheDiscontinuity,
+        AnomalyPromoteCrossPaneEditCluster,
+        AnomalyPromoteCostSlope,
+        AnomalyPromoteTokenSlope,
+        AnomalyPromoteMemoryGrowth,
+        AnomalyPromoteSubagentSideEffect,
+        CostBudgetUsd,
+        ProfileSwitchEnabled,
+        ProfileSwitchWindowPolls,
+        ProfileSwitchErrorRateThreshold,
+    ]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParameterEditKind {
+    Bool,
+    Enum,
+    Number,
+    Text,
 }
 
 /// One-line status banner shown at the bottom of the overlay.
@@ -998,11 +1131,21 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
 fn parameter_section_label(field: ParameterField) -> &'static str {
     use ParameterField::*;
     match field {
-        TmuxSource | TmuxPollIntervalMs | TmuxCaptureLines | RefreshPolicy
-        | IdleStillnessPolls | LoggingSensitivity | LoggingRetentionDays
-        | LoggingBigOutputChars | StorageRoot => "Runtime",
-        ActionsMode | ActionsAutoNotifications | ActionsAutoArchive | ActionsAutoPromptSend
-        | ActionsDestructive | UxConfirmActions => "Actions",
+        TmuxSource
+        | TmuxPollIntervalMs
+        | TmuxCaptureLines
+        | RefreshPolicy
+        | IdleStillnessPolls
+        | LoggingSensitivity
+        | LoggingRetentionDays
+        | LoggingBigOutputChars
+        | StorageRoot => "Runtime",
+        ActionsMode
+        | ActionsAutoNotifications
+        | ActionsAutoArchive
+        | ActionsAutoPromptSend
+        | ActionsDestructive
+        | UxConfirmActions => "Actions",
         InsightsIgnoredTtlSecs | InsightsDefaultWindowSecs => "Insights",
         TokenQuotaTight => "Policy Inputs",
         SecurityPostureAdvisories
@@ -1039,7 +1182,9 @@ fn parameter_section_label(field: ParameterField) -> &'static str {
         | AnomalyPromoteTokenSlope
         | AnomalyPromoteMemoryGrowth
         | AnomalyPromoteSubagentSideEffect => "Anomaly Promote",
-        CostBudgetUsd | ProfileSwitchEnabled | ProfileSwitchWindowPolls
+        CostBudgetUsd
+        | ProfileSwitchEnabled
+        | ProfileSwitchWindowPolls
         | ProfileSwitchErrorRateThreshold => "Cost / Profile",
     }
 }
@@ -1232,9 +1377,7 @@ fn parameter_value_for_display(config: &QmonsterConfig, field: ParameterField) -
         AnomalyPromoteCostSlope => config.anomaly.promote.cost_slope.clone(),
         AnomalyPromoteTokenSlope => config.anomaly.promote.token_slope.clone(),
         AnomalyPromoteMemoryGrowth => config.anomaly.promote.memory_growth.clone(),
-        AnomalyPromoteSubagentSideEffect => {
-            config.anomaly.promote.subagent_side_effect.clone()
-        }
+        AnomalyPromoteSubagentSideEffect => config.anomaly.promote.subagent_side_effect.clone(),
         CostBudgetUsd => format!("${:.2}", config.cost.budget_usd),
         ProfileSwitchEnabled => on_off(config.profile_switch.enabled).into(),
         ProfileSwitchWindowPolls => format!("{} polls", config.profile_switch.window_polls),
@@ -1343,8 +1486,12 @@ fn cycle_parameter_enum(config: &mut QmonsterConfig, field: ParameterField) -> R
         }
         RefreshPolicy => {
             config.refresh.policy = match config.refresh.policy {
-                RefreshPolicy::ManualOnly => RefreshPolicy::Automatic,
-                RefreshPolicy::Automatic => RefreshPolicy::ManualOnly,
+                crate::app::config::RefreshPolicy::ManualOnly => {
+                    crate::app::config::RefreshPolicy::Automatic
+                }
+                crate::app::config::RefreshPolicy::Automatic => {
+                    crate::app::config::RefreshPolicy::ManualOnly
+                }
             };
         }
         LoggingSensitivity => {
@@ -1356,9 +1503,15 @@ fn cycle_parameter_enum(config: &mut QmonsterConfig, field: ParameterField) -> R
         }
         ActionsMode => {
             config.actions.mode = match config.actions.mode {
-                ActionsMode::ObserveOnly => ActionsMode::RecommendOnly,
-                ActionsMode::RecommendOnly => ActionsMode::SafeAuto,
-                ActionsMode::SafeAuto => ActionsMode::ObserveOnly,
+                crate::app::config::ActionsMode::ObserveOnly => {
+                    crate::app::config::ActionsMode::RecommendOnly
+                }
+                crate::app::config::ActionsMode::RecommendOnly => {
+                    crate::app::config::ActionsMode::SafeAuto
+                }
+                crate::app::config::ActionsMode::SafeAuto => {
+                    crate::app::config::ActionsMode::ObserveOnly
+                }
             };
         }
         UxConfirmActions => {
@@ -1514,8 +1667,7 @@ fn apply_parameter_edit(
             config.anomaly.cache_discontinuity_drop = parse_unit_f32(label, raw)?;
         }
         AnomalyCrossPaneClusterMinFindings => {
-            config.anomaly.cross_pane_cluster_min_findings =
-                parse_usize_value(label, raw, 1)?;
+            config.anomaly.cross_pane_cluster_min_findings = parse_usize_value(label, raw, 1)?;
         }
         AnomalyCostSlopeUsdPerHour => {
             config.anomaly.cost_slope_usd_per_hour = parse_nonnegative_f64(label, raw)?;
@@ -1553,7 +1705,11 @@ fn merge_parameter_field(
         RefreshPolicy => set_nested_str(doc, &path, refresh_policy_label(config.refresh.policy)),
         IdleStillnessPolls => set_nested_i64(doc, &path, config.idle.stillness_polls as i64),
         LoggingSensitivity => {
-            set_nested_str(doc, &path, log_sensitivity_label(config.logging.sensitivity));
+            set_nested_str(
+                doc,
+                &path,
+                log_sensitivity_label(config.logging.sensitivity),
+            );
         }
         LoggingRetentionDays => set_nested_i64(doc, &path, config.logging.retention_days as i64),
         LoggingBigOutputChars => set_nested_i64(doc, &path, config.logging.big_output_chars as i64),
@@ -1568,8 +1724,12 @@ fn merge_parameter_field(
         ActionsAutoArchive => set_nested_bool(doc, &path, config.actions.allow_auto_archive),
         ActionsAutoPromptSend => set_nested_bool(doc, &path, config.actions.allow_auto_prompt_send),
         ActionsDestructive => set_nested_bool(doc, &path, config.actions.allow_destructive_actions),
-        UxConfirmActions => set_nested_str(doc, &path, confirm_actions_label(config.ux.confirm_actions)),
-        InsightsIgnoredTtlSecs => set_nested_i64(doc, &path, config.insights.ignored_ttl_secs as i64),
+        UxConfirmActions => {
+            set_nested_str(doc, &path, confirm_actions_label(config.ux.confirm_actions))
+        }
+        InsightsIgnoredTtlSecs => {
+            set_nested_i64(doc, &path, config.insights.ignored_ttl_secs as i64)
+        }
         InsightsDefaultWindowSecs => {
             set_nested_i64(doc, &path, config.insights.default_window_secs as i64);
         }
@@ -1601,7 +1761,11 @@ fn merge_parameter_field(
         }
         ResetWaitEtaSecs => set_nested_i64(doc, &path, config.reset.wait_eta_secs as i64),
         ResetSnapshotPressureThreshold => {
-            set_nested_f64(doc, &path, f64::from(config.reset.snapshot_pressure_threshold));
+            set_nested_f64(
+                doc,
+                &path,
+                f64::from(config.reset.snapshot_pressure_threshold),
+            );
         }
         ResetSnapshotEtaSecs => set_nested_i64(doc, &path, config.reset.snapshot_eta_secs as i64),
         ResetAutoSnapshot => set_nested_bool(doc, &path, config.reset.auto_snapshot),
@@ -1615,10 +1779,18 @@ fn merge_parameter_field(
             set_nested_f64(doc, &path, f64::from(config.anomaly.error_burst_threshold));
         }
         AnomalyCacheDiscontinuityDrop => {
-            set_nested_f64(doc, &path, f64::from(config.anomaly.cache_discontinuity_drop));
+            set_nested_f64(
+                doc,
+                &path,
+                f64::from(config.anomaly.cache_discontinuity_drop),
+            );
         }
         AnomalyCrossPaneClusterMinFindings => {
-            set_nested_i64(doc, &path, config.anomaly.cross_pane_cluster_min_findings as i64);
+            set_nested_i64(
+                doc,
+                &path,
+                config.anomaly.cross_pane_cluster_min_findings as i64,
+            );
         }
         AnomalyCostSlopeUsdPerHour => {
             set_nested_f64(doc, &path, config.anomaly.cost_slope_usd_per_hour);
@@ -1658,11 +1830,14 @@ fn merge_parameter_field(
             set_nested_i64(doc, &path, config.profile_switch.window_polls as i64);
         }
         ProfileSwitchErrorRateThreshold => {
-            set_nested_f64(doc, &path, f64::from(config.profile_switch.error_rate_threshold));
+            set_nested_f64(
+                doc,
+                &path,
+                f64::from(config.profile_switch.error_rate_threshold),
+            );
         }
     }
 }
-
 
 // -----------------------------------------------------------------
 // Field-by-field read / write / validate helpers. Internal to the
@@ -3315,7 +3490,10 @@ fn parameter_row_line(
             Style::default().fg(theme::TEXT_DIM),
         ),
         Span::styled(format!("{:<18}", value), value_style),
-        Span::styled(format!(" default {default:<12}"), Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(
+            format!(" default {default:<12}"),
+            Style::default().fg(theme::TEXT_DIM),
+        ),
         Span::styled(action, Style::default().fg(theme::TEXT_DIM)),
     ])
 }
@@ -3803,6 +3981,88 @@ mod tests {
         assert!(rendered.contains("85%/15m"));
         assert!(rendered.contains("reset snapshot pressure/eta"));
         assert!(rendered.contains("65%/5m"));
+    }
+
+    #[test]
+    fn parameters_tab_exposes_editable_fields_for_all_config_sections() {
+        let fields = all_parameter_fields();
+
+        assert!(fields.contains(&ParameterField::TmuxSource));
+        assert!(fields.contains(&ParameterField::ActionsMode));
+        assert!(fields.contains(&ParameterField::RefreshPolicy));
+        assert!(fields.contains(&ParameterField::LoggingSensitivity));
+        assert!(fields.contains(&ParameterField::TokenQuotaTight));
+        assert!(fields.contains(&ParameterField::StorageRoot));
+        assert!(fields.contains(&ParameterField::InsightsIgnoredTtlSecs));
+        assert!(fields.contains(&ParameterField::IdleStillnessPolls));
+        assert!(fields.contains(&ParameterField::SecurityPostureAdvisories));
+        assert!(fields.contains(&ParameterField::CacheHotRatioThreshold));
+        assert!(fields.contains(&ParameterField::ResetAutoSnapshot));
+        assert!(fields.contains(&ParameterField::AnomalyEnabled));
+        assert!(fields.contains(&ParameterField::AnomalyPromoteSubagentSideEffect));
+        assert!(fields.contains(&ParameterField::CostBudgetUsd));
+        assert!(fields.contains(&ParameterField::ProfileSwitchWindowPolls));
+        assert!(fields.contains(&ParameterField::UxConfirmActions));
+    }
+
+    #[test]
+    fn parameter_bool_enum_number_and_string_edits_update_config() {
+        let mut s = SettingsOverlay::new();
+        let mut config = cfg();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+
+        s.select_parameter(ParameterField::AnomalyEnabled);
+        s.activate_parameter(&mut config).expect("bool toggle");
+        assert!(config.anomaly.enabled);
+
+        s.select_parameter(ParameterField::AnomalyMinConfidence);
+        s.activate_parameter(&mut config).expect("enum cycle");
+        assert_eq!(config.anomaly.min_confidence, "high");
+
+        s.select_parameter(ParameterField::ResetWaitEtaSecs);
+        s.start_edit(&config);
+        s.replace_edit_buffer_for_test("900");
+        s.commit_edit(&mut config).expect("number edit");
+        assert_eq!(config.reset.wait_eta_secs, 900);
+
+        s.select_parameter(ParameterField::StorageRoot);
+        s.start_edit(&config);
+        s.replace_edit_buffer_for_test("/tmp/qmonster-root");
+        s.commit_edit(&mut config).expect("string edit");
+        assert_eq!(config.storage.root.as_deref(), Some("/tmp/qmonster-root"));
+    }
+
+    #[test]
+    fn save_writes_parameter_values_into_existing_toml() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("qmonster.toml");
+        let original = "# header\n[anomaly]\nenabled = false\n\n[reset]\nwait_eta_secs = 1800\n";
+        std::fs::File::create(&path)
+            .and_then(|mut f| f.write_all(original.as_bytes()))
+            .expect("write seed");
+
+        let mut s = SettingsOverlay::new();
+        let mut config = cfg();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        s.select_parameter(ParameterField::AnomalyEnabled);
+        s.activate_parameter(&mut config).expect("toggle enabled");
+        s.select_parameter(ParameterField::ResetWaitEtaSecs);
+        s.start_edit(&config);
+        s.replace_edit_buffer_for_test("900");
+        s.commit_edit(&mut config).expect("commit eta");
+
+        s.save(&config, &path).expect("save ok");
+
+        let saved = std::fs::read_to_string(&path).expect("read back");
+        assert!(saved.contains("# header"));
+        assert!(saved.contains("enabled = true"));
+        assert!(saved.contains("wait_eta_secs = 900"));
+        let reloaded: QmonsterConfig = toml::from_str(&saved).expect("parse");
+        assert!(reloaded.anomaly.enabled);
+        assert_eq!(reloaded.reset.wait_eta_secs, 900);
     }
 
     #[test]
