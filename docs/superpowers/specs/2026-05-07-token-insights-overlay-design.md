@@ -330,7 +330,7 @@ rendering work begins.
    - Correlate prompt-send, snapshot, archive, and auto-snapshot
      outcomes conservatively.
 3. **CLI/report proof**
-   - Add `qmonster insights --since ...` or `--once --insights`.
+   - Add `qmonster insights --since ...`.
    - Add golden text tests.
 4. **TUI `i` overlay**
    - Add `app/insights_overlay.rs`, `ui/insights.rs`,

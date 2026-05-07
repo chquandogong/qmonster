@@ -17,16 +17,29 @@ shape, but changes several details:
 - SQLite reads must not block render; the merged design requires a
   cached `InsightsSnapshot` refreshed outside `ui/` rendering.
 
+## Original Draft (superseded)
+
 ## Purpose
-To visualize Qmonster's token optimization and policy actions across 6 key situations, giving operators insight into what actions are being taken (and ignored) and the resulting token/cache savings. This addresses the need to expose the "invisible" work Qmonster does to optimize context and cost.
+To visualize Qmonster's token optimization and policy actions across
+6 key situations, giving operators insight into what actions are being
+taken (and ignored) and the resulting token/cache reuse / cost trend.
+This addresses the need to expose the "invisible" work Qmonster does to
+optimize context and cost.
 
 ## Architecture
-- **Trigger**: Bound to the `o` key in the main event loop to toggle the overlay.
-- **State Management**: `src/app/optimization_overlay.rs` will handle the state, including asynchronous or background SQLite queries to fetch historical data without blocking the render loop.
-- **Rendering**: `src/ui/optimization.rs` will handle the `tui` rendering logic, drawing the dashboard layout.
+- **Trigger**: Original proposal used the `o` key. The merged design uses `i`.
+- **State Management**: Original proposal used
+  `src/app/optimization_overlay.rs` with asynchronous or background
+  SQLite queries. The merged design uses `src/app/insights_overlay.rs`
+  plus a cached `InsightsSnapshot` refreshed outside `ui/` rendering.
+- **Rendering**: Original proposal used `src/ui/optimization.rs`. The
+  merged design uses `src/ui/insights.rs`.
 
 ## Data Integration
-- **Cache & Token Savings**: Queried from the existing SQLite `token_usage_samples` table. The overlay will calculate total token savings and generate sparklines for cache hit ratios over the selected time window (e.g., last 24h).
+- **Cache & Token Reuse**: Queried from the existing SQLite
+  `token_usage_samples` table. The merged design shows cache hit ratio
+  trends and measured token growth; it does not calculate exact total
+  token savings.
 - **The 6 Situations (Policy Actions)**: Qmonster evaluates 11 policy rules. The overlay will map these evaluations into the 6 core design situations:
   1. **Log Storm**: Repeated output detection (Phase 1·3).
   2. **Code Exploration**: Deep code-graph heuristics (Advisories).
@@ -40,7 +53,7 @@ To visualize Qmonster's token optimization and policy actions across 6 key situa
 The TUI overlay will be structured into three main vertical sections:
 
 1. **Top: Token & Optimization Summary**
-   - High-level metric: Total Token Savings (Input vs Cached).
+   - High-level metric: cache reuse / token growth (not exact total token savings).
    - Sparkline: Cache hit ratio trend over time (e.g., `▂▃▄▅▇`).
 
 2. **Middle: Situations Triggered (24h)**
