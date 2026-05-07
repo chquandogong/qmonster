@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.45.0 - Phase 7 v2 detectors: 4 new AnomalyKind variants (CostSlope/TokenSlope/MemoryGrowth/SubagentSideEffect) on top of v1.44.0 promotion infrastructure."
+  mission_title: "Qmonster v1.46.0 - Phase 7 v3 (a+b): per-kind promotion gate + n overlay (anomaly events ring buffer)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 188
-  latest_version: "1.45.0"
+  total_revisions: 189
+  latest_version: "1.46.0"
 
 timeline:
   - change_id: "initial"
@@ -17365,9 +17365,136 @@ timeline:
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
+  - change_id: "v1.46.0-phase-7-v3-a-b-promote-and-overlay"
+    semantic_version: "1.46.0"
+    change_sequence: 189
+    date: "2026-05-07"
+    author: "Claude Sonnet 4.6"
+    summary: >
+      v1.46.0 ships Phase 7 v3 (a+b): per-kind promotion gate + n overlay
+      (anomaly events ring buffer). AnomalyEvent record (src/domain/anomaly.rs)
+      captures kind/confidence/reason/timestamp for ring storage.
+      AnomalyPromoteConfig (src/app/config.rs) adds 8 per-kind min_confidence
+      fields (7 × "high" default + subagent_side_effect = "medium") replacing
+      the old hardcoded severity >= Warning filter.
+      AnomalyEventsRing (src/app/anomaly_events_ring.rs) is an in-memory
+      ring buffer, capacity 100, session-only.
+      PolicyGates gains 8 anomaly_promote_* fields +
+      promote_min_confidence(kind) helper (src/policy/gates.rs).
+      promote_anomalies_to_recommendations signature updated to take
+      &PolicyGates; predicate replaced with per-kind gate
+      (src/policy/rules/anomaly.rs).
+      Context.anomaly_events_ring + push site in run_once_with_target
+      (src/app/bootstrap.rs, src/app/event_loop.rs).
+      AnomalyOverlay state/key/mouse/render
+      (src/ui/anomaly_overlay.rs, src/app/anomaly_overlay.rs);
+      n key opens/closes; newest-first list with truncated reason.
+      tui_loop.rs + dashboard_render.rs wired.
+      Settings Parameters [anomaly.promote] +8 rows + Rules annotation
+      reads from config (src/ui/settings.rs).
+      Side effect: SubagentSideEffect default min_confidence = "medium"
+      makes its previously-unreachable promote-matrix branch reachable
+      (latent v1.45.0 dead-code fix).
+    intent_ko: >
+      v1.46.0 은 Phase 7 v3 (a+b) 를 출하한다: 종류별 프로모션 게이트 +
+      n 오버레이 (anomaly 이벤트 링 버퍼). AnomalyEvent 레코드,
+      AnomalyPromoteConfig (8개 필드, 7 × "high" + subagent_side_effect =
+      "medium"), AnomalyEventsRing (인메모리, 용량 100, 세션 한정).
+      PolicyGates 에 8개 anomaly_promote_* 필드 +
+      promote_min_confidence(kind) 헬퍼 추가.
+      promote_anomalies_to_recommendations 는 &PolicyGates 를 받아
+      종류별 게이트 조건자로 교체. Context 에 ring 필드 추가 + push 지점.
+      AnomalyOverlay 상태/키/마우스/렌더링; n 키로 열고 닫음;
+      최신순 목록 + truncated reason.
+      SubagentSideEffect 기본값 min_confidence = "medium" 으로
+      v1.45.0 잠재 dead-code 분기가 도달 가능해짐 (의도된 동작).
+    triggered_by: "Operator scoped Phase 7 v3 (a+b) as a 14-task implementation sequence (Tasks 1-13 = impl commits, Task 14 = ledger sync). (c) sub-feature SQLite persistence deferred to v1.47+."
+    changes:
+      added:
+        - "src/domain/anomaly.rs: AnomalyEvent record (kind, confidence, reason, timestamp u64)."
+        - "src/app/anomaly_events_ring.rs: AnomalyEventsRing — in-memory ring buffer, capacity 100, session-only; push evicts oldest at capacity; iter() oldest-first."
+        - "src/app/anomaly_overlay.rs: AnomalyOverlay state struct (open: bool, scroll: u16); key handler (n toggle, Esc/q close, j/k/arrow scroll); mouse handler (ScrollUp/ScrollDown)."
+        - "src/ui/anomaly_overlay.rs: AnomalyOverlay render — centered modal, newest-first list, truncated reason via ellipsize, empty-state message."
+        - "src/app/config.rs: AnomalyPromoteConfig with 8 per-kind min_confidence fields (context_pressure, cost_spike, cost_slope, token_slope, memory_growth, tool_error_rate, error_spike, subagent_side_effect). Defaults: 7 × 'high', subagent_side_effect = 'medium'."
+        - "src/policy/gates.rs: PolicyGates +8 anomaly_promote_* fields + promote_min_confidence(kind: AnomalyKind) -> Confidence helper."
+        - "src/policy/rules/anomaly.rs: promote_anomalies_to_recommendations signature change — takes gates: &PolicyGates; per-kind gate predicate replaces hardcoded severity >= Warning filter. +6 unit tests."
+        - "src/app/bootstrap.rs: Context.anomaly_events_ring field (AnomalyEventsRing)."
+        - "src/app/event_loop.rs: push site in run_once_with_target — detected anomalies pushed to ring after eval_anomalies. +1 integration test (ring buffer captures visible signals)."
+        - "src/ui/settings.rs: Parameters tab [anomaly.promote] +8 rows; Rules tab annotation reads min_confidence from config."
+        - "src/ui/tui_loop.rs: n key dispatch, mouse forwarding to AnomalyOverlay."
+        - "src/ui/dashboard_render.rs: AnomalyOverlay render call when open."
+      modified:
+        - "src/app/config.rs: AppConfig gains anomaly_promote: AnomalyPromoteConfig field."
+        - "src/policy/gates.rs: PolicyGates::from_inputs updated to populate anomaly_promote_* from AnomalyPromoteConfig."
+        - "src/policy/rules/anomaly.rs: promote_anomalies_to_recommendations signature change + all 8 kind branches use per-kind gate."
+        - "src/app/bootstrap.rs: Context initialization adds anomaly_events_ring."
+        - "src/app/event_loop.rs: run_once_with_target push site."
+        - "src/ui/settings.rs: Parameters and Rules tabs updated."
+        - "src/ui/tui_loop.rs: n key + mouse wiring."
+        - "src/ui/dashboard_render.rs: overlay render wiring."
+        - "src/app/mod.rs: anomaly_overlay module export."
+        - "src/ui/mod.rs: anomaly_overlay module export."
+        - "src/domain/mod.rs: anomaly module export."
+        - "docs/ai/UI_MANUAL.md: n overlay subsection added."
+        - "docs/ai/ARCHITECTURE.md: v1.46.0 paragraph appended."
+        - "docs/ai/VALIDATION.md: Phase 7 v3 (a+b) row added."
+        - "config/qmonster.example.toml: [anomaly.promote] +8 threshold entries."
+        - "VERSION.md: bumped to v1.46.0."
+        - "package.json: version 1.46.0."
+        - "mission.yaml: title, topology, suggested_approach, budget_hint updated for v1.46.0."
+        - "mission-history.yaml: v1.46.0 entry appended."
+        - ".mission/CURRENT_STATE.md: full refresh for v1.46.0."
+      removed: []
+    observable_effects:
+      added:
+        - "Per-kind promotion gate: each AnomalyKind now has its own configurable min_confidence threshold in [anomaly.promote]. Operator can tune each threshold independently."
+        - "n overlay: pressing n opens AnomalyOverlay showing the session's anomaly history (newest-first, capacity 100). Mouse scroll and j/k navigate; Esc/q closes."
+        - "AnomalyEventsRing: in-memory ring buffer captures all detected anomalies (pre-promotion) for the session."
+        - "SubagentSideEffect dead-code fix: the SubagentSideEffect promote-matrix branch is now reachable. When subagent_hint co-occurs with another anomaly, a Concern-severity Recommendation is promoted (as documented — correlation, not attribution)."
+        - "Settings Parameters tab shows 8 new [anomaly.promote] rows; Rules tab reads actual thresholds from config."
+      modified:
+        - "promote_anomalies_to_recommendations: promotion predicate changed from severity_for(confidence) >= Severity::Warning to confidence >= gates.promote_min_confidence(kind). Existing behavior preserved for all kinds at their default 'high' threshold — only SubagentSideEffect changes (was unreachable at High; now reachable at Medium)."
+      removed: []
+    impact_scope:
+      runtime: "Ring buffer push per pane per tick when anomalies enabled (capacity 100, evicts oldest). New n overlay opens via n key. No change to provider adapters, audit chain, SignalSet schema, or SQLite schema."
+      tests: "1162 lib tests + 58 integration tests passing at v1.46.0 release commit (+39 lib tests vs the v1.45.0 baseline of 1123; +1 integration test vs the v1.45.0 baseline of 57); cargo fmt --all --check, cargo clippy --lib --tests -- -D warnings -A clippy::uninlined_format_args, cargo test --all-targets all green."
+      ledger: "1 new timeline entry (sequence 189); meta total_revisions 188 -> 189, latest_version 1.45.0 -> 1.46.0."
+      npm: "package.json version 1.46.0; CI publication of v1.46.0 follows the same workflow as v1.37.0 through v1.45.0 and remains an external follow-up until verified."
+    breaking: false
+    risk: "low — additive: existing detection pipeline unchanged, severity_for unchanged. Per-kind defaults (7×High, SubagentSideEffect=Medium) preserve v1.45.0 behavior for all but the SubagentSideEffect latent bug — that promote branch becomes reachable at the documented intent (Concern-severity recommendation when subagent_hint co-occurs with another anomaly)."
+    related_commits:
+      - "9c08603 v1.45.0 publication verified (run 25478893257, 7m02s, success)"
+      - "3341e84 phase 7 v3 (a+b): spec — per-kind promotion gate + n overlay (v1.46.0)"
+      - "ce427f4 phase 7 v3 (a+b): plan — 14 tasks (v1.46.0)"
+      - "790ba0d phase 7 v3 (a+b): AnomalyEvent record + smoke test"
+      - "a63a365 phase 7 v3 (a+b) T1 fixup: AnomalyEvent.timestamp u64 + reason assertion"
+      - "fc7afd2 phase 7 v3 (a+b): AnomalyPromoteConfig +8 fields + serde defaults"
+      - "fc604dd phase 7 v3 (a+b): PolicyGates +8 anomaly_promote_* + promote_min_confidence helper"
+      - "db81f0a phase 7 v3 (a+b) T3 fixup: cover all 8 default promote thresholds"
+      - "5a582ed phase 7 v3 (a+b): AnomalyEventsRing (capacity 100, in-memory) + 5 tests"
+      - "b66fc17 phase 7 v3 (a+b) T4 fixup: manual Default impl + fill-to-capacity behaviour test"
+      - "dbf91fe phase 7 v3 (a+b): per-kind promote gate (signature + predicate) + 6 tests"
+      - "54daba9 phase 7 v3 (a+b): Context.anomaly_events_ring + push site in run_once_with_target"
+      - "bd96845 phase 7 v3 (a+b) T6 fixup: sync comment + cast cleanup + lifecycle doc"
+      - "62baf1c phase 7 v3 (a+b): AnomalyOverlay state + key handler + 11 tests"
+      - "3037391 phase 7 v3 (a+b) T7 fixup: scroll u16 (match MetricsOverlay) + close() resets scroll"
+      - "42aa00c phase 7 v3 (a+b): AnomalyOverlay mouse handler + 5 tests"
+      - "be8764b phase 7 v3 (a+b): AnomalyOverlay render (newest-first list, truncated reason) + 3 tests"
+      - "82dcf60 phase 7 v3 (a+b) T9 fixup: reuse centered_rect/ellipsize + DoubleEndedIterator"
+      - "f7c6755 phase 7 v3 (a+b): tui_loop + dashboard_render wire AnomalyOverlay (n key + mouse + render)"
+      - "65f23ee phase 7 v3 (a+b) T10 fixup: anomaly overlay consumes all keys while open"
+      - "1562d35 phase 7 v3 (a+b): Settings Parameters [anomaly.promote] +8 rows + Rules annotation reads from config"
+      - "8b701b1 phase 7 v3 (a+b): event_loop integration test — ring buffer captures visible signals"
+      - "cc059a1 phase 7 v3 (a+b): docs (UI_MANUAL n overlay subsection, ARCHITECTURE v1.46.0 paragraph, VALIDATION row, example.toml + version surfaces)"
+    follow_up:
+      - "Phase 7 v3 (c) — SQLite persistence for anomaly history (deferred from v1.46.0; audit-grade / replay / retention design)"
+      - "D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
 evolution_summary:
-  current_phase: "v1.45.0 — Phase 7 v2 detectors: 4 new AnomalyKind variants (CostSlope/TokenSlope/MemoryGrowth/SubagentSideEffect). Builds on Phase 7 v2 promotion infrastructure (severity_for, promote_anomalies_to_recommendations). Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
-  next_phase: "Phase 7 v3 — operator-tunable promotion thresholds, optional n overlay, SQLite persistence for anomaly history. D3 per-subagent token attribution is provider-blocked. Tag protection / ruleset activation is a GitHub Settings task."
+  current_phase: "v1.46.0 — Phase 7 v3 (a+b): per-kind promotion gate + n overlay (anomaly events ring buffer). AnomalyPromoteConfig adds 8 per-kind min_confidence thresholds replacing the hardcoded severity >= Warning filter. AnomalyEventsRing (in-memory, capacity 100, session-only) + AnomalyOverlay (n key). SubagentSideEffect default min_confidence='medium' fixes v1.45.0 latent dead-code branch. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
+  next_phase: "Phase 7 v3 (c) — SQLite persistence for anomaly history (deferred from v1.46.0; audit-grade / replay / retention design). D3 per-subagent token attribution is provider-blocked. Tag protection / ruleset activation is a GitHub Settings task."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"
