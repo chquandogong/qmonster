@@ -442,6 +442,59 @@ pub fn detect_cross_pane_edit_cluster(
     })
 }
 
+/// CostSlope: cost_usd cumulative delta over `window_polls` ticks,
+/// normalized to USD per hour. Fires when slope ≥ `threshold_usd_per_hour`.
+/// `window_secs = window_polls × 5` (5-second polling interval).
+/// Confidence: `High` at ≥ 1.5× threshold, otherwise `Medium`.
+pub fn detect_cost_slope(
+    history: &AnomalyHistory,
+    window_polls: usize,
+    threshold_usd_per_hour: f64,
+    now_unix_seconds: u64,
+) -> Option<AnomalySignal> {
+    if history.cost_usd_samples.len() < window_polls {
+        return None;
+    }
+    let window: Vec<f64> = history
+        .cost_usd_samples
+        .iter()
+        .take(window_polls)
+        .filter_map(|s| *s)
+        .collect();
+    if window.len() < 2 {
+        return None;
+    }
+    let newest = window.first().copied().unwrap();
+    let oldest = window.last().copied().unwrap();
+    let window_secs = (window_polls as f64) * 5.0;
+    if window_secs <= 0.0 {
+        return None;
+    }
+    let slope_usd_per_hour = (newest - oldest) / window_secs * 3600.0;
+    if slope_usd_per_hour < threshold_usd_per_hour {
+        return None;
+    }
+    let confidence = if slope_usd_per_hour >= threshold_usd_per_hour * 1.5 {
+        AnomalyConfidence::High
+    } else {
+        AnomalyConfidence::Medium
+    };
+    Some(AnomalySignal {
+        kind: AnomalyKind::CostSlope,
+        confidence,
+        severity: severity_for(confidence),
+        evidence: vec![AnomalyEvidence {
+            metric_name: "cost_slope_usd_per_hour",
+            before: format!("{oldest:.2}"),
+            after: format!("{newest:.2}"),
+            sample_count: window.len(),
+            source_kind: SourceKind::ProviderOfficial,
+        }],
+        window_polls,
+        detected_at: now_unix_seconds,
+    })
+}
+
 /// Phase 7 v2 (v1.44.0): promote Warning+ `AnomalySignal`s into
 /// `Recommendation`s so they reach the dashboard recommendation
 /// panel and (via the caller's `RequestedEffect::Notify` push)
@@ -1080,5 +1133,60 @@ mod tests {
         assert_eq!(h.process_memory_samples.len(), 20);
         assert_eq!(h.agent_memory_samples.len(), 20);
         assert_eq!(h.subagent_hint_samples.len(), 20);
+    }
+
+    fn cost_history(samples: Vec<Option<f64>>) -> AnomalyHistory {
+        let mut h = AnomalyHistory::default();
+        // Pass newest-first; reverse-iter then push_front to preserve order.
+        for s in samples.into_iter().rev() {
+            h.cost_usd_samples.push_front(s);
+        }
+        h
+    }
+
+    #[test]
+    fn detect_cost_slope_pure_positive_high_confidence() {
+        // window=20 polls × 5s = 100s. cost climbs 0 → 100 → slope = 100/100 * 3600 = 3600 USD/hour.
+        // 3600 ≥ 1.5 × 20.0 = 30.0 → High → Warning.
+        let mut samples = vec![Some(100.0)];
+        for i in (0..19).rev() {
+            samples.push(Some((i as f64) * (100.0 / 19.0)));
+        }
+        let h = cost_history(samples);
+        let sig = detect_cost_slope(&h, 20, 20.0, 1_700_000_000).unwrap();
+        assert_eq!(sig.kind, AnomalyKind::CostSlope);
+        assert_eq!(sig.confidence, AnomalyConfidence::High);
+        assert_eq!(sig.severity, Severity::Warning);
+        assert_eq!(sig.evidence[0].metric_name, "cost_slope_usd_per_hour");
+    }
+
+    #[test]
+    fn detect_cost_slope_pure_positive_medium_confidence() {
+        // 20-cent delta over 100s = 7.2 USD/hour → ≥ 5.0 threshold but < 7.5 → Medium.
+        let mut samples = vec![Some(0.20)];
+        for i in (0..19).rev() {
+            samples.push(Some((i as f64) * (0.20 / 19.0)));
+        }
+        let h = cost_history(samples);
+        let sig = detect_cost_slope(&h, 20, 5.0, 1_700_000_000).unwrap();
+        assert_eq!(sig.confidence, AnomalyConfidence::Medium);
+        assert_eq!(sig.severity, Severity::Concern);
+    }
+
+    #[test]
+    fn detect_cost_slope_below_threshold_returns_none() {
+        // 10-cent delta over 100s = 3.6 USD/hour → < 20.0 threshold → None.
+        let mut samples = vec![Some(0.10)];
+        for i in (0..19).rev() {
+            samples.push(Some((i as f64) * (0.10 / 19.0)));
+        }
+        let h = cost_history(samples);
+        assert!(detect_cost_slope(&h, 20, 20.0, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn detect_cost_slope_insufficient_samples_returns_none() {
+        let h = cost_history(vec![Some(50.0), Some(0.0)]); // only 2, window 20
+        assert!(detect_cost_slope(&h, 20, 20.0, 1_700_000_000).is_none());
     }
 }
