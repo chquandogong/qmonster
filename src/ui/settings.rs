@@ -1894,14 +1894,14 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
         rule_row(
             "anomaly: IdentityChurn",
             format!(
-                "fires when (provider, path) flips >= {} times in {} polls",
+                "fires when (provider, path) flips >= {} times in {} polls; promotes to Recommendation when confidence=High",
                 config.anomaly.identity_churn_min_flips, config.anomaly.window_polls,
             ),
         ),
         rule_row(
             "anomaly: ErrorBurst",
             format!(
-                "fires when error rate >= {:.0}% over {} polls",
+                "fires when error rate >= {:.0}% over {} polls; promotes to Recommendation when confidence=High",
                 config.anomaly.error_burst_threshold * 100.0,
                 config.anomaly.window_polls,
             ),
@@ -1909,7 +1909,7 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
         rule_row(
             "anomaly: CacheDiscontinuity",
             format!(
-                "fires when cache_hit_ratio drops >= {:.0}pp OR F-7b fires >= 2x in {} polls",
+                "fires when cache_hit_ratio drops >= {:.0}pp OR F-7b fires >= 2x in {} polls; promotes to Recommendation when confidence=High",
                 config.anomaly.cache_discontinuity_drop * 100.0,
                 config.anomaly.window_polls,
             ),
@@ -1917,7 +1917,7 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
         rule_row(
             "anomaly: CrossPaneEditCluster",
             format!(
-                "fires when >= {} ConcurrentFileEdit findings target the same path in {} polls",
+                "fires when >= {} ConcurrentFileEdit findings target the same path in {} polls; promotes to Recommendation when confidence=High",
                 config.anomaly.cross_pane_cluster_min_findings, config.anomaly.window_polls,
             ),
         ),
@@ -3234,6 +3234,22 @@ mod tests {
         assert!(
             rendered.contains("ANOMALIES"),
             "missing ANOMALIES badge: {rendered}"
+        );
+    }
+
+    #[test]
+    fn rules_tab_anomaly_rows_show_promotion_annotation() {
+        let config = QmonsterConfig::defaults();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Rules);
+        let lines = build_body_lines(&s, &config);
+        let rendered = rendered_text(&lines);
+        let expected_phrase = "promotes to Recommendation when confidence=High";
+        let count = rendered.matches(expected_phrase).count();
+        assert_eq!(
+            count, 4,
+            "expected 4 anomaly rules with promotion annotation; got {count}: {rendered}"
         );
     }
 }
