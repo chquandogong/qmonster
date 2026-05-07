@@ -111,6 +111,11 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// last returned None and the kind has rearmed for fresh emission.
     pub anomaly_dedup:
         std::collections::HashMap<(String, crate::domain::anomaly::AnomalyKind), Option<u64>>,
+    /// Phase 7 v3 (v1.46.0): in-memory ring buffer of recent
+    /// `AnomalyEvent`s, populated by `run_once_with_target` after
+    /// the per-kind promotion gate runs. Rendered by the `n` overlay.
+    /// Capacity 100 (see `AnomalyEventsRing::CAPACITY`); session-only.
+    pub anomaly_events_ring: crate::app::anomaly_events_ring::AnomalyEventsRing,
     /// Phase F F-3 (v1.24.0): token-usage time-series sink for the
     /// per-pane sparkline. `None` when the SQLite open failed at
     /// startup (logged via the in-process eprintln); the event loop
@@ -169,6 +174,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             auto_snapshot_dedup: std::collections::HashMap::new(),
             anomaly_history: std::collections::HashMap::new(),
             anomaly_dedup: std::collections::HashMap::new(),
+            anomaly_events_ring: crate::app::anomaly_events_ring::AnomalyEventsRing::new(),
             token_usage_sink: None,
             cost_usage_sink: None,
             codex_app_server: None,

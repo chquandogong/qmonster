@@ -528,6 +528,31 @@ where
             out.effects.push(RequestedEffect::Notify);
         }
 
+        // Phase 7 v3 (v1.46.0): push every visible signal into the
+        // AnomalyEventsRing with its gate result, for the `n` overlay.
+        // `anomalies` holds the post-eval_anomalies signal vec (visible
+        // signals, post-visibility-filter); `gates` is the same
+        // PolicyGates value used by the promote call above.
+        let now_secs = current_unix_ms() / 1000;
+        for sig in &anomalies {
+            let promoted_bool = sig.confidence >= gates.promote_min_confidence(sig.kind);
+            let reason = sig
+                .evidence
+                .first()
+                .map(|e| format!("{}: {} → {}", e.metric_name, e.before, e.after))
+                .unwrap_or_default();
+            ctx.anomaly_events_ring
+                .push(crate::domain::anomaly::AnomalyEvent {
+                    timestamp: now_secs as u64,
+                    pane_id: pane.pane_id.clone(),
+                    kind: sig.kind,
+                    confidence: sig.confidence,
+                    severity: sig.severity,
+                    promoted: promoted_bool,
+                    reason,
+                });
+        }
+
         deliver_effects(permits, &out, &pane.pane_id, &pane.tail, now, ctx);
 
         for rec in &out.recommendations {
