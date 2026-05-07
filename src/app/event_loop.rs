@@ -142,6 +142,13 @@ where
             // previous lifetime would suppress the first snapshot of
             // the new lifetime.
             ctx.auto_snapshot_dedup.remove(&pane.pane_id);
+            // Phase 7 v1 (v1.43.0): a re-spawned pane starts fresh
+            // anomaly observation. Stale history from the previous
+            // lifetime would corrupt the detector window counts and
+            // carry over edge-triggered dedup state incorrectly.
+            ctx.anomaly_history.remove(&pane.pane_id);
+            ctx.anomaly_dedup
+                .retain(|(pid, _kind), _v| pid != &pane.pane_id);
         }
 
         if pane.dead {

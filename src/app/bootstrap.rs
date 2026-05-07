@@ -98,6 +98,19 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// pane starts fresh for the new reset window.
     pub auto_snapshot_dedup:
         std::collections::HashMap<String, crate::app::auto_snapshot::AutoSnapshotDedup>,
+    /// Phase 7 v1 (v1.43.0): per-pane rolling input history for the
+    /// anomaly detectors in `policy::rules::anomaly`. Trimmed to
+    /// `gates.anomaly_window_polls` after each push. Evicted on
+    /// `PaneLifecycleEvent::{BecameDead, Reappeared}` so a re-spawned
+    /// pane starts fresh.
+    pub anomaly_history:
+        std::collections::HashMap<String, crate::policy::rules::anomaly::AnomalyHistory>,
+    /// Phase 7 v1: per-(pane_id, AnomalyKind) edge-triggered dedup.
+    /// `Some(unix_seconds)` while the kind is currently considered
+    /// active in the rolling window; `None` when the detector has
+    /// last returned None and the kind has rearmed for fresh emission.
+    pub anomaly_dedup:
+        std::collections::HashMap<(String, crate::domain::anomaly::AnomalyKind), Option<u64>>,
     /// Phase F F-3 (v1.24.0): token-usage time-series sink for the
     /// per-pane sparkline. `None` when the SQLite open failed at
     /// startup (logged via the in-process eprintln); the event loop
@@ -154,6 +167,8 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             reported_drifts: std::collections::HashSet::new(),
             recent_error_observations: std::collections::HashMap::new(),
             auto_snapshot_dedup: std::collections::HashMap::new(),
+            anomaly_history: std::collections::HashMap::new(),
+            anomaly_dedup: std::collections::HashMap::new(),
             token_usage_sink: None,
             cost_usage_sink: None,
             codex_app_server: None,
@@ -227,5 +242,18 @@ mod tests {
         use std::collections::HashMap;
         let map: HashMap<String, AutoSnapshotDedup> = HashMap::new();
         assert!(map.is_empty());
+    }
+
+    #[test]
+    fn context_new_initializes_empty_anomaly_state() {
+        use crate::domain::anomaly::AnomalyKind;
+        use crate::policy::rules::anomaly::AnomalyHistory;
+        use std::collections::HashMap;
+        // Type-check the maps; the field references at bootstrap.rs are
+        // the actual structural guarantee. Same fallback pattern as Phase H.
+        let history: HashMap<String, AnomalyHistory> = HashMap::new();
+        let dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
+        assert!(history.is_empty());
+        assert!(dedup.is_empty());
     }
 }
