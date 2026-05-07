@@ -704,6 +704,13 @@ Operator는 `qmonster.toml`에 `[anomaly] enabled = true`를 추가하여 활성
 최소화하도록 설계되었습니다 — 전체 기본값 블록은 `config/qmonster.example.toml`을
 참조하세요.
 
+**`[anomaly.promote]`** — per-kind promotion threshold (v1.46.0+).
+Distinct from `[anomaly] min_confidence` (which is a visibility
+filter): a visible signal is gated AGAIN here before becoming a
+Recommendation. Defaults: 7 kinds = `"high"`, `subagent_side_effect`
+= `"medium"`. Lower a kind's threshold to make it noisier; raise it
+to mute noisy detectors.
+
 ### Phase 7 v2: anomaly promotion (v1.44.0)
 
 When a v1 detector fires with `confidence = High`, the resulting
@@ -875,6 +882,26 @@ operator가 dispatch 전에 확인할 수 있습니다.
 
 항목이 없을 때는 `Select an item to see what would happen.` 라는
 dim 안내 줄이 explainer 패널에 표시됩니다.
+
+### 8.8 Anomaly Events Overlay (v1.46.0)
+
+Press `n` to open the Anomaly Events overlay. Shows the last 100
+`AnomalySignal`s recorded this session, newest first, with columns:
+Time / Pane / Kind / Conf / Promoted / Reason.
+
+- `n` (or `Esc` / `q`): close.
+- `Up` / `Down` (or `j` / `k`): scroll one row.
+- Mouse wheel: scroll.
+- Click outside the overlay: close.
+
+Buffer is in-memory and resets on session restart. SQLite persistence
+(Phase 7 v3 part c) is a separate follow-up.
+
+`Promoted = yes` means the signal passed its per-kind
+`[anomaly.promote]` confidence threshold and produced a
+Recommendation. `Promoted = no` means the signal was visible (passed
+the global `[anomaly] min_confidence` filter) but did not meet the
+per-kind promotion threshold.
 
 ## 9. 운영 파일
 

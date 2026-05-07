@@ -342,3 +342,9 @@ through_sqlite` test in `src/store/audit.rs`)
 - Per-fixture: include the pane tail, the resolved identity (with
   confidence), the emitted signals (with `SourceKind`), and the
   triggered recommendations.
+
+## Release validation log
+
+| Version | Scope                                                 | Gates passed                                                                         |
+| ------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| v1.46.0 | Phase 7 v3 (a+b): per-kind promotion gate + n overlay | cargo fmt + clippy + test --all-targets (lib ~1162, integration 58); SBOM diff guard |

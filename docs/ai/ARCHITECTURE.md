@@ -835,6 +835,16 @@ cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
   deterministic now-injection. Tests grew to 765 lib + 68 integration
   green.
 
+v1.46.0 ships **Phase 7 v3 (a+b)**: Per-kind promotion gate replaces the
+hardcoded `severity ≥ Warning` filter. `[anomaly.promote]` is a
+table of 8 `AnomalyKind` thresholds; `promote_anomalies_to_recommendations`
+checks `signal.confidence >= gates.promote_min_confidence(sig.kind)`.
+`severity_for(confidence)` is unchanged (High → Warning, Medium/Low
+→ Concern). New `AnomalyEventsRing` (capacity 100, in-memory only)
+captures every visible signal with its gate result; `n` overlay
+visualizes the ring chronologically. SQLite persistence for the ring
+is the (c) sub-feature of Phase 7 v3, deferred to v1.47+.
+
 v1.45.0 ships **Phase 7 v2 detectors**. Four new `AnomalyKind` variants — `CostSlope`, `TokenSlope`, `MemoryGrowth`, `SubagentSideEffect` — extend the v1.43.0 anomaly catalog. `AnomalyHistory` gains six new deques (`cost_usd_samples`, `input_token_samples`, `output_token_samples`, `process_memory_samples`, `agent_memory_samples`, `subagent_hint_samples`); event_loop pushes the corresponding signals before policy.evaluate. `AnomalyConfig` and `PolicyGates` gain three new threshold fields (`cost_slope_usd_per_hour=20.0`, `token_slope_input_per_poll=20_000`, `memory_growth_mb=1024.0`). `eval_anomalies` runs 7 independent detectors then a `detect_subagent_side_effect` hop that sees the post-dedup output of the other 7 — correlation only, never standalone, never claims attribution. `promote_anomalies_to_recommendations` matrix expands from 4 to 8 kinds; v1.44.0 `severity_for(confidence)` and Notify wiring carry through unchanged. No new `AuditEventKind`, no new `RequestedEffect`, no new SQLite schema, no new operator-tunable promotion thresholds.
 
 v1.44.0 ships **Phase 7 v2 promotion**. New
