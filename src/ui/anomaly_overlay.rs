@@ -3,7 +3,10 @@
 //! (newest first) with `pane_id` column. Read-only; no actions.
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
 #[derive(Debug, Default, Clone)]
 pub struct AnomalyOverlay {
@@ -52,15 +55,124 @@ impl AnomalyOverlay {
         self.scroll = self.scroll.saturating_sub(1);
     }
 
-    /// Render is added in Task 9; for Task 7 we leave a stub that
-    /// the wiring task can call without panicking.
     pub fn render(
         &self,
-        _frame: &mut Frame,
-        _area: Rect,
-        _ring: &crate::app::anomaly_events_ring::AnomalyEventsRing,
+        frame: &mut Frame,
+        area: Rect,
+        ring: &crate::app::anomaly_events_ring::AnomalyEventsRing,
     ) {
-        // implemented in Task 9
+        let popup_area = centered_rect(80, 70, area);
+        frame.render_widget(Clear, popup_area);
+
+        let title = format!(
+            " ANOMALY EVENTS (last {} \u{2014} newest first) [n to close] ",
+            ring.len()
+        );
+        let block = Block::default().borders(Borders::ALL).title(title);
+
+        if ring.is_empty() {
+            let body = Paragraph::new(vec![
+                Line::from("No anomaly events recorded this session."),
+                Line::from(""),
+                Line::from(
+                    "Anomalies are recorded once detection is enabled in Settings: [anomaly] enabled = true.",
+                ),
+            ])
+            .block(block)
+            .wrap(Wrap { trim: false });
+            frame.render_widget(body, popup_area);
+            return;
+        }
+
+        let inner = block.inner(popup_area);
+        frame.render_widget(block, popup_area);
+
+        let header = format!(
+            "{:<8}  {:<6}  {:<22}  {:<6}  {:<8}  {}",
+            "Time", "Pane", "Kind", "Conf", "Promoted", "Reason"
+        );
+
+        let visible_rows = inner.height.saturating_sub(1) as usize;
+        let all_events: Vec<&crate::domain::anomaly::AnomalyEvent> = ring.iter().collect();
+        let items: Vec<ListItem> = all_events
+            .iter()
+            .rev()
+            .skip(self.scroll() as usize)
+            .take(visible_rows)
+            .map(|e| ListItem::new(format_event_row(e, inner.width as usize)))
+            .collect();
+
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(0)])
+            .split(inner);
+
+        frame.render_widget(
+            Paragraph::new(header).style(Style::default().add_modifier(Modifier::BOLD)),
+            layout[0],
+        );
+        frame.render_widget(List::new(items), layout[1]);
+    }
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+}
+
+fn format_event_row(e: &crate::domain::anomaly::AnomalyEvent, width: usize) -> String {
+    let time = format_hhmmss(e.timestamp);
+    let pane = truncate(&e.pane_id, 6);
+    let kind = e.kind.label();
+    let conf = e.confidence.label();
+    let promoted = if e.promoted { "yes" } else { "no" };
+    let row_prefix = format!(
+        "{:<8}  {:<6}  {:<22}  {:<6}  {:<8}  ",
+        time, pane, kind, conf, promoted
+    );
+    let prefix_len = row_prefix.chars().count();
+    if prefix_len >= width {
+        // Row prefix alone already fills or exceeds available width;
+        // truncate the whole row to fit.
+        return truncate(&row_prefix, width);
+    }
+    let reason_budget = width - prefix_len;
+    let reason = truncate(&e.reason, reason_budget);
+    format!("{row_prefix}{reason}")
+}
+
+fn format_hhmmss(ts: u64) -> String {
+    use chrono::{Local, TimeZone};
+    Local
+        .timestamp_opt(ts as i64, 0)
+        .single()
+        .map(|dt| dt.format("%H:%M:%S").to_string())
+        .unwrap_or_else(|| "??:??:??".to_string())
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if max == 0 {
+        String::new()
+    } else if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+        out.push('\u{2026}');
+        out
     }
 }
 
@@ -112,5 +224,111 @@ mod tests {
         o.open();
         o.scroll_up();
         assert_eq!(o.scroll(), 0);
+    }
+
+    #[test]
+    fn render_empty_state_includes_help_hint() {
+        use crate::app::anomaly_events_ring::AnomalyEventsRing;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let ring = AnomalyEventsRing::new();
+        terminal
+            .draw(|f| overlay.render(f, f.area(), &ring))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        let rendered = buf_to_string(buf);
+        assert!(
+            rendered.contains("No anomaly events recorded this session."),
+            "empty state body missing: {rendered}"
+        );
+        assert!(
+            rendered.contains("[anomaly] enabled = true"),
+            "help hint missing: {rendered}"
+        );
+    }
+
+    #[test]
+    fn render_populated_shows_columns_and_at_least_one_row() {
+        use crate::app::anomaly_events_ring::AnomalyEventsRing;
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let backend = TestBackend::new(120, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let mut ring = AnomalyEventsRing::new();
+        ring.push(AnomalyEvent {
+            timestamp: 1_700_000_000,
+            pane_id: "%1".to_string(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "cost_usd: 0.10 \u{2192} 25.40".to_string(),
+        });
+        terminal
+            .draw(|f| overlay.render(f, f.area(), &ring))
+            .unwrap();
+        let rendered = buf_to_string(terminal.backend().buffer());
+        assert!(
+            rendered.contains("Time"),
+            "header 'Time' missing: {rendered}"
+        );
+        assert!(rendered.contains("Kind"), "header 'Kind' missing");
+        assert!(rendered.contains("Promoted"), "header 'Promoted' missing");
+        assert!(rendered.contains("CostSlope"), "kind value missing");
+        assert!(rendered.contains("yes"), "promoted=yes missing");
+    }
+
+    #[test]
+    fn render_truncates_long_reason() {
+        use crate::app::anomaly_events_ring::AnomalyEventsRing;
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let backend = TestBackend::new(60, 12); // narrow on purpose
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let mut ring = AnomalyEventsRing::new();
+        let long_reason = "A".repeat(200);
+        ring.push(AnomalyEvent {
+            timestamp: 1_700_000_000,
+            pane_id: "%1".to_string(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: long_reason.clone(),
+        });
+        terminal
+            .draw(|f| overlay.render(f, f.area(), &ring))
+            .unwrap();
+        let rendered = buf_to_string(terminal.backend().buffer());
+        // No row should literally contain the full 200-char reason
+        assert!(
+            !rendered.contains(&long_reason),
+            "reason was not truncated to fit"
+        );
+        // But a truncation marker should appear somewhere on a CostSlope row
+        assert!(rendered.contains('\u{2026}'), "truncation ellipsis missing");
+    }
+
+    fn buf_to_string(buf: &ratatui::buffer::Buffer) -> String {
+        let mut out = String::new();
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                out.push_str(buf[(x, y)].symbol());
+            }
+            out.push('\n');
+        }
+        out
     }
 }
