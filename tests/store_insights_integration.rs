@@ -815,3 +815,80 @@ fn insights_lifecycle_counts_hidden_and_suppresses_ignored_for_unlinked_matches(
         item.outcome == "ignored" && item.action == "cache: avoid /compact while cache is hot"
     }));
 }
+
+#[test]
+fn insights_lifecycle_unlinked_outcome_matches_only_one_prior_event() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+    let action = "cache: avoid /compact while cache is hot";
+
+    lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 1_000,
+            pane_id: "%2".into(),
+            provider: Some("Codex".into()),
+            role: Some("Main".into()),
+            situation: "Context pressure".into(),
+            action: action.into(),
+            severity: "concern".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "first cache warning".into(),
+            suggested_command: None,
+            is_strong: false,
+            dedup_key: "%2:cache-hot:first".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: 2_000,
+            recommendation_event_id: None,
+            pane_id: "%2".into(),
+            action: action.into(),
+            outcome: RecommendationOutcome::Hidden,
+            audit_event_id: None,
+            summary: "first warning hidden".into(),
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 3_000,
+            pane_id: "%2".into(),
+            provider: Some("Codex".into()),
+            role: Some("Main".into()),
+            situation: "Context pressure".into(),
+            action: action.into(),
+            severity: "concern".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "second cache warning".into(),
+            suggested_command: None,
+            is_strong: false,
+            dedup_key: "%2:cache-hot:second".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot_with_ignored_ttl(
+            InsightsWindow {
+                since_ms: 0,
+                until_ms: 10_000,
+            },
+            5,
+        )
+        .unwrap();
+    let row = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == action)
+        .unwrap();
+
+    assert_eq!(row.emitted, 2);
+    assert_eq!(row.hidden, 1);
+    assert_eq!(
+        row.ignored, 1,
+        "the later unresolved re-emission must still age into ignored"
+    );
+}

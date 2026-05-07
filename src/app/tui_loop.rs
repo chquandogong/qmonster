@@ -619,11 +619,9 @@ where
                                         &dashboard.notices,
                                     );
                                     if notice.title == "snapshot saved" {
-                                        crate::app::insights_lifecycle::record_recommendation_outcome(
+                                        crate::app::insights_lifecycle::record_operator_snapshot_outcomes(
                                             ctx.recommendation_lifecycle_sink.as_ref(),
-                                            "n/a",
-                                            "snapshot",
-                                            crate::store::RecommendationOutcome::SnapshotWritten,
+                                            &dashboard.reports,
                                             format!("operator snapshot {}", notice.body),
                                         );
                                     }

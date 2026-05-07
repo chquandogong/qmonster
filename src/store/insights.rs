@@ -710,7 +710,6 @@ fn lifecycle_snapshot(
     let mut actions_by_name = std::collections::BTreeMap::<String, ActionLedgerRow>::new();
     let mut event_situations = std::collections::HashMap::<i64, &'static str>::new();
     let mut event_has_outcome = std::collections::BTreeSet::<i64>::new();
-    let mut unlinked_outcomes = std::collections::BTreeSet::<(String, String)>::new();
     let mut timeline = Vec::new();
 
     for event in &events {
@@ -735,11 +734,36 @@ fn lifecycle_snapshot(
     for outcome in &outcomes {
         if let Some(event_id) = outcome.recommendation_event_id {
             event_has_outcome.insert(event_id);
-        } else {
-            unlinked_outcomes.insert((outcome.pane_id.clone(), outcome.action.clone()));
         }
-        let situation = outcome
+    }
+
+    let mut matched_unlinked_outcomes = std::collections::HashMap::<usize, i64>::new();
+    let mut consumed_event_ids = event_has_outcome.clone();
+    for (idx, outcome) in outcomes.iter().enumerate() {
+        if outcome.recommendation_event_id.is_some() {
+            continue;
+        }
+        if let Some(event) = events
+            .iter()
+            .filter(|event| {
+                event.pane_id == outcome.pane_id
+                    && event.action == outcome.action
+                    && event.ts_unix_ms <= outcome.ts_unix_ms
+                    && !consumed_event_ids.contains(&event.id)
+            })
+            .max_by_key(|event| (event.ts_unix_ms, event.id))
+        {
+            consumed_event_ids.insert(event.id);
+            matched_unlinked_outcomes.insert(idx, event.id);
+        }
+    }
+    event_has_outcome = consumed_event_ids;
+
+    for (idx, outcome) in outcomes.iter().enumerate() {
+        let matched_event_id = outcome
             .recommendation_event_id
+            .or_else(|| matched_unlinked_outcomes.get(&idx).copied());
+        let situation = matched_event_id
             .and_then(|id| event_situations.get(&id).copied())
             .unwrap_or_else(|| situation_for_action(&outcome.action));
         let entry = actions_by_name
@@ -762,9 +786,6 @@ fn lifecycle_snapshot(
         i64::try_from(u128::from(ignored_ttl_secs).saturating_mul(1000)).unwrap_or(i64::MAX);
     for event in &events {
         if event_has_outcome.contains(&event.id) {
-            continue;
-        }
-        if unlinked_outcomes.contains(&(event.pane_id.clone(), event.action.clone())) {
             continue;
         }
         if window.until_ms.saturating_sub(event.ts_unix_ms) < ttl_ms {

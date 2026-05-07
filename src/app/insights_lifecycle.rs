@@ -114,6 +114,44 @@ pub fn record_hidden_alert_outcomes(
     }
 }
 
+pub fn record_operator_snapshot_outcomes(
+    sink: Option<&SqliteRecommendationLifecycleSink>,
+    reports: &[PaneReport],
+    summary: impl Into<String>,
+) {
+    let Some(sink) = sink else {
+        return;
+    };
+    let summary = summary.into();
+    let mut seen = BTreeSet::new();
+    for report in reports {
+        for rec in &report.recommendations {
+            if !rec.action.starts_with("snapshot before") {
+                continue;
+            }
+            if !seen.insert((report.pane_id.clone(), rec.action.to_string())) {
+                continue;
+            }
+            record_recommendation_outcome(
+                Some(sink),
+                &report.pane_id,
+                rec.action,
+                RecommendationOutcome::SnapshotWritten,
+                summary.clone(),
+            );
+        }
+    }
+    if seen.is_empty() {
+        record_recommendation_outcome(
+            Some(sink),
+            "n/a",
+            "snapshot",
+            RecommendationOutcome::SnapshotWritten,
+            summary,
+        );
+    }
+}
+
 pub fn lifecycle_action_for_rec(
     pane_id: &str,
     rec: &Recommendation,
@@ -286,8 +324,17 @@ fn current_unix_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
     use crate::domain::origin::SourceKind;
     use crate::domain::recommendation::Severity;
+    use crate::domain::signal::SignalSet;
+    use crate::store::{
+        InsightsWindow, RecommendationEventRecord, SqliteInsightsStore,
+        SqliteRecommendationLifecycleSink,
+    };
+    use std::time::Instant;
 
     #[test]
     fn strong_prompt_rec_uses_slash_command_as_lifecycle_action() {
@@ -309,5 +356,87 @@ mod tests {
         }];
 
         assert_eq!(lifecycle_action_for_rec("%1", &rec, &effects), "/compact");
+    }
+
+    #[test]
+    fn operator_snapshot_outcome_matches_reset_recommendation_action() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("qmonster.db");
+        let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+        lifecycle
+            .insert_recommendation_event(&RecommendationEventRecord {
+                ts_unix_ms: 1_000,
+                pane_id: "%1".into(),
+                provider: Some("Claude".into()),
+                role: Some("Main".into()),
+                situation: "Context pressure".into(),
+                action: "snapshot before 5h window resets".into(),
+                severity: "good".into(),
+                source_kind: "ProjectCanonical".into(),
+                reason_summary: "reset soon".into(),
+                suggested_command: None,
+                is_strong: false,
+                dedup_key: "%1:snapshot-before-5h".into(),
+                threshold_snapshot_json: None,
+            })
+            .unwrap();
+        let reports = vec![PaneReport {
+            pane_id: "%1".into(),
+            session_name: "qwork".into(),
+            window_index: "1".into(),
+            provider: Provider::Claude,
+            identity: ResolvedIdentity {
+                identity: PaneIdentity {
+                    provider: Provider::Claude,
+                    instance: 1,
+                    role: Role::Main,
+                    pane_id: "%1".into(),
+                },
+                confidence: IdentityConfidence::High,
+            },
+            signals: SignalSet::default(),
+            recommendations: vec![Recommendation {
+                action: "snapshot before 5h window resets",
+                reason: "reset soon".into(),
+                severity: Severity::Good,
+                source_kind: SourceKind::ProjectCanonical,
+                suggested_command: None,
+                side_effects: vec![],
+                is_strong: false,
+                next_step: None,
+                profile: None,
+            }],
+            effects: Vec::new(),
+            dead: false,
+            current_path: String::new(),
+            current_command: String::new(),
+            cross_pane_findings: Vec::new(),
+            idle_state: None,
+            idle_state_entered_at: Some(Instant::now()),
+            recent_token_samples: Vec::new(),
+            anomalies: Vec::new(),
+        }];
+
+        record_operator_snapshot_outcomes(Some(&lifecycle), &reports, "operator snapshot test");
+
+        let snapshot = SqliteInsightsStore::open(&db_path)
+            .unwrap()
+            .snapshot_with_ignored_ttl(
+                InsightsWindow {
+                    since_ms: 0,
+                    until_ms: current_unix_ms().saturating_add(1_000),
+                },
+                0,
+            )
+            .unwrap();
+        let row = snapshot
+            .actions
+            .iter()
+            .find(|row| row.action == "snapshot before 5h window resets")
+            .unwrap();
+        assert_eq!(row.emitted, 1);
+        assert_eq!(row.snapshot_written, 1);
+        assert_eq!(row.ignored, 0);
+        assert!(snapshot.actions.iter().all(|row| row.action != "snapshot"));
     }
 }
