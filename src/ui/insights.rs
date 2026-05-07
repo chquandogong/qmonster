@@ -15,6 +15,9 @@ pub struct InsightsOverlay {
     snapshot: Option<InsightsSnapshot>,
     error: Option<String>,
     refreshed_label: Option<String>,
+    loading: bool,
+    spinner_phase: u8,
+    pending_request_id: u64,
 }
 
 impl Default for InsightsOverlay {
@@ -32,6 +35,9 @@ impl Default for InsightsOverlay {
             snapshot: None,
             error: None,
             refreshed_label: None,
+            loading: false,
+            spinner_phase: 0,
+            pending_request_id: 0,
         }
     }
 }
@@ -60,7 +66,26 @@ impl InsightsOverlay {
     pub fn close(&mut self) {
         self.open = false;
         self.scroll = 0;
+        self.loading = false;
         self.geometry.end_drag();
+    }
+
+    pub fn is_loading(&self) -> bool {
+        self.loading
+    }
+
+    pub fn pending_request_id(&self) -> u64 {
+        self.pending_request_id
+    }
+
+    pub fn mark_loading(&mut self, request_id: u64) {
+        self.loading = true;
+        self.spinner_phase = 0;
+        self.pending_request_id = request_id;
+        self.snapshot = None;
+        self.error = None;
+        self.refreshed_label = None;
+        self.scroll = 0;
     }
 
     pub fn scroll(&self) -> u16 {
@@ -247,6 +272,33 @@ mod tests {
         let joined = overlay.lines().join("\n");
         assert!(joined.contains("Action Ledger"));
         assert!(joined.contains("refreshed: 12:00:00"));
+    }
+
+    #[test]
+    fn mark_loading_sets_loading_flag_and_pending_id() {
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        assert!(!overlay.is_loading());
+        overlay.mark_loading(7);
+        assert!(overlay.is_loading());
+        assert_eq!(overlay.pending_request_id(), 7);
+    }
+
+    #[test]
+    fn mark_loading_clears_snapshot_and_error() {
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        overlay.set_snapshot(
+            empty_insights_snapshot(InsightsWindow {
+                since_ms: 0,
+                until_ms: 1,
+            }),
+            "12:00:00".into(),
+        );
+        overlay.mark_loading(1);
+        let joined = overlay.lines().join("\n");
+        assert!(!joined.contains("Action Ledger"));
+        assert!(!joined.contains("12:00:00"));
     }
 
     #[test]
