@@ -752,29 +752,7 @@ where
     };
     let findings = ctx.policy.evaluate_cross_pane(&views, &cross_pane_gates);
 
-    // Close the Phase 7 v2 `CrossPaneEditCluster` detector loop: the
-    // per-pane block earlier in this function pushed `Vec::new()` to the
-    // front of each pane's `AnomalyHistory.cross_pane_edit_paths` deque
-    // (Option A 1-tick-lag pattern, see comment near `entry.trim(cap)`
-    // above). Without this fold-back the deque is empty forever and the
-    // detector never fires. We overwrite the front entry with the
-    // finding's `paths` for every pane the finding is attributed to
-    // (anchor + others), so the detector sees real evidence starting on
-    // the *next* tick — matching the documented one-tick lag.
-    for f in &findings {
-        if f.paths.is_empty() {
-            continue;
-        }
-        let affected = std::iter::once(f.anchor_pane_id.as_str())
-            .chain(f.other_pane_ids.iter().map(|s| s.as_str()));
-        for pane_id in affected {
-            if let Some(entry) = ctx.anomaly_history.get_mut(pane_id)
-                && let Some(front) = entry.cross_pane_edit_paths.front_mut()
-            {
-                front.extend(f.paths.iter().cloned());
-            }
-        }
-    }
+    fold_finding_paths_into_history(&findings, &mut ctx.anomaly_history);
 
     for f in findings {
         if let Some(r) = reports.iter_mut().find(|r| r.pane_id == f.anchor_pane_id) {
@@ -783,6 +761,37 @@ where
     }
 
     Ok((reports, all_auto_notices))
+}
+
+/// Close the Phase 7 v2 `CrossPaneEditCluster` detector loop: the
+/// per-pane block earlier in `run_loop_iteration` pushes `Vec::new()` to
+/// the front of each pane's `AnomalyHistory.cross_pane_edit_paths`
+/// deque (Option A 1-tick-lag pattern). Without this fold-back the
+/// deque is empty forever and the detector never fires.
+///
+/// For every finding that carries a non-empty `paths` payload (today
+/// only `CrossPaneKind::ConcurrentFileEdit`), append those paths to the
+/// front entry of every attributed pane's deque (anchor + others). The
+/// detector that runs on the *next* tick will then see real evidence,
+/// matching the documented one-tick lag.
+pub(crate) fn fold_finding_paths_into_history(
+    findings: &[crate::domain::recommendation::CrossPaneFinding],
+    history: &mut std::collections::HashMap<String, crate::policy::rules::anomaly::AnomalyHistory>,
+) {
+    for f in findings {
+        if f.paths.is_empty() {
+            continue;
+        }
+        let affected = std::iter::once(f.anchor_pane_id.as_str())
+            .chain(f.other_pane_ids.iter().map(|s| s.as_str()));
+        for pane_id in affected {
+            if let Some(entry) = history.get_mut(pane_id)
+                && let Some(front) = entry.cross_pane_edit_paths.front_mut()
+            {
+                front.extend(f.paths.iter().cloned());
+            }
+        }
+    }
 }
 
 /// Phase F F-6 (v1.32.0): write the account-level rate-limits
@@ -1211,5 +1220,122 @@ mod tests {
         assert!(signals.quota_5h_resets_at.is_some());
         assert!(signals.quota_weekly_pressure.is_none());
         assert!(signals.quota_weekly_resets_at.is_none());
+    }
+
+    #[test]
+    fn fold_finding_paths_into_history_extends_front_for_anchor_and_others() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::{CrossPaneFinding, CrossPaneKind, Severity};
+        use crate::policy::rules::anomaly::AnomalyHistory;
+        use std::collections::HashMap;
+
+        // Pre-state: per-pane loop pushed an empty Vec to the front of
+        // each pane's deque (mirroring `entry.cross_pane_edit_paths.push_front(Vec::new())`).
+        let mut history: HashMap<String, AnomalyHistory> = HashMap::new();
+        for pane in ["%1", "%2", "%3"] {
+            let mut h = AnomalyHistory::default();
+            h.cross_pane_edit_paths.push_front(Vec::new());
+            history.insert(pane.into(), h);
+        }
+
+        let findings = vec![CrossPaneFinding {
+            kind: CrossPaneKind::ConcurrentFileEdit,
+            anchor_pane_id: "%1".into(),
+            other_pane_ids: vec!["%2".into(), "%3".into()],
+            reason: "concurrent edit".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Heuristic,
+            suggested_command: None,
+            paths: vec!["/repo/src/foo.rs".into()],
+        }];
+
+        fold_finding_paths_into_history(&findings, &mut history);
+
+        for pane in ["%1", "%2", "%3"] {
+            let front = history[pane].cross_pane_edit_paths.front().unwrap();
+            assert_eq!(
+                front,
+                &vec!["/repo/src/foo.rs".to_string()],
+                "{pane} front entry must carry the finding paths so detect_cross_pane_edit_cluster has real input next tick",
+            );
+        }
+    }
+
+    #[test]
+    fn fold_finding_paths_into_history_skips_empty_paths_payload() {
+        // Other CrossPaneKind variants (ConcurrentMutatingWork,
+        // CrossWindowConcurrentWork) carry empty paths today. They must
+        // not corrupt the front Vec — leave it untouched.
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::{CrossPaneFinding, CrossPaneKind, Severity};
+        use crate::policy::rules::anomaly::AnomalyHistory;
+        use std::collections::HashMap;
+
+        let mut history: HashMap<String, AnomalyHistory> = HashMap::new();
+        let mut h = AnomalyHistory::default();
+        h.cross_pane_edit_paths.push_front(Vec::new());
+        history.insert("%1".into(), h);
+
+        let findings = vec![CrossPaneFinding {
+            kind: CrossPaneKind::ConcurrentMutatingWork,
+            anchor_pane_id: "%1".into(),
+            other_pane_ids: vec![],
+            reason: "directory-level".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Estimated,
+            suggested_command: None,
+            paths: Vec::new(),
+        }];
+
+        fold_finding_paths_into_history(&findings, &mut history);
+
+        assert!(
+            history["%1"]
+                .cross_pane_edit_paths
+                .front()
+                .unwrap()
+                .is_empty(),
+        );
+    }
+
+    #[test]
+    fn fold_finding_paths_into_history_round_trip_fires_detector() {
+        // End-to-end contract: after fold-back, the detector that reads
+        // `cross_pane_edit_paths` must actually see the path counts. We
+        // simulate three ticks of finding the same path and assert
+        // detect_cross_pane_edit_cluster fires at the threshold.
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::{CrossPaneFinding, CrossPaneKind, Severity};
+        use crate::policy::rules::anomaly::{AnomalyHistory, detect_cross_pane_edit_cluster};
+        use std::collections::HashMap;
+
+        let mut history: HashMap<String, AnomalyHistory> = HashMap::new();
+        history.insert("%1".into(), AnomalyHistory::default());
+
+        for _ in 0..3 {
+            history
+                .get_mut("%1")
+                .unwrap()
+                .cross_pane_edit_paths
+                .push_front(Vec::new());
+
+            let findings = vec![CrossPaneFinding {
+                kind: CrossPaneKind::ConcurrentFileEdit,
+                anchor_pane_id: "%1".into(),
+                other_pane_ids: vec![],
+                reason: "edit".into(),
+                severity: Severity::Warning,
+                source_kind: SourceKind::Heuristic,
+                suggested_command: None,
+                paths: vec!["/repo/src/foo.rs".into()],
+            }];
+            fold_finding_paths_into_history(&findings, &mut history);
+        }
+
+        let sig = detect_cross_pane_edit_cluster(&history["%1"], 20, 3, 1_700_000_000);
+        assert!(
+            sig.is_some(),
+            "detector must fire when fold-back has populated the deque across the threshold window",
+        );
     }
 }
