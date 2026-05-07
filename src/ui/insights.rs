@@ -4,6 +4,7 @@ use crate::ui::dashboard::close_button_rect;
 use crate::ui::modal_chrome::{DragAnchor, ModalGeometry};
 use crate::ui::theme;
 use ratatui::Frame;
+use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
@@ -241,7 +242,11 @@ pub fn insights_modal_area_for(
 pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
     let area = insights_modal_area_for(frame.area(), overlay);
     frame.render_widget(Clear, area);
-    let title = " Token Insights [i/Esc/q close] [r refresh] ";
+    let title = if overlay.is_loading() {
+        " Token Insights — loading [i/Esc/q close] "
+    } else {
+        " Token Insights [i/Esc/q close] [r refresh] "
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
@@ -253,6 +258,27 @@ pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
         Paragraph::new("[x]").style(theme::modal_close_style()),
         close_button_rect(area),
     );
+
+    if overlay.is_loading() {
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),
+                Constraint::Length(1),
+                Constraint::Min(0),
+            ])
+            .split(inner);
+        let line = format!("Aggregating insights {}", overlay.spinner_glyph());
+        let paragraph = Paragraph::new(line)
+            .alignment(Alignment::Center)
+            .style(
+                Style::default()
+                    .fg(theme::BORDER_ACTIVE)
+                    .add_modifier(Modifier::BOLD),
+            );
+        frame.render_widget(paragraph, rows[1]);
+        return;
+    }
 
     let lines = overlay.lines();
     if lines.len() <= 4 && overlay.snapshot.is_none() {
@@ -441,5 +467,36 @@ mod tests {
         let joined = overlay.lines().join("\n");
         assert!(!joined.contains("refreshed: 12:00:00"));
         assert!(!joined.contains("Action Ledger"));
+    }
+
+    #[test]
+    fn loading_state_renders_centered_spinner_and_text() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let viewport = ratatui::layout::Rect::new(0, 0, 100, 40);
+        let mut terminal =
+            Terminal::new(TestBackend::new(viewport.width, viewport.height)).unwrap();
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        overlay.mark_loading(1);
+
+        terminal
+            .draw(|frame| render_insights_modal(frame, &overlay))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let mut joined = String::new();
+        for y in 0..viewport.height {
+            for x in 0..viewport.width {
+                if let Some(cell) = buffer.cell((x, y)) {
+                    joined.push_str(cell.symbol());
+                }
+            }
+            joined.push('\n');
+        }
+        assert!(joined.contains("Aggregating insights"), "buffer:\n{joined}");
+        assert!(joined.contains('⠋'), "buffer:\n{joined}");
+        assert!(!joined.contains("Action Ledger"), "buffer:\n{joined}");
+        assert!(!joined.contains("CACHE TREND"), "buffer:\n{joined}");
     }
 }
