@@ -272,13 +272,11 @@ pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
             ])
             .split(inner);
         let line = format!("Aggregating insights {}", overlay.spinner_glyph());
-        let paragraph = Paragraph::new(line)
-            .alignment(Alignment::Center)
-            .style(
-                Style::default()
-                    .fg(theme::BORDER_ACTIVE)
-                    .add_modifier(Modifier::BOLD),
-            );
+        let paragraph = Paragraph::new(line).alignment(Alignment::Center).style(
+            Style::default()
+                .fg(theme::BORDER_ACTIVE)
+                .add_modifier(Modifier::BOLD),
+        );
         frame.render_widget(paragraph, rows[1]);
         return;
     }

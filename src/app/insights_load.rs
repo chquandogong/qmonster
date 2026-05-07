@@ -6,7 +6,7 @@
 //! pending id) are dropped on receipt by `InsightsOverlay::set_
 //! snapshot_for`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
 use crate::store::{InsightsSnapshot, InsightsWindow, SqliteInsightsStore};
@@ -37,7 +37,7 @@ pub fn spawn_insights_load(
 }
 
 fn run_insights_load(
-    audit_path: &PathBuf,
+    audit_path: &Path,
     window: InsightsWindow,
     ignored_ttl_secs: u64,
 ) -> Result<InsightsSnapshot, String> {
