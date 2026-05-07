@@ -69,7 +69,11 @@ impl SqliteInsightsStore {
     }
 
     pub fn snapshot(&self, window: InsightsWindow) -> Result<InsightsSnapshot, SqliteError> {
-        let _conn = self.db.connection().lock().expect("insights db lock poisoned");
+        let _conn = self
+            .db
+            .connection()
+            .lock()
+            .expect("insights db lock poisoned");
         Ok(InsightsSnapshot {
             window,
             situations: Vec::new(),
