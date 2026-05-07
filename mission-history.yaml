@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.47.0 - Phase 7 v3 (c): SQLite persistence for anomaly events + history; closes Phase 7"
+  mission_title: "Qmonster v1.48.0 - Token Insights Phase 8 (v1 + v2 consolidated): qmonster insights --since CLI + recommendation lifecycle ledger + TTL ignored classifier + i overlay"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 190
-  latest_version: "1.47.0"
+  total_revisions: 191
+  latest_version: "1.48.0"
 
 timeline:
   - change_id: "initial"
@@ -17619,9 +17619,164 @@ timeline:
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
+  - change_id: "v1.48.0-token-insights-phase-8"
+    semantic_version: "1.48.0"
+    change_sequence: 191
+    date: "2026-05-07"
+    author: "CHENGHAO QUAN + Claude Code (parallel-track Phase 8 v1+v2 work; consolidated release ledger)"
+    summary: >
+      v1.48.0 ships Token Insights Phase 8 (v1 + v2 consolidated).
+      Phase 8 v1: read-only SqliteInsightsStore (src/store/insights.rs)
+      aggregates audit_events / token_usage_samples / cost_usage_events
+      into an InsightsSnapshot with six-situation recommendation buckets,
+      cache trend, action ledger, recommendation timeline. New
+      `qmonster insights --since 24h` CLI (src/main.rs +
+      src/insights_report.rs) runs the report path before
+      build_startup_runtime so report generation does not require tmux.
+      Phase 8 v2: recommendation_events + recommendation_outcomes
+      SQLite tables (src/store/recommendation_lifecycle.rs); new
+      SqliteRecommendationLifecycleSink wraps AuditDb (mirrors token/
+      cost/anomaly sink pattern); Context.recommendation_lifecycle_sink
+      opens alongside other sinks at startup;
+      run_once_with_target records every emitted Recommendation with
+      provider/role/situation/action/source/reason/suggested_command/
+      strong-rec/threshold-snapshot. Strong prompt-send recommendations
+      ledgered by slash command (/compact etc.) so later operator
+      outcomes correlate with the actual actuation. Outcome paths
+      (prompt-send accept/reject/block/complete/fail; archive write;
+      manual snapshot; auto-snapshot; alert hide) write
+      recommendation_outcomes via insert_correlated_recommendation_outcome
+      which links each outcome to the latest matching prior event. TTL-
+      based ignored classifier ([insights] ignored_ttl_secs, default
+      1800) suppresses ignored classification when unlinked outcomes
+      appear for the same (pane_id, action). New `i` overlay
+      (src/ui/insights.rs + src/app/insights_overlay.rs) renders the
+      SQLite-backed snapshot with six-situation aggregation, cache trend,
+      action ledger, recommendation timeline; `r` refreshes the current
+      window. Read-only surface; no actions, no filters in v1.
+      Documentation already in tree before this ledger sync (UI_MANUAL
+      §8.9, ARCHITECTURE v1.48.0 paragraph, VALIDATION row + Phase 8
+      evidence checklist, example.toml [insights] block). Phase 7 v3
+      artifacts (anomaly_events, anomaly_history_snapshots, n overlay,
+      AnomalyEventsRing) untouched.
+    intent_ko: >
+      v1.48.0 은 Token Insights Phase 8 (v1 + v2 통합) 을 출하한다.
+      Phase 8 v1: 읽기 전용 SqliteInsightsStore 가 audit_events /
+      token_usage_samples / cost_usage_events 를 InsightsSnapshot 으로
+      집계 (6 situation 분류, 캐시 트렌드, action ledger, 추천 타임라인).
+      `qmonster insights --since 24h` CLI 가 tmux 없이도 보고서를 생성.
+      Phase 8 v2: recommendation_events + recommendation_outcomes 테이블;
+      SqliteRecommendationLifecycleSink (token/cost/anomaly sink 패턴 따름);
+      Context.recommendation_lifecycle_sink 가 다른 sink 와 함께 startup
+      에서 열림. run_once_with_target 가 모든 발신된 Recommendation 을
+      provider/role/상황/action/source/이유/제안 명령/강함/임계값 스냅샷과
+      함께 기록. strong prompt-send 추천은 slash command (/compact 등) 로
+      ledger 화 되어 나중의 운영자 결과가 실제 actuation 과 correlated
+      된다. 결과 경로 (prompt-send 수락/거절/차단/완료/실패; archive 쓰기;
+      수동 스냅샷; 자동 스냅샷; alert hide) 는 insert_correlated_
+      recommendation_outcome 로 recommendation_outcomes 에 기록.
+      TTL 기반 ignored 분류기 ([insights] ignored_ttl_secs, 기본 1800) 가
+      동일 (pane_id, action) 에 대한 unlinked outcome 이 나타날 때 ignored
+      분류를 억제. 새 `i` overlay 가 SQLite 기반 스냅샷을 렌더 (6 상황
+      집계, 캐시 트렌드, action ledger, 타임라인); `r` 로 현재 window
+      새로고침. 읽기 전용; v1 에서는 액션/필터 없음. 문서는 이미 트리에
+      있음 (UI_MANUAL §8.9, ARCHITECTURE v1.48.0 단락, VALIDATION 행 +
+      Phase 8 증거 체크리스트, example.toml [insights] 블록). Phase 7 v3
+      산출물 (anomaly_events, anomaly_history_snapshots, n overlay,
+      AnomalyEventsRing) 미수정.
+    triggered_by: "Operator scoped Token Insights Phase 8 as a parallel-track effort that landed across many small commits between v1.47.0 publication and the v1.48.0 ledger sync. Phase 8 v1 plan: docs/superpowers/plans/2026-05-07-token-insights-overlay.md (6 tasks). Phase 8 v2 plan: docs/superpowers/plans/2026-05-07-token-insights-lifecycle-ledger.md (4 tasks). Spec: docs/superpowers/specs/2026-05-07-token-insights-overlay-design.md."
+    changes:
+      added:
+        - "src/store/insights.rs: SqliteInsightsStore (read-only) — open_read_only, snapshot, snapshot_with_ignored_ttl. InsightsWindow, InsightsSnapshot, SituationSummary, CacheInsightSummary, ActionLedgerRow, RecommendationTimelineItem types."
+        - "src/store/recommendation_lifecycle.rs: recommendation_events + recommendation_outcomes schemas in AuditDb::open. SqliteRecommendationLifecycleSink wrapper. insert_correlated_recommendation_outcome links outcomes to latest matching prior event."
+        - "src/insights_report.rs: parse_since_arg, resolve_insights_paths, format_insights_report_lines, empty_insights_snapshot. Stable text report format."
+        - "src/main.rs: CliCommand::Insights { since } subcommand runs the report path before build_startup_runtime."
+        - "src/app/insights_lifecycle.rs: integrates the recommendation lifecycle write path with the run_once_with_target loop."
+        - "src/app/insights_overlay.rs: handle_insights_overlay_key + mouse handler for the i overlay (similar shape to anomaly_overlay)."
+        - "src/ui/insights.rs: InsightsOverlay state struct + render. Six-situation aggregation, cache trend, action ledger, recommendation timeline panels."
+        - "src/app/config.rs: InsightsConfig.ignored_ttl_secs: u64 field, default 1800 (30 minutes)."
+        - "src/app/bootstrap.rs: Context.recommendation_lifecycle_sink: Option<SqliteRecommendationLifecycleSink> + with_recommendation_lifecycle_sink builder."
+        - "src/app/tui_loop.rs: insights_overlay local + `i` key dispatch (open/close + r refresh) + render-context wiring + mouse forwarding."
+        - "src/app/dashboard_render.rs: insights_overlay render branch."
+        - "src/ui/settings.rs: Parameters tab gains [insights] ignored_ttl_secs row."
+        - "tests/store_insights_integration.rs + tests/insights_report_integration.rs: integration coverage for the read-only path and CLI report formatting."
+      modified:
+        - "src/store/sqlite.rs: AuditDb::open creates recommendation_events + recommendation_outcomes tables (idempotent, CREATE TABLE IF NOT EXISTS)."
+        - "src/store/mod.rs: insights + recommendation_lifecycle modules exported."
+        - "src/lib.rs: insights_report module exposed."
+        - "src/main.rs: CLI dispatch for Insights subcommand."
+        - "src/app/event_loop.rs: run_once_with_target lifecycle write path; correlated outcome recording for prompt-send / archive / snapshot / hide; TTL-aware ignored classifier hook."
+        - "src/app/startup.rs: SqliteRecommendationLifecycleSink construction + with_recommendation_lifecycle_sink wiring alongside existing sinks."
+        - "src/ui/dashboard.rs: dashboard frame gains insights_overlay reference."
+        - "src/ui/mod.rs: insights module exported."
+        - "src/app/auto_snapshot.rs: outcome correlation hook for auto-snapshot writes."
+        - "src/app/prompt_send_actions.rs: outcome correlation hooks for prompt-send accept/reject/block/complete/fail."
+        - "docs/ai/UI_MANUAL.md: §8.9 Token Insights Overlay subsection (`i` key, columns, refresh, retention)."
+        - "docs/ai/ARCHITECTURE.md: v1.48.0 paragraph prepended (Token Insights Phase 8)."
+        - "docs/ai/VALIDATION.md: v1.48.0 row + Phase 8 evidence checklist (insights_lifecycle_counts_hidden_*, insights_report_renders_available_recommendation_lifecycle, etc.)."
+        - "docs/ai/PROJECT_BRIEF.md: Phase line gains Phase 8 v1 + Phase 8 v2; Date line appended with v1.48.0 segment."
+        - "config/qmonster.example.toml: [insights] ignored_ttl_secs commented entry."
+        - "README.md: release table bumped to v1.48.0 / qmonster@1.48.0."
+        - "VERSION.md: bumped to v1.48.0."
+        - "package.json: version 1.48.0."
+        - "mission.yaml: title, topology, suggested_approach, budget_hint updated for v1.48.0; total_revisions 189 → 191."
+        - "mission-history.yaml: v1.48.0 entry appended."
+        - ".mission/CURRENT_STATE.md: full refresh for v1.48.0."
+      removed: []
+    observable_effects:
+      - "New `qmonster insights --since 24h` CLI subcommand prints a stable text report aggregating recommendations by situation, cache trend, action ledger, and recommendation timeline. Read-only; never writes."
+      - "New `i` keybind opens the Token Insights overlay in the TUI. Renders six-situation aggregation, cache trend, action ledger, recommendation timeline. `r` refreshes the current window."
+      - "recommendation_events SQLite table ledgered from the live runtime path: every emitted Recommendation persisted with provider/role/situation/action/source/reason/command/strong/threshold-snapshot."
+      - "recommendation_outcomes SQLite table ledgered from outcome paths: prompt-send accept/reject/block/complete/fail, archive write, manual snapshot, auto-snapshot, alert hide."
+      - "TTL-based ignored classifier: a recommendation is `ignored` when no correlated outcome appears within `[insights] ignored_ttl_secs` (default 1800s = 30min). Unlinked outcomes for the same (pane_id, action) suppress the classifier so manual /compact etc. are not over-counted as ignored."
+      - "Settings Parameters tab gains [insights] ignored_ttl_secs row."
+    impact_scope:
+      runtime: "New SQLite write path (recommendation_events + recommendation_outcomes) records 1 row per emitted Recommendation per tick + 1 row per outcome action. Read paths (insights store + i overlay) only run on operator request. CLI subcommand never touches tmux."
+      tests: "1209 lib tests + 61 integration tests passing at the v1.48.0 release commit."
+      ledger: "1 new timeline entry (sequence 191); meta total_revisions 189 → 191 (one extra revision absorbed for the in-flight phase 8 work that was integrated retroactively), latest_version 1.47.0 → 1.48.0."
+      npm: "package.json version 1.48.0; CI publication of v1.48.0 follows the same workflow as v1.37.0 through v1.47.0."
+    breaking: false
+    risk: "low — additive: new SQLite tables via CREATE TABLE IF NOT EXISTS (idempotent); new CLI subcommand has no tmux side effects; new TUI overlay is read-only. When recommendation_lifecycle_sink is None (DB couldn't open), behavior is identical to v1.47.0."
+    related_commits:
+      - "f3cca73 v1.44.0 publication verified (run 25476534645) — historical anchor for the audit chain"
+      - "f1c3e34 v1.47.0 release ledger sync — predecessor"
+      - "b6f5ff0 v1.47.0 publication verified (run 25490555532) — predecessor"
+      - "af12e40 docs: add token insights overlay design"
+      - "42ed342 docs: merge gemini's optimization overlay design into token insights spec"
+      - "225b151 docs: add implementation plan for token insights overlay"
+      - "9470a6f docs: refine token insights v1 plan"
+      - "bc76c9e docs: isolate token insights v1 plan from phase 7 work"
+      - "fb29012 feat(store): add empty token insights snapshot"
+      - "dafc89a style(store): format insights snapshot lock"
+      - "d8f7d23 feat(store): aggregate insights by situation"
+      - "21d6a75 fix(store): count live colon actions in insights"
+      - "1c47c2e test(store): cover live insights action mappings"
+      - "3832e41 fix(store): preserve colon-family insight actions"
+      - "18915a9 feat(store): summarize cache reuse token growth and cost"
+      - "357a968 fix(store): handle sparse token insight samples"
+      - "73333d8 feat(store): aggregate token insight action ledger"
+      - "42d9f32 fix(store): parse prompt send ledger commands"
+      - "5a74874 feat(app): format token insights report"
+      - "22be122 fix(app): harden token insights report parser"
+      - "fe7e1de fix(app): label unavailable ignored counts"
+      - "3b1855e feat(cli): add token insights report command"
+      - "f30f6ea fix(cli): keep token insights report read-only"
+      - "6e15ca1 fix(store): support old read-only insights dbs"
+      - "f5d4aab test(cli): pin insights root precedence"
+      - "b72fd6c docs(plan): add token insights lifecycle ledger plan"
+      - "2c23f3d phase 8 v2: add recommendation lifecycle SQLite ledger"
+      - "832f310 phase 8 v2: add insights TTL config"
+      - "274d512 phase 8 v2: count lifecycle outcomes in token insights"
+      - "652a73f phase 8 v2: add insights TTL config"
+      - "eb853ec phase 8: tighten token insights lifecycle correlation"
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters (only outstanding Phase 7 follow-up)."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
 evolution_summary:
-  current_phase: "v1.47.0 — Phase 7 v3 (c): SQLite persistence for anomaly events + history. SqliteAnomalySink adds anomaly_events + anomaly_history_snapshots tables to audit.db. Per-tick transaction batching, lazy replay on first-pane-observation, 30-day default retention + 100K-row hard cap, n overlay gains `h` key History view. Phase 7 closes with this release. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
-  next_phase: "Phase 7 D3 per-subagent token attribution remains provider-blocked (only outstanding Phase 7 follow-up). Pick from upstream backlog. Tag protection / ruleset activation is a GitHub Settings task."
+  current_phase: "v1.48.0 — Token Insights Phase 8 (v1 + v2 consolidated): qmonster insights --since CLI + recommendation lifecycle ledger + TTL ignored classifier + i overlay. SqliteInsightsStore (read-only) aggregates existing audit/token/cost tables; recommendation_events + recommendation_outcomes ledgered from live runtime path; insert_correlated_recommendation_outcome correlates outcomes to prior events; [insights] ignored_ttl_secs (default 1800) suppresses ignored classification when unlinked outcomes appear. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
+  next_phase: "Phase 7 D3 per-subagent token attribution remains provider-blocked. Pick from upstream backlog. Tag protection / ruleset activation is a GitHub Settings task."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

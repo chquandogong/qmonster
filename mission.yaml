@@ -1741,23 +1741,25 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.47.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, Phase H, Phase 7 v1, Phase 7 v2 promotion, Phase 7 v2 detectors, Phase 7 v3 (a+b), Phase 7 v3 (c) are complete. v1.47.0 ships SQLite persistence for anomaly events + history. Two new tables (anomaly_events, anomaly_history_snapshots) added to audit.db via SqliteAnomalySink (mirrors SqliteTokenUsageSink/SqliteCostUsageSink pattern). Per-tick transaction batching, lazy AnomalyHistory replay on first-pane-observation (staleness ≤ 2× window), 30-day default retention + 100K-row hard cap on events, snapshots auto-purge at 4× window. n overlay gains `h` key for History view. Phase 7 closes after this release; D3 per-subagent token attribution remains the only outstanding Phase 7 follow-up (provider-blocked)."
+    topology: "Current working state is v1.48.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, Phase H, Phase 7 v1, Phase 7 v2 promotion, Phase 7 v2 detectors, Phase 7 v3 (a+b), Phase 7 v3 (c), Phase 8 v1, Phase 8 v2 are complete. v1.48.0 ships Token Insights Phase 8: `qmonster insights --since` CLI report (Phase 8 v1) plus recommendation lifecycle ledger + TTL ignored classifier + `i` overlay (Phase 8 v2). New SQLite tables (recommendation_events, recommendation_outcomes) written from the live runtime path; SqliteInsightsStore (read-only) + SqliteRecommendationLifecycleSink (write). New [insights] config (ignored_ttl_secs default 1800). i overlay queries the SQLite-backed insights store. Six-situation aggregation, cache trend, action ledger, recommendation timeline. No Phase 7 v3 (c) artifact touched. Phase 7 closes; D3 per-subagent token attribution remains the only outstanding Phase 7 follow-up (provider-blocked)."
     suggested_approach: >
-      Treat v1.47.0 as the current runtime baseline. Phase 7 v3 (c)
-      is shipped: SqliteAnomalySink (src/store/anomaly_sink.rs) adds two
-      new tables (anomaly_events, anomaly_history_snapshots) to audit.db.
-      Per-tick transaction batches anomaly_events INSERT + snapshot UPSERT.
-      Lazy AnomalyHistory replay on first-pane-observation (staleness ≤ 2×
-      window × tick). 30-day default retention + 100K-row hard cap on events;
-      snapshots auto-purge at 4× window. n overlay gains `h` key for History
-      view. Phase 7 closes; D3 per-subagent token attribution remains the only
-      outstanding Phase 7 follow-up (provider-blocked). Do not invent
-      per-subagent token attribution unless a provider exposes structured
-      counters.
+      Treat v1.48.0 as the current runtime baseline. Phase 8 (Token
+      Insights) is shipped: SqliteInsightsStore (src/store/insights.rs)
+      provides read-only aggregation; SqliteRecommendationLifecycleSink
+      (src/store/recommendation_lifecycle.rs) writes recommendation_events
+      and recommendation_outcomes from the live runtime path.
+      qmonster insights --since CLI runs the report path before tmux start.
+      i overlay (src/ui/insights.rs + src/app/insights_overlay.rs) renders
+      the SQLite-backed snapshot. [insights] ignored_ttl_secs (default 1800)
+      controls the TTL ignored classifier; unlinked outcomes for the same
+      (pane_id, action) suppress the classifier. Phase 7 closes; D3
+      per-subagent token attribution remains the only outstanding Phase 7
+      follow-up (provider-blocked). Do not invent per-subagent token
+      attribution unless a provider exposes structured counters.
       v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 /
-      v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 CI publication
-      verification (GitHub Release + npm package) remains an external
-      follow-up.
+      v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 CI
+      publication verification (GitHub Release + npm package) remains
+      an external follow-up.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1793,9 +1795,9 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.47.0 — pick from upstream backlog. Phase 7 D3 stays provider-blocked."
+    priority: "post-v1.48.0 — pick from upstream backlog. Phase 7 D3 stays provider-blocked."
     estimated_sessions: 1
-    scope: "v1.47.0 ships Phase 7 v3 (c): SQLite persistence for anomaly events + history. SqliteAnomalySink (src/store/anomaly_sink.rs) adds anomaly_events and anomaly_history_snapshots tables to audit.db. Per-tick transaction batching (anomaly_events INSERT + snapshot UPSERT). Lazy AnomalyHistory replay on first-pane-observation (staleness ≤ 2× window). 30-day default retention + 100K-row hard cap on events; snapshots auto-purge at 4× window. Context.anomaly_sink + anomaly_history_replayed fields. n overlay gains `h` key for History view. Settings Parameters tab gains anomaly retention_days row. Phase 7 closes after this release. ~1200 lib tests + 60 integration tests. v1.37.0 through v1.47.0 CI publication verification remains a separate follow-up."
+    scope: "v1.48.0 ships Token Insights Phase 8 (v1 + v2 consolidated). Phase 8 v1: SqliteInsightsStore (src/store/insights.rs) read-only aggregator + qmonster insights --since CLI (src/insights_report.rs, src/main.rs). Phase 8 v2: recommendation_events + recommendation_outcomes SQLite tables (src/store/recommendation_lifecycle.rs); SqliteRecommendationLifecycleSink wired into Context.recommendation_lifecycle_sink and run_once_with_target write path; insert_correlated_recommendation_outcome correlates outcomes to prior events; TTL ignored classifier ([insights] ignored_ttl_secs, default 1800) suppresses ignored classification when unlinked outcomes appear for the same (pane_id, action). New i overlay (src/ui/insights.rs + src/app/insights_overlay.rs) renders six-situation aggregation, cache trend, action ledger, recommendation timeline. New [insights] config table. Docs (UI_MANUAL §8.9, ARCHITECTURE v1.48.0 paragraph, VALIDATION v1.48.0 row + Phase 8 evidence checklist, example.toml [insights] block) already in tree. 1209 lib tests + 61 integration tests. v1.37.0 through v1.48.0 CI publication verification remains a separate follow-up."
     followups:
       - "Phase 7 D3 per-subagent token attribution (provider-blocked)"
       - "Tag protection/ruleset activation (GitHub Settings task)"
@@ -1806,5 +1808,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 189
+    total_revisions: 191
     history: "mission-history.yaml"
