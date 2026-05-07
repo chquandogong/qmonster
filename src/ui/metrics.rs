@@ -15,7 +15,6 @@ use std::collections::HashMap;
 
 use crate::app::event_loop::PaneReport;
 use crate::store::TokenSample;
-use crate::ui::dashboard::centered_rect;
 use crate::ui::theme;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -237,8 +236,8 @@ pub fn metrics_modal_rects(
     offset_x: i16,
     offset_y: i16,
 ) -> MetricsModalRects {
-    let base = centered_rect(width_pct, height_pct, viewport);
-    let area = apply_clamped_offset(base, viewport, offset_x, offset_y);
+    let area =
+        crate::ui::modal_chrome::modal_area(viewport, width_pct, height_pct, offset_x, offset_y);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -253,45 +252,6 @@ pub fn metrics_modal_rects(
         body: chunks[1],
         hint: chunks[2],
     }
-}
-
-/// Apply `offset_x`/`offset_y` to `base`, clamping the result into a safe
-/// area relative to `viewport`.
-///
-/// **Asymmetric clamp** — left and top edges are *hard* bounds: the modal
-/// cannot extend past them, because Ratatui's u16-based `Rect` cannot
-/// represent a partial off-screen render at negative coordinates. Right
-/// and bottom edges are *soft* bounds: the modal may extend past them with
-/// at least 4 cells (horizontally) / 1 row (vertically) remaining inside
-/// the viewport. See `docs/superpowers/specs/2026-05-06-mouse-drag-and-bulk-overlays-design.md`
-/// §4.2.
-///
-/// Pure helper — used by `metrics_modal_rects` and tested directly.
-fn apply_clamped_offset(base: Rect, viewport: Rect, offset_x: i16, offset_y: i16) -> Rect {
-    let min_x = viewport.x as i32; // hard bound: modal cannot extend past left edge
-    let max_x = (viewport.x as i32) + (viewport.width as i32) - 4;
-    let min_y = viewport.y as i32;
-    let max_y = (viewport.y as i32) + (viewport.height as i32) - 1;
-
-    let x = ((base.x as i32) + (offset_x as i32)).clamp(min_x, max_x.max(min_x));
-    let y = ((base.y as i32) + (offset_y as i32)).clamp(min_y, max_y.max(min_y));
-
-    Rect::new(
-        x.max(0) as u16,
-        y.max(0) as u16,
-        base.width.min(
-            viewport
-                .width
-                .saturating_sub((x - viewport.x as i32).max(0) as u16)
-                .max(1),
-        ),
-        base.height.min(
-            viewport
-                .height
-                .saturating_sub((y - viewport.y as i32).max(0) as u16)
-                .max(1),
-        ),
-    )
 }
 
 /// Returns the "Hottest: <pane> · <metric> {pct}% [<source>]" header

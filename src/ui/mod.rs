@@ -5,6 +5,7 @@ pub mod dashboard;
 pub mod insights;
 pub mod labels;
 pub mod metrics;
+pub mod modal_chrome;
 pub mod panels;
 pub mod pending_actions;
 pub mod provider_setup;
