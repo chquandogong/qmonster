@@ -2723,6 +2723,7 @@ fn event_loop_anomalies_fire_when_enabled_and_history_full() {
         cost_slope_usd_per_hour: 20.0,
         token_slope_input_per_poll: 20_000,
         memory_growth_mb: 1024.0,
+        retention_days: 30,
         promote: AnomalyPromoteConfig::default(),
     };
     let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
@@ -2851,6 +2852,7 @@ fn event_loop_promotes_warning_anomalies_to_recommendations_and_notify() {
         cost_slope_usd_per_hour: 20.0,
         token_slope_input_per_poll: 20_000,
         memory_growth_mb: 1024.0,
+        retention_days: 30,
         promote: AnomalyPromoteConfig::default(),
     };
     let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
@@ -2996,6 +2998,7 @@ fn event_loop_v2_detector_history_push_does_not_panic() {
         cost_slope_usd_per_hour: 20.0,
         token_slope_input_per_poll: 20_000,
         memory_growth_mb: 1024.0,
+        retention_days: 30,
         promote: AnomalyPromoteConfig::default(),
     };
     let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
@@ -3060,6 +3063,7 @@ fn event_loop_pushes_anomaly_events_into_ring_buffer() {
         cost_slope_usd_per_hour: 20.0,
         token_slope_input_per_poll: 20_000,
         memory_growth_mb: 1024.0,
+        retention_days: 30,
         promote: AnomalyPromoteConfig::default(),
     };
     let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
