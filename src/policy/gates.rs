@@ -1029,18 +1029,23 @@ mod tests {
     fn policy_gates_default_promote_thresholds_match_spec() {
         use crate::domain::anomaly::{AnomalyConfidence, AnomalyKind};
         let gates = PolicyGates::default();
-        assert_eq!(
-            gates.promote_min_confidence(AnomalyKind::IdentityChurn),
-            AnomalyConfidence::High
-        );
-        assert_eq!(
-            gates.promote_min_confidence(AnomalyKind::CostSlope),
-            AnomalyConfidence::High
-        );
-        assert_eq!(
-            gates.promote_min_confidence(AnomalyKind::SubagentSideEffect),
-            AnomalyConfidence::Medium
-        );
+        let cases = [
+            (AnomalyKind::IdentityChurn, AnomalyConfidence::High),
+            (AnomalyKind::ErrorBurst, AnomalyConfidence::High),
+            (AnomalyKind::CacheDiscontinuity, AnomalyConfidence::High),
+            (AnomalyKind::CrossPaneEditCluster, AnomalyConfidence::High),
+            (AnomalyKind::CostSlope, AnomalyConfidence::High),
+            (AnomalyKind::TokenSlope, AnomalyConfidence::High),
+            (AnomalyKind::MemoryGrowth, AnomalyConfidence::High),
+            (AnomalyKind::SubagentSideEffect, AnomalyConfidence::Medium),
+        ];
+        for (kind, expected) in cases {
+            assert_eq!(
+                gates.promote_min_confidence(kind),
+                expected,
+                "default mismatch for {kind:?}"
+            );
+        }
     }
 
     #[test]
