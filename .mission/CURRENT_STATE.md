@@ -28,7 +28,7 @@ Phase 7 v3 (c) adds SQLite persistence for anomaly events and history snapshots 
 
 7. **event_loop lazy AnomalyHistory replay on first-pane-observation** (`src/app/event_loop.rs`): On the first observation of a pane per session, replays stored AnomalyHistory from disk if the stored snapshot is not stale (staleness gate: ≤ 2× window × tick).
 
-8. **AnomalyOverlayView enum + view/history_cache fields + toggle_view + close_resets** (`src/ui/anomaly_overlay.rs`): `AnomalyOverlay` gains a `view: AnomalyOverlayView` enum (Live | History) and `history_cache: Vec<AnomalyHistorySnapshot>`. `toggle_view` switches between Live and History views; `close` resets back to Live view.
+8. **AnomalyOverlayView enum + view/history_cache fields + toggle_view + close_resets** (`src/ui/anomaly_overlay.rs`): `AnomalyOverlay` gains a `view: AnomalyOverlayView` enum (Ring | History) and `history_cache: Vec<AnomalyEvent>`. `toggle_view` switches between Ring and History views; `close` resets back to Ring view and clears the cache.
 
 9. **AnomalyOverlay render branch for History view** (`src/ui/anomaly_overlay.rs`): History view renders the stored AnomalyHistory snapshots from disk in the overlay modal. Shows per-pane deque entries newest-first with timestamps.
 
