@@ -238,17 +238,38 @@ where
         // Moving the read before evaluate (and the write after) ensures
         // the window passed to policy is strictly older than the current
         // iteration.
-        // TODO(F-3): `recent_samples` errors are silently dropped via
-        // `.ok()` here. Asymmetric with the writer below, which uses
-        // `eprintln!` on `record_sample` failure. A persistent read
-        // failure (corrupt index, permission revoked) leaves the sparkline
-        // blank with no diagnostic. Wire to a rate-limited audit-sink
-        // event when a `TokenUsageReadFailed` AuditEventKind variant lands.
-        let recent_token_samples: Vec<crate::store::TokenSample> = ctx
+        //
+        // F-3 (v1.49+ remediation): persistent read failures (corrupt
+        // index, revoked permission, schema drift) now surface as
+        // `TokenUsageReadFailed` audit events instead of disappearing
+        // through `.ok()`. The sparkline still degrades to empty so
+        // detection continues; per-pane dedup
+        // (`Context.token_usage_read_failed_logged`) caps the audit-log
+        // volume to one row per pane per session.
+        let recent_token_samples: Vec<crate::store::TokenSample> = match ctx
             .token_usage_sink
             .as_ref()
-            .and_then(|sink| sink.recent_samples(&pane.pane_id, 20).ok())
-            .unwrap_or_default();
+            .map(|sink| sink.recent_samples(&pane.pane_id, 20))
+        {
+            Some(Ok(samples)) => samples,
+            Some(Err(e)) => {
+                if ctx
+                    .token_usage_read_failed_logged
+                    .insert(pane.pane_id.clone())
+                {
+                    ctx.sink.record(AuditEvent {
+                        kind: AuditEventKind::TokenUsageReadFailed,
+                        pane_id: pane.pane_id.clone(),
+                        severity: Severity::Concern,
+                        summary: format!("recent_samples read failed: {e}"),
+                        provider: Some(resolved.identity.provider),
+                        role: Some(resolved.identity.role),
+                    });
+                }
+                Vec::new()
+            }
+            None => Vec::new(),
+        };
 
         // Phase F F-9 (dynamic profile switching): push the current
         // `error_hint` to the per-pane sliding window BEFORE engine

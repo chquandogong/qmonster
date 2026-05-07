@@ -140,6 +140,12 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// has been replay-checked already. Prevents repeating the disk
     /// query every tick.
     pub anomaly_history_replayed: std::collections::HashSet<String>,
+    /// Phase F F-3 (v1.49+): per-session set of pane_ids whose
+    /// `recent_samples` read has already been audit-logged after
+    /// failure. Caps `TokenUsageReadFailed` audit events to one per
+    /// pane per session — persistent failures don't spam the log,
+    /// transient failures still emit on first occurrence.
+    pub token_usage_read_failed_logged: std::collections::HashSet<String>,
     /// Phase F F-6 (v1.32.0): live `codex app-server` JSON-RPC
     /// client. Spawned at TUI startup when the operator opted in
     /// via `[provider_setup] codex_app_server = true`. None when
@@ -196,6 +202,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             anomaly_sink: None,
             recommendation_lifecycle_sink: None,
             anomaly_history_replayed: std::collections::HashSet::new(),
+            token_usage_read_failed_logged: std::collections::HashSet::new(),
             codex_app_server: None,
             codex_rate_limits: None,
             known_pane_ids: Vec::new(),

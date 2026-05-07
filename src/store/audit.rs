@@ -154,6 +154,7 @@ fn parse_kind(s: &str) -> Option<AuditEventKind> {
         "RuntimeRefreshCompleted" => Some(AuditEventKind::RuntimeRefreshCompleted),
         "RuntimeRefreshFailed" => Some(AuditEventKind::RuntimeRefreshFailed),
         "RuntimeRefreshBlocked" => Some(AuditEventKind::RuntimeRefreshBlocked),
+        "TokenUsageReadFailed" => Some(AuditEventKind::TokenUsageReadFailed),
         _ => None,
     }
 }
@@ -305,6 +306,7 @@ mod tests {
             AuditEventKind::RuntimeRefreshCompleted,
             AuditEventKind::RuntimeRefreshFailed,
             AuditEventKind::RuntimeRefreshBlocked,
+            AuditEventKind::TokenUsageReadFailed,
         ];
         for kind in variants {
             let s = kind.as_str();

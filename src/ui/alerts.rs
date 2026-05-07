@@ -1823,12 +1823,11 @@ mod tests {
 
     #[test]
     fn format_prompt_send_proposal_hides_accept_key_when_gate_denies() {
-        // P5-2 render contract (observe_only path — Gemini UX TODO):
-        // when the `permit` gate returns false for the proposal, the
-        // accept key must disappear so the operator cannot initiate a
-        // send that the runner would have blocked anyway. Dismiss
-        // stays available so the operator can still log an explicit
-        // rejection from any mode.
+        // P5-2 render contract (observe_only path): when the `permit`
+        // gate returns false for the proposal, the accept key must
+        // disappear so the operator cannot initiate a send that the
+        // runner would have blocked anyway. Dismiss stays available so
+        // the operator can still log an explicit rejection from any mode.
         let line = format_prompt_send_proposal("%3", "/compact", false);
         assert!(!line.contains("[p] accept"), "accept key hidden: {line}");
         assert!(

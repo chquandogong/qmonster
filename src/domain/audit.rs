@@ -92,6 +92,14 @@ pub enum AuditEventKind {
     RuntimeRefreshCompleted,
     RuntimeRefreshFailed,
     RuntimeRefreshBlocked,
+    /// Phase F F-3 (v1.48.0+ remediation): `recent_samples` against the
+    /// `SqliteTokenUsageSink` returned an error during a poll tick. The
+    /// in-memory sparkline degrades to empty for that pane; this event is
+    /// the durable breadcrumb so a corrupt index, revoked permission, or
+    /// schema drift does not stay invisible. Per-pane dedup at the
+    /// emission site (`Context.token_usage_read_failed_logged`) caps the
+    /// audit-log volume to one row per pane per session.
+    TokenUsageReadFailed,
 }
 
 impl AuditEventKind {
@@ -128,6 +136,7 @@ impl AuditEventKind {
             AuditEventKind::RuntimeRefreshCompleted => "RuntimeRefreshCompleted",
             AuditEventKind::RuntimeRefreshFailed => "RuntimeRefreshFailed",
             AuditEventKind::RuntimeRefreshBlocked => "RuntimeRefreshBlocked",
+            AuditEventKind::TokenUsageReadFailed => "TokenUsageReadFailed",
         }
     }
 }
@@ -301,6 +310,7 @@ mod tests {
                 AuditEventKind::RuntimeRefreshBlocked,
                 "RuntimeRefreshBlocked",
             ),
+            (AuditEventKind::TokenUsageReadFailed, "TokenUsageReadFailed"),
         ];
         for (kind, expected) in cases {
             assert_eq!(
