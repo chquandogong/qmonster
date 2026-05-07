@@ -3021,3 +3021,108 @@ fn event_loop_v2_detector_history_push_does_not_panic() {
     assert_eq!(history.agent_memory_samples.len(), 5);
     assert_eq!(history.subagent_hint_samples.len(), 5);
 }
+
+#[test]
+fn event_loop_pushes_anomaly_events_into_ring_buffer() {
+    // Phase 7 v3 (a+b) Task 12: verify that run_once_with_target pushes
+    // every visible AnomalySignal into ctx.anomaly_events_ring with the
+    // correct `promoted` bool reflecting the per-kind promotion gate.
+    //
+    // Strategy: mirror the v1.45.0 IdentityChurn promotion test —
+    // pre-populate ctx.anomaly_history with 3 alternating identity
+    // snapshots, run one tick, then assert:
+    //   - the ring buffer has at least one event
+    //   - the IdentityChurn event has promoted=true (default High threshold,
+    //     and the IdentityChurn detector emits at High confidence)
+    //   - the AnomalyEvent fields (pane_id, kind, confidence, severity)
+    //     match the corresponding AnomalySignal in PaneReport.anomalies
+    //
+    // This guards against the ring buffer being silently empty (push site
+    // missing) or carrying the wrong promoted bool (gate decision divergence).
+    use qmonster::app::config::{AnomalyConfig, AnomalyPromoteConfig};
+    use qmonster::app::event_loop::run_once_with_target;
+    use qmonster::domain::anomaly::AnomalyKind;
+    use qmonster::policy::rules::anomaly::AnomalyHistory;
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%99", "claude:1:main", "claude", "✦ Idle", false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let mut config = QmonsterConfig::defaults();
+    config.anomaly = AnomalyConfig {
+        enabled: true,
+        window_polls: 5,
+        min_confidence: "medium".to_string(),
+        identity_churn_min_flips: 2,
+        error_burst_threshold: 0.5,
+        cache_discontinuity_drop: 0.30,
+        cross_pane_cluster_min_findings: 3,
+        cost_slope_usd_per_hour: 20.0,
+        token_slope_input_per_poll: 20_000,
+        memory_growth_mb: 1024.0,
+        promote: AnomalyPromoteConfig::default(),
+    };
+    let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
+
+    // Pre-populate 3 alternating (provider, path) entries → 2 flips.
+    let mut h = AnomalyHistory::default();
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    h.identity_snapshots
+        .push_back(("Claude".to_string(), "/a".to_string()));
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    ctx.anomaly_history.insert("%99".to_string(), h);
+
+    // Sanity: ring is empty before the tick.
+    assert!(
+        ctx.anomaly_events_ring.is_empty(),
+        "ring buffer must start empty"
+    );
+
+    let (reports, _notices) = run_once_with_target(&mut ctx, Instant::now(), None).expect("run ok");
+
+    // Ring buffer must capture at least the IdentityChurn signal.
+    assert!(
+        !ctx.anomaly_events_ring.is_empty(),
+        "ring buffer must have events after a tick that fired anomalies"
+    );
+
+    let identity_churn_events: Vec<_> = ctx
+        .anomaly_events_ring
+        .iter()
+        .filter(|e| e.kind == AnomalyKind::IdentityChurn)
+        .collect();
+    assert_eq!(
+        identity_churn_events.len(),
+        1,
+        "exactly one IdentityChurn event in ring; got {} — events: {:?}",
+        identity_churn_events.len(),
+        ctx.anomaly_events_ring.iter().collect::<Vec<_>>()
+    );
+
+    let event = identity_churn_events[0];
+    assert!(
+        event.promoted,
+        "High-confidence IdentityChurn must be promoted at default High threshold"
+    );
+    assert_eq!(event.pane_id, "%99", "pane_id must match");
+    assert_eq!(event.kind, AnomalyKind::IdentityChurn);
+
+    // Cross-check against PaneReport.anomalies — the ring event's confidence
+    // and severity must match the source AnomalySignal.
+    let pane_report = reports.iter().find(|r| r.pane_id == "%99").unwrap();
+    let signal = pane_report
+        .anomalies
+        .iter()
+        .find(|s| s.kind == AnomalyKind::IdentityChurn)
+        .expect("IdentityChurn signal in PaneReport.anomalies");
+    assert_eq!(
+        event.confidence, signal.confidence,
+        "ring event confidence must match source signal"
+    );
+    assert_eq!(
+        event.severity, signal.severity,
+        "ring event severity must match source signal"
+    );
+}
