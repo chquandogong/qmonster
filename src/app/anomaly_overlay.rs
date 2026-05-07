@@ -37,7 +37,7 @@ pub fn handle_anomaly_overlay_key(
             true
         }
         KeyCode::Down | KeyCode::Char('j') if overlay.is_open() => {
-            overlay.scroll_down(ring_len.saturating_sub(1) as u16);
+            overlay.scroll_down(overlay.scroll_bound(ring_len));
             true
         }
         KeyCode::Up | KeyCode::Char('k') if overlay.is_open() => {
@@ -62,7 +62,7 @@ pub fn handle_anomaly_overlay_mouse(
     match event.kind {
         MouseEventKind::ScrollDown => {
             overlay.end_drag();
-            overlay.scroll_down(ring_len.saturating_sub(1) as u16);
+            overlay.scroll_down(overlay.scroll_bound(ring_len));
             true
         }
         MouseEventKind::ScrollUp => {
@@ -255,6 +255,80 @@ mod tests {
         // ring_len=3 means max scroll index = 2
         assert!(handle_anomaly_overlay_key(&mut o, 3, KeyCode::Down));
         assert_eq!(o.scroll(), 2);
+    }
+
+    #[test]
+    fn history_view_scroll_uses_history_cache_len_not_ring_len() {
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        overlay.toggle_view(vec![
+            AnomalyEvent {
+                timestamp: 1,
+                pane_id: "%1".to_string(),
+                kind: AnomalyKind::CostSlope,
+                confidence: AnomalyConfidence::High,
+                severity: Severity::Warning,
+                promoted: true,
+                reason: "one".to_string(),
+            },
+            AnomalyEvent {
+                timestamp: 2,
+                pane_id: "%2".to_string(),
+                kind: AnomalyKind::CostSlope,
+                confidence: AnomalyConfidence::High,
+                severity: Severity::Warning,
+                promoted: true,
+                reason: "two".to_string(),
+            },
+            AnomalyEvent {
+                timestamp: 3,
+                pane_id: "%3".to_string(),
+                kind: AnomalyKind::CostSlope,
+                confidence: AnomalyConfidence::High,
+                severity: Severity::Warning,
+                promoted: true,
+                reason: "three".to_string(),
+            },
+            AnomalyEvent {
+                timestamp: 4,
+                pane_id: "%4".to_string(),
+                kind: AnomalyKind::CostSlope,
+                confidence: AnomalyConfidence::High,
+                severity: Severity::Warning,
+                promoted: true,
+                reason: "four".to_string(),
+            },
+            AnomalyEvent {
+                timestamp: 5,
+                pane_id: "%5".to_string(),
+                kind: AnomalyKind::CostSlope,
+                confidence: AnomalyConfidence::High,
+                severity: Severity::Warning,
+                promoted: true,
+                reason: "five".to_string(),
+            },
+        ]);
+
+        assert!(handle_anomaly_overlay_key(&mut overlay, 1, KeyCode::Down));
+        assert_eq!(overlay.scroll(), 1);
+        assert!(handle_anomaly_overlay_key(
+            &mut overlay,
+            1,
+            KeyCode::Char('j')
+        ));
+        assert_eq!(overlay.scroll(), 2);
+
+        let viewport = Rect::new(0, 0, 80, 24);
+        assert!(handle_anomaly_overlay_mouse(
+            &mut overlay,
+            viewport,
+            1,
+            mouse(MouseEventKind::ScrollDown, 0, 0),
+        ));
+        assert_eq!(overlay.scroll(), 3);
     }
 
     #[test]

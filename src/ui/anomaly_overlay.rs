@@ -93,6 +93,13 @@ impl AnomalyOverlay {
         }
     }
 
+    pub fn scroll_bound(&self, ring_len: usize) -> u16 {
+        match self.view {
+            AnomalyOverlayView::Ring => ring_len.saturating_sub(1) as u16,
+            AnomalyOverlayView::History => self.history_cache.len().saturating_sub(1) as u16,
+        }
+    }
+
     pub fn width_pct(&self) -> u16 {
         self.geometry.width_pct()
     }
@@ -151,6 +158,7 @@ impl AnomalyOverlay {
     /// (`tui_loop.rs`) is responsible for fetching the cache from
     /// the persistence sink and passing it in.
     pub fn toggle_view(&mut self, history_cache: Vec<crate::domain::anomaly::AnomalyEvent>) {
+        self.geometry.end_drag();
         match self.view {
             AnomalyOverlayView::Ring => {
                 self.view = AnomalyOverlayView::History;
@@ -506,6 +514,34 @@ mod tests {
         o.toggle_view(Vec::new());
         assert_eq!(o.view(), AnomalyOverlayView::Ring);
         assert!(o.history_cache().is_empty());
+    }
+
+    #[test]
+    fn toggle_view_clears_drag_anchor() {
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+
+        let mut o = AnomalyOverlay::new();
+        o.open();
+        o.begin_drag(DragAnchor {
+            start_col: 10,
+            start_row: 5,
+            start_offset_x: 2,
+            start_offset_y: 3,
+        });
+        assert!(o.drag_anchor().is_some());
+
+        o.toggle_view(vec![AnomalyEvent {
+            timestamp: 1,
+            pane_id: "%1".to_string(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "x".to_string(),
+        }]);
+
+        assert!(o.drag_anchor().is_none());
     }
 
     #[test]
