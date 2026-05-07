@@ -37,7 +37,7 @@ impl AnomalyEventsRing {
         self.events.push_back(event);
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &AnomalyEvent> + '_ {
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &AnomalyEvent> + '_ {
         self.events.iter()
     }
 

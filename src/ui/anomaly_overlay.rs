@@ -2,6 +2,8 @@
 //! visualization. Renders `AnomalyEventsRing` chronologically
 //! (newest first) with `pane_id` column. Read-only; no actions.
 
+use crate::ui::dashboard::centered_rect;
+use crate::ui::labels::ellipsize;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -93,8 +95,7 @@ impl AnomalyOverlay {
         );
 
         let visible_rows = inner.height.saturating_sub(1) as usize;
-        let all_events: Vec<&crate::domain::anomaly::AnomalyEvent> = ring.iter().collect();
-        let items: Vec<ListItem> = all_events
+        let items: Vec<ListItem> = ring
             .iter()
             .rev()
             .skip(self.scroll() as usize)
@@ -115,28 +116,9 @@ impl AnomalyOverlay {
     }
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}
-
 fn format_event_row(e: &crate::domain::anomaly::AnomalyEvent, width: usize) -> String {
     let time = format_hhmmss(e.timestamp);
-    let pane = truncate(&e.pane_id, 6);
+    let pane = ellipsize(&e.pane_id, 6);
     let kind = e.kind.label();
     let conf = e.confidence.label();
     let promoted = if e.promoted { "yes" } else { "no" };
@@ -148,10 +130,10 @@ fn format_event_row(e: &crate::domain::anomaly::AnomalyEvent, width: usize) -> S
     if prefix_len >= width {
         // Row prefix alone already fills or exceeds available width;
         // truncate the whole row to fit.
-        return truncate(&row_prefix, width);
+        return ellipsize(&row_prefix, width);
     }
     let reason_budget = width - prefix_len;
-    let reason = truncate(&e.reason, reason_budget);
+    let reason = ellipsize(&e.reason, reason_budget);
     format!("{row_prefix}{reason}")
 }
 
@@ -162,18 +144,6 @@ fn format_hhmmss(ts: u64) -> String {
         .single()
         .map(|dt| dt.format("%H:%M:%S").to_string())
         .unwrap_or_else(|| "??:??:??".to_string())
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if max == 0 {
-        String::new()
-    } else if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
-        out.push('\u{2026}');
-        out
-    }
 }
 
 #[cfg(test)]
