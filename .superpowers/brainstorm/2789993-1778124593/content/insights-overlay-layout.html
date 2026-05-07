@@ -1,0 +1,53 @@
+<h2>Insights Overlay Layout</h2>
+<p class="subtitle">Proposed <code>i</code> overlay for token optimization insight. It explains current state, historical frequency, and what happened after Qmonster recommended action.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Qmonster Token Insights · last 24h · qmonster:0</div>
+  <div class="mockup-body">
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="mock-button">Overview</button>
+      <button class="mock-button">Situations</button>
+      <button class="mock-button">Timeline</button>
+      <button class="mock-button">Action Ledger</button>
+      <button class="mock-button">Evidence</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:14px">
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">Six Situation Matrix</div>
+        <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:8px;margin-top:8px;font-size:13px">
+          <strong>Situation</strong><strong>Now</strong><strong>24h</strong><strong>Outcome</strong>
+          <span>Log storm / repeated output</span><span>2 panes</span><span>14</span><span>8 archived · 4 ignored</span>
+          <span>Code exploration</span><span>1 pane</span><span>6</span><span>3 delegated · 2 ignored</span>
+          <span>Context pressure</span><span>Claude 81%</span><span>9</span><span>5 snapshot · 3 compact</span>
+          <span>Verbose review</span><span>Codex</span><span>11</span><span>6 terse profile · 5 ignored</span>
+          <span>Input / permission wait</span><span>1 wait</span><span>7</span><span>operator responded avg 4m</span>
+          <span>Quota-tight / cost</span><span>weekly 72%</span><span>4</span><span>2 paced · 1 profile switch</span>
+        </div>
+      </div>
+
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">Cache And Token Impact</div>
+        <div style="margin-top:8px">
+          <div>CACHE hot: avoid compact · 7 events · 5 followed</div>
+          <div>CACHE cold: compact safe · 3 events · 2 accepted</div>
+          <div>Cache drift: rebuild compact · 4 events · 1 ignored</div>
+          <div>Token input growth: +1.8M · cached reuse: 83%</div>
+          <div>Cost ledger: $28.40 · budget 14%</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="border:1px solid #334155;padding:12px;margin-top:14px">
+      <div class="label">Timeline: signal -> recommendation -> action -> outcome</div>
+      <div style="display:grid;grid-template-columns:110px 180px 1fr 160px;gap:8px;margin-top:8px;font-size:13px">
+        <strong>Time</strong><strong>Signal</strong><strong>Recommendation</strong><strong>Outcome</strong>
+        <span>14:12</span><span>CTX 81%, CACHE 88%</span><span>cache hot: avoid /compact while cache is hot</span><span>ignored after 30m</span>
+        <span>14:48</span><span>CTX 86%</span><span>context-pressure: act now</span><span>snapshot + /compact</span>
+        <span>15:09</span><span>5H 92%, reset 12m</span><span>quota: pause until 5h window resets</span><span>operator paused</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle">The overlay is intentionally separate from <code>m</code>: metrics show raw pressure; insights explain decisions and outcomes.</p>
