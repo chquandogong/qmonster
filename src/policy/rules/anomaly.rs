@@ -370,6 +370,33 @@ pub fn eval_anomalies(
                 now_unix_seconds,
             ),
         ),
+        (
+            AnomalyKind::CostSlope,
+            detect_cost_slope(
+                history,
+                gates.anomaly_window_polls,
+                gates.anomaly_cost_slope_usd_per_hour,
+                now_unix_seconds,
+            ),
+        ),
+        (
+            AnomalyKind::TokenSlope,
+            detect_token_slope(
+                history,
+                gates.anomaly_window_polls,
+                gates.anomaly_token_slope_input_per_poll,
+                now_unix_seconds,
+            ),
+        ),
+        (
+            AnomalyKind::MemoryGrowth,
+            detect_memory_growth(
+                history,
+                gates.anomaly_window_polls,
+                gates.anomaly_memory_growth_mb,
+                now_unix_seconds,
+            ),
+        ),
     ];
 
     let mut out = Vec::new();
@@ -397,6 +424,35 @@ pub fn eval_anomalies(
             }
         }
     }
+
+    // Phase 7 v2 (v1.45.0): SubagentSideEffect runs LAST against the
+    // post-dedup `out` slice — it correlates subagent_hint observation
+    // with other anomalies in the same window. Apply the same edge-
+    // triggered dedup contract as the other kinds: emit only on
+    // Some-after-None edge, suppress on continuous Some, rearm on None.
+    let raw_side_effect =
+        detect_subagent_side_effect(history, &out, gates.anomaly_window_polls, now_unix_seconds);
+    let key = (pane_id.to_string(), AnomalyKind::SubagentSideEffect);
+    let prev = dedup.get(&key).copied().flatten();
+    match (raw_side_effect, prev) {
+        (Some(sig), None) => {
+            if sig.confidence >= gates.anomaly_min_confidence {
+                dedup.insert(key, Some(now_unix_seconds));
+                out.push(sig);
+            }
+        }
+        (Some(_sig), Some(_)) => {
+            // Suppress while still active.
+        }
+        (None, Some(_)) => {
+            // Rearm.
+            dedup.insert(key, None);
+        }
+        (None, None) => {
+            // No-op.
+        }
+    }
+
     out
 }
 
@@ -589,6 +645,46 @@ pub fn detect_memory_growth(
             before: format!("{oldest:.0}"),
             after: format!("{newest:.0}"),
             sample_count: window.len(),
+            source_kind: SourceKind::Estimated,
+        }],
+        window_polls,
+        detected_at: now_unix_seconds,
+    })
+}
+
+/// SubagentSideEffect: correlation annotator. Fires when
+/// `subagent_hint = true` is observed at least once in the window
+/// AND `other_anomalies` is non-empty. Confidence is always Medium
+/// (binary correlation, not numeric). Reason lists the co-occurring
+/// kinds. Per Phase D D3-C honesty note: this is correlation, not
+/// attribution — providers do not expose per-subagent counters.
+pub fn detect_subagent_side_effect(
+    history: &AnomalyHistory,
+    other_anomalies: &[AnomalySignal],
+    window_polls: usize,
+    now_unix_seconds: u64,
+) -> Option<AnomalySignal> {
+    if other_anomalies.is_empty() {
+        return None;
+    }
+    let subagent_count = history
+        .subagent_hint_samples
+        .iter()
+        .take(window_polls)
+        .filter(|b| **b)
+        .count();
+    if subagent_count == 0 {
+        return None;
+    }
+    Some(AnomalySignal {
+        kind: AnomalyKind::SubagentSideEffect,
+        confidence: AnomalyConfidence::Medium,
+        severity: severity_for(AnomalyConfidence::Medium),
+        evidence: vec![AnomalyEvidence {
+            metric_name: "subagent_correlation",
+            before: "no_subagent".to_string(),
+            after: "subagent_active".to_string(),
+            sample_count: subagent_count,
             source_kind: SourceKind::Estimated,
         }],
         window_polls,
@@ -1401,5 +1497,106 @@ mod tests {
     fn detect_memory_growth_insufficient_samples_returns_none() {
         let h = memory_history(vec![Some(2000.0), Some(400.0)], vec![]);
         assert!(detect_memory_growth(&h, 20, 1024.0, 1_700_000_000).is_none());
+    }
+
+    fn subagent_history(hints: Vec<bool>) -> AnomalyHistory {
+        let mut h = AnomalyHistory::default();
+        for hint in hints.into_iter().rev() {
+            h.subagent_hint_samples.push_front(hint);
+        }
+        h
+    }
+
+    fn make_other_anomaly(kind: AnomalyKind) -> AnomalySignal {
+        AnomalySignal {
+            kind,
+            confidence: AnomalyConfidence::Medium,
+            severity: Severity::Concern,
+            evidence: vec![],
+            window_polls: 20,
+            detected_at: 1_700_000_000,
+        }
+    }
+
+    #[test]
+    fn subagent_side_effect_fires_when_subagent_and_other_anomalies() {
+        let mut hints = vec![false; 18];
+        hints.insert(0, true);
+        hints.insert(0, true); // 2 subagent_hint=true ticks
+        let h = subagent_history(hints);
+        let others = vec![make_other_anomaly(AnomalyKind::TokenSlope)];
+        let sig = detect_subagent_side_effect(&h, &others, 20, 1_700_000_000).unwrap();
+        assert_eq!(sig.kind, AnomalyKind::SubagentSideEffect);
+        assert_eq!(sig.confidence, AnomalyConfidence::Medium);
+        assert_eq!(sig.severity, Severity::Concern);
+        assert_eq!(sig.evidence[0].metric_name, "subagent_correlation");
+    }
+
+    #[test]
+    fn subagent_side_effect_silent_when_no_other_anomalies() {
+        let h = subagent_history(vec![true; 5].into_iter().chain(vec![false; 15]).collect());
+        let others = vec![];
+        assert!(detect_subagent_side_effect(&h, &others, 20, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn subagent_side_effect_silent_when_no_subagent_hint() {
+        let h = subagent_history(vec![false; 20]);
+        let others = vec![make_other_anomaly(AnomalyKind::CostSlope)];
+        assert!(detect_subagent_side_effect(&h, &others, 20, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn eval_anomalies_runs_subagent_side_effect_after_others() {
+        // Build a history that fires both TokenSlope (Warning) AND has
+        // subagent_hint. eval_anomalies should return both kinds — and
+        // SubagentSideEffect should appear AFTER TokenSlope in the result
+        // (since it runs last and pushes onto `out`).
+        let mut h = AnomalyHistory::default();
+        // High-confidence TokenSlope. Push 20 samples newest-first (front=newest,
+        // back=oldest). Newest = 800K, oldest = 0, slope per poll = 40K
+        // (= 2 × 20K threshold) → High confidence.
+        for i in (0..20u64).rev() {
+            h.input_token_samples.push_back(Some(i * (800_000 / 19)));
+        }
+        // 5 subagent_hint=true ticks at the head of the window.
+        for _ in 0..5 {
+            h.subagent_hint_samples.push_front(true);
+        }
+        for _ in 0..15 {
+            h.subagent_hint_samples.push_front(false);
+        }
+
+        let gates = PolicyGates {
+            anomaly_enabled: true,
+            anomaly_window_polls: 20,
+            anomaly_token_slope_input_per_poll: 20_000,
+            anomaly_min_confidence: AnomalyConfidence::Medium,
+            ..PolicyGates::default()
+        };
+
+        let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
+        let result = eval_anomalies("%1", &h, &gates, &mut dedup, 1_700_000_000);
+        let kinds: Vec<AnomalyKind> = result.iter().map(|s| s.kind).collect();
+        assert!(
+            kinds.contains(&AnomalyKind::TokenSlope),
+            "TokenSlope should fire: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&AnomalyKind::SubagentSideEffect),
+            "SubagentSideEffect should fire: {kinds:?}"
+        );
+        let token_idx = kinds
+            .iter()
+            .position(|k| *k == AnomalyKind::TokenSlope)
+            .unwrap();
+        let side_idx = kinds
+            .iter()
+            .position(|k| *k == AnomalyKind::SubagentSideEffect)
+            .unwrap();
+        assert!(
+            side_idx > token_idx,
+            "SubagentSideEffect must run AFTER TokenSlope"
+        );
     }
 }
