@@ -269,3 +269,8 @@ snapshot_eta_secs = 300           # reset ETA ceiling (secs) for the same adviso
 # error_burst_threshold            = 0.5
 # cache_discontinuity_drop         = 0.30
 # cross_pane_cluster_min_findings  = 3
+# Phase 7 v2 detectors (v1.45.0). Conservative defaults — fire on
+# meaningful slopes, not noise.
+# cost_slope_usd_per_hour          = 20.0
+# token_slope_input_per_poll       = 20000
+# memory_growth_mb                 = 1024

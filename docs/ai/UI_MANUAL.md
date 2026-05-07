@@ -723,6 +723,19 @@ emit a Recommendation or fire Notify.
 Operator opts in with the same `[anomaly] enabled = true` from
 v1.43.0 — there are no new knobs.
 
+### Phase 7 v2: detectors (v1.45.0)
+
+Phase 7 v2 ships four additional detector kinds on top of the v1.43.0 / v1.44.0 baseline:
+
+- `CostSlope` — cumulative cost_usd delta over the rolling window, normalized to USD/hour. Default threshold 20.0 USD/hour.
+- `TokenSlope` — cumulative input_tokens delta over the window, per-poll. Default threshold 20_000 tokens/poll.
+- `MemoryGrowth` — simple process_memory_mb delta over the window. Default threshold 1024 MB.
+- `SubagentSideEffect` — correlation annotator that fires only when `subagent_hint` is observed alongside other anomalies in the same window. Confidence is binary (Medium only); the recommendation reason explicitly says "correlation, not attribution" per Phase D D3-C.
+
+The first three slope detectors promote to Recommendation + Notify when `confidence=High` (≥ 1.5× threshold) — same as the v1 detectors. SubagentSideEffect promotes only when it co-occurs; severity stays at Concern (since confidence is always Medium).
+
+Operator opts in with the same `[anomaly] enabled = true` from v1.43.0. The 3 new thresholds (`cost_slope_usd_per_hour`, `token_slope_input_per_poll`, `memory_growth_mb`) are tunable via the `[anomaly]` section in `qmonster.toml`.
+
 ### 8.6 Action Explainer
 
 `p` / `d` / `y` 누름 시 사전 모달이 뜹니다. 표시되는 항목:
