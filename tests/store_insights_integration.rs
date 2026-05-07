@@ -1,7 +1,10 @@
 use qmonster::domain::audit::{AuditEvent, AuditEventKind};
 use qmonster::domain::identity::{Provider, Role};
 use qmonster::domain::recommendation::Severity;
-use qmonster::store::{EventSink, InsightsWindow, SqliteAuditSink, SqliteInsightsStore};
+use qmonster::store::{
+    CostObservation, EventSink, InsightsWindow, SqliteAuditSink, SqliteCostUsageSink,
+    SqliteInsightsStore, SqliteTokenUsageSink, TokenSample,
+};
 use tempfile::tempdir;
 
 fn audit_event(kind: AuditEventKind, pane_id: &str, summary: &str) -> AuditEvent {
@@ -260,4 +263,84 @@ fn insights_counts_live_colon_actions_by_situation() {
     assert_eq!(situation_count("Code exploration"), 5);
     assert_eq!(situation_count("Quota-tight / cost"), 7);
     assert_eq!(situation_count("Other"), 2);
+}
+
+#[test]
+fn cache_summary_reports_cache_states_latest_ratio_token_growth_and_cost_delta() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let audit = SqliteAuditSink::open(&db_path).unwrap();
+    audit.record(audit_event(
+        AuditEventKind::RecommendationEmitted,
+        "%1",
+        "cache: avoid /compact while cache is hot: cache hit ratio 88%",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::RecommendationEmitted,
+        "%1",
+        "cache: /compact is safe - cache is cold: cache hit ratio 12%",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::RecommendationEmitted,
+        "%1",
+        "cache: drift detected - /compact will let cache rebuild: cache hit ratio dropped",
+    ));
+
+    let tokens = SqliteTokenUsageSink::open(&db_path).unwrap();
+    tokens
+        .record_sample(&TokenSample {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(100),
+            output_tokens: Some(10),
+            cost_usd: None,
+            cached_input_tokens: Some(100),
+        })
+        .unwrap();
+    tokens
+        .record_sample(&TokenSample {
+            ts_unix_ms: 2_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(300),
+            output_tokens: Some(20),
+            cost_usd: None,
+            cached_input_tokens: Some(900),
+        })
+        .unwrap();
+
+    let costs = SqliteCostUsageSink::open(&db_path).unwrap();
+    costs
+        .record_observation(&CostObservation {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            cumulative_cost_usd: 0.05,
+        })
+        .unwrap();
+    costs
+        .record_observation(&CostObservation {
+            ts_unix_ms: 2_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            cumulative_cost_usd: 0.08,
+        })
+        .unwrap();
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: now_ms + 60_000,
+        })
+        .unwrap();
+
+    assert_eq!(snapshot.cache.hot_count, 1);
+    assert_eq!(snapshot.cache.cold_count, 1);
+    assert_eq!(snapshot.cache.drift_count, 1);
+    assert_eq!(snapshot.cache.latest_cache_ratio, Some(0.75));
+    assert_eq!(snapshot.cache.token_growth, Some(200));
+    assert!((snapshot.cache.cost_delta_usd.unwrap() - 0.08).abs() < 0.000_001);
 }

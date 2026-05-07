@@ -177,6 +177,33 @@ fn window_rfc3339_bounds(window: InsightsWindow) -> (String, String) {
     )
 }
 
+fn cache_ratio(input: Option<i64>, cached: Option<i64>) -> Option<f64> {
+    let cached = cached? as f64;
+    let input = input.unwrap_or(0) as f64;
+    let total = input + cached;
+    if total <= 0.0 {
+        None
+    } else {
+        Some((cached / total * 100.0).round() / 100.0)
+    }
+}
+
+fn cache_state_from_action(action: &str) -> Option<&'static str> {
+    if action == "cache: avoid /compact while cache is hot" {
+        Some("hot")
+    } else if action == "cache: /compact is safe - cache is cold"
+        || action == "cache: /compact is safe — cache is cold"
+    {
+        Some("cold")
+    } else if action == "cache: drift detected - /compact will let cache rebuild"
+        || action == "cache: drift detected — /compact will let cache rebuild"
+    {
+        Some("drift")
+    } else {
+        None
+    }
+}
+
 fn situation_for_action(action: &str) -> &'static str {
     if matches!(
         action,
@@ -275,10 +302,74 @@ impl SqliteInsightsStore {
             .into_iter()
             .map(|(situation, emitted)| SituationSummary { situation, emitted })
             .collect();
+        let mut cache = CacheInsightSummary::default();
+
+        let mut stmt = _conn
+            .prepare_cached(
+                "SELECT summary FROM audit_events \
+                 WHERE kind IN ('RecommendationEmitted', 'AlertFired') \
+                   AND ts_utc >= ?1 \
+                   AND ts_utc <= ?2 \
+                 ORDER BY id ASC",
+            )
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![&since_ts, &until_ts], |row| row.get::<_, String>(0))
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        for row in rows {
+            let summary = row.map_err(|e| SqliteError::Query(e.to_string()))?;
+            let action = action_from_summary(&summary);
+            match cache_state_from_action(action) {
+                Some("hot") => cache.hot_count += 1,
+                Some("cold") => cache.cold_count += 1,
+                Some("drift") => cache.drift_count += 1,
+                _ => {}
+            }
+        }
+
+        let mut stmt = _conn
+            .prepare_cached(
+                "SELECT input_tokens, cached_input_tokens \
+                 FROM token_usage_samples \
+                 WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
+                 ORDER BY ts_unix_ms ASC, id ASC",
+            )
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![window.since_ms, window.until_ms], |row| {
+                Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?))
+            })
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let mut first_input = None;
+        let mut latest_input = None;
+        let mut latest_ratio = None;
+        for row in rows {
+            let (input_tokens, cached_input_tokens) =
+                row.map_err(|e| SqliteError::Query(e.to_string()))?;
+            if first_input.is_none() {
+                first_input = input_tokens;
+            }
+            latest_input = input_tokens;
+            latest_ratio = cache_ratio(input_tokens, cached_input_tokens);
+        }
+        cache.latest_cache_ratio = latest_ratio;
+        cache.token_growth = first_input
+            .zip(latest_input)
+            .map(|(first, latest)| latest - first);
+
+        cache.cost_delta_usd = _conn
+            .query_row(
+                "SELECT SUM(cost_usd_delta) FROM cost_usage_events \
+                 WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2",
+                params![window.since_ms, window.until_ms],
+                |row| row.get::<_, Option<f64>>(0),
+            )
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+
         Ok(InsightsSnapshot {
             window,
             situations,
-            cache: CacheInsightSummary::default(),
+            cache,
             timeline: Vec::new(),
             actions: Vec::new(),
             ignored_available: false,
