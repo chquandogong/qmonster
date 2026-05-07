@@ -13,6 +13,19 @@ use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Severity;
 use crate::policy::gates::PolicyGates;
 
+/// Phase 7 v2 (v1.44.0): map detector confidence to severity.
+/// `High` confidence promotes to `Warning` so the
+/// `promote_anomalies_to_recommendations` filter (gate
+/// `severity >= Warning`) emits a `Recommendation` and triggers
+/// `RequestedEffect::Notify`. Medium and Low stay at `Concern` —
+/// observation only, no Recommendation, no Notify.
+fn severity_for(confidence: AnomalyConfidence) -> Severity {
+    match confidence {
+        AnomalyConfidence::High => Severity::Warning,
+        _ => Severity::Concern,
+    }
+}
+
 /// Per-pane rolling history the detectors consume. The event loop
 /// pushes one observation per tick (newest pushed to front, trim
 /// to `window_polls`). Each field corresponds to one detector.
@@ -108,7 +121,7 @@ pub fn detect_identity_churn(
     Some(AnomalySignal {
         kind: AnomalyKind::IdentityChurn,
         confidence,
-        severity: Severity::Concern,
+        severity: severity_for(confidence),
         evidence: vec![AnomalyEvidence {
             metric_name: "provider_path",
             before,
@@ -172,7 +185,7 @@ pub fn detect_error_burst(
     Some(AnomalySignal {
         kind: AnomalyKind::ErrorBurst,
         confidence,
-        severity: Severity::Concern,
+        severity: severity_for(confidence),
         evidence: vec![AnomalyEvidence {
             metric_name: "error_rate",
             before: format!("{older_rate:.2}"),
@@ -252,7 +265,7 @@ pub fn detect_cache_discontinuity(
     Some(AnomalySignal {
         kind: AnomalyKind::CacheDiscontinuity,
         confidence,
-        severity: Severity::Concern,
+        severity: severity_for(confidence),
         evidence: vec![evidence],
         window_polls,
         detected_at: now_unix_seconds,
@@ -379,7 +392,7 @@ pub fn detect_cross_pane_edit_cluster(
     Some(AnomalySignal {
         kind: AnomalyKind::CrossPaneEditCluster,
         confidence,
-        severity: Severity::Concern,
+        severity: severity_for(confidence),
         evidence: vec![AnomalyEvidence {
             metric_name: "concurrent_edit_path",
             before: winning_path.to_string(),
@@ -691,5 +704,112 @@ mod tests {
     fn detect_cross_pane_edit_cluster_below_threshold() {
         let h = cross_pane_history(vec![vec!["/r/foo.rs"], vec!["/r/foo.rs"]]); // only 2
         assert!(detect_cross_pane_edit_cluster(&h, 20, 3, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn severity_for_high_returns_warning() {
+        assert_eq!(severity_for(AnomalyConfidence::High), Severity::Warning);
+    }
+
+    #[test]
+    fn severity_for_medium_low_returns_concern() {
+        assert_eq!(severity_for(AnomalyConfidence::Medium), Severity::Concern);
+        assert_eq!(severity_for(AnomalyConfidence::Low), Severity::Concern);
+    }
+
+    #[test]
+    fn detect_identity_churn_emits_warning_when_high_confidence() {
+        // 5 flips when threshold is 3 → 5 ≥ 1.5 * 3 = 4.5 → High → Warning
+        let h = churn_history(vec![
+            ("claude", "/r"),
+            ("codex", "/r"),
+            ("claude", "/r"),
+            ("codex", "/r"),
+            ("claude", "/r"),
+            ("codex", "/r"),
+        ]);
+        let sig = detect_identity_churn(&h, 20, 3, 1_700_000_000).unwrap();
+        assert_eq!(sig.confidence, AnomalyConfidence::High);
+        assert_eq!(sig.severity, Severity::Warning);
+    }
+
+    #[test]
+    fn detect_identity_churn_emits_concern_when_medium_confidence() {
+        // exactly 3 flips → Medium (3 < 1.5*3=4.5)
+        let h = churn_history(vec![
+            ("claude", "/r"),
+            ("codex", "/r"),
+            ("claude", "/r"),
+            ("codex", "/r"),
+        ]);
+        let sig = detect_identity_churn(&h, 20, 3, 1_700_000_000).unwrap();
+        assert_eq!(sig.confidence, AnomalyConfidence::Medium);
+        assert_eq!(sig.severity, Severity::Concern);
+    }
+
+    #[test]
+    fn detect_error_burst_emits_warning_when_high_confidence() {
+        // 16 errors / 20 = 0.80 ≥ 1.5 * 0.5 = 0.75 → High
+        let mut bools = vec![true; 16];
+        bools.extend(vec![false; 4]);
+        let h = errors_history(bools);
+        let sig = detect_error_burst(&h, 20, 0.5, 1_700_000_000).unwrap();
+        assert_eq!(sig.confidence, AnomalyConfidence::High);
+        assert_eq!(sig.severity, Severity::Warning);
+    }
+
+    #[test]
+    fn detect_error_burst_emits_concern_when_medium_confidence() {
+        // 12 errors / 20 = 0.60 ≥ 0.5 but < 0.75 → Medium
+        let mut bools = vec![true; 12];
+        bools.extend(vec![false; 8]);
+        let h = errors_history(bools);
+        let sig = detect_error_burst(&h, 20, 0.5, 1_700_000_000).unwrap();
+        assert_eq!(sig.confidence, AnomalyConfidence::Medium);
+        assert_eq!(sig.severity, Severity::Concern);
+    }
+
+    #[test]
+    fn detect_cache_discontinuity_emits_warning_when_high_confidence() {
+        // 0.45-pp drop ≥ 1.5 * 0.30 = 0.45 → High
+        let mut ratios = vec![Some(0.40); 10];
+        ratios.extend(vec![Some(0.85); 10]);
+        let h = cache_history(ratios, vec![false; 20]);
+        let sig = detect_cache_discontinuity(&h, 20, 0.30, 1_700_000_000).unwrap();
+        assert_eq!(sig.confidence, AnomalyConfidence::High);
+        assert_eq!(sig.severity, Severity::Warning);
+    }
+
+    #[test]
+    fn detect_cache_discontinuity_emits_concern_when_medium_confidence() {
+        // 0.34-pp drop ≥ 0.30 but < 0.45 → Medium
+        let mut ratios = vec![Some(0.51); 10];
+        ratios.extend(vec![Some(0.85); 10]);
+        let h = cache_history(ratios, vec![false; 20]);
+        let sig = detect_cache_discontinuity(&h, 20, 0.30, 1_700_000_000).unwrap();
+        assert_eq!(sig.confidence, AnomalyConfidence::Medium);
+        assert_eq!(sig.severity, Severity::Concern);
+    }
+
+    #[test]
+    fn detect_cross_pane_edit_cluster_emits_warning_when_high_confidence() {
+        // 6 findings with min=3 → 6 ≥ 2*3 → High
+        let mut ticks: Vec<Vec<&str>> = vec![vec!["/r/foo.rs"]; 6];
+        ticks.extend(vec![vec![]; 14]);
+        let h = cross_pane_history(ticks);
+        let sig = detect_cross_pane_edit_cluster(&h, 20, 3, 1_700_000_000).unwrap();
+        assert_eq!(sig.confidence, AnomalyConfidence::High);
+        assert_eq!(sig.severity, Severity::Warning);
+    }
+
+    #[test]
+    fn detect_cross_pane_edit_cluster_emits_concern_when_medium_confidence() {
+        // 4 findings with min=3 → 4 ≥ 3 but < 6 → Medium
+        let mut ticks: Vec<Vec<&str>> = vec![vec!["/r/foo.rs"]; 4];
+        ticks.extend(vec![vec![]; 16]);
+        let h = cross_pane_history(ticks);
+        let sig = detect_cross_pane_edit_cluster(&h, 20, 3, 1_700_000_000).unwrap();
+        assert_eq!(sig.confidence, AnomalyConfidence::Medium);
+        assert_eq!(sig.severity, Severity::Concern);
     }
 }
