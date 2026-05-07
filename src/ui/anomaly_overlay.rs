@@ -10,10 +10,30 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum AnomalyOverlayView {
+    #[default]
+    Ring,
+    History,
+}
+
+#[derive(Debug, Clone)]
 pub struct AnomalyOverlay {
     open: bool,
     scroll: u16,
+    view: AnomalyOverlayView,
+    history_cache: Vec<crate::domain::anomaly::AnomalyEvent>,
+}
+
+impl Default for AnomalyOverlay {
+    fn default() -> Self {
+        Self {
+            open: false,
+            scroll: 0,
+            view: AnomalyOverlayView::Ring,
+            history_cache: Vec::new(),
+        }
+    }
 }
 
 impl AnomalyOverlay {
@@ -33,6 +53,8 @@ impl AnomalyOverlay {
     pub fn close(&mut self) {
         self.open = false;
         self.scroll = 0;
+        self.view = AnomalyOverlayView::Ring;
+        self.history_cache.clear();
     }
 
     pub fn toggle(&mut self) {
@@ -55,6 +77,34 @@ impl AnomalyOverlay {
 
     pub fn scroll_up(&mut self) {
         self.scroll = self.scroll.saturating_sub(1);
+    }
+
+    pub fn view(&self) -> AnomalyOverlayView {
+        self.view
+    }
+
+    /// Toggle between Ring and History views. When called with a
+    /// non-empty `history_cache`, switch to History; otherwise switch
+    /// to Ring (and clear the cache). The dispatch layer
+    /// (`tui_loop.rs`) is responsible for fetching the cache from
+    /// the persistence sink and passing it in.
+    pub fn toggle_view(&mut self, history_cache: Vec<crate::domain::anomaly::AnomalyEvent>) {
+        match self.view {
+            AnomalyOverlayView::Ring => {
+                self.view = AnomalyOverlayView::History;
+                self.history_cache = history_cache;
+                self.scroll = 0;
+            }
+            AnomalyOverlayView::History => {
+                self.view = AnomalyOverlayView::Ring;
+                self.history_cache.clear();
+                self.scroll = 0;
+            }
+        }
+    }
+
+    pub fn history_cache(&self) -> &[crate::domain::anomaly::AnomalyEvent] {
+        &self.history_cache
     }
 
     pub fn render(
@@ -289,6 +339,78 @@ mod tests {
         );
         // But a truncation marker should appear somewhere on a CostSlope row
         assert!(rendered.contains('\u{2026}'), "truncation ellipsis missing");
+    }
+
+    #[test]
+    fn overlay_starts_in_ring_view() {
+        let o = AnomalyOverlay::new();
+        assert_eq!(o.view(), AnomalyOverlayView::Ring);
+        assert!(o.history_cache().is_empty());
+    }
+
+    #[test]
+    fn toggle_view_to_history_with_cache() {
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        let mut o = AnomalyOverlay::new();
+        o.open();
+        o.scroll_down(5);
+        let event = AnomalyEvent {
+            timestamp: 1,
+            pane_id: "%1".to_string(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "x".to_string(),
+        };
+        o.toggle_view(vec![event.clone()]);
+        assert_eq!(o.view(), AnomalyOverlayView::History);
+        assert_eq!(o.history_cache().len(), 1);
+        assert_eq!(o.scroll(), 0); // toggle resets scroll
+    }
+
+    #[test]
+    fn toggle_view_back_to_ring_clears_cache() {
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        let mut o = AnomalyOverlay::new();
+        o.open();
+        let event = AnomalyEvent {
+            timestamp: 1,
+            pane_id: "%1".to_string(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "x".to_string(),
+        };
+        o.toggle_view(vec![event]);
+        assert_eq!(o.view(), AnomalyOverlayView::History);
+        o.toggle_view(Vec::new());
+        assert_eq!(o.view(), AnomalyOverlayView::Ring);
+        assert!(o.history_cache().is_empty());
+    }
+
+    #[test]
+    fn close_resets_view_and_clears_cache() {
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        let mut o = AnomalyOverlay::new();
+        o.open();
+        o.toggle_view(vec![AnomalyEvent {
+            timestamp: 1,
+            pane_id: "%1".to_string(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "x".to_string(),
+        }]);
+        o.close();
+        assert!(!o.is_open());
+        assert_eq!(o.view(), AnomalyOverlayView::Ring);
+        assert!(o.history_cache().is_empty());
     }
 
     fn buf_to_string(buf: &ratatui::buffer::Buffer) -> String {
