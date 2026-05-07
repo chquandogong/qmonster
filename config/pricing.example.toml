@@ -25,3 +25,27 @@ provider = "claude"
 model = "claude-sonnet-4-6"
 input_per_1m = 0.00    # TODO(operator): fill in from Anthropic pricing
 output_per_1m = 0.00
+
+# Add the model rows your panes actually surface in the m overlay /
+# pane card. `model` matches the string the provider's status line
+# emits, so `claude-opus-4-7`, `gpt-5.4-mini`, and `gemini-3.1-pro` are
+# all valid keys. Until the rate is non-zero, lookup() returns None and
+# Qmonster renders no COST badge / cost_slope rule stays silent for
+# that pane — exactly the v1.49.0 baseline behaviour.
+[[entries]]
+provider = "claude"
+model = "claude-opus-4-7"
+input_per_1m = 0.00    # TODO(operator): fill in from Anthropic pricing
+output_per_1m = 0.00
+
+[[entries]]
+provider = "gemini"
+model = "gemini-3.1-pro"
+input_per_1m = 0.00    # TODO(operator): fill in from Google pricing
+output_per_1m = 0.00
+
+[[entries]]
+provider = "gemini"
+model = "gemini-3.1-flash"
+input_per_1m = 0.00    # TODO(operator): fill in from Google pricing
+output_per_1m = 0.00
