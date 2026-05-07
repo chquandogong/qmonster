@@ -39,7 +39,7 @@ fn insights_query_empty_db_returns_zero_state() {
     assert_eq!(snapshot.cache.drift_count, 0);
     assert!(snapshot.timeline.is_empty());
     assert!(snapshot.actions.is_empty());
-    assert_eq!(snapshot.ignored_available, false);
+    assert!(!snapshot.ignored_available);
 }
 
 #[test]
