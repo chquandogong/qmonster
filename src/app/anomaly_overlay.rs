@@ -3,7 +3,8 @@
 //! (returns `true` when the key is consumed).
 
 use crate::ui::anomaly_overlay::AnomalyOverlay;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
+use ratatui::layout::Rect;
 
 pub fn handle_anomaly_overlay_key(
     overlay: &mut AnomalyOverlay,
@@ -26,6 +27,37 @@ pub fn handle_anomaly_overlay_key(
         KeyCode::Up | KeyCode::Char('k') if overlay.is_open() => {
             overlay.scroll_up();
             true
+        }
+        _ => false,
+    }
+}
+
+pub fn handle_anomaly_overlay_mouse(
+    overlay: &mut AnomalyOverlay,
+    viewport: Rect,
+    ring_len: usize,
+    event: MouseEvent,
+) -> bool {
+    if !overlay.is_open() {
+        return false;
+    }
+    match event.kind {
+        MouseEventKind::ScrollDown => {
+            overlay.scroll_down(ring_len.saturating_sub(1) as u16);
+            true
+        }
+        MouseEventKind::ScrollUp => {
+            overlay.scroll_up();
+            true
+        }
+        MouseEventKind::Down(_) => {
+            let inside_x = event.column >= viewport.x && event.column < viewport.x + viewport.width;
+            let inside_y = event.row >= viewport.y && event.row < viewport.y + viewport.height;
+            if !(inside_x && inside_y) {
+                overlay.close();
+                return true;
+            }
+            false
         }
         _ => false,
     }
@@ -92,5 +124,90 @@ mod tests {
         let mut o = AnomalyOverlay::new();
         assert!(!handle_anomaly_overlay_key(&mut o, 5, KeyCode::Down));
         assert!(!handle_anomaly_overlay_key(&mut o, 5, KeyCode::Char('q')));
+    }
+
+    #[test]
+    fn mouse_wheel_down_scrolls() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+        let mut o = AnomalyOverlay::new();
+        o.open();
+        let viewport = Rect::new(0, 0, 80, 24);
+        let event = MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 10,
+            row: 5,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert!(handle_anomaly_overlay_mouse(&mut o, viewport, 5, event));
+        assert_eq!(o.scroll(), 1);
+    }
+
+    #[test]
+    fn mouse_wheel_up_scrolls() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+        let mut o = AnomalyOverlay::new();
+        o.open();
+        o.scroll_down(5);
+        o.scroll_down(5);
+        let viewport = Rect::new(0, 0, 80, 24);
+        let event = MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 10,
+            row: 5,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert!(handle_anomaly_overlay_mouse(&mut o, viewport, 5, event));
+        assert_eq!(o.scroll(), 1);
+    }
+
+    #[test]
+    fn mouse_click_outside_viewport_closes() {
+        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+        let mut o = AnomalyOverlay::new();
+        o.open();
+        let viewport = Rect::new(10, 5, 20, 10);
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert!(handle_anomaly_overlay_mouse(&mut o, viewport, 5, event));
+        assert!(!o.is_open());
+    }
+
+    #[test]
+    fn mouse_click_inside_viewport_is_noop() {
+        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+        let mut o = AnomalyOverlay::new();
+        o.open();
+        let viewport = Rect::new(10, 5, 20, 10);
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 15,
+            row: 8,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert!(!handle_anomaly_overlay_mouse(&mut o, viewport, 5, event));
+        assert!(o.is_open());
+    }
+
+    #[test]
+    fn mouse_no_op_when_closed() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+        let mut o = AnomalyOverlay::new();
+        let viewport = Rect::new(0, 0, 80, 24);
+        let event = MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 10,
+            row: 5,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert!(!handle_anomaly_overlay_mouse(&mut o, viewport, 5, event));
     }
 }
