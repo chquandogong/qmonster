@@ -3130,3 +3130,140 @@ fn event_loop_pushes_anomaly_events_into_ring_buffer() {
         "ring event severity must match source signal"
     );
 }
+
+#[test]
+fn event_loop_persists_anomaly_event_to_audit_db() {
+    // Phase 7 v3 (c) Task 12: verify run_once_with_target writes a row
+    // to anomaly_events when a signal fires and ctx.anomaly_sink is set.
+    use qmonster::app::config::{AnomalyConfig, AnomalyPromoteConfig};
+    use qmonster::app::event_loop::run_once_with_target;
+    use qmonster::domain::anomaly::AnomalyKind;
+    use qmonster::policy::rules::anomaly::AnomalyHistory;
+    use qmonster::store::SqliteAnomalySink;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("audit.db");
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%99", "claude:1:main", "claude", "✦ Idle", false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let mut config = QmonsterConfig::defaults();
+    config.anomaly = AnomalyConfig {
+        enabled: true,
+        window_polls: 5,
+        min_confidence: "medium".to_string(),
+        identity_churn_min_flips: 2,
+        error_burst_threshold: 0.5,
+        cache_discontinuity_drop: 0.30,
+        cross_pane_cluster_min_findings: 3,
+        cost_slope_usd_per_hour: 20.0,
+        token_slope_input_per_poll: 20_000,
+        memory_growth_mb: 1024.0,
+        promote: AnomalyPromoteConfig::default(),
+        retention_days: 30,
+    };
+    let sink = SqliteAnomalySink::open(&db_path).unwrap();
+    let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()))
+        .with_anomaly_sink(sink);
+
+    let mut h = AnomalyHistory::default();
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    h.identity_snapshots
+        .push_back(("Claude".to_string(), "/a".to_string()));
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    ctx.anomaly_history.insert("%99".to_string(), h);
+
+    let _ = run_once_with_target(&mut ctx, std::time::Instant::now(), None).expect("run ok");
+
+    // Re-open the DB independently and query — verifies the row was committed.
+    let read_sink = SqliteAnomalySink::open(&db_path).unwrap();
+    let events = read_sink.fetch_recent_anomaly_events(10);
+    assert!(
+        events
+            .iter()
+            .any(|e| e.kind == AnomalyKind::IdentityChurn && e.pane_id == "%99"),
+        "expected persisted IdentityChurn event for %99; got {events:?}"
+    );
+}
+
+#[test]
+fn event_loop_replays_anomaly_history_on_first_observation() {
+    // Phase 7 v3 (c) Task 12: pre-populate anomaly_history_snapshots
+    // for a pane; verify run_once_with_target hydrates the in-memory
+    // AnomalyHistory deques on the first tick of a fresh Context.
+    use qmonster::app::config::{AnomalyConfig, AnomalyPromoteConfig};
+    use qmonster::app::event_loop::{current_unix_ms, run_once_with_target};
+    use qmonster::store::{AnomalyHistorySnapshot, SqliteAnomalySink};
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("audit.db");
+
+    // Seed disk with 3 recent snapshots for pane %99.
+    let writer_sink = SqliteAnomalySink::open(&db_path).unwrap();
+    let now_secs = (current_unix_ms() / 1000) as u64;
+    for offset in [4u64, 2, 0] {
+        let snap = AnomalyHistorySnapshot {
+            identity: Some(("Codex".to_string(), format!("/p{offset}"))),
+            error_hint: Some(false),
+            cache_hit_ratio: None,
+            cache_drift_fire: false,
+            cross_pane_edit_paths: Vec::new(),
+            cost_usd: Some(1.0 + offset as f64 * 0.5),
+            input_tokens: Some(100 + offset),
+            output_tokens: Some(50 + offset),
+            process_memory_mb: Some(120.0 + offset as f64),
+            agent_memory_bytes: Some(1_000_000),
+            subagent_hint: false,
+        };
+        writer_sink
+            .upsert_anomaly_history_snapshot("%99", now_secs - offset, &snap)
+            .unwrap();
+    }
+    drop(writer_sink); // release the lock before reopening
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%99", "claude:1:main", "claude", "✦ Idle", false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let mut config = QmonsterConfig::defaults();
+    config.anomaly = AnomalyConfig {
+        enabled: true,
+        window_polls: 20,
+        min_confidence: "medium".to_string(),
+        identity_churn_min_flips: 5, // high threshold so IdentityChurn doesn't fire
+        error_burst_threshold: 0.5,
+        cache_discontinuity_drop: 0.30,
+        cross_pane_cluster_min_findings: 3,
+        cost_slope_usd_per_hour: 20.0,
+        token_slope_input_per_poll: 20_000,
+        memory_growth_mb: 1024.0,
+        promote: AnomalyPromoteConfig::default(),
+        retention_days: 30,
+    };
+
+    let sink = SqliteAnomalySink::open(&db_path).unwrap();
+    let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()))
+        .with_anomaly_sink(sink);
+
+    // Fresh context: no in-memory history for %99.
+    assert!(!ctx.anomaly_history.contains_key("%99"));
+
+    let _ = run_once_with_target(&mut ctx, std::time::Instant::now(), None).expect("run ok");
+
+    // After one tick, the deques should contain the 3 replayed snapshots
+    // PLUS the one observation from the live tick.
+    let history = ctx
+        .anomaly_history
+        .get("%99")
+        .expect("history was hydrated for %99");
+    assert!(
+        history.cost_usd_samples.len() >= 3,
+        "expected >= 3 cost_usd samples after replay+live; got {}",
+        history.cost_usd_samples.len()
+    );
+}

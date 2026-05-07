@@ -8,6 +8,8 @@
 
 use std::path::Path;
 
+use rusqlite::OptionalExtension;
+
 use crate::store::sqlite::{AuditDb, SqliteError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,6 +160,55 @@ impl SqliteRecommendationLifecycleSink {
         .map_err(|e| SqliteError::Query(e.to_string()))?;
         Ok(conn.last_insert_rowid())
     }
+
+    pub fn insert_correlated_recommendation_outcome(
+        &self,
+        outcome: &RecommendationOutcomeRecord,
+    ) -> Result<i64, SqliteError> {
+        let conn = self
+            .db
+            .connection()
+            .lock()
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let recommendation_event_id = match outcome.recommendation_event_id {
+            Some(id) => Some(id),
+            None => conn
+                .query_row(
+                    "SELECT id
+                     FROM recommendation_events
+                     WHERE pane_id = ?1
+                       AND action = ?2
+                       AND ts_unix_ms <= ?3
+                     ORDER BY ts_unix_ms DESC, id DESC
+                     LIMIT 1",
+                    rusqlite::params![
+                        outcome.pane_id.as_str(),
+                        outcome.action.as_str(),
+                        outcome.ts_unix_ms,
+                    ],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()
+                .map_err(|e| SqliteError::Query(e.to_string()))?,
+        };
+        conn.execute(
+            "INSERT INTO recommendation_outcomes
+             (ts_unix_ms, recommendation_event_id, pane_id, action, outcome, audit_event_id,
+              summary)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                outcome.ts_unix_ms,
+                recommendation_event_id,
+                outcome.pane_id.as_str(),
+                outcome.action.as_str(),
+                outcome.outcome.label(),
+                outcome.audit_event_id,
+                outcome.summary.as_str(),
+            ],
+        )
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+        Ok(conn.last_insert_rowid())
+    }
 }
 
 #[cfg(test)]
@@ -224,5 +275,74 @@ mod tests {
             RecommendationOutcome::try_from_label("accepted_by_user"),
             None
         );
+    }
+
+    #[test]
+    fn correlated_outcome_links_latest_prior_matching_event() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let sink = SqliteRecommendationLifecycleSink::open(&tmp.path().join("audit.db")).unwrap();
+        let older = sink
+            .insert_recommendation_event(&RecommendationEventRecord {
+                ts_unix_ms: 1_000,
+                pane_id: "%1".into(),
+                provider: Some("Codex".into()),
+                role: Some("Main".into()),
+                situation: "Context pressure".into(),
+                action: "/compact".into(),
+                severity: "warning".into(),
+                source_kind: "Estimated".into(),
+                reason_summary: "older".into(),
+                suggested_command: Some("/compact".into()),
+                is_strong: true,
+                dedup_key: "older".into(),
+                threshold_snapshot_json: None,
+            })
+            .unwrap();
+        let newer = sink
+            .insert_recommendation_event(&RecommendationEventRecord {
+                ts_unix_ms: 2_000,
+                pane_id: "%1".into(),
+                provider: Some("Codex".into()),
+                role: Some("Main".into()),
+                situation: "Context pressure".into(),
+                action: "/compact".into(),
+                severity: "warning".into(),
+                source_kind: "Estimated".into(),
+                reason_summary: "newer".into(),
+                suggested_command: Some("/compact".into()),
+                is_strong: true,
+                dedup_key: "newer".into(),
+                threshold_snapshot_json: None,
+            })
+            .unwrap();
+        assert_ne!(older, newer);
+
+        sink.insert_correlated_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: 2_500,
+            recommendation_event_id: None,
+            pane_id: "%1".into(),
+            action: "/compact".into(),
+            outcome: RecommendationOutcome::Accepted,
+            audit_event_id: None,
+            summary: "operator accepted".into(),
+        })
+        .unwrap();
+
+        let store = crate::store::SqliteInsightsStore::open(&tmp.path().join("audit.db")).unwrap();
+        let snapshot = store
+            .snapshot_with_ignored_ttl(
+                crate::store::InsightsWindow {
+                    since_ms: 0,
+                    until_ms: 3_000,
+                },
+                1,
+            )
+            .unwrap();
+        let row = snapshot
+            .actions
+            .iter()
+            .find(|row| row.action == "/compact")
+            .expect("compact row");
+        assert_eq!(row.accepted, 1);
     }
 }
