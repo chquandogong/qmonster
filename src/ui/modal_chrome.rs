@@ -234,7 +234,10 @@ mod tests {
         let viewport = Rect::new(0, 0, 100, 40);
         let area = modal_area(viewport, 150, 150, 0, 0);
 
-        assert_eq!(area, crate::ui::dashboard::centered_rect(100, 100, viewport));
+        assert_eq!(
+            area,
+            crate::ui::dashboard::centered_rect(100, 100, viewport)
+        );
     }
 
     #[test]

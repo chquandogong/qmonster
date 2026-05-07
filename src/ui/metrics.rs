@@ -98,23 +98,13 @@ pub fn update_mem_observation(
     );
 }
 
+pub type DragAnchor = crate::ui::modal_chrome::DragAnchor;
+
 #[derive(Debug, Clone)]
 pub struct MetricsOverlay {
     open: bool,
     scroll: u16,
-    width_pct: u16,
-    height_pct: u16,
-    offset_x: i16,
-    offset_y: i16,
-    drag_anchor: Option<DragAnchor>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct DragAnchor {
-    pub start_col: u16,
-    pub start_row: u16,
-    pub start_offset_x: i16,
-    pub start_offset_y: i16,
+    geometry: crate::ui::modal_chrome::ModalGeometry,
 }
 
 impl Default for MetricsOverlay {
@@ -122,11 +112,13 @@ impl Default for MetricsOverlay {
         Self {
             open: false,
             scroll: 0,
-            width_pct: Self::DEFAULT_WIDTH_PCT,
-            height_pct: Self::DEFAULT_HEIGHT_PCT,
-            offset_x: 0,
-            offset_y: 0,
-            drag_anchor: None,
+            geometry: crate::ui::modal_chrome::ModalGeometry::new(
+                Self::DEFAULT_WIDTH_PCT,
+                Self::DEFAULT_HEIGHT_PCT,
+                Self::SIZE_MIN,
+                Self::SIZE_MAX,
+                Self::SIZE_STEP,
+            ),
         }
     }
 }
@@ -145,14 +137,14 @@ impl MetricsOverlay {
     pub fn open(&mut self) {
         self.open = true;
         self.scroll = 0;
-        self.drag_anchor = None;
+        self.geometry.end_drag();
         // offset_x / offset_y intentionally preserved (mirrors size persistence)
     }
 
     pub fn close(&mut self) {
         self.open = false;
         self.scroll = 0;
-        self.drag_anchor = None;
+        self.geometry.end_drag();
         // offset_x / offset_y preserved for next open
     }
 
@@ -170,55 +162,43 @@ impl MetricsOverlay {
     }
 
     pub fn width_pct(&self) -> u16 {
-        self.width_pct
+        self.geometry.width_pct()
     }
     pub fn height_pct(&self) -> u16 {
-        self.height_pct
+        self.geometry.height_pct()
     }
     pub fn offset_x(&self) -> i16 {
-        self.offset_x
+        self.geometry.offset_x()
     }
     pub fn offset_y(&self) -> i16 {
-        self.offset_y
+        self.geometry.offset_y()
     }
     pub fn drag_anchor(&self) -> Option<DragAnchor> {
-        self.drag_anchor
+        self.geometry.drag_anchor()
     }
 
     pub fn set_offset(&mut self, x: i16, y: i16) {
-        self.offset_x = x;
-        self.offset_y = y;
+        self.geometry.set_offset(x, y);
     }
 
     pub fn begin_drag(&mut self, anchor: DragAnchor) {
-        self.drag_anchor = Some(anchor);
+        self.geometry.begin_drag(anchor);
     }
 
     pub fn end_drag(&mut self) {
-        self.drag_anchor = None;
+        self.geometry.end_drag();
     }
 
     pub fn grow(&mut self) {
-        self.width_pct = (self.width_pct + Self::SIZE_STEP).min(Self::SIZE_MAX);
-        self.height_pct = (self.height_pct + Self::SIZE_STEP).min(Self::SIZE_MAX);
+        self.geometry.grow();
     }
 
     pub fn shrink(&mut self) {
-        self.width_pct = self
-            .width_pct
-            .saturating_sub(Self::SIZE_STEP)
-            .max(Self::SIZE_MIN);
-        self.height_pct = self
-            .height_pct
-            .saturating_sub(Self::SIZE_STEP)
-            .max(Self::SIZE_MIN);
+        self.geometry.shrink();
     }
 
     pub fn reset_size(&mut self) {
-        self.width_pct = Self::DEFAULT_WIDTH_PCT;
-        self.height_pct = Self::DEFAULT_HEIGHT_PCT;
-        self.offset_x = 0;
-        self.offset_y = 0;
+        self.geometry.reset();
     }
 }
 
