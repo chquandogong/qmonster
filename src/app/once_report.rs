@@ -160,6 +160,7 @@ mod tests {
             severity: Severity::Concern,
             source_kind: SourceKind::ProjectCanonical,
             suggested_command: None,
+            paths: Vec::new(),
         });
 
         let lines = format_once_report_lines(&[report], &QmonsterConfig::defaults());

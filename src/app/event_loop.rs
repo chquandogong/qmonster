@@ -752,6 +752,30 @@ where
     };
     let findings = ctx.policy.evaluate_cross_pane(&views, &cross_pane_gates);
 
+    // Close the Phase 7 v2 `CrossPaneEditCluster` detector loop: the
+    // per-pane block earlier in this function pushed `Vec::new()` to the
+    // front of each pane's `AnomalyHistory.cross_pane_edit_paths` deque
+    // (Option A 1-tick-lag pattern, see comment near `entry.trim(cap)`
+    // above). Without this fold-back the deque is empty forever and the
+    // detector never fires. We overwrite the front entry with the
+    // finding's `paths` for every pane the finding is attributed to
+    // (anchor + others), so the detector sees real evidence starting on
+    // the *next* tick — matching the documented one-tick lag.
+    for f in &findings {
+        if f.paths.is_empty() {
+            continue;
+        }
+        let affected = std::iter::once(f.anchor_pane_id.as_str())
+            .chain(f.other_pane_ids.iter().map(|s| s.as_str()));
+        for pane_id in affected {
+            if let Some(entry) = ctx.anomaly_history.get_mut(pane_id)
+                && let Some(front) = entry.cross_pane_edit_paths.front_mut()
+            {
+                front.extend(f.paths.iter().cloned());
+            }
+        }
+    }
+
     for f in findings {
         if let Some(r) = reports.iter_mut().find(|r| r.pane_id == f.anchor_pane_id) {
             r.cross_pane_findings.push(f);

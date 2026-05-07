@@ -89,6 +89,7 @@ pub fn eval_concurrent(panes: &[PaneView<'_>], gates: &PolicyGates) -> Vec<Cross
                 suggested_command: Some(
                     "# consolidate windows: tmux move-pane -s <pane_id> -t <other_window>".into(),
                 ),
+                paths: Vec::new(),
             });
         } else {
             out.push(CrossPaneFinding {
@@ -104,6 +105,7 @@ pub fn eval_concurrent(panes: &[PaneView<'_>], gates: &PolicyGates) -> Vec<Cross
                 suggested_command: Some(
                     "# coordinate via research pane: tmux select-pane -t <research_pane_id>".into(),
                 ),
+                paths: Vec::new(),
             });
         }
     }
@@ -207,6 +209,7 @@ pub fn eval_concurrent_files(panes: &[PaneView<'_>], gates: &PolicyGates) -> Vec
             suggested_command: Some(
                 "# coordinate via research pane: tmux select-pane -t <research_pane_id>".into(),
             ),
+            paths: vec![file.clone()],
         });
     }
     out
@@ -718,6 +721,11 @@ mod tests {
             findings[0].reason.contains("/repo/src/foo.rs"),
             "reason must call out the absolute resolved path: {:?}",
             findings[0].reason
+        );
+        assert_eq!(
+            findings[0].paths,
+            vec!["/repo/src/foo.rs".to_string()],
+            "ConcurrentFileEdit must surface the absolute file path so AnomalyHistory can feed it back into the CrossPaneEditCluster detector",
         );
     }
 

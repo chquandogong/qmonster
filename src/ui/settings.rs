@@ -264,12 +264,14 @@ pub struct SettingsOverlay {
     tab: SettingsTab,
     selected: FieldId,
     selected_integration: IntegrationField,
+    selected_parameter: ParameterField,
     scroll_offset: u16,
     edit_buffer: Option<String>,
     status: SettingsStatus,
     /// Tracks dirty-since-open so `is_dirty()` survives a transient
     /// `Saved` / `Error` status banner change.
     dirty: bool,
+    dirty_parameters: Vec<ParameterField>,
 }
 
 impl Default for SettingsOverlay {
@@ -279,10 +281,12 @@ impl Default for SettingsOverlay {
             tab: SettingsTab::Thresholds,
             selected: FieldId::new(Section::Cost, Scope::Default, Bound::Warning),
             selected_integration: IntegrationField::ClaudeSidefile,
+            selected_parameter: ParameterField::TmuxSource,
             scroll_offset: 0,
             edit_buffer: None,
             status: SettingsStatus::Idle,
             dirty: false,
+            dirty_parameters: Vec::new(),
         }
     }
 }
@@ -306,6 +310,10 @@ impl SettingsOverlay {
 
     pub fn selected_integration(&self) -> IntegrationField {
         self.selected_integration
+    }
+
+    pub fn selected_parameter(&self) -> ParameterField {
+        self.selected_parameter
     }
 
     pub fn scroll_offset(&self) -> u16 {
@@ -350,6 +358,13 @@ impl SettingsOverlay {
         self.selected_integration = field;
     }
 
+    pub fn select_parameter(&mut self, field: ParameterField) {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Parameters {
+            return;
+        }
+        self.selected_parameter = field;
+    }
+
     pub fn edit_buffer(&self) -> Option<&str> {
         self.edit_buffer.as_deref()
     }
@@ -369,10 +384,12 @@ impl SettingsOverlay {
         self.tab = SettingsTab::Thresholds;
         self.selected = FieldId::new(Section::Cost, Scope::Default, Bound::Warning);
         self.selected_integration = IntegrationField::ClaudeSidefile;
+        self.selected_parameter = ParameterField::TmuxSource;
         self.scroll_offset = 0;
         self.edit_buffer = None;
         self.status = SettingsStatus::Idle;
         self.dirty = false;
+        self.dirty_parameters.clear();
     }
 
     /// Close the overlay, discarding any in-flight edit buffer. Does
@@ -417,6 +434,30 @@ impl SettingsOverlay {
         self.selected_integration = self.selected_integration.previous();
     }
 
+    pub fn next_parameter(&mut self) {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Parameters {
+            return;
+        }
+        let fields = all_parameter_fields();
+        let idx = fields
+            .iter()
+            .position(|f| *f == self.selected_parameter)
+            .unwrap_or(0);
+        self.selected_parameter = fields[(idx + 1) % fields.len()];
+    }
+
+    pub fn prev_parameter(&mut self) {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Parameters {
+            return;
+        }
+        let fields = all_parameter_fields();
+        let idx = fields
+            .iter()
+            .position(|f| *f == self.selected_parameter)
+            .unwrap_or(0);
+        self.selected_parameter = fields[(idx + fields.len() - 1) % fields.len()];
+    }
+
     pub fn scroll_up(&mut self) {
         if self.edit_buffer.is_some() {
             return;
@@ -457,6 +498,13 @@ impl SettingsOverlay {
             return;
         }
         self.scroll_offset = max;
+    }
+
+    pub fn set_scroll_offset(&mut self, offset: u16) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        self.scroll_offset = offset;
     }
 
     pub fn toggle_integration(&mut self, config: &mut QmonsterConfig) {
@@ -501,22 +549,44 @@ impl SettingsOverlay {
     /// Begin editing the focused field. Buffer initializes with the
     /// effective (resolved) value formatted for in-place editing.
     pub fn start_edit(&mut self, config: &QmonsterConfig) {
-        if !self.open || self.tab != SettingsTab::Thresholds {
+        if !self.open {
             return;
         }
-        let v = self.effective_field(config, self.selected);
-        // Strip trailing zeros so 5.0 reads back as "5" but 0.75 stays
-        // "0.75". Operator who wants "5.00" can type the zeros.
-        self.edit_buffer = Some(format_value_for_edit(v, self.selected.section));
-        self.status = SettingsStatus::Idle;
+        match self.tab {
+            SettingsTab::Thresholds => {
+                let v = self.effective_field(config, self.selected);
+                // Strip trailing zeros so 5.0 reads back as "5" but 0.75 stays
+                // "0.75". Operator who wants "5.00" can type the zeros.
+                self.edit_buffer = Some(format_value_for_edit(v, self.selected.section));
+                self.status = SettingsStatus::Idle;
+            }
+            SettingsTab::Parameters
+                if matches!(
+                    parameter_edit_kind(self.selected_parameter),
+                    ParameterEditKind::Number | ParameterEditKind::Text
+                ) =>
+            {
+                self.edit_buffer = Some(parameter_value_for_edit(config, self.selected_parameter));
+                self.status = SettingsStatus::Idle;
+            }
+            _ => {}
+        }
     }
 
-    /// Append a character to the edit buffer. No-op when not editing
-    /// or when the character is not a digit / dot / minus.
+    /// Append a character to the edit buffer. Numeric edits accept
+    /// digits / dot / minus. Text parameter edits accept printable ASCII.
     pub fn type_char(&mut self, c: char) {
+        let free_text = self.tab == SettingsTab::Parameters
+            && parameter_edit_kind(self.selected_parameter) == ParameterEditKind::Text;
         let Some(buf) = self.edit_buffer.as_mut() else {
             return;
         };
+        if free_text {
+            if c.is_ascii() && !c.is_control() {
+                buf.push(c);
+            }
+            return;
+        }
         if !c.is_ascii_digit() && c != '.' && c != '-' {
             return;
         }
@@ -548,6 +618,28 @@ impl SettingsOverlay {
         self.status = SettingsStatus::Error(msg);
     }
 
+    pub fn activate_parameter(&mut self, config: &mut QmonsterConfig) -> Result<(), String> {
+        if self.edit_buffer.is_some() || self.tab != SettingsTab::Parameters {
+            return Ok(());
+        }
+        match parameter_edit_kind(self.selected_parameter) {
+            ParameterEditKind::Bool => {
+                toggle_parameter_bool(config, self.selected_parameter);
+                self.mark_parameter_dirty(self.selected_parameter);
+                Ok(())
+            }
+            ParameterEditKind::Enum => {
+                cycle_parameter_enum(config, self.selected_parameter)?;
+                self.mark_parameter_dirty(self.selected_parameter);
+                Ok(())
+            }
+            ParameterEditKind::Number | ParameterEditKind::Text => {
+                self.start_edit(config);
+                Ok(())
+            }
+        }
+    }
+
     /// Parse the edit buffer and apply it to the config if it
     /// validates. Returns `Ok(())` on success, `Err(reason)` on
     /// validation failure (status banner is also updated).
@@ -555,6 +647,19 @@ impl SettingsOverlay {
         let Some(buf) = self.edit_buffer.take() else {
             return Err("no active edit".into());
         };
+        if self.tab == SettingsTab::Parameters {
+            return match apply_parameter_edit(config, self.selected_parameter, buf.trim()) {
+                Ok(()) => {
+                    self.mark_parameter_dirty(self.selected_parameter);
+                    Ok(())
+                }
+                Err(msg) => {
+                    self.edit_buffer = Some(buf);
+                    self.status = SettingsStatus::Error(msg.clone());
+                    Err(msg)
+                }
+            };
+        }
         let parsed: f64 = match buf.trim().parse() {
             Ok(v) => v,
             Err(_) => {
@@ -577,6 +682,19 @@ impl SettingsOverlay {
                 Err(msg)
             }
         }
+    }
+
+    fn mark_parameter_dirty(&mut self, field: ParameterField) {
+        if !self.dirty_parameters.contains(&field) {
+            self.dirty_parameters.push(field);
+        }
+        self.dirty = true;
+        self.status = SettingsStatus::Dirty;
+    }
+
+    #[cfg(test)]
+    pub fn replace_edit_buffer_for_test(&mut self, value: &str) {
+        self.edit_buffer = Some(value.to_string());
     }
 
     /// Clear a per-provider override on the focused field (revert to
@@ -653,6 +771,7 @@ impl SettingsOverlay {
             return Err(msg);
         }
         self.dirty = false;
+        self.dirty_parameters.clear();
         self.status = SettingsStatus::Saved(path.display().to_string());
         Ok(())
     }
@@ -689,6 +808,9 @@ impl SettingsOverlay {
             &["provider_setup", "codex_app_server"],
             config.provider_setup.codex_app_server,
         );
+        for field in &self.dirty_parameters {
+            merge_parameter_field(&mut doc, config, *field);
+        }
 
         Ok(doc.to_string())
     }
@@ -748,6 +870,799 @@ fn set_nested_bool(doc: &mut toml_edit::DocumentMut, path: &[&str], v: bool) {
     }
     current.insert(path[last], value(v));
 }
+
+fn set_nested_i64(doc: &mut toml_edit::DocumentMut, path: &[&str], v: i64) {
+    use toml_edit::{Item, Table, value};
+    if path.is_empty() {
+        return;
+    }
+    let last = path.len() - 1;
+    let mut current: &mut Table = doc.as_table_mut();
+    for seg in &path[..last] {
+        let needs_replace = current
+            .get(seg)
+            .map(|item| !item.is_table())
+            .unwrap_or(true);
+        if needs_replace {
+            current.insert(seg, Item::Table(Table::new()));
+        }
+        current = current
+            .get_mut(seg)
+            .and_then(|item| item.as_table_mut())
+            .expect("segment is a table after the ensure step above");
+    }
+    current.insert(path[last], value(v));
+}
+
+fn set_nested_str(doc: &mut toml_edit::DocumentMut, path: &[&str], v: &str) {
+    use toml_edit::{Item, Table, value};
+    if path.is_empty() {
+        return;
+    }
+    let last = path.len() - 1;
+    let mut current: &mut Table = doc.as_table_mut();
+    for seg in &path[..last] {
+        let needs_replace = current
+            .get(seg)
+            .map(|item| !item.is_table())
+            .unwrap_or(true);
+        if needs_replace {
+            current.insert(seg, Item::Table(Table::new()));
+        }
+        current = current
+            .get_mut(seg)
+            .and_then(|item| item.as_table_mut())
+            .expect("segment is a table after the ensure step above");
+    }
+    current.insert(path[last], value(v));
+}
+
+fn remove_nested(doc: &mut toml_edit::DocumentMut, path: &[&str]) {
+    if path.is_empty() {
+        return;
+    }
+    let last = path.len() - 1;
+    let mut current = doc.as_table_mut();
+    for seg in &path[..last] {
+        let Some(next) = current.get_mut(seg).and_then(|item| item.as_table_mut()) else {
+            return;
+        };
+        current = next;
+    }
+    current.remove(path[last]);
+}
+
+fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
+    use ParameterEditKind::*;
+    use ParameterField::*;
+    match field {
+        ActionsAutoNotifications
+        | ActionsAutoArchive
+        | ActionsAutoPromptSend
+        | ActionsDestructive
+        | TokenQuotaTight
+        | SecurityPostureAdvisories
+        | SecurityCrossWindowFindings
+        | SecurityIdentityDriftFindings
+        | SecurityCrossPaneFileFindings
+        | ResetAutoSnapshot
+        | AnomalyEnabled
+        | ProfileSwitchEnabled => Bool,
+        TmuxSource
+        | RefreshPolicy
+        | LoggingSensitivity
+        | ActionsMode
+        | UxConfirmActions
+        | AnomalyMinConfidence
+        | AnomalyPromoteIdentityChurn
+        | AnomalyPromoteErrorBurst
+        | AnomalyPromoteCacheDiscontinuity
+        | AnomalyPromoteCrossPaneEditCluster
+        | AnomalyPromoteCostSlope
+        | AnomalyPromoteTokenSlope
+        | AnomalyPromoteMemoryGrowth
+        | AnomalyPromoteSubagentSideEffect => Enum,
+        StorageRoot => Text,
+        TmuxPollIntervalMs
+        | TmuxCaptureLines
+        | IdleStillnessPolls
+        | LoggingRetentionDays
+        | LoggingBigOutputChars
+        | InsightsIgnoredTtlSecs
+        | InsightsDefaultWindowSecs
+        | CacheHotRatioThreshold
+        | CacheColdRatioThreshold
+        | CacheHotLowCtxThreshold
+        | CacheColdHighCtxThreshold
+        | CacheDriftDropThreshold
+        | CacheDriftMinSamples
+        | ResetWaitPressureThreshold
+        | ResetWaitEtaSecs
+        | ResetSnapshotPressureThreshold
+        | ResetSnapshotEtaSecs
+        | AnomalyWindowPolls
+        | AnomalyIdentityChurnMinFlips
+        | AnomalyErrorBurstThreshold
+        | AnomalyCacheDiscontinuityDrop
+        | AnomalyCrossPaneClusterMinFindings
+        | AnomalyCostSlopeUsdPerHour
+        | AnomalyTokenSlopeInputPerPoll
+        | AnomalyMemoryGrowthMb
+        | AnomalyRetentionDays
+        | CostBudgetUsd
+        | ProfileSwitchWindowPolls
+        | ProfileSwitchErrorRateThreshold => Number,
+    }
+}
+
+fn parameter_section_label(field: ParameterField) -> &'static str {
+    use ParameterField::*;
+    match field {
+        TmuxSource | TmuxPollIntervalMs | TmuxCaptureLines | RefreshPolicy
+        | IdleStillnessPolls | LoggingSensitivity | LoggingRetentionDays
+        | LoggingBigOutputChars | StorageRoot => "Runtime",
+        ActionsMode | ActionsAutoNotifications | ActionsAutoArchive | ActionsAutoPromptSend
+        | ActionsDestructive | UxConfirmActions => "Actions",
+        InsightsIgnoredTtlSecs | InsightsDefaultWindowSecs => "Insights",
+        TokenQuotaTight => "Policy Inputs",
+        SecurityPostureAdvisories
+        | SecurityCrossWindowFindings
+        | SecurityIdentityDriftFindings
+        | SecurityCrossPaneFileFindings => "Security",
+        CacheHotRatioThreshold
+        | CacheColdRatioThreshold
+        | CacheHotLowCtxThreshold
+        | CacheColdHighCtxThreshold
+        | CacheDriftDropThreshold
+        | CacheDriftMinSamples => "Cache",
+        ResetWaitPressureThreshold
+        | ResetWaitEtaSecs
+        | ResetSnapshotPressureThreshold
+        | ResetSnapshotEtaSecs
+        | ResetAutoSnapshot => "Reset",
+        AnomalyEnabled
+        | AnomalyWindowPolls
+        | AnomalyMinConfidence
+        | AnomalyIdentityChurnMinFlips
+        | AnomalyErrorBurstThreshold
+        | AnomalyCacheDiscontinuityDrop
+        | AnomalyCrossPaneClusterMinFindings
+        | AnomalyCostSlopeUsdPerHour
+        | AnomalyTokenSlopeInputPerPoll
+        | AnomalyMemoryGrowthMb
+        | AnomalyRetentionDays => "Anomaly",
+        AnomalyPromoteIdentityChurn
+        | AnomalyPromoteErrorBurst
+        | AnomalyPromoteCacheDiscontinuity
+        | AnomalyPromoteCrossPaneEditCluster
+        | AnomalyPromoteCostSlope
+        | AnomalyPromoteTokenSlope
+        | AnomalyPromoteMemoryGrowth
+        | AnomalyPromoteSubagentSideEffect => "Anomaly Promote",
+        CostBudgetUsd | ProfileSwitchEnabled | ProfileSwitchWindowPolls
+        | ProfileSwitchErrorRateThreshold => "Cost / Profile",
+    }
+}
+
+fn parameter_label(field: ParameterField) -> &'static str {
+    use ParameterField::*;
+    match field {
+        TmuxSource => "tmux source",
+        TmuxPollIntervalMs => "tmux poll_interval_ms",
+        TmuxCaptureLines => "tmux capture_lines",
+        RefreshPolicy => "refresh policy",
+        IdleStillnessPolls => "idle stillness_polls",
+        LoggingSensitivity => "logging sensitivity",
+        LoggingRetentionDays => "logging retention_days",
+        LoggingBigOutputChars => "logging big_output_chars",
+        StorageRoot => "storage.root",
+        ActionsMode => "actions mode",
+        ActionsAutoNotifications => "actions auto_notifications",
+        ActionsAutoArchive => "actions auto_archive",
+        ActionsAutoPromptSend => "actions auto_prompt_send",
+        ActionsDestructive => "actions destructive",
+        UxConfirmActions => "ux confirm_actions",
+        InsightsIgnoredTtlSecs => "insights ignored_ttl_secs",
+        InsightsDefaultWindowSecs => "insights default_window_secs",
+        TokenQuotaTight => "token quota_tight",
+        SecurityPostureAdvisories => "security posture_advisories",
+        SecurityCrossWindowFindings => "security cross_window_findings",
+        SecurityIdentityDriftFindings => "security identity_drift_findings",
+        SecurityCrossPaneFileFindings => "security cross_pane_file_findings",
+        CacheHotRatioThreshold => "cache hot_ratio_threshold",
+        CacheColdRatioThreshold => "cache cold_ratio_threshold",
+        CacheHotLowCtxThreshold => "cache hot_low_ctx_threshold",
+        CacheColdHighCtxThreshold => "cache cold_high_ctx_threshold",
+        CacheDriftDropThreshold => "cache drift_drop_threshold",
+        CacheDriftMinSamples => "cache drift_min_samples",
+        ResetWaitPressureThreshold => "reset wait_pressure_threshold",
+        ResetWaitEtaSecs => "reset wait_eta_secs",
+        ResetSnapshotPressureThreshold => "reset snapshot_pressure_threshold",
+        ResetSnapshotEtaSecs => "reset snapshot_eta_secs",
+        ResetAutoSnapshot => "reset auto_snapshot",
+        AnomalyEnabled => "anomaly enabled",
+        AnomalyWindowPolls => "anomaly window_polls",
+        AnomalyMinConfidence => "anomaly min_confidence",
+        AnomalyIdentityChurnMinFlips => "anomaly identity_churn_min_flips",
+        AnomalyErrorBurstThreshold => "anomaly error_burst_threshold",
+        AnomalyCacheDiscontinuityDrop => "anomaly cache_discontinuity_drop",
+        AnomalyCrossPaneClusterMinFindings => "anomaly cross_pane_cluster_min",
+        AnomalyCostSlopeUsdPerHour => "anomaly cost_slope_usd_per_hour",
+        AnomalyTokenSlopeInputPerPoll => "anomaly token_slope_input_per_poll",
+        AnomalyMemoryGrowthMb => "anomaly memory_growth_mb",
+        AnomalyRetentionDays => "anomaly retention_days",
+        AnomalyPromoteIdentityChurn => "anomaly.promote identity_churn",
+        AnomalyPromoteErrorBurst => "anomaly.promote error_burst",
+        AnomalyPromoteCacheDiscontinuity => "anomaly.promote cache_discontinuity",
+        AnomalyPromoteCrossPaneEditCluster => "anomaly.promote cross_pane_edit_cluster",
+        AnomalyPromoteCostSlope => "anomaly.promote cost_slope",
+        AnomalyPromoteTokenSlope => "anomaly.promote token_slope",
+        AnomalyPromoteMemoryGrowth => "anomaly.promote memory_growth",
+        AnomalyPromoteSubagentSideEffect => "anomaly.promote subagent_side_effect",
+        CostBudgetUsd => "cost budget_usd",
+        ProfileSwitchEnabled => "profile_switch enabled",
+        ProfileSwitchWindowPolls => "profile_switch window_polls",
+        ProfileSwitchErrorRateThreshold => "profile_switch error_rate_threshold",
+    }
+}
+
+fn parameter_toml_path(field: ParameterField) -> Vec<&'static str> {
+    use ParameterField::*;
+    match field {
+        TmuxSource => vec!["tmux", "source"],
+        TmuxPollIntervalMs => vec!["tmux", "poll_interval_ms"],
+        TmuxCaptureLines => vec!["tmux", "capture_lines"],
+        RefreshPolicy => vec!["refresh", "policy"],
+        IdleStillnessPolls => vec!["idle", "stillness_polls"],
+        LoggingSensitivity => vec!["logging", "sensitivity"],
+        LoggingRetentionDays => vec!["logging", "retention_days"],
+        LoggingBigOutputChars => vec!["logging", "big_output_chars"],
+        StorageRoot => vec!["storage", "root"],
+        ActionsMode => vec!["actions", "mode"],
+        ActionsAutoNotifications => vec!["actions", "allow_auto_notifications"],
+        ActionsAutoArchive => vec!["actions", "allow_auto_archive"],
+        ActionsAutoPromptSend => vec!["actions", "allow_auto_prompt_send"],
+        ActionsDestructive => vec!["actions", "allow_destructive_actions"],
+        UxConfirmActions => vec!["ux", "confirm_actions"],
+        InsightsIgnoredTtlSecs => vec!["insights", "ignored_ttl_secs"],
+        InsightsDefaultWindowSecs => vec!["insights", "default_window_secs"],
+        TokenQuotaTight => vec!["token", "quota_tight"],
+        SecurityPostureAdvisories => vec!["security", "posture_advisories"],
+        SecurityCrossWindowFindings => vec!["security", "cross_window_findings"],
+        SecurityIdentityDriftFindings => vec!["security", "identity_drift_findings"],
+        SecurityCrossPaneFileFindings => vec!["security", "cross_pane_file_findings"],
+        CacheHotRatioThreshold => vec!["cache", "hot_ratio_threshold"],
+        CacheColdRatioThreshold => vec!["cache", "cold_ratio_threshold"],
+        CacheHotLowCtxThreshold => vec!["cache", "hot_low_ctx_threshold"],
+        CacheColdHighCtxThreshold => vec!["cache", "cold_high_ctx_threshold"],
+        CacheDriftDropThreshold => vec!["cache", "drift_drop_threshold"],
+        CacheDriftMinSamples => vec!["cache", "drift_min_samples"],
+        ResetWaitPressureThreshold => vec!["reset", "wait_pressure_threshold"],
+        ResetWaitEtaSecs => vec!["reset", "wait_eta_secs"],
+        ResetSnapshotPressureThreshold => vec!["reset", "snapshot_pressure_threshold"],
+        ResetSnapshotEtaSecs => vec!["reset", "snapshot_eta_secs"],
+        ResetAutoSnapshot => vec!["reset", "auto_snapshot"],
+        AnomalyEnabled => vec!["anomaly", "enabled"],
+        AnomalyWindowPolls => vec!["anomaly", "window_polls"],
+        AnomalyMinConfidence => vec!["anomaly", "min_confidence"],
+        AnomalyIdentityChurnMinFlips => vec!["anomaly", "identity_churn_min_flips"],
+        AnomalyErrorBurstThreshold => vec!["anomaly", "error_burst_threshold"],
+        AnomalyCacheDiscontinuityDrop => vec!["anomaly", "cache_discontinuity_drop"],
+        AnomalyCrossPaneClusterMinFindings => vec!["anomaly", "cross_pane_cluster_min_findings"],
+        AnomalyCostSlopeUsdPerHour => vec!["anomaly", "cost_slope_usd_per_hour"],
+        AnomalyTokenSlopeInputPerPoll => vec!["anomaly", "token_slope_input_per_poll"],
+        AnomalyMemoryGrowthMb => vec!["anomaly", "memory_growth_mb"],
+        AnomalyRetentionDays => vec!["anomaly", "retention_days"],
+        AnomalyPromoteIdentityChurn => vec!["anomaly", "promote", "identity_churn"],
+        AnomalyPromoteErrorBurst => vec!["anomaly", "promote", "error_burst"],
+        AnomalyPromoteCacheDiscontinuity => vec!["anomaly", "promote", "cache_discontinuity"],
+        AnomalyPromoteCrossPaneEditCluster => {
+            vec!["anomaly", "promote", "cross_pane_edit_cluster"]
+        }
+        AnomalyPromoteCostSlope => vec!["anomaly", "promote", "cost_slope"],
+        AnomalyPromoteTokenSlope => vec!["anomaly", "promote", "token_slope"],
+        AnomalyPromoteMemoryGrowth => vec!["anomaly", "promote", "memory_growth"],
+        AnomalyPromoteSubagentSideEffect => vec!["anomaly", "promote", "subagent_side_effect"],
+        CostBudgetUsd => vec!["cost", "budget_usd"],
+        ProfileSwitchEnabled => vec!["profile_switch", "enabled"],
+        ProfileSwitchWindowPolls => vec!["profile_switch", "window_polls"],
+        ProfileSwitchErrorRateThreshold => vec!["profile_switch", "error_rate_threshold"],
+    }
+}
+
+fn parameter_value_for_display(config: &QmonsterConfig, field: ParameterField) -> String {
+    use ParameterField::*;
+    match field {
+        TmuxSource => config.tmux.source.as_str().into(),
+        TmuxPollIntervalMs => format!("{}ms", config.tmux.poll_interval_ms),
+        TmuxCaptureLines => config.tmux.capture_lines.to_string(),
+        RefreshPolicy => refresh_policy_label(config.refresh.policy).into(),
+        IdleStillnessPolls => format!("{} polls", config.idle.stillness_polls),
+        LoggingSensitivity => log_sensitivity_label(config.logging.sensitivity).into(),
+        LoggingRetentionDays => format!("{}d", config.logging.retention_days),
+        LoggingBigOutputChars => format!("{} chars", config.logging.big_output_chars),
+        StorageRoot => config.storage.root.as_deref().unwrap_or("(auto)").into(),
+        ActionsMode => actions_mode_label(config.actions.mode).into(),
+        ActionsAutoNotifications => on_off(config.actions.allow_auto_notifications).into(),
+        ActionsAutoArchive => on_off(config.actions.allow_auto_archive).into(),
+        ActionsAutoPromptSend => on_off(config.actions.allow_auto_prompt_send).into(),
+        ActionsDestructive => on_off(config.actions.allow_destructive_actions).into(),
+        UxConfirmActions => confirm_actions_label(config.ux.confirm_actions).into(),
+        InsightsIgnoredTtlSecs => seconds_label(config.insights.ignored_ttl_secs),
+        InsightsDefaultWindowSecs => seconds_label(config.insights.default_window_secs),
+        TokenQuotaTight => on_off(config.token.quota_tight).into(),
+        SecurityPostureAdvisories => on_off(config.security.posture_advisories).into(),
+        SecurityCrossWindowFindings => on_off(config.security.cross_window_findings).into(),
+        SecurityIdentityDriftFindings => on_off(config.security.identity_drift_findings).into(),
+        SecurityCrossPaneFileFindings => on_off(config.security.cross_pane_file_findings).into(),
+        CacheHotRatioThreshold => pct_label(config.cache.hot_ratio_threshold),
+        CacheColdRatioThreshold => pct_label(config.cache.cold_ratio_threshold),
+        CacheHotLowCtxThreshold => pct_label(f64::from(config.cache.hot_low_ctx_threshold)),
+        CacheColdHighCtxThreshold => pct_label(f64::from(config.cache.cold_high_ctx_threshold)),
+        CacheDriftDropThreshold => pct_label(config.cache.drift_drop_threshold),
+        CacheDriftMinSamples => config.cache.drift_min_samples.to_string(),
+        ResetWaitPressureThreshold => pct_label(f64::from(config.reset.wait_pressure_threshold)),
+        ResetWaitEtaSecs => seconds_label(config.reset.wait_eta_secs),
+        ResetSnapshotPressureThreshold => {
+            pct_label(f64::from(config.reset.snapshot_pressure_threshold))
+        }
+        ResetSnapshotEtaSecs => seconds_label(config.reset.snapshot_eta_secs),
+        ResetAutoSnapshot => on_off(config.reset.auto_snapshot).into(),
+        AnomalyEnabled => on_off(config.anomaly.enabled).into(),
+        AnomalyWindowPolls => format!("{} polls", config.anomaly.window_polls),
+        AnomalyMinConfidence => config.anomaly.min_confidence.clone(),
+        AnomalyIdentityChurnMinFlips => config.anomaly.identity_churn_min_flips.to_string(),
+        AnomalyErrorBurstThreshold => format!("{:.2}", config.anomaly.error_burst_threshold),
+        AnomalyCacheDiscontinuityDrop => format!("{:.2}", config.anomaly.cache_discontinuity_drop),
+        AnomalyCrossPaneClusterMinFindings => {
+            config.anomaly.cross_pane_cluster_min_findings.to_string()
+        }
+        AnomalyCostSlopeUsdPerHour => {
+            format!("{:.2}", config.anomaly.cost_slope_usd_per_hour)
+        }
+        AnomalyTokenSlopeInputPerPoll => config.anomaly.token_slope_input_per_poll.to_string(),
+        AnomalyMemoryGrowthMb => format!("{:.0} MB", config.anomaly.memory_growth_mb),
+        AnomalyRetentionDays => format!("{}d", config.anomaly.retention_days),
+        AnomalyPromoteIdentityChurn => config.anomaly.promote.identity_churn.clone(),
+        AnomalyPromoteErrorBurst => config.anomaly.promote.error_burst.clone(),
+        AnomalyPromoteCacheDiscontinuity => config.anomaly.promote.cache_discontinuity.clone(),
+        AnomalyPromoteCrossPaneEditCluster => {
+            config.anomaly.promote.cross_pane_edit_cluster.clone()
+        }
+        AnomalyPromoteCostSlope => config.anomaly.promote.cost_slope.clone(),
+        AnomalyPromoteTokenSlope => config.anomaly.promote.token_slope.clone(),
+        AnomalyPromoteMemoryGrowth => config.anomaly.promote.memory_growth.clone(),
+        AnomalyPromoteSubagentSideEffect => {
+            config.anomaly.promote.subagent_side_effect.clone()
+        }
+        CostBudgetUsd => format!("${:.2}", config.cost.budget_usd),
+        ProfileSwitchEnabled => on_off(config.profile_switch.enabled).into(),
+        ProfileSwitchWindowPolls => format!("{} polls", config.profile_switch.window_polls),
+        ProfileSwitchErrorRateThreshold => {
+            pct_label(f64::from(config.profile_switch.error_rate_threshold))
+        }
+    }
+}
+
+fn parameter_value_for_edit(config: &QmonsterConfig, field: ParameterField) -> String {
+    use ParameterField::*;
+    match field {
+        StorageRoot => config.storage.root.clone().unwrap_or_default(),
+        TmuxPollIntervalMs => config.tmux.poll_interval_ms.to_string(),
+        TmuxCaptureLines => config.tmux.capture_lines.to_string(),
+        IdleStillnessPolls => config.idle.stillness_polls.to_string(),
+        LoggingRetentionDays => config.logging.retention_days.to_string(),
+        LoggingBigOutputChars => config.logging.big_output_chars.to_string(),
+        InsightsIgnoredTtlSecs => config.insights.ignored_ttl_secs.to_string(),
+        InsightsDefaultWindowSecs => config.insights.default_window_secs.to_string(),
+        CacheHotRatioThreshold => config.cache.hot_ratio_threshold.to_string(),
+        CacheColdRatioThreshold => config.cache.cold_ratio_threshold.to_string(),
+        CacheHotLowCtxThreshold => config.cache.hot_low_ctx_threshold.to_string(),
+        CacheColdHighCtxThreshold => config.cache.cold_high_ctx_threshold.to_string(),
+        CacheDriftDropThreshold => config.cache.drift_drop_threshold.to_string(),
+        CacheDriftMinSamples => config.cache.drift_min_samples.to_string(),
+        ResetWaitPressureThreshold => config.reset.wait_pressure_threshold.to_string(),
+        ResetWaitEtaSecs => config.reset.wait_eta_secs.to_string(),
+        ResetSnapshotPressureThreshold => config.reset.snapshot_pressure_threshold.to_string(),
+        ResetSnapshotEtaSecs => config.reset.snapshot_eta_secs.to_string(),
+        AnomalyWindowPolls => config.anomaly.window_polls.to_string(),
+        AnomalyIdentityChurnMinFlips => config.anomaly.identity_churn_min_flips.to_string(),
+        AnomalyErrorBurstThreshold => config.anomaly.error_burst_threshold.to_string(),
+        AnomalyCacheDiscontinuityDrop => config.anomaly.cache_discontinuity_drop.to_string(),
+        AnomalyCrossPaneClusterMinFindings => {
+            config.anomaly.cross_pane_cluster_min_findings.to_string()
+        }
+        AnomalyCostSlopeUsdPerHour => config.anomaly.cost_slope_usd_per_hour.to_string(),
+        AnomalyTokenSlopeInputPerPoll => config.anomaly.token_slope_input_per_poll.to_string(),
+        AnomalyMemoryGrowthMb => config.anomaly.memory_growth_mb.to_string(),
+        AnomalyRetentionDays => config.anomaly.retention_days.to_string(),
+        CostBudgetUsd => config.cost.budget_usd.to_string(),
+        ProfileSwitchWindowPolls => config.profile_switch.window_polls.to_string(),
+        ProfileSwitchErrorRateThreshold => config.profile_switch.error_rate_threshold.to_string(),
+        _ => parameter_value_for_display(config, field),
+    }
+}
+
+fn parameter_default_for_display(field: ParameterField) -> String {
+    parameter_value_for_display(&QmonsterConfig::defaults(), field)
+}
+
+fn confidence_next(value: &str) -> Result<String, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "low" => Ok("medium".into()),
+        "medium" => Ok("high".into()),
+        "high" => Ok("low".into()),
+        other => Err(format!("invalid confidence: {other}")),
+    }
+}
+
+fn toggle_parameter_bool(config: &mut QmonsterConfig, field: ParameterField) {
+    use ParameterField::*;
+    match field {
+        ActionsAutoNotifications => {
+            config.actions.allow_auto_notifications = !config.actions.allow_auto_notifications;
+        }
+        ActionsAutoArchive => {
+            config.actions.allow_auto_archive = !config.actions.allow_auto_archive;
+        }
+        ActionsAutoPromptSend => {
+            config.actions.allow_auto_prompt_send = !config.actions.allow_auto_prompt_send;
+        }
+        ActionsDestructive => {
+            config.actions.allow_destructive_actions = !config.actions.allow_destructive_actions;
+        }
+        TokenQuotaTight => config.token.quota_tight = !config.token.quota_tight,
+        SecurityPostureAdvisories => {
+            config.security.posture_advisories = !config.security.posture_advisories;
+        }
+        SecurityCrossWindowFindings => {
+            config.security.cross_window_findings = !config.security.cross_window_findings;
+        }
+        SecurityIdentityDriftFindings => {
+            config.security.identity_drift_findings = !config.security.identity_drift_findings;
+        }
+        SecurityCrossPaneFileFindings => {
+            config.security.cross_pane_file_findings = !config.security.cross_pane_file_findings;
+        }
+        ResetAutoSnapshot => config.reset.auto_snapshot = !config.reset.auto_snapshot,
+        AnomalyEnabled => config.anomaly.enabled = !config.anomaly.enabled,
+        ProfileSwitchEnabled => config.profile_switch.enabled = !config.profile_switch.enabled,
+        _ => {}
+    }
+}
+
+fn cycle_parameter_enum(config: &mut QmonsterConfig, field: ParameterField) -> Result<(), String> {
+    use ParameterField::*;
+    match field {
+        TmuxSource => {
+            config.tmux.source = match config.tmux.source {
+                TmuxSourceMode::Auto => TmuxSourceMode::Polling,
+                TmuxSourceMode::Polling => TmuxSourceMode::ControlMode,
+                TmuxSourceMode::ControlMode => TmuxSourceMode::Auto,
+            };
+        }
+        RefreshPolicy => {
+            config.refresh.policy = match config.refresh.policy {
+                RefreshPolicy::ManualOnly => RefreshPolicy::Automatic,
+                RefreshPolicy::Automatic => RefreshPolicy::ManualOnly,
+            };
+        }
+        LoggingSensitivity => {
+            config.logging.sensitivity = match config.logging.sensitivity {
+                LogSensitivity::Minimal => LogSensitivity::Balanced,
+                LogSensitivity::Balanced => LogSensitivity::Forensic,
+                LogSensitivity::Forensic => LogSensitivity::Minimal,
+            };
+        }
+        ActionsMode => {
+            config.actions.mode = match config.actions.mode {
+                ActionsMode::ObserveOnly => ActionsMode::RecommendOnly,
+                ActionsMode::RecommendOnly => ActionsMode::SafeAuto,
+                ActionsMode::SafeAuto => ActionsMode::ObserveOnly,
+            };
+        }
+        UxConfirmActions => {
+            config.ux.confirm_actions = match config.ux.confirm_actions {
+                ConfirmActions::Always => ConfirmActions::FirstTime,
+                ConfirmActions::FirstTime => ConfirmActions::Never,
+                ConfirmActions::Never => ConfirmActions::Always,
+            };
+        }
+        AnomalyMinConfidence => {
+            config.anomaly.min_confidence = confidence_next(&config.anomaly.min_confidence)?;
+        }
+        AnomalyPromoteIdentityChurn => {
+            config.anomaly.promote.identity_churn =
+                confidence_next(&config.anomaly.promote.identity_churn)?;
+        }
+        AnomalyPromoteErrorBurst => {
+            config.anomaly.promote.error_burst =
+                confidence_next(&config.anomaly.promote.error_burst)?;
+        }
+        AnomalyPromoteCacheDiscontinuity => {
+            config.anomaly.promote.cache_discontinuity =
+                confidence_next(&config.anomaly.promote.cache_discontinuity)?;
+        }
+        AnomalyPromoteCrossPaneEditCluster => {
+            config.anomaly.promote.cross_pane_edit_cluster =
+                confidence_next(&config.anomaly.promote.cross_pane_edit_cluster)?;
+        }
+        AnomalyPromoteCostSlope => {
+            config.anomaly.promote.cost_slope =
+                confidence_next(&config.anomaly.promote.cost_slope)?;
+        }
+        AnomalyPromoteTokenSlope => {
+            config.anomaly.promote.token_slope =
+                confidence_next(&config.anomaly.promote.token_slope)?;
+        }
+        AnomalyPromoteMemoryGrowth => {
+            config.anomaly.promote.memory_growth =
+                confidence_next(&config.anomaly.promote.memory_growth)?;
+        }
+        AnomalyPromoteSubagentSideEffect => {
+            config.anomaly.promote.subagent_side_effect =
+                confidence_next(&config.anomaly.promote.subagent_side_effect)?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn parse_nonnegative_f64(label: &str, raw: &str) -> Result<f64, String> {
+    let value: f64 = raw
+        .parse()
+        .map_err(|_| format!("{label}: not a number: {raw}"))?;
+    if !value.is_finite() || value < 0.0 {
+        return Err(format!("{label}: must be a finite value >= 0"));
+    }
+    Ok(value)
+}
+
+fn parse_unit_f32(label: &str, raw: &str) -> Result<f32, String> {
+    let value: f32 = raw
+        .parse()
+        .map_err(|_| format!("{label}: not a number: {raw}"))?;
+    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+        return Err(format!("{label}: must be in [0.0, 1.0]"));
+    }
+    Ok(value)
+}
+
+fn parse_u64_value(label: &str, raw: &str, min: u64) -> Result<u64, String> {
+    let value: u64 = raw
+        .parse()
+        .map_err(|_| format!("{label}: must be an integer"))?;
+    if value < min {
+        return Err(format!("{label}: must be >= {min}"));
+    }
+    Ok(value)
+}
+
+fn parse_usize_value(label: &str, raw: &str, min: usize) -> Result<usize, String> {
+    let value: usize = raw
+        .parse()
+        .map_err(|_| format!("{label}: must be an integer"))?;
+    if value < min {
+        return Err(format!("{label}: must be >= {min}"));
+    }
+    Ok(value)
+}
+
+fn apply_parameter_edit(
+    config: &mut QmonsterConfig,
+    field: ParameterField,
+    raw: &str,
+) -> Result<(), String> {
+    use ParameterField::*;
+    let label = parameter_label(field);
+    match field {
+        StorageRoot => {
+            let trimmed = raw.trim();
+            config.storage.root = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+        }
+        TmuxPollIntervalMs => config.tmux.poll_interval_ms = parse_u64_value(label, raw, 1)?,
+        TmuxCaptureLines => config.tmux.capture_lines = parse_usize_value(label, raw, 1)?,
+        IdleStillnessPolls => config.idle.stillness_polls = parse_usize_value(label, raw, 1)?,
+        LoggingRetentionDays => config.logging.retention_days = parse_u64_value(label, raw, 1)?,
+        LoggingBigOutputChars => {
+            config.logging.big_output_chars = parse_usize_value(label, raw, 1)?;
+        }
+        InsightsIgnoredTtlSecs => {
+            config.insights.ignored_ttl_secs = parse_u64_value(label, raw, 0)?;
+        }
+        InsightsDefaultWindowSecs => {
+            config.insights.default_window_secs = parse_u64_value(label, raw, 1)?;
+        }
+        CacheHotRatioThreshold => {
+            config.cache.hot_ratio_threshold = f64::from(parse_unit_f32(label, raw)?);
+        }
+        CacheColdRatioThreshold => {
+            config.cache.cold_ratio_threshold = f64::from(parse_unit_f32(label, raw)?);
+        }
+        CacheHotLowCtxThreshold => config.cache.hot_low_ctx_threshold = parse_unit_f32(label, raw)?,
+        CacheColdHighCtxThreshold => {
+            config.cache.cold_high_ctx_threshold = parse_unit_f32(label, raw)?;
+        }
+        CacheDriftDropThreshold => {
+            config.cache.drift_drop_threshold = f64::from(parse_unit_f32(label, raw)?);
+        }
+        CacheDriftMinSamples => {
+            config.cache.drift_min_samples = parse_usize_value(label, raw, 1)?;
+        }
+        ResetWaitPressureThreshold => {
+            config.reset.wait_pressure_threshold = parse_unit_f32(label, raw)?;
+        }
+        ResetWaitEtaSecs => config.reset.wait_eta_secs = parse_u64_value(label, raw, 0)?,
+        ResetSnapshotPressureThreshold => {
+            config.reset.snapshot_pressure_threshold = parse_unit_f32(label, raw)?;
+        }
+        ResetSnapshotEtaSecs => {
+            config.reset.snapshot_eta_secs = parse_u64_value(label, raw, 0)?;
+        }
+        AnomalyWindowPolls => config.anomaly.window_polls = parse_usize_value(label, raw, 1)?,
+        AnomalyIdentityChurnMinFlips => {
+            config.anomaly.identity_churn_min_flips = parse_usize_value(label, raw, 1)?;
+        }
+        AnomalyErrorBurstThreshold => {
+            config.anomaly.error_burst_threshold = parse_unit_f32(label, raw)?;
+        }
+        AnomalyCacheDiscontinuityDrop => {
+            config.anomaly.cache_discontinuity_drop = parse_unit_f32(label, raw)?;
+        }
+        AnomalyCrossPaneClusterMinFindings => {
+            config.anomaly.cross_pane_cluster_min_findings =
+                parse_usize_value(label, raw, 1)?;
+        }
+        AnomalyCostSlopeUsdPerHour => {
+            config.anomaly.cost_slope_usd_per_hour = parse_nonnegative_f64(label, raw)?;
+        }
+        AnomalyTokenSlopeInputPerPoll => {
+            config.anomaly.token_slope_input_per_poll = parse_u64_value(label, raw, 0)?;
+        }
+        AnomalyMemoryGrowthMb => {
+            config.anomaly.memory_growth_mb = parse_nonnegative_f64(label, raw)?;
+        }
+        AnomalyRetentionDays => config.anomaly.retention_days = parse_u64_value(label, raw, 1)?,
+        CostBudgetUsd => config.cost.budget_usd = parse_nonnegative_f64(label, raw)?,
+        ProfileSwitchWindowPolls => {
+            config.profile_switch.window_polls = parse_usize_value(label, raw, 1)?;
+        }
+        ProfileSwitchErrorRateThreshold => {
+            config.profile_switch.error_rate_threshold = parse_unit_f32(label, raw)?;
+        }
+        _ => return Err(format!("{label}: use Space/e to toggle or cycle")),
+    }
+    Ok(())
+}
+
+fn merge_parameter_field(
+    doc: &mut toml_edit::DocumentMut,
+    config: &QmonsterConfig,
+    field: ParameterField,
+) {
+    use ParameterField::*;
+    let path = parameter_toml_path(field);
+    match field {
+        TmuxSource => set_nested_str(doc, &path, config.tmux.source.as_str()),
+        TmuxPollIntervalMs => set_nested_i64(doc, &path, config.tmux.poll_interval_ms as i64),
+        TmuxCaptureLines => set_nested_i64(doc, &path, config.tmux.capture_lines as i64),
+        RefreshPolicy => set_nested_str(doc, &path, refresh_policy_label(config.refresh.policy)),
+        IdleStillnessPolls => set_nested_i64(doc, &path, config.idle.stillness_polls as i64),
+        LoggingSensitivity => {
+            set_nested_str(doc, &path, log_sensitivity_label(config.logging.sensitivity));
+        }
+        LoggingRetentionDays => set_nested_i64(doc, &path, config.logging.retention_days as i64),
+        LoggingBigOutputChars => set_nested_i64(doc, &path, config.logging.big_output_chars as i64),
+        StorageRoot => match config.storage.root.as_deref() {
+            Some(root) if !root.is_empty() => set_nested_str(doc, &path, root),
+            _ => remove_nested(doc, &path),
+        },
+        ActionsMode => set_nested_str(doc, &path, actions_mode_label(config.actions.mode)),
+        ActionsAutoNotifications => {
+            set_nested_bool(doc, &path, config.actions.allow_auto_notifications);
+        }
+        ActionsAutoArchive => set_nested_bool(doc, &path, config.actions.allow_auto_archive),
+        ActionsAutoPromptSend => set_nested_bool(doc, &path, config.actions.allow_auto_prompt_send),
+        ActionsDestructive => set_nested_bool(doc, &path, config.actions.allow_destructive_actions),
+        UxConfirmActions => set_nested_str(doc, &path, confirm_actions_label(config.ux.confirm_actions)),
+        InsightsIgnoredTtlSecs => set_nested_i64(doc, &path, config.insights.ignored_ttl_secs as i64),
+        InsightsDefaultWindowSecs => {
+            set_nested_i64(doc, &path, config.insights.default_window_secs as i64);
+        }
+        TokenQuotaTight => set_nested_bool(doc, &path, config.token.quota_tight),
+        SecurityPostureAdvisories => {
+            set_nested_bool(doc, &path, config.security.posture_advisories);
+        }
+        SecurityCrossWindowFindings => {
+            set_nested_bool(doc, &path, config.security.cross_window_findings);
+        }
+        SecurityIdentityDriftFindings => {
+            set_nested_bool(doc, &path, config.security.identity_drift_findings);
+        }
+        SecurityCrossPaneFileFindings => {
+            set_nested_bool(doc, &path, config.security.cross_pane_file_findings);
+        }
+        CacheHotRatioThreshold => set_nested_f64(doc, &path, config.cache.hot_ratio_threshold),
+        CacheColdRatioThreshold => set_nested_f64(doc, &path, config.cache.cold_ratio_threshold),
+        CacheHotLowCtxThreshold => {
+            set_nested_f64(doc, &path, f64::from(config.cache.hot_low_ctx_threshold));
+        }
+        CacheColdHighCtxThreshold => {
+            set_nested_f64(doc, &path, f64::from(config.cache.cold_high_ctx_threshold));
+        }
+        CacheDriftDropThreshold => set_nested_f64(doc, &path, config.cache.drift_drop_threshold),
+        CacheDriftMinSamples => set_nested_i64(doc, &path, config.cache.drift_min_samples as i64),
+        ResetWaitPressureThreshold => {
+            set_nested_f64(doc, &path, f64::from(config.reset.wait_pressure_threshold));
+        }
+        ResetWaitEtaSecs => set_nested_i64(doc, &path, config.reset.wait_eta_secs as i64),
+        ResetSnapshotPressureThreshold => {
+            set_nested_f64(doc, &path, f64::from(config.reset.snapshot_pressure_threshold));
+        }
+        ResetSnapshotEtaSecs => set_nested_i64(doc, &path, config.reset.snapshot_eta_secs as i64),
+        ResetAutoSnapshot => set_nested_bool(doc, &path, config.reset.auto_snapshot),
+        AnomalyEnabled => set_nested_bool(doc, &path, config.anomaly.enabled),
+        AnomalyWindowPolls => set_nested_i64(doc, &path, config.anomaly.window_polls as i64),
+        AnomalyMinConfidence => set_nested_str(doc, &path, &config.anomaly.min_confidence),
+        AnomalyIdentityChurnMinFlips => {
+            set_nested_i64(doc, &path, config.anomaly.identity_churn_min_flips as i64);
+        }
+        AnomalyErrorBurstThreshold => {
+            set_nested_f64(doc, &path, f64::from(config.anomaly.error_burst_threshold));
+        }
+        AnomalyCacheDiscontinuityDrop => {
+            set_nested_f64(doc, &path, f64::from(config.anomaly.cache_discontinuity_drop));
+        }
+        AnomalyCrossPaneClusterMinFindings => {
+            set_nested_i64(doc, &path, config.anomaly.cross_pane_cluster_min_findings as i64);
+        }
+        AnomalyCostSlopeUsdPerHour => {
+            set_nested_f64(doc, &path, config.anomaly.cost_slope_usd_per_hour);
+        }
+        AnomalyTokenSlopeInputPerPoll => {
+            set_nested_i64(doc, &path, config.anomaly.token_slope_input_per_poll as i64);
+        }
+        AnomalyMemoryGrowthMb => set_nested_f64(doc, &path, config.anomaly.memory_growth_mb),
+        AnomalyRetentionDays => set_nested_i64(doc, &path, config.anomaly.retention_days as i64),
+        AnomalyPromoteIdentityChurn => {
+            set_nested_str(doc, &path, &config.anomaly.promote.identity_churn);
+        }
+        AnomalyPromoteErrorBurst => {
+            set_nested_str(doc, &path, &config.anomaly.promote.error_burst);
+        }
+        AnomalyPromoteCacheDiscontinuity => {
+            set_nested_str(doc, &path, &config.anomaly.promote.cache_discontinuity);
+        }
+        AnomalyPromoteCrossPaneEditCluster => {
+            set_nested_str(doc, &path, &config.anomaly.promote.cross_pane_edit_cluster);
+        }
+        AnomalyPromoteCostSlope => {
+            set_nested_str(doc, &path, &config.anomaly.promote.cost_slope);
+        }
+        AnomalyPromoteTokenSlope => {
+            set_nested_str(doc, &path, &config.anomaly.promote.token_slope);
+        }
+        AnomalyPromoteMemoryGrowth => {
+            set_nested_str(doc, &path, &config.anomaly.promote.memory_growth);
+        }
+        AnomalyPromoteSubagentSideEffect => {
+            set_nested_str(doc, &path, &config.anomaly.promote.subagent_side_effect);
+        }
+        CostBudgetUsd => set_nested_f64(doc, &path, config.cost.budget_usd),
+        ProfileSwitchEnabled => set_nested_bool(doc, &path, config.profile_switch.enabled),
+        ProfileSwitchWindowPolls => {
+            set_nested_i64(doc, &path, config.profile_switch.window_polls as i64);
+        }
+        ProfileSwitchErrorRateThreshold => {
+            set_nested_f64(doc, &path, f64::from(config.profile_switch.error_rate_threshold));
+        }
+    }
+}
+
 
 // -----------------------------------------------------------------
 // Field-by-field read / write / validate helpers. Internal to the
@@ -1432,6 +2347,48 @@ pub fn settings_integration_field_at_with_scroll(
     }
 }
 
+pub fn settings_parameter_field_at_with_scroll(
+    overlay: &SettingsOverlay,
+    config: &QmonsterConfig,
+    body: Rect,
+    column: u16,
+    row: u16,
+    scroll_offset: u16,
+) -> Option<ParameterField> {
+    let inner = body.inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    if !rect_contains(inner, column, row) {
+        return None;
+    }
+    let line_idx = row.saturating_sub(inner.y).saturating_add(scroll_offset) as usize;
+    let lines = build_parameter_body_lines(overlay, config);
+    let text = lines.get(line_idx).map(line_text)?;
+    all_parameter_fields()
+        .into_iter()
+        .find(|field| text.contains(parameter_label(*field)))
+}
+
+pub fn settings_parameter_field_line_index(
+    overlay: &SettingsOverlay,
+    config: &QmonsterConfig,
+    field: ParameterField,
+) -> Option<u16> {
+    let label = parameter_label(field);
+    build_parameter_body_lines(overlay, config)
+        .iter()
+        .position(|line| line_text(line).contains(label))
+        .and_then(|idx| u16::try_from(idx).ok())
+}
+
+fn line_text(line: &Line<'_>) -> String {
+    line.spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect::<String>()
+}
+
 fn rect_contains(rect: Rect, x: u16, y: u16) -> bool {
     x >= rect.x
         && x < rect.x.saturating_add(rect.width)
@@ -1560,7 +2517,7 @@ fn build_parameter_body_lines(
     config: &QmonsterConfig,
 ) -> Vec<Line<'static>> {
     let defaults = QmonsterConfig::defaults();
-    vec![
+    let mut lines = vec![
         Line::from(vec![
             Span::styled(
                 "  *",
@@ -1899,8 +2856,12 @@ fn build_parameter_body_lines(
             ),
         ),
         Line::from(""),
-        status_line(overlay),
-    ]
+        reference_header_line("Editable Parameters"),
+    ];
+    append_parameter_editor_lines(&mut lines, overlay, config);
+    lines.push(Line::from(""));
+    lines.push(status_line(overlay));
+    lines
 }
 
 fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> Vec<Line<'static>> {
@@ -2285,6 +3246,80 @@ fn setting_row(label: &'static str, value: String, default: String) -> Line<'sta
     ])
 }
 
+fn append_parameter_editor_lines(
+    lines: &mut Vec<Line<'static>>,
+    overlay: &SettingsOverlay,
+    config: &QmonsterConfig,
+) {
+    let mut current_section: Option<&'static str> = None;
+    for field in all_parameter_fields() {
+        let section = parameter_section_label(field);
+        if current_section != Some(section) {
+            if current_section.is_some() {
+                lines.push(Line::from(""));
+            }
+            lines.push(reference_header_line(section));
+            current_section = Some(section);
+        }
+        lines.push(parameter_row_line(overlay, config, field));
+    }
+}
+
+fn parameter_row_line(
+    overlay: &SettingsOverlay,
+    config: &QmonsterConfig,
+    field: ParameterField,
+) -> Line<'static> {
+    let focused = overlay.is_open()
+        && overlay.tab() == SettingsTab::Parameters
+        && overlay.selected_parameter() == field;
+    let value = if focused && overlay.edit_buffer().is_some() {
+        format!("{}_", overlay.edit_buffer().unwrap_or(""))
+    } else {
+        parameter_value_for_display(config, field)
+    };
+    let default = parameter_default_for_display(field);
+    let custom = value.trim_end_matches('_') != default;
+    let marker = if custom { "*" } else { " " };
+    let cursor = if focused { "▶ " } else { "  " };
+    let value_style = if focused {
+        if overlay.edit_buffer().is_some() {
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .bg(theme::BADGE_BG)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::REVERSED)
+        }
+    } else {
+        Style::default().fg(theme::TEXT_PRIMARY)
+    };
+    let marker_style = if custom {
+        Style::default().fg(theme::severity_color(Severity::Warning))
+    } else {
+        Style::default().fg(theme::TEXT_DIM)
+    };
+    let action = match parameter_edit_kind(field) {
+        ParameterEditKind::Bool => "toggle",
+        ParameterEditKind::Enum => "cycle",
+        ParameterEditKind::Number => "edit",
+        ParameterEditKind::Text => "edit",
+    };
+    Line::from(vec![
+        Span::styled(format!("  {marker} "), marker_style),
+        Span::raw(cursor),
+        Span::styled(
+            format!("{:<38}", parameter_label(field)),
+            Style::default().fg(theme::TEXT_DIM),
+        ),
+        Span::styled(format!("{:<18}", value), value_style),
+        Span::styled(format!(" default {default:<12}"), Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(action, Style::default().fg(theme::TEXT_DIM)),
+    ])
+}
+
 fn rule_row(label: &'static str, condition: String) -> Line<'static> {
     Line::from(vec![
         Span::raw("    "),
@@ -2507,15 +3542,19 @@ fn hint_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
         "  [1]-[5]/[Tab] tab · ↑/↓ select · e/Enter edit · c clear · w write · q/Esc close"
     } else if overlay.tab() == SettingsTab::Integrations {
         "  [1]-[5]/[Tab] tab · ↑/↓ select · Space/e/Enter toggle · w write · q/Esc close"
+    } else if overlay.tab() == SettingsTab::Parameters {
+        "  [1]-[5]/[Tab] tab · ↑/↓ select · e/Enter edit/cycle · Space toggle · w write · q/Esc close"
     } else {
         "  [1]-[5]/[Tab] tab · ↑/↓/j/k/wheel scroll · PgUp/PgDn · Home/End · q/Esc close"
     };
-    let line2 =
-        if overlay.tab() == SettingsTab::Thresholds || overlay.tab() == SettingsTab::Integrations {
-            "  Edits stay in memory until 'w' writes back to the loaded TOML."
-        } else {
-            "  This tab is read-only; edit values on Thresholds or Integrations."
-        };
+    let line2 = if matches!(
+        overlay.tab(),
+        SettingsTab::Thresholds | SettingsTab::Integrations | SettingsTab::Parameters
+    ) {
+        "  Edits stay in memory until 'w' writes back to the loaded TOML."
+    } else {
+        "  This tab is read-only reference."
+    };
     vec![Line::from(line1), Line::from(line2)]
 }
 

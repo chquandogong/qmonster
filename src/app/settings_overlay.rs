@@ -8,6 +8,7 @@ use crate::app::keymap::rect_contains;
 use crate::ui::settings::{
     SettingsOverlay, SettingsTab, settings_close_button_rect, settings_field_at_with_scroll,
     settings_integration_field_at_with_scroll, settings_max_scroll, settings_modal_rects,
+    settings_parameter_field_at_with_scroll, settings_parameter_field_line_index,
     settings_tab_index_at, settings_visible_body_rows,
 };
 
@@ -96,14 +97,16 @@ pub fn handle_settings_overlay_key_with_viewport(
         KeyCode::PageDown if !editing => overlay.page_down(page_rows, max_scroll),
         KeyCode::Home if !editing => overlay.scroll_top(),
         KeyCode::End if !editing => overlay.scroll_bottom(max_scroll),
-        KeyCode::Up if !editing => move_selection_up(overlay),
-        KeyCode::Down if !editing => move_selection_down(overlay),
-        KeyCode::Left if !editing => move_selection_up(overlay),
-        KeyCode::Right if !editing => move_selection_down(overlay),
+        KeyCode::Up if !editing => move_selection_up(overlay, config, viewport),
+        KeyCode::Down if !editing => move_selection_down(overlay, config, viewport),
+        KeyCode::Left if !editing => move_selection_up(overlay, config, viewport),
+        KeyCode::Right if !editing => move_selection_down(overlay, config, viewport),
         KeyCode::Char('e') if !editing => edit_or_toggle(overlay, config),
         KeyCode::Char(' ') if !editing => {
             if overlay.tab() == SettingsTab::Integrations {
                 overlay.toggle_integration(config);
+            } else if overlay.tab() == SettingsTab::Parameters {
+                let _ = overlay.activate_parameter(config);
             }
         }
         KeyCode::Char('c') if !editing && overlay.tab() == SettingsTab::Thresholds => {
@@ -121,6 +124,8 @@ pub fn handle_settings_overlay_key_with_viewport(
                 let _ = overlay.commit_edit(config);
             } else if overlay.tab() == SettingsTab::Integrations {
                 overlay.toggle_integration(config);
+            } else if overlay.tab() == SettingsTab::Parameters {
+                let _ = overlay.activate_parameter(config);
             } else {
                 overlay.start_edit(config);
             }
@@ -133,25 +138,30 @@ pub fn handle_settings_overlay_key_with_viewport(
 }
 
 fn tab_uses_body_scroll(tab: SettingsTab) -> bool {
-    matches!(
-        tab,
-        SettingsTab::Parameters | SettingsTab::Rules | SettingsTab::Badges
-    )
+    matches!(tab, SettingsTab::Rules | SettingsTab::Badges)
 }
 
-fn move_selection_up(overlay: &mut SettingsOverlay) {
+fn move_selection_up(overlay: &mut SettingsOverlay, config: &QmonsterConfig, viewport: Rect) {
     match overlay.tab() {
         SettingsTab::Thresholds => overlay.prev_field(),
         SettingsTab::Integrations => overlay.prev_integration(),
-        SettingsTab::Parameters | SettingsTab::Rules | SettingsTab::Badges => {}
+        SettingsTab::Parameters => {
+            overlay.prev_parameter();
+            keep_selected_parameter_visible(overlay, config, viewport);
+        }
+        SettingsTab::Rules | SettingsTab::Badges => {}
     }
 }
 
-fn move_selection_down(overlay: &mut SettingsOverlay) {
+fn move_selection_down(overlay: &mut SettingsOverlay, config: &QmonsterConfig, viewport: Rect) {
     match overlay.tab() {
         SettingsTab::Thresholds => overlay.next_field(),
         SettingsTab::Integrations => overlay.next_integration(),
-        SettingsTab::Parameters | SettingsTab::Rules | SettingsTab::Badges => {}
+        SettingsTab::Parameters => {
+            overlay.next_parameter();
+            keep_selected_parameter_visible(overlay, config, viewport);
+        }
+        SettingsTab::Rules | SettingsTab::Badges => {}
     }
 }
 
@@ -159,7 +169,30 @@ fn edit_or_toggle(overlay: &mut SettingsOverlay, config: &mut QmonsterConfig) {
     match overlay.tab() {
         SettingsTab::Thresholds => overlay.start_edit(config),
         SettingsTab::Integrations => overlay.toggle_integration(config),
-        SettingsTab::Parameters | SettingsTab::Rules | SettingsTab::Badges => {}
+        SettingsTab::Parameters => {
+            let _ = overlay.activate_parameter(config);
+        }
+        SettingsTab::Rules | SettingsTab::Badges => {}
+    }
+}
+
+fn keep_selected_parameter_visible(
+    overlay: &mut SettingsOverlay,
+    config: &QmonsterConfig,
+    viewport: Rect,
+) {
+    let Some(row) =
+        settings_parameter_field_line_index(overlay, config, overlay.selected_parameter())
+    else {
+        return;
+    };
+    let visible = settings_visible_body_rows(viewport).max(1);
+    let top = overlay.scroll_offset();
+    let bottom = top.saturating_add(visible.saturating_sub(1));
+    if row < top {
+        overlay.set_scroll_offset(row);
+    } else if row > bottom {
+        overlay.set_scroll_offset(row.saturating_sub(visible.saturating_sub(1)));
     }
 }
 
@@ -208,6 +241,18 @@ pub fn handle_settings_overlay_mouse(
             {
                 overlay.select_integration(field);
                 overlay.toggle_integration(config);
+            } else if overlay.tab() == SettingsTab::Parameters
+                && let Some(field) = settings_parameter_field_at_with_scroll(
+                    overlay,
+                    config,
+                    rects.body,
+                    event.column,
+                    event.row,
+                    overlay.scroll_offset(),
+                )
+            {
+                overlay.select_parameter(field);
+                keep_selected_parameter_visible(overlay, config, viewport);
             }
         }
         MouseEventKind::ScrollUp
@@ -245,6 +290,20 @@ pub fn handle_settings_overlay_mouse(
                 && rect_contains(rects.body, event.column, event.row) =>
         {
             overlay.next_integration();
+        }
+        MouseEventKind::ScrollUp
+            if overlay.tab() == SettingsTab::Parameters
+                && rect_contains(rects.body, event.column, event.row) =>
+        {
+            overlay.prev_parameter();
+            keep_selected_parameter_visible(overlay, config, viewport);
+        }
+        MouseEventKind::ScrollDown
+            if overlay.tab() == SettingsTab::Parameters
+                && rect_contains(rects.body, event.column, event.row) =>
+        {
+            overlay.next_parameter();
+            keep_selected_parameter_visible(overlay, config, viewport);
         }
         _ => {}
     }

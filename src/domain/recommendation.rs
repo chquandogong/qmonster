@@ -133,6 +133,13 @@ impl RequestedEffect {
 /// Cross-pane advisory. Emitted by `policy::Engine::evaluate_cross_pane`
 /// when a rule observes overlap/concurrency across two or more panes.
 /// Rendered in the alert queue alongside `SystemNotice`.
+///
+/// `paths` carries the absolute file paths the finding is keyed on. For
+/// `ConcurrentFileEdit` this is the file (or files) the panes have both
+/// touched; the event loop reads it to populate
+/// `AnomalyHistory.cross_pane_edit_paths` so the
+/// `CrossPaneEditCluster` anomaly detector has real input. Other
+/// variants leave it empty until they need a structured payload.
 #[derive(Debug, Clone)]
 pub struct CrossPaneFinding {
     pub kind: CrossPaneKind,
@@ -142,6 +149,7 @@ pub struct CrossPaneFinding {
     pub severity: Severity,
     pub source_kind: SourceKind,
     pub suggested_command: Option<String>,
+    pub paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -305,6 +313,7 @@ mod tests {
             severity: Severity::Warning,
             source_kind: SourceKind::Estimated,
             suggested_command: None,
+            paths: Vec::new(),
         };
         assert_eq!(f.kind, CrossPaneKind::ConcurrentMutatingWork);
         assert_eq!(f.anchor_pane_id, "%1");

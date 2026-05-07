@@ -1494,6 +1494,7 @@ mod tests {
             severity: Severity::Warning,
             source_kind: SourceKind::Estimated,
             suggested_command: Some("# coordinate via research pane".into()),
+            paths: Vec::new(),
         });
         let items = collect_items(
             &[],
@@ -1577,6 +1578,7 @@ mod tests {
             severity: Severity::Warning,
             source_kind: SourceKind::Estimated,
             suggested_command: None,
+            paths: Vec::new(),
         });
         let fresh = HashSet::new();
         let times = HashMap::new();
