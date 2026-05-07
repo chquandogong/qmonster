@@ -851,6 +851,11 @@ the TTL "ignored" classifier for the same `(pane_id, action)`. The TUI
 adds an `i` Token Insights overlay that reads the configured SQLite
 window, reuses the CLI report formatter, supports `r` refresh, and
 surfaces action ledger counts including hidden and ignored.
+The follow-up discoverability pass keeps the operator entry points
+aligned: footer/help advertise `s` snapshot and `n` Anomaly Events,
+Provider Setup names the downstream `m` Metrics / `n` Anomaly Events /
+`i` Token Insights surfaces, and the Anomaly Events modal exposes the
+same `[x]` close affordance as the other overlays.
 
 **v1.47.0 (Phase 7 v3 c — closes Phase 7):** SQLite persistence for
 anomaly events and per-pane history. Two new tables in `audit.db`:

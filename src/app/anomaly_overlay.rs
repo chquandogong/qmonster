@@ -3,7 +3,7 @@
 //! (returns `true` when the key is consumed).
 
 use crate::ui::anomaly_overlay::AnomalyOverlay;
-use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
 pub fn handle_anomaly_overlay_key(
@@ -50,10 +50,12 @@ pub fn handle_anomaly_overlay_mouse(
             overlay.scroll_up();
             true
         }
-        MouseEventKind::Down(_) => {
-            let inside_x = event.column >= viewport.x && event.column < viewport.x + viewport.width;
-            let inside_y = event.row >= viewport.y && event.row < viewport.y + viewport.height;
-            if !(inside_x && inside_y) {
+        MouseEventKind::Down(MouseButton::Left) => {
+            let area = crate::ui::anomaly_overlay::anomaly_modal_area(viewport);
+            let close = crate::ui::dashboard::close_button_rect(area);
+            if crate::app::keymap::rect_contains(close, event.column, event.row)
+                || !crate::app::keymap::rect_contains(area, event.column, event.row)
+            {
                 overlay.close();
                 return true;
             }
@@ -194,6 +196,25 @@ mod tests {
         };
         assert!(!handle_anomaly_overlay_mouse(&mut o, viewport, 5, event));
         assert!(o.is_open());
+    }
+
+    #[test]
+    fn mouse_click_on_close_button_closes() {
+        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+        let mut o = AnomalyOverlay::new();
+        o.open();
+        let viewport = Rect::new(0, 0, 100, 40);
+        let area = crate::ui::anomaly_overlay::anomaly_modal_area(viewport);
+        let close = crate::ui::dashboard::close_button_rect(area);
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: close.x,
+            row: close.y,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert!(handle_anomaly_overlay_mouse(&mut o, viewport, 5, event));
+        assert!(!o.is_open());
     }
 
     #[test]

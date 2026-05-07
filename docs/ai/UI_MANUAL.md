@@ -15,8 +15,10 @@
   로 Alerts 영역을 줄이거나 키우고, `/`로 split 비율을 한 단계씩
   순환하며, `=`로 기본 비율로 되돌립니다.
 - **Footer**: 현재 focus, Alerts/Panes split 비율, 주요 조작 키를 보여줍니다.
-- **Overlay**: `t`로 target picker, `S`로 settings, `?`로 help,
-  footer 오른쪽 아래 버전 배지를 클릭하면 Git overlay가 열립니다.
+- **Overlay**: `t`로 target picker, `S`로 settings, `P`로 provider setup,
+  `m`/`n`/`a`/`i`로 Metrics / Anomaly Events / Pending Actions /
+  Token Insights overlay, `?`로 help, footer 오른쪽 아래 버전 배지를
+  클릭하면 Git overlay가 열립니다.
 
 ## 2. Alerts 읽는 법
 
@@ -364,6 +366,9 @@ side_effects (N):
 - `m`: Metrics overlay 토글. ↑/↓ 또는 j/k로 비교 테이블의 pane을 선택하면
   아래 시계열 영역이 그 pane을 따라갑니다. m을 다시 누르거나 Esc / q /
   [x] 클릭으로 닫습니다.
+- `n`: Anomaly Events overlay 토글. ↑/↓ 또는 j/k로 event row를 스크롤하고,
+  `h`로 Ring/History view를 전환합니다. n을 다시 누르거나 Esc / q /
+  [x] 클릭으로 닫습니다.
 - `i`: Token Insights overlay 토글. 현재 `[insights] default_window_secs`
   창의 recommendation lifecycle / cache / action ledger를 SQLite에서 읽어
   보여줍니다. overlay 안에서 `r`은 즉시 refresh, ↑/↓ 또는 j/k와 mouse wheel은
@@ -412,9 +417,12 @@ side_effects (N):
   warning/critical 값을 조정하고, `Integrations`는
   `[provider_setup] claude_sidefile` 및 `codex_app_server`를
   `Space` / `e` / `Enter` 또는 마우스 클릭으로 토글합니다.
-  `Parameters`는 현재 주요 설정값과 기본값 차이를 보여주며,
-  `Rules`는 cache / quota / reset / memory / security 정책이 발동하는
-  조건을 읽기 전용으로 보여줍니다. `Badges`는 `CTX`, `COST`,
+  `Parameters`는 현재 주요 설정값과 기본값 차이를 보여주며, 여기에는
+  `[insights]` ignored/default window, `[anomaly]` retention/promote,
+  `[reset]` snapshot/wait threshold, `[provider_setup]` 상태가 포함됩니다.
+  `Rules`는 cache / quota / reset / memory / security / insights TTL /
+  anomaly detector 정책이 발동하는 조건을 읽기 전용으로 보여줍니다.
+  `Badges`는 `CTX`, `COST`,
   `TOKENS`, `CACHE`, `RESET`, `CALLS`, `token io`, `cache io`와
   `[Official]` / `[Estimate]` / `[Heur]` / `[Qmonster]` source label의
   뜻을 설명합니다. modal 오른쪽 위 `[x]`를 클릭하거나
@@ -430,6 +438,9 @@ side_effects (N):
   `~/.codex/config.toml`, `~/.gemini/settings.json`의 존재 여부와
   핵심 필드(예: `cache_read_input_tokens` export, `ui.footer.*`
   boolean) 상태; (2) 권장 설정 스니펫 — 복붙 가능한 텍스트로 렌더됩니다.
+  Provider Setup에서 연결한 telemetry는 `m` Metrics, `n` Anomaly Events,
+  `i` Token Insights 표면의 입력 품질을 높입니다. 관련 threshold,
+  retention, insight window는 `S` Settings에서 확인합니다.
   - **Claude 탭**: cache 비율 계산이 포함된 추천 `statusline.sh` (bash).
     sidefile JSON export 블록
     (`~/.local/share/ai-cli-status/claude/<session_id>.json`) 포함 여부는
@@ -898,10 +909,10 @@ Press `n` to open the Anomaly Events overlay. Shows the last 100
 `AnomalySignal`s recorded this session, newest first, with columns:
 Time / Pane / Kind / Conf / Promoted / Reason.
 
-- `n` (or `Esc` / `q`): close.
+- `n` (or `Esc` / `q` / `[x]`): close.
 - `Up` / `Down` (or `j` / `k`): scroll one row.
 - Mouse wheel: scroll.
-- Click outside the overlay: close.
+- Click `[x]` or outside the overlay: close.
 - `h`: toggle between Ring view (this session, in-memory) and History view (last 200 from disk).
 
 **View modes:**

@@ -26,6 +26,12 @@ Official
 `mission-spec validate .` is still unavailable locally because
 `mission-spec` is not installed, so `scripts/verify-shared.sh` falls
 back to the lite ledger-structure check after cargo checks.
+Latest focused verification (2026-05-07): `cargo fmt --all --check`,
+`git diff --check`, `cargo test --all-targets`, and
+`cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
+pass for the Phase 8 footer/help/S/P/anomaly discoverability pass
+(1211 lib tests plus CLI, event-loop, false-positive, idle-state,
+insights-report, and store-insights integration suites).
 
 ## Planning-phase gates (Phase 0)
 
@@ -315,6 +321,12 @@ through_sqlite` test in `src/store/audit.rs`)
       report overlay; `r` refreshes; `Esc`/`q`/`i` close. The overlay
       uses the CLI report formatter so situation, cache, timeline, and
       action-ledger labels stay aligned.
+- [x] Token optimization discoverability: footer/help list `s` snapshot,
+      `n` Anomaly Events, `m` Metrics, `a` Pending Actions, and `i`
+      Token Insights in a stable cluster; `S` Settings documents
+      `[insights]`, `[anomaly]`, `[reset]`, and `[provider_setup]`
+      surfaces; `P` Provider Setup states that configured telemetry
+      feeds `m`/`n`/`i`; Anomaly Events supports `[x]` close parity.
 
 ## Non-functional checks (all phases)
 
@@ -362,6 +374,6 @@ through_sqlite` test in `src/store/audit.rs`)
 
 | Version | Scope                                                 | Gates passed                                                                         |
 | ------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| v1.48.0 | Token Insights Phase 8 runtime writer + `i` overlay   | cargo fmt --check + clippy + test --all-targets (1206 lib tests + integration suites) |
+| v1.48.x | Token Insights Phase 8 + UI discoverability           | cargo fmt --check + clippy + test --all-targets (1211 lib tests + integration suites) |
 | v1.47.0 | Phase 7 v3 (c): SQLite persistence (closes Phase 7)   | cargo fmt + clippy + test --all-targets (lib ~1200, integration 60); SBOM diff guard |
 | v1.46.0 | Phase 7 v3 (a+b): per-kind promotion gate + n overlay | cargo fmt + clippy + test --all-targets (lib ~1162, integration 58); SBOM diff guard |

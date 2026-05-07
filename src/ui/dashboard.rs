@@ -799,7 +799,7 @@ fn footer_chip_span(
 /// counter chip slot) and by `footer_text` (the legacy unit-tested
 /// shape that pins `p accept` / `d dismiss` placement).
 fn footer_keys_text() -> &'static str {
-    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} m metrics \u{00b7} a actions \u{00b7} i insights \u{00b7} ? help \u{00b7} q quit"
+    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} m metrics \u{00b7} n anomalies \u{00b7} a actions \u{00b7} i insights \u{00b7} ? help \u{00b7} q quit"
 }
 
 /// Pure footer-line builder. Extracted from `render_footer` in v1.10.2
@@ -882,7 +882,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "Modal [x]",
-            "every overlay (Help / Settings / Provider Setup / Metrics / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
+            "every overlay (Help / Settings / Provider Setup / Metrics / Anomaly Events / Pending Actions / Token Insights / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
         ),
         ("Tab", "switch focus between alerts and pane list"),
         ("Up / Down", "move one item in the focused list"),
@@ -905,6 +905,10 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         (
             "m",
             "open the Metrics overlay (per-pane card layout); ↑/↓ scroll the body; [ / ] resize the modal; = reset size + position to default; drag the title row to move the modal (left/top hard bound, right/bottom soft bound); m again, Esc, q, or [x] click to close",
+        ),
+        (
+            "n",
+            "open the Anomaly Events overlay; ↑/↓ scroll, h toggles Ring/History, n again or Esc/q/[x] close",
         ),
         (
             "a",
@@ -976,7 +980,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
 
     lines.extend(help_wrapped_detail_lines(
         "S",
-        "open the settings overlay (Thresholds / Integrations / Parameters / Rules / Badges); press 'w' inside to write back to the loaded TOML; press S again (when not editing), Esc, q, or click [x] to close",
+        "open the settings overlay (Thresholds / Integrations / Parameters / Rules / Badges; includes [insights], [anomaly], [reset], and [provider_setup] surfaces); press 'w' inside to write back to the loaded TOML; press S again (when not editing), Esc, q, or click [x] to close",
         total_width,
     ));
 
@@ -1454,6 +1458,14 @@ mod tests {
             text.contains("P provider-setup"),
             "footer must advertise the `P provider-setup` overlay key: {text}"
         );
+        assert!(
+            text.contains("s snapshot"),
+            "footer must advertise the `s snapshot` key: {text}"
+        );
+        assert!(
+            text.contains("n anomalies"),
+            "footer must advertise the `n anomalies` overlay key: {text}"
+        );
         // Sanity: existing anchors still present.
         assert!(text.starts_with("focus: alerts"));
         assert!(text.contains("? help"));
@@ -1477,6 +1489,18 @@ mod tests {
         let p_provider_pos = text
             .find("P provider-setup")
             .expect("footer must carry `P provider-setup`");
+        let metrics_pos = text
+            .find("m metrics")
+            .expect("footer must carry `m metrics`");
+        let anomalies_pos = text
+            .find("n anomalies")
+            .expect("footer must carry `n anomalies`");
+        let actions_pos = text
+            .find("a actions")
+            .expect("footer must carry `a actions`");
+        let insights_pos = text
+            .find("i insights")
+            .expect("footer must carry `i insights`");
         let help_pos = text
             .find("? help")
             .expect("footer must keep the `? help` anchor");
@@ -1509,7 +1533,17 @@ mod tests {
             "`P provider-setup` must follow `S settings` (overlay-opener pair)"
         );
         assert!(
-            p_provider_pos < help_pos,
+            p_provider_pos < metrics_pos,
+            "provider setup must precede the operational overlay cluster"
+        );
+        assert!(
+            metrics_pos < anomalies_pos
+                && anomalies_pos < actions_pos
+                && actions_pos < insights_pos,
+            "overlay cluster must stay m metrics -> n anomalies -> a actions -> i insights"
+        );
+        assert!(
+            insights_pos < help_pos,
             "overlay-opener keys must precede `? help` (generic tail)"
         );
     }
@@ -1874,6 +1908,20 @@ mod tests {
     }
 
     #[test]
+    fn help_lists_n_anomaly_events_overlay_key() {
+        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
+        let dump = lines.join("\n");
+        assert!(
+            dump.contains("Anomaly Events overlay"),
+            "Help should list n -> Anomaly Events overlay; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("h toggles Ring/History"),
+            "Help n row should mention the h history toggle; got:\n{dump}"
+        );
+    }
+
+    #[test]
     fn help_documents_action_explainer_for_pdy() {
         // v1.38: p / d / y now route through the Action Explainer
         // modal when `[ux] confirm_actions != never`. Help must call
@@ -1901,6 +1949,10 @@ mod tests {
         assert!(
             dump.contains("Modal [x]") || dump.contains("[x] click target"),
             "Help should mention [x] click on modals; got:\n{dump}"
+        );
+        assert!(
+            dump.contains("Anomaly Events") && dump.contains("Token Insights"),
+            "Help modal [x] row should include newer n/i overlays; got:\n{dump}"
         );
     }
 

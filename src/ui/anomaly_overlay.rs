@@ -2,8 +2,9 @@
 //! visualization. Renders `AnomalyEventsRing` chronologically
 //! (newest first) with `pane_id` column. Read-only; no actions.
 
-use crate::ui::dashboard::centered_rect;
+use crate::ui::dashboard::{centered_rect, close_button_rect};
 use crate::ui::labels::ellipsize;
+use crate::ui::theme;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -113,7 +114,7 @@ impl AnomalyOverlay {
         area: Rect,
         ring: &crate::app::anomaly_events_ring::AnomalyEventsRing,
     ) {
-        let popup_area = centered_rect(80, 70, area);
+        let popup_area = anomaly_modal_area(area);
         frame.render_widget(Clear, popup_area);
 
         let (title, total_count) = match self.view {
@@ -133,6 +134,11 @@ impl AnomalyOverlay {
             ),
         };
         let block = Block::default().borders(Borders::ALL).title(title);
+        let close = Paragraph::new("[x]").style(
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD),
+        );
 
         if total_count == 0 {
             let body_lines = match self.view {
@@ -155,11 +161,13 @@ impl AnomalyOverlay {
                 .block(block)
                 .wrap(Wrap { trim: false });
             frame.render_widget(body, popup_area);
+            frame.render_widget(close, close_button_rect(popup_area));
             return;
         }
 
         let inner = block.inner(popup_area);
         frame.render_widget(block, popup_area);
+        frame.render_widget(close, close_button_rect(popup_area));
 
         let header = format!(
             "{:<8}  {:<6}  {:<22}  {:<6}  {:<8}  {}",
@@ -195,6 +203,10 @@ impl AnomalyOverlay {
         );
         frame.render_widget(List::new(items), layout[1]);
     }
+}
+
+pub fn anomaly_modal_area(viewport: Rect) -> Rect {
+    centered_rect(80, 70, viewport)
 }
 
 fn format_event_row(e: &crate::domain::anomaly::AnomalyEvent, width: usize) -> String {
