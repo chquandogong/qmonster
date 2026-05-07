@@ -488,6 +488,21 @@ where
             )
         };
 
+        // Phase 7 v2 (v1.44.0): promote Warning+ anomalies to Recommendations
+        // and trigger Notify, mirroring F-9b cost-budget pattern.
+        // Edge-triggered dedup is already enforced by eval_anomalies, so each
+        // anomaly emits its Recommendation once per active window naturally.
+        let mut should_notify_anomaly = false;
+        for promoted in
+            crate::policy::rules::anomaly::promote_anomalies_to_recommendations(&anomalies)
+        {
+            should_notify_anomaly |= promoted.severity >= Severity::Warning;
+            out.recommendations.push(promoted);
+        }
+        if should_notify_anomaly && !out.effects.contains(&RequestedEffect::Notify) {
+            out.effects.push(RequestedEffect::Notify);
+        }
+
         reports.push(PaneReport {
             pane_id: pane.pane_id,
             session_name: pane.session_name,

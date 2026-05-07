@@ -2812,3 +2812,141 @@ fn event_loop_anomalies_off_baseline_regression() {
         ctx.anomaly_dedup.keys().collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn event_loop_promotes_warning_anomalies_to_recommendations_and_notify() {
+    // Phase 7 v2 Task 3: verify that promote_anomalies_to_recommendations is
+    // wired into the event loop: Warning+ anomaly signals must appear in
+    // PaneReport.recommendations and RequestedEffect::Notify must fire.
+    //
+    // Strategy: pre-populate ctx.anomaly_history with 3 alternating
+    // identity snapshots — that gives 2 flips, meeting
+    // identity_churn_min_flips=2. The live-path BEFORE push in
+    // run_once_with_target adds a 4th entry; the detector fires
+    // IdentityChurn at High confidence → severity=Warning.
+    // The promote block must then add a Recommendation and Notify effect.
+    use qmonster::app::config::AnomalyConfig;
+    use qmonster::app::event_loop::run_once_with_target;
+    use qmonster::domain::anomaly::AnomalyKind;
+    use qmonster::domain::recommendation::RequestedEffect;
+    use qmonster::policy::rules::anomaly::AnomalyHistory;
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%99", "claude:1:main", "claude", "✦ Idle", false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let mut config = QmonsterConfig::defaults();
+    config.anomaly = AnomalyConfig {
+        enabled: true,
+        window_polls: 5,
+        min_confidence: "medium".to_string(),
+        identity_churn_min_flips: 2,
+        error_burst_threshold: 0.5,
+        cache_discontinuity_drop: 0.30,
+        cross_pane_cluster_min_findings: 3,
+    };
+    let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
+
+    // Pre-populate 3 alternating (provider, path) entries → 2 flips.
+    let mut h = AnomalyHistory::default();
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    h.identity_snapshots
+        .push_back(("Claude".to_string(), "/a".to_string()));
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    ctx.anomaly_history.insert("%99".to_string(), h);
+
+    let (reports, _notices) = run_once_with_target(&mut ctx, Instant::now(), None).expect("run ok");
+
+    let pane_report = reports.iter().find(|r| r.pane_id == "%99").unwrap();
+
+    // The underlying AnomalySignal must still be present (m overlay row).
+    assert!(
+        pane_report
+            .anomalies
+            .iter()
+            .any(|s| s.kind == AnomalyKind::IdentityChurn),
+        "expected IdentityChurn anomaly signal; got: {:?}",
+        pane_report.anomalies
+    );
+
+    // promote_anomalies_to_recommendations must have added the Recommendation.
+    assert!(
+        pane_report
+            .recommendations
+            .iter()
+            .any(|r| r.action == "anomaly: identity churn detected"),
+        "expected 'anomaly: identity churn detected' recommendation; got: {:?}",
+        pane_report.recommendations
+    );
+
+    // Notify must have been pushed (Warning+ severity triggers it).
+    assert!(
+        pane_report.effects.contains(&RequestedEffect::Notify),
+        "expected RequestedEffect::Notify in effects; got: {:?}",
+        pane_report.effects
+    );
+}
+
+#[test]
+fn event_loop_no_promotion_when_anomaly_disabled() {
+    // Phase 7 v2 Task 3: with [anomaly] enabled=false (default), no anomaly-
+    // driven Recommendation or Notify must appear even when history contains
+    // churn-worthy snapshots. Baseline regression guard for Task 6 release.
+    use qmonster::app::event_loop::run_once_with_target;
+    use qmonster::domain::recommendation::RequestedEffect;
+    use qmonster::policy::rules::anomaly::AnomalyHistory;
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%99", "claude:1:main", "claude", "✦ Idle", false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    // Default config — anomaly.enabled is false.
+    let mut ctx = Context::new(
+        QmonsterConfig::defaults(),
+        source,
+        notifier,
+        Box::new(InMemorySink::new()),
+    );
+
+    // Pre-populate the same churn-worthy history as the enabled test.
+    let mut h = AnomalyHistory::default();
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    h.identity_snapshots
+        .push_back(("Claude".to_string(), "/a".to_string()));
+    h.identity_snapshots
+        .push_back(("Codex".to_string(), "/b".to_string()));
+    ctx.anomaly_history.insert("%99".to_string(), h);
+
+    let (reports, _notices) = run_once_with_target(&mut ctx, Instant::now(), None).expect("run ok");
+
+    let pane_report = reports.iter().find(|r| r.pane_id == "%99").unwrap();
+
+    // eval_anomalies returns empty when disabled → no promotion either.
+    assert!(
+        pane_report.anomalies.is_empty(),
+        "PaneReport.anomalies must be empty when anomaly.enabled=false; \
+         got: {:?}",
+        pane_report.anomalies
+    );
+
+    // No anomaly-driven Recommendation should be present.
+    assert!(
+        !pane_report
+            .recommendations
+            .iter()
+            .any(|r| r.action.starts_with("anomaly:")),
+        "no anomaly-driven recommendations when disabled; got: {:?}",
+        pane_report.recommendations
+    );
+
+    // No anomaly-driven Notify either (nothing to promote → no Notify push).
+    assert!(
+        !pane_report.effects.contains(&RequestedEffect::Notify),
+        "no Notify when anomaly disabled and no other Warning+ recommendations; \
+         got: {:?}",
+        pane_report.effects
+    );
+}
