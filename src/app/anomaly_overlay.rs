@@ -477,6 +477,17 @@ mod tests {
         let viewport = Rect::new(0, 0, 100, 40);
         let mut overlay = AnomalyOverlay::new();
         overlay.open();
+        let default_width = overlay.width_pct();
+        let default_height = overlay.height_pct();
+        assert!(handle_anomaly_overlay_key(
+            &mut overlay,
+            0,
+            KeyCode::Char(']')
+        ));
+        let resized_width = overlay.width_pct();
+        let resized_height = overlay.height_pct();
+        assert!(resized_width > default_width);
+        assert!(resized_height > default_height);
         drag_overlay_by(&mut overlay, viewport, 5, 3);
         assert_eq!(overlay.offset_x(), 5);
         assert_eq!(overlay.offset_y(), 3);
@@ -489,6 +500,8 @@ mod tests {
 
         assert_eq!(overlay.offset_x(), 5);
         assert_eq!(overlay.offset_y(), 3);
+        assert_eq!(overlay.width_pct(), resized_width);
+        assert_eq!(overlay.height_pct(), resized_height);
         assert!(overlay.drag_anchor().is_none());
         assert_eq!(overlay.scroll(), 0);
         assert_eq!(
