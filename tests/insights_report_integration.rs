@@ -1,8 +1,11 @@
-use qmonster::insights_report::{format_insights_report_lines, parse_since_arg};
+use qmonster::insights_report::{
+    format_insights_report_lines, parse_since_arg, resolve_insights_paths,
+};
 use qmonster::store::{
     ActionLedgerRow, CacheInsightSummary, InsightsSnapshot, InsightsWindow,
     RecommendationTimelineItem, SituationSummary,
 };
+use tempfile::tempdir;
 
 #[test]
 fn parse_since_accepts_hours_and_days() {
@@ -106,4 +109,16 @@ fn insights_report_renders_available_recommendation_lifecycle() {
     assert!(joined.contains("ignored=3"));
     assert!(joined.contains("lifecycle: recommendation outcomes available"));
     assert!(!joined.contains("correlation unavailable"));
+}
+
+#[test]
+fn resolve_insights_paths_uses_cli_root_without_tmux() {
+    let td = tempdir().unwrap();
+
+    let (paths, source) = resolve_insights_paths(None, Some(td.path()), &[], None).unwrap();
+
+    assert_eq!(paths.root(), td.path());
+    assert_eq!(format!("{source:?}"), "Cli");
+    assert!(paths.root().is_dir());
+    assert!(paths.config_dir().is_dir());
 }

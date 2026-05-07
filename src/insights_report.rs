@@ -1,6 +1,11 @@
+use std::path::Path;
+
 use anyhow::{Context as _, Result};
 
-use crate::store::InsightsSnapshot;
+use crate::app::config::{QmonsterConfig, load_with_local_override};
+use crate::app::path_resolution::{RootSource, default_config_path, pick_root};
+use crate::app::safety_audit::apply_override_with_audit;
+use crate::store::{InMemorySink, InsightsSnapshot, QmonsterPaths};
 
 fn checked_seconds(value: u64, multiplier: u64, unit: &str) -> Result<u64> {
     value
@@ -28,6 +33,60 @@ pub fn parse_since_arg(input: &str) -> Result<u64> {
         anyhow::bail!("--since must be greater than zero");
     }
     Ok(seconds)
+}
+
+pub fn resolve_insights_paths(
+    config_path: Option<&Path>,
+    root: Option<&Path>,
+    set: &[String],
+    env_root: Option<&str>,
+) -> anyhow::Result<(QmonsterPaths, RootSource)> {
+    let default_path = default_config_path(root, env_root);
+    let loaded_config_path = config_path.map(|path| path.to_path_buf()).or_else(|| {
+        if default_path.exists() {
+            Some(default_path.clone())
+        } else {
+            None
+        }
+    });
+    let mut config = match loaded_config_path.as_ref() {
+        Some(path) => {
+            load_with_local_override(path).with_context(|| format!("loading {path:?}"))?
+        }
+        None => QmonsterConfig::defaults(),
+    };
+    let pairs = parse_set_pairs(set)?;
+    if !pairs.is_empty() {
+        let refs: Vec<(&str, &str)> = pairs
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect();
+        let sink = InMemorySink::new();
+        let stats = apply_override_with_audit(&mut config, &refs, &sink);
+        if stats.rejected + stats.unknown > 0 {
+            eprintln!(
+                "qmonster: {} override(s) rejected, {} unknown key(s); see audit log",
+                stats.rejected, stats.unknown
+            );
+        }
+    }
+
+    let resolved = pick_root(root, env_root, &config);
+    let source = resolved.source.clone();
+    let paths = resolved.into_paths();
+    paths.ensure().context("ensure ~/.qmonster layout")?;
+    Ok((paths, source))
+}
+
+fn parse_set_pairs(set: &[String]) -> anyhow::Result<Vec<(String, String)>> {
+    let mut pairs = Vec::new();
+    for kv in set {
+        let Some((key, value)) = kv.split_once('=') else {
+            anyhow::bail!("--set expects key=value, got {kv}");
+        };
+        pairs.push((key.trim().into(), value.trim().into()));
+    }
+    Ok(pairs)
 }
 
 pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> {
