@@ -216,6 +216,7 @@ where
                 cache: &ctx.config.cache,
                 reset: &ctx.config.reset,
                 profile_switch: &ctx.config.profile_switch,
+                anomaly: &ctx.config.anomaly,
                 provider: resolved.identity.provider,
                 confidence: resolved.confidence,
             },

@@ -66,6 +66,22 @@ pub struct PolicyGates {
     /// auto-actuates the matching `Recommendation` once per
     /// `(pane_id, quota_kind, window_id)`. Mirrors `[reset] auto_snapshot`.
     pub reset_auto_snapshot: bool,
+    /// Phase 7 v1 (v1.43.0): when `false`, `eval_anomalies` returns
+    /// an empty Vec immediately. Mirrors `[anomaly] enabled`.
+    pub anomaly_enabled: bool,
+    /// Rolling-window length for every detector.
+    pub anomaly_window_polls: usize,
+    /// Minimum confidence for a detector signal to reach `PaneReport`.
+    pub anomaly_min_confidence: crate::domain::anomaly::AnomalyConfidence,
+    /// IdentityChurn detector: minimum (provider, path) flips inside
+    /// `anomaly_window_polls`.
+    pub anomaly_identity_churn_min_flips: usize,
+    /// ErrorBurst detector: minimum error rate over the window.
+    pub anomaly_error_burst_threshold: f32,
+    /// CacheDiscontinuity detector: minimum cache_hit_ratio drop.
+    pub anomaly_cache_discontinuity_drop: f32,
+    /// CrossPaneEditCluster detector: minimum same-path findings.
+    pub anomaly_cross_pane_cluster_min_findings: usize,
     /// Phase D D1 (v1.17.0): opt-in cross-window concurrent-work
     /// detection. When `true`, the cross-pane rule emits
     /// `CrossPaneKind::CrossWindowConcurrentWork` for groups whose panes
@@ -146,6 +162,13 @@ impl Default for PolicyGates {
             reset_snapshot_pressure: 0.50,
             reset_snapshot_eta_secs: 5 * 60,
             reset_auto_snapshot: false,
+            anomaly_enabled: false,
+            anomaly_window_polls: 20,
+            anomaly_min_confidence: crate::domain::anomaly::AnomalyConfidence::Medium,
+            anomaly_identity_churn_min_flips: 3,
+            anomaly_error_burst_threshold: 0.5,
+            anomaly_cache_discontinuity_drop: 0.30,
+            anomaly_cross_pane_cluster_min_findings: 3,
             cross_window_findings: false,
             identity_drift_findings: false,
             cross_pane_file_findings: false,
@@ -172,8 +195,17 @@ pub struct PolicyGateInputs<'a> {
     pub cache: &'a crate::app::config::CacheConfig,
     pub reset: &'a crate::app::config::ResetConfig,
     pub profile_switch: &'a crate::app::config::ProfileSwitchConfig,
+    pub anomaly: &'a crate::app::config::AnomalyConfig,
     pub provider: crate::domain::identity::Provider,
     pub confidence: IdentityConfidence,
+}
+
+fn parse_min_confidence(s: &str) -> crate::domain::anomaly::AnomalyConfidence {
+    match s {
+        "low" => crate::domain::anomaly::AnomalyConfidence::Low,
+        "high" => crate::domain::anomaly::AnomalyConfidence::High,
+        _ => crate::domain::anomaly::AnomalyConfidence::Medium, // fallback for "medium" or unknown
+    }
 }
 
 impl PolicyGates {
@@ -187,6 +219,7 @@ impl PolicyGates {
             cache,
             reset,
             profile_switch,
+            anomaly,
             provider,
             confidence,
         } = inputs;
@@ -219,6 +252,13 @@ impl PolicyGates {
             reset_snapshot_pressure: reset.snapshot_pressure_threshold,
             reset_snapshot_eta_secs: reset.snapshot_eta_secs,
             reset_auto_snapshot: reset.auto_snapshot,
+            anomaly_enabled: anomaly.enabled,
+            anomaly_window_polls: anomaly.window_polls,
+            anomaly_min_confidence: parse_min_confidence(&anomaly.min_confidence),
+            anomaly_identity_churn_min_flips: anomaly.identity_churn_min_flips,
+            anomaly_error_burst_threshold: anomaly.error_burst_threshold,
+            anomaly_cache_discontinuity_drop: anomaly.cache_discontinuity_drop,
+            anomaly_cross_pane_cluster_min_findings: anomaly.cross_pane_cluster_min_findings,
             cross_window_findings: security.cross_window_findings,
             identity_drift_findings: security.identity_drift_findings,
             cross_pane_file_findings: security.cross_pane_file_findings,
@@ -329,6 +369,13 @@ mod tests {
             reset_snapshot_pressure: 0.50,
             reset_snapshot_eta_secs: 5 * 60,
             reset_auto_snapshot: false,
+            anomaly_enabled: false,
+            anomaly_window_polls: 20,
+            anomaly_min_confidence: crate::domain::anomaly::AnomalyConfidence::Medium,
+            anomaly_identity_churn_min_flips: 3,
+            anomaly_error_burst_threshold: 0.5,
+            anomaly_cache_discontinuity_drop: 0.30,
+            anomaly_cross_pane_cluster_min_findings: 3,
             cross_window_findings: false,
             identity_drift_findings: false,
             cross_pane_file_findings: false,
@@ -379,6 +426,7 @@ mod tests {
         };
         let reset = crate::app::config::ResetConfig::default();
         let profile_switch = crate::app::config::ProfileSwitchConfig::default();
+        let anomaly = crate::app::config::AnomalyConfig::default();
         let gates = PolicyGates::from_inputs(PolicyGateInputs {
             token: &cfg,
             cost: &cost,
@@ -388,6 +436,7 @@ mod tests {
             cache: &cache,
             reset: &reset,
             profile_switch: &profile_switch,
+            anomaly: &anomaly,
             provider: Provider::Codex,
             confidence: IdentityConfidence::Medium,
         });
@@ -439,6 +488,7 @@ mod tests {
             ..ResetConfig::default()
         };
         let profile_switch = crate::app::config::ProfileSwitchConfig::default();
+        let anomaly = crate::app::config::AnomalyConfig::default();
         let gates = PolicyGates::from_inputs(PolicyGateInputs {
             token: &cfg,
             cost: &cost,
@@ -448,6 +498,7 @@ mod tests {
             cache: &cache,
             reset: &reset,
             profile_switch: &profile_switch,
+            anomaly: &anomaly,
             provider: Provider::Claude,
             confidence: IdentityConfidence::High,
         });
@@ -471,6 +522,7 @@ mod tests {
         let security = SecurityConfig::default();
         let cache = CacheConfig::default();
         let profile_switch = crate::app::config::ProfileSwitchConfig::default();
+        let anomaly = crate::app::config::AnomalyConfig::default();
 
         let reset_on = ResetConfig {
             auto_snapshot: true,
@@ -485,6 +537,7 @@ mod tests {
             cache: &cache,
             reset: &reset_on,
             profile_switch: &profile_switch,
+            anomaly: &anomaly,
             provider: Provider::Claude,
             confidence: IdentityConfidence::High,
         });
@@ -503,6 +556,7 @@ mod tests {
             cache: &cache,
             reset: &reset_off,
             profile_switch: &profile_switch,
+            anomaly: &anomaly,
             provider: Provider::Claude,
             confidence: IdentityConfidence::High,
         });
@@ -526,6 +580,7 @@ mod tests {
         let cache = CacheConfig::default();
         let reset = crate::app::config::ResetConfig::default();
         let profile_switch = crate::app::config::ProfileSwitchConfig::default();
+        let anomaly = crate::app::config::AnomalyConfig::default();
         let inputs_for = |provider: Provider| PolicyGateInputs {
             token: &cfg,
             cost: &cost,
@@ -535,6 +590,7 @@ mod tests {
             cache: &cache,
             reset: &reset,
             profile_switch: &profile_switch,
+            anomaly: &anomaly,
             provider,
             confidence: IdentityConfidence::High,
         };
@@ -590,6 +646,7 @@ mod tests {
         let cache = CacheConfig::default();
         let reset = crate::app::config::ResetConfig::default();
         let profile_switch = crate::app::config::ProfileSwitchConfig::default();
+        let anomaly = crate::app::config::AnomalyConfig::default();
         let inputs_for = |provider: Provider| PolicyGateInputs {
             token: &cfg,
             cost: &cost,
@@ -599,6 +656,7 @@ mod tests {
             cache: &cache,
             reset: &reset,
             profile_switch: &profile_switch,
+            anomaly: &anomaly,
             provider,
             confidence: IdentityConfidence::High,
         };
@@ -691,5 +749,136 @@ mod tests {
             check_send_gate(ActionsMode::SafeAuto, false),
             PromptSendGate::AutoSendOff
         );
+    }
+
+    #[test]
+    fn from_inputs_propagates_anomaly_config() {
+        use crate::app::config::{
+            CacheConfig, ContextConfig, CostConfig, QuotaConfig, ResetConfig, SecurityConfig,
+            TokenConfig,
+        };
+        use crate::domain::anomaly::AnomalyConfidence;
+        use crate::domain::identity::Provider;
+        let cfg = TokenConfig::default();
+        let cost = CostConfig::default();
+        let context = ContextConfig::default();
+        let quota = QuotaConfig::default();
+        let security = SecurityConfig::default();
+        let cache = CacheConfig::default();
+        let reset = ResetConfig::default();
+        let profile_switch = crate::app::config::ProfileSwitchConfig::default();
+        let anomaly = crate::app::config::AnomalyConfig {
+            enabled: true,
+            window_polls: 25,
+            min_confidence: "high".to_string(),
+            identity_churn_min_flips: 4,
+            error_burst_threshold: 0.7,
+            cache_discontinuity_drop: 0.40,
+            cross_pane_cluster_min_findings: 5,
+        };
+
+        let gates = PolicyGates::from_inputs(PolicyGateInputs {
+            token: &cfg,
+            cost: &cost,
+            context: &context,
+            quota: &quota,
+            security: &security,
+            cache: &cache,
+            reset: &reset,
+            profile_switch: &profile_switch,
+            anomaly: &anomaly,
+            provider: Provider::Claude,
+            confidence: IdentityConfidence::High,
+        });
+        assert!(gates.anomaly_enabled);
+        assert_eq!(gates.anomaly_window_polls, 25);
+        assert_eq!(gates.anomaly_min_confidence, AnomalyConfidence::High);
+        assert_eq!(gates.anomaly_identity_churn_min_flips, 4);
+        assert!((gates.anomaly_error_burst_threshold - 0.7).abs() < f32::EPSILON);
+        assert!((gates.anomaly_cache_discontinuity_drop - 0.40).abs() < f32::EPSILON);
+        assert_eq!(gates.anomaly_cross_pane_cluster_min_findings, 5);
+    }
+
+    #[test]
+    fn from_inputs_min_confidence_string_maps_to_medium_for_invalid() {
+        use crate::app::config::{
+            CacheConfig, ContextConfig, CostConfig, QuotaConfig, ResetConfig, SecurityConfig,
+            TokenConfig,
+        };
+        use crate::domain::anomaly::AnomalyConfidence;
+        use crate::domain::identity::Provider;
+        let cfg = TokenConfig::default();
+        let cost = CostConfig::default();
+        let context = ContextConfig::default();
+        let quota = QuotaConfig::default();
+        let security = SecurityConfig::default();
+        let cache = CacheConfig::default();
+        let reset = ResetConfig::default();
+        let profile_switch = crate::app::config::ProfileSwitchConfig::default();
+        let anomaly = crate::app::config::AnomalyConfig {
+            min_confidence: "garbage".to_string(),
+            ..crate::app::config::AnomalyConfig::default()
+        };
+
+        let gates = PolicyGates::from_inputs(PolicyGateInputs {
+            token: &cfg,
+            cost: &cost,
+            context: &context,
+            quota: &quota,
+            security: &security,
+            cache: &cache,
+            reset: &reset,
+            profile_switch: &profile_switch,
+            anomaly: &anomaly,
+            provider: Provider::Claude,
+            confidence: IdentityConfidence::High,
+        });
+        assert_eq!(
+            gates.anomaly_min_confidence,
+            AnomalyConfidence::Medium,
+            "fallback"
+        );
+    }
+
+    #[test]
+    fn from_inputs_min_confidence_low_and_high() {
+        use crate::app::config::{
+            CacheConfig, ContextConfig, CostConfig, QuotaConfig, ResetConfig, SecurityConfig,
+            TokenConfig,
+        };
+        use crate::domain::anomaly::AnomalyConfidence;
+        use crate::domain::identity::Provider;
+        let cfg = TokenConfig::default();
+        let cost = CostConfig::default();
+        let context = ContextConfig::default();
+        let quota = QuotaConfig::default();
+        let security = SecurityConfig::default();
+        let cache = CacheConfig::default();
+        let reset = ResetConfig::default();
+        let profile_switch = crate::app::config::ProfileSwitchConfig::default();
+
+        for (s, expected) in [
+            ("low", AnomalyConfidence::Low),
+            ("high", AnomalyConfidence::High),
+        ] {
+            let anomaly = crate::app::config::AnomalyConfig {
+                min_confidence: s.to_string(),
+                ..crate::app::config::AnomalyConfig::default()
+            };
+            let gates = PolicyGates::from_inputs(PolicyGateInputs {
+                token: &cfg,
+                cost: &cost,
+                context: &context,
+                quota: &quota,
+                security: &security,
+                cache: &cache,
+                reset: &reset,
+                profile_switch: &profile_switch,
+                anomaly: &anomaly,
+                provider: Provider::Claude,
+                confidence: IdentityConfidence::High,
+            });
+            assert_eq!(gates.anomaly_min_confidence, expected, "mapping for {s}");
+        }
     }
 }
