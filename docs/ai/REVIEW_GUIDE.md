@@ -109,6 +109,18 @@ sections:
 - Numbers cited in a review carry `(official)` / `(heuristic)` /
   `(estimated)` labels.
 - Screenshots / UI evidence go under `.docs/final/` for the round.
+- **Empty UI surfaces are not bugs by default.** Before flagging
+  "metric X is missing on pane Y" or "detector Z never fires for
+  provider P," consult the v1.49.0 provider-coverage matrix in
+  `docs/ai/ARCHITECTURE.md` (section "Provider-coverage matrix").
+  An empty chip can mean (a) not collected this tick — operator
+  re-checks in 30s; (b) no upstream surface today — structural and
+  documented; (c) operator has not curated `pricing.toml` for that
+  `(provider, model)` pair — single-line config edit. Reviews that
+  call (b)/(c) "broken" without citing the matrix should be returned
+  as `rework`. When the matrix itself is wrong, the matrix update
+  must land in the same commit as the new adapter / sidefile /
+  app-server wiring — never as a follow-up.
 
 ## 7. What reviewers should NOT do
 
