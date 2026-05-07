@@ -91,6 +91,26 @@ v1.50.0 layers five themes on top of the v1.49.0 baseline. It does not change pr
    and now visible in the `n` overlay + persisted to
    `anomaly_events.reason`. Lib tests 1289 → 1292 (+3).
 
+3. **Gemini adapter cost activation** (`3353707`). The audit's
+   "cost is Claude/Codex-only by code, not just by config" finding.
+   The Gemini adapter has parsed model + input + output tokens since
+   v1.41.x but never called `pricing.lookup()` — even when the
+   operator filled in real Gemini rates in `pricing.toml`, the COST
+   badge stayed blank and the `cost_slope` anomaly detector never
+   fired on Gemini panes. Added the parallel cost branch from
+   `src/adapters/codex.rs:121-133`: when the pane carries
+   `model_name` + both token counts AND `cost_usd` is `None`, look
+   the model up in `ctx.pricing` and compute
+   `(input × rate + output × rate) / 1M` with `SourceKind::Estimated`.
+   Two contract tests cover the activation path (status table model +
+   /stats model tokens + NamedTempFile pricing.toml → cost = $3.75)
+   and the v1.49.0 baseline (empty PricingTable → cost_usd stays
+   None). Pairs with #4 above (`config/pricing.example.toml` Gemini
+   rows): template seeds the edit path, adapter honours the rates.
+   Provider-coverage matrix flips Gemini `cost_slope` from "deferred
+   until pricing is curated" to "operator-tunable". Lib tests
+   1292 → 1294 (+2).
+
 ## Known External State
 
 - v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 are all published (workflow runs `25159598038` / `25305201597` / `25311723861` / `25421376056` / `25424418078` / `25472444159` / `25474748447` / `25476534645` / `25478893257` / `25485133895` / `25490555532` / `25491535211` / `25498621086` / `25505209461` all completed success). GitHub Release pages live at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50}.0`; `npm view qmonster versions` lists `1.37.0` through `1.50.0` with `dist-tags.latest = 1.50.0`.
