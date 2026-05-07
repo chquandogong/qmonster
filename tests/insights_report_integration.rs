@@ -81,7 +81,9 @@ fn insights_report_renders_action_ledger() {
     assert!(joined.contains("ignored=n/a"));
     assert!(!joined.contains("ignored=0"));
     assert!(joined.contains("Evidence"));
-    assert!(joined.contains("source tables: audit_events, token_usage_samples, cost_usage_events"));
+    assert!(joined.contains(
+        "source tables: audit_events, token_usage_samples, cost_usage_events (when present)"
+    ));
 }
 
 #[test]

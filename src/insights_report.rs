@@ -172,7 +172,10 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
     }
     lines.push(String::new());
     lines.push("Evidence".into());
-    lines.push("  source tables: audit_events, token_usage_samples, cost_usage_events".into());
+    lines.push(
+        "  source tables: audit_events, token_usage_samples, cost_usage_events (when present)"
+            .into(),
+    );
     lines.push(if snapshot.ignored_available {
         "  lifecycle: recommendation outcomes available".into()
     } else {
