@@ -1713,6 +1713,21 @@ fn build_parameter_body_lines(
             config.anomaly.cross_pane_cluster_min_findings.to_string(),
             defaults.anomaly.cross_pane_cluster_min_findings.to_string(),
         ),
+        setting_row(
+            "anomaly cost_slope_usd_per_hour",
+            format!("{:.2}", config.anomaly.cost_slope_usd_per_hour),
+            format!("{:.2}", defaults.anomaly.cost_slope_usd_per_hour),
+        ),
+        setting_row(
+            "anomaly token_slope_input_per_poll",
+            config.anomaly.token_slope_input_per_poll.to_string(),
+            defaults.anomaly.token_slope_input_per_poll.to_string(),
+        ),
+        setting_row(
+            "anomaly memory_growth_mb",
+            format!("{:.0}", config.anomaly.memory_growth_mb),
+            format!("{:.0}", defaults.anomaly.memory_growth_mb),
+        ),
         Line::from(""),
         reference_header_line("Cost / Profile"),
         setting_row(
@@ -1919,6 +1934,34 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
             format!(
                 "fires when >= {} ConcurrentFileEdit findings target the same path in {} polls; promotes to Recommendation when confidence=High",
                 config.anomaly.cross_pane_cluster_min_findings, config.anomaly.window_polls,
+            ),
+        ),
+        rule_row(
+            "anomaly: CostSlope",
+            format!(
+                "fires when cost slope >= {:.2} USD/hour over {} polls; promotes to Recommendation when confidence=High",
+                config.anomaly.cost_slope_usd_per_hour, config.anomaly.window_polls,
+            ),
+        ),
+        rule_row(
+            "anomaly: TokenSlope",
+            format!(
+                "fires when input_tokens slope >= {} per poll over {} polls; promotes to Recommendation when confidence=High",
+                config.anomaly.token_slope_input_per_poll, config.anomaly.window_polls,
+            ),
+        ),
+        rule_row(
+            "anomaly: MemoryGrowth",
+            format!(
+                "fires when process_memory_mb grows >= {:.0} MB over {} polls; promotes to Recommendation when confidence=High",
+                config.anomaly.memory_growth_mb, config.anomaly.window_polls,
+            ),
+        ),
+        rule_row(
+            "anomaly: SubagentSideEffect",
+            format!(
+                "fires when subagent_hint observed in {} polls AND another anomaly fires (correlation, not attribution); promotes when subagent_hint co-occurs with another anomaly",
+                config.anomaly.window_polls,
             ),
         ),
         Line::from(""),
@@ -3248,8 +3291,68 @@ mod tests {
         let expected_phrase = "promotes to Recommendation when confidence=High";
         let count = rendered.matches(expected_phrase).count();
         assert_eq!(
-            count, 4,
-            "expected 4 anomaly rules with promotion annotation; got {count}: {rendered}"
+            count, 7,
+            "expected 7 anomaly rules with promotion annotation; got {count}: {rendered}"
+        );
+    }
+
+    #[test]
+    fn parameters_tab_shows_v2_anomaly_thresholds() {
+        let config = QmonsterConfig::defaults();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        let lines = build_body_lines(&s, &config);
+        let rendered = rendered_text(&lines);
+        assert!(
+            rendered.contains("anomaly cost_slope_usd_per_hour"),
+            "missing cost_slope_usd_per_hour row: {rendered}"
+        );
+        assert!(
+            rendered.contains("20.00"),
+            "expected 20.00 for cost_slope_usd_per_hour: {rendered}"
+        );
+        assert!(
+            rendered.contains("anomaly token_slope_input_per_poll"),
+            "missing token_slope_input_per_poll row: {rendered}"
+        );
+        assert!(
+            rendered.contains("20000"),
+            "expected 20000 for token_slope_input_per_poll: {rendered}"
+        );
+        assert!(
+            rendered.contains("anomaly memory_growth_mb"),
+            "missing memory_growth_mb row: {rendered}"
+        );
+        assert!(
+            rendered.contains("1024"),
+            "expected 1024 for memory_growth_mb: {rendered}"
+        );
+    }
+
+    #[test]
+    fn rules_tab_shows_v2_anomaly_rows() {
+        let config = QmonsterConfig::defaults();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Rules);
+        let lines = build_body_lines(&s, &config);
+        let rendered = rendered_text(&lines);
+        assert!(
+            rendered.contains("anomaly: CostSlope"),
+            "missing CostSlope: {rendered}"
+        );
+        assert!(
+            rendered.contains("anomaly: TokenSlope"),
+            "missing TokenSlope: {rendered}"
+        );
+        assert!(
+            rendered.contains("anomaly: MemoryGrowth"),
+            "missing MemoryGrowth: {rendered}"
+        );
+        assert!(
+            rendered.contains("anomaly: SubagentSideEffect"),
+            "missing SubagentSideEffect: {rendered}"
         );
     }
 }
