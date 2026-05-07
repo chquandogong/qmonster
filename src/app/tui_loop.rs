@@ -234,6 +234,14 @@ where
                     );
                 })?;
 
+                while let Ok(outcome) = ctx.insights_load_rx.try_recv() {
+                    let label = chrono::Local::now().format("%H:%M:%S").to_string();
+                    insights_overlay.set_snapshot_for(outcome.request_id, outcome.result, label);
+                }
+                if insights_overlay.is_loading() {
+                    insights_overlay.advance_spinner();
+                }
+
                 if event::poll(Duration::from_millis(100))? {
                     match event::read()? {
                         Event::Key(k) if k.kind == KeyEventKind::Press => {

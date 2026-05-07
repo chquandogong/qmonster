@@ -3347,3 +3347,26 @@ fn context_initializes_insights_load_channel_and_request_id() {
     let outcome = ctx.insights_load_rx.recv().unwrap();
     assert_eq!(outcome.request_id, 99);
 }
+
+#[test]
+fn insights_load_channel_supports_try_recv_drain() {
+    let source = FixturePaneSource { panes: vec![] };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    ctx.insights_load_tx
+        .send(qmonster::app::insights_load::InsightsLoadOutcome {
+            request_id: 5,
+            result: Err("nope".into()),
+        })
+        .unwrap();
+
+    let outcome = ctx
+        .insights_load_rx
+        .try_recv()
+        .expect("queued outcome should be available without blocking");
+    assert_eq!(outcome.request_id, 5);
+    assert!(outcome.result.is_err());
+    assert!(ctx.insights_load_rx.try_recv().is_err());
+}
