@@ -1,3 +1,4 @@
+pub mod anomaly_history;
 pub mod archive_fs;
 pub mod audit;
 pub mod cost_usage;
@@ -9,6 +10,7 @@ pub mod snapshots;
 pub(crate) mod sqlite;
 pub mod token_usage;
 
+pub use anomaly_history::{AnomalyHistorySnapshot, push_snapshot_into_history};
 pub use archive_fs::{ArchiveOutcome, ArchiveWriter};
 pub use audit::{AuditRow, SqliteAuditSink};
 pub use cost_usage::{CostBudgetAlert, CostBudgetAlertLevel, CostObservation, SqliteCostUsageSink};
