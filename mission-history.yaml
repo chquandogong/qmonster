@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.42.0 - Phase H: opt-in auto-snapshot at reset boundary ([reset] auto_snapshot)."
+  mission_title: "Qmonster v1.43.0 - Phase 7 v1: anomaly observation surface (AnomalySignal + 5 detectors + m overlay ANOMALIES row)."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 185
-  latest_version: "1.42.0"
+  total_revisions: 186
+  latest_version: "1.43.0"
 
 timeline:
   - change_id: "initial"
@@ -17078,9 +17078,135 @@ timeline:
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
+  - change_id: "v1.43.0-phase-7-v1-anomaly-observation-surface"
+    semantic_version: "1.43.0"
+    change_sequence: 186
+    date: "2026-05-07"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (Qmonster main pane, Sonnet 4.6)"
+    change_type: "minor-feature-release"
+    motivation_type: "operator-directed-feature-addition"
+    persistence: "permanent"
+    intent: >
+      v1.43.0 ships Phase 7 v1: the anomaly observation surface.
+      AnomalySignal, AnomalyKind, AnomalyConfidence, and AnomalyEvidence
+      define the anomaly schema. AnomalyHistory holds per-session
+      edge-triggered dedup state; Context gains anomaly_history and
+      anomaly_dedup fields. PolicyGates gains anomaly_* fields (wired
+      from AnomalyConfig) and PolicyGateInputs.anomaly carries the
+      current PaneReport anomalies into the policy layer. eval_anomalies
+      orchestrates four detectors (detect_error_burst,
+      detect_identity_churn, detect_cache_discontinuity,
+      detect_cross_pane_edit_cluster) with edge-triggered dedup so each
+      anomaly fires only on the rising edge. PaneReport.anomalies
+      surfaces detected anomalies to run_once_with_target. The m overlay
+      pane card gains an ANOMALIES row; Settings overlay gains
+      Parameters, Rules, and Badges rows for [anomaly]; docs updated
+      (UI_MANUAL, ARCHITECTURE, VALIDATION, example.toml). No provider
+      adapter, audit chain, or SignalSet schema changes.
+    intent_ko: >
+      v1.43.0 은 Phase 7 v1 을 출하한다: 이상 관측 표면.
+      AnomalySignal/AnomalyKind/AnomalyConfidence/AnomalyEvidence 가
+      이상 스키마를 정의한다. AnomalyHistory 는 세션별 엣지 트리거
+      중복제거 상태를 보유하고, Context 가 anomaly_history/anomaly_dedup
+      필드를 얻는다. PolicyGates 는 anomaly_* 필드를, PolicyGateInputs 는
+      anomaly 필드를 얻는다. eval_anomalies 가 4 개 검출기를 오케스트레이션
+      하며 엣지 트리거 중복제거로 각 이상은 상승 엣지에서만 발생한다.
+      PaneReport.anomalies 가 검출 결과를 이벤트 루프에 노출한다.
+      m 오버레이 페인 카드에 ANOMALIES 행, Settings 에 Parameters/Rules/Badges
+      행 추가. 프로바이더 어댑터, 감사 체인, SignalSet 스키마 변경 없음.
+    triggered_by: "Operator scoped Phase 7 v1 (anomaly observation surface) as a 14-task implementation sequence (Tasks 1-13 = impl commits, Task 14 = ledger sync). The design spec was committed at docs/superpowers/specs/2026-05-06-phase7-v1-anomaly-overlay-design.md and the plan at docs/superpowers/plans/2026-05-07-phase7-v1-anomaly-observation.md."
+    changes:
+      added:
+        - "src/domain/anomaly.rs: AnomalySignal, AnomalyKind (ErrorBurst/IdentityChurn/CacheDiscontinuity/CrossPaneEditCluster), AnomalyConfidence (High/Medium/Low), AnomalyEvidence struct."
+        - "src/domain/config.rs::AnomalyConfig: [anomaly] section with enabled, min_confidence, and per-detector threshold fields; serde defaults preserve v1.42.0 behavior when section absent."
+        - "src/policy/gates.rs::PolicyGates: anomaly_* fields wired from AnomalyConfig; PolicyGateInputs gains anomaly field carrying current PaneReport anomalies."
+        - "src/app/anomaly_history.rs: AnomalyHistory struct with per-pane edge-triggered dedup (only fires on rising edge per AnomalyKind)."
+        - "src/app/context.rs::Context: anomaly_history and anomaly_dedup fields."
+        - "src/app/eval_anomalies.rs: eval_anomalies orchestrator dispatching to 4 detectors with edge dedup."
+        - "src/domain/detectors/error_burst.rs: detect_error_burst detector."
+        - "src/domain/detectors/identity_churn.rs: detect_identity_churn detector."
+        - "src/domain/detectors/cache_discontinuity.rs: detect_cache_discontinuity detector."
+        - "src/domain/detectors/cross_pane_edit_cluster.rs: detect_cross_pane_edit_cluster detector."
+        - "src/app/event_loop.rs: PaneReport.anomalies field wired from eval_anomalies; run_once_with_target feeds anomalies into PolicyGateInputs."
+        - "src/ui/metrics.rs: ANOMALIES row in the m overlay pane card."
+        - "src/ui/settings.rs: Parameters, Rules, and Badges rows for [anomaly]."
+        - "docs/ai/UI_MANUAL.md: [anomaly] parameter entries and ANOMALIES row description."
+        - "docs/ai/ARCHITECTURE.md: Phase 7 v1 paragraph."
+        - "docs/ai/VALIDATION.md: v1.43.0 test-count reference."
+        - "config/example.toml: [anomaly] section with commented defaults."
+      modified:
+        - ".mission/CURRENT_STATE.md: full refresh for v1.43.0 Phase 7 v1 release."
+        - "package.json: public version surface bumped to 1.43.0."
+        - "VERSION.md, README.md, docs/ai/PROJECT_BRIEF.md, docs/ai/ARCHITECTURE.md: ledger version surfaces synced to v1.43.0."
+        - "mission.yaml + mission-history.yaml: v1.43.0 release ledger sync."
+      removed: []
+    changed_sections:
+      - "src/domain/anomaly.rs"
+      - "src/domain/config.rs"
+      - "src/policy/gates.rs"
+      - "src/app/anomaly_history.rs"
+      - "src/app/context.rs"
+      - "src/app/eval_anomalies.rs"
+      - "src/domain/detectors/"
+      - "src/app/event_loop.rs"
+      - "src/ui/metrics.rs"
+      - "src/ui/settings.rs"
+      - "docs/ai/UI_MANUAL.md"
+      - "docs/ai/ARCHITECTURE.md"
+      - "docs/ai/VALIDATION.md"
+      - "config/example.toml"
+      - "docs/ai/{PROJECT_BRIEF.md,ARCHITECTURE.md}"
+      - "README.md"
+      - "VERSION.md"
+      - "package.json"
+      - "mission.yaml"
+      - "mission-history.yaml"
+      - ".mission/CURRENT_STATE.md"
+    observable_effects:
+      added:
+        - "The m overlay pane card now shows an ANOMALIES row listing active anomaly kinds with confidence labels when any are detected."
+        - "Settings overlay Parameters row documents [anomaly] enabled/min_confidence/threshold fields."
+        - "Settings overlay Rules row describes anomaly edge-triggering and dedup behavior."
+        - "Settings overlay Badges row explains anomaly confidence labels."
+        - "config/example.toml documents the [anomaly] section with descriptive comments."
+      modified:
+        - "Existing behavior is unchanged when [anomaly] enabled = false (the default); the anomaly surface is fully opt-in."
+      removed: []
+    impact_scope:
+      runtime: "eval_anomalies is called once per pane per poll tick when anomaly detection is enabled. No change to provider adapters, audit chain, policy gates set (anomaly_* fields are additive), SignalSet schema, or SQLite schema. AnomalyHistory state is session-local and reset on restart."
+      tests: "1081 lib tests + 54 event-loop integration tests + 18 false-positive regression tests + 6 idle-state regression tests passing at the v1.43.0 release commit (+32 lib tests vs the v1.42.0 baseline of ~1049; +2 event-loop integration tests vs the v1.42.0 baseline of ~52); cargo fmt --all --check, cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args, cargo test --all-targets, git diff --check all green."
+      ledger: "1 new timeline entry (sequence 186); meta total_revisions 185 -> 186, latest_version 1.42.0 -> 1.43.0; minor version bump for Phase 7 v1."
+      npm: "package.json version 1.43.0; CI publication of v1.43.0 follows the same workflow as v1.37.0 through v1.42.0 and remains an external follow-up until verified."
+    breaking: false
+    risk: "low — anomaly detection is entirely opt-in (enabled = false by default). Edge-triggered dedup prevents duplicate firings. No provider adapter, audit chain, or SignalSet schema changes. AnomalyHistory state is session-local."
+    related_commits:
+      - "8857c03 phase 7 v1: AnomalySignal/AnomalyKind/AnomalyConfidence/AnomalyEvidence"
+      - "fbc25b3 phase 7 v1: AnomalyConfig + [anomaly] section"
+      - "ce3e1c4 phase 7 v1: PolicyGates anomaly_* fields + PolicyGateInputs.anomaly"
+      - "b946b69 phase 7 v1: AnomalyHistory + Context.anomaly_history/anomaly_dedup"
+      - "7d2d61b phase 7 v1: detect_identity_churn detector + 4 tests"
+      - "c2a73f8 phase 7 v1: detect_error_burst detector + 3 tests"
+      - "6a6493a phase 7 v1: detect_cache_discontinuity detector + 3 tests"
+      - "29e4fa9 phase 7 v1: detect_cross_pane_edit_cluster detector + 3 tests"
+      - "d50b1d4 phase 7 v1: eval_anomalies orchestrator + edge-triggered dedup"
+      - "ddfe9d2 phase 7 v1: PaneReport.anomalies + event_loop wiring + 2 integration tests"
+      - "32c848f phase 7 v1: m overlay pane card ANOMALIES row"
+      - "b853bd9 phase 7 v1: Settings Parameters/Rules/Badges rows for [anomaly]"
+      - "34ee0a3 phase 7 v1: docs (UI_MANUAL, ARCHITECTURE, VALIDATION, example.toml)"
+      - "b934785 phase 7 v1 plan: anomaly observation surface (v1.43.0)"
+      - "37f8d9e v1.42.0 ledger: fix CURRENT_STATE inaccuracies (audit kind, file paths)"
+      - "9ad204e chore(ledger): backfill v1.42.0 release commit SHA in mission-history.yaml"
+    follow_up:
+      - "Phase 7 v2: promote high-confidence anomalies to Recommendations and Notify-level alerts; add new detector kinds (e.g. token_spike, stall_burst)."
+      - "D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
 evolution_summary:
-  current_phase: "v1.42.0 — Phase H: opt-in auto-snapshot at reset boundary ([reset] auto_snapshot). Adds ResetConfig.auto_snapshot, PolicyGates.reset_auto_snapshot, AutoSnapshotDedup with QuotaKind + floor_to_minute dedup, extract_quota_kind + drift guard, maybe_auto_snapshot orchestrator, Context.auto_snapshot_dedup, run_once_with_target wiring, and Settings overlay rows. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
-  next_phase: "Phase 7 v1 anomaly overlay — spec committed at docs/superpowers/specs/2026-05-06-phase7-v1-anomaly-overlay-design.md; implementation plan needs to be written next cycle. D3 per-subagent token attribution is provider-blocked. Tag protection / ruleset activation is a GitHub Settings task."
+  current_phase: "v1.43.0 — Phase 7 v1: anomaly observation surface. Adds AnomalySignal/AnomalyKind/AnomalyConfidence/AnomalyEvidence schema, AnomalyHistory edge-triggered dedup, 4 detectors (error_burst/identity_churn/cache_discontinuity/cross_pane_edit_cluster), eval_anomalies orchestrator, PolicyGates anomaly_* fields, PaneReport.anomalies event-loop wiring, m overlay ANOMALIES row, and Settings rows. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
+  next_phase: "Phase 7 v2 — promote high-confidence anomalies to Recommendations and Notify-level alerts; add new detector kinds (e.g. token_spike, stall_burst). D3 per-subagent token attribution is provider-blocked. Tag protection / ruleset activation is a GitHub Settings task."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
     - "Token optimization as an architectural pillar"

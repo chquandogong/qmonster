@@ -1,6 +1,6 @@
 mission:
-  version: "1.42.0"
-  title: "Qmonster v1.42.0 - Phase H: opt-in auto-snapshot at reset boundary ([reset] auto_snapshot)."
+  version: "1.43.0"
+  title: "Qmonster v1.43.0 - Phase 7 v1: anomaly observation surface (AnomalySignal + 5 detectors + m overlay ANOMALIES row)."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1741,23 +1741,22 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.42.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, and Phase H are complete. v1.41.0 was the a-overlay polish release; v1.42.0 ships Phase H — opt-in auto-snapshot at the reset boundary behind [reset] auto_snapshot. ResetConfig gains auto_snapshot: bool (default false); PolicyGates.reset_auto_snapshot gates activation; AutoSnapshotDedup (HashMap keyed by (target, QuotaKind)) deduplicates snapshots within a floor_to_minute window; maybe_auto_snapshot orchestrates the full dedup → gate → archive call; Context.auto_snapshot_dedup holds per-session state; run_once_with_target wires maybe_auto_snapshot before returning. No provider adapter, audit schema, or SignalSet schema changes. Settings overlay gained Parameters and Rules rows. package.json is at 1.42.0; the local v1.42.0 tag is created at the release ledger sync commit. CI publication verification for v1.42.0 follows the v1.37/v1.38/v1.39/v1.40/v1.41 workflow path."
+    topology: "Current working state is v1.43.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, Phase H, and Phase 7 v1 are complete. v1.42.0 shipped Phase H (opt-in auto-snapshot at reset boundary); v1.43.0 ships Phase 7 v1 — the anomaly observation surface. AnomalySignal/AnomalyKind/AnomalyConfidence/AnomalyEvidence define the schema; AnomalyHistory + Context.anomaly_history/anomaly_dedup hold per-session state; PolicyGates gains anomaly_* fields and PolicyGateInputs.anomaly; eval_anomalies orchestrates 4 detectors (error_burst, identity_churn, cache_discontinuity, cross_pane_edit_cluster) with edge-triggered dedup; PaneReport.anomalies surfaces results to the event loop; the m overlay pane card gains an ANOMALIES row; Settings gains Parameters/Rules/Badges rows for [anomaly]; docs updated (UI_MANUAL, ARCHITECTURE, VALIDATION, example.toml). No provider adapter, audit schema, or SignalSet schema changes. package.json is at 1.43.0; the local v1.43.0 tag is created at the release ledger sync commit. CI publication verification for v1.43.0 follows the v1.37/v1.38/v1.39/v1.40/v1.41/v1.42 workflow path."
     suggested_approach: >
-      Treat v1.42.0 as the current runtime baseline. Phase H is
-      shipped: [reset] auto_snapshot = true enables opt-in
-      auto-snapshot at the reset boundary. The Phase 7 v1 anomaly
-      overlay design spec is already committed at
-      docs/superpowers/specs/2026-05-06-phase7-v1-anomaly-overlay-design.md;
-      the next cycle should write the implementation plan for Phase 7 v1
-      (anomaly overlay, per-pane D2/D3 anomaly detection and subagent
-      analysis). For implementation planning, reuse existing
-      IdentitySnapshot, subagent_hint, token/cost time-series, and
-      profile_switch history surfaces before introducing any new storage
+      Treat v1.43.0 as the current runtime baseline. Phase 7 v1 is
+      shipped: the anomaly observation surface (AnomalySignal + 4
+      detectors + eval_anomalies orchestrator + m overlay ANOMALIES
+      row + Settings rows) is live. The next cycle should plan Phase 7
+      v2 — promoting high-confidence anomalies to Recommendations and
+      Notify-level alerts, and potentially adding new detector kinds
+      (e.g. token_spike, stall_burst). For implementation planning,
+      reuse existing AnomalyHistory and the established
+      edge-triggered dedup pattern before introducing any new storage
       schema. Do not invent per-subagent token attribution unless a
       provider exposes structured counters. v1.37.0 / v1.38.0
-      / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 CI publication
-      verification (GitHub Release + npm package) remains an external
-      follow-up.
+      / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 CI
+      publication verification (GitHub Release + npm package) remains
+      an external follow-up.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1793,14 +1792,14 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.42.0 Phase 7 v1 plan + impl"
+    priority: "post-v1.43.0 Phase 7 v2 plan + impl"
     estimated_sessions: 1
-    scope: "v1.42.0 ships Phase H: opt-in auto-snapshot at the reset boundary. ResetConfig.auto_snapshot (bool, default false) is the operator lever; PolicyGates.reset_auto_snapshot gates it; AutoSnapshotDedup deduplicates within a floor_to_minute window keyed by (target, QuotaKind); maybe_auto_snapshot orchestrates gate + dedup + archive call; Context.auto_snapshot_dedup holds per-session state; run_once_with_target wires the call. Settings overlay Parameters + Rules rows added. No provider adapter, audit chain, policy gate set, or SignalSet schema changes. v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 CI publication verification remains a separate follow-up."
+    scope: "v1.43.0 ships Phase 7 v1: anomaly observation surface. AnomalySignal/AnomalyKind/AnomalyConfidence/AnomalyEvidence define the schema; AnomalyHistory + Context.anomaly_history/anomaly_dedup hold per-session state; PolicyGates.anomaly_* fields + PolicyGateInputs.anomaly; eval_anomalies orchestrator with edge-triggered dedup; 4 detectors (detect_error_burst, detect_identity_churn, detect_cache_discontinuity, detect_cross_pane_edit_cluster); PaneReport.anomalies wires detection to the event loop; m overlay pane card ANOMALIES row; Settings Parameters/Rules/Badges rows for [anomaly]; docs updated (UI_MANUAL, ARCHITECTURE, VALIDATION, example.toml). No provider adapter, audit chain, policy gate set, or SignalSet schema changes. v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 CI publication verification remains a separate follow-up."
     followups:
-      - "Phase 7 v1 anomaly overlay: spec committed at docs/superpowers/specs/2026-05-06-phase7-v1-anomaly-overlay-design.md; implementation plan needs to be written next cycle"
+      - "Phase 7 v2: promote high-confidence anomalies to Recommendations and Notify-level alerts; add new detector kinds (e.g. token_spike, stall_burst)"
       - "D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters"
       - "Tag protection / ruleset activation remains a GitHub Settings task"
-      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 CI publication verification (GitHub Release + npm package) remains an external follow-up"
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 CI publication verification (GitHub Release + npm package) remains an external follow-up"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
   created: "2026-04-20"
@@ -1808,5 +1807,5 @@ mission:
   lineage:
     initial_version: "1.0.0"
     initial_date: "2026-04-20"
-    total_revisions: 185
+    total_revisions: 186
     history: "mission-history.yaml"
