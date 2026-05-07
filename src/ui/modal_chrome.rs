@@ -30,6 +30,14 @@ impl ModalGeometry {
         max_pct: u16,
         step_pct: u16,
     ) -> Self {
+        let mut min_pct = safe_pct(min_pct);
+        let mut max_pct = safe_pct(max_pct);
+        if min_pct > max_pct {
+            std::mem::swap(&mut min_pct, &mut max_pct);
+        }
+        let default_width_pct = safe_pct(default_width_pct).clamp(min_pct, max_pct);
+        let default_height_pct = safe_pct(default_height_pct).clamp(min_pct, max_pct);
+
         Self {
             width_pct: default_width_pct,
             height_pct: default_height_pct,
@@ -37,7 +45,7 @@ impl ModalGeometry {
             default_height_pct,
             min_pct,
             max_pct,
-            step_pct,
+            step_pct: safe_pct(step_pct),
             offset_x: 0,
             offset_y: 0,
             drag_anchor: None,
@@ -125,8 +133,13 @@ pub fn modal_area(
     offset_x: i16,
     offset_y: i16,
 ) -> Rect {
-    let base = crate::ui::dashboard::centered_rect(width_pct, height_pct, viewport);
+    let base =
+        crate::ui::dashboard::centered_rect(safe_pct(width_pct), safe_pct(height_pct), viewport);
     apply_clamped_offset(base, viewport, offset_x, offset_y)
+}
+
+fn safe_pct(pct: u16) -> u16 {
+    pct.clamp(1, 100)
 }
 
 pub fn apply_clamped_offset(base: Rect, viewport: Rect, offset_x: i16, offset_y: i16) -> Rect {
@@ -173,6 +186,14 @@ mod tests {
     }
 
     #[test]
+    fn constructor_clamps_out_of_range_defaults_and_bounds() {
+        let geometry = ModalGeometry::new(150, 0, 120, 10, 200);
+
+        assert_eq!(geometry.width_pct(), 100);
+        assert_eq!(geometry.height_pct(), 10);
+    }
+
+    #[test]
     fn begin_drag_stores_anchor_and_end_drag_clears_it() {
         let mut geometry = ModalGeometry::new(80, 70, 50, 99, 5);
         let anchor = DragAnchor {
@@ -206,6 +227,14 @@ mod tests {
         let geometry = ModalGeometry::new(80, 70, 50, 99, 5);
         let area = geometry.area(viewport);
         assert_eq!(area, crate::ui::dashboard::centered_rect(80, 70, viewport));
+    }
+
+    #[test]
+    fn modal_area_clamps_percentages_before_centering() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let area = modal_area(viewport, 150, 150, 0, 0);
+
+        assert_eq!(area, crate::ui::dashboard::centered_rect(100, 100, viewport));
     }
 
     #[test]
