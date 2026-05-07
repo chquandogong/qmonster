@@ -10,9 +10,15 @@
 use crate::domain::anomaly::AnomalyEvent;
 use std::collections::VecDeque;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct AnomalyEventsRing {
     events: VecDeque<AnomalyEvent>,
+}
+
+impl Default for AnomalyEventsRing {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AnomalyEventsRing {
@@ -70,8 +76,18 @@ mod tests {
     }
 
     #[test]
-    fn ring_capacity_constant_is_100() {
-        assert_eq!(AnomalyEventsRing::CAPACITY, 100);
+    fn ring_fills_to_exact_capacity_without_eviction() {
+        let mut ring = AnomalyEventsRing::new();
+        for ts in 0..(AnomalyEventsRing::CAPACITY as u64) {
+            ring.push(fixture_event(ts));
+        }
+        assert_eq!(ring.len(), AnomalyEventsRing::CAPACITY);
+        assert!(!ring.is_empty());
+        // No eviction: first item is ts=0, last is ts=CAPACITY-1
+        let first = ring.iter().next().expect("non-empty");
+        assert_eq!(first.timestamp, 0);
+        let last = ring.iter().last().expect("non-empty");
+        assert_eq!(last.timestamp, (AnomalyEventsRing::CAPACITY as u64) - 1);
     }
 
     #[test]
