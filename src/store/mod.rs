@@ -5,6 +5,7 @@ pub mod audit;
 pub mod cost_usage;
 pub mod insights;
 pub mod paths;
+pub mod recommendation_lifecycle;
 pub mod retention;
 pub mod sink;
 pub mod snapshots;
@@ -21,6 +22,10 @@ pub use insights::{
     RecommendationTimelineItem, SituationSummary, SqliteInsightsStore,
 };
 pub use paths::QmonsterPaths;
+pub use recommendation_lifecycle::{
+    RecommendationEventRecord, RecommendationOutcome, RecommendationOutcomeRecord,
+    SqliteRecommendationLifecycleSink,
+};
 pub use retention::{RetentionReport, sweep};
 pub use sink::{EventSink, InMemorySink, NoopSink};
 pub use snapshots::{PaneSnapshot, SnapshotInput, SnapshotWriter};
