@@ -1,4 +1,5 @@
 pub mod action_explainer;
+pub mod anomaly_events_ring;
 pub mod auto_snapshot;
 pub mod bootstrap;
 pub mod clipboard_actions;
