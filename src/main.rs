@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use anyhow::Context as _;
+use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand};
 
 use qmonster::app::event_loop::run_once;
@@ -11,7 +11,7 @@ use qmonster::app::tui_loop::run_tui;
 use qmonster::insights_report::{
     format_insights_report_lines, parse_since_arg, resolve_insights_paths,
 };
-use qmonster::store::{InsightsWindow, SqliteInsightsStore};
+use qmonster::store::{CacheInsightSummary, InsightsSnapshot, InsightsWindow, SqliteInsightsStore};
 
 #[derive(Debug, Subcommand)]
 enum CliCommand {
@@ -47,6 +47,10 @@ struct Cli {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    if cli.once && cli.command.is_some() {
+        bail!("--once cannot be combined with a subcommand");
+    }
+
     let env_root = std::env::var("QMONSTER_ROOT").ok();
     if let Some(CliCommand::Insights { since }) = cli.command.as_ref() {
         let since_secs = parse_since_arg(since)?;
@@ -64,11 +68,26 @@ fn main() -> anyhow::Result<()> {
         let now_ms = i64::try_from(now.as_millis()).context("current time exceeds i64 millis")?;
         let since_delta_ms = i64::try_from(u128::from(since_secs) * 1000)
             .context("--since value exceeds i64 millis")?;
-        let since_ms = now_ms.saturating_sub(since_delta_ms);
-        let snapshot = store.snapshot(InsightsWindow {
+        let window = InsightsWindow {
+            since_ms: now_ms.saturating_sub(since_delta_ms),
             since_ms,
             until_ms: now_ms,
-        })?;
+        };
+        let sqlite_path = paths.sqlite_path();
+        let snapshot = if sqlite_path.exists() {
+            let store = SqliteInsightsStore::open_read_only(&sqlite_path)
+                .with_context(|| format!("open insights store at {}", sqlite_path.display()))?;
+            store.snapshot(window)?
+        } else {
+            InsightsSnapshot {
+                window,
+                situations: Vec::new(),
+                cache: CacheInsightSummary::default(),
+                timeline: Vec::new(),
+                actions: Vec::new(),
+                ignored_available: false,
+            }
+        };
         println!(
             "qmonster paths: {} (source: {:?})",
             paths.root().display(),

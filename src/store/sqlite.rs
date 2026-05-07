@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -106,6 +106,14 @@ impl AuditDb {
                 return Err(SqliteError::Query(msg));
             }
         }
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
+    }
+
+    pub fn open_read_only(path: &Path) -> Result<Self, SqliteError> {
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| SqliteError::Open(e.to_string()))?;
         Ok(Self {
             conn: Mutex::new(conn),
         })

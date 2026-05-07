@@ -333,6 +333,12 @@ impl SqliteInsightsStore {
         })
     }
 
+    pub fn open_read_only(path: &Path) -> Result<Self, SqliteError> {
+        Ok(Self {
+            db: AuditDb::open_read_only(path)?,
+        })
+    }
+
     pub fn snapshot(&self, window: InsightsWindow) -> Result<InsightsSnapshot, SqliteError> {
         let _conn = self
             .db

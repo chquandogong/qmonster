@@ -114,11 +114,15 @@ fn insights_report_renders_available_recommendation_lifecycle() {
 #[test]
 fn resolve_insights_paths_uses_cli_root_without_tmux() {
     let td = tempdir().unwrap();
+    let root = td.path().join("missing-root");
 
-    let (paths, source) = resolve_insights_paths(None, Some(td.path()), &[], None).unwrap();
+    let (paths, source) = resolve_insights_paths(None, Some(&root), &[], None).unwrap();
 
-    assert_eq!(paths.root(), td.path());
+    assert_eq!(paths.root(), root);
     assert_eq!(format!("{source:?}"), "Cli");
-    assert!(paths.root().is_dir());
-    assert!(paths.config_dir().is_dir());
+    assert!(!paths.root().exists());
+    assert!(!paths.config_dir().exists());
+    assert!(!paths.archive_dir().exists());
+    assert!(!paths.snapshot_dir().exists());
+    assert!(!paths.sqlite_path().exists());
 }

@@ -74,7 +74,6 @@ pub fn resolve_insights_paths(
     let resolved = pick_root(root, env_root, &config);
     let source = resolved.source.clone();
     let paths = resolved.into_paths();
-    paths.ensure().context("ensure ~/.qmonster layout")?;
     Ok((paths, source))
 }
 

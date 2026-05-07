@@ -43,6 +43,18 @@ fn insights_query_empty_db_returns_zero_state() {
 }
 
 #[test]
+fn insights_read_only_open_does_not_create_missing_db() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("missing").join("qmonster.db");
+
+    let err = SqliteInsightsStore::open_read_only(&db_path).unwrap_err();
+
+    assert!(err.to_string().contains("sqlite open"));
+    assert!(!db_path.exists());
+    assert!(!db_path.parent().unwrap().exists());
+}
+
+#[test]
 fn insights_counts_recommendations_by_situation() {
     let td = tempdir().unwrap();
     let db_path = td.path().join("qmonster.db");
