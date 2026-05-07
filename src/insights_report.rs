@@ -78,6 +78,11 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
         lines.push("  none".into());
     } else {
         for row in &snapshot.actions {
+            let ignored = if snapshot.ignored_available {
+                row.ignored.to_string()
+            } else {
+                "n/a".into()
+            };
             lines.push(format!(
                 "  {} emitted={} accepted={} rejected={} blocked={} completed={} failed={} archived={} snapshot={} ignored={}",
                 row.action,
@@ -89,7 +94,7 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
                 row.failed,
                 row.archived,
                 row.snapshot_written,
-                row.ignored,
+                ignored,
             ));
         }
     }

@@ -75,6 +75,8 @@ fn insights_report_renders_action_ledger() {
     assert!(joined.contains("cost delta: $0.0800"));
     assert!(joined.contains("/compact"));
     assert!(joined.contains("ignored classification: unavailable"));
+    assert!(joined.contains("ignored=n/a"));
+    assert!(!joined.contains("ignored=0"));
     assert!(joined.contains("Evidence"));
     assert!(joined.contains("source tables: audit_events, token_usage_samples, cost_usage_events"));
 }
@@ -89,7 +91,11 @@ fn insights_report_renders_available_recommendation_lifecycle() {
         situations: vec![],
         cache: CacheInsightSummary::default(),
         timeline: vec![],
-        actions: vec![],
+        actions: vec![ActionLedgerRow {
+            action: "/compact".into(),
+            ignored: 3,
+            ..ActionLedgerRow::default()
+        }],
         ignored_available: true,
     };
 
@@ -97,6 +103,7 @@ fn insights_report_renders_available_recommendation_lifecycle() {
     let joined = lines.join("\n");
 
     assert!(joined.contains("ignored classification: available"));
+    assert!(joined.contains("ignored=3"));
     assert!(joined.contains("lifecycle: recommendation outcomes available"));
     assert!(!joined.contains("correlation unavailable"));
 }
