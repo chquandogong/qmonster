@@ -438,3 +438,62 @@ fn cache_summary_saturates_token_growth_on_counter_reset() {
 
     assert_eq!(snapshot.cache.token_growth, Some(0));
 }
+
+#[test]
+fn action_ledger_counts_prompt_send_terminal_outcomes() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let audit = SqliteAuditSink::open(&db_path).unwrap();
+    audit.record(audit_event(
+        AuditEventKind::RecommendationEmitted,
+        "%1",
+        "context-pressure: act now: context near critical",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::PromptSendAccepted,
+        "%1",
+        "%1 -> `/compact` (proposal_id `%1:/compact`)",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::PromptSendCompleted,
+        "%1",
+        "%1 -> `/compact` completed (proposal_id `%1:/compact`)",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::SnapshotWritten,
+        "%1",
+        "snapshot written to /tmp/demo.json",
+    ));
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: now_ms - 60_000,
+            until_ms: now_ms + 60_000,
+        })
+        .unwrap();
+
+    let compact = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "/compact")
+        .unwrap();
+    assert_eq!(compact.accepted, 1);
+    assert_eq!(compact.completed, 1);
+    assert_eq!(compact.ignored, 0);
+
+    let snapshot_row = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "snapshot")
+        .unwrap();
+    assert_eq!(snapshot_row.snapshot_written, 1);
+
+    assert!(
+        snapshot
+            .timeline
+            .iter()
+            .any(|item| item.outcome == "completed" && item.action == "/compact")
+    );
+}

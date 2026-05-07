@@ -162,6 +162,58 @@ fn action_from_summary(summary: &str) -> &str {
         .unwrap_or(summary)
 }
 
+fn prompt_command_from_summary(summary: &str) -> Option<String> {
+    let arrow = summary.find("->")?;
+    let after_arrow = &summary[arrow + 2..];
+    let start = after_arrow.find('`')?;
+    let rest = &after_arrow[start + 1..];
+    let end = rest.find('`')?;
+    Some(rest[..end].to_string())
+}
+
+fn action_for_audit(kind: &str, summary: &str) -> String {
+    match kind {
+        "PromptSendAccepted"
+        | "PromptSendCompleted"
+        | "PromptSendFailed"
+        | "PromptSendBlocked"
+        | "PromptSendRejected" => {
+            prompt_command_from_summary(summary).unwrap_or_else(|| "prompt-send".into())
+        }
+        "SnapshotWritten" => "snapshot".into(),
+        "ArchiveWritten" => "archive".into(),
+        _ => action_from_summary(summary).to_string(),
+    }
+}
+
+fn apply_outcome(row: &mut ActionLedgerRow, kind: &str) {
+    match kind {
+        "RecommendationEmitted" | "AlertFired" => row.emitted += 1,
+        "PromptSendAccepted" => row.accepted += 1,
+        "PromptSendRejected" => row.rejected += 1,
+        "PromptSendBlocked" => row.blocked += 1,
+        "PromptSendCompleted" => row.completed += 1,
+        "PromptSendFailed" => row.failed += 1,
+        "ArchiveWritten" => row.archived += 1,
+        "SnapshotWritten" => row.snapshot_written += 1,
+        _ => {}
+    }
+}
+
+fn outcome_for_kind(kind: &str) -> &'static str {
+    match kind {
+        "RecommendationEmitted" | "AlertFired" => "emitted",
+        "PromptSendAccepted" => "accepted",
+        "PromptSendRejected" => "rejected",
+        "PromptSendBlocked" => "blocked",
+        "PromptSendCompleted" => "completed",
+        "PromptSendFailed" => "failed",
+        "ArchiveWritten" => "archived",
+        "SnapshotWritten" => "snapshot_written",
+        _ => "observed",
+    }
+}
+
 fn rfc3339_from_ms(ms: i64) -> String {
     chrono::Utc
         .timestamp_millis_opt(ms)
@@ -373,12 +425,61 @@ impl SqliteInsightsStore {
             )
             .map_err(|e| SqliteError::Query(e.to_string()))?;
 
+        let mut ledger_stmt = _conn
+            .prepare_cached(
+                "SELECT ts_utc, kind, pane_id, summary FROM audit_events \
+                 WHERE kind IN (\
+                   'RecommendationEmitted', 'AlertFired',\
+                   'PromptSendAccepted', 'PromptSendRejected', 'PromptSendCompleted',\
+                   'PromptSendFailed', 'PromptSendBlocked',\
+                   'ArchiveWritten', 'SnapshotWritten'\
+                 ) \
+                   AND ts_utc >= ?1 \
+                   AND ts_utc <= ?2 \
+                 ORDER BY id ASC",
+            )
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let ledger_rows = ledger_stmt
+            .query_map(params![&since_ts, &until_ts], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let mut actions_by_name = std::collections::BTreeMap::<String, ActionLedgerRow>::new();
+        let mut timeline = Vec::new();
+        for row in ledger_rows {
+            let (ts_label, kind, pane_id, summary) =
+                row.map_err(|e| SqliteError::Query(e.to_string()))?;
+            let action = action_for_audit(&kind, &summary);
+            let entry = actions_by_name
+                .entry(action.clone())
+                .or_insert_with(|| ActionLedgerRow {
+                    action: action.clone(),
+                    ..ActionLedgerRow::default()
+                });
+            apply_outcome(entry, &kind);
+            timeline.push(RecommendationTimelineItem {
+                ts_label,
+                pane_id,
+                situation: situation_for_action(action_from_summary(&summary)),
+                action,
+                outcome: outcome_for_kind(&kind).to_string(),
+            });
+        }
+        let actions = actions_by_name.into_values().collect();
+        timeline.reverse();
+        timeline.truncate(10);
+
         Ok(InsightsSnapshot {
             window,
             situations,
             cache,
-            timeline: Vec::new(),
-            actions: Vec::new(),
+            timeline,
+            actions,
             ignored_available: false,
         })
     }
