@@ -493,6 +493,31 @@ where
                 .iter()
                 .any(|r| r.action.starts_with("cache: drift detected"));
             let cap = gates.anomaly_window_polls.max(1);
+            // Phase 7 v3 (c) (v1.47.0): lazy hydrate AnomalyHistory deques
+            // from persisted snapshots on first observation per pane this
+            // session. Staleness gate: skip if newest snapshot > 2× window.
+            if !ctx.anomaly_history_replayed.contains(&pane.pane_id) {
+                if let Some(anomaly_sink) = ctx.anomaly_sink.as_ref() {
+                    let window_polls = gates.anomaly_window_polls;
+                    let snapshots =
+                        anomaly_sink.fetch_recent_history_snapshots(&pane.pane_id, window_polls);
+                    let tick_seconds = (ctx.config.tmux.poll_interval_ms / 1000).max(1);
+                    let staleness_threshold = (window_polls as u64) * tick_seconds * 2;
+                    let now_secs = (current_unix_ms() / 1000) as u64;
+                    if let Some((newest_ts, _)) = snapshots.first()
+                        && now_secs.saturating_sub(*newest_ts) <= staleness_threshold
+                    {
+                        let history = ctx.anomaly_history.entry(pane.pane_id.clone()).or_default();
+                        // snapshots is newest-first; replay oldest-first so
+                        // deque ordering matches live push semantics:
+                        for (_, snap) in snapshots.iter().rev() {
+                            crate::store::push_snapshot_into_history(history, snap);
+                        }
+                        history.trim(window_polls);
+                    }
+                }
+                ctx.anomaly_history_replayed.insert(pane.pane_id.clone());
+            }
             {
                 let entry = ctx.anomaly_history.entry(pane.pane_id.clone()).or_default();
                 entry.cache_drift_fires.push_front(cache_drift_fired);

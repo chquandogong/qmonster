@@ -1566,6 +1566,19 @@ fn build_parameter_body_lines(
             confirm_actions_label(config.ux.confirm_actions).into(),
             confirm_actions_label(defaults.ux.confirm_actions).into(),
         ),
+        setting_row(
+            "insights ignored_ttl/default_window",
+            format!(
+                "{}/{}",
+                seconds_label(config.insights.ignored_ttl_secs),
+                seconds_label(config.insights.default_window_secs)
+            ),
+            format!(
+                "{}/{}",
+                seconds_label(defaults.insights.ignored_ttl_secs),
+                seconds_label(defaults.insights.default_window_secs)
+            ),
+        ),
         Line::from(""),
         reference_header_line("Policy Inputs"),
         setting_row(
@@ -1817,6 +1830,13 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
             format!(
                 "p/d/y opens modal: always = every time, first_time = once per kind per session, never = skipped; target must exist; current = {}",
                 confirm_actions_label(config.ux.confirm_actions)
+            ),
+        ),
+        rule_row(
+            "insights ttl ignored",
+            format!(
+                "classifies unresolved recommendations as TTL ignored after {} without correlated outcome",
+                seconds_label(config.insights.ignored_ttl_secs)
             ),
         ),
         Line::from(""),
@@ -2678,6 +2698,35 @@ mod tests {
         assert!(rendered.contains("security.identity_drift_findings = on"));
         // Phase H: annotation telling operators the rule has an actuation hook
         assert!(rendered.contains("auto when [reset] auto_snapshot = true"));
+    }
+
+    #[test]
+    fn parameters_tab_shows_insights_config() {
+        let mut config = cfg();
+        config.insights.ignored_ttl_secs = 600;
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+
+        let rendered = rendered_text(&build_body_lines(&s, &config));
+
+        assert!(rendered.contains("insights ignored_ttl/default_window"));
+        assert!(rendered.contains("10m/24h"));
+        assert!(rendered.contains("default 30m/24h"));
+    }
+
+    #[test]
+    fn rules_tab_shows_insights_ttl_rule() {
+        let mut config = cfg();
+        config.insights.ignored_ttl_secs = 45;
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Rules);
+
+        let rendered = rendered_text(&build_body_lines(&s, &config));
+
+        assert!(rendered.contains("insights ttl ignored"));
+        assert!(rendered.contains("ignored after 45s without correlated outcome"));
     }
 
     #[test]

@@ -54,7 +54,7 @@ fn main() -> anyhow::Result<()> {
     let env_root = std::env::var("QMONSTER_ROOT").ok();
     if let Some(CliCommand::Insights { since }) = cli.command.as_ref() {
         let since_secs = parse_since_arg(since)?;
-        let (paths, root_source) = resolve_insights_paths(
+        let (paths, root_source, _config) = resolve_insights_paths(
             cli.config.as_deref(),
             cli.root.as_deref(),
             &cli.set,

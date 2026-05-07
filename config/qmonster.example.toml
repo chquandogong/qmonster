@@ -16,6 +16,7 @@
 # - [actions] mode, allow_auto_*
 # - [refresh] policy
 # - [storage] root
+# - [insights] ignored_ttl_secs, default_window_secs
 # - [idle]    stillness_polls
 # - [security] posture_advisories
 # - [cost]    budget_usd, warning_usd, critical_usd, [.claude|.codex|.gemini]
@@ -225,6 +226,14 @@ policy = "manual_only"
 #   codex:1:review
 #   gemini:1:research
 #   qmonster:1:monitor
+
+# Phase 8 v2 Token Insights lifecycle-ledger defaults. `ignored_ttl_secs`
+# controls the conservative "TTL ignored" classifier once
+# recommendation_events / recommendation_outcomes exist. It is a Qmonster
+# classification, not an operator-confirmed rejection.
+[insights]
+ignored_ttl_secs = 1800
+default_window_secs = 86400
 
 # v1.38 UX bundle (spec §6.2): cadence for the action-explainer modal
 # that previews what `p` (prompt-send), `d` (dismiss/archive), and `y`

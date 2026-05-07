@@ -42,7 +42,7 @@ pub fn resolve_insights_paths(
     root: Option<&Path>,
     set: &[String],
     env_root: Option<&str>,
-) -> anyhow::Result<(QmonsterPaths, RootSource)> {
+) -> anyhow::Result<(QmonsterPaths, RootSource, QmonsterConfig)> {
     let default_path = default_config_path(root, env_root);
     let loaded_config_path = config_path.map(|path| path.to_path_buf()).or_else(|| {
         if default_path.exists() {
@@ -76,7 +76,7 @@ pub fn resolve_insights_paths(
     let resolved = pick_root(root, env_root, &config);
     let source = resolved.source.clone();
     let paths = resolved.into_paths();
-    Ok((paths, source))
+    Ok((paths, source, config))
 }
 
 fn parse_set_pairs(set: &[String]) -> anyhow::Result<Vec<(String, String)>> {
