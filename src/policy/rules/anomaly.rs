@@ -767,11 +767,61 @@ pub fn promote_anomalies_to_recommendations(signals: &[AnomalySignal]) -> Vec<Re
                     "coordinate edits between panes; the existing F-8 ConcurrentFileEdit findings panel lists which panes".to_string(),
                 )
             }
-            AnomalyKind::CostSlope => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
-            AnomalyKind::TokenSlope => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
-            AnomalyKind::MemoryGrowth => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
+            AnomalyKind::CostSlope => {
+                let (oldest, newest) = evidence
+                    .map(|e| (e.before.clone(), e.after.clone()))
+                    .unwrap_or((String::new(), String::new()));
+                (
+                    "anomaly: cost slope detected",
+                    format!(
+                        "cost climbing from {oldest} to {newest} USD over the {} polls window; confidence {}",
+                        sig.window_polls,
+                        sig.confidence.label()
+                    ),
+                    "check the recent provider output for runaway loops; review the cost budget"
+                        .to_string(),
+                )
+            }
+            AnomalyKind::TokenSlope => {
+                let (oldest, newest) = evidence
+                    .map(|e| (e.before.clone(), e.after.clone()))
+                    .unwrap_or((String::new(), String::new()));
+                (
+                    "anomaly: token slope detected",
+                    format!(
+                        "input tokens climbing from {oldest} to {newest} over the {} polls window; confidence {}",
+                        sig.window_polls,
+                        sig.confidence.label()
+                    ),
+                    "check for repeated long inputs; consider /compact or context profile switch"
+                        .to_string(),
+                )
+            }
+            AnomalyKind::MemoryGrowth => {
+                let (oldest, newest) = evidence
+                    .map(|e| (e.before.clone(), e.after.clone()))
+                    .unwrap_or((String::new(), String::new()));
+                (
+                    "anomaly: memory growth detected",
+                    format!(
+                        "process memory grew from {oldest} MB to {newest} MB over the {} polls window; confidence {}",
+                        sig.window_polls,
+                        sig.confidence.label()
+                    ),
+                    "check the provider for memory leak; consider restart if growth is sustained"
+                        .to_string(),
+                )
+            }
             AnomalyKind::SubagentSideEffect => {
-                unreachable!("Phase 7 v2 detectors land in Tasks 5-9")
+                let count = evidence.map(|e| e.sample_count).unwrap_or(0);
+                (
+                    "anomaly: subagent activity correlated with other anomalies",
+                    format!(
+                        "subagent_hint observed {count} times in {} polls, co-occurring with other anomalies (correlation, not attribution)",
+                        sig.window_polls
+                    ),
+                    "the subagent run is likely the source of the co-occurring anomaly; review the subagent's recent output".to_string(),
+                )
             }
         };
         out.push(Recommendation {
@@ -1597,6 +1647,46 @@ mod tests {
         assert!(
             side_idx > token_idx,
             "SubagentSideEffect must run AFTER TokenSlope"
+        );
+    }
+
+    #[test]
+    fn promote_matrix_8_kind_distinct_actions() {
+        let signals: Vec<AnomalySignal> = vec![
+            AnomalyKind::IdentityChurn,
+            AnomalyKind::ErrorBurst,
+            AnomalyKind::CacheDiscontinuity,
+            AnomalyKind::CrossPaneEditCluster,
+            AnomalyKind::CostSlope,
+            AnomalyKind::TokenSlope,
+            AnomalyKind::MemoryGrowth,
+            AnomalyKind::SubagentSideEffect,
+        ]
+        .into_iter()
+        .map(|k| AnomalySignal {
+            kind: k,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            evidence: vec![AnomalyEvidence {
+                metric_name: "test",
+                before: "0".to_string(),
+                after: "100".to_string(),
+                sample_count: 20,
+                source_kind: SourceKind::Estimated,
+            }],
+            window_polls: 20,
+            detected_at: 1_700_000_000,
+        })
+        .collect();
+        let promoted = promote_anomalies_to_recommendations(&signals);
+        assert_eq!(promoted.len(), 8);
+        let mut actions: Vec<&str> = promoted.iter().map(|r| r.action).collect();
+        actions.sort();
+        actions.dedup();
+        assert_eq!(
+            actions.len(),
+            8,
+            "all 8 actions must be distinct: {actions:?}"
         );
     }
 }
