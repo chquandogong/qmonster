@@ -541,10 +541,27 @@ fn card_rows(
         ),
     ];
 
-    let mut lines = Vec::with_capacity(left_rows.len());
+    let mut lines = Vec::with_capacity(left_rows.len() + 1);
     for (l, r) in left_rows.iter().zip(right_rows.iter()) {
         lines.push(card_row(l, r, left_half_width, right_half_width));
     }
+
+    if !report.anomalies.is_empty() {
+        let count = report.anomalies.len();
+        let pieces: Vec<String> = report
+            .anomalies
+            .iter()
+            .map(|a| format!("{}:{}", a.kind.label(), a.confidence.label()))
+            .collect();
+        let summary = format!("ANOMALIES {} {}", count, pieces.join(", "));
+        lines.push(Line::from(Span::styled(
+            summary,
+            Style::default().fg(theme::severity_color(
+                crate::domain::recommendation::Severity::Concern,
+            )),
+        )));
+    }
+
     lines
 }
 
@@ -1991,5 +2008,58 @@ mod tests {
         assert_eq!(o.height_pct(), h);
         assert_eq!(o.offset_x(), ox);
         assert_eq!(o.offset_y(), oy);
+    }
+
+    #[test]
+    fn pane_card_includes_anomalies_row_when_present() {
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyKind, AnomalySignal};
+        use crate::domain::recommendation::Severity;
+        use ratatui::layout::Rect;
+
+        let mut pane = base_test_report("claude:1:main");
+        pane.anomalies = vec![AnomalySignal {
+            kind: AnomalyKind::IdentityChurn,
+            confidence: AnomalyConfidence::Medium,
+            severity: Severity::Concern,
+            evidence: vec![],
+            window_polls: 10,
+            detected_at: 0,
+        }];
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&pane),
+            Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
+        );
+        let rendered: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        assert!(
+            rendered.contains("ANOMALIES 1"),
+            "ANOMALIES count missing: {rendered}"
+        );
+        assert!(
+            rendered.contains("IdentityChurn:medium"),
+            "kind:conf token missing: {rendered}"
+        );
+    }
+
+    #[test]
+    fn pane_card_omits_anomalies_row_when_empty() {
+        use ratatui::layout::Rect;
+
+        let pane = base_test_report("claude:1:main");
+        // anomalies is already vec![] from base_test_report
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&pane),
+            Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
+        );
+        let rendered: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
+        assert!(
+            !rendered.contains("ANOMALIES"),
+            "ANOMALIES row should be absent when anomalies is empty: {rendered}"
+        );
     }
 }
