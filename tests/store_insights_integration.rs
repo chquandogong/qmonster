@@ -1,3 +1,4 @@
+use chrono::TimeZone as _;
 use qmonster::domain::audit::{AuditEvent, AuditEventKind};
 use qmonster::domain::identity::{Provider, Role};
 use qmonster::domain::recommendation::Severity;
@@ -5,6 +6,7 @@ use qmonster::store::{
     CostObservation, EventSink, InsightsWindow, SqliteAuditSink, SqliteCostUsageSink,
     SqliteInsightsStore, SqliteTokenUsageSink, TokenSample,
 };
+use rusqlite::Connection;
 use tempfile::tempdir;
 
 fn audit_event(kind: AuditEventKind, pane_id: &str, summary: &str) -> AuditEvent {
@@ -55,6 +57,82 @@ fn insights_read_only_open_does_not_create_missing_db() {
     assert!(err.to_string().contains("sqlite open"));
     assert!(!db_path.exists());
     assert!(!db_path.parent().unwrap().exists());
+}
+
+#[test]
+fn insights_read_only_snapshot_supports_old_schema_db() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let now_ts = chrono::Utc.timestamp_millis_opt(now_ms).single().unwrap();
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute_batch(
+        r"
+        CREATE TABLE audit_events (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts_utc       TEXT    NOT NULL,
+            kind         TEXT    NOT NULL,
+            severity     TEXT    NOT NULL,
+            pane_id      TEXT    NOT NULL,
+            provider     TEXT,
+            role         TEXT,
+            summary      TEXT    NOT NULL
+        );
+        CREATE TABLE token_usage_samples (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts_unix_ms    INTEGER NOT NULL,
+            pane_id       TEXT    NOT NULL,
+            provider      TEXT    NOT NULL,
+            input_tokens  INTEGER,
+            output_tokens INTEGER,
+            cost_usd      REAL
+        );
+        ",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO audit_events
+         (ts_utc, kind, severity, pane_id, provider, role, summary)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        (
+            now_ts.to_rfc3339(),
+            "RecommendationEmitted",
+            "Concern",
+            "%1",
+            "Codex",
+            "Review",
+            "cache: avoid /compact while cache is hot: cache hit ratio unavailable",
+        ),
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO token_usage_samples
+         (ts_unix_ms, pane_id, provider, input_tokens, output_tokens, cost_usd)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        (1_000_i64, "%1", "Codex", 100_i64, 10_i64, 0.01_f64),
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO token_usage_samples
+         (ts_unix_ms, pane_id, provider, input_tokens, output_tokens, cost_usd)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        (2_000_i64, "%1", "Codex", 300_i64, 20_i64, 0.02_f64),
+    )
+    .unwrap();
+    drop(conn);
+
+    let store = SqliteInsightsStore::open_read_only(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: now_ms + 10_000,
+        })
+        .unwrap();
+
+    assert_eq!(snapshot.cache.hot_count, 1);
+    assert_eq!(snapshot.cache.latest_cache_ratio, None);
+    assert_eq!(snapshot.cache.token_growth, Some(200));
+    assert_eq!(snapshot.cache.cost_delta_usd, None);
 }
 
 #[test]

@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use chrono::TimeZone as _;
-use rusqlite::params;
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::store::sqlite::{AuditDb, SqliteError};
 
@@ -238,6 +238,33 @@ fn window_rfc3339_bounds(window: InsightsWindow) -> (String, String) {
     )
 }
 
+fn table_exists(conn: &Connection, table: &str) -> Result<bool, SqliteError> {
+    conn.query_row(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1 LIMIT 1",
+        params![table],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|row| row.is_some())
+    .map_err(|e| SqliteError::Query(e.to_string()))
+}
+
+fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, SqliteError> {
+    let pragma = format!("PRAGMA table_info({table})");
+    let mut stmt = conn
+        .prepare(&pragma)
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    for row in rows {
+        if row.map_err(|e| SqliteError::Query(e.to_string()))? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn cache_ratio(input: Option<i64>, cached: Option<i64>) -> Option<f64> {
     let cached = cached? as f64;
     let input = input.unwrap_or(0) as f64;
@@ -394,33 +421,60 @@ impl SqliteInsightsStore {
             }
         }
 
-        let mut stmt = _conn
-            .prepare_cached(
-                "SELECT input_tokens, cached_input_tokens \
-                 FROM token_usage_samples \
-                 WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
-                 ORDER BY ts_unix_ms ASC, id ASC",
-            )
-            .map_err(|e| SqliteError::Query(e.to_string()))?;
-        let rows = stmt
-            .query_map(params![window.since_ms, window.until_ms], |row| {
-                Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?))
-            })
-            .map_err(|e| SqliteError::Query(e.to_string()))?;
         let mut first_input = None;
         let mut latest_input = None;
         let mut latest_ratio = None;
-        for row in rows {
-            let (input_tokens, cached_input_tokens) =
-                row.map_err(|e| SqliteError::Query(e.to_string()))?;
-            if let Some(input_tokens) = input_tokens {
-                if first_input.is_none() {
-                    first_input = Some(input_tokens);
+        if table_exists(&_conn, "token_usage_samples")? {
+            if table_has_column(&_conn, "token_usage_samples", "cached_input_tokens")? {
+                let mut stmt = _conn
+                    .prepare_cached(
+                        "SELECT input_tokens, cached_input_tokens \
+                         FROM token_usage_samples \
+                         WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
+                         ORDER BY ts_unix_ms ASC, id ASC",
+                    )
+                    .map_err(|e| SqliteError::Query(e.to_string()))?;
+                let rows = stmt
+                    .query_map(params![window.since_ms, window.until_ms], |row| {
+                        Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?))
+                    })
+                    .map_err(|e| SqliteError::Query(e.to_string()))?;
+                for row in rows {
+                    let (input_tokens, cached_input_tokens) =
+                        row.map_err(|e| SqliteError::Query(e.to_string()))?;
+                    if let Some(input_tokens) = input_tokens {
+                        if first_input.is_none() {
+                            first_input = Some(input_tokens);
+                        }
+                        latest_input = Some(input_tokens);
+                    }
+                    if let Some(ratio) = cache_ratio(input_tokens, cached_input_tokens) {
+                        latest_ratio = Some(ratio);
+                    }
                 }
-                latest_input = Some(input_tokens);
-            }
-            if let Some(ratio) = cache_ratio(input_tokens, cached_input_tokens) {
-                latest_ratio = Some(ratio);
+            } else {
+                let mut stmt = _conn
+                    .prepare_cached(
+                        "SELECT input_tokens \
+                         FROM token_usage_samples \
+                         WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
+                         ORDER BY ts_unix_ms ASC, id ASC",
+                    )
+                    .map_err(|e| SqliteError::Query(e.to_string()))?;
+                let rows = stmt
+                    .query_map(params![window.since_ms, window.until_ms], |row| {
+                        row.get::<_, Option<i64>>(0)
+                    })
+                    .map_err(|e| SqliteError::Query(e.to_string()))?;
+                for row in rows {
+                    let input_tokens = row.map_err(|e| SqliteError::Query(e.to_string()))?;
+                    if let Some(input_tokens) = input_tokens {
+                        if first_input.is_none() {
+                            first_input = Some(input_tokens);
+                        }
+                        latest_input = Some(input_tokens);
+                    }
+                }
             }
         }
         cache.latest_cache_ratio = latest_ratio;
@@ -431,14 +485,16 @@ impl SqliteInsightsStore {
                 },
             );
 
-        cache.cost_delta_usd = _conn
-            .query_row(
-                "SELECT SUM(cost_usd_delta) FROM cost_usage_events \
-                 WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2",
-                params![window.since_ms, window.until_ms],
-                |row| row.get::<_, Option<f64>>(0),
-            )
-            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        if table_exists(&_conn, "cost_usage_events")? {
+            cache.cost_delta_usd = _conn
+                .query_row(
+                    "SELECT SUM(cost_usd_delta) FROM cost_usage_events \
+                     WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2",
+                    params![window.since_ms, window.until_ms],
+                    |row| row.get::<_, Option<f64>>(0),
+                )
+                .map_err(|e| SqliteError::Query(e.to_string()))?;
+        }
 
         let mut ledger_stmt = _conn
             .prepare_cached(
