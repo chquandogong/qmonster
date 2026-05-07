@@ -7,6 +7,8 @@ use ratatui::Frame;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
+const SPINNER_FRAMES: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
 #[derive(Debug, Clone)]
 pub struct InsightsOverlay {
     open: bool,
@@ -86,6 +88,17 @@ impl InsightsOverlay {
         self.error = None;
         self.refreshed_label = None;
         self.scroll = 0;
+    }
+
+    pub fn spinner_glyph(&self) -> char {
+        SPINNER_FRAMES[(self.spinner_phase as usize) % SPINNER_FRAMES.len()]
+    }
+
+    pub fn advance_spinner(&mut self) {
+        if !self.loading {
+            return;
+        }
+        self.spinner_phase = (self.spinner_phase + 1) % SPINNER_FRAMES.len() as u8;
     }
 
     pub fn scroll(&self) -> u16 {
@@ -323,5 +336,28 @@ mod tests {
             .expect("top-left border cell in bounds");
 
         assert_eq!(cell.fg, theme::BORDER_ACTIVE);
+    }
+
+    #[test]
+    fn advance_spinner_cycles_through_braille_phases() {
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        overlay.mark_loading(1);
+        assert_eq!(overlay.spinner_glyph(), '⠋');
+        overlay.advance_spinner();
+        assert_eq!(overlay.spinner_glyph(), '⠙');
+        for _ in 0..9 {
+            overlay.advance_spinner();
+        }
+        assert_eq!(overlay.spinner_glyph(), '⠋');
+    }
+
+    #[test]
+    fn advance_spinner_is_no_op_when_not_loading() {
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        let before = overlay.spinner_glyph();
+        overlay.advance_spinner();
+        assert_eq!(overlay.spinner_glyph(), before);
     }
 }
