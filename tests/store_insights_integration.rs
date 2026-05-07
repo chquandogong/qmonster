@@ -47,7 +47,10 @@ fn insights_read_only_open_does_not_create_missing_db() {
     let td = tempdir().unwrap();
     let db_path = td.path().join("missing").join("qmonster.db");
 
-    let err = SqliteInsightsStore::open_read_only(&db_path).unwrap_err();
+    let err = match SqliteInsightsStore::open_read_only(&db_path) {
+        Ok(_) => panic!("expected read-only open to fail for missing db"),
+        Err(err) => err,
+    };
 
     assert!(err.to_string().contains("sqlite open"));
     assert!(!db_path.exists());

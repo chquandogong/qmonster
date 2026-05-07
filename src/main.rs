@@ -60,8 +60,6 @@ fn main() -> anyhow::Result<()> {
             &cli.set,
             env_root.as_deref(),
         )?;
-        let store = SqliteInsightsStore::open(&paths.sqlite_path())
-            .with_context(|| format!("open insights store at {}", paths.sqlite_path().display()))?;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .context("system clock before UNIX_EPOCH")?;
@@ -70,7 +68,6 @@ fn main() -> anyhow::Result<()> {
             .context("--since value exceeds i64 millis")?;
         let window = InsightsWindow {
             since_ms: now_ms.saturating_sub(since_delta_ms),
-            since_ms,
             until_ms: now_ms,
         };
         let sqlite_path = paths.sqlite_path();
