@@ -35,6 +35,8 @@ pub struct QmonsterConfig {
     #[serde(default)]
     pub reset: ResetConfig,
     #[serde(default)]
+    pub anomaly: AnomalyConfig,
+    #[serde(default)]
     pub provider_setup: ProviderSetupConfig,
     #[serde(default)]
     pub profile_switch: ProfileSwitchConfig,
@@ -288,6 +290,54 @@ impl Default for ResetConfig {
             snapshot_pressure_threshold: 0.50,
             snapshot_eta_secs: 5 * 60,
             auto_snapshot: false,
+        }
+    }
+}
+
+/// Phase 7 v1 (v1.43.0): operator-tunable thresholds for the
+/// anomaly observation layer in `src/policy/rules/anomaly.rs`.
+/// Defaults are deliberately conservative — the entire layer is
+/// off by default, the rolling window is 20 polls, and each
+/// detector's threshold is set so a brief blip does not fire.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AnomalyConfig {
+    /// Master switch. When false, `eval_anomalies` returns an empty
+    /// Vec on every tick; UI rendering is a no-op.
+    pub enabled: bool,
+    /// Rolling-window length used by every detector. 20 polls at the
+    /// default 5-second tick is a 100-second window — long enough to
+    /// catch a real burst, short enough to clear quickly.
+    pub window_polls: usize,
+    /// Detector output below this confidence is filtered before
+    /// reaching `PaneReport`. Values: `"low"`, `"medium"`, `"high"`.
+    pub min_confidence: String,
+    /// IdentityChurn fires when (provider, current_path) flips
+    /// `>= identity_churn_min_flips` times inside `window_polls`.
+    pub identity_churn_min_flips: usize,
+    /// ErrorBurst fires when error rate over `window_polls` is
+    /// `>= error_burst_threshold`.
+    pub error_burst_threshold: f32,
+    /// CacheDiscontinuity fires when `cache_hit_ratio` drops by
+    /// at least this much across the window (or when F-7b fires
+    /// twice in the window — alternate trigger).
+    pub cache_discontinuity_drop: f32,
+    /// CrossPaneEditCluster fires when at least this many
+    /// `ConcurrentFileEdit` findings target the same path inside
+    /// the window.
+    pub cross_pane_cluster_min_findings: usize,
+}
+
+impl Default for AnomalyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            window_polls: 20,
+            min_confidence: "medium".to_string(),
+            identity_churn_min_flips: 3,
+            error_burst_threshold: 0.5,
+            cache_discontinuity_drop: 0.30,
+            cross_pane_cluster_min_findings: 3,
         }
     }
 }
@@ -741,6 +791,7 @@ impl QmonsterConfig {
             security: SecurityConfig::default(),
             cache: CacheConfig::default(),
             reset: ResetConfig::default(),
+            anomaly: AnomalyConfig::default(),
             profile_switch: ProfileSwitchConfig::default(),
             ux: UxConfig::default(),
         }
@@ -1331,5 +1382,37 @@ auto_snapshot = true
         assert_eq!(cfg.reset.wait_eta_secs, 30 * 60);
         assert!((cfg.reset.snapshot_pressure_threshold - 0.50).abs() < f32::EPSILON);
         assert_eq!(cfg.reset.snapshot_eta_secs, 5 * 60);
+    }
+
+    #[test]
+    fn anomaly_config_disabled_by_default() {
+        let c = AnomalyConfig::default();
+        assert!(!c.enabled);
+        assert_eq!(c.window_polls, 20);
+        assert_eq!(c.min_confidence, "medium");
+        assert_eq!(c.identity_churn_min_flips, 3);
+        assert!((c.error_burst_threshold - 0.5).abs() < f32::EPSILON);
+        assert!((c.cache_discontinuity_drop - 0.30).abs() < f32::EPSILON);
+        assert_eq!(c.cross_pane_cluster_min_findings, 3);
+    }
+
+    #[test]
+    fn anomaly_config_loads_from_toml_with_partial_overrides() {
+        let toml = r#"
+[anomaly]
+enabled = true
+window_polls = 30
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).expect("parse");
+        assert!(cfg.anomaly.enabled);
+        assert_eq!(cfg.anomaly.window_polls, 30);
+        assert_eq!(cfg.anomaly.min_confidence, "medium"); // default kept
+        assert_eq!(cfg.anomaly.identity_churn_min_flips, 3); // default kept
+    }
+
+    #[test]
+    fn anomaly_config_missing_section_disables_layer() {
+        let cfg: QmonsterConfig = toml::from_str("").expect("parse");
+        assert!(!cfg.anomaly.enabled);
     }
 }
