@@ -1,0 +1,102 @@
+<h2>Token Optimization Insight Surface</h2>
+<p class="subtitle">Choose the product shape for showing what Qmonster observed, recommended, acted on, or ignored.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Extend Metrics Overlay</h3>
+      <p>Add more rows to the existing <code>m</code> overlay: six situations, cache state, latest recommendation, and last action.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Pros</h4>
+          <ul>
+            <li>Smallest change</li>
+            <li>Uses the current pane-card mental model</li>
+            <li>Good for live monitoring</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Cons</h4>
+          <ul>
+            <li>Weak for history and insight</li>
+            <li>Easy to overcrowd the metrics screen</li>
+            <li>Ignored actions remain hard to explain</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>New Insights Overlay</h3>
+      <p>Add an <code>i</code> overlay focused on token optimization: Situation Matrix, Timeline, Action Ledger, and Cache/Cost panes.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Pros</h4>
+          <ul>
+            <li>Best fit for operational insight</li>
+            <li>Separates metrics from decisions</li>
+            <li>Can show acted / ignored / blocked clearly</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Cons</h4>
+          <ul>
+            <li>Needs a small recommendation lifecycle ledger</li>
+            <li>More UI surface to maintain</li>
+            <li>Requires clear retention and aggregation rules</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Report First</h3>
+      <p>Add <code>qmonster insights --since ...</code> and later wire the same data into TUI once the reports are useful.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Pros</h4>
+          <ul>
+            <li>Fast to validate with real SQLite data</li>
+            <li>Good for demos and review artifacts</li>
+            <li>Low risk to the live TUI</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Cons</h4>
+          <ul>
+            <li>Less compelling during live operation</li>
+            <li>Does not satisfy "open a new screen" as directly</li>
+            <li>May split attention between CLI and TUI</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">Recommended Direction: B, with a Report-First Slice</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:16px">
+      <div>
+        <div class="label">Insights Overlay Tabs</div>
+        <div style="border:1px solid #334155;padding:10px;margin:8px 0">Overview: six situations + cache state + savings pressure</div>
+        <div style="border:1px solid #334155;padding:10px;margin:8px 0">Timeline: signal -> recommendation -> operator action -> outcome</div>
+        <div style="border:1px solid #334155;padding:10px;margin:8px 0">Ledger: acted, blocked, dismissed, ignored, auto-snapshot</div>
+        <div style="border:1px solid #334155;padding:10px;margin:8px 0">Evidence: SourceKind, thresholds, docs/code references</div>
+      </div>
+      <div>
+        <div class="label">First Slice</div>
+        <p>Use existing SQLite tables to prove value quickly, then add a small lifecycle table only where inference is not enough.</p>
+        <p><strong>Result:</strong> live operator insight plus a credible demo/report path.</p>
+      </div>
+    </div>
+  </div>
+</div>
