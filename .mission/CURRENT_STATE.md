@@ -7,7 +7,7 @@ _Last updated: 2026-05-07 (Claude, v1.44.0 release ledger sync)_
 - Title: Qmonster v1.44.0 - Phase 7 v2 promotion: anomaly → Recommendation + Notify (severity_for + promote_anomalies_to_recommendations + event_loop wiring).
 - Version surfaces: mission ledger target `1.44.0`; npm package metadata `qmonster@1.44.0`; latest local Git tag `v1.44.0`.
 - Branch / worktree at handoff start: `main`, tag `v1.44.0`.
-- Release publication state: v1.43.0 is published. `Release and Package Mirror` workflow run `25474748447` (2026-05-07, 6m34s, success) created GitHub Release `v1.43.0` with full asset set (binary tarball, npm tarball, SBOM, sbom-diff, checksums) and published `qmonster@1.43.0` to npm + GitHub Packages mirror. Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), v1.39.0 (`25311723861`), v1.40.0 (`25421376056`), v1.41.0 (`25424418078`), v1.42.0 (`25472444159`) publications also remain live. v1.44.0 publication follows after the operator pushes and the CI workflow completes.
+- Release publication state: v1.44.0 is published. `Release and Package Mirror` workflow run `25476534645` (2026-05-07, 6m48s, success) created GitHub Release `v1.44.0` with full asset set (binary tarball, npm tarball, SBOM, sbom-diff, checksums) and published `qmonster@1.44.0` to npm + GitHub Packages mirror. Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), v1.39.0 (`25311723861`), v1.40.0 (`25421376056`), v1.41.0 (`25424418078`), v1.42.0 (`25472444159`), v1.43.0 (`25474748447`) publications also remain live — `npm view qmonster versions` lists `1.37.0` through `1.44.0` with `dist-tags.latest = 1.44.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44}.0`.
 - Current phase: Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, the v1.38 UX bundle (F1/F2/F3/F4), the v1.39 polish + correctness round, the v1.40 operator-controlled overlay geometry round, the v1.41 a-overlay polish round, Phase H opt-in auto-snapshot, Phase 7 v1 anomaly observation surface, and Phase 7 v2 promotion are complete.
 
 ## v1.44.0 Feature State
@@ -38,7 +38,7 @@ No genuinely-post-v1.44.0 work has landed yet. The v1.44.0 release commit is the
 
 ## Known External State
 
-- v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 are all published (workflow runs `25159598038` / `25305201597` / `25311723861` / `25421376056` / `25424418078` / `25472444159` / `25474748447` all completed success). GitHub Release pages live at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43}.0`; `npm view qmonster versions` lists `1.37.0`, `1.38.0`, `1.39.0`, `1.40.0`, `1.41.0`, `1.42.0`, `1.43.0` with `dist-tags.latest = 1.43.0`.
+- v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 are all published (workflow runs `25159598038` / `25305201597` / `25311723861` / `25421376056` / `25424418078` / `25472444159` / `25474748447` / `25476534645` all completed success). GitHub Release pages live at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44}.0`; `npm view qmonster versions` lists `1.37.0`, `1.38.0`, `1.39.0`, `1.40.0`, `1.41.0`, `1.42.0`, `1.43.0`, `1.44.0` with `dist-tags.latest = 1.44.0`.
 - `qmonster@1.36.2` remains deprecated on npm because its GitHub Release SBOM was incomplete.
 - GitHub Release `v1.36.2` remains marked prerelease with a warning banner.
 
