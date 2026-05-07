@@ -88,6 +88,15 @@ pub struct PolicyGates {
     pub anomaly_token_slope_input_per_poll: u64,
     /// Phase 7 v2 (v1.45.0): MemoryGrowth detector threshold (MB).
     pub anomaly_memory_growth_mb: f64,
+    /// Phase 7 v3 (v1.46.0): per-kind minimum confidence for promotion.
+    pub anomaly_promote_identity_churn: crate::domain::anomaly::AnomalyConfidence,
+    pub anomaly_promote_error_burst: crate::domain::anomaly::AnomalyConfidence,
+    pub anomaly_promote_cache_discontinuity: crate::domain::anomaly::AnomalyConfidence,
+    pub anomaly_promote_cross_pane_edit_cluster: crate::domain::anomaly::AnomalyConfidence,
+    pub anomaly_promote_cost_slope: crate::domain::anomaly::AnomalyConfidence,
+    pub anomaly_promote_token_slope: crate::domain::anomaly::AnomalyConfidence,
+    pub anomaly_promote_memory_growth: crate::domain::anomaly::AnomalyConfidence,
+    pub anomaly_promote_subagent_side_effect: crate::domain::anomaly::AnomalyConfidence,
     /// Phase D D1 (v1.17.0): opt-in cross-window concurrent-work
     /// detection. When `true`, the cross-pane rule emits
     /// `CrossPaneKind::CrossWindowConcurrentWork` for groups whose panes
@@ -178,6 +187,15 @@ impl Default for PolicyGates {
             anomaly_cost_slope_usd_per_hour: 20.0,
             anomaly_token_slope_input_per_poll: 20_000,
             anomaly_memory_growth_mb: 1024.0,
+            anomaly_promote_identity_churn: crate::domain::anomaly::AnomalyConfidence::High,
+            anomaly_promote_error_burst: crate::domain::anomaly::AnomalyConfidence::High,
+            anomaly_promote_cache_discontinuity: crate::domain::anomaly::AnomalyConfidence::High,
+            anomaly_promote_cross_pane_edit_cluster:
+                crate::domain::anomaly::AnomalyConfidence::High,
+            anomaly_promote_cost_slope: crate::domain::anomaly::AnomalyConfidence::High,
+            anomaly_promote_token_slope: crate::domain::anomaly::AnomalyConfidence::High,
+            anomaly_promote_memory_growth: crate::domain::anomaly::AnomalyConfidence::High,
+            anomaly_promote_subagent_side_effect: crate::domain::anomaly::AnomalyConfidence::Medium,
             cross_window_findings: false,
             identity_drift_findings: false,
             cross_pane_file_findings: false,
@@ -218,6 +236,24 @@ fn parse_min_confidence(s: &str) -> crate::domain::anomaly::AnomalyConfidence {
 }
 
 impl PolicyGates {
+    /// Phase 7 v3 (v1.46.0): per-kind promotion threshold lookup.
+    pub fn promote_min_confidence(
+        &self,
+        kind: crate::domain::anomaly::AnomalyKind,
+    ) -> crate::domain::anomaly::AnomalyConfidence {
+        use crate::domain::anomaly::AnomalyKind;
+        match kind {
+            AnomalyKind::IdentityChurn => self.anomaly_promote_identity_churn,
+            AnomalyKind::ErrorBurst => self.anomaly_promote_error_burst,
+            AnomalyKind::CacheDiscontinuity => self.anomaly_promote_cache_discontinuity,
+            AnomalyKind::CrossPaneEditCluster => self.anomaly_promote_cross_pane_edit_cluster,
+            AnomalyKind::CostSlope => self.anomaly_promote_cost_slope,
+            AnomalyKind::TokenSlope => self.anomaly_promote_token_slope,
+            AnomalyKind::MemoryGrowth => self.anomaly_promote_memory_growth,
+            AnomalyKind::SubagentSideEffect => self.anomaly_promote_subagent_side_effect,
+        }
+    }
+
     pub fn from_inputs(inputs: PolicyGateInputs<'_>) -> Self {
         let PolicyGateInputs {
             token,
@@ -271,6 +307,20 @@ impl PolicyGates {
             anomaly_cost_slope_usd_per_hour: anomaly.cost_slope_usd_per_hour,
             anomaly_token_slope_input_per_poll: anomaly.token_slope_input_per_poll,
             anomaly_memory_growth_mb: anomaly.memory_growth_mb,
+            anomaly_promote_identity_churn: parse_min_confidence(&anomaly.promote.identity_churn),
+            anomaly_promote_error_burst: parse_min_confidence(&anomaly.promote.error_burst),
+            anomaly_promote_cache_discontinuity: parse_min_confidence(
+                &anomaly.promote.cache_discontinuity,
+            ),
+            anomaly_promote_cross_pane_edit_cluster: parse_min_confidence(
+                &anomaly.promote.cross_pane_edit_cluster,
+            ),
+            anomaly_promote_cost_slope: parse_min_confidence(&anomaly.promote.cost_slope),
+            anomaly_promote_token_slope: parse_min_confidence(&anomaly.promote.token_slope),
+            anomaly_promote_memory_growth: parse_min_confidence(&anomaly.promote.memory_growth),
+            anomaly_promote_subagent_side_effect: parse_min_confidence(
+                &anomaly.promote.subagent_side_effect,
+            ),
             cross_window_findings: security.cross_window_findings,
             identity_drift_findings: security.identity_drift_findings,
             cross_pane_file_findings: security.cross_pane_file_findings,
@@ -397,6 +447,7 @@ mod tests {
             profile_switch_enabled: false,
             profile_switch_window: 10,
             profile_switch_error_rate: 0.5,
+            ..PolicyGates::default()
         };
         assert!(gates.quota_tight);
     }
@@ -939,5 +990,100 @@ mod tests {
         assert!((gates.anomaly_cost_slope_usd_per_hour - 40.0).abs() < f64::EPSILON);
         assert_eq!(gates.anomaly_token_slope_input_per_poll, 60_000);
         assert!((gates.anomaly_memory_growth_mb - 2048.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn promote_min_confidence_returns_configured_field_per_kind() {
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyKind};
+        let gates = PolicyGates {
+            anomaly_promote_identity_churn: AnomalyConfidence::Low,
+            anomaly_promote_error_burst: AnomalyConfidence::Medium,
+            anomaly_promote_cache_discontinuity: AnomalyConfidence::High,
+            anomaly_promote_cross_pane_edit_cluster: AnomalyConfidence::Low,
+            anomaly_promote_cost_slope: AnomalyConfidence::Medium,
+            anomaly_promote_token_slope: AnomalyConfidence::High,
+            anomaly_promote_memory_growth: AnomalyConfidence::Low,
+            anomaly_promote_subagent_side_effect: AnomalyConfidence::Medium,
+            ..PolicyGates::default()
+        };
+        let cases = [
+            (AnomalyKind::IdentityChurn, AnomalyConfidence::Low),
+            (AnomalyKind::ErrorBurst, AnomalyConfidence::Medium),
+            (AnomalyKind::CacheDiscontinuity, AnomalyConfidence::High),
+            (AnomalyKind::CrossPaneEditCluster, AnomalyConfidence::Low),
+            (AnomalyKind::CostSlope, AnomalyConfidence::Medium),
+            (AnomalyKind::TokenSlope, AnomalyConfidence::High),
+            (AnomalyKind::MemoryGrowth, AnomalyConfidence::Low),
+            (AnomalyKind::SubagentSideEffect, AnomalyConfidence::Medium),
+        ];
+        for (kind, expected) in cases {
+            assert_eq!(
+                gates.promote_min_confidence(kind),
+                expected,
+                "kind {kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn policy_gates_default_promote_thresholds_match_spec() {
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyKind};
+        let gates = PolicyGates::default();
+        assert_eq!(
+            gates.promote_min_confidence(AnomalyKind::IdentityChurn),
+            AnomalyConfidence::High
+        );
+        assert_eq!(
+            gates.promote_min_confidence(AnomalyKind::CostSlope),
+            AnomalyConfidence::High
+        );
+        assert_eq!(
+            gates.promote_min_confidence(AnomalyKind::SubagentSideEffect),
+            AnomalyConfidence::Medium
+        );
+    }
+
+    #[test]
+    fn from_inputs_parses_promote_config() {
+        use crate::app::config::{
+            CacheConfig, ContextConfig, CostConfig, QuotaConfig, ResetConfig, SecurityConfig,
+            TokenConfig,
+        };
+        use crate::domain::anomaly::AnomalyConfidence;
+        use crate::domain::identity::Provider;
+        let cfg = TokenConfig::default();
+        let cost = CostConfig::default();
+        let context = ContextConfig::default();
+        let quota = QuotaConfig::default();
+        let security = SecurityConfig::default();
+        let cache = CacheConfig::default();
+        let reset = ResetConfig::default();
+        let profile_switch = crate::app::config::ProfileSwitchConfig::default();
+        let anomaly = crate::app::config::AnomalyConfig {
+            promote: crate::app::config::AnomalyPromoteConfig {
+                cost_slope: "low".to_string(),
+                subagent_side_effect: "high".to_string(),
+                ..crate::app::config::AnomalyPromoteConfig::default()
+            },
+            ..crate::app::config::AnomalyConfig::default()
+        };
+        let gates = PolicyGates::from_inputs(PolicyGateInputs {
+            token: &cfg,
+            cost: &cost,
+            context: &context,
+            quota: &quota,
+            security: &security,
+            cache: &cache,
+            reset: &reset,
+            profile_switch: &profile_switch,
+            anomaly: &anomaly,
+            provider: Provider::Claude,
+            confidence: IdentityConfidence::High,
+        });
+        assert_eq!(gates.anomaly_promote_cost_slope, AnomalyConfidence::Low);
+        assert_eq!(
+            gates.anomaly_promote_subagent_side_effect,
+            AnomalyConfidence::High
+        );
     }
 }
