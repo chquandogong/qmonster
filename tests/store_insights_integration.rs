@@ -182,6 +182,56 @@ fn insights_counts_live_colon_actions_by_situation() {
             "%11",
             "cache: drift detected — /compact will let cache rebuild: cache hit ratio 49%",
         ),
+        (
+            AuditEventKind::RecommendationEmitted,
+            "%12",
+            "agent-memory: trim before /compact: memory pressure rising",
+        ),
+        (
+            AuditEventKind::AlertFired,
+            "%13",
+            "identity-drift: provider changed: codex -> claude",
+        ),
+        (
+            AuditEventKind::AlertFired,
+            "%14",
+            "identity-drift: worktree changed: switched branches",
+        ),
+        (
+            AuditEventKind::RecommendationEmitted,
+            "%15",
+            "quota-pressure: 5h act now: nearing 5h limit",
+        ),
+        (
+            AuditEventKind::RecommendationEmitted,
+            "%16",
+            "quota-pressure: weekly pace: nearing weekly limit",
+        ),
+        (
+            AuditEventKind::RecommendationEmitted,
+            "%17",
+            "cost-pressure: pace: spend is rising",
+        ),
+        (
+            AuditEventKind::RecommendationEmitted,
+            "%18",
+            "cost-pressure: act now: spend is critical",
+        ),
+        (
+            AuditEventKind::RecommendationEmitted,
+            "%19",
+            "provider-profile: codex-default: current provider profile is expensive",
+        ),
+        (
+            AuditEventKind::RecommendationEmitted,
+            "%20",
+            "security-posture: elevated sandbox required: awaiting approval",
+        ),
+        (
+            AuditEventKind::RecommendationEmitted,
+            "%21",
+            "auto-memory: summarize stale thread: background compaction suggested",
+        ),
     ] {
         audit.record(audit_event(kind, pane_id, summary));
     }
@@ -205,8 +255,9 @@ fn insights_counts_live_colon_actions_by_situation() {
     };
 
     assert_eq!(situation_count("Log storm / repeated output"), 2);
-    assert_eq!(situation_count("Context pressure"), 9);
+    assert_eq!(situation_count("Context pressure"), 10);
     assert_eq!(situation_count("Verbose review"), 1);
-    assert_eq!(situation_count("Code exploration"), 3);
-    assert_eq!(situation_count("Quota-tight / cost"), 2);
+    assert_eq!(situation_count("Code exploration"), 5);
+    assert_eq!(situation_count("Quota-tight / cost"), 7);
+    assert_eq!(situation_count("Other"), 2);
 }

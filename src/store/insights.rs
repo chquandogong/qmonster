@@ -105,6 +105,24 @@ const KNOWN_ACTION_PREFIXES: &[&str] = &[
     "provider-profile: switch suggested",
 ];
 
+const COLON_ACTION_FAMILIES: &[&str] = &[
+    "agent-memory",
+    "auto-memory",
+    "identity-drift",
+    "security-posture",
+    "quota-pressure",
+    "cost-pressure",
+    "provider-profile",
+    "cache",
+    "anomaly",
+    "aggressive",
+    "context-pressure",
+    "code-exploration",
+    "verbose-review",
+    "profile-switch",
+    "cost-budget",
+];
+
 fn summary_has_action_prefix(summary: &str, prefix: &str) -> bool {
     summary == prefix
         || summary
@@ -112,11 +130,31 @@ fn summary_has_action_prefix(summary: &str, prefix: &str) -> bool {
             .is_some_and(|rest| rest.starts_with(": "))
 }
 
+fn action_from_known_family(summary: &str) -> Option<&str> {
+    for family in COLON_ACTION_FAMILIES {
+        let Some(rest) = summary
+            .strip_prefix(family)
+            .and_then(|rest| rest.strip_prefix(": "))
+        else {
+            continue;
+        };
+
+        return Some(match rest.split_once(": ") {
+            Some((detail, _)) => &summary[..family.len() + 2 + detail.len()],
+            None => summary,
+        });
+    }
+    None
+}
+
 fn action_from_summary(summary: &str) -> &str {
     for prefix in KNOWN_ACTION_PREFIXES {
         if summary_has_action_prefix(summary, prefix) {
             return *prefix;
         }
+    }
+    if let Some(action) = action_from_known_family(summary) {
+        return action;
     }
     summary
         .split_once(": ")
@@ -158,6 +196,7 @@ fn situation_for_action(action: &str) -> &'static str {
             | "anomaly: identity churn detected"
             | "anomaly: subagent activity correlated with other anomalies"
     ) || action.contains("code-exploration")
+        || action.starts_with("identity-drift:")
         || action.contains("cross-pane")
         || action.contains("ConcurrentFileEdit")
     {
@@ -170,6 +209,7 @@ fn situation_for_action(action: &str) -> &'static str {
             | "anomaly: token slope detected"
             | "anomaly: memory growth detected"
     ) || action.contains("context-pressure")
+        || action.starts_with("agent-memory:")
         || action.starts_with("cache")
         || action.starts_with("quota: pause")
         || action.starts_with("snapshot before")
@@ -229,9 +269,7 @@ impl SqliteInsightsStore {
             let summary = row.map_err(|e| SqliteError::Query(e.to_string()))?;
             let action = action_from_summary(&summary);
             let situation = situation_for_action(action);
-            if situation != "Other" {
-                *counts.entry(situation).or_default() += 1;
-            }
+            *counts.entry(situation).or_default() += 1;
         }
         let situations = counts
             .into_iter()
