@@ -870,7 +870,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "Overlay chrome",
-            "large overlays use [/] resize, = reset geometry, title drag move, wheel/↑/↓ scroll, same entry key/Esc/q/[x] close",
+            "large overlays (m/a/i/n) use [/] resize, = reset geometry, title drag move, wheel/↑/↓ scroll, same entry key/Esc/q/[x] close; S edit mode and short confirmation modals are exceptions",
         ),
         ("Tab", "switch focus between alerts and pane list"),
         ("Up / Down", "move one item in the focused list"),
@@ -1948,15 +1948,50 @@ mod tests {
     fn help_documents_overlay_chrome_contract() {
         let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
         let dump = lines.join("\n");
+        let entry_for = |key: &str| -> String {
+            lines
+                .iter()
+                .find_map(|line| {
+                    let (label, value) = line.split_once(':')?;
+                    if label.trim() == key {
+                        Some(value.trim().to_string())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| panic!("help row {key:?} missing from:\n{dump}"))
+        };
+
+        let overlay = entry_for("Overlay chrome");
+        let anomaly = entry_for("n");
+        let insights = entry_for("i");
+
         assert!(
-            dump.contains("[/] resize")
-                && dump.contains("title drag move")
-                && dump.contains("= reset geometry"),
-            "Help should document the shared overlay chrome contract; got:\n{dump}"
+            overlay.contains("m/a/i/n")
+                && overlay.contains("[/] resize")
+                && overlay.contains("= reset geometry")
+                && overlay.contains("title drag move"),
+            "Help Overlay chrome row should scope the shared contract to m/a/i/n; got: {overlay}\nfull help:\n{dump}"
         );
         assert!(
-            dump.contains("i") && dump.contains("n") && dump.contains("resizable"),
-            "Help should mark Token Insights and Anomaly Events as resizable overlays; got:\n{dump}"
+            overlay.contains("exceptions"),
+            "Help Overlay chrome row should mention exceptions briefly; got: {overlay}\nfull help:\n{dump}"
+        );
+        assert!(
+            anomaly.contains("resizable Anomaly Events")
+                && anomaly.contains("[/] resize")
+                && anomaly.contains("= reset geometry")
+                && anomaly.contains("title drag move")
+                && anomaly.contains("h toggles Ring/History"),
+            "Help n row should document the resizable Anomaly Events contract; got: {anomaly}\nfull help:\n{dump}"
+        );
+        assert!(
+            insights.contains("resizable Token Insights")
+                && insights.contains("[/] resize")
+                && insights.contains("= reset geometry")
+                && insights.contains("title drag move")
+                && insights.contains("r refreshes"),
+            "Help i row should document the resizable Token Insights contract; got: {insights}\nfull help:\n{dump}"
         );
     }
 

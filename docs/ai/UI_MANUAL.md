@@ -440,7 +440,7 @@ side_effects (N):
   `TOKENS`, `CACHE`, `RESET`, `CALLS`, `token io`, `cache io`와
   `[Official]` / `[Estimate]` / `[Heur]` / `[Qmonster]` source label의
   뜻을 설명합니다. modal 오른쪽 위 `[x]`를 클릭하거나
-  `q` / `Esc`로 닫습니다. `w` 저장은 로드된 TOML의 코멘트와
+  `S`를 다시 누르거나 (`숫자 편집 중 제외`) `q` / `Esc`로 닫습니다. `w` 저장은 로드된 TOML의 코멘트와
   관련 없는 섹션을 보존하면서 Settings가 소유한 key만 갱신합니다.
 - **Provider Setup (G-1, v1.29.0)**:
   `P`로 열립니다. 4개 탭(Claude / Codex / Gemini / Tmux)을 `1` / `2` / `3` / `4`로
@@ -481,7 +481,7 @@ side_effects (N):
     `~/ts.sh qmonster ~/Qmonster` 순서로 사용합니다.
   - **조작**: `1` / `2` / `3` / `4`, `Tab`, `←` / `→` 탭 전환,
     `↑` / `↓` 또는 `j` / `k` / mouse wheel 스크롤, `y` 현재
-    탭 스니펫 복사, `q` / `Esc` 닫기.
+    탭 스니펫 복사, `P` 다시 / `q` / `Esc` 닫기.
   - **Read-only**: Qmonster는 어떤 provider 설정 파일에도 절대 쓰지
     않습니다. 운영자가 표시된 스니펫을 수동으로 복사해 적용합니다.
   - **v1.30.0 업데이트 (G-2)**: `qmonster.toml`에 새로
