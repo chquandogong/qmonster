@@ -1,6 +1,6 @@
 mission:
-  version: "1.44.0"
-  title: "Qmonster v1.44.0 - Phase 7 v2 promotion: anomaly → Recommendation + Notify (severity_for + promote_anomalies_to_recommendations + event_loop wiring)."
+  version: "1.45.0"
+  title: "Qmonster v1.45.0 - Phase 7 v2 detectors: 4 new AnomalyKind variants (CostSlope/TokenSlope/MemoryGrowth/SubagentSideEffect) on top of v1.44.0 promotion infrastructure."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
@@ -1741,25 +1741,25 @@ mission:
         No decision records. No state.
 
   execution_hints:
-    topology: "Current working state is v1.44.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, Phase H, Phase 7 v1, and Phase 7 v2 promotion are complete. v1.43.0 shipped Phase 7 v1 — the anomaly observation surface; v1.44.0 ships Phase 7 v2 promotion — anomaly → Recommendation + Notify. severity_for(AnomalyConfidence) maps High → Warning and Medium/Low → Concern; promote_anomalies_to_recommendations converts AnomalySignal slices into Recommendation vecs; event_loop wiring calls promote_anomalies_to_recommendations and routes Warning-severity results through the Notify path; Settings Rules tab gains a 'promotes to Recommendation when confidence=High' annotation on all 4 anomaly rule rows. No provider adapter, audit schema, or SignalSet schema changes. package.json is at 1.44.0; the local v1.44.0 tag is created at the release ledger sync commit. CI publication verification for v1.44.0 follows the v1.37/v1.38/v1.39/v1.40/v1.41/v1.42/v1.43 workflow path."
+    topology: "Current working state is v1.45.0. Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, Phase H, Phase 7 v1, Phase 7 v2 promotion, and Phase 7 v2 detectors are complete. v1.44.0 shipped Phase 7 v2 promotion — anomaly → Recommendation + Notify; v1.45.0 ships Phase 7 v2 detectors — 4 new AnomalyKind variants. CostSlope detects USD/hour cost rate spikes; TokenSlope detects input_tokens/poll rate spikes; MemoryGrowth detects RSS process MB growth; SubagentSideEffect detects orchestrator-hop side-effect correlation. All 4 new detectors use the same severity_for + promote_anomalies_to_recommendations + event_loop wiring path as the v1.44.0 promotion infrastructure. AnomalyHistory extended with 6 new deques; AnomalyConfig gains 3 new thresholds (cost_slope_usd_per_hour, token_slope_per_poll, memory_growth_mb); PolicyGates gains 3 new anomaly_* fields; Settings Parameters +3 thresholds + Rules +4 anomaly rows; history extension with orchestrator hop tracking. No provider adapter, audit schema, or SignalSet schema changes. package.json is at 1.45.0; the local v1.45.0 tag is created at the release ledger sync commit. CI publication verification for v1.45.0 follows the v1.37/v1.38/v1.39/v1.40/v1.41/v1.42/v1.43/v1.44 workflow path."
     suggested_approach: >
-      Treat v1.44.0 as the current runtime baseline. Phase 7 v2
-      promotion is shipped: severity_for maps High → Warning and
-      Medium/Low → Concern; promote_anomalies_to_recommendations
-      converts AnomalySignal slices into Recommendation vecs; the
-      event_loop wires the call and routes Warning-severity results
-      through the Notify path; Settings Rules tab shows the
-      'promotes to Recommendation when confidence=High' annotation on
-      all 4 anomaly rule rows. The next cycle should plan Phase 7 v2
-      detectors — adding new AnomalyKind variants (e.g.
-      CostSlope, TokenSlope, MemoryGrowth, SubagentSideEffect) with
-      the same severity_for / promote pattern. Reuse AnomalyHistory
-      and the edge-triggered dedup pattern before introducing any new
-      storage schema. Do not invent per-subagent token attribution
-      unless a provider exposes structured counters. v1.37.0 / v1.38.0
-      / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 CI
-      publication verification (GitHub Release + npm package) remains
-      an external follow-up.
+      Treat v1.45.0 as the current runtime baseline. Phase 7 v2
+      detectors are shipped: CostSlope (USD/hour), TokenSlope
+      (input_tokens/poll), MemoryGrowth (RSS process MB), and
+      SubagentSideEffect (orchestrator-hop correlation) all use the
+      same severity_for + promote_anomalies_to_recommendations path
+      established in v1.44.0. AnomalyHistory extended with 6 deques;
+      AnomalyConfig gains 3 new thresholds; PolicyGates gains 3 new
+      anomaly_* fields; Settings Parameters/Rules updated. The next
+      cycle should plan Phase 7 v3 — operator-tunable promotion
+      thresholds, optional n overlay, and SQLite persistence for
+      anomaly history. Reuse AnomalyHistory and the edge-triggered
+      dedup pattern before introducing any new storage schema. Do not
+      invent per-subagent token attribution unless a provider exposes
+      structured counters. v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 /
+      v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 CI publication
+      verification (GitHub Release + npm package) remains an external
+      follow-up.
     note: >
       SourceKind taxonomy remains non-negotiable. Phase 2 audit kinds
       (ArchiveWritten, SnapshotWritten, RetentionSwept) must be
@@ -1795,14 +1795,14 @@ mission:
     - ".docs/claude/Qmonster-v0.4.0-2026-04-20-claude-plan-r1.md"
 
   budget_hint:
-    priority: "post-v1.44.0 Phase 7 v2 detectors"
+    priority: "post-v1.45.0 Phase 7 v3 — operator-tunable promotion thresholds, optional n overlay, SQLite persistence"
     estimated_sessions: 1
-    scope: "v1.44.0 ships Phase 7 v2 promotion: severity_for(AnomalyConfidence) maps High → Warning and Medium/Low → Concern; promote_anomalies_to_recommendations converts AnomalySignal slices into Recommendation vecs (src/policy/rules/anomaly.rs); event_loop wires the call and routes Warning-severity results through the Notify path (src/app/event_loop.rs); Settings Rules tab gains 'promotes to Recommendation when confidence=High' annotation on all 4 anomaly rule rows (src/ui/settings.rs); docs updated (UI_MANUAL promotion subsection, ARCHITECTURE v1.44.0 paragraph, VALIDATION row). No provider adapter, audit chain, policy gate set, or SignalSet schema changes. 1097 lib tests + 56 integration tests. v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 CI publication verification remains a separate follow-up."
+    scope: "v1.45.0 ships Phase 7 v2 detectors: 4 new AnomalyKind variants — CostSlope (detect_cost_slope, USD/hour rate), TokenSlope (detect_token_slope, input_tokens/poll rate), MemoryGrowth (detect_memory_growth, RSS process MB), SubagentSideEffect (detect_subagent_side_effect, orchestrator-hop correlation) — all in src/policy/rules/anomaly.rs using the same severity_for + promote_anomalies_to_recommendations path. AnomalyHistory extended with 6 new deques + trim extension (src/policy/rules/anomaly.rs). AnomalyConfig gains 3 new thresholds: cost_slope_usd_per_hour, token_slope_per_poll, memory_growth_mb (src/policy/rules/anomaly.rs). PolicyGates gains 3 new anomaly_* fields: anomaly_cost_slope, anomaly_token_slope, anomaly_memory_growth (src/policy/gates.rs). event_loop history push +6 lines + 1 integration test (src/app/event_loop.rs). Settings Parameters +3 thresholds + Rules +4 anomaly rows (src/ui/settings.rs). Docs updated (UI_MANUAL v2 detectors subsection, ARCHITECTURE v1.45.0 paragraph, VALIDATION row, example.toml +3 thresholds). No provider adapter, audit chain, SignalSet schema, or SQLite schema changes. 1123 lib tests + 57 integration tests. v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 CI publication verification remains a separate follow-up."
     followups:
-      - "Phase 7 v2 detectors (CostSlope/TokenSlope/MemoryGrowth/SubagentSideEffect): add new AnomalyKind variants using the same severity_for + promote_anomalies_to_recommendations pattern"
+      - "Phase 7 v3 — operator-tunable promotion thresholds, optional n overlay, SQLite persistence for anomaly history"
       - "D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters"
       - "Tag protection / ruleset activation remains a GitHub Settings task"
-      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 CI publication verification (GitHub Release + npm package) remains an external follow-up"
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 CI publication verification (GitHub Release + npm package) remains an external follow-up"
 
   author: "Claude Code (Qmonster main pane, Opus 4.7 1M)"
   created: "2026-04-20"
