@@ -1,0 +1,58 @@
+<h2>TUI Overlay Layout Approaches</h2>
+<p class="subtitle">How should the terminal overlay be structured?</p>
+
+<div class="options">
+  <div class="option" data-choice="event_centric" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Event-Centric (Log/List)</h3>
+      <div style="font-family: monospace; background: #222; color: #0f0; padding: 8px; font-size: 0.8em; margin-bottom: 8px; border-radius: 4px;">
+        [ Optimization Events ]<br>
+        > [Log Storm] Prompted /compact (10m ago)<br>
+        &nbsp;&nbsp;[Context P.] Recommended snapshot (1h ago)<br>
+        &nbsp;&nbsp;[Quota-Tight] Switched to review (2h ago)<br>
+        <br>
+        === Details for Selected Event ===<br>
+        Pane: Claude<br>
+        Cache Hit Ratio: 25% -> 80% (after action)<br>
+        Tokens Saved: ~15k
+      </div>
+      <p>Focuses on a scrollable chronological list of what Qmonster actually *did* (actions/ignores), with details on the side/bottom.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="aggregate_centric" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Dashboard / Aggregate-Centric</h3>
+      <div style="font-family: monospace; background: #222; color: #0f0; padding: 8px; font-size: 0.8em; margin-bottom: 8px; border-radius: 4px;">
+        [ Token & Optimization Summary ]<br>
+        Cache Savings: ▂▃▄▅▇ (Total: 450k tokens)<br>
+        <br>
+        Situations Triggered (24h):<br>
+        Log Storm: 2 | Code Expl.: 0 | Ctx Press.: 5<br>
+        Verbose: 1 | Input Wait: 12 | Quota: 1<br>
+        <br>
+        Recent Action: Profile switch (2h ago)
+      </div>
+      <p>Focuses on high-level metrics, sparklines, and totals to show the overall "impact" of token optimization, with a small event feed at the bottom.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="pane_centric" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Pane-Centric</h3>
+      <div style="font-family: monospace; background: #222; color: #0f0; padding: 8px; font-size: 0.8em; margin-bottom: 8px; border-radius: 4px;">
+        [ Pane Optimization Breakdown ]<br>
+        [*] pane 0 (Claude) - 80% Cache | 2x Log Storm<br>
+        [ ] pane 1 (Codex)  - 30% Cache | 5x Ctx Pressure<br>
+        <br>
+        === Pane 0 Optimization Impact ===<br>
+        Tokens Input: 120k | Cached: 400k (76%)<br>
+        Last Action: Prompted /compact (10m ago)
+      </div>
+      <p>Focuses on grouping the 6 situations and cache metrics by the specific agent/pane, similar to the existing `m` metrics overlay.</p>
+    </div>
+  </div>
+</div>

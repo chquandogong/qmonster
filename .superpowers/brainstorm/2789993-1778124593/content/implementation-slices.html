@@ -1,0 +1,68 @@
+<h2>Implementation Slices</h2>
+<p class="subtitle">Build the insight loop in small, verifiable steps: aggregation first, lifecycle next, TUI last.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Recommended Roadmap</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:80px 1.2fr 1.5fr 1fr;gap:8px;font-size:13px">
+      <strong>Slice</strong><strong>Goal</strong><strong>Files / Surface</strong><strong>Verification</strong>
+
+      <span>1</span>
+      <span>Read-only insights query layer</span>
+      <span>store/insights.rs over audit_events, token_usage_samples, cost_usage_events</span>
+      <span>fixture DB tests</span>
+
+      <span>2</span>
+      <span>Recommendation lifecycle ledger</span>
+      <span>sqlite schema + record emission/outcome, TTL ignored classifier</span>
+      <span>lifecycle unit tests</span>
+
+      <span>3</span>
+      <span>CLI/report proof</span>
+      <span>qmonster insights --since 24h or --once extension</span>
+      <span>golden text tests</span>
+
+      <span>4</span>
+      <span>TUI <code>i</code> overlay</span>
+      <span>app/insights_overlay.rs, ui/insights.rs, keymap/help/manual</span>
+      <span>render and key tests</span>
+
+      <span>5</span>
+      <span>Evidence and docs sync</span>
+      <span>UI_MANUAL, ARCHITECTURE, VALIDATION, example config</span>
+      <span>doc consistency check</span>
+    </div>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">What the first version should and should not claim</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">Claim</div>
+        <p>Situation frequency: exact from persisted recommendations.</p>
+        <p>Action outcome: exact when an audit or outcome row exists.</p>
+        <p>Ignored: TTL-based, clearly labeled as Qmonster classification.</p>
+        <p>Token/cost trend: measured from provider/status-derived samples.</p>
+      </div>
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">Do Not Claim</div>
+        <p>No exact "tokens saved" unless provider exposes the counter.</p>
+        <p>No per-subagent attribution until providers expose structured data.</p>
+        <p>No auto /compact or /clear beyond existing manual approval policy.</p>
+        <p>No hidden provider setup writes; Provider Setup remains copy/manual.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approve" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content">
+      <h3>Approve This Design</h3>
+      <p>Write the design spec under <code>docs/superpowers/specs/</code> and then prepare an implementation plan in the next step.</p>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,89 @@
+<h2>Situation Taxonomy</h2>
+<p class="subtitle">Keep the original six situations, add cache as a decision axis, and expose design-vs-implementation evidence in the overlay.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Situations tab · signal -> rule -> recommendation -> likely outcome</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:1fr 1.25fr 1.25fr 1fr;gap:8px;font-size:13px">
+      <strong>Situation</strong><strong>Signals</strong><strong>Implemented Rules</strong><strong>Outcomes</strong>
+
+      <span>A. Log storm</span>
+      <span>log_storm, repeated_output, output_chars, raw archive effect</span>
+      <span>alerts.rs, advisories.rs, ArchiveLocal, archive_fs.rs</span>
+      <span>archive, summarize, ignored</span>
+
+      <span>B. Code exploration</span>
+      <span>TaskType::CodeExploration, verbose_answer, active_files</span>
+      <span>advisories.rs, concurrent.rs, anomaly CrossPaneEditCluster</span>
+      <span>delegate, graph/symbol advice, ignored</span>
+
+      <span>C. Context pressure</span>
+      <span>CTX, token IO, cache ratio, reset ETA</span>
+      <span>context_pressure, cache.rs, reset.rs, auto_snapshot.rs</span>
+      <span>snapshot, compact, wait, auto-snapshot, ignored</span>
+
+      <span>D. Verbose review</span>
+      <span>role=Review, verbose_answer</span>
+      <span>verbose_review, review-tier profiles</span>
+      <span>terse profile, copy hint, ignored</span>
+
+      <span>E. Wait states</span>
+      <span>IdleCause::InputWait, PermissionWait, LimitHit</span>
+      <span>idle.rs transition rule, source-labeled severity</span>
+      <span>operator response latency, blocked, ignored</span>
+
+      <span>F. Quota-tight / cost</span>
+      <span>quota 5h/weekly, cost_usd, error history</span>
+      <span>quota_pressure, cost_budget.rs, profile_switch.rs, profiles.rs</span>
+      <span>pace, profile switch, pause, ignored</span>
+    </div>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">Cache axis · shown inside each relevant situation</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">Hot Cache</div>
+        <p><strong>Signal:</strong> cache hit ratio > hot threshold, CTX still low.</p>
+        <p><strong>Advice:</strong> avoid /compact; let context fill further.</p>
+        <p><strong>Insight:</strong> how often did the operator wait vs compact anyway?</p>
+      </div>
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">Cold Cache</div>
+        <p><strong>Signal:</strong> cache hit ratio < cold threshold, CTX high.</p>
+        <p><strong>Advice:</strong> /compact is safe after snapshot.</p>
+        <p><strong>Insight:</strong> did cold-cache moments actually lead to compaction?</p>
+      </div>
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">Cache Drift</div>
+        <p><strong>Signal:</strong> ratio dropped across recent token samples.</p>
+        <p><strong>Advice:</strong> compact to rebuild on a smaller stable surface.</p>
+        <p><strong>Insight:</strong> which tasks cause cache drift most often?</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">Evidence tab · design and implementation proof</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="label">Design Source</div>
+        <p>docs/ai/PROJECT_BRIEF.md</p>
+        <p>docs/ai/ARCHITECTURE.md</p>
+        <p>docs/ai/UI_MANUAL.md</p>
+        <p>mission.yaml phase notes</p>
+      </div>
+      <div>
+        <div class="label">Implementation Source</div>
+        <p>src/domain/signal.rs</p>
+        <p>src/policy/rules/*.rs</p>
+        <p>src/store/{audit,token_usage,cost_usage}.rs</p>
+        <p>src/ui/metrics.rs and new insights UI</p>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,65 @@
+<h2>Token Insight Data Flow</h2>
+<p class="subtitle">The first slice should reuse existing SQLite tables, then add one focused lifecycle table for outcomes that cannot be inferred honestly.</p>
+
+<div class="mockup">
+  <div class="mockup-header">observe -> classify -> recommend -> outcome -> insight</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">Existing Sources</div>
+        <p><strong>token_usage_samples</strong></p>
+        <p>input/output/cached/cost time series per pane.</p>
+        <p><strong>audit_events</strong></p>
+        <p>RecommendationEmitted, AlertFired, ArchiveWritten, SnapshotWritten, PromptSend*.</p>
+        <p><strong>cost_usage_events</strong></p>
+        <p>Positive USD deltas and budget thresholds.</p>
+      </div>
+
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">New Small Table</div>
+        <p><strong>recommendation_events</strong></p>
+        <p>Stable key for pane/action/source/threshold snapshot at emission time.</p>
+        <p><strong>recommendation_outcomes</strong></p>
+        <p>accepted, rejected, blocked, archived, snapshot_written, hidden, ignored.</p>
+        <p><strong>TTL rule</strong></p>
+        <p>No related outcome within TTL means ignored.</p>
+      </div>
+
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">Insights</div>
+        <p><strong>Situation frequency</strong></p>
+        <p>Which of the six situations happens most.</p>
+        <p><strong>Action effectiveness</strong></p>
+        <p>Which recommendations become real action.</p>
+        <p><strong>Cache timing</strong></p>
+        <p>Whether compact was avoided while hot or accepted when cold.</p>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:12px;margin-top:14px">
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">Lifecycle States</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+          <span style="border:1px solid #475569;padding:6px">emitted</span>
+          <span>-></span>
+          <span style="border:1px solid #475569;padding:6px">visible</span>
+          <span>-></span>
+          <span style="border:1px solid #475569;padding:6px">accepted</span>
+          <span>/</span>
+          <span style="border:1px solid #475569;padding:6px">rejected</span>
+          <span>/</span>
+          <span style="border:1px solid #475569;padding:6px">blocked</span>
+          <span>/</span>
+          <span style="border:1px solid #475569;padding:6px">ignored</span>
+        </div>
+        <p style="margin-top:10px">Prompt sends use existing PromptSend audit chains. Snapshot/archive outcomes use existing SnapshotWritten and ArchiveWritten events. Hidden/dismissed should be captured as a lightweight outcome, not guessed from UI state.</p>
+      </div>
+
+      <div style="border:1px solid #334155;padding:12px">
+        <div class="label">Honesty Rule</div>
+        <p>Do not invent token savings. Show measured deltas and label estimates separately.</p>
+        <p>Use <strong>observed outcome</strong> for action counts and <strong>TTL ignored</strong> only when no correlated action exists.</p>
+      </div>
+    </div>
+  </div>
+</div>
