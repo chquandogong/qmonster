@@ -20,6 +20,7 @@ This plan intentionally implements **Phase 8 v1 only**:
 - Deferred to a later plan: `recommendation_events`, `recommendation_outcomes`, TTL ignored classification, UI-only hide outcome capture, `InsightsRuntimeState`, and the TUI `i` overlay.
 
 Phase 8 v1 does not estimate ignored recommendations. The action ledger keeps `ignored = 0` and the report labels ignored classification as unavailable because the lifecycle ledger does not exist yet.
+Prompt-send outcomes are shown as observed action rows in this phase; exact recommendation-to-outcome correlation starts with the Phase 8 v2 lifecycle ledger.
 
 ## File Structure
 
@@ -352,7 +353,7 @@ fn summary_has_action_prefix(summary: &str, prefix: &str) -> bool {
 fn action_from_summary(summary: &str) -> &str {
     for prefix in KNOWN_ACTION_PREFIXES {
         if summary_has_action_prefix(summary, prefix) {
-            return prefix;
+            return *prefix;
         }
     }
     summary
@@ -450,7 +451,7 @@ Run:
 cargo test --test store_insights_integration
 ```
 
-Expected: both tests pass.
+Expected: all tests in `store_insights_integration` pass.
 
 - [ ] **Step 5: Commit**
 
@@ -469,12 +470,24 @@ git commit -m "feat(store): aggregate insights by situation"
 
 - [ ] **Step 1: Add a failing cache summary test**
 
-Append to `tests/store_insights_integration.rs`:
+In `tests/store_insights_integration.rs`, replace the existing store import:
 
 ```rust
-use qmonster::domain::identity::Provider;
-use qmonster::store::{CostObservation, SqliteCostUsageSink, SqliteTokenUsageSink, TokenSample};
+use qmonster::store::{EventSink, SqliteAuditSink};
+```
 
+with:
+
+```rust
+use qmonster::store::{
+    CostObservation, EventSink, SqliteAuditSink, SqliteCostUsageSink, SqliteTokenUsageSink,
+    TokenSample,
+};
+```
+
+Then append:
+
+```rust
 #[test]
 fn cache_summary_reports_cache_states_latest_ratio_token_growth_and_cost_delta() {
     let td = tempdir().unwrap();
@@ -579,6 +592,7 @@ fn cache_ratio(input: Option<i64>, cached: Option<i64>) -> Option<f64> {
         None
     } else {
         Some((cached / total * 100.0).round() / 100.0)
+    }
 }
 
 fn cache_state_from_action(action: &str) -> Option<&'static str> {
@@ -970,6 +984,8 @@ fn insights_report_renders_action_ledger() {
     assert!(joined.contains("cost delta: $0.0800"));
     assert!(joined.contains("/compact"));
     assert!(joined.contains("ignored classification: unavailable"));
+    assert!(joined.contains("Evidence"));
+    assert!(joined.contains("source tables: audit_events, token_usage_samples, cost_usage_events"));
 }
 ```
 
@@ -1086,6 +1102,10 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
             ));
         }
     }
+    lines.push(String::new());
+    lines.push("Evidence".into());
+    lines.push("  source tables: audit_events, token_usage_samples, cost_usage_events".into());
+    lines.push("  lifecycle: audit-only, recommendation correlation unavailable".into());
     lines
 }
 ```
@@ -1276,7 +1296,7 @@ At the start of `main()`, after `let env_root = std::env::var("QMONSTER_ROOT").o
     }
 ```
 
-This block must run before `build_startup_runtime(...)`.
+This block must run before the existing startup runtime construction in `main()`.
 Parent-level options such as `--root`, `--config`, and `--set` stay before the subcommand, for example `qmonster --root /tmp/qmonster insights --since 24h`.
 
 - [ ] **Step 5: Run tests and command help**
@@ -1318,8 +1338,9 @@ In `docs/ai/UI_MANUAL.md`, add a short subsection after the Metrics Overlay sect
 report from the local SQLite store. It does not start tmux and does not
 classify ignored recommendations yet. The report includes situation
 counts, cache reuse, token growth, cost delta, action ledger counts, and
-a recent timeline. Exact token savings and per-subagent attribution
-remain unsupported.
+a recent timeline. Evidence labels name the SQLite source tables and
+the audit-only lifecycle limitation. Exact token savings and
+per-subagent attribution remain unsupported.
 ```
 
 In `docs/ai/VALIDATION.md`, add:
