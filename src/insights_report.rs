@@ -5,7 +5,7 @@ use anyhow::{Context as _, Result};
 use crate::app::config::{QmonsterConfig, load_with_local_override};
 use crate::app::path_resolution::{RootSource, default_config_path, pick_root};
 use crate::app::safety_audit::apply_override_with_audit;
-use crate::store::{InMemorySink, InsightsSnapshot, QmonsterPaths};
+use crate::store::{CacheInsightSummary, InMemorySink, InsightsSnapshot, InsightsWindow, QmonsterPaths};
 
 fn checked_seconds(value: u64, multiplier: u64, unit: &str) -> Result<u64> {
     value
@@ -177,4 +177,15 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
         "  lifecycle: audit-only, recommendation correlation unavailable".into()
     });
     lines
+}
+
+pub fn empty_insights_snapshot(window: InsightsWindow) -> InsightsSnapshot {
+    InsightsSnapshot {
+        window,
+        situations: Vec::new(),
+        cache: CacheInsightSummary::default(),
+        timeline: Vec::new(),
+        actions: Vec::new(),
+        ignored_available: false,
+    }
 }

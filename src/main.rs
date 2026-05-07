@@ -9,9 +9,10 @@ use qmonster::app::once_report::print_once_reports;
 use qmonster::app::startup::{StartupOptions, build_startup_runtime};
 use qmonster::app::tui_loop::run_tui;
 use qmonster::insights_report::{
-    format_insights_report_lines, parse_since_arg, resolve_insights_paths,
+    empty_insights_snapshot, format_insights_report_lines, parse_since_arg,
+    resolve_insights_paths,
 };
-use qmonster::store::{CacheInsightSummary, InsightsSnapshot, InsightsWindow, SqliteInsightsStore};
+use qmonster::store::{InsightsWindow, SqliteInsightsStore};
 
 #[derive(Debug, Subcommand)]
 enum CliCommand {
@@ -76,14 +77,7 @@ fn main() -> anyhow::Result<()> {
                 .with_context(|| format!("open insights store at {}", sqlite_path.display()))?;
             store.snapshot(window)?
         } else {
-            InsightsSnapshot {
-                window,
-                situations: Vec::new(),
-                cache: CacheInsightSummary::default(),
-                timeline: Vec::new(),
-                actions: Vec::new(),
-                ignored_available: false,
-            }
+            empty_insights_snapshot(window)
         };
         println!(
             "qmonster paths: {} (source: {:?})",

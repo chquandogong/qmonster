@@ -1,5 +1,6 @@
 use qmonster::insights_report::{
-    format_insights_report_lines, parse_since_arg, resolve_insights_paths,
+    empty_insights_snapshot, format_insights_report_lines, parse_since_arg,
+    resolve_insights_paths,
 };
 use qmonster::store::{
     ActionLedgerRow, CacheInsightSummary, InsightsSnapshot, InsightsWindow,
@@ -109,6 +110,22 @@ fn insights_report_renders_available_recommendation_lifecycle() {
     assert!(joined.contains("ignored=3"));
     assert!(joined.contains("lifecycle: recommendation outcomes available"));
     assert!(!joined.contains("correlation unavailable"));
+}
+
+#[test]
+fn empty_snapshot_helper_returns_zero_state() {
+    let snapshot = empty_insights_snapshot(InsightsWindow {
+        since_ms: 100,
+        until_ms: 200,
+    });
+
+    assert_eq!(snapshot.window.since_ms, 100);
+    assert_eq!(snapshot.window.until_ms, 200);
+    assert!(snapshot.situations.is_empty());
+    assert!(snapshot.actions.is_empty());
+    assert!(snapshot.timeline.is_empty());
+    assert_eq!(snapshot.cache, CacheInsightSummary::default());
+    assert!(!snapshot.ignored_available);
 }
 
 #[test]
