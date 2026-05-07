@@ -128,6 +128,14 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// provider-observed cumulative `cost_usd` and persists one-shot
     /// budget-alert claims.
     pub cost_usage_sink: Option<SqliteCostUsageSink>,
+    /// Phase 7 v3 (c) (v1.47.0): persistence sink for anomaly events
+    /// and AnomalyHistory deque snapshots. None when persistence is
+    /// disabled (test fixtures, operators without --config-with-db).
+    pub anomaly_sink: Option<crate::store::SqliteAnomalySink>,
+    /// Phase 7 v3 (c): per-session set of pane_ids whose AnomalyHistory
+    /// has been replay-checked already. Prevents repeating the disk
+    /// query every tick.
+    pub anomaly_history_replayed: std::collections::HashSet<String>,
     /// Phase F F-6 (v1.32.0): live `codex app-server` JSON-RPC
     /// client. Spawned at TUI startup when the operator opted in
     /// via `[provider_setup] codex_app_server = true`. None when
@@ -180,6 +188,8 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             anomaly_events_ring: crate::app::anomaly_events_ring::AnomalyEventsRing::new(),
             token_usage_sink: None,
             cost_usage_sink: None,
+            anomaly_sink: None,
+            anomaly_history_replayed: std::collections::HashSet::new(),
             codex_app_server: None,
             codex_rate_limits: None,
             known_pane_ids: Vec::new(),
@@ -218,6 +228,19 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
 
     pub fn with_cost_usage_sink(mut self, sink: SqliteCostUsageSink) -> Self {
         self.cost_usage_sink = Some(sink);
+        self
+    }
+
+    pub fn with_anomaly_sink(mut self, sink: crate::store::SqliteAnomalySink) -> Self {
+        let tick_seconds = (self.config.tmux.poll_interval_ms / 1000).max(1);
+        if let Err(e) = sink.run_retention(
+            self.config.anomaly.retention_days,
+            self.config.anomaly.window_polls,
+            tick_seconds,
+        ) {
+            eprintln!("anomaly_sink retention purge failed at startup: {e}");
+        }
+        self.anomaly_sink = Some(sink);
         self
     }
 
