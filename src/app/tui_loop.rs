@@ -332,13 +332,12 @@ where
                                 continue;
                             }
 
-                            if anomaly_overlay.is_open()
-                                && crate::app::anomaly_overlay::handle_anomaly_overlay_key(
+                            if anomaly_overlay.is_open() {
+                                let _ = crate::app::anomaly_overlay::handle_anomaly_overlay_key(
                                     &mut anomaly_overlay,
                                     ctx.anomaly_events_ring.len(),
                                     k.code,
-                                )
-                            {
+                                );
                                 continue;
                             }
 
