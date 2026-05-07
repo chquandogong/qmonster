@@ -7,7 +7,7 @@ _Last updated: 2026-05-07 (Claude, v1.43.0 release ledger sync)_
 - Title: Qmonster v1.43.0 - Phase 7 v1: anomaly observation surface (AnomalySignal + 4 detectors + eval_anomalies + m overlay ANOMALIES row).
 - Version surfaces: mission ledger target `1.43.0`; npm package metadata `qmonster@1.43.0`; latest local Git tag `v1.43.0`.
 - Branch / worktree at handoff start: `main`, tag `v1.43.0`.
-- Release publication state: v1.42.0 is published. `Release and Package Mirror` workflow run `25472444159` (2026-05-07, 6m41s, success) created GitHub Release `v1.42.0` with full asset set (binary tarball, npm tarball, SBOM, sbom-diff, checksums) and published `qmonster@1.42.0` to npm + GitHub Packages mirror. v1.43.0 is locally tagged but not yet published — its `Release and Package Mirror` workflow will trigger on the v1.43.0 tag push. Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), v1.39.0 (`25311723861`), v1.40.0 (`25421376056`), v1.41.0 (`25424418078`) publications also remain live — `npm view qmonster versions` lists `1.37.0`, `1.38.0`, `1.39.0`, `1.40.0`, `1.41.0`, `1.42.0` with `dist-tags.latest = 1.42.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42}.0`.
+- Release publication state: v1.43.0 is published. `Release and Package Mirror` workflow run `25474748447` (2026-05-07, 6m34s, success) created GitHub Release `v1.43.0` with full asset set (binary tarball, npm tarball, SBOM, sbom-diff, checksums) and published `qmonster@1.43.0` to npm + GitHub Packages mirror. Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), v1.39.0 (`25311723861`), v1.40.0 (`25421376056`), v1.41.0 (`25424418078`), v1.42.0 (`25472444159`) publications also remain live — `npm view qmonster versions` lists `1.37.0`, `1.38.0`, `1.39.0`, `1.40.0`, `1.41.0`, `1.42.0`, `1.43.0` with `dist-tags.latest = 1.43.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43}.0`.
 - Current phase: Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, the v1.38 UX bundle (F1/F2/F3/F4), the v1.39 polish + correctness round, the v1.40 operator-controlled overlay geometry round, the v1.41 a-overlay polish round, Phase H opt-in auto-snapshot, and Phase 7 v1 anomaly observation surface are complete.
 
 ## v1.43.0 Feature State
@@ -50,8 +50,7 @@ No genuinely-post-v1.43.0 work has landed yet. The v1.43.0 release commit is the
 
 ## Known External State
 
-- v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 are all published (workflow runs `25159598038` / `25305201597` / `25311723861` / `25421376056` / `25424418078` / `25472444159` all completed success). GitHub Release pages live at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42}.0`; `npm view qmonster versions` lists `1.37.0`, `1.38.0`, `1.39.0`, `1.40.0`, `1.41.0`, `1.42.0` with `dist-tags.latest = 1.42.0`.
-- v1.43.0 is locally tagged but not yet published; the `Release and Package Mirror` workflow run will trigger on the v1.43.0 tag push.
+- v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 are all published (workflow runs `25159598038` / `25305201597` / `25311723861` / `25421376056` / `25424418078` / `25472444159` / `25474748447` all completed success). GitHub Release pages live at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43}.0`; `npm view qmonster versions` lists `1.37.0`, `1.38.0`, `1.39.0`, `1.40.0`, `1.41.0`, `1.42.0`, `1.43.0` with `dist-tags.latest = 1.43.0`.
 - `qmonster@1.36.2` remains deprecated on npm because its GitHub Release SBOM was incomplete.
 - GitHub Release `v1.36.2` remains marked prerelease with a warning banner.
 
@@ -76,4 +75,4 @@ Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged rele
 
 ## Next First Action
 
-Pick the next follow-up from the Active Follow-Ups list. The closest concrete item is planning Phase 7 v2 (promoting anomalies to Recommendations and Notify-level alerts). Phase 7 v1 is shipped. Tag protection and per-subagent token attribution both need either operator-side action (GitHub Settings) or provider-side support. v1.42.0 and v1.43.0 CI publication verification will trigger on the respective tag pushes and are separate verification follow-ups.
+Pick the next follow-up from the Active Follow-Ups list. The closest concrete item is planning Phase 7 v2 (promoting anomalies to Recommendations and Notify-level alerts). Phase 7 v1 is shipped and v1.42.0 / v1.43.0 are both published. Tag protection and per-subagent token attribution both need either operator-side action (GitHub Settings) or provider-side support.
