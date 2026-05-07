@@ -136,11 +136,22 @@ pub fn apply_clamped_offset(base: Rect, viewport: Rect, offset_x: i16, offset_y:
     let max_y = viewport.y.saturating_add(viewport.height).saturating_sub(1) as i32;
     let x = (base.x as i32 + offset_x as i32).clamp(min_x, max_x.max(min_x));
     let y = (base.y as i32 + offset_y as i32).clamp(min_y, max_y.max(min_y));
-    Rect {
-        x: x as u16,
-        y: y as u16,
-        ..base
-    }
+    Rect::new(
+        x.max(0) as u16,
+        y.max(0) as u16,
+        base.width.min(
+            viewport
+                .width
+                .saturating_sub((x - viewport.x as i32).max(0) as u16)
+                .max(1),
+        ),
+        base.height.min(
+            viewport
+                .height
+                .saturating_sub((y - viewport.y as i32).max(0) as u16)
+                .max(1),
+        ),
+    )
 }
 
 pub fn title_row_contains(area: Rect, col: u16, row: u16) -> bool {
@@ -150,6 +161,44 @@ pub fn title_row_contains(area: Rect, col: u16, row: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn constructor_initializes_default_size_zero_offset_and_no_drag() {
+        let geometry = ModalGeometry::new(80, 70, 50, 99, 5);
+        assert_eq!(geometry.width_pct(), 80);
+        assert_eq!(geometry.height_pct(), 70);
+        assert_eq!(geometry.offset_x(), 0);
+        assert_eq!(geometry.offset_y(), 0);
+        assert_eq!(geometry.drag_anchor(), None);
+    }
+
+    #[test]
+    fn begin_drag_stores_anchor_and_end_drag_clears_it() {
+        let mut geometry = ModalGeometry::new(80, 70, 50, 99, 5);
+        let anchor = DragAnchor {
+            start_col: 12,
+            start_row: 3,
+            start_offset_x: 4,
+            start_offset_y: -2,
+        };
+
+        geometry.begin_drag(anchor);
+        assert_eq!(geometry.drag_anchor(), Some(anchor));
+
+        geometry.end_drag();
+        assert_eq!(geometry.drag_anchor(), None);
+    }
+
+    #[test]
+    fn title_row_contains_only_top_row_within_x_range() {
+        let area = Rect::new(10, 5, 20, 8);
+
+        assert!(title_row_contains(area, 10, 5));
+        assert!(title_row_contains(area, 29, 5));
+        assert!(!title_row_contains(area, 10, 6));
+        assert!(!title_row_contains(area, 9, 5));
+        assert!(!title_row_contains(area, 30, 5));
+    }
 
     #[test]
     fn modal_area_with_zero_offset_matches_centered_rect() {
@@ -190,6 +239,26 @@ mod tests {
         assert!(area.y < viewport.y + viewport.height);
         assert!(viewport.x + viewport.width - area.x >= 4);
         assert!(viewport.y + viewport.height - area.y >= 1);
+    }
+
+    #[test]
+    fn right_soft_clamp_clips_width_to_visible_viewport_width() {
+        let viewport = Rect::new(20, 5, 200, 80);
+        let base = Rect::new(70, 10, 100, 30);
+        let area = apply_clamped_offset(base, viewport, i16::MAX, 0);
+
+        assert_eq!(area.x, viewport.x + viewport.width - 4);
+        assert_eq!(area.width, 4);
+    }
+
+    #[test]
+    fn bottom_soft_clamp_clips_height_to_visible_viewport_height() {
+        let viewport = Rect::new(20, 5, 200, 80);
+        let base = Rect::new(70, 10, 100, 30);
+        let area = apply_clamped_offset(base, viewport, 0, i16::MAX);
+
+        assert_eq!(area.y, viewport.y + viewport.height - 1);
+        assert_eq!(area.height, 1);
     }
 
     #[test]
