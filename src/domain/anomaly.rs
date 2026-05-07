@@ -50,6 +50,20 @@ impl AnomalyKind {
             AnomalyKind::SubagentSideEffect => "SubagentSideEffect",
         }
     }
+
+    pub fn try_from_label(s: &str) -> Option<Self> {
+        Some(match s {
+            "IdentityChurn" => AnomalyKind::IdentityChurn,
+            "ErrorBurst" => AnomalyKind::ErrorBurst,
+            "CacheDiscontinuity" => AnomalyKind::CacheDiscontinuity,
+            "CrossPaneEditCluster" => AnomalyKind::CrossPaneEditCluster,
+            "CostSlope" => AnomalyKind::CostSlope,
+            "TokenSlope" => AnomalyKind::TokenSlope,
+            "MemoryGrowth" => AnomalyKind::MemoryGrowth,
+            "SubagentSideEffect" => AnomalyKind::SubagentSideEffect,
+            _ => return None,
+        })
+    }
 }
 
 /// Detector confidence. Operator filters via
@@ -69,6 +83,15 @@ impl AnomalyConfidence {
             AnomalyConfidence::Medium => "medium",
             AnomalyConfidence::High => "high",
         }
+    }
+
+    pub fn try_from_label(s: &str) -> Option<Self> {
+        Some(match s {
+            "low" => AnomalyConfidence::Low,
+            "medium" => AnomalyConfidence::Medium,
+            "high" => AnomalyConfidence::High,
+            _ => return None,
+        })
     }
 }
 
@@ -132,6 +155,43 @@ mod tests {
             AnomalyKind::SubagentSideEffect.label(),
             "SubagentSideEffect"
         );
+    }
+
+    #[test]
+    fn anomaly_kind_label_roundtrip() {
+        let kinds = [
+            AnomalyKind::IdentityChurn,
+            AnomalyKind::ErrorBurst,
+            AnomalyKind::CacheDiscontinuity,
+            AnomalyKind::CrossPaneEditCluster,
+            AnomalyKind::CostSlope,
+            AnomalyKind::TokenSlope,
+            AnomalyKind::MemoryGrowth,
+            AnomalyKind::SubagentSideEffect,
+        ];
+        for kind in kinds {
+            assert_eq!(AnomalyKind::try_from_label(kind.label()), Some(kind));
+        }
+    }
+
+    #[test]
+    fn anomaly_kind_try_from_label_rejects_garbage() {
+        assert_eq!(AnomalyKind::try_from_label(""), None);
+        assert_eq!(AnomalyKind::try_from_label("identitychurn"), None); // case-sensitive
+        assert_eq!(AnomalyKind::try_from_label("Bogus"), None);
+    }
+
+    #[test]
+    fn anomaly_confidence_label_roundtrip() {
+        for c in [
+            AnomalyConfidence::Low,
+            AnomalyConfidence::Medium,
+            AnomalyConfidence::High,
+        ] {
+            assert_eq!(AnomalyConfidence::try_from_label(c.label()), Some(c));
+        }
+        assert_eq!(AnomalyConfidence::try_from_label("LOW"), None);
+        assert_eq!(AnomalyConfidence::try_from_label(""), None);
     }
 
     #[test]

@@ -20,6 +20,27 @@ impl Severity {
             Severity::Risk => "R",
         }
     }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Severity::Safe => "safe",
+            Severity::Good => "good",
+            Severity::Concern => "concern",
+            Severity::Warning => "warning",
+            Severity::Risk => "risk",
+        }
+    }
+
+    pub fn try_from_label(s: &str) -> Option<Self> {
+        Some(match s {
+            "safe" => Severity::Safe,
+            "good" => Severity::Good,
+            "concern" => Severity::Concern,
+            "warning" => Severity::Warning,
+            "risk" => Severity::Risk,
+            _ => return None,
+        })
+    }
 }
 
 /// Advisory recommendation surfaced to the UI and (optionally) as an
@@ -144,6 +165,21 @@ pub enum CrossPaneKind {
 mod tests {
     use super::*;
     use crate::domain::origin::SourceKind;
+
+    #[test]
+    fn severity_label_roundtrip() {
+        for s in [
+            Severity::Safe,
+            Severity::Good,
+            Severity::Concern,
+            Severity::Warning,
+            Severity::Risk,
+        ] {
+            assert_eq!(Severity::try_from_label(s.label()), Some(s));
+        }
+        assert_eq!(Severity::try_from_label("CONCERN"), None);
+        assert_eq!(Severity::try_from_label(""), None);
+    }
 
     #[test]
     fn severity_ordering_safe_lt_risk() {
