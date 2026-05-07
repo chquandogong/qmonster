@@ -16,23 +16,23 @@ Phase 7 v2 detectors adds 4 new `AnomalyKind` variants on top of the v1.44.0 pro
 
 1. **AnomalyKind::CostSlope / detect_cost_slope** (`src/policy/rules/anomaly.rs`): Detects USD/hour cost rate spikes. Uses `AnomalyHistory` cost deque samples; fires `AnomalyKind::CostSlope` when the rolling rate exceeds `AnomalyConfig.cost_slope_usd_per_hour`. Confidence-mapped through `severity_for`; High → Warning (promotes to Recommendation + Notify), Medium/Low → Concern (passive observation only).
 
-2. **AnomalyKind::TokenSlope / detect_token_slope** (`src/policy/rules/anomaly.rs`): Detects `input_tokens/poll` rate spikes. Uses `AnomalyHistory` token slope deque; fires `AnomalyKind::TokenSlope` when the rolling rate exceeds `AnomalyConfig.token_slope_per_poll`.
+2. **AnomalyKind::TokenSlope / detect_token_slope** (`src/policy/rules/anomaly.rs`): Detects `input_tokens/poll` rate spikes. Uses `AnomalyHistory.input_token_samples` deque (primary) and `output_token_samples` (evidence-only secondary); fires `AnomalyKind::TokenSlope` when the rolling rate exceeds `AnomalyConfig.token_slope_input_per_poll`.
 
 3. **AnomalyKind::MemoryGrowth / detect_memory_growth** (`src/policy/rules/anomaly.rs`): Detects RSS process MB growth. Uses `AnomalyHistory` memory MB deque; fires `AnomalyKind::MemoryGrowth` when growth exceeds `AnomalyConfig.memory_growth_mb`.
 
-4. **AnomalyKind::SubagentSideEffect / detect_subagent_side_effect** (`src/policy/rules/anomaly.rs`): Detects orchestrator-hop side-effect correlation. Tracks orchestrator hop state in `AnomalyHistory`; fires `AnomalyKind::SubagentSideEffect` on correlated side-effect patterns.
+4. **AnomalyKind::SubagentSideEffect / detect_subagent_side_effect** (`src/policy/rules/anomaly.rs`): Correlation annotator that fires when `subagent_hint = true` is observed at least once in `window_polls` AND another anomaly fires in the same window. Uses `AnomalyHistory.subagent_hint_samples` deque + the post-dedup `&[other_anomalies]` slice from the orchestrator hop. Confidence is always Medium (binary correlation, not numeric); per Phase D D3-C honesty note: correlation, not attribution. Runs LAST in `eval_anomalies` — sees the post-dedup output of the other 7 detectors.
 
 5. **AnomalyHistory extension** (`src/policy/rules/anomaly.rs`): Extended with 6 new deques to support the 4 new detectors; `trim` extended accordingly. No SQLite schema changes — history remains in-memory per session.
 
-6. **AnomalyConfig thresholds** (`src/policy/rules/anomaly.rs`): 3 new operator-tunable thresholds: `cost_slope_usd_per_hour`, `token_slope_per_poll`, `memory_growth_mb`. Defaults in `config/qmonster.example.toml`.
+6. **AnomalyConfig thresholds** (`src/app/config.rs`): 3 new operator-tunable thresholds: `cost_slope_usd_per_hour` (default 20.0), `token_slope_input_per_poll` (default 20_000), `memory_growth_mb` (default 1024.0). Documented as commented examples in `config/qmonster.example.toml`; defaults live in `AnomalyConfig::default()`.
 
-7. **PolicyGates** (`src/policy/gates.rs`): 3 new `anomaly_*` fields: `anomaly_cost_slope`, `anomaly_token_slope`, `anomaly_memory_growth`. Same gate pattern as the original 4 anomaly gate fields from Phase 7 v1.
+7. **PolicyGates** (`src/policy/gates.rs`): 3 new `anomaly_*` fields populated from `AnomalyConfig` in `from_inputs`: `anomaly_cost_slope_usd_per_hour`, `anomaly_token_slope_input_per_poll`, `anomaly_memory_growth_mb`. Same gate pattern as the original 7 anomaly gate fields from Phase 7 v1.
 
 8. **event_loop wiring** (`src/app/event_loop.rs`): History push +6 lines wiring the 4 new detectors into the `eval_anomalies` call path. The existing `promote_anomalies_to_recommendations` call already handles all 8 `AnomalyKind` variants via the extended promote matrix.
 
 9. **promote matrix extension** (`src/policy/rules/anomaly.rs`): `promote_anomalies_to_recommendations` promote matrix extended with 4 new branches for `CostSlope`, `TokenSlope`, `MemoryGrowth`, and `SubagentSideEffect`. Same `(action, reason, next_step)` pattern as the original 4.
 
-10. **Settings** (`src/ui/settings.rs`): Parameters tab +3 new threshold rows (`cost_slope_usd_per_hour`, `token_slope_per_poll`, `memory_growth_mb`). Rules tab +4 new anomaly detector rows for the 4 new `AnomalyKind` variants, each including the `'promotes to Recommendation when confidence=High'` annotation.
+10. **Settings** (`src/ui/settings.rs`): Parameters tab +3 new threshold rows (`cost_slope_usd_per_hour`, `token_slope_input_per_poll`, `memory_growth_mb`). Rules tab +4 new anomaly detector rows: `CostSlope` / `TokenSlope` / `MemoryGrowth` rows each include the `'promotes to Recommendation when confidence=High'` annotation; the `SubagentSideEffect` row uses a different annotation `'promotes when subagent_hint co-occurs with another anomaly'` because the detector emits Medium confidence only (no High tier), so the standard slope-detector annotation doesn't apply.
 
 11. **Behavior when off**: when `[anomaly] enabled = false` (the default), all 8 detectors (original 4 + new 4) return empty slices; `promote_anomalies_to_recommendations` receives an empty slice and returns an empty vec; zero behavior change from v1.43.0 baseline applies. Behavior when on: `High`-confidence anomalies for any of the 8 `AnomalyKind` variants produce `Warning`-severity recommendations and desktop notifications. `Medium`/`Low`-confidence anomalies remain visible only in the m overlay ANOMALIES row as passive observation.
 

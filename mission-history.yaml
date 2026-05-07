@@ -17278,9 +17278,12 @@ timeline:
       CostSlope (detect_cost_slope, USD/hour rate), TokenSlope
       (detect_token_slope, input_tokens/poll rate), MemoryGrowth
       (detect_memory_growth, RSS process MB), SubagentSideEffect
-      (detect_subagent_side_effect, orchestrator-hop correlation).
-      All 4 detectors use the same severity_for + promote_anomalies_to_
-      recommendations path as the v1.44.0 promotion infrastructure.
+      (detect_subagent_side_effect, correlation annotator over
+      subagent_hint + other_anomalies post-dedup; Medium-only).
+      The 3 slope detectors use the same severity_for +
+      promote_anomalies_to_recommendations path as the v1.44.0
+      promotion infrastructure; SubagentSideEffect runs as a final
+      orchestrator hop after dedup.
       AnomalyHistory extended with 6 new deques; AnomalyConfig gains 3
       new thresholds; PolicyGates gains 3 new anomaly_* fields; Settings
       Parameters +3 thresholds + Rules +4 anomaly rows. No provider
@@ -17288,29 +17291,34 @@ timeline:
     intent_ko: >
       v1.45.0 은 Phase 7 v2 검출기를 출하한다: 4개의 새로운 AnomalyKind
       변형. CostSlope (USD/시간 비율), TokenSlope (입력토큰/폴링 비율),
-      MemoryGrowth (RSS 프로세스 MB), SubagentSideEffect (오케스트레이터
-      홉 상관관계). 모두 v1.44.0 프로모션 인프라와 동일한 severity_for +
-      promote_anomalies_to_recommendations 경로를 사용한다.
+      MemoryGrowth (RSS 프로세스 MB), SubagentSideEffect
+      (subagent_hint 와 다른 anomaly 의 동시 발생을 주석하는 상관관계
+      annotator; Medium 신뢰도 한정; D3-C 정직성 노트에 따라
+      attribution 이 아닌 correlation). 3개의 slope 검출기는 v1.44.0
+      프로모션 인프라와 동일한 severity_for +
+      promote_anomalies_to_recommendations 경로를 사용하고,
+      SubagentSideEffect 는 dedup 이후 최종 orchestrator hop 으로
+      실행된다.
     triggered_by: "Operator scoped Phase 7 v2 detectors as a 13-task implementation sequence (Tasks 1-12 = impl commits, Task 13 = ledger sync)."
     changes:
       added:
         - "src/policy/rules/anomaly.rs::detect_cost_slope: detects USD/hour cost rate spikes using AnomalyHistory cost deque; emits AnomalyKind::CostSlope."
         - "src/policy/rules/anomaly.rs::detect_token_slope: detects input_tokens/poll rate spikes using AnomalyHistory token deque; emits AnomalyKind::TokenSlope."
         - "src/policy/rules/anomaly.rs::detect_memory_growth: detects RSS process MB growth using AnomalyHistory memory deque; emits AnomalyKind::MemoryGrowth."
-        - "src/policy/rules/anomaly.rs::detect_subagent_side_effect: detects orchestrator-hop side-effect correlation; emits AnomalyKind::SubagentSideEffect."
+        - "src/policy/rules/anomaly.rs::detect_subagent_side_effect: correlation annotator that fires when subagent_hint=true is observed in window AND another anomaly fires in the same window; takes &[other_anomalies] from the orchestrator post-dedup; emits AnomalyKind::SubagentSideEffect with Medium confidence (binary correlation, not numeric)."
         - "src/policy/rules/anomaly.rs: AnomalyKind::CostSlope, AnomalyKind::TokenSlope, AnomalyKind::MemoryGrowth, AnomalyKind::SubagentSideEffect variants added."
-        - "src/policy/rules/anomaly.rs: AnomalyHistory extended with 6 new deques (cost_slope_samples, token_slope_samples, memory_mb_samples, etc.) + trim extension."
-        - "src/policy/rules/anomaly.rs: AnomalyConfig gains 3 new thresholds: cost_slope_usd_per_hour, token_slope_per_poll, memory_growth_mb."
-        - "src/policy/rules/anomaly.rs: promote_anomalies_to_recommendations promote matrix extended with 4 new branches for the new AnomalyKind variants."
-        - "src/policy/gates.rs: PolicyGates gains 3 new anomaly_* fields: anomaly_cost_slope, anomaly_token_slope, anomaly_memory_growth."
+        - "src/policy/rules/anomaly.rs: AnomalyHistory extended with 6 new deques (cost_usd_samples, input_token_samples, output_token_samples, process_memory_samples, agent_memory_samples, subagent_hint_samples) + trim extension."
+        - "src/app/config.rs: AnomalyConfig gains 3 new thresholds: cost_slope_usd_per_hour (default 20.0), token_slope_input_per_poll (default 20_000), memory_growth_mb (default 1024.0)."
+        - "src/policy/rules/anomaly.rs: promote_anomalies_to_recommendations promote matrix extended with 4 new branches for the new AnomalyKind variants. CostSlope/TokenSlope/MemoryGrowth use the standard severity_for path; SubagentSideEffect's branch emphasizes correlation framing."
+        - "src/policy/gates.rs: PolicyGates gains 3 new anomaly_* fields: anomaly_cost_slope_usd_per_hour, anomaly_token_slope_input_per_poll, anomaly_memory_growth_mb (populated from AnomalyConfig in from_inputs)."
         - "src/app/event_loop.rs: history push +6 lines wiring the 4 new detectors into the eval_anomalies path + 1 new integration test."
-        - "src/ui/settings.rs: Settings Parameters +3 thresholds (cost_slope_usd_per_hour / token_slope_per_poll / memory_growth_mb) + Rules +4 new anomaly detector rows."
+        - "src/ui/settings.rs: Settings Parameters +3 thresholds (cost_slope_usd_per_hour / token_slope_input_per_poll / memory_growth_mb) + Rules +4 new anomaly detector rows. CostSlope/TokenSlope/MemoryGrowth rows use 'promotes to Recommendation when confidence=High' annotation; SubagentSideEffect row uses 'promotes when subagent_hint co-occurs with another anomaly' (Medium-only confidence)."
       modified:
         - "docs/ai/UI_MANUAL.md: v2 detectors subsection added."
         - "docs/ai/ARCHITECTURE.md: v1.45.0 paragraph appended to Date line."
         - "docs/ai/VALIDATION.md: Phase 7 v2 detectors row added."
         - "docs/ai/PROJECT_BRIEF.md: Phase line and Date line updated with v1.45.0 segment."
-        - "config/qmonster.example.toml: +3 threshold entries (cost_slope_usd_per_hour, token_slope_per_poll, memory_growth_mb)."
+        - "config/qmonster.example.toml: +3 threshold entries (cost_slope_usd_per_hour, token_slope_input_per_poll, memory_growth_mb)."
         - "README.md: release table bumped to v1.45.0."
         - "VERSION.md: bumped to v1.45.0."
         - "package.json: version 1.45.0."
@@ -17323,7 +17331,7 @@ timeline:
         - "CostSlope anomalies: High-confidence USD/hour spikes produce Warning-severity Recommendations and trigger desktop notifications."
         - "TokenSlope anomalies: High-confidence input_tokens/poll spikes produce Warning-severity Recommendations."
         - "MemoryGrowth anomalies: High-confidence RSS MB growth produces Warning-severity Recommendations."
-        - "SubagentSideEffect anomalies: High-confidence orchestrator-hop correlation produces Warning-severity Recommendations."
+        - "SubagentSideEffect anomalies: when subagent_hint co-occurs with another anomaly in the same window, a Concern-severity Recommendation is promoted (Medium-confidence only — does not produce Warning-severity since the detector emits Medium-only). Reason explicitly says 'correlation, not attribution'."
         - "Settings Parameters tab shows 3 new threshold rows; Settings Rules tab shows 4 new anomaly detector rows."
       modified:
         - "promote_anomalies_to_recommendations promote matrix now covers all 8 AnomalyKind variants (4 original + 4 new)."
