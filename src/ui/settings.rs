@@ -1741,6 +1741,11 @@ fn build_parameter_body_lines(
             format!("{:.0}", config.anomaly.memory_growth_mb),
             format!("{:.0}", defaults.anomaly.memory_growth_mb),
         ),
+        setting_row(
+            "anomaly retention_days",
+            config.anomaly.retention_days.to_string(),
+            defaults.anomaly.retention_days.to_string(),
+        ),
         Line::from(""),
         reference_header_line("Anomaly Promote (per-kind threshold)"),
         setting_row(
@@ -3499,5 +3504,20 @@ mod tests {
             rendered.contains("(confidence >= medium)"),
             "subagent_side_effect medium default missing: {rendered}"
         );
+    }
+
+    #[test]
+    fn parameters_tab_includes_anomaly_retention_days_row() {
+        let config = QmonsterConfig::defaults();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        let lines = build_body_lines(&s, &config);
+        let rendered = rendered_text(&lines);
+        assert!(
+            rendered.contains("anomaly retention_days"),
+            "row label missing: {rendered}"
+        );
+        assert!(rendered.contains("30"), "default value 30 missing");
     }
 }
