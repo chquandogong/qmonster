@@ -99,6 +99,86 @@ fn read_pid_stats(pid: u32, proc_root: &Path) -> Option<(u64, bool)> {
     Some((rss, is_cli_comm))
 }
 
+/// Walk the descendant tree from `pane_pid` and return the full
+/// `/proc/<pid>/cmdline` of the most-likely AI CLI child. Used to
+/// resolve generic interpreter wrappers (e.g. tmux reports `node`
+/// for a Codex pane because Codex is `node /usr/bin/codex`) into the
+/// argv string operators recognise.
+///
+/// Returns `None` when `pane_pid` is unreadable, when no descendant
+/// exists, or when every descendant is a generic shell. The caller
+/// is responsible for falling back to `pane_current_command` in that
+/// case.
+pub fn read_descendant_cmdline(pane_pid: u32) -> Option<String> {
+    read_descendant_cmdline_with_proc_root(pane_pid, Path::new("/proc"))
+}
+
+/// Test-friendly variant: pass an alternate `/proc` root.
+#[doc(hidden)]
+pub fn read_descendant_cmdline_with_proc_root(pane_pid: u32, proc_root: &Path) -> Option<String> {
+    // Same BFS-with-class-priority shape as `read_descendant_rss_mb`.
+    // Class priority: a child whose `comm` is in `KNOWN_CLI_COMMS`
+    // beats one that isn't, regardless of cmdline length. Within a
+    // class, prefer the deeper descendant (closer to argv leaf).
+    // The pane shell itself is NOT a candidate — we want the AI CLI
+    // descendant, not the shell prompt.
+    let mut frontier: Vec<u32> = vec![pane_pid];
+    let mut visited: HashSet<u32> = HashSet::new();
+    visited.insert(pane_pid);
+    let mut depth = 0;
+    let mut best: Option<(u32, bool)> = None;
+
+    while !frontier.is_empty() && depth < MAX_DEPTH {
+        let mut next: Vec<u32> = Vec::new();
+        for pid in &frontier {
+            // Skip the pane shell itself — only descendants are candidates.
+            if depth > 0
+                && let Some((_, is_cli_comm)) = read_pid_stats(*pid, proc_root)
+            {
+                let replace = match (best.map(|(_, c)| c), is_cli_comm) {
+                    (Some(false), true) => true,
+                    (Some(true), false) => false,
+                    // Prefer the deeper match within the same class.
+                    _ => true,
+                };
+                if replace {
+                    best = Some((*pid, is_cli_comm));
+                }
+            }
+            for child in read_children(*pid, proc_root) {
+                if visited.insert(child) {
+                    next.push(child);
+                }
+            }
+        }
+        frontier = next;
+        depth += 1;
+    }
+
+    let (best_pid, _) = best?;
+    let cmdline_path = proc_root.join(best_pid.to_string()).join("cmdline");
+    let raw = fs::read(cmdline_path).ok()?;
+    if raw.is_empty() {
+        return None;
+    }
+    // /proc/<pid>/cmdline is null-separated argv with a trailing null.
+    // Replace nulls with spaces and trim trailing whitespace.
+    let mut out = String::with_capacity(raw.len());
+    for byte in raw {
+        if byte == 0 {
+            out.push(' ');
+        } else {
+            out.push(byte as char);
+        }
+    }
+    let trimmed = out.trim_end().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
 fn read_children(pid: u32, proc_root: &Path) -> Vec<u32> {
     let path: PathBuf = proc_root
         .join(pid.to_string())
@@ -138,6 +218,22 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" ");
         fs::write(task_dir.join("children"), kids).unwrap();
+    }
+
+    /// Write a /proc/<pid>/cmdline fixture (null-separated argv with
+    /// trailing null, matching real kernel format).
+    fn write_proc_cmdline(root: &Path, pid: u32, argv: &[&str]) {
+        let dir = root.join(pid.to_string());
+        fs::create_dir_all(&dir).unwrap();
+        let mut bytes: Vec<u8> = Vec::new();
+        for (i, arg) in argv.iter().enumerate() {
+            if i > 0 {
+                bytes.push(0);
+            }
+            bytes.extend_from_slice(arg.as_bytes());
+        }
+        bytes.push(0); // trailing null per kernel format
+        fs::write(dir.join("cmdline"), bytes).unwrap();
     }
 
     #[test]
@@ -353,5 +449,79 @@ mod tests {
             "Gemini value {} MB should not equal /proc-derived ~975 MB",
             mem.value
         );
+    }
+
+    #[test]
+    fn cmdline_returns_node_descendant_argv() {
+        // Mirrors a real Codex pane: bash (pane shell) → node /usr/bin/codex
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        write_proc_pid(root, 100, "bash", 4_000, &[200]);
+        write_proc_pid(root, 200, "node", 80_000, &[]);
+        write_proc_cmdline(root, 200, &["node", "/usr/bin/codex"]);
+
+        let cmdline = read_descendant_cmdline_with_proc_root(100, root).unwrap();
+        assert_eq!(cmdline, "node /usr/bin/codex");
+    }
+
+    #[test]
+    fn cmdline_skips_pane_shell_itself() {
+        // Pane shell with no descendant — nothing to enhance.
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        write_proc_pid(root, 1, "bash", 4_000, &[]);
+        write_proc_cmdline(root, 1, &["bash"]);
+        assert!(read_descendant_cmdline_with_proc_root(1, root).is_none());
+    }
+
+    #[test]
+    fn cmdline_prefers_known_cli_comm_over_unknown() {
+        // bash → htop_clone (unknown comm) AND node (CLI comm)
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        write_proc_pid(root, 1, "bash", 4_000, &[2, 3]);
+        write_proc_pid(root, 2, "htop_clone", 5_000, &[]);
+        write_proc_cmdline(root, 2, &["htop_clone", "--no-color"]);
+        write_proc_pid(root, 3, "node", 80_000, &[]);
+        write_proc_cmdline(root, 3, &["node", "/usr/local/bin/gemini"]);
+
+        let cmdline = read_descendant_cmdline_with_proc_root(1, root).unwrap();
+        assert_eq!(cmdline, "node /usr/local/bin/gemini");
+    }
+
+    #[test]
+    fn cmdline_returns_none_when_pane_pid_missing() {
+        let tmp = tempdir().unwrap();
+        assert!(read_descendant_cmdline_with_proc_root(99999, tmp.path()).is_none());
+    }
+
+    #[test]
+    fn cmdline_returns_none_for_empty_cmdline_file() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        write_proc_pid(root, 1, "bash", 4_000, &[2]);
+        write_proc_pid(root, 2, "node", 80_000, &[]);
+        // /proc/<pid>/cmdline can be empty for kernel threads.
+        let dir = root.join("2");
+        fs::write(dir.join("cmdline"), b"").unwrap();
+
+        assert!(read_descendant_cmdline_with_proc_root(1, root).is_none());
+    }
+
+    #[test]
+    fn cmdline_handles_argv_with_null_separators() {
+        // Real kernel format: argv joined by NUL bytes with a trailing NUL.
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        write_proc_pid(root, 1, "bash", 4_000, &[2]);
+        write_proc_pid(root, 2, "python3", 50_000, &[]);
+        write_proc_cmdline(
+            root,
+            2,
+            &["python3", "-m", "agent.run", "--config", "x.toml"],
+        );
+
+        let cmdline = read_descendant_cmdline_with_proc_root(1, root).unwrap();
+        assert_eq!(cmdline, "python3 -m agent.run --config x.toml");
     }
 }

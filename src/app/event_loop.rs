@@ -694,6 +694,15 @@ where
                 .record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
         }
 
+        // F-1+ enhancement: tmux's `pane_current_command` reports the
+        // foreground process's basename, so Codex/Gemini panes show
+        // `node` (those CLIs ship as Node scripts). When the basename
+        // is a generic interpreter, walk the descendant tree and
+        // replace with the full `/proc/<pid>/cmdline` so operators
+        // see e.g. `node /usr/bin/codex` instead of bare `node`.
+        let display_command =
+            enhance_command_with_descendant_cmdline(&pane.current_command, pane.pane_pid);
+
         reports.push(PaneReport {
             pane_id: pane.pane_id,
             session_name: pane.session_name,
@@ -705,7 +714,7 @@ where
             effects: out.effects,
             dead: false,
             current_path: pane.current_path.clone(),
-            current_command: pane.current_command.clone(),
+            current_command: display_command,
             cross_pane_findings: vec![],
             idle_state,
             idle_state_entered_at: entered_at,
@@ -794,6 +803,66 @@ pub fn current_unix_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+/// Generic interpreter wrappers that hide the actual CLI in argv.
+/// When `pane_current_command` is one of these, the descendant cmdline
+/// is the operator-meaningful identity (e.g. `node /usr/bin/codex`).
+/// Shells (`bash`, `zsh`, …) are intentionally excluded — those mean
+/// the operator is at a prompt with no CLI running.
+const GENERIC_INTERPRETER_WRAPPERS: &[&str] = &["node", "python", "python3", "deno", "bun", "ruby"];
+
+/// Phase F F-1 enhancement: replace generic interpreter `current_command`
+/// (e.g. `node` for Codex/Gemini panes) with the descendant's full
+/// `/proc/<pid>/cmdline` (`node /usr/bin/codex`). Returns the original
+/// command unchanged when the wrapper list does not match, when
+/// `pane_pid` is missing, or when the descendant walk fails.
+fn enhance_command_with_descendant_cmdline(current_command: &str, pane_pid: Option<u32>) -> String {
+    if !GENERIC_INTERPRETER_WRAPPERS.contains(&current_command) {
+        return current_command.to_string();
+    }
+    let Some(pid) = pane_pid else {
+        return current_command.to_string();
+    };
+    crate::adapters::process_memory::read_descendant_cmdline(pid)
+        .unwrap_or_else(|| current_command.to_string())
+}
+
+#[cfg(test)]
+mod enhance_command_tests {
+    use super::enhance_command_with_descendant_cmdline;
+
+    #[test]
+    fn passthrough_when_command_is_not_generic_wrapper() {
+        // Native binary (claude) → unchanged regardless of pid.
+        assert_eq!(
+            enhance_command_with_descendant_cmdline("claude", Some(1234)),
+            "claude"
+        );
+        // Shell at prompt → unchanged.
+        assert_eq!(
+            enhance_command_with_descendant_cmdline("bash", Some(1234)),
+            "bash"
+        );
+    }
+
+    #[test]
+    fn passthrough_when_pane_pid_missing() {
+        // Generic wrapper but no pid to walk → unchanged.
+        assert_eq!(
+            enhance_command_with_descendant_cmdline("node", None),
+            "node"
+        );
+    }
+
+    #[test]
+    fn passthrough_when_descendant_walk_fails() {
+        // Generic wrapper + bogus pid → walk returns None → unchanged.
+        assert_eq!(
+            enhance_command_with_descendant_cmdline("node", Some(99_999_999)),
+            "node"
+        );
+    }
 }
 
 fn merge_runtime_refresh_tail(live_tail: &str, captured_tail: &str) -> String {
