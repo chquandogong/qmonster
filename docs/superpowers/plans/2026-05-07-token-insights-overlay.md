@@ -1,288 +1,1226 @@
-# Token Insights Overlay Implementation Plan
+# Token Insights Phase 8 v1 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement a read-only query layer and terminal UI overlay that visualizes token optimization and policy actions based on historical data.
+**Goal:** Build the Phase 8 v1 proof for Token Insights: a read-only SQLite query layer plus `qmonster insights --since 24h` text report.
 
-**Architecture:** We will implement the `InsightsSnapshot` query layer in `src/store/insights.rs`, which queries existing SQLite tables (`token_usage_samples`, `audit_events`, `cost_usage_events`). We will then expose this in a TUI overlay triggered by the `i` key, managing state via `InsightsRuntimeState` in `src/app/insights_overlay.rs` and rendering in `src/ui/insights.rs`.
+**Architecture:** This plan implements the first rollout slice from `docs/superpowers/specs/2026-05-07-token-insights-overlay-design.md`: no lifecycle ledger, no ignored classifier, and no TUI `i` overlay yet. `src/store/insights.rs` owns SQLite reads and aggregation into an `InsightsSnapshot`; `src/app/insights_report.rs` owns window parsing, storage-path resolution, and report formatting; `src/main.rs` adds the `insights` subcommand without starting tmux.
 
-**Tech Stack:** Rust, Rusqlite, Ratatui, Qmonster App architecture.
+**Tech Stack:** Rust 1.88, clap derive, rusqlite, tempfile integration tests, existing Qmonster storage path/config helpers.
 
 ---
 
-### Task 1: Create the Read-Only Insights Query Layer
+## Scope Boundary
+
+This plan intentionally implements **Phase 8 v1 only**:
+
+- Included: read-only aggregates from `audit_events`, `token_usage_samples`, and `cost_usage_events`.
+- Included: text report command `qmonster insights --since 24h`.
+- Included: conservative situation/action mapping and cache trend reporting.
+- Deferred to a later plan: `recommendation_events`, `recommendation_outcomes`, TTL ignored classification, UI-only hide outcome capture, `InsightsRuntimeState`, and the TUI `i` overlay.
+
+Phase 8 v1 reports `ignored = 0` and labels ignored classification as unavailable because the lifecycle ledger does not exist yet.
+
+## File Structure
+
+- Create `src/store/insights.rs`
+  - Owns `SqliteInsightsStore`, `InsightsWindow`, `InsightsSnapshot`, `SituationSummary`, `CacheInsightSummary`, `ActionLedgerRow`, `RecommendationTimelineItem`.
+  - Opens the shared `qmonster.db` through internal `store::sqlite::AuditDb`.
+  - Queries only existing tables.
+- Modify `src/store/mod.rs`
+  - Exposes `pub mod insights` and re-exports public insights types.
+- Create `src/app/insights_report.rs`
+  - Parses `--since` values.
+  - Resolves storage paths without starting tmux.
+  - Formats `InsightsSnapshot` into stable report lines.
+- Modify `src/app/mod.rs`
+  - Exposes `pub mod insights_report`.
+- Modify `src/main.rs`
+  - Adds `CliCommand::Insights`.
+  - Runs the report path before `build_startup_runtime`, so report generation does not require tmux.
+- Add `tests/store_insights_integration.rs`
+  - Exercises SQLite-backed aggregation with fixture rows.
+- Add `tests/insights_report_integration.rs`
+  - Exercises report formatting and the `--since` parser helper.
+
+---
+
+### Task 1: Add Empty Insights Query Layer
 
 **Files:**
 - Create: `src/store/insights.rs`
 - Modify: `src/store/mod.rs`
 - Test: `tests/store_insights_integration.rs`
 
-- [ ] **Step 1: Write a failing integration test for the empty state query**
+- [ ] **Step 1: Write the failing empty-state integration test**
+
+Create `tests/store_insights_integration.rs`:
 
 ```rust
-// tests/store_insights_integration.rs
-use qmonster::store::audit::AuditDb;
-use qmonster::store::insights::{InsightsWindow, InsightsStore, InsightsSnapshot};
+use qmonster::store::{InsightsWindow, SqliteInsightsStore};
+use tempfile::tempdir;
 
 #[test]
-fn test_insights_query_empty_db_returns_zero_state() {
-    let db = AuditDb::open_in_memory().unwrap();
-    let window = InsightsWindow { since_ms: 0, until_ms: 1000000 };
-    let snapshot = db.query_insights(window).unwrap();
-    
-    assert_eq!(snapshot.situation_summaries.len(), 0);
-    assert_eq!(snapshot.cache_summary.hot_count, 0);
-    assert_eq!(snapshot.timeline.len(), 0);
+fn insights_query_empty_db_returns_zero_state() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 1_000,
+            until_ms: 2_000,
+        })
+        .unwrap();
+
+    assert_eq!(snapshot.window.since_ms, 1_000);
+    assert_eq!(snapshot.window.until_ms, 2_000);
+    assert!(snapshot.situations.is_empty());
+    assert_eq!(snapshot.cache.hot_count, 0);
+    assert_eq!(snapshot.cache.cold_count, 0);
+    assert_eq!(snapshot.cache.drift_count, 0);
+    assert!(snapshot.timeline.is_empty());
+    assert!(snapshot.actions.is_empty());
+    assert_eq!(snapshot.ignored_available, false);
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run the test and confirm it fails**
 
-Run: `cargo test --test store_insights_integration test_insights_query_empty_db_returns_zero_state`
-Expected: FAIL due to missing `store::insights` module and `query_insights` method.
+Run:
 
-- [ ] **Step 3: Define structs and minimal implementation**
+```bash
+cargo test --test store_insights_integration insights_query_empty_db_returns_zero_state
+```
+
+Expected: compile failure naming unresolved `InsightsWindow` / `SqliteInsightsStore`.
+
+- [ ] **Step 3: Implement the minimal store module**
+
+Create `src/store/insights.rs`:
 
 ```rust
-// src/store/insights.rs
-use rusqlite::Connection;
+use std::path::Path;
 
-#[derive(Debug, Clone, Copy)]
+use crate::store::sqlite::{AuditDb, SqliteError};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InsightsWindow {
-    pub since_ms: u64,
-    pub until_ms: u64,
+    pub since_ms: i64,
+    pub until_ms: i64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SituationSummary {
-    pub situation: String,
-    pub current_count: u64,
-    pub window_count: u64,
+    pub situation: &'static str,
+    pub emitted: u64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CacheInsightSummary {
     pub hot_count: u64,
     pub cold_count: u64,
     pub drift_count: u64,
+    pub latest_cache_ratio: Option<f64>,
+    pub token_growth: Option<i64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ActionLedgerRow {
+    pub action: String,
+    pub emitted: u64,
+    pub accepted: u64,
+    pub rejected: u64,
+    pub blocked: u64,
+    pub completed: u64,
+    pub failed: u64,
+    pub archived: u64,
+    pub snapshot_written: u64,
+    pub ignored: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecommendationTimelineItem {
-    pub ts: u64,
-    pub situation: String,
+    pub ts_label: String,
+    pub pane_id: String,
+    pub situation: &'static str,
+    pub action: String,
     pub outcome: String,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InsightsSnapshot {
     pub window: InsightsWindow,
-    pub situation_summaries: Vec<SituationSummary>,
-    pub cache_summary: CacheInsightSummary,
+    pub situations: Vec<SituationSummary>,
+    pub cache: CacheInsightSummary,
     pub timeline: Vec<RecommendationTimelineItem>,
+    pub actions: Vec<ActionLedgerRow>,
+    pub ignored_available: bool,
 }
 
-pub trait InsightsStore {
-    fn query_insights(&self, window: InsightsWindow) -> Result<InsightsSnapshot, rusqlite::Error>;
+pub struct SqliteInsightsStore {
+    db: AuditDb,
 }
-```
 
-Modify `src/store/mod.rs` to expose it:
-```rust
-// In src/store/mod.rs
-pub mod insights;
-```
+impl SqliteInsightsStore {
+    pub fn open(path: &Path) -> Result<Self, SqliteError> {
+        Ok(Self {
+            db: AuditDb::open(path)?,
+        })
+    }
 
-Modify `src/store/audit.rs` (or equivalent where `AuditDb` is defined) to implement the trait:
-```rust
-// Add to src/store/audit.rs
-use crate::store::insights::{InsightsStore, InsightsSnapshot, InsightsWindow};
-
-impl InsightsStore for AuditDb {
-    fn query_insights(&self, window: InsightsWindow) -> Result<InsightsSnapshot, rusqlite::Error> {
-        // Return an empty snapshot for now
+    pub fn snapshot(&self, window: InsightsWindow) -> Result<InsightsSnapshot, SqliteError> {
+        let _conn = self.db.connection().lock().expect("insights db lock poisoned");
         Ok(InsightsSnapshot {
             window,
-            situation_summaries: vec![],
-            cache_summary: Default::default(),
-            timeline: vec![],
+            situations: Vec::new(),
+            cache: CacheInsightSummary::default(),
+            timeline: Vec::new(),
+            actions: Vec::new(),
+            ignored_available: false,
         })
     }
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+Modify `src/store/mod.rs`:
 
-Run: `cargo test --test store_insights_integration test_insights_query_empty_db_returns_zero_state`
-Expected: PASS
+```rust
+pub mod insights;
+
+pub use insights::{
+    ActionLedgerRow, CacheInsightSummary, InsightsSnapshot, InsightsWindow,
+    RecommendationTimelineItem, SituationSummary, SqliteInsightsStore,
+};
+```
+
+Insert the `pub mod insights;` line with the other public store modules, and insert the `pub use insights::{...};` block after the existing `pub use cost_usage::{...};` block.
+
+- [ ] **Step 4: Run the focused test and confirm it passes**
+
+Run:
+
+```bash
+cargo test --test store_insights_integration insights_query_empty_db_returns_zero_state
+```
+
+Expected: test passes.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/store_insights_integration.rs src/store/insights.rs src/store/mod.rs src/store/audit.rs
-git commit -m "feat(store): add empty InsightsStore and InsightsSnapshot structs"
+git add src/store/insights.rs src/store/mod.rs tests/store_insights_integration.rs
+git commit -m "feat(store): add empty token insights snapshot"
 ```
 
-### Task 2: Implement TUI Overlay State and Rendering
+---
+
+### Task 2: Aggregate Recommendations Into Six Situations
 
 **Files:**
-- Create: `src/app/insights_overlay.rs`
-- Create: `src/ui/insights.rs`
-- Modify: `src/app/mod.rs`, `src/ui/mod.rs`, `src/app/dashboard_state.rs`
-- Test: `tests/insights_overlay_test.rs`
+- Modify: `src/store/insights.rs`
+- Test: `tests/store_insights_integration.rs`
 
-- [ ] **Step 1: Write a test for InsightsRuntimeState caching**
+- [ ] **Step 1: Add a failing test for situation counts**
+
+Append to `tests/store_insights_integration.rs`:
 
 ```rust
-// tests/insights_overlay_test.rs
-use qmonster::app::insights_overlay::InsightsRuntimeState;
-use qmonster::store::insights::{InsightsSnapshot, InsightsWindow};
+use qmonster::domain::audit::{AuditEvent, AuditEventKind};
+use qmonster::domain::identity::{Provider, Role};
+use qmonster::domain::recommendation::Severity;
+use qmonster::store::{EventSink, SqliteAuditSink};
+
+fn audit_event(kind: AuditEventKind, pane_id: &str, summary: &str) -> AuditEvent {
+    AuditEvent {
+        kind,
+        pane_id: pane_id.to_string(),
+        severity: Severity::Concern,
+        summary: summary.to_string(),
+        provider: Some(Provider::Codex),
+        role: Some(Role::Review),
+    }
+}
 
 #[test]
-fn test_insights_snapshot_refresh_not_in_ui_renderer() {
-    let mut state = InsightsRuntimeState::new();
-    assert!(state.snapshot().is_none());
-    
-    let snap = InsightsSnapshot {
-        window: InsightsWindow { since_ms: 0, until_ms: 100 },
-        situation_summaries: vec![],
-        cache_summary: Default::default(),
-        timeline: vec![],
-    };
-    state.update_snapshot(snap.clone());
-    
-    assert!(state.snapshot().is_some());
+fn insights_counts_recommendations_by_situation() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let audit = SqliteAuditSink::open(&db_path).unwrap();
+    audit.record(audit_event(
+        AuditEventKind::RecommendationEmitted,
+        "%1",
+        "cache: avoid /compact while cache is hot: cache hit ratio 88%",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::RecommendationEmitted,
+        "%2",
+        "verbose-review: terse profile: review pane is verbose",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::AlertFired,
+        "%3",
+        "pane-state: Codex pane state: WAIT (input)",
+    ));
+
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: i64::MAX,
+        })
+        .unwrap();
+
+    let context = snapshot
+        .situations
+        .iter()
+        .find(|s| s.situation == "Context pressure")
+        .unwrap();
+    let verbose = snapshot
+        .situations
+        .iter()
+        .find(|s| s.situation == "Verbose review")
+        .unwrap();
+    let wait = snapshot
+        .situations
+        .iter()
+        .find(|s| s.situation == "Input / permission wait")
+        .unwrap();
+
+    assert_eq!(context.emitted, 1);
+    assert_eq!(verbose.emitted, 1);
+    assert_eq!(wait.emitted, 1);
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run the test and confirm it fails**
 
-Run: `cargo test --test insights_overlay_test test_insights_snapshot_refresh_not_in_ui_renderer`
-Expected: FAIL due to missing `insights_overlay` module.
+Run:
 
-- [ ] **Step 3: Write minimal implementation**
+```bash
+cargo test --test store_insights_integration insights_counts_recommendations_by_situation
+```
+
+Expected: test fails because `snapshot.situations` is empty.
+
+- [ ] **Step 3: Add action parsing and situation aggregation**
+
+In `src/store/insights.rs`, add these helpers above `impl SqliteInsightsStore`:
 
 ```rust
-// src/app/insights_overlay.rs
-use crate::store::insights::InsightsSnapshot;
-
-pub struct InsightsRuntimeState {
-    snapshot: Option<InsightsSnapshot>,
-    last_refresh_ms: u64,
+fn action_from_summary(summary: &str) -> &str {
+    summary.split_once(':').map(|(action, _)| action).unwrap_or(summary)
 }
 
-impl InsightsRuntimeState {
-    pub fn new() -> Self {
-        Self {
-            snapshot: None,
-            last_refresh_ms: 0,
+fn situation_for_action(action: &str) -> &'static str {
+    if action.contains("log-storm")
+        || action == "archive-preview-suggested"
+        || action.contains("repeated-output")
+    {
+        "Log storm / repeated output"
+    } else if action.contains("code-exploration")
+        || action.contains("cross-pane")
+        || action.contains("ConcurrentFileEdit")
+    {
+        "Code exploration"
+    } else if action.contains("context-pressure")
+        || action.starts_with("cache")
+        || action.starts_with("quota: pause")
+        || action.starts_with("snapshot before")
+    {
+        "Context pressure"
+    } else if action.contains("verbose-review") || action == "verbose-output" {
+        "Verbose review"
+    } else if action == "pane-state" || action.contains("permission") || action.contains("input")
+    {
+        "Input / permission wait"
+    } else if action.contains("quota-pressure")
+        || action.contains("quota-tight")
+        || action.contains("cost-budget")
+        || action.contains("cost-pressure")
+        || action.contains("profile-switch")
+        || action.contains("provider-profile")
+    {
+        "Quota-tight / cost"
+    } else {
+        "Other"
+    }
+}
+```
+
+Replace the empty `situations: Vec::new(),` assignment in `snapshot()` with:
+
+```rust
+let mut stmt = _conn
+    .prepare_cached(
+        "SELECT summary FROM audit_events \
+         WHERE kind IN ('RecommendationEmitted', 'AlertFired') \
+         ORDER BY id ASC",
+    )
+    .map_err(|e| SqliteError::Query(e.to_string()))?;
+let rows = stmt
+    .query_map([], |row| row.get::<_, String>(0))
+    .map_err(|e| SqliteError::Query(e.to_string()))?;
+let mut counts = std::collections::BTreeMap::<&'static str, u64>::new();
+for row in rows {
+    let summary = row.map_err(|e| SqliteError::Query(e.to_string()))?;
+    let action = action_from_summary(&summary);
+    let situation = situation_for_action(action);
+    if situation != "Other" {
+        *counts.entry(situation).or_default() += 1;
+    }
+}
+let situations = counts
+    .into_iter()
+    .map(|(situation, emitted)| SituationSummary { situation, emitted })
+    .collect();
+```
+
+Then return `situations,` in `InsightsSnapshot`.
+
+- [ ] **Step 4: Run the focused tests and confirm they pass**
+
+Run:
+
+```bash
+cargo test --test store_insights_integration insights_query_empty_db_returns_zero_state insights_counts_recommendations_by_situation
+```
+
+Expected: both tests pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/store/insights.rs tests/store_insights_integration.rs
+git commit -m "feat(store): aggregate insights by situation"
+```
+
+---
+
+### Task 3: Aggregate Cache Trend and Token Growth
+
+**Files:**
+- Modify: `src/store/insights.rs`
+- Test: `tests/store_insights_integration.rs`
+
+- [ ] **Step 1: Add a failing cache summary test**
+
+Append to `tests/store_insights_integration.rs`:
+
+```rust
+use qmonster::domain::identity::Provider;
+use qmonster::store::{SqliteTokenUsageSink, TokenSample};
+
+#[test]
+fn cache_summary_reports_latest_ratio_and_token_growth() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let tokens = SqliteTokenUsageSink::open(&db_path).unwrap();
+    tokens
+        .record_sample(&TokenSample {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(100),
+            output_tokens: Some(10),
+            cost_usd: None,
+            cached_input_tokens: Some(100),
+        })
+        .unwrap();
+    tokens
+        .record_sample(&TokenSample {
+            ts_unix_ms: 2_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(300),
+            output_tokens: Some(20),
+            cost_usd: None,
+            cached_input_tokens: Some(900),
+        })
+        .unwrap();
+
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 3_000,
+        })
+        .unwrap();
+
+    assert_eq!(snapshot.cache.latest_cache_ratio, Some(0.75));
+    assert_eq!(snapshot.cache.token_growth, Some(200));
+}
+```
+
+- [ ] **Step 2: Run the test and confirm it fails**
+
+Run:
+
+```bash
+cargo test --test store_insights_integration cache_summary_reports_latest_ratio_and_token_growth
+```
+
+Expected: test fails because cache summary returns defaults.
+
+- [ ] **Step 3: Implement cache summary aggregation**
+
+Add this helper in `src/store/insights.rs`:
+
+```rust
+fn cache_ratio(input: Option<i64>, cached: Option<i64>) -> Option<f64> {
+    let cached = cached? as f64;
+    let input = input.unwrap_or(0) as f64;
+    let total = input + cached;
+    if total <= 0.0 {
+        None
+    } else {
+        Some((cached / total * 100.0).round() / 100.0)
+    }
+}
+```
+
+In `snapshot()`, after building `situations`, add:
+
+```rust
+let mut token_stmt = _conn
+    .prepare_cached(
+        "SELECT ts_unix_ms, input_tokens, cached_input_tokens \
+         FROM token_usage_samples \
+         WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
+         ORDER BY ts_unix_ms ASC, id ASC",
+    )
+    .map_err(|e| SqliteError::Query(e.to_string()))?;
+let token_rows = token_stmt
+    .query_map([window.since_ms, window.until_ms], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, Option<i64>>(1)?,
+            row.get::<_, Option<i64>>(2)?,
+        ))
+    })
+    .map_err(|e| SqliteError::Query(e.to_string()))?;
+let mut first_input: Option<i64> = None;
+let mut latest_input: Option<i64> = None;
+let mut latest_ratio: Option<f64> = None;
+for row in token_rows {
+    let (_ts, input, cached) = row.map_err(|e| SqliteError::Query(e.to_string()))?;
+    if first_input.is_none() {
+        first_input = input;
+    }
+    latest_input = input;
+    latest_ratio = cache_ratio(input, cached);
+}
+let token_growth = match (first_input, latest_input) {
+    (Some(first), Some(latest)) => Some(latest.saturating_sub(first)),
+    _ => None,
+};
+let cache = CacheInsightSummary {
+    latest_cache_ratio: latest_ratio,
+    token_growth,
+    ..CacheInsightSummary::default()
+};
+```
+
+Return `cache,` in `InsightsSnapshot`.
+
+- [ ] **Step 4: Run the focused store tests**
+
+Run:
+
+```bash
+cargo test --test store_insights_integration
+```
+
+Expected: all tests in `store_insights_integration` pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/store/insights.rs tests/store_insights_integration.rs
+git commit -m "feat(store): summarize cache reuse and token growth"
+```
+
+---
+
+### Task 4: Aggregate Action Ledger and Timeline
+
+**Files:**
+- Modify: `src/store/insights.rs`
+- Test: `tests/store_insights_integration.rs`
+
+- [ ] **Step 1: Add a failing action ledger test**
+
+Append to `tests/store_insights_integration.rs`:
+
+```rust
+#[test]
+fn action_ledger_counts_prompt_send_terminal_outcomes() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let audit = SqliteAuditSink::open(&db_path).unwrap();
+    audit.record(audit_event(
+        AuditEventKind::RecommendationEmitted,
+        "%1",
+        "context-pressure: act now: context near critical",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::PromptSendAccepted,
+        "%1",
+        "%1 -> `/compact` (proposal_id `%1:/compact`)",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::PromptSendCompleted,
+        "%1",
+        "%1 -> `/compact` completed (proposal_id `%1:/compact`)",
+    ));
+    audit.record(audit_event(
+        AuditEventKind::SnapshotWritten,
+        "%1",
+        "snapshot written to /tmp/demo.json",
+    ));
+
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: i64::MAX,
+        })
+        .unwrap();
+
+    let compact = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "/compact")
+        .unwrap();
+    assert_eq!(compact.accepted, 1);
+    assert_eq!(compact.completed, 1);
+    assert_eq!(compact.ignored, 0);
+
+    let snapshot_row = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "snapshot")
+        .unwrap();
+    assert_eq!(snapshot_row.snapshot_written, 1);
+
+    assert!(snapshot
+        .timeline
+        .iter()
+        .any(|item| item.outcome == "completed" && item.action == "/compact"));
+}
+```
+
+- [ ] **Step 2: Run the test and confirm it fails**
+
+Run:
+
+```bash
+cargo test --test store_insights_integration action_ledger_counts_prompt_send_terminal_outcomes
+```
+
+Expected: test fails because `actions` and `timeline` are empty.
+
+- [ ] **Step 3: Implement action extraction and ledger aggregation**
+
+Add these helpers in `src/store/insights.rs`:
+
+```rust
+fn prompt_command_from_summary(summary: &str) -> Option<String> {
+    let start = summary.find('`')?;
+    let rest = &summary[start + 1..];
+    let end = rest.find('`')?;
+    Some(rest[..end].to_string())
+}
+
+fn action_for_audit(kind: &str, summary: &str) -> String {
+    match kind {
+        "PromptSendAccepted" | "PromptSendCompleted" | "PromptSendFailed" | "PromptSendBlocked" => {
+            prompt_command_from_summary(summary).unwrap_or_else(|| "prompt-send".into())
+        }
+        "PromptSendRejected" => prompt_command_from_summary(summary).unwrap_or_else(|| "prompt-send".into()),
+        "SnapshotWritten" => "snapshot".into(),
+        "ArchiveWritten" => "archive".into(),
+        _ => action_from_summary(summary).to_string(),
+    }
+}
+
+fn apply_outcome(row: &mut ActionLedgerRow, kind: &str) {
+    match kind {
+        "RecommendationEmitted" | "AlertFired" => row.emitted += 1,
+        "PromptSendAccepted" => row.accepted += 1,
+        "PromptSendRejected" => row.rejected += 1,
+        "PromptSendBlocked" => row.blocked += 1,
+        "PromptSendCompleted" => row.completed += 1,
+        "PromptSendFailed" => row.failed += 1,
+        "ArchiveWritten" => row.archived += 1,
+        "SnapshotWritten" => row.snapshot_written += 1,
+        _ => {}
+    }
+}
+
+fn outcome_for_kind(kind: &str) -> &'static str {
+    match kind {
+        "RecommendationEmitted" | "AlertFired" => "emitted",
+        "PromptSendAccepted" => "accepted",
+        "PromptSendRejected" => "rejected",
+        "PromptSendBlocked" => "blocked",
+        "PromptSendCompleted" => "completed",
+        "PromptSendFailed" => "failed",
+        "ArchiveWritten" => "archived",
+        "SnapshotWritten" => "snapshot_written",
+        _ => "observed",
+    }
+}
+```
+
+In `snapshot()`, add a second audit query:
+
+```rust
+let mut ledger_stmt = _conn
+    .prepare_cached(
+        "SELECT ts_utc, kind, pane_id, summary FROM audit_events \
+         WHERE kind IN (
+           'RecommendationEmitted', 'AlertFired',
+           'PromptSendAccepted', 'PromptSendRejected', 'PromptSendCompleted',
+           'PromptSendFailed', 'PromptSendBlocked',
+           'ArchiveWritten', 'SnapshotWritten'
+         ) \
+         ORDER BY id ASC",
+    )
+    .map_err(|e| SqliteError::Query(e.to_string()))?;
+let ledger_rows = ledger_stmt
+    .query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })
+    .map_err(|e| SqliteError::Query(e.to_string()))?;
+let mut actions_by_name = std::collections::BTreeMap::<String, ActionLedgerRow>::new();
+let mut timeline = Vec::new();
+for row in ledger_rows {
+    let (ts_label, kind, pane_id, summary) =
+        row.map_err(|e| SqliteError::Query(e.to_string()))?;
+    let action = action_for_audit(&kind, &summary);
+    let entry = actions_by_name.entry(action.clone()).or_insert_with(|| ActionLedgerRow {
+        action: action.clone(),
+        ..ActionLedgerRow::default()
+    });
+    apply_outcome(entry, &kind);
+    timeline.push(RecommendationTimelineItem {
+        ts_label,
+        pane_id,
+        situation: situation_for_action(action_from_summary(&summary)),
+        action,
+        outcome: outcome_for_kind(&kind).to_string(),
+    });
+}
+let actions = actions_by_name.into_values().collect();
+timeline.reverse();
+timeline.truncate(10);
+```
+
+Return `timeline,` and `actions,` in `InsightsSnapshot`.
+
+- [ ] **Step 4: Run all store insights tests**
+
+Run:
+
+```bash
+cargo test --test store_insights_integration
+```
+
+Expected: all store insights integration tests pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/store/insights.rs tests/store_insights_integration.rs
+git commit -m "feat(store): aggregate token insight action ledger"
+```
+
+---
+
+### Task 5: Add Report Formatting and Since Parser
+
+**Files:**
+- Create: `src/app/insights_report.rs`
+- Modify: `src/app/mod.rs`
+- Test: `tests/insights_report_integration.rs`
+
+- [ ] **Step 1: Write failing report tests**
+
+Create `tests/insights_report_integration.rs`:
+
+```rust
+use qmonster::app::insights_report::{format_insights_report_lines, parse_since_arg};
+use qmonster::store::{
+    ActionLedgerRow, CacheInsightSummary, InsightsSnapshot, InsightsWindow,
+    RecommendationTimelineItem, SituationSummary,
+};
+
+#[test]
+fn parse_since_accepts_hours_and_days() {
+    assert_eq!(parse_since_arg("24h").unwrap(), 86_400);
+    assert_eq!(parse_since_arg("7d").unwrap(), 604_800);
+    assert_eq!(parse_since_arg("900s").unwrap(), 900);
+}
+
+#[test]
+fn parse_since_rejects_empty_or_unknown_units() {
+    assert!(parse_since_arg("").is_err());
+    assert!(parse_since_arg("24x").is_err());
+}
+
+#[test]
+fn insights_report_renders_action_ledger() {
+    let snapshot = InsightsSnapshot {
+        window: InsightsWindow {
+            since_ms: 0,
+            until_ms: 86_400_000,
+        },
+        situations: vec![SituationSummary {
+            situation: "Context pressure",
+            emitted: 2,
+        }],
+        cache: CacheInsightSummary {
+            hot_count: 1,
+            cold_count: 1,
+            drift_count: 0,
+            latest_cache_ratio: Some(0.75),
+            token_growth: Some(200),
+        },
+        timeline: vec![RecommendationTimelineItem {
+            ts_label: "2026-05-07T12:00:00Z".into(),
+            pane_id: "%1".into(),
+            situation: "Context pressure",
+            action: "/compact".into(),
+            outcome: "completed".into(),
+        }],
+        actions: vec![ActionLedgerRow {
+            action: "/compact".into(),
+            emitted: 1,
+            accepted: 1,
+            completed: 1,
+            ..ActionLedgerRow::default()
+        }],
+        ignored_available: false,
+    };
+
+    let lines = format_insights_report_lines(&snapshot);
+    let joined = lines.join("\n");
+
+    assert!(joined.contains("Token Insights"));
+    assert!(joined.contains("Context pressure"));
+    assert!(joined.contains("cache reuse: 75.0%"));
+    assert!(joined.contains("token growth: +200"));
+    assert!(joined.contains("/compact"));
+    assert!(joined.contains("ignored classification: unavailable"));
+}
+```
+
+- [ ] **Step 2: Run the tests and confirm they fail**
+
+Run:
+
+```bash
+cargo test --test insights_report_integration
+```
+
+Expected: compile failure because `app::insights_report` does not exist.
+
+- [ ] **Step 3: Implement report helpers**
+
+Create `src/app/insights_report.rs`:
+
+```rust
+use anyhow::{Context as _, Result};
+
+use crate::store::InsightsSnapshot;
+
+pub fn parse_since_arg(input: &str) -> Result<u64> {
+    let trimmed = input.trim();
+    if trimmed.len() < 2 {
+        anyhow::bail!("--since expects a value like 24h, 7d, or 900s");
+    }
+    let (digits, unit) = trimmed.split_at(trimmed.len() - 1);
+    let value: u64 = digits
+        .parse()
+        .with_context(|| format!("invalid --since value {input:?}"))?;
+    let seconds = match unit {
+        "s" => value,
+        "m" => value * 60,
+        "h" => value * 60 * 60,
+        "d" => value * 24 * 60 * 60,
+        _ => anyhow::bail!("--since unit must be one of s, m, h, d"),
+    };
+    if seconds == 0 {
+        anyhow::bail!("--since must be greater than zero");
+    }
+    Ok(seconds)
+}
+
+pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> {
+    let mut lines = Vec::new();
+    lines.push("Token Insights".into());
+    lines.push(format!(
+        "window: {}..{}",
+        snapshot.window.since_ms, snapshot.window.until_ms
+    ));
+    lines.push(format!(
+        "ignored classification: {}",
+        if snapshot.ignored_available {
+            "available"
+        } else {
+            "unavailable"
+        }
+    ));
+    lines.push(String::new());
+    lines.push("Situations".into());
+    if snapshot.situations.is_empty() {
+        lines.push("  none".into());
+    } else {
+        for s in &snapshot.situations {
+            lines.push(format!("  {}: {}", s.situation, s.emitted));
         }
     }
-
-    pub fn snapshot(&self) -> Option<&InsightsSnapshot> {
-        self.snapshot.as_ref()
+    lines.push(String::new());
+    lines.push("Cache".into());
+    match snapshot.cache.latest_cache_ratio {
+        Some(ratio) => lines.push(format!("  cache reuse: {:.1}%", ratio * 100.0)),
+        None => lines.push("  cache reuse: n/a".into()),
     }
-
-    pub fn update_snapshot(&mut self, snapshot: InsightsSnapshot) {
-        self.snapshot = Some(snapshot);
-        // Assuming we could set last_refresh_ms from a time source, omitted for brevity
+    match snapshot.cache.token_growth {
+        Some(growth) => lines.push(format!("  token growth: +{growth}")),
+        None => lines.push("  token growth: n/a".into()),
     }
+    lines.push(format!("  hot/cold/drift: {}/{}/{}", snapshot.cache.hot_count, snapshot.cache.cold_count, snapshot.cache.drift_count));
+    lines.push(String::new());
+    lines.push("Action Ledger".into());
+    if snapshot.actions.is_empty() {
+        lines.push("  none".into());
+    } else {
+        for row in &snapshot.actions {
+            lines.push(format!(
+                "  {} emitted={} accepted={} rejected={} blocked={} completed={} failed={} archived={} snapshot={} ignored={}",
+                row.action,
+                row.emitted,
+                row.accepted,
+                row.rejected,
+                row.blocked,
+                row.completed,
+                row.failed,
+                row.archived,
+                row.snapshot_written,
+                row.ignored,
+            ));
+        }
+    }
+    lines.push(String::new());
+    lines.push("Recent Timeline".into());
+    if snapshot.timeline.is_empty() {
+        lines.push("  none".into());
+    } else {
+        for item in &snapshot.timeline {
+            lines.push(format!(
+                "  {} {} {} {} -> {}",
+                item.ts_label, item.pane_id, item.situation, item.action, item.outcome
+            ));
+        }
+    }
+    lines
 }
 ```
 
 Modify `src/app/mod.rs`:
+
 ```rust
-pub mod insights_overlay;
+pub mod insights_report;
 ```
 
-Modify `src/ui/insights.rs`:
-```rust
-// src/ui/insights.rs
-use tui::widgets::Block; // example ratatui imports
-use crate::store::insights::InsightsSnapshot;
+Insert the module line near the other app helper modules.
 
-pub fn draw_insights_overlay<B: tui::backend::Backend>(
-    f: &mut tui::Frame<B>,
-    area: tui::layout::Rect,
-    snapshot: Option<&InsightsSnapshot>
-) {
-    let block = Block::default().title("Token Insights");
-    f.render_widget(block, area);
-}
+- [ ] **Step 4: Run report tests**
+
+Run:
+
+```bash
+cargo test --test insights_report_integration
 ```
 
-Modify `src/ui/mod.rs`:
-```rust
-pub mod insights;
-```
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `cargo test --test insights_overlay_test test_insights_snapshot_refresh_not_in_ui_renderer`
-Expected: PASS
+Expected: all report integration tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/insights_overlay_test.rs src/app/insights_overlay.rs src/app/mod.rs src/ui/insights.rs src/ui/mod.rs
-git commit -m "feat(ui): add InsightsRuntimeState and empty insights overlay renderer"
+git add src/app/insights_report.rs src/app/mod.rs tests/insights_report_integration.rs
+git commit -m "feat(app): format token insights report"
 ```
 
-### Task 3: Wire Overlay Key Dispatch
+---
+
+### Task 6: Add `qmonster insights --since` Subcommand
 
 **Files:**
-- Modify: `src/app/event_loop.rs` or `src/app/keymap.rs`
-- Modify: `src/app/dashboard_state.rs`
-- Test: `tests/insights_overlay_key_toggles.rs`
+- Modify: `src/main.rs`
+- Modify: `src/app/insights_report.rs`
+- Test: `tests/insights_report_integration.rs`
 
-- [ ] **Step 1: Write a test for 'i' key toggling**
+- [ ] **Step 1: Add a failing test for report path resolution**
+
+Append to `tests/insights_report_integration.rs`:
 
 ```rust
-// tests/insights_overlay_key_toggles.rs
-use qmonster::app::dashboard_state::DashboardState;
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use qmonster::app::insights_report::resolve_insights_paths;
 
 #[test]
-fn test_insights_overlay_key_toggles() {
-    let mut state = DashboardState::new();
-    assert!(!state.show_insights_overlay);
-    
-    // Process 'i' key
-    state.handle_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::empty()));
-    assert!(state.show_insights_overlay);
-    
-    // Process 'i' key again to close
-    state.handle_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::empty()));
-    assert!(!state.show_insights_overlay);
+fn resolve_insights_paths_uses_cli_root_without_tmux() {
+    let td = tempfile::tempdir().unwrap();
+    let (paths, source) = resolve_insights_paths(None, Some(td.path()), &[], None).unwrap();
+
+    assert_eq!(paths.root(), td.path());
+    assert_eq!(format!("{source:?}"), "Cli");
+    assert!(paths.root().is_dir());
+    assert!(paths.config_dir().is_dir());
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run the test and confirm it fails**
 
-Run: `cargo test --test insights_overlay_key_toggles`
-Expected: FAIL due to missing `show_insights_overlay` property and `handle_key` not parsing `i`.
-
-- [ ] **Step 3: Write minimal implementation**
-
-Update `DashboardState` in `src/app/dashboard_state.rs` (or equivalent event handling location):
-```rust
-// Add `pub show_insights_overlay: bool` to the DashboardState struct
-// In handle_key match block:
-// match key.code {
-//     KeyCode::Char('i') => self.show_insights_overlay = !self.show_insights_overlay,
-//     // ...
-// }
-```
-*(Exact location depends on the project's event loop structure, adjust according to existing key dispatch patterns).*
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `cargo test --test insights_overlay_key_toggles`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
+Run:
 
 ```bash
-git add src/app/dashboard_state.rs tests/insights_overlay_key_toggles.rs
-git commit -m "feat(app): toggle insights overlay via 'i' key"
+cargo test --test insights_report_integration resolve_insights_paths_uses_cli_root_without_tmux
 ```
+
+Expected: compile failure because `resolve_insights_paths` does not exist.
+
+- [ ] **Step 3: Implement storage-only path resolution**
+
+Add to `src/app/insights_report.rs`:
+
+```rust
+use std::path::Path;
+
+use crate::app::config::{QmonsterConfig, load_with_local_override};
+use crate::app::path_resolution::{RootSource, default_config_path, pick_root};
+use crate::app::safety_audit::apply_override_with_audit;
+use crate::store::{InMemorySink, QmonsterPaths};
+
+pub fn resolve_insights_paths(
+    config_path: Option<&Path>,
+    root: Option<&Path>,
+    set: &[String],
+    env_root: Option<&str>,
+) -> Result<(QmonsterPaths, RootSource)> {
+    let default_config = default_config_path(root, env_root);
+    let loaded_config = config_path
+        .map(|p| p.to_path_buf())
+        .or_else(|| if default_config.exists() { Some(default_config) } else { None });
+    let mut config = match loaded_config.as_ref() {
+        Some(path) => load_with_local_override(path)
+            .with_context(|| format!("loading insights config {path:?}"))?,
+        None => QmonsterConfig::defaults(),
+    };
+
+    let pairs = parse_set_pairs_for_insights(set)?;
+    if !pairs.is_empty() {
+        let refs: Vec<(&str, &str)> = pairs
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect();
+        let sink = InMemorySink::new();
+        apply_override_with_audit(&mut config, &refs, &sink);
+    }
+
+    let resolved = pick_root(root, env_root, &config);
+    let source = resolved.source.clone();
+    let paths = resolved.into_paths();
+    paths.ensure().context("ensure qmonster insights storage root")?;
+    Ok((paths, source))
+}
+
+fn parse_set_pairs_for_insights(set: &[String]) -> Result<Vec<(String, String)>> {
+    let mut pairs = Vec::new();
+    for kv in set {
+        let Some((key, value)) = kv.split_once('=') else {
+            anyhow::bail!("--set expects key=value, got {kv}");
+        };
+        pairs.push((key.trim().to_string(), value.trim().to_string()));
+    }
+    Ok(pairs)
+}
+```
+
+- [ ] **Step 4: Modify `src/main.rs` for the subcommand**
+
+Change imports:
+
+```rust
+use clap::{Parser, Subcommand};
+use qmonster::app::insights_report::{
+    format_insights_report_lines, parse_since_arg, resolve_insights_paths,
+};
+use qmonster::store::{InsightsWindow, SqliteInsightsStore};
+```
+
+Add the command enum below `Cli`:
+
+```rust
+#[derive(Debug, Subcommand)]
+enum CliCommand {
+    /// Print token optimization insights from the local SQLite store.
+    Insights {
+        /// Time window to inspect, such as 24h, 7d, 30m, or 900s.
+        #[arg(long, default_value = "24h")]
+        since: String,
+    },
+}
+```
+
+Add to `Cli`:
+
+```rust
+    #[command(subcommand)]
+    command: Option<CliCommand>,
+```
+
+At the start of `main()`, after `let env_root = std::env::var("QMONSTER_ROOT").ok();`, add:
+
+```rust
+    if let Some(CliCommand::Insights { since }) = cli.command.as_ref() {
+        let seconds = parse_since_arg(since)?;
+        let (paths, root_source) = resolve_insights_paths(
+            cli.config.as_deref(),
+            cli.root.as_deref(),
+            &cli.set,
+            env_root.as_deref(),
+        )?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        let since_ms = now_ms.saturating_sub((seconds as i64).saturating_mul(1000));
+        let store = SqliteInsightsStore::open(&paths.sqlite_path())?;
+        let snapshot = store.snapshot(InsightsWindow {
+            since_ms,
+            until_ms: now_ms,
+        })?;
+        println!(
+            "qmonster paths: {} (source: {:?})",
+            paths.root().display(),
+            root_source
+        );
+        for line in format_insights_report_lines(&snapshot) {
+            println!("{line}");
+        }
+        return Ok(());
+    }
+```
+
+This block must run before `build_startup_runtime(...)`.
+
+- [ ] **Step 5: Run tests and command help**
+
+Run:
+
+```bash
+cargo test --test insights_report_integration
+cargo run -- insights --since 24h --root /tmp/qmonster-insights-smoke
+```
+
+Expected: tests pass. The command prints `qmonster paths:` and `Token Insights`; it does not require tmux.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/main.rs src/app/insights_report.rs tests/insights_report_integration.rs
+git commit -m "feat(cli): add token insights report command"
+```
+
+---
+
+### Task 7: Document and Validate Phase 8 v1
+
+**Files:**
+- Modify: `docs/ai/UI_MANUAL.md`
+- Modify: `docs/ai/VALIDATION.md`
+- Modify: `README.md`
+- Test: documentation and full focused test set
+
+- [ ] **Step 1: Update user-facing docs**
+
+In `docs/ai/UI_MANUAL.md`, add a short subsection after the Metrics Overlay section:
+
+```markdown
+### Token Insights report (Phase 8 v1)
+
+`qmonster insights --since 24h` prints a read-only token optimization
+report from the local SQLite store. It does not start tmux and does not
+classify ignored recommendations yet. The report includes situation
+counts, cache reuse, token growth, action ledger counts, and a recent
+timeline. Exact token savings and per-subagent attribution remain
+unsupported.
+```
+
+In `docs/ai/VALIDATION.md`, add:
+
+```markdown
+- Token Insights report smoke:
+  `cargo run -- insights --since 24h --root /tmp/qmonster-insights-smoke`
+  must print `Token Insights` without requiring a tmux session.
+```
+
+In `README.md`, add the command near the existing smoke checks:
+
+```bash
+cargo run -- insights --since 24h --root /tmp/qmonster-insights-smoke
+```
+
+- [ ] **Step 2: Run the focused validation**
+
+Run:
+
+```bash
+cargo fmt --all --check
+cargo test --test store_insights_integration
+cargo test --test insights_report_integration
+cargo run -- insights --since 24h --root /tmp/qmonster-insights-smoke
+git diff --check
+```
+
+Expected:
+
+- `cargo fmt --all --check` exits 0.
+- Both integration test files pass.
+- Report command prints `Token Insights`.
+- `git diff --check` exits 0.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/ai/UI_MANUAL.md docs/ai/VALIDATION.md README.md
+git commit -m "docs: document token insights report"
+```
+
+---
+
+## Final Verification
+
+Run:
+
+```bash
+cargo test --all-targets
+cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
+git diff --check
+```
+
+Expected:
+
+- All tests pass.
+- Clippy exits 0.
+- Diff check exits 0.
+
+If these pass, Phase 8 v1 is ready for review. Do not start the lifecycle ledger or TUI overlay in the same implementation run; those are Phase 8 v2/v3 and need their own plan after this report proof is evaluated.
