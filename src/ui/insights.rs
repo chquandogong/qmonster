@@ -189,6 +189,9 @@ impl InsightsOverlay {
     }
 
     pub fn line_count(&self) -> usize {
+        if self.loading {
+            return 0;
+        }
         self.lines().len()
     }
 
@@ -467,6 +470,14 @@ mod tests {
         let joined = overlay.lines().join("\n");
         assert!(!joined.contains("refreshed: 12:00:00"));
         assert!(!joined.contains("Action Ledger"));
+    }
+
+    #[test]
+    fn line_count_is_zero_while_loading() {
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        overlay.mark_loading(1);
+        assert_eq!(overlay.line_count(), 0);
     }
 
     #[test]
