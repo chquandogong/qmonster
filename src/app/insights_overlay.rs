@@ -103,7 +103,10 @@ pub fn handle_insights_overlay_mouse(
             overlay.end_drag();
             InsightsOverlayAction::None
         }
-        _ => InsightsOverlayAction::None,
+        _ => {
+            overlay.end_drag();
+            InsightsOverlayAction::None
+        }
     }
 }
 
@@ -278,6 +281,40 @@ mod tests {
         );
         assert!(overlay.drag_anchor().is_none());
         assert_eq!(overlay.scroll(), 1);
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(
+                MouseEventKind::Drag(MouseButton::Left),
+                area.x + 10,
+                area.y + 4,
+            ),
+        );
+        assert_eq!(overlay.offset_x(), 0);
+        assert_eq!(overlay.offset_y(), 0);
+    }
+
+    #[test]
+    fn mouse_moved_clears_drag_anchor_before_later_drag() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        let area = crate::ui::insights::insights_modal_area_for(viewport, &overlay);
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(MouseEventKind::Down(MouseButton::Left), area.x + 2, area.y),
+        );
+        assert!(overlay.drag_anchor().is_some());
+
+        handle_insights_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(MouseEventKind::Moved, area.x + 4, area.y + 1),
+        );
+        assert!(overlay.drag_anchor().is_none());
 
         handle_insights_overlay_mouse(
             &mut overlay,
