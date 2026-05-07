@@ -118,6 +118,11 @@ fn insights_counts_live_colon_actions_by_situation() {
             "aggressive: dedupe + hash: quota-tight reason",
         ),
         (
+            AuditEventKind::RecommendationEmitted,
+            "%4b",
+            "aggressive: clamp output, archive all: quota-tight reason",
+        ),
+        (
             AuditEventKind::AlertFired,
             "%5",
             "anomaly: cross-pane edit cluster detected: multiple panes editing same file",
@@ -131,6 +136,31 @@ fn insights_counts_live_colon_actions_by_situation() {
             AuditEventKind::AlertFired,
             "%7",
             "anomaly: cost slope detected: cost climbing",
+        ),
+        (
+            AuditEventKind::AlertFired,
+            "%7b",
+            "anomaly: token slope detected: token count rising",
+        ),
+        (
+            AuditEventKind::AlertFired,
+            "%7c",
+            "anomaly: error burst detected: failures spiking",
+        ),
+        (
+            AuditEventKind::AlertFired,
+            "%7d",
+            "anomaly: identity churn detected: provider switching repeatedly",
+        ),
+        (
+            AuditEventKind::AlertFired,
+            "%7e",
+            "anomaly: memory growth detected: resident set climbing",
+        ),
+        (
+            AuditEventKind::AlertFired,
+            "%7f",
+            "anomaly: subagent activity correlated with other anomalies: multi-signal cluster",
         ),
         (
             AuditEventKind::RecommendationEmitted,
@@ -175,8 +205,8 @@ fn insights_counts_live_colon_actions_by_situation() {
     };
 
     assert_eq!(situation_count("Log storm / repeated output"), 2);
-    assert_eq!(situation_count("Context pressure"), 6);
+    assert_eq!(situation_count("Context pressure"), 9);
     assert_eq!(situation_count("Verbose review"), 1);
-    assert_eq!(situation_count("Code exploration"), 1);
-    assert_eq!(situation_count("Quota-tight / cost"), 1);
+    assert_eq!(situation_count("Code exploration"), 3);
+    assert_eq!(situation_count("Quota-tight / cost"), 2);
 }
