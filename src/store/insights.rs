@@ -69,12 +69,19 @@ const KNOWN_ACTION_PREFIXES: &[&str] = &[
     "repeated-output-cache",
     "log-storm: ingress filter + summary",
     "repeated-output: result-hash cache",
+    "aggressive: drop non-essential ingress",
+    "aggressive: terse profile + archive",
+    "aggressive: clamp output, archive all",
+    "aggressive: strip attribution",
+    "aggressive: dedupe + hash",
     "code-exploration: graph/symbol",
     "context-pressure: checkpoint",
     "context-pressure: act now",
     "cache: avoid /compact while cache is hot",
     "cache: /compact is safe - cache is cold",
+    "cache: /compact is safe — cache is cold",
     "cache: drift detected - /compact will let cache rebuild",
+    "cache: drift detected — /compact will let cache rebuild",
     "quota: pause until 5h window resets",
     "quota: pause until weekly window resets",
     "snapshot before 5h window resets",
@@ -82,6 +89,14 @@ const KNOWN_ACTION_PREFIXES: &[&str] = &[
     "verbose-output",
     "verbose-review: terse profile",
     "pane-state",
+    "anomaly: cross-pane edit cluster detected",
+    "anomaly: cache discontinuity detected",
+    "anomaly: token slope detected",
+    "anomaly: cost slope detected",
+    "anomaly: error burst detected",
+    "anomaly: identity churn detected",
+    "anomaly: memory growth detected",
+    "anomaly: subagent activity correlated with other anomalies",
     "quota-tight: consider enabling",
     "quota-pressure: pace requests",
     "cost-budget: 80% reached",
@@ -125,27 +140,52 @@ fn window_rfc3339_bounds(window: InsightsWindow) -> (String, String) {
 }
 
 fn situation_for_action(action: &str) -> &'static str {
-    if action.contains("log-storm")
-        || action == "archive-preview-suggested"
+    if matches!(
+        action,
+        "archive-preview-suggested"
+            | "repeated-output-cache"
+            | "log-storm: ingress filter + summary"
+            | "repeated-output: result-hash cache"
+            | "aggressive: drop non-essential ingress"
+            | "aggressive: dedupe + hash"
+    ) || action.contains("log-storm")
         || action.contains("repeated-output")
     {
         "Log storm / repeated output"
-    } else if action.contains("code-exploration")
+    } else if matches!(
+        action,
+        "anomaly: cross-pane edit cluster detected"
+            | "anomaly: identity churn detected"
+            | "anomaly: subagent activity correlated with other anomalies"
+    ) || action.contains("code-exploration")
         || action.contains("cross-pane")
         || action.contains("ConcurrentFileEdit")
     {
         "Code exploration"
-    } else if action.contains("context-pressure")
+    } else if matches!(
+        action,
+        "aggressive: terse profile + archive"
+            | "aggressive: clamp output, archive all"
+            | "anomaly: cache discontinuity detected"
+            | "anomaly: token slope detected"
+            | "anomaly: memory growth detected"
+    ) || action.contains("context-pressure")
         || action.starts_with("cache")
         || action.starts_with("quota: pause")
         || action.starts_with("snapshot before")
     {
         "Context pressure"
-    } else if action.contains("verbose-review") || action == "verbose-output" {
+    } else if matches!(action, "aggressive: strip attribution")
+        || action.contains("verbose-review")
+        || action == "verbose-output"
+    {
         "Verbose review"
     } else if action == "pane-state" || action.contains("permission") || action.contains("input") {
         "Input / permission wait"
-    } else if action.contains("quota-pressure")
+    } else if matches!(
+        action,
+        "anomaly: cost slope detected" | "anomaly: error burst detected"
+    ) || action.contains("quota-pressure")
         || action.contains("quota-tight")
         || action.contains("cost-budget")
         || action.contains("cost-pressure")
