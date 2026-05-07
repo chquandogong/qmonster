@@ -495,6 +495,58 @@ pub fn detect_cost_slope(
     })
 }
 
+/// TokenSlope: input_tokens cumulative delta over `window_polls`,
+/// normalized to tokens-per-poll. `output_tokens` is evidence-only.
+/// Fires when `slope_per_poll >= threshold_input_per_poll`.
+/// Confidence: `High` at ≥ 1.5× threshold, otherwise `Medium`.
+pub fn detect_token_slope(
+    history: &AnomalyHistory,
+    window_polls: usize,
+    threshold_input_per_poll: u64,
+    now_unix_seconds: u64,
+) -> Option<AnomalySignal> {
+    if history.input_token_samples.len() < window_polls {
+        return None;
+    }
+    let window: Vec<u64> = history
+        .input_token_samples
+        .iter()
+        .take(window_polls)
+        .filter_map(|s| *s)
+        .collect();
+    if window.len() < 2 {
+        return None;
+    }
+    let newest = window.first().copied().unwrap();
+    let oldest = window.last().copied().unwrap();
+    if newest < oldest {
+        return None; // counters reset; not a slope event
+    }
+    let slope_per_poll = (newest - oldest) / (window_polls as u64).max(1);
+    if slope_per_poll < threshold_input_per_poll {
+        return None;
+    }
+    let confidence = if slope_per_poll >= threshold_input_per_poll.saturating_mul(3) / 2 {
+        AnomalyConfidence::High
+    } else {
+        AnomalyConfidence::Medium
+    };
+    Some(AnomalySignal {
+        kind: AnomalyKind::TokenSlope,
+        confidence,
+        severity: severity_for(confidence),
+        evidence: vec![AnomalyEvidence {
+            metric_name: "input_tokens_per_poll",
+            before: format!("{oldest}"),
+            after: format!("{newest}"),
+            sample_count: window.len(),
+            source_kind: SourceKind::ProviderOfficial,
+        }],
+        window_polls,
+        detected_at: now_unix_seconds,
+    })
+}
+
 /// Phase 7 v2 (v1.44.0): promote Warning+ `AnomalySignal`s into
 /// `Recommendation`s so they reach the dashboard recommendation
 /// panel and (via the caller's `RequestedEffect::Notify` push)
@@ -1188,5 +1240,61 @@ mod tests {
     fn detect_cost_slope_insufficient_samples_returns_none() {
         let h = cost_history(vec![Some(50.0), Some(0.0)]); // only 2, window 20
         assert!(detect_cost_slope(&h, 20, 20.0, 1_700_000_000).is_none());
+    }
+
+    fn token_history(input: Vec<Option<u64>>, output: Vec<Option<u64>>) -> AnomalyHistory {
+        let mut h = AnomalyHistory::default();
+        for s in input.into_iter().rev() {
+            h.input_token_samples.push_front(s);
+        }
+        for s in output.into_iter().rev() {
+            h.output_token_samples.push_front(s);
+        }
+        h
+    }
+
+    #[test]
+    fn detect_token_slope_pure_positive_high_confidence() {
+        // 20 ticks, climb 0 → 800K input → 40K/poll → ≥ 1.5 × 20K → High.
+        let mut input = vec![Some(800_000u64)];
+        for i in (0..19).rev() {
+            input.push(Some(i as u64 * (800_000 / 19)));
+        }
+        let h = token_history(input, vec![Some(0u64); 20]);
+        let sig = detect_token_slope(&h, 20, 20_000, 1_700_000_000).unwrap();
+        assert_eq!(sig.kind, AnomalyKind::TokenSlope);
+        assert_eq!(sig.confidence, AnomalyConfidence::High);
+        assert_eq!(sig.severity, Severity::Warning);
+        assert_eq!(sig.evidence[0].metric_name, "input_tokens_per_poll");
+    }
+
+    #[test]
+    fn detect_token_slope_pure_positive_medium_confidence() {
+        // 20 ticks, climb 0 → 480K input → 24K/poll → ≥ 20K but < 30K → Medium.
+        let mut input = vec![Some(480_000u64)];
+        for i in (0..19).rev() {
+            input.push(Some(i as u64 * (480_000 / 19)));
+        }
+        let h = token_history(input, vec![Some(0u64); 20]);
+        let sig = detect_token_slope(&h, 20, 20_000, 1_700_000_000).unwrap();
+        assert_eq!(sig.confidence, AnomalyConfidence::Medium);
+        assert_eq!(sig.severity, Severity::Concern);
+    }
+
+    #[test]
+    fn detect_token_slope_below_threshold_returns_none() {
+        // 10K/poll < 20K → None.
+        let mut input = vec![Some(200_000u64)];
+        for i in (0..19).rev() {
+            input.push(Some(i as u64 * (200_000 / 19)));
+        }
+        let h = token_history(input, vec![Some(0u64); 20]);
+        assert!(detect_token_slope(&h, 20, 20_000, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn detect_token_slope_insufficient_samples_returns_none() {
+        let h = token_history(vec![Some(1_000_000u64)], vec![]);
+        assert!(detect_token_slope(&h, 20, 20_000, 1_700_000_000).is_none());
     }
 }
