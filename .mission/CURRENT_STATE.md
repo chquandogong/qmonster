@@ -16,7 +16,7 @@ Phase 7 v3 (a+b) adds per-kind promotion gate and the `n` overlay for anomaly ev
 
 1. **AnomalyEvent record** (`src/domain/anomaly.rs`): New plain-data struct capturing `kind`, `confidence`, `reason`, `timestamp` (u64 Unix seconds) for a single detected anomaly. Feeds the ring buffer.
 
-2. **AnomalyPromoteConfig** (`src/app/config.rs`): New `[anomaly.promote]` config section with 8 fields — one per `AnomalyKind`. Defaults: 7 × `"high"`, `subagent_side_effect = "medium"`. Serde defaults via `default_high()` / `default_medium()` helpers. The `subagent_side_effect = "medium"` default fixes a v1.45.0 latent dead-code branch (the SubagentSideEffect promote matrix branch was previously unreachable because the old hardcoded `severity ≥ Warning` filter required `High` confidence, but SubagentSideEffect emits `Medium`-only).
+2. **AnomalyPromoteConfig** (`src/app/config.rs`): New `[anomaly.promote]` config section with 8 fields — one per `AnomalyKind`. Defaults: 7 × `"high"`, `subagent_side_effect = "medium"`, set by `impl Default for AnomalyPromoteConfig`; `#[serde(default)]` on the sub-struct lets pre-v1.46 toml files load cleanly. The `subagent_side_effect = "medium"` default fixes a v1.45.0 latent dead-code branch (the SubagentSideEffect promote matrix branch was previously unreachable because the old hardcoded `severity ≥ Warning` filter required `High` confidence, but SubagentSideEffect emits `Medium`-only).
 
 3. **AnomalyEventsRing** (`src/app/anomaly_events_ring.rs`): In-memory ring buffer, capacity 100, session-only. Stores `AnomalyEvent` entries in insertion order; `push` evicts oldest when at capacity. `iter()` yields oldest-first; overlay uses `DoubleEndedIterator` for newest-first display.
 
@@ -32,7 +32,7 @@ Phase 7 v3 (a+b) adds per-kind promotion gate and the `n` overlay for anomaly ev
 
 9. **AnomalyOverlay render** (`src/ui/anomaly_overlay.rs`): Renders a centered modal over the dashboard. Newest-first list of `AnomalyEvent` entries with truncated `reason` (ellipsize helper). Empty state shown when ring is empty. 3 unit tests.
 
-10. **tui_loop.rs + dashboard_render.rs wiring** (`src/ui/tui_loop.rs`, `src/ui/dashboard_render.rs`): `n` key opens/closes the overlay via `app_state.anomaly_overlay`; mouse events forwarded; overlay rendered on top of the dashboard when open.
+10. **tui_loop.rs + dashboard_render.rs wiring** (`src/app/tui_loop.rs`, `src/app/dashboard_render.rs`): `anomaly_overlay` is a `let mut` local in `tui_loop.rs::run` (mirroring `metrics_overlay`); `n` key toggles open/closed; mouse events forwarded; overlay rendered on top of the dashboard when open. The render-context struct gains `anomaly_overlay: &AnomalyOverlay` and `anomaly_events_ring: &AnomalyEventsRing` fields. (No `AppState` struct in this codebase — UI overlay state is a `let mut` local; policy state lives on `Context<P, N>`.)
 
 11. **Settings UI: Parameters [anomaly.promote] +8 rows + Rules tab annotation reads from config** (`src/ui/settings.rs`): Parameters tab `[anomaly.promote]` section adds 8 rows (one per kind showing current threshold). Rules tab anomaly detector rows updated to read `min_confidence` from config rather than showing a hardcoded annotation.
 
