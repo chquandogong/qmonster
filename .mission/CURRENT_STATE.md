@@ -75,6 +75,22 @@ v1.50.0 layers five themes on top of the v1.49.0 baseline. It does not change pr
    config — Codex's parameter-edit affordance round owns that
    surface. Tests: 1285 → 1289 lib (+4).
 
+2. **`n` overlay reason column joins every evidence row** (`4e4a517`).
+   Pairs with #1 above. The in-memory `dominant_kind` row was being
+   silently dropped by `event_loop`'s reason builder, which read only
+   `sig.evidence.first()`. Extracted a small
+   `pub(crate) fn anomaly_event_reason(sig)` helper that joins every
+   row with ` | `; the inline builder is now a one-line call. Three
+   tests lock the contract: ErrorBurst's two-row output produces
+   `error_rate: 0.30 → 0.65 | dominant_kind: rust_panic → 8/13`;
+   single-row detectors stay byte-identical so SQLite
+   `anomaly_events.reason` readers observe no format drift; empty
+   evidence preserves the prior `unwrap_or_default` contract. Closes
+   the audit's ErrorBurst-evidence-enrichment loop end-to-end: the
+   kind label is collected (#1), aggregated into a dominant row (#1),
+   and now visible in the `n` overlay + persisted to
+   `anomaly_events.reason`. Lib tests 1289 → 1292 (+3).
+
 ## Known External State
 
 - v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 are all published (workflow runs `25159598038` / `25305201597` / `25311723861` / `25421376056` / `25424418078` / `25472444159` / `25474748447` / `25476534645` / `25478893257` / `25485133895` / `25490555532` / `25491535211` / `25498621086` / `25505209461` all completed success). GitHub Release pages live at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50}.0`; `npm view qmonster versions` lists `1.37.0` through `1.50.0` with `dist-tags.latest = 1.50.0`.
