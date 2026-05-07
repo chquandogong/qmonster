@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.49.0 - Operator UX polish: pane CMD argv resolution + overlay chrome consistency + TokenUsageReadFailed audit + Settings tab body scroll"
+  mission_title: "Qmonster v1.50.0 - Operator UX polish: Insights overlay async fetch + spinner placeholder + Phase 7 v2 fold-back + provider matrix + pricing rows"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 192
-  latest_version: "1.49.0"
+  total_revisions: 193
+  latest_version: "1.50.0"
 
 timeline:
   - change_id: "initial"
@@ -17925,8 +17925,162 @@ timeline:
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
+  - change_id: "v1.50.0-insights-spinner-and-post-v1.49-polish"
+    semantic_version: "1.50.0"
+    change_sequence: 193
+    date: "2026-05-08"
+    author: "CHENGHAO QUAN + Claude Code (subagent-driven Insights spinner + Phase 7 v2 fold-back) + Codex (parallel Settings parameter-edit affordance); consolidated release ledger"
+    summary: >
+      v1.50.0 is an operator UX polish bundle layered on v1.49.0. Five
+      themes ship together: (a) `i` Token Insights overlay open / `r`
+      refresh moved from synchronous SqliteInsightsStore::open_read_only
+      + snapshot_with_ignored_ttl to a worker-thread + mpsc-channel
+      fetch. New module src/app/insights_load.rs (InsightsLoadOutcome +
+      spawn_insights_load) wraps the SQLite call in std::thread::spawn
+      with std::panic::catch_unwind so a worker-thread panic surfaces as
+      Err instead of leaving the overlay stuck in Loading. Context gains
+      insights_load_tx / insights_load_rx / next_insights_request_id.
+      Each i open / r refresh increments the counter, calls
+      InsightsOverlay::mark_loading(id), and spawns the worker. Main
+      loop drains the receiver each event::poll(100ms) iteration via
+      try_recv non-blocking and calls InsightsOverlay::set_snapshot_for(
+      id, result, label); outcomes whose request_id != pending_request_id
+      (or whose overlay closed) are silently dropped, so a slow first
+      load never overwrites a fast second load. While loading,
+      render_insights_modal shows a centered `Aggregating insights ⠋`
+      line styled BORDER_ACTIVE + BOLD at the body's vertical midpoint;
+      6 situation panels are suppressed and line_count() returns 0 so
+      scroll keys are no-ops. Block title gains a ` — loading` suffix.
+      SPINNER_FRAMES = 10-glyph braille; advance_spinner advances the
+      phase mod 10 each tick when overlay.is_loading(). Subagent-driven
+      12-task TDD plan; commits cff0314 → 8e4ebe8.
+      (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure (commits
+      458a931 + 3b93330): CrossPaneFinding gains paths: Vec<String>;
+      eval_concurrent_files populates it for every ConcurrentFileEdit
+      finding; the event loop's new fold_finding_paths_into_history
+      helper appends those paths to the front entry of every attributed
+      pane's AnomalyHistory.cross_pane_edit_paths deque. The Option A
+      1-tick-lag pattern at event_loop.rs:495-500 is preserved. Three
+      new unit tests in event_loop.rs::tests lock the contract end-to-end
+      including the round-trip-fires-detector case. Closes the dead-pipe
+      gap surfaced during the Claude-led v1.49.0 audit.
+      (c) Provider-coverage matrix added to docs/ai/ARCHITECTURE.md
+      (commit a5f4c7e): a v1.49.0-baseline matrix of every signal the
+      policy + anomaly stack reads against Claude / Codex / Gemini
+      availability, plus detector/rule reach implications (e.g. cache
+      rule = Claude+Codex, auto_memory / agent_memory = Claude-only,
+      CrossPaneEditCluster = Claude-only until other adapters emit
+      active_files). docs/ai/REVIEW_GUIDE.md cites the matrix as the
+      canonical reference for empty-chip questions (commit caa5cda).
+      (d) config/pricing.example.toml gains claude-opus-4-7,
+      gemini-3.1-pro, gemini-3.1-flash placeholder rows (commit 013d9f0,
+      rates 0.00 → lookup() returns None, no v1.49.0 behaviour change).
+      Operators no longer have to discover the (provider, model) keying
+      convention themselves to enable the COST badge / cost_slope anomaly
+      detector on those panes.
+      (e) Codex parallel parameter-edit affordance for Settings overlay
+      (mixed across the chore(ai) commits 458a931 / cd78b5e):
+      src/ui/settings.rs gains ParameterField / ParameterEditKind
+      editors, parameter keystroke routing, and the activate/commit
+      pipeline. Lib test count moves from 1265 (v1.49.0) → 1285.
+    intent_ko: >
+      v1.50.0 은 v1.49.0 위에 다섯 개의 운영자 UX 마감을 묶어 출하한다.
+      (a) `i` Token Insights overlay open / `r` refresh 가 동기 SQLite
+      snapshot 에서 worker-thread + mpsc-channel fetch 로 이동.
+      src/app/insights_load.rs 가 std::thread::spawn + catch_unwind 로
+      SQLite open + snapshot_with_ignored_ttl 호출을 분리해서 InsightsLoad
+      Outcome 을 channel 로 emit. Context 는 insights_load_tx/rx +
+      next_insights_request_id 를 보유. 매 i/r 마다 id 증가, mark_loading,
+      worker spawn. main loop 은 매 event::poll(100ms) iteration 마다
+      try_recv 로 drain 하고 set_snapshot_for(id, result, label) 호출;
+      stale id 는 silently drop. 로딩 중에는 본문 가운데에 `Aggregating
+      insights ⠋` (BORDER_ACTIVE + BOLD) 가 표시되고 6 패널은 숨겨지며
+      scroll 은 비활성. SPINNER_FRAMES 는 10 프레임 braille; advance_
+      spinner 가 매 tick phase++ mod 10. subagent-driven 12-task TDD
+      플랜으로 진행. (b) Phase 7 v2 CrossPaneEditCluster fold-back
+      마감: CrossPaneFinding.paths 가 채워지고 fold_finding_paths_into_
+      history 가 cross_pane_edit_paths deque 의 front entry 에 append.
+      Option A 1-tick-lag 유지. v1.49.0 audit 에서 발견한 dead-pipe gap
+      종결. (c) ARCHITECTURE.md provider-coverage matrix 추가;
+      REVIEW_GUIDE.md 가 인용. (d) config/pricing.example.toml 에
+      claude-opus-4-7, gemini-3.1-pro, gemini-3.1-flash placeholder 행
+      (0.00). (e) Codex 병렬 트랙: ParameterField / ParameterEditKind
+      에디터 추가. 1265 → 1285 lib tests.
+    triggered_by: "Operator-reported i overlay stall on slow snapshot ('i 누르면 조금 시간이 걸리고 ...명령이 실행 중이라는 효과가 있었으면'). Claude-led brainstorming → spec → 12-task TDD plan → subagent-driven execution. Parallel-track polish landed on main untagged between v1.49.0 publication and the v1.50.0 ledger sync (CrossPane fold-back, provider matrix, pricing rows, Codex parameter-edit affordance) bundled in. Reference spec: docs/superpowers/specs/2026-05-07-insights-overlay-loading-spinner-design.md. Plan: docs/superpowers/plans/2026-05-07-insights-overlay-loading-spinner.md."
+    changes:
+      added:
+        - 'src/app/insights_load.rs: InsightsLoadOutcome { request_id: u64, result: Result<InsightsSnapshot, String> } + spawn_insights_load(audit_path: PathBuf, window: InsightsWindow, ignored_ttl_secs: u64, sender: Sender<InsightsLoadOutcome>, request_id: u64) using std::thread::spawn + std::panic::catch_unwind(AssertUnwindSafe(...)). Private run_insights_load helper takes &Path; missing-DB → Ok(empty_insights_snapshot); SqliteInsightsStore failure → Err(format!("open/query {} failed: {e}", path.display())). 3 unit tests (matching id, missing db ok, directory path err).'
+        - "InsightsOverlay state on src/ui/insights.rs: loading: bool, spinner_phase: u8, pending_request_id: u64. New methods: is_loading, pending_request_id, mark_loading(request_id), spinner_glyph, advance_spinner, set_snapshot_for(request_id, Result<InsightsSnapshot, String>, refreshed_label). SPINNER_FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']. close() also clears loading flag. line_count() returns 0 while loading."
+        - "render_insights_modal loading branch in src/ui/insights.rs: centered Aggregating insights {SPINNER_FRAMES[phase]} at body midpoint via Layout vertical [Min(0), Length(1), Min(0)] + Alignment::Center; BORDER_ACTIVE + Modifier::BOLD; 6 panels suppressed; block title gains ` — loading` suffix when overlay.is_loading()."
+        - "Context fields in src/app/bootstrap.rs: insights_load_tx: std::sync::mpsc::Sender<InsightsLoadOutcome>, insights_load_rx: std::sync::mpsc::Receiver<InsightsLoadOutcome>, next_insights_request_id: u64. Initialized in Context::new via std::sync::mpsc::channel()."
+        - "fold_finding_paths_into_history helper in src/app/event_loop.rs (Phase 7 v2 fold-back): appends CrossPaneFinding.paths to the front entry of every attributed pane's AnomalyHistory.cross_pane_edit_paths deque. Wired before eval_anomalies so the detector running on tick T sees tick T-1's fold-back (Option A 1-tick-lag preserved). 3 unit tests in event_loop::tests."
+        - "CrossPaneFinding.paths: Vec<String> field (was implicit Vec::new() before). Populated by eval_concurrent_files for every ConcurrentFileEdit finding."
+        - "Provider-coverage matrix paragraph in docs/ai/ARCHITECTURE.md: signal-by-signal availability for Claude / Codex / Gemini plus detector/rule reach implications and canonical em-dash / silently-omit / exclude-from-aggregations rules."
+        - "config/pricing.example.toml: claude-opus-4-7, gemini-3.1-pro, gemini-3.1-flash placeholder rows (rates 0.00 → lookup() None until operator fills in)."
+        - "src/ui/settings.rs: ParameterField + ParameterEditKind editors, parameter keystroke routing, activate/commit pipeline (Codex-led parallel track)."
+        - "tests/event_loop_integration.rs: context_initializes_insights_load_channel_and_request_id + insights_load_channel_supports_try_recv_drain integration tests."
+        - "docs/superpowers/specs/2026-05-07-insights-overlay-loading-spinner-design.md (v1.50.0 design)."
+        - "docs/superpowers/plans/2026-05-07-insights-overlay-loading-spinner.md (v1.50.0 12-task TDD plan)."
+      modified:
+        - "src/app/tui_loop.rs: refresh_insights_overlay body replaced with worker-thread dispatch (mark_loading + spawn_insights_load instead of inline SqliteInsightsStore call); signature changes ctx: &Context → ctx: &mut Context to bump next_insights_request_id. Per-iteration drain block (`while let Ok = try_recv`) + advance_spinner-when-loading inserted before event::poll(100ms)."
+        - "src/app/mod.rs: pub mod insights_load; export."
+        - "src/store/sqlite.rs: AuditDb open path used by SqliteInsightsStore::open_read_only (no schema change)."
+        - "docs/ai/UI_MANUAL.md: §8.9 paragraph documenting i/r async fetch, centered spinner placeholder, scroll-key suppression during load, request_id stale-drop semantics."
+        - "docs/ai/ARCHITECTURE.md: v1.50.0 paragraph at top of version-paragraphs section (newest-first); provider-coverage matrix paragraph."
+        - "docs/ai/VALIDATION.md: v1.50.0 release log table row (1278 lib post-Insights-spinner; 1285 lib after CrossPane fold-back + Settings parameter-edit affordance)."
+        - "docs/ai/REVIEW_GUIDE.md: cites the provider-coverage matrix as the canonical reference for empty-chip questions."
+        - "docs/ai/PROJECT_BRIEF.md: Date line gains v1.50.0 segment."
+        - "README.md: release table bumped to v1.50.0 / qmonster@1.50.0."
+        - "VERSION.md: bumped to v1.50.0."
+        - "package.json: version 1.50.0."
+        - "mission.yaml: title, topology, suggested_approach, budget_hint updated for v1.50.0; total_revisions 192 → 193."
+        - "mission-history.yaml: v1.50.0 entry appended (this entry); meta updated."
+        - ".mission/CURRENT_STATE.md: full refresh for v1.50.0."
+      removed: []
+    observable_effects:
+      - "Pressing `i` to open Token Insights now shows a centered `Aggregating insights ⠋` placeholder while the SQLite snapshot is in flight; the spinner glyph rotates across 10 braille frames; the 6 panels appear once the snapshot is ready."
+      - "Pressing `r` to refresh shows the same loading placeholder. Two rapid `r` presses: the first result is silently dropped on receipt and only the second result is shown — no flicker of stale data after the placeholder."
+      - "Pressing Esc while loading closes the overlay; if the worker thread completes after close, the outcome is silently dropped."
+      - "Phase 7 v2 SubagentSideEffect detector now actually sees cross-pane edits (was previously dead pipe — CrossPaneFinding.paths was Vec::new())."
+      - "ARCHITECTURE.md provider-coverage matrix is the canonical 'what does this provider expose' reference — surfaces stay honest about provider gaps via em-dash / silent-omit / exclude-from-aggregation rules."
+      - "Operators can flip on COST badges and cost_slope detection for Gemini panes / Claude Opus by editing config/pricing.example.toml — no code change required."
+      - "Settings overlay now supports parameter editing across the broader Parameters tab via Codex's parallel-track work."
+    impact_scope:
+      runtime: "First multi-threaded path in Qmonster's event loop. Worker thread spawned per i/r press (well below 1Hz operator cadence in practice); thread joins naturally when SQLite returns. Channel try_recv per tick is non-blocking and amortized O(1) when empty. No change to provider polling cadence or audit chain."
+      tests: "1278 lib tests at the Insights spinner finish; 1285 lib tests after CrossPane fold-back + Settings parameter-edit affordance landed. 63 integration tests."
+      ledger: "1 new timeline entry (sequence 193); meta total_revisions 192 → 193, latest_version 1.49.0 → 1.50.0."
+      npm: "package.json version 1.50.0; CI publication of v1.50.0 follows the same workflow as v1.37.0 through v1.49.0."
+    breaking: false
+    risk: "low — additive: new module isolates the spawn logic with catch_unwind so a panicking SQLite call surfaces as Err; stale-id drop guard prevents stale outcomes from overwriting fresh data; the synchronous fallback when the SQLite path is missing returns Ok(empty_insights_snapshot) so first-time operators see an empty view rather than a confusing error. CrossPane fold-back uses Option A 1-tick-lag pattern that survives polling drift. No SQLite schema changes; no audit chain changes; no provider adapter changes."
+    related_commits:
+      - "cd78b5e chore(ai): apply Claude edit"
+      - "caa5cda docs(review): cite provider-coverage matrix from REVIEW_GUIDE"
+      - "e9b8b69 chore(state): refresh CURRENT_STATE for post-v1.49.0 polish round"
+      - "013d9f0 config(pricing): add Gemini + Claude Opus placeholder rows"
+      - "a5f4c7e docs(architecture): add v1.49.0 provider-coverage matrix"
+      - "3b93330 feat(anomaly): close CrossPaneEditCluster fold-back loop"
+      - "458a931 chore(ai): apply Claude edit"
+      - "8e4ebe8 fix(insights): tighten run_insights_load arg type + apply rustfmt"
+      - "fa7f4ed docs: fix v1.50.0 entry format in VALIDATION.md release log"
+      - "cac178c docs: document insights overlay worker-thread fetch (v1.50.0)"
+      - "7a35593 feat(insights): drain insights_load channel + advance spinner per tick"
+      - "1381c7e feat(insights): dispatch i open + r refresh through worker thread"
+      - "b00423a feat(insights): wire Context insights_load channel + request_id counter"
+      - "7ba3937 feat(insights): add insights_load worker module with mpsc fetch"
+      - "4d6ce3a feat(insights): line_count returns 0 while loading to disable scroll"
+      - "4565748 feat(insights): render centered spinner placeholder while loading"
+      - "a54c0d6 feat(insights): add set_snapshot_for with request_id accept/drop"
+      - "17a7149 feat(insights): add SPINNER_FRAMES + advance_spinner phase helper"
+      - "cff0314 feat(insights): add loading state + mark_loading on InsightsOverlay"
+      - "47a1bd6 docs: implementation plan for insights overlay loading spinner (v1.50.0)"
+      - "2ac1c34 docs: design insights overlay loading spinner (v1.50.0 candidate)"
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters (only outstanding Phase 7 follow-up)."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
 evolution_summary:
-  current_phase: "v1.49.0 — operator UX polish bundle on top of v1.48.0. Pane CMD column wrapper-interpreter resolution (read_descendant_cmdline walks /proc/<pid>/cmdline; KNOWN_CLI_COMMS extended with qmonster; shallowest-CLI-wins within class), F-3 TokenUsageReadFailed audit event with per-pane dedup, overlay chrome consistency for i and n (active border + resize), Settings tab body scroll for read-only Parameters/Rules/Badges. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
+  current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
   next_phase: "Phase 7 D3 per-subagent token attribution remains provider-blocked. Pick from upstream backlog. Tag protection / ruleset activation is a GitHub Settings task."
   guiding_principles:
     - "Observe-first / Alert-first / Recommendation-first"
