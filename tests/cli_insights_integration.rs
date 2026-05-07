@@ -8,7 +8,13 @@ fn insights_since_on_missing_root_prints_empty_report_without_creating_files() {
     let root = td.path().join("missing-root");
 
     let output = Command::new(env!("CARGO_BIN_EXE_qmonster"))
-        .args(["--root", root.to_str().unwrap(), "insights", "--since", "24h"])
+        .args([
+            "--root",
+            root.to_str().unwrap(),
+            "insights",
+            "--since",
+            "24h",
+        ])
         .output()
         .unwrap();
 
