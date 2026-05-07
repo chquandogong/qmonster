@@ -2,8 +2,9 @@
 //! visualization. Renders `AnomalyEventsRing` chronologically
 //! (newest first) with `pane_id` column. Read-only; no actions.
 
-use crate::ui::dashboard::{centered_rect, close_button_rect};
+use crate::ui::dashboard::close_button_rect;
 use crate::ui::labels::ellipsize;
+use crate::ui::modal_chrome::{DragAnchor, ModalGeometry};
 use crate::ui::theme;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -22,6 +23,7 @@ pub enum AnomalyOverlayView {
 pub struct AnomalyOverlay {
     open: bool,
     scroll: u16,
+    geometry: ModalGeometry,
     view: AnomalyOverlayView,
     history_cache: Vec<crate::domain::anomaly::AnomalyEvent>,
 }
@@ -31,6 +33,13 @@ impl Default for AnomalyOverlay {
         Self {
             open: false,
             scroll: 0,
+            geometry: ModalGeometry::new(
+                Self::DEFAULT_WIDTH_PCT,
+                Self::DEFAULT_HEIGHT_PCT,
+                Self::SIZE_MIN,
+                Self::SIZE_MAX,
+                Self::SIZE_STEP,
+            ),
             view: AnomalyOverlayView::Ring,
             history_cache: Vec::new(),
         }
@@ -38,6 +47,12 @@ impl Default for AnomalyOverlay {
 }
 
 impl AnomalyOverlay {
+    pub const SIZE_STEP: u16 = 5;
+    pub const SIZE_MIN: u16 = 50;
+    pub const SIZE_MAX: u16 = 99;
+    pub const DEFAULT_WIDTH_PCT: u16 = 80;
+    pub const DEFAULT_HEIGHT_PCT: u16 = 70;
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -49,11 +64,13 @@ impl AnomalyOverlay {
     pub fn open(&mut self) {
         self.open = true;
         self.scroll = 0;
+        self.geometry.end_drag();
     }
 
     pub fn close(&mut self) {
         self.open = false;
         self.scroll = 0;
+        self.geometry.end_drag();
         self.view = AnomalyOverlayView::Ring;
         self.history_cache.clear();
     }
@@ -74,6 +91,50 @@ impl AnomalyOverlay {
         if self.scroll < max {
             self.scroll += 1;
         }
+    }
+
+    pub fn width_pct(&self) -> u16 {
+        self.geometry.width_pct()
+    }
+
+    pub fn height_pct(&self) -> u16 {
+        self.geometry.height_pct()
+    }
+
+    pub fn offset_x(&self) -> i16 {
+        self.geometry.offset_x()
+    }
+
+    pub fn offset_y(&self) -> i16 {
+        self.geometry.offset_y()
+    }
+
+    pub fn drag_anchor(&self) -> Option<DragAnchor> {
+        self.geometry.drag_anchor()
+    }
+
+    pub fn shrink(&mut self) {
+        self.geometry.shrink();
+    }
+
+    pub fn grow(&mut self) {
+        self.geometry.grow();
+    }
+
+    pub fn reset_geometry(&mut self) {
+        self.geometry.reset();
+    }
+
+    pub fn begin_drag(&mut self, anchor: DragAnchor) {
+        self.geometry.begin_drag(anchor);
+    }
+
+    pub fn set_offset(&mut self, x: i16, y: i16) {
+        self.geometry.set_offset(x, y);
+    }
+
+    pub fn end_drag(&mut self) {
+        self.geometry.end_drag();
     }
 
     pub fn scroll_up(&mut self) {
@@ -114,7 +175,7 @@ impl AnomalyOverlay {
         area: Rect,
         ring: &crate::app::anomaly_events_ring::AnomalyEventsRing,
     ) {
-        let popup_area = anomaly_modal_area(area);
+        let popup_area = anomaly_modal_area_for(area, self);
         frame.render_widget(Clear, popup_area);
 
         let (title, total_count) = match self.view {
@@ -202,7 +263,23 @@ impl AnomalyOverlay {
 }
 
 pub fn anomaly_modal_area(viewport: Rect) -> Rect {
-    centered_rect(80, 70, viewport)
+    crate::ui::modal_chrome::modal_area(
+        viewport,
+        AnomalyOverlay::DEFAULT_WIDTH_PCT,
+        AnomalyOverlay::DEFAULT_HEIGHT_PCT,
+        0,
+        0,
+    )
+}
+
+pub fn anomaly_modal_area_for(viewport: Rect, overlay: &AnomalyOverlay) -> Rect {
+    crate::ui::modal_chrome::modal_area(
+        viewport,
+        overlay.width_pct(),
+        overlay.height_pct(),
+        overlay.offset_x(),
+        overlay.offset_y(),
+    )
 }
 
 fn format_event_row(e: &crate::domain::anomaly::AnomalyEvent, width: usize) -> String {

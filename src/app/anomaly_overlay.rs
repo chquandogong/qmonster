@@ -2,7 +2,11 @@
 //! events) overlay. Mirrors the `m` overlay handler's contract
 //! (returns `true` when the key is consumed).
 
+use crate::app::keymap::rect_contains;
 use crate::ui::anomaly_overlay::AnomalyOverlay;
+use crate::ui::anomaly_overlay::anomaly_modal_area_for;
+use crate::ui::dashboard::close_button_rect;
+use crate::ui::modal_chrome::{DragAnchor, title_row_contains};
 use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
@@ -14,6 +18,18 @@ pub fn handle_anomaly_overlay_key(
     match key {
         KeyCode::Char('n') => {
             overlay.toggle();
+            true
+        }
+        KeyCode::Char('[') if overlay.is_open() => {
+            overlay.shrink();
+            true
+        }
+        KeyCode::Char(']') if overlay.is_open() => {
+            overlay.grow();
+            true
+        }
+        KeyCode::Char('=') if overlay.is_open() => {
+            overlay.reset_geometry();
             true
         }
         KeyCode::Esc | KeyCode::Char('q') if overlay.is_open() => {
@@ -41,33 +57,98 @@ pub fn handle_anomaly_overlay_mouse(
     if !overlay.is_open() {
         return false;
     }
+    let area = anomaly_modal_area_for(viewport, overlay);
+    let close = close_button_rect(area);
     match event.kind {
         MouseEventKind::ScrollDown => {
+            overlay.end_drag();
             overlay.scroll_down(ring_len.saturating_sub(1) as u16);
             true
         }
         MouseEventKind::ScrollUp => {
+            overlay.end_drag();
             overlay.scroll_up();
             true
         }
         MouseEventKind::Down(MouseButton::Left) => {
-            let area = crate::ui::anomaly_overlay::anomaly_modal_area(viewport);
-            let close = crate::ui::dashboard::close_button_rect(area);
-            if crate::app::keymap::rect_contains(close, event.column, event.row)
-                || !crate::app::keymap::rect_contains(area, event.column, event.row)
+            if rect_contains(close, event.column, event.row)
+                || !rect_contains(area, event.column, event.row)
             {
                 overlay.close();
-                return true;
+            } else if title_row_contains(area, event.column, event.row) {
+                overlay.begin_drag(DragAnchor {
+                    start_col: event.column,
+                    start_row: event.row,
+                    start_offset_x: overlay.offset_x(),
+                    start_offset_y: overlay.offset_y(),
+                });
+            } else {
+                overlay.end_drag();
             }
-            false
+            true
         }
-        _ => false,
+        MouseEventKind::Drag(MouseButton::Left) => {
+            if let Some(anchor) = overlay.drag_anchor() {
+                let dx = event.column as i32 - anchor.start_col as i32;
+                let dy = event.row as i32 - anchor.start_row as i32;
+                let next_x =
+                    (anchor.start_offset_x as i32 + dx).clamp(i16::MIN as i32, i16::MAX as i32);
+                let next_y =
+                    (anchor.start_offset_y as i32 + dy).clamp(i16::MIN as i32, i16::MAX as i32);
+                overlay.set_offset(next_x as i16, next_y as i16);
+            }
+            true
+        }
+        MouseEventKind::Up(MouseButton::Left) => {
+            overlay.end_drag();
+            true
+        }
+        _ => {
+            overlay.end_drag();
+            true
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::{KeyModifiers, MouseEvent};
+
+    fn mouse(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::empty(),
+        }
+    }
+
+    fn drag_overlay_by(
+        overlay: &mut AnomalyOverlay,
+        viewport: Rect,
+        delta_x: u16,
+        delta_y: u16,
+    ) -> Rect {
+        let area = crate::ui::anomaly_overlay::anomaly_modal_area_for(viewport, overlay);
+        handle_anomaly_overlay_mouse(
+            overlay,
+            viewport,
+            5,
+            mouse(MouseEventKind::Down(MouseButton::Left), area.x + 2, area.y),
+        );
+        handle_anomaly_overlay_mouse(
+            overlay,
+            viewport,
+            5,
+            mouse(
+                MouseEventKind::Drag(MouseButton::Left),
+                area.x + 2 + delta_x,
+                area.y + delta_y,
+            ),
+        );
+        crate::ui::anomaly_overlay::anomaly_modal_area_for(viewport, overlay)
+    }
 
     #[test]
     fn n_toggles_open_close() {
@@ -94,6 +175,73 @@ mod tests {
         o.open();
         assert!(handle_anomaly_overlay_key(&mut o, 5, KeyCode::Char('q')));
         assert!(!o.is_open());
+    }
+
+    #[test]
+    fn bracket_keys_resize_anomaly_overlay() {
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let (w0, h0) = (overlay.width_pct(), overlay.height_pct());
+        assert!(handle_anomaly_overlay_key(
+            &mut overlay,
+            0,
+            KeyCode::Char(']')
+        ));
+        assert!(overlay.width_pct() > w0);
+        assert!(overlay.height_pct() > h0);
+        assert!(handle_anomaly_overlay_key(
+            &mut overlay,
+            0,
+            KeyCode::Char('[')
+        ));
+        assert!(handle_anomaly_overlay_key(
+            &mut overlay,
+            0,
+            KeyCode::Char('=')
+        ));
+        assert_eq!(overlay.width_pct(), AnomalyOverlay::DEFAULT_WIDTH_PCT);
+        assert_eq!(overlay.height_pct(), AnomalyOverlay::DEFAULT_HEIGHT_PCT);
+    }
+
+    #[test]
+    fn title_drag_moves_anomaly_overlay_and_reset_clears_offset() {
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let viewport = Rect::new(0, 0, 100, 40);
+        let area = crate::ui::anomaly_overlay::anomaly_modal_area_for(viewport, &overlay);
+        let down = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: area.x + 2,
+            row: area.y,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        let drag = MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Left),
+            column: area.x + 8,
+            row: area.y + 4,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert!(handle_anomaly_overlay_mouse(
+            &mut overlay,
+            viewport,
+            5,
+            down
+        ));
+        assert!(handle_anomaly_overlay_mouse(
+            &mut overlay,
+            viewport,
+            5,
+            drag
+        ));
+        assert_eq!(overlay.offset_x(), 6);
+        assert_eq!(overlay.offset_y(), 4);
+        assert!(handle_anomaly_overlay_key(
+            &mut overlay,
+            0,
+            KeyCode::Char('=')
+        ));
+        assert_eq!(overlay.offset_x(), 0);
+        assert_eq!(overlay.offset_y(), 0);
     }
 
     #[test]
@@ -147,8 +295,6 @@ mod tests {
 
     #[test]
     fn mouse_wheel_up_scrolls() {
-        use crossterm::event::{MouseEvent, MouseEventKind};
-        use ratatui::layout::Rect;
         let mut o = AnomalyOverlay::new();
         o.open();
         o.scroll_down(5);
@@ -166,8 +312,6 @@ mod tests {
 
     #[test]
     fn mouse_click_outside_viewport_closes() {
-        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-        use ratatui::layout::Rect;
         let mut o = AnomalyOverlay::new();
         o.open();
         let viewport = Rect::new(10, 5, 20, 10);
@@ -182,9 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn mouse_click_inside_viewport_is_noop() {
-        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-        use ratatui::layout::Rect;
+    fn mouse_click_inside_viewport_is_consumed() {
         let mut o = AnomalyOverlay::new();
         o.open();
         let viewport = Rect::new(10, 5, 20, 10);
@@ -194,14 +336,12 @@ mod tests {
             row: 8,
             modifiers: crossterm::event::KeyModifiers::NONE,
         };
-        assert!(!handle_anomaly_overlay_mouse(&mut o, viewport, 5, event));
+        assert!(handle_anomaly_overlay_mouse(&mut o, viewport, 5, event));
         assert!(o.is_open());
     }
 
     #[test]
     fn mouse_click_on_close_button_closes() {
-        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-        use ratatui::layout::Rect;
         let mut o = AnomalyOverlay::new();
         o.open();
         let viewport = Rect::new(0, 0, 100, 40);
@@ -218,9 +358,148 @@ mod tests {
     }
 
     #[test]
+    fn mouse_left_on_close_button_closes_overlay_after_move() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let area = drag_overlay_by(&mut overlay, viewport, 5, 3);
+        let close = crate::ui::dashboard::close_button_rect(area);
+
+        assert!(handle_anomaly_overlay_mouse(
+            &mut overlay,
+            viewport,
+            5,
+            mouse(MouseEventKind::Down(MouseButton::Left), close.x, close.y),
+        ));
+
+        assert!(!overlay.is_open());
+    }
+
+    #[test]
+    fn mouse_left_inside_moved_body_keeps_overlay_open() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let area = drag_overlay_by(&mut overlay, viewport, 5, 3);
+
+        assert!(handle_anomaly_overlay_mouse(
+            &mut overlay,
+            viewport,
+            5,
+            mouse(
+                MouseEventKind::Down(MouseButton::Left),
+                area.x.saturating_add(2),
+                area.y.saturating_add(2),
+            ),
+        ));
+
+        assert!(overlay.is_open());
+        assert!(overlay.drag_anchor().is_none());
+    }
+
+    #[test]
+    fn mouse_scroll_clears_drag_anchor_before_scrolling() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let area = crate::ui::anomaly_overlay::anomaly_modal_area_for(viewport, &overlay);
+
+        assert!(handle_anomaly_overlay_mouse(
+            &mut overlay,
+            viewport,
+            5,
+            mouse(MouseEventKind::Down(MouseButton::Left), area.x + 2, area.y),
+        ));
+        assert!(overlay.drag_anchor().is_some());
+
+        assert!(handle_anomaly_overlay_mouse(
+            &mut overlay,
+            viewport,
+            5,
+            mouse(MouseEventKind::ScrollDown, 0, 0),
+        ));
+        assert!(overlay.drag_anchor().is_none());
+        assert_eq!(overlay.scroll(), 1);
+
+        assert!(handle_anomaly_overlay_mouse(
+            &mut overlay,
+            viewport,
+            5,
+            mouse(
+                MouseEventKind::Drag(MouseButton::Left),
+                area.x + 10,
+                area.y + 4
+            ),
+        ));
+        assert_eq!(overlay.offset_x(), 0);
+        assert_eq!(overlay.offset_y(), 0);
+    }
+
+    #[test]
+    fn mouse_moved_clears_drag_anchor_before_later_drag() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let area = crate::ui::anomaly_overlay::anomaly_modal_area_for(viewport, &overlay);
+
+        assert!(handle_anomaly_overlay_mouse(
+            &mut overlay,
+            viewport,
+            5,
+            mouse(MouseEventKind::Down(MouseButton::Left), area.x + 2, area.y),
+        ));
+        assert!(overlay.drag_anchor().is_some());
+
+        assert!(handle_anomaly_overlay_mouse(
+            &mut overlay,
+            viewport,
+            5,
+            mouse(MouseEventKind::Moved, area.x + 4, area.y + 1),
+        ));
+        assert!(overlay.drag_anchor().is_none());
+
+        assert!(handle_anomaly_overlay_mouse(
+            &mut overlay,
+            viewport,
+            5,
+            mouse(
+                MouseEventKind::Drag(MouseButton::Left),
+                area.x + 10,
+                area.y + 4
+            ),
+        ));
+        assert_eq!(overlay.offset_x(), 0);
+        assert_eq!(overlay.offset_y(), 0);
+    }
+
+    #[test]
+    fn close_reopen_preserves_geometry_but_clears_drag() {
+        let viewport = Rect::new(0, 0, 100, 40);
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        drag_overlay_by(&mut overlay, viewport, 5, 3);
+        assert_eq!(overlay.offset_x(), 5);
+        assert_eq!(overlay.offset_y(), 3);
+        assert!(overlay.drag_anchor().is_some());
+
+        overlay.scroll_down(10);
+        overlay.toggle_view(Vec::new());
+        overlay.close();
+        overlay.open();
+
+        assert_eq!(overlay.offset_x(), 5);
+        assert_eq!(overlay.offset_y(), 3);
+        assert!(overlay.drag_anchor().is_none());
+        assert_eq!(overlay.scroll(), 0);
+        assert_eq!(
+            overlay.view(),
+            crate::ui::anomaly_overlay::AnomalyOverlayView::Ring
+        );
+        assert!(overlay.history_cache().is_empty());
+    }
+
+    #[test]
     fn mouse_no_op_when_closed() {
-        use crossterm::event::{MouseEvent, MouseEventKind};
-        use ratatui::layout::Rect;
         let mut o = AnomalyOverlay::new();
         let viewport = Rect::new(0, 0, 80, 24);
         let event = MouseEvent {
