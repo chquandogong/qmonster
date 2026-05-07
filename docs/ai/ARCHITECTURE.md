@@ -835,6 +835,20 @@ cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
   deterministic now-injection. Tests grew to 765 lib + 68 integration
   green.
 
+**v1.47.0 (Phase 7 v3 c — closes Phase 7):** SQLite persistence for
+anomaly events and per-pane history. Two new tables in `audit.db`:
+`anomaly_events` (every visible signal with its gate result) and
+`anomaly_history_snapshots` (per-tick deque-head capture for replay).
+New `SqliteAnomalySink` mirrors the existing `SqliteTokenUsageSink` /
+`SqliteCostUsageSink` pattern. `Context.anomaly_sink: Option<...>` is
+plugged in via `with_anomaly_sink(sink)`, which also runs the
+retention purge (`[anomaly] retention_days = 30` default + 100K-row
+hard cap; snapshots auto-purge at 4× the detection window). The `n`
+overlay's new `h` key toggles between the session-scoped ring (v1.46
+default) and a history view that queries the last 200 from disk.
+Lazy AnomalyHistory replay on first-pane-observation per session,
+gated by a staleness threshold of `window_polls × tick_seconds × 2`.
+
 v1.46.0 ships **Phase 7 v3 (a+b)**: Per-kind promotion gate replaces the
 hardcoded `severity ≥ Warning` filter. `[anomaly.promote]` is a
 table of 8 `AnomalyKind` thresholds; `promote_anomalies_to_recommendations`

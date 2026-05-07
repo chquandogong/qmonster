@@ -347,4 +347,5 @@ through_sqlite` test in `src/store/audit.rs`)
 
 | Version | Scope                                                 | Gates passed                                                                         |
 | ------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| v1.47.0 | Phase 7 v3 (c): SQLite persistence (closes Phase 7)   | cargo fmt + clippy + test --all-targets (lib ~1200, integration 60); SBOM diff guard |
 | v1.46.0 | Phase 7 v3 (a+b): per-kind promotion gate + n overlay | cargo fmt + clippy + test --all-targets (lib ~1162, integration 58); SBOM diff guard |

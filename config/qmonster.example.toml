@@ -284,6 +284,11 @@ snapshot_eta_secs = 300           # reset ETA ceiling (secs) for the same adviso
 # token_slope_input_per_poll       = 20000
 # memory_growth_mb                 = 1024
 
+# Phase 7 v3 (c) (v1.47.0): retention horizon for anomaly_events table.
+# Older rows are deleted on Qmonster startup. Default 30 days; a 100K-row
+# hard cap also applies. Snapshots auto-purge at 4× window_polls.
+# retention_days = 30
+
 # Phase 7 v3 (v1.46.0): per-kind promotion thresholds.
 # Distinct from [anomaly] min_confidence (visibility filter):
 # this gates promotion to Recommendation only.

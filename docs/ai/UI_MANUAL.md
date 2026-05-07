@@ -711,6 +711,11 @@ Recommendation. Defaults: 7 kinds = `"high"`, `subagent_side_effect`
 = `"medium"`. Lower a kind's threshold to make it noisier; raise it
 to mute noisy detectors.
 
+**`[anomaly] retention_days`** — number of days to retain `anomaly_events`
+rows on disk (v1.47.0+). Default 30. Older rows are deleted on Qmonster
+startup. A 100K-row hard cap also applies regardless of this value, and
+`anomaly_history_snapshots` are auto-pruned at 4× the detection window.
+
 ### Phase 7 v2: anomaly promotion (v1.44.0)
 
 When a v1 detector fires with `confidence = High`, the resulting
@@ -893,9 +898,14 @@ Time / Pane / Kind / Conf / Promoted / Reason.
 - `Up` / `Down` (or `j` / `k`): scroll one row.
 - Mouse wheel: scroll.
 - Click outside the overlay: close.
+- `h`: toggle between Ring view (this session, in-memory) and History view (last 200 from disk).
 
-Buffer is in-memory and resets on session restart. SQLite persistence
-(Phase 7 v3 part c) is a separate follow-up.
+**View modes:**
+
+- **Ring (default):** shows the in-memory ring buffer (capacity 100, this session only).
+- **History:** queries `anomaly_events` SQLite table for the last 200 rows. Includes events from earlier sessions.
+
+The persistent `anomaly_events` table is pruned on startup by `[anomaly] retention_days` (default 30) and an emergency 100K-row cap.
 
 `Promoted = yes` means the signal passed its per-kind
 `[anomaly.promote]` confidence threshold and produced a
