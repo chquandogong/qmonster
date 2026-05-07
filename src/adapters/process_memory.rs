@@ -19,7 +19,9 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const KNOWN_CLI_COMMS: &[&str] = &["claude", "codex", "gemini", "node", "python", "python3"];
+const KNOWN_CLI_COMMS: &[&str] = &[
+    "claude", "codex", "gemini", "qmonster", "node", "python", "python3",
+];
 
 /// BFS depth cap. Real shell→CLI trees are depth 1–3 (bash → claude,
 /// or bash → node → gemini-cli child); 5 leaves headroom for unusual
@@ -116,11 +118,13 @@ pub fn read_descendant_cmdline(pane_pid: u32) -> Option<String> {
 /// Test-friendly variant: pass an alternate `/proc` root.
 #[doc(hidden)]
 pub fn read_descendant_cmdline_with_proc_root(pane_pid: u32, proc_root: &Path) -> Option<String> {
-    // Same BFS-with-class-priority shape as `read_descendant_rss_mb`.
-    // Class priority: a child whose `comm` is in `KNOWN_CLI_COMMS`
-    // beats one that isn't, regardless of cmdline length. Within a
-    // class, prefer the deeper descendant (closer to argv leaf).
-    // The pane shell itself is NOT a candidate — we want the AI CLI
+    // BFS-with-class-priority. Class priority: a descendant whose
+    // `comm` is in `KNOWN_CLI_COMMS` beats one that isn't. Within
+    // each class, keep the SHALLOWEST match — that descendant is
+    // the pane's operator-meaningful identity (claude in a Claude
+    // pane, node-running-codex in a Codex pane). Deeper subprocesses
+    // are tools the CLI launched, not the pane's identity.
+    // The pane shell itself is NOT a candidate — we want the CLI
     // descendant, not the shell prompt.
     let mut frontier: Vec<u32> = vec![pane_pid];
     let mut visited: HashSet<u32> = HashSet::new();
@@ -136,10 +140,17 @@ pub fn read_descendant_cmdline_with_proc_root(pane_pid: u32, proc_root: &Path) -
                 && let Some((_, is_cli_comm)) = read_pid_stats(*pid, proc_root)
             {
                 let replace = match (best.map(|(_, c)| c), is_cli_comm) {
+                    // First candidate ever — take it.
+                    (None, _) => true,
+                    // Upgrade non-CLI → CLI (deeper CLI beats shallower
+                    // non-CLI: e.g. `bash → asdf → node /usr/bin/codex`
+                    // picks node, not asdf).
                     (Some(false), true) => true,
-                    (Some(true), false) => false,
-                    // Prefer the deeper match within the same class.
-                    _ => true,
+                    // Don't downgrade CLI → non-CLI; don't replace
+                    // same-class (shallowest wins) — once we have a
+                    // CLI match, deeper CLI subprocesses are the
+                    // CLI's tool calls, not the pane's identity.
+                    _ => false,
                 };
                 if replace {
                     best = Some((*pid, is_cli_comm));
@@ -523,5 +534,71 @@ mod tests {
 
         let cmdline = read_descendant_cmdline_with_proc_root(1, root).unwrap();
         assert_eq!(cmdline, "python3 -m agent.run --config x.toml");
+    }
+
+    #[test]
+    fn cmdline_keeps_shallowest_cli_when_cli_spawns_cli_tool() {
+        // Realistic Claude pane: bash → claude → node (a tool subprocess
+        // claude spawned for an MCP server, e.g.). The pane's identity
+        // is `claude`, NOT the deeper node tool.
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        write_proc_pid(root, 1, "bash", 4_000, &[2]);
+        write_proc_pid(root, 2, "claude", 200_000, &[3]);
+        write_proc_cmdline(root, 2, &["claude", "--print", "review"]);
+        write_proc_pid(root, 3, "node", 80_000, &[]);
+        write_proc_cmdline(root, 3, &["node", "/tmp/mcp-server.js"]);
+
+        let cmdline = read_descendant_cmdline_with_proc_root(1, root).unwrap();
+        assert_eq!(
+            cmdline, "claude --print review",
+            "deeper node tool must NOT replace shallower claude (pane identity)"
+        );
+    }
+
+    #[test]
+    fn cmdline_resolves_qmonster_pane() {
+        // Qmonster pane: bash → qmonster. qmonster is in KNOWN_CLI_COMMS
+        // so it wins as the pane's identity.
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        write_proc_pid(root, 1, "bash", 4_000, &[2]);
+        write_proc_pid(root, 2, "qmonster", 30_000, &[3]);
+        write_proc_cmdline(
+            root,
+            2,
+            &["qmonster", "--config", "/home/u/.qmonster/qmonster.toml"],
+        );
+        // qmonster might spawn `tmux` or `git` as a child, but those
+        // are not in KNOWN_CLI_COMMS and even if they were the
+        // shallowest-CLI rule keeps qmonster.
+        write_proc_pid(root, 3, "tmux", 5_000, &[]);
+        write_proc_cmdline(root, 3, &["tmux", "capture-pane", "-p"]);
+
+        let cmdline = read_descendant_cmdline_with_proc_root(1, root).unwrap();
+        assert_eq!(
+            cmdline, "qmonster --config /home/u/.qmonster/qmonster.toml",
+            "qmonster pane must resolve to qmonster, not its tmux subprocess"
+        );
+    }
+
+    #[test]
+    fn cmdline_upgrades_non_cli_wrapper_to_deeper_cli() {
+        // bash → asdf (not in KNOWN_CLI_COMMS) → node (in KNOWN_CLI_COMMS).
+        // Real-world Node version managers: depth 1 is the wrapper,
+        // depth 2 is the actual interpreter we want to surface.
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        write_proc_pid(root, 1, "bash", 4_000, &[2]);
+        write_proc_pid(root, 2, "asdf", 10_000, &[3]);
+        write_proc_cmdline(root, 2, &["asdf", "exec", "node"]);
+        write_proc_pid(root, 3, "node", 80_000, &[]);
+        write_proc_cmdline(root, 3, &["node", "/usr/bin/gemini"]);
+
+        let cmdline = read_descendant_cmdline_with_proc_root(1, root).unwrap();
+        assert_eq!(
+            cmdline, "node /usr/bin/gemini",
+            "non-CLI wrapper at depth 1 must be replaced by deeper CLI at depth 2"
+        );
     }
 }
