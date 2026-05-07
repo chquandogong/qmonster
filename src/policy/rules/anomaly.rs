@@ -36,6 +36,15 @@ pub struct AnomalyHistory {
     pub identity_snapshots: VecDeque<(String, String)>,
     /// ErrorBurst input: `signals.error_hint` per tick. Most-recent-first.
     pub error_hints: VecDeque<bool>,
+    /// Phase 7 v2 evidence enrichment: parallel to `error_hints`. Holds
+    /// the matched pattern class label (`Some("rust_panic")`,
+    /// `Some("error_prefix")`, …) per tick, or `None` when `error_hint`
+    /// was `false`. The detector aggregates these to surface a
+    /// `dominant_kind` evidence row. Session-only — replay from the
+    /// SQLite snapshot table leaves this deque empty (the bool surface
+    /// is enough to keep `detect_error_burst` correct; the kind row is
+    /// just gracefully omitted in that case).
+    pub error_hint_kinds: VecDeque<Option<&'static str>>,
     /// CacheDiscontinuity input #1: `cache_hit_ratio` per tick when
     /// the signal is populated, else None. Most-recent-first.
     pub cache_hit_ratios: VecDeque<Option<f32>>,
@@ -75,6 +84,9 @@ impl AnomalyHistory {
         }
         while self.error_hints.len() > cap {
             self.error_hints.pop_back();
+        }
+        while self.error_hint_kinds.len() > cap {
+            self.error_hint_kinds.pop_back();
         }
         while self.cache_hit_ratios.len() > cap {
             self.cache_hit_ratios.pop_back();
@@ -219,20 +231,59 @@ pub fn detect_error_burst(
     } else {
         older_count as f32 / (window_polls - half) as f32
     };
+    let mut evidence = vec![AnomalyEvidence {
+        metric_name: "error_rate",
+        before: format!("{older_rate:.2}"),
+        after: format!("{newer_rate:.2}"),
+        sample_count: window_polls,
+        source_kind: SourceKind::Estimated,
+    }];
+    // Phase 7 v2 evidence enrichment: when the parallel
+    // `error_hint_kinds` deque has at least as many entries as the
+    // bool window, surface the dominant pattern class so the operator
+    // sees *what kind* of error spiked. Replay-restored histories
+    // (whose `error_hint_kinds` deque is empty by construction —
+    // session-only field) silently skip this row.
+    if let Some((dominant_kind, dominant_count)) =
+        dominant_error_kind(&history.error_hint_kinds, window_polls)
+    {
+        evidence.push(AnomalyEvidence {
+            metric_name: "dominant_kind",
+            before: dominant_kind.to_string(),
+            after: format!("{dominant_count}/{count}"),
+            sample_count: count,
+            source_kind: SourceKind::Estimated,
+        });
+    }
     Some(AnomalySignal {
         kind: AnomalyKind::ErrorBurst,
         confidence,
         severity: severity_for(confidence),
-        evidence: vec![AnomalyEvidence {
-            metric_name: "error_rate",
-            before: format!("{older_rate:.2}"),
-            after: format!("{newer_rate:.2}"),
-            sample_count: window_polls,
-            source_kind: SourceKind::Estimated,
-        }],
+        evidence,
         window_polls,
         detected_at: now_unix_seconds,
     })
+}
+
+/// Phase 7 v2 evidence enrichment helper: scan the most-recent
+/// `window_polls` of `kinds` and return the most-frequent non-`None`
+/// label with its count. Returns `None` when no kind appeared in the
+/// window (e.g. detector fires on a stale-restored history with an
+/// empty `error_hint_kinds` deque).
+fn dominant_error_kind(
+    kinds: &VecDeque<Option<&'static str>>,
+    window_polls: usize,
+) -> Option<(&'static str, usize)> {
+    let mut counts: HashMap<&'static str, usize> = HashMap::new();
+    for entry in kinds.iter().take(window_polls).flatten() {
+        *counts.entry(*entry).or_insert(0) += 1;
+    }
+    counts
+        .into_iter()
+        // Stable tie-break: highest count first; on ties prefer the
+        // lexicographically smaller label so test assertions stay
+        // deterministic across HashMap iteration order.
+        .max_by(|(la, ca), (lb, cb)| ca.cmp(cb).then_with(|| lb.cmp(la)))
 }
 
 /// CacheDiscontinuity: fires either when `cache_hit_ratio` drops by
@@ -1042,6 +1093,61 @@ mod tests {
         // only 3 samples; window 20 — must return None
         let h = errors_history(vec![true, true, true]);
         assert!(detect_error_burst(&h, 20, 0.5, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn detect_error_burst_evidence_carries_dominant_error_kind() {
+        // 12 errors in 20 ticks; 8× rust_panic + 4× error_prefix → dominant is rust_panic.
+        let mut h = AnomalyHistory::default();
+        let mut newest_first = Vec::new();
+        for _ in 0..8 {
+            newest_first.push((true, Some("rust_panic")));
+        }
+        for _ in 0..4 {
+            newest_first.push((true, Some("error_prefix")));
+        }
+        for _ in 0..8 {
+            newest_first.push((false, None));
+        }
+        for (b, k) in newest_first.into_iter().rev() {
+            h.error_hints.push_front(b);
+            h.error_hint_kinds.push_front(k);
+        }
+        let sig = detect_error_burst(&h, 20, 0.5, 1_700_000_000)
+            .expect("60% rate should fire above 0.5 threshold");
+        let dominant = sig
+            .evidence
+            .iter()
+            .find(|e| e.metric_name == "dominant_kind")
+            .expect("dominant_kind evidence row must accompany the rate row");
+        assert_eq!(dominant.before, "rust_panic");
+        assert_eq!(
+            dominant.after, "8/12",
+            "after must read as <dominant_count>/<total_error_count>",
+        );
+    }
+
+    #[test]
+    fn detect_error_burst_evidence_omits_dominant_kind_when_replay_only() {
+        // Replay-restored history fills error_hints (bool persistence)
+        // but leaves error_hint_kinds empty (session-only field). The
+        // detector must still fire on the bool window AND must not
+        // emit a dominant_kind row in this case.
+        let mut h = AnomalyHistory::default();
+        for _ in 0..12 {
+            h.error_hints.push_front(true);
+        }
+        for _ in 0..8 {
+            h.error_hints.push_front(false);
+        }
+        // intentionally leave h.error_hint_kinds empty
+        let sig = detect_error_burst(&h, 20, 0.5, 1_700_000_000).expect("rate row must still fire");
+        assert!(
+            sig.evidence
+                .iter()
+                .all(|e| e.metric_name != "dominant_kind"),
+            "dominant_kind row must be silently omitted when error_hint_kinds is empty",
+        );
     }
 
     #[test]

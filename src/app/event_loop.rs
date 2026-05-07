@@ -302,6 +302,7 @@ where
                 .identity_snapshots
                 .push_front((provider_label, pane.current_path.clone()));
             entry.error_hints.push_front(signals.error_hint);
+            entry.error_hint_kinds.push_front(signals.error_hint_kind);
             // signals.cache_hit_ratio is Option<MetricValue<f64>>; cast to
             // f32 to match AnomalyHistory.cache_hit_ratios: VecDeque<Option<f32>>.
             entry

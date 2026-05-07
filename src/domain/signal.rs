@@ -142,6 +142,15 @@ pub struct SignalSet {
     pub repeated_output: bool,
     pub verbose_answer: bool,
     pub error_hint: bool,
+    /// Phase 7 v2 evidence enrichment: stable label naming the pattern
+    /// class that fired `error_hint` this tick (e.g. `"rust_panic"`,
+    /// `"error_prefix"`, `"jvm_exception"`). `None` when `error_hint`
+    /// is `false`, or when the adapter does not classify (older code
+    /// paths). The `ErrorBurst` anomaly detector aggregates these
+    /// across the window so the operator sees *what kind* of error
+    /// spiked — see `policy::rules::anomaly::detect_error_burst`.
+    /// Adapters populate via `adapters::common::classify_error_hint`.
+    pub error_hint_kind: Option<&'static str>,
     pub subagent_hint: bool,
     pub output_chars: usize,
     pub task_type: TaskType,

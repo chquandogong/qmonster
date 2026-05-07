@@ -62,23 +62,43 @@ const PERMISSION_PROMPT_MARKERS: &[&str] = &[
 /// docstrings, commit messages, code review prose, and shell hook
 /// output. CLI tools that print fatal failure use `fatal: ` or `error:`
 /// prefixes, which the new contract still catches.
-fn detect_error_hint(tail: &str) -> bool {
+/// Returns a short label naming the matched pattern class, or `None`
+/// when the tail carries no recognised error marker. Used by adapters
+/// to populate `signals.error_hint` (`is_some()`) and
+/// `signals.error_hint_kind` (label) in lockstep, and by the
+/// `ErrorBurst` anomaly detector (`src/policy/rules/anomaly.rs`) so its
+/// evidence row tells the operator *what kind* of error spiked
+/// instead of just "error rate ≥ threshold". First match wins, so a
+/// line that matches both `error: ` and `error[E…]` resolves as
+/// `rust_compiler_error`.
+///
+/// Labels are stable identifiers (snake_case, ASCII-only) — they
+/// surface in audit-event summaries and `n` overlay rows, so renaming
+/// any of them is a contract change.
+pub fn classify_error_hint(tail: &str) -> Option<&'static str> {
     for line in tail.lines() {
         let trimmed = line.trim_start();
         let lower = trimmed.to_lowercase();
-        if lower.starts_with("traceback (most recent")
-            || lower.starts_with("exception in thread")
-            || lower.contains("panicked at ")
-            || lower.starts_with("panic: ")
-            || lower.starts_with("error[")
-            || lower.starts_with("error: ")
-            || lower.starts_with("fatal: ")
-            || lower.starts_with("fatal error:")
-        {
-            return true;
+        if lower.starts_with("traceback (most recent") {
+            return Some("traceback");
+        }
+        if lower.starts_with("exception in thread") {
+            return Some("jvm_exception");
+        }
+        if lower.contains("panicked at ") || lower.starts_with("panic: ") {
+            return Some("rust_panic");
+        }
+        if lower.starts_with("error[") {
+            return Some("rust_compiler_error");
+        }
+        if lower.starts_with("error: ") {
+            return Some("error_prefix");
+        }
+        if lower.starts_with("fatal: ") || lower.starts_with("fatal error:") {
+            return Some("fatal_prefix");
         }
     }
-    false
+    None
 }
 
 const VERBOSE_MARKERS: &[&str] = &[
@@ -230,12 +250,14 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         None
     };
 
+    let error_hint_kind = classify_error_hint(tail);
     SignalSet {
         idle_state,
         log_storm,
         repeated_output: false,
         verbose_answer,
-        error_hint: detect_error_hint(tail),
+        error_hint: error_hint_kind.is_some(),
+        error_hint_kind,
         subagent_hint: SUBAGENT_MARKERS.iter().any(|m| lower.contains(m)),
         output_chars,
         task_type: detect_task_type(&lower),
@@ -624,6 +646,75 @@ mod tests {
         let tail = "Traceback (most recent call last):\n  File foo.rs";
         let set = parse_common_signals(tail);
         assert!(set.error_hint);
+    }
+
+    #[test]
+    fn classify_error_hint_returns_label_for_each_pattern_class() {
+        let cases = [
+            (
+                "Traceback (most recent call last):\n  File foo.rs",
+                Some("traceback"),
+            ),
+            (
+                "Exception in thread \"main\" java.lang.NullPointerException",
+                Some("jvm_exception"),
+            ),
+            (
+                "thread 'main' panicked at src/foo.rs:12:9:",
+                Some("rust_panic"),
+            ),
+            ("panic: assertion failed", Some("rust_panic")),
+            (
+                "error[E0277]: the trait bound `T: Foo` is not satisfied",
+                Some("rust_compiler_error"),
+            ),
+            (
+                "error: failed to read file `Cargo.toml`",
+                Some("error_prefix"),
+            ),
+            ("fatal: not a git repository", Some("fatal_prefix")),
+            (
+                "fatal error: 'stdio.h' file not found",
+                Some("fatal_prefix"),
+            ),
+            ("just regular prose, nothing to see here", None),
+            ("note: this had error prefix mid-line, won't match", None),
+        ];
+        for (tail, expected) in cases {
+            assert_eq!(
+                classify_error_hint(tail),
+                expected,
+                "tail = {tail:?} expected {expected:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn parse_common_signals_keeps_error_hint_bool_and_kind_in_lockstep() {
+        // signals.error_hint and signals.error_hint_kind are populated
+        // from the same classify_error_hint() call. This contract test
+        // guards the invariant so a future refactor that splits the two
+        // sources cannot let one drift past the other.
+        for tail in [
+            "Traceback (most recent call last):",
+            "panic: assertion failed",
+            "error[E0277]: bound failure",
+            "error: missing operand",
+            "fatal: bad reference",
+            "ordinary prose with no markers",
+        ] {
+            let set = parse_common_signals(tail);
+            assert_eq!(
+                set.error_hint,
+                set.error_hint_kind.is_some(),
+                "lockstep broken for tail = {tail:?}",
+            );
+            assert_eq!(
+                set.error_hint_kind,
+                classify_error_hint(tail),
+                "kind must match the same classifier the adapter calls",
+            );
+        }
     }
 
     #[test]
