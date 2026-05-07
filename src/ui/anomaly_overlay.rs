@@ -116,22 +116,44 @@ impl AnomalyOverlay {
         let popup_area = centered_rect(80, 70, area);
         frame.render_widget(Clear, popup_area);
 
-        let title = format!(
-            " ANOMALY EVENTS (last {} \u{2014} newest first) [n to close] ",
-            ring.len()
-        );
+        let (title, total_count) = match self.view {
+            AnomalyOverlayView::Ring => (
+                format!(
+                    " ANOMALY EVENTS (last {} \u{2014} newest first) [h: history] [n to close] ",
+                    ring.len()
+                ),
+                ring.len(),
+            ),
+            AnomalyOverlayView::History => (
+                format!(
+                    " ANOMALY EVENTS [history view, last {}] [h: ring] [n to close] ",
+                    self.history_cache.len()
+                ),
+                self.history_cache.len(),
+            ),
+        };
         let block = Block::default().borders(Borders::ALL).title(title);
 
-        if ring.is_empty() {
-            let body = Paragraph::new(vec![
-                Line::from("No anomaly events recorded this session."),
-                Line::from(""),
-                Line::from(
-                    "Anomalies are recorded once detection is enabled in Settings: [anomaly] enabled = true.",
-                ),
-            ])
-            .block(block)
-            .wrap(Wrap { trim: false });
+        if total_count == 0 {
+            let body_lines = match self.view {
+                AnomalyOverlayView::Ring => vec![
+                    Line::from("No anomaly events recorded this session."),
+                    Line::from(""),
+                    Line::from(
+                        "Anomalies are recorded once detection is enabled in Settings: [anomaly] enabled = true.",
+                    ),
+                ],
+                AnomalyOverlayView::History => vec![
+                    Line::from("No persisted anomaly events."),
+                    Line::from(""),
+                    Line::from(
+                        "Enable [anomaly] in Settings to start recording. Old rows are pruned by [anomaly] retention_days (default 30).",
+                    ),
+                ],
+            };
+            let body = Paragraph::new(body_lines)
+                .block(block)
+                .wrap(Wrap { trim: false });
             frame.render_widget(body, popup_area);
             return;
         }
@@ -145,13 +167,22 @@ impl AnomalyOverlay {
         );
 
         let visible_rows = inner.height.saturating_sub(1) as usize;
-        let items: Vec<ListItem> = ring
-            .iter()
-            .rev()
-            .skip(self.scroll() as usize)
-            .take(visible_rows)
-            .map(|e| ListItem::new(format_event_row(e, inner.width as usize)))
-            .collect();
+        let items: Vec<ListItem> = match self.view {
+            AnomalyOverlayView::Ring => ring
+                .iter()
+                .rev()
+                .skip(self.scroll as usize)
+                .take(visible_rows)
+                .map(|e| ListItem::new(format_event_row(e, inner.width as usize)))
+                .collect(),
+            AnomalyOverlayView::History => self
+                .history_cache
+                .iter()
+                .skip(self.scroll as usize)
+                .take(visible_rows)
+                .map(|e| ListItem::new(format_event_row(e, inner.width as usize)))
+                .collect(),
+        };
 
         let layout = Layout::default()
             .direction(Direction::Vertical)
@@ -411,6 +442,101 @@ mod tests {
         assert!(!o.is_open());
         assert_eq!(o.view(), AnomalyOverlayView::Ring);
         assert!(o.history_cache().is_empty());
+    }
+
+    #[test]
+    fn render_history_view_shows_history_title_indicator() {
+        use crate::app::anomaly_events_ring::AnomalyEventsRing;
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let backend = TestBackend::new(120, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        overlay.toggle_view(vec![AnomalyEvent {
+            timestamp: 1_700_000_000,
+            pane_id: "%1".to_string(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "from disk".to_string(),
+        }]);
+        let ring = AnomalyEventsRing::new();
+        terminal
+            .draw(|f| overlay.render(f, f.area(), &ring))
+            .unwrap();
+        let rendered = buf_to_string(terminal.backend().buffer());
+        assert!(
+            rendered.contains("history view"),
+            "title missing 'history view': {rendered}"
+        );
+        assert!(
+            rendered.contains("[h: ring]"),
+            "ring-toggle hint missing: {rendered}"
+        );
+        assert!(
+            rendered.contains("from disk"),
+            "history row content missing"
+        );
+    }
+
+    #[test]
+    fn render_history_view_empty_shows_help_hint() {
+        use crate::app::anomaly_events_ring::AnomalyEventsRing;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let backend = TestBackend::new(120, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        overlay.toggle_view(Vec::new());
+        let ring = AnomalyEventsRing::new();
+        terminal
+            .draw(|f| overlay.render(f, f.area(), &ring))
+            .unwrap();
+        let rendered = buf_to_string(terminal.backend().buffer());
+        assert!(
+            rendered.contains("No persisted anomaly events"),
+            "history empty body missing"
+        );
+        assert!(
+            rendered.contains("retention_days"),
+            "history empty hint missing retention reference"
+        );
+    }
+
+    #[test]
+    fn render_ring_view_still_uses_h_history_hint() {
+        use crate::app::anomaly_events_ring::AnomalyEventsRing;
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let backend = TestBackend::new(120, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let mut ring = AnomalyEventsRing::new();
+        ring.push(AnomalyEvent {
+            timestamp: 1_700_000_000,
+            pane_id: "%1".to_string(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "ring view".to_string(),
+        });
+        terminal
+            .draw(|f| overlay.render(f, f.area(), &ring))
+            .unwrap();
+        let rendered = buf_to_string(terminal.backend().buffer());
+        assert!(
+            rendered.contains("[h: history]"),
+            "ring view title should advertise history toggle"
+        );
     }
 
     fn buf_to_string(buf: &ratatui::buffer::Buffer) -> String {
