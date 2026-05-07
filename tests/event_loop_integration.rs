@@ -2966,3 +2966,55 @@ fn event_loop_no_promotion_when_anomaly_disabled() {
         pane_report.effects
     );
 }
+
+#[test]
+fn event_loop_v2_detector_history_push_does_not_panic() {
+    // Phase 7 v2 detectors Task 10: smoke-test the event_loop wiring.
+    // Verify the new pre-rule history push for the 6 v2 deques runs
+    // without panic when [anomaly] enabled=true. We don't assert that
+    // a specific v2 anomaly fires (synthetic FixturePaneSource doesn't
+    // populate cost_usd/input_tokens/etc. signals), only that the live
+    // tick completes and PaneReport.anomalies is a valid slice.
+    use qmonster::app::config::AnomalyConfig;
+    use qmonster::app::event_loop::run_once_with_target;
+
+    let source = FixturePaneSource {
+        panes: vec![pane("%99", "claude:1:main", "claude", "✦ Idle", false)],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let mut config = QmonsterConfig::defaults();
+    config.anomaly = AnomalyConfig {
+        enabled: true,
+        window_polls: 5,
+        min_confidence: "medium".to_string(),
+        identity_churn_min_flips: 3,
+        error_burst_threshold: 0.5,
+        cache_discontinuity_drop: 0.30,
+        cross_pane_cluster_min_findings: 3,
+        cost_slope_usd_per_hour: 20.0,
+        token_slope_input_per_poll: 20_000,
+        memory_growth_mb: 1024.0,
+    };
+    let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
+
+    // Run a few ticks so the v2 deques accumulate (mostly None values
+    // from synthetic source, but the push should not panic).
+    for _ in 0..5 {
+        let (_reports, _notices) =
+            run_once_with_target(&mut ctx, Instant::now(), None).expect("run ok");
+    }
+
+    // After 5 ticks, the AnomalyHistory entry for %99 should exist and
+    // its v2 deques should be populated (likely all None, since the
+    // synthetic source doesn't populate cost/token/memory signals).
+    let history = ctx
+        .anomaly_history
+        .get("%99")
+        .expect("AnomalyHistory entry exists after 5 ticks");
+    assert_eq!(history.cost_usd_samples.len(), 5);
+    assert_eq!(history.input_token_samples.len(), 5);
+    assert_eq!(history.output_token_samples.len(), 5);
+    assert_eq!(history.process_memory_samples.len(), 5);
+    assert_eq!(history.agent_memory_samples.len(), 5);
+    assert_eq!(history.subagent_hint_samples.len(), 5);
+}

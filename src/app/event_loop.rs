@@ -286,6 +286,29 @@ where
             entry
                 .cache_hit_ratios
                 .push_front(signals.cache_hit_ratio.as_ref().map(|m| m.value as f32));
+            // Phase 7 v2 detectors (v1.45.0): push the 6 new
+            // signal samples into AnomalyHistory. Cumulative
+            // counters (cost_usd, input_tokens, output_tokens)
+            // pass through `Option<...>` so missing samples don't
+            // pollute the slope math; detectors filter None values.
+            entry
+                .cost_usd_samples
+                .push_front(signals.cost_usd.as_ref().map(|m| m.value));
+            entry
+                .input_token_samples
+                .push_front(signals.input_tokens.as_ref().map(|m| m.value));
+            entry
+                .output_token_samples
+                .push_front(signals.output_tokens.as_ref().map(|m| m.value));
+            entry
+                .process_memory_samples
+                .push_front(signals.process_memory_mb.as_ref().map(|m| m.value));
+            entry
+                .agent_memory_samples
+                .push_front(signals.agent_memory_bytes.as_ref().map(|m| m.value));
+            entry
+                .subagent_hint_samples
+                .push_front(signals.subagent_hint);
             entry.trim(cap);
         }
 
