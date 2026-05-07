@@ -134,11 +134,7 @@ impl AnomalyOverlay {
             ),
         };
         let block = Block::default().borders(Borders::ALL).title(title);
-        let close = Paragraph::new("[x]").style(
-            Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        );
+        let close = Paragraph::new("[x]").style(theme::modal_close_style());
 
         if total_count == 0 {
             let body_lines = match self.view {

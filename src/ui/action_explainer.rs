@@ -2,7 +2,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
@@ -70,11 +70,7 @@ pub fn render_action_explainer_modal(frame: &mut Frame<'_>, view: &ActionExplain
         area,
     );
     frame.render_widget(
-        Paragraph::new("[x]").style(
-            Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Paragraph::new("[x]").style(theme::modal_close_style()),
         close_button_rect(area),
     );
 }

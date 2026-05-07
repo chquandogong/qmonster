@@ -19,7 +19,7 @@ use crate::ui::dashboard::centered_rect;
 use crate::ui::theme;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
@@ -948,11 +948,7 @@ pub fn render_metrics_modal(
         rects.area,
     );
     frame.render_widget(
-        Paragraph::new("[x]").style(
-            Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Paragraph::new("[x]").style(theme::modal_close_style()),
         crate::ui::dashboard::close_button_rect(rects.area),
     );
     frame.render_widget(

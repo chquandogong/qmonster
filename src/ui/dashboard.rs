@@ -285,11 +285,7 @@ pub fn render_target_picker(
         state,
     );
     frame.render_widget(
-        Paragraph::new("[x]").style(
-            Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Paragraph::new("[x]").style(theme::modal_close_style()),
         close_button_rect(rects.list),
     );
     frame.render_widget(
@@ -333,11 +329,7 @@ pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
         rects.body,
     );
     frame.render_widget(
-        Paragraph::new("[x]").style(
-            Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Paragraph::new("[x]").style(theme::modal_close_style()),
         close_button_rect(rects.body),
     );
     frame.render_widget(
@@ -492,11 +484,7 @@ pub fn render_provider_setup_modal(
         );
     frame.render_widget(tabs, rects.tabs);
     frame.render_widget(
-        Paragraph::new("[x]").style(
-            Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Paragraph::new("[x]").style(theme::modal_close_style()),
         close_button_rect(rects.tabs),
     );
 
@@ -537,11 +525,7 @@ pub fn render_git_modal(frame: &mut Frame<'_>, title: &str, lines: &[String], sc
         rects.body,
     );
     frame.render_widget(
-        Paragraph::new("[x]").style(
-            Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Paragraph::new("[x]").style(theme::modal_close_style()),
         close_button_rect(rects.body),
     );
     frame.render_widget(

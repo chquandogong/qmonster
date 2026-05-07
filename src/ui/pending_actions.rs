@@ -789,11 +789,7 @@ pub fn render_pending_actions_modal(frame: &mut Frame<'_>, ctx: PendingActionsRe
 
     // [x] close button on the top border.
     frame.render_widget(
-        Paragraph::new("[x]").style(
-            Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Paragraph::new("[x]").style(theme::modal_close_style()),
         close_button_rect(rects.area),
     );
 }

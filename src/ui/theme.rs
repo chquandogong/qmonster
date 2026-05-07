@@ -31,6 +31,12 @@ pub fn label_style() -> Style {
     Style::default().fg(TEXT_DIM).bg(BADGE_BG)
 }
 
+pub fn modal_close_style() -> Style {
+    Style::default()
+        .fg(BORDER_ACTIVE)
+        .add_modifier(Modifier::BOLD)
+}
+
 /// Styled for a pane that has cleanly finished its work (dim gray — non-urgent).
 pub fn idle_work_complete() -> Style {
     Style::default()
@@ -82,6 +88,13 @@ pub fn idle_elapsed_badge() -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modal_close_style_uses_active_border_not_severity() {
+        let style = modal_close_style();
+        assert_eq!(style.fg, Some(BORDER_ACTIVE));
+        assert!(style.add_modifier.contains(Modifier::BOLD));
+    }
 
     #[test]
     fn each_severity_maps_to_a_distinct_color() {

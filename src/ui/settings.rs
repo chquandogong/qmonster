@@ -1231,11 +1231,7 @@ pub fn render_settings_modal(
     // main event loop hit-tests the same rectangle via
     // `settings_close_button_rect()`.
     frame.render_widget(
-        Paragraph::new("[x]").style(
-            Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Paragraph::new("[x]").style(theme::modal_close_style()),
         settings_close_button_rect(rects.body),
     );
 

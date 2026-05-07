@@ -103,11 +103,7 @@ pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
     frame.render_widget(
-        Paragraph::new("[x]").style(
-            Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Paragraph::new("[x]").style(theme::modal_close_style()),
         close_button_rect(area),
     );
 
