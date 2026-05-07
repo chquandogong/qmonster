@@ -305,6 +305,16 @@ through_sqlite` test in `src/store/audit.rs`)
       / MemoryGrowth / SubagentSideEffect) that inherit the promotion
       path. No new AuditEventKind, no new RequestedEffect, no new
       schema, no new operator-tunable promotion thresholds.
+- [x] Token Insights Phase 8 lifecycle writer: live `run_once` records
+      recommendation events to `recommendation_events`, strong
+      prompt-send recommendations are keyed by the slash command, and
+      prompt-send/archive/snapshot/alert-hide outcomes write correlated
+      `recommendation_outcomes`. TTL ignored remains a Qmonster
+      classification controlled by `[insights] ignored_ttl_secs`.
+- [x] Token Insights Phase 8 TUI overlay: `i` opens the SQLite-backed
+      report overlay; `r` refreshes; `Esc`/`q`/`i` close. The overlay
+      uses the CLI report formatter so situation, cache, timeline, and
+      action-ledger labels stay aligned.
 
 ## Non-functional checks (all phases)
 
@@ -342,10 +352,16 @@ through_sqlite` test in `src/store/audit.rs`)
 - Per-fixture: include the pane tail, the resolved identity (with
   confidence), the emitted signals (with `SourceKind`), and the
   triggered recommendations.
+- Phase 8 Token Insights evidence: include
+  `run_once_writes_recommendation_lifecycle_events`,
+  `insights_lifecycle_counts_hidden_and_suppresses_ignored_for_unlinked_matches`,
+  `insights_report_renders_available_recommendation_lifecycle`, and
+  overlay key/render tests, plus `cargo test --all-targets` and clippy.
 
 ## Release validation log
 
 | Version | Scope                                                 | Gates passed                                                                         |
 | ------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| v1.48.0 | Token Insights Phase 8 runtime writer + `i` overlay   | cargo fmt --check + clippy + test --all-targets (1206 lib tests + integration suites) |
 | v1.47.0 | Phase 7 v3 (c): SQLite persistence (closes Phase 7)   | cargo fmt + clippy + test --all-targets (lib ~1200, integration 60); SBOM diff guard |
 | v1.46.0 | Phase 7 v3 (a+b): per-kind promotion gate + n overlay | cargo fmt + clippy + test --all-targets (lib ~1162, integration 58); SBOM diff guard |

@@ -144,7 +144,7 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
                 "n/a".into()
             };
             lines.push(format!(
-                "  {} emitted={} accepted={} rejected={} blocked={} completed={} failed={} archived={} snapshot={} ignored={}",
+                "  {} emitted={} accepted={} rejected={} blocked={} completed={} failed={} archived={} snapshot={} hidden={} ignored={}",
                 row.action,
                 row.emitted,
                 row.accepted,
@@ -154,6 +154,7 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
                 row.failed,
                 row.archived,
                 row.snapshot_written,
+                row.hidden,
                 ignored,
             ));
         }

@@ -364,6 +364,10 @@ side_effects (N):
 - `m`: Metrics overlay 토글. ↑/↓ 또는 j/k로 비교 테이블의 pane을 선택하면
   아래 시계열 영역이 그 pane을 따라갑니다. m을 다시 누르거나 Esc / q /
   [x] 클릭으로 닫습니다.
+- `i`: Token Insights overlay 토글. 현재 `[insights] default_window_secs`
+  창의 recommendation lifecycle / cache / action ledger를 SQLite에서 읽어
+  보여줍니다. overlay 안에서 `r`은 즉시 refresh, ↑/↓ 또는 j/k와 mouse wheel은
+  스크롤입니다.
 - `y`: Alerts focus에서 선택된 alert의 `run` command를 system clipboard에
   복사합니다. 선택 항목에 `suggested_command`가 없거나 clipboard backend를
   열 수 없으면 `SystemNotice`로 이유를 표시합니다.
@@ -912,6 +916,25 @@ The persistent `anomaly_events` table is pruned on startup by `[anomaly] retenti
 Recommendation. `Promoted = no` means the signal was visible (passed
 the global `[anomaly] min_confidence` filter) but did not meet the
 per-kind promotion threshold.
+
+### 8.9 Token Insights Overlay (Phase 8)
+
+Press `i` to open the Token Insights overlay. It reads the configured
+Qmonster SQLite DB and renders the same Token Insights report shape used
+by the CLI: situation counts, cache reuse/cost/token deltas, recent
+lifecycle timeline, and action ledger counts.
+
+- `i` (or `Esc` / `q`): close.
+- `r`: refresh the current `[insights] default_window_secs` window.
+- `Up` / `Down` (or `j` / `k`): scroll one row.
+- Mouse wheel: scroll.
+- Mouse down outside the report body: close.
+
+The action ledger includes `emitted`, prompt-send outcomes
+(`accepted`/`rejected`/`blocked`/`completed`/`failed`), archive and
+snapshot outcomes, `hidden` alert-dismiss outcomes, and TTL-classified
+`ignored` recommendations. `ignored` is a Qmonster classification after
+`[insights] ignored_ttl_secs`; it is not treated as an operator rejection.
 
 ## 9. 운영 파일
 

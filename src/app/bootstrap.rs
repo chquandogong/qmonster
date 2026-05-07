@@ -8,7 +8,9 @@ use crate::policy::engine::Engine;
 use crate::policy::pricing::PricingTable;
 use crate::store::archive_fs::ArchiveWriter;
 use crate::store::sink::EventSink;
-use crate::store::{SnapshotWriter, SqliteCostUsageSink, SqliteTokenUsageSink};
+use crate::store::{
+    SnapshotWriter, SqliteCostUsageSink, SqliteRecommendationLifecycleSink, SqliteTokenUsageSink,
+};
 use crate::tmux::polling::PaneSource;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -30,6 +32,7 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// when the operator did not pass `--config` (defaults are in use)
     /// — in that case the overlay's save action is gated off.
     pub config_path: Option<std::path::PathBuf>,
+    pub insights_db_path: Option<std::path::PathBuf>,
     pub source: P,
     pub notifier: N,
     pub sink: Box<dyn EventSink>,
@@ -132,6 +135,7 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// and AnomalyHistory deque snapshots. None when persistence is
     /// disabled (test fixtures, operators without --config-with-db).
     pub anomaly_sink: Option<crate::store::SqliteAnomalySink>,
+    pub recommendation_lifecycle_sink: Option<SqliteRecommendationLifecycleSink>,
     /// Phase 7 v3 (c): per-session set of pane_ids whose AnomalyHistory
     /// has been replay-checked already. Prevents repeating the disk
     /// query every tick.
@@ -163,6 +167,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
         Self {
             config,
             config_path: None,
+            insights_db_path: None,
             source,
             notifier,
             sink,
@@ -189,6 +194,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             token_usage_sink: None,
             cost_usage_sink: None,
             anomaly_sink: None,
+            recommendation_lifecycle_sink: None,
             anomaly_history_replayed: std::collections::HashSet::new(),
             codex_app_server: None,
             codex_rate_limits: None,
@@ -198,6 +204,11 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
 
     pub fn with_config_path(mut self, path: std::path::PathBuf) -> Self {
         self.config_path = Some(path);
+        self
+    }
+
+    pub fn with_insights_db_path(mut self, path: std::path::PathBuf) -> Self {
+        self.insights_db_path = Some(path);
         self
     }
 
@@ -241,6 +252,14 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             eprintln!("anomaly_sink retention purge failed at startup: {e}");
         }
         self.anomaly_sink = Some(sink);
+        self
+    }
+
+    pub fn with_recommendation_lifecycle_sink(
+        mut self,
+        sink: SqliteRecommendationLifecycleSink,
+    ) -> Self {
+        self.recommendation_lifecycle_sink = Some(sink);
         self
     }
 

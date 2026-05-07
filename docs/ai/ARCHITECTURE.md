@@ -835,6 +835,23 @@ cleanup:`src/ui/panels.rs` sparkline test refactored from let-mut
   deterministic now-injection. Tests grew to 765 lib + 68 integration
   green.
 
+**v1.48.0 (Token Insights Phase 8):** recommendation lifecycle data is
+now written from the live runtime path, not only through offline
+reports. `Context.recommendation_lifecycle_sink` opens alongside the
+other SQLite sinks at startup and `run_once_with_target` records every
+emitted recommendation with provider/role, design situation, action,
+source label, reason, suggested command, strong-rec flag, and threshold
+snapshot. Strong prompt-send recommendations are ledgered by the
+slash command (`/compact`, etc.) so later operator outcomes correlate
+with the actual actuation. Prompt-send accept/reject/block/complete/
+fail, archive writes, manual snapshots, auto-snapshots, and alert hide
+events write `recommendation_outcomes` through
+`insert_correlated_recommendation_outcome`; unlinked outcomes suppress
+the TTL "ignored" classifier for the same `(pane_id, action)`. The TUI
+adds an `i` Token Insights overlay that reads the configured SQLite
+window, reuses the CLI report formatter, supports `r` refresh, and
+surfaces action ledger counts including hidden and ignored.
+
 **v1.47.0 (Phase 7 v3 c — closes Phase 7):** SQLite persistence for
 anomaly events and per-pane history. Two new tables in `audit.db`:
 `anomaly_events` (every visible signal with its gate result) and

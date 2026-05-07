@@ -1,0 +1,28 @@
+evaluation:
+  timestamp: "2026-05-07T19:00:00Z"
+  target: "Phase 8 v2 Lifecycle Ledger review"
+  evaluated_by: "llm-gemini"
+  source: "Gemini CLI review of b72fd6ce950f21c9d68c1131e4687599590e75b7..HEAD; narrative review archived at .docs/gemini/Qmonster-v1.46.0-2026-05-07-phase8-v2-ledger-review.md"
+  verdict: "approve-with-fixes"
+  remediation_round: ""
+  criteria:
+    - name: "Phase 8 v2 Ledger Implementation"
+      status: "pass"
+      notes: >
+        The InsightsConfig, SqliteRecommendationLifecycleSink, and 
+        snapshot_with_ignored_ttl functions accurately represent the 
+        Phase 8 v2 plan. Backward compatibility and testing are excellent.
+    - name: "Architectural boundaries"
+      status: "fail"
+      notes: >
+        The `src/app/event_loop.rs` file was modified to include
+        Phase 7 v3 (c) AnomalyHistory logic, violating the Phase 8 v2 plan
+        which explicitly labeled it "No changes in this slice".
+  notes: >
+    The core logic of Phase 8 v2 is sound and well-tested. The primary issue
+    is scope leak. Extract the Phase 7 v3 (c) logic from `src/app/event_loop.rs`
+    into its own branch or commit to maintain the intended architectural boundaries
+    and prevent pollution of the feature slice.
+  gate_decision: >
+    Approved with fixes. Proceed once `src/app/event_loop.rs` is reverted or
+    the Phase 7 v3 (c) changes are properly isolated.

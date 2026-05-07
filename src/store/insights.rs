@@ -38,6 +38,7 @@ pub struct ActionLedgerRow {
     pub failed: u64,
     pub archived: u64,
     pub snapshot_written: u64,
+    pub hidden: u64,
     pub ignored: u64,
 }
 
@@ -232,6 +233,7 @@ fn apply_lifecycle_outcome(row: &mut ActionLedgerRow, outcome: &str) {
         "blocked" => row.blocked += 1,
         "archived" => row.archived += 1,
         "snapshot_written" | "auto_snapshot_written" => row.snapshot_written += 1,
+        "hidden" => row.hidden += 1,
         "ignored" => row.ignored += 1,
         _ => {}
     }
@@ -708,6 +710,7 @@ fn lifecycle_snapshot(
     let mut actions_by_name = std::collections::BTreeMap::<String, ActionLedgerRow>::new();
     let mut event_situations = std::collections::HashMap::<i64, &'static str>::new();
     let mut event_has_outcome = std::collections::BTreeSet::<i64>::new();
+    let mut unlinked_outcomes = std::collections::BTreeSet::<(String, String)>::new();
     let mut timeline = Vec::new();
 
     for event in &events {
@@ -732,6 +735,8 @@ fn lifecycle_snapshot(
     for outcome in &outcomes {
         if let Some(event_id) = outcome.recommendation_event_id {
             event_has_outcome.insert(event_id);
+        } else {
+            unlinked_outcomes.insert((outcome.pane_id.clone(), outcome.action.clone()));
         }
         let situation = outcome
             .recommendation_event_id
@@ -757,6 +762,9 @@ fn lifecycle_snapshot(
         i64::try_from(u128::from(ignored_ttl_secs).saturating_mul(1000)).unwrap_or(i64::MAX);
     for event in &events {
         if event_has_outcome.contains(&event.id) {
+            continue;
+        }
+        if unlinked_outcomes.contains(&(event.pane_id.clone(), event.action.clone())) {
             continue;
         }
         if window.until_ms.saturating_sub(event.ts_unix_ms) < ttl_ms {

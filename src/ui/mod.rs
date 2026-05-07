@@ -2,6 +2,7 @@ pub mod action_explainer;
 pub mod alerts;
 pub mod anomaly_overlay;
 pub mod dashboard;
+pub mod insights;
 pub mod labels;
 pub mod metrics;
 pub mod panels;

@@ -5,12 +5,35 @@ use crate::domain::audit::{AuditEvent, AuditEventKind};
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::{RequestedEffect, Severity};
 use crate::policy::gates::{PromptSendGate, check_send_gate};
-use crate::store::EventSink;
+use crate::store::{EventSink, SqliteRecommendationLifecycleSink};
 use crate::tmux::polling::PaneSource;
 
 pub fn handle_prompt_send_action<P: PaneSource>(
     source: &P,
     sink: &dyn EventSink,
+    reports: &[PaneReport],
+    selected: Option<usize>,
+    accepting: bool,
+    mode: ActionsMode,
+    allow_auto_prompt_send: bool,
+) -> SystemNotice {
+    handle_prompt_send_action_with_lifecycle(
+        source,
+        sink,
+        None,
+        reports,
+        selected,
+        accepting,
+        mode,
+        allow_auto_prompt_send,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn handle_prompt_send_action_with_lifecycle<P: PaneSource>(
+    source: &P,
+    sink: &dyn EventSink,
+    lifecycle_sink: Option<&SqliteRecommendationLifecycleSink>,
     reports: &[PaneReport],
     selected: Option<usize>,
     accepting: bool,
@@ -29,13 +52,16 @@ pub fn handle_prompt_send_action<P: PaneSource>(
         Some((target, cmd, proposal_id)) if accepting => accept_prompt_send(
             source,
             sink,
+            lifecycle_sink,
             mode,
             allow_auto_prompt_send,
             target,
             cmd,
             proposal_id,
         ),
-        Some((target, cmd, proposal_id)) => dismiss_prompt_send(sink, target, cmd, proposal_id),
+        Some((target, cmd, proposal_id)) => {
+            dismiss_prompt_send(sink, lifecycle_sink, target, cmd, proposal_id)
+        }
     }
 }
 
@@ -59,10 +85,36 @@ pub fn handle_prompt_send_action_for_proposal<P: PaneSource>(
     proposal_id: &str,
     accepting: bool,
 ) -> SystemNotice {
+    handle_prompt_send_action_for_proposal_with_lifecycle(
+        source,
+        sink,
+        None,
+        mode,
+        allow_auto_prompt_send,
+        target_pane_id,
+        slash_command,
+        proposal_id,
+        accepting,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn handle_prompt_send_action_for_proposal_with_lifecycle<P: PaneSource>(
+    source: &P,
+    sink: &dyn EventSink,
+    lifecycle_sink: Option<&SqliteRecommendationLifecycleSink>,
+    mode: ActionsMode,
+    allow_auto_prompt_send: bool,
+    target_pane_id: &str,
+    slash_command: &str,
+    proposal_id: &str,
+    accepting: bool,
+) -> SystemNotice {
     if accepting {
         accept_prompt_send(
             source,
             sink,
+            lifecycle_sink,
             mode,
             allow_auto_prompt_send,
             target_pane_id.to_string(),
@@ -72,6 +124,7 @@ pub fn handle_prompt_send_action_for_proposal<P: PaneSource>(
     } else {
         dismiss_prompt_send(
             sink,
+            lifecycle_sink,
             target_pane_id.to_string(),
             slash_command.to_string(),
             proposal_id.to_string(),
@@ -129,9 +182,11 @@ fn no_pending_notice(accepting: bool) -> SystemNotice {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn accept_prompt_send<P: PaneSource>(
     source: &P,
     sink: &dyn EventSink,
+    lifecycle_sink: Option<&SqliteRecommendationLifecycleSink>,
     mode: ActionsMode,
     allow_auto_prompt_send: bool,
     target: String,
@@ -140,16 +195,23 @@ fn accept_prompt_send<P: PaneSource>(
 ) -> SystemNotice {
     match check_send_gate(mode, allow_auto_prompt_send) {
         PromptSendGate::Blocked => {
+            let summary =
+                format!("{target} {cmd} (proposal {proposal_id}) (blocked; observe_only mode)");
             sink.record(AuditEvent {
                 kind: AuditEventKind::PromptSendBlocked,
                 pane_id: target.clone(),
                 severity: Severity::Warning,
-                summary: format!(
-                    "{target} {cmd} (proposal {proposal_id}) (blocked; observe_only mode)"
-                ),
+                summary: summary.clone(),
                 provider: None,
                 role: None,
             });
+            record_prompt_lifecycle_outcome(
+                lifecycle_sink,
+                &target,
+                &cmd,
+                crate::store::RecommendationOutcome::Blocked,
+                summary,
+            );
             SystemNotice {
                 title: "accept blocked (observe_only)".into(),
                 body: format!(
@@ -160,26 +222,42 @@ fn accept_prompt_send<P: PaneSource>(
             }
         }
         PromptSendGate::AutoSendOff => {
+            let accepted_summary = format!(
+                "{target} {cmd} (proposal {proposal_id}) (acknowledged by operator; auto-send disabled)"
+            );
             sink.record(AuditEvent {
                 kind: AuditEventKind::PromptSendAccepted,
                 pane_id: target.clone(),
                 severity: Severity::Warning,
-                summary: format!(
-                    "{target} {cmd} (proposal {proposal_id}) (acknowledged by operator; auto-send disabled)"
-                ),
+                summary: accepted_summary.clone(),
                 provider: None,
                 role: None,
             });
+            record_prompt_lifecycle_outcome(
+                lifecycle_sink,
+                &target,
+                &cmd,
+                crate::store::RecommendationOutcome::Accepted,
+                accepted_summary,
+            );
+            let blocked_summary = format!(
+                "{target} {cmd} (proposal {proposal_id}) (execution blocked; allow_auto_prompt_send=false)"
+            );
             sink.record(AuditEvent {
                 kind: AuditEventKind::PromptSendBlocked,
                 pane_id: target.clone(),
                 severity: Severity::Warning,
-                summary: format!(
-                    "{target} {cmd} (proposal {proposal_id}) (execution blocked; allow_auto_prompt_send=false)"
-                ),
+                summary: blocked_summary.clone(),
                 provider: None,
                 role: None,
             });
+            record_prompt_lifecycle_outcome(
+                lifecycle_sink,
+                &target,
+                &cmd,
+                crate::store::RecommendationOutcome::Blocked,
+                blocked_summary,
+            );
             SystemNotice {
                 title: "proposal accepted (send disabled)".into(),
                 body: format!(
@@ -189,39 +267,56 @@ fn accept_prompt_send<P: PaneSource>(
                 source_kind: SourceKind::ProjectCanonical,
             }
         }
-        PromptSendGate::Execute => execute_prompt_send(source, sink, target, cmd, proposal_id),
+        PromptSendGate::Execute => {
+            execute_prompt_send(source, sink, lifecycle_sink, target, cmd, proposal_id)
+        }
     }
 }
 
 fn execute_prompt_send<P: PaneSource>(
     source: &P,
     sink: &dyn EventSink,
+    lifecycle_sink: Option<&SqliteRecommendationLifecycleSink>,
     target: String,
     cmd: String,
     proposal_id: String,
 ) -> SystemNotice {
+    let accepted_summary =
+        format!("{target} {cmd} (proposal {proposal_id}) (acknowledged by operator; executing)");
     sink.record(AuditEvent {
         kind: AuditEventKind::PromptSendAccepted,
         pane_id: target.clone(),
         severity: Severity::Warning,
-        summary: format!(
-            "{target} {cmd} (proposal {proposal_id}) (acknowledged by operator; executing)"
-        ),
+        summary: accepted_summary.clone(),
         provider: None,
         role: None,
     });
+    record_prompt_lifecycle_outcome(
+        lifecycle_sink,
+        &target,
+        &cmd,
+        crate::store::RecommendationOutcome::Accepted,
+        accepted_summary,
+    );
     match source.send_keys(&target, &cmd) {
         Ok(()) => {
+            let completed_summary =
+                format!("{target} {cmd} (proposal {proposal_id}) (sent; operator-confirmed)");
             sink.record(AuditEvent {
                 kind: AuditEventKind::PromptSendCompleted,
                 pane_id: target.clone(),
                 severity: Severity::Safe,
-                summary: format!(
-                    "{target} {cmd} (proposal {proposal_id}) (sent; operator-confirmed)"
-                ),
+                summary: completed_summary.clone(),
                 provider: None,
                 role: None,
             });
+            record_prompt_lifecycle_outcome(
+                lifecycle_sink,
+                &target,
+                &cmd,
+                crate::store::RecommendationOutcome::Completed,
+                completed_summary,
+            );
             SystemNotice {
                 title: "command sent".into(),
                 body: format!("{target} \u{2192} `{cmd}` (tmux send-keys completed)"),
@@ -230,14 +325,23 @@ fn execute_prompt_send<P: PaneSource>(
             }
         }
         Err(e) => {
+            let failed_summary =
+                format!("{target} {cmd} (proposal {proposal_id}) (send failed: {e})");
             sink.record(AuditEvent {
                 kind: AuditEventKind::PromptSendFailed,
                 pane_id: target.clone(),
                 severity: Severity::Warning,
-                summary: format!("{target} {cmd} (proposal {proposal_id}) (send failed: {e})"),
+                summary: failed_summary.clone(),
                 provider: None,
                 role: None,
             });
+            record_prompt_lifecycle_outcome(
+                lifecycle_sink,
+                &target,
+                &cmd,
+                crate::store::RecommendationOutcome::Failed,
+                failed_summary,
+            );
             SystemNotice {
                 title: "send failed".into(),
                 body: format!("{target} \u{2192} `{cmd}`: tmux error \u{2014} {e}"),
@@ -250,24 +354,49 @@ fn execute_prompt_send<P: PaneSource>(
 
 fn dismiss_prompt_send(
     sink: &dyn EventSink,
+    lifecycle_sink: Option<&SqliteRecommendationLifecycleSink>,
     target: String,
     cmd: String,
     proposal_id: String,
 ) -> SystemNotice {
+    let summary = format!("{target} {cmd} (proposal {proposal_id}) (dismissed by operator)");
     sink.record(AuditEvent {
         kind: AuditEventKind::PromptSendRejected,
         pane_id: target.clone(),
         severity: Severity::Safe,
-        summary: format!("{target} {cmd} (proposal {proposal_id}) (dismissed by operator)"),
+        summary: summary.clone(),
         provider: None,
         role: None,
     });
+    record_prompt_lifecycle_outcome(
+        lifecycle_sink,
+        &target,
+        &cmd,
+        crate::store::RecommendationOutcome::Rejected,
+        summary,
+    );
     SystemNotice {
         title: "proposal dismissed".into(),
         body: format!("{target} \u{2192} `{cmd}` (PromptSendRejected logged)"),
         severity: Severity::Safe,
         source_kind: SourceKind::ProjectCanonical,
     }
+}
+
+fn record_prompt_lifecycle_outcome(
+    lifecycle_sink: Option<&SqliteRecommendationLifecycleSink>,
+    target: &str,
+    cmd: &str,
+    outcome: crate::store::RecommendationOutcome,
+    summary: String,
+) {
+    crate::app::insights_lifecycle::record_recommendation_outcome(
+        lifecycle_sink,
+        target,
+        cmd,
+        outcome,
+        summary,
+    );
 }
 
 #[cfg(test)]

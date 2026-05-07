@@ -711,3 +711,107 @@ fn insights_lifecycle_counts_outcomes_and_ttl_ignored() {
             .any(|item| item.outcome == "ignored" && item.action.contains("cache"))
     );
 }
+
+#[test]
+fn insights_lifecycle_counts_hidden_and_suppresses_ignored_for_unlinked_matches() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+
+    let hidden_id = lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Some("Codex".into()),
+            role: Some("Review".into()),
+            situation: "Context pressure".into(),
+            action: "/compact".into(),
+            severity: "warning".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "context near critical".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%1:/compact".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: 2_000,
+            recommendation_event_id: Some(hidden_id),
+            pane_id: "%1".into(),
+            action: "/compact".into(),
+            outcome: RecommendationOutcome::Hidden,
+            audit_event_id: None,
+            summary: "dismissed from queue".into(),
+        })
+        .unwrap();
+
+    lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 1_500,
+            pane_id: "%2".into(),
+            provider: Some("Codex".into()),
+            role: Some("Main".into()),
+            situation: "Context pressure".into(),
+            action: "cache: avoid /compact while cache is hot".into(),
+            severity: "concern".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "cache is hot".into(),
+            suggested_command: None,
+            is_strong: false,
+            dedup_key: "%2:cache-hot".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: 6_000,
+            recommendation_event_id: None,
+            pane_id: "%2".into(),
+            action: "cache: avoid /compact while cache is hot".into(),
+            outcome: RecommendationOutcome::Hidden,
+            audit_event_id: None,
+            summary: "queue row disappeared".into(),
+        })
+        .unwrap();
+
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot_with_ignored_ttl(
+            InsightsWindow {
+                since_ms: 0,
+                until_ms: 10_000,
+            },
+            5,
+        )
+        .unwrap();
+
+    let compact = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "/compact")
+        .unwrap();
+    assert_eq!(compact.emitted, 1);
+    assert_eq!(compact.hidden, 1);
+    assert_eq!(compact.ignored, 0);
+
+    let cache = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "cache: avoid /compact while cache is hot")
+        .unwrap();
+    assert_eq!(cache.emitted, 1);
+    assert_eq!(cache.hidden, 1);
+    assert_eq!(cache.ignored, 0);
+
+    assert!(
+        snapshot
+            .timeline
+            .iter()
+            .any(|item| item.outcome == "hidden" && item.action == "/compact")
+    );
+    assert!(!snapshot.timeline.iter().any(|item| {
+        item.outcome == "ignored" && item.action == "cache: avoid /compact while cache is hot"
+    }));
+}

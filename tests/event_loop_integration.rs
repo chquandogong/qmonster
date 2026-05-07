@@ -726,6 +726,68 @@ fn strong_context_pressure_rec_emits_prompt_send_proposal_end_to_end() {
     assert!(rendered.contains("[d] dismiss"));
 }
 
+#[test]
+fn run_once_writes_recommendation_lifecycle_events() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let db_path = tmp.path().join("qmonster.sqlite3");
+    let lifecycle_sink =
+        qmonster::store::SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%7",
+            "claude:1:main",
+            "claude",
+            "context window usage 82%",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink)
+        .with_insights_db_path(db_path.clone())
+        .with_recommendation_lifecycle_sink(lifecycle_sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert!(
+        reports[0].effects.iter().any(|effect| matches!(
+            effect,
+            qmonster::domain::recommendation::RequestedEffect::PromptSendProposed {
+                slash_command,
+                ..
+            } if slash_command == "/compact"
+        )),
+        "fixture must produce the strong /compact prompt-send proposal"
+    );
+
+    let now = qmonster::app::event_loop::current_unix_ms();
+    let store = qmonster::store::SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot_with_ignored_ttl(
+            qmonster::store::InsightsWindow {
+                since_ms: now.saturating_sub(60_000),
+                until_ms: now.saturating_add(1_000),
+            },
+            0,
+        )
+        .unwrap();
+
+    assert!(snapshot.ignored_available);
+    assert!(
+        snapshot
+            .situations
+            .iter()
+            .any(|row| row.situation == "Context pressure" && row.emitted >= 1),
+        "lifecycle writer must preserve the design-situation label"
+    );
+    let row = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "/compact")
+        .expect("strong prompt recommendations are ledgered by slash command");
+    assert_eq!(row.emitted, 1);
+    assert_eq!(row.ignored, 1);
+}
+
 // ---------------------------------------------------------------------------
 // Phase 3A integration tests: cross-pane findings
 // ---------------------------------------------------------------------------

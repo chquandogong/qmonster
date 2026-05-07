@@ -49,6 +49,7 @@ pub struct DashboardFrameView<'a> {
     pub provider_setup_overlay: &'a ProviderSetupOverlay,
     pub metrics_overlay: &'a crate::ui::metrics::MetricsOverlay,
     pub anomaly_overlay: &'a crate::ui::anomaly_overlay::AnomalyOverlay,
+    pub insights_overlay: &'a crate::ui::insights::InsightsOverlay,
     pub anomaly_events_ring: &'a crate::app::anomaly_events_ring::AnomalyEventsRing,
     pub mem_observations: &'a HashMap<String, crate::ui::metrics::MemObservation>,
     pub action_explainer: &'a crate::app::action_explainer::ActionExplainModal,
@@ -76,11 +77,13 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
                 && !view.help_modal.is_open()
                 && !view.settings_overlay.is_open()
                 && !view.provider_setup_overlay.is_open()
+                && !view.insights_overlay.is_open()
                 && view.focus == FocusedPanel::Alerts,
             panes_focused: !view.target_picker_open
                 && !view.help_modal.is_open()
                 && !view.settings_overlay.is_open()
                 && !view.provider_setup_overlay.is_open()
+                && !view.insights_overlay.is_open()
                 && view.focus == FocusedPanel::Panes,
         },
     );
@@ -141,6 +144,10 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
     if view.anomaly_overlay.is_open() {
         view.anomaly_overlay
             .render(frame, frame.area(), view.anomaly_events_ring);
+    }
+
+    if view.insights_overlay.is_open() {
+        crate::ui::insights::render_insights_modal(frame, view.insights_overlay);
     }
 
     if let Some(view) = view.action_explainer.view() {

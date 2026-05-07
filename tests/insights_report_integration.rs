@@ -98,6 +98,7 @@ fn insights_report_renders_available_recommendation_lifecycle() {
         timeline: vec![],
         actions: vec![ActionLedgerRow {
             action: "/compact".into(),
+            hidden: 2,
             ignored: 3,
             ..ActionLedgerRow::default()
         }],
@@ -108,6 +109,7 @@ fn insights_report_renders_available_recommendation_lifecycle() {
     let joined = lines.join("\n");
 
     assert!(joined.contains("ignored classification: available"));
+    assert!(joined.contains("hidden=2"));
     assert!(joined.contains("ignored=3"));
     assert!(joined.contains("lifecycle: recommendation outcomes available"));
     assert!(!joined.contains("correlation unavailable"));
