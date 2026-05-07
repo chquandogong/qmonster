@@ -56,7 +56,24 @@ v1.50.0 layers five themes on top of the v1.49.0 baseline. It does not change pr
 
 ## Post-tag polish (on main, untagged)
 
-No genuinely-post-v1.50.0 work has landed yet.
+1. **Phase 7 v2 ErrorBurst evidence enrichment** (`1862c46`).
+   `adapters::common::classify_error_hint(tail) -> Option<&'static str>`
+   returns one of `traceback` / `jvm_exception` / `rust_panic` /
+   `rust_compiler_error` / `error_prefix` / `fatal_prefix`.
+   `SignalSet.error_hint_kind` populated in lockstep with the existing
+   `error_hint` bool surface (contract test guards the invariant).
+   `AnomalyHistory.error_hint_kinds: VecDeque<Option<&'static str>>`
+   parallel to `error_hints` (session-only — SQLite restart-replay
+   intentionally does not carry the kind so the storage schema stays
+   unchanged; detector gracefully omits the dominant_kind row when
+   the deque is empty). `detect_error_burst` evidence vec now carries
+   a second `AnomalyEvidence` row with `metric_name = "dominant_kind"`,
+   `before = <label>`, `after = <count>/<total>` so operators reading
+   the `n` overlay see what kind of error spiked, not just a rate
+   delta. Closes the audit's load-bearing 'error_burst is high-FP and
+   uninterpretable' finding without touching threshold / window-size
+   config — Codex's parameter-edit affordance round owns that
+   surface. Tests: 1285 → 1289 lib (+4).
 
 ## Known External State
 
