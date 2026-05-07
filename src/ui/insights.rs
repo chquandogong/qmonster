@@ -171,6 +171,22 @@ impl InsightsOverlay {
         self.scroll = 0;
     }
 
+    pub fn set_snapshot_for(
+        &mut self,
+        request_id: u64,
+        result: Result<InsightsSnapshot, String>,
+        refreshed_label: String,
+    ) {
+        if !self.open || !self.loading || self.pending_request_id != request_id {
+            return;
+        }
+        self.loading = false;
+        match result {
+            Ok(snapshot) => self.set_snapshot(snapshot, refreshed_label),
+            Err(error) => self.set_error(error),
+        }
+    }
+
     pub fn line_count(&self) -> usize {
         self.lines().len()
     }
@@ -359,5 +375,71 @@ mod tests {
         let before = overlay.spinner_glyph();
         overlay.advance_spinner();
         assert_eq!(overlay.spinner_glyph(), before);
+    }
+
+    #[test]
+    fn set_snapshot_for_drops_stale_request_id() {
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        overlay.mark_loading(2);
+        overlay.set_snapshot_for(
+            1,
+            Ok(empty_insights_snapshot(InsightsWindow {
+                since_ms: 0,
+                until_ms: 1,
+            })),
+            "stale".into(),
+        );
+        assert!(overlay.is_loading());
+        assert_eq!(overlay.pending_request_id(), 2);
+    }
+
+    #[test]
+    fn set_snapshot_for_accepts_matching_request_id_with_ok() {
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        overlay.mark_loading(2);
+        overlay.set_snapshot_for(
+            2,
+            Ok(empty_insights_snapshot(InsightsWindow {
+                since_ms: 0,
+                until_ms: 1,
+            })),
+            "12:00:00".into(),
+        );
+        assert!(!overlay.is_loading());
+        let joined = overlay.lines().join("\n");
+        assert!(joined.contains("refreshed: 12:00:00"));
+    }
+
+    #[test]
+    fn set_snapshot_for_accepts_matching_request_id_with_err() {
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        overlay.mark_loading(3);
+        overlay.set_snapshot_for(3, Err("boom".into()), "n/a".into());
+        assert!(!overlay.is_loading());
+        let joined = overlay.lines().join("\n");
+        assert!(joined.contains("error: boom"));
+    }
+
+    #[test]
+    fn close_while_loading_drops_late_outcome() {
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        overlay.mark_loading(4);
+        overlay.close();
+        overlay.set_snapshot_for(
+            4,
+            Ok(empty_insights_snapshot(InsightsWindow {
+                since_ms: 0,
+                until_ms: 1,
+            })),
+            "12:00:00".into(),
+        );
+        overlay.open();
+        let joined = overlay.lines().join("\n");
+        assert!(!joined.contains("refreshed: 12:00:00"));
+        assert!(!joined.contains("Action Ledger"));
     }
 }
