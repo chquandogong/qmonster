@@ -326,6 +326,18 @@ pub struct AnomalyConfig {
     /// `ConcurrentFileEdit` findings target the same path inside
     /// the window.
     pub cross_pane_cluster_min_findings: usize,
+    /// Phase 7 v2 (v1.45.0): CostSlope detector threshold. Fires when
+    /// `(cost_now - cost_oldest) / window_secs * 3600 >= cost_slope_usd_per_hour`.
+    /// Default 20.0 (matches prelim spec § Configuration).
+    pub cost_slope_usd_per_hour: f64,
+    /// Phase 7 v2 (v1.45.0): TokenSlope detector threshold. Fires when
+    /// `(input_now - input_oldest) / window_polls >= token_slope_input_per_poll`.
+    /// Default 20_000 (matches prelim spec § Configuration).
+    pub token_slope_input_per_poll: u64,
+    /// Phase 7 v2 (v1.45.0): MemoryGrowth detector threshold. Fires when
+    /// `process_memory_mb_now - process_memory_mb_oldest >= memory_growth_mb`.
+    /// Default 1024.0 (matches prelim spec § Configuration).
+    pub memory_growth_mb: f64,
 }
 
 impl Default for AnomalyConfig {
@@ -338,6 +350,9 @@ impl Default for AnomalyConfig {
             error_burst_threshold: 0.5,
             cache_discontinuity_drop: 0.30,
             cross_pane_cluster_min_findings: 3,
+            cost_slope_usd_per_hour: 20.0,
+            token_slope_input_per_poll: 20_000,
+            memory_growth_mb: 1024.0,
         }
     }
 }
@@ -1414,5 +1429,35 @@ window_polls = 30
     fn anomaly_config_missing_section_disables_layer() {
         let cfg: QmonsterConfig = toml::from_str("").expect("parse");
         assert!(!cfg.anomaly.enabled);
+    }
+
+    #[test]
+    fn anomaly_config_v2_defaults() {
+        let c = AnomalyConfig::default();
+        assert!((c.cost_slope_usd_per_hour - 20.0).abs() < f64::EPSILON);
+        assert_eq!(c.token_slope_input_per_poll, 20_000);
+        assert!((c.memory_growth_mb - 1024.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn anomaly_config_v2_loads_from_toml() {
+        let toml = r#"
+[anomaly]
+cost_slope_usd_per_hour = 30.0
+token_slope_input_per_poll = 50000
+memory_growth_mb = 2048
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).expect("parse");
+        assert!((cfg.anomaly.cost_slope_usd_per_hour - 30.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.anomaly.token_slope_input_per_poll, 50_000);
+        assert!((cfg.anomaly.memory_growth_mb - 2048.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn anomaly_config_v2_missing_section_keeps_defaults() {
+        let cfg: QmonsterConfig = toml::from_str("").expect("parse");
+        assert!((cfg.anomaly.cost_slope_usd_per_hour - 20.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.anomaly.token_slope_input_per_poll, 20_000);
+        assert!((cfg.anomaly.memory_growth_mb - 1024.0).abs() < f64::EPSILON);
     }
 }
