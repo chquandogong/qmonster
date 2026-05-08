@@ -6,6 +6,7 @@ use ratatui::widgets::ListState;
 
 use crate::app::config::QmonsterConfig;
 use crate::app::event_loop::PaneReport;
+use crate::app::hover_help::HoverHelpState;
 use crate::app::keymap::FocusedPanel;
 use crate::app::modal_state::ScrollModalState;
 use crate::app::system_notice::SystemNotice;
@@ -16,6 +17,7 @@ use crate::ui::dashboard::{
     DashboardSplit, DashboardView, TargetPickerView, render_dashboard, render_git_modal,
     render_help_modal, render_provider_setup_modal, render_target_picker,
 };
+use crate::ui::hover_help::{HoverHelpView, render_hover_help};
 use crate::ui::panels::PaneStateFlash;
 use crate::ui::pending_actions::{
     PendingActionsOverlay, PendingItem, render_pending_actions_modal,
@@ -55,10 +57,17 @@ pub struct DashboardFrameView<'a> {
     pub action_explainer: &'a crate::app::action_explainer::ActionExplainModal,
     pub pending_actions: &'a PendingActionsOverlay,
     pub pending_items: &'a [PendingItem],
+    pub hover_help: &'a HoverHelpState,
     pub config: &'a QmonsterConfig,
     /// v1.51.0: heuristic non-English (IME) input indicator.
     /// Computed by the loop from `Context::ime_state.is_active(now)`.
     pub ime_active: bool,
+    /// v1.53.0: optional decorative effects overlay. Rendered last so
+    /// it sits above every other modal.
+    pub fx_overlay: &'a crate::app::fx_overlay::FxOverlay,
+    /// v1.53.0: operator-configured banner text (`[fx] text`). Plumbed
+    /// directly so the renderer doesn't need to re-read config.
+    pub fx_text: &'a str,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -126,6 +135,21 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
             ime_active: view.ime_active,
         },
     );
+
+    if !overlay_owns_keyboard
+        && view.config.ux.hover_help
+        && let Some(hover) = view.hover_help.hover()
+    {
+        render_hover_help(
+            frame,
+            HoverHelpView {
+                topic: hover.topic,
+                language: view.config.ux.help_language,
+                column: hover.column,
+                row: hover.row,
+            },
+        );
+    }
 
     if view.target_picker_open {
         let labels: Vec<String> = view
@@ -208,6 +232,13 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
                 allow_auto_prompt_send: view.config.actions.allow_auto_prompt_send,
             },
         );
+    }
+
+    // v1.53.0: decorative effects overlay. Rendered as the topmost
+    // surface so the banner / confetti / matrix sit above every modal,
+    // including pending actions.
+    if let Some(scene) = view.fx_overlay.scene() {
+        crate::ui::fx::render_fx_overlay(frame, scene, view.fx_text);
     }
 }
 

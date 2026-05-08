@@ -218,6 +218,87 @@ pub fn alert_hit_at_row(
     None
 }
 
+pub fn alert_help_topic_at_row(
+    state: &ListState,
+    view: AlertView<'_>,
+    width: usize,
+    row: u16,
+) -> Option<crate::ui::help_glossary::HelpTopic> {
+    use crate::ui::help_glossary::HelpTopic;
+
+    let items = collect_items(
+        view.notices,
+        view.reports,
+        view.fresh_alerts,
+        view.alert_times,
+        view.hidden_until,
+        view.now,
+    );
+    let mut remaining = row;
+    let selected = state.selected();
+    for (idx, item) in items.iter().enumerate().skip(state.offset()) {
+        let is_selected = Some(idx) == selected;
+        let dismiss_height = dismiss_line_count(item, width, view.now) as u16;
+        let height = alert_item_lines(item, width, view.now, is_selected).len() as u16;
+        if remaining < height {
+            if remaining == 0 {
+                return Some(HelpTopic::AlertHeader);
+            }
+            if remaining < 1 + dismiss_height {
+                return Some(HelpTopic::AlertDismiss);
+            }
+            if is_alert_summary_row(item, width, remaining, dismiss_height) {
+                return Some(HelpTopic::AlertSummary);
+            }
+            if is_selected && is_alert_copy_row(item, width, remaining, height) {
+                return Some(HelpTopic::AlertCopy);
+            }
+            if remaining + 1 >= height {
+                return None;
+            }
+            return Some(HelpTopic::AlertDetail);
+        }
+        remaining = remaining.saturating_sub(height);
+    }
+    None
+}
+
+fn is_alert_summary_row(
+    item: &AlertItem,
+    width: usize,
+    remaining: u16,
+    dismiss_height: u16,
+) -> bool {
+    let prefix = timestamp_prefix(item);
+    let continuation = continuation_prefix(&prefix);
+    let summary_height = wrap_with_prefix(
+        &aligned_detail("summary", &item.headline),
+        width,
+        &continuation,
+        &continuation,
+    )
+    .len() as u16;
+    let start = 1 + dismiss_height;
+    remaining >= start && remaining < start.saturating_add(summary_height)
+}
+
+fn is_alert_copy_row(item: &AlertItem, width: usize, remaining: u16, height: u16) -> bool {
+    let Some(cmd) = item.suggested_command.as_deref() else {
+        return false;
+    };
+    let prefix = timestamp_prefix(item);
+    let continuation = continuation_prefix(&prefix);
+    let copy_height = wrap_with_prefix(
+        &aligned_detail("copy", &format!("`{cmd}`  → press y to copy")),
+        width,
+        &continuation,
+        &continuation,
+    )
+    .len() as u16;
+    let start = height.saturating_sub(1).saturating_sub(copy_height);
+    remaining >= start && remaining < height.saturating_sub(1)
+}
+
 pub fn alert_count(
     notices: &[SystemNotice],
     reports: &[PaneReport],

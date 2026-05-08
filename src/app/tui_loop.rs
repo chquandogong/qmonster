@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, MouseEventKind};
 use ratatui::layout::Rect;
 
 use crate::app::bootstrap::Context;
@@ -15,6 +15,7 @@ use crate::app::dashboard_state::{
     handle_dashboard_mouse, handle_dashboard_selection_key,
 };
 use crate::app::git_info::capture_repo_panel;
+use crate::app::hover_help::{DashboardHoverView, HoverHelpState, dashboard_hover_topic};
 use crate::app::keymap::{FocusedPanel, toggle_focus};
 use crate::app::modal_state::{
     ScrollModalState, handle_scroll_modal_key, handle_scroll_modal_mouse,
@@ -85,6 +86,11 @@ where
     // severity color coding. Multi-select (Space / P / Y / A / c) +
     // p/d/y dispatch in-place; Enter is silently swallowed.
     let mut pending_actions = crate::ui::pending_actions::PendingActionsOverlay::new();
+    let mut hover_help = HoverHelpState::new();
+    // v1.53.0: decorative effects overlay (Q hotkey, p-accept celebration,
+    // idle screensaver). Inert until Q / celebration / screensaver fires.
+    let mut fx_overlay = crate::app::fx_overlay::FxOverlay::new();
+    let mut last_user_activity = startup_now;
 
     // Phase F F-6 (v1.32.0): spawn `codex app-server` once at TUI
     // startup when the operator opted in via the [provider_setup]
@@ -194,6 +200,30 @@ where
                 // every frame so a proposal accepted last tick cannot
                 // linger in `multi_selected` and re-dispatch.
                 pending_actions.prune_to(&pending_items);
+                // v1.53.0: idle screensaver auto-trigger + per-frame
+                // scene step. Pure helper so the gating conditions
+                // stay unit-testable; the `step` call advances the
+                // active effect's particles / banner / streams.
+                {
+                    let term_size = terminal.size()?;
+                    if crate::app::fx_overlay::should_auto_open_screensaver(
+                        &ctx.config.fx,
+                        &fx_overlay,
+                        last_user_activity,
+                        now,
+                    ) {
+                        fx_overlay.open(
+                            &ctx.config.fx,
+                            crate::app::fx_overlay::FxTrigger::Screensaver,
+                            now,
+                            term_size.width,
+                            term_size.height,
+                        );
+                    }
+                    if fx_overlay.is_open() {
+                        fx_overlay.step(now, term_size.width, term_size.height);
+                    }
+                }
                 terminal.draw(|frame| {
                     render_dashboard_frame(
                         frame,
@@ -229,8 +259,11 @@ where
                             action_explainer: &action_explainer,
                             pending_actions: &pending_actions,
                             pending_items: &pending_items,
+                            hover_help: &hover_help,
                             config: &ctx.config,
                             ime_active: ctx.ime_state.is_active(now),
+                            fx_overlay: &fx_overlay,
+                            fx_text: ctx.config.fx.text.as_str(),
                         },
                     );
                 })?;
@@ -243,9 +276,50 @@ where
                     insights_overlay.advance_spinner();
                 }
 
-                if event::poll(Duration::from_millis(100))? {
+                // v1.53.0: tighten poll cadence to ~30 FPS while the fx
+                // overlay is active so banner / confetti / matrix animation
+                // looks smooth. Closed → keep the existing 100ms cadence so
+                // the quiet path stays cheap.
+                let poll_ms = if fx_overlay.is_open() {
+                    crate::app::fx_state::FX_FRAME_INTERVAL_MS
+                } else {
+                    100
+                };
+                if event::poll(Duration::from_millis(poll_ms))? {
                     match event::read()? {
                         Event::Key(k) if k.kind == KeyEventKind::Press => {
+                            // v1.53.0: any keypress refreshes the screensaver
+                            // idle clock so legitimate operator input keeps
+                            // the saver suppressed.
+                            last_user_activity = Instant::now();
+                            // v1.53.0: any key dismisses the fx overlay and
+                            // is consumed (not forwarded to per-overlay
+                            // dispatch) so the operator regains control on
+                            // a single press.
+                            if fx_overlay.is_open() {
+                                fx_overlay.dismiss();
+                                continue;
+                            }
+                            // v1.53.0: Q hotkey (uppercase, distinct from
+                            // 'q' which closes most overlays) opens the
+                            // configured fx effect. Only fires when no
+                            // other modal owns the keyboard, which is
+                            // already guaranteed by the existing dispatch
+                            // chain — Q falls through to here last.
+                            if let KeyCode::Char('Q') = k.code
+                                && ctx.config.fx.hotkey_enabled
+                                && ctx.config.fx.enabled
+                            {
+                                let term_size = terminal.size()?;
+                                fx_overlay.open(
+                                    &ctx.config.fx,
+                                    crate::app::fx_overlay::FxTrigger::Hotkey,
+                                    Instant::now(),
+                                    term_size.width,
+                                    term_size.height,
+                                );
+                                continue;
+                            }
                             // v1.51.0: feed Char keystrokes into the heuristic
                             // IME indicator BEFORE per-overlay dispatch so it
                             // observes keys consumed by any modal as well as
@@ -496,6 +570,13 @@ where
                                     KeyCode::Enter => {
                                         if let Some(action) = action_explainer.pending().cloned() {
                                             action_explainer.mark_seen(&action);
+                                            // v1.53.0: capture accept-edge before
+                                            // confirm_pending_action so celebration
+                                            // fires only on AcceptPromptSend.
+                                            let was_accept = matches!(
+                                                action,
+                                                crate::app::action_explainer::PendingAction::AcceptPromptSend { .. }
+                                            );
                                             let notice = confirm_pending_action(
                                                 &action,
                                                 &ctx.source,
@@ -507,6 +588,19 @@ where
                                             );
                                             action_explainer.close();
                                             dashboard.push_notice(notice, now);
+                                            if was_accept
+                                                && ctx.config.fx.celebration_enabled
+                                                && ctx.config.fx.enabled
+                                            {
+                                                let term_size = terminal.size()?;
+                                                fx_overlay.open(
+                                                    &ctx.config.fx,
+                                                    crate::app::fx_overlay::FxTrigger::Celebration,
+                                                    now,
+                                                    term_size.width,
+                                                    term_size.height,
+                                                );
+                                            }
                                         }
                                         continue;
                                     }
@@ -574,6 +668,46 @@ where
                                 KeyCode::Char('=') => dashboard_split.reset(),
                                 KeyCode::Char('?') => {
                                     help_modal.open("", Vec::new());
+                                }
+                                KeyCode::Char('H') => {
+                                    ctx.config.ux.hover_help = !ctx.config.ux.hover_help;
+                                    if !ctx.config.ux.hover_help {
+                                        hover_help.clear_hover();
+                                    }
+                                    dashboard.push_notice(
+                                        SystemNotice {
+                                            title: "hover help toggled".into(),
+                                            body: format!(
+                                                "floating help is now {}",
+                                                if ctx.config.ux.hover_help {
+                                                    "on"
+                                                } else {
+                                                    "off"
+                                                }
+                                            ),
+                                            severity: crate::domain::recommendation::Severity::Good,
+                                            source_kind:
+                                                crate::domain::origin::SourceKind::ProjectCanonical,
+                                        },
+                                        Instant::now(),
+                                    );
+                                }
+                                KeyCode::Char('L') => {
+                                    ctx.config.ux.help_language =
+                                        ctx.config.ux.help_language.toggle();
+                                    dashboard.push_notice(
+                                        SystemNotice {
+                                            title: "hover help language".into(),
+                                            body: format!(
+                                                "floating help language is now {}",
+                                                ctx.config.ux.help_language.as_str()
+                                            ),
+                                            severity: crate::domain::recommendation::Severity::Good,
+                                            source_kind:
+                                                crate::domain::origin::SourceKind::ProjectCanonical,
+                                        },
+                                        Instant::now(),
+                                    );
                                 }
                                 KeyCode::Char('S') => settings_overlay.open(),
                                 KeyCode::Char('P') => {
@@ -813,6 +947,21 @@ where
                                             ctx.config.actions.allow_auto_prompt_send,
                                         );
                                         dashboard.push_notice(notice, Instant::now());
+                                        // v1.53.0: celebration confetti on
+                                        // a successful pending-action accept.
+                                        if accepting
+                                            && ctx.config.fx.celebration_enabled
+                                            && ctx.config.fx.enabled
+                                        {
+                                            let term_size = terminal.size()?;
+                                            fx_overlay.open(
+                                                &ctx.config.fx,
+                                                crate::app::fx_overlay::FxTrigger::Celebration,
+                                                Instant::now(),
+                                                term_size.width,
+                                                term_size.height,
+                                            );
+                                        }
                                     }
                                 }
                                 _ => {}
@@ -822,6 +971,27 @@ where
                             let size = terminal.size()?;
                             let viewport = Rect::new(0, 0, size.width, size.height);
                             let now = Instant::now();
+                            // v1.53.0: refresh idle clock on any mouse
+                            // event; dismiss fx overlay on a click.
+                            last_user_activity = now;
+                            if fx_overlay.is_open() && matches!(m.kind, MouseEventKind::Down(_)) {
+                                fx_overlay.dismiss();
+                                continue;
+                            }
+
+                            let overlay_mouse_owner = settings_overlay.is_open()
+                                || provider_setup_overlay.is_open()
+                                || metrics_overlay.is_open()
+                                || anomaly_overlay.is_open()
+                                || insights_overlay.is_open()
+                                || pending_actions.is_open()
+                                || action_explainer.is_open()
+                                || git_modal.is_open()
+                                || help_modal.is_open()
+                                || target_picker.open;
+                            if overlay_mouse_owner {
+                                hover_help.clear_hover();
+                            }
 
                             if settings_overlay.is_open() {
                                 dashboard_split_dragging = false;
@@ -960,6 +1130,41 @@ where
                                     last_poll = now - poll;
                                 }
                                 continue;
+                            }
+
+                            if matches!(
+                                m.kind,
+                                MouseEventKind::Moved
+                                    | MouseEventKind::Down(_)
+                                    | MouseEventKind::Drag(_)
+                                    | MouseEventKind::ScrollUp
+                                    | MouseEventKind::ScrollDown
+                            ) {
+                                if ctx.config.ux.hover_help {
+                                    if let Some(topic) = dashboard_hover_topic(
+                                        viewport,
+                                        m.column,
+                                        m.row,
+                                        DashboardHoverView {
+                                            split: dashboard_split,
+                                            alert_state: &dashboard.alert_state,
+                                            pane_state: &dashboard.pane_state,
+                                            notices: &dashboard.notices,
+                                            reports: &dashboard.reports,
+                                            fresh_alerts: &dashboard.fresh_alerts,
+                                            alert_times: &dashboard.alert_times,
+                                            hidden_until: &dashboard.alert_hide_deadlines,
+                                            now,
+                                            target_label: &target,
+                                        },
+                                    ) {
+                                        hover_help.set_hover(topic, m.column, m.row, now);
+                                    } else {
+                                        hover_help.clear_hover();
+                                    }
+                                } else {
+                                    hover_help.clear_hover();
+                                }
                             }
 
                             let hidden_before = dashboard.alert_hide_deadlines.clone();

@@ -1,14 +1,47 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.52.0 ledger sync)_
+_Last updated: 2026-05-08 (Claude, v1.53.0 ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.52.0 — pane CLI version badge: parse provider-rendered version from tail when present, otherwise probe the descendant CLI process via `--version` and cache by (provider, pid, comm, argv, exe_path); render `CLI <version> [Official]` in the panel title between provider role and pane id.
-- Version surfaces: npm package metadata `qmonster@1.52.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v1.52.0` to be created at the ledger sync commit. v1.51.0 is the immediate prior tagged baseline.
+- Title: Qmonster v1.53.0 — decorative `[fx]` overlay: 3 selectable effects (bouncing rainbow QMONSTER banner / confetti burst / matrix rain) wired through Q hotkey, p-accept celebration, and idle screensaver. Configurable via Settings → Parameters (8 knobs).
+- Version surfaces: npm package metadata `qmonster@1.53.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v1.53.0` to be created at the ledger sync commit. v1.52.0 is the immediate prior tagged baseline.
 - Release publication state: **v1.52.0 is published**. `Release and Package Mirror` workflow run `25535686447` (2026-05-08, 7m2s, success) created GitHub Release `v1.52.0` (published 2026-05-08T03:58:45Z) with full asset set (`qmonster-v1.52.0-linux-x86_64.tar.gz`, `qmonster-1.52.0.tgz`, `qmonster-v1.52.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.52.0` to npm + GitHub Packages mirror. **v1.51.0 is also published**: workflow run `25535433723` (2026-05-08, 7m2s, success), GitHub Release published 2026-05-08T03:50:01Z with the same 5-asset set. v1.50.0 is published (run `25505209461`, 7m26s). Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), v1.39.0 (`25311723861`), v1.40.0 (`25421376056`), v1.41.0 (`25424418078`), v1.42.0 (`25472444159`), v1.43.0 (`25474748447`), v1.44.0 (`25476534645`), v1.45.0 (`25478893257`), v1.46.0 (`25485133895`), v1.47.0 (`25490555532`), v1.48.0 (`25491535211`), v1.49.0 (`25498621086`) publications also remain live — `npm view qmonster versions` lists `1.37.0` through `1.52.0` with `dist-tags.latest = 1.52.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52}.0`.
-- Current phase: Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, the v1.38 UX bundle (F1/F2/F3/F4), the v1.39 polish + correctness round, the v1.40 operator-controlled overlay geometry round, the v1.41 a-overlay polish round, Phase H opt-in auto-snapshot, Phase 7 v1 anomaly observation surface, Phase 7 v2 promotion, Phase 7 v2 detectors, Phase 7 v3 (a+b), Phase 7 v3 (c), Phase 8 v1 token insights query layer, and Phase 8 v2 recommendation lifecycle ledger are complete. v1.50.0 / v1.51.0 publication baselines still apply; v1.52.0 ships the pane CLI version badge feature on top — no new phase is opened.
+- Current phase: All prior phases complete. v1.50.0 / v1.51.0 / v1.52.0 publication baselines still apply; v1.53.0 ships the decorative effects overlay on top — no new phase is opened.
+
+## v1.53.0 Feature State
+
+v1.53.0 adds the optional decorative effects (`[fx]`) overlay on top of the v1.52.0 baseline. Three selectable effects, three triggers, eight Settings parameters. Inert until opt-in: the overlay never opens unless `[fx] enabled = true` AND one of the three triggers fires.
+
+1. **Three selectable effects** (`src/app/fx_state.rs` + `src/ui/fx.rs`):
+   - **Banner** — operator-supplied `[fx] text` rendered in a hand-rolled 5-row block font (A-Z, 0-9, space, `-!?.*`); position bounces DVD-screensaver style off viewport edges; per-cell HSL→RGB hue rotation (`FX_HUE_STEP = 2°` per frame at 30 FPS, full rotation in ~6s).
+   - **Confetti** — 80 unicode sparkles (`✨ ⋆ ☆ ⭐ ✦ ✧ ❋ ❀ ✺`) spawned in a radial pattern at viewport centre with light gravity (`CONFETTI_GRAVITY = 0.06`); `CONFETTI_INITIAL_LIFE = 60` frames before fade; particles drift toward background as they age.
+   - **Matrix** — per-column falling streams of `ｱ-ﾄ` katakana + ASCII glyphs; head is bright white-green (`Rgb(220, 255, 220)` + BOLD), tail dims toward green-only as `i / length` increases; one trail glyph mutates per frame for the flicker effect; streams refill once they scroll past the bottom.
+
+2. **Three triggers** (`src/app/fx_overlay.rs` + `src/app/tui_loop.rs`):
+   - **`Q` hotkey** — uppercase Q (distinct from lowercase `q` which closes most modals) opens the configured effect via `FxTrigger::Hotkey`. Gated by `[fx] hotkey_enabled = true`.
+   - **`p` accept celebration** — when an operator accepts a pending action via `p` (either through the action-explainer's Enter path or the direct dispatch path), `FxTrigger::Celebration` fires and **always shoots confetti regardless of the configured effect** — confetti is the natural confirmation glyph. Gated by `[fx] celebration_enabled = false` (default off; opt-in).
+   - **Idle screensaver** — when `now - last_user_activity >= screensaver_idle_secs`, `FxTrigger::Screensaver` opens the configured effect. `last_user_activity` is updated on every keypress and mouse event so any operator input keeps the saver suppressed. Gated by `[fx] screensaver_enabled = false` (default off; opt-in).
+
+3. **Click / any-key dismiss + auto-dismiss**:
+   - The overlay short-circuits per-overlay key dispatch: any keypress while it's open just calls `fx_overlay.dismiss()` and `continue`s past the rest of the dispatch chain.
+   - Mouse `Down(_)` events do the same.
+   - `[fx] duration_secs` (default 5; 0 = stay until dismissed) auto-dismisses by elapsed time.
+   - `FxScene::is_finished()` for confetti returns true once every particle has expired, so a celebration burst self-dismisses naturally even with `duration_secs = 0`.
+
+4. **Performance gating**:
+   - While the overlay is closed, `event::poll(100ms)` keeps the existing 10 FPS quiet path — zero added cost.
+   - While the overlay is active, the loop tightens to `event::poll(FX_FRAME_INTERVAL_MS = 33ms)` for smooth ~30 FPS animation.
+   - `FxScene::step` is pure (no IO); seeded by a small xorshift64 so frame jitter doesn't collapse to identical patterns each open.
+
+5. **Settings → Parameters integration** (`src/ui/settings.rs`, FX section):
+   - 8 new `ParameterField` variants — `FxEnabled`, `FxText`, `FxEffect`, `FxDurationSecs`, `FxHotkeyEnabled`, `FxCelebrationEnabled`, `FxScreensaverEnabled`, `FxScreensaverIdleSecs`.
+   - Edit kinds: 4 Bool (toggle), 1 Enum (`banner` → `confetti` → `matrix` cycle via `FxEffect::cycle`), 1 Text (`fx text` — banner string), 2 Number (`duration_secs` ≥ 0, `screensaver_idle_secs` ≥ 60).
+   - Standard pipeline: `parameter_label`, `parameter_toml_path`, `parameter_value_for_display`, `parameter_value_for_edit`, `toggle_parameter_bool`, `cycle_parameter_enum`, `apply_parameter_edit`, `merge_parameter_field` all extended.
+   - All 8 fields participate in the v1.51.0 editable/reference grouping (Parameters tab is `(editable)` group).
+
+6. **Heuristic boundary**: the celebration trigger fires once per accepted `p` dispatch; failed dispatches never fire (the celebration call lives inside the success branches of both the action-explainer Enter path and the direct dispatch path). The screensaver trigger never fires while ANY overlay is open — `should_auto_open_screensaver` short-circuits on `fx_overlay.is_open()`.
 
 ## v1.52.0 Feature State
 
@@ -257,14 +290,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v1.52.0 validation at the release commit:
+Most recent v1.53.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1324 lib tests + 65 integration tests + 12 store_insights + 18 + 6 + 8 + 3 = 1436 total, all green (lib up from 1317 at the v1.51.0 baseline as new cli_version / process_memory tests landed; integration up from 63 with 2 new pane-CLI-version-badge end-to-end tests).
+- `cargo test --all-targets` — 1362 lib tests + 65 integration tests + 12 store_insights + 18 + 6 + 8 + 3 = 1474 total, all green (lib up from 1324 at the v1.52.0 baseline as new fx_state / fx_overlay / fx render tests landed; integration count preserved; +14 fx_state tests + 10 fx_overlay tests + 5 fx render tests + 9 hover_help tests already in baseline).
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.51.0 still apply when the v1.52.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.52.0 still apply when the v1.53.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 

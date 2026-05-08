@@ -182,6 +182,161 @@ pub fn pane_index_at_row(
     None
 }
 
+pub fn pane_help_topic_at_row(
+    reports: &[PaneReport],
+    state: &ListState,
+    row: u16,
+    wrap_width: u16,
+) -> Option<crate::ui::help_glossary::HelpTopic> {
+    if reports.is_empty() {
+        return None;
+    }
+    let selected = state
+        .selected()
+        .unwrap_or(0)
+        .min(reports.len().saturating_sub(1));
+    let mut remaining = row;
+    for (idx, report) in reports.iter().enumerate().skip(state.offset()) {
+        let topics = pane_list_help_topics_with_width(
+            report,
+            idx == selected,
+            idx + 1 < reports.len(),
+            wrap_width,
+        );
+        let height = topics.len() as u16;
+        if remaining < height {
+            return topics.get(remaining as usize).and_then(|topic| *topic);
+        }
+        remaining = remaining.saturating_sub(height);
+    }
+    None
+}
+
+fn pane_list_help_topics_with_width(
+    report: &PaneReport,
+    expanded: bool,
+    with_separator: bool,
+    wrap_width: u16,
+) -> Vec<Option<crate::ui::help_glossary::HelpTopic>> {
+    use crate::ui::help_glossary::HelpTopic;
+
+    let now = Instant::now();
+    let mut topics = vec![Some(HelpTopic::PaneHeader)];
+    push_topic_count(
+        &mut topics,
+        Some(HelpTopic::PaneState),
+        render_pane_state_row_with_flash(report, now, None, wrap_width).len(),
+    );
+    push_topic_count(
+        &mut topics,
+        Some(HelpTopic::PanePath),
+        wrap_aligned_field("path", &display_path(&report.current_path), wrap_width).len(),
+    );
+    push_topic_count(
+        &mut topics,
+        Some(HelpTopic::PaneCommand),
+        wrap_aligned_field("cmd", &display_command(&report.current_command), wrap_width).len(),
+    );
+    push_topic_count(
+        &mut topics,
+        Some(HelpTopic::PaneStatus),
+        wrap_aligned_field("status", &state_summary_line(report), wrap_width).len(),
+    );
+    push_topic_count(
+        &mut topics,
+        Some(HelpTopic::PaneSignals),
+        blocking_signal_lines(&report.signals, wrap_width).len(),
+    );
+    push_topic_count(
+        &mut topics,
+        Some(HelpTopic::PaneSignals),
+        signal_badge_lines(
+            "signals",
+            secondary_signal_chips(&report.signals),
+            wrap_width,
+        )
+        .len(),
+    );
+    push_topic_count(
+        &mut topics,
+        Some(HelpTopic::PaneMetrics),
+        metric_badge_lines(&report.signals, wrap_width).len(),
+    );
+    if expanded {
+        topics.push(Some(HelpTopic::PaneTokens));
+        if token_io_line(report).is_some() {
+            topics.push(Some(HelpTopic::PaneTokens));
+        }
+        if cache_token_io_line(report).is_some() {
+            topics.push(Some(HelpTopic::PaneTokens));
+        }
+    }
+    push_topic_count(
+        &mut topics,
+        Some(HelpTopic::PaneRuntime),
+        runtime_badge_lines_wrapped(&report.signals, wrap_width).len(),
+    );
+
+    if expanded {
+        if let Some((_target, slash)) =
+            crate::app::prompt_send_actions::first_prompt_send_proposal(report)
+        {
+            push_topic_count(
+                &mut topics,
+                Some(HelpTopic::PaneRecommendation),
+                wrap_aligned_field(
+                    "proposal",
+                    &format!("{slash}  \u{2192} press p to accept \u{00b7} d to reject"),
+                    wrap_width,
+                )
+                .len(),
+            );
+        }
+        for rec in report.recommendations.iter().take(3) {
+            push_topic_count(
+                &mut topics,
+                Some(HelpTopic::PaneRecommendation),
+                wrap_aligned_field(severity_label(rec.severity), &rec.reason, wrap_width).len(),
+            );
+            for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
+                let formatted = expanded_detail_field(&detail);
+                push_topic_count(
+                    &mut topics,
+                    Some(HelpTopic::PaneRecommendation),
+                    reflow_already_aligned(&formatted, wrap_width).len(),
+                );
+            }
+            for line in format_profile_lines(rec) {
+                let formatted = expanded_detail_field(&line);
+                push_topic_count(
+                    &mut topics,
+                    Some(HelpTopic::PaneProfile),
+                    reflow_already_aligned(&formatted, wrap_width).len(),
+                );
+            }
+        }
+        if report.recommendations.is_empty() {
+            push_topic_count(
+                &mut topics,
+                Some(HelpTopic::PaneRecommendation),
+                wrap_aligned_field("status", "no active recommendations", wrap_width).len(),
+            );
+        }
+    }
+
+    if with_separator {
+        topics.push(None);
+    }
+    topics
+}
+
+fn push_topic_count<T>(topics: &mut Vec<Option<T>>, topic: Option<T>, count: usize)
+where
+    T: Copy,
+{
+    topics.extend(std::iter::repeat_n(topic, count));
+}
+
 fn highlight_style(_focused: bool) -> Style {
     Style::default()
 }

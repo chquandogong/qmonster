@@ -19,6 +19,8 @@
   `m`/`n`/`a`/`i`로 Metrics / Anomaly Events / Pending Actions /
   Token Insights overlay, `?`로 help, footer 오른쪽 아래 버전 배지를
   클릭하면 Git overlay가 열립니다.
+- **Hover Help**: Alerts/Panes 행 위에 마우스를 올리면 작은 floating help가
+  뜹니다. `H`로 on/off, `L`로 한국어/영어를 전환합니다.
 
 ### Overlay chrome contract
 
@@ -31,6 +33,29 @@ chrome-consistency slice this applies to `m` Metrics, `a` Pending
 Actions, `i` Token Insights, and `n` Anomaly Events. `S` Settings keeps
 edit-mode guards, and short confirmation modals intentionally remain
 non-resizable.
+
+### Floating hover help
+
+기본값은 켜짐(`ko`)입니다. Alerts에서는 `bulk hide`, 헤더, `dismiss`,
+`summary`, detail(`next`/`run`/`anchor`/`others`), copy hint를 행별로
+설명합니다. Panes에서는 헤더(provider/role/CLI version), `state`,
+`path`, `cmd`, `status`, `signals`, metrics, tokens/cache io, runtime
+facts(`session`/`loaded` 포함), recommendations/profile을 행별로 설명합니다.
+명시적 overlay가 열려 있으면 dashboard hover help는 숨겨집니다.
+
+런타임 단축키:
+
+- `H`: floating hover help on/off
+- `L`: help language `ko`/`en` 전환
+
+영구 설정은 `S` Settings → Parameters에서 `ux hover_help`,
+`ux help_language`를 수정한 뒤 `w`로 저장하거나 TOML에 직접 적습니다.
+
+```toml
+[ux]
+hover_help = true
+help_language = "ko" # "ko" | "en"
+```
 
 ## 2. Alerts 읽는 법
 
@@ -815,6 +840,8 @@ Operator opts in with the same `[anomaly] enabled = true` from v1.43.0. The 3 ne
 # first_time   — 키 종류별로 한 번만, 그 이후는 즉시 실행
 # never        — v1.37.0 즉시 실행 동작 복원
 confirm_actions = "always"
+hover_help = true
+help_language = "ko" # "ko" | "en"
 ```
 
 `first_time`은 세션 로컬입니다 — Qmonster를 재시작하면 다시 모달이

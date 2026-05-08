@@ -123,7 +123,10 @@ mod tests {
         let mut state = HoverHelpState::new();
         state.set_hover(HelpTopic::PaneCommand, 5, 6, now);
 
-        assert_eq!(state.hover().map(|hover| hover.topic), Some(HelpTopic::PaneCommand));
+        assert_eq!(
+            state.hover().map(|hover| hover.topic),
+            Some(HelpTopic::PaneCommand)
+        );
 
         state.clear_hover();
         assert!(state.hover().is_none());

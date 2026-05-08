@@ -11,6 +11,8 @@ pub mod dashboard_runtime;
 pub mod dashboard_state;
 pub mod effects;
 pub mod event_loop;
+pub mod fx_overlay;
+pub mod fx_state;
 pub mod git_info;
 pub mod hover_help;
 pub mod ime_state;

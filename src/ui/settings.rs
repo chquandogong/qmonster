@@ -15,8 +15,9 @@
 //! until the operator types a value.
 
 use crate::app::config::{
-    ActionsMode, ConfirmActions, ContextConfig, CostConfig, CostProviderConfig, LogSensitivity,
-    PressureProviderConfig, QmonsterConfig, QuotaConfig, RefreshPolicy, TmuxSourceMode,
+    ActionsMode, ConfirmActions, ContextConfig, CostConfig, CostProviderConfig, HelpLanguage,
+    LogSensitivity, PressureProviderConfig, QmonsterConfig, QuotaConfig, RefreshPolicy,
+    TmuxSourceMode,
 };
 use crate::domain::recommendation::Severity;
 use crate::ui::theme;
@@ -273,6 +274,8 @@ pub enum ParameterField {
     ActionsAutoPromptSend,
     ActionsDestructive,
     UxConfirmActions,
+    UxHoverHelp,
+    UxHelpLanguage,
     InsightsIgnoredTtlSecs,
     InsightsDefaultWindowSecs,
     TokenQuotaTight,
@@ -314,6 +317,14 @@ pub enum ParameterField {
     ProfileSwitchEnabled,
     ProfileSwitchWindowPolls,
     ProfileSwitchErrorRateThreshold,
+    FxEnabled,
+    FxText,
+    FxEffect,
+    FxDurationSecs,
+    FxHotkeyEnabled,
+    FxCelebrationEnabled,
+    FxScreensaverEnabled,
+    FxScreensaverIdleSecs,
 }
 
 pub fn all_parameter_fields() -> Vec<ParameterField> {
@@ -334,6 +345,8 @@ pub fn all_parameter_fields() -> Vec<ParameterField> {
         ActionsAutoPromptSend,
         ActionsDestructive,
         UxConfirmActions,
+        UxHoverHelp,
+        UxHelpLanguage,
         InsightsIgnoredTtlSecs,
         InsightsDefaultWindowSecs,
         TokenQuotaTight,
@@ -375,6 +388,14 @@ pub fn all_parameter_fields() -> Vec<ParameterField> {
         ProfileSwitchEnabled,
         ProfileSwitchWindowPolls,
         ProfileSwitchErrorRateThreshold,
+        FxEnabled,
+        FxText,
+        FxEffect,
+        FxDurationSecs,
+        FxHotkeyEnabled,
+        FxCelebrationEnabled,
+        FxScreensaverEnabled,
+        FxScreensaverIdleSecs,
     ]
 }
 
@@ -1084,6 +1105,7 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | ActionsAutoArchive
         | ActionsAutoPromptSend
         | ActionsDestructive
+        | UxHoverHelp
         | TokenQuotaTight
         | SecurityPostureAdvisories
         | SecurityCrossWindowFindings
@@ -1091,12 +1113,17 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | SecurityCrossPaneFileFindings
         | ResetAutoSnapshot
         | AnomalyEnabled
-        | ProfileSwitchEnabled => Bool,
+        | ProfileSwitchEnabled
+        | FxEnabled
+        | FxHotkeyEnabled
+        | FxCelebrationEnabled
+        | FxScreensaverEnabled => Bool,
         TmuxSource
         | RefreshPolicy
         | LoggingSensitivity
         | ActionsMode
         | UxConfirmActions
+        | UxHelpLanguage
         | AnomalyMinConfidence
         | AnomalyPromoteIdentityChurn
         | AnomalyPromoteErrorBurst
@@ -1105,8 +1132,9 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | AnomalyPromoteCostSlope
         | AnomalyPromoteTokenSlope
         | AnomalyPromoteMemoryGrowth
-        | AnomalyPromoteSubagentSideEffect => Enum,
-        StorageRoot => Text,
+        | AnomalyPromoteSubagentSideEffect
+        | FxEffect => Enum,
+        StorageRoot | FxText => Text,
         TmuxPollIntervalMs
         | TmuxCaptureLines
         | IdleStillnessPolls
@@ -1135,7 +1163,9 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | AnomalyRetentionDays
         | CostBudgetUsd
         | ProfileSwitchWindowPolls
-        | ProfileSwitchErrorRateThreshold => Number,
+        | ProfileSwitchErrorRateThreshold
+        | FxDurationSecs
+        | FxScreensaverIdleSecs => Number,
     }
 }
 
@@ -1156,7 +1186,9 @@ fn parameter_section_label(field: ParameterField) -> &'static str {
         | ActionsAutoArchive
         | ActionsAutoPromptSend
         | ActionsDestructive
-        | UxConfirmActions => "Actions",
+        | UxConfirmActions
+        | UxHoverHelp
+        | UxHelpLanguage => "Actions",
         InsightsIgnoredTtlSecs | InsightsDefaultWindowSecs => "Insights",
         TokenQuotaTight => "Policy Inputs",
         SecurityPostureAdvisories
@@ -1197,6 +1229,14 @@ fn parameter_section_label(field: ParameterField) -> &'static str {
         | ProfileSwitchEnabled
         | ProfileSwitchWindowPolls
         | ProfileSwitchErrorRateThreshold => "Cost / Profile",
+        FxEnabled
+        | FxText
+        | FxEffect
+        | FxDurationSecs
+        | FxHotkeyEnabled
+        | FxCelebrationEnabled
+        | FxScreensaverEnabled
+        | FxScreensaverIdleSecs => "FX",
     }
 }
 
@@ -1218,6 +1258,8 @@ fn parameter_label(field: ParameterField) -> &'static str {
         ActionsAutoPromptSend => "actions auto_prompt_send",
         ActionsDestructive => "actions destructive",
         UxConfirmActions => "ux confirm_actions",
+        UxHoverHelp => "ux hover_help",
+        UxHelpLanguage => "ux help_language",
         InsightsIgnoredTtlSecs => "insights ignored_ttl_secs",
         InsightsDefaultWindowSecs => "insights default_window_secs",
         TokenQuotaTight => "token quota_tight",
@@ -1259,6 +1301,14 @@ fn parameter_label(field: ParameterField) -> &'static str {
         ProfileSwitchEnabled => "profile_switch enabled",
         ProfileSwitchWindowPolls => "profile_switch window_polls",
         ProfileSwitchErrorRateThreshold => "profile_switch error_rate_threshold",
+        FxEnabled => "fx enabled",
+        FxText => "fx text",
+        FxEffect => "fx effect",
+        FxDurationSecs => "fx duration_secs",
+        FxHotkeyEnabled => "fx hotkey_enabled",
+        FxCelebrationEnabled => "fx celebration_enabled",
+        FxScreensaverEnabled => "fx screensaver_enabled",
+        FxScreensaverIdleSecs => "fx screensaver_idle_secs",
     }
 }
 
@@ -1280,6 +1330,8 @@ fn parameter_toml_path(field: ParameterField) -> Vec<&'static str> {
         ActionsAutoPromptSend => vec!["actions", "allow_auto_prompt_send"],
         ActionsDestructive => vec!["actions", "allow_destructive_actions"],
         UxConfirmActions => vec!["ux", "confirm_actions"],
+        UxHoverHelp => vec!["ux", "hover_help"],
+        UxHelpLanguage => vec!["ux", "help_language"],
         InsightsIgnoredTtlSecs => vec!["insights", "ignored_ttl_secs"],
         InsightsDefaultWindowSecs => vec!["insights", "default_window_secs"],
         TokenQuotaTight => vec!["token", "quota_tight"],
@@ -1323,6 +1375,14 @@ fn parameter_toml_path(field: ParameterField) -> Vec<&'static str> {
         ProfileSwitchEnabled => vec!["profile_switch", "enabled"],
         ProfileSwitchWindowPolls => vec!["profile_switch", "window_polls"],
         ProfileSwitchErrorRateThreshold => vec!["profile_switch", "error_rate_threshold"],
+        FxEnabled => vec!["fx", "enabled"],
+        FxText => vec!["fx", "text"],
+        FxEffect => vec!["fx", "effect"],
+        FxDurationSecs => vec!["fx", "duration_secs"],
+        FxHotkeyEnabled => vec!["fx", "hotkey_enabled"],
+        FxCelebrationEnabled => vec!["fx", "celebration_enabled"],
+        FxScreensaverEnabled => vec!["fx", "screensaver_enabled"],
+        FxScreensaverIdleSecs => vec!["fx", "screensaver_idle_secs"],
     }
 }
 
@@ -1344,6 +1404,8 @@ fn parameter_value_for_display(config: &QmonsterConfig, field: ParameterField) -
         ActionsAutoPromptSend => on_off(config.actions.allow_auto_prompt_send).into(),
         ActionsDestructive => on_off(config.actions.allow_destructive_actions).into(),
         UxConfirmActions => confirm_actions_label(config.ux.confirm_actions).into(),
+        UxHoverHelp => on_off(config.ux.hover_help).into(),
+        UxHelpLanguage => help_language_label(config.ux.help_language).into(),
         InsightsIgnoredTtlSecs => seconds_label(config.insights.ignored_ttl_secs),
         InsightsDefaultWindowSecs => seconds_label(config.insights.default_window_secs),
         TokenQuotaTight => on_off(config.token.quota_tight).into(),
@@ -1395,6 +1457,14 @@ fn parameter_value_for_display(config: &QmonsterConfig, field: ParameterField) -
         ProfileSwitchErrorRateThreshold => {
             pct_label(f64::from(config.profile_switch.error_rate_threshold))
         }
+        FxEnabled => on_off(config.fx.enabled).into(),
+        FxText => config.fx.text.clone(),
+        FxEffect => config.fx.effect.as_str().into(),
+        FxDurationSecs => format!("{}s", config.fx.duration_secs),
+        FxHotkeyEnabled => on_off(config.fx.hotkey_enabled).into(),
+        FxCelebrationEnabled => on_off(config.fx.celebration_enabled).into(),
+        FxScreensaverEnabled => on_off(config.fx.screensaver_enabled).into(),
+        FxScreensaverIdleSecs => format!("{}s", config.fx.screensaver_idle_secs),
     }
 }
 
@@ -1433,6 +1503,9 @@ fn parameter_value_for_edit(config: &QmonsterConfig, field: ParameterField) -> S
         CostBudgetUsd => config.cost.budget_usd.to_string(),
         ProfileSwitchWindowPolls => config.profile_switch.window_polls.to_string(),
         ProfileSwitchErrorRateThreshold => config.profile_switch.error_rate_threshold.to_string(),
+        FxText => config.fx.text.clone(),
+        FxDurationSecs => config.fx.duration_secs.to_string(),
+        FxScreensaverIdleSecs => config.fx.screensaver_idle_secs.to_string(),
         _ => parameter_value_for_display(config, field),
     }
 }
@@ -1465,6 +1538,7 @@ fn toggle_parameter_bool(config: &mut QmonsterConfig, field: ParameterField) {
         ActionsDestructive => {
             config.actions.allow_destructive_actions = !config.actions.allow_destructive_actions;
         }
+        UxHoverHelp => config.ux.hover_help = !config.ux.hover_help,
         TokenQuotaTight => config.token.quota_tight = !config.token.quota_tight,
         SecurityPostureAdvisories => {
             config.security.posture_advisories = !config.security.posture_advisories;
@@ -1481,6 +1555,10 @@ fn toggle_parameter_bool(config: &mut QmonsterConfig, field: ParameterField) {
         ResetAutoSnapshot => config.reset.auto_snapshot = !config.reset.auto_snapshot,
         AnomalyEnabled => config.anomaly.enabled = !config.anomaly.enabled,
         ProfileSwitchEnabled => config.profile_switch.enabled = !config.profile_switch.enabled,
+        FxEnabled => config.fx.enabled = !config.fx.enabled,
+        FxHotkeyEnabled => config.fx.hotkey_enabled = !config.fx.hotkey_enabled,
+        FxCelebrationEnabled => config.fx.celebration_enabled = !config.fx.celebration_enabled,
+        FxScreensaverEnabled => config.fx.screensaver_enabled = !config.fx.screensaver_enabled,
         _ => {}
     }
 }
@@ -1532,6 +1610,7 @@ fn cycle_parameter_enum(config: &mut QmonsterConfig, field: ParameterField) -> R
                 ConfirmActions::Never => ConfirmActions::Always,
             };
         }
+        UxHelpLanguage => config.ux.help_language = config.ux.help_language.toggle(),
         AnomalyMinConfidence => {
             config.anomaly.min_confidence = confidence_next(&config.anomaly.min_confidence)?;
         }
@@ -1567,6 +1646,7 @@ fn cycle_parameter_enum(config: &mut QmonsterConfig, field: ParameterField) -> R
             config.anomaly.promote.subagent_side_effect =
                 confidence_next(&config.anomaly.promote.subagent_side_effect)?;
         }
+        FxEffect => config.fx.effect = config.fx.effect.cycle(),
         _ => {}
     }
     Ok(())
@@ -1697,6 +1777,23 @@ fn apply_parameter_edit(
         ProfileSwitchErrorRateThreshold => {
             config.profile_switch.error_rate_threshold = parse_unit_f32(label, raw)?;
         }
+        FxText => {
+            // Banner free text — accept any printable ASCII; renderer
+            // upper-cases for the block-letter lookup.
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Err(format!("{label}: must not be empty"));
+            }
+            config.fx.text = trimmed.to_string();
+        }
+        FxDurationSecs => {
+            config.fx.duration_secs = parse_u64_value(label, raw, 0)? as u32;
+        }
+        FxScreensaverIdleSecs => {
+            // 60s minimum — anything shorter would chew through cache
+            // every iteration and is almost certainly a typo.
+            config.fx.screensaver_idle_secs = parse_u64_value(label, raw, 60)? as u32;
+        }
         _ => return Err(format!("{label}: use Space/e to toggle or cycle")),
     }
     Ok(())
@@ -1738,6 +1835,8 @@ fn merge_parameter_field(
         UxConfirmActions => {
             set_nested_str(doc, &path, confirm_actions_label(config.ux.confirm_actions))
         }
+        UxHoverHelp => set_nested_bool(doc, &path, config.ux.hover_help),
+        UxHelpLanguage => set_nested_str(doc, &path, help_language_label(config.ux.help_language)),
         InsightsIgnoredTtlSecs => {
             set_nested_i64(doc, &path, config.insights.ignored_ttl_secs as i64)
         }
@@ -1846,6 +1945,16 @@ fn merge_parameter_field(
                 &path,
                 f64::from(config.profile_switch.error_rate_threshold),
             );
+        }
+        FxEnabled => set_nested_bool(doc, &path, config.fx.enabled),
+        FxText => set_nested_str(doc, &path, &config.fx.text),
+        FxEffect => set_nested_str(doc, &path, config.fx.effect.as_str()),
+        FxDurationSecs => set_nested_i64(doc, &path, config.fx.duration_secs as i64),
+        FxHotkeyEnabled => set_nested_bool(doc, &path, config.fx.hotkey_enabled),
+        FxCelebrationEnabled => set_nested_bool(doc, &path, config.fx.celebration_enabled),
+        FxScreensaverEnabled => set_nested_bool(doc, &path, config.fx.screensaver_enabled),
+        FxScreensaverIdleSecs => {
+            set_nested_i64(doc, &path, config.fx.screensaver_idle_secs as i64);
         }
     }
 }
@@ -2835,6 +2944,19 @@ fn build_parameter_body_lines(
             confirm_actions_label(defaults.ux.confirm_actions).into(),
         ),
         setting_row(
+            "ux hover_help/language",
+            format!(
+                "{}/{}",
+                on_off(config.ux.hover_help),
+                help_language_label(config.ux.help_language)
+            ),
+            format!(
+                "{}/{}",
+                on_off(defaults.ux.hover_help),
+                help_language_label(defaults.ux.help_language)
+            ),
+        ),
+        setting_row(
             "insights ignored_ttl/default_window",
             format!(
                 "{}/{}",
@@ -3570,6 +3692,10 @@ fn confirm_actions_label(mode: ConfirmActions) -> &'static str {
     }
 }
 
+fn help_language_label(language: HelpLanguage) -> &'static str {
+    language.as_str()
+}
+
 fn refresh_policy_label(policy: RefreshPolicy) -> &'static str {
     match policy {
         RefreshPolicy::ManualOnly => "manual_only",
@@ -4075,6 +4201,22 @@ mod tests {
     }
 
     #[test]
+    fn parameters_tab_shows_hover_help_settings() {
+        let mut config = cfg();
+        config.ux.hover_help = false;
+        config.ux.help_language = HelpLanguage::En;
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+
+        let rendered = rendered_text(&build_body_lines(&s, &config));
+
+        assert!(rendered.contains("ux hover_help/language"));
+        assert!(rendered.contains("off/en"));
+        assert!(rendered.contains("default on/ko"));
+    }
+
+    #[test]
     fn parameters_tab_exposes_editable_fields_for_all_config_sections() {
         let fields = all_parameter_fields();
 
@@ -4094,6 +4236,8 @@ mod tests {
         assert!(fields.contains(&ParameterField::CostBudgetUsd));
         assert!(fields.contains(&ParameterField::ProfileSwitchWindowPolls));
         assert!(fields.contains(&ParameterField::UxConfirmActions));
+        assert!(fields.contains(&ParameterField::UxHoverHelp));
+        assert!(fields.contains(&ParameterField::UxHelpLanguage));
     }
 
     #[test]
@@ -4585,6 +4729,36 @@ mod tests {
         let raw = std::fs::read_to_string(&path).expect("read back");
         let reloaded: QmonsterConfig = toml::from_str(&raw).expect("parse");
         assert!((reloaded.cost.warning_usd - 6.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn save_writes_dirty_hover_help_parameters() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("qmonster.toml");
+        let original = "[ux]\nconfirm_actions = \"always\"\n";
+        std::fs::File::create(&path)
+            .and_then(|mut f| f.write_all(original.as_bytes()))
+            .expect("write seed");
+
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        let mut config = cfg();
+        s.select_parameter(ParameterField::UxHoverHelp);
+        s.activate_parameter(&mut config)
+            .expect("toggle hover help");
+        s.select_parameter(ParameterField::UxHelpLanguage);
+        s.activate_parameter(&mut config).expect("toggle language");
+
+        s.save(&config, &path).expect("save ok");
+
+        let raw = std::fs::read_to_string(&path).expect("read back");
+        let reloaded: QmonsterConfig = toml::from_str(&raw).expect("parse");
+        assert!(!reloaded.ux.hover_help);
+        assert_eq!(reloaded.ux.help_language, HelpLanguage::En);
+        assert!(raw.contains("hover_help = false"), "raw: {raw}");
+        assert!(raw.contains("help_language = \"en\""), "raw: {raw}");
     }
 
     #[test]

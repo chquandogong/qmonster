@@ -814,7 +814,7 @@ fn footer_chip_span(
 /// counter chip slot) and by `footer_text` (the legacy unit-tested
 /// shape that pins `p accept` / `d dismiss` placement).
 fn footer_keys_text() -> &'static str {
-    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} m metrics \u{00b7} n anomalies \u{00b7} a actions \u{00b7} i insights \u{00b7} ? help \u{00b7} q quit"
+    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} H hover-help \u{00b7} L help-lang \u{00b7} m metrics \u{00b7} n anomalies \u{00b7} a actions \u{00b7} i insights \u{00b7} ? help \u{00b7} q quit"
 }
 
 /// Pure footer-line builder. Extracted from `render_footer` in v1.10.2
@@ -959,6 +959,14 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         (
             "u",
             "request provider runtime status for the selected pane via its read-only slash command",
+        ),
+        (
+            "H",
+            "toggle floating hover help for Alerts and Panes rows; the setting is also editable as [ux] hover_help in Settings > Parameters",
+        ),
+        (
+            "L",
+            "toggle floating help language between ko and en; the setting is also editable as [ux] help_language in Settings > Parameters",
         ),
         (
             "y",
@@ -1516,6 +1524,14 @@ mod tests {
             "footer must advertise the `P provider-setup` overlay key: {text}"
         );
         assert!(
+            text.contains("H hover-help"),
+            "footer must advertise the hover-help toggle key: {text}"
+        );
+        assert!(
+            text.contains("L help-lang"),
+            "footer must advertise the hover-help language key: {text}"
+        );
+        assert!(
             text.contains("s snapshot"),
             "footer must advertise the `s snapshot` key: {text}"
         );
@@ -1527,7 +1543,7 @@ mod tests {
         assert!(text.starts_with("focus: alerts"));
         assert!(text.contains("? help"));
         assert!(text.contains("q quit"));
-        // Placement contract: t target → y copy → c clear → p accept → d dismiss → S settings → P provider-setup → ? help.
+        // Placement contract: t target → y copy → c clear → p accept → d dismiss → S settings → P provider-setup → H/L hover help → ? help.
         let target_pos = text
             .find("t target")
             .expect("footer must keep the `t target` anchor");
@@ -1546,6 +1562,12 @@ mod tests {
         let p_provider_pos = text
             .find("P provider-setup")
             .expect("footer must carry `P provider-setup`");
+        let hover_pos = text
+            .find("H hover-help")
+            .expect("footer must carry `H hover-help`");
+        let lang_pos = text
+            .find("L help-lang")
+            .expect("footer must carry `L help-lang`");
         let metrics_pos = text
             .find("m metrics")
             .expect("footer must carry `m metrics`");
@@ -1590,8 +1612,12 @@ mod tests {
             "`P provider-setup` must follow `S settings` (overlay-opener pair)"
         );
         assert!(
-            p_provider_pos < metrics_pos,
-            "provider setup must precede the operational overlay cluster"
+            p_provider_pos < hover_pos && hover_pos < lang_pos,
+            "hover help keys must follow provider setup"
+        );
+        assert!(
+            lang_pos < metrics_pos,
+            "hover help keys must precede the operational overlay cluster"
         );
         assert!(
             metrics_pos < anomalies_pos
