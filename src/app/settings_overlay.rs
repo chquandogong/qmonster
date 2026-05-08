@@ -9,6 +9,7 @@ use crate::ui::settings::{
     SettingsOverlay, SettingsTab, settings_close_button_rect, settings_field_at_with_scroll,
     settings_integration_field_at_with_scroll, settings_max_scroll, settings_modal_rects,
     settings_parameter_field_at_with_scroll, settings_parameter_field_line_index,
+    settings_parameter_list_rect_for_viewport, settings_parameter_visible_rows_for_viewport,
     settings_tab_index_at, settings_visible_body_rows,
 };
 
@@ -189,6 +190,11 @@ fn keep_selected_parameter_visible(
         return;
     };
     let visible = settings_visible_body_rows(viewport).max(1);
+    let visible = if overlay.tab() == SettingsTab::Parameters {
+        settings_parameter_visible_rows_for_viewport(viewport).max(1)
+    } else {
+        visible
+    };
     let top = overlay.scroll_offset();
     let bottom = top.saturating_add(visible.saturating_sub(1));
     if row < top {
@@ -247,7 +253,7 @@ pub fn handle_settings_overlay_mouse(
                 && let Some(field) = settings_parameter_field_at_with_scroll(
                     overlay,
                     config,
-                    rects.body,
+                    settings_parameter_list_rect_for_viewport(viewport),
                     event.column,
                     event.row,
                     overlay.scroll_offset(),

@@ -1,14 +1,58 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.54.0 ledger sync)_
+_Last updated: 2026-05-08 (Claude, v1.55.0 ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.54.0 — fx overlay polish: render the `[fx]` decorative effects on top of the existing dashboard / modals instead of clearing the viewport, so alerts / panes / footer info stay visible behind the banner / confetti / matrix.
-- Version surfaces: npm package metadata `qmonster@1.54.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v1.54.0` to be created at the ledger sync commit. v1.53.0 is the immediate prior tagged baseline.
+- Title: Qmonster v1.55.0 — fx overlay smoothness: 60 FPS render with halved per-frame velocities, tmux poll tick suspended while overlay is active so the 50-200ms capture/parse pass no longer stutters animation; new defaults `[fx] text = "~O~ Qmonster"` and `[fx] duration_secs = 50`.
+- Version surfaces: npm package metadata `qmonster@1.55.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v1.55.0` to be created at the ledger sync commit. v1.54.0 is the immediate prior tagged baseline.
 - Release publication state: **v1.54.0 is published**. `Release and Package Mirror` workflow run `25537887533` (2026-05-08, 7m5s, success) created GitHub Release `v1.54.0` (published 2026-05-08T05:11:41Z) with full asset set (`qmonster-v1.54.0-linux-x86_64.tar.gz`, `qmonster-1.54.0.tgz`, `qmonster-v1.54.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.54.0` to npm + GitHub Packages mirror. **v1.53.0 is also published** (run `25537122599`, 6m48s, GitHub Release published 2026-05-08T04:46:41Z). v1.52.0 is published (run `25535686447`, 7m2s, GitHub Release published 2026-05-08T03:58:45Z). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s). Sibling v1.37.0–v1.49.0 publications all remain live — `npm view qmonster versions` lists `1.37.0` through `1.54.0` with `dist-tags.latest = 1.54.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54}.0`.
-- Current phase: All prior phases complete. v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 publication baselines still apply; v1.54.0 ships the fx-overlay non-destructive polish on top — no new phase is opened.
+- Current phase: All prior phases complete. v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 publication baselines still apply; v1.55.0 ships the fx-overlay smoothness polish + new defaults on top — no new phase is opened.
+
+## v1.55.0 Feature State
+
+v1.55.0 polishes the v1.53.0 / v1.54.0 fx overlay so animation feels
+smooth on a busy operator dashboard. Three changes:
+
+1. **60 FPS render with halved per-frame velocities** (`src/app/fx_state.rs`):
+   - `FX_TARGET_FPS` 30 → 60 (`FX_FRAME_INTERVAL_MS` 33 → 16). The main
+     loop's `event::poll(Duration)` while the overlay is open follows
+     this constant.
+   - All velocities halved so apparent speed stays the same as v1.54.0,
+     but frames render twice as often: banner `vx` 0.55 → 0.275, `vy`
+     0.30 → 0.15; confetti spawn speed `0.4 + rand*1.0` → `0.2 +
+     rand*0.5`; confetti `CONFETTI_GRAVITY` 0.06 → 0.03 with
+     `CONFETTI_INITIAL_LIFE` 60 → 120 frames so on-screen lifetime is
+     unchanged; matrix stream speed `0.25 + rand*0.6` →
+     `0.12 + rand*0.30`. Banner hue rotation `FX_HUE_STEP` 2 → 1
+     keeps the same ~6-second full rotation.
+   - Effect: the visible juddering from rendering the same integer-
+     rounded position for 2 frames in a row at 30 FPS is halved at
+     60 FPS — sub-cell increments still alias to the same cell, but
+     the eye sees a refresh twice as often, smoothing perceived motion.
+
+2. **Suspend tmux poll tick while overlay is active** (`src/app/tui_loop.rs`):
+   - The dashboard's main 2-second tmux capture / parse / policy
+     evaluation pass takes 50-200ms when it fires. While the fx
+     overlay is open the loop now skips `handle_poll_tick` entirely
+     (`if … >= poll && !fx_overlay.is_open()`), so animation no
+     longer hitches every 2 seconds.
+   - Maximum staleness while overlay is open: one skipped tick
+     (~2 seconds of frozen pane data). Acceptable for a deliberately
+     decorative moment; the tick resumes the moment the overlay
+     dismisses, which is the next event::poll iteration.
+
+3. **New `[fx]` defaults** (`src/app/config.rs`):
+   - `text` `"QMONSTER"` → `"~O~ Qmonster"`. Block font now renders
+     `~` as a wave glyph (`▄▀▄ / ▀▄`) so the new default renders
+     correctly out of the box.
+   - `duration_secs` `5` → `50`. Five seconds was too short for a
+     celebration / screensaver moment to read; 50 seconds gives the
+     operator room to enjoy the effect (or dismiss it sooner with
+     any key / click).
+   - Existing operators' `qmonster.toml` overrides are honoured —
+     the new defaults only apply to first-run / unconfigured installs.
 
 ## v1.54.0 Feature State
 
@@ -331,14 +375,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v1.54.0 validation at the release commit:
+Most recent v1.55.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1363 lib tests + 65 integration tests + supporting suites, all green (lib up from 1362 at the v1.53.0 baseline with the new `fx_overlay_preserves_underlying_cells_outside_effect_glyphs` regression test).
+- `cargo test --all-targets` — 1373 lib tests + 65 integration tests + supporting suites, all green.
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.53.0 still apply when the v1.54.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.54.0 still apply when the v1.55.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 

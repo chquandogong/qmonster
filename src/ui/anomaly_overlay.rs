@@ -5,6 +5,7 @@
 use crate::ui::dashboard::close_button_rect;
 use crate::ui::labels::ellipsize;
 use crate::ui::modal_chrome::{DragAnchor, ModalGeometry};
+use crate::ui::scroll_hint;
 use crate::ui::theme;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -186,7 +187,7 @@ impl AnomalyOverlay {
         let popup_area = anomaly_modal_area_for(area, self);
         frame.render_widget(Clear, popup_area);
 
-        let (title, total_count) = match self.view {
+        let (title_base, total_count) = match self.view {
             AnomalyOverlayView::Ring => (
                 format!(
                     " ANOMALY EVENTS (last {} \u{2014} newest first) [h: history] [n to close] ",
@@ -202,6 +203,14 @@ impl AnomalyOverlay {
                 self.history_cache.len(),
             ),
         };
+        let visible_rows_for_scroll = popup_area.height.saturating_sub(2).saturating_sub(1).max(1);
+        let max_scroll = anomaly_visible_scroll_bound(total_count, visible_rows_for_scroll);
+        let scroll = self.scroll.min(max_scroll);
+        let title = format!(
+            "{} [{}] ",
+            title_base.trim_end(),
+            scroll_hint::scroll_status_label(scroll, max_scroll)
+        );
         let block = Block::default()
             .borders(Borders::ALL)
             .title(title)
@@ -247,14 +256,14 @@ impl AnomalyOverlay {
             AnomalyOverlayView::Ring => ring
                 .iter()
                 .rev()
-                .skip(self.scroll as usize)
+                .skip(scroll as usize)
                 .take(visible_rows)
                 .map(|e| ListItem::new(format_event_row(e, inner.width as usize)))
                 .collect(),
             AnomalyOverlayView::History => self
                 .history_cache
                 .iter()
-                .skip(self.scroll as usize)
+                .skip(scroll as usize)
                 .take(visible_rows)
                 .map(|e| ListItem::new(format_event_row(e, inner.width as usize)))
                 .collect(),
@@ -271,6 +280,12 @@ impl AnomalyOverlay {
         );
         frame.render_widget(List::new(items), layout[1]);
     }
+}
+
+fn anomaly_visible_scroll_bound(total_count: usize, visible_rows: u16) -> u16 {
+    total_count
+        .saturating_sub(visible_rows.max(1) as usize)
+        .min(u16::MAX as usize) as u16
 }
 
 pub fn anomaly_modal_area(viewport: Rect) -> Rect {
@@ -686,6 +701,58 @@ mod tests {
         assert!(
             rendered.contains("[h: history]"),
             "ring view title should advertise history toggle"
+        );
+    }
+
+    #[test]
+    fn render_ring_view_reports_end_at_last_full_page() {
+        use crate::app::anomaly_events_ring::AnomalyEventsRing;
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let viewport = Rect::new(0, 0, 160, 24);
+        let mut terminal =
+            Terminal::new(TestBackend::new(viewport.width, viewport.height)).unwrap();
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let popup = anomaly_modal_area_for(viewport, &overlay);
+        let visible_rows = popup
+            .height
+            .saturating_sub(2)
+            .saturating_sub(1)
+            .max(1) as usize;
+        let total = 104usize;
+        let last_full_page_scroll = total.saturating_sub(visible_rows) as u16;
+        for _ in 0..last_full_page_scroll {
+            overlay.scroll_down(u16::MAX);
+        }
+
+        let mut ring = AnomalyEventsRing::new();
+        for i in 0..total {
+            ring.push(AnomalyEvent {
+                timestamp: 1_700_000_000 + i as u64,
+                pane_id: format!("%{i}"),
+                kind: AnomalyKind::CostSlope,
+                confidence: AnomalyConfidence::High,
+                severity: Severity::Warning,
+                promoted: true,
+                reason: "paged row".to_string(),
+            });
+        }
+
+        terminal
+            .draw(|f| overlay.render(f, f.area(), &ring))
+            .unwrap();
+        let rendered = buf_to_string(terminal.backend().buffer());
+        assert!(
+            rendered.contains("END"),
+            "last full anomaly page should render END, not more: {rendered}"
+        );
+        assert!(
+            !rendered.contains("more"),
+            "last full anomaly page should not advertise more rows: {rendered}"
         );
     }
 

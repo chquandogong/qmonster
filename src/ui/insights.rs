@@ -2,6 +2,7 @@ use crate::insights_report::format_insights_report_lines;
 use crate::store::InsightsSnapshot;
 use crate::ui::dashboard::close_button_rect;
 use crate::ui::modal_chrome::{DragAnchor, ModalGeometry};
+use crate::ui::scroll_hint;
 use crate::ui::theme;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
@@ -245,17 +246,24 @@ pub fn insights_modal_area_for(
 pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
     let area = insights_modal_area_for(frame.area(), overlay);
     frame.render_widget(Clear, area);
-    let title = if overlay.is_loading() {
-        " Token Insights — loading [i/Esc/q close] "
-    } else {
-        " Token Insights [i/Esc/q close] [r refresh] "
-    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(title)
         .title_style(Style::default().add_modifier(Modifier::BOLD))
         .border_style(Style::default().fg(theme::BORDER_ACTIVE));
     let inner = block.inner(area);
+    let title = if overlay.is_loading() {
+        " Token Insights — loading [i/Esc/q close] ".to_string()
+    } else {
+        let max_scroll = overlay
+            .line_count()
+            .saturating_sub(inner.height as usize)
+            .min(u16::MAX as usize) as u16;
+        format!(
+            " Token Insights [{}] [i/Esc/q close] [r refresh] ",
+            scroll_hint::scroll_status_label(overlay.scroll().min(max_scroll), max_scroll)
+        )
+    };
+    let block = block.title(title);
     frame.render_widget(block, area);
     frame.render_widget(
         Paragraph::new("[x]").style(theme::modal_close_style()),

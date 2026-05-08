@@ -140,7 +140,13 @@ where
         let mut run_loop = || -> anyhow::Result<()> {
             loop {
                 let now = Instant::now();
-                if now.saturating_duration_since(last_poll) >= poll {
+                // v1.55.0: skip the tmux poll tick while the fx overlay
+                // is active so the 50-200ms tmux capture / parse pass
+                // doesn't visibly stutter the 60 FPS animation. The
+                // tick resumes the moment the overlay closes; one
+                // skipped tick at most == 2s of stale pane data, which
+                // is acceptable for a deliberately decorative moment.
+                if now.saturating_duration_since(last_poll) >= poll && !fx_overlay.is_open() {
                     last_poll = now;
                     let outcome = handle_poll_tick(
                         ctx,

@@ -591,9 +591,13 @@ impl Default for FxConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            text: "QMONSTER".to_string(),
+            // v1.55.0: friendlier banner default. The block font now
+            // renders `~` as a wave glyph; the operator can override.
+            text: "~O~ Qmonster".to_string(),
             effect: FxEffect::Banner,
-            duration_secs: 5,
+            // v1.55.0: 5s was too short for a celebration / screensaver
+            // moment to land; 50s gives the operator room to enjoy it.
+            duration_secs: 50,
             hotkey_enabled: true,
             celebration_enabled: false,
             screensaver_enabled: false,

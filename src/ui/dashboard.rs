@@ -9,7 +9,7 @@ use crate::app::event_loop::PaneReport;
 use crate::app::system_notice::SystemNotice;
 use crate::domain::audit::AuditEventKind;
 use crate::ui::alerts::AlertView;
-use crate::ui::{alerts, labels, panels, theme};
+use crate::ui::{alerts, labels, panels, scroll_hint, theme};
 
 const VERSION_BADGE_PADDING: u16 = 2;
 const GIT_WIDTH_PERCENT: u16 = 72;
@@ -323,6 +323,8 @@ pub fn render_target_picker(
 pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
     let rects = help_modal_rects(frame.area());
     let text_width = help_body_text_width(rects.body);
+    let max_scroll = max_help_scroll(frame.area()).min(u16::MAX as usize) as u16;
+    let scroll = scroll.min(max_scroll);
     frame.render_widget(Clear, rects.area);
 
     frame.render_widget(
@@ -341,9 +343,13 @@ pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
         close_button_rect(rects.body),
     );
     frame.render_widget(
-        Paragraph::new("↑/↓ scroll · PgUp/PgDn jump · Home/End · click [x] close · Esc close")
-            .style(Style::default().fg(theme::TEXT_DIM))
-            .wrap(Wrap { trim: false }),
+        Paragraph::new(scrollable_modal_hint(
+            "↑/↓ scroll · PgUp/PgDn jump · Home/End · click [x] close · Esc close",
+            scroll,
+            max_scroll,
+        ))
+        .style(Style::default().fg(theme::TEXT_DIM))
+        .wrap(Wrap { trim: false }),
         rects.hint,
     );
 }
@@ -497,10 +503,16 @@ pub fn render_provider_setup_modal(
     );
 
     let lines = crate::ui::provider_setup::render_tab_content(overlay, &claude, &codex, &gemini);
+    let visible_lines = rects.body.height.saturating_sub(2) as usize;
+    let max_scroll = lines
+        .len()
+        .saturating_sub(visible_lines)
+        .min(u16::MAX as usize) as u16;
+    let scroll = (overlay.scroll_offset as u16).min(max_scroll);
     let body_text: Vec<Line<'_>> = lines.iter().map(|l| Line::from(l.as_str())).collect();
     let body = Paragraph::new(body_text)
         .wrap(Wrap { trim: false })
-        .scroll((overlay.scroll_offset as u16, 0))
+        .scroll((scroll, 0))
         .block(
             Block::default()
                 .borders(Borders::ALL)
@@ -508,9 +520,11 @@ pub fn render_provider_setup_modal(
         );
     frame.render_widget(body, rects.body);
 
-    let hint = Paragraph::new(Line::from(
+    let hint = Paragraph::new(Line::from(scrollable_modal_hint(
         "[1]/[2]/[3]/[4]/[Tab]/[←→] tab · [y] copy current tab snippet · edit provider options in [S] Settings > Integrations · [↑↓ wheel j/k] scroll · click [x] / [q] / [Esc] close",
-    ))
+        scroll,
+        max_scroll,
+    )))
     .style(Style::default().fg(theme::TEXT_DIM))
     .wrap(Wrap { trim: false });
     frame.render_widget(hint, rects.hint);
@@ -518,6 +532,8 @@ pub fn render_provider_setup_modal(
 
 pub fn render_git_modal(frame: &mut Frame<'_>, title: &str, lines: &[String], scroll: u16) {
     let rects = git_modal_rects(frame.area());
+    let max_scroll = max_git_scroll(frame.area(), lines.len()).min(u16::MAX as usize) as u16;
+    let scroll = scroll.min(max_scroll);
     frame.render_widget(Clear, rects.area);
 
     frame.render_widget(
@@ -537,11 +553,19 @@ pub fn render_git_modal(frame: &mut Frame<'_>, title: &str, lines: &[String], sc
         close_button_rect(rects.body),
     );
     frame.render_widget(
-        Paragraph::new("↑/↓ scroll · PgUp/PgDn jump · Home/End · click [x] close · Esc close")
-            .style(Style::default().fg(theme::TEXT_DIM))
-            .wrap(Wrap { trim: false }),
+        Paragraph::new(scrollable_modal_hint(
+            "↑/↓ scroll · PgUp/PgDn jump · Home/End · click [x] close · Esc close",
+            scroll,
+            max_scroll,
+        ))
+        .style(Style::default().fg(theme::TEXT_DIM))
+        .wrap(Wrap { trim: false }),
         rects.hint,
     );
+}
+
+fn scrollable_modal_hint(base: &str, scroll: u16, max_scroll: u16) -> String {
+    scroll_hint::scrollable_hint(base, scroll, max_scroll)
 }
 
 pub fn max_help_scroll(viewport: Rect) -> usize {
@@ -1401,6 +1425,18 @@ mod tests {
         assert!(
             text.contains("H") && text.contains("L"),
             "help modal must mention hover help toggle and language keys: {text}"
+        );
+    }
+
+    #[test]
+    fn scrollable_modal_hint_reports_progress_and_end() {
+        assert_eq!(
+            scrollable_modal_hint("close", 0, 3),
+            "close · scroll 0/3 · more"
+        );
+        assert_eq!(
+            scrollable_modal_hint("close", 3, 3),
+            "close · scroll 3/3 · END"
         );
     }
 

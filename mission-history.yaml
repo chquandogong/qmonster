@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.54.0 - Non-destructive [fx] overlay: render banner/confetti/matrix on top of the existing dashboard instead of clearing the viewport, so alerts/panes/footer stay visible behind the effect"
+  mission_title: "Qmonster v1.55.0 - fx overlay smoothness: 60 FPS render with halved velocities + tmux poll tick suspended during effect; defaults flipped to text='~O~ Qmonster' / duration_secs=50"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 197
-  latest_version: "1.54.0"
+  total_revisions: 198
+  latest_version: "1.55.0"
 
 timeline:
   - change_id: "initial"
@@ -18558,6 +18558,84 @@ timeline:
       - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+      - "Per audit doc Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md remaining recommended slices (provider-honesty chips, Insights Situations snapshot test, cache rule provider-gating note, doc-promotion pass)."
+
+  - version: "1.55.0"
+    change_sequence: 198
+    date: "2026-05-08"
+    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator-reported: '효과가 끊김이 있어, 부드럽게 넘어갈 순 없어?' Plus default flips: text='~O~ Qmonster', duration_secs=50."
+    summary: >
+      v1.55.0 polishes the v1.53.0 / v1.54.0 fx overlay so animation
+      feels smooth on a busy operator dashboard. Three changes ship
+      together. (a) FX_TARGET_FPS bumped 30 → 60 (FX_FRAME_INTERVAL_MS
+      33 → 16) with all per-frame velocities halved so apparent speed
+      stays the same as v1.54.0 but frames render twice as often,
+      smoothing perceived motion. Banner vx 0.55 → 0.275, vy 0.30 →
+      0.15; FX_HUE_STEP 2 → 1 keeps the same ~6-second banner hue
+      rotation; confetti spawn speed 0.4+rand*1.0 → 0.2+rand*0.5,
+      CONFETTI_GRAVITY 0.06 → 0.03, CONFETTI_INITIAL_LIFE 60 → 120
+      so on-screen lifetime is unchanged; matrix stream speed
+      0.25+rand*0.6 → 0.12+rand*0.30. (b) The dashboard's main 2-second
+      tmux capture / parse / policy evaluation pass — which takes
+      50-200ms when it fires — is now suspended while the fx overlay is
+      active (`if … >= poll && !fx_overlay.is_open()` in tui_loop). The
+      tick resumes the moment the overlay dismisses; max staleness
+      while open is one skipped tick (~2s of frozen pane data),
+      acceptable for a deliberately decorative moment. (c) New `[fx]`
+      defaults: text "QMONSTER" → "~O~ Qmonster" (block font now
+      includes a `~` wave glyph at `▄▀▄ / ▀▄`); duration_secs 5 → 50
+      so the celebration / screensaver moment has time to land.
+      Existing operator overrides in qmonster.toml are honoured —
+      defaults only affect first-run / unconfigured installs. Lib tests
+      1362 → 1373 (+11 carried in from concurrent hover_help-area work
+      on main; fx polish itself is internally consistent with the
+      existing 14 fx_state + 10 fx_overlay + 6 fx renderer tests). 65
+      integration tests preserved. fmt + clippy clean.
+    intent_ko: >
+      v1.55.0 는 v1.53.0 / v1.54.0 fx 오버레이의 애니메이션을 부드럽게
+      만든다. 세 가지 변경: (a) 60 FPS 렌더 (FX_FRAME_INTERVAL_MS
+      33ms → 16ms), 프레임당 속도는 절반으로 — 화면상 체감 속도는
+      v1.54.0 그대로지만 프레임이 2배 자주 그려져서 정수 셀 alias 때문에
+      생기던 stutter 가 시각적으로 완화됨. 배너 vx/vy, hue rotation,
+      confetti 속도/중력/수명, matrix stream 속도 모두 보정. (b) fx 오버레이
+      가 떠 있는 동안 tmux 메인 폴 틱 (2초마다 50-200ms 블로킹) 을 일시
+      정지 — 효과가 매 2초마다 끊겨 보이던 진짜 원인. 오버레이 닫는 즉시
+      틱 재개. (c) 새 기본값: text "QMONSTER" → "~O~ Qmonster" (블록 폰트에
+      `~` wave 글리프 추가), duration_secs 5초 → 50초. qmonster.toml 에
+      쓴 override 는 그대로 존중 — 기본값만 바뀜.
+    triggered_by: "Operator-reported regression on v1.54.0: '효과가 끊김이 있어, 부드럽게 넘어갈 순 없어?' Plus default flip request: text='~O~ Qmonster' / duration_secs=50."
+    changes:
+      added:
+        - "src/ui/fx.rs::block_glyph: `~` glyph rendered as wave (`▄▀▄ ` / `  ▀▄`) so the new default text '~O~ Qmonster' renders correctly without falling back to the unknown-glyph block."
+      changed:
+        - "src/app/fx_state.rs constants: FX_TARGET_FPS 30 → 60, FX_FRAME_INTERVAL_MS 33 → 16, FX_HUE_STEP 2 → 1; CONFETTI_GRAVITY 0.06 → 0.03, CONFETTI_INITIAL_LIFE 60 → 120; matrix spawn_random_stream speed 0.25+rand*0.6 → 0.12+rand*0.30; banner vx/vy 0.55,0.30 → 0.275,0.15; ConfettiState::spawn velocity 0.4+rand*1.0 → 0.2+rand*0.5."
+        - "src/app/tui_loop.rs: poll_tick guard now `… >= poll && !fx_overlay.is_open()` so the 50-200ms tmux capture/parse pass cannot stutter the overlay animation. Tick resumes immediately on dismiss."
+        - "src/app/config.rs FxConfig::default: text 'QMONSTER' → '~O~ Qmonster', duration_secs 5 → 50."
+      removed: []
+      tests_added: []
+      docs:
+        - "package.json: 1.54.0 → 1.55.0."
+        - ".mission/CURRENT_STATE.md: v1.55.0 Feature State + validation baseline + mission line refreshed."
+        - "mission-history.yaml: v1.55.0 entry appended; meta updated to total_revisions 198 / latest_version 1.55.0."
+        - "docs/ai/VALIDATION.md: new v1.55.0 release row."
+    observable_effects:
+      - "Pressing Q to open the fx overlay no longer stutters every 2 seconds — animation runs ~60 FPS until the operator dismisses it."
+      - "Banner / confetti / matrix at the same apparent speed as v1.54.0 but visibly smoother (twice the frame rate at half the per-frame velocity)."
+      - "First-run installs see the bouncing banner spelling out '~O~ Qmonster' instead of plain 'QMONSTER', and the overlay stays up for 50 seconds (or until dismissed) instead of 5."
+      - "While the overlay is open the dashboard's pane data is frozen at the moment it opened; closing the overlay resumes the normal 2-second tmux poll cadence."
+    impact_scope:
+      runtime: "No new threads. Halved velocities + doubled FPS keeps the same per-second motion, so CPU work scales the same as v1.54.0 — render path runs more often but each render does less per-frame movement. tmux poll suspension only kicks in while the overlay is active, never affects the quiet path."
+      tests: "1362 → 1373 lib tests (+11 from concurrent hover_help-area work; fx polish itself uses the existing 30 fx-suite tests). 65 integration tests preserved."
+      ledger: "1 new timeline entry (sequence 198); meta total_revisions 197 → 198, latest_version 1.54.0 → 1.55.0."
+      npm: "package.json version 1.55.0; CI publication of v1.55.0 follows the same workflow as v1.37.0 through v1.54.0."
+    breaking: false
+    risk: "very low — three small touch points. (a) Velocity / FPS retune: existing fx_state tests assert behaviour invariants (bounce direction flips, gravity applied) that are unchanged; the actual values were not asserted. (b) tmux poll suspension is a one-line guard; the worst case is exactly one skipped 2-second tick while the overlay is open. (c) Config default flips affect first-run installs only; existing qmonster.toml overrides are preserved by the existing serde-default deserialization contract."
+    related_commits:
+      - "PENDING — v1.55.0 release ledger sync commit (this bundle)."
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
       - "Per audit doc Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md remaining recommended slices (provider-honesty chips, Insights Situations snapshot test, cache rule provider-gating note, doc-promotion pass)."
 
 evolution_summary:

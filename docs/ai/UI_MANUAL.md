@@ -19,6 +19,9 @@
   `m`/`n`/`a`/`i`로 Metrics / Anomaly Events / Pending Actions /
   Token Insights overlay, `?`로 help, footer 오른쪽 아래 버전 배지를
   클릭하면 Git overlay가 열립니다.
+- **Scroll status**: 주요 스크롤 가능한 modal/overlay는 hint나 title에
+  `scroll x/y · more` 또는 `scroll x/y · END`를 표시해 더 내려갈 내용이
+  있는지 바로 알 수 있게 합니다.
 - **Hover Help**: Alerts/Panes 행 위에 마우스를 올리면 floating help가
   뜹니다. 내용이 길면 줄바꿈을 반영해 높이가 커지고, 터미널이 좁거나
   카드가 잘릴 수 있으면 화면 하단 drawer 형태로 열립니다. `H`로 on/off,
@@ -463,7 +466,8 @@ side_effects (N):
   스크롤 가능하며 `label : description` 정렬로 표시됩니다. `Hover Help`
   섹션에는 Alerts/Panes hover 범위, 작은 터미널에서 bottom drawer로
   전환되는 조건, `S > Parameters`의 `Selected parameter help`, `H` / `L`
-  키의 의미가 함께 정리되어 있습니다.
+  키의 의미가 함께 정리되어 있습니다. hint 끝에는 현재 scroll 위치와
+  `more` / `END` 상태가 표시됩니다.
 - **Git**:
   footer 오른쪽 아래 버전 배지를 클릭하면 열립니다.
   현재 repo root, branch, HEAD, upstream ahead/behind, worktree 변경 요약,
@@ -476,10 +480,12 @@ side_effects (N):
   warning/critical 값을 조정하고, `Integrations`는
   `[provider_setup] claude_sidefile` 및 `codex_app_server`를
   `Space` / `e` / `Enter` 또는 마우스 클릭으로 토글합니다.
-  `Parameters`는 현재 주요 설정값과 기본값 차이를 보여주며, 선택된 행
-  위에는 `Selected parameter help` 블록이 항상 표시됩니다. 이 블록은
-  TOML key, 현재값과 기본값, 의미, 허용 값, 관련 shortcut, `w` 저장 전까지
-  runtime-only라는 저장 상태를 설명합니다. 여기에는
+  `Parameters`는 현재 주요 설정값과 기본값 차이를 보여줍니다. 충분히 넓은
+  화면에서는 왼쪽이 설정 리스트, 오른쪽이 `Selected parameter help` 패널인
+  2-column layout으로 표시됩니다. 좁은 화면에서는 같은 내용을 stacked
+  layout으로 표시합니다. help 패널은 TOML key, 현재값과 기본값, 의미, 허용
+  값, 관련 shortcut, `w` 저장 전까지 runtime-only라는 저장 상태를 설명합니다.
+  여기에는
   `[insights]` ignored/default window, `[anomaly]` retention/promote,
   `[reset]` snapshot/wait threshold, `[provider_setup]` 상태가 포함됩니다.
   Parameters 탭에서는 `H`가 `ux.hover_help`, `L`이 `ux.help_language`를

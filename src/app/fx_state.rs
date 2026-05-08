@@ -11,14 +11,18 @@
 use crate::app::config::FxEffect;
 
 /// Frames per second the overlay aims for while active. The main loop
-/// adapts its `event::poll` cadence to match (~33ms).
-pub const FX_TARGET_FPS: u64 = 30;
+/// adapts its `event::poll` cadence to match (~16ms). v1.55.0 bumped
+/// from 30 to 60 to halve the per-frame integer-rounding gap that was
+/// visible as juddering — at 30 FPS with vx ≈ 0.55 the banner moved a
+/// cell only every other frame; at 60 FPS the same apparent speed
+/// (halved velocities) renders twice as often, smoothing the eye.
+pub const FX_TARGET_FPS: u64 = 60;
 pub const FX_FRAME_INTERVAL_MS: u64 = 1000 / FX_TARGET_FPS;
 
 /// Subdivisions of the hue circle used by the banner's color cycling.
-/// Picked empirically to look smooth at 30 FPS without flashing — full
-/// rotation in ~6 seconds.
-pub const FX_HUE_STEP: u16 = 2;
+/// v1.55.0 halved (was 2) so the doubled FPS keeps the same ~6s full
+/// rotation rather than spinning twice as fast.
+pub const FX_HUE_STEP: u16 = 1;
 pub const FX_HUE_PERIOD: u16 = 360;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,8 +47,12 @@ impl BannerState {
         Self {
             x: cx,
             y: cy,
-            vx: 0.55,
-            vy: 0.30,
+            // v1.55.0: halved (was 0.55, 0.30) so the doubled FPS keeps
+            // the same apparent screensaver-drift speed while rendering
+            // twice as often — net effect is smoother motion at the
+            // same pace.
+            vx: 0.275,
+            vy: 0.15,
             hue_deg: 0,
             width: banner_w,
             height: banner_h,
@@ -104,8 +112,11 @@ impl Particle {
 }
 
 const CONFETTI_GLYPHS: &[char] = &['✨', '⋆', '☆', '⭐', '✦', '✧', '❋', '❀', '✺'];
-pub const CONFETTI_GRAVITY: f32 = 0.06;
-pub const CONFETTI_INITIAL_LIFE: u16 = 60;
+// v1.55.0: gravity halved (was 0.06) so 60 FPS keeps the same
+// fall arc; lifespan doubled so particles linger across the now-
+// twice-as-fast frame ticks at the same apparent on-screen duration.
+pub const CONFETTI_GRAVITY: f32 = 0.03;
+pub const CONFETTI_INITIAL_LIFE: u16 = 120;
 pub const CONFETTI_PARTICLE_COUNT: usize = 80;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -127,7 +138,9 @@ impl ConfettiState {
         for i in 0..n {
             let angle =
                 (i as f32) / (n as f32) * std::f32::consts::TAU + (rng.next_f32() - 0.5) * 0.4;
-            let speed = 0.4 + rng.next_f32() * 1.0;
+            // v1.55.0: speed halved (was 0.4 + 1.0 random) so 60 FPS
+            // keeps the same apparent burst velocity.
+            let speed = 0.2 + rng.next_f32() * 0.5;
             particles.push(Particle {
                 x: cx,
                 y: cy,
@@ -226,7 +239,9 @@ impl MatrixState {
     fn spawn_random_stream(&mut self) {
         let col = (self.rng_next() % (self.viewport_w.max(1) as u64)) as u16;
         let length = 4 + (self.rng_next() % 14) as u16;
-        let speed = 0.25 + self.rng_f32() * 0.6;
+        // v1.55.0: speed halved (was 0.25 + 0.6 random) so 60 FPS
+        // keeps the same apparent rain pace.
+        let speed = 0.12 + self.rng_f32() * 0.30;
         let head_y = -(self.rng_f32() * self.viewport_h as f32);
         let mut trail = Vec::with_capacity(length as usize);
         for _ in 0..length {

@@ -20,6 +20,7 @@ use crate::app::config::{
     TmuxSourceMode,
 };
 use crate::domain::recommendation::Severity;
+use crate::ui::scroll_hint;
 use crate::ui::theme;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
@@ -2421,6 +2422,12 @@ pub struct SettingsModalRects {
     pub hint: Rect,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SettingsParameterSidePanelRects {
+    pub list: Rect,
+    pub help: Rect,
+}
+
 pub fn settings_modal_rects(viewport: Rect) -> SettingsModalRects {
     let area = centered_rect(MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT, viewport);
     let chunks = Layout::default()
@@ -2443,16 +2450,63 @@ pub fn settings_visible_body_rows(viewport: Rect) -> u16 {
     settings_modal_rects(viewport).body.height.saturating_sub(2)
 }
 
+pub fn settings_parameter_side_panel_rects(body: Rect) -> Option<SettingsParameterSidePanelRects> {
+    if body.width < 112 || body.height < 12 {
+        return None;
+    }
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(60),
+            Constraint::Length(1),
+            Constraint::Min(42),
+        ])
+        .split(body);
+    Some(SettingsParameterSidePanelRects {
+        list: chunks[0],
+        help: chunks[2],
+    })
+}
+
+fn settings_parameter_list_rect(viewport: Rect) -> Rect {
+    let body = settings_modal_rects(viewport).body;
+    settings_parameter_side_panel_rects(body)
+        .map(|rects| rects.list)
+        .unwrap_or(body)
+}
+
+pub fn settings_parameter_list_rect_for_viewport(viewport: Rect) -> Rect {
+    settings_parameter_list_rect(viewport)
+}
+
+fn settings_parameter_visible_rows(viewport: Rect) -> u16 {
+    settings_parameter_list_rect(viewport)
+        .height
+        .saturating_sub(2)
+}
+
+pub fn settings_parameter_visible_rows_for_viewport(viewport: Rect) -> u16 {
+    settings_parameter_visible_rows(viewport)
+}
+
 pub fn settings_max_scroll(
     overlay: &SettingsOverlay,
     config: &QmonsterConfig,
     viewport: Rect,
 ) -> u16 {
-    let visible = settings_visible_body_rows(viewport) as usize;
-    build_body_lines(overlay, config)
-        .len()
-        .saturating_sub(visible)
-        .min(u16::MAX as usize) as u16
+    let visible = if overlay.tab() == SettingsTab::Parameters {
+        settings_parameter_visible_rows(viewport) as usize
+    } else {
+        settings_visible_body_rows(viewport) as usize
+    };
+    let line_count = if overlay.tab() == SettingsTab::Parameters
+        && settings_parameter_side_panel_rects(settings_modal_rects(viewport).body).is_some()
+    {
+        build_parameter_list_lines(overlay, config).len()
+    } else {
+        build_body_lines(overlay, config).len()
+    };
+    line_count.saturating_sub(visible).min(u16::MAX as usize) as u16
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
@@ -2501,25 +2555,58 @@ pub fn render_settings_modal(
     let tab_line = settings_tab_strip_line(overlay.tab());
     frame.render_widget(Paragraph::new(tab_line), tab_inner);
 
-    let body_lines = build_body_lines(overlay, config);
     let scroll = overlay
         .scroll_offset()
         .min(settings_max_scroll(overlay, config, frame.area()));
-    frame.render_widget(
-        Paragraph::new(body_lines)
-            .scroll((scroll, 0))
-            .wrap(Wrap { trim: false })
-            .block(
-                Block::default()
-                    .title(Span::styled(
-                        settings_body_title(overlay.tab()),
-                        Style::default().add_modifier(Modifier::BOLD),
-                    ))
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
-            ),
-        rects.body,
-    );
+    if overlay.tab() == SettingsTab::Parameters
+        && let Some(parameter_rects) = settings_parameter_side_panel_rects(rects.body)
+    {
+        frame.render_widget(
+            Paragraph::new(build_parameter_list_lines(overlay, config))
+                .scroll((scroll, 0))
+                .wrap(Wrap { trim: false })
+                .block(
+                    Block::default()
+                        .title(Span::styled(
+                            settings_body_title(overlay.tab()),
+                            Style::default().add_modifier(Modifier::BOLD),
+                        ))
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+                ),
+            parameter_rects.list,
+        );
+        frame.render_widget(
+            Paragraph::new(build_parameter_help_panel_lines(overlay, config))
+                .wrap(Wrap { trim: false })
+                .block(
+                    Block::default()
+                        .title(Span::styled(
+                            " Parameter help ",
+                            Style::default().add_modifier(Modifier::BOLD),
+                        ))
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+                ),
+            parameter_rects.help,
+        );
+    } else {
+        frame.render_widget(
+            Paragraph::new(build_body_lines(overlay, config))
+                .scroll((scroll, 0))
+                .wrap(Wrap { trim: false })
+                .block(
+                    Block::default()
+                        .title(Span::styled(
+                            settings_body_title(overlay.tab()),
+                            Style::default().add_modifier(Modifier::BOLD),
+                        ))
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+                ),
+            rects.body,
+        );
+    }
 
     // Mouse-clickable close button at the top-right of the body, mirroring
     // the help / git / target overlays. The companion click handler in the
@@ -2531,9 +2618,12 @@ pub fn render_settings_modal(
     );
 
     frame.render_widget(
-        Paragraph::new(hint_lines(overlay))
-            .style(Style::default().fg(theme::TEXT_DIM))
-            .wrap(Wrap { trim: false }),
+        Paragraph::new(hint_lines_with_scroll(
+            overlay,
+            Some((scroll, settings_max_scroll(overlay, config, frame.area()))),
+        ))
+        .style(Style::default().fg(theme::TEXT_DIM))
+        .wrap(Wrap { trim: false }),
         rects.hint,
     );
 }
@@ -2708,7 +2798,7 @@ pub fn settings_parameter_field_at_with_scroll(
         return None;
     }
     let line_idx = row.saturating_sub(inner.y).saturating_add(scroll_offset) as usize;
-    let lines = build_parameter_body_lines(overlay, config);
+    let lines = build_parameter_list_lines(overlay, config);
     let text = lines.get(line_idx).map(line_text)?;
     all_parameter_fields()
         .into_iter()
@@ -2720,7 +2810,7 @@ pub fn settings_parameter_field_line_index(
     config: &QmonsterConfig,
     field: ParameterField,
 ) -> Option<u16> {
-    build_parameter_body_lines(overlay, config)
+    build_parameter_list_lines(overlay, config)
         .iter()
         .position(|line| {
             let text = line_text(line);
@@ -3234,6 +3324,57 @@ fn build_parameter_body_lines(
     lines.push(Line::from(""));
     lines.push(status_line(overlay));
     lines
+}
+
+fn build_parameter_list_lines(
+    overlay: &SettingsOverlay,
+    config: &QmonsterConfig,
+) -> Vec<Line<'static>> {
+    let mut lines = build_parameter_body_lines(overlay, config);
+    let Some(start) = lines
+        .iter()
+        .position(|line| line_text(line).trim() == "Selected parameter help")
+    else {
+        return lines;
+    };
+    let end = lines
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .find(|(_, line)| line_text(line).trim().is_empty())
+        .map(|(idx, _)| idx + 1)
+        .unwrap_or(lines.len());
+    lines.drain(start..end);
+    remove_status_footer(&mut lines);
+    lines
+}
+
+fn build_parameter_help_panel_lines(
+    overlay: &SettingsOverlay,
+    config: &QmonsterConfig,
+) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    append_selected_parameter_help_lines(&mut lines, overlay, config);
+    lines.push(Line::from(""));
+    lines.push(status_line(overlay));
+    lines
+}
+
+fn remove_status_footer(lines: &mut Vec<Line<'static>>) {
+    if lines
+        .last()
+        .map(line_text)
+        .is_some_and(|text| text.trim_start().starts_with("status:"))
+    {
+        lines.pop();
+        if lines
+            .last()
+            .map(line_text)
+            .is_some_and(|text| text.trim().is_empty())
+        {
+            lines.pop();
+        }
+    }
 }
 
 fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> Vec<Line<'static>> {
@@ -4125,7 +4266,15 @@ fn status_line(overlay: &SettingsOverlay) -> Line<'static> {
     ])
 }
 
+#[cfg(test)]
 fn hint_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
+    hint_lines_with_scroll(overlay, None)
+}
+
+fn hint_lines_with_scroll(
+    overlay: &SettingsOverlay,
+    scroll: Option<(u16, u16)>,
+) -> Vec<Line<'static>> {
     let editing = overlay.edit_buffer().is_some();
     let line1 = if editing {
         "  EDIT — type digits/'.' · Enter commit · Esc cancel · Backspace delete"
@@ -4145,6 +4294,16 @@ fn hint_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
         "  Edits stay in memory until 'w' writes back to the loaded TOML."
     } else {
         "  This tab is read-only reference."
+    };
+    let line2 = match scroll {
+        Some((offset, max)) => {
+            format!(
+                "{} · {}",
+                line2,
+                scroll_hint::scroll_status_label(offset, max)
+            )
+        }
+        None => line2.to_string(),
     };
     vec![Line::from(line1), Line::from(line2)]
 }
@@ -4481,6 +4640,70 @@ mod tests {
 
         assert!(rendered.contains("H hover"));
         assert!(rendered.contains("L language"));
+    }
+
+    #[test]
+    fn parameters_tab_uses_side_help_panel_on_wide_modal() {
+        let config = cfg();
+        let viewport = Rect::new(0, 0, 160, 44);
+        let body = settings_modal_rects(viewport).body;
+        let rects =
+            settings_parameter_side_panel_rects(body).expect("wide Parameters body should split");
+        assert!(rects.help.x > rects.list.x.saturating_add(rects.list.width));
+
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        s.select_parameter(ParameterField::UxHoverHelp);
+
+        let list_text = rendered_text(&build_parameter_list_lines(&s, &config));
+        let help_text = rendered_text(&build_parameter_help_panel_lines(&s, &config));
+
+        assert!(
+            !list_text.contains("Selected parameter help"),
+            "side-panel list must not inline the selected parameter help"
+        );
+        assert!(help_text.contains("Selected parameter help"));
+        assert!(help_text.contains("TOML: ux.hover_help"));
+    }
+
+    #[test]
+    fn settings_hint_reports_scroll_progress_and_end() {
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+
+        let mid = rendered_text(&hint_lines_with_scroll(&s, Some((1, 3))));
+        assert!(mid.contains("scroll 1/3"));
+        assert!(mid.contains("more"));
+
+        let end = rendered_text(&hint_lines_with_scroll(&s, Some((3, 3))));
+        assert!(end.contains("scroll 3/3"));
+        assert!(end.contains("END"));
+    }
+
+    #[test]
+    fn parameters_scroll_end_uses_last_selectable_row_not_status_footer() {
+        let config = cfg();
+        let viewport = Rect::new(0, 0, 160, 44);
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        let last = *all_parameter_fields()
+            .last()
+            .expect("Parameters must expose at least one editable field");
+        s.select_parameter(last);
+
+        let visible = settings_parameter_visible_rows_for_viewport(viewport).max(1);
+        let last_row = settings_parameter_field_line_index(&s, &config, last)
+            .expect("last editable parameter must have a rendered row");
+        let selectable_end = last_row.saturating_sub(visible.saturating_sub(1));
+
+        assert_eq!(
+            settings_max_scroll(&s, &config, viewport),
+            selectable_end,
+            "Parameters scroll end should match the last selectable row, not trailing blank/status rows"
+        );
     }
 
     #[test]

@@ -15,6 +15,7 @@ use std::collections::HashMap;
 
 use crate::app::event_loop::PaneReport;
 use crate::store::TokenSample;
+use crate::ui::scroll_hint;
 use crate::ui::theme;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -871,18 +872,25 @@ pub fn render_metrics_modal(
     );
     frame.render_widget(Clear, rects.area);
 
+    let lines = render_metrics_lines(overlay, target_label, reports, rects.body, mem_observations);
+    let visible_lines = rects.area.height.saturating_sub(2) as usize;
+    let max_scroll = lines
+        .len()
+        .saturating_sub(visible_lines)
+        .min(u16::MAX as usize) as u16;
+    let scroll = overlay.scroll().min(max_scroll);
     let block = Block::default()
         .title(format!(
-            "Metrics · target {target_label} · {} panes · m close",
-            reports.len()
+            "Metrics · target {target_label} · {} panes · {} · m close",
+            reports.len(),
+            scroll_hint::scroll_status_label(scroll, max_scroll)
         ))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme::BORDER_ACTIVE));
 
-    let lines = render_metrics_lines(overlay, target_label, reports, rects.body, mem_observations);
     frame.render_widget(
         Paragraph::new(lines)
-            .scroll((overlay.scroll(), 0))
+            .scroll((scroll, 0))
             .block(block)
             .wrap(Wrap { trim: false }),
         rects.area,
@@ -892,9 +900,10 @@ pub fn render_metrics_modal(
         crate::ui::dashboard::close_button_rect(rects.area),
     );
     frame.render_widget(
-        Paragraph::new(
-            "[ shrink · ] grow · = reset · ↑/↓ scroll · m close · Esc close · click [x] close",
-        )
+        Paragraph::new(format!(
+            "[ shrink · ] grow · = reset · ↑/↓ scroll · m close · Esc close · click [x] close · {}",
+            scroll_hint::scroll_status_label(scroll, max_scroll)
+        ))
         .style(Style::default().fg(theme::TEXT_DIM)),
         rects.hint,
     );
