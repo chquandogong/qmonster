@@ -80,8 +80,7 @@ fn tooltip_width(viewport: Rect, lines: &[&'static str]) -> u16 {
     let max_width = viewport
         .width
         .saturating_sub(RIGHT_GUTTER)
-        .min(MAX_TOOLTIP_WIDTH)
-        .max(1);
+        .clamp(1, MAX_TOOLTIP_WIDTH);
     let min_width = MIN_TOOLTIP_WIDTH.min(max_width);
     let desired = lines
         .iter()
