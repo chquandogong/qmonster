@@ -1,14 +1,14 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.50.0 publication verified)_
+_Last updated: 2026-05-08 (Claude, v1.51.0 ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.50.0 — operator UX polish: Insights overlay async fetch + spinner placeholder + Phase 7 v2 CrossPane fold-back + provider-coverage matrix + pricing rows.
-- Version surfaces: mission ledger target `1.50.0`; npm package metadata `qmonster@1.50.0`; latest local Git tag `v1.50.0`.
-- Branch / worktree at handoff start: `main`, tag `v1.50.0`.
+- Title: Qmonster v1.51.0 — operator UX polish bundle: build.rs tag-cache fix + git modal origin/contributors + IME drag-bar indicator + bell + Settings tab grouping + anomaly default-on flip.
+- Version surfaces: npm package metadata `qmonster@1.51.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v1.51.0` to be created at the ledger sync commit.
 - Release publication state: v1.50.0 is published. `Release and Package Mirror` workflow run `25505209461` (2026-05-08, 7m26s, success) created GitHub Release `v1.50.0` with full asset set (binary tarball, npm tarball, SBOM, sbom-diff, checksums) and published `qmonster@1.50.0` to npm + GitHub Packages mirror. Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), v1.39.0 (`25311723861`), v1.40.0 (`25421376056`), v1.41.0 (`25424418078`), v1.42.0 (`25472444159`), v1.43.0 (`25474748447`), v1.44.0 (`25476534645`), v1.45.0 (`25478893257`), v1.46.0 (`25485133895`), v1.47.0 (`25490555532`), v1.48.0 (`25491535211`), v1.49.0 (`25498621086`) publications also remain live — `npm view qmonster versions` lists `1.37.0` through `1.50.0` with `dist-tags.latest = 1.50.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50}.0`.
-- Current phase: Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, the v1.38 UX bundle (F1/F2/F3/F4), the v1.39 polish + correctness round, the v1.40 operator-controlled overlay geometry round, the v1.41 a-overlay polish round, Phase H opt-in auto-snapshot, Phase 7 v1 anomaly observation surface, Phase 7 v2 promotion, Phase 7 v2 detectors, Phase 7 v3 (a+b), Phase 7 v3 (c), Phase 8 v1 token insights query layer, and Phase 8 v2 recommendation lifecycle ledger are complete. v1.50.0 ships as an operator UX polish bundle on top of the v1.49.0 baseline; no new phase is opened.
+- Current phase: Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, the v1.38 UX bundle (F1/F2/F3/F4), the v1.39 polish + correctness round, the v1.40 operator-controlled overlay geometry round, the v1.41 a-overlay polish round, Phase H opt-in auto-snapshot, Phase 7 v1 anomaly observation surface, Phase 7 v2 promotion, Phase 7 v2 detectors, Phase 7 v3 (a+b), Phase 7 v3 (c), Phase 8 v1 token insights query layer, and Phase 8 v2 recommendation lifecycle ledger are complete. v1.50.0 publication baseline still applies; v1.51.0 ships as an operator UX polish bundle on top — no new phase is opened.
 
 ## v1.50.0 Feature State
 
@@ -54,7 +54,120 @@ v1.50.0 layers five themes on top of the v1.49.0 baseline. It does not change pr
 - Commit summary: `v1.50.0 release ledger sync`.
 - Reference plan / spec: `docs/superpowers/plans/2026-05-07-insights-overlay-loading-spinner.md` + `docs/superpowers/specs/2026-05-07-insights-overlay-loading-spinner-design.md` for the named line item; the CrossPane fold-back / provider matrix / pricing extension / Settings parameter-edit affordance landed via direct main-pane / parallel-track commits.
 
-## Post-tag polish (on main, untagged)
+## v1.51.0 Feature State
+
+v1.51.0 layers four themes on top of the v1.50.0 baseline. It does not
+change provider adapters, the audit chain core, the `SignalSet` schema,
+or any SQLite schema.
+
+1. **`build.rs` tag-cache invalidation** (`build.rs`):
+   - Cargo's `rerun-if-changed` directives now also watch
+     `.git/refs/tags` (the directory whose mtime advances when any tag
+     is created or deleted) and `.git/packed-refs`. Without these the
+     compiled `QMONSTER_GIT_VERSION` env var would lag the actual
+     `git describe --tags --always --dirty` output by however many
+     tag bumps happened between rebuilds — the bug that left the
+     footer badge showing `v1.48.0` long after `v1.49.0` / `v1.50.0`
+     were tagged.
+
+2. **Git modal: origin URL + Contributors** (`src/app/git_info.rs`):
+   - `GitSnapshot` gains `origin_url: Option<String>`,
+     `top_contributors: Vec<ContribLine>`,
+     `extra_contributors: usize`,
+     `extra_contributor_commits: usize`.
+   - `capture_snapshot` calls `git config --get remote.origin.url` and
+     `git shortlog -sne HEAD` (falling back to `-sn` if the host's
+     git lacks `-e`), funnelling the raw output through new pure
+     helpers `normalize_origin_url` and `parse_shortlog`.
+     SSH-style remotes (`git@github.com:user/repo.git`) and
+     `ssh://git@host:port/path.git` are rewritten to HTTPS; trailing
+     `.git` is stripped so operators can paste the URL into a browser.
+   - `panel_from_snapshot` adds an `origin` detail line and a
+     `Contributors` block (`<commits>  <name>` per row, capped at the
+     top 5; remainder summarised as `+N more (M commits)`).
+   - 9 new lib tests under `git_info::tests` lock the helper contracts
+     and the panel rendering. Lib 1294 → 1306 (+12 incl. snapshot
+     coverage).
+
+3. **Drag-bar IME indicator + terminal bell** (new `src/app/ime_state.rs`,
+   `src/ui/dashboard.rs`, `src/app/tui_loop.rs`):
+   - New module `src/app/ime_state.rs` holds a pure heuristic state
+     machine: `ImeState::observe(c, now)` → `ImeObservation` enum
+     (`Ignored` for non-alphabetic, `AsciiCleared` for ASCII letters,
+     `NonAsciiSet { transitioned_on }` for non-ASCII letters). The
+     `transitioned_on: true` edge fires the bell exactly once per
+     activation. `is_active(now)` honours a 3-second TTL
+     (`IME_INDICATOR_TTL`) so the indicator dims naturally during
+     idle without needing an ASCII keystroke to clear it.
+   - `Context` (`src/app/bootstrap.rs`) gains `ime_state: ImeState`.
+   - `tui_loop` observes every `KeyCode::Char(c)` press BEFORE the
+     overlay dispatcher chain so modals don't mask the signal. On
+     inactive→active transitions a single ASCII BEL (`0x07`) is
+     written directly to stdout via the new `ring_terminal_bell`
+     helper.
+   - `render_split_divider` (`src/ui/dashboard.rs`) replaces the
+     normal `drag resize alerts/panes …` text with a high-visibility
+     banner `⚠ HANGUL/IME ACTIVE — press 영문/English key to disable ⚠`
+     when `ime_active` is true. Color comes from
+     `theme::severity_color(Severity::Warning)` + `BOLD | REVERSED`
+     for prominent contrast on the badge background.
+   - 10 new `ime_state::tests` cover the state-machine matrix
+     (transition signalling, TTL decay, ASCII clear, ignored chars,
+     CJK char coverage). 2 new dashboard tests pin the divider
+     branching: normal hint when inactive, banner when active.
+   - **Heuristic limit accepted by operator**: terminals don't
+     expose IME state to TUI apps, so the very first non-ASCII
+     keystroke is what flips the indicator on. The user accepted
+     this limitation at design time.
+
+4. **Settings overlay editable/reference tab grouping** (`src/ui/settings.rs`):
+   - New `SettingsTab::is_editable()` returns `true` for Thresholds /
+     Integrations / Parameters and `false` for Rules / Badges.
+   - Custom tab strip rendering replaces ratatui's `Tabs` widget so
+     the seam between editable and reference groups can show a
+     visible `║` divider while same-group tabs keep the existing `│`.
+     Labels gain a numeric prefix (`1 Thresholds`, `2 Integrations`,
+     …) so the keyboard shortcut is visible in the strip.
+     `settings_tab_index_at` recomputed for the new label widths;
+     the mouse handler test in `src/app/settings_overlay.rs` updated
+     to match.
+   - Body title gains an `(editable)` / `(reference)` suffix so the
+     operator can tell at a glance whether arrow / Enter / `e` will
+     mutate config or just navigate.
+   - 1 new lib test (`settings_tab_strip_renders_inter_group_seam_…`)
+     pins the seam glyph + position contract.
+   - `anomaly enabled` parameter remains in the Parameters tab as
+     `ParameterField::AnomalyEnabled` — already toggleable via
+     space/Enter; the new tab grouping makes it discoverable as part
+     of the editable cluster rather than buried in a flat list.
+
+### Concurrent change folded into v1.51.0
+
+5. **Anomaly observation surface default-on** (`src/app/config.rs`):
+   - `AnomalyConfig::default().enabled` flips from `false` → `true`.
+     Phase 7 v2/v3 detectors stabilised + ErrorBurst dominant_kind
+     evidence + CrossPane fold-back closure (all v1.50.0) made every
+     detector observable to operators on first launch.
+   - Existing operators with `enabled = false` written into their
+     `qmonster.toml` keep that override; the deserialization contract
+     is untouched — only the unconfigured / first-run experience
+     changes.
+   - 4 config-tests updated in `src/app/config.rs`:
+     `anomaly_config_enabled_by_default`,
+     `anomaly_config_missing_section_keeps_default_enabled`, plus a
+     new `anomaly_config_explicit_disable_is_honoured` test that
+     pins the override-respect contract. 2 integration tests in
+     `tests/event_loop_integration.rs` (`event_loop_anomalies_off_baseline_regression`,
+     `event_loop_no_promotion_when_anomaly_disabled`) explicitly
+     opt back out via `config.anomaly.enabled = false` since they
+     exercise the disabled-mode regression.
+   - 2 settings-overlay tests in `src/ui/settings.rs` force the
+     starting state explicitly so the toggle mechanic is exercised
+     regardless of default polarity.
+
+## Post-tag polish (folded into v1.51.0)
+
+These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 1. **Phase 7 v2 ErrorBurst evidence enrichment** (`1862c46`).
    `adapters::common::classify_error_hint(tail) -> Option<&'static str>`
@@ -124,14 +237,14 @@ v1.50.0 layers five themes on top of the v1.49.0 baseline. It does not change pr
 
 ## Validation Baseline
 
-Most recent v1.50.0 validation at the release commit:
+Most recent v1.51.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1285 lib tests + 63 integration tests, all green (lib up from 1265 at v1.49.0 baseline as new Insights spinner / CrossPane fold-back / Settings parameter-edit tests landed).
+- `cargo test --all-targets` — 1317 lib tests + 63 integration tests + 12 store_insights + 18 + 6 + 8 + 3 = 1427 total, all green (lib up from 1294 at the v1.50.0 post-tag polish baseline as new git_info / ime_state / settings tab-strip / dashboard divider / config-default tests landed).
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.49.0 still apply when the v1.50.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.50.0 still apply when the v1.51.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 

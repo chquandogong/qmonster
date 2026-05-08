@@ -2825,10 +2825,12 @@ fn event_loop_anomalies_fire_when_enabled_and_history_full() {
 
 #[test]
 fn event_loop_anomalies_off_baseline_regression() {
-    // Phase 7 v1 Task 10: with [anomaly] enabled=false (default), the
+    // Phase 7 v1 Task 10: with [anomaly] enabled=false, the
     // eval_anomalies call must be a no-op: PaneReport.anomalies is empty
     // and ctx.anomaly_dedup remains empty even when history is full of
-    // churn-worthy snapshots.
+    // churn-worthy snapshots. v1.51.0: anomaly.enabled default flipped
+    // to true, so this test now explicitly disables to exercise the
+    // off-path it actually covers.
     use qmonster::app::event_loop::run_once_with_target;
     use qmonster::domain::anomaly::AnomalyKind;
     use qmonster::policy::rules::anomaly::AnomalyHistory;
@@ -2837,13 +2839,9 @@ fn event_loop_anomalies_off_baseline_regression() {
         panes: vec![pane("%99", "claude:1:main", "claude", "✦ Idle", false)],
     };
     let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
-    // Default config — anomaly.enabled is false.
-    let mut ctx = Context::new(
-        QmonsterConfig::defaults(),
-        source,
-        notifier,
-        Box::new(InMemorySink::new()),
-    );
+    let mut config = QmonsterConfig::defaults();
+    config.anomaly.enabled = false;
+    let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
 
     // Pre-populate the same churn-worthy history as the enabled test.
     let mut h = AnomalyHistory::default();
@@ -2973,9 +2971,10 @@ fn event_loop_promotes_warning_anomalies_to_recommendations_and_notify() {
 
 #[test]
 fn event_loop_no_promotion_when_anomaly_disabled() {
-    // Phase 7 v2 Task 3: with [anomaly] enabled=false (default), no anomaly-
+    // Phase 7 v2 Task 3: with [anomaly] enabled=false, no anomaly-
     // driven Recommendation or Notify must appear even when history contains
-    // churn-worthy snapshots. Baseline regression guard for Task 6 release.
+    // churn-worthy snapshots. v1.51.0: anomaly.enabled default flipped to
+    // true, so this disabled-mode regression test explicitly opts back out.
     use qmonster::app::event_loop::run_once_with_target;
     use qmonster::domain::recommendation::RequestedEffect;
     use qmonster::policy::rules::anomaly::AnomalyHistory;
@@ -2984,13 +2983,9 @@ fn event_loop_no_promotion_when_anomaly_disabled() {
         panes: vec![pane("%99", "claude:1:main", "claude", "✦ Idle", false)],
     };
     let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
-    // Default config — anomaly.enabled is false.
-    let mut ctx = Context::new(
-        QmonsterConfig::defaults(),
-        source,
-        notifier,
-        Box::new(InMemorySink::new()),
-    );
+    let mut config = QmonsterConfig::defaults();
+    config.anomaly.enabled = false;
+    let mut ctx = Context::new(config, source, notifier, Box::new(InMemorySink::new()));
 
     // Pre-populate the same churn-worthy history as the enabled test.
     let mut h = AnomalyHistory::default();

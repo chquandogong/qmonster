@@ -11,6 +11,7 @@ pub mod dashboard_state;
 pub mod effects;
 pub mod event_loop;
 pub mod git_info;
+pub mod ime_state;
 pub mod insights_lifecycle;
 pub mod insights_load;
 pub mod insights_overlay;

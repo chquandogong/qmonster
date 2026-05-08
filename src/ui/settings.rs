@@ -24,7 +24,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use std::path::Path;
 
 /// Which advisory section a field belongs to. Drives unit display
@@ -202,6 +202,17 @@ impl SettingsTab {
             SettingsTab::Rules => SettingsTab::Parameters,
             SettingsTab::Badges => SettingsTab::Rules,
         }
+    }
+
+    /// v1.51.0: Thresholds / Integrations / Parameters carry editable
+    /// rows; Rules / Badges are reference-only. Used by the tab strip
+    /// renderer to draw a `║` between groups and to suffix the body
+    /// title with `(editable)` vs `(reference)`.
+    pub const fn is_editable(self) -> bool {
+        matches!(
+            self,
+            SettingsTab::Thresholds | SettingsTab::Integrations | SettingsTab::Parameters
+        )
     }
 }
 
@@ -2351,24 +2362,19 @@ pub fn render_settings_modal(
     let rects = settings_modal_rects(frame.area());
     frame.render_widget(Clear, rects.area);
 
-    let tab_titles: Vec<Line<'_>> = SETTINGS_TABS
-        .iter()
-        .map(|tab| Line::from(tab.label()))
-        .collect();
-    let tabs = Tabs::new(tab_titles)
-        .select(overlay.tab().index())
-        .block(
-            Block::default()
-                .title("Settings")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
-        )
-        .highlight_style(
-            Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD),
-        );
-    frame.render_widget(tabs, rects.tabs);
+    // v1.51.0: custom tab strip with a `║` divider between the
+    // editable group (Thresholds / Integrations / Parameters) and the
+    // reference group (Rules / Badges). The single-`│` divider stays
+    // between same-group tabs so the inner spacing matches the prior
+    // ratatui Tabs widget; only the inter-group seam is highlighted.
+    let tab_block = Block::default()
+        .title("Settings")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme::BORDER_ACTIVE));
+    let tab_inner = tab_block.inner(rects.tabs);
+    frame.render_widget(tab_block, rects.tabs);
+    let tab_line = settings_tab_strip_line(overlay.tab());
+    frame.render_widget(Paragraph::new(tab_line), tab_inner);
 
     let body_lines = build_body_lines(overlay, config);
     let scroll = overlay
@@ -2424,13 +2430,13 @@ pub fn settings_tab_index_at(tabs: Rect, column: u16) -> Option<usize> {
     if column < tabs.x {
         return None;
     }
-    // Mirrors ratatui Tabs' left-aligned layout inside an ALL-borders
-    // block: one border cell, then ` label `, a divider, and the next
-    // padded label. Empty space to the right of the final label is
-    // intentionally not clickable.
+    // v1.51.0: layout mirrors `settings_tab_strip_line` — one border
+    // cell, then ` label ` per tab, with `│` between same-group tabs
+    // and `║` between the editable and reference groups. Empty space
+    // to the right of the final label is intentionally not clickable.
     let mut cursor = tabs.x.saturating_add(1);
     for (idx, tab) in SETTINGS_TABS.iter().enumerate() {
-        let label_width = tab.label().chars().count() as u16;
+        let label_width = settings_numbered_label(*tab).chars().count() as u16;
         let end = cursor.saturating_add(label_width).saturating_add(2);
         if column < end {
             return Some(idx);
@@ -2444,6 +2450,45 @@ pub fn settings_tab_index_at(tabs: Rect, column: u16) -> Option<usize> {
         }
     }
     None
+}
+
+/// v1.51.0: numbered tab label so the `1`-`5` keyboard shortcuts are
+/// visible inside the tab strip itself.
+pub(crate) fn settings_numbered_label(tab: SettingsTab) -> String {
+    let n = tab.index() + 1;
+    format!("{n} {}", tab.label())
+}
+
+/// v1.51.0: build the styled tab strip with explicit dividers — `│`
+/// between same-group tabs, `║` between the editable group
+/// (Thresholds/Integrations/Parameters) and the reference group
+/// (Rules/Badges). Replaces ratatui's `Tabs` widget so we can vary the
+/// inter-tab divider per position.
+pub(crate) fn settings_tab_strip_line(active: SettingsTab) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    for (idx, tab) in SETTINGS_TABS.iter().enumerate() {
+        let label = format!(" {} ", settings_numbered_label(*tab));
+        let style = if *tab == active {
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme::TEXT_DIM)
+        };
+        spans.push(Span::styled(label, style));
+        if idx + 1 < SETTINGS_TABS.len() {
+            // Inter-group seam fires when the current tab is the last
+            // editable tab and the next tab is the first reference tab.
+            let next = SETTINGS_TABS[idx + 1];
+            let seam = if tab.is_editable() != next.is_editable() {
+                "║"
+            } else {
+                "│"
+            };
+            spans.push(Span::styled(seam, Style::default().fg(theme::TEXT_DIM)));
+        }
+    }
+    Line::from(spans)
 }
 
 pub fn settings_field_at(body: Rect, column: u16, row: u16) -> Option<FieldId> {
@@ -2572,12 +2617,15 @@ fn rect_contains(rect: Rect, x: u16, y: u16) -> bool {
 }
 
 fn settings_body_title(tab: SettingsTab) -> &'static str {
+    // v1.51.0: suffix every tab title with `(editable)` or `(reference)`
+    // so the operator can tell at a glance whether arrow / Enter / `e`
+    // will mutate config or just navigate.
     match tab {
-        SettingsTab::Thresholds => " Settings — cost / context / quota thresholds ",
-        SettingsTab::Integrations => " Settings — provider integrations ",
-        SettingsTab::Parameters => " Settings — configured parameters ",
-        SettingsTab::Rules => " Settings — rule conditions ",
-        SettingsTab::Badges => " Settings — badge glossary ",
+        SettingsTab::Thresholds => " Settings — cost / context / quota thresholds  (editable) ",
+        SettingsTab::Integrations => " Settings — provider integrations  (editable) ",
+        SettingsTab::Parameters => " Settings — configured parameters  (editable) ",
+        SettingsTab::Rules => " Settings — rule conditions  (reference) ",
+        SettingsTab::Badges => " Settings — badge glossary  (reference) ",
     }
 }
 
@@ -3883,16 +3931,59 @@ mod tests {
 
     #[test]
     fn settings_tab_index_at_uses_rendered_label_boundaries() {
+        // v1.51.0: labels now carry a numeric prefix ("1 Thresholds",
+        // "2 Integrations", …) so the keyboard shortcut is visible
+        // inside the tab strip itself. Hit-test column offsets shift
+        // accordingly: each label gains 2 cells (digit + space).
         let tabs = Rect::new(10, 2, 80, 3);
         let inner_x = tabs.x + 1;
 
+        // Layout (relative to inner_x):
+        //   [0,13]  "1 Thresholds"  (12 chars + 2 padding)
+        //   14      `│` divider
+        //   [15,30] "2 Integrations" (14 chars + 2 padding)
+        //   31      `│` divider
+        //   [32,45] "3 Parameters"  (12 chars + 2 padding)
+        //   46      `║` divider (editable→reference seam)
+        //   [47,55] "4 Rules"       (7 chars + 2 padding)
+        //   56      `│` divider
+        //   [57,66] "5 Badges"      (8 chars + 2 padding)
         assert_eq!(settings_tab_index_at(tabs, inner_x + 2), Some(0));
-        assert_eq!(settings_tab_index_at(tabs, inner_x + 17), Some(1));
-        assert_eq!(settings_tab_index_at(tabs, inner_x + 29), Some(2));
-        assert_eq!(settings_tab_index_at(tabs, inner_x + 41), Some(3));
-        assert_eq!(settings_tab_index_at(tabs, inner_x + 50), Some(4));
-        assert_eq!(settings_tab_index_at(tabs, inner_x + 70), None);
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 20), Some(1));
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 35), Some(2));
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 50), Some(3));
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 60), Some(4));
+        assert_eq!(settings_tab_index_at(tabs, inner_x + 80), None);
         assert_eq!(settings_tab_index_at(tabs, tabs.x - 1), None);
+    }
+
+    #[test]
+    fn settings_tab_strip_renders_inter_group_seam_between_parameters_and_rules() {
+        // v1.51.0: tab strip uses `│` between same-group tabs and `║`
+        // at the editable/reference seam. Pin both glyphs so a future
+        // refactor can't silently drop the visual cue.
+        let line = settings_tab_strip_line(SettingsTab::Thresholds);
+        let rendered: String = line
+            .spans
+            .iter()
+            .map(|s| s.content.clone().into_owned())
+            .collect();
+        assert!(rendered.contains("3 Parameters "), "rendered: {rendered}");
+        assert!(
+            rendered.contains("║"),
+            "inter-group seam missing: {rendered}"
+        );
+        assert!(
+            rendered.contains("│"),
+            "intra-group divider missing: {rendered}"
+        );
+        // The seam must sit between Parameters and Rules — i.e., the
+        // last `║` should appear before "4 Rules" and after "Parameters".
+        let seam_at = rendered.find('║').expect("seam present");
+        let params_at = rendered.find("Parameters").expect("Parameters present");
+        let rules_at = rendered.find("Rules").expect("Rules present");
+        assert!(seam_at > params_at, "seam must follow Parameters");
+        assert!(seam_at < rules_at, "seam must precede Rules");
     }
 
     #[test]
@@ -4012,6 +4103,10 @@ mod tests {
         s.open();
         s.switch_tab(SettingsTab::Parameters);
 
+        // v1.51.0: anomaly.enabled default flipped to true; force a
+        // known starting state so this test exercises the toggle
+        // mechanic regardless of which way the default points.
+        config.anomaly.enabled = false;
         s.select_parameter(ParameterField::AnomalyEnabled);
         s.activate_parameter(&mut config).expect("bool toggle");
         assert!(config.anomaly.enabled);
@@ -4047,6 +4142,10 @@ mod tests {
         let mut config = cfg();
         s.open();
         s.switch_tab(SettingsTab::Parameters);
+        // v1.51.0: anomaly.enabled default flipped to true; toggling
+        // from a known false starts the test consistently regardless
+        // of the default's polarity.
+        config.anomaly.enabled = false;
         s.select_parameter(ParameterField::AnomalyEnabled);
         s.activate_parameter(&mut config).expect("toggle enabled");
         s.select_parameter(ParameterField::ResetWaitEtaSecs);

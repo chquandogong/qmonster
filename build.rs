@@ -32,6 +32,20 @@ fn main() {
                 println!("cargo:rerun-if-changed=.git/{refname}");
             }
         }
+        // v1.51.0: also watch tag pointers + packed-refs so a fresh
+        // `git tag vX.Y.Z` invalidates this script's cached output.
+        // Without these, `git describe --tags` returns the new tag
+        // but Cargo reuses the prior QMONSTER_GIT_VERSION env var
+        // until something else (HEAD, build.rs, or a tracked ref)
+        // moves — which is why the footer would lag versions behind.
+        let tags_dir = repo.join(".git/refs/tags");
+        if tags_dir.is_dir() {
+            println!("cargo:rerun-if-changed=.git/refs/tags");
+        }
+        let packed_refs = repo.join(".git/packed-refs");
+        if packed_refs.is_file() {
+            println!("cargo:rerun-if-changed=.git/packed-refs");
+        }
     }
 
     let version = git_describe(repo).unwrap_or_else(|| {

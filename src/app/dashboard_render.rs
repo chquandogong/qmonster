@@ -56,6 +56,9 @@ pub struct DashboardFrameView<'a> {
     pub pending_actions: &'a PendingActionsOverlay,
     pub pending_items: &'a [PendingItem],
     pub config: &'a QmonsterConfig,
+    /// v1.51.0: heuristic non-English (IME) input indicator.
+    /// Computed by the loop from `Context::ime_state.is_active(now)`.
+    pub ime_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -120,6 +123,7 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
             split: view.split,
             alerts_focused: !overlay_owns_keyboard && view.focus == FocusedPanel::Alerts,
             panes_focused: !overlay_owns_keyboard && view.focus == FocusedPanel::Panes,
+            ime_active: view.ime_active,
         },
     );
 

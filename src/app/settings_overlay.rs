@@ -490,11 +490,13 @@ mod tests {
         let row = rects.tabs.y + 1;
         let inner_x = rects.tabs.x + 1;
 
+        // v1.51.0: column offsets follow the numbered-label layout
+        // documented in `settings_tab_index_at_uses_rendered_label_boundaries`.
         handle_settings_overlay_mouse(
             &mut overlay,
             &mut config,
             viewport,
-            mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 17, row),
+            mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 20, row),
         );
         assert_eq!(overlay.tab(), SettingsTab::Integrations);
 
@@ -502,7 +504,7 @@ mod tests {
             &mut overlay,
             &mut config,
             viewport,
-            mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 29, row),
+            mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 35, row),
         );
         assert_eq!(overlay.tab(), SettingsTab::Parameters);
 
@@ -510,7 +512,7 @@ mod tests {
             &mut overlay,
             &mut config,
             viewport,
-            mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 41, row),
+            mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 50, row),
         );
         assert_eq!(overlay.tab(), SettingsTab::Rules);
 
@@ -518,7 +520,7 @@ mod tests {
             &mut overlay,
             &mut config,
             viewport,
-            mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 50, row),
+            mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 60, row),
         );
         assert_eq!(overlay.tab(), SettingsTab::Badges);
 

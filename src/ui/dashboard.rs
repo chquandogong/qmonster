@@ -40,6 +40,9 @@ pub struct DashboardView<'a> {
     pub split: DashboardSplit,
     pub alerts_focused: bool,
     pub panes_focused: bool,
+    /// v1.51.0: divider renders an IME-active warning banner when true.
+    /// Computed by the loop from `Context::ime_state.is_active(now)`.
+    pub ime_active: bool,
 }
 
 pub struct TargetPickerView<'a> {
@@ -160,7 +163,12 @@ pub fn render_dashboard(
         },
     );
 
-    render_split_divider(rects.divider, frame.buffer_mut(), view.split);
+    render_split_divider(
+        rects.divider,
+        frame.buffer_mut(),
+        view.split,
+        view.ime_active,
+    );
 
     panels::render_pane_list(
         rects.panes,
@@ -684,8 +692,27 @@ pub fn version_badge_rect(area: Rect) -> Rect {
     )
 }
 
-fn render_split_divider(area: Rect, buf: &mut Buffer, split: DashboardSplit) {
+fn render_split_divider(area: Rect, buf: &mut Buffer, split: DashboardSplit, ime_active: bool) {
     if area.height == 0 {
+        return;
+    }
+    if ime_active {
+        // v1.51.0: replace the normal drag-resize hint with a high-
+        // visibility banner when the heuristic IME indicator says the
+        // operator is typing non-ASCII. Helps Korean/CJK operators
+        // notice they hit a command key while in IME mode (those
+        // keystrokes get composed away rather than dispatched).
+        Paragraph::new(split_divider_ime_banner_text())
+            .style(
+                Style::default()
+                    .fg(theme::severity_color(
+                        crate::domain::recommendation::Severity::Warning,
+                    ))
+                    .bg(theme::BADGE_BG)
+                    .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+            )
+            .alignment(Alignment::Center)
+            .render(area, buf);
         return;
     }
     Paragraph::new(format!(
@@ -695,6 +722,10 @@ fn render_split_divider(area: Rect, buf: &mut Buffer, split: DashboardSplit) {
     .style(Style::default().fg(theme::TEXT_DIM).bg(theme::BADGE_BG))
     .alignment(Alignment::Center)
     .render(area, buf);
+}
+
+pub(crate) fn split_divider_ime_banner_text() -> String {
+    "  \u{26A0} HANGUL/IME ACTIVE — press 영문/English key to disable  \u{26A0}".to_string()
 }
 
 fn render_footer(
@@ -1322,6 +1353,44 @@ mod tests {
         let badge = version_badge_rect(area);
         assert_eq!(badge.y, area.y + area.height - 1);
         assert_eq!(badge.x + badge.width, area.x + area.width);
+    }
+
+    #[test]
+    fn split_divider_renders_normal_resize_hint_when_ime_inactive() {
+        // v1.51.0: regression guard — divider must keep showing the
+        // existing "drag resize alerts/panes …" hint when IME is off.
+        let area = Rect::new(0, 0, 80, 1);
+        let mut buf = Buffer::empty(area);
+        render_split_divider(area, &mut buf, DashboardSplit::default(), false);
+        let dump: String = buf.content.iter().map(|c| c.symbol().to_string()).collect();
+        assert!(
+            dump.contains("drag resize alerts/panes"),
+            "normal divider text missing: {dump}"
+        );
+        assert!(
+            !dump.contains("HANGUL/IME ACTIVE"),
+            "IME banner should not render when inactive: {dump}"
+        );
+    }
+
+    #[test]
+    fn split_divider_renders_ime_warning_when_active() {
+        // v1.51.0: when the heuristic IME indicator is active, the
+        // divider replaces the resize hint with a HANGUL/IME ACTIVE
+        // banner so a Korean/CJK operator notices their command keys
+        // are being composed away by the OS-level IME.
+        let area = Rect::new(0, 0, 80, 1);
+        let mut buf = Buffer::empty(area);
+        render_split_divider(area, &mut buf, DashboardSplit::default(), true);
+        let dump: String = buf.content.iter().map(|c| c.symbol().to_string()).collect();
+        assert!(
+            dump.contains("HANGUL/IME ACTIVE"),
+            "IME banner missing: {dump}"
+        );
+        assert!(
+            !dump.contains("drag resize alerts/panes"),
+            "normal divider text should be suppressed when IME is active: {dump}"
+        );
     }
 
     #[test]

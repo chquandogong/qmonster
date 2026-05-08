@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.50.0 - Operator UX polish: Insights overlay async fetch + spinner placeholder + Phase 7 v2 fold-back + provider matrix + pricing rows"
+  mission_title: "Qmonster v1.51.0 - Operator UX polish: build.rs tag-cache fix + git modal origin/contributors + IME drag-bar indicator + Settings tab grouping + anomaly default-on flip"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 193
-  latest_version: "1.50.0"
+  total_revisions: 194
+  latest_version: "1.51.0"
 
 timeline:
   - change_id: "initial"
@@ -18078,6 +18078,181 @@ timeline:
       - "Phase 7 D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters (only outstanding Phase 7 follow-up)."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
+  - version: "1.51.0"
+    change_sequence: 194
+    date: "2026-05-08"
+    author: "CHENGHAO QUAN + Claude Code (build.rs tag-cache fix + git modal origin/contributors + IME drag-bar indicator + Settings tab grouping); folds the post-v1.50.0 main polish (ErrorBurst evidence enrichment, n-overlay reason joining, Gemini cost activation, anomaly default-on flip)."
+    summary: >
+      v1.51.0 is an operator UX polish bundle layered on v1.50.0. Four
+      operator-visible themes plus one runtime default flip ship together,
+      with no provider adapter / audit chain / SQLite schema changes.
+      (a) build.rs tag-cache invalidation: cargo:rerun-if-changed now also
+      watches .git/refs/tags and .git/packed-refs so a fresh `git tag vX.Y.Z`
+      invalidates the cached QMONSTER_GIT_VERSION env var. Without these
+      directives `git describe --tags` returned the new tag but Cargo
+      reused the prior compiled value — the bug that left the footer
+      badge showing v1.48.0 long after v1.49.0 / v1.50.0 were tagged.
+      (b) Git modal origin URL + Contributors: GitSnapshot gains
+      origin_url: Option<String>, top_contributors: Vec<ContribLine>,
+      extra_contributors / extra_contributor_commits. capture_snapshot
+      calls `git config --get remote.origin.url` and `git shortlog -sne
+      HEAD` (with `-sn` fallback), routing raw output through new pure
+      helpers normalize_origin_url and parse_shortlog. SSH-style remotes
+      (git@github.com:user/repo.git, ssh://git@host:port/path.git) are
+      rewritten to HTTPS; trailing .git is stripped so operators can
+      paste the URL into a browser. panel_from_snapshot adds an `origin`
+      detail line and a `Contributors` block (`<commits>  <name>` per
+      row, top 5 with `+N more (M commits)` overflow). 9 new lib tests
+      under git_info::tests cover origin parsing, shortlog parsing,
+      contributor splitting, and panel rendering.
+      (c) Drag-bar IME (non-English input) indicator + terminal bell:
+      new module src/app/ime_state.rs holds a pure heuristic state
+      machine. ImeState::observe(c, now) returns ImeObservation —
+      Ignored (non-alphabetic), AsciiCleared (ASCII letter), or
+      NonAsciiSet { transitioned_on } (non-ASCII letter). The
+      transitioned_on edge fires the bell exactly once per activation;
+      is_active(now) honours a 3-second IME_INDICATOR_TTL so the
+      indicator dims naturally. Context gains ime_state: ImeState; the
+      tui_loop key dispatcher observes every KeyCode::Char(c) BEFORE
+      the per-overlay routing chain so modals don't mask the signal,
+      and emits a single ASCII BEL (0x07) on inactive→active edges via
+      a new ring_terminal_bell helper that writes directly to stdout.
+      render_split_divider replaces the normal "drag resize alerts/panes"
+      hint with a high-visibility banner ⚠ HANGUL/IME ACTIVE — press
+      영문/English key to disable ⚠ (severity-warning fg, BADGE_BG bg,
+      BOLD | REVERSED). 10 ime_state unit tests cover the matrix; 2
+      dashboard tests pin the divider branching. Heuristic limit
+      accepted by the operator at design time: terminals don't expose
+      IME state to TUI apps, so the very first non-ASCII keystroke is
+      what flips the indicator on.
+      (d) Settings overlay editable/reference tab grouping: new
+      SettingsTab::is_editable() returns true for Thresholds /
+      Integrations / Parameters and false for Rules / Badges. Custom
+      tab strip rendering replaces ratatui's Tabs widget so the seam
+      between editable and reference groups can show a visible `║`
+      while same-group tabs keep `│`. Labels gain a numeric prefix
+      (`1 Thresholds`, `2 Integrations`, …) so the keyboard shortcut
+      is visible inside the strip. settings_tab_index_at recomputed
+      for the new label widths; mouse handler test in settings_overlay.rs
+      updated. Body title gains an `(editable)` / `(reference)` suffix
+      so the operator can tell at a glance whether arrow / Enter / `e`
+      will mutate config or just navigate. The anomaly enabled
+      parameter remains in Parameters tab as ParameterField::AnomalyEnabled
+      — already toggleable via space/Enter; the new tab grouping
+      makes it discoverable as part of the editable cluster.
+      (e) Anomaly observation surface default-on: AnomalyConfig::default().enabled
+      flips false → true. Phase 7 v2/v3 detectors stabilised + ErrorBurst
+      dominant_kind evidence + CrossPane fold-back closure (all v1.50.0)
+      made every detector observable to operators on first launch.
+      Existing operators with `enabled = false` written into their
+      qmonster.toml keep that override; deserialization contract is
+      untouched. 4 config-tests updated; 2 integration tests in
+      tests/event_loop_integration.rs explicitly opt back out via
+      config.anomaly.enabled = false since they exercise the
+      disabled-mode regression; 2 settings-overlay tests force the
+      starting state.
+      Folded post-v1.50.0 main polish (already on main, untagged):
+      ErrorBurst evidence enrichment (1862c46), n-overlay reason
+      joining all evidence rows (4e4a517), Gemini adapter cost
+      activation (3353707). Lib tests 1294 → 1317 (+23 net new across
+      all five themes); 63 integration tests still green.
+    intent_ko: >
+      v1.51.0 은 v1.50.0 위에 운영자 UX 폴리시 묶음을 출하한다.
+      (a) build.rs 의 cargo:rerun-if-changed 가 .git/refs/tags 와
+      .git/packed-refs 까지 추적하도록 수정 — 새 태그 부착 후 재빌드
+      해도 캐시된 QMONSTER_GIT_VERSION 이 갱신되지 않아 footer 가
+      v1.48.0 에 멈춰 있던 버그를 닫는다.
+      (b) Git 모달에 origin URL + Contributors 추가. GitSnapshot 에
+      origin_url + top_contributors + extras 필드, capture_snapshot
+      이 git config remote.origin.url + git shortlog -sne HEAD 를 호출.
+      SSH 형식은 HTTPS 로 정규화, .git 접미사 제거. panel 에 origin
+      라인 + Contributors 블록 (top 5 + `+N more (M commits)` 오버플로).
+      (c) Alerts/Panes 분할 바에 IME (비영어 입력) 인디케이터 + 첫
+      활성화 시 BEL 1회. src/app/ime_state.rs 가 순수 휴리스틱 상태
+      머신; tui_loop 가 매 KeyCode::Char(c) 를 dispatch 전에 observe;
+      render_split_divider 는 ime_active 시 평소 hint 대신 ⚠ HANGUL/
+      IME ACTIVE 배너를 severity-warning 색상 + BOLD|REVERSED 로 렌더.
+      터미널이 IME 상태를 노출하지 않으므로 첫 비-ASCII 키가 트리거
+      라는 한계를 운영자가 합의함.
+      (d) S 오버레이 탭을 editable / reference 두 그룹으로 시각 분리.
+      Thresholds / Integrations / Parameters 가 editable 그룹, Rules /
+      Badges 가 reference 그룹. 그룹 사이 seam 은 `║`, 동일 그룹 안은
+      `│`. 레이블에 1-5 번호 prefix 추가 (`1 Thresholds` 등). body
+      title 에 `(editable)` / `(reference)` 접미사. anomaly enabled
+      는 Parameters 탭 안에 그대로 있고 (이미 토글 가능) 새 탭 그룹
+      덕분에 editable 군집에 포함된 것이 명확해진다.
+      (e) anomaly observation 기본값 on 으로 플립. Phase 7 v2/v3 +
+      ErrorBurst dominant_kind + CrossPane fold-back 마감 (전부
+      v1.50.0) 으로 모든 디텍터가 첫 실행에서 안정적이 되었기에 기본
+      활성화. 기존 운영자가 qmonster.toml 에 `enabled = false` 를
+      적어둔 경우는 그대로 유지 — 역직렬화 계약은 변경되지 않음.
+      v1.50.0 태그 이후 main 에 쌓여있던 폴리시 (ErrorBurst evidence
+      enrichment, n 오버레이 reason 조인, Gemini cost 활성화) 도 함께
+      v1.51.0 으로 묶음. 1294 → 1317 lib 테스트.
+    triggered_by: "Operator-reported confusion: footer badge stuck at v1.48.0; need to know IME state on the alerts/panes drag bar; want git URL and contributors visible in the Git modal; Settings overlay's editable vs reference tabs were not visually distinct, making the anomaly enabled toggle hard to find. Operator agreed to design Option A (tab grouping with `║` seam) for the Settings split."
+    changes:
+      added:
+        - "build.rs: cargo:rerun-if-changed=.git/refs/tags and cargo:rerun-if-changed=.git/packed-refs added so a fresh `git tag` invalidates the cached QMONSTER_GIT_VERSION env var."
+        - "src/app/git_info.rs: ContribLine struct {commits: usize, name: String}; GitSnapshot fields origin_url: Option<String>, top_contributors: Vec<ContribLine>, extra_contributors: usize, extra_contributor_commits: usize; capture_snapshot fetches origin URL via `git config --get remote.origin.url` and contributors via `git shortlog -sne HEAD` (fallback `-sn`); panel_from_snapshot adds `origin` detail line + Contributors block (top 5 + `+N more (M commits)` overflow)."
+        - "src/app/git_info.rs::normalize_origin_url(raw: &str) -> String: strips trailing .git and rewrites SSH-style remotes (git@host:path, ssh://git@host:port/path) to HTTPS form."
+        - "src/app/git_info.rs::parse_shortlog(raw: &str) -> Vec<ContribLine>: parses shortlog -sne / -sn output, drops <email> suffix, skips blank/malformed lines."
+        - "src/app/git_info.rs::split_contributors(all, limit) -> (top, extras_n, extras_commits): caps the rendered list and rolls the remainder into a single overflow line."
+        - "src/app/ime_state.rs (new module): ImeState { last_non_ascii_at: Option<Instant> } with observe(c, now) -> ImeObservation { Ignored | AsciiCleared | NonAsciiSet { transitioned_on } } and is_active(now) honouring IME_INDICATOR_TTL = 3 seconds."
+        - "Context.ime_state: ImeState (src/app/bootstrap.rs)."
+        - "DashboardView.ime_active: bool (src/ui/dashboard.rs); DashboardFrameView.ime_active: bool (src/app/dashboard_render.rs)."
+        - "src/ui/dashboard.rs::split_divider_ime_banner_text() and render_split_divider gains an `ime_active` parameter — when true it renders ⚠ HANGUL/IME ACTIVE — press 영문/English key to disable ⚠ in severity-warning fg + BADGE_BG bg + BOLD|REVERSED instead of the resize hint."
+        - "src/app/tui_loop.rs::ring_terminal_bell(): writes ASCII BEL (0x07) to stdout once on inactive→active IME transitions."
+        - "src/ui/settings.rs::SettingsTab::is_editable() returns true for Thresholds/Integrations/Parameters and false for Rules/Badges."
+        - "src/ui/settings.rs::settings_numbered_label and settings_tab_strip_line: custom tab strip renderer that draws `1 Thresholds`/`2 Integrations`/… with `│` between same-group tabs and `║` between the editable and reference groups."
+      changed:
+        - "src/app/config.rs: AnomalyConfig::default().enabled flipped false → true. Comment notes Phase 7 v2/v3 detectors stabilized + ErrorBurst dominant_kind evidence + CrossPane fold-back closure made every detector observable on first launch. Existing `enabled = false` operators keep their override (deserialization contract untouched)."
+        - "src/app/config.rs tests: anomaly_config_disabled_by_default → anomaly_config_enabled_by_default; anomaly_config_missing_section_disables_layer → anomaly_config_missing_section_keeps_default_enabled; new anomaly_config_explicit_disable_is_honoured pins the override-respect contract."
+        - "tests/event_loop_integration.rs: event_loop_anomalies_off_baseline_regression and event_loop_no_promotion_when_anomaly_disabled now explicitly set config.anomaly.enabled = false since they exercise the disabled-mode regression rather than the default."
+        - "src/ui/settings.rs::settings_body_title: each tab title now suffixed with `(editable)` or `(reference)` so the operator can tell at a glance whether keystrokes will mutate config or just navigate."
+        - "src/ui/settings.rs::settings_tab_index_at: hit-test column offsets updated for the numbered-label layout (`1 Thresholds` / `2 Integrations` / `3 Parameters` / `4 Rules` / `5 Badges`)."
+        - "src/ui/settings.rs render_settings_modal: uses Block + custom Paragraph(settings_tab_strip_line) instead of ratatui's Tabs widget."
+        - "src/ui/settings.rs tests parameter_bool_enum_number_and_string_edits_update_config + save_writes_parameter_values_into_existing_toml: explicitly set config.anomaly.enabled = false before toggling so the test exercises the toggle mechanic regardless of default polarity."
+        - "src/app/settings_overlay.rs mouse_handler_switches_tabs_on_tab_labels: column offsets updated to match the new numbered-label layout."
+        - "src/app/dashboard_render.rs render_dashboard_frame: threads ime_active into DashboardView."
+      removed:
+        - "ratatui::widgets::Tabs import in src/ui/settings.rs (replaced by custom strip)."
+      tests_added:
+        - "src/app/git_info.rs: 9 new tests — normalize_origin_url_rewrites_ssh_to_https, normalize_origin_url_strips_dot_git_on_https, normalize_origin_url_handles_ssh_url_form, parse_shortlog_strips_email_and_returns_count, parse_shortlog_skips_blank_and_malformed_lines, split_contributors_caps_at_limit_and_reports_extras, split_contributors_passes_through_when_below_limit, panel_from_snapshot_renders_origin_and_contributors, panel_from_snapshot_shows_none_when_no_origin_or_contributors."
+        - "src/app/ime_state.rs: 10 new tests — fresh_state_is_not_active, non_ascii_letter_activates_and_signals_first_transition, second_non_ascii_within_ttl_does_not_re_signal_transition, ascii_letter_clears_state_immediately, re_activation_after_clear_signals_transition_again, state_decays_after_ttl_without_clearing_via_ascii, re_activating_after_ttl_decay_signals_transition, digits_punctuation_and_space_are_ignored, ascii_letter_when_already_inactive_returns_cleared_but_no_bell_caller_action, cjk_characters_all_treated_as_non_ascii."
+        - "src/ui/dashboard.rs: 2 new tests — split_divider_renders_normal_resize_hint_when_ime_inactive, split_divider_renders_ime_warning_when_active."
+        - "src/ui/settings.rs: 1 new test — settings_tab_strip_renders_inter_group_seam_between_parameters_and_rules."
+        - "src/app/config.rs: 1 new test — anomaly_config_explicit_disable_is_honoured (override-respect)."
+      docs:
+        - "package.json: version 1.50.0 → 1.51.0."
+        - "mission-history.yaml: v1.51.0 entry appended (this entry); meta updated."
+        - ".mission/CURRENT_STATE.md: v1.51.0 Feature State section added; Mission section retitled; post-tag polish section relabelled as folded-into-v1.51.0; Validation Baseline updated to 1317 lib tests."
+    observable_effects:
+      - "Footer version badge updates correctly after a `cargo build` following a fresh `git tag`. The bug that left it stuck at v1.48.0 even after v1.49.0/v1.50.0 were tagged is closed."
+      - "Clicking the bottom-right version badge now opens a Git modal that shows the origin URL (HTTPS) and a Contributors block listing the top 5 contributors with commit counts, plus an `+N more (M commits)` overflow line on busy repos."
+      - "Typing in Korean / Japanese / Chinese (or other CJK / non-ASCII alphabetic input) lights up a high-visibility ⚠ HANGUL/IME ACTIVE banner on the alerts/panes drag bar and rings the terminal bell once. Switching back to English clears it; otherwise it dims after 3 seconds of silence."
+      - "S overlay tab strip now shows `1 Thresholds │ 2 Integrations │ 3 Parameters ║ 4 Rules │ 5 Badges` — the `║` seam visibly separates the editable cluster from the reference cluster. Body titles end with `(editable)` or `(reference)`."
+      - "On first launch (no qmonster.toml), the anomaly observation surface is now active by default — operators see anomaly events on the n overlay without flipping `[anomaly] enabled = true` first. Existing `enabled = false` overrides are honoured."
+    impact_scope:
+      runtime: "No new threads beyond the v1.50.0 Insights worker. IME state machine is in-process and pure. Bell write is a single 1-byte stdout write per inactive→active edge; flush is best-effort. No change to provider polling cadence, audit chain, or SQLite schema."
+      tests: "1294 lib tests at the v1.50.0 post-tag polish baseline → 1317 after this bundle. 63 integration tests preserved."
+      ledger: "1 new timeline entry (sequence 194); meta total_revisions 193 → 194, latest_version 1.50.0 → 1.51.0."
+      npm: "package.json version 1.51.0; CI publication of v1.51.0 follows the same workflow as v1.37.0 through v1.50.0."
+    breaking: false
+    risk: "low — every theme is additive or a default flip behind a documented override. (a) build.rs change only affects which paths Cargo watches; the actual git describe call is unchanged. (b) Git modal additions are read-only string formatting; failed git invocations fall through the existing error path. (c) IME state machine is pure and per-Context; bell write swallows errors. (d) Settings tab strip restyling preserves all keyboard shortcuts and click behaviours; tests pin the new column offsets. (e) anomaly default flip is the only semantic change — guarded by an explicit `enabled = false` override path that's pinned by a new test."
+    related_commits:
+      - "PENDING — v1.51.0 release ledger sync commit (this bundle)."
+      - "dff389e chore(state): note Gemini cost activation as v1.50.0 post-tag polish"
+      - "3353707 chore(ai): apply Claude edit (Gemini cost activation)"
+      - "8244333 chore(ai): apply Claude edit"
+      - "4e4a517 feat(anomaly): surface every evidence row in n-overlay reason"
+      - "a921b39 chore(state): note ErrorBurst evidence enrichment as v1.50.0 post-tag polish"
+      - "1862c46 feat(anomaly): enrich ErrorBurst evidence with dominant pattern kind"
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+      - "Per audit doc Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md remaining recommended slices not folded into v1.51.0: provider-honesty chips for cache_hit_ratio in non-Claude pane cards (UI slice in panels.rs), Insights `Situations` field cosmetic verification (fixture-driven render snapshot test), cache rule provider-gating one-paragraph note in ARCHITECTURE.md, doc-promotion pass for stable claims into docs/ai/."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

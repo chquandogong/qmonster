@@ -36,6 +36,11 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     pub insights_load_tx: std::sync::mpsc::Sender<crate::app::insights_load::InsightsLoadOutcome>,
     pub insights_load_rx: std::sync::mpsc::Receiver<crate::app::insights_load::InsightsLoadOutcome>,
     pub next_insights_request_id: u64,
+    /// v1.51.0: heuristic non-English input indicator. Set when a
+    /// non-ASCII alphabetic char arrives; cleared when an ASCII letter
+    /// arrives or after `IME_INDICATOR_TTL` of silence. Read by the
+    /// alerts/panes split divider renderer.
+    pub ime_state: crate::app::ime_state::ImeState,
     pub source: P,
     pub notifier: N,
     pub sink: Box<dyn EventSink>,
@@ -181,6 +186,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             insights_load_tx,
             insights_load_rx,
             next_insights_request_id: 0,
+            ime_state: crate::app::ime_state::ImeState::new(),
             source,
             notifier,
             sink,

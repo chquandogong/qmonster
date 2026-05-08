@@ -230,6 +230,7 @@ where
                             pending_actions: &pending_actions,
                             pending_items: &pending_items,
                             config: &ctx.config,
+                            ime_active: ctx.ime_state.is_active(now),
                         },
                     );
                 })?;
@@ -245,6 +246,24 @@ where
                 if event::poll(Duration::from_millis(100))? {
                     match event::read()? {
                         Event::Key(k) if k.kind == KeyEventKind::Press => {
+                            // v1.51.0: feed Char keystrokes into the heuristic
+                            // IME indicator BEFORE per-overlay dispatch so it
+                            // observes keys consumed by any modal as well as
+                            // the dashboard. Bell on inactive→active edges
+                            // only — the user accepted the heuristic limit
+                            // that the very first non-ASCII key is what lights
+                            // the indicator (terminals don't expose IME state).
+                            if let KeyCode::Char(c) = k.code
+                                && matches!(
+                                    ctx.ime_state.observe(c, Instant::now()),
+                                    crate::app::ime_state::ImeObservation::NonAsciiSet {
+                                        transitioned_on: true
+                                    }
+                                )
+                            {
+                                ring_terminal_bell();
+                            }
+
                             if git_modal.is_open() {
                                 let size = terminal.size()?;
                                 let max_scroll = crate::ui::dashboard::max_git_scroll(
@@ -996,6 +1015,19 @@ where
 /// `d` for reject, `y` for copy), close the modal without executing —
 /// the originating key acts as a toggle/cancel rather than re-opening
 /// the same action.
+/// v1.51.0: emit a single ASCII BEL (0x07) so terminals that honour the
+/// audible-bell setting chirp once on the inactive→active IME edge.
+/// Writes directly to `stdout` because ratatui's backend doesn't expose
+/// a "raw byte" path; the BEL is non-printing and won't disturb the
+/// rendered frame. Errors are intentionally swallowed — failing to ring
+/// is never worth crashing the loop over.
+fn ring_terminal_bell() {
+    use std::io::Write;
+    let mut out = std::io::stdout();
+    let _ = out.write_all(b"\x07");
+    let _ = out.flush();
+}
+
 fn matches_originating_key(
     pending: Option<&crate::app::action_explainer::PendingAction>,
     c: char,
