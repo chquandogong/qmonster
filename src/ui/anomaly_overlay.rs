@@ -186,6 +186,12 @@ impl AnomalyOverlay {
     ) {
         let popup_area = anomaly_modal_area_for(area, self);
         frame.render_widget(Clear, popup_area);
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(3), Constraint::Length(1)])
+            .split(popup_area);
+        let body_area = layout[0];
+        let hint_area = layout[1];
 
         let (title_base, total_count) = match self.view {
             AnomalyOverlayView::Ring => (
@@ -203,19 +209,23 @@ impl AnomalyOverlay {
                 self.history_cache.len(),
             ),
         };
-        let visible_rows_for_scroll = popup_area.height.saturating_sub(2).saturating_sub(1).max(1);
+        let visible_rows_for_scroll = body_area.height.saturating_sub(2).saturating_sub(1).max(1);
         let max_scroll = anomaly_visible_scroll_bound(total_count, visible_rows_for_scroll);
         let scroll = self.scroll.min(max_scroll);
-        let title = format!(
-            "{} [{}] ",
-            title_base.trim_end(),
-            scroll_hint::scroll_status_label(scroll, max_scroll)
-        );
+        let title = format!("{} ", title_base.trim_end());
         let block = Block::default()
             .borders(Borders::ALL)
             .title(title)
             .border_style(Style::default().fg(theme::BORDER_ACTIVE));
         let close = Paragraph::new("[x]").style(theme::modal_close_style());
+        let view_toggle = match self.view {
+            AnomalyOverlayView::Ring => "h history",
+            AnomalyOverlayView::History => "h ring",
+        };
+        let hint = format!(
+            "[ shrink · ] grow · = reset · {view_toggle} · ↑/↓ scroll · n close · Esc/q close · click [x] close · {}",
+            scroll_hint::scroll_status_label(scroll, max_scroll)
+        );
 
         if total_count == 0 {
             let body_lines = match self.view {
@@ -237,14 +247,22 @@ impl AnomalyOverlay {
             let body = Paragraph::new(body_lines)
                 .block(block)
                 .wrap(Wrap { trim: false });
-            frame.render_widget(body, popup_area);
+            frame.render_widget(body, body_area);
             frame.render_widget(close, close_button_rect(popup_area));
+            frame.render_widget(
+                Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM)),
+                hint_area,
+            );
             return;
         }
 
-        let inner = block.inner(popup_area);
-        frame.render_widget(block, popup_area);
+        let inner = block.inner(body_area);
+        frame.render_widget(block, body_area);
         frame.render_widget(close, close_button_rect(popup_area));
+        frame.render_widget(
+            Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM)),
+            hint_area,
+        );
 
         let header = format!(
             "{:<8}  {:<6}  {:<22}  {:<6}  {:<8}  {}",
@@ -701,6 +719,53 @@ mod tests {
         assert!(
             rendered.contains("[h: history]"),
             "ring view title should advertise history toggle"
+        );
+    }
+
+    #[test]
+    fn render_ring_view_keeps_scroll_status_in_footer_not_title() {
+        use crate::app::anomaly_events_ring::AnomalyEventsRing;
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let viewport = Rect::new(0, 0, 160, 30);
+        let mut terminal =
+            Terminal::new(TestBackend::new(viewport.width, viewport.height)).unwrap();
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let mut ring = AnomalyEventsRing::new();
+        ring.push(AnomalyEvent {
+            timestamp: 1_700_000_000,
+            pane_id: "%1".to_string(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "ring view".to_string(),
+        });
+
+        terminal
+            .draw(|f| overlay.render(f, f.area(), &ring))
+            .unwrap();
+        let rendered = buf_to_string(terminal.backend().buffer());
+        let title_line = rendered
+            .lines()
+            .find(|line| line.contains("ANOMALY EVENTS"))
+            .unwrap_or_else(|| panic!("anomaly title line missing:\n{rendered}"));
+
+        assert!(
+            !title_line.contains("scroll"),
+            "anomaly title should identify the window only: {title_line}"
+        );
+        assert!(
+            rendered.contains("scroll 0/0 · END"),
+            "anomaly footer should carry scroll status:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("[ shrink · ] grow · = reset"),
+            "anomaly footer should carry shared chrome controls:\n{rendered}"
         );
     }
 

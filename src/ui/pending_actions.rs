@@ -27,6 +27,7 @@ use crate::app::system_notice::SystemNotice;
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Severity;
 use crate::ui::dashboard::close_button_rect;
+use crate::ui::scroll_hint;
 use crate::ui::theme;
 
 // Modal size + position adjustability (parity with the m overlay).
@@ -672,8 +673,11 @@ pub fn pending_actions_title(overlay: &PendingActionsOverlay, items: &[PendingIt
 /// for `(0)` segments separately.
 pub fn pending_actions_hint_text(overlay: &PendingActionsOverlay, items: &[PendingItem]) -> String {
     let (n_accept, n_clear, n_copy) = pending_actions_counts(overlay, items);
+    let max_scroll = items.len().saturating_sub(1).min(u16::MAX as usize) as u16;
+    let scroll = overlay.selected().min(max_scroll as usize) as u16;
     format!(
-        "Space toggle \u{B7} P/Y/A group \u{B7} c clear-sel \u{B7} p accept({n_accept}) \u{B7} d clear({n_clear}) \u{B7} y copy({n_copy}) \u{B7} [/]/, /. /= geom \u{B7} (confirm_actions bypass) \u{B7} a/Esc close"
+        "Space toggle \u{B7} P/Y/A group \u{B7} c clear-sel \u{B7} p accept({n_accept}) \u{B7} d clear({n_clear}) \u{B7} y copy({n_copy}) \u{B7} [/]/, /. /= geom \u{B7} (confirm_actions bypass) \u{B7} a/Esc close \u{B7} {}",
+        scroll_hint::scroll_status_label(scroll, max_scroll)
     )
 }
 
@@ -1570,6 +1574,37 @@ mod tests {
             "must cap at 1 (y dispatches first only): {hint}"
         );
         assert!(!hint.contains("y copy(2)"), "must NOT show 2: {hint}");
+    }
+
+    #[test]
+    fn hint_text_reports_list_progress_and_end() {
+        use crate::domain::origin::SourceKind;
+
+        let item = PendingItem::Proposal {
+            pane_idx: 0,
+            pane_label: "claude:1:main · %1".into(),
+            slash_command: "/compact".into(),
+            severity: None,
+            source: SourceKind::ProjectCanonical,
+            proposal_id: "%1:/compact".into(),
+            target_pane_id: "%1".into(),
+        };
+        let items = vec![item.clone(), item.clone(), item];
+        let mut overlay = PendingActionsOverlay::new();
+        overlay.set_selected(1);
+        let middle = pending_actions_hint_text(&overlay, &items);
+        assert!(middle.contains("scroll 1/2 · more"), "{middle}");
+
+        overlay.set_selected(2);
+        let end = pending_actions_hint_text(&overlay, &items);
+        assert!(end.contains("scroll 2/2 · END"), "{end}");
+
+        overlay.set_selected(9);
+        let clamped = pending_actions_hint_text(&overlay, &items);
+        assert!(clamped.contains("scroll 2/2 · END"), "{clamped}");
+
+        let empty = pending_actions_hint_text(&PendingActionsOverlay::new(), &[]);
+        assert!(empty.contains("scroll 0/0 · END"), "{empty}");
     }
 
     #[test]

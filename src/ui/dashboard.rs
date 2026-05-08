@@ -260,7 +260,7 @@ pub fn render_target_picker(
             rects.list,
         );
         frame.render_widget(
-            Paragraph::new(view.hint)
+            Paragraph::new(target_picker_hint_line(view.hint, 0, 0))
                 .style(Style::default().fg(theme::TEXT_DIM))
                 .wrap(Wrap { trim: false }),
             rects.hint,
@@ -313,11 +313,21 @@ pub fn render_target_picker(
         rects.preview,
     );
     frame.render_widget(
-        Paragraph::new(view.hint)
-            .style(Style::default().fg(theme::TEXT_DIM))
-            .wrap(Wrap { trim: false }),
+        Paragraph::new(target_picker_hint_line(
+            view.hint,
+            selected,
+            view.labels.len(),
+        ))
+        .style(Style::default().fg(theme::TEXT_DIM))
+        .wrap(Wrap { trim: false }),
         rects.hint,
     );
+}
+
+fn target_picker_hint_line(base: &str, selected: usize, total: usize) -> String {
+    let max_scroll = total.saturating_sub(1).min(u16::MAX as usize) as u16;
+    let scroll = selected.min(max_scroll as usize) as u16;
+    scrollable_modal_hint(base, scroll, max_scroll)
 }
 
 pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
@@ -925,7 +935,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "Overlay chrome",
-            "large overlays (m/a/i/n) use [/] resize, = reset geometry, title drag move, body-wheel/↑/↓ scroll, same entry key/Esc/q/[x] close; S edit mode and short confirmation modals are exceptions",
+            "scrollable overlays use title for identity and footer/hint for controls plus scroll x/y · more/END; large overlays (m/a/i/n) use [/] resize, = reset geometry, title drag move, body-wheel/↑/↓ scroll, same entry key/Esc/q/[x] close; S edit mode and short confirmation modals are exceptions",
         ),
         ("Tab", "switch focus between alerts and pane list"),
         ("Up / Down", "move one item in the focused list"),
@@ -943,7 +953,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "t",
-            "open tmux target picker (session -> window); press t again, click [x], or Esc to close",
+            "open tmux target picker (session -> window); hint shows scroll x/y · more/END for the list; press t again, click [x], or Esc to close",
         ),
         (
             "m",
@@ -955,7 +965,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "a",
-            "open Pending Actions overlay (live explainer + multi-select bulk dispatch + size/ratio adjustability): lists every pane with a pending p/d proposal AND every alert with a y-copyable command; Space=toggle selection, P/Y/A=group toggle, c=clear; p/d/y dispatch selected items bypassing confirm_actions; [/] resize modal, ,/. resize list pane, = reset all geometry; drag title row to move, drag separator to resize ratio; a again or Esc/q/[x] close",
+            "open Pending Actions overlay (live explainer + multi-select bulk dispatch + size/ratio adjustability): lists every pane with a pending p/d proposal AND every alert with a y-copyable command; hint shows scroll x/y · more/END; Space=toggle selection, P/Y/A=group toggle, c=clear; p/d/y dispatch selected items bypassing confirm_actions; [/] resize modal, ,/. resize list pane, = reset all geometry; drag title row to move, drag separator to resize ratio; a again or Esc/q/[x] close",
         ),
         (
             "i",
@@ -1437,6 +1447,26 @@ mod tests {
         assert_eq!(
             scrollable_modal_hint("close", 3, 3),
             "close · scroll 3/3 · END"
+        );
+    }
+
+    #[test]
+    fn target_picker_hint_reports_list_progress_and_end() {
+        assert_eq!(
+            target_picker_hint_line("close", 1, 4),
+            "close · scroll 1/3 · more"
+        );
+        assert_eq!(
+            target_picker_hint_line("close", 3, 4),
+            "close · scroll 3/3 · END"
+        );
+        assert_eq!(
+            target_picker_hint_line("close", 9, 4),
+            "close · scroll 3/3 · END"
+        );
+        assert_eq!(
+            target_picker_hint_line("close", 0, 0),
+            "close · scroll 0/0 · END"
         );
     }
 

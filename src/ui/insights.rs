@@ -246,28 +246,44 @@ pub fn insights_modal_area_for(
 pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
     let area = insights_modal_area_for(frame.area(), overlay);
     frame.render_widget(Clear, area);
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(3), Constraint::Length(1)])
+        .split(area);
+    let body_area = layout[0];
+    let hint_area = layout[1];
     let block = Block::default()
         .borders(Borders::ALL)
         .title_style(Style::default().add_modifier(Modifier::BOLD))
         .border_style(Style::default().fg(theme::BORDER_ACTIVE));
-    let inner = block.inner(area);
-    let title = if overlay.is_loading() {
-        " Token Insights — loading [i/Esc/q close] ".to_string()
+    let inner = block.inner(body_area);
+    let max_scroll = if overlay.is_loading() {
+        0
     } else {
-        let max_scroll = overlay
+        overlay
             .line_count()
             .saturating_sub(inner.height as usize)
-            .min(u16::MAX as usize) as u16;
-        format!(
-            " Token Insights [{}] [i/Esc/q close] [r refresh] ",
-            scroll_hint::scroll_status_label(overlay.scroll().min(max_scroll), max_scroll)
-        )
+            .min(u16::MAX as usize) as u16
+    };
+    let scroll = overlay.scroll().min(max_scroll);
+    let title = if overlay.is_loading() {
+        " Token Insights · loading ".to_string()
+    } else {
+        " Token Insights ".to_string()
     };
     let block = block.title(title);
-    frame.render_widget(block, area);
+    frame.render_widget(block, body_area);
     frame.render_widget(
         Paragraph::new("[x]").style(theme::modal_close_style()),
         close_button_rect(area),
+    );
+    let hint = format!(
+        "[ shrink · ] grow · = reset · r refresh · ↑/↓ scroll · i close · Esc/q close · click [x] close · {}",
+        scroll_hint::scroll_status_label(scroll, max_scroll)
+    );
+    frame.render_widget(
+        Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM)),
+        hint_area,
     );
 
     if overlay.is_loading() {
@@ -298,7 +314,7 @@ pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
 
     let items: Vec<ListItem> = lines
         .into_iter()
-        .skip(overlay.scroll as usize)
+        .skip(scroll as usize)
         .take(inner.height as usize)
         .map(ListItem::new)
         .collect();
@@ -387,6 +403,40 @@ mod tests {
             .expect("top-left border cell in bounds");
 
         assert_eq!(cell.fg, theme::BORDER_ACTIVE);
+    }
+
+    #[test]
+    fn render_keeps_scroll_status_in_footer_not_title() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let viewport = ratatui::layout::Rect::new(0, 0, 160, 36);
+        let mut terminal =
+            Terminal::new(TestBackend::new(viewport.width, viewport.height)).unwrap();
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+
+        terminal
+            .draw(|frame| render_insights_modal(frame, &overlay))
+            .unwrap();
+        let rendered = buf_to_string(terminal.backend().buffer());
+        let title_line = rendered
+            .lines()
+            .find(|line| line.contains("Token Insights"))
+            .unwrap_or_else(|| panic!("insights title line missing:\n{rendered}"));
+
+        assert!(
+            !title_line.contains("scroll"),
+            "insights title should identify the window only: {title_line}"
+        );
+        assert!(
+            rendered.contains("scroll 0/0 · END"),
+            "insights footer should carry scroll status:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("[ shrink · ] grow · = reset"),
+            "insights footer should carry shared chrome controls:\n{rendered}"
+        );
     }
 
     #[test]
@@ -515,5 +565,16 @@ mod tests {
         assert!(joined.contains('⠋'), "buffer:\n{joined}");
         assert!(!joined.contains("Action Ledger"), "buffer:\n{joined}");
         assert!(!joined.contains("CACHE TREND"), "buffer:\n{joined}");
+    }
+
+    fn buf_to_string(buf: &ratatui::buffer::Buffer) -> String {
+        let mut out = String::new();
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                out.push_str(buf[(x, y)].symbol());
+            }
+            out.push('\n');
+        }
+        out
     }
 }

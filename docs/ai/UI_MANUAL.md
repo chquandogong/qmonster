@@ -19,9 +19,12 @@
   `m`/`n`/`a`/`i`로 Metrics / Anomaly Events / Pending Actions /
   Token Insights overlay, `?`로 help, footer 오른쪽 아래 버전 배지를
   클릭하면 Git overlay가 열립니다.
-- **Scroll status**: 주요 스크롤 가능한 modal/overlay는 hint나 title에
-  `scroll x/y · more` 또는 `scroll x/y · END`를 표시해 더 내려갈 내용이
-  있는지 바로 알 수 있게 합니다.
+- **Scroll status**: 주요 스크롤 가능한 modal/overlay와 list-style 창은
+  footer/hint에 `scroll x/y · more` 또는 `scroll x/y · END`를 표시해
+  더 내려갈 내용이 있는지 바로 알 수 있게 합니다.
+- **Title/Footer role**: 큰 스크롤형 overlay는 title에는 창 정체성만 두고,
+  footer/hint에는 조작법과 scroll status를 둡니다. 짧은 confirmation modal과
+  hover help는 예외입니다.
 - **Hover Help**: Alerts/Panes 행 위에 마우스를 올리면 floating help가
   뜹니다. 내용이 길면 줄바꿈을 반영해 높이가 커지고, 터미널이 좁거나
   카드가 잘릴 수 있으면 화면 하단 drawer 형태로 열립니다. `H`로 on/off,
@@ -37,7 +40,9 @@ the overlay is not in an edit sub-mode. In the first
 chrome-consistency slice this applies to `m` Metrics, `a` Pending
 Actions, `i` Token Insights, and `n` Anomaly Events. `S` Settings keeps
 edit-mode guards, and short confirmation modals intentionally remain
-non-resizable.
+non-resizable. For the large scrollable overlays, the title identifies
+the window and the footer/hint carries controls plus
+`scroll x/y · more/END`.
 
 ### Floating hover help
 
@@ -899,7 +904,7 @@ dispatch로 확장되었습니다.
 - 우측 (또는 좁은 폭에서는 하단): 커서 항목의 라이브 Action
   Explainer 패널 — `Why now`, `Severity`, `Audit chain`, `Mode now`
   등 기존 Action Explainer 모달과 동일한 정보를 그대로 표시합니다.
-- 하단 1줄: 키 안내 + 멀티 선택 카운트
+- 하단 1줄: 키 안내 + 멀티 선택 카운트 + `scroll x/y · more/END`
 - 모달 폭 ≥ 72셀이면 좌/우 split, 그 미만이면 상/하 split
 
 **행 형식**: `[x|space] ▶ [p|y] severity · command · context`

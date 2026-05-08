@@ -881,9 +881,8 @@ pub fn render_metrics_modal(
     let scroll = overlay.scroll().min(max_scroll);
     let block = Block::default()
         .title(format!(
-            "Metrics · target {target_label} · {} panes · {} · m close",
-            reports.len(),
-            scroll_hint::scroll_status_label(scroll, max_scroll)
+            "Metrics · target {target_label} · {} panes · m close",
+            reports.len()
         ))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme::BORDER_ACTIVE));
@@ -934,6 +933,37 @@ mod tests {
         assert_eq!(o.scroll(), 2);
         o.scroll_up();
         assert_eq!(o.scroll(), 1);
+    }
+
+    #[test]
+    fn metrics_modal_keeps_scroll_status_in_footer_not_title() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        use ratatui::layout::Rect;
+
+        let viewport = Rect::new(0, 0, 160, 36);
+        let mut terminal =
+            Terminal::new(TestBackend::new(viewport.width, viewport.height)).unwrap();
+        let mut overlay = MetricsOverlay::new();
+        overlay.open();
+
+        terminal
+            .draw(|frame| render_metrics_modal(frame, &overlay, "main", &[], &HashMap::new()))
+            .unwrap();
+        let rendered = buf_to_string(terminal.backend().buffer());
+        let title_line = rendered
+            .lines()
+            .find(|line| line.contains("Metrics · target main"))
+            .unwrap_or_else(|| panic!("metrics title line missing:\n{rendered}"));
+
+        assert!(
+            !title_line.contains("scroll"),
+            "metrics title should identify the window only: {title_line}"
+        );
+        assert!(
+            rendered.contains("scroll 0/0 · END"),
+            "metrics footer should carry scroll status:\n{rendered}"
+        );
     }
 
     #[test]
@@ -1849,6 +1879,17 @@ mod tests {
 
     fn line_to_string(line: &ratatui::text::Line<'_>) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    fn buf_to_string(buf: &ratatui::buffer::Buffer) -> String {
+        let mut out = String::new();
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                out.push_str(buf[(x, y)].symbol());
+            }
+            out.push('\n');
+        }
+        out
     }
 
     #[test]
