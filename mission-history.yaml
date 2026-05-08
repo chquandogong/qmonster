@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.53.0 - Decorative [fx] overlay: 3 selectable effects (bouncing rainbow banner / confetti burst / matrix rain) wired through Q hotkey, p-accept celebration, and idle screensaver; configurable via 8 Settings parameters"
+  mission_title: "Qmonster v1.54.0 - Non-destructive [fx] overlay: render banner/confetti/matrix on top of the existing dashboard instead of clearing the viewport, so alerts/panes/footer stay visible behind the effect"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 196
-  latest_version: "1.53.0"
+  total_revisions: 197
+  latest_version: "1.54.0"
 
 timeline:
   - change_id: "initial"
@@ -18478,6 +18478,86 @@ timeline:
       - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+      - "Per audit doc Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md remaining recommended slices (provider-honesty chips, Insights Situations snapshot test, cache rule provider-gating note, doc-promotion pass)."
+
+  - version: "1.54.0"
+    change_sequence: 197
+    date: "2026-05-08"
+    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator-reported regression: '효과만 띄워주면 안돼? 지금은 빈 창에 뜨는데, 이렇게 말고.'"
+    summary: >
+      v1.54.0 turns the v1.53.0 fx overlay into a non-destructive
+      surface: the bouncing rainbow banner / confetti burst / matrix
+      rain now render on top of the existing dashboard (alerts panel,
+      panes panel, footer, version badge) instead of clearing the
+      viewport. Operators keep full situational awareness while the
+      effect plays.
+      Implementation: dropped `frame.render_widget(Clear, area)` from
+      `render_fx_overlay` in src/ui/fx.rs. Each effect's renderer
+      already paints its glyphs via direct `buf[(x, y)]` cell writes
+      (block-letter cells / particles / stream characters), so
+      removing the upfront Clear leaves every cell the dashboard
+      already populated intact. Replaced the bottom-right dismiss hint
+      Paragraph with a new `paint_hint_inline` helper that walks the
+      hint string and only writes non-space characters via direct
+      cell writes — spaces stay transparent so the underlying footer
+      text remains readable underneath the hint.
+      One regression test added (`fx_overlay_preserves_underlying_cells_outside_effect_glyphs`):
+      paints sentinel `*` cells across the full 80×24 viewport, then
+      renders the fx overlay on top in the SAME terminal.draw pass
+      (mirrors how render_dashboard_frame sequences the overlay last).
+      Asserts ≥1500 of 1920 sentinel cells survive — the pre-v1.54.0
+      Clear-based render dropped the survivor count to ~0; the new
+      behaviour preserves the dashboard.
+      Lib tests 1362 → 1363 (+1 regression test). 65 integration tests
+      preserved. fmt + clippy clean.
+    intent_ko: >
+      v1.54.0 는 v1.53.0 fx 오버레이를 비파괴 렌더로 바꾼다. 바운싱 무지개
+      배너 / 컨페티 분출 / 매트릭스 레인이 이제 기존 dashboard (alerts /
+      panes / footer / version 배지) 위에 겹쳐서 그려지므로 효과가 떠 있는
+      동안에도 운영자가 정보를 잃지 않는다.
+      구현은 한 줄: `render_fx_overlay` 의 `frame.render_widget(Clear, area)`
+      를 제거. 각 효과는 이미 `buf[(x, y)]` 직접 셀 쓰기로 글리프를 그리고
+      있어서, 위쪽 Clear 만 빼면 기존 셀이 그대로 남는다. 우측 하단
+      dismiss 힌트는 `paint_hint_inline` 헬퍼로 바꿔서 공백을 건너뛰고
+      비공백 문자만 직접 셀 쓰기 — 공백 셀은 투명하게 두어 footer 텍스트
+      가 가려지지 않게 한다.
+      회귀 가드 한 개 추가: 80×24 뷰포트에 `*` 센티넬을 채운 다음 같은
+      terminal.draw 안에서 fx 오버레이를 렌더, 1920 셀 중 ≥1500 이
+      살아남는지 검사. 이전 Clear 기반 렌더는 ~0 으로 떨어졌었다.
+      lib 1362 → 1363, fmt + clippy 그린.
+    triggered_by: "Operator-reported regression on v1.53.0: '기존 창에 보여지는 정보는 그대로 두고 효과만 띄워주면 안돼? 지금은 빈 창에 뜨는데, 이렇게 말고.'"
+    changes:
+      added:
+        - "src/ui/fx.rs::paint_hint_inline: writes the bottom-right dismiss hint via direct buf[(x, y)] cell writes, only painting non-space characters so the underlying footer / dashboard cells stay intact."
+        - "ui::fx::tests::fx_overlay_preserves_underlying_cells_outside_effect_glyphs (regression guard, 1 new lib test)."
+      changed:
+        - "src/ui/fx.rs::render_fx_overlay: dropped `frame.render_widget(Clear, area)` so the overlay is non-destructive. Doc comment updated to call out the behaviour change."
+        - "src/ui/fx.rs imports: dropped `Clear` and `Paragraph` from ratatui::widgets (now-unused)."
+      removed: []
+      tests_added:
+        - "fx_overlay_preserves_underlying_cells_outside_effect_glyphs."
+      docs:
+        - "package.json: 1.53.0 → 1.54.0."
+        - ".mission/CURRENT_STATE.md: v1.54.0 Feature State + validation baseline + mission line refreshed."
+        - "mission-history.yaml: v1.54.0 entry appended; meta updated to total_revisions 197 / latest_version 1.54.0."
+        - "docs/ai/VALIDATION.md: new v1.54.0 release row."
+    observable_effects:
+      - "Pressing Q to open the fx overlay no longer wipes the screen. The bouncing QMONSTER banner / confetti / matrix glyphs paint on top of the existing alerts / panes / footer rows; click or any key dismisses and the dashboard is unchanged."
+      - "Celebration confetti on a `p` accept dispatch lands as sparkles over the dashboard rather than over a black canvas."
+      - "Matrix rain glyphs visibly land on top of dashboard text. Operators who find this distracting can switch effect to banner / confetti via Settings → Parameters → FX section."
+    impact_scope:
+      runtime: "Single semantic change inside src/ui/fx.rs::render_fx_overlay. No new state, no new threads. The overlay still tightens event::poll to 33ms while active and restores 100ms on close."
+      tests: "1362 → 1363 lib tests (+1 regression guard). 65 integration tests preserved."
+      ledger: "1 new timeline entry (sequence 197); meta total_revisions 196 → 197, latest_version 1.53.0 → 1.54.0."
+      npm: "package.json version 1.54.0; CI publication of v1.54.0 follows the same workflow as v1.37.0 through v1.53.0."
+    breaking: false
+    risk: "very low — the change is a single removed widget call plus an inline hint-write helper. The regression test pins the new behaviour against future re-introduction of the Clear call. No public API or config surface changes."
+    related_commits:
+      - "PENDING — v1.54.0 release ledger sync commit (this bundle)."
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
       - "Per audit doc Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md remaining recommended slices (provider-honesty chips, Insights Situations snapshot test, cache rule provider-gating note, doc-promotion pass)."
 
 evolution_summary:

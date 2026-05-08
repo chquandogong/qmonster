@@ -8,33 +8,53 @@ use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Clear, Paragraph, Widget};
+use ratatui::widgets::Widget;
 
 use crate::app::fx_state::{BannerState, ConfettiState, FxScene, MatrixState, hue_to_rgb};
 
 /// Top-level dispatcher: pick the renderer matching the active scene.
+///
+/// v1.54.0: the overlay is **non-destructive** — the underlying
+/// dashboard / modals stay visible and the effect only paints its
+/// own cells (block-letter glyphs / particles / stream characters).
+/// Earlier behaviour cleared the entire viewport before drawing.
 pub fn render_fx_overlay(frame: &mut Frame<'_>, scene: &FxScene, banner_text: &str) {
     let area = frame.area();
-    frame.render_widget(Clear, area);
     match scene {
         FxScene::Banner(b) => render_fx_banner(frame, b, banner_text),
         FxScene::Confetti(c) => render_fx_confetti(frame, c),
         FxScene::Matrix(m) => render_fx_matrix(frame, m),
     }
-    let hint = " click / any key to dismiss · Q to toggle ";
+    // Bottom-right dismiss hint — written cell-by-cell with non-space
+    // characters only so it doesn't clobber the underlying dashboard
+    // footer's bg / styling.
+    paint_hint_inline(frame, area, " click / any key to dismiss · Q to toggle ");
+}
+
+fn paint_hint_inline(frame: &mut Frame<'_>, area: Rect, hint: &str) {
     let hint_w = hint.chars().count() as u16;
-    if area.width >= hint_w + 2 && area.height >= 1 {
-        let hx = area.width - hint_w - 1;
-        let hy = area.height.saturating_sub(1);
-        let hint_rect = Rect::new(area.x + hx, area.y + hy, hint_w, 1);
-        frame.render_widget(
-            Paragraph::new(hint).style(
-                Style::default()
-                    .fg(Color::Rgb(180, 190, 210))
-                    .add_modifier(Modifier::DIM),
-            ),
-            hint_rect,
-        );
+    if area.width < hint_w + 2 || area.height == 0 {
+        return;
+    }
+    let hx = area.width - hint_w - 1;
+    let hy = area.height.saturating_sub(1);
+    let buf = frame.buffer_mut();
+    let style = Style::default()
+        .fg(Color::Rgb(180, 190, 210))
+        .add_modifier(Modifier::DIM);
+    for (i, ch) in hint.chars().enumerate() {
+        let x = area.x + hx + i as u16;
+        let y = area.y + hy;
+        if x >= area.x + area.width || y >= area.y + area.height {
+            break;
+        }
+        if ch == ' ' {
+            // Skip spaces so the underlying footer cells stay intact.
+            continue;
+        }
+        let cell = &mut buf[(x, y)];
+        cell.set_char(ch);
+        cell.set_style(style);
     }
 }
 
@@ -268,6 +288,42 @@ mod tests {
         assert!(
             dump.contains("dismiss"),
             "hint must render in the banner overlay"
+        );
+    }
+
+    /// v1.54.0 regression guard: cells the fx overlay does NOT touch
+    /// (the inter-particle / inter-glyph gaps and the row above the
+    /// dismiss hint) must keep whatever the underlying TUI drew there.
+    /// Mirrors `render_dashboard_frame`'s sequencing: paint a fake
+    /// dashboard, then render the fx overlay LAST in the SAME draw
+    /// call so the overlay sees a fully painted buffer underneath.
+    #[test]
+    fn fx_overlay_preserves_underlying_cells_outside_effect_glyphs() {
+        let mut t = term(80, 24);
+        let scene = FxScene::from_effect(FxEffect::Confetti, 80, 24, 99);
+        t.draw(|f| {
+            // 1) Paint sentinel cells across the buffer to simulate a
+            //    fully drawn dashboard.
+            {
+                let buf = f.buffer_mut();
+                for y in 0..24 {
+                    for x in 0..80 {
+                        buf[(x, y)].set_char('*');
+                    }
+                }
+            }
+            // 2) Render the overlay on top (post-dashboard slot).
+            render_fx_overlay(f, &scene, "QMONSTER");
+        })
+        .unwrap();
+        let buf = t.backend().buffer();
+        let surviving = buf.content.iter().filter(|c| c.symbol() == "*").count();
+        // 80×24 = 1920 cells. Confetti lands ~80 particles + a short
+        // hint (~30 chars); the vast majority of sentinel cells must
+        // survive. Earlier Clear-based render dropped this to ~0.
+        assert!(
+            surviving >= 1500,
+            "non-destructive overlay must preserve underlying cells; surviving = {surviving}"
         );
     }
 

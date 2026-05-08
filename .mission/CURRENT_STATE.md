@@ -1,14 +1,55 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.53.0 ledger sync)_
+_Last updated: 2026-05-08 (Claude, v1.54.0 ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.53.0 — decorative `[fx]` overlay: 3 selectable effects (bouncing rainbow QMONSTER banner / confetti burst / matrix rain) wired through Q hotkey, p-accept celebration, and idle screensaver. Configurable via Settings → Parameters (8 knobs).
-- Version surfaces: npm package metadata `qmonster@1.53.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v1.53.0` to be created at the ledger sync commit. v1.52.0 is the immediate prior tagged baseline.
+- Title: Qmonster v1.54.0 — fx overlay polish: render the `[fx]` decorative effects on top of the existing dashboard / modals instead of clearing the viewport, so alerts / panes / footer info stay visible behind the banner / confetti / matrix.
+- Version surfaces: npm package metadata `qmonster@1.54.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v1.54.0` to be created at the ledger sync commit. v1.53.0 is the immediate prior tagged baseline.
 - Release publication state: **v1.53.0 is published**. `Release and Package Mirror` workflow run `25537122599` (2026-05-08, 6m42s, success) created GitHub Release `v1.53.0` (published 2026-05-08T04:46:41Z) with full asset set (`qmonster-v1.53.0-linux-x86_64.tar.gz`, `qmonster-1.53.0.tgz`, `qmonster-v1.53.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.53.0` to npm + GitHub Packages mirror. **v1.52.0 is also published** (run `25535686447`, 7m2s, GitHub Release published 2026-05-08T03:58:45Z). v1.51.0 is published (run `25535433723`, 7m2s, GitHub Release published 2026-05-08T03:50:01Z). v1.50.0 is published (run `25505209461`, 7m26s). Sibling v1.37.0–v1.49.0 publications all remain live — `npm view qmonster versions` lists `1.37.0` through `1.53.0` with `dist-tags.latest = 1.53.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53}.0`.
-- Current phase: All prior phases complete. v1.50.0 / v1.51.0 / v1.52.0 publication baselines still apply; v1.53.0 ships the decorative effects overlay on top — no new phase is opened.
+- Current phase: All prior phases complete. v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 publication baselines still apply; v1.54.0 ships the fx-overlay non-destructive polish on top — no new phase is opened.
+
+## v1.54.0 Feature State
+
+v1.54.0 is a one-line polish layered on the v1.53.0 fx overlay: the
+overlay no longer wipes the viewport before drawing. The dashboard
+(alerts, panes, footer, version badge) and any modals already painted
+this frame stay visible **underneath** the bouncing banner / confetti
+particles / matrix streams. Operators no longer lose situational
+awareness when the overlay is active.
+
+1. **Non-destructive `render_fx_overlay`** (`src/ui/fx.rs`):
+   - Dropped `frame.render_widget(Clear, area)` from the dispatcher
+     entry. Each effect already painted its glyphs via direct
+     `buf[(x, y)]` cell writes, so removing the upfront `Clear`
+     leaves every cell the dashboard / modals already populated
+     intact.
+   - Replaced the bottom-right dismiss `Paragraph` with a new
+     `paint_hint_inline` helper that walks the hint string and only
+     writes non-space characters via direct `buf[(x, y)]` writes —
+     spaces stay transparent so the underlying footer text is still
+     readable.
+   - Removed the now-unused `Clear` and `Paragraph` imports from
+     `ratatui::widgets`.
+
+2. **Regression guard test** (`fx_overlay_preserves_underlying_cells_outside_effect_glyphs`):
+   - Paints sentinel `*` cells across the full 80×24 viewport,
+     then renders the fx overlay on top in the SAME `terminal.draw`
+     pass (mirroring the real `render_dashboard_frame` sequencing
+     where the overlay is the last widget). Asserts at least 1500 of
+     the 1920 sentinel cells survive — confetti only lands ~80
+     particles plus a short hint, so the underlying dashboard must
+     remain visible.
+   - The pre-v1.54.0 Clear-based render dropped the survivor count
+     to ~0; this test pins the new behaviour against future
+     regressions.
+
+3. **Heuristic boundary**: matrix rain's per-column streams still
+   land on top of dashboard text, which can look visually noisy.
+   Operators who find the overlap distracting can either pick a
+   shorter `[fx] duration_secs`, switch effect to banner / confetti,
+   or disable the screensaver trigger that auto-opens it.
 
 ## v1.53.0 Feature State
 
@@ -290,14 +331,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v1.53.0 validation at the release commit:
+Most recent v1.54.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1362 lib tests + 65 integration tests + 12 store_insights + 18 + 6 + 8 + 3 = 1474 total, all green (lib up from 1324 at the v1.52.0 baseline as new fx_state / fx_overlay / fx render tests landed; integration count preserved; +14 fx_state tests + 10 fx_overlay tests + 5 fx render tests + 9 hover_help tests already in baseline).
+- `cargo test --all-targets` — 1363 lib tests + 65 integration tests + supporting suites, all green (lib up from 1362 at the v1.53.0 baseline with the new `fx_overlay_preserves_underlying_cells_outside_effect_glyphs` regression test).
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.52.0 still apply when the v1.53.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.53.0 still apply when the v1.54.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 
