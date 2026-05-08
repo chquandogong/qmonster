@@ -530,6 +530,22 @@ impl SettingsOverlay {
         self.selected_parameter = field;
     }
 
+    pub fn toggle_hover_help_setting(&mut self, config: &mut QmonsterConfig) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        config.ux.hover_help = !config.ux.hover_help;
+        self.mark_parameter_dirty(ParameterField::UxHoverHelp);
+    }
+
+    pub fn toggle_help_language_setting(&mut self, config: &mut QmonsterConfig) {
+        if self.edit_buffer.is_some() {
+            return;
+        }
+        config.ux.help_language = config.ux.help_language.toggle();
+        self.mark_parameter_dirty(ParameterField::UxHelpLanguage);
+    }
+
     pub fn edit_buffer(&self) -> Option<&str> {
         self.edit_buffer.as_deref()
     }
@@ -2696,7 +2712,7 @@ pub fn settings_parameter_field_at_with_scroll(
     let text = lines.get(line_idx).map(line_text)?;
     all_parameter_fields()
         .into_iter()
-        .find(|field| text.contains(parameter_label(*field)))
+        .find(|field| parameter_row_text_matches_field(&text, *field))
 }
 
 pub fn settings_parameter_field_line_index(
@@ -2704,11 +2720,20 @@ pub fn settings_parameter_field_line_index(
     config: &QmonsterConfig,
     field: ParameterField,
 ) -> Option<u16> {
-    let label = parameter_label(field);
     build_parameter_body_lines(overlay, config)
         .iter()
-        .position(|line| line_text(line).contains(label))
+        .position(|line| {
+            let text = line_text(line);
+            parameter_row_text_matches_field(&text, field)
+        })
         .and_then(|idx| u16::try_from(idx).ok())
+}
+
+fn parameter_row_text_matches_field(text: &str, field: ParameterField) -> bool {
+    text.chars()
+        .skip(6)
+        .collect::<String>()
+        .starts_with(parameter_label(field))
 }
 
 fn line_text(line: &Line<'_>) -> String {
@@ -3203,6 +3228,8 @@ fn build_parameter_body_lines(
         Line::from(""),
         reference_header_line("Editable Parameters"),
     ];
+    append_selected_parameter_help_lines(&mut lines, overlay, config);
+    lines.push(Line::from(""));
     append_parameter_editor_lines(&mut lines, overlay, config);
     lines.push(Line::from(""));
     lines.push(status_line(overlay));
@@ -3610,6 +3637,218 @@ fn append_parameter_editor_lines(
     }
 }
 
+fn append_selected_parameter_help_lines(
+    lines: &mut Vec<Line<'static>>,
+    overlay: &SettingsOverlay,
+    config: &QmonsterConfig,
+) {
+    let field = overlay.selected_parameter();
+    let current = parameter_value_for_display(config, field);
+    let default = parameter_default_for_display(field);
+    lines.push(reference_header_line("Selected parameter help"));
+    lines.push(parameter_help_line(
+        "TOML",
+        &parameter_toml_path(field).join("."),
+    ));
+    lines.push(parameter_help_line(
+        "Value",
+        &format!("{current}  (default {default})"),
+    ));
+    lines.push(parameter_help_line("Meaning", parameter_help_text(field)));
+    lines.push(parameter_help_line("Values", parameter_value_help(field)));
+    if let Some(shortcut) = parameter_shortcut_help(field) {
+        lines.push(parameter_help_line("Shortcut", shortcut));
+    }
+    lines.push(parameter_help_line(
+        "Save",
+        "changes are runtime-only until w writes them to the loaded TOML",
+    ));
+}
+
+fn parameter_help_line(label: &'static str, value: &str) -> Line<'static> {
+    Line::from(vec![
+        Span::raw("    "),
+        Span::styled(format!("{label}: "), Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(value.to_string(), Style::default().fg(theme::TEXT_PRIMARY)),
+    ])
+}
+
+fn parameter_help_text(field: ParameterField) -> &'static str {
+    use ParameterField::*;
+    match field {
+        TmuxSource => {
+            "selects the tmux transport used to read panes: auto prefers control-mode, then polling"
+        }
+        TmuxPollIntervalMs => "sets how often Qmonster polls tmux when polling transport is active",
+        TmuxCaptureLines => "sets how many terminal tail lines are captured for signal parsing",
+        RefreshPolicy => "controls whether runtime refresh is manual-only or automatic",
+        IdleStillnessPolls => "number of unchanged tail polls before a pane is considered stale",
+        LoggingSensitivity => {
+            "controls how much operational evidence Qmonster records in logs and ledgers"
+        }
+        LoggingRetentionDays => "retention window for stored operational logs",
+        LoggingBigOutputChars => {
+            "threshold where output is treated as large/verbose for storage and display"
+        }
+        StorageRoot => "overrides the Qmonster storage root; blank uses the automatic default",
+        ActionsMode => "top-level action policy: observe, recommend, or safe automation",
+        ActionsAutoNotifications => {
+            "permits desktop/system notifications when rules emit eligible alerts"
+        }
+        ActionsAutoArchive => "permits archive/audit side effects for eligible recommendations",
+        ActionsAutoPromptSend => {
+            "permits Qmonster to send approved prompt-send proposals to target panes"
+        }
+        ActionsDestructive => {
+            "permits destructive actions; keep off unless the operator explicitly wants them"
+        }
+        UxConfirmActions => "controls how often p/d/y opens the Action Explainer before dispatch",
+        UxHoverHelp => {
+            "shows floating help over Alerts and Panes rows so operators can understand labels without leaving Qmonster"
+        }
+        UxHelpLanguage => "selects the language used by floating help and related glossary text",
+        InsightsIgnoredTtlSecs => {
+            "time after which unresolved recommendation lifecycle events become TTL-ignored in insights"
+        }
+        InsightsDefaultWindowSecs => {
+            "default reporting window for Token Insights and lifecycle summaries"
+        }
+        TokenQuotaTight => {
+            "marks quota as tight so cache/profile recommendations can become more conservative"
+        }
+        SecurityPostureAdvisories => {
+            "emits passive concerns when provider permissions or sandbox posture are permissive"
+        }
+        SecurityCrossWindowFindings => {
+            "enables cross-window concurrent-work findings for panes sharing repo context"
+        }
+        SecurityIdentityDriftFindings => {
+            "enables findings when a pane's provider or path identity changes between polls"
+        }
+        SecurityCrossPaneFileFindings => {
+            "enables findings for concurrent cross-pane edits touching the same files"
+        }
+        CacheHotRatioThreshold => "cache hit ratio above which hot-cache compact warnings may fire",
+        CacheColdRatioThreshold => {
+            "cache hit ratio below which cold-cache compact recommendations may fire"
+        }
+        CacheHotLowCtxThreshold => {
+            "context pressure ceiling used when deciding whether hot cache has room to continue"
+        }
+        CacheColdHighCtxThreshold => "context pressure floor used when cold cache should compact",
+        CacheDriftDropThreshold => {
+            "minimum cache-hit drop between samples before cache drift is reported"
+        }
+        CacheDriftMinSamples => "minimum sample count required before cache drift rules evaluate",
+        ResetWaitPressureThreshold => {
+            "context/quota pressure threshold used for wait/reset recommendations"
+        }
+        ResetWaitEtaSecs => {
+            "ETA threshold used when deciding whether waiting for reset is worthwhile"
+        }
+        ResetSnapshotPressureThreshold => "pressure threshold that can trigger snapshot guidance",
+        ResetSnapshotEtaSecs => "ETA threshold used with snapshot guidance before a reset window",
+        ResetAutoSnapshot => {
+            "enables automatic operator snapshot creation when reset rules recommend it"
+        }
+        AnomalyEnabled => "turns anomaly detection and anomaly event recording on or off",
+        AnomalyWindowPolls => "rolling poll window size used by anomaly detectors",
+        AnomalyMinConfidence => "minimum anomaly confidence required for surfacing/promotion",
+        AnomalyIdentityChurnMinFlips => "number of identity flips required to flag identity churn",
+        AnomalyErrorBurstThreshold => "error density threshold for error-burst anomaly detection",
+        AnomalyCacheDiscontinuityDrop => "cache ratio drop that counts as a cache discontinuity",
+        AnomalyCrossPaneClusterMinFindings => {
+            "minimum cross-pane findings needed to form an edit cluster anomaly"
+        }
+        AnomalyCostSlopeUsdPerHour => "cost growth rate threshold for cost-slope anomaly detection",
+        AnomalyTokenSlopeInputPerPoll => {
+            "input-token growth threshold per poll for token-slope anomalies"
+        }
+        AnomalyMemoryGrowthMb => "resident-memory growth threshold for memory anomalies",
+        AnomalyRetentionDays => "number of days to retain anomaly event history",
+        AnomalyPromoteIdentityChurn
+        | AnomalyPromoteErrorBurst
+        | AnomalyPromoteCacheDiscontinuity
+        | AnomalyPromoteCrossPaneEditCluster
+        | AnomalyPromoteCostSlope
+        | AnomalyPromoteTokenSlope
+        | AnomalyPromoteMemoryGrowth
+        | AnomalyPromoteSubagentSideEffect => {
+            "per-anomaly confidence threshold used before promoting an anomaly into a recommendation"
+        }
+        CostBudgetUsd => "operator budget used by cost-budget warning rules",
+        ProfileSwitchEnabled => {
+            "enables provider profile-switch recommendations when repeated failures suggest a cheaper/safer profile"
+        }
+        ProfileSwitchWindowPolls => "rolling window size for profile-switch failure analysis",
+        ProfileSwitchErrorRateThreshold => {
+            "error-rate threshold required before profile-switch recommendations fire"
+        }
+        FxEnabled => "enables the optional full-screen visual effects overlay",
+        FxText => "text shown by the banner-style visual effect",
+        FxEffect => "selects the visual effect style used by the hotkey/screensaver overlay",
+        FxDurationSecs => {
+            "auto-dismiss duration for visual effects; zero means stay until dismissed"
+        }
+        FxHotkeyEnabled => {
+            "enables the operator hotkey for manually opening the visual effect overlay"
+        }
+        FxCelebrationEnabled => "enables celebratory effects after eligible successful actions",
+        FxScreensaverEnabled => "enables the idle screensaver-style visual effect overlay",
+        FxScreensaverIdleSecs => "idle time before the screensaver-style visual effect can open",
+    }
+}
+
+fn parameter_value_help(field: ParameterField) -> &'static str {
+    use ParameterField::*;
+    match field {
+        UxConfirmActions => "always | first_time | never",
+        UxHelpLanguage => "ko | en",
+        TmuxSource => "auto | polling | control_mode",
+        FxEffect => "banner | confetti | matrix",
+        RefreshPolicy => "manual_only | automatic",
+        LoggingSensitivity => "minimal | balanced | forensic",
+        ActionsMode => "observe_only | recommend_only | safe_auto",
+        AnomalyMinConfidence
+        | AnomalyPromoteIdentityChurn
+        | AnomalyPromoteErrorBurst
+        | AnomalyPromoteCacheDiscontinuity
+        | AnomalyPromoteCrossPaneEditCluster
+        | AnomalyPromoteCostSlope
+        | AnomalyPromoteTokenSlope
+        | AnomalyPromoteMemoryGrowth
+        | AnomalyPromoteSubagentSideEffect => "low | medium | high",
+        ActionsAutoNotifications
+        | ActionsAutoArchive
+        | ActionsAutoPromptSend
+        | ActionsDestructive
+        | UxHoverHelp
+        | TokenQuotaTight
+        | SecurityPostureAdvisories
+        | SecurityCrossWindowFindings
+        | SecurityIdentityDriftFindings
+        | SecurityCrossPaneFileFindings
+        | ResetAutoSnapshot
+        | AnomalyEnabled
+        | ProfileSwitchEnabled
+        | FxEnabled
+        | FxHotkeyEnabled
+        | FxCelebrationEnabled
+        | FxScreensaverEnabled => "on | off",
+        StorageRoot | FxText => "free text; blank keeps the configured empty value",
+        _ => "numeric threshold; edit with e/Enter, then save with w",
+    }
+}
+
+fn parameter_shortcut_help(field: ParameterField) -> Option<&'static str> {
+    match field {
+        ParameterField::UxHoverHelp => Some("H"),
+        ParameterField::UxHelpLanguage => Some("L"),
+        ParameterField::UxConfirmActions => Some("affects p/d/y Action Explainer behavior"),
+        _ => None,
+    }
+}
+
 fn parameter_row_line(
     overlay: &SettingsOverlay,
     config: &QmonsterConfig,
@@ -3895,7 +4134,7 @@ fn hint_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
     } else if overlay.tab() == SettingsTab::Integrations {
         "  [1]-[5]/[Tab] tab · ↑/↓ select · Space/e/Enter toggle · w write · q/Esc close"
     } else if overlay.tab() == SettingsTab::Parameters {
-        "  [1]-[5]/[Tab] tab · ↑/↓ select · e/Enter edit/cycle · Space toggle · w write · q/Esc close"
+        "  [1]-[5]/[Tab] tab · ↑/↓ select · e/Enter edit/cycle · Space toggle · H hover · L language · w write · q/Esc close"
     } else {
         "  [1]-[5]/[Tab] tab · ↑/↓/j/k/wheel scroll · PgUp/PgDn · Home/End · q/Esc close"
     };

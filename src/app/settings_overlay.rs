@@ -102,6 +102,8 @@ pub fn handle_settings_overlay_key_with_viewport(
         KeyCode::Left if !editing => move_selection_up(overlay, config, viewport),
         KeyCode::Right if !editing => move_selection_down(overlay, config, viewport),
         KeyCode::Char('e') if !editing => edit_or_toggle(overlay, config),
+        KeyCode::Char('H') if !editing => overlay.toggle_hover_help_setting(config),
+        KeyCode::Char('L') if !editing => overlay.toggle_help_language_setting(config),
         KeyCode::Char(' ') if !editing => {
             if overlay.tab() == SettingsTab::Integrations {
                 overlay.toggle_integration(config);

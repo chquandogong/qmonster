@@ -1022,6 +1022,29 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
     }
 
     lines.push(Line::raw(""));
+    lines.push(section_line("Hover Help"));
+    for (label, value) in [
+        (
+            "Scope",
+            "Alerts and Panes rows expose floating explanations for headers, dismiss, summary, details, copy hints, pane state, path, cmd, status, signals, metrics, token/cache rows, runtime facts, and recommendations/profile payloads; explicit overlays hide dashboard hover help",
+        ),
+        (
+            "Small terminal",
+            "if a floating card would clip or the terminal is narrow, the same help opens as a bottom drawer and wraps the content instead of cutting text",
+        ),
+        (
+            "Settings",
+            "S > Parameters shows a Selected parameter help block for the selected field with TOML key, current/default value, meaning, accepted values, shortcut, and save note",
+        ),
+        (
+            "Keys",
+            "H toggles hover help; L switches ko/en; inside S > Parameters the same keys edit ux.hover_help and ux.help_language until w writes the loaded TOML",
+        ),
+    ] {
+        lines.extend(help_wrapped_detail_lines(label, value, total_width));
+    }
+
+    lines.push(Line::raw(""));
     lines.push(section_line("Source Labels"));
     lines.extend(
         labels::source_kind_legend()
@@ -1353,6 +1376,32 @@ mod tests {
         let wide = max_help_scroll(Rect::new(0, 0, 120, 24));
         let narrow = max_help_scroll(Rect::new(0, 0, 80, 24));
         assert!(narrow >= wide);
+    }
+
+    #[test]
+    fn help_modal_documents_hover_help_and_settings_context() {
+        let text = help_lines()
+            .into_iter()
+            .map(line_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(
+            text.contains("Hover Help"),
+            "help modal must include a dedicated hover-help section: {text}"
+        );
+        assert!(
+            text.contains("bottom drawer"),
+            "help modal must explain the small-terminal hover help fallback: {text}"
+        );
+        assert!(
+            text.contains("Selected parameter help"),
+            "help modal must point operators to the Settings parameter explainer: {text}"
+        );
+        assert!(
+            text.contains("H") && text.contains("L"),
+            "help modal must mention hover help toggle and language keys: {text}"
+        );
     }
 
     #[test]

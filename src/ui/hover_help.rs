@@ -22,11 +22,8 @@ pub fn render_hover_help(frame: &mut Frame<'_>, view: HoverHelpView) {
         return;
     }
 
-    let title = format!(" Help · {} ", language_label(view.language));
-    let lines: Vec<Line<'static>> = help_lines(view.topic, view.language)
-        .iter()
-        .map(|line| Line::from(Span::raw((*line).to_string())))
-        .collect();
+    let title = format!(" Help · {} · H/L ", language_label(view.language));
+    let lines = tooltip_lines(view);
     frame.render_widget(Clear, area);
     frame.render_widget(
         Paragraph::new(lines)
@@ -48,17 +45,13 @@ pub fn render_hover_help(frame: &mut Frame<'_>, view: HoverHelpView) {
 }
 
 fn tooltip_rect(viewport: Rect, view: HoverHelpView) -> Rect {
-    let lines = help_lines(view.topic, view.language);
-    let width = lines
-        .iter()
-        .map(|line| line.chars().count() as u16)
-        .max()
-        .unwrap_or(20)
-        .saturating_add(4)
-        .clamp(24, viewport.width.min(72));
-    let height = (lines.len() as u16)
-        .saturating_add(2)
-        .clamp(3, viewport.height.max(3));
+    let lines = tooltip_text_lines(view);
+    let width = tooltip_width(viewport, &lines);
+    let height = tooltip_height(viewport, width, &lines);
+    if viewport.width < 64 || viewport.height < height.saturating_add(3) {
+        return bottom_drawer_rect(viewport, height);
+    }
+
     let mut x = view.column.saturating_add(2);
     if x.saturating_add(width) > viewport.x.saturating_add(viewport.width) {
         x = view.column.saturating_sub(width.saturating_add(1));
@@ -68,6 +61,56 @@ fn tooltip_rect(viewport: Rect, view: HoverHelpView) -> Rect {
         y = view.row.saturating_sub(height.saturating_add(1));
     }
     Rect::new(x.max(viewport.x), y.max(viewport.y), width, height)
+}
+
+fn tooltip_width(viewport: Rect, lines: &[&'static str]) -> u16 {
+    lines
+        .iter()
+        .map(|line| line.chars().count() as u16)
+        .max()
+        .unwrap_or(20)
+        .saturating_add(4)
+        .clamp(32, viewport.width.min(88))
+}
+
+fn tooltip_height(viewport: Rect, width: u16, lines: &[&'static str]) -> u16 {
+    let content_width = width.saturating_sub(2).max(1) as usize;
+    let wrapped_rows: usize = lines
+        .iter()
+        .map(|line| line.chars().count().div_ceil(content_width).max(1))
+        .sum();
+    (wrapped_rows as u16)
+        .saturating_add(2)
+        .clamp(3, viewport.height.max(3))
+}
+
+fn bottom_drawer_rect(viewport: Rect, height: u16) -> Rect {
+    let height = height.min(viewport.height);
+    Rect::new(
+        viewport.x,
+        viewport
+            .y
+            .saturating_add(viewport.height.saturating_sub(height)),
+        viewport.width,
+        height,
+    )
+}
+
+fn tooltip_lines(view: HoverHelpView) -> Vec<Line<'static>> {
+    tooltip_text_lines(view)
+        .into_iter()
+        .map(|line| Line::from(Span::raw(line.to_string())))
+        .collect()
+}
+
+fn tooltip_text_lines(view: HoverHelpView) -> Vec<&'static str> {
+    let mut out = help_lines(view.topic, view.language).to_vec();
+    out.push("");
+    out.push(match view.language {
+        HelpLanguage::Ko => "H: 도움말 켜기/끄기 · L: 한국어/영어 · S: Settings에서 저장",
+        HelpLanguage::En => "H: toggle help · L: switch language · S: save defaults in Settings",
+    });
+    out
 }
 
 #[cfg(test)]
