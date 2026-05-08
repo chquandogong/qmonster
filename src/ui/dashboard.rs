@@ -986,7 +986,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "H",
-            "toggle floating hover help for Alerts and Panes rows; the setting is also editable as [ux] hover_help in Settings > Parameters",
+            "toggle floating hover help for Alerts and Panes; by default it opens near the front label area, and [ux] hover_help_trigger can restore full-row hover",
         ),
         (
             "L",
@@ -1050,7 +1050,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
     for (label, value) in [
         (
             "Scope",
-            "Alerts and Panes rows expose floating explanations for headers, dismiss, summary, details, copy hints, pane state, path, cmd, status, signals, metrics, token/cache rows, runtime facts, and recommendations/profile payloads; explicit overlays hide dashboard hover help",
+            "Alerts and Panes rows expose floating explanations for headers, dismiss, summary, details, copy hints, pane state, path, cmd, status, signals, metrics, token/cache rows, runtime facts, and recommendations/profile payloads; label trigger opens only near the front row label, row trigger restores full-row hover; explicit overlays hide dashboard hover help",
         ),
         (
             "Small terminal",
@@ -1058,7 +1058,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "Settings",
-            "S > Parameters shows a Selected parameter help block for the selected field with TOML key, current/default value, meaning, accepted values, shortcut, and save note",
+            "S > Parameters shows a Selected parameter help block for the selected field with TOML key, current/default value, meaning, accepted values, shortcut, and save note; ux.hover_help_trigger accepts label or row",
         ),
         (
             "Keys",

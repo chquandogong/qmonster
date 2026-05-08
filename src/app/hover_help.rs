@@ -4,11 +4,14 @@ use std::time::Instant;
 use ratatui::layout::{Margin, Rect};
 use ratatui::widgets::ListState;
 
+use crate::app::config::HoverHelpTrigger;
 use crate::app::event_loop::PaneReport;
 use crate::app::keymap::rect_contains;
 use crate::app::system_notice::SystemNotice;
 use crate::ui::dashboard::{DashboardSplit, dashboard_rects};
 use crate::ui::help_glossary::HelpTopic;
+
+const HOVER_HELP_LABEL_ZONE_WIDTH: u16 = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HoverHelpHover {
@@ -48,6 +51,7 @@ impl HoverHelpState {
 
 pub struct DashboardHoverView<'a> {
     pub split: DashboardSplit,
+    pub hover_help_trigger: HoverHelpTrigger,
     pub alert_state: &'a ListState,
     pub pane_state: &'a ListState,
     pub notices: &'a [SystemNotice],
@@ -57,6 +61,16 @@ pub struct DashboardHoverView<'a> {
     pub hidden_until: &'a HashMap<String, Instant>,
     pub now: Instant,
     pub target_label: &'a str,
+}
+
+fn hover_trigger_accepts_column(trigger: HoverHelpTrigger, inner: Rect, column: u16) -> bool {
+    match trigger {
+        HoverHelpTrigger::Row => true,
+        HoverHelpTrigger::Label => {
+            let label_width = inner.width.min(HOVER_HELP_LABEL_ZONE_WIDTH);
+            column < inner.x.saturating_add(label_width)
+        }
+    }
 }
 
 pub fn dashboard_hover_topic(
@@ -72,6 +86,9 @@ pub fn dashboard_hover_topic(
             horizontal: 1,
         });
         if !rect_contains(inner, column, row) {
+            return None;
+        }
+        if !hover_trigger_accepts_column(view.hover_help_trigger, inner, column) {
             return None;
         }
         if row == inner.y {
@@ -102,6 +119,9 @@ pub fn dashboard_hover_topic(
         if !rect_contains(inner, column, row) {
             return None;
         }
+        if !hover_trigger_accepts_column(view.hover_help_trigger, inner, column) {
+            return None;
+        }
         return crate::ui::panels::pane_help_topic_at_row(
             view.reports,
             view.pane_state,
@@ -130,5 +150,66 @@ mod tests {
 
         state.clear_hover();
         assert!(state.hover().is_none());
+    }
+
+    #[test]
+    fn label_trigger_limits_dashboard_hover_to_front_label_zone() {
+        let viewport = Rect::new(0, 0, 120, 40);
+        let split = DashboardSplit::default();
+        let rects = dashboard_rects(viewport, split);
+        let inner = rects.alerts.inner(Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
+        let alert_state = ListState::default();
+        let pane_state = ListState::default();
+        let notices = Vec::new();
+        let reports = Vec::new();
+        let fresh_alerts = HashSet::new();
+        let alert_times = HashMap::new();
+        let hidden_until = HashMap::new();
+        let now = Instant::now();
+
+        let view = |hover_help_trigger| DashboardHoverView {
+            split,
+            hover_help_trigger,
+            alert_state: &alert_state,
+            pane_state: &pane_state,
+            notices: &notices,
+            reports: &reports,
+            fresh_alerts: &fresh_alerts,
+            alert_times: &alert_times,
+            hidden_until: &hidden_until,
+            now,
+            target_label: "main",
+        };
+
+        assert_eq!(
+            dashboard_hover_topic(
+                viewport,
+                inner.x.saturating_add(2),
+                inner.y,
+                view(HoverHelpTrigger::Label)
+            ),
+            Some(HelpTopic::AlertBulkHide)
+        );
+        assert_eq!(
+            dashboard_hover_topic(
+                viewport,
+                inner.x.saturating_add(50),
+                inner.y,
+                view(HoverHelpTrigger::Label)
+            ),
+            None
+        );
+        assert_eq!(
+            dashboard_hover_topic(
+                viewport,
+                inner.x.saturating_add(50),
+                inner.y,
+                view(HoverHelpTrigger::Row)
+            ),
+            Some(HelpTopic::AlertBulkHide)
+        );
     }
 }

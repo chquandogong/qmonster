@@ -16,8 +16,8 @@
 
 use crate::app::config::{
     ActionsMode, ConfirmActions, ContextConfig, CostConfig, CostProviderConfig, HelpLanguage,
-    LogSensitivity, PressureProviderConfig, QmonsterConfig, QuotaConfig, RefreshPolicy,
-    TmuxSourceMode,
+    HoverHelpTrigger, LogSensitivity, PressureProviderConfig, QmonsterConfig, QuotaConfig,
+    RefreshPolicy, TmuxSourceMode,
 };
 use crate::domain::recommendation::Severity;
 use crate::ui::scroll_hint;
@@ -276,6 +276,7 @@ pub enum ParameterField {
     ActionsDestructive,
     UxConfirmActions,
     UxHoverHelp,
+    UxHoverHelpTrigger,
     UxHelpLanguage,
     InsightsIgnoredTtlSecs,
     InsightsDefaultWindowSecs,
@@ -347,6 +348,7 @@ pub fn all_parameter_fields() -> Vec<ParameterField> {
         ActionsDestructive,
         UxConfirmActions,
         UxHoverHelp,
+        UxHoverHelpTrigger,
         UxHelpLanguage,
         InsightsIgnoredTtlSecs,
         InsightsDefaultWindowSecs,
@@ -1140,6 +1142,7 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | LoggingSensitivity
         | ActionsMode
         | UxConfirmActions
+        | UxHoverHelpTrigger
         | UxHelpLanguage
         | AnomalyMinConfidence
         | AnomalyPromoteIdentityChurn
@@ -1205,6 +1208,7 @@ fn parameter_section_label(field: ParameterField) -> &'static str {
         | ActionsDestructive
         | UxConfirmActions
         | UxHoverHelp
+        | UxHoverHelpTrigger
         | UxHelpLanguage => "Actions",
         InsightsIgnoredTtlSecs | InsightsDefaultWindowSecs => "Insights",
         TokenQuotaTight => "Policy Inputs",
@@ -1276,6 +1280,7 @@ fn parameter_label(field: ParameterField) -> &'static str {
         ActionsDestructive => "actions destructive",
         UxConfirmActions => "ux confirm_actions",
         UxHoverHelp => "ux hover_help",
+        UxHoverHelpTrigger => "ux hover_help_trigger",
         UxHelpLanguage => "ux help_language",
         InsightsIgnoredTtlSecs => "insights ignored_ttl_secs",
         InsightsDefaultWindowSecs => "insights default_window_secs",
@@ -1348,6 +1353,7 @@ fn parameter_toml_path(field: ParameterField) -> Vec<&'static str> {
         ActionsDestructive => vec!["actions", "allow_destructive_actions"],
         UxConfirmActions => vec!["ux", "confirm_actions"],
         UxHoverHelp => vec!["ux", "hover_help"],
+        UxHoverHelpTrigger => vec!["ux", "hover_help_trigger"],
         UxHelpLanguage => vec!["ux", "help_language"],
         InsightsIgnoredTtlSecs => vec!["insights", "ignored_ttl_secs"],
         InsightsDefaultWindowSecs => vec!["insights", "default_window_secs"],
@@ -1422,6 +1428,7 @@ fn parameter_value_for_display(config: &QmonsterConfig, field: ParameterField) -
         ActionsDestructive => on_off(config.actions.allow_destructive_actions).into(),
         UxConfirmActions => confirm_actions_label(config.ux.confirm_actions).into(),
         UxHoverHelp => on_off(config.ux.hover_help).into(),
+        UxHoverHelpTrigger => hover_help_trigger_label(config.ux.hover_help_trigger).into(),
         UxHelpLanguage => help_language_label(config.ux.help_language).into(),
         InsightsIgnoredTtlSecs => seconds_label(config.insights.ignored_ttl_secs),
         InsightsDefaultWindowSecs => seconds_label(config.insights.default_window_secs),
@@ -1628,6 +1635,9 @@ fn cycle_parameter_enum(config: &mut QmonsterConfig, field: ParameterField) -> R
             };
         }
         UxHelpLanguage => config.ux.help_language = config.ux.help_language.toggle(),
+        UxHoverHelpTrigger => {
+            config.ux.hover_help_trigger = config.ux.hover_help_trigger.toggle();
+        }
         AnomalyMinConfidence => {
             config.anomaly.min_confidence = confidence_next(&config.anomaly.min_confidence)?;
         }
@@ -1853,6 +1863,13 @@ fn merge_parameter_field(
             set_nested_str(doc, &path, confirm_actions_label(config.ux.confirm_actions))
         }
         UxHoverHelp => set_nested_bool(doc, &path, config.ux.hover_help),
+        UxHoverHelpTrigger => {
+            set_nested_str(
+                doc,
+                &path,
+                hover_help_trigger_label(config.ux.hover_help_trigger),
+            );
+        }
         UxHelpLanguage => set_nested_str(doc, &path, help_language_label(config.ux.help_language)),
         InsightsIgnoredTtlSecs => {
             set_nested_i64(doc, &path, config.insights.ignored_ttl_secs as i64)
@@ -3059,16 +3076,18 @@ fn build_parameter_body_lines(
             confirm_actions_label(defaults.ux.confirm_actions).into(),
         ),
         setting_row(
-            "ux hover_help/language",
+            "ux hover/language/trigger",
             format!(
-                "{}/{}",
+                "{}/{}/{}",
                 on_off(config.ux.hover_help),
-                help_language_label(config.ux.help_language)
+                help_language_label(config.ux.help_language),
+                hover_help_trigger_label(config.ux.hover_help_trigger)
             ),
             format!(
-                "{}/{}",
+                "{}/{}/{}",
                 on_off(defaults.ux.hover_help),
-                help_language_label(defaults.ux.help_language)
+                help_language_label(defaults.ux.help_language),
+                hover_help_trigger_label(defaults.ux.hover_help_trigger)
             ),
         ),
         setting_row(
@@ -3847,6 +3866,9 @@ fn parameter_help_text(field: ParameterField) -> &'static str {
         UxHoverHelp => {
             "shows floating help over Alerts and Panes rows so operators can understand labels without leaving Qmonster"
         }
+        UxHoverHelpTrigger => {
+            "controls whether hover help opens only near row labels or across the full row"
+        }
         UxHelpLanguage => "selects the language used by floating help and related glossary text",
         InsightsIgnoredTtlSecs => {
             "time after which unresolved recommendation lifecycle events become TTL-ignored in insights"
@@ -3944,6 +3966,7 @@ fn parameter_value_help(field: ParameterField) -> &'static str {
     use ParameterField::*;
     match field {
         UxConfirmActions => "always | first_time | never",
+        UxHoverHelpTrigger => "label | row",
         UxHelpLanguage => "ko | en",
         TmuxSource => "auto | polling | control_mode",
         FxEffect => "banner | confetti | matrix",
@@ -3985,6 +4008,9 @@ fn parameter_shortcut_help(field: ParameterField) -> Option<&'static str> {
     match field {
         ParameterField::UxHoverHelp => Some("H"),
         ParameterField::UxHelpLanguage => Some("L"),
+        ParameterField::UxHoverHelpTrigger => {
+            Some("label mode reduces accidental popups; row mode keeps the old broad hover area")
+        }
         ParameterField::UxConfirmActions => Some("affects p/d/y Action Explainer behavior"),
         _ => None,
     }
@@ -4074,6 +4100,10 @@ fn confirm_actions_label(mode: ConfirmActions) -> &'static str {
 
 fn help_language_label(language: HelpLanguage) -> &'static str {
     language.as_str()
+}
+
+fn hover_help_trigger_label(trigger: HoverHelpTrigger) -> &'static str {
+    trigger.as_str()
 }
 
 fn refresh_policy_label(policy: RefreshPolicy) -> &'static str {
@@ -4603,15 +4633,16 @@ mod tests {
         let mut config = cfg();
         config.ux.hover_help = false;
         config.ux.help_language = HelpLanguage::En;
+        config.ux.hover_help_trigger = crate::app::config::HoverHelpTrigger::Row;
         let mut s = SettingsOverlay::new();
         s.open();
         s.switch_tab(SettingsTab::Parameters);
 
         let rendered = rendered_text(&build_body_lines(&s, &config));
 
-        assert!(rendered.contains("ux hover_help/language"));
-        assert!(rendered.contains("off/en"));
-        assert!(rendered.contains("default on/ko"));
+        assert!(rendered.contains("ux hover/language/trigger"));
+        assert!(rendered.contains("off/en/row"));
+        assert!(rendered.contains("default on/ko/label"));
     }
 
     #[test]
@@ -4727,6 +4758,7 @@ mod tests {
         assert!(fields.contains(&ParameterField::ProfileSwitchWindowPolls));
         assert!(fields.contains(&ParameterField::UxConfirmActions));
         assert!(fields.contains(&ParameterField::UxHoverHelp));
+        assert!(fields.contains(&ParameterField::UxHoverHelpTrigger));
         assert!(fields.contains(&ParameterField::UxHelpLanguage));
     }
 
@@ -5240,6 +5272,8 @@ mod tests {
             .expect("toggle hover help");
         s.select_parameter(ParameterField::UxHelpLanguage);
         s.activate_parameter(&mut config).expect("toggle language");
+        s.select_parameter(ParameterField::UxHoverHelpTrigger);
+        s.activate_parameter(&mut config).expect("toggle trigger");
 
         s.save(&config, &path).expect("save ok");
 
@@ -5247,8 +5281,13 @@ mod tests {
         let reloaded: QmonsterConfig = toml::from_str(&raw).expect("parse");
         assert!(!reloaded.ux.hover_help);
         assert_eq!(reloaded.ux.help_language, HelpLanguage::En);
+        assert_eq!(
+            reloaded.ux.hover_help_trigger,
+            crate::app::config::HoverHelpTrigger::Row
+        );
         assert!(raw.contains("hover_help = false"), "raw: {raw}");
         assert!(raw.contains("help_language = \"en\""), "raw: {raw}");
+        assert!(raw.contains("hover_help_trigger = \"row\""), "raw: {raw}");
     }
 
     #[test]

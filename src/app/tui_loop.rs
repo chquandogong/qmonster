@@ -1153,6 +1153,7 @@ where
                                         m.row,
                                         DashboardHoverView {
                                             split: dashboard_split,
+                                            hover_help_trigger: ctx.config.ux.hover_help_trigger,
                                             alert_state: &dashboard.alert_state,
                                             pane_state: &dashboard.pane_state,
                                             notices: &dashboard.notices,

@@ -515,6 +515,7 @@ impl Default for ProfileSwitchConfig {
 pub struct UxConfig {
     pub confirm_actions: ConfirmActions,
     pub hover_help: bool,
+    pub hover_help_trigger: HoverHelpTrigger,
     pub help_language: HelpLanguage,
 }
 
@@ -523,6 +524,7 @@ impl Default for UxConfig {
         Self {
             confirm_actions: ConfirmActions::Always,
             hover_help: true,
+            hover_help_trigger: HoverHelpTrigger::Label,
             help_language: HelpLanguage::Ko,
         }
     }
@@ -541,6 +543,29 @@ pub enum ConfirmActions {
 pub enum HelpLanguage {
     Ko,
     En,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HoverHelpTrigger {
+    Label,
+    Row,
+}
+
+impl HoverHelpTrigger {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::Label => Self::Row,
+            Self::Row => Self::Label,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Label => "label",
+            Self::Row => "row",
+        }
+    }
 }
 
 impl HelpLanguage {
@@ -1515,6 +1540,7 @@ critical_pct = 0.82
         let cfg = QmonsterConfig::defaults();
         assert!(cfg.ux.hover_help);
         assert!(matches!(cfg.ux.help_language, HelpLanguage::Ko));
+        assert!(matches!(cfg.ux.hover_help_trigger, HoverHelpTrigger::Label));
     }
 
     #[test]
@@ -1523,10 +1549,12 @@ critical_pct = 0.82
 [ux]
 hover_help = false
 help_language = "en"
+hover_help_trigger = "row"
 "#;
         let cfg: QmonsterConfig = toml::from_str(toml_str).unwrap();
         assert!(!cfg.ux.hover_help);
         assert!(matches!(cfg.ux.help_language, HelpLanguage::En));
+        assert!(matches!(cfg.ux.hover_help_trigger, HoverHelpTrigger::Row));
     }
 
     #[test]

@@ -41,7 +41,9 @@ non-resizable.
 
 ### Floating hover help
 
-기본값은 켜짐(`ko`)입니다. Alerts에서는 `bulk hide`, 헤더, `dismiss`,
+기본값은 켜짐(`ko`)이며, `label` trigger는 마우스가 행 앞쪽 라벨 영역에
+있을 때만 help를 엽니다. `row` trigger로 바꾸면 기존처럼 행 전체 hover에서
+열립니다. Alerts에서는 `bulk hide`, 헤더, `dismiss`,
 `summary`, detail(`next`/`run`/`anchor`/`others`), copy hint를 행별로
 설명합니다. Panes에서는 헤더(provider/role/CLI version), `state`,
 `path`, `cmd`, `status`, `signals`, metrics, tokens/cache io, runtime
@@ -56,7 +58,8 @@ hover help 제목에는 현재 언어와 `H/L` 힌트가 표시되고, 본문 �
 - `L`: help language `ko`/`en` 전환
 
 영구 설정은 `S` Settings → Parameters에서 `ux hover_help`,
-`ux help_language`를 수정한 뒤 `w`로 저장하거나 TOML에 직접 적습니다.
+`ux help_language`, `ux hover_help_trigger`를 수정한 뒤 `w`로 저장하거나
+TOML에 직접 적습니다.
 `S` Settings → Parameters 안에서도 `H` / `L`을 누르면 같은 설정을 즉시
 바꿀 수 있고, 변경은 `w` 저장 전까지 runtime-only 상태입니다.
 
@@ -64,6 +67,7 @@ hover help 제목에는 현재 언어와 `H/L` 힌트가 표시되고, 본문 �
 [ux]
 hover_help = true
 help_language = "ko" # "ko" | "en"
+hover_help_trigger = "label" # "label" | "row"
 ```
 
 ## 2. Alerts 읽는 법
@@ -489,7 +493,8 @@ side_effects (N):
   `[insights]` ignored/default window, `[anomaly]` retention/promote,
   `[reset]` snapshot/wait threshold, `[provider_setup]` 상태가 포함됩니다.
   Parameters 탭에서는 `H`가 `ux.hover_help`, `L`이 `ux.help_language`를
-  즉시 토글하고 dirty 상태로 표시합니다.
+  즉시 토글하고 dirty 상태로 표시합니다. `ux.hover_help_trigger`는
+  `label` 또는 `row`로 cycle/edit할 수 있습니다.
   `Rules`는 cache / quota / reset / memory / security / insights TTL /
   anomaly detector 정책이 발동하는 조건을 읽기 전용으로 보여줍니다.
   `Badges`는 `CTX`, `COST`,
@@ -862,6 +867,7 @@ Operator opts in with the same `[anomaly] enabled = true` from v1.43.0. The 3 ne
 confirm_actions = "always"
 hover_help = true
 help_language = "ko" # "ko" | "en"
+hover_help_trigger = "label" # "label" | "row"
 ```
 
 `first_time`은 세션 로컬입니다 — Qmonster를 재시작하면 다시 모달이
