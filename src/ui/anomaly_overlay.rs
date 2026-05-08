@@ -718,11 +718,7 @@ mod tests {
         let mut overlay = AnomalyOverlay::new();
         overlay.open();
         let popup = anomaly_modal_area_for(viewport, &overlay);
-        let visible_rows = popup
-            .height
-            .saturating_sub(2)
-            .saturating_sub(1)
-            .max(1) as usize;
+        let visible_rows = popup.height.saturating_sub(2).saturating_sub(1).max(1) as usize;
         let total = 104usize;
         let last_full_page_scroll = total.saturating_sub(visible_rows) as u16;
         for _ in 0..last_full_page_scroll {
