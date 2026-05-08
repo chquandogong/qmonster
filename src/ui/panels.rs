@@ -3453,6 +3453,40 @@ mod tests {
     }
 
     #[test]
+    fn pane_help_topic_at_row_maps_core_rows() {
+        use crate::ui::help_glossary::HelpTopic;
+
+        let mut rep = sample_pane_report();
+        rep.current_path = "/repo".into();
+        rep.current_command = "claude --dangerously-skip-permissions".into();
+        rep.signals.cost_usd = Some(MetricValue::new(3.0, SourceKind::ProviderOfficial));
+        let reports = vec![rep];
+        let mut state = ListState::default();
+        state.select(Some(0));
+
+        assert_eq!(
+            pane_help_topic_at_row(&reports, &state, 0, 100),
+            Some(HelpTopic::PaneHeader)
+        );
+        assert_eq!(
+            pane_help_topic_at_row(&reports, &state, 1, 100),
+            Some(HelpTopic::PanePath)
+        );
+        assert_eq!(
+            pane_help_topic_at_row(&reports, &state, 2, 100),
+            Some(HelpTopic::PaneCommand)
+        );
+        assert_eq!(
+            pane_help_topic_at_row(&reports, &state, 3, 100),
+            Some(HelpTopic::PaneStatus)
+        );
+        assert_eq!(
+            pane_help_topic_at_row(&reports, &state, 4, 100),
+            Some(HelpTopic::PaneMetrics)
+        );
+    }
+
+    #[test]
     fn pane_card_shows_inline_proposal_line_when_pending() {
         use crate::domain::recommendation::RequestedEffect;
         let mut rep = sample_pane_report();

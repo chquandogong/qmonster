@@ -512,12 +512,16 @@ impl Default for ProfileSwitchConfig {
 #[serde(default)]
 pub struct UxConfig {
     pub confirm_actions: ConfirmActions,
+    pub hover_help: bool,
+    pub help_language: HelpLanguage,
 }
 
 impl Default for UxConfig {
     fn default() -> Self {
         Self {
             confirm_actions: ConfirmActions::Always,
+            hover_help: true,
+            help_language: HelpLanguage::Ko,
         }
     }
 }
@@ -528,6 +532,29 @@ pub enum ConfirmActions {
     Always,
     FirstTime,
     Never,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HelpLanguage {
+    Ko,
+    En,
+}
+
+impl HelpLanguage {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::Ko => Self::En,
+            Self::En => Self::Ko,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ko => "ko",
+            Self::En => "en",
+        }
+    }
 }
 
 /// Operator-controlled security posture surfacing. Runtime facts remain
@@ -1405,6 +1432,25 @@ critical_pct = 0.82
     fn ux_config_defaults_to_always() {
         let cfg = QmonsterConfig::defaults();
         assert!(matches!(cfg.ux.confirm_actions, ConfirmActions::Always));
+    }
+
+    #[test]
+    fn ux_config_defaults_hover_help_on_in_korean() {
+        let cfg = QmonsterConfig::defaults();
+        assert!(cfg.ux.hover_help);
+        assert!(matches!(cfg.ux.help_language, HelpLanguage::Ko));
+    }
+
+    #[test]
+    fn ux_config_parses_hover_help_and_language() {
+        let toml_str = r#"
+[ux]
+hover_help = false
+help_language = "en"
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml_str).unwrap();
+        assert!(!cfg.ux.hover_help);
+        assert!(matches!(cfg.ux.help_language, HelpLanguage::En));
     }
 
     #[test]

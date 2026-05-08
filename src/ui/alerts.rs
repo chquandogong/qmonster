@@ -1904,6 +1904,74 @@ mod tests {
     }
 
     #[test]
+    fn alert_help_topic_at_row_maps_header_dismiss_summary_detail_and_copy() {
+        use crate::ui::help_glossary::HelpTopic;
+
+        let rec = Recommendation {
+            action: "context-pressure",
+            reason: "context near threshold".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Estimated,
+            suggested_command: Some("/clear".into()),
+            side_effects: vec!["will drop visible transcript".into()],
+            is_strong: false,
+            next_step: Some("compact context".into()),
+            profile: None,
+        };
+        let reports = vec![base_report(vec![rec])];
+        let fresh = HashSet::new();
+        let times = HashMap::new();
+        let hidden = HashMap::new();
+        let now = Instant::now();
+        let mut state = ListState::default();
+        state.select(Some(0));
+        let view = || AlertView {
+            notices: &[],
+            reports: &reports,
+            fresh_alerts: &fresh,
+            alert_times: &times,
+            hidden_until: &hidden,
+            now,
+            target_label: "all",
+            focused: true,
+        };
+
+        assert_eq!(
+            alert_help_topic_at_row(&state, view(), 100, 0),
+            Some(HelpTopic::AlertHeader)
+        );
+        assert_eq!(
+            alert_help_topic_at_row(&state, view(), 100, 1),
+            Some(HelpTopic::AlertDismiss)
+        );
+        assert_eq!(
+            alert_help_topic_at_row(&state, view(), 100, 2),
+            Some(HelpTopic::AlertSummary)
+        );
+        assert_eq!(
+            alert_help_topic_at_row(&state, view(), 100, 3),
+            Some(HelpTopic::AlertDetail)
+        );
+
+        let item = collect_items(&[], &reports, &fresh, &times, &hidden, now)
+            .into_iter()
+            .next()
+            .expect("item");
+        let copy_row = alert_item_lines(&item, 100, now, true)
+            .iter()
+            .position(|line| {
+                line.spans
+                    .iter()
+                    .any(|span| span.content.as_ref().contains("press y to copy"))
+            })
+            .expect("copy row") as u16;
+        assert_eq!(
+            alert_help_topic_at_row(&state, view(), 100, copy_row),
+            Some(HelpTopic::AlertCopy)
+        );
+    }
+
+    #[test]
     fn alert_title_carries_copy_chip_when_command_present() {
         // v1.39 surface A: alert title carries a `★y` chip when its
         // `suggested_command` is `Some(_)` so operators can spot

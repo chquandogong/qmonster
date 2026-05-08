@@ -1,0 +1,228 @@
+use crate::app::config::HelpLanguage;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HelpTopic {
+    AlertBulkHide,
+    AlertHeader,
+    AlertDismiss,
+    AlertSummary,
+    AlertDetail,
+    AlertCopy,
+    PaneHeader,
+    PaneState,
+    PanePath,
+    PaneCommand,
+    PaneStatus,
+    PaneSignals,
+    PaneMetrics,
+    PaneTokens,
+    PaneRuntime,
+    PaneRecommendation,
+    PaneProfile,
+}
+
+pub fn language_label(language: HelpLanguage) -> &'static str {
+    match language {
+        HelpLanguage::Ko => "KO",
+        HelpLanguage::En => "EN",
+    }
+}
+
+pub fn help_lines(topic: HelpTopic, language: HelpLanguage) -> &'static [&'static str] {
+    match language {
+        HelpLanguage::Ko => ko_lines(topic),
+        HelpLanguage::En => en_lines(topic),
+    }
+}
+
+fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
+    match topic {
+        HelpTopic::AlertBulkHide => &[
+            "bulk hide: 심각도별 알림을 한 번에 숨기거나 되돌립니다.",
+            "Risk/Warning/Concern/Good 칩을 클릭하면 해당 등급의 실행 가능한 알림이 토글됩니다.",
+            "자동 숨김 예정인 항목은 undo 상태로 다시 복구할 수 있습니다.",
+        ],
+        HelpTopic::AlertHeader => &[
+            "헤더: 알림 발생 시각, NEW 여부, 심각도, 제목을 한 줄에 모읍니다.",
+            "제목은 Recommendation/Checkpoint와 관련 pane ID를 보여줍니다.",
+            "★y 칩은 바로 복사 가능한 추천 명령이 있음을 뜻합니다.",
+        ],
+        HelpTopic::AlertDismiss => &[
+            "dismiss: 이 알림을 목록에서 숨길지 또는 숨김 예약을 되돌릴지 제어합니다.",
+            "[ ] 상태는 click/Enter/Space로 hide, [x] 상태는 undo를 의미합니다.",
+            "auto-hide 카운트다운은 숨김 예약이 진행 중임을 나타냅니다.",
+        ],
+        HelpTopic::AlertSummary => &[
+            "summary: 알림이 발생한 핵심 원인이나 헤드라인입니다.",
+            "예: 입력 대기, cross-pane 파일 충돌, 비용/토큰 압박 같은 판단 이유가 표시됩니다.",
+        ],
+        HelpTopic::AlertDetail => &[
+            "details: summary 아래의 next/run/anchor/others 같은 추가 정보입니다.",
+            "next는 다음 조치, run은 추천 셸 명령, anchor/others는 연관 pane을 뜻합니다.",
+            "profile, side_effects, lever가 있으면 설정 변경의 근거와 트레이드오프를 함께 보여줍니다.",
+        ],
+        HelpTopic::AlertCopy => &[
+            "copy: 선택된 알림에 suggested_command가 있을 때만 나타나는 힌트입니다.",
+            "알림에 포커스가 있을 때 y를 누르면 표시된 명령을 클립보드로 복사합니다.",
+        ],
+        HelpTopic::PaneHeader => &[
+            "pane 헤더: tmux session/window, provider, role, CLI version, pane ID를 요약합니다.",
+            "Qmonster pane은 CLI version 표시 대상에서 제외됩니다.",
+            "★p 칩은 이 pane에 수락/거절 가능한 prompt-send 제안이 있음을 뜻합니다.",
+        ],
+        HelpTopic::PaneState => &[
+            "state: IDLE DONE, WAIT INPUT, WAIT APPROVAL, USAGE LIMIT, IDLE STALE 같은 대기 상태입니다.",
+            "상태 배지 옆 시간은 그 상태에 들어간 뒤 흐른 시간입니다.",
+            "STATE CHANGED/ACTIVE는 최근 상태 전환을 강조합니다.",
+        ],
+        HelpTopic::PanePath => &[
+            "path: 해당 pane의 현재 작업 디렉토리(CWD)입니다.",
+            "경로가 길면 카드 폭에 맞춰 축약되며, 알 수 없으면 unknown path로 표시됩니다.",
+        ],
+        HelpTopic::PaneCommand => &[
+            "cmd: 해당 pane에서 현재 실행 중이거나 마지막으로 보인 명령입니다.",
+            "긴 명령은 카드 폭에 맞춰 줄바꿈됩니다.",
+        ],
+        HelpTopic::PaneStatus => &[
+            "status: Qmonster가 pane의 provider/role을 얼마나 확실히 식별했는지 보여줍니다.",
+            "high/medium/low confidence는 identity resolver의 신뢰도입니다.",
+        ],
+        HelpTopic::PaneSignals => &[
+            "signals: 터미널 출력과 동작 패턴에서 감지한 특이사항입니다.",
+            "waiting for input, approval needed, log storm, repeated output, error hint 등이 표시됩니다.",
+        ],
+        HelpTopic::PaneMetrics => &[
+            "metrics: 비용, context/quota 압박, reset ETA, model, branch/worktree 같은 런타임 지표입니다.",
+            "COST는 금액에 따라 Good/Concern/Warning/Risk 색으로 변합니다.",
+            "각 칩의 [Official]/[Estimated] 표기는 데이터 출처를 뜻합니다.",
+        ],
+        HelpTopic::PaneTokens => &[
+            "tokens/cache io: 입력/출력 토큰과 prompt cache 생성/읽기 통계입니다.",
+            "선택된 pane에서는 최근 토큰 변화 스파크라인과 token io가 함께 표시됩니다.",
+        ],
+        HelpTopic::PaneRuntime => &[
+            "runtime facts: 세션, 권한 모드, sandbox, allowed dir, transcript, loaded tool/skill/plugin 정보입니다.",
+            "session/loaded 행은 에이전트가 어떤 로그와 확장 기능으로 실행 중인지 추적하는 데 씁니다.",
+        ],
+        HelpTopic::PaneRecommendation => &[
+            "recommendations: Qmonster가 발견한 문제, 제안, 다음 조치를 pane 카드 안에 요약합니다.",
+            "Risk/Warning/Concern/Good/Safe 라벨 뒤에 이유와 detail/next/run이 붙습니다.",
+        ],
+        HelpTopic::PaneProfile => &[
+            "profile: provider 설정 프리셋 제안입니다.",
+            "lever는 바뀔 설정값, citation은 근거, side_effects는 적용 시 트레이드오프입니다.",
+        ],
+    }
+}
+
+fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
+    match topic {
+        HelpTopic::AlertBulkHide => &[
+            "bulk hide: hide or undo actionable alerts by severity.",
+            "Click a Risk/Warning/Concern/Good chip to toggle that severity group.",
+            "Pending auto-hide items can be undone before they disappear.",
+        ],
+        HelpTopic::AlertHeader => &[
+            "header: timestamp, NEW badge, severity, and alert title in one row.",
+            "The title names the alert type and related pane ID.",
+            "The ★y chip means the alert has a copyable command suggestion.",
+        ],
+        HelpTopic::AlertDismiss => &[
+            "dismiss: controls whether this alert is hidden or restored.",
+            "[ ] means click/Enter/Space hides it; [x] means undo is available.",
+            "The auto-hide countdown shows a scheduled hide.",
+        ],
+        HelpTopic::AlertSummary => &[
+            "summary: the headline reason this alert exists.",
+            "Examples include waiting for input, cross-pane file conflict, or cost/token pressure.",
+        ],
+        HelpTopic::AlertDetail => &[
+            "details: extra next/run/anchor/others rows below the summary.",
+            "next is the suggested response, run is a shell command, anchor/others identify related panes.",
+            "profile, side_effects, and lever rows explain config-change tradeoffs when present.",
+        ],
+        HelpTopic::AlertCopy => &[
+            "copy: shown only when the selected alert has a suggested_command.",
+            "With alert focus, press y to copy the displayed command to the clipboard.",
+        ],
+        HelpTopic::PaneHeader => &[
+            "pane header: tmux session/window, provider, role, CLI version, and pane ID.",
+            "Qmonster panes intentionally omit CLI version.",
+            "The ★p chip marks an accept/reject prompt-send proposal.",
+        ],
+        HelpTopic::PaneState => &[
+            "state: idle/wait states such as IDLE DONE, WAIT INPUT, WAIT APPROVAL, USAGE LIMIT, IDLE STALE.",
+            "The elapsed timer shows how long the pane has been in that state.",
+            "STATE CHANGED/ACTIVE highlights recent transitions.",
+        ],
+        HelpTopic::PanePath => &[
+            "path: the pane's current working directory.",
+            "Long paths are shortened to fit; unknown paths render as unknown path.",
+        ],
+        HelpTopic::PaneCommand => &[
+            "cmd: the current or most recently observed command in this pane.",
+            "Long commands wrap within the card width.",
+        ],
+        HelpTopic::PaneStatus => &[
+            "status: how confidently Qmonster identified the pane provider and role.",
+            "high/medium/low confidence comes from the identity resolver.",
+        ],
+        HelpTopic::PaneSignals => &[
+            "signals: unusual terminal output or behavior patterns.",
+            "Examples: waiting for input, approval needed, log storm, repeated output, error hint.",
+        ],
+        HelpTopic::PaneMetrics => &[
+            "metrics: cost, context/quota pressure, reset ETA, model, branch/worktree, and related facts.",
+            "COST changes color from Good through Risk as spend rises.",
+            "[Official]/[Estimated] marks the source authority for each chip.",
+        ],
+        HelpTopic::PaneTokens => &[
+            "tokens/cache io: input/output tokens and prompt-cache create/read stats.",
+            "The selected pane also shows recent token movement and token io rows.",
+        ],
+        HelpTopic::PaneRuntime => &[
+            "runtime facts: session, permission mode, sandbox, allowed dir, transcript, loaded tools/skills/plugins.",
+            "session/loaded rows help trace the running agent and its injected capabilities.",
+        ],
+        HelpTopic::PaneRecommendation => &[
+            "recommendations: issues, suggestions, and next steps found by Qmonster for this pane.",
+            "Risk/Warning/Concern/Good/Safe labels are followed by reason and detail/next/run rows.",
+        ],
+        HelpTopic::PaneProfile => &[
+            "profile: provider configuration preset proposal.",
+            "levers are settings to change, citations explain why, side_effects show tradeoffs.",
+        ],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_topic_has_korean_and_english_help() {
+        let topics = [
+            HelpTopic::AlertBulkHide,
+            HelpTopic::AlertHeader,
+            HelpTopic::AlertDismiss,
+            HelpTopic::AlertSummary,
+            HelpTopic::AlertDetail,
+            HelpTopic::AlertCopy,
+            HelpTopic::PaneHeader,
+            HelpTopic::PaneState,
+            HelpTopic::PanePath,
+            HelpTopic::PaneCommand,
+            HelpTopic::PaneStatus,
+            HelpTopic::PaneSignals,
+            HelpTopic::PaneMetrics,
+            HelpTopic::PaneTokens,
+            HelpTopic::PaneRuntime,
+            HelpTopic::PaneRecommendation,
+            HelpTopic::PaneProfile,
+        ];
+        for topic in topics {
+            assert!(!help_lines(topic, HelpLanguage::Ko).is_empty());
+            assert!(!help_lines(topic, HelpLanguage::En).is_empty());
+        }
+    }
+}
