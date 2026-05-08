@@ -627,28 +627,56 @@ impl SettingsOverlay {
         self.selected_integration = self.selected_integration.previous();
     }
 
+    /// v1.58.1: parameter navigation respects the active filter.
+    /// When the filter is non-empty, returns only the matching fields
+    /// in `all_parameter_fields()` order. When the filter is None or
+    /// empty, returns the full list.
+    fn filtered_parameter_field_list(&self) -> Vec<ParameterField> {
+        let fields = all_parameter_fields();
+        let Some(buf) = self.parameter_filter.as_deref() else {
+            return fields;
+        };
+        let needle = buf.trim().to_ascii_lowercase();
+        if needle.is_empty() {
+            return fields;
+        }
+        fields
+            .into_iter()
+            .filter(|f| parameter_label(*f).to_ascii_lowercase().contains(&needle))
+            .collect()
+    }
+
     pub fn next_parameter(&mut self) {
         if self.edit_buffer.is_some() || self.tab != SettingsTab::Parameters {
             return;
         }
-        let fields = all_parameter_fields();
-        let idx = fields
-            .iter()
-            .position(|f| *f == self.selected_parameter)
-            .unwrap_or(0);
-        self.selected_parameter = fields[(idx + 1) % fields.len()];
+        let fields = self.filtered_parameter_field_list();
+        if fields.is_empty() {
+            return;
+        }
+        // v1.58.1: when the current selection is hidden by the filter,
+        // jump to the first visible field instead of cycling the
+        // unfiltered list (which made arrow presses appear frozen).
+        self.selected_parameter = match fields.iter().position(|f| *f == self.selected_parameter) {
+            Some(idx) => fields[(idx + 1) % fields.len()],
+            None => fields[0],
+        };
     }
 
     pub fn prev_parameter(&mut self) {
         if self.edit_buffer.is_some() || self.tab != SettingsTab::Parameters {
             return;
         }
-        let fields = all_parameter_fields();
-        let idx = fields
-            .iter()
-            .position(|f| *f == self.selected_parameter)
-            .unwrap_or(0);
-        self.selected_parameter = fields[(idx + fields.len() - 1) % fields.len()];
+        let fields = self.filtered_parameter_field_list();
+        if fields.is_empty() {
+            return;
+        }
+        self.selected_parameter = match fields.iter().position(|f| *f == self.selected_parameter) {
+            Some(idx) => fields[(idx + fields.len() - 1) % fields.len()],
+            // Jump to the last visible field when the current selection
+            // is filtered out, so ↑ has a visible target.
+            None => fields[fields.len() - 1],
+        };
     }
 
     pub fn scroll_up(&mut self) {
@@ -5850,5 +5878,99 @@ mod tests {
             "row label missing: {rendered}"
         );
         assert!(rendered.contains("30"), "default value 30 missing");
+    }
+
+    /// v1.58.1 regression guard: when a parameter filter is active,
+    /// `next_parameter` / `prev_parameter` must skip fields whose
+    /// labels don't match. Pre-fix the navigation cycled through
+    /// `all_parameter_fields()` blindly, so arrow keys could land on
+    /// hidden fields and the visible cursor appeared to freeze.
+    #[test]
+    fn next_parameter_skips_fields_filtered_out_by_active_filter() {
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        s.select_parameter(ParameterField::TmuxSource);
+        s.start_parameter_filter();
+        for c in "anomaly".chars() {
+            s.parameter_filter_type_char(c);
+        }
+        s.confirm_parameter_filter();
+
+        // Selection started at TmuxSource (no "anomaly" in label) — first
+        // ↓ should jump to the first visible (anomaly-prefixed) field.
+        s.next_parameter();
+        assert!(
+            parameter_label(s.selected_parameter())
+                .to_ascii_lowercase()
+                .contains("anomaly"),
+            "first next_parameter under `anomaly` filter should jump to a visible field; got {}",
+            parameter_label(s.selected_parameter())
+        );
+
+        // Subsequent ↓ presses should stay within the filtered set.
+        for _ in 0..50 {
+            s.next_parameter();
+            assert!(
+                parameter_label(s.selected_parameter())
+                    .to_ascii_lowercase()
+                    .contains("anomaly"),
+                "next_parameter must stay within the filtered set; got {}",
+                parameter_label(s.selected_parameter())
+            );
+        }
+    }
+
+    #[test]
+    fn prev_parameter_skips_fields_filtered_out_by_active_filter() {
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        s.select_parameter(ParameterField::TmuxSource);
+        s.start_parameter_filter();
+        for c in "ux".chars() {
+            s.parameter_filter_type_char(c);
+        }
+        s.confirm_parameter_filter();
+
+        // Selection at TmuxSource is hidden under `ux` filter — ↑
+        // should jump to the last visible field (last ux* row).
+        s.prev_parameter();
+        let label = parameter_label(s.selected_parameter()).to_ascii_lowercase();
+        assert!(
+            label.contains("ux"),
+            "first prev_parameter under `ux` filter should jump to a visible field; got {label}"
+        );
+
+        for _ in 0..30 {
+            s.prev_parameter();
+            assert!(
+                parameter_label(s.selected_parameter())
+                    .to_ascii_lowercase()
+                    .contains("ux"),
+                "prev_parameter must stay within the filtered set; got {}",
+                parameter_label(s.selected_parameter())
+            );
+        }
+    }
+
+    #[test]
+    fn next_parameter_no_op_when_filter_matches_nothing() {
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        s.select_parameter(ParameterField::TmuxSource);
+        let before = s.selected_parameter();
+        s.start_parameter_filter();
+        for c in "zzznonsense".chars() {
+            s.parameter_filter_type_char(c);
+        }
+        s.confirm_parameter_filter();
+
+        // Empty filtered set → next/prev are no-ops (selection stays).
+        s.next_parameter();
+        assert_eq!(s.selected_parameter(), before);
+        s.prev_parameter();
+        assert_eq!(s.selected_parameter(), before);
     }
 }

@@ -1,14 +1,41 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.58.0 ledger sync)_
+_Last updated: 2026-05-08 (Claude, v1.58.1 ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.58.0 — five-axis polish bundle: hover_help dashboard expansion (divider/footer/version-badge); n-overlay row filter (`f` cycles All → Promoted → High); provider-honesty cost chip (`cost ?` while pricing.toml lacks the row, `cost $X.XX` when curated); Settings Parameters filter/search via `/`; theme high_contrast variant for bright-profile terminals.
-- Version surfaces: npm package metadata `qmonster@1.58.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v1.58.0` to be created at the ledger sync commit. v1.57.0 is the immediate prior tagged baseline.
+- Title: Qmonster v1.58.1 — operator-reported regression hotfix on top of v1.58.0: parameter navigation respects the active filter so arrow keys stop landing on hidden fields. Without the fix, the Parameters tab body appeared frozen under `/` filter because next_parameter / prev_parameter cycled through `all_parameter_fields()` blindly and `keep_selected_parameter_visible` no-oped on filtered-out selections.
+- Version surfaces: npm package metadata `qmonster@1.58.1`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v1.58.1` to be created at the ledger sync commit. v1.58.0 is the immediate prior tagged baseline.
 - Release publication state: **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s). Sibling v1.37.0–v1.49.0 publications all remain live — `npm view qmonster versions` lists `1.37.0` through `1.55.0` with `dist-tags.latest = 1.55.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55}.0`.
-- Current phase: All prior phases complete. v1.50.0–v1.57.0 publication baselines still apply; v1.58.0 ships a five-axis operator UX polish bundle on top — no new phase is opened.
+- Current phase: All prior phases complete. v1.50.0–v1.58.0 publication baselines still apply; v1.58.1 is a one-slice hotfix on the v1.58.0 Settings parameter filter — no new phase is opened.
+
+## v1.58.1 Hotfix
+
+Operator report: after pressing `/` on Parameters and typing a filter
+(e.g. `anomaly`), the body appeared to stop scrolling — arrow keys
+seemed to do nothing. Root cause: `next_parameter` / `prev_parameter`
+in `src/ui/settings.rs` cycled through `all_parameter_fields()`
+unfiltered, so they could land on a hidden field. The downstream
+`keep_selected_parameter_visible` correctly no-ops when the selection
+is hidden, but the visible cursor never moves to a row the operator
+can see — perceptually frozen.
+
+Fix:
+- New private helper `SettingsOverlay::filtered_parameter_field_list`
+  returns the field list narrowed by the active filter (case-
+  insensitive substring against `parameter_label`). Empty / no filter
+  returns the full list.
+- `next_parameter` and `prev_parameter` now iterate that list. When
+  the current selection is filtered out, `next` jumps to the first
+  visible field; `prev` jumps to the last visible field. When the
+  filter matches nothing, both no-op.
+- 3 new regression tests in `ui::settings::tests` pin the contract
+  (cycles within the filtered set; jumps to first/last when current
+  is hidden; no-op when filter empties the set).
+
+Lib tests 1397 → 1400 (+3 regression guards). 65 integration tests
+preserved. fmt + clippy clean.
 
 ## v1.58.0 Feature State
 
@@ -560,14 +587,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v1.58.0 validation at the release commit:
+Most recent v1.58.1 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1397 lib tests + 65 integration tests + supporting suites, all green.
+- `cargo test --all-targets` — 1400 lib tests + 65 integration tests + supporting suites, all green (+3 from the v1.58.1 filter-navigation regression guards).
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.57.0 still apply when the v1.58.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.58.0 still apply when the v1.58.1 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 

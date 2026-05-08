@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.58.0 - five-axis polish bundle: hover_help dashboard expansion + n-overlay row filter + provider-honesty cost chip + Settings Parameters filter + theme high_contrast variant"
+  mission_title: "Qmonster v1.58.1 - operator-reported regression hotfix on v1.58.0 Settings parameter filter: arrow-key navigation now skips fields hidden by the active /-filter so the body no longer appears frozen"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 201
-  latest_version: "1.58.0"
+  total_revisions: 202
+  latest_version: "1.58.1"
 
 timeline:
   - change_id: "initial"
@@ -18933,6 +18933,78 @@ timeline:
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 / v1.58.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
       - "Theme: a true `light` variant that re-derives all 150+ theme:: constant call sites was deferred from this bundle; HighContrast covers the bright-terminal case."
+
+  - version: "1.58.1"
+    change_sequence: 202
+    date: "2026-05-08"
+    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator regression report: '왼쪽 섹션이 스크롤이 안됨' after the v1.58.0 Settings parameter filter slice."
+    summary: >
+      v1.58.1 hotfixes a v1.58.0 regression in the Settings Parameters
+      tab filter. Operator pressed `/`, typed a substring (e.g. `anomaly`),
+      then pressed Down — but the visible cursor never moved. Root
+      cause: `next_parameter` / `prev_parameter` in src/ui/settings.rs
+      cycled through `all_parameter_fields()` blindly so they could
+      land on a field the filter had hidden; the downstream
+      `keep_selected_parameter_visible` correctly no-oped on a
+      filtered-out selection, but the visible cursor was stuck.
+      Fix: new private helper `SettingsOverlay::filtered_parameter_field_list`
+      narrows the navigation list by the active filter
+      (case-insensitive substring vs `parameter_label`); empty / no
+      filter returns the full list. `next_parameter` and
+      `prev_parameter` iterate that list. When the current selection
+      is hidden by the filter, `next` jumps to the first visible
+      field, `prev` jumps to the last visible field. When the filter
+      empties the set, both are no-ops. 3 regression-guard tests added
+      (cycles within filtered set; jumps to first/last on hidden
+      selection; no-op on empty filter set).
+      Lib tests 1397 → 1400 (+3). 65 integration tests preserved. fmt
+      + clippy clean.
+    intent_ko: >
+      v1.58.1 은 v1.58.0 Settings 파라미터 필터 슬라이스의 회귀 핫픽스.
+      `/` 로 필터 입력 후 ↓/↑ 가 안 되는 것처럼 보이던 문제 — next/prev
+      파라미터가 `all_parameter_fields()` 전체를 사이클해서 숨겨진 필드로
+      넘어갔던 게 원인. 새 helper `filtered_parameter_field_list` 가
+      활성 필터(라벨 부분 일치, 대소문자 무관)로 네비게이션 리스트를
+      좁히고, 현재 선택이 숨겨졌으면 ↓ 첫 보이는 필드로 / ↑ 마지막
+      보이는 필드로 점프. 필터가 0개 매치면 양쪽 모두 no-op. 회귀 가드
+      3 추가. lib 1397 → 1400.
+    triggered_by: "Operator regression: '왼쪽 섹션이 스크롤이 안됨' (Parameters tab body appears frozen after typing a / filter — arrow keys land on hidden fields)."
+    changes:
+      added:
+        - "src/ui/settings.rs::SettingsOverlay::filtered_parameter_field_list (private helper) returns all_parameter_fields filtered by the active /-filter."
+        - "ui::settings::tests::next_parameter_skips_fields_filtered_out_by_active_filter."
+        - "ui::settings::tests::prev_parameter_skips_fields_filtered_out_by_active_filter."
+        - "ui::settings::tests::next_parameter_no_op_when_filter_matches_nothing."
+      changed:
+        - "src/ui/settings.rs::SettingsOverlay::next_parameter / prev_parameter: iterate the filtered list; jump to first / last visible field when current selection is hidden; no-op when filter empties the set."
+      removed: []
+      tests_added:
+        - "next_parameter_skips_fields_filtered_out_by_active_filter."
+        - "prev_parameter_skips_fields_filtered_out_by_active_filter."
+        - "next_parameter_no_op_when_filter_matches_nothing."
+      docs:
+        - "package.json: 1.58.0 → 1.58.1."
+        - "README.md / VERSION.md: 1.58.0 → 1.58.1."
+        - ".mission/CURRENT_STATE.md: v1.58.1 Hotfix section + validation baseline + mission line refreshed."
+        - "mission-history.yaml: v1.58.1 entry appended; meta updated to total_revisions 202 / latest_version 1.58.1."
+        - "docs/ai/VALIDATION.md: new v1.58.1 release row."
+    observable_effects:
+      - "Pressing ↓/↑ while a Settings Parameters / filter is active now lands on a visible field. Before the fix, arrow keys could jump to a hidden field and the visible cursor appeared frozen."
+      - "Pressing ↓ while the current selection is filtered out jumps to the first visible field; ↑ jumps to the last visible field."
+      - "Empty filter result set (typo / no matches) silently no-ops navigation instead of cycling through hidden fields."
+    impact_scope:
+      runtime: "Pure logic refactor inside SettingsOverlay. No new state, no new IO."
+      tests: "1397 → 1400 lib tests (+3 regression guards). 65 integration tests preserved."
+      ledger: "1 new timeline entry (sequence 202); meta total_revisions 201 → 202, latest_version 1.58.0 → 1.58.1."
+      npm: "package.json version 1.58.1; CI publication of v1.58.1 follows the same workflow as v1.37.0 through v1.58.0."
+    breaking: false
+    risk: "very low — bug fix scoped to two methods + a private helper. Existing call sites compile unchanged. The 3 regression guards pin the contract against future re-breakage."
+    related_commits:
+      - "PENDING — v1.58.1 hotfix release commit (this bundle)."
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 / v1.58.0 / v1.58.1 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
