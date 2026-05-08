@@ -28,7 +28,7 @@ pub fn render_fx_overlay(frame: &mut Frame<'_>, scene: &FxScene, banner_text: &s
     // Bottom-right dismiss hint — written cell-by-cell with non-space
     // characters only so it doesn't clobber the underlying dashboard
     // footer's bg / styling.
-    paint_hint_inline(frame, area, " click / any key to dismiss · Q to toggle ");
+    paint_hint_inline(frame, area, " click / any key to dismiss · Q opens fx ");
 }
 
 fn paint_hint_inline(frame: &mut Frame<'_>, area: Rect, hint: &str) {

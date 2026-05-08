@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.56.0 - audit-doc polish bundle: provider-honesty cache chips + matrix fx backdrop dim + Insights Situations regression guard + ARCHITECTURE cache-rule paragraph"
+  mission_title: "Qmonster v1.57.0 - cross-cutting consistency sweep: README/VERSION/mission.yaml/PROJECT_BRIEF version surfaces aligned; UI_MANUAL gains Q hotkey + fx overlay + IME drag-bar prose; fx dismiss hint corrected; footer key cluster advertises Q fx; REVIEW_GUIDE matrix reference refreshed"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 199
-  latest_version: "1.56.0"
+  total_revisions: 200
+  latest_version: "1.57.0"
 
 timeline:
   - change_id: "initial"
@@ -18750,6 +18750,100 @@ timeline:
       - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
+  - version: "1.57.0"
+    change_sequence: 200
+    date: "2026-05-08"
+    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '지금 기준 로컬 문서, 깃 문서, 코드 상 각 창에 표시되는 데이터/문서를 전부 검토하여 통일, 일관성 유지 작업을 해줘'."
+    summary: >
+      v1.57.0 is a cross-cutting consistency sweep run after v1.56.0
+      publication. Four parallel audit passes (version refs, feature
+      claim drift, in-code label consistency, README/top-level sync)
+      surfaced six concrete drifts; v1.57.0 closes all of them in one
+      bundle. No code-behaviour change beyond two UI-string fixes (fx
+      dismiss hint + dashboard footer key cluster). Doc-only changes
+      bring README, VERSION.md, mission.yaml, PROJECT_BRIEF.md,
+      UI_MANUAL.md, REVIEW_GUIDE.md into one v1.57.0-aligned state.
+      Concrete fixes:
+      (1) README.md / VERSION.md "Mission ledger" + "npm" rows bumped
+      v1.50.0 → v1.57.0 (was 7 versions stale).
+      (2) mission.yaml mission.version + mission.title bumped from
+      1.46.0 (frozen at the last new-phase release, Phase 7 v3 a+b)
+      to 1.57.0. Operator chose to break the prior "polish releases
+      don't bump mission.version" pattern so all surfaces align.
+      (3) docs/ai/PROJECT_BRIEF.md header `Version: v0.4.0` (planning-
+      doc rev) bumped to `v1.57.0` with a `(planning doc rev v0.4.0
+      — header bumped 2026-05-08 to track ledger)` annotation
+      preserving the historical planning number.
+      (4) docs/ai/UI_MANUAL.md gains operator-facing prose for
+      features that had shipped without docs: §1 IME drag-bar
+      indicator (v1.51.0) including the heuristic limit; §1 Overlay
+      list adds Q hotkey alongside t/S/P/m/n/a/i/?; §7 Operations new
+      `Q` keybinding entry covering the v1.53–v1.56 fx overlay; §8 new
+      "Decorative fx (v1.53.0+)" subsection with effect descriptions,
+      trigger matrix, [fx] config block, matrix-backdrop note.
+      (5) src/ui/fx.rs::paint_hint_inline: dismiss hint text changed
+      from `Q to toggle` (incorrect — Q only opens; any key
+      dismisses) to `Q opens fx`. HIGH-severity operator-confusion
+      finding closed.
+      (6) src/ui/dashboard.rs::footer_keys_text: now advertises `Q
+      fx` between `i insights` and `? help` so the v1.53.0 Q hotkey
+      is discoverable from the persistent footer.
+      (7) docs/ai/REVIEW_GUIDE.md "Empty UI surfaces" paragraph cites
+      the matrix as v1.50.0 baseline + v1.56.0 CacheMetricStatus
+      honesty exception (was: "v1.49.0 provider-coverage matrix").
+      All 1394 lib tests + 65 integration tests preserved (no test
+      delta — sweep is doc + 2 string fixes). fmt + clippy clean.
+    intent_ko: >
+      v1.57.0 는 v1.56.0 게시 후 4축 감사 (버전 참조 / 기능 주장 드리프트 /
+      in-code 라벨 일관성 / README & top-level 동기) 로 발견된 6개 cross-
+      cutting 드리프트를 한 번에 닫는 일관성 sweep. 코드 동작 변경은 fx
+      dismiss 힌트 텍스트와 풋터 키 cluster 두 줄뿐 — 나머지는 docs.
+      README/VERSION/mission.yaml/PROJECT_BRIEF 의 버전 면을 v1.57.0
+      으로 통일, UI_MANUAL 에 v1.51 IME drag-bar / v1.53 fx Q 핫키 / fx
+      오버레이 서브섹션 추가, REVIEW_GUIDE 매트릭스 참조 갱신. 1394 lib
+      + 65 통합 테스트 그대로.
+    triggered_by: "Operator: '지금 기준 로컬 문서, 깃 문서, 코드 상 각 창에 표시되는 데이터/문서를 전부 검토하여 통일, 일관성 유지 작업을 해줘.' Plus follow-up '스킵 (의도적): mission.yaml version: 1.46.0 / PROJECT_BRIEF Version: v0.4.0 도 진행해줘.'"
+    changes:
+      added:
+        - "docs/ai/UI_MANUAL.md §1 (Alerts/Panes divider): IME indicator prose covering trigger heuristic + 3s TTL + the operator-accepted limitation."
+        - "docs/ai/UI_MANUAL.md §1 Overlay: Q (decorative fx) added to the overlay key list."
+        - "docs/ai/UI_MANUAL.md §7: Q keybinding entry covering fx overlay open + dismiss + screensaver/celebration triggers + 60 FPS / poll-suspend / non-destructive contracts."
+        - "docs/ai/UI_MANUAL.md §8: new Decorative fx subsection with the three effect descriptions, trigger matrix, [fx] TOML config block."
+      changed:
+        - "package.json: 1.56.0 → 1.57.0."
+        - "README.md release/npm rows: v1.50.0 → v1.57.0."
+        - "VERSION.md mission ledger / npm rows: v1.50.0 → v1.57.0."
+        - "mission.yaml mission.version + mission.title: 1.46.0 → 1.57.0 (operator chose to break the prior 'polish releases don't bump mission.version' pattern). total_revisions 199 → 200."
+        - "docs/ai/PROJECT_BRIEF.md header: Version: v0.4.0 → v1.57.0 with (planning doc rev v0.4.0 — header bumped 2026-05-08 to track ledger) annotation."
+        - "src/ui/fx.rs::paint_hint_inline text: 'Q to toggle' → 'Q opens fx' (Q does not toggle — opens only)."
+        - "src/ui/dashboard.rs::footer_keys_text: added 'Q fx' between 'i insights' and '? help'."
+        - "docs/ai/REVIEW_GUIDE.md 'Empty UI surfaces' paragraph: cites v1.50.0 matrix baseline + v1.56.0 CacheMetricStatus honesty exception (was 'v1.49.0 provider-coverage matrix')."
+      removed: []
+      tests_added: []
+      docs:
+        - ".mission/CURRENT_STATE.md: v1.57.0 Feature State + validation baseline + mission line refreshed."
+        - "mission-history.yaml: v1.57.0 entry appended; meta updated to total_revisions 200 / latest_version 1.57.0."
+        - "docs/ai/VALIDATION.md: new v1.57.0 release row."
+    observable_effects:
+      - "First-time operators reading README.md / VERSION.md see v1.57.0 instead of a stale v1.50.0."
+      - "UI_MANUAL.md describes every shipped feature; operators can discover Q fx, the IME indicator, the [fx] config block from canonical docs without reading code."
+      - "fx overlay dismiss hint says `Q opens fx` (correct) instead of `Q to toggle` (misleading — Q can't close an open overlay)."
+      - "Dashboard footer key cluster advertises `Q fx` so the v1.53 hotkey is no longer invisible to operators who don't open the help modal."
+      - "Reviewers checking empty UI chips against the provider-coverage matrix see the up-to-date v1.50.0 baseline + v1.56.0 honesty exception reference."
+    impact_scope:
+      runtime: "No code-behaviour change beyond two UI-string fixes. fx hint and footer cluster are static strings; replacement is byte-for-byte safe."
+      tests: "1394 lib tests + 65 integration tests preserved. No test delta."
+      ledger: "1 new timeline entry (sequence 200); meta total_revisions 199 → 200, latest_version 1.56.0 → 1.57.0."
+      npm: "package.json version 1.57.0; CI publication of v1.57.0 follows the same workflow as v1.37.0 through v1.56.0."
+    breaking: false
+    risk: "very low — five doc files, two UI-string fixes, no behaviour change. Test count is unchanged. The only existing-pattern break is bumping mission.yaml's mission.version from 1.46.0 to 1.57.0 (prior pattern: only new phases bump it). Operator explicitly opted in."
+    related_commits:
+      - "PENDING — v1.57.0 release ledger sync commit (this bundle)."
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

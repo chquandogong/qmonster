@@ -14,10 +14,17 @@
   드래그해 두 영역의 높이를 조절할 수 있습니다. 키보드에서는 `[` / `]`
   로 Alerts 영역을 줄이거나 키우고, `/`로 split 비율을 한 단계씩
   순환하며, `=`로 기본 비율로 되돌립니다.
+  v1.51.0부터 비ASCII 알파벳 키(한글/카타카나 등)가 입력되면 divider가
+  `⚠ HANGUL/IME ACTIVE — press 영문/English key to disable ⚠` 경고
+  배너로 바뀌고 첫 활성화 시 터미널 BEL이 한 번 울립니다. ASCII
+  알파벳을 입력하거나 3초간 비ASCII 알파벳이 없으면 자동으로 평소
+  배너로 돌아갑니다. 터미널은 OS-level IME 상태를 앱에 노출하지
+  않으므로 첫 비ASCII 키스트로크가 트리거 시점입니다.
 - **Footer**: 현재 focus, Alerts/Panes split 비율, 주요 조작 키를 보여줍니다.
 - **Overlay**: `t`로 target picker, `S`로 settings, `P`로 provider setup,
   `m`/`n`/`a`/`i`로 Metrics / Anomaly Events / Pending Actions /
-  Token Insights overlay, `?`로 help, footer 오른쪽 아래 버전 배지를
+  Token Insights overlay, `Q`로 decorative fx overlay (banner / confetti /
+  matrix), `?`로 help, footer 오른쪽 아래 버전 배지를
   클릭하면 Git overlay가 열립니다.
 - **Scroll status**: 주요 스크롤 가능한 modal/overlay와 list-style 창은
   footer/hint에 `scroll x/y · more` 또는 `scroll x/y · END`를 표시해
@@ -439,6 +446,15 @@ side_effects (N):
   창의 recommendation lifecycle / cache / action ledger를 SQLite에서 읽어
   보여줍니다. `[` / `]` resize, `=` geometry reset, 제목 줄 drag move,
   `r` refresh, wheel/↑/↓ scroll, `i`/`Esc`/`q`/`[x]`로 닫기
+- `Q` (대문자, 소문자 `q`와 구분): decorative fx overlay 열기 — 운영자가
+  `[fx] effect`로 고른 효과 (banner / confetti / matrix)를 dashboard 위에
+  비파괴 렌더로 띄움. 클릭 또는 아무 키나 눌러 dismiss, 또는
+  `[fx] duration_secs` 후 자동 종료. `[fx] hotkey_enabled = false`이면
+  비활성화됨. v1.55.0 이후 60 FPS + dashboard tmux poll 일시정지로
+  부드럽게 재생되며, v1.56.0 이후 matrix 효과는 백드롭을 살짝 어둡게
+  처리해 dashboard와 시각적으로 구분됩니다. p 액션 수락 셀레브레이션
+  (`[fx] celebration_enabled = true` 시) 과 idle 스크린세이버
+  (`[fx] screensaver_enabled = true` 시) 트리거도 같은 오버레이를 사용
 - `y`: Alerts focus에서 선택된 alert의 `run` command를 system clipboard에
   복사합니다. 선택 항목에 `suggested_command`가 없거나 clipboard backend를
   열 수 없으면 `SystemNotice`로 이유를 표시합니다.
@@ -1051,6 +1067,51 @@ braille, 100ms 간격) 와 함께 표시됩니다. 로딩 중에는 6-패널 본
 숨겨지고 scroll keys (↑/↓/j/k/wheel) 가 일시적으로 비활성됩니다.
 `r` 을 빠르게 두 번 누르면 첫 번째 결과는 자동으로 드롭되고 두 번째
 결과만 반영됩니다 (request_id 기반 stale-drop).
+
+### Decorative fx (v1.53.0+)
+
+대문자 `Q` 핫키로 여는 선택적 장식 효과 오버레이. 세 가지 효과 중
+하나를 `[fx] effect = banner | confetti | matrix`로 고르고, dashboard
+위에 비파괴 렌더로 떠 있습니다 — alerts / panes / footer 정보가
+효과 뒤로 그대로 보입니다 (v1.54.0). 클릭 또는 아무 키 입력으로
+dismiss, 또는 `[fx] duration_secs` (기본 50초) 후 자동 종료.
+오버레이 활성 동안엔 메인 루프 폴링이 60 FPS로 올라가며 (v1.55.0)
+tmux 폴 틱이 잠시 정지해 stutter 없이 재생됩니다.
+
+- **banner**: `[fx] text` (기본 `~O~ Qmonster`)를 5-row 블록 폰트로
+  렌더해 DVD-스크린세이버처럼 화면 가장자리에 부딪히며 떠다님.
+  HSL hue 회전으로 무지개 그라데이션.
+- **confetti**: 화면 중앙에서 80개 유니코드 스파클(✨ ⋆ ☆ ⭐ ✦ ✧ ❋ ❀ ✺)이
+  방사 분출, 가벼운 중력으로 흩어지며 페이드. 모든 파티클이 끝나면
+  자동 종료.
+- **matrix**: 열별 카타카나 + ASCII 글자 스트림 폭우. 헤드는 밝은
+  흰-초록, 꼬리는 점차 어두워짐. v1.56.0부터 백드롭이 살짝 어둡게
+  처리되어 dashboard 텍스트와 시각적으로 구분됨.
+
+세 가지 트리거: (a) `Q` 핫키 (`[fx] hotkey_enabled = true`); (b) `p`
+액션 수락 시 confetti 자동 셀레브레이션 (`[fx] celebration_enabled =
+true`, 기본 off — celebration은 configured effect와 관계없이 항상
+confetti); (c) idle 스크린세이버 (`[fx] screensaver_enabled = true`,
+기본 off, `[fx] screensaver_idle_secs` 후 자동 발사 — 키/마우스 활동
+시 즉시 종료 + idle 클럭 리셋). 오버레이 우측 하단에는 dismiss 힌트
+`click / any key to dismiss · Q opens fx`가 표시됩니다.
+
+전체 설정은 `S` Settings → Parameters 탭의 FX 섹션에서 토글/편집할
+수 있습니다 (8개 파라미터: enabled / text / effect / duration_secs /
+hotkey_enabled / celebration_enabled / screensaver_enabled /
+screensaver_idle_secs).
+
+```toml
+[fx]
+enabled = true
+text = "~O~ Qmonster"
+effect = "banner"           # banner | confetti | matrix
+duration_secs = 50          # 0 = stay until dismissed
+hotkey_enabled = true
+celebration_enabled = false
+screensaver_enabled = false
+screensaver_idle_secs = 600
+```
 
 ## 9. 운영 파일
 

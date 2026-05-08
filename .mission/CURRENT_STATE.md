@@ -1,14 +1,64 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.56.0 ledger sync)_
+_Last updated: 2026-05-08 (Claude, v1.57.0 ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.56.0 — audit-doc polish bundle: provider-honesty cache chips (Claude/Codex `?` while pending vs Gemini `—` structurally unavailable), matrix fx pre-dim backdrop so streams pop against dashboard, Insights Situations rendering regression guard, ARCHITECTURE.md cache-rule provider-gating note.
-- Version surfaces: npm package metadata `qmonster@1.56.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v1.56.0` to be created at the ledger sync commit. v1.55.0 is the immediate prior tagged baseline.
+- Title: Qmonster v1.57.0 — cross-cutting consistency sweep: bump every operator-facing version surface (README, VERSION.md, mission.yaml, PROJECT_BRIEF.md) into one v1.57.0-aligned state; add Q hotkey + decorative fx overlay + IME drag-bar prose to UI_MANUAL; fix fx dismiss hint that incorrectly said `Q to toggle`; add `Q fx` to the dashboard footer key cluster; refresh REVIEW_GUIDE matrix reference to point at the v1.50.0 baseline + v1.56.0 honesty exception.
+- Version surfaces: npm package metadata `qmonster@1.57.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v1.57.0` to be created at the ledger sync commit. v1.56.0 is the immediate prior tagged baseline.
 - Release publication state: **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s). Sibling v1.37.0–v1.49.0 publications all remain live — `npm view qmonster versions` lists `1.37.0` through `1.55.0` with `dist-tags.latest = 1.55.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55}.0`.
-- Current phase: All prior phases complete. v1.50.0–v1.55.0 publication baselines still apply; v1.56.0 closes the four remaining recommended slices from the 2026-05-08 audit doc on top — no new phase is opened.
+- Current phase: All prior phases complete. v1.50.0–v1.56.0 publication baselines still apply; v1.57.0 layers a documentation/code consistency sweep on top — no new phase is opened.
+
+## v1.57.0 Feature State
+
+v1.57.0 closes the cross-cutting drift surfaced by a four-axis audit
+(version refs, feature claim drift, in-code label consistency,
+README/top-level sync) run after v1.56.0 publication. Six concrete
+fixes:
+
+1. **README.md / VERSION.md** — `Mission ledger` and `npm` rows bumped
+   from `v1.50.0` to `v1.57.0` (was 7 versions stale).
+2. **mission.yaml** — `mission.version` and `mission.title` bumped from
+   `1.46.0` (frozen at the last new-phase release, Phase 7 v3 a+b) to
+   `1.57.0`. Operator chose to break the prior "polish releases don't
+   bump mission.version" pattern so all surfaces stay aligned.
+3. **PROJECT_BRIEF.md** — header `Version: v0.4.0` (planning-doc rev)
+   bumped to `v1.57.0` with a `(planning doc rev v0.4.0 — header bumped
+   2026-05-08 to track ledger)` annotation so the historical planning
+   number stays attributable.
+4. **UI_MANUAL.md** — three additions documenting features that had
+   shipped without operator-facing prose:
+   - §1 Alerts/Panes divider: documents the v1.51.0 IME indicator
+     (`⚠ HANGUL/IME ACTIVE`), TTL behaviour (3s after the last
+     non-ASCII alphabetic key), and the heuristic limit (terminals
+     don't expose IME state, so the first non-ASCII keystroke is what
+     trips the banner).
+   - §1 Overlay list: adds `Q` for the decorative fx overlay alongside
+     the existing `t / S / P / m / n / a / i / ?` list.
+   - §7 Operations: new `Q` keybinding entry covering the v1.53–v1.56
+     fx overlay (banner / confetti / matrix selectability, the three
+     triggers, dismiss semantics, performance/non-destructive
+     contracts).
+   - §8 Overlay: new "Decorative fx (v1.53.0+)" subsection with the
+     three effects' visual descriptions, the trigger matrix (`Q`
+     hotkey / `p`-accept celebration / idle screensaver), the
+     `[fx]` config block, and the matrix-backdrop note.
+5. **fx dismiss hint** — `src/ui/fx.rs::paint_hint_inline` text changed
+   from `Q to toggle` (incorrect — `Q` only opens; any key dismisses)
+   to `Q opens fx`. Closes a HIGH-severity operator-confusion finding.
+6. **Dashboard footer key cluster** — `src/ui/dashboard.rs::footer_keys_text`
+   now advertises `Q fx` between `i insights` and `? help`, so the
+   v1.53.0 Q hotkey is discoverable from the persistent footer instead
+   of only via the help modal.
+7. **REVIEW_GUIDE.md** — "Empty UI surfaces are not bugs" paragraph
+   now cites the matrix as the v1.50.0 baseline plus the v1.56.0
+   `CacheMetricStatus` honesty exception, instead of a stale
+   "v1.49.0 provider-coverage matrix" reference.
+
+No code-behaviour change beyond the two UI-string fixes (fx hint text
+and footer cluster). All 1394 lib tests + 65 integration tests
+preserved; fmt + clippy clean.
 
 ## v1.56.0 Feature State
 
@@ -445,14 +495,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v1.56.0 validation at the release commit:
+Most recent v1.57.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1394 lib tests + 65 integration tests + supporting suites, all green.
+- `cargo test --all-targets` — 1394 lib tests + 65 integration tests + supporting suites, all green (no test-count change vs v1.56.0; consistency sweep is documentation + 2 UI-string fixes).
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.55.0 still apply when the v1.56.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.56.0 still apply when the v1.57.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 
