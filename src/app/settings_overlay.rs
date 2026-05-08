@@ -443,6 +443,29 @@ mod tests {
     }
 
     #[test]
+    fn h_and_l_toggle_hover_help_settings_inside_settings_overlay() {
+        let mut overlay = SettingsOverlay::new();
+        let mut config = QmonsterConfig::defaults();
+        overlay.open();
+        overlay.switch_tab(SettingsTab::Parameters);
+
+        assert!(config.ux.hover_help);
+        handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('H'));
+        assert!(!config.ux.hover_help);
+        assert!(overlay.is_dirty());
+
+        assert_eq!(
+            config.ux.help_language,
+            crate::app::config::HelpLanguage::Ko
+        );
+        handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('L'));
+        assert_eq!(
+            config.ux.help_language,
+            crate::app::config::HelpLanguage::En
+        );
+    }
+
+    #[test]
     fn key_handler_commits_numeric_parameter_edit() {
         use crate::ui::settings::ParameterField;
 

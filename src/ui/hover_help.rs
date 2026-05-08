@@ -90,4 +90,27 @@ mod tests {
         assert!(rect.x + rect.width <= viewport.width);
         assert!(rect.y + rect.height <= viewport.height);
     }
+
+    #[test]
+    fn tooltip_rect_height_accounts_for_wrapped_content() {
+        let viewport = Rect::new(0, 0, 42, 18);
+        let view = HoverHelpView {
+            topic: HelpTopic::PaneRuntime,
+            language: HelpLanguage::Ko,
+            column: 2,
+            row: 2,
+        };
+
+        let rect = tooltip_rect(viewport, view);
+        let content_width = rect.width.saturating_sub(2).max(1) as usize;
+        let wrapped_rows: usize = help_lines(view.topic, view.language)
+            .iter()
+            .map(|line| line.chars().count().div_ceil(content_width).max(1))
+            .sum();
+
+        assert!(
+            rect.height as usize >= wrapped_rows.saturating_add(2).min(viewport.height as usize),
+            "tooltip must reserve enough height for wrapped help text; rect={rect:?}, wrapped_rows={wrapped_rows}"
+        );
+    }
 }

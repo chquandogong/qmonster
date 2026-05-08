@@ -4217,6 +4217,34 @@ mod tests {
     }
 
     #[test]
+    fn parameters_tab_explains_selected_hover_help_parameter() {
+        let config = cfg();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        s.select_parameter(ParameterField::UxHoverHelp);
+
+        let rendered = rendered_text(&build_body_lines(&s, &config));
+
+        assert!(rendered.contains("Selected parameter help"));
+        assert!(rendered.contains("TOML: ux.hover_help"));
+        assert!(rendered.contains("Shortcut: H"));
+        assert!(rendered.contains("floating help"));
+    }
+
+    #[test]
+    fn parameters_hint_mentions_hover_help_keys() {
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+
+        let rendered = rendered_text(&hint_lines(&s));
+
+        assert!(rendered.contains("H hover"));
+        assert!(rendered.contains("L language"));
+    }
+
+    #[test]
     fn parameters_tab_exposes_editable_fields_for_all_config_sections() {
         let fields = all_parameter_fields();
 
