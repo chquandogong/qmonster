@@ -594,7 +594,8 @@ fn runtime_fact_kind_label(kind: RuntimeFactKind) -> &'static str {
         RuntimeFactKind::SessionId
         | RuntimeFactKind::ToolCalls
         | RuntimeFactKind::ModelReset
-        | RuntimeFactKind::TranscriptPath => "session",
+        | RuntimeFactKind::TranscriptPath
+        | RuntimeFactKind::CliVersion => "session",
     }
 }
 

@@ -193,6 +193,14 @@ where
             current_path: &pane.current_path,
         };
         let mut signals = crate::adapters::parse_for(&parse_ctx);
+        if let Some(fact) = crate::app::cli_version::resolve_cli_version_fact(
+            resolved.identity.provider,
+            &parse_tail,
+            pane.pane_pid,
+            &mut ctx.cli_version_cache,
+        ) {
+            signals.runtime_facts.push(fact);
+        }
 
         // Phase F F-6 (v1.32.0): apply the account-level rate-limits
         // snapshot to Codex panes. `is_none()` guards on the

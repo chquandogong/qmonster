@@ -98,6 +98,9 @@ pub enum RuntimeFactKind {
     /// transcript JSONL (`~/.claude/projects/<encoded>/<sid>.jsonl`).
     /// Read from the sidefile's `transcript_path` field.
     TranscriptPath,
+    /// Display-only CLI version for the exact pane process. Qmonster
+    /// monitor panes intentionally omit this fact from headers.
+    CliVersion,
 }
 
 #[derive(Debug, Clone, PartialEq)]

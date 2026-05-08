@@ -192,6 +192,66 @@ fn run_once_report_carries_identity_and_signals() {
 }
 
 #[test]
+fn run_once_populates_cli_version_from_provider_surface() {
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%1",
+            "codex:1:review",
+            "codex",
+            "│  >_ OpenAI Codex (v0.122.0)  │",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    let fact = reports[0]
+        .signals
+        .runtime_facts
+        .iter()
+        .find(|fact| fact.kind == RuntimeFactKind::CliVersion)
+        .expect("Codex provider surface should populate CLI version fact");
+    assert_eq!(fact.value, "0.122.0");
+    assert_eq!(fact.source_kind, SourceKind::ProviderOfficial);
+    assert_eq!(
+        qmonster::ui::panels::pane_panel_title(&reports[0]),
+        "qwork:1 · Codex review · CLI 0.122.0 [Official] · %1"
+    );
+}
+
+#[test]
+fn run_once_omits_cli_version_for_qmonster_pane() {
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%4",
+            "qmonster:1:monitor",
+            "qmonster",
+            "Qmonster monitor v9.9.9",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert!(
+        reports[0]
+            .signals
+            .runtime_facts
+            .iter()
+            .all(|fact| fact.kind != RuntimeFactKind::CliVersion),
+        "qmonster monitor pane should never surface CLI version"
+    );
+    assert_eq!(
+        qmonster::ui::panels::pane_panel_title(&reports[0]),
+        "qwork:1 · Qmonster monitor · %4"
+    );
+}
+
+#[test]
 fn run_once_report_exposes_metric_values_when_present() {
     let source = FixturePaneSource {
         panes: vec![pane(

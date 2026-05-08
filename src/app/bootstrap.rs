@@ -75,6 +75,10 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// this keeps the captured output available to the next parser pass without
     /// persisting raw pane text in the audit log.
     pub runtime_refresh_tail_overlays: std::collections::HashMap<String, String>,
+    /// Per-session cache for exact CLI `--version` probes. Keys include
+    /// provider + descendant pid + argv/exe so a restarted pane probes
+    /// again while steady panes avoid shelling out every poll.
+    pub(crate) cli_version_cache: crate::app::cli_version::CliVersionCache,
     /// Last provider-confirmed pressure metrics for panes whose provider
     /// exposes those facts on transient fullscreen surfaces. Claude's
     /// `/context` and `/usage` are separate screens; caching lets the UI show
@@ -202,6 +206,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             idle_transition: std::collections::HashMap::new(),
             idle_entered_at: std::collections::HashMap::new(),
             runtime_refresh_tail_overlays: std::collections::HashMap::new(),
+            cli_version_cache: std::collections::HashMap::new(),
             pressure_metric_cache: std::collections::HashMap::new(),
             identity_history: std::collections::HashMap::new(),
             reported_drifts: std::collections::HashSet::new(),

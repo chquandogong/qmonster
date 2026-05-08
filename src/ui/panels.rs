@@ -404,24 +404,46 @@ pub fn render_pane_panel(area: Rect, buf: &mut Buffer, report: &PaneReport) {
 
 pub fn pane_panel_title(report: &PaneReport) -> String {
     let id = &report.identity.identity;
+    let cli_version = pane_title_cli_version(report);
     if id.role == Role::Unknown {
         format!(
-            "{}:{} · {} · {}",
+            "{}:{} · {}{} · {}",
             report.session_name,
             report.window_index,
             provider_label(id.provider),
+            cli_version,
             report.pane_id,
         )
     } else {
         format!(
-            "{}:{} · {} {} · {}",
+            "{}:{} · {} {}{} · {}",
             report.session_name,
             report.window_index,
             provider_label(id.provider),
             role_label(id.role),
+            cli_version,
             report.pane_id,
         )
     }
+}
+
+fn pane_title_cli_version(report: &PaneReport) -> String {
+    if report.identity.identity.provider == Provider::Qmonster {
+        return String::new();
+    }
+    report
+        .signals
+        .runtime_facts
+        .iter()
+        .find(|fact| fact.kind == RuntimeFactKind::CliVersion)
+        .map(|fact| {
+            format!(
+                " · CLI {} [{}]",
+                fact.value,
+                source_kind_label(fact.source_kind)
+            )
+        })
+        .unwrap_or_default()
 }
 
 fn pane_panel_title_line(
@@ -1582,6 +1604,7 @@ fn runtime_fact_label(kind: RuntimeFactKind) -> &'static str {
         RuntimeFactKind::ToolCalls => "CALLS",
         RuntimeFactKind::ModelReset => "RESET",
         RuntimeFactKind::TranscriptPath => "XSCRIPT",
+        RuntimeFactKind::CliVersion => "CLI",
     }
 }
 
@@ -1913,6 +1936,37 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .expect("test timestamp must be after unix epoch")
             .as_secs()
+    }
+
+    #[test]
+    fn pane_panel_title_appends_cli_version_after_provider_role() {
+        let mut r = base_report();
+        r.signals.runtime_facts.push(RuntimeFact::new(
+            RuntimeFactKind::CliVersion,
+            "1.2.3",
+            SourceKind::ProviderOfficial,
+        ));
+
+        assert_eq!(
+            pane_panel_title(&r),
+            "qwork:1 · Claude main · CLI 1.2.3 [Official] · %1"
+        );
+    }
+
+    #[test]
+    fn pane_panel_title_omits_cli_version_for_qmonster_pane() {
+        let mut r = base_report();
+        r.provider = Provider::Qmonster;
+        r.identity.identity.provider = Provider::Qmonster;
+        r.identity.identity.role = Role::Monitor;
+        r.current_command = "qmonster".into();
+        r.signals.runtime_facts.push(RuntimeFact::new(
+            RuntimeFactKind::CliVersion,
+            "9.9.9",
+            SourceKind::ProviderOfficial,
+        ));
+
+        assert_eq!(pane_panel_title(&r), "qwork:1 · Qmonster monitor · %1");
     }
 
     #[test]

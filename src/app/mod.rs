@@ -3,6 +3,7 @@ pub mod anomaly_events_ring;
 pub mod anomaly_overlay;
 pub mod auto_snapshot;
 pub mod bootstrap;
+pub mod cli_version;
 pub mod clipboard_actions;
 pub mod config;
 pub mod dashboard_render;

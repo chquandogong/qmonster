@@ -61,14 +61,21 @@ non-resizable.
 
 ## 3. Panes 읽는 법
 
-- pane 제목은 현재 다음 형태입니다.
+- pane 제목은 현재 다음 형태입니다. CLI 버전이 확인되면 provider role과
+  pane id 사이에 버전 배지가 붙습니다.
 
 ```text
+session:window · Provider role · CLI <version> [Official] · %pane_id
 session:window · Provider role · %pane_id
 ```
 
 - 예:
-  `qmonster:0 · Codex review · %57`
+  `qmonster:0 · Codex review · CLI 0.122.0 [Official] · %57`
+- `CLI` 버전 배지는 Qmonster monitor pane에는 표시하지 않습니다. provider가
+  화면에 직접 노출한 버전을 우선 사용하고, 없으면 `/proc`에서 현재 pane의
+  descendant CLI `pid`/`exe`/`argv`를 확인한 뒤 그 exact executable/script에
+  `--version`을 실행해 얻은 값만 표시합니다. 현재 pane의 실행 버전이라고
+  확정할 수 없으면 배지 자체를 생략합니다.
 - 각 pane에는 보통 다음 줄들이 붙습니다.
   `state`, `path`, `cmd`, `status`, `blocked`, `signals`, `metrics`,
   `modes`, `access`, `loaded`, `restrict`

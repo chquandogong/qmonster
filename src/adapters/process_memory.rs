@@ -29,6 +29,14 @@ const KNOWN_CLI_COMMS: &[&str] = &[
 /// pathological trees.
 const MAX_DEPTH: usize = 5;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CliProcessDescriptor {
+    pub pid: u32,
+    pub comm: String,
+    pub argv: Vec<String>,
+    pub exe_path: Option<PathBuf>,
+}
+
 /// Default `/proc` root. Tests pass a tempdir-rooted alternative via
 /// `read_descendant_rss_mb_with_proc_root`.
 pub fn read_descendant_rss_mb(pane_pid: u32) -> Option<f64> {
@@ -101,6 +109,17 @@ fn read_pid_stats(pid: u32, proc_root: &Path) -> Option<(u64, bool)> {
     Some((rss, is_cli_comm))
 }
 
+fn read_pid_comm(pid: u32, proc_root: &Path) -> Option<String> {
+    let status_path: PathBuf = proc_root.join(pid.to_string()).join("status");
+    let status = fs::read_to_string(&status_path).ok()?;
+    for line in status.lines() {
+        if let Some(rest) = line.strip_prefix("Name:") {
+            return Some(rest.trim().to_string());
+        }
+    }
+    None
+}
+
 /// Walk the descendant tree from `pane_pid` and return the full
 /// `/proc/<pid>/cmdline` of the most-likely AI CLI child. Used to
 /// resolve generic interpreter wrappers (e.g. tmux reports `node`
@@ -115,9 +134,23 @@ pub fn read_descendant_cmdline(pane_pid: u32) -> Option<String> {
     read_descendant_cmdline_with_proc_root(pane_pid, Path::new("/proc"))
 }
 
+pub fn read_descendant_cli_process(pane_pid: u32) -> Option<CliProcessDescriptor> {
+    read_descendant_cli_process_with_proc_root(pane_pid, Path::new("/proc"))
+}
+
 /// Test-friendly variant: pass an alternate `/proc` root.
 #[doc(hidden)]
 pub fn read_descendant_cmdline_with_proc_root(pane_pid: u32, proc_root: &Path) -> Option<String> {
+    let desc = read_descendant_cli_process_with_proc_root(pane_pid, proc_root)?;
+    Some(desc.argv.join(" "))
+}
+
+/// Test-friendly variant: pass an alternate `/proc` root.
+#[doc(hidden)]
+pub fn read_descendant_cli_process_with_proc_root(
+    pane_pid: u32,
+    proc_root: &Path,
+) -> Option<CliProcessDescriptor> {
     // BFS-with-class-priority. Class priority: a descendant whose
     // `comm` is in `KNOWN_CLI_COMMS` beats one that isn't. Within
     // each class, keep the SHALLOWEST match — that descendant is
@@ -137,8 +170,9 @@ pub fn read_descendant_cmdline_with_proc_root(pane_pid: u32, proc_root: &Path) -
         for pid in &frontier {
             // Skip the pane shell itself — only descendants are candidates.
             if depth > 0
-                && let Some((_, is_cli_comm)) = read_pid_stats(*pid, proc_root)
+                && let Some(comm) = read_pid_comm(*pid, proc_root)
             {
+                let is_cli_comm = KNOWN_CLI_COMMS.contains(&comm.as_str());
                 let replace = match (best.map(|(_, c)| c), is_cli_comm) {
                     // First candidate ever — take it.
                     (None, _) => true,
@@ -167,27 +201,26 @@ pub fn read_descendant_cmdline_with_proc_root(pane_pid: u32, proc_root: &Path) -
     }
 
     let (best_pid, _) = best?;
-    let cmdline_path = proc_root.join(best_pid.to_string()).join("cmdline");
+    let comm = read_pid_comm(best_pid, proc_root)?;
+    let argv = read_pid_cmdline_argv(best_pid, proc_root)?;
+    let exe_path = fs::read_link(proc_root.join(best_pid.to_string()).join("exe")).ok();
+    Some(CliProcessDescriptor {
+        pid: best_pid,
+        comm,
+        argv,
+        exe_path,
+    })
+}
+
+fn read_pid_cmdline_argv(pid: u32, proc_root: &Path) -> Option<Vec<String>> {
+    let cmdline_path = proc_root.join(pid.to_string()).join("cmdline");
     let raw = fs::read(cmdline_path).ok()?;
-    if raw.is_empty() {
-        return None;
-    }
-    // /proc/<pid>/cmdline is null-separated argv with a trailing null.
-    // Replace nulls with spaces and trim trailing whitespace.
-    let mut out = String::with_capacity(raw.len());
-    for byte in raw {
-        if byte == 0 {
-            out.push(' ');
-        } else {
-            out.push(byte as char);
-        }
-    }
-    let trimmed = out.trim_end().to_string();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
-    }
+    let argv: Vec<String> = raw
+        .split(|byte| *byte == 0)
+        .filter(|part| !part.is_empty())
+        .map(|part| String::from_utf8_lossy(part).into_owned())
+        .collect();
+    if argv.is_empty() { None } else { Some(argv) }
 }
 
 fn read_children(pid: u32, proc_root: &Path) -> Vec<u32> {
@@ -600,5 +633,28 @@ mod tests {
             cmdline, "node /usr/bin/gemini",
             "non-CLI wrapper at depth 1 must be replaced by deeper CLI at depth 2"
         );
+    }
+
+    #[test]
+    fn cli_process_descriptor_includes_pid_comm_argv_and_exe() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        let exe_path = root.join("bin").join("claude");
+        fs::create_dir_all(exe_path.parent().unwrap()).unwrap();
+        fs::write(&exe_path, "#!/bin/sh\necho claude 1.2.3\n").unwrap();
+
+        write_proc_pid(root, 1, "bash", 4_000, &[2]);
+        write_proc_pid(root, 2, "claude", 50_000, &[]);
+        write_proc_cmdline(root, 2, &[exe_path.to_str().unwrap(), "--dangerously-skip"]);
+        std::os::unix::fs::symlink(&exe_path, root.join("2").join("exe")).unwrap();
+
+        let desc = read_descendant_cli_process_with_proc_root(1, root).unwrap();
+        assert_eq!(desc.pid, 2);
+        assert_eq!(desc.comm, "claude");
+        assert_eq!(
+            desc.argv,
+            vec![exe_path.to_string_lossy(), "--dangerously-skip".into()]
+        );
+        assert_eq!(desc.exe_path.as_deref(), Some(exe_path.as_path()));
     }
 }
