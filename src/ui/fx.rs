@@ -10,7 +10,10 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::Widget;
 
-use crate::app::fx_state::{BannerState, ConfettiState, FxScene, MatrixState, hue_to_rgb};
+use crate::app::fx_state::{
+    BannerState, ConfettiState, FireworksState, FxScene, MatrixState, PlasmaState, SamplerState,
+    SnowState, hue_to_rgb, plasma_glyph,
+};
 
 /// Top-level dispatcher: pick the renderer matching the active scene.
 ///
@@ -20,15 +23,26 @@ use crate::app::fx_state::{BannerState, ConfettiState, FxScene, MatrixState, hue
 /// Earlier behaviour cleared the entire viewport before drawing.
 pub fn render_fx_overlay(frame: &mut Frame<'_>, scene: &FxScene, banner_text: &str) {
     let area = frame.area();
-    match scene {
-        FxScene::Banner(b) => render_fx_banner(frame, b, banner_text),
-        FxScene::Confetti(c) => render_fx_confetti(frame, c),
-        FxScene::Matrix(m) => render_fx_matrix(frame, m),
-    }
+    render_fx_scene(frame, scene, banner_text);
     // Bottom-right dismiss hint — written cell-by-cell with non-space
     // characters only so it doesn't clobber the underlying dashboard
     // footer's bg / styling.
     paint_hint_inline(frame, area, " click / any key to dismiss · Q opens fx ");
+}
+
+/// Render the active scene without the dismiss hint. The Sampler
+/// variant calls back into this with its inner scene so we don't paint
+/// nested hints.
+fn render_fx_scene(frame: &mut Frame<'_>, scene: &FxScene, banner_text: &str) {
+    match scene {
+        FxScene::Banner(b) => render_fx_banner(frame, b, banner_text),
+        FxScene::Confetti(c) => render_fx_confetti(frame, c),
+        FxScene::Matrix(m) => render_fx_matrix(frame, m),
+        FxScene::Snow(s) => render_fx_snow(frame, s),
+        FxScene::Fireworks(f) => render_fx_fireworks(frame, f),
+        FxScene::Plasma(p) => render_fx_plasma(frame, p),
+        FxScene::Sampler(s) => render_fx_sampler(frame, s, banner_text),
+    }
 }
 
 fn paint_hint_inline(frame: &mut Frame<'_>, area: Rect, hint: &str) {
@@ -252,6 +266,142 @@ pub fn render_fx_matrix(frame: &mut Frame<'_>, state: &MatrixState) {
     }
 }
 
+// ---------------- Snow (v1.59.0) ----------------
+
+pub fn render_fx_snow(frame: &mut Frame<'_>, state: &SnowState) {
+    let area = frame.area();
+    let buf = frame.buffer_mut();
+    for f in &state.flakes {
+        let x = f.x.round() as i32;
+        let y = f.y.round() as i32;
+        if x < area.x as i32 || x >= (area.x + area.width) as i32 {
+            continue;
+        }
+        if y < area.y as i32 || y >= (area.y + area.height) as i32 {
+            continue;
+        }
+        // Larger flake glyphs render in white; small dots in pale blue
+        // so the layer reads as snow against any underlying dashboard.
+        let style = match f.glyph {
+            '❄' | '❅' | '❆' => Style::default()
+                .fg(Color::Rgb(245, 250, 255))
+                .add_modifier(Modifier::BOLD),
+            '*' => Style::default().fg(Color::Rgb(220, 230, 245)),
+            _ => Style::default()
+                .fg(Color::Rgb(180, 200, 230))
+                .add_modifier(Modifier::DIM),
+        };
+        let cell = &mut buf[(x as u16, y as u16)];
+        cell.set_char(f.glyph);
+        cell.set_style(style);
+    }
+}
+
+// ---------------- Fireworks (v1.59.0) ----------------
+
+pub fn render_fx_fireworks(frame: &mut Frame<'_>, state: &FireworksState) {
+    let area = frame.area();
+    let buf = frame.buffer_mut();
+    // Rockets: a single bright trail glyph.
+    for r in &state.rockets {
+        let x = r.x.round() as i32;
+        let y = r.y.round() as i32;
+        if x < area.x as i32 || x >= (area.x + area.width) as i32 {
+            continue;
+        }
+        if y < area.y as i32 || y >= (area.y + area.height) as i32 {
+            continue;
+        }
+        let (rr, gg, bb) = hue_to_rgb(r.hue_deg);
+        let cell = &mut buf[(x as u16, y as u16)];
+        cell.set_char('|');
+        cell.set_style(
+            Style::default()
+                .fg(Color::Rgb(rr, gg, bb))
+                .add_modifier(Modifier::BOLD),
+        );
+    }
+    // Sparks: fade their color toward black as life drains.
+    for s in &state.sparks {
+        let x = s.x.round() as i32;
+        let y = s.y.round() as i32;
+        if x < area.x as i32 || x >= (area.x + area.width) as i32 {
+            continue;
+        }
+        if y < area.y as i32 || y >= (area.y + area.height) as i32 {
+            continue;
+        }
+        let (rr, gg, bb) = hue_to_rgb(s.hue_deg);
+        let fade = s.fade();
+        let rr = (rr as f32 * (1.0 - fade) + 20.0 * fade) as u8;
+        let gg = (gg as f32 * (1.0 - fade) + 20.0 * fade) as u8;
+        let bb = (bb as f32 * (1.0 - fade) + 20.0 * fade) as u8;
+        let cell = &mut buf[(x as u16, y as u16)];
+        cell.set_char(s.glyph);
+        cell.set_style(
+            Style::default()
+                .fg(Color::Rgb(rr, gg, bb))
+                .add_modifier(Modifier::BOLD),
+        );
+    }
+}
+
+// ---------------- Plasma (v1.59.0) ----------------
+
+pub fn render_fx_plasma(frame: &mut Frame<'_>, state: &PlasmaState) {
+    let area = frame.area();
+    let buf = frame.buffer_mut();
+    // Walk every cell the overlay covers. Plasma is the one effect that
+    // intentionally overwrites every cell — a sin/cos field needs a
+    // dense lattice to read as a continuous wash.
+    for row in 0..area.height {
+        for col in 0..area.width {
+            let (gi, hue) = state.sample(col, row);
+            let glyph = plasma_glyph(gi);
+            // The lowest density glyph is a literal space — leave the
+            // underlying cell untouched so the dashboard stays visible
+            // through the gaps and the wash reads as ambient.
+            if glyph == ' ' {
+                continue;
+            }
+            let (r, g, b) = hue_to_rgb(hue);
+            let cell = &mut buf[(area.x + col, area.y + row)];
+            cell.set_char(glyph);
+            cell.set_style(Style::default().fg(Color::Rgb(r, g, b)));
+        }
+    }
+}
+
+// ---------------- Sampler (v1.59.0) ----------------
+
+pub fn render_fx_sampler(frame: &mut Frame<'_>, state: &SamplerState, banner_text: &str) {
+    render_fx_scene(frame, &state.inner, banner_text);
+    // Top-left chip showing which sub-effect is currently playing so
+    // the operator knows what they're seeing without flipping settings.
+    let chip = format!(" sampler · {} ", state.current.as_str());
+    let area = frame.area();
+    if area.width < (chip.chars().count() as u16 + 2) || area.height == 0 {
+        return;
+    }
+    let buf = frame.buffer_mut();
+    let style = Style::default()
+        .fg(Color::Rgb(200, 210, 230))
+        .add_modifier(Modifier::DIM);
+    for (i, ch) in chip.chars().enumerate() {
+        let x = area.x + 1 + i as u16;
+        let y = area.y;
+        if x >= area.x + area.width {
+            break;
+        }
+        if ch == ' ' {
+            continue;
+        }
+        let cell = &mut buf[(x, y)];
+        cell.set_char(ch);
+        cell.set_style(style);
+    }
+}
+
 pub struct FxBackdrop;
 
 impl Widget for FxBackdrop {
@@ -355,5 +505,42 @@ mod tests {
         let mut t = term(80, 24);
         let scene = FxScene::from_effect(FxEffect::Matrix, 80, 24, 13);
         t.draw(|f| render_fx_overlay(f, &scene, "X")).unwrap();
+    }
+
+    // v1.59.0 -----------------------------------------------------------
+
+    #[test]
+    fn fx_snow_smoke_renders_without_panic() {
+        let mut t = term(80, 24);
+        let scene = FxScene::from_effect(FxEffect::Snow, 80, 24, 21);
+        t.draw(|f| render_fx_overlay(f, &scene, "X")).unwrap();
+    }
+
+    #[test]
+    fn fx_fireworks_smoke_renders_without_panic() {
+        let mut t = term(80, 24);
+        let scene = FxScene::from_effect(FxEffect::Fireworks, 80, 24, 31);
+        t.draw(|f| render_fx_overlay(f, &scene, "X")).unwrap();
+    }
+
+    #[test]
+    fn fx_plasma_smoke_renders_without_panic() {
+        let mut t = term(80, 24);
+        let scene = FxScene::from_effect(FxEffect::Plasma, 80, 24, 41);
+        t.draw(|f| render_fx_overlay(f, &scene, "X")).unwrap();
+    }
+
+    #[test]
+    fn fx_sampler_smoke_renders_without_panic_and_paints_sub_effect_chip() {
+        let mut t = term(80, 24);
+        let scene = FxScene::from_effect(FxEffect::Sampler, 80, 24, 51);
+        t.draw(|f| render_fx_overlay(f, &scene, "QMONSTER"))
+            .unwrap();
+        let buf = t.backend().buffer();
+        let dump: String = buf.content.iter().map(|c| c.symbol().to_string()).collect();
+        assert!(
+            dump.contains("sampler"),
+            "sampler must paint a chip identifying the active sub-effect"
+        );
     }
 }

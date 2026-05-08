@@ -34,8 +34,8 @@ taking destructive action by default.
 
 | Surface             | Current                                                |
 | ------------------- | ------------------------------------------------------ |
-| Release             | `v1.58.1`                                              |
-| npm                 | `qmonster@1.58.1`                                      |
+| Release             | `v1.59.0`                                              |
+| npm                 | `qmonster@1.59.0`                                      |
 | Rust                | `1.88+`                                                |
 | Runtime version     | `git describe --tags --always --dirty` from `build.rs` |
 | Cargo crate version | Internal metadata only                                 |
@@ -64,30 +64,63 @@ intent.
 
 ## Quick Start
 
+**Install** — pick one. Either path needs a working Rust toolchain
+(`rustc 1.88+`) because the npm package compiles the binary on first run.
+
 ```bash
-# Install from npmjs. The package runs the Rust binary from source, so a
-# working Rust toolchain is still required.
+# 1) From npmjs (recommended for operators)
 npm install -g qmonster
 qmonster --help
 
-# Or build directly from source.
+# 2) From source (recommended for contributors)
+git clone https://github.com/chquandogong/qmonster
+cd qmonster
 cargo build --release
-cargo run --release
 ```
 
-For normal local operation:
+**Set the stage** — Qmonster watches a tmux session that already has
+your AI CLI panes running. Spin one up however you like, then attach:
 
 ```bash
-# Creates ~/.qmonster/config/qmonster.toml and pricing.toml from templates
-# when missing, then starts the TUI with a persisted config path.
+tmux new -s ai
+# inside tmux: split into panes for claude / codex / gemini / qmonster
+# (or copy the four-pane layout from Provider Setup → Tmux tab → installer)
+```
+
+**Run it** — from another shell or pane:
+
+```bash
+# Creates ~/.qmonster/config/qmonster.toml + pricing.toml from templates
+# when missing, then launches the TUI bound to that config path.
 ./scripts/run-qmonster.sh
 ```
 
-Smoke checks:
+**First launch** — Qmonster opens to the split dashboard:
+
+- **Top: Alerts** — notices, recommendations, cross-pane findings.
+  Press `/` (v1.59.0) to filter by case-insensitive substring.
+- **Bottom: Panes** — one card per attached AI CLI pane with state,
+  context, quota, tokens, cache, cost, and reset ETA.
+- **Footer** — current target, key cluster, version badge. Click the
+  badge to inspect Git status.
+
+The most useful first keys:
+
+| Key | Action                                                                                            |
+| --- | ------------------------------------------------------------------------------------------------- |
+| `?` | Help overlay with the full key map and badge legend                                               |
+| `t` | Pick which tmux session/window to observe                                                         |
+| `S` | Settings overlay (`/` filters parameters by label)                                                |
+| `P` | Provider Setup overlay (sidefile + tmux installers)                                               |
+| `i` | Insights overlay (recent operator-affecting actions)                                              |
+| `n` | Anomaly events overlay (`f` cycles severity filter)                                               |
+| `Q` | Open the decorative fx overlay (banner / confetti / matrix / snow / fireworks / plasma / sampler) |
+
+**Smoke checks** if anything looks off:
 
 ```bash
-cargo run -- --once
-./scripts/check-tmux-source-parity.sh --all-targets --repeat 3
+cargo run -- --once                                              # one-pass scan, no UI
+./scripts/check-tmux-source-parity.sh --all-targets --repeat 3   # polling vs control-mode parity
 ./scripts/run-qmonster-control-mode-once.sh --root /tmp/qmonster-smoke
 ```
 

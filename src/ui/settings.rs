@@ -570,6 +570,13 @@ impl SettingsOverlay {
         self.dirty
     }
 
+    /// v1.59.0: per-parameter dirty check used by the row renderer to
+    /// surface a "modified-but-not-saved" marker distinct from the
+    /// "differs from default" `*` marker.
+    pub fn parameter_is_dirty(&self, field: ParameterField) -> bool {
+        self.dirty_parameters.contains(&field)
+    }
+
     /// Open the overlay and reset state. The first field
     /// (cost / default / warning) becomes the focus.
     pub fn open(&mut self) {
@@ -3080,7 +3087,21 @@ fn build_parameter_body_lines(
                 Style::default().fg(theme::severity_color(Severity::Warning)),
             ),
             Span::styled(
-                " differs from the built-in default; unmarked rows are current defaults",
+                " differs from the built-in default \u{00b7}",
+                Style::default().fg(theme::TEXT_DIM),
+            ),
+            // v1.59.0: dedicated dirty-row marker; the green ● appears
+            // on rows the operator has changed since opening this
+            // session, regardless of whether they also differ from the
+            // built-in default. It clears on `w` save.
+            Span::styled(
+                " \u{25CF}",
+                Style::default()
+                    .fg(theme::severity_color(Severity::Good))
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " modified-but-not-saved this session (clears on `w`)",
                 Style::default().fg(theme::TEXT_DIM),
             ),
         ]),
@@ -4137,7 +4158,7 @@ fn parameter_value_help(field: ParameterField) -> &'static str {
         UxHelpLanguage => "ko | en",
         UxTheme => "dark | high_contrast",
         TmuxSource => "auto | polling | control_mode",
-        FxEffect => "banner | confetti | matrix",
+        FxEffect => "banner | confetti | matrix | snow | fireworks | plasma | sampler",
         RefreshPolicy => "manual_only | automatic",
         LoggingSensitivity => "minimal | balanced | forensic",
         ActionsMode => "observe_only | recommend_only | safe_auto",
@@ -4199,7 +4220,15 @@ fn parameter_row_line(
     };
     let default = parameter_default_for_display(field);
     let custom = value.trim_end_matches('_') != default;
-    let marker = if custom { "*" } else { " " };
+    let dirty = overlay.parameter_is_dirty(field);
+    let differs_marker = if custom { "*" } else { " " };
+    // v1.59.0: dedicated "modified-but-not-saved this session" marker
+    // (●) distinct from the existing `*` "differs from built-in default"
+    // marker. The `*` answers "is this row unusual?"; `●` answers
+    // "did I change it since opening this overlay?". Saving (`w`)
+    // clears the dirty list; defaults clearing (`c` for thresholds)
+    // preserves the dirty mark until the next save.
+    let dirty_marker = if dirty { "\u{25CF}" } else { " " };
     let cursor = if focused { "▶ " } else { "  " };
     let value_style = if focused {
         if overlay.edit_buffer().is_some() {
@@ -4215,8 +4244,15 @@ fn parameter_row_line(
     } else {
         Style::default().fg(theme::TEXT_PRIMARY)
     };
-    let marker_style = if custom {
+    let differs_style = if custom {
         Style::default().fg(theme::severity_color(Severity::Warning))
+    } else {
+        Style::default().fg(theme::TEXT_DIM)
+    };
+    let dirty_style = if dirty {
+        Style::default()
+            .fg(theme::severity_color(Severity::Good))
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme::TEXT_DIM)
     };
@@ -4227,7 +4263,9 @@ fn parameter_row_line(
         ParameterEditKind::Text => "edit",
     };
     Line::from(vec![
-        Span::styled(format!("  {marker} "), marker_style),
+        Span::raw("  "),
+        Span::styled(differs_marker, differs_style),
+        Span::styled(dirty_marker, dirty_style),
         Span::raw(cursor),
         Span::styled(
             format!("{:<38}", parameter_label(field)),

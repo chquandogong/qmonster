@@ -68,6 +68,10 @@ pub struct DashboardFrameView<'a> {
     /// v1.53.0: operator-configured banner text (`[fx] text`). Plumbed
     /// directly so the renderer doesn't need to re-read config.
     pub fx_text: &'a str,
+    /// v1.59.0: optional case-insensitive filter applied to the
+    /// Alerts list. Set by `tui_loop` from
+    /// `DashboardRuntimeState::alert_filter`.
+    pub alert_filter: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -133,6 +137,7 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
             alerts_focused: !overlay_owns_keyboard && view.focus == FocusedPanel::Alerts,
             panes_focused: !overlay_owns_keyboard && view.focus == FocusedPanel::Panes,
             ime_active: view.ime_active,
+            alert_filter: view.alert_filter,
         },
     );
 

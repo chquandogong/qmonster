@@ -345,6 +345,15 @@ impl AnomalyOverlay {
 
         let visible_rows = inner.height.saturating_sub(1) as usize;
         let filter = self.filter;
+        // v1.59.0: color rows by AnomalySignal severity. Text format
+        // unchanged; ListItem now carries a styled Line with the row's
+        // severity-color fg. Operators read severity at a glance from
+        // the row tint instead of having to scan the Conf column.
+        let row_to_item = |e: &crate::domain::anomaly::AnomalyEvent| {
+            let text = format_event_row(e, inner.width as usize);
+            let style = Style::default().fg(theme::severity_color(e.severity));
+            ListItem::new(Line::from(ratatui::text::Span::styled(text, style)))
+        };
         let items: Vec<ListItem> = match self.view {
             AnomalyOverlayView::Ring => ring
                 .iter()
@@ -352,7 +361,7 @@ impl AnomalyOverlay {
                 .filter(|e| filter.matches(e))
                 .skip(scroll as usize)
                 .take(visible_rows)
-                .map(|e| ListItem::new(format_event_row(e, inner.width as usize)))
+                .map(row_to_item)
                 .collect(),
             AnomalyOverlayView::History => self
                 .history_cache
@@ -360,7 +369,7 @@ impl AnomalyOverlay {
                 .filter(|e| filter.matches(e))
                 .skip(scroll as usize)
                 .take(visible_rows)
-                .map(|e| ListItem::new(format_event_row(e, inner.width as usize)))
+                .map(row_to_item)
                 .collect(),
         };
 

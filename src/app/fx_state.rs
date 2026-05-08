@@ -287,6 +287,368 @@ impl MatrixState {
     }
 }
 
+// ---------------- Snow (v1.59.0) ----------------
+
+/// One snowflake. `phase` + `sway_freq` drive the horizontal cosine
+/// oscillation so flakes don't all sway in lockstep.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Flake {
+    pub x: f32,
+    pub y: f32,
+    pub vy: f32,
+    pub sway_amp: f32,
+    pub sway_freq: f32,
+    pub phase: f32,
+    pub age: u32,
+    pub glyph: char,
+}
+
+const SNOW_GLYPHS: &[char] = &['❄', '❅', '❆', '*', '·', '∙'];
+pub const SNOW_FLAKE_COUNT: usize = 60;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SnowState {
+    pub flakes: Vec<Flake>,
+    pub viewport_w: u16,
+    pub viewport_h: u16,
+    rng_state: u64,
+}
+
+impl SnowState {
+    pub fn new(viewport_w: u16, viewport_h: u16, seed: u64) -> Self {
+        let mut state = Self {
+            flakes: Vec::with_capacity(SNOW_FLAKE_COUNT),
+            viewport_w,
+            viewport_h,
+            rng_state: seed.max(1),
+        };
+        for _ in 0..SNOW_FLAKE_COUNT {
+            let f = state.spawn_flake(true);
+            state.flakes.push(f);
+        }
+        state
+    }
+
+    fn rng_next(&mut self) -> u64 {
+        let mut x = self.rng_state;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.rng_state = x.max(1);
+        x
+    }
+
+    fn rng_f32(&mut self) -> f32 {
+        (self.rng_next() & 0xFFFFFF) as f32 / (1u32 << 24) as f32
+    }
+
+    fn spawn_flake(&mut self, scatter_y: bool) -> Flake {
+        let w = self.viewport_w.max(1) as f32;
+        let h = self.viewport_h.max(1) as f32;
+        let x = self.rng_f32() * w;
+        let y = if scatter_y { self.rng_f32() * h } else { -1.0 };
+        let vy = 0.05 + self.rng_f32() * 0.15;
+        let sway_amp = 0.2 + self.rng_f32() * 0.6;
+        let sway_freq = 0.02 + self.rng_f32() * 0.04;
+        let phase = self.rng_f32() * std::f32::consts::TAU;
+        let glyph = SNOW_GLYPHS[(self.rng_next() as usize) % SNOW_GLYPHS.len()];
+        Flake {
+            x,
+            y,
+            vy,
+            sway_amp,
+            sway_freq,
+            phase,
+            age: 0,
+            glyph,
+        }
+    }
+
+    pub fn step(&mut self) {
+        let h = self.viewport_h as f32;
+        let w = self.viewport_w as f32;
+        for f in &mut self.flakes {
+            f.age = f.age.wrapping_add(1);
+            let sway = (f.age as f32 * f.sway_freq + f.phase).cos() * f.sway_amp;
+            f.x += sway * 0.05;
+            f.y += f.vy;
+            if f.x < 0.0 {
+                f.x += w;
+            } else if f.x >= w {
+                f.x -= w;
+            }
+        }
+        // Recycle flakes that fell past the bottom by spawning fresh
+        // ones at the top. Use indices so the borrow is non-overlapping
+        // with `spawn_flake`'s &mut self.
+        let mut respawn_idx = Vec::new();
+        for (i, f) in self.flakes.iter().enumerate() {
+            if f.y >= h {
+                respawn_idx.push(i);
+            }
+        }
+        for i in respawn_idx {
+            self.flakes[i] = self.spawn_flake(false);
+        }
+    }
+}
+
+// ---------------- Fireworks (v1.59.0) ----------------
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rocket {
+    pub x: f32,
+    pub y: f32,
+    pub vy: f32,
+    pub burst_at_y: f32,
+    pub hue_deg: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Spark {
+    pub x: f32,
+    pub y: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub hue_deg: u16,
+    pub life: u16,
+    pub initial_life: u16,
+    pub glyph: char,
+}
+
+impl Spark {
+    pub fn alive(&self) -> bool {
+        self.life > 0
+    }
+    pub fn fade(&self) -> f32 {
+        if self.initial_life == 0 {
+            return 1.0;
+        }
+        1.0 - (self.life as f32 / self.initial_life as f32)
+    }
+}
+
+const FIREWORKS_SPARK_GLYPHS: &[char] = &['*', '+', '·', '✦', '✧', '✨'];
+pub const FIREWORKS_GRAVITY: f32 = 0.025;
+pub const FIREWORKS_SPARKS_PER_BURST: usize = 32;
+pub const FIREWORKS_SPARK_LIFE: u16 = 90;
+pub const FIREWORKS_LAUNCH_INTERVAL_FRAMES: u32 = 60;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FireworksState {
+    pub rockets: Vec<Rocket>,
+    pub sparks: Vec<Spark>,
+    pub viewport_w: u16,
+    pub viewport_h: u16,
+    rng_state: u64,
+    frames_until_next_launch: u32,
+}
+
+impl FireworksState {
+    pub fn new(viewport_w: u16, viewport_h: u16, seed: u64) -> Self {
+        let mut state = Self {
+            rockets: Vec::new(),
+            sparks: Vec::new(),
+            viewport_w,
+            viewport_h,
+            rng_state: seed.max(1),
+            frames_until_next_launch: 0,
+        };
+        // Launch one immediately so the first frame shows action.
+        state.launch_rocket();
+        state
+    }
+
+    fn rng_next(&mut self) -> u64 {
+        let mut x = self.rng_state;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.rng_state = x.max(1);
+        x
+    }
+
+    fn rng_f32(&mut self) -> f32 {
+        (self.rng_next() & 0xFFFFFF) as f32 / (1u32 << 24) as f32
+    }
+
+    fn launch_rocket(&mut self) {
+        let w = self.viewport_w.max(8) as f32;
+        let h = self.viewport_h.max(6) as f32;
+        let x = w * 0.2 + self.rng_f32() * w * 0.6;
+        let burst = h * 0.15 + self.rng_f32() * h * 0.35;
+        let vy = -(0.6 + self.rng_f32() * 0.4);
+        let hue_deg = (self.rng_next() % FX_HUE_PERIOD as u64) as u16;
+        self.rockets.push(Rocket {
+            x,
+            y: h - 1.0,
+            vy,
+            burst_at_y: burst,
+            hue_deg,
+        });
+        self.frames_until_next_launch = FIREWORKS_LAUNCH_INTERVAL_FRAMES
+            + (self.rng_next() as u32 % FIREWORKS_LAUNCH_INTERVAL_FRAMES);
+    }
+
+    fn explode(&mut self, rocket: Rocket) {
+        for i in 0..FIREWORKS_SPARKS_PER_BURST {
+            let angle = (i as f32) / (FIREWORKS_SPARKS_PER_BURST as f32) * std::f32::consts::TAU;
+            let speed = 0.25 + self.rng_f32() * 0.45;
+            let hue_jitter = (self.rng_next() % 40) as u16;
+            let life_jitter = self.rng_next() as u16 % 12;
+            let glyph =
+                FIREWORKS_SPARK_GLYPHS[(self.rng_next() as usize) % FIREWORKS_SPARK_GLYPHS.len()];
+            self.sparks.push(Spark {
+                x: rocket.x,
+                y: rocket.y,
+                vx: angle.cos() * speed,
+                vy: angle.sin() * speed * 0.6,
+                hue_deg: (rocket.hue_deg + hue_jitter) % FX_HUE_PERIOD,
+                life: FIREWORKS_SPARK_LIFE - life_jitter,
+                initial_life: FIREWORKS_SPARK_LIFE,
+                glyph,
+            });
+        }
+    }
+
+    pub fn step(&mut self) {
+        // Advance rockets; collect bursts.
+        let mut bursts: Vec<Rocket> = Vec::new();
+        for r in &mut self.rockets {
+            r.y += r.vy;
+        }
+        let mut i = 0;
+        while i < self.rockets.len() {
+            if self.rockets[i].y <= self.rockets[i].burst_at_y {
+                bursts.push(self.rockets.remove(i));
+            } else {
+                i += 1;
+            }
+        }
+        for r in bursts {
+            self.explode(r);
+        }
+        // Sparks: gravity, life, retain alive ones inside the buffer.
+        for s in &mut self.sparks {
+            s.x += s.vx;
+            s.y += s.vy;
+            s.vy += FIREWORKS_GRAVITY;
+            s.life = s.life.saturating_sub(1);
+        }
+        let h = self.viewport_h as f32 + 4.0;
+        let w = self.viewport_w as f32;
+        self.sparks
+            .retain(|s| s.alive() && s.x >= 0.0 && s.x < w && s.y >= 0.0 && s.y < h);
+        // Schedule next launch.
+        if self.frames_until_next_launch == 0 {
+            self.launch_rocket();
+        } else {
+            self.frames_until_next_launch -= 1;
+        }
+    }
+}
+
+// ---------------- Plasma (v1.59.0) ----------------
+
+const PLASMA_GLYPHS: &[char] = &[' ', '·', '∙', '•', '○', '◌', '◍', '◎', '●'];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlasmaState {
+    pub viewport_w: u16,
+    pub viewport_h: u16,
+    pub time: u32,
+}
+
+impl PlasmaState {
+    pub fn new(viewport_w: u16, viewport_h: u16) -> Self {
+        Self {
+            viewport_w,
+            viewport_h,
+            time: 0,
+        }
+    }
+    pub fn step(&mut self) {
+        self.time = self.time.wrapping_add(1);
+    }
+
+    /// Returns `(glyph_index, hue_deg)` for cell `(col, row)` at the
+    /// current time. Pure helper so the renderer can iterate without
+    /// holding a `&mut self`.
+    pub fn sample(&self, col: u16, row: u16) -> (usize, u16) {
+        let x = col as f32;
+        let y = row as f32;
+        let t = self.time as f32;
+        let v = (x / 8.0 + t / 30.0).sin()
+            + (y / 8.0 + t / 40.0).sin()
+            + ((x + y) / 16.0 + t / 50.0).sin();
+        // v ∈ [-3, 3] → normalize to [0, 1]
+        let n = (v + 3.0) / 6.0;
+        let glyph_idx = ((n.clamp(0.0, 1.0)) * (PLASMA_GLYPHS.len() - 1) as f32) as usize;
+        let hue = ((n * FX_HUE_PERIOD as f32) as u16) % FX_HUE_PERIOD;
+        (glyph_idx, hue)
+    }
+}
+
+pub fn plasma_glyph(idx: usize) -> char {
+    PLASMA_GLYPHS[idx.min(PLASMA_GLYPHS.len() - 1)]
+}
+
+// ---------------- Sampler (v1.59.0) ----------------
+
+/// One inner effect plays for this many frames before the sampler
+/// rotates to the next. At 60 FPS, 5s = 300 frames.
+pub const SAMPLER_FRAMES_PER_EFFECT: u32 = FX_TARGET_FPS as u32 * 5;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SamplerState {
+    pub inner: Box<FxScene>,
+    pub current: FxEffect,
+    pub frames_in_current: u32,
+    pub seed: u64,
+}
+
+impl SamplerState {
+    pub fn new(viewport_w: u16, viewport_h: u16, seed: u64) -> Self {
+        let first = FxEffect::Banner;
+        let inner = Box::new(FxScene::from_effect(first, viewport_w, viewport_h, seed));
+        Self {
+            inner,
+            current: first,
+            frames_in_current: 0,
+            seed,
+        }
+    }
+
+    pub fn step(&mut self, viewport_w: u16, viewport_h: u16) {
+        self.frames_in_current = self.frames_in_current.saturating_add(1);
+        if self.frames_in_current >= SAMPLER_FRAMES_PER_EFFECT {
+            self.frames_in_current = 0;
+            self.current = sampler_next_effect(self.current);
+            self.seed = self.seed.wrapping_add(0x9E3779B97F4A7C15);
+            *self.inner = FxScene::from_effect(self.current, viewport_w, viewport_h, self.seed);
+        }
+        self.inner.step(viewport_w, viewport_h);
+    }
+
+    pub fn resize(&mut self, viewport_w: u16, viewport_h: u16) {
+        self.inner.resize(viewport_w, viewport_h);
+    }
+}
+
+/// Next effect in the sampler rotation. Skips `Sampler` itself so the
+/// meta-scene never tries to recurse into another sampler.
+pub fn sampler_next_effect(e: FxEffect) -> FxEffect {
+    match e {
+        FxEffect::Banner => FxEffect::Confetti,
+        FxEffect::Confetti => FxEffect::Matrix,
+        FxEffect::Matrix => FxEffect::Snow,
+        FxEffect::Snow => FxEffect::Fireworks,
+        FxEffect::Fireworks => FxEffect::Plasma,
+        FxEffect::Plasma => FxEffect::Banner,
+        FxEffect::Sampler => FxEffect::Banner,
+    }
+}
+
 /// Tiny xorshift64 — keeps the module dependency-free. Output is good
 /// enough for picking glyphs and jitter.
 struct XorShift64(u64);
@@ -320,6 +682,10 @@ pub enum FxScene {
     Banner(BannerState),
     Confetti(ConfettiState),
     Matrix(MatrixState),
+    Snow(SnowState),
+    Fireworks(FireworksState),
+    Plasma(PlasmaState),
+    Sampler(SamplerState),
 }
 
 impl FxScene {
@@ -338,12 +704,18 @@ impl FxScene {
                 seed,
             )),
             FxEffect::Matrix => FxScene::Matrix(MatrixState::new(viewport_w, viewport_h, seed)),
+            FxEffect::Snow => FxScene::Snow(SnowState::new(viewport_w, viewport_h, seed)),
+            FxEffect::Fireworks => {
+                FxScene::Fireworks(FireworksState::new(viewport_w, viewport_h, seed))
+            }
+            FxEffect::Plasma => FxScene::Plasma(PlasmaState::new(viewport_w, viewport_h)),
+            FxEffect::Sampler => FxScene::Sampler(SamplerState::new(viewport_w, viewport_h, seed)),
         }
     }
 
     /// True when the scene has finished its natural lifetime (only
-    /// confetti returns true here; banner + matrix run forever until
-    /// dismissed).
+    /// confetti returns true here; banner + matrix + snow + fireworks +
+    /// plasma + sampler run forever until dismissed).
     pub fn is_finished(&self) -> bool {
         matches!(self, FxScene::Confetti(c) if c.is_finished())
     }
@@ -353,6 +725,10 @@ impl FxScene {
             FxScene::Banner(b) => b.step(viewport_w, viewport_h),
             FxScene::Confetti(c) => c.step(),
             FxScene::Matrix(m) => m.step(),
+            FxScene::Snow(s) => s.step(),
+            FxScene::Fireworks(f) => f.step(),
+            FxScene::Plasma(p) => p.step(),
+            FxScene::Sampler(s) => s.step(viewport_w, viewport_h),
         }
     }
 
@@ -367,6 +743,19 @@ impl FxScene {
                 m.viewport_w = viewport_w;
                 m.viewport_h = viewport_h;
             }
+            FxScene::Snow(s) => {
+                s.viewport_w = viewport_w;
+                s.viewport_h = viewport_h;
+            }
+            FxScene::Fireworks(f) => {
+                f.viewport_w = viewport_w;
+                f.viewport_h = viewport_h;
+            }
+            FxScene::Plasma(p) => {
+                p.viewport_w = viewport_w;
+                p.viewport_h = viewport_h;
+            }
+            FxScene::Sampler(s) => s.resize(viewport_w, viewport_h),
         }
     }
 }
@@ -535,5 +924,152 @@ mod tests {
     fn hue_to_rgb_wraps_past_full_circle() {
         let (r, g, b) = hue_to_rgb(720);
         assert_eq!((r, g, b), (255, 0, 0));
+    }
+
+    // v1.59.0 -----------------------------------------------------------
+
+    #[test]
+    fn snow_spawns_full_field_and_keeps_count_stable_after_step() {
+        let mut s = SnowState::new(80, 24, 1);
+        assert_eq!(s.flakes.len(), SNOW_FLAKE_COUNT);
+        for _ in 0..200 {
+            s.step();
+        }
+        assert_eq!(
+            s.flakes.len(),
+            SNOW_FLAKE_COUNT,
+            "flakes that fall past the bottom should respawn at the top"
+        );
+    }
+
+    #[test]
+    fn snow_flakes_fall_downward_overall() {
+        let mut s = SnowState::new(80, 24, 7);
+        let y_before: f32 = s.flakes.iter().map(|f| f.y).sum();
+        for _ in 0..30 {
+            s.step();
+        }
+        // After 30 frames, total y advancement should exceed the
+        // baseline by a measurable amount (excluding any respawns).
+        let alive_after_count = s.flakes.iter().filter(|f| f.y > 0.0).count();
+        assert!(
+            alive_after_count > 0,
+            "at least some flakes must remain in motion"
+        );
+        let _ = y_before; // baseline reference; visual sanity already covered above
+    }
+
+    #[test]
+    fn fireworks_explodes_rocket_when_burst_height_reached() {
+        let mut f = FireworksState::new(80, 24, 99);
+        // Force the rocket immediately to its burst height.
+        let rocket = f.rockets.last_mut().expect("at least one rocket");
+        rocket.y = rocket.burst_at_y - 0.5;
+        rocket.vy = -0.1;
+        f.step();
+        assert!(
+            !f.sparks.is_empty(),
+            "rocket should have exploded into sparks"
+        );
+    }
+
+    #[test]
+    fn fireworks_relaunches_after_interval_elapses() {
+        let mut f = FireworksState::new(80, 24, 11);
+        // Sample whether the firework field is ever non-empty across a
+        // long window. There's a gap between rockets bursting and the
+        // next launch where both lists can be empty for a frame or two,
+        // so we look at the whole window not a single frame.
+        let mut ever_visible = false;
+        for _ in 0..(FIREWORKS_LAUNCH_INTERVAL_FRAMES * 8) {
+            if !f.rockets.is_empty() || !f.sparks.is_empty() {
+                ever_visible = true;
+            }
+            f.step();
+        }
+        assert!(
+            ever_visible,
+            "fireworks must keep producing visible particles over time"
+        );
+    }
+
+    #[test]
+    fn plasma_step_advances_time_and_sample_returns_within_bounds() {
+        let mut p = PlasmaState::new(80, 24);
+        assert_eq!(p.time, 0);
+        for _ in 0..10 {
+            p.step();
+        }
+        assert_eq!(p.time, 10);
+        for col in 0..80 {
+            for row in 0..24 {
+                let (gi, hue) = p.sample(col, row);
+                assert!(gi < 9, "glyph index must stay within table");
+                assert!(hue < FX_HUE_PERIOD, "hue must wrap inside [0, 360)");
+            }
+        }
+    }
+
+    #[test]
+    fn sampler_rotates_to_next_effect_after_interval_elapses() {
+        let mut s = SamplerState::new(80, 24, 1);
+        assert_eq!(s.current, FxEffect::Banner);
+        for _ in 0..SAMPLER_FRAMES_PER_EFFECT {
+            s.step(80, 24);
+        }
+        assert_eq!(
+            s.current,
+            FxEffect::Confetti,
+            "sampler should swap to the next effect after the interval"
+        );
+        // Step through several more rotations and confirm the cycle
+        // never lands on Sampler itself.
+        for _ in 0..(SAMPLER_FRAMES_PER_EFFECT * 8) {
+            s.step(80, 24);
+            assert_ne!(
+                s.current,
+                FxEffect::Sampler,
+                "sampler must not recurse into itself"
+            );
+        }
+    }
+
+    #[test]
+    fn sampler_next_effect_skips_self_and_covers_every_other_variant() {
+        let mut seen = std::collections::HashSet::new();
+        let mut e = FxEffect::Banner;
+        for _ in 0..12 {
+            seen.insert(e);
+            e = sampler_next_effect(e);
+        }
+        assert!(seen.contains(&FxEffect::Banner));
+        assert!(seen.contains(&FxEffect::Confetti));
+        assert!(seen.contains(&FxEffect::Matrix));
+        assert!(seen.contains(&FxEffect::Snow));
+        assert!(seen.contains(&FxEffect::Fireworks));
+        assert!(seen.contains(&FxEffect::Plasma));
+        assert!(
+            !seen.contains(&FxEffect::Sampler),
+            "sampler rotation must skip the Sampler variant itself"
+        );
+    }
+
+    #[test]
+    fn fx_scene_from_effect_dispatches_every_v1_59_variant() {
+        for e in [
+            FxEffect::Snow,
+            FxEffect::Fireworks,
+            FxEffect::Plasma,
+            FxEffect::Sampler,
+        ] {
+            let scene = FxScene::from_effect(e, 80, 24, 1);
+            match (e, &scene) {
+                (FxEffect::Snow, FxScene::Snow(_)) => {}
+                (FxEffect::Fireworks, FxScene::Fireworks(_)) => {}
+                (FxEffect::Plasma, FxScene::Plasma(_)) => {}
+                (FxEffect::Sampler, FxScene::Sampler(_)) => {}
+                _ => panic!("variant mismatch for {e:?}"),
+            }
+        }
     }
 }

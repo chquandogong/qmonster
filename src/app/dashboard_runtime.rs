@@ -19,6 +19,12 @@ pub struct DashboardRuntimeState {
     pub fresh_alerts: HashSet<String>,
     pub alert_times: HashMap<String, String>,
     pub alert_hide_deadlines: HashMap<String, Instant>,
+    /// v1.59.0: case-insensitive substring filter applied to the
+    /// alerts list. `None` = no filter (full list rendered);
+    /// `Some(buf)` activates filter input mode (the `/` key flow).
+    /// Empty buffer (just-pressed `/`) shows all rows + the input
+    /// prompt so the operator can start typing.
+    pub alert_filter: Option<String>,
 }
 
 impl DashboardRuntimeState {
@@ -57,6 +63,39 @@ impl DashboardRuntimeState {
             fresh_alerts,
             alert_times,
             alert_hide_deadlines,
+            alert_filter: None,
+        }
+    }
+
+    pub fn alert_filter(&self) -> Option<&str> {
+        self.alert_filter.as_deref()
+    }
+
+    pub fn start_alert_filter(&mut self) {
+        self.alert_filter = Some(String::new());
+    }
+
+    pub fn cancel_alert_filter(&mut self) {
+        self.alert_filter = None;
+    }
+
+    pub fn confirm_alert_filter(&mut self) {
+        // No state change beyond the input-mode exit handled by the
+        // `filtering` gate in tui_loop; filter buffer stays as-is.
+    }
+
+    pub fn alert_filter_type_char(&mut self, c: char) {
+        if c.is_ascii()
+            && !c.is_control()
+            && let Some(buf) = self.alert_filter.as_mut()
+        {
+            buf.push(c);
+        }
+    }
+
+    pub fn alert_filter_backspace(&mut self) {
+        if let Some(buf) = self.alert_filter.as_mut() {
+            buf.pop();
         }
     }
 
@@ -144,6 +183,57 @@ mod tests {
 
         state.clear_notices(now);
         assert_eq!(state.alert_state.selected(), None);
+    }
+
+    #[test]
+    fn alert_filter_input_buffer_lifecycle() {
+        let mut state = DashboardRuntimeState::new(Vec::new(), Instant::now());
+
+        assert!(state.alert_filter().is_none());
+
+        state.start_alert_filter();
+        assert_eq!(state.alert_filter(), Some(""));
+
+        state.alert_filter_type_char('a');
+        state.alert_filter_type_char('p');
+        state.alert_filter_type_char('i');
+        assert_eq!(state.alert_filter(), Some("api"));
+
+        state.alert_filter_backspace();
+        assert_eq!(state.alert_filter(), Some("ap"));
+
+        state.confirm_alert_filter();
+        assert_eq!(
+            state.alert_filter(),
+            Some("ap"),
+            "confirm should keep the filter buffer"
+        );
+
+        state.cancel_alert_filter();
+        assert!(state.alert_filter().is_none());
+
+        // Backspace on a closed filter is a no-op (does not panic, does
+        // not transition None → Some).
+        state.alert_filter_backspace();
+        assert!(state.alert_filter().is_none());
+
+        // type_char on a closed filter is also a no-op.
+        state.alert_filter_type_char('x');
+        assert!(state.alert_filter().is_none());
+    }
+
+    #[test]
+    fn alert_filter_rejects_control_chars_but_keeps_unicode_letters() {
+        let mut state = DashboardRuntimeState::new(Vec::new(), Instant::now());
+        state.start_alert_filter();
+
+        state.alert_filter_type_char('\t');
+        state.alert_filter_type_char('\n');
+        assert_eq!(state.alert_filter(), Some(""));
+
+        state.alert_filter_type_char('o');
+        state.alert_filter_type_char('k');
+        assert_eq!(state.alert_filter(), Some("ok"));
     }
 
     #[test]

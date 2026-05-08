@@ -258,6 +258,7 @@ pub fn handle_dashboard_mouse(
                             now: view.now,
                             target_label: view.target_label,
                             focused: true,
+                            filter: None,
                         },
                         event.column.saturating_sub(alerts_inner.x),
                     ) {
@@ -287,6 +288,7 @@ pub fn handle_dashboard_mouse(
                         now: view.now,
                         target_label: view.target_label,
                         focused: true,
+                        filter: None,
                     },
                     alerts_inner.width.saturating_sub(3) as usize,
                     row.saturating_sub(1),

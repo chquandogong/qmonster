@@ -668,12 +668,22 @@ impl Default for FxConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum FxEffect {
     Banner,
     Confetti,
     Matrix,
+    /// v1.59.0: snowflakes drifting top→bottom with horizontal sway.
+    Snow,
+    /// v1.59.0: rockets arc up + explode into gravity-bound sparks.
+    Fireworks,
+    /// v1.59.0: full-screen sin/cos field; per-cell color cycles.
+    Plasma,
+    /// v1.59.0: meta-scene that auto-cycles through every other
+    /// effect every ~5 seconds. Lets the operator "taste" them all
+    /// without flipping the config between runs.
+    Sampler,
 }
 
 impl FxEffect {
@@ -681,7 +691,11 @@ impl FxEffect {
         match self {
             Self::Banner => Self::Confetti,
             Self::Confetti => Self::Matrix,
-            Self::Matrix => Self::Banner,
+            Self::Matrix => Self::Snow,
+            Self::Snow => Self::Fireworks,
+            Self::Fireworks => Self::Plasma,
+            Self::Plasma => Self::Sampler,
+            Self::Sampler => Self::Banner,
         }
     }
 
@@ -690,6 +704,10 @@ impl FxEffect {
             Self::Banner => "banner",
             Self::Confetti => "confetti",
             Self::Matrix => "matrix",
+            Self::Snow => "snow",
+            Self::Fireworks => "fireworks",
+            Self::Plasma => "plasma",
+            Self::Sampler => "sampler",
         }
     }
 }

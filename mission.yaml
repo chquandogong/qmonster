@@ -1,6 +1,6 @@
 mission:
-  version: "1.58.1"
-  title: "Qmonster v1.58.1 - Cross-cutting consistency sweep: bump README/VERSION/mission.yaml/PROJECT_BRIEF version surfaces; add Q hotkey + fx overlay + IME drag-bar prose to UI_MANUAL; fix fx dismiss hint; add Q to footer key cluster; refresh REVIEW_GUIDE matrix reference"
+  version: "1.59.0"
+  title: "Qmonster v1.59.0 - Five-slice polish bundle: anomaly events row severity color coding; Settings dirty-row visual marker; Alerts filter (`/`); three new fx effects (snow/fireworks/plasma); Sampler meta-effect that auto-cycles every effect every 5s; refreshed README quickstart"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

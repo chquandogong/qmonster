@@ -1,14 +1,94 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.58.1 ledger sync)_
+_Last updated: 2026-05-08 (Claude, v1.59.0 ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.58.1 — operator-reported regression hotfix on top of v1.58.0: parameter navigation respects the active filter so arrow keys stop landing on hidden fields. Without the fix, the Parameters tab body appeared frozen under `/` filter because next_parameter / prev_parameter cycled through `all_parameter_fields()` blindly and `keep_selected_parameter_visible` no-oped on filtered-out selections.
-- Version surfaces: npm package metadata `qmonster@1.58.1`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v1.58.1` to be created at the ledger sync commit. v1.58.0 is the immediate prior tagged baseline.
-- Release publication state: **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s). Sibling v1.37.0–v1.49.0 publications all remain live — `npm view qmonster versions` lists `1.37.0` through `1.55.0` with `dist-tags.latest = 1.55.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55}.0`.
-- Current phase: All prior phases complete. v1.50.0–v1.58.0 publication baselines still apply; v1.58.1 is a one-slice hotfix on the v1.58.0 Settings parameter filter — no new phase is opened.
+- Title: Qmonster v1.59.0 — five operator-facing polish slices bundled into one release: anomaly events row severity color coding, Settings dirty-row visual marker, Alerts filter (`/` key, symmetric to v1.58.0 Settings filter), three new fx effects (snow / fireworks / plasma), a Sampler meta-effect that auto-cycles every effect every 5s, and a refreshed README quickstart.
+- Version surfaces: npm package metadata `qmonster@1.59.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v1.59.0` to be created at the ledger sync commit. v1.58.1 is the immediate prior tagged baseline.
+- Release publication state: **v1.58.1 is published** (operator-reported regression hotfix on top of v1.58.0). `Release and Package Mirror` runs through v1.58.1 all completed success; `npm view qmonster versions` lists `1.37.0` through `1.58.1`. **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s).
+- Current phase: All prior phases complete. v1.50.0–v1.58.1 publication baselines still apply; v1.59.0 is a polish bundle layered on the v1.58.1 baseline — no new phase is opened.
+
+## v1.59.0 Feature State
+
+v1.59.0 closes five operator-facing polish slices in one bundle:
+
+1. **Anomaly events row severity color coding** (`src/ui/anomaly_overlay.rs`):
+   each row in the `n` overlay's history view now renders in
+   `theme::severity_color(event.severity)` so Concern / Warning /
+   Critical reads at a glance instead of requiring the operator to
+   parse the embedded severity column. Title chip + filter chip stay
+   in their canonical colors; only the row body picks up the per-event
+   tint.
+
+2. **Settings dirty-row visual marker** (`src/ui/settings.rs`):
+   the Parameters tab row prefix now shows two adjacent markers — the
+   existing yellow `*` for "differs from baked default" plus a new
+   green `●` (U+25CF) for "modified-but-not-saved this session" via a
+   new `parameter_is_dirty(field)` accessor against the existing
+   `dirty_parameters` set. Header documents both. The 6-character
+   prefix width before the label is preserved so the existing
+   `parameter_row_text_matches_field` `skip(6)` invariant still holds.
+
+3. **Alerts filter** (`src/app/dashboard_runtime.rs` +
+   `src/app/tui_loop.rs` + `src/ui/alerts.rs` + `src/ui/dashboard.rs` +
+   `src/app/dashboard_render.rs`): symmetric to the v1.58.0 Settings
+   filter. New `alert_filter: Option<String>` field on
+   `DashboardRuntimeState` with start / cancel / confirm / type_char /
+   backspace methods; `/` on Alerts focus opens the filter; while
+   active typed chars narrow the alert list (case-insensitive substring
+   against title + headline + details + suggested_command via new
+   `alert_item_matches_filter` helper); Esc clears, Enter exits input
+   mode keeping filter, Backspace edits, `/` restarts. Filter input
+   row paints a `· filter:<buf>` chip in the panel title. The legacy
+   `/` split-cycle binding stays bound when Panes is focused so Panes
+   operators don't lose their layout shortcut.
+
+4. **Three new fx effects + Sampler meta-effect**
+   (`src/app/config.rs` + `src/app/fx_state.rs` + `src/ui/fx.rs`):
+   - **Snow** — 60 unicode flakes drift top→bottom with cosine-driven
+     horizontal sway; large flakes render bright white, smaller
+     particles in pale blue to read against any background. Flakes
+     past the bottom respawn at the top with fresh seeds.
+   - **Fireworks** — rockets launch from the bottom every ~1s, arc up
+     until they reach a randomized burst height, then explode into
+     32 radial sparks with gravity + life decay. Sparks fade their
+     hue toward black as life drains.
+   - **Plasma** — full-screen sin/cos field. Each cell samples
+     `sin(x/8 + t/30) + sin(y/8 + t/40) + sin((x+y)/16 + t/50)`,
+     normalizes the result, picks a glyph from a 9-step density ramp,
+     and tints by hue. The lowest-density step is a literal space
+     (omitted) so the dashboard stays visible through the gaps.
+   - **Sampler** — meta-scene that auto-rotates through Banner →
+     Confetti → Matrix → Snow → Fireworks → Plasma every 5 seconds
+     (300 frames at 60 FPS). A top-left chip identifies the active
+     sub-effect so the operator knows what they're seeing without
+     flipping config. The rotation explicitly skips the Sampler
+     variant itself so the meta-scene never recurses.
+   - All four use the same `XorShift64` seeding pattern as v1.53.0
+     Banner / Confetti / Matrix; `FxScene` enum + `from_effect` /
+     `step` / `resize` extended exhaustively. `FxEffect::cycle`
+     advances Banner → Confetti → Matrix → Snow → Fireworks →
+     Plasma → Sampler → Banner. `FxEffect::as_str` mirrors the
+     snake-case TOML labels. Settings parameter help line for
+     `[fx] effect` updated to list every variant.
+
+5. **README quickstart refresh** (`README.md`):
+   - Version surface table bumped to `v1.59.0` / `qmonster@1.59.0`.
+   - Quick Start section restructured into four steps — Install
+     (npm or cargo), Set the stage (tmux setup), Run it (run
+     script), First launch (what the dashboard looks like) — plus
+     a key-cluster table covering `?`, `t`, `S`, `P`, `i`, `n`, `Q`
+     so a fresh operator can ramp inside a minute. Smoke checks +
+     GitHub Packages mirror remain at the bottom.
+
+No code-behaviour change beyond the five operator-visible surfaces.
+1403 → 1415 lib tests (+12 from new fx state / scene / sampler
+guards + alert filter buffer / matcher tests). 65 integration tests
+preserved. fmt + clippy clean.
+
+## v1.58.1 Hotfix
 
 ## v1.58.1 Hotfix
 
@@ -587,14 +667,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v1.58.1 validation at the release commit:
+Most recent v1.59.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1400 lib tests + 65 integration tests + supporting suites, all green (+3 from the v1.58.1 filter-navigation regression guards).
+- `cargo test --all-targets` — 1415 lib tests + 65 integration tests + supporting suites, all green (+12 from the v1.59.0 fx state / scene / sampler / alert filter regression guards).
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.58.0 still apply when the v1.58.1 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.58.1 still apply when the v1.59.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 

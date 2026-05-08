@@ -94,6 +94,12 @@ pub struct AlertView<'a> {
     pub now: Instant,
     pub target_label: &'a str,
     pub focused: bool,
+    /// v1.59.0: optional case-insensitive substring filter applied
+    /// against `title + headline + details + suggested_command` for
+    /// each AlertItem. `None` = no filter; `Some("")` = filter input
+    /// mode active but buffer empty (renders everything but shows the
+    /// `/` input prompt at the top).
+    pub filter: Option<&'a str>,
 }
 
 pub struct AlertMouseHit {
@@ -105,7 +111,7 @@ pub struct AlertMouseHit {
 /// the first row answers "what should I look at first?" instead of
 /// replaying discovery order.
 pub fn render_alerts(area: Rect, buf: &mut Buffer, state: &mut ListState, view: AlertView<'_>) {
-    let items = collect_items(
+    let mut items = collect_items(
         view.notices,
         view.reports,
         view.fresh_alerts,
@@ -113,13 +119,29 @@ pub fn render_alerts(area: Rect, buf: &mut Buffer, state: &mut ListState, view: 
         view.hidden_until,
         view.now,
     );
+    // v1.59.0: apply optional case-insensitive substring filter against
+    // title + headline + details + suggested_command. Skip when buffer
+    // is empty (filter input just opened, operator hasn't typed yet).
+    let needle = view.filter.map(|s| s.trim().to_ascii_lowercase());
+    if let Some(n) = needle.as_deref()
+        && !n.is_empty()
+    {
+        items.retain(|item| alert_item_matches_filter(item, n));
+    }
     let new_count = items.iter().filter(|item| item.is_new).count();
     let pending_hide_count = items
         .iter()
         .filter(|item| item.hide_deadline.is_some())
         .count();
+    // v1.59.0: surface the active filter in the panel title so the
+    // operator can tell at a glance why the visible count is small.
+    let filter_chip = match view.filter {
+        Some(buf) if !buf.trim().is_empty() => format!(" · filter:{}", buf.trim()),
+        Some(_) => " · filter:(empty)".to_string(),
+        None => String::new(),
+    };
     let title = format!(
-        "Alerts · target {} || visible:{} · new:{} · auto-hide:{}",
+        "Alerts · target {} || visible:{} · new:{} · auto-hide:{}{filter_chip}",
         view.target_label,
         items.len(),
         new_count,
@@ -747,6 +769,36 @@ fn non_empty_command(command: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|cmd| !cmd.is_empty())
         .map(str::to_string)
+}
+
+/// v1.59.0: case-insensitive substring match for the alert filter.
+/// `needle` must already be lowercased + trimmed by the caller.
+/// Matches against title + headline + each details row + the
+/// suggested_command if any. Empty needle returns true (caller is
+/// expected to short-circuit before calling this).
+fn alert_item_matches_filter(item: &AlertItem, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    if item.title.to_ascii_lowercase().contains(needle) {
+        return true;
+    }
+    if item.headline.to_ascii_lowercase().contains(needle) {
+        return true;
+    }
+    if item
+        .details
+        .iter()
+        .any(|d| d.to_ascii_lowercase().contains(needle))
+    {
+        return true;
+    }
+    if let Some(cmd) = item.suggested_command.as_deref()
+        && cmd.to_ascii_lowercase().contains(needle)
+    {
+        return true;
+    }
+    false
 }
 
 fn bulk_hide_line(items: &[AlertItem]) -> Line<'static> {
@@ -1865,6 +1917,50 @@ mod tests {
     }
 
     #[test]
+    fn alert_filter_matches_title_headline_details_and_command() {
+        let mut item = AlertItem {
+            key: "rec|%1|x|W|y".into(),
+            timestamp: "14:32:10".into(),
+            timestamp_sort_key: sortable_timestamp("14:32:10"),
+            severity: Severity::Warning,
+            kind: AlertKind::Recommendation,
+            title: "Recommendation · %1".into(),
+            headline: "[Heur] api throttled".into(),
+            details: vec!["upstream rate limit hit".into()],
+            suggested_command: Some("qmonster diag api".into()),
+            source_kind: SourceKind::Heuristic,
+            color: Color::Yellow,
+            is_new: false,
+            hide_deadline: None,
+        };
+
+        // Empty needle short-circuits to true.
+        assert!(alert_item_matches_filter(&item, ""));
+
+        // Title-token match. Caller is expected to pre-lowercase the
+        // needle (callers do via `.to_ascii_lowercase()`); the helper
+        // matches against lowercased haystacks.
+        assert!(alert_item_matches_filter(&item, "recommendation"));
+
+        // Headline-token match.
+        assert!(alert_item_matches_filter(&item, "throttled"));
+
+        // Details-token match.
+        assert!(alert_item_matches_filter(&item, "rate limit"));
+
+        // suggested_command match.
+        assert!(alert_item_matches_filter(&item, "diag"));
+
+        // No match.
+        assert!(!alert_item_matches_filter(&item, "snapshot"));
+
+        // Without a command, the rest still matches.
+        item.suggested_command = None;
+        assert!(alert_item_matches_filter(&item, "throttled"));
+        assert!(!alert_item_matches_filter(&item, "diag"));
+    }
+
+    #[test]
     fn wrap_text_splits_long_alerts_into_multiple_lines() {
         let lines = wrap_text(
             "warning [Official] %1 — very long alert body that should wrap cleanly",
@@ -1970,6 +2066,7 @@ mod tests {
             now: Instant::now(),
             target_label: "all",
             focused: true,
+            filter: None,
         };
         render_alerts(area, &mut buf, &mut state, view);
 
@@ -2015,6 +2112,7 @@ mod tests {
             now,
             target_label: "all",
             focused: true,
+            filter: None,
         };
 
         assert_eq!(
@@ -2088,6 +2186,7 @@ mod tests {
             now: Instant::now(),
             target_label: "all",
             focused: true,
+            filter: None,
         };
         render_alerts(area, &mut buf, &mut state, view);
 
@@ -2132,6 +2231,7 @@ mod tests {
             now: Instant::now(),
             target_label: "all",
             focused: true,
+            filter: None,
         };
         render_alerts(area, &mut buf, &mut state, view);
 
@@ -2177,6 +2277,7 @@ mod tests {
             now: Instant::now(),
             target_label: "all",
             focused: true,
+            filter: None,
         };
         render_alerts(area, &mut buf, &mut state, view);
 

@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.58.1 - operator-reported regression hotfix on v1.58.0 Settings parameter filter: arrow-key navigation now skips fields hidden by the active /-filter so the body no longer appears frozen"
+  mission_title: "Qmonster v1.59.0 - Five-slice polish bundle: anomaly events row severity color coding; Settings dirty-row visual marker; Alerts filter (`/`); three new fx effects (snow/fireworks/plasma); Sampler meta-effect that auto-cycles every effect every 5s; refreshed README quickstart"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 202
-  latest_version: "1.58.1"
+  total_revisions: 203
+  latest_version: "1.59.0"
 
 timeline:
   - change_id: "initial"
@@ -19005,6 +19005,116 @@ timeline:
       - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 / v1.58.0 / v1.58.1 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
+  - version: "1.59.0"
+    change_sequence: 203
+    date: "2026-05-08"
+    author: 'CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: ''전부 해줘, 그리고, 효과를 "전부 맛보기"할 수 있는 설정도 해줄 수 있어?'' — all 5 polish slices + a Sampler meta-effect bundled into one release.'
+    summary: >
+      v1.59.0 ships five operator-facing polish slices in one bundle.
+      (1) Anomaly events row severity color coding: each row in the
+      `n` overlay history view renders in theme::severity_color so
+      Concern / Warning / Critical reads at a glance instead of
+      requiring the operator to parse the embedded severity column.
+      (2) Settings dirty-row visual marker: Parameters tab row prefix
+      shows two adjacent markers — the existing yellow `*` for
+      "differs from baked default" plus a new green `●` (U+25CF) for
+      "modified-but-not-saved this session" via a new
+      parameter_is_dirty(field) accessor against the existing
+      dirty_parameters set. The 6-character prefix width before the
+      label is preserved so existing parameter_row_text_matches_field
+      skip(6) invariants still hold. (3) Alerts filter (`/`):
+      symmetric to the v1.58.0 Settings filter. New
+      DashboardRuntimeState::alert_filter: Option<String> with
+      start/cancel/confirm/type_char/backspace methods; `/` on Alerts
+      focus opens the filter; while active typed chars narrow the
+      list (case-insensitive substring against title + headline +
+      details + suggested_command via new alert_item_matches_filter
+      helper); Esc clears, Enter exits input mode keeping filter,
+      Backspace edits, `/` restarts. Filter input row paints a
+      `· filter:<buf>` chip in the panel title. Legacy `/` split-cycle
+      binding stays bound when Panes is focused. (4) Three new fx
+      effects + Sampler meta-effect: Snow (60 unicode flakes drift
+      top→bottom with cosine-driven horizontal sway, recycled at the
+      top), Fireworks (rockets launch from the bottom every ~1s, arc
+      up to randomized burst height, explode into 32 radial sparks
+      with gravity + life decay), Plasma (full-screen sin/cos field;
+      each cell samples sin(x/8 + t/30) + sin(y/8 + t/40) + sin((x+y)/16
+      + t/50), normalizes, picks a glyph from a 9-step density ramp,
+      tints by hue; the lowest-density step is space so the dashboard
+      stays visible through the gaps), Sampler (meta-scene that
+      auto-rotates Banner → Confetti → Matrix → Snow → Fireworks →
+      Plasma every 5s = 300 frames at 60 FPS; rotation explicitly
+      skips Sampler itself; top-left chip identifies the active
+      sub-effect). FxEffect::cycle / as_str / from_effect / FxScene
+      step / resize all extended exhaustively. (5) README quickstart
+      refresh: version surface table bumped to v1.59.0; Quick Start
+      restructured into four steps — Install / Set the stage / Run
+      it / First launch — plus a key-cluster table covering ?, t, S,
+      P, i, n, Q so a fresh operator can ramp inside a minute.
+      Lib tests 1403 → 1415 (+12). 65 integration tests preserved.
+      fmt + clippy clean.
+    intent_ko: >
+      v1.59.0 는 5축 운영자 폴리시 묶음 + 효과 맛보기 샘플러. (1) n
+      오버레이 history 뷰의 각 행이 severity_color 로 색칠되어 Concern
+      / Warning / Critical 가 한눈에 읽힘. (2) Settings 파라미터 행
+      앞에 두 마커 — 기존 노란 `*`(default 와 다름) + 새 녹색 `●`
+      (U+25CF, 이번 세션에서 수정되었지만 저장 안됨). (3) v1.58.0
+      Settings 필터와 대칭적인 Alerts 필터 — `/` 로 시작, 타이핑이
+      실시간으로 좁힘 (case-insensitive 부분일치 vs title + headline
+      + details + suggested_command), Backspace 편집, Enter 유지+종료,
+      Esc 해제. (4) 새 fx 3종 (Snow / Fireworks / Plasma) + Sampler
+      메타 효과 — Sampler 는 5초마다 모든 효과를 자동 순환. (5)
+      README quickstart 4단계 (Install / Set the stage / Run it /
+      First launch) + 핵심 키 표. lib 1403 → 1415.
+    triggered_by: 'Operator: ''전부 해줘, 그리고, 효과를 "전부 맛보기"할 수 있는 설정도 해줄 수 있어?'' — all 5 polish slices + Sampler bundled into one release.'
+    changes:
+      added:
+        - "src/ui/anomaly_overlay.rs: per-row Span styling with theme::severity_color in the row_to_item closure of the history-view list builder."
+        - "src/ui/settings.rs: SettingsOverlay::parameter_is_dirty(field) accessor against dirty_parameters; parameter_row_line emits a green ● dirty marker adjacent to the existing yellow * differs-from-default marker. Header documents both markers."
+        - "src/app/dashboard_runtime.rs: alert_filter: Option<String> field on DashboardRuntimeState + start_alert_filter / cancel_alert_filter / confirm_alert_filter / alert_filter_type_char / alert_filter_backspace methods + accessor."
+        - "src/ui/alerts.rs: AlertView.filter: Option<&'a str> field + render-time retain via alert_item_matches_filter helper (case-insensitive vs title + headline + details + suggested_command). Title chip surfaces the active filter."
+        - "src/ui/dashboard.rs + src/app/dashboard_render.rs: alert_filter plumbed through DashboardView and DashboardFrameView."
+        - "src/app/tui_loop.rs: alert filter input mode dispatch (Esc/Enter/Backspace/Char/`/` routing) before dashboard_selection_key handler; `/` on Alerts focus enters filter; `/` on Panes focus preserves the legacy split-cycle binding."
+        - "src/app/config.rs: FxEffect Snow / Fireworks / Plasma / Sampler variants + extended cycle() and as_str(); Hash derive added for HashSet test coverage."
+        - "src/app/fx_state.rs: SnowState (60 flakes with sway/respawn) + FireworksState (rockets + sparks + relaunch scheduler) + PlasmaState (sin/cos sampler) + SamplerState (5s rotation through every other variant). FxScene gains Snow/Fireworks/Plasma/Sampler variants in from_effect / step / resize. sampler_next_effect helper skips Sampler itself."
+        - "src/ui/fx.rs: render_fx_snow / render_fx_fireworks / render_fx_plasma / render_fx_sampler. Sampler reuses render_fx_scene to avoid nested dismiss hints; paints a `sampler · <effect>` chip in the top-left."
+        - "fx_state::tests: snow_spawns_full_field_and_keeps_count_stable_after_step, snow_flakes_fall_downward_overall, fireworks_explodes_rocket_when_burst_height_reached, fireworks_relaunches_after_interval_elapses, plasma_step_advances_time_and_sample_returns_within_bounds, sampler_rotates_to_next_effect_after_interval_elapses, sampler_next_effect_skips_self_and_covers_every_other_variant, fx_scene_from_effect_dispatches_every_v1_59_variant."
+        - "ui::fx::tests: fx_snow_smoke_renders_without_panic, fx_fireworks_smoke_renders_without_panic, fx_plasma_smoke_renders_without_panic, fx_sampler_smoke_renders_without_panic_and_paints_sub_effect_chip."
+        - "dashboard_runtime::tests: alert_filter_input_buffer_lifecycle, alert_filter_rejects_control_chars_but_keeps_unicode_letters."
+        - "ui::alerts::tests: alert_filter_matches_title_headline_details_and_command."
+      changed:
+        - "src/ui/settings.rs: parameter_value_help(FxEffect) updated from `banner | confetti | matrix` to `banner | confetti | matrix | snow | fireworks | plasma | sampler`."
+        - "README.md: Quick Start restructured (Install / Set the stage / Run it / First launch + key table); version row bumped to v1.59.0."
+      removed: []
+      tests_added:
+        - "12 new lib tests across fx_state / ui::fx / dashboard_runtime / ui::alerts (see `added` list)."
+      docs:
+        - "package.json: 1.58.1 → 1.59.0."
+        - "README.md / VERSION.md: 1.58.1 → 1.59.0."
+        - ".mission/CURRENT_STATE.md: v1.59.0 Feature State + validation baseline + mission line refreshed."
+        - "mission.yaml: mission.version + title bumped to v1.59.0."
+        - "mission-history.yaml: v1.59.0 entry appended; meta updated to total_revisions 203 / latest_version 1.59.0."
+        - "docs/ai/VALIDATION.md: new v1.59.0 release row."
+    observable_effects:
+      - "Pressing `n` to open the anomaly overlay and switching to history (`h`) shows each row colorized by severity (Concern blue / Warning yellow / Critical red) — title chip and filter chip stay in their canonical colors."
+      - "Settings → Parameters tab shows a green `●` next to any parameter the operator changed in this session but hasn't saved with `w` yet, in addition to the existing yellow `*` differs-from-default marker."
+      - "Pressing `/` on Alerts focus opens a filter input mode; typed chars narrow the list to alerts whose title/headline/details/suggested-command contain the substring (case-insensitive); the title shows a `· filter:<buf>` chip; Esc clears, Enter exits input keeping filter, Backspace edits, `/` restarts."
+      - "Setting `[fx] effect = snow` (or `fireworks`, `plasma`, `sampler`) and pressing `Q` opens one of four new decorative overlays. The Sampler effect auto-rotates through every other effect every ~5 seconds with a top-left chip naming the active sub-effect."
+      - "First-time operators reading the README see a four-step Quick Start (Install / Set the stage / Run it / First launch) with a 7-key cluster table — ramp time drops from 'reads the whole UI manual' to 'reads one screen'."
+    impact_scope:
+      runtime: "Pure additions across UI / state machines / config. No new IO, no new threads. Plasma is the only effect that touches every cell — the lowest-density glyph is a literal space (skipped) so the underlying dashboard stays visible through the gaps."
+      tests: "1403 → 1415 lib tests (+12). 65 integration tests preserved."
+      ledger: "1 new timeline entry (sequence 203); meta total_revisions 202 → 203, latest_version 1.58.1 → 1.59.0."
+      npm: "package.json version 1.59.0; CI publication of v1.59.0 follows the same workflow as v1.37.0 through v1.58.1."
+    breaking: false
+    risk: "low — five additive slices plus four new fx variants. Existing FxEffect Banner / Confetti / Matrix variants are unchanged; new variants extend the enum exhaustively across cycle / as_str / FxScene. Alert filter is opt-in via `/` and gated to Alerts focus so the legacy `/` split-cycle on Panes focus is preserved. Settings dirty marker uses the existing dirty_parameters set; row width invariants verified by existing parameter_row_text_matches_field skip(6) tests."
+    related_commits:
+      - "PENDING — v1.59.0 release ledger sync commit (this bundle)."
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 / v1.58.0 / v1.58.1 / v1.59.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

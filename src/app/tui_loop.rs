@@ -234,6 +234,7 @@ where
                         fx_overlay.step(now, term_size.width, term_size.height);
                     }
                 }
+                let alert_filter_snapshot = dashboard.alert_filter().map(|s| s.to_string());
                 terminal.draw(|frame| {
                     render_dashboard_frame(
                         frame,
@@ -274,6 +275,7 @@ where
                             ime_active: ctx.ime_state.is_active(now),
                             fx_overlay: &fx_overlay,
                             fx_text: ctx.config.fx.text.as_str(),
+                            alert_filter: alert_filter_snapshot.as_deref(),
                         },
                     );
                 })?;
@@ -628,6 +630,42 @@ where
                                 }
                             }
 
+                            // v1.59.0: Alerts filter input mode. Symmetric
+                            // to the v1.58.0 Settings filter — `/` opens
+                            // it (handled below in the main match), and
+                            // while it's active typed chars narrow the
+                            // alert list and Esc/Backspace/Enter route
+                            // here instead of the dashboard selection
+                            // handler. Other keys (Up/Down/etc.) fall
+                            // through so navigation still works under a
+                            // frozen filter.
+                            if focus == FocusedPanel::Alerts && dashboard.alert_filter().is_some() {
+                                match k.code {
+                                    KeyCode::Esc => {
+                                        dashboard.cancel_alert_filter();
+                                        continue;
+                                    }
+                                    KeyCode::Enter => {
+                                        dashboard.confirm_alert_filter();
+                                        continue;
+                                    }
+                                    KeyCode::Backspace => {
+                                        dashboard.alert_filter_backspace();
+                                        continue;
+                                    }
+                                    KeyCode::Char('/') => {
+                                        dashboard.cancel_alert_filter();
+                                        dashboard.start_alert_filter();
+                                        continue;
+                                    }
+                                    KeyCode::Char(c) if !c.is_control() => {
+                                        dashboard.alert_filter_type_char(c);
+                                        continue;
+                                    }
+                                    _ => {}
+                                }
+                            }
+
                             let now = Instant::now();
                             if matches!(k.code, KeyCode::Char('c') | KeyCode::Char('C')) {
                                 dashboard.clear_notices(now);
@@ -674,6 +712,13 @@ where
                                 KeyCode::Tab => focus = toggle_focus(focus),
                                 KeyCode::Char('[') => dashboard_split.shrink_alerts(),
                                 KeyCode::Char(']') => dashboard_split.grow_alerts(),
+                                // v1.59.0: `/` starts the Alerts filter
+                                // when Alerts is focused; otherwise keep
+                                // the legacy split-cycle binding so Panes
+                                // focus still has a layout shortcut.
+                                KeyCode::Char('/') if focus == FocusedPanel::Alerts => {
+                                    dashboard.start_alert_filter();
+                                }
                                 KeyCode::Char('/') => dashboard_split.cycle_alerts(),
                                 KeyCode::Char('=') => dashboard_split.reset(),
                                 KeyCode::Char('?') => {

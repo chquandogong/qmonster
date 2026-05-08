@@ -43,6 +43,10 @@ pub struct DashboardView<'a> {
     /// v1.51.0: divider renders an IME-active warning banner when true.
     /// Computed by the loop from `Context::ime_state.is_active(now)`.
     pub ime_active: bool,
+    /// v1.59.0: optional case-insensitive filter applied to the
+    /// Alerts list. None = no filter; Some("") = filter input mode
+    /// active but empty. Plumbed straight through to AlertView.
+    pub alert_filter: Option<&'a str>,
 }
 
 pub struct TargetPickerView<'a> {
@@ -160,6 +164,7 @@ pub fn render_dashboard(
             now: view.now,
             target_label: view.target_label,
             focused: view.alerts_focused,
+            filter: view.alert_filter,
         },
     );
 

@@ -105,6 +105,7 @@ pub fn dashboard_hover_topic(
                 now: view.now,
                 target_label: view.target_label,
                 focused: true,
+                filter: None,
             },
             inner.width.saturating_sub(3) as usize,
             row.saturating_sub(inner.y.saturating_add(1)),
