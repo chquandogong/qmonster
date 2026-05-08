@@ -406,7 +406,14 @@ impl Default for AnomalyPromoteConfig {
 impl Default for AnomalyConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            // v1.51.0: anomaly observation surface promoted to default-on
+            // after Phase 7 v2/v3 detectors stabilized + ErrorBurst
+            // dominant_kind evidence + CrossPane fold-back closure made
+            // every detector observable to operators on first launch.
+            // Existing operators with `enabled = false` in their
+            // qmonster.toml keep that override; this only changes the
+            // first-run / unconfigured experience.
+            enabled: true,
             window_polls: 20,
             min_confidence: "medium".to_string(),
             identity_churn_min_flips: 3,
@@ -1484,9 +1491,12 @@ auto_snapshot = true
     }
 
     #[test]
-    fn anomaly_config_disabled_by_default() {
+    fn anomaly_config_enabled_by_default() {
+        // v1.51.0: layer flipped to default-on after Phase 7 v2/v3
+        // detectors stabilized. Operators with `enabled = false`
+        // explicitly written in their config keep that override.
         let c = AnomalyConfig::default();
-        assert!(!c.enabled);
+        assert!(c.enabled);
         assert_eq!(c.window_polls, 20);
         assert_eq!(c.min_confidence, "medium");
         assert_eq!(c.identity_churn_min_flips, 3);
@@ -1510,8 +1520,21 @@ window_polls = 30
     }
 
     #[test]
-    fn anomaly_config_missing_section_disables_layer() {
+    fn anomaly_config_missing_section_keeps_default_enabled() {
+        // v1.51.0: empty config picks up the new default-on behaviour.
         let cfg: QmonsterConfig = toml::from_str("").expect("parse");
+        assert!(cfg.anomaly.enabled);
+    }
+
+    #[test]
+    fn anomaly_config_explicit_disable_is_honoured() {
+        // Operator override stays load-bearing — the flip only changes
+        // the unconfigured default, not the deserialization contract.
+        let toml = r#"
+[anomaly]
+enabled = false
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).expect("parse");
         assert!(!cfg.anomaly.enabled);
     }
 
