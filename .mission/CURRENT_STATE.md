@@ -1,14 +1,48 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.60.0 ledger sync)_
+_Last updated: 2026-05-08 (Claude, v2.0.0 milestone marker + consistency sweep on top of the v1.60.0 polish baseline)_
 
 ## Mission
 
-- Title: Qmonster v1.60.0 — five further operator-facing polish slices bundled into one release: Insights overlay freshness chip + r-refresh toast; Metrics overlay CTX/QUOTA/CACHE delta arrows on the left column; pricing.toml staleness advisory; Help modal section jumping (1..N keys); Light theme variant + theme-aware accessor migration (closes the deferred-from-v1.58.0 Light path).
-- Version surfaces: npm package metadata `qmonster@1.60.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v1.60.0` to be created at the ledger sync commit. v1.59.0 is the immediate prior tagged baseline.
-- Release publication state: **v1.59.0 is published** (verified 2026-05-08). Run `25546295476` completed success in 6m53s at 2026-05-08T08:53:19Z; GitHub Release `v1.59.0` (published 2026-05-08T08:52:59Z) carries the full asset set (`qmonster-v1.59.0-linux-x86_64.tar.gz`, `qmonster-1.59.0.tgz`, `qmonster-v1.59.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 1.59.0`. **v1.58.0 + v1.58.1 are published**: v1.58.0 run `25544151924` (7m22s, 2026-05-08T08:02:49Z), v1.58.1 run `25544690855` (7m23s, 2026-05-08T08:16:08Z). **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s).
-- Current phase: All prior phases complete. v1.50.0–v1.59.0 publication baselines still apply; v1.60.0 is a polish bundle layered on the v1.59.0 baseline — no new phase is opened.
+- Title: Qmonster v2.0.0 — milestone marker + cross-cutting consistency sweep. Every operator-facing surface (alerts / panes / settings / metrics / anomaly / insights / help / fx / theme) is polished, the v1.58.0-deferred Light theme is closed by v1.60.0, and the version-surface table (README.md, VERSION.md, PROJECT_BRIEF.md header, mission.yaml, mission-history.yaml meta, package.json) aligns on v2.0.0. No code-behaviour change beyond a help-modal prose tweak that documents the v1.59.0 dual `/` semantic (Alerts focus → filter input; Panes focus → split-cycle). v2.0.0 is the operator-chosen marker for "every dashboard surface is polished" — not a semver breaking-change signal.
+- Version surfaces: npm package metadata `qmonster@2.0.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v2.0.0` to be created at the ledger sync commit. v1.60.0 is the immediate prior tagged baseline.
+- Release publication state: **v1.60.0 is in flight** (run `25548715050` queued at 2026-05-08T09:43:16Z). **v1.59.0 is published** (verified 2026-05-08). Run `25546295476` completed success in 6m53s at 2026-05-08T08:53:19Z; GitHub Release `v1.59.0` (published 2026-05-08T08:52:59Z) carries the full asset set (`qmonster-v1.59.0-linux-x86_64.tar.gz`, `qmonster-1.59.0.tgz`, `qmonster-v1.59.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 1.59.0`. **v1.58.0 + v1.58.1 are published**: v1.58.0 run `25544151924` (7m22s, 2026-05-08T08:02:49Z), v1.58.1 run `25544690855` (7m23s, 2026-05-08T08:16:08Z). **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s).
+- Current phase: All prior phases complete. v1.50.0–v1.60.0 publication baselines still apply; v2.0.0 is a milestone marker + cross-cutting consistency sweep on top of the v1.60.0 polish bundle — no new phase is opened.
+
+## v2.0.0 Milestone Marker
+
+v2.0.0 is the operator-chosen marker for the point where every
+dashboard surface has been polished and the v1.58.0-deferred Light
+theme is closed (by v1.60.0). It is **not** a semver breaking-change
+signal — there is no API change, no UI key remap, and no removed
+feature. Operators upgrading from v1.x to v2.0.0 should expect the
+same dashboard, the same keys, the same config schema, and the same
+audit/SQLite contract as v1.60.0.
+
+What this release actually contains:
+
+1. **Version-surface alignment** — `package.json` (`1.60.0` →
+   `2.0.0`), `README.md` + `VERSION.md` (version table), the
+   `PROJECT_BRIEF.md` header (was last touched at v1.56.0),
+   `mission.yaml` (`mission.version` + `mission.title`),
+   `mission-history.yaml` (meta + new timeline entry sequence 205),
+   `.mission/CURRENT_STATE.md` (this file's mission line +
+   Validation Baseline), and `docs/ai/VALIDATION.md` (new release
+   row) all align on v2.0.0.
+
+2. **Help-modal `/` prose fix** — `src/ui/dashboard.rs`
+   `help_lines_for_width` previously documented `/` only as the
+   split-cycle key. v1.59.0 added the dual semantic (when Alerts is
+   focused, `/` opens the alert filter input; when Panes is focused,
+   it cycles the split). The help body now spells this out.
+
+3. **No other code change.** fmt + clippy + test --all-targets stay
+   clean; lib tests 1434 → 1445 (+11 from incremental coverage
+   already in tree, not new bodies). 65 integration tests preserved.
+
+Future minor bumps (v2.1.x and beyond) signal refinement on top of
+this stable surface.
 
 ## v1.60.0 Feature State
 
@@ -739,14 +773,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v1.60.0 validation at the release commit:
+Most recent v2.0.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1434 lib tests + 65 integration tests + supporting suites, all green (+19 from the v1.60.0 insights freshness / pressure delta / pricing staleness / help section / theme Light regression guards).
+- `cargo test --all-targets` — 1445 lib tests + 65 integration tests + supporting suites, all green (no new test logic in v2.0.0; +11 from incremental coverage already in tree compared to the v1.60.0 baseline).
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.59.0 still apply when the v1.60.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.60.0 still apply when the v2.0.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 

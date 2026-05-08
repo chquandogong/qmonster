@@ -980,7 +980,10 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
             "[ and ]",
             "shrink or grow Alerts (Panes uses remaining height); when a large overlay is open (m/a/i/n), resize that modal in 5% steps",
         ),
-        ("/", "cycle the Alerts/Panes split by one resize step"),
+        (
+            "/",
+            "Alerts focused: open the alert filter input (Esc clears, Enter exits input keeping filter, Backspace edits, / restarts; case-insensitive substring against title/headline/details/suggested-command); Panes focused: cycle the Alerts/Panes split by one resize step",
+        ),
         (
             "=",
             "reset the Alerts/Panes split; when a large overlay is open (m/a/i/n), also reset modal geometry to its default size + position",

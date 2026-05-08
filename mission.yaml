@@ -1,6 +1,6 @@
 mission:
-  version: "1.60.0"
-  title: "Qmonster v1.60.0 - Five-slice polish bundle: Insights freshness chip + r-refresh toast; Metrics overlay CTX/QUOTA/CACHE delta arrows; pricing.toml staleness advisory; Help modal section jumping; Light theme variant + theme-aware accessor migration"
+  version: "2.0.0"
+  title: "Qmonster v2.0.0 - Milestone marker + cross-cutting consistency sweep on top of the v1.60.0 polish bundle: every operator-facing surface (alerts/panes/settings/metrics/anomaly/insights/help/fx) is polished, Light theme closes the v1.58.0-deferred work, and version surfaces (README/VERSION/PROJECT_BRIEF/mission ledger/VALIDATION/CURRENT_STATE) align on v2.0.0"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

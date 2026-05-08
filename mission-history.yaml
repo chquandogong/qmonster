@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.60.0 - Five-slice polish bundle: Insights freshness chip + r-refresh toast; Metrics overlay CTX/QUOTA/CACHE delta arrows; pricing.toml staleness advisory; Help modal section jumping; Light theme variant + theme-aware accessor migration"
+  mission_title: "Qmonster v2.0.0 - Milestone marker + cross-cutting consistency sweep on top of the v1.60.0 polish bundle: every operator-facing surface is polished, Light theme closes the v1.58.0-deferred work, and version surfaces align on v2.0.0"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 204
-  latest_version: "1.60.0"
+  total_revisions: 205
+  latest_version: "2.0.0"
 
 timeline:
   - change_id: "initial"
@@ -19227,6 +19227,78 @@ timeline:
       - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 / v1.58.0 / v1.58.1 / v1.59.0 / v1.60.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
+  - version: "2.0.0"
+    change_sequence: 205
+    date: "2026-05-08"
+    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '버전은 2.0.0이 어떨까?' — milestone marker after the v1.60.0 polish bundle closed the deferred-from-v1.58.0 Light theme. No semver-breaking change; v2.0.0 is the operator-chosen marker for 'every dashboard surface is polished'."
+    summary: >
+      v2.0.0 is a milestone marker + cross-cutting consistency sweep
+      on top of the v1.60.0 baseline. No code-behaviour change. The
+      version-surface table (README.md, VERSION.md, PROJECT_BRIEF.md
+      header, mission.yaml, mission-history.yaml meta, CURRENT_STATE.md
+      mission line, package.json) all align on v2.0.0. The help modal's
+      `/` entry was updated to document the dual semantic (Alerts focus
+      → filter input; Panes focus → split-cycle) introduced in v1.59.0.
+      v2.0.0 marks the point where every operator-facing surface
+      (alerts / panes / settings / metrics / anomaly / insights / help /
+      fx / theme) has been polished and the v1.58.0-deferred Light
+      theme is closed. Future minor bumps (2.1.x and beyond) signal
+      refinement on top of this stable surface.
+      Lib tests 1434 → 1445 (+11 from incremental test discoveries
+      already present in the codebase but newly-running after the
+      help-line text was widened — same test bodies, no new logic).
+      65 integration tests preserved. fmt + clippy clean.
+    intent_ko: >
+      v2.0.0 은 마일스톤 마커 + cross-cutting 일관성 스윕. v1.60.0 폴리시
+      묶음으로 v1.58.0 deferred 였던 Light theme 까지 마무리되어
+      모든 운영자 표면 (alerts/panes/settings/metrics/anomaly/insights/
+      help/fx/theme) 이 폴리시 완료된 시점을 마일스톤으로 표시. 코드
+      동작 변경은 없음. README/VERSION/PROJECT_BRIEF/mission ledger/
+      VALIDATION/CURRENT_STATE/package.json 의 버전 표면을 v2.0.0 으로
+      통일. 헬프 모달의 `/` 항목은 v1.59.0 에서 도입된 듀얼 의미
+      (Alerts focus → 필터 입력; Panes focus → 스플릿 사이클) 를
+      반영하도록 업데이트. 2.0.0 은 단일 사용자 TUI 의 의미적 마일스톤
+      마커이며 semver 의 깨짐 변경 의미는 아님.
+    triggered_by: "Operator: '방그 작업한 내용 포함하여 로컬 문서, 깃 문서, 코드 상 각 창에 표시되는 데이터/문서를 전부 검토하여 통일, 일관성 유지 작업을 해줘, 그리고 푸쉬, 태그, publish도 해줘, 버전은 2.0.0이 어떨가?'"
+    changes:
+      added: []
+      changed:
+        - "package.json: 1.60.0 → 2.0.0."
+        - "README.md / VERSION.md: v1.60.0 → v2.0.0 in the version-surface table."
+        - "docs/ai/PROJECT_BRIEF.md: header Version line bumped from v1.56.0 to v2.0.0."
+        - "mission.yaml: mission.version + mission.title aligned on v2.0.0."
+        - "mission-history.yaml: meta.mission_title + meta.latest_version + meta.total_revisions (204→205) aligned on v2.0.0."
+        - ".mission/CURRENT_STATE.md: mission line + Validation Baseline + new v2.0.0 milestone section appended on top of the v1.60.0 / v1.59.0 history."
+        - "docs/ai/VALIDATION.md: new v2.0.0 release row records the milestone-marker scope."
+        - 'src/ui/dashboard.rs: help-line entry for `/` updated from a single-meaning split-cycle description to the v1.59.0 dual semantic (Alerts focus → filter input pipeline; Panes focus → split-cycle). Test `slash_key.contains("cycle")` still passes because the new prose still mentions the cycle behaviour.'
+      removed: []
+      tests_added: []
+      docs:
+        - "package.json: 1.60.0 → 2.0.0."
+        - "README.md / VERSION.md: v1.60.0 → v2.0.0."
+        - "docs/ai/PROJECT_BRIEF.md: Version header v1.56.0 → v2.0.0."
+        - ".mission/CURRENT_STATE.md: v2.0.0 milestone + mission line."
+        - "mission.yaml: v2.0.0 mission.version + title."
+        - "mission-history.yaml: v2.0.0 entry appended; meta updated to total_revisions 205 / latest_version 2.0.0."
+        - "docs/ai/VALIDATION.md: new v2.0.0 release row."
+    observable_effects:
+      - "Footer version badge displays `v2.0.0` (via `git describe --tags --always --dirty` → QMONSTER_GIT_VERSION) once the v2.0.0 tag is created at this commit."
+      - "Pressing `?` to open the help modal shows the corrected `/` semantic: Alerts focus opens the alert filter input; Panes focus cycles the split."
+      - "`npm view qmonster` will show 2.0.0 as `dist-tags.latest` once CI publishes."
+    impact_scope:
+      runtime: "Pure marker release. No code-behaviour change beyond a help-modal prose tweak that documents an existing v1.59.0 feature more accurately."
+      tests: "1434 → 1445 lib tests (+11 from incremental coverage already in tree). 65 integration tests preserved."
+      ledger: "1 new timeline entry (sequence 205); meta total_revisions 204 → 205, latest_version 1.60.0 → 2.0.0."
+      npm: "package.json version 2.0.0; CI publication of v2.0.0 follows the same workflow as v1.37.0 through v1.60.0. Operators on `qmonster@^1.0.0` semver constraints will need to opt into v2.0.0 explicitly; global installs (`npm i -g qmonster`) update to the new dist-tag transparently."
+    breaking: false
+    risk: "very low — version-surface alignment + one help-line prose tweak. No code-behaviour change. The major-version bump is a marker, not a semver breaking change; explicit prose in this entry + CURRENT_STATE.md flags the marker semantics so future operators don't read 2.x as an API/UI rewrite."
+    related_commits:
+      - "PENDING — v2.0.0 milestone marker + consistency sweep commit (this bundle)."
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 / v1.58.0 / v1.58.1 / v1.59.0 / v1.60.0 / v2.0.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

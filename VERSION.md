@@ -3,11 +3,11 @@
 Qmonster has three version surfaces. They intentionally serve different
 audiences.
 
-| Surface        | Current   | Meaning                                                                                                 |
-| -------------- | --------- | ------------------------------------------------------------------------------------------------------- |
-| Mission ledger | `v1.60.0` | Operator-facing implementation/history version. This is what tags and `mission-history.yaml` track.     |
-| npm package    | `1.60.0`  | Installable package version for the npm registry; matches the ledger tag semver without the `v` prefix. |
-| Cargo crate    | `0.1.0`   | Internal Rust crate metadata. It is not the operator-facing runtime version.                            |
+| Surface        | Current  | Meaning                                                                                                 |
+| -------------- | -------- | ------------------------------------------------------------------------------------------------------- |
+| Mission ledger | `v2.0.0` | Operator-facing implementation/history version. This is what tags and `mission-history.yaml` track.     |
+| npm package    | `2.0.0`  | Installable package version for the npm registry; matches the ledger tag semver without the `v` prefix. |
+| Cargo crate    | `0.1.0`  | Internal Rust crate metadata. It is not the operator-facing runtime version.                            |
 
 The running TUI displays `git describe --tags --always --dirty`, captured
 by `build.rs` as `QMONSTER_GIT_VERSION`. Tagged source builds therefore
