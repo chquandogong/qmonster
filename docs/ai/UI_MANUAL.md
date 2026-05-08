@@ -20,7 +20,12 @@
   알파벳을 입력하거나 3초간 비ASCII 알파벳이 없으면 자동으로 평소
   배너로 돌아갑니다. 터미널은 OS-level IME 상태를 앱에 노출하지
   않으므로 첫 비ASCII 키스트로크가 트리거 시점입니다.
-- **Footer**: 현재 focus, Alerts/Panes split 비율, 주요 조작 키를 보여줍니다.
+- **Footer**: 2줄 상태 바입니다. 첫 줄은 현재 focus, Alerts/Panes split
+  비율, `★p`/`★y` 카운터를 보여주고, 둘째 줄은 왼쪽 `keys` 칩과
+  자주 쓰는 핵심 키, 오른쪽 버전 배지를 한 줄에 맞춰 보여줍니다.
+  `keys` 칩에 마우스를 올리거나 `K`를 누르면 기존의 긴 키 목록이
+  title/footer 없는 넓은 key legend로 열립니다. legend는 Move / Layout /
+  Actions / Overlays 그룹으로 나뉘어 한눈에 스캔할 수 있게 표시됩니다.
 - **Overlay**: `t`로 target picker, `S`로 settings, `P`로 provider setup,
   `m`/`n`/`a`/`i`로 Metrics / Anomaly Events / Pending Actions /
   Token Insights overlay, `Q`로 decorative fx overlay (banner / confetti /
@@ -60,7 +65,8 @@ the window and the footer/hint carries controls plus
 설명합니다. Panes에서는 헤더(provider/role/CLI version), `state`,
 `path`, `cmd`, `status`, `signals`, metrics, tokens/cache io, runtime
 facts(`session`/`loaded` 포함), recommendations/profile을 행별로 설명합니다.
-hover help 제목에는 현재 언어와 `H/L` 힌트가 표시되고, 본문 하단에는
+footer의 `keys` 칩은 `ux.hover_help = false`여도 항상 key legend를
+열 수 있는 예외입니다. hover help 제목에는 현재 언어와 `H/L` 힌트가 표시되고, 본문 하단에는
 `H` toggle, `L` language, `S` Settings 저장 위치가 같이 표시됩니다.
 명시적 overlay가 열려 있으면 dashboard hover help는 숨겨집니다.
 

@@ -142,19 +142,20 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
         },
     );
 
-    if !overlay_owns_keyboard
-        && view.config.ux.hover_help
-        && let Some(hover) = view.hover_help.hover()
-    {
-        render_hover_help(
-            frame,
-            HoverHelpView {
-                topic: hover.topic,
-                language: view.config.ux.help_language,
-                column: hover.column,
-                row: hover.row,
-            },
-        );
+    if !overlay_owns_keyboard && let Some(hover) = view.hover_help.hover() {
+        let forced_footer_keys =
+            hover.topic == crate::ui::help_glossary::HelpTopic::DashboardFooter;
+        if view.config.ux.hover_help || forced_footer_keys {
+            render_hover_help(
+                frame,
+                HoverHelpView {
+                    topic: hover.topic,
+                    language: view.config.ux.help_language,
+                    column: hover.column,
+                    row: hover.row,
+                },
+            );
+        }
     }
 
     if view.target_picker_open {

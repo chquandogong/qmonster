@@ -4528,7 +4528,7 @@ fn hint_lines_with_scroll(
 ) -> Vec<Line<'static>> {
     let editing = overlay.edit_buffer().is_some();
     let line1 = if editing {
-        "  EDIT — type digits/'.' · Enter commit · Esc cancel · Backspace delete"
+        settings_edit_hint_line(overlay)
     } else if overlay.tab() == SettingsTab::Thresholds {
         "  [1]-[5]/[Tab] tab · ↑/↓ select · e/Enter edit · c clear · w write · q/Esc close"
     } else if overlay.tab() == SettingsTab::Integrations {
@@ -4557,6 +4557,16 @@ fn hint_lines_with_scroll(
         None => line2.to_string(),
     };
     vec![Line::from(line1), Line::from(line2)]
+}
+
+fn settings_edit_hint_line(overlay: &SettingsOverlay) -> &'static str {
+    if overlay.tab() == SettingsTab::Parameters
+        && parameter_edit_kind(overlay.selected_parameter()) == ParameterEditKind::Text
+    {
+        "  EDIT — type text · Enter commit · Esc cancel · Backspace delete"
+    } else {
+        "  EDIT — type digits/'.'/'-' · Enter commit · Esc cancel · Backspace delete"
+    }
 }
 
 #[cfg(test)]
@@ -4932,6 +4942,24 @@ mod tests {
         let end = rendered_text(&hint_lines_with_scroll(&s, Some((3, 3))));
         assert!(end.contains("scroll 3/3"));
         assert!(end.contains("END"));
+    }
+
+    #[test]
+    fn settings_edit_hint_distinguishes_text_parameters() {
+        let config = cfg();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Parameters);
+        s.select_parameter(ParameterField::FxText);
+        s.start_edit(&config);
+
+        let text = rendered_text(&hint_lines(&s));
+
+        assert!(text.contains("type text"), "text edit hint missing: {text}");
+        assert!(
+            !text.contains("type digits"),
+            "text edit hint must not advertise numeric-only input: {text}"
+        );
     }
 
     #[test]

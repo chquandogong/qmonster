@@ -731,6 +731,20 @@ pub fn version_badge_rect(area: Rect) -> Rect {
     )
 }
 
+pub fn footer_keys_badge_label() -> &'static str {
+    "keys"
+}
+
+pub fn footer_keys_badge_rect(area: Rect) -> Rect {
+    let width = (footer_keys_badge_label().chars().count() as u16).saturating_add(4);
+    Rect::new(
+        area.x,
+        area.y + area.height.saturating_sub(1),
+        width.min(area.width),
+        1,
+    )
+}
+
 fn render_split_divider(area: Rect, buf: &mut Buffer, split: DashboardSplit, ime_active: bool) {
     if area.height == 0 {
         return;
@@ -783,8 +797,22 @@ fn render_footer(
         "focus: overlay"
     };
     let badge = version_badge_rect(area);
-    let text_width = area.width.saturating_sub(badge.width).saturating_sub(1);
-    let text_area = Rect::new(area.x, area.y, text_width, area.height);
+    let keys_badge = footer_keys_badge_rect(area);
+    let text_x = keys_badge
+        .x
+        .saturating_add(keys_badge.width)
+        .saturating_add(1);
+    let text_right = badge.x.saturating_sub(1);
+    let text_width = text_right.saturating_sub(text_x);
+    let text_area = Rect::new(text_x, area.y, text_width, area.height);
+    Paragraph::new(footer_keys_badge_label())
+        .style(
+            theme::label_style()
+                .fg(theme::text_primary())
+                .add_modifier(Modifier::BOLD),
+        )
+        .alignment(Alignment::Center)
+        .render(keys_badge, buf);
     Paragraph::new(footer_lines(focus, split, &counters))
         .style(Style::default().fg(theme::text_dim()))
         .wrap(Wrap { trim: false })
@@ -800,10 +828,10 @@ fn render_footer(
 }
 
 /// v1.39 Pending-action discoverability surface B: build the footer
-/// as a styled `Line` so the always-visible `★p:N · ★y:M` counter
-/// chip can render in severity color when N>0 / dim on 0. The rest
-/// of the footer (focus + split + key cluster) reuses
-/// `footer_text` so the keybinding suite stays unit-tested.
+/// as styled `Line`s so the always-visible `★p:N · ★y:M` counter
+/// chip can render in severity color when N>0 / dim on 0. The first
+/// row carries status; the second row aligns the compact key cluster
+/// with the left `keys` chip and right version badge.
 fn footer_lines(
     focus: &str,
     split: DashboardSplit,
@@ -813,21 +841,17 @@ fn footer_lines(
         "{focus} \u{00b7} split {}% \u{00b7} ",
         split.alerts_percent()
     );
-    let tail = format!(" \u{00b7} {}", footer_keys_text());
     let p_chip = footer_chip_span(
         "\u{2605}p",
         counters.proposal_count,
         counters.proposal_top_severity,
     );
     let y_chip = footer_chip_span("\u{2605}y", counters.copy_count, counters.copy_top_severity);
-    let spans = vec![
-        Span::raw(head),
-        p_chip,
-        Span::raw(" \u{00b7} "),
-        y_chip,
-        Span::raw(tail),
-    ];
-    vec![Line::from(spans)]
+    let status_spans = vec![Span::raw(head), p_chip, Span::raw(" \u{00b7} "), y_chip];
+    vec![
+        Line::from(status_spans),
+        Line::from(footer_compact_keys_text()),
+    ]
 }
 
 /// Build a single `★p:N` / `★y:M` chip styled by the highest
@@ -852,8 +876,13 @@ fn footer_chip_span(
 /// Static key-cluster string. Reused by `footer_lines` (after the
 /// counter chip slot) and by `footer_text` (the legacy unit-tested
 /// shape that pins `p accept` / `d dismiss` placement).
-fn footer_keys_text() -> &'static str {
+#[cfg(test)]
+pub(crate) fn footer_keys_text() -> &'static str {
     "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} H hover-help \u{00b7} L help-lang \u{00b7} m metrics \u{00b7} n anomalies \u{00b7} a actions \u{00b7} i insights \u{00b7} Q fx \u{00b7} ? help \u{00b7} q quit"
+}
+
+fn footer_compact_keys_text() -> &'static str {
+    "\u{2191}/\u{2193} select \u{00b7} Enter/Space action \u{00b7} Tab focus \u{00b7} S settings \u{00b7} K keys \u{00b7} ? help \u{00b7} q quit"
 }
 
 /// Pure footer-line builder. Extracted from `render_footer` in v1.10.2
@@ -868,9 +897,9 @@ fn footer_keys_text() -> &'static str {
 #[cfg(test)]
 fn footer_text(focus: &str, split: DashboardSplit) -> String {
     format!(
-        "{focus} \u{00b7} split {}% \u{00b7} \u{2605}p:0 \u{00b7} \u{2605}y:0 \u{00b7} {}",
+        "{focus} \u{00b7} split {}% \u{00b7} \u{2605}p:0 \u{00b7} \u{2605}y:0\n{}",
         split.alerts_percent(),
-        footer_keys_text(),
+        footer_compact_keys_text(),
     )
 }
 
@@ -1566,6 +1595,15 @@ mod tests {
     }
 
     #[test]
+    fn footer_keys_badge_hugs_bottom_left_edge() {
+        let area = Rect::new(4, 6, 40, 2);
+        let badge = footer_keys_badge_rect(area);
+        assert_eq!(badge.x, area.x);
+        assert_eq!(badge.y, area.y + area.height - 1);
+        assert!(badge.width >= footer_keys_badge_label().chars().count() as u16);
+    }
+
+    #[test]
     fn split_divider_renders_normal_resize_hint_when_ime_inactive() {
         // v1.51.0: regression guard — divider must keep showing the
         // existing "drag resize alerts/panes …" hint when IME is off.
@@ -1678,7 +1716,7 @@ mod tests {
         // ordering — the two actuation keys should sit between
         // `t target` and `? help` so they stay adjacent to target
         // selection and immediately before the generic help/quit tail.
-        let text = footer_text("focus: alerts", DashboardSplit::default());
+        let text = footer_keys_text();
         assert!(
             text.contains("p accept"),
             "footer must advertise `p accept`: {text}"
@@ -1698,10 +1736,6 @@ mod tests {
         assert!(
             text.contains("c clear"),
             "footer must advertise `c clear`: {text}"
-        );
-        assert!(
-            text.contains("split 36%"),
-            "footer must show current dashboard split: {text}"
         );
         assert!(
             text.contains("[ ] resize"),
@@ -1742,7 +1776,6 @@ mod tests {
             "footer must advertise the `n anomalies` overlay key: {text}"
         );
         // Sanity: existing anchors still present.
-        assert!(text.starts_with("focus: alerts"));
         assert!(text.contains("? help"));
         assert!(text.contains("q quit"));
         // Placement contract: t target → y copy → c clear → p accept → d dismiss → S settings → P provider-setup → H/L hover help → ? help.
@@ -1830,6 +1863,61 @@ mod tests {
         assert!(
             insights_pos < help_pos,
             "overlay-opener keys must precede `? help` (generic tail)"
+        );
+    }
+
+    #[test]
+    fn compact_footer_keeps_detailed_keys_out_of_main_row() {
+        let text = footer_text("focus: alerts", DashboardSplit::default());
+
+        assert!(
+            text.contains("keys"),
+            "compact footer should expose the keys badge: {text}"
+        );
+        assert!(
+            text.contains("K keys"),
+            "compact footer should advertise the key legend shortcut: {text}"
+        );
+        assert!(
+            text.contains("? help"),
+            "compact footer should keep the full help entry: {text}"
+        );
+        assert!(
+            !text.contains("click severity bulk hide"),
+            "long key reference belongs in the keys hover legend, not the main footer: {text}"
+        );
+    }
+
+    #[test]
+    fn compact_footer_uses_status_row_plus_key_row() {
+        let counters = FooterCounters {
+            proposal_count: 0,
+            proposal_top_severity: None,
+            copy_count: 0,
+            copy_top_severity: None,
+        };
+        let lines = footer_lines("focus: alerts", DashboardSplit::default(), &counters);
+
+        assert_eq!(
+            lines.len(),
+            2,
+            "compact footer should keep a balanced 2-row footprint"
+        );
+        let status_row = footer_line_text(&lines[0]);
+        let key_row = footer_line_text(&lines[1]);
+
+        assert!(status_row.contains("focus: alerts"));
+        assert!(status_row.contains("split 36%"));
+        assert!(status_row.contains("\u{2605}p:0"));
+        assert!(status_row.contains("\u{2605}y:0"));
+        assert!(
+            !status_row.contains("K keys"),
+            "key hints belong on the second row: {status_row}"
+        );
+        assert!(key_row.contains("K keys"));
+        assert!(
+            !key_row.contains("focus:"),
+            "status text belongs on the first row: {key_row}"
         );
     }
 

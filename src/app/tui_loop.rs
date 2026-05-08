@@ -15,7 +15,9 @@ use crate::app::dashboard_state::{
     handle_dashboard_mouse, handle_dashboard_selection_key,
 };
 use crate::app::git_info::capture_repo_panel;
-use crate::app::hover_help::{DashboardHoverView, HoverHelpState, dashboard_hover_topic};
+use crate::app::hover_help::{
+    DashboardHoverView, HoverHelpState, dashboard_forced_hover_topic, dashboard_hover_topic,
+};
 use crate::app::keymap::{FocusedPanel, toggle_focus};
 use crate::app::modal_state::{
     ScrollModalState, handle_scroll_modal_key, handle_scroll_modal_mouse,
@@ -332,26 +334,6 @@ where
                             // a single press.
                             if fx_overlay.is_open() {
                                 fx_overlay.dismiss();
-                                continue;
-                            }
-                            // v1.53.0: Q hotkey (uppercase, distinct from
-                            // 'q' which closes most overlays) opens the
-                            // configured fx effect. Only fires when no
-                            // other modal owns the keyboard, which is
-                            // already guaranteed by the existing dispatch
-                            // chain — Q falls through to here last.
-                            if let KeyCode::Char('Q') = k.code
-                                && ctx.config.fx.hotkey_enabled
-                                && ctx.config.fx.enabled
-                            {
-                                let term_size = terminal.size()?;
-                                fx_overlay.open(
-                                    &ctx.config.fx,
-                                    crate::app::fx_overlay::FxTrigger::Hotkey,
-                                    Instant::now(),
-                                    term_size.width,
-                                    term_size.height,
-                                );
                                 continue;
                             }
                             // v1.51.0: feed Char keystrokes into the heuristic
@@ -814,6 +796,34 @@ where
                                     );
                                 }
                                 KeyCode::Char('S') => settings_overlay.open(),
+                                KeyCode::Char('K') => {
+                                    let size = terminal.size()?;
+                                    let viewport = Rect::new(0, 0, size.width, size.height);
+                                    let rects = crate::ui::dashboard::dashboard_rects(
+                                        viewport,
+                                        dashboard_split,
+                                    );
+                                    let badge =
+                                        crate::ui::dashboard::footer_keys_badge_rect(rects.footer);
+                                    hover_help.set_hover(
+                                        crate::ui::help_glossary::HelpTopic::DashboardFooter,
+                                        badge.x,
+                                        badge.y,
+                                        now,
+                                    );
+                                }
+                                KeyCode::Char('Q')
+                                    if dashboard_fx_hotkey_allowed(k.code, &ctx.config, false) =>
+                                {
+                                    let term_size = terminal.size()?;
+                                    fx_overlay.open(
+                                        &ctx.config.fx,
+                                        crate::app::fx_overlay::FxTrigger::Hotkey,
+                                        now,
+                                        term_size.width,
+                                        term_size.height,
+                                    );
+                                }
                                 KeyCode::Char('P') => {
                                     provider_setup_overlay.sync_from_config(&ctx.config);
                                     provider_setup_overlay.open();
@@ -1244,7 +1254,14 @@ where
                                     | MouseEventKind::ScrollUp
                                     | MouseEventKind::ScrollDown
                             ) {
-                                if ctx.config.ux.hover_help {
+                                if let Some(topic) = dashboard_forced_hover_topic(
+                                    viewport,
+                                    m.column,
+                                    m.row,
+                                    dashboard_split,
+                                ) {
+                                    hover_help.set_hover(topic, m.column, m.row, now);
+                                } else if ctx.config.ux.hover_help {
                                     if let Some(topic) = dashboard_hover_topic(
                                         viewport,
                                         m.column,
@@ -1349,6 +1366,17 @@ fn matches_originating_key(
             | (Some(PendingAction::RejectPromptSend { .. }), 'd')
             | (Some(PendingAction::CopyAlertCommand { .. }), 'y')
     )
+}
+
+fn dashboard_fx_hotkey_allowed(
+    code: KeyCode,
+    config: &crate::app::config::QmonsterConfig,
+    overlay_owns_keyboard: bool,
+) -> bool {
+    matches!(code, KeyCode::Char('Q'))
+        && !overlay_owns_keyboard
+        && config.fx.hotkey_enabled
+        && config.fx.enabled
 }
 
 fn newly_hidden_alert_keys(
@@ -1701,6 +1729,7 @@ mod tests {
     use crate::tmux::polling::{PaneSource, PollingError};
     use crate::tmux::types::{RawPaneSnapshot, WindowTarget};
     use crate::ui::pending_actions::{PendingActionsOverlay, PendingItem};
+    use crossterm::event::KeyCode;
     use std::time::Instant;
 
     /// Minimal `PaneSource` that returns empty data for every query —
@@ -1741,6 +1770,22 @@ mod tests {
             severity: Severity::Warning,
             source_kind: SourceKind::Estimated,
         }
+    }
+
+    #[test]
+    fn fx_hotkey_is_disabled_while_an_overlay_owns_keyboard() {
+        let mut config = crate::app::config::QmonsterConfig::defaults();
+        config.fx.enabled = true;
+        config.fx.hotkey_enabled = true;
+
+        assert!(
+            dashboard_fx_hotkey_allowed(KeyCode::Char('Q'), &config, false),
+            "dashboard Q should open fx when no overlay owns input"
+        );
+        assert!(
+            !dashboard_fx_hotkey_allowed(KeyCode::Char('Q'), &config, true),
+            "overlay edit/input modes must receive Q as text instead of opening fx"
+        );
     }
 
     /// v1.40.1 review fix Critical 1 regression: bulk-clearing two

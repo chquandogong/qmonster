@@ -531,6 +531,29 @@ mod tests {
     }
 
     #[test]
+    fn key_handler_routes_global_like_chars_to_text_edit_buffer() {
+        use crate::ui::settings::ParameterField;
+
+        let mut overlay = SettingsOverlay::new();
+        let mut config = QmonsterConfig::defaults();
+        overlay.open();
+        overlay.switch_tab(SettingsTab::Parameters);
+        overlay.select_parameter(ParameterField::FxText);
+        overlay.start_edit(&config);
+        overlay.replace_edit_buffer_for_test("");
+
+        for key in ['Q', 'H', 'L', 'S', 'q'] {
+            handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char(key));
+        }
+
+        assert_eq!(overlay.edit_buffer(), Some("QHLSq"));
+        assert!(
+            overlay.is_open(),
+            "text input must not close the settings overlay"
+        );
+    }
+
+    #[test]
     fn mouse_handler_closes_on_close_button() {
         let mut overlay = SettingsOverlay::new();
         let mut config = QmonsterConfig::defaults();

@@ -132,20 +132,41 @@ pub fn dashboard_hover_topic(
     }
 
     // v1.58.0: dashboard chrome hover topics. divider gets the IME +
-    // resize explainer; footer gets the keybinding cluster context;
-    // the version badge (rightmost cells of the footer) gets its own
-    // topic since clicking it opens the Git overlay.
+    // resize explainer; the footer key chip opens the dense keybinding
+    // cluster; the version badge (rightmost cells of the footer) gets
+    // its own topic since clicking it opens the Git overlay.
     if rect_contains(rects.divider, column, row) {
         return Some(HelpTopic::DashboardDivider);
     }
     if rect_contains(rects.footer, column, row) {
+        let keys = crate::ui::dashboard::footer_keys_badge_rect(rects.footer);
+        if rect_contains(keys, column, row) {
+            return Some(HelpTopic::DashboardFooter);
+        }
         let badge = crate::ui::dashboard::version_badge_rect(rects.footer);
         if rect_contains(badge, column, row) {
             return Some(HelpTopic::DashboardVersionBadge);
         }
-        return Some(HelpTopic::DashboardFooter);
+        return None;
     }
 
+    None
+}
+
+pub fn dashboard_forced_hover_topic(
+    viewport: Rect,
+    column: u16,
+    row: u16,
+    split: DashboardSplit,
+) -> Option<HelpTopic> {
+    let rects = dashboard_rects(viewport, split);
+    if rect_contains(
+        crate::ui::dashboard::footer_keys_badge_rect(rects.footer),
+        column,
+        row,
+    ) {
+        return Some(HelpTopic::DashboardFooter);
+    }
     None
 }
 
@@ -226,6 +247,50 @@ mod tests {
                 view(HoverHelpTrigger::Row)
             ),
             Some(HelpTopic::AlertBulkHide)
+        );
+    }
+
+    #[test]
+    fn footer_keys_badge_has_hover_topic_but_footer_row_does_not() {
+        let viewport = Rect::new(0, 0, 120, 40);
+        let split = DashboardSplit::default();
+        let rects = dashboard_rects(viewport, split);
+        let badge = crate::ui::dashboard::footer_keys_badge_rect(rects.footer);
+        let alert_state = ListState::default();
+        let pane_state = ListState::default();
+        let notices = Vec::new();
+        let reports = Vec::new();
+        let fresh_alerts = HashSet::new();
+        let alert_times = HashMap::new();
+        let hidden_until = HashMap::new();
+        let now = Instant::now();
+
+        let view = |hover_help_trigger| DashboardHoverView {
+            split,
+            hover_help_trigger,
+            alert_state: &alert_state,
+            pane_state: &pane_state,
+            notices: &notices,
+            reports: &reports,
+            fresh_alerts: &fresh_alerts,
+            alert_times: &alert_times,
+            hidden_until: &hidden_until,
+            now,
+            target_label: "main",
+        };
+
+        assert_eq!(
+            dashboard_hover_topic(viewport, badge.x, badge.y, view(HoverHelpTrigger::Label)),
+            Some(HelpTopic::DashboardFooter)
+        );
+        assert_eq!(
+            dashboard_hover_topic(
+                viewport,
+                rects.footer.x.saturating_add(badge.width).saturating_add(4),
+                badge.y,
+                view(HoverHelpTrigger::Label)
+            ),
+            None
         );
     }
 }
