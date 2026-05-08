@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.55.0 - fx overlay smoothness: 60 FPS render with halved velocities + tmux poll tick suspended during effect; defaults flipped to text='~O~ Qmonster' / duration_secs=50"
+  mission_title: "Qmonster v1.56.0 - audit-doc polish bundle: provider-honesty cache chips + matrix fx backdrop dim + Insights Situations regression guard + ARCHITECTURE cache-rule paragraph"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 198
-  latest_version: "1.55.0"
+  total_revisions: 199
+  latest_version: "1.56.0"
 
 timeline:
   - change_id: "initial"
@@ -18637,6 +18637,119 @@ timeline:
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
       - "Per audit doc Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md remaining recommended slices (provider-honesty chips, Insights Situations snapshot test, cache rule provider-gating note, doc-promotion pass)."
+
+  - version: "1.56.0"
+    change_sequence: 199
+    date: "2026-05-08"
+    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '1부터 4까지 다 해줘' — close all four remaining audit-doc slices in one bundle."
+    summary: >
+      v1.56.0 closes the remaining recommended slices from the
+      2026-05-08 audit doc (`Qmonster-v0.4.0-2026-05-08-claude-feature-
+      audit-and-slice-1-r1.md`) in one polish bundle. No new phase.
+      (a) Provider-honesty cache chips: new module
+      `src/ui/provider_honesty.rs` with CacheMetricStatus enum
+      (Value{ratio,source} / Pending / Unsupported / Hidden) and
+      `cache_metric_status(signals, provider)` helper. Pre-v1.56.0 the
+      cache chip was silently omitted whenever cache_hit_ratio (and
+      the Codex token-count fallback) were both None — Codex / Gemini
+      operators couldn't tell whether the metric was missing or just
+      absent from the provider. v1.56.0: Claude/Codex with a value
+      stays `cache N% [Source]`; Claude/Codex without a value yet
+      shows `cache ?` (waiting); Gemini with token stats but no cache
+      reads shows `cache —` (structurally unavailable); Gemini without
+      stats yet shows `cache ?`; Qmonster/Unknown stays mute.
+      `panels::cache_chip_text` (text variant) and
+      `panels::cache_badge_text` (Line variant) both delegate to the
+      enum; `metrics::cache_left_row` consumes the same enum so the m
+      overlay's per-pane cache bar is consistent. Function signatures
+      thread provider through: `metric_row(s, provider)`,
+      `metric_badge_lines(s, provider, w)`, `primary_metric_row(s,
+      provider)`. `src/app/once_report.rs` passes
+      `report.identity.identity.provider`.
+      (b) Matrix fx backdrop dim in `src/ui/fx.rs::render_fx_matrix`:
+      pre-walk every cell in `area` and OR Modifier::DIM onto the
+      existing style before painting streams. The terminal's standard
+      "dim" SGR attribute renders the underlying dashboard at ~50%
+      brightness; matrix glyphs paint BOLD bright over the dim layer,
+      restoring full contrast on touched cells. Preserves the v1.54.0
+      non-destructive guarantee (style flag flips, symbol stays
+      intact) — `fx_overlay_preserves_underlying_cells_outside_effect_glyphs`
+      regression test still passes.
+      (c) Insights Situations rendering regression guard:
+      `rendered_overlay_surfaces_populated_situations_section` builds
+      a snapshot with two SituationSummary rows, asserts
+      `format_insights_report_lines` emits the header + each
+      `<situation>: <emitted>` row AND the end-to-end TestBackend
+      buffer surfaces both labels. Closes the audit's "always 'none'"
+      perception risk against future layout refactors.
+      (d) ARCHITECTURE.md cache-rule provider-gating paragraph: the
+      "How surfaces should treat unavailable signals" section now
+      documents the per-signal exception pattern — most missing
+      structural signals still omit silently, but the CACHE chip
+      surfaces a structural-vs-pending distinction via
+      `provider_honesty::cache_metric_status`. Names the enum as the
+      canonical pattern for future per-signal honesty additions.
+      Lib tests 1373 → 1394 (+21: 6 in provider_honesty, 14 in
+      panels, 1 in insights). 65 integration tests preserved. fmt +
+      clippy clean.
+    intent_ko: >
+      v1.56.0 는 2026-05-08 audit doc 의 남은 4개 권장 슬라이스를 한 번에
+      닫는 폴리시 묶음. (a) provider-honesty cache chip — 새 모듈
+      src/ui/provider_honesty.rs 의 CacheMetricStatus (Value/Pending/
+      Unsupported/Hidden) 로 cache 칩의 silent None 을 없앰. Claude/Codex
+      는 값 있으면 percentage, 없으면 `cache ?`; Gemini 는 token stats 가
+      있는데 cached_input_tokens 가 없으면 `cache —` (구조적 미지원),
+      stats 도 없으면 `cache ?`; Qmonster/Unknown 은 mute. metric_row /
+      metric_badge_lines / primary_metric_row 시그니처에 provider 추가.
+      (b) Matrix fx backdrop dim — 매트릭스 스트림 그리기 전에 area 의
+      모든 셀에 Modifier::DIM 을 OR. 터미널의 표준 dim SGR 로 dashboard
+      가 ~50% 밝기로 약화, BOLD 스트림이 그 위에 또렷하게 떠. v1.54.0 의
+      비파괴 contract 유지 (symbol 안 건드림, style flag 만 변경).
+      (c) Insights Situations 회귀 가드 — SituationSummary 두 개 채운
+      snapshot 으로 lines() + TestBackend 렌더 모두 검증. (d) ARCHITECTURE.md
+      에 cache 규칙 provider-gating 단락 추가, provider_honesty 패턴을
+      향후 per-signal honesty 의 canonical 로 명시. lib 1373 → 1394.
+    triggered_by: "Operator: '1부터 4까지 다 해줘' — close all four remaining recommended slices from the 2026-05-08 audit doc in one v1.56.0 bundle."
+    changes:
+      added:
+        - "src/ui/provider_honesty.rs (new module): CacheMetricStatus enum + cache_metric_status(signals, provider) + cache_hit_ratio_with_source + cache_hit_ratio_from_counts + format_ratio_pct. 6 unit tests (gemini_with_stats_but_no_cache_reads_is_structurally_unsupported, gemini_without_stats_is_pending_not_structurally_denied, etc.)."
+        - "src/ui/panels.rs::cache_chip_text(s, provider) + cache_badge_text(s, provider) — provider-aware chip helpers delegating to provider_honesty. 2 new panels::tests cases."
+        - "src/ui/insights.rs::tests::rendered_overlay_surfaces_populated_situations_section — pure builder + TestBackend regression guard for the Situations rendering contract."
+      changed:
+        - "src/ui/fx.rs::render_fx_matrix: pre-dim viewport via Modifier::DIM walk before painting streams."
+        - "src/ui/panels.rs signatures: metric_row(s, provider), metric_badge_lines(s, provider, wrap_width), primary_metric_row(s, provider). All callers updated; src/app/once_report.rs threads report.identity.identity.provider."
+        - "src/ui/metrics.rs::cache_left_row: switched to provider_honesty::cache_metric_status."
+        - "docs/ai/ARCHITECTURE.md 'How surfaces should treat unavailable signals' section: documents the v1.56.0 per-signal honesty exception pattern + names src/ui/provider_honesty.rs::cache_metric_status as the canonical pattern."
+      removed: []
+      tests_added:
+        - "provider_honesty: cache_hit_ratio_uses_cached_over_input_plus_cached, gemini_with_stats_but_no_cache_reads_is_structurally_unsupported, gemini_without_stats_is_pending_not_structurally_denied (and others, ~6 total)."
+        - "panels: cache_chip_text_renders_per_provider_placeholder, metric_badge_line_emits_cache_placeholder_per_provider."
+        - "metrics: metrics_cache_bar_derives_ratio_from_raw_cached_tokens, cache_bar_uses_neutral_not_severity_color (concurrent additions)."
+        - "insights: rendered_overlay_surfaces_populated_situations_section."
+      docs:
+        - "package.json: 1.55.0 → 1.56.0."
+        - ".mission/CURRENT_STATE.md: v1.56.0 Feature State + validation baseline + mission line refreshed."
+        - "mission-history.yaml: v1.56.0 entry appended; meta updated to total_revisions 199 / latest_version 1.56.0."
+        - "docs/ai/ARCHITECTURE.md: per-signal honesty exception paragraph."
+        - "docs/ai/VALIDATION.md: new v1.56.0 release row."
+    observable_effects:
+      - "Pane card metric row now always shows a CACHE chip for Claude/Codex/Gemini panes — ` CACHE 80.0% [Source] ` when known, ` CACHE ? ` while waiting, ` CACHE — ` when Gemini structurally cannot provide it. Pre-v1.56.0 the chip was silently omitted on None, leaving operators wondering whether the metric was unsupported or just absent."
+      - "`m` Metrics overlay's per-pane cache bar follows the same convention: `?` while waiting, `─` (em-dash) when structurally unavailable."
+      - "Pressing Q with `[fx] effect = matrix` no longer leaves the dashboard fighting the rain glyphs for visual attention — the dashboard fades to ~50% under matrix while streams paint full-brightness over."
+      - "Insights overlay's Situations rows are now pinned by a regression test, so future layout refactors cannot silently drop them."
+    impact_scope:
+      runtime: "Pure refactor + style additions. No new threads, no new IO, no new event paths. Cache chip behaviour change is opt-out impossible (all panes affected) but visually additive — operators see more information, not less."
+      tests: "1373 → 1394 lib tests (+21). 65 integration tests preserved."
+      ledger: "1 new timeline entry (sequence 199); meta total_revisions 198 → 199, latest_version 1.55.0 → 1.56.0."
+      npm: "package.json version 1.56.0; CI publication of v1.56.0 follows the same workflow as v1.37.0 through v1.55.0."
+    breaking: false
+    risk: "low — provider-honesty path is gated by per-provider match arms with explicit `Pending` / `Unsupported` / `Hidden` states; existing Value path is unchanged. metric_row signature change is mechanical (one production caller + ~10 test sites updated). Matrix dim is a single Modifier::DIM OR per cell; preserves the v1.54.0 non-destructive guarantee. Insights regression guard is additive. ARCHITECTURE.md change is docs-only."
+    related_commits:
+      - "PENDING — v1.56.0 release ledger sync commit (this bundle)."
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

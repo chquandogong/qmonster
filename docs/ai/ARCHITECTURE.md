@@ -753,9 +753,20 @@ sidefile/app-server channel that hasn't been wired_ (Codex
 
 ### How surfaces should treat unavailable signals
 
-- Pane card metric chips (`src/ui/panels.rs`): omit silently. Adding
-  "n/a" chips for every missing structural signal would clutter every
-  Gemini pane indefinitely.
+- Pane card metric chips (`src/ui/panels.rs`): per-signal policy.
+  Most signals omit silently — adding "n/a" chips for every missing
+  structural signal would clutter every Gemini pane indefinitely. The
+  **cache** signal is the documented exception (since v1.56.0): the
+  CACHE chip is **provider-honest** — it renders the percentage when a
+  value is available, `cache ?` while waiting for an optional surface
+  on Claude / Codex (the providers that _can_ expose it), and
+  `cache —` when the current provider/auth proves it cannot supply
+  cache reuse (notably Gemini, once it has emitted token counts but
+  still has no `cached_input_tokens` source). This is the only chip
+  that surfaces a structural-vs-pending distinction; future per-signal
+  honesty additions should follow the same pattern via
+  `src/ui/provider_honesty.rs`'s `cache_metric_status` enum
+  (`Value` / `Pending` / `Unsupported` / `Hidden`).
 - `m` Metrics overlay (`src/ui/metrics.rs`): row labels render as
   em-dash (`—`) when the value is structurally absent. The em-dash is
   the canonical "no value, by design" marker.

@@ -159,6 +159,28 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
             ));
         }
     }
+    if !snapshot.actions.is_empty() {
+        let emitted: u64 = snapshot.actions.iter().map(|row| row.emitted).sum();
+        let accepted: u64 = snapshot.actions.iter().map(|row| row.accepted).sum();
+        let completed: u64 = snapshot.actions.iter().map(|row| row.completed).sum();
+        let ignored: u64 = snapshot.actions.iter().map(|row| row.ignored).sum();
+        lines.push(String::new());
+        lines.push("Action Rates".into());
+        lines.push(format!(
+            "  accepted rate: {}",
+            format_rate(accepted, emitted)
+        ));
+        lines.push(format!(
+            "  completion rate: {}",
+            format_rate(completed, accepted)
+        ));
+        let ignored_rate = if snapshot.ignored_available {
+            format_rate(ignored, emitted)
+        } else {
+            "n/a".into()
+        };
+        lines.push(format!("  ignored rate: {ignored_rate}"));
+    }
     lines.push(String::new());
     lines.push("Recent Timeline".into());
     if snapshot.timeline.is_empty() {
@@ -183,6 +205,13 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
         "  lifecycle: audit-only, recommendation correlation unavailable".into()
     });
     lines
+}
+
+fn format_rate(numerator: u64, denominator: u64) -> String {
+    if denominator == 0 {
+        return "n/a".into();
+    }
+    format!("{:.1}%", numerator as f64 / denominator as f64 * 100.0)
 }
 
 pub fn empty_insights_snapshot(window: InsightsWindow) -> InsightsSnapshot {

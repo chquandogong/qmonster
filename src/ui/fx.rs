@@ -206,6 +206,20 @@ pub fn render_fx_confetti(frame: &mut Frame<'_>, state: &ConfettiState) {
 pub fn render_fx_matrix(frame: &mut Frame<'_>, state: &MatrixState) {
     let area = frame.area();
     let buf = frame.buffer_mut();
+    // v1.56.0: pre-dim the underlying viewport so matrix glyphs visibly
+    // pop against the dashboard rather than blending into pane text.
+    // Modifier::DIM uses the terminal's standard "dim" SGR attribute,
+    // which most modern terminals render at ~50% brightness — bg/fg
+    // semantic intact, just visually muted. Streams paint BOLD bright
+    // green/white over this dim layer, restoring full contrast on
+    // exactly the cells they touch.
+    for y in area.y..area.y + area.height {
+        for x in area.x..area.x + area.width {
+            let cell = &mut buf[(x, y)];
+            let dimmed = cell.style().add_modifier(Modifier::DIM);
+            cell.set_style(dimmed);
+        }
+    }
     for stream in &state.streams {
         if stream.column >= area.width {
             continue;

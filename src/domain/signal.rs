@@ -197,10 +197,10 @@ pub struct SignalSet {
     /// `Token usage: …` line). Always `ProviderOfficial`. UI derives
     /// `cache_hit_ratio = cached / (input + cached)` at render time;
     /// the ratio itself is not stored on `SignalSet` because it's a
-    /// pure function of two adjacent fields. None for Claude (no
-    /// statusline surface today) and Gemini OAuth (FAQ-documented
-    /// limit); non-None when Claude statusLine command opt-in (F-5)
-    /// or Gemini API-key/Vertex-AI auth (F-4b) lands.
+    /// pure function of two adjacent fields. None when the pane has not
+    /// produced cache-read data yet, or when a provider/auth surface
+    /// omits Cache Reads (Gemini OAuth); the UI renders those as
+    /// `CACHE ?` / `CACHE —` rather than pretending the ratio is zero.
     pub cached_input_tokens: Option<MetricValue<u64>>,
     /// Claude sidefile `cache_creation_input_tokens`. This is distinct
     /// from cache reads: creation is the prompt-cache write cost, while

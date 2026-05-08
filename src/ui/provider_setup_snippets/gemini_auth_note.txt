@@ -1,6 +1,7 @@
 Gemini OAuth (currently in use — "Signed in with Google /auth"):
   • cache_read_input_tokens is hidden by Gemini (FAQ-documented limit)
-  • Qmonster's CACHE badge will stay absent for OAuth Gemini panes
+  • Qmonster's CACHE badge shows — once token stats prove Cache Reads
+    is unavailable for this auth surface
   • All other metrics (context %, quota, model, memory) work fine
 
 API key / Vertex AI (informational; no action requested):

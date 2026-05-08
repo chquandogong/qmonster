@@ -11,6 +11,7 @@ pub mod metrics;
 pub mod modal_chrome;
 pub mod panels;
 pub mod pending_actions;
+pub mod provider_honesty;
 pub mod provider_setup;
 pub mod scroll_hint;
 pub mod settings;

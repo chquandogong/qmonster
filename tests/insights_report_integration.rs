@@ -87,6 +87,44 @@ fn insights_report_renders_action_ledger() {
 }
 
 #[test]
+fn insights_report_renders_action_rate_summary() {
+    let snapshot = InsightsSnapshot {
+        window: InsightsWindow {
+            since_ms: 0,
+            until_ms: 86_400_000,
+        },
+        situations: vec![],
+        cache: CacheInsightSummary::default(),
+        timeline: vec![],
+        actions: vec![
+            ActionLedgerRow {
+                action: "/compact".into(),
+                emitted: 4,
+                accepted: 2,
+                completed: 1,
+                ignored: 1,
+                ..ActionLedgerRow::default()
+            },
+            ActionLedgerRow {
+                action: "snapshot before 5h window resets".into(),
+                emitted: 1,
+                hidden: 1,
+                ..ActionLedgerRow::default()
+            },
+        ],
+        ignored_available: true,
+    };
+
+    let lines = format_insights_report_lines(&snapshot);
+    let joined = lines.join("\n");
+
+    assert!(joined.contains("Action Rates"));
+    assert!(joined.contains("accepted rate: 40.0%"));
+    assert!(joined.contains("completion rate: 50.0%"));
+    assert!(joined.contains("ignored rate: 20.0%"));
+}
+
+#[test]
 fn insights_report_renders_available_recommendation_lifecycle() {
     let snapshot = InsightsSnapshot {
         window: InsightsWindow {

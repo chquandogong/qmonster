@@ -15,6 +15,7 @@ use std::collections::HashMap;
 
 use crate::app::event_loop::PaneReport;
 use crate::store::TokenSample;
+use crate::ui::provider_honesty::{self, CacheMetricStatus};
 use crate::ui::scroll_hint;
 use crate::ui::theme;
 use ratatui::Frame;
@@ -448,12 +449,7 @@ fn card_rows(
         ),
         quota_left_row(s, bar_cells, true),
         quota_left_row(s, bar_cells, false),
-        left_row(
-            "CACHE",
-            s.cache_hit_ratio.as_ref().map(|m| m.value as f32),
-            bar_cells,
-            BarKind::Neutral,
-        ),
+        cache_left_row(report, bar_cells),
     ];
 
     let right_rows = [
@@ -590,6 +586,25 @@ fn left_row(
         }
     }
     spans
+}
+
+fn cache_left_row(report: &PaneReport, bar_cells: usize) -> Vec<Span<'static>> {
+    match provider_honesty::cache_metric_status(&report.signals, report.identity.identity.provider)
+    {
+        CacheMetricStatus::Value { ratio, .. } => {
+            left_row("CACHE", Some(ratio as f32), bar_cells, BarKind::Neutral)
+        }
+        CacheMetricStatus::Pending => left_row_text("CACHE", "?"),
+        CacheMetricStatus::Unsupported => left_row_text("CACHE", DASH),
+        CacheMetricStatus::Hidden => left_row_text("CACHE", DASH),
+    }
+}
+
+fn left_row_text(label: &str, value: &'static str) -> Vec<Span<'static>> {
+    vec![
+        Span::raw(format!("{label:<6} ")),
+        Span::styled(value.to_string(), Style::default().fg(theme::TEXT_DIM)),
+    ]
 }
 
 /// Combined reset-eta row: `5H reset ▸ <eta>  ·  7D reset ▸ <eta>`.
@@ -1448,6 +1463,37 @@ mod tests {
         let risk = theme::severity_color(crate::domain::recommendation::Severity::Risk);
         let has_risk = cache_line.spans.iter().any(|s| s.style.fg == Some(risk));
         assert!(!has_risk, "CACHE bar must not use severity color");
+    }
+
+    #[test]
+    fn metrics_cache_bar_derives_ratio_from_raw_cached_tokens() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::MetricValue;
+        use ratatui::layout::Rect;
+
+        let body = Rect::new(0, 0, 100, 30);
+        let mut rep = base_test_report("codex:1:review");
+        rep.signals.input_tokens = Some(MetricValue::new(200_u64, SourceKind::ProviderOfficial));
+        rep.signals.cached_input_tokens =
+            Some(MetricValue::new(800_u64, SourceKind::ProviderOfficial));
+
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            body,
+            &HashMap::new(),
+        );
+        let dump = lines
+            .iter()
+            .map(line_to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(
+            dump.contains("80%"),
+            "CACHE should render the raw cached/input ratio in m Metrics: {dump}"
+        );
     }
 
     #[test]

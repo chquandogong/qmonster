@@ -343,8 +343,26 @@ fn format_event_row(e: &crate::domain::anomaly::AnomalyEvent, width: usize) -> S
         return ellipsize(&row_prefix, width);
     }
     let reason_budget = width - prefix_len;
-    let reason = ellipsize(&e.reason, reason_budget);
+    let reason_source = format_event_reason(e);
+    let reason = ellipsize(&reason_source, reason_budget);
     format!("{row_prefix}{reason}")
+}
+
+fn format_event_reason(e: &crate::domain::anomaly::AnomalyEvent) -> String {
+    match anomaly_basis_label(e.kind) {
+        Some(label) if e.reason.is_empty() => label.to_string(),
+        Some(label) => format!("{label}: {}", e.reason),
+        None => e.reason.clone(),
+    }
+}
+
+fn anomaly_basis_label(kind: crate::domain::anomaly::AnomalyKind) -> Option<&'static str> {
+    use crate::domain::anomaly::AnomalyKind;
+    match kind {
+        AnomalyKind::ErrorBurst | AnomalyKind::MemoryGrowth => Some("heuristic"),
+        AnomalyKind::SubagentSideEffect => Some("correlation"),
+        _ => None,
+    }
 }
 
 fn format_hhmmss(ts: u64) -> String {
@@ -719,6 +737,40 @@ mod tests {
         assert!(
             rendered.contains("[h: history]"),
             "ring view title should advertise history toggle"
+        );
+    }
+
+    #[test]
+    fn render_ring_view_labels_heuristic_anomaly_basis() {
+        use crate::app::anomaly_events_ring::AnomalyEventsRing;
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let backend = TestBackend::new(140, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let mut ring = AnomalyEventsRing::new();
+        ring.push(AnomalyEvent {
+            timestamp: 1_700_000_000,
+            pane_id: "%1".to_string(),
+            kind: AnomalyKind::ErrorBurst,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "error_rate: 0.10 \u{2192} 0.80".to_string(),
+        });
+
+        terminal
+            .draw(|f| overlay.render(f, f.area(), &ring))
+            .unwrap();
+        let rendered = buf_to_string(terminal.backend().buffer());
+
+        assert!(
+            rendered.contains("heuristic"),
+            "noisy anomaly kinds should label their evidence basis: {rendered}"
         );
     }
 

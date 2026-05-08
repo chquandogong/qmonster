@@ -257,14 +257,15 @@ N/2` instead of staying blank. Token-source providers today: Codex
 (input_tokens + cached_input_tokens) × 100`, formatted with one
   decimal. Source label tracks `cached_input_tokens.source_kind`
   (`[Official]` for Codex `/status`, Claude sidefile/statusline cache,
-  and Gemini `/stats model` when Cache Reads is visible). The badge
-  appears only when `cached_input_tokens` or a provider cache ratio is
-  `Some(...)`; Gemini OAuth keeps it absent because the Cache Reads row
-  is not exposed. Format: `cache <N.N>%` (text) or `CACHE <N.N>%`
-  (TUI). When selected-pane details have raw cache counts, Qmonster
-  also shows `cache io: read <N> / create <N>`; `create` is currently
-  Claude sidefile `cache_creation_input_tokens` and is not folded into
-  the hit-ratio badge.
+  and Gemini `/stats model` when Cache Reads is visible). Format:
+  `cache <N.N>%` (text) or `CACHE <N.N>%` (TUI). `CACHE ?` means the
+  provider can expose cache data but this tick has not produced it yet.
+  `CACHE —` means the current provider/auth surface has produced related
+  stats while omitting Cache Reads, so cache reuse is structurally
+  unavailable for that pane. When selected-pane details have raw cache
+  counts, Qmonster also shows `cache io: read <N> / create <N>`;
+  `create` is currently Claude sidefile `cache_creation_input_tokens`
+  and is not folded into the hit-ratio badge.
   Codex example: `Token usage: total=210,058 input=189,703 (+ 1,317,376
 cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
   1,507,079 prompt-input tokens were cache-hits, ~87% reuse).
@@ -842,6 +843,12 @@ Phase 7 v2 ships four additional detector kinds on top of the v1.43.0 / v1.44.0 
 
 The first three slope detectors promote to Recommendation + Notify when `confidence=High` (≥ 1.5× threshold) — same as the v1 detectors. SubagentSideEffect promotes only when it co-occurs; severity stays at Concern (since confidence is always Medium).
 
+The `n` Anomaly Events overlay prefixes noisier evidence in the Reason
+column: `heuristic:` for `ErrorBurst` / `MemoryGrowth`, and
+`correlation:` for `SubagentSideEffect`. These labels are intentionally
+visible in the event row so operators can distinguish measured trends
+from pattern or correlation signals before acting.
+
 Operator opts in with the same `[anomaly] enabled = true` from v1.43.0. The 3 new thresholds (`cost_slope_usd_per_hour`, `token_slope_input_per_poll`, `memory_growth_mb`) are tunable via the `[anomaly]` section in `qmonster.toml`.
 
 ### 8.6 Action Explainer
@@ -1020,7 +1027,8 @@ per-kind promotion threshold.
 Press `i` to open the Token Insights overlay. It reads the configured
 Qmonster SQLite DB and renders the same Token Insights report shape used
 by the CLI: situation counts, cache reuse/cost/token deltas, recent
-lifecycle timeline, and action ledger counts.
+lifecycle timeline, action ledger counts, and Action Rates (`accepted`,
+`completion`, `ignored`) when action rows exist.
 
 - `i` (or `Esc` / `q` / `[x]`): close.
 - `[` / `]`: resize the overlay by 5% steps.

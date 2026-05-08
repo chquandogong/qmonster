@@ -127,8 +127,8 @@ impl ProviderParser for GeminiAdapter {
             }
             // Honesty: `cache_reads` is None for OAuth (Cache Reads row
             // hidden by Google). Only populate cached_input_tokens when
-            // the row was actually present — never synthesize a zero,
-            // which would render a misleading 0% CACHE badge.
+            // the row was actually present; the UI can then render an
+            // unsupported `CACHE —` state instead of a misleading 0%.
             if set.cached_input_tokens.is_none()
                 && let Some(n) = model.cache_reads
             {
@@ -1777,8 +1777,9 @@ main        no sandbox      gemini-3.1-pro-preview     ~/projects/mission-spec  
     #[test]
     fn gemini_adapter_oauth_path_keeps_cached_input_tokens_none() {
         // OAuth pane: stats-model tail without the Cache Reads row
-        // must leave cached_input_tokens None. The CACHE badge then
-        // stays blank rather than rendering a misleading 0%.
+        // must leave cached_input_tokens None. The UI distinguishes
+        // that absent field as `CACHE —` rather than rendering a
+        // misleading 0%.
         let id = id();
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();

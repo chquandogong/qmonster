@@ -68,7 +68,7 @@ pub fn format_once_report_lines(reports: &[PaneReport], config: &QmonsterConfig)
         if !chips.is_empty() {
             lines.push(format!("  state: {}", chips.join(" | ")));
         }
-        let metrics = crate::ui::panels::metric_row(&r.signals);
+        let metrics = crate::ui::panels::metric_row(&r.signals, r.identity.identity.provider);
         if !metrics.is_empty() {
             lines.push(format!("  metrics: {metrics}"));
         }

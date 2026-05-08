@@ -3676,7 +3676,7 @@ fn build_badge_body_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
         ),
         badge_row(
             "CACHE N%",
-            "cache_read / (input + cache_read); hidden when the provider does not expose cache reads",
+            "cache_read / (input + cache_read); ? means waiting for a capable surface, — means this provider/auth surface does not expose cache reads",
         ),
         badge_row(
             "cache io",
@@ -3684,7 +3684,7 @@ fn build_badge_body_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
         ),
         badge_row(
             "COST $N",
-            "Claude sidefile total_cost_usd is Official; Codex cost is Estimate from input/output pricing",
+            "Claude sidefile total_cost_usd is Official; Codex/Gemini cost is Estimate from input/output tokens plus ~/.qmonster/config/pricing.toml; zero-rate entries keep COST hidden",
         ),
         badge_row(
             "MODEL",
@@ -4937,7 +4937,9 @@ mod tests {
         assert!(rendered.contains("context window used, not remaining"));
         assert!(rendered.contains("COST $N"));
         assert!(rendered.contains("Claude sidefile total_cost_usd"));
-        assert!(rendered.contains("Codex cost is Estimate"));
+        assert!(rendered.contains("Codex/Gemini cost is Estimate"));
+        assert!(rendered.contains("pricing.toml"));
+        assert!(rendered.contains("zero-rate entries keep COST hidden"));
         assert!(rendered.contains("CALLS N"));
         assert!(rendered.contains("RESET model"));
     }

@@ -354,6 +354,83 @@ mod tests {
         assert!(joined.contains("refreshed: 12:00:00"));
     }
 
+    /// v1.56.0 regression guard pinning the audit doc's "Situations
+    /// always renders 'none'" perception fix. The insights overlay
+    /// must surface populated Situations rows verbatim — situation
+    /// label + emitted count — so future refactors of
+    /// `format_insights_report_lines` cannot silently drop them.
+    #[test]
+    fn rendered_overlay_surfaces_populated_situations_section() {
+        use crate::store::{InsightsSnapshot, SituationSummary};
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let snapshot = InsightsSnapshot {
+            window: InsightsWindow {
+                since_ms: 0,
+                until_ms: 3_600_000,
+            },
+            situations: vec![
+                SituationSummary {
+                    situation: "context_pressure_warning",
+                    emitted: 7,
+                },
+                SituationSummary {
+                    situation: "log_storm_advisory",
+                    emitted: 2,
+                },
+            ],
+            cache: Default::default(),
+            timeline: vec![],
+            actions: vec![],
+            ignored_available: true,
+        };
+
+        let mut overlay = InsightsOverlay::new();
+        overlay.open();
+        overlay.set_snapshot(snapshot, "13:14:15".into());
+
+        // 1) Pure builder: Situations section header + each row
+        // formatted as `  <situation>: <emitted>` must be present.
+        let line_dump = overlay.lines().join("\n");
+        assert!(
+            line_dump.contains("Situations"),
+            "Situations header missing from overlay lines: {line_dump}"
+        );
+        assert!(
+            line_dump.contains("context_pressure_warning: 7"),
+            "first Situations row missing from overlay lines: {line_dump}"
+        );
+        assert!(
+            line_dump.contains("log_storm_advisory: 2"),
+            "second Situations row missing from overlay lines: {line_dump}"
+        );
+
+        // 2) End-to-end render: drive the overlay through ratatui's
+        // TestBackend so we also catch a future regression that drops
+        // the rows during the modal layout / paragraph rendering.
+        let viewport = ratatui::layout::Rect::new(0, 0, 120, 40);
+        let mut terminal =
+            Terminal::new(TestBackend::new(viewport.width, viewport.height)).unwrap();
+        terminal
+            .draw(|frame| render_insights_modal(frame, &overlay))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        let buf_dump: String = buf
+            .content
+            .iter()
+            .map(|cell| cell.symbol().to_string())
+            .collect();
+        assert!(
+            buf_dump.contains("context_pressure_warning"),
+            "rendered buffer missing context_pressure_warning row"
+        );
+        assert!(
+            buf_dump.contains("log_storm_advisory"),
+            "rendered buffer missing log_storm_advisory row"
+        );
+    }
+
     #[test]
     fn mark_loading_sets_loading_flag_and_pending_id() {
         let mut overlay = InsightsOverlay::new();

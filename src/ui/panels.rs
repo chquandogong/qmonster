@@ -7,10 +7,10 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::app::event_loop::PaneReport;
 use crate::domain::identity::{IdentityConfidence, Provider, Role};
-use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Recommendation;
 use crate::domain::signal::{IdleCause, RuntimeFact, RuntimeFactKind, SignalSet};
 use crate::ui::labels::{ellipsize, format_count_with_suffix, source_kind_label};
+use crate::ui::provider_honesty::{self, CacheMetricStatus};
 use crate::ui::theme;
 
 pub const STATE_FLASH_DURATION: Duration = Duration::from_secs(3);
@@ -260,7 +260,12 @@ fn pane_list_help_topics_with_width(
     push_topic_count(
         &mut topics,
         Some(HelpTopic::PaneMetrics),
-        metric_badge_lines(&report.signals, wrap_width).len(),
+        metric_badge_lines(
+            &report.signals,
+            report.identity.identity.provider,
+            wrap_width,
+        )
+        .len(),
     );
     if expanded {
         topics.push(Some(HelpTopic::PaneTokens));
@@ -428,7 +433,11 @@ fn pane_list_lines_with_flash(
         wrap_width,
     ));
 
-    for row in metric_badge_lines(&report.signals, wrap_width) {
+    for row in metric_badge_lines(
+        &report.signals,
+        report.identity.identity.provider,
+        wrap_width,
+    ) {
         lines.push(row);
     }
     if expanded {
@@ -712,7 +721,11 @@ fn panel_body_with_width(report: &PaneReport, wrap_width: u16) -> Vec<ListItem<'
         items.push(ListItem::new(line));
     }
 
-    for row in metric_badge_lines(&report.signals, wrap_width) {
+    for row in metric_badge_lines(
+        &report.signals,
+        report.identity.identity.provider,
+        wrap_width,
+    ) {
         items.push(ListItem::new(row));
     }
     if let Some(line) = token_breakdown_line(report) {
@@ -778,7 +791,7 @@ fn secondary_signal_chips(s: &SignalSet) -> Vec<&'static str> {
     chips
 }
 
-pub fn metric_row(s: &SignalSet) -> String {
+pub fn metric_row(s: &SignalSet, provider: Provider) -> String {
     let mut parts = Vec::new();
     if let Some(m) = s.context_pressure.as_ref() {
         parts.push(format!(
@@ -882,11 +895,13 @@ pub fn metric_row(s: &SignalSet) -> String {
             source_kind_label(m.source_kind)
         ));
     }
-    // F-4 / F-5: cache hit ratio. Prefers Claude statusline's
-    // pre-computed `cache N%`; falls back to Codex's `cached /
-    // (input + cached)` from raw welcome-panel counts.
-    if let Some((pct, source)) = signals_cache_pct_with_source(s) {
-        parts.push(format!("cache {} [{}]", pct, source_kind_label(source)));
+    // v1.56.0 provider-honesty: cache_chip_text never silently omits.
+    // Claude/Codex/Gemini: `cache N% [Source]` or `cache ?` while
+    // waiting; Gemini switches to `cache —` only when model stats are
+    // present but Cache Reads is absent for the current auth surface.
+    // Qmonster/Unknown: chip omitted.
+    if let Some(chip) = cache_chip_text(s, provider) {
+        parts.push(chip);
     }
     parts.join("  ")
 }
@@ -1053,13 +1068,17 @@ fn severity_label(severity: crate::domain::recommendation::Severity) -> &'static
 }
 
 #[cfg(test)]
-fn metric_badge_line(signals: &SignalSet) -> Vec<Line<'static>> {
-    metric_badge_lines(signals, BADGE_WRAP_FALLBACK_WIDTH)
+fn metric_badge_line(signals: &SignalSet, provider: Provider) -> Vec<Line<'static>> {
+    metric_badge_lines(signals, provider, BADGE_WRAP_FALLBACK_WIDTH)
 }
 
-fn metric_badge_lines(signals: &SignalSet, wrap_width: u16) -> Vec<Line<'static>> {
+fn metric_badge_lines(
+    signals: &SignalSet,
+    provider: Provider,
+    wrap_width: u16,
+) -> Vec<Line<'static>> {
     let mut rows = Vec::with_capacity(2);
-    if let Some(line) = primary_metric_row(signals) {
+    if let Some(line) = primary_metric_row(signals, provider) {
         rows.extend(wrap_badge_line(line, wrap_width));
     }
     if let Some(line) = context_metric_row(signals) {
@@ -1129,7 +1148,7 @@ fn push_badge(spans: &mut Vec<Span<'static>>, has_any: &mut bool, content: Strin
     spans.push(Span::styled(content, style));
 }
 
-fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
+fn primary_metric_row(signals: &SignalSet, provider: Provider) -> Option<Line<'static>> {
     let mut spans = vec![Span::raw(format!("{:<8}: ", "metrics"))];
     let mut has_any = false;
 
@@ -1276,14 +1295,12 @@ fn primary_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
             theme::label_style(),
         );
     }
-    // F-4 / F-5: CACHE hit ratio badge.
-    if let Some((pct, source)) = signals_cache_pct_with_source(signals) {
-        push_badge(
-            &mut spans,
-            &mut has_any,
-            format!(" CACHE {} [{}] ", pct, source_kind_label(source)),
-            theme::label_style(),
-        );
+    // v1.56.0 provider-honesty: emit honest CACHE chip per provider.
+    // Value when observed, `?` while waiting for an optional provider
+    // surface, and `—` when the current provider/auth surface proves it
+    // cannot supply cache reuse.
+    if let Some(label) = cache_badge_text(signals, provider) {
+        push_badge(&mut spans, &mut has_any, label, theme::label_style());
     }
 
     has_any.then(|| Line::from(spans))
@@ -1376,41 +1393,43 @@ pub(crate) fn format_agent_memory_bytes(bytes: u64) -> String {
 /// panel reports them as siblings in `Token usage: total=N
 /// input=N (+ N cached) output=N`, so the ratio answers "what
 /// fraction of the prompt was reused from cache?".
+#[cfg(test)]
 fn format_cache_hit_ratio(
     input_tokens: Option<u64>,
     cached_input_tokens: Option<u64>,
 ) -> Option<String> {
-    let cached = cached_input_tokens?;
-    let input = input_tokens.unwrap_or(0);
-    let total = input.saturating_add(cached);
-    if total == 0 {
-        return None;
-    }
-    let pct = (cached as f64 / total as f64) * 100.0;
-    Some(format!("{pct:.1}%"))
+    provider_honesty::cache_hit_ratio_from_counts(input_tokens, cached_input_tokens)
+        .map(provider_honesty::format_ratio_pct)
 }
 
-/// Phase F F-5 (v1.30.0): pick the cache hit ratio for badge
-/// rendering. Prefers `signals.cache_hit_ratio` (Claude statusline's
-/// pre-computed `cache N%`) and falls back to the count-derived
-/// `format_cache_hit_ratio` (Codex `(+ N cached)`) when only the raw
-/// counts are available. Returns `(formatted_pct, source_kind)` so
-/// the badge label stays honest about the surface.
-fn signals_cache_pct_with_source(s: &SignalSet) -> Option<(String, SourceKind)> {
-    if let Some(direct) = s.cache_hit_ratio.as_ref() {
-        let pct = direct.value * 100.0;
-        return Some((format!("{pct:.1}%"), direct.source_kind));
+fn cache_badge_text(s: &SignalSet, provider: Provider) -> Option<String> {
+    match provider_honesty::cache_metric_status(s, provider) {
+        CacheMetricStatus::Value { ratio, source_kind } => Some(format!(
+            " CACHE {} [{}] ",
+            provider_honesty::format_ratio_pct(ratio),
+            source_kind_label(source_kind)
+        )),
+        CacheMetricStatus::Pending => Some(" CACHE ? ".to_string()),
+        CacheMetricStatus::Unsupported => Some(" CACHE \u{2014} ".to_string()),
+        CacheMetricStatus::Hidden => None,
     }
-    let pct = format_cache_hit_ratio(
-        s.input_tokens.as_ref().map(|m| m.value),
-        s.cached_input_tokens.as_ref().map(|m| m.value),
-    )?;
-    let source = s
-        .cached_input_tokens
-        .as_ref()
-        .map(|m| m.source_kind)
-        .unwrap_or(SourceKind::Heuristic);
-    Some((pct, source))
+}
+
+/// v1.56.0 provider-honesty: produce the cache chip text for a pane
+/// card honestly per-provider. Pre-v1.56.0 the cache chip was silently
+/// omitted whenever cache data was absent, making it impossible to tell
+/// "waiting for data" from "this surface cannot provide it".
+pub(crate) fn cache_chip_text(s: &SignalSet, provider: Provider) -> Option<String> {
+    match provider_honesty::cache_metric_status(s, provider) {
+        CacheMetricStatus::Value { ratio, source_kind } => Some(format!(
+            "cache {} [{}]",
+            provider_honesty::format_ratio_pct(ratio),
+            source_kind_label(source_kind)
+        )),
+        CacheMetricStatus::Pending => Some("cache ?".to_string()),
+        CacheMetricStatus::Unsupported => Some("cache \u{2014}".to_string()),
+        CacheMetricStatus::Hidden => None,
+    }
 }
 
 /// Phase F F-3 (v1.24.0): render a TOKENS sparkline from recent prompt
@@ -2209,7 +2228,7 @@ mod tests {
             ),
             ..SignalSet::default()
         };
-        let row = metric_row(&s);
+        let row = metric_row(&s, Provider::Claude);
         assert!(row.contains("context 71%"));
         assert!(row.contains("[Estimate]"));
     }
@@ -2225,7 +2244,7 @@ mod tests {
             ),
             ..SignalSet::default()
         };
-        let row = metric_row(&s);
+        let row = metric_row(&s, Provider::Claude);
         assert!(row.contains("quota 47%"));
         assert!(row.contains("[Official]"));
     }
@@ -2500,7 +2519,7 @@ mod tests {
             )),
             ..crate::domain::signal::SignalSet::default()
         };
-        let row = metric_row(&s);
+        let row = metric_row(&s, Provider::Claude);
         assert!(row.contains("model gpt-5.4"), "row: {row}");
         assert!(row.contains("Official"), "row: {row}");
     }
@@ -2514,7 +2533,7 @@ mod tests {
             )),
             ..crate::domain::signal::SignalSet::default()
         };
-        let row = metric_row(&s);
+        let row = metric_row(&s, Provider::Claude);
         assert!(row.contains("tokens 1.53M"), "got: {row}");
     }
 
@@ -2560,7 +2579,7 @@ mod tests {
             )),
             ..crate::domain::signal::SignalSet::default()
         };
-        let row = metric_row(&s);
+        let row = metric_row(&s, Provider::Claude);
         assert!(row.contains("branch main"), "row: {row}");
         assert!(row.contains("path ~/Qmonster"), "row: {row}");
         assert!(row.contains("effort xhigh"), "row: {row}");
@@ -2716,7 +2735,7 @@ mod tests {
             ..crate::domain::signal::SignalSet::default()
         };
 
-        let text = metric_badge_lines(&s, 120)
+        let text = metric_badge_lines(&s, Provider::Claude, 120)
             .iter()
             .map(line_text)
             .collect::<Vec<_>>()
@@ -2748,7 +2767,7 @@ mod tests {
             ..SignalSet::default()
         };
 
-        let rows = metric_badge_lines(&s, 48);
+        let rows = metric_badge_lines(&s, Provider::Claude, 48);
         let text: Vec<String> = rows.iter().map(line_text).collect();
 
         assert!(text.len() > 2, "badges should wrap: {text:?}");
@@ -2779,7 +2798,7 @@ mod tests {
             ..SignalSet::default()
         };
 
-        let rows = metric_badge_lines(&s, 120);
+        let rows = metric_badge_lines(&s, Provider::Claude, 120);
         let text = rows.iter().map(line_text).collect::<Vec<_>>().join(" ");
 
         assert!(text.contains("RESET 5H"), "text = {text:?}");
@@ -2834,7 +2853,7 @@ mod tests {
             )),
             ..crate::domain::signal::SignalSet::default()
         };
-        let rows = metric_badge_line(&s);
+        let rows = metric_badge_line(&s, Provider::Claude);
         assert_eq!(
             rows.len(),
             2,
@@ -2851,16 +2870,112 @@ mod tests {
             )),
             ..crate::domain::signal::SignalSet::default()
         };
-        let rows = metric_badge_line(&s);
+        let rows = metric_badge_line(&s, Provider::Claude);
         assert_eq!(rows.len(), 1, "primary fields only → one row");
     }
 
     #[test]
     fn metric_badge_line_returns_empty_vec_when_no_fields() {
-        let rows = metric_badge_line(&crate::domain::signal::SignalSet::default());
+        // v1.56.0 provider-honesty: Provider::Unknown / Qmonster suppress
+        // the CACHE placeholder, so a fully empty SignalSet under those
+        // providers still renders no badges. Claude/Codex would now emit
+        // a `CACHE ?` placeholder; that case is covered by
+        // metric_badge_line_emits_cache_placeholder_per_provider.
+        let rows = metric_badge_line(
+            &crate::domain::signal::SignalSet::default(),
+            Provider::Unknown,
+        );
         assert!(
             rows.is_empty(),
             "no fields populated → empty Vec (not a single empty Line)"
+        );
+    }
+
+    #[test]
+    fn metric_badge_line_emits_cache_placeholder_per_provider() {
+        // v1.56.0 provider-honesty regression guard: empty SignalSet
+        // (no cache_hit_ratio, no token counts) must surface a per-
+        // provider chip so operators don't silently lose situational
+        // awareness about cache state.
+        let s = crate::domain::signal::SignalSet::default();
+
+        let claude = metric_badge_line(&s, Provider::Claude);
+        let claude_dump: String = claude
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.clone().into_owned())
+            .collect();
+        assert!(
+            claude_dump.contains("CACHE ?"),
+            "Claude pane with no cache value should show ` CACHE ? `; got: {claude_dump}"
+        );
+
+        let gemini = metric_badge_line(&s, Provider::Gemini);
+        let gemini_dump: String = gemini
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.clone().into_owned())
+            .collect();
+        assert!(
+            gemini_dump.contains("CACHE ?"),
+            "Gemini pane with no stats yet should show ` CACHE ? `; got: {gemini_dump}"
+        );
+
+        let qmonster = metric_badge_line(&s, Provider::Qmonster);
+        assert!(
+            qmonster.is_empty(),
+            "Qmonster monitor pane should not surface a cache chip"
+        );
+    }
+
+    #[test]
+    fn cache_chip_text_renders_per_provider_placeholder() {
+        let s = crate::domain::signal::SignalSet::default();
+        assert_eq!(
+            cache_chip_text(&s, Provider::Claude).as_deref(),
+            Some("cache ?"),
+            "Claude exposes cache_hit_ratio but hasn't observed yet"
+        );
+        assert_eq!(
+            cache_chip_text(&s, Provider::Codex).as_deref(),
+            Some("cache ?"),
+            "Codex computes cache via input/cached counts; no value yet → `cache ?`"
+        );
+        assert_eq!(
+            cache_chip_text(&s, Provider::Gemini).as_deref(),
+            Some("cache ?"),
+            "Gemini has conditional cache stats; no stats yet → `cache ?`"
+        );
+        assert_eq!(
+            cache_chip_text(&s, Provider::Qmonster),
+            None,
+            "Monitor pane has no meaningful cache chip"
+        );
+        assert_eq!(
+            cache_chip_text(&s, Provider::Unknown),
+            None,
+            "Unknown provider stays mute rather than guessing"
+        );
+    }
+
+    #[test]
+    fn cache_chip_text_marks_gemini_stats_without_cache_reads_as_unsupported() {
+        let s = crate::domain::signal::SignalSet {
+            input_tokens: Some(crate::domain::signal::MetricValue::new(
+                100_u64,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
+            output_tokens: Some(crate::domain::signal::MetricValue::new(
+                10_u64,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
+            ..crate::domain::signal::SignalSet::default()
+        };
+
+        assert_eq!(
+            cache_chip_text(&s, Provider::Gemini).as_deref(),
+            Some("cache \u{2014}"),
+            "Gemini stats are present but Cache Reads is absent → unsupported for this auth surface"
         );
     }
 
@@ -3136,7 +3251,7 @@ mod tests {
             agent_memory_bytes: Some(MetricValue::new(48_000_u64, SourceKind::Heuristic)),
             ..SignalSet::default()
         };
-        let row = metric_row(&s);
+        let row = metric_row(&s, Provider::Claude);
         assert!(row.contains("memory-file 46 KB [Heur]"), "row = {row}");
     }
 
@@ -3148,7 +3263,7 @@ mod tests {
             agent_memory_bytes: Some(MetricValue::new(48_000_u64, SourceKind::Heuristic)),
             ..SignalSet::default()
         };
-        let lines = metric_badge_line(&s);
+        let lines = metric_badge_line(&s, Provider::Claude);
         assert!(
             !lines.is_empty(),
             "MEM-FILE should render at least one Line"
@@ -3166,7 +3281,7 @@ mod tests {
     fn metric_badge_line_omits_mem_file_when_agent_memory_bytes_none() {
         use crate::domain::signal::SignalSet;
         let s = SignalSet::default();
-        let lines = metric_badge_line(&s);
+        let lines = metric_badge_line(&s, Provider::Claude);
         let rendered: String = lines
             .iter()
             .flat_map(|l| l.spans.iter())
@@ -3445,7 +3560,7 @@ mod tests {
             )),
             ..SignalSet::default()
         };
-        let row = metric_row(&s);
+        let row = metric_row(&s, Provider::Claude);
         assert!(row.contains("cache 87.4% [Official]"), "row = {row}");
     }
 
@@ -3461,7 +3576,7 @@ mod tests {
             )),
             ..SignalSet::default()
         };
-        let lines = metric_badge_line(&s);
+        let lines = metric_badge_line(&s, Provider::Claude);
         let rendered: String = lines
             .iter()
             .flat_map(|l| l.spans.iter())

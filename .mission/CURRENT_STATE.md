@@ -1,14 +1,84 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.55.0 ledger sync)_
+_Last updated: 2026-05-08 (Claude, v1.56.0 ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.55.0 — fx overlay smoothness: 60 FPS render with halved per-frame velocities, tmux poll tick suspended while overlay is active so the 50-200ms capture/parse pass no longer stutters animation; new defaults `[fx] text = "~O~ Qmonster"` and `[fx] duration_secs = 50`.
-- Version surfaces: npm package metadata `qmonster@1.55.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v1.55.0` to be created at the ledger sync commit. v1.54.0 is the immediate prior tagged baseline.
+- Title: Qmonster v1.56.0 — audit-doc polish bundle: provider-honesty cache chips (Claude/Codex `?` while pending vs Gemini `—` structurally unavailable), matrix fx pre-dim backdrop so streams pop against dashboard, Insights Situations rendering regression guard, ARCHITECTURE.md cache-rule provider-gating note.
+- Version surfaces: npm package metadata `qmonster@1.56.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v1.56.0` to be created at the ledger sync commit. v1.55.0 is the immediate prior tagged baseline.
 - Release publication state: **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s). Sibling v1.37.0–v1.49.0 publications all remain live — `npm view qmonster versions` lists `1.37.0` through `1.55.0` with `dist-tags.latest = 1.55.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55}.0`.
-- Current phase: All prior phases complete. v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 publication baselines still apply; v1.55.0 ships the fx-overlay smoothness polish + new defaults on top — no new phase is opened.
+- Current phase: All prior phases complete. v1.50.0–v1.55.0 publication baselines still apply; v1.56.0 closes the four remaining recommended slices from the 2026-05-08 audit doc on top — no new phase is opened.
+
+## v1.56.0 Feature State
+
+v1.56.0 is a polish bundle that closes the remaining recommended slices
+from `Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md`.
+Four small surfaces, no new phase:
+
+1. **Provider-honesty cache chips** (new `src/ui/provider_honesty.rs` +
+   `src/ui/panels.rs` + `src/ui/metrics.rs`):
+   - New `CacheMetricStatus` enum (`Value{ratio,source}` / `Pending`
+     / `Unsupported` / `Hidden`) with `cache_metric_status(signals,
+     provider)` helper that encodes the per-provider rules:
+     - Claude / Codex with a value → `Value` (existing path)
+     - Claude / Codex without a value yet → `Pending` (waiting on an
+       optional surface, e.g. fresh pane / sidefile that hasn't landed)
+     - Gemini with token stats but no `cached_input_tokens` →
+       `Unsupported` (proven structurally unavailable)
+     - Gemini without stats yet → `Pending` (still in early-pane state)
+     - Qmonster / Unknown → `Hidden` (chip omitted)
+   - `panels::cache_chip_text` (text variant for `metric_row`,
+     `--once` reports) and `panels::cache_badge_text` (Line-styled
+     variant for the pane card primary metric row) both delegate to
+     this enum, so the UI no longer silently omits the cache chip when
+     the value is `None`. Operators see `cache ?` while waiting and
+     `cache —` when the surface cannot supply it — removing the
+     "metric is silently missing" perception flagged in the audit.
+   - `metrics::cache_left_row` in the `m` overlay uses the same enum
+     so the per-pane card cache bar renders `?` / `—` consistently.
+   - Signature changes: `metric_row(s, provider)`, `metric_badge_lines(
+     s, provider, wrap_width)`, `primary_metric_row(s, provider)`
+     thread provider through. `src/app/once_report.rs` passes
+     `report.identity.identity.provider`. Test sites updated.
+   - 14 new tests in `provider_honesty::tests`,
+     `panels::tests::cache_chip_text_renders_per_provider_placeholder`,
+     `panels::tests::metric_badge_line_emits_cache_placeholder_per_provider`,
+     `metrics::tests::metrics_cache_bar_derives_ratio_from_raw_cached_tokens`.
+
+2. **Matrix fx backdrop dim** (`src/ui/fx.rs::render_fx_matrix`):
+   - Before painting matrix streams, walk every cell in `area` and
+     OR `Modifier::DIM` onto the existing style. The terminal's standard
+     "dim" SGR attribute renders the underlying dashboard at ~50%
+     brightness; matrix glyphs paint BOLD bright green/white over this
+     dim layer, restoring full contrast on exactly the cells they
+     touch.
+   - Keeps the v1.54.0 non-destructive guarantee: `cell.set_style`
+     preserves the symbol; only the style flag changes. The
+     `fx_overlay_preserves_underlying_cells_outside_effect_glyphs`
+     regression test (Confetti scene) still passes.
+
+3. **Insights Situations rendering regression guard**
+   (`src/ui/insights.rs::tests::rendered_overlay_surfaces_populated_situations_section`):
+   - Builds an `InsightsSnapshot` with two populated `SituationSummary`
+     rows, calls `set_snapshot`, then asserts both
+     (a) `overlay.lines()` contains the `Situations` header + each
+         `<situation>: <emitted>` row formatted by
+         `format_insights_report_lines`, and
+     (b) the end-to-end rendered TestBackend buffer also surfaces the
+         situation labels — pinning the contract against future
+         layout / Paragraph refactors that could silently drop them.
+   - Closes the audit's "always 'none'" perception risk.
+
+4. **ARCHITECTURE.md cache-rule provider-gating paragraph**
+   (`docs/ai/ARCHITECTURE.md` "How surfaces should treat unavailable
+   signals"):
+   - Documents the per-signal exception added in v1.56.0: most missing
+     structural signals still omit silently (per the v1.50.0
+     provider-coverage matrix), but the CACHE chip is the documented
+     exception — provider-honest with `?` / `—` placeholders. Names
+     `src/ui/provider_honesty.rs::cache_metric_status` as the canonical
+     pattern for any future per-signal honesty addition.
 
 ## v1.55.0 Feature State
 
@@ -375,14 +445,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v1.55.0 validation at the release commit:
+Most recent v1.56.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1373 lib tests + 65 integration tests + supporting suites, all green.
+- `cargo test --all-targets` — 1394 lib tests + 65 integration tests + supporting suites, all green.
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.54.0 still apply when the v1.55.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.55.0 still apply when the v1.56.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 
