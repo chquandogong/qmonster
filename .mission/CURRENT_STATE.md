@@ -1,14 +1,34 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.51.0 ledger sync)_
+_Last updated: 2026-05-08 (Claude, v1.52.0 ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.51.0 — operator UX polish bundle: build.rs tag-cache fix + git modal origin/contributors + IME drag-bar indicator + bell + Settings tab grouping + anomaly default-on flip.
-- Version surfaces: npm package metadata `qmonster@1.51.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v1.51.0` to be created at the ledger sync commit.
-- Release publication state: v1.50.0 is published. `Release and Package Mirror` workflow run `25505209461` (2026-05-08, 7m26s, success) created GitHub Release `v1.50.0` with full asset set (binary tarball, npm tarball, SBOM, sbom-diff, checksums) and published `qmonster@1.50.0` to npm + GitHub Packages mirror. Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), v1.39.0 (`25311723861`), v1.40.0 (`25421376056`), v1.41.0 (`25424418078`), v1.42.0 (`25472444159`), v1.43.0 (`25474748447`), v1.44.0 (`25476534645`), v1.45.0 (`25478893257`), v1.46.0 (`25485133895`), v1.47.0 (`25490555532`), v1.48.0 (`25491535211`), v1.49.0 (`25498621086`) publications also remain live — `npm view qmonster versions` lists `1.37.0` through `1.50.0` with `dist-tags.latest = 1.50.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50}.0`.
-- Current phase: Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, the v1.38 UX bundle (F1/F2/F3/F4), the v1.39 polish + correctness round, the v1.40 operator-controlled overlay geometry round, the v1.41 a-overlay polish round, Phase H opt-in auto-snapshot, Phase 7 v1 anomaly observation surface, Phase 7 v2 promotion, Phase 7 v2 detectors, Phase 7 v3 (a+b), Phase 7 v3 (c), Phase 8 v1 token insights query layer, and Phase 8 v2 recommendation lifecycle ledger are complete. v1.50.0 publication baseline still applies; v1.51.0 ships as an operator UX polish bundle on top — no new phase is opened.
+- Title: Qmonster v1.52.0 — pane CLI version badge: parse provider-rendered version from tail when present, otherwise probe the descendant CLI process via `--version` and cache by (provider, pid, comm, argv, exe_path); render `CLI <version> [Official]` in the panel title between provider role and pane id.
+- Version surfaces: npm package metadata `qmonster@1.52.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v1.52.0` to be created at the ledger sync commit. v1.51.0 is the immediate prior tagged baseline.
+- Release publication state: v1.51.0 is published locally (tag pushed in this session, run id pending CI completion). v1.50.0 is published. `Release and Package Mirror` workflow run `25505209461` (2026-05-08, 7m26s, success) created GitHub Release `v1.50.0` with full asset set (binary tarball, npm tarball, SBOM, sbom-diff, checksums) and published `qmonster@1.50.0` to npm + GitHub Packages mirror. Sibling v1.37.0 (`25159598038`), v1.38.0 (`25305201597`), v1.39.0 (`25311723861`), v1.40.0 (`25421376056`), v1.41.0 (`25424418078`), v1.42.0 (`25472444159`), v1.43.0 (`25474748447`), v1.44.0 (`25476534645`), v1.45.0 (`25478893257`), v1.46.0 (`25485133895`), v1.47.0 (`25490555532`), v1.48.0 (`25491535211`), v1.49.0 (`25498621086`) publications also remain live — `npm view qmonster versions` lists `1.37.0` through `1.50.0` with `dist-tags.latest = 1.50.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50}.0`.
+- Current phase: Phases 1-5, Phase B, Phase C C1/C2/C3, Phase D D1/D2/D3, Phase E E1/E2, Phase F F-1 through F-9/F-9b, Phase G G-1/G-2, Phase 6 Team Mode, the v1.38 UX bundle (F1/F2/F3/F4), the v1.39 polish + correctness round, the v1.40 operator-controlled overlay geometry round, the v1.41 a-overlay polish round, Phase H opt-in auto-snapshot, Phase 7 v1 anomaly observation surface, Phase 7 v2 promotion, Phase 7 v2 detectors, Phase 7 v3 (a+b), Phase 7 v3 (c), Phase 8 v1 token insights query layer, and Phase 8 v2 recommendation lifecycle ledger are complete. v1.50.0 / v1.51.0 publication baselines still apply; v1.52.0 ships the pane CLI version badge feature on top — no new phase is opened.
+
+## v1.52.0 Feature State
+
+v1.52.0 adds one operator-visible feature on top of the v1.51.0 baseline: a per-pane CLI version badge in the panel title. It does not change the audit chain core, the SQLite schema, or any policy rule semantics.
+
+1. **Pane CLI version badge** (new `src/app/cli_version.rs`, `src/adapters/process_memory.rs` extension, `src/ui/panels.rs`, `src/app/event_loop.rs`, `src/domain/signal.rs`, `src/policy/rules/advisories.rs`):
+   - New module `src/app/cli_version.rs` (270 LoC) holds:
+     - `CliVersionCacheKey { provider, pid, comm, argv, exe_path }` — deduplicates probe shell-outs per stable descendant process identity.
+     - `CliVersionCache = HashMap<CliVersionCacheKey, Option<RuntimeFact>>` — `Some(None)` memoises a "probed and didn't return a version" outcome so we don't reshell every poll.
+     - `resolve_cli_version_fact(provider, tail, pane_pid, cache) -> Option<RuntimeFact>` — orchestrator. Returns `None` for `Provider::Qmonster` (we don't probe our own monitor pane). Tries `parse_cli_version_from_tail` first (cheapest, most reliable — provider already rendered the version on screen). Falls back to `read_descendant_cli_process(pane_pid)` + cached `probe_cli_version(desc)` shell-out.
+     - `parse_cli_version_from_tail(provider, tail)` — provider-aware regex extraction from the captured pane tail text.
+     - `probe_cli_version(desc)` — runs the resolved executable / script with `--version` (or provider-specific equivalent); parses the structured output into `RuntimeFact { kind: RuntimeFactKind::CliVersion, value, source_kind, ... }`.
+   - `src/adapters/process_memory.rs` gains `CliProcessDescriptor { pid, comm, exe_path, argv, … }` and `read_descendant_cli_process(pane_pid: u32)` (with a `_with_proc_root` test seam) — walks `/proc/<pid>/cmdline` + `/proc/<pid>/exe` resolution to find the deepest known CLI subprocess that owns the pane's tty. Returns `None` when the pane is dead or owned by something we don't recognize.
+   - `src/app/event_loop.rs` calls `resolve_cli_version_fact(provider, tail, pane_pid, &mut ctx.cli_version_cache)` per pane per poll and threads the resulting `RuntimeFact` into the report so the UI can render it.
+   - `src/ui/panels.rs` adds the badge rendering: `session:window · Provider role · CLI <version> [Official] · %pane_id`. The `[Official]` chip comes from `RuntimeFact.source_kind` (`SourceKind::ProviderOfficial` for tail-parsed; whatever the probe parser declares for the shell-out path). When the resolved version cannot be confirmed to belong to the current pane (descendant process gone, parser failed, etc.), the badge is silently omitted — the pre-v1.52.0 title format is preserved.
+   - `Context.cli_version_cache: CliVersionCache` (`src/app/bootstrap.rs`) is the only new persistent runtime state.
+   - `src/domain/signal.rs` adds the `RuntimeFactKind::CliVersion` variant alongside the existing runtime-fact taxonomy.
+   - 2 new integration tests in `tests/event_loop_integration.rs` exercise the per-pane badge end-to-end (parse-from-tail and probe-fallback paths). Lib tests gain ~7 new module tests under `cli_version::tests` and `process_memory::tests` for the descendant-process resolver and key-equality contract.
+   - **Qmonster monitor pane is intentionally exempt** from the badge so the layout doesn't carry recursive self-reference.
+   - **Heuristic boundary**: the badge only renders when we can confirm the resolved binary belongs to the current pane's process tree. Stale cache entries are scoped by descendant-pid + argv + exe_path, so a CLI restart inside the pane re-probes naturally on the next poll.
 
 ## v1.50.0 Feature State
 
@@ -237,14 +257,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v1.51.0 validation at the release commit:
+Most recent v1.52.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1317 lib tests + 63 integration tests + 12 store_insights + 18 + 6 + 8 + 3 = 1427 total, all green (lib up from 1294 at the v1.50.0 post-tag polish baseline as new git_info / ime_state / settings tab-strip / dashboard divider / config-default tests landed).
+- `cargo test --all-targets` — 1324 lib tests + 65 integration tests + 12 store_insights + 18 + 6 + 8 + 3 = 1436 total, all green (lib up from 1317 at the v1.51.0 baseline as new cli_version / process_memory tests landed; integration up from 63 with 2 new pane-CLI-version-badge end-to-end tests).
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.50.0 still apply when the v1.51.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.51.0 still apply when the v1.52.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 

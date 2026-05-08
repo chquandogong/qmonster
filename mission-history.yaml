@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.51.0 - Operator UX polish: build.rs tag-cache fix + git modal origin/contributors + IME drag-bar indicator + Settings tab grouping + anomaly default-on flip"
+  mission_title: "Qmonster v1.52.0 - Pane CLI version badge: parse from tail or probe descendant CLI process via `--version`, cache by (provider, pid, comm, argv, exe_path), render `CLI <version> [Official]` in panel title"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 194
-  latest_version: "1.51.0"
+  total_revisions: 195
+  latest_version: "1.52.0"
 
 timeline:
   - change_id: "initial"
@@ -18253,6 +18253,101 @@ timeline:
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
       - "Per audit doc Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md remaining recommended slices not folded into v1.51.0: provider-honesty chips for cache_hit_ratio in non-Claude pane cards (UI slice in panels.rs), Insights `Situations` field cosmetic verification (fixture-driven render snapshot test), cache rule provider-gating one-paragraph note in ARCHITECTURE.md, doc-promotion pass for stable claims into docs/ai/."
+
+  - version: "1.52.0"
+    change_sequence: 195
+    date: "2026-05-08"
+    author: "CHENGHAO QUAN + Claude Code (cli_version feature landed via the apply-Claude-edit pipeline). v1.52.0 release ledger sync by Claude Code (Opus 4.7 1M)."
+    summary: >
+      v1.52.0 ships one operator-visible feature on top of the v1.51.0
+      baseline: a per-pane CLI version badge in the panel title. New module
+      src/app/cli_version.rs (270 LoC) holds the orchestrator
+      resolve_cli_version_fact(provider, tail, pane_pid, &mut cache) which
+      first tries parse_cli_version_from_tail (cheapest, most reliable —
+      provider already rendered the version on screen) and falls back to
+      probe_cli_version on the descendant CLI process resolved via
+      read_descendant_cli_process(pane_pid). Cache key is
+      CliVersionCacheKey { provider, pid, comm, argv, exe_path } so a
+      stable descendant process identity dedups the shell-out across polls;
+      Some(None) memoises a probed-but-no-version outcome so persistent
+      failures don't reshell. Provider::Qmonster is exempt — the monitor
+      pane is not self-probed. src/adapters/process_memory.rs gains
+      CliProcessDescriptor + read_descendant_cli_process(pane_pid: u32)
+      (with a _with_proc_root test seam) walking /proc/<pid>/cmdline +
+      /proc/<pid>/exe to find the deepest known CLI subprocess that owns
+      the pane's tty. src/app/event_loop.rs threads the resolved
+      RuntimeFact into the per-pane report. src/ui/panels.rs renders
+      `session:window · Provider role · CLI <version> [Official] · %pane_id`
+      between the existing role and pane-id segments; the [Official] chip
+      reflects RuntimeFact.source_kind (ProviderOfficial when parsed from
+      tail). When the resolved version cannot be confirmed to belong to the
+      current pane (descendant gone, parser failed, etc.), the badge is
+      silently omitted — the pre-v1.52.0 title format is preserved.
+      Context.cli_version_cache: CliVersionCache is the only new persistent
+      runtime state. src/domain/signal.rs adds RuntimeFactKind::CliVersion.
+      src/policy/rules/advisories.rs picks up a 3-line tweak to surface the
+      CLI version field where rule references already touched RuntimeFact.
+      docs/ai/UI_MANUAL.md §3 documents the badge format + provider-aware
+      precedence + monitor-pane exemption. 1317 → 1324 lib tests (+7 in
+      cli_version + process_memory); 63 → 65 integration tests (+2 pane-
+      CLI-version-badge end-to-end). No audit chain core / SQLite schema /
+      SignalSet schema changes beyond the new RuntimeFactKind variant.
+    intent_ko: >
+      v1.52.0 는 v1.51.0 위에 운영자가 한눈에 알아볼 수 있는 한 가지 기능을
+      추가한다. 각 pane 패널 제목에 해당 pane이 실제로 실행 중인 CLI 의
+      `--version` 결과를 [Official] 배지와 함께 표시. 우선순위: provider 가
+      자체 화면에 노출한 버전을 tail 에서 파싱; 없으면 /proc 에서 pane 의
+      descendant CLI pid/exe/argv 를 찾아 그 정확한 실행 파일에 --version 을
+      실행해 얻은 값만 표시. (provider, pid, comm, argv, exe_path) 키로 캐싱
+      하여 매 poll 마다 shell-out 하지 않음. Qmonster monitor pane 은 자기
+      자신을 probe 하지 않도록 명시적으로 제외. 현재 pane 의 실행 버전이라고
+      확정할 수 없으면 배지 자체를 생략 (pre-v1.52.0 타이틀 포맷 유지).
+      신규 모듈 src/app/cli_version.rs + src/adapters/process_memory.rs
+      확장 + src/ui/panels.rs 렌더링 추가 + Context.cli_version_cache +
+      RuntimeFactKind::CliVersion. UI_MANUAL §3 갱신. lib 1317 → 1324, 통합
+      63 → 65, fmt + clippy 그린.
+    triggered_by: "Operator request: 'show each pane's actual CLI version, not just the role label, so I can spot version drift between panes at a glance'. Provider-tail-first/probe-fallback strategy chosen so the cheap path stays cheap and the expensive shell-out is amortised by the (pid, argv, exe_path) cache."
+    changes:
+      added:
+        - "src/app/cli_version.rs (new, 270 LoC): CliVersionCacheKey { provider, pid, comm, argv, exe_path }; CliVersionCache = HashMap<CliVersionCacheKey, Option<RuntimeFact>>; resolve_cli_version_fact(provider, tail, pane_pid, &mut cache) -> Option<RuntimeFact> (orchestrator: returns None for Provider::Qmonster, tries parse_cli_version_from_tail first, falls back to probe_cli_version via read_descendant_cli_process); parse_cli_version_from_tail(provider, tail) (provider-aware regex); probe_cli_version(desc) (shell-out with --version)."
+        - "src/adapters/process_memory.rs: CliProcessDescriptor { pid, comm, exe_path, argv, … }; read_descendant_cli_process(pane_pid: u32) -> Option<CliProcessDescriptor> + read_descendant_cli_process_with_proc_root(pane_pid, proc_root) test seam — walks /proc/<pid>/cmdline + /proc/<pid>/exe to find the deepest known CLI subprocess that owns the pane's tty."
+        - "Context.cli_version_cache: CliVersionCache (src/app/bootstrap.rs)."
+        - "src/domain/signal.rs: RuntimeFactKind::CliVersion variant for the new RuntimeFact populated by resolve_cli_version_fact."
+        - "Pane title CLI version badge in src/ui/panels.rs: `session:window · Provider role · CLI <version> [Official] · %pane_id`. [Official] chip reflects RuntimeFact.source_kind. Badge silently omitted when the resolved version cannot be confirmed to belong to the current pane."
+      changed:
+        - "src/app/event_loop.rs: per-pane resolve_cli_version_fact(provider, tail, pane_pid, &mut ctx.cli_version_cache) call threading the resulting RuntimeFact into the per-pane report (8 lines)."
+        - "src/policy/rules/advisories.rs: 3-line tweak referencing the new RuntimeFact path where rule references already touched runtime facts."
+        - "docs/ai/UI_MANUAL.md §3: pane title format documented with the new CLI version badge, the provider-tail-first / probe-fallback precedence, and the explicit Qmonster monitor pane exemption."
+      removed: []
+      tests_added:
+        - "src/app/cli_version.rs internal tests (~5 unit tests covering CliVersionCacheKey equality, the orchestrator's tail-first / probe-fallback branching, the Provider::Qmonster exemption, and Some(None) memoisation of probed-but-no-version outcomes)."
+        - "src/adapters/process_memory.rs ~2 unit tests covering read_descendant_cli_process_with_proc_root over fixture /proc trees."
+        - "tests/event_loop_integration.rs: 2 new end-to-end tests for the pane CLI version badge — one exercises the parse-from-tail path, the other exercises the probe-via-/proc fallback path."
+      docs:
+        - "package.json: 1.51.0 → 1.52.0."
+        - "mission-history.yaml: v1.52.0 entry appended (this entry); meta updated."
+        - ".mission/CURRENT_STATE.md: v1.52.0 Feature State section + validation baseline + mission line refreshed."
+        - "docs/ai/VALIDATION.md: new v1.52.0 release row."
+    observable_effects:
+      - "Each pane card title now shows a `CLI <version> [Official]` chip between the role label and the pane id when the version can be confirmed for that specific pane. Example: `qmonster:0 · Codex review · CLI 0.122.0 [Official] · %57`."
+      - "When the version cannot be confirmed (descendant gone, parser failed, monitor pane), the badge is silently omitted — the pre-v1.52.0 title format is preserved. No empty `CLI ?` placeholder."
+      - "Per-pane probe shell-outs are amortised via cache keyed on (provider, pid, comm, argv, exe_path) so the per-tick polling cost stays steady; a CLI restart inside the pane re-probes naturally on the next poll because the descendant pid changes."
+      - "Qmonster's own monitor pane never gets a CLI badge — the layout doesn't carry recursive self-reference."
+    impact_scope:
+      runtime: "First per-poll fork+exec path in Qmonster: probe_cli_version may invoke the resolved CLI with --version. Amortised by the (pid, argv, exe_path) cache; Some(None) memoises persistent failures so transient-only failures retry on next poll while persistent failures don't spam shell-out. Provider::Qmonster exempt; descendant-pid resolution from /proc gracefully returns None on dead/unknown panes."
+      tests: "1317 → 1324 lib tests (+7 in cli_version + process_memory); 63 → 65 integration tests (+2 pane-CLI-version-badge end-to-end)."
+      ledger: "1 new timeline entry (sequence 195); meta total_revisions 194 → 195, latest_version 1.51.0 → 1.52.0."
+      npm: "package.json version 1.52.0; CI publication of v1.52.0 follows the same workflow as v1.37.0 through v1.51.0."
+    breaking: false
+    risk: "low-to-medium — new fork+exec call surface but gated behind a stable-key cache, an explicit Provider::Qmonster exemption, and a 'silently omit when unconfirmed' rendering contract that preserves the pre-v1.52.0 title format on every failure mode. Persistent probe failures memoise via Some(None) so they don't re-shell. The descendant /proc walk is read-only and tolerant of dead/missing entries."
+    related_commits:
+      - "PENDING — v1.52.0 release ledger sync commit (this bundle)."
+      - "800aaa7 chore(ai): apply Claude edit (cli_version feature implementation)"
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+      - "Per audit doc Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md remaining recommended slices: provider-honesty chips for cache_hit_ratio in non-Claude pane cards (UI slice in panels.rs), Insights `Situations` field cosmetic verification, cache rule provider-gating note in ARCHITECTURE.md, doc-promotion pass for stable claims into docs/ai/."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
