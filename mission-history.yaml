@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.57.0 - cross-cutting consistency sweep: README/VERSION/mission.yaml/PROJECT_BRIEF version surfaces aligned; UI_MANUAL gains Q hotkey + fx overlay + IME drag-bar prose; fx dismiss hint corrected; footer key cluster advertises Q fx; REVIEW_GUIDE matrix reference refreshed"
+  mission_title: "Qmonster v1.58.0 - five-axis polish bundle: hover_help dashboard expansion + n-overlay row filter + provider-honesty cost chip + Settings Parameters filter + theme high_contrast variant"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 200
-  latest_version: "1.57.0"
+  total_revisions: 201
+  latest_version: "1.58.0"
 
 timeline:
   - change_id: "initial"
@@ -18844,6 +18844,95 @@ timeline:
       - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
+  - version: "1.58.0"
+    change_sequence: 201
+    date: "2026-05-08"
+    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '전부 해줘' — all five proposed polish slices in one bundle."
+    summary: >
+      v1.58.0 ships five operator-facing polish slices in one bundle.
+      (1) hover_help dashboard expansion: three new HelpTopic variants
+      (DashboardDivider / DashboardFooter / DashboardVersionBadge) +
+      ko/en help bodies + dispatch positions in dashboard_hover_topic so
+      the v1.51 IME indicator and v1.53 fx Q hotkey are discoverable
+      from hover help. (2) n-overlay row filter: AnomalyFilter enum
+      (All / PromotedOnly / HighOnly) + `f` key cycles + filter chip
+      in title + filter-aware iter in render. (3) Provider-honesty cost
+      chip: CostMetricStatus enum mirrors CacheMetricStatus pattern;
+      Pending state surfaces `cost ? [pricing]` so operators see the
+      missing pricing.toml row instead of a silent omission. (4)
+      Settings Parameters filter: `/` enters filter input mode; typed
+      chars narrow visible rows by case-insensitive substring against
+      parameter_label; section headers without matches are suppressed;
+      empty-result hint nudges Backspace/Esc; Enter exits input while
+      keeping the filter, Esc clears. (5) Theme high_contrast variant:
+      ThemeMode { Dark / HighContrast } enum + process-wide AtomicU8 +
+      severity_color / severity_badge_style / label_style branch on
+      mode. UxConfig.theme parameter; tui_loop applies at startup;
+      cycle_parameter_enum flips live. Constants stay unchanged so
+      existing call sites compile without rewrite — only function-
+      based theme accessors are mode-aware.
+      Lib tests 1394 → 1397 (+3 from anomaly filter contract tests).
+      65 integration tests preserved. fmt + clippy clean.
+    intent_ko: >
+      v1.58.0 는 5축 운영자 폴리시 묶음. (1) hover_help 가 dashboard
+      divider / footer / version 배지까지 커버 — v1.51 IME 인디케이터와
+      v1.53 fx Q 핫키가 hover help 로 발견 가능. (2) n 오버레이에 `f`
+      키로 행 필터 (All → Promoted → High → All) 사이클. (3) cost 칩
+      provider-honesty: pricing.toml 누락 시 `cost ? [pricing]` 표시
+      해서 silent None 인식 차단. (4) Settings Parameters 탭에 `/`
+      필터/검색 모드 — 70+ 파라미터 중 라벨 부분 일치로 좁힘. 매치
+      없으면 안내 hint, 섹션 헤더는 매치 있는 것만. (5) 테마
+      high_contrast variant — ThemeMode 전역 AtomicU8 + 핵심 함수
+      severity_color / severity_badge_style / label_style 가 모드별
+      분기. 상수는 그대로 두어 callsite 변경 없음. 1394 → 1397 lib
+      테스트.
+    triggered_by: "Operator: '전부 해줘' on the proposed 5-slice polish menu (hover_help expansion / n-overlay filter / cost honesty / Settings filter / theme variant)."
+    changes:
+      added:
+        - "src/ui/help_glossary.rs: HelpTopic::DashboardDivider, DashboardFooter, DashboardVersionBadge variants + ko/en help bodies + every_topic_has_korean_and_english_help test row updates."
+        - "src/app/hover_help.rs::dashboard_hover_topic: dispatches the three new dashboard chrome rects (divider, footer minus version badge, version badge)."
+        - "src/ui/anomaly_overlay.rs: AnomalyFilter enum (All / PromotedOnly / HighOnly) + cycle / label / matches helpers + AnomalyOverlay.filter field + cycle_filter() + filtered_count(); render path filters rows + advertises filter in title + hint."
+        - "src/app/anomaly_overlay.rs::handle_anomaly_overlay_key: `f` cycles the row filter (resets scroll). 3 new tests pin the contract."
+        - "src/ui/provider_honesty.rs::CostMetricStatus enum + cost_metric_status(s, provider) helper. Mirrors CacheMetricStatus pattern."
+        - "src/ui/panels.rs::cost_chip_text + COST badge branching on cost_metric_status. Pending → ` COST ? [pricing] ` placeholder."
+        - "src/ui/settings.rs SettingsOverlay.parameter_filter: Option<String> + start/cancel/confirm/type_char/backspace methods. build_parameter_body_lines filters fields when filter is Some, suppresses empty section headers, surfaces match count + empty-result hint."
+        - "src/app/settings_overlay.rs: filter input pipeline branch — Esc cancels filter, Enter confirms+exits input, Backspace edits, printable chars append. `/` (when not editing, Parameters tab) enters filter mode."
+        - "src/ui/theme.rs::ThemeMode enum + set_theme_mode/theme_mode (AtomicU8); severity_color / severity_badge_style / label_style branch on mode. HighContrast brightens severity palette + adds BOLD on dim-text styles."
+        - "src/app/config.rs UxConfig.theme: ThemeMode + serde defaults + cycle/as_str/From<ThemeMode> for ui::theme::ThemeMode."
+        - "src/ui/settings.rs ParameterField::UxTheme + full pipeline coverage (label/toml_path/display/cycle/merge/help/value-help)."
+        - "src/app/tui_loop.rs: theme::set_theme_mode(ctx.config.ux.theme.into()) at startup so the first frame uses the configured palette."
+      changed:
+        - "Settings ParameterField list extended; cycle_parameter_enum applies theme cycle live via theme::set_theme_mode."
+      removed: []
+      tests_added:
+        - "anomaly_overlay::tests: f_cycles_anomaly_row_filter_and_resets_scroll, f_does_not_cycle_filter_when_overlay_is_closed, anomaly_filter_matches_per_variant."
+      docs:
+        - "package.json: 1.57.0 → 1.58.0."
+        - "README.md / VERSION.md: 1.57.0 → 1.58.0."
+        - ".mission/CURRENT_STATE.md: v1.58.0 Feature State + validation baseline + mission line refreshed."
+        - "mission-history.yaml: v1.58.0 entry appended; meta updated to total_revisions 201 / latest_version 1.58.0."
+        - "docs/ai/VALIDATION.md: new v1.58.0 release row."
+    observable_effects:
+      - "Hovering the alerts/panes divider, footer, or bottom-right version badge surfaces a floating help tooltip explaining what's on those rows."
+      - "Pressing `f` while the n overlay is open cycles the row filter (All → Promoted → High → All); the title chip and hint reflect the active filter."
+      - "Gemini panes with token activity but no curated pricing.toml row now show ` COST ? [pricing] ` instead of an invisible chip — operators see the missing config nudge."
+      - "Pressing `/` on the Settings Parameters tab opens a filter input row; typing narrows the visible parameters to those whose label matches the substring; section headers without matches are hidden; Backspace edits, Enter exits input, Esc clears."
+      - 'Setting `[ux] theme = "high_contrast"` (or cycling via Settings → Parameters → ux theme) brightens severity colours and adds BOLD to dim-text labels for legibility on bright-profile terminals.'
+    impact_scope:
+      runtime: "Pure additions + one new process-wide AtomicU8 for theme mode (atomic Relaxed loads/stores; cost-of-use is one branch per theme accessor). No new threads, no new IO. Settings filter mode is purely render-side. Anomaly filter is iterator-side. Cost honesty re-uses provider_honesty module pattern."
+      tests: "1394 → 1397 lib tests (+3). 65 integration tests preserved."
+      ledger: "1 new timeline entry (sequence 201); meta total_revisions 200 → 201, latest_version 1.57.0 → 1.58.0."
+      npm: "package.json version 1.58.0; CI publication of v1.58.0 follows the same workflow as v1.37.0 through v1.57.0."
+    breaking: false
+    risk: "low — five slices are additive. Hover help additions just extend existing dispatch. n-overlay filter defaults to All so existing operators see no behaviour change. Cost honesty Pending state surfaces a placeholder where the chip used to be invisible; not a regression. Settings filter is opt-in via `/`. Theme mode default is Dark — existing operators see no visual change unless they flip `[ux] theme = high_contrast`. Constants untouched so 150+ theme:: callsites compile clean."
+    related_commits:
+      - "PENDING — v1.58.0 release ledger sync commit (this bundle)."
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 / v1.58.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+      - "Theme: a true `light` variant that re-derives all 150+ theme:: constant call sites was deferred from this bundle; HighContrast covers the bright-terminal case."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

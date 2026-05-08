@@ -61,6 +61,54 @@ pub(crate) fn format_ratio_pct(ratio: f64) -> String {
     format!("{:.1}%", ratio * 100.0)
 }
 
+/// v1.58.0: provider-honesty for the COST chip.
+///
+/// Mirrors `CacheMetricStatus` but specialised for `cost_usd`. Cost is
+/// derived as `(input_tokens × in_rate + output_tokens × out_rate) /
+/// 1M` whenever `pricing.lookup(provider, model)` returns Some and
+/// both token counts are present (see `adapters/codex.rs:118-133`,
+/// `adapters/gemini.rs` cost activation, etc). When `cost_usd` is
+/// `None` the previous UI silently dropped the chip — operators on
+/// Gemini panes especially couldn't tell whether their pane was just
+/// quiet or whether they had forgotten to curate `pricing.toml` for
+/// the model the pane was running.
+///
+/// Rules:
+/// - Always Value when `cost_usd` is `Some`.
+/// - Otherwise:
+///   - Qmonster / Unknown → `Hidden` (monitor/ambiguous panes have
+///     no meaningful cost).
+///   - Any other provider with at least some token activity (input
+///     or output tokens) → `Pending` — the pricing table is the
+///     missing input; encourage the operator to add it.
+///   - No token activity yet → `Hidden` — the pane is fresh; showing
+///     a cost placeholder would be noise.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum CostMetricStatus {
+    Value { usd: f64, source_kind: SourceKind },
+    Pending,
+    Hidden,
+}
+
+pub(crate) fn cost_metric_status(s: &SignalSet, provider: Provider) -> CostMetricStatus {
+    if let Some(metric) = s.cost_usd.as_ref() {
+        return CostMetricStatus::Value {
+            usd: metric.value,
+            source_kind: metric.source_kind,
+        };
+    }
+    match provider {
+        Provider::Qmonster | Provider::Unknown => CostMetricStatus::Hidden,
+        Provider::Claude | Provider::Codex | Provider::Gemini => {
+            if s.input_tokens.is_some() || s.output_tokens.is_some() {
+                CostMetricStatus::Pending
+            } else {
+                CostMetricStatus::Hidden
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

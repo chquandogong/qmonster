@@ -19,6 +19,14 @@ pub enum HelpTopic {
     PaneRuntime,
     PaneRecommendation,
     PaneProfile,
+    /// v1.58.0: Alerts/Panes split divider — drag-to-resize +
+    /// HANGUL/IME indicator banner explanation.
+    DashboardDivider,
+    /// v1.58.0: bottom-row footer key cluster — pending action chips
+    /// + the ` · `-separated keybinding reference.
+    DashboardFooter,
+    /// v1.58.0: bottom-right version badge — click to open Git overlay.
+    DashboardVersionBadge,
 }
 
 pub fn language_label(language: HelpLanguage) -> &'static str {
@@ -112,6 +120,21 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
             "profile: provider 설정 프리셋 제안입니다.",
             "lever는 바뀔 설정값, citation은 근거, side_effects는 적용 시 트레이드오프입니다.",
         ],
+        HelpTopic::DashboardDivider => &[
+            "Alerts/Panes 분할 바: 드래그해 두 영역의 높이 비율을 조절합니다.",
+            "키보드: `[`/`]` Alerts 줄이기/키우기, `/` 비율 순환, `=` 기본값 복원.",
+            "비ASCII 알파벳 입력 시(한글/카타카나 등) `⚠ HANGUL/IME ACTIVE` 배너로 바뀌고 첫 활성화 시 BEL이 한 번 울립니다 (v1.51.0+, 3초 TTL).",
+        ],
+        HelpTopic::DashboardFooter => &[
+            "Footer: 현재 focus, Alerts/Panes split 비율, 보류 중인 액션 카운터(★p / ★y), 그리고 주요 키바인딩 클러스터를 한 줄에 모읍니다.",
+            "★p는 수락 가능한 prompt-send 제안 수, ★y는 복사 가능한 suggested_command 알림 수입니다.",
+            "키 클러스터는 ` · `로 구분되며 모달이 열리면 풋터의 focus 표시가 `overlay`로 바뀝니다.",
+        ],
+        HelpTopic::DashboardVersionBadge => &[
+            "버전 배지: 우측 하단에 `git describe --tags --always --dirty`로 박힌 빌드 버전이 표시됩니다.",
+            "클릭하면 Git overlay가 열려 origin URL, 브랜치/HEAD, 변경 내역, Recent Commits, Contributors를 한 번에 볼 수 있습니다.",
+            "v1.51.0부터 build.rs가 `.git/refs/tags`도 추적하므로 새 태그 부착 후 재빌드 시 자동으로 갱신됩니다.",
+        ],
     }
 }
 
@@ -192,6 +215,21 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
             "profile: provider configuration preset proposal.",
             "levers are settings to change, citations explain why, side_effects show tradeoffs.",
         ],
+        HelpTopic::DashboardDivider => &[
+            "Alerts/Panes split divider: drag to resize the two panels.",
+            "Keyboard: `[`/`]` shrink/grow Alerts, `/` cycle ratio, `=` reset.",
+            "Typing a non-ASCII letter (Hangul/CJK/...) flips the divider into a `⚠ HANGUL/IME ACTIVE` banner and fires the terminal BEL once on activation (v1.51.0+, 3s TTL).",
+        ],
+        HelpTopic::DashboardFooter => &[
+            "Footer: current focus, Alerts/Panes split ratio, pending-action counters (★p / ★y), and the main keybinding cluster.",
+            "★p counts accept-able prompt-send proposals; ★y counts alerts with a copyable suggested_command.",
+            "Keys are ` · `-separated; the focus marker flips to `overlay` while a modal owns the keyboard.",
+        ],
+        HelpTopic::DashboardVersionBadge => &[
+            "Version badge: bottom-right tag/commit string from `git describe --tags --always --dirty`, embedded by build.rs.",
+            "Click it to open the Git overlay — origin URL, branch/HEAD, working-tree changes, Recent Commits, Contributors.",
+            "v1.51.0+ tracks `.git/refs/tags` so a fresh `git tag` triggers an automatic rebuild on next `cargo build`.",
+        ],
     }
 }
 
@@ -219,6 +257,9 @@ mod tests {
             HelpTopic::PaneRuntime,
             HelpTopic::PaneRecommendation,
             HelpTopic::PaneProfile,
+            HelpTopic::DashboardDivider,
+            HelpTopic::DashboardFooter,
+            HelpTopic::DashboardVersionBadge,
         ];
         for topic in topics {
             assert!(!help_lines(topic, HelpLanguage::Ko).is_empty());

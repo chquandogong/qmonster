@@ -517,6 +517,10 @@ pub struct UxConfig {
     pub hover_help: bool,
     pub hover_help_trigger: HoverHelpTrigger,
     pub help_language: HelpLanguage,
+    /// v1.58.0: theme variant. `dark` is the existing low-saturation
+    /// palette; `high_contrast` brightens severity colors and adds
+    /// BOLD to dim-text styles for bright-profile terminals.
+    pub theme: ThemeMode,
 }
 
 impl Default for UxConfig {
@@ -526,6 +530,39 @@ impl Default for UxConfig {
             hover_help: true,
             hover_help_trigger: HoverHelpTrigger::Label,
             help_language: HelpLanguage::Ko,
+            theme: ThemeMode::Dark,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeMode {
+    Dark,
+    HighContrast,
+}
+
+impl ThemeMode {
+    pub fn cycle(self) -> Self {
+        match self {
+            Self::Dark => Self::HighContrast,
+            Self::HighContrast => Self::Dark,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Dark => "dark",
+            Self::HighContrast => "high_contrast",
+        }
+    }
+}
+
+impl From<ThemeMode> for crate::ui::theme::ThemeMode {
+    fn from(mode: ThemeMode) -> Self {
+        match mode {
+            ThemeMode::Dark => crate::ui::theme::ThemeMode::Dark,
+            ThemeMode::HighContrast => crate::ui::theme::ThemeMode::HighContrast,
         }
     }
 }

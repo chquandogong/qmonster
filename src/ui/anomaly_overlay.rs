@@ -27,6 +27,51 @@ pub struct AnomalyOverlay {
     geometry: ModalGeometry,
     view: AnomalyOverlayView,
     history_cache: Vec<crate::domain::anomaly::AnomalyEvent>,
+    filter: AnomalyFilter,
+}
+
+/// v1.58.0: cycling filter for the n-overlay rows. `All` is the
+/// no-filter starting point; `PromotedOnly` hides Concern/Medium-
+/// confidence rows that didn't promote to a Recommendation; `HighOnly`
+/// shows only High-confidence rows. Cycle order: All → Promoted →
+/// High → All. Each cycle resets `scroll` to 0 because the displayed
+/// row count has changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnomalyFilter {
+    All,
+    PromotedOnly,
+    HighOnly,
+}
+
+impl AnomalyFilter {
+    pub fn cycle(self) -> Self {
+        match self {
+            Self::All => Self::PromotedOnly,
+            Self::PromotedOnly => Self::HighOnly,
+            Self::HighOnly => Self::All,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::PromotedOnly => "promoted",
+            Self::HighOnly => "high-conf",
+        }
+    }
+
+    pub fn matches(self, e: &crate::domain::anomaly::AnomalyEvent) -> bool {
+        match self {
+            Self::All => true,
+            Self::PromotedOnly => e.promoted,
+            Self::HighOnly => {
+                matches!(
+                    e.confidence,
+                    crate::domain::anomaly::AnomalyConfidence::High
+                )
+            }
+        }
+    }
 }
 
 impl Default for AnomalyOverlay {
@@ -43,6 +88,7 @@ impl Default for AnomalyOverlay {
             ),
             view: AnomalyOverlayView::Ring,
             history_cache: Vec::new(),
+            filter: AnomalyFilter::All,
         }
     }
 }
@@ -178,6 +224,30 @@ impl AnomalyOverlay {
         &self.history_cache
     }
 
+    pub fn filter(&self) -> AnomalyFilter {
+        self.filter
+    }
+
+    /// v1.58.0: cycle the row filter (All → Promoted → High → All).
+    /// Resets scroll because the visible row count just changed.
+    pub fn cycle_filter(&mut self) {
+        self.filter = self.filter.cycle();
+        self.scroll = 0;
+    }
+
+    /// v1.58.0: count rows surviving the current filter, used by the
+    /// scroll-bound calculator.
+    fn filtered_count(&self, ring: &crate::app::anomaly_events_ring::AnomalyEventsRing) -> usize {
+        match self.view {
+            AnomalyOverlayView::Ring => ring.iter().filter(|e| self.filter.matches(e)).count(),
+            AnomalyOverlayView::History => self
+                .history_cache
+                .iter()
+                .filter(|e| self.filter.matches(e))
+                .count(),
+        }
+    }
+
     pub fn render(
         &self,
         frame: &mut Frame,
@@ -193,20 +263,24 @@ impl AnomalyOverlay {
         let body_area = layout[0];
         let hint_area = layout[1];
 
+        let filter_label = self.filter.label();
+        let filtered_count = self.filtered_count(ring);
         let (title_base, total_count) = match self.view {
             AnomalyOverlayView::Ring => (
                 format!(
-                    " ANOMALY EVENTS (last {} \u{2014} newest first) [h: history] [n to close] ",
-                    ring.len()
+                    " ANOMALY EVENTS (last {} \u{2014} newest first, filter: {}) [h: history] [f: cycle filter] [n to close] ",
+                    ring.len(),
+                    filter_label,
                 ),
-                ring.len(),
+                filtered_count,
             ),
             AnomalyOverlayView::History => (
                 format!(
-                    " ANOMALY EVENTS [history view, last {}] [h: ring] [n to close] ",
-                    self.history_cache.len()
+                    " ANOMALY EVENTS [history view, last {}, filter: {}] [h: ring] [f: cycle filter] [n to close] ",
+                    self.history_cache.len(),
+                    filter_label,
                 ),
-                self.history_cache.len(),
+                filtered_count,
             ),
         };
         let visible_rows_for_scroll = body_area.height.saturating_sub(2).saturating_sub(1).max(1);
@@ -223,7 +297,7 @@ impl AnomalyOverlay {
             AnomalyOverlayView::History => "h ring",
         };
         let hint = format!(
-            "[ shrink · ] grow · = reset · {view_toggle} · ↑/↓ scroll · n close · Esc/q close · click [x] close · {}",
+            "[ shrink · ] grow · = reset · {view_toggle} · f filter · ↑/↓ scroll · n close · Esc/q close · click [x] close · {}",
             scroll_hint::scroll_status_label(scroll, max_scroll)
         );
 
@@ -270,10 +344,12 @@ impl AnomalyOverlay {
         );
 
         let visible_rows = inner.height.saturating_sub(1) as usize;
+        let filter = self.filter;
         let items: Vec<ListItem> = match self.view {
             AnomalyOverlayView::Ring => ring
                 .iter()
                 .rev()
+                .filter(|e| filter.matches(e))
                 .skip(scroll as usize)
                 .take(visible_rows)
                 .map(|e| ListItem::new(format_event_row(e, inner.width as usize)))
@@ -281,6 +357,7 @@ impl AnomalyOverlay {
             AnomalyOverlayView::History => self
                 .history_cache
                 .iter()
+                .filter(|e| filter.matches(e))
                 .skip(scroll as usize)
                 .take(visible_rows)
                 .map(|e| ListItem::new(format_event_row(e, inner.width as usize)))

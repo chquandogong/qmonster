@@ -62,6 +62,10 @@ where
 {
     let mut terminal = enter_terminal_session()?;
 
+    // v1.58.0: apply the configured theme variant before any render so
+    // theme:: accessors return the right palette from the first frame.
+    crate::ui::theme::set_theme_mode(ctx.config.ux.theme.into());
+
     let poll = ctx.config.tmux.poll_interval();
     let startup_now = Instant::now();
     let mut dashboard = DashboardRuntimeState::new(startup_notices, startup_now);

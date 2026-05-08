@@ -846,12 +846,12 @@ pub fn metric_row(s: &SignalSet, provider: Provider) -> String {
             source_kind_label(m.source_kind)
         ));
     }
-    if let Some(m) = s.cost_usd.as_ref() {
-        parts.push(format!(
-            "cost ${:.2} [{}]",
-            m.value,
-            source_kind_label(m.source_kind)
-        ));
+    // v1.58.0 provider-honesty: cost chip surfaces a `cost ? [pricing]`
+    // placeholder when the pane has token activity but no cost — that's
+    // a missing pricing.toml row the operator can curate, not a silent
+    // None.
+    if let Some(chip) = cost_chip_text(s, provider) {
+        parts.push(chip);
     }
     if let Some(m) = s.model_name.as_ref() {
         parts.push(format!(
@@ -1236,17 +1236,28 @@ fn primary_metric_row(signals: &SignalSet, provider: Provider) -> Option<Line<'s
             theme::label_style(),
         );
     }
-    if let Some(metric) = signals.cost_usd.as_ref() {
-        push_badge(
-            &mut spans,
-            &mut has_any,
-            format!(
-                " COST ${:.2} [{}] ",
-                metric.value,
-                source_kind_label(metric.source_kind)
-            ),
-            theme::severity_badge_style(cost_metric_severity(metric.value)),
-        );
+    // v1.58.0 provider-honesty: COST badge mirrors the cache chip's
+    // four-state behaviour. Value branch keeps the existing
+    // severity-coloured badge; Pending shows ` COST ? [pricing] ` so
+    // operators see the missing pricing.toml row instead of nothing.
+    match crate::ui::provider_honesty::cost_metric_status(signals, provider) {
+        crate::ui::provider_honesty::CostMetricStatus::Value { usd, source_kind } => {
+            push_badge(
+                &mut spans,
+                &mut has_any,
+                format!(" COST ${usd:.2} [{}] ", source_kind_label(source_kind)),
+                theme::severity_badge_style(cost_metric_severity(usd)),
+            );
+        }
+        crate::ui::provider_honesty::CostMetricStatus::Pending => {
+            push_badge(
+                &mut spans,
+                &mut has_any,
+                " COST ? [pricing] ".to_string(),
+                theme::label_style(),
+            );
+        }
+        crate::ui::provider_honesty::CostMetricStatus::Hidden => {}
     }
     if let Some(metric) = signals.model_name.as_ref() {
         push_badge(
@@ -1412,6 +1423,25 @@ fn cache_badge_text(s: &SignalSet, provider: Provider) -> Option<String> {
         CacheMetricStatus::Pending => Some(" CACHE ? ".to_string()),
         CacheMetricStatus::Unsupported => Some(" CACHE \u{2014} ".to_string()),
         CacheMetricStatus::Hidden => None,
+    }
+}
+
+/// v1.58.0 provider-honesty: text variant of the COST chip for the
+/// `--once` text report and `metric_row`. Mirrors the badge variant in
+/// `primary_metric_row`. Returns:
+/// - `cost $X.XX [Source]` when known
+/// - `cost ? [pricing]` while waiting on a pricing.toml row
+/// - `None` for Qmonster / Unknown / pre-token-activity panes
+pub(crate) fn cost_chip_text(s: &SignalSet, provider: Provider) -> Option<String> {
+    match crate::ui::provider_honesty::cost_metric_status(s, provider) {
+        crate::ui::provider_honesty::CostMetricStatus::Value { usd, source_kind } => Some(format!(
+            "cost ${usd:.2} [{}]",
+            source_kind_label(source_kind)
+        )),
+        crate::ui::provider_honesty::CostMetricStatus::Pending => {
+            Some("cost ? [pricing]".to_string())
+        }
+        crate::ui::provider_honesty::CostMetricStatus::Hidden => None,
     }
 }
 

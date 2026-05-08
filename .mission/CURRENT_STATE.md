@@ -1,14 +1,79 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.57.0 ledger sync)_
+_Last updated: 2026-05-08 (Claude, v1.58.0 ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.57.0 — cross-cutting consistency sweep: bump every operator-facing version surface (README, VERSION.md, mission.yaml, PROJECT_BRIEF.md) into one v1.57.0-aligned state; add Q hotkey + decorative fx overlay + IME drag-bar prose to UI_MANUAL; fix fx dismiss hint that incorrectly said `Q to toggle`; add `Q fx` to the dashboard footer key cluster; refresh REVIEW_GUIDE matrix reference to point at the v1.50.0 baseline + v1.56.0 honesty exception.
-- Version surfaces: npm package metadata `qmonster@1.57.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v1.57.0` to be created at the ledger sync commit. v1.56.0 is the immediate prior tagged baseline.
+- Title: Qmonster v1.58.0 — five-axis polish bundle: hover_help dashboard expansion (divider/footer/version-badge); n-overlay row filter (`f` cycles All → Promoted → High); provider-honesty cost chip (`cost ?` while pricing.toml lacks the row, `cost $X.XX` when curated); Settings Parameters filter/search via `/`; theme high_contrast variant for bright-profile terminals.
+- Version surfaces: npm package metadata `qmonster@1.58.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v1.58.0` to be created at the ledger sync commit. v1.57.0 is the immediate prior tagged baseline.
 - Release publication state: **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s). Sibling v1.37.0–v1.49.0 publications all remain live — `npm view qmonster versions` lists `1.37.0` through `1.55.0` with `dist-tags.latest = 1.55.0`; GitHub Release pages at `https://github.com/chquandogong/qmonster/releases/tag/v1.{37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55}.0`.
-- Current phase: All prior phases complete. v1.50.0–v1.56.0 publication baselines still apply; v1.57.0 layers a documentation/code consistency sweep on top — no new phase is opened.
+- Current phase: All prior phases complete. v1.50.0–v1.57.0 publication baselines still apply; v1.58.0 ships a five-axis operator UX polish bundle on top — no new phase is opened.
+
+## v1.58.0 Feature State
+
+v1.58.0 closes five operator-facing polish slices in one bundle:
+
+1. **hover_help dashboard expansion** (`src/ui/help_glossary.rs` +
+   `src/app/hover_help.rs`): three new `HelpTopic` variants —
+   `DashboardDivider`, `DashboardFooter`, `DashboardVersionBadge`.
+   Each has Korean + English help body explaining the IME indicator
+   semantics, the footer key cluster + ★p/★y counters, and the
+   click-to-open-Git version badge. `dashboard_hover_topic` dispatches
+   them when the mouse is over the divider, footer (excluding the
+   badge sub-rect), or version badge respectively. v1.51 IME +
+   v1.53 fx hotkey are now discoverable from hover help instead of
+   only from canonical docs.
+
+2. **n-overlay row filter** (`src/ui/anomaly_overlay.rs` +
+   `src/app/anomaly_overlay.rs`): new `AnomalyFilter { All /
+   PromotedOnly / HighOnly }` enum + cycling. `f` key in the n
+   overlay cycles the filter (All → Promoted → High → All) and
+   resets scroll. Filter state is shown in the title's
+   ` filter: <label> ` chip and the hint advertises the `f filter`
+   keybinding. Useful when a busy session populates the ring with
+   many low-confidence rows that an operator wants to skip.
+
+3. **Provider-honesty cost chip** (`src/ui/provider_honesty.rs` +
+   `src/ui/panels.rs`): new `CostMetricStatus { Value / Pending /
+   Hidden }` mirroring `CacheMetricStatus`. Cost chip is no longer
+   silently omitted when `cost_usd` is `None`:
+   - Has a value → `cost $X.XX [Source]` (existing).
+   - Provider has token activity but no value → ` COST ? [pricing] `
+     surfaces the missing `pricing.toml` row.
+   - No token activity yet (fresh pane) or Qmonster pane → omitted.
+   Closes the audit's "missing pricing → silent None" perception
+   for Gemini panes especially.
+
+4. **Settings Parameters filter / search** (`src/ui/settings.rs` +
+   `src/app/settings_overlay.rs`): `/` key on the Parameters tab
+   enters filter input mode. Typed characters narrow the visible
+   row set to fields whose label contains the substring (case-
+   insensitive). Backspace edits the buffer; Enter exits input mode
+   while keeping the filter active; Esc clears the filter and
+   returns to the full list. Filter input row shows the current
+   buffer + match count; an empty result set hints
+   "no parameters match — Backspace to broaden, Esc to clear".
+   Section headers without matches are suppressed. With 70+
+   parameters this turns the linear-scan UX into a few keystrokes.
+
+5. **Theme high_contrast variant** (`src/ui/theme.rs` +
+   `src/app/config.rs` + Settings `UxTheme` parameter): new
+   `ThemeMode { Dark / HighContrast }` enum with a process-wide
+   `AtomicU8` so every render call site reads the same mode without
+   re-plumbing config. `severity_color`, `severity_badge_style`,
+   `label_style` branch on mode — HighContrast brightens the
+   severity palette, adds BOLD to severity badges and dim-text
+   labels for legibility on bright-profile terminals. `[ux] theme`
+   defaults to `dark`; `cycle_parameter_enum` flips between modes
+   live and `tui_loop` calls `set_theme_mode` at startup.
+   Constants (TEXT_DIM, TEXT_PRIMARY, BADGE_BG, BORDER_*) stay
+   unchanged so existing call sites compile without rewrite — only
+   the function-based theme accessors are mode-aware.
+
+No code-behaviour change beyond the five operator-visible surfaces.
+1394 → 1397 lib tests (+3 anomaly filter tests). 65 integration
+tests preserved. fmt + clippy clean.
 
 ## v1.57.0 Feature State
 
@@ -495,14 +560,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v1.57.0 validation at the release commit:
+Most recent v1.58.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1394 lib tests + 65 integration tests + supporting suites, all green (no test-count change vs v1.56.0; consistency sweep is documentation + 2 UI-string fixes).
+- `cargo test --all-targets` — 1397 lib tests + 65 integration tests + supporting suites, all green.
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.56.0 still apply when the v1.57.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.57.0 still apply when the v1.58.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 

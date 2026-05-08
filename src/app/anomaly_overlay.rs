@@ -44,6 +44,11 @@ pub fn handle_anomaly_overlay_key(
             overlay.scroll_up();
             true
         }
+        KeyCode::Char('f') if overlay.is_open() => {
+            // v1.58.0: cycle the row filter (All → Promoted → High → All).
+            overlay.cycle_filter();
+            true
+        }
         _ => false,
     }
 }
@@ -353,6 +358,67 @@ mod tests {
         let mut o = AnomalyOverlay::new();
         assert!(!handle_anomaly_overlay_key(&mut o, 5, KeyCode::Down));
         assert!(!handle_anomaly_overlay_key(&mut o, 5, KeyCode::Char('q')));
+    }
+
+    /// v1.58.0: `f` cycles the row filter and resets scroll.
+    #[test]
+    fn f_cycles_anomaly_row_filter_and_resets_scroll() {
+        use crate::ui::anomaly_overlay::AnomalyFilter;
+        let mut o = AnomalyOverlay::new();
+        o.open();
+        o.scroll_down(5);
+        assert_eq!(o.filter(), AnomalyFilter::All);
+        assert!(handle_anomaly_overlay_key(&mut o, 5, KeyCode::Char('f')));
+        assert_eq!(o.filter(), AnomalyFilter::PromotedOnly);
+        assert_eq!(o.scroll(), 0, "cycling filter resets scroll");
+        assert!(handle_anomaly_overlay_key(&mut o, 5, KeyCode::Char('f')));
+        assert_eq!(o.filter(), AnomalyFilter::HighOnly);
+        assert!(handle_anomaly_overlay_key(&mut o, 5, KeyCode::Char('f')));
+        assert_eq!(o.filter(), AnomalyFilter::All);
+    }
+
+    /// v1.58.0: filter when overlay is closed must not be consumed.
+    #[test]
+    fn f_does_not_cycle_filter_when_overlay_is_closed() {
+        let mut o = AnomalyOverlay::new();
+        assert!(!handle_anomaly_overlay_key(&mut o, 5, KeyCode::Char('f')));
+    }
+
+    /// v1.58.0: AnomalyFilter::matches gates rows correctly.
+    #[test]
+    fn anomaly_filter_matches_per_variant() {
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        use crate::ui::anomaly_overlay::AnomalyFilter;
+
+        let high_promoted = AnomalyEvent {
+            timestamp: 1,
+            pane_id: "%1".into(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "h".into(),
+        };
+        let medium_promoted = AnomalyEvent {
+            confidence: AnomalyConfidence::Medium,
+            ..high_promoted.clone()
+        };
+        let medium_unpromoted = AnomalyEvent {
+            promoted: false,
+            ..medium_promoted.clone()
+        };
+
+        assert!(AnomalyFilter::All.matches(&high_promoted));
+        assert!(AnomalyFilter::All.matches(&medium_unpromoted));
+
+        assert!(AnomalyFilter::PromotedOnly.matches(&high_promoted));
+        assert!(AnomalyFilter::PromotedOnly.matches(&medium_promoted));
+        assert!(!AnomalyFilter::PromotedOnly.matches(&medium_unpromoted));
+
+        assert!(AnomalyFilter::HighOnly.matches(&high_promoted));
+        assert!(!AnomalyFilter::HighOnly.matches(&medium_promoted));
+        assert!(!AnomalyFilter::HighOnly.matches(&medium_unpromoted));
     }
 
     #[test]

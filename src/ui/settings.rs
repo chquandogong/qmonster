@@ -278,6 +278,7 @@ pub enum ParameterField {
     UxHoverHelp,
     UxHoverHelpTrigger,
     UxHelpLanguage,
+    UxTheme,
     InsightsIgnoredTtlSecs,
     InsightsDefaultWindowSecs,
     TokenQuotaTight,
@@ -350,6 +351,7 @@ pub fn all_parameter_fields() -> Vec<ParameterField> {
         UxHoverHelp,
         UxHoverHelpTrigger,
         UxHelpLanguage,
+        UxTheme,
         InsightsIgnoredTtlSecs,
         InsightsDefaultWindowSecs,
         TokenQuotaTight,
@@ -440,6 +442,12 @@ pub struct SettingsOverlay {
     /// `Saved` / `Error` status banner change.
     dirty: bool,
     dirty_parameters: Vec<ParameterField>,
+    /// v1.58.0: case-insensitive parameter-label filter applied while
+    /// the Parameters tab is active. `None` means no filter; `Some("")`
+    /// is the empty filter input mode (after the operator pressed `/`
+    /// but typed nothing yet). Non-empty filters hide rows whose label
+    /// doesn't contain the substring.
+    parameter_filter: Option<String>,
 }
 
 impl Default for SettingsOverlay {
@@ -455,6 +463,7 @@ impl Default for SettingsOverlay {
             status: SettingsStatus::Idle,
             dirty: false,
             dirty_parameters: Vec::new(),
+            parameter_filter: None,
         }
     }
 }
@@ -754,6 +763,51 @@ impl SettingsOverlay {
                 self.status = SettingsStatus::Idle;
             }
             _ => {}
+        }
+    }
+
+    // v1.58.0: parameter filter accessors + mutators. Stay separate
+    // from the edit_buffer pipeline because filter input has different
+    // accepted characters (any printable ASCII) and different exit
+    // semantics (Esc cancels the filter rather than the edit).
+    pub fn parameter_filter(&self) -> Option<&str> {
+        self.parameter_filter.as_deref()
+    }
+
+    pub fn start_parameter_filter(&mut self) {
+        if self.tab != SettingsTab::Parameters || self.edit_buffer.is_some() {
+            return;
+        }
+        self.parameter_filter = Some(String::new());
+        self.scroll_offset = 0;
+    }
+
+    pub fn cancel_parameter_filter(&mut self) {
+        self.parameter_filter = None;
+        self.scroll_offset = 0;
+    }
+
+    pub fn confirm_parameter_filter(&mut self) {
+        // Keep the filter applied but exit input mode by leaving the
+        // string in place. Re-pressing `/` clears + reopens.
+        // No state change here besides scroll reset.
+        self.scroll_offset = 0;
+    }
+
+    pub fn parameter_filter_type_char(&mut self, c: char) {
+        if c.is_ascii()
+            && !c.is_control()
+            && let Some(buf) = self.parameter_filter.as_mut()
+        {
+            buf.push(c);
+            self.scroll_offset = 0;
+        }
+    }
+
+    pub fn parameter_filter_backspace(&mut self) {
+        if let Some(buf) = self.parameter_filter.as_mut() {
+            buf.pop();
+            self.scroll_offset = 0;
         }
     }
 
@@ -1144,6 +1198,7 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | UxConfirmActions
         | UxHoverHelpTrigger
         | UxHelpLanguage
+        | UxTheme
         | AnomalyMinConfidence
         | AnomalyPromoteIdentityChurn
         | AnomalyPromoteErrorBurst
@@ -1209,7 +1264,8 @@ fn parameter_section_label(field: ParameterField) -> &'static str {
         | UxConfirmActions
         | UxHoverHelp
         | UxHoverHelpTrigger
-        | UxHelpLanguage => "Actions",
+        | UxHelpLanguage
+        | UxTheme => "Actions",
         InsightsIgnoredTtlSecs | InsightsDefaultWindowSecs => "Insights",
         TokenQuotaTight => "Policy Inputs",
         SecurityPostureAdvisories
@@ -1282,6 +1338,7 @@ fn parameter_label(field: ParameterField) -> &'static str {
         UxHoverHelp => "ux hover_help",
         UxHoverHelpTrigger => "ux hover_help_trigger",
         UxHelpLanguage => "ux help_language",
+        UxTheme => "ux theme",
         InsightsIgnoredTtlSecs => "insights ignored_ttl_secs",
         InsightsDefaultWindowSecs => "insights default_window_secs",
         TokenQuotaTight => "token quota_tight",
@@ -1355,6 +1412,7 @@ fn parameter_toml_path(field: ParameterField) -> Vec<&'static str> {
         UxHoverHelp => vec!["ux", "hover_help"],
         UxHoverHelpTrigger => vec!["ux", "hover_help_trigger"],
         UxHelpLanguage => vec!["ux", "help_language"],
+        UxTheme => vec!["ux", "theme"],
         InsightsIgnoredTtlSecs => vec!["insights", "ignored_ttl_secs"],
         InsightsDefaultWindowSecs => vec!["insights", "default_window_secs"],
         TokenQuotaTight => vec!["token", "quota_tight"],
@@ -1430,6 +1488,7 @@ fn parameter_value_for_display(config: &QmonsterConfig, field: ParameterField) -
         UxHoverHelp => on_off(config.ux.hover_help).into(),
         UxHoverHelpTrigger => hover_help_trigger_label(config.ux.hover_help_trigger).into(),
         UxHelpLanguage => help_language_label(config.ux.help_language).into(),
+        UxTheme => config.ux.theme.as_str().into(),
         InsightsIgnoredTtlSecs => seconds_label(config.insights.ignored_ttl_secs),
         InsightsDefaultWindowSecs => seconds_label(config.insights.default_window_secs),
         TokenQuotaTight => on_off(config.token.quota_tight).into(),
@@ -1635,6 +1694,10 @@ fn cycle_parameter_enum(config: &mut QmonsterConfig, field: ParameterField) -> R
             };
         }
         UxHelpLanguage => config.ux.help_language = config.ux.help_language.toggle(),
+        UxTheme => {
+            config.ux.theme = config.ux.theme.cycle();
+            crate::ui::theme::set_theme_mode(config.ux.theme.into());
+        }
         UxHoverHelpTrigger => {
             config.ux.hover_help_trigger = config.ux.hover_help_trigger.toggle();
         }
@@ -1871,6 +1934,7 @@ fn merge_parameter_field(
             );
         }
         UxHelpLanguage => set_nested_str(doc, &path, help_language_label(config.ux.help_language)),
+        UxTheme => set_nested_str(doc, &path, config.ux.theme.as_str()),
         InsightsIgnoredTtlSecs => {
             set_nested_i64(doc, &path, config.insights.ignored_ttl_secs as i64)
         }
@@ -3783,17 +3847,89 @@ fn append_parameter_editor_lines(
     overlay: &SettingsOverlay,
     config: &QmonsterConfig,
 ) {
+    // v1.58.0: optional case-insensitive substring filter against the
+    // parameter label. Empty filter matches everything (still in input
+    // mode); non-empty filter shows only matching fields. Section
+    // headers are skipped when no field in the section matches so the
+    // filtered view doesn't render a wall of empty section headers.
+    let filter = overlay.parameter_filter();
+    let needle = filter.map(|s| s.trim().to_ascii_lowercase());
+    if filter.is_some() {
+        // Filter input row + match summary so the operator can see what
+        // they've typed and how many rows survived.
+        let displayed = needle.as_deref().unwrap_or("");
+        let match_count = if displayed.is_empty() {
+            all_parameter_fields().len()
+        } else {
+            all_parameter_fields()
+                .iter()
+                .filter(|f| {
+                    parameter_label(**f)
+                        .to_ascii_lowercase()
+                        .contains(displayed)
+                })
+                .count()
+        };
+        let trailing = if displayed.is_empty() {
+            "type to filter · Enter keep · Esc clear · Backspace edit".to_string()
+        } else {
+            format!(
+                "{} matches · Enter keep · Esc clear · Backspace edit",
+                match_count
+            )
+        };
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  /",
+                Style::default()
+                    .fg(theme::severity_color(Severity::Warning))
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                if displayed.is_empty() {
+                    "(empty)".to_string()
+                } else {
+                    displayed.to_string()
+                },
+                Style::default()
+                    .fg(theme::TEXT_PRIMARY)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(" \u{00b7} {trailing}"),
+                Style::default().fg(theme::TEXT_DIM),
+            ),
+        ]));
+        lines.push(Line::from(""));
+    }
+
     let mut current_section: Option<&'static str> = None;
+    let mut emitted_in_section = false;
     for field in all_parameter_fields() {
+        let label = parameter_label(field);
+        if let Some(needle) = needle.as_deref()
+            && !needle.is_empty()
+            && !label.to_ascii_lowercase().contains(needle)
+        {
+            continue;
+        }
         let section = parameter_section_label(field);
         if current_section != Some(section) {
-            if current_section.is_some() {
+            if emitted_in_section {
                 lines.push(Line::from(""));
             }
             lines.push(reference_header_line(section));
             current_section = Some(section);
         }
         lines.push(parameter_row_line(overlay, config, field));
+        emitted_in_section = true;
+    }
+    if filter.is_some() && !emitted_in_section {
+        lines.push(Line::from(vec![Span::styled(
+            "  no parameters match — Backspace to broaden, Esc to clear",
+            Style::default().fg(theme::TEXT_DIM),
+        )]));
     }
 }
 
@@ -3870,6 +4006,9 @@ fn parameter_help_text(field: ParameterField) -> &'static str {
             "controls whether hover help opens only near row labels or across the full row"
         }
         UxHelpLanguage => "selects the language used by floating help and related glossary text",
+        UxTheme => {
+            "selects the dashboard color palette: dark (default low-saturation) or high_contrast (brighter severity colors + BOLD dim text for bright-profile terminals)"
+        }
         InsightsIgnoredTtlSecs => {
             "time after which unresolved recommendation lifecycle events become TTL-ignored in insights"
         }
@@ -3968,6 +4107,7 @@ fn parameter_value_help(field: ParameterField) -> &'static str {
         UxConfirmActions => "always | first_time | never",
         UxHoverHelpTrigger => "label | row",
         UxHelpLanguage => "ko | en",
+        UxTheme => "dark | high_contrast",
         TmuxSource => "auto | polling | control_mode",
         FxEffect => "banner | confetti | matrix",
         RefreshPolicy => "manual_only | automatic",

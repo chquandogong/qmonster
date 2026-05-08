@@ -64,11 +64,49 @@ pub fn handle_settings_overlay_key_with_viewport(
     }
 
     let editing = overlay.edit_buffer().is_some();
+    // v1.58.0: parameter filter mode is a separate input pipeline. While
+    // it's active, Esc cancels the filter (not the overlay), Enter
+    // confirms the filter and exits input, Backspace edits the filter
+    // string, and printable chars append. All other keys fall through
+    // to the normal handler so navigation still works under a frozen
+    // filter.
+    let filtering = !editing && overlay.parameter_filter().is_some();
+    if filtering {
+        match code {
+            KeyCode::Esc => {
+                overlay.cancel_parameter_filter();
+                return true;
+            }
+            KeyCode::Enter => {
+                overlay.confirm_parameter_filter();
+                return true;
+            }
+            KeyCode::Backspace => {
+                overlay.parameter_filter_backspace();
+                return true;
+            }
+            KeyCode::Char(c) if c != '/' => {
+                overlay.parameter_filter_type_char(c);
+                return true;
+            }
+            // `/` while filtering = restart fresh filter (clear buffer).
+            KeyCode::Char('/') => {
+                overlay.cancel_parameter_filter();
+                overlay.start_parameter_filter();
+                return true;
+            }
+            _ => {}
+        }
+    }
+
     let max_scroll = settings_max_scroll(overlay, config, viewport);
     let page_rows = settings_visible_body_rows(viewport)
         .saturating_sub(1)
         .max(1);
     match code {
+        KeyCode::Char('/') if !editing && overlay.tab() == SettingsTab::Parameters => {
+            overlay.start_parameter_filter();
+        }
         KeyCode::Esc => {
             if editing {
                 overlay.cancel_edit();

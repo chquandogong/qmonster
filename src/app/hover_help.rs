@@ -130,6 +130,21 @@ pub fn dashboard_hover_topic(
         );
     }
 
+    // v1.58.0: dashboard chrome hover topics. divider gets the IME +
+    // resize explainer; footer gets the keybinding cluster context;
+    // the version badge (rightmost cells of the footer) gets its own
+    // topic since clicking it opens the Git overlay.
+    if rect_contains(rects.divider, column, row) {
+        return Some(HelpTopic::DashboardDivider);
+    }
+    if rect_contains(rects.footer, column, row) {
+        let badge = crate::ui::dashboard::version_badge_rect(rects.footer);
+        if rect_contains(badge, column, row) {
+            return Some(HelpTopic::DashboardVersionBadge);
+        }
+        return Some(HelpTopic::DashboardFooter);
+    }
+
     None
 }
 
