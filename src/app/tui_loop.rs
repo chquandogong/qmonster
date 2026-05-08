@@ -139,6 +139,13 @@ where
     // row can drive ▲/▼/─ trend arrows from the actual delta between
     // successive observations rather than the placeholder dash.
     let mut mem_observations: HashMap<String, crate::ui::metrics::MemObservation> = HashMap::new();
+    // v1.60.0: per-pane CTX/quota/cache pressure tracker. Updated
+    // once per poll cycle, parallel to the MEM tracker, so the
+    // metrics overlay's left-column bars can render ▲/▼/─ trend
+    // arrows next to the percentage and operators can see at a
+    // glance whether pressure is climbing.
+    let mut pressure_observations: HashMap<String, crate::ui::metrics::PressureObservation> =
+        HashMap::new();
 
     let result = {
         let mut run_loop = || -> anyhow::Result<()> {
@@ -186,6 +193,20 @@ where
                             &r.pane_id,
                             r.signals.process_memory_mb.as_ref().map(|m| m.value),
                             r.signals.agent_memory_bytes.as_ref().map(|m| m.value),
+                        );
+                        // v1.60.0: refresh the parallel pressure
+                        // tracker so the metrics overlay can render
+                        // CTX/5H/7D/CACHE trend arrows derived from
+                        // last-poll deltas.
+                        let cache_ratio =
+                            r.signals.cache_hit_ratio.as_ref().map(|m| m.value as f32);
+                        crate::ui::metrics::update_pressure_observation(
+                            &mut pressure_observations,
+                            &r.pane_id,
+                            r.signals.context_pressure.as_ref().map(|m| m.value),
+                            r.signals.quota_5h_pressure.as_ref().map(|m| m.value),
+                            r.signals.quota_weekly_pressure.as_ref().map(|m| m.value),
+                            cache_ratio,
                         );
                     }
                 }
@@ -267,6 +288,7 @@ where
                             insights_overlay: &insights_overlay,
                             anomaly_events_ring: &ctx.anomaly_events_ring,
                             mem_observations: &mem_observations,
+                            pressure_observations: &pressure_observations,
                             action_explainer: &action_explainer,
                             pending_actions: &pending_actions,
                             pending_items: &pending_items,
@@ -362,12 +384,24 @@ where
 
                             if help_modal.is_open() {
                                 let size = terminal.size()?;
-                                let max_scroll = crate::ui::dashboard::max_help_scroll(Rect::new(
-                                    0,
-                                    0,
-                                    size.width,
-                                    size.height,
-                                ));
+                                let viewport = Rect::new(0, 0, size.width, size.height);
+                                let max_scroll = crate::ui::dashboard::max_help_scroll(viewport);
+                                // v1.60.0: digit keys jump to the
+                                // matching help section. `1` always
+                                // lands on Controls; later digits map
+                                // to Hover Help / Source Labels /
+                                // State Labels in document order.
+                                if let KeyCode::Char(c) = k.code
+                                    && let Some(digit) = c.to_digit(10)
+                                    && digit >= 1
+                                {
+                                    let sections =
+                                        crate::ui::dashboard::help_section_line_indices(viewport);
+                                    if let Some(target) = sections.get((digit - 1) as usize) {
+                                        help_modal.set_scroll(*target, max_scroll);
+                                        continue;
+                                    }
+                                }
                                 handle_scroll_modal_key(
                                     &mut help_modal,
                                     k.code,
@@ -485,6 +519,21 @@ where
                                     == crate::app::insights_overlay::InsightsOverlayAction::Refresh
                                 {
                                     refresh_insights_overlay(&mut insights_overlay, ctx);
+                                    // v1.60.0: confirm the refresh kick to the
+                                    // operator. The async load takes a
+                                    // beat to land — without this nudge a
+                                    // stale chip + an `r` press feels
+                                    // ignored.
+                                    dashboard.push_notice(
+                                        SystemNotice {
+                                            title: "insights refresh requested".into(),
+                                            body: "aggregating fresh token insights …".into(),
+                                            severity: crate::domain::recommendation::Severity::Good,
+                                            source_kind:
+                                                crate::domain::origin::SourceKind::ProjectCanonical,
+                                        },
+                                        Instant::now(),
+                                    );
                                 }
                                 continue;
                             }

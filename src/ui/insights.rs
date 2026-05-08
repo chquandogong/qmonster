@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use crate::insights_report::format_insights_report_lines;
 use crate::store::InsightsSnapshot;
 use crate::ui::dashboard::close_button_rect;
@@ -11,6 +13,11 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
 const SPINNER_FRAMES: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
+/// v1.60.0: snapshot is treated as stale once this many seconds have
+/// passed since `loaded_at`. Operators get a `· stale` chip in the
+/// title + a hint to press `r` for a fresh load.
+pub const INSIGHTS_STALENESS_SECS: u64 = 300;
+
 #[derive(Debug, Clone)]
 pub struct InsightsOverlay {
     open: bool,
@@ -19,6 +26,11 @@ pub struct InsightsOverlay {
     snapshot: Option<InsightsSnapshot>,
     error: Option<String>,
     refreshed_label: Option<String>,
+    /// v1.60.0: monotonic timestamp of the last successful snapshot
+    /// load. Used by the renderer to compute relative age + the
+    /// `stale` chip when no fresh data has landed in
+    /// `INSIGHTS_STALENESS_SECS`.
+    loaded_at: Option<Instant>,
     loading: bool,
     spinner_phase: u8,
     pending_request_id: u64,
@@ -39,6 +51,7 @@ impl Default for InsightsOverlay {
             snapshot: None,
             error: None,
             refreshed_label: None,
+            loaded_at: None,
             loading: false,
             spinner_phase: 0,
             pending_request_id: 0,
@@ -89,6 +102,7 @@ impl InsightsOverlay {
         self.snapshot = None;
         self.error = None;
         self.refreshed_label = None;
+        self.loaded_at = None;
         self.scroll = 0;
     }
 
@@ -160,9 +174,19 @@ impl InsightsOverlay {
     }
 
     pub fn set_snapshot(&mut self, snapshot: InsightsSnapshot, refreshed_label: String) {
+        self.set_snapshot_at(snapshot, refreshed_label, Instant::now());
+    }
+
+    pub fn set_snapshot_at(
+        &mut self,
+        snapshot: InsightsSnapshot,
+        refreshed_label: String,
+        loaded_at: Instant,
+    ) {
         self.snapshot = Some(snapshot);
         self.error = None;
         self.refreshed_label = Some(refreshed_label);
+        self.loaded_at = Some(loaded_at);
         self.scroll = 0;
     }
 
@@ -170,6 +194,7 @@ impl InsightsOverlay {
         self.error = Some(error.into());
         self.snapshot = None;
         self.refreshed_label = None;
+        self.loaded_at = None;
         self.scroll = 0;
     }
 
@@ -187,6 +212,28 @@ impl InsightsOverlay {
             Ok(snapshot) => self.set_snapshot(snapshot, refreshed_label),
             Err(error) => self.set_error(error),
         }
+    }
+
+    pub fn loaded_at(&self) -> Option<Instant> {
+        self.loaded_at
+    }
+
+    /// v1.60.0: returns true once the snapshot has aged past
+    /// `INSIGHTS_STALENESS_SECS`. Returns false when no snapshot is
+    /// loaded — the empty-state UX handles that case separately.
+    pub fn is_stale(&self, now: Instant) -> bool {
+        let Some(loaded_at) = self.loaded_at else {
+            return false;
+        };
+        now.saturating_duration_since(loaded_at) >= Duration::from_secs(INSIGHTS_STALENESS_SECS)
+    }
+
+    /// v1.60.0: short relative-age label ("just now", "2m ago",
+    /// "1h ago"). Returns None when there is no loaded snapshot.
+    pub fn relative_age_label(&self, now: Instant) -> Option<String> {
+        let loaded_at = self.loaded_at?;
+        let secs = now.saturating_duration_since(loaded_at).as_secs();
+        Some(format_relative_age(secs))
     }
 
     pub fn line_count(&self) -> usize {
@@ -220,6 +267,23 @@ impl InsightsOverlay {
     }
 }
 
+/// v1.60.0: render a short relative-age label suitable for the title
+/// chip ("just now", "23s ago", "5m ago", "2h ago"). Stays purely
+/// based on seconds so unit tests can pass any deterministic value.
+pub fn format_relative_age(secs: u64) -> String {
+    if secs < 5 {
+        "just now".to_string()
+    } else if secs < 60 {
+        format!("{secs}s ago")
+    } else if secs < 3_600 {
+        format!("{}m ago", secs / 60)
+    } else if secs < 86_400 {
+        format!("{}h ago", secs / 3_600)
+    } else {
+        format!("{}d ago", secs / 86_400)
+    }
+}
+
 pub fn insights_modal_area(viewport: ratatui::layout::Rect) -> ratatui::layout::Rect {
     crate::ui::modal_chrome::modal_area(
         viewport,
@@ -243,7 +307,7 @@ pub fn insights_modal_area_for(
     )
 }
 
-pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
+pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay, now: Instant) {
     let area = insights_modal_area_for(frame.area(), overlay);
     frame.render_widget(Clear, area);
     let layout = Layout::default()
@@ -255,7 +319,7 @@ pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title_style(Style::default().add_modifier(Modifier::BOLD))
-        .border_style(Style::default().fg(theme::BORDER_ACTIVE));
+        .border_style(Style::default().fg(theme::border_active()));
     let inner = block.inner(body_area);
     let max_scroll = if overlay.is_loading() {
         0
@@ -268,6 +332,12 @@ pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
     let scroll = overlay.scroll().min(max_scroll);
     let title = if overlay.is_loading() {
         " Token Insights · loading ".to_string()
+    } else if let Some(age) = overlay.relative_age_label(now) {
+        if overlay.is_stale(now) {
+            format!(" Token Insights · {age} · stale (press r) ")
+        } else {
+            format!(" Token Insights · {age} ")
+        }
     } else {
         " Token Insights ".to_string()
     };
@@ -282,7 +352,7 @@ pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
         scroll_hint::scroll_status_label(scroll, max_scroll)
     );
     frame.render_widget(
-        Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM)),
+        Paragraph::new(hint).style(Style::default().fg(theme::text_dim())),
         hint_area,
     );
 
@@ -298,7 +368,7 @@ pub fn render_insights_modal(frame: &mut Frame<'_>, overlay: &InsightsOverlay) {
         let line = format!("Aggregating insights {}", overlay.spinner_glyph());
         let paragraph = Paragraph::new(line).alignment(Alignment::Center).style(
             Style::default()
-                .fg(theme::BORDER_ACTIVE)
+                .fg(theme::border_active())
                 .add_modifier(Modifier::BOLD),
         );
         frame.render_widget(paragraph, rows[1]);
@@ -326,6 +396,67 @@ mod tests {
     use super::*;
     use crate::insights_report::empty_insights_snapshot;
     use crate::store::InsightsWindow;
+
+    // v1.60.0 -----------------------------------------------------------
+
+    #[test]
+    fn relative_age_label_covers_each_bucket_boundary() {
+        assert_eq!(format_relative_age(0), "just now");
+        assert_eq!(format_relative_age(4), "just now");
+        assert_eq!(format_relative_age(5), "5s ago");
+        assert_eq!(format_relative_age(59), "59s ago");
+        assert_eq!(format_relative_age(60), "1m ago");
+        assert_eq!(format_relative_age(3_599), "59m ago");
+        assert_eq!(format_relative_age(3_600), "1h ago");
+        assert_eq!(format_relative_age(86_399), "23h ago");
+        assert_eq!(format_relative_age(86_400), "1d ago");
+    }
+
+    #[test]
+    fn is_stale_flips_after_threshold_and_stays_false_without_snapshot() {
+        let mut overlay = InsightsOverlay::new();
+        let t0 = Instant::now();
+        // Empty overlay: never stale (the empty-state UX handles it).
+        assert!(!overlay.is_stale(t0));
+
+        let snapshot = empty_insights_snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 1,
+        });
+        overlay.set_snapshot_at(snapshot, "12:00:00".into(), t0);
+
+        // Just-loaded: not stale.
+        assert!(!overlay.is_stale(t0));
+        assert!(!overlay.is_stale(t0 + std::time::Duration::from_secs(60)));
+
+        // Past the staleness threshold: stale.
+        let stale_at = t0 + std::time::Duration::from_secs(INSIGHTS_STALENESS_SECS);
+        assert!(overlay.is_stale(stale_at));
+        assert!(overlay.is_stale(stale_at + std::time::Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn relative_age_label_returns_none_without_loaded_snapshot() {
+        let overlay = InsightsOverlay::new();
+        assert!(overlay.relative_age_label(Instant::now()).is_none());
+    }
+
+    #[test]
+    fn mark_loading_clears_loaded_at_so_age_disappears_under_spinner() {
+        let mut overlay = InsightsOverlay::new();
+        let t0 = Instant::now();
+        let snapshot = empty_insights_snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 1,
+        });
+        overlay.set_snapshot_at(snapshot, "12:00:00".into(), t0);
+        assert!(overlay.relative_age_label(t0).is_some());
+
+        overlay.open();
+        overlay.mark_loading(7);
+        assert!(overlay.loaded_at().is_none());
+        assert!(overlay.relative_age_label(t0).is_none());
+    }
 
     #[test]
     fn overlay_open_resets_scroll() {
@@ -413,7 +544,7 @@ mod tests {
         let mut terminal =
             Terminal::new(TestBackend::new(viewport.width, viewport.height)).unwrap();
         terminal
-            .draw(|frame| render_insights_modal(frame, &overlay))
+            .draw(|frame| render_insights_modal(frame, &overlay, Instant::now()))
             .unwrap();
         let buf = terminal.backend().buffer();
         let buf_dump: String = buf
@@ -471,7 +602,7 @@ mod tests {
         let area = insights_modal_area_for(viewport, &overlay);
 
         terminal
-            .draw(|frame| render_insights_modal(frame, &overlay))
+            .draw(|frame| render_insights_modal(frame, &overlay, Instant::now()))
             .unwrap();
         let cell = terminal
             .backend()
@@ -479,7 +610,7 @@ mod tests {
             .cell((area.x, area.y))
             .expect("top-left border cell in bounds");
 
-        assert_eq!(cell.fg, theme::BORDER_ACTIVE);
+        assert_eq!(cell.fg, theme::border_active());
     }
 
     #[test]
@@ -494,7 +625,7 @@ mod tests {
         overlay.open();
 
         terminal
-            .draw(|frame| render_insights_modal(frame, &overlay))
+            .draw(|frame| render_insights_modal(frame, &overlay, Instant::now()))
             .unwrap();
         let rendered = buf_to_string(terminal.backend().buffer());
         let title_line = rendered
@@ -626,7 +757,7 @@ mod tests {
         overlay.mark_loading(1);
 
         terminal
-            .draw(|frame| render_insights_modal(frame, &overlay))
+            .draw(|frame| render_insights_modal(frame, &overlay, Instant::now()))
             .unwrap();
         let buffer = terminal.backend().buffer();
         let mut joined = String::new();

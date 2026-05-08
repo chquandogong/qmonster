@@ -540,13 +540,17 @@ impl Default for UxConfig {
 pub enum ThemeMode {
     Dark,
     HighContrast,
+    /// v1.60.0: dark-text-on-light palette for bright-profile
+    /// terminals. Cycles after HighContrast.
+    Light,
 }
 
 impl ThemeMode {
     pub fn cycle(self) -> Self {
         match self {
             Self::Dark => Self::HighContrast,
-            Self::HighContrast => Self::Dark,
+            Self::HighContrast => Self::Light,
+            Self::Light => Self::Dark,
         }
     }
 
@@ -554,6 +558,7 @@ impl ThemeMode {
         match self {
             Self::Dark => "dark",
             Self::HighContrast => "high_contrast",
+            Self::Light => "light",
         }
     }
 }
@@ -563,6 +568,7 @@ impl From<ThemeMode> for crate::ui::theme::ThemeMode {
         match mode {
             ThemeMode::Dark => crate::ui::theme::ThemeMode::Dark,
             ThemeMode::HighContrast => crate::ui::theme::ThemeMode::HighContrast,
+            ThemeMode::Light => crate::ui::theme::ThemeMode::Light,
         }
     }
 }

@@ -34,8 +34,8 @@ taking destructive action by default.
 
 | Surface             | Current                                                |
 | ------------------- | ------------------------------------------------------ |
-| Release             | `v1.59.0`                                              |
-| npm                 | `qmonster@1.59.0`                                      |
+| Release             | `v1.60.0`                                              |
+| npm                 | `qmonster@1.60.0`                                      |
 | Rust                | `1.88+`                                                |
 | Runtime version     | `git describe --tags --always --dirty` from `build.rs` |
 | Cargo crate version | Internal metadata only                                 |

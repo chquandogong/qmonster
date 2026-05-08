@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v1.59.0 - Five-slice polish bundle: anomaly events row severity color coding; Settings dirty-row visual marker; Alerts filter (`/`); three new fx effects (snow/fireworks/plasma); Sampler meta-effect that auto-cycles every effect every 5s; refreshed README quickstart"
+  mission_title: "Qmonster v1.60.0 - Five-slice polish bundle: Insights freshness chip + r-refresh toast; Metrics overlay CTX/QUOTA/CACHE delta arrows; pricing.toml staleness advisory; Help modal section jumping; Light theme variant + theme-aware accessor migration"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 203
-  latest_version: "1.59.0"
+  total_revisions: 204
+  latest_version: "1.60.0"
 
 timeline:
   - change_id: "initial"
@@ -19115,6 +19115,118 @@ timeline:
       - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 / v1.58.0 / v1.58.1 / v1.59.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
+  - version: "1.60.0"
+    change_sequence: 204
+    date: "2026-05-08"
+    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '2,3,4,5,6 전부 해줘' — five further polish slices bundled, including the deferred-from-v1.58.0 Light theme."
+    summary: >
+      v1.60.0 ships five more operator-facing polish slices:
+      (1) Insights overlay freshness chip — InsightsOverlay tracks
+      `loaded_at: Option<Instant>` plus is_stale (>5min) and
+      relative_age_label helpers; render_insights_modal accepts `now`
+      and surfaces ` Token Insights · 2m ago ` or
+      ` Token Insights · 8m ago · stale (press r) ` in the title.
+      Pressing `r` now also pushes a SystemNotice toast so the
+      operator confirms the refresh kick landed.
+      (2) Metrics overlay delta arrows on the LEFT column — new
+      PressureObservation tracker mirrors the v1.38 MemObservation
+      pattern (HashMap keyed by pane_id, populated each poll in
+      tui_loop) and feeds ▲/▼/─ trend arrows into CTX, 5H/QUOTA, 7D,
+      and CACHE rows. Steady epsilon = 0.5 percentage points so
+      routine cache jitter doesn't flicker the arrow.
+      (3) pricing.toml staleness advisory — new
+      `policy::pricing::pricing_staleness_days(path, now, threshold)`
+      helper returns the file's age in days when older than 90 days.
+      `app::startup` calls it once at session start and pushes a
+      Concern-severity SystemNotice nudging the operator to refresh
+      rates. Missing files do not nudge (operator hasn't curated
+      pricing yet — that's expected).
+      (4) Help modal section jumping — new
+      `dashboard::help_section_line_indices(viewport)` returns the
+      line index of every section header; `1..N` keys in the help
+      modal jump to the matching section. Hint text advertises
+      "1..N jump section". `ScrollModalState::set_scroll(scroll, max)`
+      added so callers can drive absolute jumps.
+      (5) Light theme variant — closes the deferred work from v1.58.0.
+      `ThemeMode::Light` added to both the `app::config` enum and
+      `ui::theme::ThemeMode`; cycle is now Dark → HighContrast →
+      Light → Dark. severity_color, severity_badge_style, label_style
+      branch on the new mode. Five new theme-aware accessor functions
+      (`text_dim()`, `text_primary()`, `badge_bg()`, `border_idle()`,
+      `border_active()`) return mode-specific colors. The TEXT_DIM /
+      TEXT_PRIMARY / BADGE_BG / BORDER_IDLE / BORDER_ACTIVE constants
+      stay as the Dark-mode values for backward compat with test
+      assertions, but every runtime call site (153 of them across
+      src/) was sed-migrated to use the function form so flipping
+      `[ux] theme = light` actually re-tints the dashboard. Settings
+      parameter help now lists `dark | high_contrast | light`.
+      Lib tests 1415 → 1434 (+19 across insights / metrics / pricing
+      / dashboard / theme regression guards). 65 integration tests
+      preserved. fmt + clippy clean.
+    intent_ko: >
+      v1.60.0 폴리시 5종 묶음. (1) Insights 오버레이 신선도 칩 —
+      마지막 로드 시각 + 상대 나이("2m ago") + 5분 이상이면 "stale
+      (press r)" 표시; r 누르면 새로고침 알림 토스트도 푸시. (2)
+      Metrics 오버레이 좌측 컬럼 (CTX/5H/7D/CACHE) 에 직전 폴 대비
+      ▲/▼/─ 트렌드 화살표 (steady ε = 0.5pp). (3) pricing.toml 90일
+      이상 안 바뀌었으면 시작 시 Concern 알림 한 번. (4) ? 헬프
+      모달에서 1..N 누르면 해당 섹션으로 점프. (5) Light 테마
+      variant — v1.58.0 에서 deferred 했던 항목; ThemeMode::Light
+      추가하고 153개 callsite 를 함수형 accessor (text_dim/_primary
+      등) 로 일괄 마이그레이션. cycle 순서: Dark → HighContrast →
+      Light → Dark. lib 1415 → 1434.
+    triggered_by: "Operator: '2,3,4,5,6 전부 해줘' on the proposed v1.60.0 polish menu (1번 ★p/★y 카운트 중복이라 제외)."
+    changes:
+      added:
+        - "src/ui/insights.rs: loaded_at field + set_snapshot_at(loaded_at) + loaded_at()/is_stale(now)/relative_age_label(now) accessors + format_relative_age helper + INSIGHTS_STALENESS_SECS = 300. render_insights_modal now takes `now: Instant` and surfaces age/stale chips in the title."
+        - "src/app/tui_loop.rs: r-key in insights overlay pushes a SystemNotice 'insights refresh requested · aggregating fresh token insights …'."
+        - "src/ui/metrics.rs: PressureObservation struct + update_pressure_observation + pressure_trend helper + PRESSURE_TREND_STEADY_EPSILON = 0.005. card_rows / left_row / quota_left_row / cache_left_row thread the new trend through; left_row appends a dim ▲/▼/─ span next to the percentage."
+        - "src/app/tui_loop.rs: per-poll update_pressure_observation call alongside the existing update_mem_observation."
+        - "src/app/dashboard_render.rs: DashboardFrameView.pressure_observations field plumbed into render_metrics_modal."
+        - "src/policy/pricing.rs: pricing_staleness_days(path, now, threshold) -> Option<u64> + PRICING_STALENESS_SECS constant (90 days)."
+        - "src/app/startup.rs: pricing.toml mtime check at session start; pushes a Concern-severity SystemNotice when stale."
+        - "src/ui/dashboard.rs: help_section_line_indices(viewport) public helper; line_is_section_header private predicate; help-modal hint advertises '1..N jump section'."
+        - "src/app/modal_state.rs: ScrollModalState::set_scroll(scroll, max_scroll) for absolute jumps."
+        - "src/app/tui_loop.rs: digit-key dispatch in the help-modal handler that maps 1..N to the section indices."
+        - "src/ui/theme.rs: ThemeMode::Light variant; cycle Dark→HighContrast→Light→Dark; set_theme_mode + theme_mode handle the new value (raw=2). New theme-aware accessor functions: text_dim() / text_primary() / badge_bg() / border_idle() / border_active(). severity_color / severity_badge_style / label_style branch on Light. Existing TEXT_DIM/TEXT_PRIMARY/BADGE_BG/BORDER_IDLE/BORDER_ACTIVE constants kept as Dark-mode values for backward compat with test assertions."
+        - 'src/app/config.rs: ThemeMode::Light variant + as_str="light" + cycle path + From<ThemeMode> for ui::theme::ThemeMode mapping.'
+        - "Mass migration: 153 call sites across src/ moved from theme::TEXT_DIM / TEXT_PRIMARY / BADGE_BG / BORDER_IDLE / BORDER_ACTIVE constants to the new theme::text_dim() / text_primary() / badge_bg() / border_idle() / border_active() functions so flipping [ux] theme = light actually re-tints the dashboard."
+      changed:
+        - "src/ui/settings.rs: parameter_value_help(UxTheme) updated from 'dark | high_contrast' to 'dark | high_contrast | light'."
+      removed: []
+      tests_added:
+        - "ui::insights::tests: relative_age_label_covers_each_bucket_boundary, is_stale_flips_after_threshold_and_stays_false_without_snapshot, relative_age_label_returns_none_without_loaded_snapshot, mark_loading_clears_loaded_at_so_age_disappears_under_spinner."
+        - "ui::metrics::tests: update_pressure_observation_first_call_seeds_values_with_none_trends, update_pressure_observation_emits_up_down_steady_against_prior_value, update_pressure_observation_treats_sub_epsilon_jitter_as_steady, update_pressure_observation_clears_trend_when_metric_disappears."
+        - "policy::pricing::tests: pricing_staleness_days_returns_none_when_file_missing, returns_none_when_within_threshold, returns_age_when_mtime_predates_threshold, pricing_staleness_secs_constant_is_90_days."
+        - "ui::dashboard::tests: help_section_line_indices_returns_at_least_four_sections_in_order, help_section_line_indices_targets_correspond_to_section_headers."
+        - "ui::theme::tests: theme_mode_cycle_covers_dark_high_contrast_light_in_order, theme_mode_round_trips_through_atomic_for_every_variant, light_theme_severity_colors_stay_distinct, light_theme_text_dim_differs_from_dark, dark_and_high_contrast_text_dim_match_legacy_constant."
+      docs:
+        - "package.json: 1.59.0 → 1.60.0."
+        - "README.md / VERSION.md: 1.59.0 → 1.60.0."
+        - ".mission/CURRENT_STATE.md: v1.60.0 Feature State + validation baseline + mission line refreshed."
+        - "mission.yaml: mission.version + title bumped to v1.60.0."
+        - "mission-history.yaml: v1.60.0 entry appended; meta updated to total_revisions 204 / latest_version 1.60.0."
+        - "docs/ai/VALIDATION.md: new v1.60.0 release row."
+    observable_effects:
+      - "Pressing `i` to open the Insights overlay shows the snapshot's relative age in the title (e.g. ' Token Insights · 2m ago '). After 5 minutes the chip becomes ' Token Insights · 8m ago · stale (press r) '. Pressing `r` pushes a 'insights refresh requested · aggregating fresh token insights …' toast so the operator sees the kick landed."
+      - "Pressing `m` to open the Metrics overlay shows ▲/▼/─ trend arrows next to CTX, 5H/QUOTA, 7D, and CACHE percentages. Routine sub-epsilon jitter (< 0.5pp) reads as ─ instead of flickering."
+      - "If pricing.toml hasn't been modified in 90+ days, an operator-facing Concern notice fires once at session start: 'pricing.toml is stale · ... hasn't been modified in N days. COST estimates may not reflect current rates — review and bump mtime to dismiss.'"
+      - "Pressing `?` to open the help modal accepts digit keys 1..N to jump to the matching section (Controls / Hover Help / Source Labels / State Labels). Hint advertises this."
+      - 'Setting `[ux] theme = "light"` (or cycling via Settings → Parameters → ux theme until ''light'' shows) re-tints the dashboard with darker fg / lighter bg colors suited for bright-profile terminals. severity colors stay pairwise-distinct; labels stay readable.'
+    impact_scope:
+      runtime: "Five additive surfaces; no new threads, no new IO. The pressure tracker is parallel to the existing MemObservation map. Pricing staleness check runs once per session start. Theme accessor migration is a function-call refactor — no semantic change in Dark mode (functions return the same Color::Rgb values as the constants did)."
+      tests: "1415 → 1434 lib tests (+19). 65 integration tests preserved."
+      ledger: "1 new timeline entry (sequence 204); meta total_revisions 203 → 204, latest_version 1.59.0 → 1.60.0."
+      npm: "package.json version 1.60.0; CI publication of v1.60.0 follows the same workflow as v1.37.0 through v1.59.0."
+    breaking: false
+    risk: "low — five additive slices. Theme migration touches 153 call sites mechanically (sed-driven) but every function returns the same Dark-mode Color in Dark mode (default), so existing assertions / visual baselines are unchanged. The 153 callsite migration was test-verified by re-running the full 1434-test suite + 65 integration tests + fmt + clippy clean. PressureObservation defaults to all-None trends so first-frame rendering renders ─ glyphs (no visual jolt for fresh sessions)."
+    related_commits:
+      - "PENDING — v1.60.0 release ledger sync commit (this bundle)."
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 / v1.58.0 / v1.58.1 / v1.59.0 / v1.60.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

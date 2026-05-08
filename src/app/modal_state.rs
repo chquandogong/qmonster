@@ -44,6 +44,13 @@ impl ScrollModalState {
         self.scroll
     }
 
+    /// v1.60.0: jump to an absolute scroll line, clamped to
+    /// `[0, max_scroll]`. Used by the help modal's section-jump keys
+    /// so 1..N lands on the start of the requested section.
+    pub fn set_scroll(&mut self, scroll: usize, max_scroll: usize) {
+        self.scroll = scroll.min(max_scroll);
+    }
+
     fn scroll_up(&mut self, amount: usize) {
         self.scroll = self.scroll.saturating_sub(amount);
     }

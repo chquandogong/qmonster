@@ -113,7 +113,7 @@ pub fn render_pane_list(
 
     if reports.is_empty() {
         Paragraph::new("no panes in the selected window")
-            .style(Style::default().fg(theme::TEXT_DIM))
+            .style(Style::default().fg(theme::text_dim()))
             .block(block)
             .render(area, buf);
         return;
@@ -493,7 +493,7 @@ fn pane_list_lines_with_flash(
     if with_separator {
         lines.push(Line::styled(
             "────────────────────────────────────────",
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         ));
     }
 
@@ -540,7 +540,7 @@ fn provider_color(provider: Provider) -> Color {
         Provider::Codex => Color::Rgb(120, 175, 205),
         Provider::Gemini => Color::Rgb(140, 185, 145),
         Provider::Qmonster => Color::Rgb(175, 160, 210),
-        Provider::Unknown => theme::TEXT_PRIMARY,
+        Provider::Unknown => theme::text_primary(),
     }
 }
 
@@ -551,12 +551,12 @@ pub fn render_pane_panel(area: Rect, buf: &mut Buffer, report: &PaneReport) {
     let title = pane_panel_title(report);
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::BORDER_IDLE))
+        .border_style(Style::default().fg(theme::border_idle()))
         .title(title);
 
     if report.dead {
         Paragraph::new("DEAD — alerts drained")
-            .style(Style::default().fg(theme::TEXT_DIM))
+            .style(Style::default().fg(theme::text_dim()))
             .block(block)
             .render(area, buf);
         return;
@@ -650,7 +650,7 @@ fn pane_panel_title_line(
             .map(|rec| rec.severity)
             .max()
             .map(theme::severity_color)
-            .unwrap_or(theme::TEXT_PRIMARY);
+            .unwrap_or(theme::text_primary());
         spans.push(Span::styled(
             "  \u{2605}p",
             Style::default().fg(chip_color).add_modifier(Modifier::BOLD),
@@ -1187,7 +1187,7 @@ fn primary_metric_row(signals: &SignalSet, provider: Provider) -> Option<Line<'s
                 eta,
                 source_kind_label(metric.source_kind)
             ),
-            Style::default().fg(theme::TEXT_PRIMARY),
+            Style::default().fg(theme::text_primary()),
         );
     }
     if let Some(metric) = signals.quota_weekly_pressure.as_ref() {
@@ -1209,7 +1209,7 @@ fn primary_metric_row(signals: &SignalSet, provider: Provider) -> Option<Line<'s
                 eta,
                 source_kind_label(metric.source_kind)
             ),
-            Style::default().fg(theme::TEXT_PRIMARY),
+            Style::default().fg(theme::text_primary()),
         );
     }
     if let Some(fact) = first_model_reset_fact(signals) {
@@ -1221,7 +1221,7 @@ fn primary_metric_row(signals: &SignalSet, provider: Provider) -> Option<Line<'s
                 ellipsize(&fact.value, 48),
                 source_kind_label(fact.source_kind)
             ),
-            Style::default().fg(theme::TEXT_PRIMARY),
+            Style::default().fg(theme::text_primary()),
         );
     }
     if let Some(metric) = signals.token_count.as_ref() {
@@ -1490,7 +1490,7 @@ fn token_sparkline_status_line(
         spans.push(Span::styled(
             token_sparkline_label(signals),
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
+                .fg(theme::text_primary())
                 .add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::styled(
@@ -1500,12 +1500,12 @@ fn token_sparkline_status_line(
                 format_count_with_suffix(stats.delta_prompt_tokens),
                 stats.sample_count
             ),
-            Style::default().fg(theme::TEXT_PRIMARY),
+            Style::default().fg(theme::text_primary()),
         ));
         spans.push(Span::styled(
             stats.body,
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
+                .fg(theme::text_primary())
                 .add_modifier(Modifier::BOLD),
         ));
     } else {
@@ -1517,7 +1517,10 @@ fn token_sparkline_status_line(
         if let Some(n) = latest_sampled_prompt_tokens(samples) {
             text.push_str(&format!("· prompt {} ", format_count_with_suffix(n)));
         }
-        spans.push(Span::styled(text, Style::default().fg(theme::TEXT_PRIMARY)));
+        spans.push(Span::styled(
+            text,
+            Style::default().fg(theme::text_primary()),
+        ));
     }
     Line::from(spans)
 }
@@ -1990,7 +1993,7 @@ fn state_label_style(pulse_on: bool) -> Style {
             .bg(Color::Rgb(245, 226, 120))
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(theme::TEXT_DIM)
+        Style::default().fg(theme::text_dim())
     }
 }
 

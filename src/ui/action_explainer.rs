@@ -32,7 +32,7 @@ pub fn render_explainer_lines(view: &ActionExplainView, _body: Rect) -> Vec<Line
     out.push(Line::from(""));
     out.push(Line::from(Span::styled(
         "Press Enter to confirm \u{B7} Esc / same key / click [x] to cancel".to_string(),
-        Style::default().fg(theme::TEXT_DIM),
+        Style::default().fg(theme::text_dim()),
     )));
     out
 }
@@ -61,7 +61,7 @@ pub fn render_action_explainer_modal(frame: &mut Frame<'_>, view: &ActionExplain
     let block = Block::default()
         .title(format!("Action: {}", view.title))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::BORDER_ACTIVE));
+        .border_style(Style::default().fg(theme::border_active()));
     let lines = render_explainer_lines(view, area);
     frame.render_widget(
         Paragraph::new(lines)

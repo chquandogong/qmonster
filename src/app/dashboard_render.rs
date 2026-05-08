@@ -54,6 +54,7 @@ pub struct DashboardFrameView<'a> {
     pub insights_overlay: &'a crate::ui::insights::InsightsOverlay,
     pub anomaly_events_ring: &'a crate::app::anomaly_events_ring::AnomalyEventsRing,
     pub mem_observations: &'a HashMap<String, crate::ui::metrics::MemObservation>,
+    pub pressure_observations: &'a HashMap<String, crate::ui::metrics::PressureObservation>,
     pub action_explainer: &'a crate::app::action_explainer::ActionExplainModal,
     pub pending_actions: &'a PendingActionsOverlay,
     pub pending_items: &'a [PendingItem],
@@ -206,6 +207,7 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
             view.target_label,
             view.reports,
             view.mem_observations,
+            view.pressure_observations,
         );
     }
 
@@ -215,7 +217,7 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
     }
 
     if view.insights_overlay.is_open() {
-        crate::ui::insights::render_insights_modal(frame, view.insights_overlay);
+        crate::ui::insights::render_insights_modal(frame, view.insights_overlay, view.now);
     }
 
     if let Some(view) = view.action_explainer.view() {

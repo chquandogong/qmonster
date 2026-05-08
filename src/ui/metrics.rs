@@ -100,6 +100,68 @@ pub fn update_mem_observation(
     );
 }
 
+/// v1.60.0: per-pane pressure trend tracker. Mirrors `MemObservation`
+/// but carries CTX / 5H / 7D / CACHE pressure ratios so the metrics
+/// overlay can render a `▲ ▼ ─` direction arrow next to each
+/// percentage. Operators reading "is my CTX climbing?" no longer
+/// need to open the overlay twice to compare.
+#[derive(Debug, Clone, Default)]
+pub struct PressureObservation {
+    pub ctx: Option<f32>,
+    pub q5h: Option<f32>,
+    pub q7d: Option<f32>,
+    pub cache: Option<f32>,
+    pub ctx_trend: Option<MemTrend>,
+    pub q5h_trend: Option<MemTrend>,
+    pub q7d_trend: Option<MemTrend>,
+    pub cache_trend: Option<MemTrend>,
+}
+
+/// v1.60.0: pressure-ratio steady epsilon. Pressure ratios are noisy
+/// (cache hit ratio bounces with every request); 0.005 (= 0.5pp)
+/// keeps `Steady` from flickering on routine jitter while still
+/// catching real climbs.
+pub const PRESSURE_TREND_STEADY_EPSILON: f32 = 0.005;
+
+fn pressure_trend(prev: Option<f32>, curr: Option<f32>) -> Option<MemTrend> {
+    match (prev, curr) {
+        (Some(p), Some(c)) if (c - p).abs() < PRESSURE_TREND_STEADY_EPSILON => {
+            Some(MemTrend::Steady)
+        }
+        (Some(p), Some(c)) if c > p => Some(MemTrend::Up),
+        (Some(p), Some(c)) if c < p => Some(MemTrend::Down),
+        _ => None,
+    }
+}
+
+/// Update the per-pane pressure tracker with the current poll's
+/// pressure ratios and emit Up/Down/Steady arrows for each. The first
+/// observation has no prior — every trend is `None` and the renderer
+/// falls back to a dim `─`.
+pub fn update_pressure_observation(
+    map: &mut HashMap<String, PressureObservation>,
+    pane_id: &str,
+    current_ctx: Option<f32>,
+    current_q5h: Option<f32>,
+    current_q7d: Option<f32>,
+    current_cache: Option<f32>,
+) {
+    let prev = map.get(pane_id).cloned().unwrap_or_default();
+    map.insert(
+        pane_id.to_string(),
+        PressureObservation {
+            ctx: current_ctx,
+            q5h: current_q5h,
+            q7d: current_q7d,
+            cache: current_cache,
+            ctx_trend: pressure_trend(prev.ctx, current_ctx),
+            q5h_trend: pressure_trend(prev.q5h, current_q5h),
+            q7d_trend: pressure_trend(prev.q7d, current_q7d),
+            cache_trend: pressure_trend(prev.cache, current_cache),
+        },
+    );
+}
+
 pub type DragAnchor = crate::ui::modal_chrome::DragAnchor;
 
 #[derive(Debug, Clone)]
@@ -263,7 +325,7 @@ pub fn hottest_banner_line(reports: &[PaneReport]) -> Line<'static> {
         )),
         None => Line::from(Span::styled(
             "Hottest: —",
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         )),
     }
 }
@@ -306,7 +368,7 @@ const BAR_MIN_CELLS: usize = 8;
 /// Bar kind controls the filled-cell color:
 /// - `Pressure`: filled cells take a severity color derived from the
 ///   value via `severity_for_ratio` (CTX/5H/7D pressure metrics).
-/// - `Neutral`: filled cells use `theme::TEXT_PRIMARY` (CACHE hit
+/// - `Neutral`: filled cells use `theme::text_primary()` (CACHE hit
 ///   ratio is informational, so coloring it red at low values would
 ///   be misleading).
 #[derive(Clone, Copy, Debug)]
@@ -375,6 +437,7 @@ pub fn render_metrics_lines(
     reports: &[PaneReport],
     body: Rect,
     mem_observations: &HashMap<String, MemObservation>,
+    pressure_observations: &HashMap<String, PressureObservation>,
 ) -> Vec<Line<'static>> {
     let mut out = Vec::new();
     out.push(hottest_banner_line(reports));
@@ -413,6 +476,10 @@ pub fn render_metrics_lines(
             left_half_width,
             right_half_width,
             mem_observations,
+            pressure_observations
+                .get(&r.pane_id)
+                .cloned()
+                .unwrap_or_default(),
         ));
     }
 
@@ -428,7 +495,7 @@ fn card_divider_line(report: &PaneReport, inner_width: u16) -> Line<'static> {
     for _ in 0..trail {
         s.push('━');
     }
-    Line::from(Span::styled(s, Style::default().fg(theme::TEXT_DIM)))
+    Line::from(Span::styled(s, Style::default().fg(theme::text_dim())))
 }
 
 fn card_rows(
@@ -436,6 +503,7 @@ fn card_rows(
     left_half_width: u16,
     right_half_width: u16,
     mem_observations: &HashMap<String, MemObservation>,
+    pressure: PressureObservation,
 ) -> Vec<Line<'static>> {
     let bar_cells = bar_cells_for_left_half(left_half_width);
     let s = &report.signals;
@@ -446,10 +514,11 @@ fn card_rows(
             s.context_pressure.as_ref().map(|m| m.value),
             bar_cells,
             BarKind::Pressure,
+            pressure.ctx_trend,
         ),
-        quota_left_row(s, bar_cells, true),
-        quota_left_row(s, bar_cells, false),
-        cache_left_row(report, bar_cells),
+        quota_left_row(s, bar_cells, true, pressure.q5h_trend, pressure.q7d_trend),
+        quota_left_row(s, bar_cells, false, pressure.q5h_trend, pressure.q7d_trend),
+        cache_left_row(report, bar_cells, pressure.cache_trend),
     ];
 
     let right_rows = [
@@ -549,6 +618,7 @@ fn left_row(
     value: Option<f32>,
     bar_cells: usize,
     kind: BarKind,
+    trend: Option<MemTrend>,
 ) -> Vec<Span<'static>> {
     // Prefix: "LABEL  " — LABEL left-padded to 6 chars + a 1-space
     // gap matches the prior single-space layout in the `String` body
@@ -562,7 +632,7 @@ fn left_row(
             let unfilled = bar_cells - filled;
             let filled_color = match kind {
                 BarKind::Pressure => theme::severity_color(severity_for_ratio(v)),
-                BarKind::Neutral => theme::TEXT_PRIMARY,
+                BarKind::Neutral => theme::text_primary(),
             };
             if filled > 0 {
                 spans.push(Span::styled(
@@ -573,27 +643,43 @@ fn left_row(
             if unfilled > 0 {
                 spans.push(Span::styled(
                     "░".repeat(unfilled),
-                    Style::default().fg(theme::TEXT_DIM),
+                    Style::default().fg(theme::text_dim()),
                 ));
             }
             spans.push(Span::raw(format!("  {:>4}", pct(v))));
+            // v1.60.0: trend arrow against the previous poll. Dim
+            // styling so it reads as a subtle hint rather than
+            // competing with the bar / percentage.
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(
+                trend.map(|t| t.arrow()).unwrap_or("─").to_string(),
+                Style::default().fg(theme::text_dim()),
+            ));
         }
         None => {
             spans.push(Span::styled(
                 DASH.to_string(),
-                Style::default().fg(theme::TEXT_DIM),
+                Style::default().fg(theme::text_dim()),
             ));
         }
     }
     spans
 }
 
-fn cache_left_row(report: &PaneReport, bar_cells: usize) -> Vec<Span<'static>> {
+fn cache_left_row(
+    report: &PaneReport,
+    bar_cells: usize,
+    trend: Option<MemTrend>,
+) -> Vec<Span<'static>> {
     match provider_honesty::cache_metric_status(&report.signals, report.identity.identity.provider)
     {
-        CacheMetricStatus::Value { ratio, .. } => {
-            left_row("CACHE", Some(ratio as f32), bar_cells, BarKind::Neutral)
-        }
+        CacheMetricStatus::Value { ratio, .. } => left_row(
+            "CACHE",
+            Some(ratio as f32),
+            bar_cells,
+            BarKind::Neutral,
+            trend,
+        ),
         CacheMetricStatus::Pending => left_row_text("CACHE", "?"),
         CacheMetricStatus::Unsupported => left_row_text("CACHE", DASH),
         CacheMetricStatus::Hidden => left_row_text("CACHE", DASH),
@@ -603,7 +689,7 @@ fn cache_left_row(report: &PaneReport, bar_cells: usize) -> Vec<Span<'static>> {
 fn left_row_text(label: &str, value: &'static str) -> Vec<Span<'static>> {
     vec![
         Span::raw(format!("{label:<6} ")),
-        Span::styled(value.to_string(), Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(value.to_string(), Style::default().fg(theme::text_dim())),
     ]
 }
 
@@ -653,6 +739,8 @@ fn quota_left_row(
     s: &crate::domain::signal::SignalSet,
     bar_cells: usize,
     primary: bool,
+    q5h_trend: Option<MemTrend>,
+    q7d_trend: Option<MemTrend>,
 ) -> Vec<Span<'static>> {
     let split_5h = s.quota_5h_pressure.as_ref().map(|m| m.value);
     let split_weekly = s.quota_weekly_pressure.as_ref().map(|m| m.value);
@@ -660,20 +748,23 @@ fn quota_left_row(
 
     if split_5h.is_some() || split_weekly.is_some() {
         if primary {
-            left_row("5H", split_5h, bar_cells, BarKind::Pressure)
+            left_row("5H", split_5h, bar_cells, BarKind::Pressure, q5h_trend)
         } else {
-            left_row("7D", split_weekly, bar_cells, BarKind::Pressure)
+            left_row("7D", split_weekly, bar_cells, BarKind::Pressure, q7d_trend)
         }
     } else if single.is_some() {
         if primary {
-            left_row("QUOTA", single, bar_cells, BarKind::Pressure)
+            // Single-quota providers (Gemini today) reuse the 5H slot
+            // for the unified QUOTA bar; 5H trend is the closest match
+            // since both feed off `quota_5h_pressure` semantics.
+            left_row("QUOTA", single, bar_cells, BarKind::Pressure, q5h_trend)
         } else {
             left_row_placeholder()
         }
     } else if primary {
-        left_row("5H", None, bar_cells, BarKind::Pressure)
+        left_row("5H", None, bar_cells, BarKind::Pressure, None)
     } else {
-        left_row("7D", None, bar_cells, BarKind::Pressure)
+        left_row("7D", None, bar_cells, BarKind::Pressure, None)
     }
 }
 
@@ -877,6 +968,7 @@ pub fn render_metrics_modal(
     target_label: &str,
     reports: &[PaneReport],
     mem_observations: &HashMap<String, MemObservation>,
+    pressure_observations: &HashMap<String, PressureObservation>,
 ) {
     let rects = metrics_modal_rects(
         frame.area(),
@@ -887,7 +979,14 @@ pub fn render_metrics_modal(
     );
     frame.render_widget(Clear, rects.area);
 
-    let lines = render_metrics_lines(overlay, target_label, reports, rects.body, mem_observations);
+    let lines = render_metrics_lines(
+        overlay,
+        target_label,
+        reports,
+        rects.body,
+        mem_observations,
+        pressure_observations,
+    );
     let visible_lines = rects.area.height.saturating_sub(2) as usize;
     let max_scroll = lines
         .len()
@@ -900,7 +999,7 @@ pub fn render_metrics_modal(
             reports.len()
         ))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::BORDER_ACTIVE));
+        .border_style(Style::default().fg(theme::border_active()));
 
     frame.render_widget(
         Paragraph::new(lines)
@@ -918,7 +1017,7 @@ pub fn render_metrics_modal(
             "[ shrink · ] grow · = reset · ↑/↓ scroll · m close · Esc close · click [x] close · {}",
             scroll_hint::scroll_status_label(scroll, max_scroll)
         ))
-        .style(Style::default().fg(theme::TEXT_DIM)),
+        .style(Style::default().fg(theme::text_dim())),
         rects.hint,
     );
 }
@@ -926,6 +1025,75 @@ pub fn render_metrics_modal(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // v1.60.0 -----------------------------------------------------------
+
+    #[test]
+    fn update_pressure_observation_first_call_seeds_values_with_none_trends() {
+        let mut map = HashMap::new();
+        update_pressure_observation(&mut map, "p1", Some(0.5), Some(0.6), Some(0.7), Some(0.4));
+        let obs = map.get("p1").unwrap();
+        assert_eq!(obs.ctx, Some(0.5));
+        assert_eq!(obs.q5h, Some(0.6));
+        assert_eq!(obs.q7d, Some(0.7));
+        assert_eq!(obs.cache, Some(0.4));
+        assert!(obs.ctx_trend.is_none());
+        assert!(obs.q5h_trend.is_none());
+        assert!(obs.q7d_trend.is_none());
+        assert!(obs.cache_trend.is_none());
+    }
+
+    #[test]
+    fn update_pressure_observation_emits_up_down_steady_against_prior_value() {
+        let mut map = HashMap::new();
+        update_pressure_observation(
+            &mut map,
+            "p1",
+            Some(0.50),
+            Some(0.60),
+            Some(0.70),
+            Some(0.40),
+        );
+        // Same values, +0.06 / -0.06 / no change
+        update_pressure_observation(
+            &mut map,
+            "p1",
+            Some(0.50),
+            Some(0.66),
+            Some(0.64),
+            Some(0.40),
+        );
+        let obs = map.get("p1").unwrap();
+        assert_eq!(obs.ctx_trend, Some(MemTrend::Steady));
+        assert_eq!(obs.q5h_trend, Some(MemTrend::Up));
+        assert_eq!(obs.q7d_trend, Some(MemTrend::Down));
+        assert_eq!(obs.cache_trend, Some(MemTrend::Steady));
+    }
+
+    #[test]
+    fn update_pressure_observation_treats_sub_epsilon_jitter_as_steady() {
+        let mut map = HashMap::new();
+        update_pressure_observation(&mut map, "p1", Some(0.500), None, None, None);
+        update_pressure_observation(
+            &mut map,
+            "p1",
+            Some(0.500 + PRESSURE_TREND_STEADY_EPSILON / 2.0),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(map.get("p1").unwrap().ctx_trend, Some(MemTrend::Steady));
+    }
+
+    #[test]
+    fn update_pressure_observation_clears_trend_when_metric_disappears() {
+        let mut map = HashMap::new();
+        update_pressure_observation(&mut map, "p1", Some(0.5), None, None, None);
+        update_pressure_observation(&mut map, "p1", None, None, None, None);
+        let obs = map.get("p1").unwrap();
+        assert!(obs.ctx_trend.is_none());
+        assert!(obs.ctx.is_none());
+    }
 
     #[test]
     fn open_close_round_trip() {
@@ -963,7 +1131,16 @@ mod tests {
         overlay.open();
 
         terminal
-            .draw(|frame| render_metrics_modal(frame, &overlay, "main", &[], &HashMap::new()))
+            .draw(|frame| {
+                render_metrics_modal(
+                    frame,
+                    &overlay,
+                    "main",
+                    &[],
+                    &HashMap::new(),
+                    &HashMap::new(),
+                )
+            })
             .unwrap();
         let rendered = buf_to_string(terminal.backend().buffer());
         let title_line = rendered
@@ -1109,7 +1286,14 @@ mod tests {
 
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body, &HashMap::new());
+        let lines = render_metrics_lines(
+            &overlay,
+            "qmonster:0",
+            &[rep],
+            body,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         let strs: Vec<String> = lines.iter().map(line_to_string).collect();
         let dump: String = strs.iter().map(|s| format!("{s}\n")).collect();
 
@@ -1159,7 +1343,14 @@ mod tests {
         let rep = report_with_pressure("claude:1:main", 0.40, None, None);
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body, &HashMap::new());
+        let lines = render_metrics_lines(
+            &overlay,
+            "qmonster:0",
+            &[rep],
+            body,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         // Find the divider: it begins with `━ claude:1:main`
         let divider = lines
             .iter()
@@ -1203,7 +1394,14 @@ mod tests {
         let rep = report_with_pressure("g:1:r", 0.3, None, None);
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body, &HashMap::new());
+        let lines = render_metrics_lines(
+            &overlay,
+            "qmonster:0",
+            &[rep],
+            body,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
         // Em-dash should appear at least once for the missing rows.
         assert!(
@@ -1230,7 +1428,14 @@ mod tests {
 
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body, &HashMap::new());
+        let lines = render_metrics_lines(
+            &overlay,
+            "qmonster:0",
+            &[rep],
+            body,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         let strs: Vec<String> = lines.iter().map(line_to_string).collect();
         let row1 = &strs[2];
 
@@ -1263,7 +1468,14 @@ mod tests {
 
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &[rep], body, &HashMap::new());
+        let lines = render_metrics_lines(
+            &overlay,
+            "qmonster:0",
+            &[rep],
+            body,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         let strs: Vec<String> = lines.iter().map(line_to_string).collect();
         let row4 = &strs[5];
 
@@ -1288,7 +1500,14 @@ mod tests {
         let panes: Vec<crate::app::event_loop::PaneReport> = Vec::new();
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body, &HashMap::new());
+        let lines = render_metrics_lines(
+            &overlay,
+            "qmonster:0",
+            &panes,
+            body,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
         assert!(
             dump.contains("Hottest:") && dump.contains("—"),
@@ -1306,7 +1525,14 @@ mod tests {
         ];
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body, &HashMap::new());
+        let lines = render_metrics_lines(
+            &overlay,
+            "qmonster:0",
+            &panes,
+            body,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         // Find any pair of consecutive purely-empty lines.
         let strs: Vec<String> = lines.iter().map(line_to_string).collect();
         for w in strs.windows(2) {
@@ -1341,6 +1567,7 @@ mod tests {
             std::slice::from_ref(&rep),
             body,
             &HashMap::new(),
+            &HashMap::new(),
         );
         let inner_width = (body.width - 2) as usize;
         for (i, line) in lines.iter().enumerate() {
@@ -1373,6 +1600,7 @@ mod tests {
             "tgt",
             std::slice::from_ref(&rep),
             body,
+            &HashMap::new(),
             &HashMap::new(),
         );
         let ctx_line = &lines[2]; // line 2 is CTX (0=banner, 1=divider)
@@ -1407,12 +1635,13 @@ mod tests {
             std::slice::from_ref(&rep),
             body,
             &HashMap::new(),
+            &HashMap::new(),
         );
         let ctx_line = &lines[2];
         let any_dim = ctx_line
             .spans
             .iter()
-            .any(|s| s.style.fg == Some(theme::TEXT_DIM) && s.content.contains('░'));
+            .any(|s| s.style.fg == Some(theme::text_dim()) && s.content.contains('░'));
         assert!(
             any_dim,
             "CTX bar at 10% should have a span with dim fg on '░' chars; got: {:?}",
@@ -1439,10 +1668,11 @@ mod tests {
             std::slice::from_ref(&rep),
             body,
             &HashMap::new(),
+            &HashMap::new(),
         );
         // CACHE is row 3 of the card; lines[2..6] are CTX/5H/7D/CACHE.
         let cache_line = &lines[5];
-        let neutral = theme::TEXT_PRIMARY;
+        let neutral = theme::text_primary();
         let has_neutral_filled = cache_line
             .spans
             .iter()
@@ -1483,6 +1713,7 @@ mod tests {
             std::slice::from_ref(&rep),
             body,
             &HashMap::new(),
+            &HashMap::new(),
         );
         let dump = lines
             .iter()
@@ -1516,7 +1747,14 @@ mod tests {
         ];
         let overlay = MetricsOverlay::new();
         let body = Rect::new(0, 0, 120, 30);
-        let lines = render_metrics_lines(&overlay, "qmonster:0", &panes, body, &HashMap::new());
+        let lines = render_metrics_lines(
+            &overlay,
+            "qmonster:0",
+            &panes,
+            body,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
         assert!(dump.contains("Hottest:"), "missing banner; got:\n{dump}");
         assert!(
@@ -1616,6 +1854,7 @@ mod tests {
             std::slice::from_ref(&rep),
             Rect::new(0, 0, 120, 30),
             &map,
+            &HashMap::new(),
         );
         // CACHE row's right side carries the COST·MEM combined row
         // (banner=0, divider=1, content rows 2..6 → COST·MEM = 5).
@@ -1646,6 +1885,7 @@ mod tests {
             "tgt",
             std::slice::from_ref(&rep),
             Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
             &HashMap::new(),
         );
         let cost_mem_line = &lines[5];
@@ -1692,6 +1932,7 @@ mod tests {
             std::slice::from_ref(&rep),
             Rect::new(0, 0, 120, 30),
             &HashMap::new(),
+            &HashMap::new(),
         );
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
         assert!(
@@ -1719,6 +1960,7 @@ mod tests {
             "tgt",
             std::slice::from_ref(&rep),
             Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
             &HashMap::new(),
         );
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
@@ -1757,6 +1999,7 @@ mod tests {
             std::slice::from_ref(&rep),
             Rect::new(0, 0, 120, 30),
             &HashMap::new(),
+            &HashMap::new(),
         );
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
         assert!(
@@ -1792,6 +2035,7 @@ mod tests {
             std::slice::from_ref(&rep),
             Rect::new(0, 0, 120, 30),
             &HashMap::new(),
+            &HashMap::new(),
         );
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
         assert!(
@@ -1821,6 +2065,7 @@ mod tests {
             "tgt",
             std::slice::from_ref(&rep),
             Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
             &HashMap::new(),
         );
         let dump: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
@@ -2063,6 +2308,7 @@ mod tests {
             std::slice::from_ref(&pane),
             Rect::new(0, 0, 120, 30),
             &HashMap::new(),
+            &HashMap::new(),
         );
         let rendered: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();
         assert!(
@@ -2086,6 +2332,7 @@ mod tests {
             "tgt",
             std::slice::from_ref(&pane),
             Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
             &HashMap::new(),
         );
         let rendered: String = lines.iter().map(|l| line_to_string(l) + "\n").collect();

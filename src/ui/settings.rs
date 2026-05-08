@@ -2665,7 +2665,7 @@ pub fn render_settings_modal(
     let tab_block = Block::default()
         .title("Settings")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::BORDER_ACTIVE));
+        .border_style(Style::default().fg(theme::border_active()));
     let tab_inner = tab_block.inner(rects.tabs);
     frame.render_widget(tab_block, rects.tabs);
     let tab_line = settings_tab_strip_line(overlay.tab());
@@ -2688,7 +2688,7 @@ pub fn render_settings_modal(
                             Style::default().add_modifier(Modifier::BOLD),
                         ))
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+                        .border_style(Style::default().fg(theme::border_active())),
                 ),
             parameter_rects.list,
         );
@@ -2702,7 +2702,7 @@ pub fn render_settings_modal(
                             Style::default().add_modifier(Modifier::BOLD),
                         ))
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+                        .border_style(Style::default().fg(theme::border_active())),
                 ),
             parameter_rects.help,
         );
@@ -2718,7 +2718,7 @@ pub fn render_settings_modal(
                             Style::default().add_modifier(Modifier::BOLD),
                         ))
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+                        .border_style(Style::default().fg(theme::border_active())),
                 ),
             rects.body,
         );
@@ -2738,7 +2738,7 @@ pub fn render_settings_modal(
             overlay,
             Some((scroll, settings_max_scroll(overlay, config, frame.area()))),
         ))
-        .style(Style::default().fg(theme::TEXT_DIM))
+        .style(Style::default().fg(theme::text_dim()))
         .wrap(Wrap { trim: false }),
         rects.hint,
     );
@@ -2801,10 +2801,10 @@ pub(crate) fn settings_tab_strip_line(active: SettingsTab) -> Line<'static> {
         let label = format!(" {} ", settings_numbered_label(*tab));
         let style = if *tab == active {
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
+                .fg(theme::text_primary())
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(theme::TEXT_DIM)
+            Style::default().fg(theme::text_dim())
         };
         spans.push(Span::styled(label, style));
         if idx + 1 < SETTINGS_TABS.len() {
@@ -2816,7 +2816,7 @@ pub(crate) fn settings_tab_strip_line(active: SettingsTab) -> Line<'static> {
             } else {
                 "│"
             };
-            spans.push(Span::styled(seam, Style::default().fg(theme::TEXT_DIM)));
+            spans.push(Span::styled(seam, Style::default().fg(theme::text_dim())));
         }
     }
     Line::from(spans)
@@ -3023,18 +3023,21 @@ fn build_integration_body_lines(
         Line::from(vec![
             Span::styled(
                 "  Provider Setup (P) is read-only. ",
-                Style::default().fg(theme::TEXT_DIM),
+                Style::default().fg(theme::text_dim()),
             ),
             Span::styled(
                 "Change these values here, then press w to write TOML.",
-                Style::default().fg(theme::TEXT_PRIMARY),
+                Style::default().fg(theme::text_primary()),
             ),
         ]),
         Line::from(vec![
-            Span::styled("  Codex app-server: ", Style::default().fg(theme::TEXT_DIM)),
+            Span::styled(
+                "  Codex app-server: ",
+                Style::default().fg(theme::text_dim()),
+            ),
             Span::styled(
                 "restart required after save; Qmonster sends initialize + rateLimits/read.",
-                Style::default().fg(theme::TEXT_PRIMARY),
+                Style::default().fg(theme::text_primary()),
             ),
         ]),
         Line::from(""),
@@ -3055,23 +3058,23 @@ fn integration_row_line(
     let value = if enabled { "ON " } else { "OFF" };
     let value_style = if focused {
         Style::default()
-            .fg(theme::TEXT_PRIMARY)
+            .fg(theme::text_primary())
             .add_modifier(Modifier::REVERSED)
     } else if enabled {
         Style::default()
             .fg(theme::severity_color(Severity::Good))
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(theme::TEXT_DIM)
+        Style::default().fg(theme::text_dim())
     };
     Line::from(vec![
         Span::raw(format!("    {cursor}")),
         Span::styled(
             format!("{:<29}", field.label()),
-            Style::default().fg(theme::TEXT_PRIMARY),
+            Style::default().fg(theme::text_primary()),
         ),
         Span::styled(format!(" {value} "), value_style),
-        Span::styled(detail, Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(detail, Style::default().fg(theme::text_dim())),
     ])
 }
 
@@ -3088,7 +3091,7 @@ fn build_parameter_body_lines(
             ),
             Span::styled(
                 " differs from the built-in default \u{00b7}",
-                Style::default().fg(theme::TEXT_DIM),
+                Style::default().fg(theme::text_dim()),
             ),
             // v1.59.0: dedicated dirty-row marker; the green ● appears
             // on rows the operator has changed since opening this
@@ -3102,7 +3105,7 @@ fn build_parameter_body_lines(
             ),
             Span::styled(
                 " modified-but-not-saved this session (clears on `w`)",
-                Style::default().fg(theme::TEXT_DIM),
+                Style::default().fg(theme::text_dim()),
             ),
         ]),
         Line::from(""),
@@ -3857,7 +3860,7 @@ fn reference_header_line(label: &'static str) -> Line<'static> {
     Line::from(vec![Span::styled(
         format!("  {label}"),
         Style::default()
-            .fg(theme::TEXT_PRIMARY)
+            .fg(theme::text_primary())
             .add_modifier(Modifier::BOLD),
     )])
 }
@@ -3865,8 +3868,11 @@ fn reference_header_line(label: &'static str) -> Line<'static> {
 fn badge_row(label: &'static str, meaning: &'static str) -> Line<'static> {
     Line::from(vec![
         Span::raw("    "),
-        Span::styled(format!("{label:<17}"), Style::default().fg(theme::TEXT_DIM)),
-        Span::styled(meaning, Style::default().fg(theme::TEXT_PRIMARY)),
+        Span::styled(
+            format!("{label:<17}"),
+            Style::default().fg(theme::text_dim()),
+        ),
+        Span::styled(meaning, Style::default().fg(theme::text_primary())),
     ])
 }
 
@@ -3876,7 +3882,7 @@ fn setting_row(label: &'static str, value: String, default: String) -> Line<'sta
     let marker_style = if custom {
         Style::default().fg(theme::severity_color(Severity::Warning))
     } else {
-        Style::default().fg(theme::TEXT_DIM)
+        Style::default().fg(theme::text_dim())
     };
     let default_note = if custom {
         format!("  default {default}")
@@ -3885,9 +3891,12 @@ fn setting_row(label: &'static str, value: String, default: String) -> Line<'sta
     };
     Line::from(vec![
         Span::styled(format!("  {marker} "), marker_style),
-        Span::styled(format!("{label:<31}"), Style::default().fg(theme::TEXT_DIM)),
-        Span::styled(value, Style::default().fg(theme::TEXT_PRIMARY)),
-        Span::styled(default_note, Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(
+            format!("{label:<31}"),
+            Style::default().fg(theme::text_dim()),
+        ),
+        Span::styled(value, Style::default().fg(theme::text_primary())),
+        Span::styled(default_note, Style::default().fg(theme::text_dim())),
     ])
 }
 
@@ -3942,12 +3951,12 @@ fn append_parameter_editor_lines(
                     displayed.to_string()
                 },
                 Style::default()
-                    .fg(theme::TEXT_PRIMARY)
+                    .fg(theme::text_primary())
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 format!(" \u{00b7} {trailing}"),
-                Style::default().fg(theme::TEXT_DIM),
+                Style::default().fg(theme::text_dim()),
             ),
         ]));
         lines.push(Line::from(""));
@@ -3977,7 +3986,7 @@ fn append_parameter_editor_lines(
     if filter.is_some() && !emitted_in_section {
         lines.push(Line::from(vec![Span::styled(
             "  no parameters match — Backspace to broaden, Esc to clear",
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         )]));
     }
 }
@@ -4013,8 +4022,11 @@ fn append_selected_parameter_help_lines(
 fn parameter_help_line(label: &'static str, value: &str) -> Line<'static> {
     Line::from(vec![
         Span::raw("    "),
-        Span::styled(format!("{label}: "), Style::default().fg(theme::TEXT_DIM)),
-        Span::styled(value.to_string(), Style::default().fg(theme::TEXT_PRIMARY)),
+        Span::styled(format!("{label}: "), Style::default().fg(theme::text_dim())),
+        Span::styled(
+            value.to_string(),
+            Style::default().fg(theme::text_primary()),
+        ),
     ])
 }
 
@@ -4156,7 +4168,7 @@ fn parameter_value_help(field: ParameterField) -> &'static str {
         UxConfirmActions => "always | first_time | never",
         UxHoverHelpTrigger => "label | row",
         UxHelpLanguage => "ko | en",
-        UxTheme => "dark | high_contrast",
+        UxTheme => "dark | high_contrast | light",
         TmuxSource => "auto | polling | control_mode",
         FxEffect => "banner | confetti | matrix | snow | fireworks | plasma | sampler",
         RefreshPolicy => "manual_only | automatic",
@@ -4233,28 +4245,28 @@ fn parameter_row_line(
     let value_style = if focused {
         if overlay.edit_buffer().is_some() {
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .bg(theme::BADGE_BG)
+                .fg(theme::text_primary())
+                .bg(theme::badge_bg())
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
+                .fg(theme::text_primary())
                 .add_modifier(Modifier::REVERSED)
         }
     } else {
-        Style::default().fg(theme::TEXT_PRIMARY)
+        Style::default().fg(theme::text_primary())
     };
     let differs_style = if custom {
         Style::default().fg(theme::severity_color(Severity::Warning))
     } else {
-        Style::default().fg(theme::TEXT_DIM)
+        Style::default().fg(theme::text_dim())
     };
     let dirty_style = if dirty {
         Style::default()
             .fg(theme::severity_color(Severity::Good))
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(theme::TEXT_DIM)
+        Style::default().fg(theme::text_dim())
     };
     let action = match parameter_edit_kind(field) {
         ParameterEditKind::Bool => "toggle",
@@ -4269,22 +4281,25 @@ fn parameter_row_line(
         Span::raw(cursor),
         Span::styled(
             format!("{:<38}", parameter_label(field)),
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         ),
         Span::styled(format!("{:<18}", value), value_style),
         Span::styled(
             format!(" default {default:<12}"),
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         ),
-        Span::styled(action, Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(action, Style::default().fg(theme::text_dim())),
     ])
 }
 
 fn rule_row(label: &'static str, condition: String) -> Line<'static> {
     Line::from(vec![
         Span::raw("    "),
-        Span::styled(format!("{label:<20}"), Style::default().fg(theme::TEXT_DIM)),
-        Span::styled(condition, Style::default().fg(theme::TEXT_PRIMARY)),
+        Span::styled(
+            format!("{label:<20}"),
+            Style::default().fg(theme::text_dim()),
+        ),
+        Span::styled(condition, Style::default().fg(theme::text_primary())),
     ])
 }
 
@@ -4355,12 +4370,12 @@ fn section_header_line(section: Section) -> Line<'static> {
         Span::styled(
             format!("  [{}] {}", describe_section(section), unit),
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
+                .fg(theme::text_primary())
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             "              warning      critical",
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         ),
     ])
 }
@@ -4397,7 +4412,7 @@ fn scope_row_line<'a>(
         Span::styled(format!("{critical_cell:>10}"), critical_style),
         Span::styled(
             override_marker(config, section, scope),
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         ),
     ])
 }
@@ -4419,16 +4434,16 @@ fn cell_text(overlay: &SettingsOverlay, config: &QmonsterConfig, field: FieldId)
 
 fn cell_style(overlay: &SettingsOverlay, focused: bool) -> Style {
     if !focused {
-        return Style::default().fg(theme::TEXT_PRIMARY);
+        return Style::default().fg(theme::text_primary());
     }
     if overlay.edit_buffer().is_some() {
         Style::default()
-            .fg(theme::TEXT_PRIMARY)
-            .bg(theme::BADGE_BG)
+            .fg(theme::text_primary())
+            .bg(theme::badge_bg())
             .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
-            .fg(theme::TEXT_PRIMARY)
+            .fg(theme::text_primary())
             .add_modifier(Modifier::REVERSED)
     }
 }
@@ -4472,14 +4487,14 @@ fn override_marker(config: &QmonsterConfig, section: Section, scope: Scope) -> &
 
 fn status_line(overlay: &SettingsOverlay) -> Line<'static> {
     let (label, fg) = match overlay.status() {
-        SettingsStatus::Idle => ("idle".to_string(), theme::TEXT_DIM),
+        SettingsStatus::Idle => ("idle".to_string(), theme::text_dim()),
         SettingsStatus::Dirty => (
             "dirty — press 'w' to save".to_string(),
             theme::severity_color(Severity::Warning),
         ),
         SettingsStatus::Error(msg) => {
             return Line::from(vec![
-                Span::styled("  status: ", Style::default().fg(theme::TEXT_DIM)),
+                Span::styled("  status: ", Style::default().fg(theme::text_dim())),
                 Span::styled(
                     format!("error — {msg}"),
                     Style::default().fg(theme::severity_color(Severity::Risk)),
@@ -4488,7 +4503,7 @@ fn status_line(overlay: &SettingsOverlay) -> Line<'static> {
         }
         SettingsStatus::Saved(path) => {
             return Line::from(vec![
-                Span::styled("  status: ", Style::default().fg(theme::TEXT_DIM)),
+                Span::styled("  status: ", Style::default().fg(theme::text_dim())),
                 Span::styled(
                     format!("saved → {path}"),
                     Style::default().fg(theme::severity_color(Severity::Good)),
@@ -4497,7 +4512,7 @@ fn status_line(overlay: &SettingsOverlay) -> Line<'static> {
         }
     };
     Line::from(vec![
-        Span::styled("  status: ", Style::default().fg(theme::TEXT_DIM)),
+        Span::styled("  status: ", Style::default().fg(theme::text_dim())),
         Span::styled(label, Style::default().fg(fg)),
     ])
 }

@@ -16,7 +16,7 @@ use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Severity;
 use crate::notify::desktop::DesktopNotifier;
 use crate::policy::claude_settings::{ClaudeSettings, ClaudeSettingsError};
-use crate::policy::pricing::PricingTable;
+use crate::policy::pricing::{PRICING_STALENESS_SECS, PricingTable, pricing_staleness_days};
 use crate::store::{
     ArchiveWriter, EventSink, InMemorySink, QmonsterPaths, SnapshotWriter, SqliteAuditSink,
     SqliteCostUsageSink, SqliteRecommendationLifecycleSink, SqliteTokenUsageSink, sweep,
@@ -176,6 +176,27 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
     let (versions, mut startup_notices) = capture_startup_versions(&paths, &ctx);
     if let Some(notice) = source_build.startup_notice {
         startup_notices.insert(0, notice);
+    }
+    // v1.60.0: warn once per session if pricing.toml hasn't been
+    // touched in 90 days. Cost estimates silently drift when the
+    // operator forgets to update rates after a major model rev.
+    if let Some(age_days) = pricing_staleness_days(
+        &paths.pricing_path(),
+        std::time::SystemTime::now(),
+        std::time::Duration::from_secs(PRICING_STALENESS_SECS),
+    ) {
+        startup_notices.insert(
+            0,
+            SystemNotice {
+                title: "pricing.toml is stale".into(),
+                body: format!(
+                    "{} hasn't been modified in {age_days} days. COST estimates may not reflect current rates — review and bump mtime to dismiss.",
+                    paths.pricing_path().display()
+                ),
+                severity: Severity::Concern,
+                source_kind: SourceKind::ProjectCanonical,
+            },
+        );
     }
     // Phase H: build a second SnapshotWriter for the operator 's' key
     // (tui_loop.rs). ctx.snapshot_writer carries the same paths for the

@@ -3,6 +3,13 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::time::{Duration, SystemTime};
+
+/// v1.60.0: pricing.toml is treated as stale once this many seconds
+/// have passed since its mtime. 90 days picks up "operator forgot to
+/// refresh after a major model rev" without firing on month-to-month
+/// inactivity.
+pub const PRICING_STALENESS_SECS: u64 = 60 * 60 * 24 * 90;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PricingRates {
@@ -75,6 +82,22 @@ impl PricingTable {
             .get(&(provider, model.to_string()))
             .filter(|r| r.input_per_1m > 0.0 || r.output_per_1m > 0.0)
     }
+}
+
+/// v1.60.0: returns `Some(age_days)` when `path` exists and its mtime
+/// is older than `threshold`. Returns `None` when the file is missing
+/// (operator hasn't curated pricing yet — that's expected, no need to
+/// nudge), when the mtime is newer than the threshold, or when fs
+/// metadata can't be read for any reason. Pure helper so unit tests
+/// can drive the threshold deterministically.
+pub fn pricing_staleness_days(path: &Path, now: SystemTime, threshold: Duration) -> Option<u64> {
+    let meta = fs::metadata(path).ok()?;
+    let mtime = meta.modified().ok()?;
+    let age = now.duration_since(mtime).ok()?;
+    if age < threshold {
+        return None;
+    }
+    Some(age.as_secs() / (60 * 60 * 24))
 }
 
 fn parse_provider(s: &str) -> Result<Provider, PricingError> {
@@ -166,5 +189,60 @@ output_per_1m = 0.0
     fn pricing_table_load_from_toml_or_empty_falls_back_on_missing() {
         let t = PricingTable::load_from_toml_or_empty(Path::new("/nonexistent/pricing.toml"));
         assert!(t.lookup(Provider::Codex, "gpt-5.4").is_none());
+    }
+
+    // v1.60.0 -----------------------------------------------------------
+
+    #[test]
+    fn pricing_staleness_days_returns_none_when_file_missing() {
+        let path = Path::new("/nonexistent/pricing-stale-test.toml");
+        let now = SystemTime::now();
+        assert!(
+            pricing_staleness_days(path, now, Duration::from_secs(1)).is_none(),
+            "missing file is the no-curation case — should not nudge"
+        );
+    }
+
+    #[test]
+    fn pricing_staleness_days_returns_none_when_within_threshold() {
+        let f = write_toml(
+            r#"
+[[entries]]
+provider = "codex"
+model = "gpt-5.4"
+input_per_1m = 1.0
+output_per_1m = 10.0
+"#,
+        );
+        // File was just created → mtime is now; threshold of 90 days
+        // means it's never stale at this moment.
+        let now = SystemTime::now();
+        let threshold = Duration::from_secs(60 * 60 * 24 * 90);
+        assert!(pricing_staleness_days(f.path(), now, threshold).is_none());
+    }
+
+    #[test]
+    fn pricing_staleness_days_returns_age_when_mtime_predates_threshold() {
+        let f = write_toml(
+            r#"
+[[entries]]
+provider = "codex"
+model = "gpt-5.4"
+input_per_1m = 1.0
+output_per_1m = 10.0
+"#,
+        );
+        // File was just created; pretend `now` is 100 days in the
+        // future relative to the file's mtime.
+        let mtime = std::fs::metadata(f.path()).unwrap().modified().unwrap();
+        let now = mtime + Duration::from_secs(60 * 60 * 24 * 100);
+        let threshold = Duration::from_secs(60 * 60 * 24 * 90);
+        let age = pricing_staleness_days(f.path(), now, threshold).unwrap();
+        assert_eq!(age, 100, "age in days should match the synthetic offset");
+    }
+
+    #[test]
+    fn pricing_staleness_secs_constant_is_90_days() {
+        assert_eq!(PRICING_STALENESS_SECS, 60 * 60 * 24 * 90);
     }
 }

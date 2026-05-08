@@ -1,14 +1,86 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v1.59.0 ledger sync)_
+_Last updated: 2026-05-08 (Claude, v1.60.0 ledger sync)_
 
 ## Mission
 
-- Title: Qmonster v1.59.0 — five operator-facing polish slices bundled into one release: anomaly events row severity color coding, Settings dirty-row visual marker, Alerts filter (`/` key, symmetric to v1.58.0 Settings filter), three new fx effects (snow / fireworks / plasma), a Sampler meta-effect that auto-cycles every effect every 5s, and a refreshed README quickstart.
-- Version surfaces: npm package metadata `qmonster@1.59.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v1.59.0` to be created at the ledger sync commit. v1.58.1 is the immediate prior tagged baseline.
+- Title: Qmonster v1.60.0 — five further operator-facing polish slices bundled into one release: Insights overlay freshness chip + r-refresh toast; Metrics overlay CTX/QUOTA/CACHE delta arrows on the left column; pricing.toml staleness advisory; Help modal section jumping (1..N keys); Light theme variant + theme-aware accessor migration (closes the deferred-from-v1.58.0 Light path).
+- Version surfaces: npm package metadata `qmonster@1.60.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v1.60.0` to be created at the ledger sync commit. v1.59.0 is the immediate prior tagged baseline.
 - Release publication state: **v1.59.0 is published** (verified 2026-05-08). Run `25546295476` completed success in 6m53s at 2026-05-08T08:53:19Z; GitHub Release `v1.59.0` (published 2026-05-08T08:52:59Z) carries the full asset set (`qmonster-v1.59.0-linux-x86_64.tar.gz`, `qmonster-1.59.0.tgz`, `qmonster-v1.59.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 1.59.0`. **v1.58.0 + v1.58.1 are published**: v1.58.0 run `25544151924` (7m22s, 2026-05-08T08:02:49Z), v1.58.1 run `25544690855` (7m23s, 2026-05-08T08:16:08Z). **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s).
-- Current phase: All prior phases complete. v1.50.0–v1.58.1 publication baselines still apply; v1.59.0 is a polish bundle layered on the v1.58.1 baseline — no new phase is opened.
+- Current phase: All prior phases complete. v1.50.0–v1.59.0 publication baselines still apply; v1.60.0 is a polish bundle layered on the v1.59.0 baseline — no new phase is opened.
+
+## v1.60.0 Feature State
+
+v1.60.0 closes five more operator-facing polish slices in one bundle:
+
+1. **Insights overlay freshness chip** (`src/ui/insights.rs`): new
+   `loaded_at: Option<Instant>` field on `InsightsOverlay` plus
+   `is_stale(now)` (returns true once the snapshot has aged past
+   `INSIGHTS_STALENESS_SECS = 300`) and `relative_age_label(now)`
+   ("just now", "2m ago", "1h ago"). `render_insights_modal` accepts
+   `now: Instant` and surfaces the age in the title chip:
+   ` Token Insights · 2m ago ` while fresh, ` Token Insights · 8m ago
+   · stale (press r) ` past the threshold. Pressing `r` to refresh now
+   also pushes a SystemNotice toast ("insights refresh requested ·
+   aggregating fresh token insights …") so the operator sees the
+   kick landed during the async load gap.
+
+2. **Metrics overlay delta arrows on the left column**
+   (`src/ui/metrics.rs`): new `PressureObservation` tracker mirrors
+   the v1.38 `MemObservation` pattern (HashMap keyed by `pane_id`,
+   populated each poll in `tui_loop` alongside the existing MEM
+   tracker). `card_rows` / `left_row` / `quota_left_row` /
+   `cache_left_row` thread the new trend through; `left_row` appends
+   a dim `▲ ▼ ─` span next to the percentage. Steady epsilon =
+   0.5 percentage points (`PRESSURE_TREND_STEADY_EPSILON = 0.005`)
+   so routine cache jitter doesn't flicker the arrow. First-frame
+   trends are `None` and the renderer falls back to the dim em-dash.
+
+3. **pricing.toml staleness advisory** (`src/policy/pricing.rs` +
+   `src/app/startup.rs`): new pure helper
+   `pricing_staleness_days(path, now, threshold) -> Option<u64>`
+   returns the file's age in days when `mtime + threshold < now`,
+   otherwise `None`. `app::startup` calls it once at session start
+   with `PRICING_STALENESS_SECS = 60 * 60 * 24 * 90` (90 days) and
+   pushes a Concern-severity SystemNotice nudging the operator to
+   refresh rates. Missing files are intentionally silent — that's
+   the "operator hasn't curated pricing yet" case, not a stale-data
+   risk.
+
+4. **Help modal section jumping** (`src/ui/dashboard.rs` +
+   `src/app/modal_state.rs` + `src/app/tui_loop.rs`): new
+   `help_section_line_indices(viewport)` public helper returns the
+   line index of every section header in document order (Controls →
+   Hover Help → Source Labels → State Labels). `ScrollModalState`
+   gains `set_scroll(scroll, max_scroll)` for absolute jumps. The
+   help-modal handler in `tui_loop` intercepts digit keys 1..9
+   (where N ≤ section count) and calls `help_modal.set_scroll()`
+   to land on the matching section. Hint text advertises
+   "1..N jump section".
+
+5. **Light theme variant** (`src/ui/theme.rs` + `src/app/config.rs` +
+   bulk migration across `src/`): closes the deferred work from
+   v1.58.0. `ThemeMode::Light` added to both the `app::config`
+   enum and `ui::theme::ThemeMode`. `cycle()` is now Dark →
+   HighContrast → Light → Dark. `set_theme_mode` + `theme_mode`
+   handle the new variant (raw=2). Five new theme-aware accessor
+   functions — `text_dim()`, `text_primary()`, `badge_bg()`,
+   `border_idle()`, `border_active()` — return mode-specific colors.
+   `severity_color`, `severity_badge_style`, `label_style` branch
+   on Light with a darker fg / lighter bg palette. The legacy
+   `TEXT_DIM` / `TEXT_PRIMARY` / `BADGE_BG` / `BORDER_IDLE` /
+   `BORDER_ACTIVE` constants stay as the Dark-mode values for
+   backward compat with test assertions, but every runtime call
+   site (153 of them across `src/`) was sed-migrated to the
+   function form so flipping `[ux] theme = light` actually re-tints
+   the dashboard. Settings parameter help now lists `dark |
+   high_contrast | light`.
+
+No code-behaviour change beyond the five operator-visible surfaces.
+1415 → 1434 lib tests (+19 from new insights / metrics / pricing /
+dashboard / theme regression guards). 65 integration tests
+preserved. fmt + clippy clean.
 
 ## v1.59.0 Feature State
 
@@ -667,14 +739,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v1.59.0 validation at the release commit:
+Most recent v1.60.0 validation at the release commit:
 
 - `cargo fmt --all --check`
-- `cargo test --all-targets` — 1415 lib tests + 65 integration tests + supporting suites, all green (+12 from the v1.59.0 fx state / scene / sampler / alert filter regression guards).
+- `cargo test --all-targets` — 1434 lib tests + 65 integration tests + supporting suites, all green (+19 from the v1.60.0 insights freshness / pressure delta / pricing staleness / help section / theme Light regression guards).
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
 - `git diff --check`
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.58.1 still apply when the v1.59.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.59.0 still apply when the v1.60.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 

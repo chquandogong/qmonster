@@ -746,7 +746,7 @@ pub fn render_pending_actions_modal(frame: &mut Frame<'_>, ctx: PendingActionsRe
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::BORDER_ACTIVE));
+        .border_style(Style::default().fg(theme::border_active()));
     frame.render_widget(block, rects.area);
 
     // List pane.
@@ -763,11 +763,11 @@ pub fn render_pending_actions_modal(frame: &mut Frame<'_>, ctx: PendingActionsRe
     let sep_block = if wide_mode {
         Block::default()
             .borders(Borders::LEFT)
-            .border_style(Style::default().fg(theme::BORDER_ACTIVE))
+            .border_style(Style::default().fg(theme::border_active()))
     } else {
         Block::default()
             .borders(Borders::TOP)
-            .border_style(Style::default().fg(theme::BORDER_ACTIVE))
+            .border_style(Style::default().fg(theme::border_active()))
     };
     let inner_explainer = sep_block.inner(rects.explainer);
     frame.render_widget(sep_block, rects.explainer);
@@ -787,7 +787,7 @@ pub fn render_pending_actions_modal(frame: &mut Frame<'_>, ctx: PendingActionsRe
     // Hint row.
     let hint_text = pending_actions_hint_text(overlay, items);
     frame.render_widget(
-        Paragraph::new(hint_text).style(Style::default().fg(theme::TEXT_DIM)),
+        Paragraph::new(hint_text).style(Style::default().fg(theme::text_dim())),
         rects.hint,
     );
 
@@ -812,7 +812,7 @@ fn explainer_lines_for_cursor(
     let Some(cursor_item) = items.get(overlay.selected()) else {
         return vec![Line::styled(
             "Select an item to see what would happen.".to_string(),
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         )];
     };
     let Some(view) =
@@ -820,7 +820,7 @@ fn explainer_lines_for_cursor(
     else {
         return vec![Line::styled(
             "(no live report available for this item)".to_string(),
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         )];
     };
     render_explainer_lines(&view, body)
@@ -840,7 +840,7 @@ pub fn pending_actions_lines(
         out.push(Line::from(""));
         out.push(Line::styled(
             "  No pending actions.".to_string(),
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         ));
         return out;
     }
@@ -854,16 +854,16 @@ pub fn pending_actions_lines(
         let sev_color = item
             .severity()
             .map(theme::severity_color)
-            .unwrap_or(theme::TEXT_PRIMARY);
+            .unwrap_or(theme::text_primary());
         let sev_label = item.severity().map(severity_label).unwrap_or("\u{2014}");
 
         let checkbox_style = if checked {
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
+                .fg(theme::text_primary())
                 .bg(sev_color)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(theme::TEXT_DIM)
+            Style::default().fg(theme::text_dim())
         };
 
         let spans: Vec<Span<'static>> = vec![
@@ -873,14 +873,14 @@ pub fn pending_actions_lines(
             Span::styled(
                 format!("[{kind}]"),
                 Style::default()
-                    .fg(theme::TEXT_PRIMARY)
+                    .fg(theme::text_primary())
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
             Span::styled(
                 format!(" {sev_label} "),
                 Style::default()
-                    .fg(theme::TEXT_PRIMARY)
+                    .fg(theme::text_primary())
                     .bg(sev_color)
                     .add_modifier(Modifier::BOLD),
             ),
@@ -888,13 +888,13 @@ pub fn pending_actions_lines(
             Span::styled(
                 format!("`{}`", item.command()),
                 Style::default()
-                    .fg(theme::TEXT_PRIMARY)
+                    .fg(theme::text_primary())
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" \u{B7} "),
             Span::styled(
                 item.context().to_string(),
-                Style::default().fg(theme::TEXT_DIM),
+                Style::default().fg(theme::text_dim()),
             ),
         ];
         out.push(Line::from(spans));

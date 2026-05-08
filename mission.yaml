@@ -1,6 +1,6 @@
 mission:
-  version: "1.59.0"
-  title: "Qmonster v1.59.0 - Five-slice polish bundle: anomaly events row severity color coding; Settings dirty-row visual marker; Alerts filter (`/`); three new fx effects (snow/fireworks/plasma); Sampler meta-effect that auto-cycles every effect every 5s; refreshed README quickstart"
+  version: "1.60.0"
+  title: "Qmonster v1.60.0 - Five-slice polish bundle: Insights freshness chip + r-refresh toast; Metrics overlay CTX/QUOTA/CACHE delta arrows; pricing.toml staleness advisory; Help modal section jumping; Light theme variant + theme-aware accessor migration"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a

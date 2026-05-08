@@ -290,7 +290,7 @@ impl AnomalyOverlay {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(title)
-            .border_style(Style::default().fg(theme::BORDER_ACTIVE));
+            .border_style(Style::default().fg(theme::border_active()));
         let close = Paragraph::new("[x]").style(theme::modal_close_style());
         let view_toggle = match self.view {
             AnomalyOverlayView::Ring => "h history",
@@ -324,7 +324,7 @@ impl AnomalyOverlay {
             frame.render_widget(body, body_area);
             frame.render_widget(close, close_button_rect(popup_area));
             frame.render_widget(
-                Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM)),
+                Paragraph::new(hint).style(Style::default().fg(theme::text_dim())),
                 hint_area,
             );
             return;
@@ -334,7 +334,7 @@ impl AnomalyOverlay {
         frame.render_widget(block, body_area);
         frame.render_widget(close, close_button_rect(popup_area));
         frame.render_widget(
-            Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM)),
+            Paragraph::new(hint).style(Style::default().fg(theme::text_dim())),
             hint_area,
         );
 
@@ -558,7 +558,7 @@ mod tests {
             .cell((area.x, area.y))
             .expect("top-left border cell in bounds");
 
-        assert_eq!(cell.fg, theme::BORDER_ACTIVE);
+        assert_eq!(cell.fg, theme::border_active());
     }
 
     #[test]

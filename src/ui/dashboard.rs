@@ -255,18 +255,18 @@ pub fn render_target_picker(
     let block = Block::default()
         .title(format!("{} · current {}", view.title, view.current_label))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::BORDER_ACTIVE));
+        .border_style(Style::default().fg(theme::border_active()));
 
     if view.labels.is_empty() {
         frame.render_widget(
             Paragraph::new("no tmux windows discovered")
-                .style(Style::default().fg(theme::TEXT_DIM))
+                .style(Style::default().fg(theme::text_dim()))
                 .block(block),
             rects.list,
         );
         frame.render_widget(
             Paragraph::new(target_picker_hint_line(view.hint, 0, 0))
-                .style(Style::default().fg(theme::TEXT_DIM))
+                .style(Style::default().fg(theme::text_dim()))
                 .wrap(Wrap { trim: false }),
             rects.hint,
         );
@@ -289,8 +289,8 @@ pub fn render_target_picker(
             .block(block)
             .highlight_style(
                 Style::default()
-                    .fg(theme::TEXT_PRIMARY)
-                    .bg(theme::BADGE_BG)
+                    .fg(theme::text_primary())
+                    .bg(theme::badge_bg())
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ "),
@@ -307,13 +307,13 @@ pub fn render_target_picker(
         } else {
             view.preview_lines.join("\n")
         })
-        .style(Style::default().fg(theme::TEXT_DIM))
+        .style(Style::default().fg(theme::text_dim()))
         .wrap(Wrap { trim: false })
         .block(
             Block::default()
                 .title(view.preview_title)
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme::BORDER_IDLE)),
+                .border_style(Style::default().fg(theme::border_idle())),
         ),
         rects.preview,
     );
@@ -323,7 +323,7 @@ pub fn render_target_picker(
             selected,
             view.labels.len(),
         ))
-        .style(Style::default().fg(theme::TEXT_DIM))
+        .style(Style::default().fg(theme::text_dim()))
         .wrap(Wrap { trim: false }),
         rects.hint,
     );
@@ -349,7 +349,7 @@ pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
                 Block::default()
                     .title("Help")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+                    .border_style(Style::default().fg(theme::border_active())),
             ),
         rects.body,
     );
@@ -359,11 +359,11 @@ pub fn render_help_modal(frame: &mut Frame<'_>, scroll: u16) {
     );
     frame.render_widget(
         Paragraph::new(scrollable_modal_hint(
-            "↑/↓ scroll · PgUp/PgDn jump · Home/End · click [x] close · Esc close",
+            "↑/↓ scroll · PgUp/PgDn jump · Home/End · 1..N jump section · click [x] close · Esc close",
             scroll,
             max_scroll,
         ))
-        .style(Style::default().fg(theme::TEXT_DIM))
+        .style(Style::default().fg(theme::text_dim()))
         .wrap(Wrap { trim: false }),
         rects.hint,
     );
@@ -504,11 +504,11 @@ pub fn render_provider_setup_modal(
             Block::default()
                 .title("Provider Setup")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+                .border_style(Style::default().fg(theme::border_active())),
         )
         .highlight_style(
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
+                .fg(theme::text_primary())
                 .add_modifier(Modifier::BOLD),
         );
     frame.render_widget(tabs, rects.tabs);
@@ -531,7 +531,7 @@ pub fn render_provider_setup_modal(
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+                .border_style(Style::default().fg(theme::border_active())),
         );
     frame.render_widget(body, rects.body);
 
@@ -540,7 +540,7 @@ pub fn render_provider_setup_modal(
         scroll,
         max_scroll,
     )))
-    .style(Style::default().fg(theme::TEXT_DIM))
+    .style(Style::default().fg(theme::text_dim()))
     .wrap(Wrap { trim: false });
     frame.render_widget(hint, rects.hint);
 }
@@ -559,7 +559,7 @@ pub fn render_git_modal(frame: &mut Frame<'_>, title: &str, lines: &[String], sc
                 Block::default()
                     .title(title)
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme::BORDER_ACTIVE)),
+                    .border_style(Style::default().fg(theme::border_active())),
             ),
         rects.body,
     );
@@ -573,7 +573,7 @@ pub fn render_git_modal(frame: &mut Frame<'_>, title: &str, lines: &[String], sc
             scroll,
             max_scroll,
         ))
-        .style(Style::default().fg(theme::TEXT_DIM))
+        .style(Style::default().fg(theme::text_dim()))
         .wrap(Wrap { trim: false }),
         rects.hint,
     );
@@ -747,7 +747,7 @@ fn render_split_divider(area: Rect, buf: &mut Buffer, split: DashboardSplit, ime
                     .fg(theme::severity_color(
                         crate::domain::recommendation::Severity::Warning,
                     ))
-                    .bg(theme::BADGE_BG)
+                    .bg(theme::badge_bg())
                     .add_modifier(Modifier::BOLD | Modifier::REVERSED),
             )
             .alignment(Alignment::Center)
@@ -758,7 +758,7 @@ fn render_split_divider(area: Rect, buf: &mut Buffer, split: DashboardSplit, ime
         "drag resize alerts/panes · alerts {}% · [ ] resize · / cycle · = reset",
         split.alerts_percent()
     ))
-    .style(Style::default().fg(theme::TEXT_DIM).bg(theme::BADGE_BG))
+    .style(Style::default().fg(theme::text_dim()).bg(theme::badge_bg()))
     .alignment(Alignment::Center)
     .render(area, buf);
 }
@@ -786,13 +786,13 @@ fn render_footer(
     let text_width = area.width.saturating_sub(badge.width).saturating_sub(1);
     let text_area = Rect::new(area.x, area.y, text_width, area.height);
     Paragraph::new(footer_lines(focus, split, &counters))
-        .style(Style::default().fg(theme::TEXT_DIM))
+        .style(Style::default().fg(theme::text_dim()))
         .wrap(Wrap { trim: false })
         .render(text_area, buf);
     Paragraph::new(version_badge_label())
         .style(
             theme::label_style()
-                .fg(theme::TEXT_PRIMARY)
+                .fg(theme::text_primary())
                 .add_modifier(Modifier::BOLD),
         )
         .alignment(Alignment::Center)
@@ -839,11 +839,11 @@ fn footer_chip_span(
     top_severity: Option<crate::domain::recommendation::Severity>,
 ) -> Span<'static> {
     let style = if count == 0 {
-        Style::default().fg(theme::TEXT_DIM)
+        Style::default().fg(theme::text_dim())
     } else {
         let color = top_severity
             .map(theme::severity_color)
-            .unwrap_or(theme::TEXT_PRIMARY);
+            .unwrap_or(theme::text_primary());
         Style::default().fg(color).add_modifier(Modifier::BOLD)
     };
     Span::styled(format!("{label}:{count}"), style)
@@ -1107,7 +1107,7 @@ fn section_line(title: &str) -> Line<'static> {
     Line::styled(
         title.to_string(),
         Style::default()
-            .fg(theme::TEXT_PRIMARY)
+            .fg(theme::text_primary())
             .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
     )
 }
@@ -1132,6 +1132,43 @@ const HELP_CONTINUATION_PREFIX: &str = "                    · ";
 
 fn help_body_text_width(body: Rect) -> usize {
     body.width.saturating_sub(2) as usize
+}
+
+/// v1.60.0: line index of the start of every help-modal section, in
+/// document order. Used by the section-jump keys in `tui_loop` so
+/// `1..=N` scrolls the modal to the top of section N. Returns at
+/// least one entry (Controls at index 0); empty Vec only if the help
+/// body is empty.
+pub fn help_section_line_indices(viewport: Rect) -> Vec<usize> {
+    let rects = help_modal_rects(viewport);
+    let lines = help_lines_for_width(help_body_text_width(rects.body));
+    let mut out = Vec::new();
+    for (idx, line) in lines.iter().enumerate() {
+        if line_is_section_header(line) {
+            out.push(idx);
+        }
+    }
+    out
+}
+
+fn line_is_section_header(line: &Line<'_>) -> bool {
+    // `section_line` builds the header via `Line::styled(title, style)`,
+    // which applies the style to the Line itself (`line.style`). Fall
+    // back to the first span's style for older builds.
+    let line_style = line
+        .style
+        .add_modifier
+        .contains(Modifier::BOLD | Modifier::UNDERLINED);
+    let span_style = line
+        .spans
+        .first()
+        .map(|s| {
+            s.style
+                .add_modifier
+                .contains(Modifier::BOLD | Modifier::UNDERLINED)
+        })
+        .unwrap_or(false);
+    line_style || span_style
 }
 
 fn help_value_column() -> usize {
@@ -1176,9 +1213,9 @@ fn help_continuation_bullet(text: &str) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             HELP_CONTINUATION_PREFIX,
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         ),
-        Span::styled(text.to_string(), Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(text.to_string(), Style::default().fg(theme::text_dim())),
     ])
 }
 
@@ -1186,9 +1223,9 @@ fn help_value_continuation_line(text: &str) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             help_value_continuation_prefix(),
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         ),
-        Span::styled(text.to_string(), Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(text.to_string(), Style::default().fg(theme::text_dim())),
     ])
 }
 
@@ -1198,11 +1235,11 @@ fn help_detail_line(label: &str, value: &str) -> Line<'static> {
         Span::styled(
             format!("{label:<HELP_LABEL_WIDTH$}"),
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
+                .fg(theme::text_primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(": ", Style::default().fg(theme::TEXT_DIM)),
-        Span::styled(value.to_string(), Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(": ", Style::default().fg(theme::text_dim())),
+        Span::styled(value.to_string(), Style::default().fg(theme::text_dim())),
     ])
 }
 
@@ -1441,6 +1478,51 @@ mod tests {
             text.contains("H") && text.contains("L"),
             "help modal must mention hover help toggle and language keys: {text}"
         );
+    }
+
+    #[test]
+    fn help_section_line_indices_returns_at_least_four_sections_in_order() {
+        let viewport = Rect::new(0, 0, 120, 60);
+        let indices = help_section_line_indices(viewport);
+        assert!(
+            indices.len() >= 4,
+            "expected at least 4 sections (Controls / Hover Help / Source Labels / State Labels); got {}",
+            indices.len()
+        );
+        // Indices must be strictly increasing — sections are emitted
+        // in document order.
+        for window in indices.windows(2) {
+            assert!(
+                window[0] < window[1],
+                "section indices must be strictly increasing: {indices:?}"
+            );
+        }
+        // First section ('Controls') is the first line of the help body.
+        assert_eq!(
+            indices.first().copied(),
+            Some(0),
+            "first section should sit at line 0"
+        );
+    }
+
+    #[test]
+    fn help_section_line_indices_targets_correspond_to_section_headers() {
+        let viewport = Rect::new(0, 0, 120, 60);
+        let indices = help_section_line_indices(viewport);
+        let rects = help_modal_rects(viewport);
+        let lines = help_lines_for_width(help_body_text_width(rects.body));
+        let expected_titles = ["Controls", "Hover Help", "Source Labels", "State Labels"];
+        for (idx, expected) in indices.iter().zip(expected_titles.iter()) {
+            let actual = lines[*idx]
+                .spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<String>();
+            assert!(
+                actual.contains(expected),
+                "expected section at line {idx} to contain {expected:?}; got {actual:?}"
+            );
+        }
     }
 
     #[test]
@@ -1898,13 +1980,13 @@ mod tests {
             .iter()
             .find(|s| s.content.as_ref() == "\u{2605}p:0")
             .expect("★p:0 span must be present");
-        assert_eq!(p_span.style.fg, Some(theme::TEXT_DIM));
+        assert_eq!(p_span.style.fg, Some(theme::text_dim()));
         let y_span = lines[0]
             .spans
             .iter()
             .find(|s| s.content.as_ref() == "\u{2605}y:0")
             .expect("★y:0 span must be present");
-        assert_eq!(y_span.style.fg, Some(theme::TEXT_DIM));
+        assert_eq!(y_span.style.fg, Some(theme::text_dim()));
     }
 
     #[test]

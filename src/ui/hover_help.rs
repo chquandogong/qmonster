@@ -35,15 +35,15 @@ pub fn render_hover_help(frame: &mut Frame<'_>, view: HoverHelpView) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme::BORDER_ACTIVE))
+                    .border_style(Style::default().fg(theme::border_active()))
                     .title(Span::styled(
                         title,
                         Style::default()
-                            .fg(theme::TEXT_PRIMARY)
+                            .fg(theme::text_primary())
                             .add_modifier(Modifier::BOLD),
                     )),
             )
-            .style(Style::default().fg(theme::TEXT_PRIMARY))
+            .style(Style::default().fg(theme::text_primary()))
             .wrap(Wrap { trim: false }),
         area,
     );

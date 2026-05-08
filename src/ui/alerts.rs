@@ -160,11 +160,11 @@ pub fn render_alerts(area: Rect, buf: &mut Buffer, state: &mut ListState, view: 
     let bulk_area = layout[0];
     let list_area = layout[1];
     Paragraph::new(bulk_hide_line(&items))
-        .style(Style::default().fg(theme::TEXT_DIM))
+        .style(Style::default().fg(theme::text_dim()))
         .render(bulk_area, buf);
     if items.is_empty() {
         Paragraph::new("no alerts")
-            .style(Style::default().fg(theme::TEXT_DIM))
+            .style(Style::default().fg(theme::text_dim()))
             .render(list_area, buf);
     } else if list_area.height > 0 {
         sync_list_selection(state, items.len());
@@ -806,13 +806,13 @@ fn bulk_hide_line(items: &[AlertItem]) -> Line<'static> {
     let mut spans = vec![Span::styled(
         BULK_HIDE_PREFIX.to_string(),
         Style::default()
-            .fg(theme::TEXT_DIM)
+            .fg(theme::text_dim())
             .add_modifier(Modifier::BOLD),
     )];
     if chips.is_empty() {
         spans.push(Span::styled(
             "actionable alerts only".to_string(),
-            Style::default().fg(theme::TEXT_DIM),
+            Style::default().fg(theme::text_dim()),
         ));
         return Line::from(spans);
     }
@@ -830,7 +830,7 @@ fn bulk_hide_line(items: &[AlertItem]) -> Line<'static> {
         ));
         spans.push(Span::styled(
             format!(" {}", chip.count_label()),
-            Style::default().fg(theme::TEXT_PRIMARY),
+            Style::default().fg(theme::text_primary()),
         ));
     }
     Line::from(spans)
@@ -937,7 +937,10 @@ fn alert_item_lines(
             &continuation,
             &continuation,
         ) {
-            lines.push(Line::styled(wrapped, Style::default().fg(theme::TEXT_DIM)));
+            lines.push(Line::styled(
+                wrapped,
+                Style::default().fg(theme::text_dim()),
+            ));
         }
     }
     lines.push(Line::styled(
@@ -946,7 +949,7 @@ fn alert_item_lines(
             continuation,
             "─".repeat(width.saturating_sub(continuation.chars().count()).max(8))
         ),
-        Style::default().fg(theme::TEXT_DIM),
+        Style::default().fg(theme::text_dim()),
     ));
     lines
 }
@@ -983,8 +986,8 @@ fn title_line(item: &AlertItem, prefix: &str) -> Line<'static> {
         spans.push(Span::styled(
             "NEW ",
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .bg(theme::BADGE_BG)
+                .fg(theme::text_primary())
+                .bg(theme::badge_bg())
                 .add_modifier(Modifier::BOLD),
         ));
     }
@@ -1016,16 +1019,16 @@ fn title_line(item: &AlertItem, prefix: &str) -> Line<'static> {
 fn alert_style(color: Color, is_new: bool) -> Style {
     let style = Style::default().fg(color);
     if is_new {
-        style.bg(theme::BADGE_BG).add_modifier(Modifier::BOLD)
+        style.bg(theme::badge_bg()).add_modifier(Modifier::BOLD)
     } else {
         style
     }
 }
 
 fn highlight_style(focused: bool) -> Style {
-    let style = Style::default().fg(theme::TEXT_PRIMARY);
+    let style = Style::default().fg(theme::text_primary());
     if focused {
-        style.bg(theme::BADGE_BG).add_modifier(Modifier::BOLD)
+        style.bg(theme::badge_bg()).add_modifier(Modifier::BOLD)
     } else {
         style.add_modifier(Modifier::BOLD)
     }
