@@ -1,7 +1,7 @@
 # REVIEW_GUIDE
 
 - Version: v0.4.0
-- Date: 2026-04-20
+- Date: 2026-04-20 / 2026-05-11 (current — v2.1.0 ledger sync; provider-coverage matrix and rubric reaffirmed at the v2.1.0 synthesis-slice baseline)
 
 This is the contract that every reviewer (Codex cross-check, Gemini
 research/policy/safety, human sign-off) works to. It defines what is

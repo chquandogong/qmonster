@@ -93,9 +93,13 @@ writes any of these files:
 5. Fill non-zero pricing rates manually in
    `~/.qmonster/config/pricing.toml` to enable COST badges. Qmonster
    never fetches provider pricing pages.
-6. In tmux, `tmux/qmonster.tmux.conf.example` provides a `Q` binding
-   that calls the same launcher. Canonical pane titles remain the best
-   way to mark roles exactly.
+6. Bootstrap the four-pane layout via the Provider Setup overlay
+   (`P` → `Tmux` tab → copy the installer) — it writes `~/ts.sh` plus
+   `~/.tmux/qmonster.tmux.conf` and reattaches the canonical
+   `claude:1:main` / `codex:1:review` / `gemini:1:research` /
+   `qmonster:1:monitor` pane titles. Operators who prefer to seed from
+   the repo can reference `tmux/qmonster.tmux.conf.example` directly.
+   Canonical pane titles remain the best way to mark roles exactly.
 
 ## 6. Cross-check and version-drift cadence
 

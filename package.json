@@ -46,6 +46,8 @@
     "docs/RELEASE_VERIFICATION.md",
     "docs/RELEASING.md",
     "examples/",
+    "scripts/",
+    "tmux/",
     "README.md",
     "LICENSE",
     "CONTRIBUTORS.md",

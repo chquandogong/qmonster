@@ -1,7 +1,7 @@
 # VALIDATION
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (current implementation validation sync)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (implementation validation sync) / 2026-05-11 (current — v2.1.0 ledger sync; release log + live-smoke validation matrix updated through v2.1.0 r2 synthesis-slice bundle)
 
 This doc defines what "good" looks like for Qmonster at each phase, and
 what reviewers (Codex, Gemini, and the human operator) should
