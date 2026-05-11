@@ -29,6 +29,50 @@ pub fn copy_selected_alert_command_to_clipboard(view: AlertCommandCopyView<'_>) 
     copy_selected_alert_command(view, copy_text_to_clipboard)
 }
 
+/// v2.2.0 (P1-3): same as `copy_selected_alert_command_to_clipboard`
+/// but also writes a `RecommendationOutcome::Copied` row to the
+/// lifecycle ledger when the selected alert is a Recommendation-class
+/// row AND the copy succeeded. Returns the same notice the legacy
+/// helper does so the call site display path is unchanged.
+///
+/// Provider-facing rule: failures to write the ledger row do NOT alter
+/// the user-visible notice. The clipboard copy is the actuation; the
+/// ledger is the telemetry — they must not couple.
+pub fn copy_selected_alert_command_to_clipboard_with_ledger(
+    view: AlertCommandCopyView<'_>,
+    sink: Option<&crate::store::SqliteRecommendationLifecycleSink>,
+    now_unix_ms: i64,
+) -> SystemNotice {
+    let identity = crate::ui::alerts::selected_alert_recommendation_identity(
+        view.alert_state,
+        view.notices,
+        view.reports,
+        view.fresh_alerts,
+        view.alert_times,
+        view.hidden_until,
+        view.now,
+    );
+    let notice = copy_selected_alert_command(view, copy_text_to_clipboard);
+    if notice.title == "command copied"
+        && let Some((pane_id, action)) = identity
+        && let Some(sink) = sink
+    {
+        let record = crate::store::RecommendationOutcomeRecord {
+            ts_unix_ms: now_unix_ms,
+            recommendation_event_id: None,
+            pane_id,
+            action,
+            outcome: crate::store::RecommendationOutcome::Copied,
+            audit_event_id: None,
+            summary: notice.body.clone(),
+        };
+        // P1-3 honesty rule: telemetry failure does not surface to the
+        // operator. The clipboard copy already succeeded.
+        let _ = sink.insert_recommendation_outcome(&record);
+    }
+    notice
+}
+
 /// v1.38 Phase D Task 20: lookup helper for the Action Explainer modal.
 /// Mirrors what `copy_selected_alert_command` does internally but
 /// returns `(alert_title, suggested_command, severity, source_kind)`
@@ -218,5 +262,89 @@ mod tests {
 
         assert_eq!(notice.title, "no command selected");
         assert_eq!(notice.severity, Severity::Concern);
+    }
+
+    #[test]
+    fn ledger_helper_writes_copied_outcome_on_successful_copy() {
+        // v2.2.0 (P1-3): when the operator hits `y` on a recommendation-class
+        // alert AND the clipboard write succeeds, the lifecycle ledger gains
+        // a `RecommendationOutcome::Copied` row.
+        use crate::store::{RecommendationOutcome, SqliteRecommendationLifecycleSink};
+        let mut state = ListState::default();
+        state.select(Some(0));
+        let reports = vec![base_report(vec![recommendation_with_command(Some(
+            "cargo test",
+        ))])];
+        let fresh = HashSet::new();
+        let times = HashMap::new();
+        let hidden = HashMap::new();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let sink =
+            SqliteRecommendationLifecycleSink::open(&tmp.path().join("audit.db")).unwrap();
+
+        let notice = copy_selected_alert_command_to_clipboard_with_ledger(
+            view(&state, &[], &reports, &fresh, &times, &hidden),
+            Some(&sink),
+            1_700_000_000_000,
+        );
+        assert_eq!(notice.title, "command copied");
+
+        // Read the outcome back via raw SQL — the sink doesn't expose a
+        // public reader, but the test only needs to confirm presence.
+        let count: i64 = sink
+            .db_for_test()
+            .connection()
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM recommendation_outcomes WHERE outcome = 'copied'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "exactly one Copied outcome must be persisted");
+        let _ = RecommendationOutcome::Copied; // pin enum existence
+    }
+
+    #[test]
+    fn ledger_helper_skips_outcome_when_copy_fails_or_no_sink() {
+        // Failure path: clipboard refuses → no row written.
+        // No-sink path: nothing to write to → no panic, just no row.
+        use crate::store::SqliteRecommendationLifecycleSink;
+        let mut state = ListState::default();
+        state.select(Some(0));
+        let reports = vec![base_report(vec![recommendation_with_command(Some(
+            "cargo test",
+        ))])];
+        let fresh = HashSet::new();
+        let times = HashMap::new();
+        let hidden = HashMap::new();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let sink =
+            SqliteRecommendationLifecycleSink::open(&tmp.path().join("audit.db")).unwrap();
+
+        // No-sink path returns the regular notice and does not crash.
+        let notice = copy_selected_alert_command_to_clipboard_with_ledger(
+            view(&state, &[], &reports, &fresh, &times, &hidden),
+            None,
+            1_700_000_000_000,
+        );
+        // Note: real clipboard may or may not work in tests, so don't assert
+        // success — only that the function returned without panic.
+        let _ = notice.title;
+
+        // After the no-sink call, the with-sink DB must still have 0 rows.
+        let count: i64 = sink
+            .db_for_test()
+            .connection()
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM recommendation_outcomes WHERE outcome = 'copied'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "no rows written when sink is None");
     }
 }

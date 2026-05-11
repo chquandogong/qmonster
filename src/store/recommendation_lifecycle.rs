@@ -46,6 +46,14 @@ pub enum RecommendationOutcome {
     Suppressed,
     NoEffect,
     Improved,
+    /// v2.2.0 (P1-3): the operator pressed `y` to copy the
+    /// recommendation's `suggested_command` to the clipboard. This is
+    /// engagement evidence — separate from `Accepted` (which means
+    /// the operator confirmed a `PromptSendProposed` proposal). The
+    /// telemetry pass that feeds P2-1 (anomaly subsystem
+    /// keep-or-trim decision) reads the ratio of `Copied` /
+    /// `Accepted` / `Ignored` per detector kind.
+    Copied,
 }
 
 impl RecommendationOutcome {
@@ -66,6 +74,7 @@ impl RecommendationOutcome {
             RecommendationOutcome::Suppressed => "suppressed",
             RecommendationOutcome::NoEffect => "no_effect",
             RecommendationOutcome::Improved => "improved",
+            RecommendationOutcome::Copied => "copied",
         }
     }
 
@@ -86,6 +95,7 @@ impl RecommendationOutcome {
             "suppressed" => RecommendationOutcome::Suppressed,
             "no_effect" => RecommendationOutcome::NoEffect,
             "improved" => RecommendationOutcome::Improved,
+            "copied" => RecommendationOutcome::Copied,
             _ => return None,
         })
     }
@@ -111,6 +121,14 @@ impl SqliteRecommendationLifecycleSink {
         Ok(Self {
             db: AuditDb::open(path)?,
         })
+    }
+
+    /// v2.2.0 (P1-3): test-only read accessor so unit tests can verify
+    /// outcome persistence without a public reader API. Not part of
+    /// the production sink contract.
+    #[cfg(test)]
+    pub fn db_for_test(&self) -> &AuditDb {
+        &self.db
     }
 
     pub fn insert_recommendation_event(

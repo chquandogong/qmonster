@@ -33,15 +33,17 @@ impl<T> MetricValue<T> {
 }
 
 /// Task-type inference from the tail (observation-only in Phase 1).
+///
+/// v2.2.0 dead-code purge: `LogTriage`, `CodeExploration`, and `Summary`
+/// were never populated by any adapter — removed. `Review` is still
+/// referenced by `auto_memory` rule contract even though no adapter
+/// populates it today; kept as a stub for future expansion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TaskType {
     #[default]
     Unknown,
-    LogTriage,
-    CodeExploration,
     Review,
     SessionResume,
-    Summary,
     Automation,
 }
 
@@ -142,7 +144,6 @@ pub struct SignalSet {
     // v1.14.0: idle_state owns the markers; permission_prompt/waiting_for_input bools are gone.
     pub idle_state: Option<IdleCause>,
     pub log_storm: bool,
-    pub repeated_output: bool,
     pub verbose_answer: bool,
     pub error_hint: bool,
     /// Phase 7 v2 evidence enrichment: stable label naming the pattern
@@ -278,7 +279,6 @@ mod tests {
         let s = SignalSet::default();
         assert!(s.idle_state.is_none());
         assert!(!s.log_storm);
-        assert!(!s.repeated_output);
         assert!(!s.verbose_answer);
         assert!(!s.error_hint);
         assert!(!s.subagent_hint);

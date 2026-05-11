@@ -599,6 +599,7 @@ where
                 .unwrap_or_default();
             let result = crate::policy::rules::anomaly::eval_anomalies(
                 &pane.pane_id,
+                resolved.identity.provider,
                 &history,
                 &gates,
                 &mut ctx.anomaly_dedup,

@@ -148,44 +148,89 @@ pub struct PolicyGates {
 
 impl Default for PolicyGates {
     fn default() -> Self {
+        // v2.2.0 threshold provenance notes (P0-3).
+        //
+        // Every magic number below carries a provenance tag. The audit
+        // result is intentionally honest: most thresholds were intuition
+        // -driven at introduction. The next telemetry pass (P1-3 rec
+        // acknowledgement tracking) is the measurement vehicle that
+        // will replace `intuition` tags with `measured` tags over time.
+        //
+        // Tag taxonomy:
+        //   - `measured`:   set from a documented audit (v1.13.0-style)
+        //   - `intuition`:  operator-experience guess, no measurement
+        //   - `mirrors X`:  matches another config section's default
+        //   - `safety`:     deliberately conservative default for opt-in
         Self {
+            // safety: opt-in only; quota-tight unlocks aggressive recs
             quota_tight: false,
+            // safety: opt-in advisory surface for permissive runtime posture
             security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Unknown,
-            // Mirror Cost/Context/QuotaConfig::default() top-level
-            // defaults so unit tests that build a default PolicyGates
-            // inherit the same baseline thresholds the production
-            // engine sees on a provider that has no override.
+            // mirrors CostConfig::default() top-level
+            // intuition: $5 / $20 USD per session — pre-pricing-rate-table era
             cost_warning_usd: 5.0,
             cost_critical_usd: 20.0,
+            // mirrors ContextConfig::default()
+            // intuition: 75/85% context pressure — symmetric with quota
             context_warning_pct: 0.75,
             context_critical_pct: 0.85,
+            // mirrors QuotaConfig::default()
+            // intuition: 75/85% — same shape as context_pressure;
+            // operator can override per (provider, window) in [quota.*]
             quota_warning_pct: 0.75,
             quota_critical_pct: 0.85,
             quota_5h_warning_pct: 0.75,
             quota_5h_critical_pct: 0.85,
             quota_weekly_warning_pct: 0.75,
             quota_weekly_critical_pct: 0.85,
+            // intuition: 60% hot, 30% cold (F-7 design 2026-04-30)
+            // measured open question: confirm cache_hot threshold once
+            // P1-3 ack tracking surfaces "operators who skipped /compact
+            // when hot" outcomes
             cache_hot_ratio: 0.6,
             cache_cold_ratio: 0.3,
+            // intuition: ctx<70% = headroom; ctx>60% = filling
             cache_hot_low_ctx: 0.7,
             cache_cold_high_ctx: 0.6,
+            // intuition: 30pp drop over `drift_min_samples=4` samples
+            // (~20s at 5s poll). Conservative — F-7b spec
             cache_drift_drop: 0.30,
             cache_drift_min_samples: 4,
+            // intuition: F-7c reset advisory thresholds
+            //   wait when pressure≥85% AND eta≤30m → narrow window
+            //   snapshot when pressure≥50% AND eta≤5m → almost-here
             reset_wait_pressure: 0.85,
             reset_wait_eta_secs: 30 * 60,
             reset_snapshot_pressure: 0.50,
             reset_snapshot_eta_secs: 5 * 60,
+            // safety: opt-in; Phase H auto-snapshot is destructive-adjacent
             reset_auto_snapshot: false,
+            // safety: opt-in entire anomaly subsystem. The 8 detectors
+            // below are intuition-driven and will be re-evaluated against
+            // P1-3 ack telemetry before promoting to default-on
             anomaly_enabled: false,
+            // intuition: 20 polls × 5s nominal = 100s rolling window
             anomaly_window_polls: 20,
+            // intuition: Medium confidence = "noteworthy but not promoting"
             anomaly_min_confidence: crate::domain::anomaly::AnomalyConfidence::Medium,
+            // intuition: 3 flips in 100s = real churn vs accidental reuse
             anomaly_identity_churn_min_flips: 3,
+            // intuition: 50% error rate = "half the recent ticks are erroring"
             anomaly_error_burst_threshold: 0.5,
+            // intuition: 30pp cache drop = same as `cache_drift_drop`
             anomaly_cache_discontinuity_drop: 0.30,
+            // intuition: 3 same-path findings inside the window
             anomaly_cross_pane_cluster_min_findings: 3,
+            // intuition: $20/hr ≈ Codex Pro upper-normal usage
+            // (Claude/Gemini panes do not emit cost_usd today —
+            // this detector is provider-asymmetric; see P1-1)
             anomaly_cost_slope_usd_per_hour: 20.0,
+            // intuition: 20k input tokens / poll = 4k tok/sec sustained
             anomaly_token_slope_input_per_poll: 20_000,
+            // intuition: 1 GB RSS growth over 100s
+            // (process_memory_mb only populated for Gemini —
+            // this detector is single-provider; see P1-1)
             anomaly_memory_growth_mb: 1024.0,
             anomaly_promote_identity_churn: crate::domain::anomaly::AnomalyConfidence::High,
             anomaly_promote_error_burst: crate::domain::anomaly::AnomalyConfidence::High,

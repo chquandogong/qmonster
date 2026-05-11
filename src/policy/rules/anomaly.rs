@@ -387,8 +387,16 @@ pub fn detect_cache_discontinuity(
 ///
 /// A signal filtered out by `min_confidence` does NOT record in
 /// dedup so a future high-confidence emission can still fire.
+///
+/// v2.2.0 (P1-1): each detector also gates on
+/// `kind.supports_provider(provider)`. Detectors whose required input
+/// signal is not populated for the pane's provider are skipped before
+/// the detector runs (avoiding wasted work) and never contribute to the
+/// dedup map. This closes the "MemoryGrowth on Claude is silently
+/// dead" honesty gap surfaced by the v2.2.0 critical evaluation.
 pub fn eval_anomalies(
     pane_id: &str,
+    provider: crate::domain::identity::Provider,
     history: &AnomalyHistory,
     gates: &PolicyGates,
     dedup: &mut HashMap<(String, AnomalyKind), Option<u64>>,
@@ -401,66 +409,101 @@ pub fn eval_anomalies(
     let kinds_with_results: Vec<(AnomalyKind, Option<AnomalySignal>)> = vec![
         (
             AnomalyKind::IdentityChurn,
-            detect_identity_churn(
-                history,
-                gates.anomaly_window_polls,
-                gates.anomaly_identity_churn_min_flips,
-                now_unix_seconds,
-            ),
+            AnomalyKind::IdentityChurn
+                .supports_provider(provider)
+                .then(|| {
+                    detect_identity_churn(
+                        history,
+                        gates.anomaly_window_polls,
+                        gates.anomaly_identity_churn_min_flips,
+                        now_unix_seconds,
+                    )
+                })
+                .flatten(),
         ),
         (
             AnomalyKind::ErrorBurst,
-            detect_error_burst(
-                history,
-                gates.anomaly_window_polls,
-                gates.anomaly_error_burst_threshold,
-                now_unix_seconds,
-            ),
+            AnomalyKind::ErrorBurst
+                .supports_provider(provider)
+                .then(|| {
+                    detect_error_burst(
+                        history,
+                        gates.anomaly_window_polls,
+                        gates.anomaly_error_burst_threshold,
+                        now_unix_seconds,
+                    )
+                })
+                .flatten(),
         ),
         (
             AnomalyKind::CacheDiscontinuity,
-            detect_cache_discontinuity(
-                history,
-                gates.anomaly_window_polls,
-                gates.anomaly_cache_discontinuity_drop,
-                now_unix_seconds,
-            ),
+            AnomalyKind::CacheDiscontinuity
+                .supports_provider(provider)
+                .then(|| {
+                    detect_cache_discontinuity(
+                        history,
+                        gates.anomaly_window_polls,
+                        gates.anomaly_cache_discontinuity_drop,
+                        now_unix_seconds,
+                    )
+                })
+                .flatten(),
         ),
         (
             AnomalyKind::CrossPaneEditCluster,
-            detect_cross_pane_edit_cluster(
-                history,
-                gates.anomaly_window_polls,
-                gates.anomaly_cross_pane_cluster_min_findings,
-                now_unix_seconds,
-            ),
+            AnomalyKind::CrossPaneEditCluster
+                .supports_provider(provider)
+                .then(|| {
+                    detect_cross_pane_edit_cluster(
+                        history,
+                        gates.anomaly_window_polls,
+                        gates.anomaly_cross_pane_cluster_min_findings,
+                        now_unix_seconds,
+                    )
+                })
+                .flatten(),
         ),
         (
             AnomalyKind::CostSlope,
-            detect_cost_slope(
-                history,
-                gates.anomaly_window_polls,
-                gates.anomaly_cost_slope_usd_per_hour,
-                now_unix_seconds,
-            ),
+            AnomalyKind::CostSlope
+                .supports_provider(provider)
+                .then(|| {
+                    detect_cost_slope(
+                        history,
+                        gates.anomaly_window_polls,
+                        gates.anomaly_cost_slope_usd_per_hour,
+                        now_unix_seconds,
+                    )
+                })
+                .flatten(),
         ),
         (
             AnomalyKind::TokenSlope,
-            detect_token_slope(
-                history,
-                gates.anomaly_window_polls,
-                gates.anomaly_token_slope_input_per_poll,
-                now_unix_seconds,
-            ),
+            AnomalyKind::TokenSlope
+                .supports_provider(provider)
+                .then(|| {
+                    detect_token_slope(
+                        history,
+                        gates.anomaly_window_polls,
+                        gates.anomaly_token_slope_input_per_poll,
+                        now_unix_seconds,
+                    )
+                })
+                .flatten(),
         ),
         (
             AnomalyKind::MemoryGrowth,
-            detect_memory_growth(
-                history,
-                gates.anomaly_window_polls,
-                gates.anomaly_memory_growth_mb,
-                now_unix_seconds,
-            ),
+            AnomalyKind::MemoryGrowth
+                .supports_provider(provider)
+                .then(|| {
+                    detect_memory_growth(
+                        history,
+                        gates.anomaly_window_polls,
+                        gates.anomaly_memory_growth_mb,
+                        now_unix_seconds,
+                    )
+                })
+                .flatten(),
         ),
     ];
 
@@ -495,8 +538,13 @@ pub fn eval_anomalies(
     // with other anomalies in the same window. Apply the same edge-
     // triggered dedup contract as the other kinds: emit only on
     // Some-after-None edge, suppress on continuous Some, rearm on None.
-    let raw_side_effect =
-        detect_subagent_side_effect(history, &out, gates.anomaly_window_polls, now_unix_seconds);
+    //
+    // v2.2.0 (P1-1): also gated on provider support.
+    let raw_side_effect = if AnomalyKind::SubagentSideEffect.supports_provider(provider) {
+        detect_subagent_side_effect(history, &out, gates.anomaly_window_polls, now_unix_seconds)
+    } else {
+        None
+    };
     let key = (pane_id.to_string(), AnomalyKind::SubagentSideEffect);
     let prev = dedup.get(&key).copied().flatten();
     match (raw_side_effect, prev) {
@@ -803,17 +851,38 @@ pub fn detect_subagent_side_effect(
     if subagent_count == 0 {
         return None;
     }
+    // v2.2.0 (P1-2): surface the co-occurring anomaly kinds as evidence
+    // alongside the disclaimer so an operator scanning the `n` overlay
+    // can see *which* anomalies correlate with subagent activity
+    // without expanding evidence rows. Stable ordering: iterate
+    // `other_anomalies` in its natural Vec order (which mirrors
+    // `eval_anomalies` detector iteration order).
+    let cooccurring_labels: Vec<&'static str> =
+        other_anomalies.iter().map(|s| s.kind.label()).collect();
+    let cooccurring = cooccurring_labels.join(", ");
     Some(AnomalySignal {
         kind: AnomalyKind::SubagentSideEffect,
         confidence: AnomalyConfidence::Medium,
         severity: severity_for(AnomalyConfidence::Medium),
-        evidence: vec![AnomalyEvidence {
-            metric_name: "subagent_correlation",
-            before: "no_subagent".to_string(),
-            after: "subagent_active".to_string(),
-            sample_count: subagent_count,
-            source_kind: SourceKind::Estimated,
-        }],
+        evidence: vec![
+            AnomalyEvidence {
+                // v2.2.0 (P1-2): the metric_name itself carries the
+                // honesty disclaimer so renderers that strip prose
+                // formatting still surface the constraint.
+                metric_name: "subagent_correlation_NOT_attribution",
+                before: "no_subagent".to_string(),
+                after: "subagent_active".to_string(),
+                sample_count: subagent_count,
+                source_kind: SourceKind::Estimated,
+            },
+            AnomalyEvidence {
+                metric_name: "cooccurring_kinds",
+                before: cooccurring,
+                after: format!("{} kinds", other_anomalies.len()),
+                sample_count: other_anomalies.len(),
+                source_kind: SourceKind::Estimated,
+            },
+        ],
         window_polls,
         detected_at: now_unix_seconds,
     })
@@ -944,13 +1013,21 @@ pub fn promote_anomalies_to_recommendations(
             }
             AnomalyKind::SubagentSideEffect => {
                 let count = evidence.map(|e| e.sample_count).unwrap_or(0);
+                // v2.2.0 (P1-2) honesty rule: lead with the disclaimer
+                // so the operator reads "correlation only" BEFORE the
+                // numeric evidence. The previous prose buried the
+                // disclaimer in parens at the end of the reason, where
+                // operators routinely skipped past it. Providers do not
+                // expose per-subagent token attribution, so any causal
+                // inference here is the operator's, not Qmonster's.
                 (
-                    "anomaly: subagent activity correlated with other anomalies",
+                    "anomaly: subagent activity ⚠ correlated with other anomalies",
                     format!(
-                        "subagent_hint observed {count} times in {} polls, co-occurring with other anomalies (correlation, not attribution)",
+                        "⚠ correlation only — providers do not expose per-subagent token attribution. \
+                         subagent_hint observed {count} times in {} polls while other anomalies fired in the same window",
                         sig.window_polls
                     ),
-                    "subagent activity is correlated with the co-occurring anomaly; review the subagent's recent output before attributing cause".to_string(),
+                    "the subagent activity is *correlated* with the co-occurring anomaly, not proven to be the source. inspect the subagent's recent output before attributing cause".to_string(),
                 )
             }
         };
@@ -1000,7 +1077,7 @@ mod tests {
             ("codex", "/r"),
         ]);
         let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
-        let result = eval_anomalies("%1", &history, &gates, &mut dedup, 1_700_000_000);
+        let result = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &history, &gates, &mut dedup, 1_700_000_000);
         assert!(result.is_empty());
         assert!(dedup.is_empty());
     }
@@ -1017,21 +1094,21 @@ mod tests {
         let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
 
         // Tick 1: detector returns Some, dedup empty → emit, dedup set
-        let r1 = eval_anomalies("%1", &history, &gates, &mut dedup, 1_700_000_000);
+        let r1 = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &history, &gates, &mut dedup, 1_700_000_000);
         assert_eq!(r1.len(), 1);
         assert_eq!(r1[0].kind, AnomalyKind::IdentityChurn);
 
         // Tick 2: detector still Some, dedup occupied → suppress
-        let r2 = eval_anomalies("%1", &history, &gates, &mut dedup, 1_700_000_005);
+        let r2 = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &history, &gates, &mut dedup, 1_700_000_005);
         assert!(r2.is_empty());
 
         // Tick 3: history clears (only one snapshot left) → detector None, rearm
         let quiet = churn_history(vec![("claude", "/r")]);
-        let r3 = eval_anomalies("%1", &quiet, &gates, &mut dedup, 1_700_000_010);
+        let r3 = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &quiet, &gates, &mut dedup, 1_700_000_010);
         assert!(r3.is_empty());
 
         // Tick 4: detector Some again, dedup rearmed → emit
-        let r4 = eval_anomalies("%1", &history, &gates, &mut dedup, 1_700_000_015);
+        let r4 = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &history, &gates, &mut dedup, 1_700_000_015);
         assert_eq!(r4.len(), 1, "should re-emit after rearm");
     }
 
@@ -1047,7 +1124,7 @@ mod tests {
             ("codex", "/r"),
         ]);
         let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
-        let result = eval_anomalies("%1", &history, &gates, &mut dedup, 1_700_000_000);
+        let result = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &history, &gates, &mut dedup, 1_700_000_000);
         assert!(
             result.is_empty(),
             "Medium signal filtered at min_confidence=High"
@@ -1859,7 +1936,75 @@ mod tests {
         assert_eq!(sig.kind, AnomalyKind::SubagentSideEffect);
         assert_eq!(sig.confidence, AnomalyConfidence::Medium);
         assert_eq!(sig.severity, Severity::Concern);
-        assert_eq!(sig.evidence[0].metric_name, "subagent_correlation");
+        // v2.2.0 (P1-2): evidence metric_name encodes the honesty disclaimer.
+        assert_eq!(
+            sig.evidence[0].metric_name,
+            "subagent_correlation_NOT_attribution"
+        );
+    }
+
+    #[test]
+    fn subagent_side_effect_evidence_includes_cooccurring_kinds() {
+        // v2.2.0 (P1-2): operators scanning the n overlay must see which
+        // anomalies the subagent correlation is being claimed against,
+        // without expanding evidence rows. Pin the second evidence row
+        // contract so a future refactor can't drop it.
+        let mut hints = vec![false; 18];
+        hints.insert(0, true);
+        hints.insert(0, true);
+        let h = subagent_history(hints);
+        let others = vec![
+            make_other_anomaly(AnomalyKind::ErrorBurst),
+            make_other_anomaly(AnomalyKind::CostSlope),
+        ];
+        let sig = detect_subagent_side_effect(&h, &others, 20, 1_700_000_000).unwrap();
+        assert_eq!(sig.evidence.len(), 2, "must carry both rows");
+        assert_eq!(sig.evidence[1].metric_name, "cooccurring_kinds");
+        assert!(
+            sig.evidence[1].before.contains("ErrorBurst"),
+            "evidence must name the ErrorBurst co-occurrence: {}",
+            sig.evidence[1].before
+        );
+        assert!(
+            sig.evidence[1].before.contains("CostSlope"),
+            "evidence must name the CostSlope co-occurrence: {}",
+            sig.evidence[1].before
+        );
+        assert_eq!(sig.evidence[1].sample_count, 2);
+    }
+
+    #[test]
+    fn promote_anomalies_subagent_reason_leads_with_disclaimer() {
+        // v2.2.0 (P1-2): the reason text the operator reads in the alert
+        // queue must lead with "correlation only" — not bury it in parens
+        // at the end. Pin the contract so a future prose-rewrite can't
+        // silently regress the honesty.
+        let mut hints = vec![false; 18];
+        hints.insert(0, true);
+        hints.insert(0, true);
+        let h = subagent_history(hints);
+        let others = vec![make_other_anomaly(AnomalyKind::ErrorBurst)];
+        let sig = detect_subagent_side_effect(&h, &others, 20, 1_700_000_000).unwrap();
+        let recs = promote_anomalies_to_recommendations(
+            std::slice::from_ref(&sig),
+            &PolicyGates {
+                anomaly_promote_subagent_side_effect: AnomalyConfidence::Medium,
+                ..PolicyGates::default()
+            },
+        );
+        let rec = recs
+            .first()
+            .expect("Medium-confidence rec must promote when gate=Medium");
+        assert!(
+            rec.reason.starts_with("⚠ correlation only"),
+            "reason must lead with the disclaimer chip: {}",
+            rec.reason
+        );
+        assert!(
+            rec.reason.contains("providers do not expose per-subagent token attribution"),
+            "reason must spell out the structural attribution gap: {}",
+            rec.reason
+        );
     }
 
     #[test]
@@ -1878,16 +2023,21 @@ mod tests {
 
     #[test]
     fn eval_anomalies_runs_subagent_side_effect_after_others() {
-        // Build a history that fires both TokenSlope (Warning) AND has
-        // subagent_hint. eval_anomalies should return both kinds — and
-        // SubagentSideEffect should appear AFTER TokenSlope in the result
+        // v2.2.0 (P1-1): use ErrorBurst (provider-agnostic) + SubagentSideEffect
+        // (Claude only) instead of TokenSlope (Codex only) — the latter pair
+        // is mutually exclusive under the new provider-eligibility guard.
+        //
+        // Both ErrorBurst and SubagentSideEffect fire on the same Claude pane.
+        // SubagentSideEffect must appear AFTER ErrorBurst in the result
         // (since it runs last and pushes onto `out`).
         let mut h = AnomalyHistory::default();
-        // High-confidence TokenSlope. Push 20 samples newest-first (front=newest,
-        // back=oldest). Newest = 800K, oldest = 0, slope per poll = 40K
-        // (= 2 × 20K threshold) → High confidence.
-        for i in (0..20u64).rev() {
-            h.input_token_samples.push_back(Some(i * (800_000 / 19)));
+        // High-confidence ErrorBurst: 16/20 ticks set to true (rate 0.8 >=
+        // 1.5 × 0.5 threshold → High).
+        for _ in 0..16 {
+            h.error_hints.push_back(true);
+        }
+        for _ in 0..4 {
+            h.error_hints.push_back(false);
         }
         // 5 subagent_hint=true ticks at the head of the window.
         for _ in 0..5 {
@@ -1900,33 +2050,86 @@ mod tests {
         let gates = PolicyGates {
             anomaly_enabled: true,
             anomaly_window_polls: 20,
-            anomaly_token_slope_input_per_poll: 20_000,
+            anomaly_error_burst_threshold: 0.5,
             anomaly_min_confidence: AnomalyConfidence::Medium,
             ..PolicyGates::default()
         };
 
         let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
-        let result = eval_anomalies("%1", &h, &gates, &mut dedup, 1_700_000_000);
+        let result = eval_anomalies(
+            "%1",
+            crate::domain::identity::Provider::Claude,
+            &h,
+            &gates,
+            &mut dedup,
+            1_700_000_000,
+        );
         let kinds: Vec<AnomalyKind> = result.iter().map(|s| s.kind).collect();
         assert!(
-            kinds.contains(&AnomalyKind::TokenSlope),
-            "TokenSlope should fire: {kinds:?}"
+            kinds.contains(&AnomalyKind::ErrorBurst),
+            "ErrorBurst should fire: {kinds:?}"
         );
         assert!(
             kinds.contains(&AnomalyKind::SubagentSideEffect),
             "SubagentSideEffect should fire: {kinds:?}"
         );
-        let token_idx = kinds
+        let burst_idx = kinds
             .iter()
-            .position(|k| *k == AnomalyKind::TokenSlope)
+            .position(|k| *k == AnomalyKind::ErrorBurst)
             .unwrap();
         let side_idx = kinds
             .iter()
             .position(|k| *k == AnomalyKind::SubagentSideEffect)
             .unwrap();
         assert!(
-            side_idx > token_idx,
-            "SubagentSideEffect must run AFTER TokenSlope"
+            side_idx > burst_idx,
+            "SubagentSideEffect must run AFTER ErrorBurst"
+        );
+    }
+
+    #[test]
+    fn eval_anomalies_skips_unsupported_detectors_per_provider() {
+        // v2.2.0 (P1-1) coverage assertion: a Claude pane must NOT produce
+        // a TokenSlope or MemoryGrowth signal even when the history would
+        // otherwise satisfy the detector. The provider-eligibility guard
+        // must short-circuit before the detector runs.
+        let mut h = AnomalyHistory::default();
+        // TokenSlope-firing history (would fire on Codex).
+        for i in (0..20u64).rev() {
+            h.input_token_samples.push_back(Some(i * (800_000 / 19)));
+        }
+        // MemoryGrowth-firing history (would fire on Gemini).
+        for i in (0..20u64).rev() {
+            h.process_memory_samples
+                .push_back(Some(100.0 + (i as f64) * 100.0));
+        }
+
+        let gates = PolicyGates {
+            anomaly_enabled: true,
+            anomaly_window_polls: 20,
+            anomaly_token_slope_input_per_poll: 20_000,
+            anomaly_memory_growth_mb: 1024.0,
+            anomaly_min_confidence: AnomalyConfidence::Medium,
+            ..PolicyGates::default()
+        };
+
+        let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
+        let result = eval_anomalies(
+            "%1",
+            crate::domain::identity::Provider::Claude,
+            &h,
+            &gates,
+            &mut dedup,
+            1_700_000_000,
+        );
+        let kinds: Vec<AnomalyKind> = result.iter().map(|s| s.kind).collect();
+        assert!(
+            !kinds.contains(&AnomalyKind::TokenSlope),
+            "TokenSlope must not fire on Claude even with matching history: {kinds:?}"
+        );
+        assert!(
+            !kinds.contains(&AnomalyKind::MemoryGrowth),
+            "MemoryGrowth must not fire on Claude even with matching history: {kinds:?}"
         );
     }
 

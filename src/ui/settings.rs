@@ -3512,6 +3512,33 @@ fn remove_status_footer(lines: &mut Vec<Line<'static>>) {
     }
 }
 
+/// v2.2.0 (P1-1): operator-facing supports-matrix suffix for anomaly
+/// detector rule rows. Renders e.g. ` · supports: Claude` so the operator
+/// can tell at a glance which detectors fire on which provider. Returns
+/// empty string for fully cross-provider detectors to avoid clutter.
+fn supports_suffix(kind: crate::domain::anomaly::AnomalyKind) -> String {
+    use crate::domain::identity::Provider;
+    let supports = kind.supported_providers();
+    // Skip the suffix when the detector is fully cross-provider
+    // (Claude + Codex + Gemini). The matrix-presence chip is intended
+    // to flag *asymmetries*, not restate the common case.
+    let all_three = [Provider::Claude, Provider::Codex, Provider::Gemini];
+    if supports.len() == all_three.len() && all_three.iter().all(|p| supports.contains(p)) {
+        return String::new();
+    }
+    let labels: Vec<&'static str> = supports
+        .iter()
+        .map(|p| match p {
+            Provider::Claude => "Claude",
+            Provider::Codex => "Codex",
+            Provider::Gemini => "Gemini",
+            Provider::Qmonster => "Qmonster",
+            Provider::Unknown => "Unknown",
+        })
+        .collect();
+    format!(" · supports: {}", labels.join(" / "))
+}
+
 fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> Vec<Line<'static>> {
     vec![
         reference_header_line("Shared Gates"),
@@ -3673,71 +3700,80 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
         rule_row(
             "anomaly: IdentityChurn",
             format!(
-                "fires when (provider, path) flips >= {} times in {} polls; promotes to Recommendation when confidence >= {}",
+                "fires when (provider, path) flips >= {} times in {} polls; promotes to Recommendation when confidence >= {}{}",
                 config.anomaly.identity_churn_min_flips,
                 config.anomaly.window_polls,
                 config.anomaly.promote.identity_churn,
+                supports_suffix(crate::domain::anomaly::AnomalyKind::IdentityChurn),
             ),
         ),
         rule_row(
             "anomaly: ErrorBurst",
             format!(
-                "fires when error rate >= {:.0}% over {} polls; promotes to Recommendation when confidence >= {}",
+                "fires when error rate >= {:.0}% over {} polls; promotes to Recommendation when confidence >= {}{}",
                 config.anomaly.error_burst_threshold * 100.0,
                 config.anomaly.window_polls,
                 config.anomaly.promote.error_burst,
+                supports_suffix(crate::domain::anomaly::AnomalyKind::ErrorBurst),
             ),
         ),
         rule_row(
             "anomaly: CacheDiscontinuity",
             format!(
-                "fires when cache_hit_ratio drops >= {:.0}pp OR F-7b fires >= 2x in {} polls; promotes to Recommendation when confidence >= {}",
+                "fires when cache_hit_ratio drops >= {:.0}pp OR F-7b fires >= 2x in {} polls; promotes to Recommendation when confidence >= {}{}",
                 config.anomaly.cache_discontinuity_drop * 100.0,
                 config.anomaly.window_polls,
                 config.anomaly.promote.cache_discontinuity,
+                supports_suffix(crate::domain::anomaly::AnomalyKind::CacheDiscontinuity),
             ),
         ),
         rule_row(
             "anomaly: CrossPaneEditCluster",
             format!(
-                "fires when >= {} ConcurrentFileEdit findings target the same path in {} polls; promotes to Recommendation when confidence >= {}",
+                "fires when >= {} ConcurrentFileEdit findings target the same path in {} polls; promotes to Recommendation when confidence >= {}{}",
                 config.anomaly.cross_pane_cluster_min_findings,
                 config.anomaly.window_polls,
                 config.anomaly.promote.cross_pane_edit_cluster,
+                supports_suffix(crate::domain::anomaly::AnomalyKind::CrossPaneEditCluster),
             ),
         ),
         rule_row(
             "anomaly: CostSlope",
             format!(
-                "fires when cost slope >= {:.2} USD/hour over {} polls; promotes to Recommendation when confidence >= {}",
+                "fires when cost slope >= {:.2} USD/hour over {} polls; promotes to Recommendation when confidence >= {}{}",
                 config.anomaly.cost_slope_usd_per_hour,
                 config.anomaly.window_polls,
                 config.anomaly.promote.cost_slope,
+                supports_suffix(crate::domain::anomaly::AnomalyKind::CostSlope),
             ),
         ),
         rule_row(
             "anomaly: TokenSlope",
             format!(
-                "fires when input_tokens slope >= {} per poll over {} polls; promotes to Recommendation when confidence >= {}",
+                "fires when input_tokens slope >= {} per poll over {} polls; promotes to Recommendation when confidence >= {}{}",
                 config.anomaly.token_slope_input_per_poll,
                 config.anomaly.window_polls,
                 config.anomaly.promote.token_slope,
+                supports_suffix(crate::domain::anomaly::AnomalyKind::TokenSlope),
             ),
         ),
         rule_row(
             "anomaly: MemoryGrowth",
             format!(
-                "fires when process_memory_mb grows >= {:.0} MB over {} polls; promotes to Recommendation when confidence >= {}",
+                "fires when process_memory_mb grows >= {:.0} MB over {} polls; promotes to Recommendation when confidence >= {}{}",
                 config.anomaly.memory_growth_mb,
                 config.anomaly.window_polls,
                 config.anomaly.promote.memory_growth,
+                supports_suffix(crate::domain::anomaly::AnomalyKind::MemoryGrowth),
             ),
         ),
         rule_row(
             "anomaly: SubagentSideEffect",
             format!(
-                "fires when subagent_hint observed in {} polls AND another anomaly fires (correlation, not attribution); promotes when subagent_hint co-occurs with another anomaly (confidence >= {})",
-                config.anomaly.window_polls, config.anomaly.promote.subagent_side_effect,
+                "fires when subagent_hint observed in {} polls AND another anomaly fires (correlation, not attribution); promotes when subagent_hint co-occurs with another anomaly (confidence >= {}){}",
+                config.anomaly.window_polls,
+                config.anomaly.promote.subagent_side_effect,
+                supports_suffix(crate::domain::anomaly::AnomalyKind::SubagentSideEffect),
             ),
         ),
         Line::from(""),
@@ -5901,6 +5937,64 @@ mod tests {
         assert!(
             rendered.contains("anomaly: SubagentSideEffect"),
             "missing SubagentSideEffect: {rendered}"
+        );
+    }
+
+    #[test]
+    fn rules_tab_anomaly_rows_show_supports_suffix_for_asymmetric_detectors() {
+        // v2.2.0 (P1-1): rule rows for asymmetric detectors must surface
+        // a `supports:` chip so operators can tell at a glance that
+        // MemoryGrowth fires only on Gemini, TokenSlope only on Codex, etc.
+        let config = QmonsterConfig::defaults();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Rules);
+        let lines = build_body_lines(&s, &config);
+        let rendered = rendered_text(&lines);
+
+        // Single-provider detectors must name their lone supported provider.
+        assert!(
+            rendered.contains("supports: Gemini"),
+            "MemoryGrowth row should show 'supports: Gemini': {rendered}"
+        );
+        assert!(
+            rendered.contains("supports: Codex"),
+            "TokenSlope row should show 'supports: Codex': {rendered}"
+        );
+        assert!(
+            rendered.contains("supports: Claude"),
+            "SubagentSideEffect row should show 'supports: Claude': {rendered}"
+        );
+        // Two-provider detectors should show both names.
+        assert!(
+            rendered.contains("supports: Claude / Codex"),
+            "CacheDiscontinuity / CrossPaneEditCluster should show 'supports: Claude / Codex': {rendered}"
+        );
+    }
+
+    #[test]
+    fn rules_tab_omits_supports_suffix_for_fully_cross_provider_detectors() {
+        // Honesty rule: only surface the chip when the detector is
+        // *asymmetric*. ErrorBurst + IdentityChurn fire on all 3
+        // providers — restating that would just be noise.
+        let config = QmonsterConfig::defaults();
+        let mut s = SettingsOverlay::new();
+        s.open();
+        s.switch_tab(SettingsTab::Rules);
+        let lines = build_body_lines(&s, &config);
+        let rendered = rendered_text(&lines);
+        // Find the IdentityChurn row and verify it ends without
+        // " · supports:" before the next rule label.
+        let cut = rendered
+            .find("anomaly: IdentityChurn")
+            .expect("IdentityChurn row");
+        let next = rendered[cut..]
+            .find("anomaly: ErrorBurst")
+            .expect("ErrorBurst follows IdentityChurn");
+        let row = &rendered[cut..cut + next];
+        assert!(
+            !row.contains("supports:"),
+            "IdentityChurn is fully cross-provider — row must not carry a supports chip: {row}"
         );
     }
 

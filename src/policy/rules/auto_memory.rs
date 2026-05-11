@@ -184,18 +184,14 @@ mod tests {
 
     #[test]
     fn suppressed_on_non_state_critical_task_types() {
-        // The rule must stay narrow. CodeExploration / LogTriage /
-        // Summary / Automation / Unknown all produce output, but
-        // none of it is the kind of handoff state that gets lost if
-        // stored only in auto-memory. Firing on every task type
-        // would turn a useful advisory into background noise.
-        for task in [
-            TaskType::Unknown,
-            TaskType::CodeExploration,
-            TaskType::LogTriage,
-            TaskType::Summary,
-            TaskType::Automation,
-        ] {
+        // The rule must stay narrow. Automation / Unknown produce output
+        // but none of it is the kind of handoff state that gets lost if
+        // stored only in auto-memory. Firing on every task type would
+        // turn a useful advisory into background noise.
+        //
+        // v2.2.0 dead-code purge: `CodeExploration`, `LogTriage`,
+        // `Summary` variants were removed as they were never populated.
+        for task in [TaskType::Unknown, TaskType::Automation] {
             let s = SignalSet {
                 task_type: task,
                 ..SignalSet::default()

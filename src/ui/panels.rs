@@ -785,9 +785,6 @@ fn secondary_signal_chips(s: &SignalSet) -> Vec<&'static str> {
     if s.log_storm {
         chips.push("log storm");
     }
-    if s.repeated_output {
-        chips.push("repeated output");
-    }
     if s.verbose_answer {
         chips.push("verbose output");
     }
@@ -2406,13 +2403,13 @@ mod tests {
         let mut rep = base_report();
         rep.signals = SignalSet {
             idle_state: Some(IdleCause::InputWait),
-            repeated_output: true,
+            verbose_answer: true,
             ..SignalSet::default()
         };
         let summary = state_summary_line(&rep);
         assert!(summary.contains("high confidence"));
         assert!(!summary.contains("waiting for input"));
-        assert!(!summary.contains("repeated output"));
+        assert!(!summary.contains("verbose output"));
     }
 
     #[test]

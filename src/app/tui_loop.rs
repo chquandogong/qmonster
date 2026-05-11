@@ -6,7 +6,7 @@ use ratatui::layout::Rect;
 
 use crate::app::bootstrap::Context;
 use crate::app::clipboard_actions::{
-    AlertCommandCopyView, copy_selected_alert_command_to_clipboard,
+    AlertCommandCopyView, copy_selected_alert_command_to_clipboard_with_ledger,
 };
 use crate::app::dashboard_render::{DashboardFrameView, render_dashboard_frame};
 use crate::app::dashboard_runtime::DashboardRuntimeState;
@@ -986,7 +986,19 @@ where
                                             hidden_until: &dashboard.alert_hide_deadlines,
                                             now,
                                         };
-                                        let notice = copy_selected_alert_command_to_clipboard(view);
+                                        // v2.2.0 (P1-3): route through the
+                                        // ledger-aware helper so the operator's
+                                        // `y` copy lands as a
+                                        // `RecommendationOutcome::Copied` row
+                                        // when the alert is recommendation-class.
+                                        let now_unix_ms =
+                                            crate::app::event_loop::current_unix_ms() as i64;
+                                        let notice =
+                                            copy_selected_alert_command_to_clipboard_with_ledger(
+                                                view,
+                                                ctx.recommendation_lifecycle_sink.as_ref(),
+                                                now_unix_ms,
+                                            );
                                         dashboard.push_notice(notice, now);
                                     }
                                 }

@@ -360,9 +360,11 @@ mod tests {
 
     #[test]
     fn notify_effect_absent_when_only_concern_severity_recs() {
-        // repeated_output is Concern-severity in alerts.rs.
+        // subagent_hint is Concern-severity in alerts.rs — used here as the
+        // canonical "Concern-only" signal after the repeated_output dead-code
+        // purge (v2.2.0). Notify must not fire on Concern-only recs.
         let s = SignalSet {
-            repeated_output: true,
+            subagent_hint: true,
             ..SignalSet::default()
         };
         let eng = Engine;
@@ -374,7 +376,7 @@ mod tests {
         );
         assert!(
             !out.recommendations.is_empty(),
-            "sanity: repeated_output rec still exists in the list"
+            "sanity: subagent_hint rec still exists in the list"
         );
     }
 

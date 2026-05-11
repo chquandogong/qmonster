@@ -408,6 +408,45 @@ pub fn selected_alert_suggested_command_meta(
     Some((item.title.clone(), cmd, item.severity, item.source_kind))
 }
 
+/// v2.2.0 (P1-3): companion to `selected_alert_suggested_command_meta`
+/// that extracts the (pane_id, action) pair from a Recommendation-class
+/// alert. Returns `None` for non-Recommendation alerts (system notices,
+/// cross-pane findings) — those don't write to the
+/// `recommendation_events` ledger today.
+///
+/// Key format from `recommendation_key`: `rec|{pane_id}|{action}|{sev}|{reason}`
+pub fn selected_alert_recommendation_identity(
+    state: &ListState,
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    fresh_alerts: &HashSet<String>,
+    alert_times: &HashMap<String, String>,
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> Option<(String, String)> {
+    let idx = state.selected()?;
+    let items = collect_items(
+        notices,
+        reports,
+        fresh_alerts,
+        alert_times,
+        hidden_until,
+        now,
+    );
+    let item = items.get(idx)?;
+    parse_recommendation_key(&item.key)
+}
+
+/// Parses the `rec|{pane_id}|{action}|{sev}|{reason}` key shape into
+/// (pane_id, action). Returns None for non-recommendation key prefixes.
+fn parse_recommendation_key(key: &str) -> Option<(String, String)> {
+    let rest = key.strip_prefix("rec|")?;
+    let mut parts = rest.splitn(3, '|');
+    let pane_id = parts.next()?.to_string();
+    let action = parts.next()?.to_string();
+    Some((pane_id, action))
+}
+
 pub fn actionable_alert_keys_for_severity(
     notices: &[SystemNotice],
     reports: &[PaneReport],

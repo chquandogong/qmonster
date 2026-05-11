@@ -187,14 +187,18 @@ fn task_type_does_not_match_review_word_in_prose() {
 
 #[test]
 fn task_type_does_not_match_search_in_prose() {
+    // v2.2.0 (P0-1): `TaskType::CodeExploration` was removed as dead code
+    // (no adapter populated it). The regression contract is now stronger:
+    // search-class prose must yield `Unknown`, not any populated variant.
     let s = parse_common_signals("I'll search the codebase for similar patterns.");
-    assert!(!matches!(s.task_type, TaskType::CodeExploration));
+    assert!(matches!(s.task_type, TaskType::Unknown));
 }
 
 #[test]
 fn task_type_does_not_match_summary_in_prose() {
+    // v2.2.0 (P0-1): `TaskType::Summary` was removed as dead code.
     let s = parse_common_signals("Here's a summary of what changed.");
-    assert!(!matches!(s.task_type, TaskType::Summary));
+    assert!(matches!(s.task_type, TaskType::Unknown));
 }
 
 #[test]

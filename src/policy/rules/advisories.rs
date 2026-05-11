@@ -62,13 +62,6 @@ pub fn eval_advisories(
         out.push(rec);
     }
 
-    if let Some(rec) = repeated_cache_suggest(id, signals, gates) {
-        out.push(rec);
-        if gates.quota_tight {
-            out.push(aggressive_repeated_cache_suggest());
-        }
-    }
-
     out
 }
 
@@ -122,20 +115,15 @@ fn code_exploration(
         return None;
     }
     // R1 cleanup: drop the bare `output_chars >= 1500` fallback. The
-    // 2026-04-28 live audit (8 panes / 2 windows) showed every Main
-    // pane was tripping the advisory just because its captured tail
-    // was longer than 1500 chars — a trivially-met bar on any active
-    // CLI. Same v1.13.0 anti-pattern we already removed for log_storm
-    // and verbose_answer: a "lots of output" proxy that does not
-    // survive contact with real fixtures. Real code-exploration
-    // semantics (repeated symbol/file lookups, repo grep) need either
-    // the future `TaskType::CodeExploration` adapter signal or the
-    // already-narrowed `verbose_answer` hedge phrases.
-    let triggers_fired = matches!(
-        signals.task_type,
-        crate::domain::signal::TaskType::CodeExploration
-    ) || signals.verbose_answer;
-    if !triggers_fired {
+    // 2026-04-28 live audit showed every active Main pane was tripping
+    // the advisory just because its captured tail was longer than 1500
+    // chars — a trivially-met bar on any active CLI.
+    //
+    // v2.2.0 dead-code purge: `TaskType::CodeExploration` was never
+    // populated by any adapter; the rule now triggers solely on
+    // `verbose_answer`, which itself is on measurement-deprecation
+    // watch (see VERBOSE_MARKERS docstring).
+    if !signals.verbose_answer {
         return None;
     }
     if !allow_provider_specific(gates.identity_confidence) {
@@ -243,35 +231,73 @@ fn quota_pressure_recommendations(
     signals: &SignalSet,
     gates: &PolicyGates,
 ) -> Vec<Recommendation> {
+    // v2.2.0 dedup: previously every populated quota window
+    // (generic / 5h / weekly) could fire its own rec in the same poll,
+    // producing up to three near-identical Warning/Risk alerts per pane.
+    // The operator only needs the most-urgent window — picking by
+    // headroom-to-critical normalises across windows whose critical
+    // thresholds may differ.
+    //
+    // Headroom = `critical_pct - value` (smaller = more urgent). Critical
+    // hits collapse to negative headroom which always sorts first. A tie
+    // breaker prefers 5h (most actionable on short timescale), then
+    // weekly, then generic.
+    let candidates: Vec<(Option<&'static str>, f32, f32, f32, &'static str)> = vec![
+        (
+            None,
+            signals.quota_pressure.as_ref().map(|m| m.value).unwrap_or(0.0),
+            gates.quota_warning_pct,
+            gates.quota_critical_pct,
+            "generic",
+        ),
+        (
+            Some("5h"),
+            signals.quota_5h_pressure.as_ref().map(|m| m.value).unwrap_or(0.0),
+            gates.quota_5h_warning_pct,
+            gates.quota_5h_critical_pct,
+            "5h",
+        ),
+        (
+            Some("weekly"),
+            signals.quota_weekly_pressure.as_ref().map(|m| m.value).unwrap_or(0.0),
+            gates.quota_weekly_warning_pct,
+            gates.quota_weekly_critical_pct,
+            "weekly",
+        ),
+    ];
+
+    let tiebreak_rank = |label: &str| match label {
+        "5h" => 0,
+        "weekly" => 1,
+        _ => 2,
+    };
+
+    // Find the candidate whose pressure is above its warning threshold AND
+    // whose headroom is smallest. Skip windows whose pressure is 0.0 — that
+    // marks an absent signal (real provider pressure values are never
+    // exactly zero once the pane has started accumulating).
+    let chosen = candidates
+        .iter()
+        .filter(|(_, v, w, _, _)| *v >= *w && *v > 0.0)
+        .min_by(|a, b| {
+            let ha = a.3 - a.1;
+            let hb = b.3 - b.1;
+            ha.partial_cmp(&hb)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| tiebreak_rank(a.4).cmp(&tiebreak_rank(b.4)))
+        });
+
     let mut out = Vec::new();
-    if let Some(rec) = quota_pressure_rec(
-        id,
-        signals.quota_pressure.as_ref().map(|m| m.value),
-        gates.quota_warning_pct,
-        gates.quota_critical_pct,
-        gates.identity_confidence,
-        None,
-    ) {
-        out.push(rec);
-    }
-    if let Some(rec) = quota_pressure_rec(
-        id,
-        signals.quota_5h_pressure.as_ref().map(|m| m.value),
-        gates.quota_5h_warning_pct,
-        gates.quota_5h_critical_pct,
-        gates.identity_confidence,
-        Some("5h"),
-    ) {
-        out.push(rec);
-    }
-    if let Some(rec) = quota_pressure_rec(
-        id,
-        signals.quota_weekly_pressure.as_ref().map(|m| m.value),
-        gates.quota_weekly_warning_pct,
-        gates.quota_weekly_critical_pct,
-        gates.identity_confidence,
-        Some("weekly"),
-    ) {
+    if let Some((window, value, warn, crit, _)) = chosen
+        && let Some(rec) = quota_pressure_rec(
+            id,
+            Some(*value),
+            *warn,
+            *crit,
+            gates.identity_confidence,
+            *window,
+        )
+    {
         out.push(rec);
     }
     out
@@ -488,30 +514,6 @@ fn quota_tight_nudge(
     })
 }
 
-fn repeated_cache_suggest(
-    _id: &ResolvedIdentity,
-    signals: &SignalSet,
-    gates: &PolicyGates,
-) -> Option<Recommendation> {
-    if !signals.repeated_output {
-        return None;
-    }
-    if !allow_provider_specific(gates.identity_confidence) {
-        return None;
-    }
-    Some(Recommendation {
-        action: "repeated-output: result-hash cache",
-        reason: "repeated output — consider a result-hash cache (token-optimizer-mcp)".into(),
-        severity: Severity::Concern,
-        source_kind: SourceKind::Heuristic,
-        suggested_command: None, // install/config step varies by agent stack
-        side_effects: vec![],
-        is_strong: false,
-        next_step: None,
-        profile: None,
-    })
-}
-
 fn security_posture_advisory(
     _id: &ResolvedIdentity,
     signals: &SignalSet,
@@ -596,20 +598,6 @@ fn runtime_fact_kind_label(kind: RuntimeFactKind) -> &'static str {
         | RuntimeFactKind::ModelReset
         | RuntimeFactKind::TranscriptPath
         | RuntimeFactKind::CliVersion => "session",
-    }
-}
-
-fn aggressive_repeated_cache_suggest() -> Recommendation {
-    Recommendation {
-        action: "aggressive: dedupe + hash",
-        reason: "quota-tight: enable per-pane result-hash dedupe".into(),
-        severity: Severity::Warning,
-        source_kind: SourceKind::Heuristic,
-        suggested_command: None, // config varies by agent stack
-        side_effects: vec![],
-        is_strong: false,
-        next_step: None,
-        profile: None,
     }
 }
 
@@ -815,10 +803,9 @@ mod tests {
     fn code_exploration_does_not_fire_on_large_output_alone() {
         // R1 regression: a long captured tail on a healthy Main pane
         // is not by itself evidence of code exploration. Without an
-        // explicit verbose hedge phrase or a `TaskType::CodeExploration`
-        // signal, the advisory must stay silent — the 2026-04-28 live
-        // audit showed every active Main pane was tripping the rule
-        // through the 1500-char fallback alone.
+        // explicit verbose hedge phrase, the advisory must stay silent —
+        // the 2026-04-28 live audit showed every active Main pane was
+        // tripping the rule through the 1500-char fallback alone.
         let id = id_high(Role::Main);
         let s = SignalSet {
             output_chars: 50_000,
@@ -914,16 +901,47 @@ mod tests {
     }
 
     #[test]
-    fn split_quota_pressure_uses_window_specific_actions() {
+    fn split_quota_pressure_promotes_only_most_urgent_window() {
+        // v2.2.0 dedup: when both 5h (0.78, Warning band) and weekly
+        // (0.90, Risk band) cross their thresholds, only the more urgent
+        // (smaller headroom) is promoted. weekly @ 0.90 has headroom
+        // (0.85 - 0.90 = -0.05); 5h @ 0.78 has headroom (0.85 - 0.78 =
+        // 0.07). Weekly wins → only the weekly act-now rec fires.
         let id = id_high(Role::Main);
         let s = split_quota(0.78, 0.90);
         let recs = eval_advisories(&id, &s, &gates_default());
 
-        let actions: Vec<&str> = recs.iter().map(|r| r.action).collect();
-        assert!(actions.contains(&"quota-pressure: 5h pace"));
-        assert!(actions.contains(&"quota-pressure: weekly act now"));
-        assert!(!actions.contains(&"quota-pressure: pace"));
-        assert!(!actions.contains(&"quota-pressure: act now"));
+        let quota_actions: Vec<&str> = recs
+            .iter()
+            .map(|r| r.action)
+            .filter(|a| a.starts_with("quota-pressure"))
+            .collect();
+        assert_eq!(
+            quota_actions,
+            vec!["quota-pressure: weekly act now"],
+            "only one quota-pressure rec must fire — the most urgent window"
+        );
+    }
+
+    #[test]
+    fn split_quota_pressure_picks_5h_when_5h_is_more_urgent() {
+        // Inverse of the above: 5h crosses critical at 0.90, weekly only
+        // crosses warning at 0.78. 5h headroom = -0.05, weekly headroom
+        // = +0.07. 5h wins → only the 5h act-now rec fires.
+        let id = id_high(Role::Main);
+        let s = split_quota(0.90, 0.78);
+        let recs = eval_advisories(&id, &s, &gates_default());
+
+        let quota_actions: Vec<&str> = recs
+            .iter()
+            .map(|r| r.action)
+            .filter(|a| a.starts_with("quota-pressure"))
+            .collect();
+        assert_eq!(
+            quota_actions,
+            vec!["quota-pressure: 5h act now"],
+            "5h critical must take priority over weekly warning"
+        );
     }
 
     #[test]
@@ -1069,26 +1087,11 @@ mod tests {
     }
 
     #[test]
-    fn repeated_cache_suggest_fires_on_repeated_output() {
-        let id = id_high(Role::Main);
-        let s = SignalSet {
-            repeated_output: true,
-            ..SignalSet::default()
-        };
-        let recs = eval_advisories(&id, &s, &gates_default());
-        assert!(
-            recs.iter()
-                .any(|r| r.action == "repeated-output: result-hash cache")
-        );
-    }
-
-    #[test]
     fn aggressive_variants_fire_only_when_quota_tight_gate_open() {
         let id = id_high(Role::Review);
         let s = SignalSet {
             log_storm: true,
             verbose_answer: true,
-            repeated_output: true,
             context_pressure: Some(MetricValue::new(0.92, SK::Estimated)),
             ..SignalSet::default()
         };
@@ -1106,7 +1109,6 @@ mod tests {
         assert!(aggressive_actions.contains(&"aggressive: drop non-essential ingress"));
         assert!(aggressive_actions.contains(&"aggressive: clamp output, archive all"));
         assert!(aggressive_actions.contains(&"aggressive: strip attribution"));
-        assert!(aggressive_actions.contains(&"aggressive: dedupe + hash"));
         // Note: "aggressive: terse profile + archive" (for C-warning) does
         // NOT fire here because C-critical supersedes C-warning.
     }
@@ -1138,7 +1140,6 @@ mod tests {
         let s = SignalSet {
             log_storm: true,
             verbose_answer: true,
-            repeated_output: true,
             context_pressure: Some(MetricValue::new(0.92, SK::Estimated)),
             ..SignalSet::default()
         };
@@ -1238,7 +1239,6 @@ mod tests {
         let s = SignalSet {
             log_storm: true,
             verbose_answer: true,
-            repeated_output: true,
             context_pressure: Some(MetricValue::new(0.92, SK::Estimated)),
             ..SignalSet::default()
         };
@@ -1256,7 +1256,6 @@ mod tests {
         assert!(!actions.contains(&"context-pressure: act now"));
         assert!(!actions.contains(&"context-pressure: checkpoint"));
         assert!(!actions.contains(&"verbose-review: terse profile"));
-        assert!(!actions.contains(&"repeated-output: result-hash cache"));
     }
 
     #[test]

@@ -64,6 +64,75 @@ impl AnomalyKind {
             _ => return None,
         })
     }
+
+    /// v2.2.0 (P1-1): the set of providers for which this detector can
+    /// fire today. Returns an empty slice meaning "all providers" only
+    /// when the detector consumes provider-agnostic signals. Otherwise
+    /// returns the explicit list of providers whose adapter populates
+    /// the detector's required input signal.
+    ///
+    /// Used by `n` overlay + Settings Rules tab to render
+    /// `n/a (provider)` instead of leaving operators to wonder why a
+    /// detector is dim. This is the canonical reference for the
+    /// detector-provider coverage matrix flagged in the v2.2.0
+    /// critical evaluation (the `MemoryGrowth`-on-Claude silent-dead
+    /// problem).
+    ///
+    /// **Provenance**: this matrix mirrors what each `detect_*` function
+    /// in `policy::rules::anomaly` actually consumes — verified against
+    /// the adapter `SignalSet` writes as of v2.2.0:
+    /// - `process_memory_mb`        → Gemini only (status table)
+    /// - `cost_usd`                 → Codex (Pricing-derived)
+    /// - `cached_input_tokens` /    → Codex tokens (welcome panel),
+    ///   `cache_hit_ratio`            Claude % (statusline)
+    /// - `subagent_hint` (`● Task`) → Claude tool-call marker
+    /// - `error_hint` / identity     → all 3 providers
+    pub fn supported_providers(self) -> &'static [crate::domain::identity::Provider] {
+        use crate::domain::identity::Provider::*;
+        match self {
+            // Identity churn observes pane identity over time — works on
+            // any pane regardless of provider.
+            AnomalyKind::IdentityChurn => &[Claude, Codex, Gemini],
+            // Error burst observes `signals.error_hint` populated by the
+            // cross-provider `classify_error_hint` matcher.
+            AnomalyKind::ErrorBurst => &[Claude, Codex, Gemini],
+            // Cache discontinuity needs `cache_hit_ratio` or
+            // `cached_input_tokens`. Claude populates the % directly;
+            // Codex populates raw counts. Gemini OAuth is structurally
+            // unsupported (no cache reads surface).
+            AnomalyKind::CacheDiscontinuity => &[Claude, Codex],
+            // Cross-pane edit cluster needs `active_files` populated from
+            // tool-call markers. Claude `● Edit/Write/MultiEdit/Update`
+            // and Codex `*** Update File:` populate; Gemini does not.
+            AnomalyKind::CrossPaneEditCluster => &[Claude, Codex],
+            // Cost slope needs `cost_usd`. Today only Codex populates it
+            // directly. Claude/Gemini panes report cost only when the
+            // operator curates `pricing.toml`, but the cost is still
+            // populated through the same `signals.cost_usd` path —
+            // include both as "supported when pricing curated".
+            AnomalyKind::CostSlope => &[Claude, Codex, Gemini],
+            // Token slope needs cumulative `input_tokens`. Codex
+            // populates from bottom status line. Claude `token_count`
+            // surfaces output tokens not cumulative input — leave
+            // unsupported until Claude exposes a cumulative input
+            // counter. Gemini status table does not expose either.
+            AnomalyKind::TokenSlope => &[Codex],
+            // Memory growth needs `process_memory_mb`. Only Gemini
+            // populates this from its status-table `memory` column.
+            AnomalyKind::MemoryGrowth => &[Gemini],
+            // Subagent side effect needs `subagent_hint`. The
+            // `SUBAGENT_MARKERS` cross-provider phrase list catches
+            // `● Task(` (Claude). Codex/Gemini have no equivalent
+            // sub-agent surface (their multi-step tools run in-context).
+            AnomalyKind::SubagentSideEffect => &[Claude],
+        }
+    }
+
+    /// True iff this detector can fire for the given provider given the
+    /// current adapter coverage.
+    pub fn supports_provider(self, provider: crate::domain::identity::Provider) -> bool {
+        self.supported_providers().contains(&provider)
+    }
 }
 
 /// Detector confidence. Operator filters via
@@ -193,6 +262,79 @@ mod tests {
         }
         assert_eq!(AnomalyConfidence::try_from_label("LOW"), None);
         assert_eq!(AnomalyConfidence::try_from_label(""), None);
+    }
+
+    #[test]
+    fn supported_providers_matrix_locks_v2_2_0_coverage() {
+        use crate::domain::identity::Provider;
+        // Provider-agnostic: identity + error burst fire for all 3.
+        for kind in [AnomalyKind::IdentityChurn, AnomalyKind::ErrorBurst] {
+            for p in [Provider::Claude, Provider::Codex, Provider::Gemini] {
+                assert!(
+                    kind.supports_provider(p),
+                    "{:?} must support {:?}",
+                    kind,
+                    p
+                );
+            }
+        }
+
+        // Single-provider detectors: pin the coverage so a future
+        // adapter-coverage drift breaks the test, not the operator's
+        // mental model.
+        assert!(AnomalyKind::MemoryGrowth.supports_provider(Provider::Gemini));
+        assert!(!AnomalyKind::MemoryGrowth.supports_provider(Provider::Claude));
+        assert!(!AnomalyKind::MemoryGrowth.supports_provider(Provider::Codex));
+
+        assert!(AnomalyKind::TokenSlope.supports_provider(Provider::Codex));
+        assert!(!AnomalyKind::TokenSlope.supports_provider(Provider::Claude));
+        assert!(!AnomalyKind::TokenSlope.supports_provider(Provider::Gemini));
+
+        assert!(AnomalyKind::SubagentSideEffect.supports_provider(Provider::Claude));
+        assert!(!AnomalyKind::SubagentSideEffect.supports_provider(Provider::Codex));
+        assert!(!AnomalyKind::SubagentSideEffect.supports_provider(Provider::Gemini));
+
+        // Two-provider detectors.
+        for kind in [
+            AnomalyKind::CacheDiscontinuity,
+            AnomalyKind::CrossPaneEditCluster,
+        ] {
+            assert!(kind.supports_provider(Provider::Claude));
+            assert!(kind.supports_provider(Provider::Codex));
+            assert!(!kind.supports_provider(Provider::Gemini));
+        }
+
+        // Cost slope is supported on all three when pricing is curated.
+        for p in [Provider::Claude, Provider::Codex, Provider::Gemini] {
+            assert!(AnomalyKind::CostSlope.supports_provider(p));
+        }
+    }
+
+    #[test]
+    fn unknown_and_qmonster_provider_are_never_supported() {
+        use crate::domain::identity::Provider;
+        let kinds = [
+            AnomalyKind::IdentityChurn,
+            AnomalyKind::ErrorBurst,
+            AnomalyKind::CacheDiscontinuity,
+            AnomalyKind::CrossPaneEditCluster,
+            AnomalyKind::CostSlope,
+            AnomalyKind::TokenSlope,
+            AnomalyKind::MemoryGrowth,
+            AnomalyKind::SubagentSideEffect,
+        ];
+        for kind in kinds {
+            assert!(
+                !kind.supports_provider(Provider::Unknown),
+                "{:?} must not claim Unknown support",
+                kind
+            );
+            assert!(
+                !kind.supports_provider(Provider::Qmonster),
+                "{:?} must not claim Qmonster support",
+                kind
+            );
+        }
     }
 
     #[test]

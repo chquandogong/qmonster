@@ -270,6 +270,12 @@ snapshot_eta_secs = 300           # reset ETA ceiling (secs) for the same adviso
 # the m overlay grows an "ANOMALIES" row per pane card. v1 emits no
 # Recommendation, no Notify, no audit event — observation only.
 # Operators wanting Recommendation promotion / Notify wait for v2.
+#
+# v2.2.0 provenance note (P0-3): every threshold below is currently
+# intuition-driven (operator-experience guesses, not measurement). The
+# P1-3 recommendation-acknowledgement telemetry is the planned vehicle
+# for replacing these with measured values. See src/policy/gates.rs
+# `Default impl` for the inline provenance tags on each gate.
 # [anomaly]
 # enabled                          = false
 # window_polls                     = 20

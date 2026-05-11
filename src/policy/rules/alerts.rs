@@ -5,41 +5,16 @@ use crate::domain::signal::SignalSet;
 
 /// Phase-1 alert rules. Pure function over signals. Each rule attaches
 /// a `SourceKind` so the UI can surface authority honestly.
+///
+/// v2.2.0 dedup: log_storm was firing twice — once here (Warning alert)
+/// and once via `advisories::log_storm_advisory` (Concern + quota_tight
+/// aggressive variant + same archive suggested_command). The advisory is
+/// strictly richer (carries the aggressive escalation), so the alert
+/// path was removed. The Notify effect still fires whenever the
+/// advisory's Concern severity escalates to Warning under quota_tight.
+/// `ArchiveLocal` effect is unchanged.
 pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation> {
     let mut out = Vec::new();
-
-    if s.log_storm {
-        out.push(Recommendation {
-            action: "archive-preview-suggested",
-            reason:
-                "log storm pattern: consider keeping preview on screen and archiving the raw tail"
-                    .into(),
-            severity: Severity::Warning,
-            source_kind: SourceKind::Heuristic,
-            suggested_command: Some(
-                "tmux capture-pane -pS -2000 > ~/.qmonster/archive/$(date +%F)-<pane_id>.log"
-                    .into(),
-            ),
-            side_effects: vec![],
-            is_strong: false,
-            next_step: None,
-            profile: None,
-        });
-    }
-
-    if s.repeated_output {
-        out.push(Recommendation {
-            action: "repeated-output-cache",
-            reason: "identical output seen in recent polls; consider result caching".into(),
-            severity: Severity::Concern,
-            source_kind: SourceKind::Heuristic,
-            suggested_command: None, // observation: action is a config change (see advisory)
-            side_effects: vec![],
-            is_strong: false,
-            next_step: None,
-            profile: None,
-        });
-    }
 
     if s.verbose_answer {
         out.push(Recommendation {
@@ -55,7 +30,12 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
         });
     }
 
-    if s.error_hint && !s.log_storm {
+    // v2.2.0: the `!s.log_storm` guard used to prevent double-firing
+    // alongside the log_storm alert. With the alert path removed, the
+    // guard is no longer needed — the error_hint alert and the log_storm
+    // advisory are distinct surfaces (Warning vs Concern, different
+    // actions) and can co-exist when both signals are present.
+    if s.error_hint {
         out.push(Recommendation {
             action: "error-detected",
             reason: "error/trace-like text detected in pane tail".into(),
@@ -110,17 +90,21 @@ mod tests {
     }
 
     #[test]
-    fn log_storm_fires_warning_with_heuristic_source() {
+    fn log_storm_alert_path_removed_in_v2_2_0() {
+        // v2.2.0 dedup: log_storm now fires only via the advisories rule
+        // (`log-storm: ingress filter + summary`), not the alerts rule.
+        // The ArchiveLocal effect still fires from `engine::evaluate`.
         let s = SignalSet {
             log_storm: true,
             ..SignalSet::default()
         };
         let recs = eval_alerts(&id(), &s);
-        let rec = recs
-            .iter()
-            .find(|r| r.action == "archive-preview-suggested")
-            .expect("log storm recommendation");
-        assert_eq!(rec.source_kind, SourceKind::Heuristic);
+        assert!(
+            !recs.iter().any(|r| r.action == "archive-preview-suggested"),
+            "log_storm alert was removed in favor of the richer advisory; \
+             this test pins the dedup so a future refactor cannot resurrect \
+             the duplicate fire without flipping this assertion"
+        );
     }
 
     #[test]
@@ -138,21 +122,6 @@ mod tests {
         let s = SignalSet::default();
         let recs = eval_alerts(&id(), &s);
         assert!(recs.is_empty());
-    }
-
-    #[test]
-    fn repeated_output_fires_concern_severity() {
-        let s = SignalSet {
-            repeated_output: true,
-            ..SignalSet::default()
-        };
-        let recs = eval_alerts(&id(), &s);
-        let rec = recs
-            .iter()
-            .find(|r| r.action == "repeated-output-cache")
-            .expect("repeated_output must fire a recommendation");
-        assert_eq!(rec.severity, Severity::Concern);
-        assert_eq!(rec.source_kind, SourceKind::Heuristic);
     }
 
     #[test]

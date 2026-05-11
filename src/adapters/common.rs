@@ -101,6 +101,11 @@ pub fn classify_error_hint(tail: &str) -> Option<&'static str> {
     None
 }
 
+/// Modern provider RLHF strips most hedge phrases, so this matcher rarely
+/// fires in practice. v2.2.0 critical-eval flagged it as a removal
+/// candidate pending measurement. The next telemetry pass (P1-3 ack
+/// tracking) should record fire counts so the decision can be
+/// measurement-driven instead of intuition-driven.
 const VERBOSE_MARKERS: &[&str] = &[
     "i'd be happy to help",
     "let me know if",
@@ -254,7 +259,6 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
     SignalSet {
         idle_state,
         log_storm,
-        repeated_output: false,
         verbose_answer,
         error_hint: error_hint_kind.is_some(),
         error_hint_kind,
