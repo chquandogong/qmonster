@@ -32,6 +32,18 @@ Latest focused verification (2026-05-07): `cargo fmt --all --check`,
 pass for the Phase 8 footer/help/S/P/anomaly discoverability pass
 (1211 lib tests plus CLI, event-loop, false-positive, idle-state,
 insights-report, and store-insights integration suites).
+Latest focused verification (2026-05-11): `cargo fmt --all --check`,
+`git diff --check`, `cargo test --all-targets`,
+`cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,
+`scripts/verify-shared.sh`, and `cargo build --release` pass for the
+post-v2.0.0 slice set: attribution lock follow-ups, pane-bucketed
+Insights, action-impact windows, timestamp-normalized anomaly slope
+detection, Insights data completeness, live-smoke validation docs, and
+UI synthesis slices A-I (Now strip, next-best-action, `/compact`
+payoff, anomaly evidence expansion, ETA chips, policy mini-strip, cost
+breakdown, cross-pane correlations, audit severity chip).
+`scripts/verify-shared.sh` used the lite ledger structure fallback
+because `mission-spec` is not installed locally.
 
 ## Planning-phase gates (Phase 0)
 
@@ -72,6 +84,35 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
       Claude/Codex/Gemini fall back to `main`, Qmonster to `monitor`;
       canonical pane titles still win and prose-only tail hints stay
       Low/Unknown.
+- [x] **Attribution Lock / identity conflict suppression** (post-v2.0.0
+      Slice 0, 2026-05-11): canonical or non-canonical title evidence no
+      longer wins blindly when process-level command evidence names a
+      different provider. Such panes resolve with
+      `IdentityConfidence::Conflict`; provider adapters, Claude sidefile
+      enrichment, CLI version facts, Codex account rate-limit enrichment,
+      and provider-profile recommendations are suppressed. Pane titles
+      show `IDENTITY CONFLICT`, and audit records one metadata-only
+      `IdentitySuppressed` event per pane conflict episode. Claude
+      sidefile enrichment with `pane_pid` now requires two matching
+      facts: sidefile `cwd == current_path` and descendant CLI evidence
+      whose basename is Claude. Follow-up fix (2026-05-11): a live
+      `qmonster` process command is authoritative for the Qmonster
+      self-monitor pane even when the tmux title is stale provider
+      metadata from the slot; it resolves as Qmonster/monitor with
+      Medium confidence, not Conflict. Follow-up fix (2026-05-11):
+      token history is filtered by the current resolved provider before
+      policy/UI use, and Qmonster/Unknown panes receive no token-history
+      window; the expanded Panes token rows render only for Claude,
+      Codex, and Gemini. Locked by
+      `canonical_title_command_provider_conflict_is_not_high_confidence`,
+      `qmonster_command_overrides_stale_canonical_provider_title`,
+      `sidefile_skipped_for_conflicting_claude_identity`,
+      `sidefile_skipped_when_descendant_process_is_not_claude`,
+      `run_once_records_identity_suppression_for_title_command_conflict`,
+      `run_once_treats_qmonster_command_as_monitor_despite_stale_provider_title`,
+      `run_once_does_not_attach_stale_provider_token_samples_to_qmonster_pane`,
+      `selected_qmonster_pane_omits_token_row_even_with_stale_samples`,
+      and `panel_title_marks_identity_conflict`.
 - [x] `adapters/` never performs identity inference.
 - [x] Basic alert extraction in `policy/rules/alerts.rs`: input-wait,
       permission-wait, log-storm, repeated-output, verbose-answer,
@@ -311,6 +352,17 @@ through_sqlite` test in `src/store/audit.rs`)
       / MemoryGrowth / SubagentSideEffect) that inherit the promotion
       path. No new AuditEventKind, no new RequestedEffect, no new
       schema, no new operator-tunable promotion thresholds.
+- [x] Phase 7 anomaly slope timing correction (post-v2.0.0 Slice 3,
+      2026-05-11): CostSlope and TokenSlope normalize by real
+      `AnomalyHistory` tick timestamps when available instead of
+      assuming `window_polls × 5s`. TokenSlope preserves existing
+      `tokens_per_poll` config semantics by converting elapsed seconds
+      to 5-second poll-equivalent units. Fired slope signals include a
+      `sample_coverage` evidence row with sample count and elapsed
+      seconds. Locked by
+      `detect_cost_slope_uses_actual_elapsed_seconds_when_available`,
+      `detect_token_slope_uses_actual_elapsed_seconds_when_available`,
+      and `detect_cost_slope_reports_coverage_and_elapsed_seconds`.
 - [x] Token Insights Phase 8 lifecycle writer: live `run_once` records
       recommendation events to `recommendation_events`, strong
       prompt-send recommendations are keyed by the slash command, and
@@ -321,6 +373,81 @@ through_sqlite` test in `src/store/audit.rs`)
       report overlay; `r` refreshes; `Esc`/`q`/`i` close. The overlay
       uses the CLI report formatter so situation, cache, timeline, and
       action-ledger labels stay aligned.
+- [x] Token Insights pane-bucketed aggregation (post-v2.0.0 Slice 1,
+      2026-05-11): cache reuse, token growth, and cost delta are
+      accumulated by `(pane_id, provider)` before the aggregate cache
+      summary is derived. Token counter resets act as implicit session
+      boundaries: negative deltas are not counted, while later positive
+      growth in the same pane/provider bucket is counted. The CLI/TUI
+      report renders the top pane buckets with sample count, cache
+      reuse, token growth, and cost delta. Locked by
+      `cache_summary_buckets_token_growth_by_pane_and_provider`,
+      `cache_summary_continues_token_growth_after_counter_reset`, and
+      `insights_report_renders_action_ledger`.
+- [x] Token Insights action-impact / ROI loop (post-v2.0.0 Slice 2,
+      2026-05-11): linked or matched recommendation outcomes compare
+      the same pane/provider over a 10-minute pre-event metric window
+      and a 10-minute post-outcome metric window. The report renders
+      `Action Impact` rows with token growth, cost delta, and cache
+      reuse before/after; deltas are comparative evidence, not
+      provider-official saved-token claims. Locked by
+      `insights_lifecycle_reports_action_metric_impact_windows` and
+      `insights_report_renders_action_ledger`.
+- [x] Token Insights data completeness (post-v2.0.0 Slice 4,
+      2026-05-11): snapshots include pane bucket count, total token
+      samples, cache-ratio bucket coverage, cost-delta bucket coverage,
+      and action-impact count. The CLI/TUI report renders a
+      `Data Completeness` section so operators can distinguish missing
+      window data from real zeroes. Locked by
+      `cache_summary_buckets_token_growth_by_pane_and_provider` and
+      `insights_report_renders_action_ledger`.
+- [x] UI synthesis Now strip (post-v2.0.0 Slice A, 2026-05-11):
+      dashboard chrome reserves a one-line `Now` strip that prioritizes
+      wait/input states, strong risk recommendations, quota pressure,
+      recent promoted anomalies, and a healthy fallback. Locked by the
+      `now_strip_*` dashboard regression tests.
+- [x] Token Insights next-best-action and `/compact` payoff
+      (post-v2.0.0 Slices B/C, 2026-05-11): snapshots include the
+      latest strong unaccepted recommendation, open proposal count, and
+      the last `/compact` pre/post token-growth comparison when enough
+      samples exist. Reports render `Now Suggested Action` and
+      `/compact Payoff`. Locked by
+      `insights_next_best_action_selects_pending_strong_recommendation`,
+      `insights_next_best_action_picks_latest_unaccepted_strong_rec`,
+      and the `compact_payoff_*` integration tests.
+- [x] Anomaly evidence persistence and expansion (post-v2.0.0 Slice D,
+      2026-05-11): promoted anomaly events persist evidence JSON in
+      SQLite, hydrate it back into the ring view, and expose an `e`
+      toggle in the Anomaly Events overlay. Locked by
+      `anomaly_event_evidence_migrates_and_roundtrips`,
+      `evidence_rows_render_only_when_expanded`, and
+      `e_toggles_anomaly_evidence_only_when_open`.
+- [x] Metrics ETA and runtime policy mini-strip (post-v2.0.0 Slices E/F,
+      2026-05-11): Metrics renders estimated 85% pressure ETA chips
+      only for sufficiently clean rising trends, and pane metric rows
+      show provider-scoped `POLICY approval=... sandbox=...` runtime
+      facts for Claude/Codex/Gemini. Locked by the `eta_chip_*`,
+      `metrics_lines_render_eta_banner_below_hottest_banner`,
+      `policy_mini_strip_provider_matrix_known_and_unknown_states`, and
+      `metric_badge_line_includes_policy_mini_strip` tests.
+- [x] Token Insights cost breakdown and cross-pane anomaly correlation
+      (post-v2.0.0 Slices G/H, 2026-05-11): snapshots include
+      cost-usage groups by pane/model/situation and same-minute
+      anomaly groups across multiple panes. Reports render
+      `Cost Breakdown` and `Cross-pane Correlations`. Locked by
+      `cost_breakdown_groups_window_cost_by_pane_model_and_situation`,
+      `cost_breakdown_no_data_returns_empty_groups`,
+      `anomaly_correlations_group_two_panes_in_same_minute`, and
+      `anomaly_correlations_ignore_same_pane_or_different_minutes`.
+- [x] Dashboard audit severity chip (post-v2.0.0 Slice I,
+      2026-05-11): footer status now includes stable `★a` state from
+      the recent audit-event severity window. Warning/Risk render in
+      severity color; none/Concern stay dim. Locked by
+      `recent_audit_max_severity_respects_recency_window`,
+      `recent_audit_max_severity_returns_none_without_recent_rows`,
+      `footer_audit_concern_renders_dim`,
+      `footer_nonzero_counts_render_severity_color`, and
+      `footer_zero_counts_render_dim`.
 - [x] Overlay chrome first slice: shared `[x]` style uses active-border
       color rather than severity color; `i` Token Insights and `n`
       Anomaly Events support `[`/`]` resize, `=` geometry reset,
@@ -374,8 +501,32 @@ through_sqlite` test in `src/store/audit.rs`)
 - Phase 8 Token Insights evidence: include
   `run_once_writes_recommendation_lifecycle_events`,
   `insights_lifecycle_counts_hidden_and_suppresses_ignored_for_unlinked_matches`,
-  `insights_report_renders_available_recommendation_lifecycle`, and
-  overlay key/render tests, plus `cargo test --all-targets` and clippy.
+  `insights_report_renders_available_recommendation_lifecycle`,
+  `cache_summary_buckets_token_growth_by_pane_and_provider`,
+  `cache_summary_continues_token_growth_after_counter_reset`,
+  `insights_lifecycle_reports_action_metric_impact_windows`, and overlay
+  key/render tests, plus `cargo test --all-targets` and clippy.
+
+## Live smoke checklist
+
+- [ ] Capture the tmux pane matrix and verify each pane's provider,
+      role, confidence, current command, and source-kind badges.
+- [ ] Include wrapper-command panes such as `node /usr/bin/gemini`,
+      shell-launched provider CLIs, and the Qmonster monitor pane.
+- [ ] Reuse a stale tmux title intentionally and confirm command
+      evidence either resolves Qmonster correctly or marks a real
+      cross-provider conflict as `IDENTITY CONFLICT`.
+- [ ] Place an unrelated Claude sidefile in the same cwd and confirm
+      sidefile enrichment is suppressed unless cwd and descendant CLI
+      evidence both match Claude.
+- [ ] Open expanded Panes for Qmonster/Unknown panes and confirm no
+      stale provider token row is rendered.
+- [ ] Open Token Insights and confirm `Pane Buckets`, `Action Impact`,
+      and `Data Completeness` agree with the pane matrix for the chosen
+      time window.
+- [ ] Open Anomaly Events after sparse or delayed polling and confirm
+      CostSlope/TokenSlope evidence includes `sample_coverage` and real
+      elapsed seconds.
 
 ## Release validation log
 

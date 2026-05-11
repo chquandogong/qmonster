@@ -258,6 +258,11 @@ where
                     }
                 }
                 let alert_filter_snapshot = dashboard.alert_filter().map(|s| s.to_string());
+                let audit_recent_severity = ctx.insights_db_path.as_deref().and_then(|path| {
+                    crate::store::recent_audit_max_severity(path, 15 * 60)
+                        .ok()
+                        .flatten()
+                });
                 terminal.draw(|frame| {
                     render_dashboard_frame(
                         frame,
@@ -271,6 +276,7 @@ where
                             hidden_until: &dashboard.alert_hide_deadlines,
                             state_flashes: &pane_state_flashes,
                             now,
+                            audit_recent_severity,
                             target_label: &target,
                             split: dashboard_split,
                             focus,

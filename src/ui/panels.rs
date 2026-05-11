@@ -440,7 +440,7 @@ fn pane_list_lines_with_flash(
     ) {
         lines.push(row);
     }
-    if expanded {
+    if expanded && token_rows_supported(report.identity.identity.provider) {
         lines.push(token_sparkline_status_line(
             &report.recent_token_samples,
             &report.signals,
@@ -569,20 +569,27 @@ pub fn render_pane_panel(area: Rect, buf: &mut Buffer, report: &PaneReport) {
 pub fn pane_panel_title(report: &PaneReport) -> String {
     let id = &report.identity.identity;
     let cli_version = pane_title_cli_version(report);
+    let conflict = if matches!(report.identity.confidence, IdentityConfidence::Conflict) {
+        "IDENTITY CONFLICT · "
+    } else {
+        ""
+    };
     if id.role == Role::Unknown {
         format!(
-            "{}:{} · {}{} · {}",
+            "{}:{} · {}{}{} · {}",
             report.session_name,
             report.window_index,
+            conflict,
             provider_label(id.provider),
             cli_version,
             report.pane_id,
         )
     } else {
         format!(
-            "{}:{} · {} {}{} · {}",
+            "{}:{} · {}{} {}{} · {}",
             report.session_name,
             report.window_index,
+            conflict,
             provider_label(id.provider),
             role_label(id.role),
             cli_version,
@@ -728,7 +735,9 @@ fn panel_body_with_width(report: &PaneReport, wrap_width: u16) -> Vec<ListItem<'
     ) {
         items.push(ListItem::new(row));
     }
-    if let Some(line) = token_breakdown_line(report) {
+    if token_rows_supported(report.identity.identity.provider)
+        && let Some(line) = token_breakdown_line(report)
+    {
         items.push(ListItem::new(line));
     }
 
@@ -1032,6 +1041,7 @@ fn confidence_label(c: IdentityConfidence) -> &'static str {
     match c {
         IdentityConfidence::High => "high",
         IdentityConfidence::Medium => "medium",
+        IdentityConfidence::Conflict => "conflict",
         IdentityConfidence::Low => "low",
         IdentityConfidence::Unknown => "unknown",
     }
@@ -1313,8 +1323,82 @@ fn primary_metric_row(signals: &SignalSet, provider: Provider) -> Option<Line<'s
     if let Some(label) = cache_badge_text(signals, provider) {
         push_badge(&mut spans, &mut has_any, label, theme::label_style());
     }
+    if let Some(policy) = policy_mini_strip(signals, provider) {
+        push_badge(
+            &mut spans,
+            &mut has_any,
+            format!(" {policy} "),
+            theme::label_style(),
+        );
+    }
 
     has_any.then(|| Line::from(spans))
+}
+
+fn policy_mini_strip(signals: &SignalSet, provider: Provider) -> Option<String> {
+    if !matches!(
+        provider,
+        Provider::Claude | Provider::Codex | Provider::Gemini
+    ) {
+        return None;
+    }
+    let approval = signals
+        .runtime_facts
+        .iter()
+        .find(|fact| {
+            matches!(
+                fact.kind,
+                RuntimeFactKind::PermissionMode | RuntimeFactKind::AutoMode
+            )
+        })
+        .and_then(|fact| normalize_approval_mode(&fact.value));
+    let sandbox = signals
+        .runtime_facts
+        .iter()
+        .find(|fact| fact.kind == RuntimeFactKind::Sandbox)
+        .and_then(|fact| normalize_sandbox_state(&fact.value));
+    match (approval, sandbox) {
+        (None, None) => Some("POLICY ?".into()),
+        (approval, sandbox) => Some(format!(
+            "POLICY approval={} sandbox={} [Heur]",
+            approval.unwrap_or("?"),
+            sandbox.unwrap_or("?")
+        )),
+    }
+}
+
+fn normalize_approval_mode(value: &str) -> Option<&'static str> {
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("once") {
+        Some("once")
+    } else if lower.contains("auto") || lower.contains("yolo") || lower.contains("bypass") {
+        Some("auto")
+    } else if lower.contains("manual") || lower.contains("ask") || lower.contains("approve") {
+        Some("manual")
+    } else {
+        None
+    }
+}
+
+fn normalize_sandbox_state(value: &str) -> Option<&'static str> {
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("off")
+        || lower.contains("none")
+        || lower.contains("disable")
+        || lower.contains("danger")
+        || lower.contains("full")
+    {
+        Some("off")
+    } else if lower.contains("on")
+        || lower.contains("workspace")
+        || lower.contains("read")
+        || lower.contains("restrict")
+        || lower.contains("sandbox")
+    {
+        Some("on")
+    } else {
+        None
+    }
 }
 
 fn first_model_reset_fact(signals: &SignalSet) -> Option<&RuntimeFact> {
@@ -1601,6 +1685,13 @@ fn token_sparkline_label(signals: &SignalSet) -> String {
     } else {
         " TOKENS ".to_string()
     }
+}
+
+fn token_rows_supported(provider: Provider) -> bool {
+    matches!(
+        provider,
+        Provider::Claude | Provider::Codex | Provider::Gemini
+    )
 }
 
 fn context_metric_row(signals: &SignalSet) -> Option<Line<'static>> {
@@ -2180,6 +2271,16 @@ mod tests {
     fn panel_title_includes_identity_and_confidence() {
         let rep = base_report();
         assert_eq!(pane_panel_title(&rep), "qwork:1 · Claude main · %1");
+    }
+
+    #[test]
+    fn panel_title_marks_identity_conflict() {
+        let mut rep = base_report();
+        rep.identity.confidence = IdentityConfidence::Conflict;
+        assert_eq!(
+            pane_panel_title(&rep),
+            "qwork:1 · IDENTITY CONFLICT · Claude main · %1"
+        );
     }
 
     #[test]
@@ -2840,6 +2941,70 @@ mod tests {
     }
 
     #[test]
+    fn policy_mini_strip_provider_matrix_known_and_unknown_states() {
+        use crate::domain::identity::Provider;
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::{RuntimeFact, RuntimeFactKind};
+
+        for provider in [Provider::Claude, Provider::Codex, Provider::Gemini] {
+            let known = SignalSet {
+                runtime_facts: vec![
+                    RuntimeFact::new(
+                        RuntimeFactKind::PermissionMode,
+                        "auto approve",
+                        SourceKind::ProviderOfficial,
+                    ),
+                    RuntimeFact::new(
+                        RuntimeFactKind::Sandbox,
+                        "workspace-write",
+                        SourceKind::ProviderOfficial,
+                    ),
+                ],
+                ..SignalSet::default()
+            };
+            assert_eq!(
+                policy_mini_strip(&known, provider).as_deref(),
+                Some("POLICY approval=auto sandbox=on [Heur]")
+            );
+
+            let unknown = SignalSet::default();
+            assert_eq!(
+                policy_mini_strip(&unknown, provider).as_deref(),
+                Some("POLICY ?")
+            );
+        }
+    }
+
+    #[test]
+    fn metric_badge_line_includes_policy_mini_strip() {
+        use crate::domain::identity::Provider;
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::{RuntimeFact, RuntimeFactKind};
+        let signals = SignalSet {
+            runtime_facts: vec![
+                RuntimeFact::new(
+                    RuntimeFactKind::PermissionMode,
+                    "manual approval",
+                    SourceKind::ProviderOfficial,
+                ),
+                RuntimeFact::new(
+                    RuntimeFactKind::Sandbox,
+                    "off",
+                    SourceKind::ProviderOfficial,
+                ),
+            ],
+            ..SignalSet::default()
+        };
+        let text = metric_badge_line(&signals, Provider::Codex)
+            .into_iter()
+            .map(|line| line_text(&line))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert!(text.contains("POLICY approval=manual sandbox=off [Heur]"));
+    }
+
+    #[test]
     fn runtime_badge_lines_wrap_many_facts_with_indented_continuations() {
         let s = crate::domain::signal::SignalSet {
             runtime_facts: vec![
@@ -3396,6 +3561,37 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("TOKENS collecting")),
             "collapsed panes should stay compact: {collapsed:?}"
+        );
+    }
+
+    #[test]
+    fn selected_qmonster_pane_omits_token_row_even_with_stale_samples() {
+        use crate::store::TokenSample;
+
+        let mut rep = base_report();
+        rep.provider = Provider::Qmonster;
+        rep.identity.identity.provider = Provider::Qmonster;
+        rep.identity.identity.role = Role::Monitor;
+        rep.recent_token_samples = (0..3)
+            .map(|i| TokenSample {
+                ts_unix_ms: (i * 1000) as i64,
+                pane_id: "%1".into(),
+                provider: Provider::Codex,
+                input_tokens: Some(100_000 + (i as u64) * 1_000),
+                output_tokens: None,
+                cost_usd: None,
+                cached_input_tokens: None,
+            })
+            .collect();
+
+        let lines = pane_list_lines(&rep, true, false)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>();
+
+        assert!(
+            !lines.iter().any(|line| line.contains("TOKENS")),
+            "Qmonster monitor pane should not render token sparkline rows: {lines:?}"
         );
     }
 

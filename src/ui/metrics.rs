@@ -111,6 +111,10 @@ pub struct PressureObservation {
     pub q5h: Option<f32>,
     pub q7d: Option<f32>,
     pub cache: Option<f32>,
+    pub ctx_history: Vec<f32>,
+    pub q5h_history: Vec<f32>,
+    pub q7d_history: Vec<f32>,
+    pub cache_history: Vec<f32>,
     pub ctx_trend: Option<MemTrend>,
     pub q5h_trend: Option<MemTrend>,
     pub q7d_trend: Option<MemTrend>,
@@ -122,6 +126,11 @@ pub struct PressureObservation {
 /// keeps `Steady` from flickering on routine jitter while still
 /// catching real climbs.
 pub const PRESSURE_TREND_STEADY_EPSILON: f32 = 0.005;
+const ETA_MIN_SAMPLES: usize = 6;
+const ETA_MAX_SAMPLES: usize = 12;
+const ETA_POLL_SECONDS: f32 = 5.0;
+const ETA_MAX_MINUTES: u32 = 60;
+const ETA_MIN_R2: f32 = 0.80;
 
 fn pressure_trend(prev: Option<f32>, curr: Option<f32>) -> Option<MemTrend> {
     match (prev, curr) {
@@ -154,12 +163,89 @@ pub fn update_pressure_observation(
             q5h: current_q5h,
             q7d: current_q7d,
             cache: current_cache,
+            ctx_history: push_pressure_history(prev.ctx_history, current_ctx),
+            q5h_history: push_pressure_history(prev.q5h_history, current_q5h),
+            q7d_history: push_pressure_history(prev.q7d_history, current_q7d),
+            cache_history: push_pressure_history(prev.cache_history, current_cache),
             ctx_trend: pressure_trend(prev.ctx, current_ctx),
             q5h_trend: pressure_trend(prev.q5h, current_q5h),
             q7d_trend: pressure_trend(prev.q7d, current_q7d),
             cache_trend: pressure_trend(prev.cache, current_cache),
         },
     );
+}
+
+fn push_pressure_history(mut history: Vec<f32>, current: Option<f32>) -> Vec<f32> {
+    match current {
+        Some(value) => {
+            history.push(value);
+            let excess = history.len().saturating_sub(ETA_MAX_SAMPLES);
+            if excess > 0 {
+                history.drain(0..excess);
+            }
+            history
+        }
+        None => Vec::new(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct EtaChip {
+    label: &'static str,
+    minutes: u32,
+    r2: f32,
+}
+
+fn eta_chip_from_series(label: &'static str, samples: &[f32], threshold: f32) -> Option<EtaChip> {
+    if samples.len() < ETA_MIN_SAMPLES {
+        return None;
+    }
+    let last = *samples.last()?;
+    if last >= threshold {
+        return None;
+    }
+    let n = samples.len() as f32;
+    let mean_x = (n - 1.0) / 2.0;
+    let mean_y = samples.iter().sum::<f32>() / n;
+    let mut numerator = 0.0_f32;
+    let mut denominator = 0.0_f32;
+    for (idx, value) in samples.iter().enumerate() {
+        let x = idx as f32;
+        numerator += (x - mean_x) * (*value - mean_y);
+        denominator += (x - mean_x).powi(2);
+    }
+    if denominator <= f32::EPSILON {
+        return None;
+    }
+    let slope = numerator / denominator;
+    if slope <= f32::EPSILON {
+        return None;
+    }
+    let intercept = mean_y - slope * mean_x;
+    let mut ss_res = 0.0_f32;
+    let mut ss_tot = 0.0_f32;
+    for (idx, value) in samples.iter().enumerate() {
+        let predicted = intercept + slope * idx as f32;
+        ss_res += (*value - predicted).powi(2);
+        ss_tot += (*value - mean_y).powi(2);
+    }
+    let r2 = if ss_tot <= f32::EPSILON {
+        1.0
+    } else {
+        1.0 - ss_res / ss_tot
+    };
+    if r2 < ETA_MIN_R2 {
+        return None;
+    }
+    let samples_to_threshold = (threshold - last) / slope;
+    if !samples_to_threshold.is_finite() || samples_to_threshold <= 0.0 {
+        return None;
+    }
+    let minutes = (samples_to_threshold * ETA_POLL_SECONDS / 60.0).ceil() as u32;
+    if minutes == 0 || minutes > ETA_MAX_MINUTES {
+        return None;
+    }
+    Some(EtaChip { label, minutes, r2 })
 }
 
 pub type DragAnchor = crate::ui::modal_chrome::DragAnchor;
@@ -441,6 +527,9 @@ pub fn render_metrics_lines(
 ) -> Vec<Line<'static>> {
     let mut out = Vec::new();
     out.push(hottest_banner_line(reports));
+    if let Some(line) = eta_banner_line(reports, pressure_observations) {
+        out.push(line);
+    }
 
     if reports.is_empty() {
         return out;
@@ -484,6 +573,40 @@ pub fn render_metrics_lines(
     }
 
     out
+}
+
+fn eta_banner_line(
+    reports: &[PaneReport],
+    pressure_observations: &HashMap<String, PressureObservation>,
+) -> Option<Line<'static>> {
+    let mut best: Option<(u32, String, EtaChip)> = None;
+    for report in reports {
+        let Some(obs) = pressure_observations.get(&report.pane_id) else {
+            continue;
+        };
+        let label = pane_label(report);
+        for chip in [
+            eta_chip_from_series("CTX", &obs.ctx_history, 0.85),
+            eta_chip_from_series("5H", &obs.q5h_history, 0.85),
+            eta_chip_from_series("7D", &obs.q7d_history, 0.85),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if best
+                .as_ref()
+                .is_none_or(|(minutes, _, _)| chip.minutes < *minutes)
+            {
+                best = Some((chip.minutes, label.clone(), chip));
+            }
+        }
+    }
+    best.map(|(_, pane, chip)| {
+        Line::from(format!(
+            "ETA: {pane} · {} 85% in ~{}m [Est]",
+            chip.label, chip.minutes
+        ))
+    })
 }
 
 fn card_divider_line(report: &PaneReport, inner_width: u16) -> Line<'static> {
@@ -1093,6 +1216,80 @@ mod tests {
         let obs = map.get("p1").unwrap();
         assert!(obs.ctx_trend.is_none());
         assert!(obs.ctx.is_none());
+    }
+
+    #[test]
+    fn eta_chip_renders_for_rising_slope_within_threshold_window() {
+        let samples = vec![0.60, 0.62, 0.64, 0.66, 0.68, 0.70];
+        let chip = eta_chip_from_series("CTX", &samples, 0.85).expect("rising slope should render");
+        assert_eq!(chip.label, "CTX");
+        assert_eq!(chip.minutes, 1);
+    }
+
+    #[test]
+    fn eta_chip_omits_falling_slope() {
+        let samples = vec![0.70, 0.68, 0.66, 0.64, 0.62, 0.60];
+        assert!(eta_chip_from_series("CTX", &samples, 0.85).is_none());
+    }
+
+    #[test]
+    fn eta_chip_omits_flat_slope() {
+        let samples = vec![0.60, 0.60, 0.60, 0.60, 0.60, 0.60];
+        assert!(eta_chip_from_series("CTX", &samples, 0.85).is_none());
+    }
+
+    #[test]
+    fn eta_chip_omits_noisy_low_confidence_series() {
+        let samples = vec![0.60, 0.80, 0.61, 0.79, 0.62, 0.78];
+        assert!(eta_chip_from_series("CTX", &samples, 0.85).is_none());
+    }
+
+    #[test]
+    fn eta_chip_omits_insufficient_samples() {
+        let samples = vec![0.60, 0.62, 0.64, 0.66, 0.68];
+        assert!(eta_chip_from_series("CTX", &samples, 0.85).is_none());
+    }
+
+    #[test]
+    fn eta_chip_omits_when_threshold_already_passed() {
+        let samples = vec![0.84, 0.85, 0.86, 0.87, 0.88, 0.89];
+        assert!(eta_chip_from_series("CTX", &samples, 0.85).is_none());
+    }
+
+    #[test]
+    fn metrics_lines_render_eta_banner_below_hottest_banner() {
+        let mut rep = base_test_report("codex:1:review");
+        rep.signals.context_pressure = Some(metric_value(0.70));
+        let mut observations = HashMap::new();
+        observations.insert(
+            "%1".to_string(),
+            PressureObservation {
+                ctx_history: vec![0.60, 0.62, 0.64, 0.66, 0.68, 0.70],
+                ..PressureObservation::default()
+            },
+        );
+
+        let lines = render_metrics_lines(
+            &MetricsOverlay::new(),
+            "%1",
+            &[rep],
+            Rect::new(0, 0, 120, 40),
+            &HashMap::new(),
+            &observations,
+        );
+        let dump = lines
+            .iter()
+            .map(line_to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            dump.contains("ETA: codex:1:review · CTX 85% in ~1m [Est]"),
+            "ETA line missing: {dump}"
+        );
+        assert!(
+            dump.find("Hottest").unwrap() < dump.find("ETA:").unwrap(),
+            "ETA line should sit after hottest banner: {dump}"
+        );
     }
 
     #[test]

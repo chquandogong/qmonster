@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS anomaly_events (
     confidence      TEXT    NOT NULL,
     severity        TEXT    NOT NULL,
     promoted        INTEGER NOT NULL,
-    reason          TEXT    NOT NULL DEFAULT ''
+    reason          TEXT    NOT NULL DEFAULT '',
+    evidence_json   TEXT    NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_anomaly_events_ts
     ON anomaly_events(ts_unix_secs DESC);
@@ -188,6 +189,15 @@ impl AuditDb {
             [],
         ) {
             // "duplicate column name" is the expected error on warm starts
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(SqliteError::Query(msg));
+            }
+        }
+        if let Err(e) = conn.execute(
+            "ALTER TABLE anomaly_events ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '[]'",
+            [],
+        ) {
             let msg = e.to_string();
             if !msg.contains("duplicate column") {
                 return Err(SqliteError::Query(msg));

@@ -79,7 +79,12 @@ impl AnomalyHistorySnapshot {
 /// the live path would produce in that situation: `("", "")` for identity and
 /// `false` for error_hint.  This keeps all deque lengths equal across live and
 /// replayed paths.
-pub fn push_snapshot_into_history(history: &mut AnomalyHistory, snap: &AnomalyHistorySnapshot) {
+pub fn push_snapshot_into_history_at(
+    history: &mut AnomalyHistory,
+    tick_unix_secs: u64,
+    snap: &AnomalyHistorySnapshot,
+) {
+    history.tick_unix_secs_samples.push_front(tick_unix_secs);
     // Unconditional: mirrors event_loop which always pushes identity and
     // error_hint regardless of signal presence.
     let id = snap
@@ -105,6 +110,10 @@ pub fn push_snapshot_into_history(history: &mut AnomalyHistory, snap: &AnomalyHi
         .agent_memory_samples
         .push_front(snap.agent_memory_bytes);
     history.subagent_hint_samples.push_front(snap.subagent_hint);
+}
+
+pub fn push_snapshot_into_history(history: &mut AnomalyHistory, snap: &AnomalyHistorySnapshot) {
+    push_snapshot_into_history_at(history, 0, snap);
 }
 
 #[cfg(test)]

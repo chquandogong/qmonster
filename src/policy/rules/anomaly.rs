@@ -31,6 +31,10 @@ fn severity_for(confidence: AnomalyConfidence) -> Severity {
 /// to `window_polls`). Each field corresponds to one detector.
 #[derive(Debug, Default, Clone)]
 pub struct AnomalyHistory {
+    /// Observation timestamp per tick, most-recent-first. Used by
+    /// slope detectors to normalize sparse or delayed samples by real
+    /// elapsed time instead of assuming the nominal poll interval.
+    pub tick_unix_secs_samples: VecDeque<u64>,
     /// IdentityChurn input: (provider_label, current_path) snapshot
     /// per tick. Most-recent-first.
     pub identity_snapshots: VecDeque<(String, String)>,
@@ -79,6 +83,9 @@ pub struct AnomalyHistory {
 impl AnomalyHistory {
     /// Trim every deque to `cap`. Called after each push.
     pub fn trim(&mut self, cap: usize) {
+        while self.tick_unix_secs_samples.len() > cap {
+            self.tick_unix_secs_samples.pop_back();
+        }
         while self.identity_snapshots.len() > cap {
             self.identity_snapshots.pop_back();
         }
@@ -549,9 +556,30 @@ pub fn detect_cross_pane_edit_cluster(
     })
 }
 
+fn elapsed_secs_for_window(history: &AnomalyHistory, window_polls: usize) -> Option<f64> {
+    let ticks: Vec<u64> = history
+        .tick_unix_secs_samples
+        .iter()
+        .take(window_polls)
+        .copied()
+        .collect();
+    if ticks.len() < window_polls {
+        return None;
+    }
+    let newest = *ticks.first()?;
+    let oldest = *ticks.last()?;
+    let elapsed = newest.saturating_sub(oldest);
+    (elapsed > 0).then_some(elapsed as f64)
+}
+
+fn nominal_elapsed_secs(window_polls: usize) -> f64 {
+    (window_polls as f64) * 5.0
+}
+
 /// CostSlope: cost_usd cumulative delta over `window_polls` ticks,
 /// normalized to USD per hour. Fires when slope ≥ `threshold_usd_per_hour`.
-/// `window_secs = window_polls × 5` (5-second polling interval).
+/// Uses real sample timestamps when available; otherwise falls back to
+/// the legacy `window_polls × 5s` nominal polling interval.
 /// Confidence: `High` at ≥ 1.5× threshold, otherwise `Medium`.
 pub fn detect_cost_slope(
     history: &AnomalyHistory,
@@ -573,7 +601,8 @@ pub fn detect_cost_slope(
     }
     let newest = window.first().copied().unwrap();
     let oldest = window.last().copied().unwrap();
-    let window_secs = (window_polls as f64) * 5.0;
+    let window_secs = elapsed_secs_for_window(history, window_polls)
+        .unwrap_or_else(|| nominal_elapsed_secs(window_polls));
     if window_secs <= 0.0 {
         return None;
     }
@@ -590,20 +619,31 @@ pub fn detect_cost_slope(
         kind: AnomalyKind::CostSlope,
         confidence,
         severity: severity_for(confidence),
-        evidence: vec![AnomalyEvidence {
-            metric_name: "cost_slope_usd_per_hour",
-            before: format!("{oldest:.2}"),
-            after: format!("{newest:.2}"),
-            sample_count: window.len(),
-            source_kind: SourceKind::ProviderOfficial,
-        }],
+        evidence: vec![
+            AnomalyEvidence {
+                metric_name: "cost_slope_usd_per_hour",
+                before: format!("{oldest:.2}"),
+                after: format!("{newest:.2}"),
+                sample_count: window.len(),
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            AnomalyEvidence {
+                metric_name: "sample_coverage",
+                before: format!("{}/{}", window.len(), window_polls),
+                after: format!("elapsed_secs={window_secs:.0}"),
+                sample_count: window.len(),
+                source_kind: SourceKind::Estimated,
+            },
+        ],
         window_polls,
         detected_at: now_unix_seconds,
     })
 }
 
 /// TokenSlope: input_tokens cumulative delta over `window_polls`,
-/// normalized to tokens-per-poll. `output_tokens` is evidence-only.
+/// normalized to tokens-per-poll. Real elapsed time is converted back
+/// into 5-second poll-equivalent units when timestamps are available.
+/// `output_tokens` is evidence-only.
 /// Fires when `slope_per_poll >= threshold_input_per_poll`.
 /// Confidence: `High` at ≥ 1.5× threshold, otherwise `Medium`.
 pub fn detect_token_slope(
@@ -629,11 +669,14 @@ pub fn detect_token_slope(
     if newest < oldest {
         return None; // counters reset; not a slope event
     }
-    let slope_per_poll = (newest - oldest) / (window_polls as u64).max(1);
-    if slope_per_poll < threshold_input_per_poll {
+    let window_secs = elapsed_secs_for_window(history, window_polls)
+        .unwrap_or_else(|| nominal_elapsed_secs(window_polls));
+    let poll_equivalent = (window_secs / 5.0).max(1.0);
+    let slope_per_poll = (newest - oldest) as f64 / poll_equivalent;
+    if slope_per_poll < threshold_input_per_poll as f64 {
         return None;
     }
-    let confidence = if slope_per_poll >= threshold_input_per_poll.saturating_mul(3) / 2 {
+    let confidence = if slope_per_poll >= threshold_input_per_poll as f64 * 1.5 {
         AnomalyConfidence::High
     } else {
         AnomalyConfidence::Medium
@@ -642,13 +685,22 @@ pub fn detect_token_slope(
         kind: AnomalyKind::TokenSlope,
         confidence,
         severity: severity_for(confidence),
-        evidence: vec![AnomalyEvidence {
-            metric_name: "input_tokens_per_poll",
-            before: format!("{oldest}"),
-            after: format!("{newest}"),
-            sample_count: window.len(),
-            source_kind: SourceKind::ProviderOfficial,
-        }],
+        evidence: vec![
+            AnomalyEvidence {
+                metric_name: "input_tokens_per_poll",
+                before: format!("{oldest}"),
+                after: format!("{newest}"),
+                sample_count: window.len(),
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            AnomalyEvidence {
+                metric_name: "sample_coverage",
+                before: format!("{}/{}", window.len(), window_polls),
+                after: format!("elapsed_secs={window_secs:.0}"),
+                sample_count: window.len(),
+                source_kind: SourceKind::Estimated,
+            },
+        ],
         window_polls,
         detected_at: now_unix_seconds,
     })
@@ -1500,6 +1552,14 @@ mod tests {
         h
     }
 
+    fn cost_history_with_ticks(samples: Vec<Option<f64>>, ticks: Vec<u64>) -> AnomalyHistory {
+        let mut h = cost_history(samples);
+        for tick in ticks.into_iter().rev() {
+            h.tick_unix_secs_samples.push_front(tick);
+        }
+        h
+    }
+
     #[test]
     fn detect_cost_slope_pure_positive_high_confidence() {
         // window=20 polls × 5s = 100s. cost climbs 0 → 100 → slope = 100/100 * 3600 = 3600 USD/hour.
@@ -1541,6 +1601,37 @@ mod tests {
     }
 
     #[test]
+    fn detect_cost_slope_uses_actual_elapsed_seconds_when_available() {
+        let mut samples = vec![Some(1.0)];
+        for i in (0..19).rev() {
+            samples.push(Some((i as f64) * (1.0 / 19.0)));
+        }
+        let ticks: Vec<u64> = (0..20).map(|i| 1_700_000_000 - i * 60).collect();
+        let h = cost_history_with_ticks(samples, ticks);
+
+        assert!(detect_cost_slope(&h, 20, 20.0, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn detect_cost_slope_reports_coverage_and_elapsed_seconds() {
+        let mut samples = vec![Some(1.0)];
+        for i in (0..19).rev() {
+            samples.push(Some((i as f64) * (1.0 / 19.0)));
+        }
+        let ticks: Vec<u64> = (0..20).map(|i| 1_700_000_000 - i * 5).collect();
+        let h = cost_history_with_ticks(samples, ticks);
+
+        let sig = detect_cost_slope(&h, 20, 20.0, 1_700_000_000).unwrap();
+        let coverage = sig
+            .evidence
+            .iter()
+            .find(|e| e.metric_name == "sample_coverage")
+            .unwrap();
+        assert_eq!(coverage.before, "20/20");
+        assert_eq!(coverage.after, "elapsed_secs=95");
+    }
+
+    #[test]
     fn detect_cost_slope_insufficient_samples_returns_none() {
         let h = cost_history(vec![Some(50.0), Some(0.0)]); // only 2, window 20
         assert!(detect_cost_slope(&h, 20, 20.0, 1_700_000_000).is_none());
@@ -1553,6 +1644,18 @@ mod tests {
         }
         for s in output.into_iter().rev() {
             h.output_token_samples.push_front(s);
+        }
+        h
+    }
+
+    fn token_history_with_ticks(
+        input: Vec<Option<u64>>,
+        output: Vec<Option<u64>>,
+        ticks: Vec<u64>,
+    ) -> AnomalyHistory {
+        let mut h = token_history(input, output);
+        for tick in ticks.into_iter().rev() {
+            h.tick_unix_secs_samples.push_front(tick);
         }
         h
     }
@@ -1593,6 +1696,18 @@ mod tests {
             input.push(Some(i as u64 * (200_000 / 19)));
         }
         let h = token_history(input, vec![Some(0u64); 20]);
+        assert!(detect_token_slope(&h, 20, 20_000, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn detect_token_slope_uses_actual_elapsed_seconds_when_available() {
+        let mut input = vec![Some(800_000u64)];
+        for i in (0..19).rev() {
+            input.push(Some(i as u64 * (800_000 / 19)));
+        }
+        let ticks: Vec<u64> = (0..20).map(|i| 1_700_000_000 - i * 60).collect();
+        let h = token_history_with_ticks(input, vec![Some(0u64); 20], ticks);
+
         assert!(detect_token_slope(&h, 20, 20_000, 1_700_000_000).is_none());
     }
 

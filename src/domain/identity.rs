@@ -40,6 +40,7 @@ pub struct PaneIdentity {
 pub enum IdentityConfidence {
     High,
     Medium,
+    Conflict,
     Low,
     Unknown,
 }
@@ -59,8 +60,44 @@ impl IdentityResolver {
     }
 
     pub fn resolve(&self, raw: &RawPaneInput) -> ResolvedIdentity {
-        // Priority: canonical title "{provider}:{instance}:{role}" wins.
-        if let Some(parsed) = parse_canonical_title(&raw.title) {
+        let cmd_provider = detect_provider_command(&raw.current_command);
+        let canonical = parse_canonical_title(&raw.title);
+
+        // The monitor pane can inherit a stale provider title from the
+        // tmux slot it runs in. A live qmonster process is authoritative
+        // for the self-monitor identity; other provider/provider
+        // disagreements still fall through to Conflict below.
+        if cmd_provider == Provider::Qmonster {
+            if let Some((Provider::Qmonster, instance, role)) = canonical {
+                return ResolvedIdentity {
+                    identity: PaneIdentity {
+                        pane_id: raw.pane_id.clone(),
+                        provider: Provider::Qmonster,
+                        instance,
+                        role,
+                    },
+                    confidence: IdentityConfidence::High,
+                };
+            }
+            return ResolvedIdentity {
+                identity: PaneIdentity {
+                    pane_id: raw.pane_id.clone(),
+                    provider: Provider::Qmonster,
+                    instance: 1,
+                    role: Role::Monitor,
+                },
+                confidence: IdentityConfidence::Medium,
+            };
+        }
+
+        // Priority: canonical title "{provider}:{instance}:{role}" wins
+        // only when it does not contradict the process-level command.
+        if let Some(parsed) = canonical {
+            let confidence = if providers_conflict(parsed.0, cmd_provider) {
+                IdentityConfidence::Conflict
+            } else {
+                IdentityConfidence::High
+            };
             return ResolvedIdentity {
                 identity: PaneIdentity {
                     pane_id: raw.pane_id.clone(),
@@ -68,7 +105,7 @@ impl IdentityResolver {
                     instance: parsed.1,
                     role: parsed.2,
                 },
-                confidence: IdentityConfidence::High,
+                confidence,
             };
         }
 
@@ -78,10 +115,11 @@ impl IdentityResolver {
         // useful, while still allowing generic bash/node panes to be
         // resolved from their visible output.
         let title_provider = detect_provider_title(&raw.title);
-        let cmd_provider = detect_provider_command(&raw.current_command);
         let (tail_provider, tail_confidence) = detect_provider_tail(&raw.tail);
 
-        let (provider, confidence) = if title_provider != Provider::Unknown {
+        let (provider, confidence) = if providers_conflict(title_provider, cmd_provider) {
+            (title_provider, IdentityConfidence::Conflict)
+        } else if title_provider != Provider::Unknown {
             (title_provider, IdentityConfidence::Medium)
         } else if cmd_provider != Provider::Unknown {
             (cmd_provider, IdentityConfidence::Medium)
@@ -184,8 +222,15 @@ fn detect_provider_command(s: &str) -> Provider {
     }
 }
 
+fn providers_conflict(left: Provider, right: Provider) -> bool {
+    left != Provider::Unknown && right != Provider::Unknown && left != right
+}
+
 fn fallback_role(provider: Provider, confidence: IdentityConfidence) -> Role {
-    if confidence != IdentityConfidence::Medium {
+    if !matches!(
+        confidence,
+        IdentityConfidence::Medium | IdentityConfidence::Conflict
+    ) {
         return Role::Unknown;
     }
     match provider {
@@ -311,6 +356,24 @@ mod tests {
     }
 
     #[test]
+    fn canonical_title_command_provider_conflict_is_not_high_confidence() {
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("claude:1:main", "node /usr/bin/gemini --yolo", ""));
+        assert_eq!(out.identity.provider, Provider::Claude);
+        assert_eq!(out.identity.role, Role::Main);
+        assert_eq!(out.confidence, IdentityConfidence::Conflict);
+    }
+
+    #[test]
+    fn qmonster_command_overrides_stale_canonical_provider_title() {
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("gemini:1:research", "qmonster", ""));
+        assert_eq!(out.identity.provider, Provider::Qmonster);
+        assert_eq!(out.identity.role, Role::Monitor);
+        assert_eq!(out.confidence, IdentityConfidence::Medium);
+    }
+
+    #[test]
     fn repeated_provider_instance_is_parsed_from_title() {
         let r = IdentityResolver::new();
         let out = r.resolve(&raw("claude:3:research", "claude", ""));
@@ -337,6 +400,15 @@ mod tests {
         // main-role fallback, but not enough for High confidence.
         assert_eq!(out.identity.role, Role::Main);
         assert_eq!(out.confidence, IdentityConfidence::Medium);
+    }
+
+    #[test]
+    fn non_canonical_title_command_provider_conflict_is_marked() {
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("Claude Code", "node /usr/bin/gemini --yolo", ""));
+        assert_eq!(out.identity.provider, Provider::Claude);
+        assert_eq!(out.identity.role, Role::Main);
+        assert_eq!(out.confidence, IdentityConfidence::Conflict);
     }
 
     #[test]

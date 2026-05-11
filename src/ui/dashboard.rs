@@ -31,11 +31,15 @@ const MIN_PANES_HEIGHT: u16 = 6;
 pub struct DashboardView<'a> {
     pub notices: &'a [SystemNotice],
     pub reports: &'a [PaneReport],
+    pub anomaly_events_ring: &'a crate::app::anomaly_events_ring::AnomalyEventsRing,
     pub fresh_alerts: &'a HashSet<String>,
     pub alert_times: &'a HashMap<String, String>,
     pub hidden_until: &'a HashMap<String, Instant>,
     pub state_flashes: &'a HashMap<String, panels::PaneStateFlash>,
     pub now: Instant,
+    pub now_unix_secs: u64,
+    pub cost_budget_usd: f64,
+    pub audit_recent_severity: Option<crate::domain::recommendation::Severity>,
     pub target_label: &'a str,
     pub split: DashboardSplit,
     pub alerts_focused: bool,
@@ -59,6 +63,7 @@ pub struct TargetPickerView<'a> {
 }
 
 pub struct DashboardRects {
+    pub now_strip: Rect,
     pub alerts: Rect,
     pub divider: Rect,
     pub panes: Rect,
@@ -151,6 +156,17 @@ pub fn render_dashboard(
 ) {
     let rects = dashboard_rects(frame.area(), view.split);
 
+    render_now_strip(
+        rects.now_strip,
+        frame.buffer_mut(),
+        now_strip_summary(
+            view.reports,
+            view.anomaly_events_ring,
+            view.now_unix_secs,
+            view.cost_budget_usd,
+        ),
+    );
+
     alerts::render_alerts(
         rects.alerts,
         frame.buffer_mut(),
@@ -207,8 +223,208 @@ pub fn render_dashboard(
             proposal_top_severity,
             copy_count,
             copy_top_severity,
+            audit_top_severity: view.audit_recent_severity,
         },
     );
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NowStripSummary {
+    text: String,
+    severity: crate::domain::recommendation::Severity,
+}
+
+fn now_strip_summary(
+    reports: &[PaneReport],
+    anomaly_events_ring: &crate::app::anomaly_events_ring::AnomalyEventsRing,
+    now_unix_secs: u64,
+    cost_budget_usd: f64,
+) -> NowStripSummary {
+    let events: Vec<crate::domain::anomaly::AnomalyEvent> =
+        anomaly_events_ring.iter().cloned().collect();
+    now_strip_summary_for(reports, &events, now_unix_secs, cost_budget_usd)
+}
+
+fn now_strip_summary_for(
+    reports: &[PaneReport],
+    anomaly_events: &[crate::domain::anomaly::AnomalyEvent],
+    now_unix_secs: u64,
+    cost_budget_usd: f64,
+) -> NowStripSummary {
+    if let Some(report) = reports.iter().find(|report| {
+        matches!(
+            report.idle_state.or(report.signals.idle_state),
+            Some(
+                crate::domain::signal::IdleCause::PermissionWait
+                    | crate::domain::signal::IdleCause::InputWait
+            )
+        )
+    }) {
+        return NowStripSummary {
+            text: format!("{} WAIT INPUT — Enter approve · q skip", report.pane_id),
+            severity: crate::domain::recommendation::Severity::Risk,
+        };
+    }
+
+    for report in reports {
+        if let Some(rec) = report
+            .recommendations
+            .iter()
+            .find(|rec| rec.severity >= crate::domain::recommendation::Severity::Risk)
+        {
+            let action = rec
+                .suggested_command
+                .as_deref()
+                .map(|cmd| format!("p send {cmd}"))
+                .unwrap_or_else(|| "p review".to_string());
+            return NowStripSummary {
+                text: format!(
+                    "{} RISK: {} — {action} · d dismiss",
+                    report.pane_id, rec.reason
+                ),
+                severity: rec.severity,
+            };
+        }
+    }
+
+    if let Some(summary) = quota_or_cost_now_summary(reports, cost_budget_usd) {
+        return summary;
+    }
+
+    if let Some(event) = anomaly_events.iter().rev().find(|event| {
+        event.promoted
+            && event.timestamp <= now_unix_secs
+            && now_unix_secs.saturating_sub(event.timestamp) <= 60
+    }) {
+        return NowStripSummary {
+            text: format!(
+                "{} ANOMALY {} ({}) — see n",
+                event.pane_id,
+                event.kind.label(),
+                event.confidence.label()
+            ),
+            severity: event.severity,
+        };
+    }
+
+    let last_anomaly = anomaly_events
+        .iter()
+        .filter(|event| event.timestamp <= now_unix_secs)
+        .map(|event| now_unix_secs.saturating_sub(event.timestamp))
+        .min()
+        .map(format_age);
+    NowStripSummary {
+        text: format!(
+            "healthy · {} panes · last anomaly {}",
+            reports.len(),
+            last_anomaly.unwrap_or_else(|| "none".to_string())
+        ),
+        severity: crate::domain::recommendation::Severity::Good,
+    }
+}
+
+fn quota_or_cost_now_summary(
+    reports: &[PaneReport],
+    cost_budget_usd: f64,
+) -> Option<NowStripSummary> {
+    let quota = reports
+        .iter()
+        .filter_map(|report| {
+            report
+                .signals
+                .quota_5h_pressure
+                .as_ref()
+                .map(|metric| (report, metric.value))
+        })
+        .filter(|(_, pressure)| *pressure >= 0.85)
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    if let Some((report, pressure)) = quota {
+        let mut text = format!("{} QUOTA {:.0}%", report.pane_id, pressure * 100.0);
+        if cost_is_budget_pressure(report, cost_budget_usd)
+            && let Some(rate) = cost_burn_usd_per_hour(&report.recent_token_samples)
+        {
+            text.push_str(&format!(" / cost burn ${rate:.2}/hr"));
+        }
+        text.push_str(" — see m");
+        return Some(NowStripSummary {
+            text,
+            severity: crate::domain::recommendation::Severity::Warning,
+        });
+    }
+
+    reports
+        .iter()
+        .find(|report| cost_is_budget_pressure(report, cost_budget_usd))
+        .map(|report| {
+            let rate = cost_burn_usd_per_hour(&report.recent_token_samples)
+                .map(|rate| format!("${rate:.2}/hr"))
+                .unwrap_or_else(|| "$?".to_string());
+            NowStripSummary {
+                text: format!("{} cost burn {rate} — see m", report.pane_id),
+                severity: crate::domain::recommendation::Severity::Warning,
+            }
+        })
+}
+
+fn cost_is_budget_pressure(report: &PaneReport, cost_budget_usd: f64) -> bool {
+    if !cost_budget_usd.is_finite() || cost_budget_usd <= 0.0 {
+        return false;
+    }
+    let threshold = cost_budget_usd * 0.8;
+    report
+        .signals
+        .cost_usd
+        .as_ref()
+        .is_some_and(|metric| metric.value >= threshold)
+        || report
+            .recent_token_samples
+            .iter()
+            .filter_map(|sample| sample.cost_usd)
+            .any(|cost| cost >= threshold)
+}
+
+fn cost_burn_usd_per_hour(samples: &[crate::store::TokenSample]) -> Option<f64> {
+    let newest = samples.iter().find(|sample| sample.cost_usd.is_some())?;
+    let oldest = samples
+        .iter()
+        .rev()
+        .find(|sample| sample.cost_usd.is_some())?;
+    let newest_cost = newest.cost_usd?;
+    let oldest_cost = oldest.cost_usd?;
+    let delta = newest_cost - oldest_cost;
+    let elapsed_ms = newest.ts_unix_ms.saturating_sub(oldest.ts_unix_ms);
+    if delta <= 0.0 || elapsed_ms <= 0 {
+        return None;
+    }
+    Some(delta / (elapsed_ms as f64 / 3_600_000.0))
+}
+
+fn format_age(age_secs: u64) -> String {
+    if age_secs < 60 {
+        format!("{age_secs}s ago")
+    } else if age_secs < 3_600 {
+        format!("{}m ago", age_secs / 60)
+    } else {
+        format!("{}h ago", age_secs / 3_600)
+    }
+}
+
+fn render_now_strip(area: Rect, buf: &mut Buffer, summary: NowStripSummary) {
+    if area.height == 0 || area.width == 0 {
+        return;
+    }
+    let style = Style::default()
+        .fg(theme::severity_color(summary.severity))
+        .bg(theme::badge_bg())
+        .add_modifier(Modifier::BOLD);
+    Paragraph::new(Line::from(vec![
+        Span::styled(
+            "Now · ",
+            Style::default().fg(theme::text_dim()).bg(theme::badge_bg()),
+        ),
+        Span::styled(summary.text, style),
+    ]))
+    .render(area, buf);
 }
 
 /// v1.39 Pending-action discoverability surface B: walk the live
@@ -242,6 +458,7 @@ struct FooterCounters {
     proposal_top_severity: Option<crate::domain::recommendation::Severity>,
     copy_count: usize,
     copy_top_severity: Option<crate::domain::recommendation::Severity>,
+    audit_top_severity: Option<crate::domain::recommendation::Severity>,
 }
 
 pub fn render_target_picker(
@@ -599,9 +816,21 @@ pub fn max_git_scroll(viewport: Rect, line_count: usize) -> usize {
 
 pub fn dashboard_rects(area: Rect, split: DashboardSplit) -> DashboardRects {
     let (footer_height, divider_height, body_height) = dashboard_layout_heights(area);
-    let alerts_height = alerts_height_for(body_height, split);
-    let panes_height = body_height.saturating_sub(alerts_height);
-    let alerts = Rect::new(area.x, area.y, area.width, alerts_height);
+    let now_strip_height = if body_height > MIN_ALERTS_HEIGHT + MIN_PANES_HEIGHT {
+        1
+    } else {
+        0
+    };
+    let list_body_height = body_height.saturating_sub(now_strip_height);
+    let alerts_height = alerts_height_for(list_body_height, split);
+    let panes_height = list_body_height.saturating_sub(alerts_height);
+    let now_strip = Rect::new(area.x, area.y, area.width, now_strip_height);
+    let alerts = Rect::new(
+        area.x,
+        now_strip.y.saturating_add(now_strip.height),
+        area.width,
+        alerts_height,
+    );
     let divider = Rect::new(
         area.x,
         alerts.y.saturating_add(alerts.height),
@@ -623,6 +852,7 @@ pub fn dashboard_rects(area: Rect, split: DashboardSplit) -> DashboardRects {
         footer_height,
     );
     DashboardRects {
+        now_strip,
         alerts,
         divider,
         panes,
@@ -847,11 +1077,36 @@ fn footer_lines(
         counters.proposal_top_severity,
     );
     let y_chip = footer_chip_span("\u{2605}y", counters.copy_count, counters.copy_top_severity);
-    let status_spans = vec![Span::raw(head), p_chip, Span::raw(" \u{00b7} "), y_chip];
+    let a_chip = footer_audit_chip_span(counters.audit_top_severity);
+    let status_spans = vec![
+        Span::raw(head),
+        p_chip,
+        Span::raw(" \u{00b7} "),
+        y_chip,
+        Span::raw(" \u{00b7} "),
+        a_chip,
+    ];
     vec![
         Line::from(status_spans),
         Line::from(footer_compact_keys_text()),
     ]
+}
+
+fn footer_audit_chip_span(
+    top_severity: Option<crate::domain::recommendation::Severity>,
+) -> Span<'static> {
+    let label = top_severity
+        .map(|severity| severity.letter())
+        .unwrap_or("0");
+    let style = match top_severity {
+        Some(severity) if severity >= crate::domain::recommendation::Severity::Warning => {
+            Style::default()
+                .fg(theme::severity_color(severity))
+                .add_modifier(Modifier::BOLD)
+        }
+        _ => Style::default().fg(theme::text_dim()),
+    };
+    Span::styled(format!("\u{2605}a:{label}"), style)
 }
 
 /// Build a single `★p:N` / `★y:M` chip styled by the highest
@@ -897,7 +1152,7 @@ fn footer_compact_keys_text() -> &'static str {
 #[cfg(test)]
 fn footer_text(focus: &str, split: DashboardSplit) -> String {
     format!(
-        "{focus} \u{00b7} split {}% \u{00b7} \u{2605}p:0 \u{00b7} \u{2605}y:0\n{}",
+        "{focus} \u{00b7} split {}% \u{00b7} \u{2605}p:0 \u{00b7} \u{2605}y:0 \u{00b7} \u{2605}a:0\n{}",
         split.alerts_percent(),
         footer_compact_keys_text(),
     )
@@ -1898,6 +2153,7 @@ mod tests {
             proposal_top_severity: None,
             copy_count: 0,
             copy_top_severity: None,
+            audit_top_severity: None,
         };
         let lines = footer_lines("focus: alerts", DashboardSplit::default(), &counters);
 
@@ -1913,6 +2169,7 @@ mod tests {
         assert!(status_row.contains("split 36%"));
         assert!(status_row.contains("\u{2605}p:0"));
         assert!(status_row.contains("\u{2605}y:0"));
+        assert!(status_row.contains("\u{2605}a:0"));
         assert!(
             !status_row.contains("K keys"),
             "key hints belong on the second row: {status_row}"
@@ -1994,6 +2251,7 @@ mod tests {
             proposal_top_severity: top,
             copy_count: 0,
             copy_top_severity: None,
+            audit_top_severity: None,
         };
         let lines = footer_lines("focus: alerts", DashboardSplit::default(), &counters);
         let dump = footer_line_text(&lines[0]);
@@ -2033,12 +2291,129 @@ mod tests {
             proposal_top_severity: None,
             copy_count: count,
             copy_top_severity: top,
+            audit_top_severity: None,
         };
         let lines = footer_lines("focus: alerts", DashboardSplit::default(), &counters);
         let dump = footer_line_text(&lines[0]);
         assert!(
             dump.contains("\u{2605}y:1"),
             "footer must count copyable alerts; got: {dump}"
+        );
+    }
+
+    #[test]
+    fn now_strip_prioritizes_wait_state() {
+        use crate::domain::signal::IdleCause;
+        let mut report = pending_actions_pane_report(false, vec![]);
+        report.idle_state = Some(IdleCause::PermissionWait);
+
+        let summary = now_strip_summary_for(&[report], &[], 1_700_000_000, 200.0);
+
+        assert_eq!(summary.text, "%1 WAIT INPUT — Enter approve · q skip");
+        assert_eq!(
+            summary.severity,
+            crate::domain::recommendation::Severity::Risk
+        );
+    }
+
+    #[test]
+    fn now_strip_prioritizes_risk_recommendation_after_waits() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::{Recommendation, Severity};
+        let rec = Recommendation {
+            action: "checkpoint",
+            reason: "large context pressure".into(),
+            severity: Severity::Risk,
+            source_kind: SourceKind::Heuristic,
+            suggested_command: Some("/compact".into()),
+            side_effects: vec![],
+            is_strong: true,
+            next_step: None,
+            profile: None,
+        };
+        let report = pending_actions_pane_report(false, vec![rec]);
+
+        let summary = now_strip_summary_for(&[report], &[], 1_700_000_000, 200.0);
+
+        assert_eq!(
+            summary.text,
+            "%1 RISK: large context pressure — p send /compact · d dismiss"
+        );
+        assert_eq!(summary.severity, Severity::Risk);
+    }
+
+    #[test]
+    fn now_strip_prioritizes_quota_pressure_after_risk() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::MetricValue;
+        let mut report = pending_actions_pane_report(false, vec![]);
+        report.signals.quota_5h_pressure =
+            Some(MetricValue::new(0.88, SourceKind::ProviderOfficial));
+
+        let summary = now_strip_summary_for(&[report], &[], 1_700_000_000, 200.0);
+
+        assert_eq!(summary.text, "%1 QUOTA 88% — see m");
+        assert_eq!(
+            summary.severity,
+            crate::domain::recommendation::Severity::Warning
+        );
+    }
+
+    #[test]
+    fn now_strip_prioritizes_recent_promoted_anomaly_after_quota() {
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        let report = pending_actions_pane_report(false, vec![]);
+        let event = AnomalyEvent {
+            timestamp: 1_700_000_000 - 30,
+            pane_id: "%1".into(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "cost_usd rose".into(),
+            evidence: Vec::new(),
+        };
+
+        let summary = now_strip_summary_for(&[report], &[event], 1_700_000_000, 200.0);
+
+        assert_eq!(summary.text, "%1 ANOMALY CostSlope (high) — see n");
+        assert_eq!(summary.severity, Severity::Warning);
+    }
+
+    #[test]
+    fn now_strip_healthy_reports_pane_count_and_last_anomaly_age() {
+        use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+        use crate::domain::recommendation::Severity;
+        let reports = vec![
+            pending_actions_pane_report(false, vec![]),
+            pending_actions_pane_report(false, vec![]),
+        ];
+        let event = AnomalyEvent {
+            timestamp: 1_700_000_000 - 125,
+            pane_id: "%1".into(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::Medium,
+            severity: Severity::Concern,
+            promoted: false,
+            reason: "cost_usd rose".into(),
+            evidence: Vec::new(),
+        };
+
+        let summary = now_strip_summary_for(&reports, &[event], 1_700_000_000, 200.0);
+
+        assert_eq!(summary.text, "healthy · 2 panes · last anomaly 2m ago");
+        assert_eq!(summary.severity, Severity::Good);
+    }
+
+    #[test]
+    fn now_strip_empty_reports_is_healthy() {
+        let summary = now_strip_summary_for(&[], &[], 1_700_000_000, 200.0);
+
+        assert_eq!(summary.text, "healthy · 0 panes · last anomaly none");
+        assert_eq!(
+            summary.severity,
+            crate::domain::recommendation::Severity::Good
         );
     }
 
@@ -2054,6 +2429,7 @@ mod tests {
             proposal_top_severity: None,
             copy_count: 0,
             copy_top_severity: None,
+            audit_top_severity: None,
         };
         let lines = footer_lines("focus: alerts", DashboardSplit::default(), &counters);
         let dump = footer_line_text(&lines[0]);
@@ -2064,6 +2440,10 @@ mod tests {
         assert!(
             dump.contains("\u{2605}y:0"),
             "footer must show ★y:0 when no copyables; got: {dump}"
+        );
+        assert!(
+            dump.contains("\u{2605}a:0"),
+            "footer must show ★a:0 when no recent audit severity; got: {dump}"
         );
         // Style: each chip is a Span with TEXT_DIM fg when count is 0.
         let p_span = lines[0]
@@ -2078,6 +2458,12 @@ mod tests {
             .find(|s| s.content.as_ref() == "\u{2605}y:0")
             .expect("★y:0 span must be present");
         assert_eq!(y_span.style.fg, Some(theme::text_dim()));
+        let a_span = lines[0]
+            .spans
+            .iter()
+            .find(|s| s.content.as_ref() == "\u{2605}a:0")
+            .expect("★a:0 span must be present");
+        assert_eq!(a_span.style.fg, Some(theme::text_dim()));
     }
 
     #[test]
@@ -2091,6 +2477,7 @@ mod tests {
             proposal_top_severity: Some(Severity::Risk),
             copy_count: 3,
             copy_top_severity: Some(Severity::Warning),
+            audit_top_severity: Some(Severity::Warning),
         };
         let lines = footer_lines("focus: alerts", DashboardSplit::default(), &counters);
         let p_span = lines[0]
@@ -2108,6 +2495,34 @@ mod tests {
             y_span.style.fg,
             Some(theme::severity_color(Severity::Warning))
         );
+        let a_span = lines[0]
+            .spans
+            .iter()
+            .find(|s| s.content.as_ref() == "\u{2605}a:W")
+            .expect("★a:W span must be present");
+        assert_eq!(
+            a_span.style.fg,
+            Some(theme::severity_color(Severity::Warning))
+        );
+    }
+
+    #[test]
+    fn footer_audit_concern_renders_dim() {
+        use crate::domain::recommendation::Severity;
+        let counters = FooterCounters {
+            proposal_count: 0,
+            proposal_top_severity: None,
+            copy_count: 0,
+            copy_top_severity: None,
+            audit_top_severity: Some(Severity::Concern),
+        };
+        let lines = footer_lines("focus: alerts", DashboardSplit::default(), &counters);
+        let a_span = lines[0]
+            .spans
+            .iter()
+            .find(|s| s.content.as_ref() == "\u{2605}a:C")
+            .expect("★a:C span must be present");
+        assert_eq!(a_span.style.fg, Some(theme::text_dim()));
     }
 
     #[test]

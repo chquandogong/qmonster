@@ -7,7 +7,8 @@
 use std::path::Path;
 
 use crate::app::event_loop::current_unix_ms;
-use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
+use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyEvidence, AnomalyKind};
+use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Severity;
 use crate::store::anomaly_history::AnomalyHistorySnapshot;
 use crate::store::sqlite::{AuditDb, SqliteError};
@@ -31,10 +32,11 @@ impl SqliteAnomalySink {
             .connection()
             .lock()
             .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let evidence_json = encode_evidence_json(&event.evidence)?;
         conn.execute(
             "INSERT INTO anomaly_events
-             (ts_unix_secs, pane_id, kind, confidence, severity, promoted, reason)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+             (ts_unix_secs, pane_id, kind, confidence, severity, promoted, reason, evidence_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
                 event.timestamp as i64,
                 event.pane_id,
@@ -43,6 +45,7 @@ impl SqliteAnomalySink {
                 event.severity.label(),
                 event.promoted as i64,
                 event.reason,
+                evidence_json,
             ],
         )
         .map_err(|e| SqliteError::Query(e.to_string()))?;
@@ -119,12 +122,18 @@ impl SqliteAnomalySink {
                 return Vec::new();
             }
         };
-        let mut stmt = match conn.prepare_cached(
-            "SELECT ts_unix_secs, pane_id, kind, confidence, severity, promoted, reason
+        let sql = if table_has_column(&conn, "anomaly_events", "evidence_json") {
+            "SELECT ts_unix_secs, pane_id, kind, confidence, severity, promoted, reason, evidence_json
              FROM anomaly_events
              ORDER BY ts_unix_secs DESC, id DESC
-             LIMIT ?1",
-        ) {
+             LIMIT ?1"
+        } else {
+            "SELECT ts_unix_secs, pane_id, kind, confidence, severity, promoted, reason, '[]'
+             FROM anomaly_events
+             ORDER BY ts_unix_secs DESC, id DESC
+             LIMIT ?1"
+        };
+        let mut stmt = match conn.prepare_cached(sql) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("anomaly_sink fetch_recent_anomaly_events prepare: {e}");
@@ -139,7 +148,17 @@ impl SqliteAnomalySink {
             let sev_str: String = row.get(4)?;
             let promoted_i: i64 = row.get(5)?;
             let reason: String = row.get(6)?;
-            Ok((ts, pane_id, kind_str, conf_str, sev_str, promoted_i, reason))
+            let evidence_json: String = row.get(7)?;
+            Ok((
+                ts,
+                pane_id,
+                kind_str,
+                conf_str,
+                sev_str,
+                promoted_i,
+                reason,
+                evidence_json,
+            ))
         });
         let rows = match rows {
             Ok(r) => r,
@@ -150,7 +169,7 @@ impl SqliteAnomalySink {
         };
         let mut out = Vec::new();
         for row in rows.flatten() {
-            let (ts, pane_id, kind_s, conf_s, sev_s, promoted_i, reason) = row;
+            let (ts, pane_id, kind_s, conf_s, sev_s, promoted_i, reason, evidence_json) = row;
             let Some(kind) = AnomalyKind::try_from_label(&kind_s) else {
                 continue;
             };
@@ -168,6 +187,7 @@ impl SqliteAnomalySink {
                 severity,
                 promoted: promoted_i != 0,
                 reason,
+                evidence: decode_evidence_json(&evidence_json),
             });
         }
         out
@@ -325,6 +345,55 @@ impl SqliteAnomalySink {
     }
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct PersistedEvidence {
+    metric_name: String,
+    before: String,
+    after: String,
+    sample_count: usize,
+    source_kind: SourceKind,
+}
+
+pub(crate) fn encode_evidence_json(evidence: &[AnomalyEvidence]) -> Result<String, SqliteError> {
+    let persisted: Vec<PersistedEvidence> = evidence
+        .iter()
+        .map(|row| PersistedEvidence {
+            metric_name: row.metric_name.to_string(),
+            before: row.before.clone(),
+            after: row.after.clone(),
+            sample_count: row.sample_count,
+            source_kind: row.source_kind,
+        })
+        .collect();
+    serde_json::to_string(&persisted).map_err(|e| SqliteError::Query(format!("json: {e}")))
+}
+
+fn decode_evidence_json(raw: &str) -> Vec<AnomalyEvidence> {
+    let Ok(rows) = serde_json::from_str::<Vec<PersistedEvidence>>(raw) else {
+        return Vec::new();
+    };
+    rows.into_iter()
+        .map(|row| AnomalyEvidence {
+            metric_name: Box::leak(row.metric_name.into_boxed_str()),
+            before: row.before,
+            after: row.after,
+            sample_count: row.sample_count,
+            source_kind: row.source_kind,
+        })
+        .collect()
+}
+
+fn table_has_column(conn: &rusqlite::Connection, table: &str, column: &str) -> bool {
+    let sql = format!("PRAGMA table_info({table})");
+    let Ok(mut stmt) = conn.prepare(&sql) else {
+        return false;
+    };
+    let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(1)) else {
+        return false;
+    };
+    rows.flatten().any(|name| name == column)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,6 +416,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: format!("cost_usd at ts={ts}"),
+            evidence: Vec::new(),
         }
     }
 
@@ -374,6 +444,48 @@ mod tests {
         let fetched = sink.fetch_recent_anomaly_events(10);
         assert_eq!(fetched.len(), 1);
         assert_eq!(fetched[0], event);
+    }
+
+    #[test]
+    fn anomaly_event_evidence_migrates_and_roundtrips() {
+        use crate::domain::anomaly::AnomalyEvidence;
+        use crate::domain::origin::SourceKind;
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("audit.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                r"
+                CREATE TABLE anomaly_events (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts_unix_secs    INTEGER NOT NULL,
+                    pane_id         TEXT    NOT NULL,
+                    kind            TEXT    NOT NULL,
+                    confidence      TEXT    NOT NULL,
+                    severity        TEXT    NOT NULL,
+                    promoted        INTEGER NOT NULL,
+                    reason          TEXT    NOT NULL DEFAULT ''
+                );
+                ",
+            )
+            .unwrap();
+        }
+        let sink = SqliteAnomalySink::open(&path).unwrap();
+        let mut event = fixture_event(1_700_000_000);
+        event.evidence = vec![AnomalyEvidence {
+            metric_name: "input_tokens",
+            before: "4.2K".into(),
+            after: "11K".into(),
+            sample_count: 6,
+            source_kind: SourceKind::ProviderOfficial,
+        }];
+        sink.insert_anomaly_event(&event).unwrap();
+
+        let fetched = sink.fetch_recent_anomaly_events(10);
+        assert_eq!(fetched.len(), 1);
+        assert_eq!(fetched[0].evidence.len(), 1);
+        assert_eq!(fetched[0].evidence[0].metric_name, "input_tokens");
+        assert_eq!(fetched[0].evidence[0].sample_count, 6);
     }
 
     #[test]

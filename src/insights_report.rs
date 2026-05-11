@@ -106,6 +106,14 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
         }
     ));
     lines.push(String::new());
+    lines.push("Now Suggested Action".into());
+    lines.extend(format_next_best_action_lines(&snapshot.next_best_action));
+    lines.push(String::new());
+    lines.push("/compact Payoff".into());
+    lines.push(format_last_compact_payoff_line(
+        &snapshot.last_compact_payoff,
+    ));
+    lines.push(String::new());
     lines.push("Situations".into());
     if snapshot.situations.is_empty() {
         lines.push("  none".into());
@@ -131,6 +139,104 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
     lines.push(format!(
         "  hot/cold/drift: {}/{}/{}",
         snapshot.cache.hot_count, snapshot.cache.cold_count, snapshot.cache.drift_count
+    ));
+    lines.push(String::new());
+    lines.push(format!(
+        "Cost Breakdown (window total ${:.4})",
+        snapshot.cost_breakdown.total_usd
+    ));
+    lines.push(format!(
+        "  by pane: {}",
+        format_cost_breakdown_rows(&snapshot.cost_breakdown.by_pane)
+    ));
+    lines.push(format!(
+        "  by model: {}",
+        format_cost_breakdown_rows(&snapshot.cost_breakdown.by_model)
+    ));
+    lines.push(format!(
+        "  by situation: {}",
+        format_cost_breakdown_rows(&snapshot.cost_breakdown.by_situation)
+    ));
+    lines.push(String::new());
+    lines.push("Pane Buckets".into());
+    if snapshot.pane_buckets.is_empty() {
+        lines.push("  none".into());
+    } else {
+        for bucket in snapshot.pane_buckets.iter().take(5) {
+            let cache = match bucket.latest_cache_ratio {
+                Some(ratio) => format!("{:.1}%", ratio * 100.0),
+                None => "n/a".into(),
+            };
+            let growth = match bucket.token_growth {
+                Some(growth) => format!("+{growth}"),
+                None => "n/a".into(),
+            };
+            let cost = match bucket.cost_delta_usd {
+                Some(cost) => format!("${cost:.4}"),
+                None => "n/a".into(),
+            };
+            lines.push(format!(
+                "  {} {} samples={} cache={} token growth={} cost delta={}",
+                bucket.pane_id, bucket.provider, bucket.sample_count, cache, growth, cost
+            ));
+        }
+        if snapshot.pane_buckets.len() > 5 {
+            lines.push(format!("  ... {} more", snapshot.pane_buckets.len() - 5));
+        }
+    }
+    lines.push(String::new());
+    lines.push("Action Impact".into());
+    if snapshot.action_impacts.is_empty() {
+        lines.push("  none".into());
+    } else {
+        for impact in &snapshot.action_impacts {
+            let provider = impact.provider.as_deref().unwrap_or("Unknown");
+            lines.push(format!(
+                "  {} {} {} {} {}",
+                impact.outcome_ts_label, impact.pane_id, provider, impact.action, impact.outcome
+            ));
+            lines.push(format!(
+                "    tokens before={} after={} delta={}",
+                format_signed_i64(impact.before_token_growth),
+                format_signed_i64(impact.after_token_growth),
+                format_signed_i64(impact.token_growth_delta)
+            ));
+            lines.push(format!(
+                "    cost before={} after={} delta={}",
+                format_usd(impact.before_cost_delta_usd),
+                format_usd(impact.after_cost_delta_usd),
+                format_usd(impact.cost_delta_usd)
+            ));
+            lines.push(format!(
+                "    cache {} -> {}",
+                format_percent(impact.before_cache_ratio),
+                format_percent(impact.after_cache_ratio)
+            ));
+        }
+    }
+    lines.push(String::new());
+    lines.push("Data Completeness".into());
+    lines.push(format!(
+        "  pane buckets: {}",
+        snapshot.data_completeness.pane_bucket_count
+    ));
+    lines.push(format!(
+        "  token samples: {}",
+        snapshot.data_completeness.token_sample_count
+    ));
+    lines.push(format!(
+        "  cache ratios: {}/{} buckets",
+        snapshot.data_completeness.cache_ratio_bucket_count,
+        snapshot.data_completeness.pane_bucket_count
+    ));
+    lines.push(format!(
+        "  cost deltas: {}/{} buckets",
+        snapshot.data_completeness.cost_delta_bucket_count,
+        snapshot.data_completeness.pane_bucket_count
+    ));
+    lines.push(format!(
+        "  action impacts: {}",
+        snapshot.data_completeness.action_impact_count
     ));
     lines.push(String::new());
     lines.push("Action Ledger".into());
@@ -194,6 +300,18 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
         }
     }
     lines.push(String::new());
+    lines.push("Cross-pane Correlations".into());
+    if snapshot.anomaly_correlations.is_empty() {
+        lines.push("  none".into());
+    } else {
+        for row in &snapshot.anomaly_correlations {
+            lines.push(format!(
+                "  {}  {}  {} panes",
+                row.window_label, row.summary, row.pane_count
+            ));
+        }
+    }
+    lines.push(String::new());
     lines.push("Evidence".into());
     lines.push(
         "  source tables: audit_events, token_usage_samples, cost_usage_events (when present)"
@@ -214,11 +332,110 @@ fn format_rate(numerator: u64, denominator: u64) -> String {
     format!("{:.1}%", numerator as f64 / denominator as f64 * 100.0)
 }
 
+fn format_next_best_action_lines(summary: &crate::store::NextBestActionSummary) -> Vec<String> {
+    if !summary.data_available {
+        return vec![format!(
+            "  data unavailable · open ★p:{}",
+            summary.open_proposal_count
+        )];
+    }
+    let Some(action) = summary.action.as_ref() else {
+        return vec![format!(
+            "  no pending action · open ★p:{}",
+            summary.open_proposal_count
+        )];
+    };
+    let provider = action.provider.as_deref().unwrap_or("Unknown");
+    let mut lines = vec![format!(
+        "  {} {} {} {}: {}",
+        action.pane_id, provider, action.severity, action.situation, action.reason_summary
+    )];
+    if let Some(command) = action.suggested_command.as_deref() {
+        lines.push(format!("  run: {command}"));
+    }
+    lines.push(format!("  open ★p:{}", summary.open_proposal_count));
+    lines
+}
+
+fn format_last_compact_payoff_line(payoff: &crate::store::LastCompactPayoffSummary) -> String {
+    if payoff.status == "n/a" {
+        return "  n/a (need >=6 samples and >=5% or 1K token delta)".into();
+    }
+    let age = payoff.age_label.as_deref().unwrap_or("age n/a");
+    let token = match payoff.input_tokens_saved {
+        Some(saved) if saved >= 0 => format!("saved ~{} input tokens", compact_number(saved)),
+        Some(delta) => format!("regressed ~{} input tokens", compact_number(delta.abs())),
+        None => "tokens n/a".into(),
+    };
+    let cache = match (
+        payoff.before_cache_state.as_deref(),
+        payoff.after_cache_state.as_deref(),
+    ) {
+        (Some(before), Some(after)) => format!("cache {before}->{after}"),
+        _ => "cache n/a".into(),
+    };
+    let cost = payoff
+        .cost_usd_saved
+        .map(|saved| format!("${saved:.4}"))
+        .unwrap_or_else(|| "$n/a".into());
+    format!("  last /compact {age} · {} · {cache} · {cost}", token)
+}
+
+fn compact_number(value: i64) -> String {
+    if value >= 1_000 {
+        format!("{:.1}K", value as f64 / 1_000.0)
+    } else {
+        value.to_string()
+    }
+}
+
+fn format_cost_breakdown_rows(rows: &[crate::store::CostBreakdownRow]) -> String {
+    if rows.is_empty() {
+        return "none".into();
+    }
+    rows.iter()
+        .take(5)
+        .map(|row| format!("{} ${:.4}", row.label, row.cost_delta_usd))
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+fn format_percent(value: Option<f64>) -> String {
+    value
+        .map(|value| format!("{:.1}%", value * 100.0))
+        .unwrap_or_else(|| "n/a".into())
+}
+
+fn format_signed_i64(value: Option<i64>) -> String {
+    value
+        .map(|value| {
+            if value >= 0 {
+                format!("+{value}")
+            } else {
+                value.to_string()
+            }
+        })
+        .unwrap_or_else(|| "n/a".into())
+}
+
+fn format_usd(value: Option<f64>) -> String {
+    value
+        .map(|value| format!("${value:.4}"))
+        .unwrap_or_else(|| "n/a".into())
+}
+
 pub fn empty_insights_snapshot(window: InsightsWindow) -> InsightsSnapshot {
     InsightsSnapshot {
         window,
         situations: Vec::new(),
         cache: CacheInsightSummary::default(),
+        pane_buckets: Vec::new(),
+        next_best_action: Default::default(),
+        last_compact_payoff: Default::default(),
+        cost_breakdown: Default::default(),
+        anomaly_correlations: Vec::new(),
+        action_impacts: Vec::new(),
+        data_completeness: Default::default(),
         timeline: Vec::new(),
         actions: Vec::new(),
         ignored_available: false,

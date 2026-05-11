@@ -2,7 +2,8 @@ use qmonster::insights_report::{
     empty_insights_snapshot, format_insights_report_lines, parse_since_arg, resolve_insights_paths,
 };
 use qmonster::store::{
-    ActionLedgerRow, CacheInsightSummary, InsightsSnapshot, InsightsWindow,
+    ActionImpactSummary, ActionLedgerRow, CacheInsightSummary, InsightsDataCompleteness,
+    InsightsSnapshot, InsightsWindow, NextBestActionItem, NextBestActionSummary, PaneInsightBucket,
     RecommendationTimelineItem, SituationSummary,
 };
 use tempfile::tempdir;
@@ -51,6 +52,54 @@ fn insights_report_renders_action_ledger() {
             token_growth: Some(200),
             cost_delta_usd: Some(0.08),
         },
+        pane_buckets: vec![PaneInsightBucket {
+            pane_id: "%1".into(),
+            provider: "Codex".into(),
+            latest_cache_ratio: Some(0.75),
+            token_growth: Some(200),
+            cost_delta_usd: Some(0.08),
+            sample_count: 2,
+        }],
+        next_best_action: NextBestActionSummary {
+            data_available: true,
+            action: Some(NextBestActionItem {
+                ts_label: "2026-05-07T12:00:00Z".into(),
+                pane_id: "%1".into(),
+                provider: Some("Codex".into()),
+                situation: "Context pressure",
+                action: "/compact".into(),
+                severity: "risk".into(),
+                reason_summary: "context near critical".into(),
+                suggested_command: Some("/compact".into()),
+            }),
+            open_proposal_count: 1,
+        },
+        last_compact_payoff: Default::default(),
+        cost_breakdown: Default::default(),
+        anomaly_correlations: Vec::new(),
+        action_impacts: vec![ActionImpactSummary {
+            event_id: 42,
+            outcome_ts_label: "2026-05-07T12:05:00Z".into(),
+            pane_id: "%1".into(),
+            provider: Some("Codex".into()),
+            action: "/compact".into(),
+            outcome: "completed".into(),
+            before_token_growth: Some(200),
+            after_token_growth: Some(40),
+            token_growth_delta: Some(-160),
+            before_cost_delta_usd: Some(0.20),
+            after_cost_delta_usd: Some(0.04),
+            cost_delta_usd: Some(-0.16),
+            before_cache_ratio: Some(0.70),
+            after_cache_ratio: Some(0.32),
+        }],
+        data_completeness: InsightsDataCompleteness {
+            pane_bucket_count: 1,
+            token_sample_count: 2,
+            cache_ratio_bucket_count: 1,
+            cost_delta_bucket_count: 1,
+            action_impact_count: 1,
+        },
         timeline: vec![RecommendationTimelineItem {
             ts_label: "2026-05-07T12:00:00Z".into(),
             pane_id: "%1".into(),
@@ -72,10 +121,35 @@ fn insights_report_renders_action_ledger() {
     let joined = lines.join("\n");
 
     assert!(joined.contains("Token Insights"));
+    assert!(
+        joined.find("Now Suggested Action").unwrap() < joined.find("Situations").unwrap(),
+        "suggested action should render before Situations: {joined}"
+    );
+    assert!(joined.contains("Now Suggested Action"));
+    assert!(joined.contains("%1 Codex risk Context pressure: context near critical"));
+    assert!(joined.contains("run: /compact"));
+    assert!(joined.contains("open ★p:1"));
+    assert!(joined.contains("/compact Payoff"));
     assert!(joined.contains("Context pressure"));
     assert!(joined.contains("cache reuse: 75.0%"));
     assert!(joined.contains("token growth: +200"));
     assert!(joined.contains("cost delta: $0.0800"));
+    assert!(joined.contains("Cost Breakdown"));
+    assert!(joined.contains("by pane: none"));
+    assert!(joined.contains("Pane Buckets"));
+    assert!(joined.contains("%1 Codex"));
+    assert!(joined.contains("samples=2 cache=75.0% token growth=+200 cost delta=$0.0800"));
+    assert!(joined.contains("Action Impact"));
+    assert!(joined.contains("2026-05-07T12:05:00Z %1 Codex /compact completed"));
+    assert!(joined.contains("tokens before=+200 after=+40 delta=-160"));
+    assert!(joined.contains("cost before=$0.2000 after=$0.0400 delta=$-0.1600"));
+    assert!(joined.contains("cache 70.0% -> 32.0%"));
+    assert!(joined.contains("Data Completeness"));
+    assert!(joined.contains("pane buckets: 1"));
+    assert!(joined.contains("token samples: 2"));
+    assert!(joined.contains("cache ratios: 1/1 buckets"));
+    assert!(joined.contains("cost deltas: 1/1 buckets"));
+    assert!(joined.contains("action impacts: 1"));
     assert!(joined.contains("/compact"));
     assert!(joined.contains("ignored classification: unavailable"));
     assert!(joined.contains("ignored=n/a"));
@@ -95,6 +169,17 @@ fn insights_report_renders_action_rate_summary() {
         },
         situations: vec![],
         cache: CacheInsightSummary::default(),
+        pane_buckets: vec![],
+        next_best_action: NextBestActionSummary {
+            data_available: true,
+            action: None,
+            open_proposal_count: 0,
+        },
+        last_compact_payoff: Default::default(),
+        cost_breakdown: Default::default(),
+        anomaly_correlations: Vec::new(),
+        action_impacts: vec![],
+        data_completeness: InsightsDataCompleteness::default(),
         timeline: vec![],
         actions: vec![
             ActionLedgerRow {
@@ -133,6 +218,17 @@ fn insights_report_renders_available_recommendation_lifecycle() {
         },
         situations: vec![],
         cache: CacheInsightSummary::default(),
+        pane_buckets: vec![],
+        next_best_action: NextBestActionSummary {
+            data_available: true,
+            action: None,
+            open_proposal_count: 0,
+        },
+        last_compact_payoff: Default::default(),
+        cost_breakdown: Default::default(),
+        anomaly_correlations: Vec::new(),
+        action_impacts: vec![],
+        data_completeness: InsightsDataCompleteness::default(),
         timeline: vec![],
         actions: vec![ActionLedgerRow {
             action: "/compact".into(),
@@ -166,6 +262,12 @@ fn empty_snapshot_helper_returns_zero_state() {
     assert!(snapshot.actions.is_empty());
     assert!(snapshot.timeline.is_empty());
     assert_eq!(snapshot.cache, CacheInsightSummary::default());
+    assert!(snapshot.pane_buckets.is_empty());
+    assert!(snapshot.action_impacts.is_empty());
+    assert_eq!(
+        snapshot.data_completeness,
+        InsightsDataCompleteness::default()
+    );
     assert!(!snapshot.ignored_available);
 }
 

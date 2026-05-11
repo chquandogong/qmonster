@@ -28,6 +28,7 @@ pub struct AnomalyOverlay {
     view: AnomalyOverlayView,
     history_cache: Vec<crate::domain::anomaly::AnomalyEvent>,
     filter: AnomalyFilter,
+    evidence_expanded: bool,
 }
 
 /// v1.58.0: cycling filter for the n-overlay rows. `All` is the
@@ -89,6 +90,7 @@ impl Default for AnomalyOverlay {
             view: AnomalyOverlayView::Ring,
             history_cache: Vec::new(),
             filter: AnomalyFilter::All,
+            evidence_expanded: false,
         }
     }
 }
@@ -120,6 +122,7 @@ impl AnomalyOverlay {
         self.geometry.end_drag();
         self.view = AnomalyOverlayView::Ring;
         self.history_cache.clear();
+        self.evidence_expanded = false;
     }
 
     pub fn toggle(&mut self) {
@@ -235,6 +238,16 @@ impl AnomalyOverlay {
         self.scroll = 0;
     }
 
+    pub fn evidence_expanded(&self) -> bool {
+        self.evidence_expanded
+    }
+
+    pub fn toggle_evidence(&mut self) {
+        if self.open {
+            self.evidence_expanded = !self.evidence_expanded;
+        }
+    }
+
     /// v1.58.0: count rows surviving the current filter, used by the
     /// scroll-bound calculator.
     fn filtered_count(&self, ring: &crate::app::anomaly_events_ring::AnomalyEventsRing) -> usize {
@@ -296,8 +309,13 @@ impl AnomalyOverlay {
             AnomalyOverlayView::Ring => "h history",
             AnomalyOverlayView::History => "h ring",
         };
+        let evidence_toggle = if self.evidence_expanded {
+            "e hide evidence"
+        } else {
+            "e evidence"
+        };
         let hint = format!(
-            "[ shrink · ] grow · = reset · {view_toggle} · f filter · ↑/↓ scroll · n close · Esc/q close · click [x] close · {}",
+            "[ shrink · ] grow · = reset · {view_toggle} · f filter · {evidence_toggle} · {} · ↑/↓ scroll · n close · Esc/q/[x] close",
             scroll_hint::scroll_status_label(scroll, max_scroll)
         );
 
@@ -349,10 +367,15 @@ impl AnomalyOverlay {
         // unchanged; ListItem now carries a styled Line with the row's
         // severity-color fg. Operators read severity at a glance from
         // the row tint instead of having to scan the Conf column.
+        let evidence_expanded = self.evidence_expanded;
         let row_to_item = |e: &crate::domain::anomaly::AnomalyEvent| {
             let text = format_event_row(e, inner.width as usize);
             let style = Style::default().fg(theme::severity_color(e.severity));
-            ListItem::new(Line::from(ratatui::text::Span::styled(text, style)))
+            let mut lines = vec![Line::from(ratatui::text::Span::styled(text, style))];
+            if evidence_expanded {
+                lines.extend(format_event_evidence_lines(e, inner.width as usize));
+            }
+            ListItem::new(lines)
         };
         let items: Vec<ListItem> = match self.view {
             AnomalyOverlayView::Ring => ring
@@ -440,6 +463,27 @@ fn format_event_reason(e: &crate::domain::anomaly::AnomalyEvent) -> String {
         Some(label) => format!("{label}: {}", e.reason),
         None => e.reason.clone(),
     }
+}
+
+fn format_event_evidence_lines(
+    e: &crate::domain::anomaly::AnomalyEvent,
+    width: usize,
+) -> Vec<Line<'static>> {
+    e.evidence
+        .iter()
+        .take(3)
+        .map(|evidence| {
+            let text = format!(
+                "  {} {} -> {} over {} samples [{}]",
+                evidence.metric_name,
+                evidence.before,
+                evidence.after,
+                evidence.sample_count,
+                evidence.source_kind
+            );
+            Line::from(ellipsize(&text, width)).style(Style::default().fg(theme::text_dim()))
+        })
+        .collect()
 }
 
 fn anomaly_basis_label(kind: crate::domain::anomaly::AnomalyKind) -> Option<&'static str> {
@@ -581,6 +625,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: "cost_usd: 0.10 \u{2192} 25.40".to_string(),
+            evidence: Vec::new(),
         });
         terminal
             .draw(|f| overlay.render(f, f.area(), &ring))
@@ -617,6 +662,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: long_reason.clone(),
+            evidence: Vec::new(),
         });
         terminal
             .draw(|f| overlay.render(f, f.area(), &ring))
@@ -653,6 +699,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: "x".to_string(),
+            evidence: Vec::new(),
         };
         o.toggle_view(vec![event.clone()]);
         assert_eq!(o.view(), AnomalyOverlayView::History);
@@ -674,6 +721,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: "x".to_string(),
+            evidence: Vec::new(),
         };
         o.toggle_view(vec![event]);
         assert_eq!(o.view(), AnomalyOverlayView::History);
@@ -705,6 +753,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: "x".to_string(),
+            evidence: Vec::new(),
         }]);
 
         assert!(o.drag_anchor().is_none());
@@ -724,6 +773,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: "x".to_string(),
+            evidence: Vec::new(),
         }]);
         o.close();
         assert!(!o.is_open());
@@ -750,6 +800,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: "from disk".to_string(),
+            evidence: Vec::new(),
         }]);
         let ring = AnomalyEventsRing::new();
         terminal
@@ -815,6 +866,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: "ring view".to_string(),
+            evidence: Vec::new(),
         });
         terminal
             .draw(|f| overlay.render(f, f.area(), &ring))
@@ -847,6 +899,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: "error_rate: 0.10 \u{2192} 0.80".to_string(),
+            evidence: Vec::new(),
         });
 
         terminal
@@ -882,6 +935,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: "ring view".to_string(),
+            evidence: Vec::new(),
         });
 
         terminal
@@ -938,6 +992,7 @@ mod tests {
                 severity: Severity::Warning,
                 promoted: true,
                 reason: "paged row".to_string(),
+                evidence: Vec::new(),
             });
         }
 
@@ -953,6 +1008,54 @@ mod tests {
             !rendered.contains("more"),
             "last full anomaly page should not advertise more rows: {rendered}"
         );
+    }
+
+    #[test]
+    fn evidence_rows_render_only_when_expanded() {
+        use crate::app::anomaly_events_ring::AnomalyEventsRing;
+        use crate::domain::anomaly::{
+            AnomalyConfidence, AnomalyEvent, AnomalyEvidence, AnomalyKind,
+        };
+        use crate::domain::origin::SourceKind;
+        use crate::domain::recommendation::Severity;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut ring = AnomalyEventsRing::new();
+        ring.push(AnomalyEvent {
+            timestamp: 1_700_000_000,
+            pane_id: "%1".into(),
+            kind: AnomalyKind::CostSlope,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "cost rose".into(),
+            evidence: vec![AnomalyEvidence {
+                metric_name: "cost_usd",
+                before: "$0.12".into(),
+                after: "$0.34".into(),
+                sample_count: 6,
+                source_kind: SourceKind::Estimated,
+            }],
+        });
+        let viewport = Rect::new(0, 0, 120, 30);
+        let mut overlay = AnomalyOverlay::new();
+        overlay.open();
+        let mut terminal =
+            Terminal::new(TestBackend::new(viewport.width, viewport.height)).unwrap();
+        terminal
+            .draw(|frame| overlay.render(frame, viewport, &ring))
+            .unwrap();
+        let collapsed = buf_to_string(terminal.backend().buffer());
+        assert!(!collapsed.contains("cost_usd"));
+
+        overlay.toggle_evidence();
+        terminal
+            .draw(|frame| overlay.render(frame, viewport, &ring))
+            .unwrap();
+        let expanded = buf_to_string(terminal.backend().buffer());
+        assert!(expanded.contains("cost_usd"));
+        assert!(expanded.contains("$0.12 -> $0.34"));
     }
 
     fn buf_to_string(buf: &ratatui::buffer::Buffer) -> String {

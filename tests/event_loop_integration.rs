@@ -192,6 +192,123 @@ fn run_once_report_carries_identity_and_signals() {
 }
 
 #[test]
+fn run_once_records_identity_suppression_for_title_command_conflict() {
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%1",
+            "claude:1:main",
+            "node /usr/bin/gemini --yolo",
+            "◇  Ready (Qmonster)",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = CaptureSink::new();
+    let sink_handle = sink.clone();
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, Box::new(sink));
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+
+    assert_eq!(reports[0].identity.confidence, IdentityConfidence::Conflict);
+    assert!(
+        reports[0].signals.runtime_facts.is_empty(),
+        "conflict pane must not receive provider-official runtime facts"
+    );
+    let events = sink_handle.snapshot();
+    assert!(events.iter().any(|event| {
+        event.kind == AuditEventKind::IdentitySuppressed
+            && event.pane_id == "%1"
+            && event.summary.contains("title=claude:1:main")
+            && event
+                .summary
+                .contains("command=node /usr/bin/gemini --yolo")
+    }));
+}
+
+#[test]
+fn run_once_treats_qmonster_command_as_monitor_despite_stale_provider_title() {
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%3",
+            "gemini:1:research",
+            "qmonster",
+            "Alerts · target %1 || visible:0 · new:0 · auto-hide:0\nPanes · target %1\nfocus: panes",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = CaptureSink::new();
+    let sink_handle = sink.clone();
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, Box::new(sink));
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+
+    assert_eq!(reports[0].identity.identity.provider, Provider::Qmonster);
+    assert_eq!(
+        reports[0].identity.identity.role,
+        qmonster::domain::identity::Role::Monitor
+    );
+    assert_eq!(reports[0].identity.confidence, IdentityConfidence::Medium);
+    assert!(
+        !sink_handle
+            .snapshot()
+            .iter()
+            .any(|event| event.kind == AuditEventKind::IdentitySuppressed)
+    );
+}
+
+#[test]
+fn run_once_does_not_attach_stale_provider_token_samples_to_qmonster_pane() {
+    use qmonster::store::{QmonsterPaths, SqliteTokenUsageSink, TokenSample};
+
+    let td = tempfile::TempDir::new().unwrap();
+    let paths = QmonsterPaths::at(td.path());
+    paths.ensure().unwrap();
+
+    let token_sink = SqliteTokenUsageSink::open(&paths.sqlite_path())
+        .expect("SqliteTokenUsageSink::open must succeed on a fresh tempdir");
+    for idx in 0..3 {
+        token_sink
+            .record_sample(&TokenSample {
+                ts_unix_ms: idx * 1_000,
+                pane_id: "%3".into(),
+                provider: Provider::Codex,
+                input_tokens: Some(300_000 + (idx as u64) * 1_000),
+                output_tokens: Some(10_000),
+                cost_usd: None,
+                cached_input_tokens: None,
+            })
+            .expect("seed token sample");
+    }
+
+    let source = FixturePaneSource {
+        panes: vec![pane(
+            "%3",
+            "gemini:1:research",
+            "qmonster",
+            "Alerts · target %1 || visible:0 · new:0 · auto-hide:0\nPanes · target %1\nfocus: panes",
+            false,
+        )],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let mut ctx = Context::new(
+        QmonsterConfig::defaults(),
+        source,
+        notifier,
+        Box::new(InMemorySink::new()),
+    )
+    .with_token_usage_sink(token_sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+
+    assert_eq!(reports[0].identity.identity.provider, Provider::Qmonster);
+    assert!(
+        reports[0].recent_token_samples.is_empty(),
+        "Qmonster pane must not inherit stale token samples from a prior provider in the same pane id"
+    );
+}
+
+#[test]
 fn run_once_populates_cli_version_from_provider_surface() {
     let source = FixturePaneSource {
         panes: vec![pane(

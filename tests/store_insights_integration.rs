@@ -1,11 +1,12 @@
 use chrono::TimeZone as _;
+use qmonster::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyKind};
 use qmonster::domain::audit::{AuditEvent, AuditEventKind};
 use qmonster::domain::identity::{Provider, Role};
 use qmonster::domain::recommendation::Severity;
 use qmonster::store::{
     CostObservation, EventSink, InsightsWindow, RecommendationEventRecord, RecommendationOutcome,
-    RecommendationOutcomeRecord, SqliteAuditSink, SqliteCostUsageSink, SqliteInsightsStore,
-    SqliteRecommendationLifecycleSink, SqliteTokenUsageSink, TokenSample,
+    RecommendationOutcomeRecord, SqliteAnomalySink, SqliteAuditSink, SqliteCostUsageSink,
+    SqliteInsightsStore, SqliteRecommendationLifecycleSink, SqliteTokenUsageSink, TokenSample,
 };
 use rusqlite::Connection;
 use tempfile::tempdir;
@@ -42,6 +43,9 @@ fn insights_query_empty_db_returns_zero_state() {
     assert_eq!(snapshot.cache.drift_count, 0);
     assert!(snapshot.timeline.is_empty());
     assert!(snapshot.actions.is_empty());
+    assert!(snapshot.next_best_action.data_available);
+    assert!(snapshot.next_best_action.action.is_none());
+    assert_eq!(snapshot.next_best_action.open_proposal_count, 0);
     assert!(!snapshot.ignored_available);
 }
 
@@ -134,6 +138,516 @@ fn insights_read_only_snapshot_supports_old_schema_db() {
     assert_eq!(snapshot.cache.latest_cache_ratio, None);
     assert_eq!(snapshot.cache.token_growth, Some(200));
     assert_eq!(snapshot.cache.cost_delta_usd, None);
+    assert!(!snapshot.next_best_action.data_available);
+    assert!(snapshot.next_best_action.action.is_none());
+}
+
+#[test]
+fn insights_next_best_action_selects_pending_strong_recommendation() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+
+    lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 10_000,
+            pane_id: "%1".into(),
+            provider: Some("Codex".into()),
+            role: Some("Review".into()),
+            situation: "Context pressure".into(),
+            action: "/compact".into(),
+            severity: "risk".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "context near critical".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%1:/compact".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 20_000,
+        })
+        .unwrap();
+
+    let action = snapshot
+        .next_best_action
+        .action
+        .as_ref()
+        .expect("pending strong rec should be selected");
+    assert!(snapshot.next_best_action.data_available);
+    assert_eq!(snapshot.next_best_action.open_proposal_count, 1);
+    assert_eq!(action.pane_id, "%1");
+    assert_eq!(action.action, "/compact");
+    assert_eq!(action.reason_summary, "context near critical");
+    assert_eq!(action.suggested_command.as_deref(), Some("/compact"));
+}
+
+#[test]
+fn insights_next_best_action_picks_latest_unaccepted_strong_rec() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+
+    let older = lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 10_000,
+            pane_id: "%1".into(),
+            provider: Some("Claude".into()),
+            role: Some("Main".into()),
+            situation: "Context pressure".into(),
+            action: "/compact".into(),
+            severity: "risk".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "older pending".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%1:/compact".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    assert!(older > 0);
+    let accepted = lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 20_000,
+            pane_id: "%2".into(),
+            provider: Some("Codex".into()),
+            role: Some("Review".into()),
+            situation: "Context pressure".into(),
+            action: "/compact".into(),
+            severity: "risk".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "accepted newer".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%2:/compact".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: 21_000,
+            recommendation_event_id: Some(accepted),
+            pane_id: "%2".into(),
+            action: "/compact".into(),
+            outcome: RecommendationOutcome::Accepted,
+            audit_event_id: None,
+            summary: "accepted".into(),
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 30_000,
+            pane_id: "%3".into(),
+            provider: Some("Gemini".into()),
+            role: Some("Main".into()),
+            situation: "Quota-tight / cost".into(),
+            action: "quota-pressure: pace requests".into(),
+            severity: "warning".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "latest pending".into(),
+            suggested_command: None,
+            is_strong: true,
+            dedup_key: "%3:quota".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 40_000,
+        })
+        .unwrap();
+
+    let action = snapshot
+        .next_best_action
+        .action
+        .as_ref()
+        .expect("latest unaccepted strong rec should be selected");
+    assert_eq!(snapshot.next_best_action.open_proposal_count, 2);
+    assert_eq!(action.pane_id, "%3");
+    assert_eq!(action.reason_summary, "latest pending");
+    assert_eq!(action.suggested_command, None);
+}
+
+fn insert_completed_compact(
+    lifecycle: &SqliteRecommendationLifecycleSink,
+    event_ts: i64,
+    outcome_ts: i64,
+) {
+    let id = lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: event_ts,
+            pane_id: "%1".into(),
+            provider: Some("Codex".into()),
+            role: Some("Review".into()),
+            situation: "Context pressure".into(),
+            action: "/compact".into(),
+            severity: "risk".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "context near critical".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%1:/compact".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: outcome_ts,
+            recommendation_event_id: Some(id),
+            pane_id: "%1".into(),
+            action: "/compact".into(),
+            outcome: RecommendationOutcome::Completed,
+            audit_event_id: None,
+            summary: "completed".into(),
+        })
+        .unwrap();
+}
+
+fn insert_token_series(db_path: &std::path::Path, points: &[(i64, u64, u64)]) {
+    let tokens = SqliteTokenUsageSink::open(db_path).unwrap();
+    for (ts, input, cached) in points {
+        tokens
+            .record_sample(&TokenSample {
+                ts_unix_ms: *ts,
+                pane_id: "%1".into(),
+                provider: Provider::Codex,
+                input_tokens: Some(*input),
+                output_tokens: Some(0),
+                cost_usd: None,
+                cached_input_tokens: Some(*cached),
+            })
+            .unwrap();
+    }
+}
+
+#[test]
+fn compact_payoff_reports_saved_tokens_when_threshold_and_samples_pass() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+    insert_completed_compact(&lifecycle, 10_000, 20_000);
+    insert_token_series(
+        &db_path,
+        &[
+            (1_000, 0, 0),
+            (2_000, 1_500, 0),
+            (3_000, 3_000, 0),
+            (4_000, 4_500, 0),
+            (5_000, 6_000, 0),
+            (9_000, 8_000, 500),
+            (20_000, 8_000, 8_000),
+            (21_000, 8_040, 8_000),
+            (22_000, 8_080, 8_000),
+            (23_000, 8_120, 8_000),
+            (24_000, 8_160, 8_000),
+            (30_000, 8_200, 8_200),
+        ],
+    );
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 40_000,
+        })
+        .unwrap();
+
+    let payoff = snapshot.last_compact_payoff;
+    assert_eq!(payoff.status, "saved");
+    assert_eq!(payoff.input_tokens_saved, Some(7_800));
+    assert_eq!(payoff.before_cache_state.as_deref(), Some("cold"));
+    assert_eq!(payoff.after_cache_state.as_deref(), Some("warm"));
+}
+
+#[test]
+fn compact_payoff_reports_neutral_when_change_is_below_threshold() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+    insert_completed_compact(&lifecycle, 10_000, 20_000);
+    insert_token_series(
+        &db_path,
+        &[
+            (1_000, 0, 0),
+            (2_000, 2_000, 0),
+            (3_000, 4_000, 0),
+            (4_000, 6_000, 0),
+            (5_000, 8_000, 0),
+            (9_000, 10_000, 4_000),
+            (20_000, 10_000, 4_000),
+            (21_000, 11_920, 4_000),
+            (22_000, 13_840, 4_000),
+            (23_000, 15_760, 4_000),
+            (24_000, 17_680, 4_000),
+            (30_000, 19_600, 4_000),
+        ],
+    );
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 40_000,
+        })
+        .unwrap();
+
+    let payoff = snapshot.last_compact_payoff;
+    assert_eq!(payoff.status, "neutral");
+    assert_eq!(payoff.input_tokens_saved, Some(400));
+}
+
+#[test]
+fn compact_payoff_reports_regressed_when_after_growth_is_higher() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+    insert_completed_compact(&lifecycle, 10_000, 20_000);
+    insert_token_series(
+        &db_path,
+        &[
+            (1_000, 0, 0),
+            (2_000, 200, 0),
+            (3_000, 400, 0),
+            (4_000, 600, 0),
+            (5_000, 800, 0),
+            (9_000, 1_000, 500),
+            (20_000, 1_000, 500),
+            (21_000, 1_800, 500),
+            (22_000, 2_600, 500),
+            (23_000, 3_400, 500),
+            (24_000, 4_200, 500),
+            (30_000, 5_000, 500),
+        ],
+    );
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 40_000,
+        })
+        .unwrap();
+
+    let payoff = snapshot.last_compact_payoff;
+    assert_eq!(payoff.status, "regressed");
+    assert_eq!(payoff.input_tokens_saved, Some(-3_000));
+}
+
+#[test]
+fn compact_payoff_reports_na_when_sample_count_is_too_low() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+    insert_completed_compact(&lifecycle, 10_000, 20_000);
+    insert_token_series(&db_path, &[(9_000, 8_000, 0), (20_000, 8_000, 0)]);
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 40_000,
+        })
+        .unwrap();
+
+    let payoff = snapshot.last_compact_payoff;
+    assert_eq!(payoff.status, "n/a");
+    assert!(payoff.input_tokens_saved.is_none());
+}
+
+#[test]
+fn cost_breakdown_groups_window_cost_by_pane_model_and_situation() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+    lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Some("Codex".into()),
+            role: Some("Review".into()),
+            situation: "Context pressure".into(),
+            action: "/compact".into(),
+            severity: "warning".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "context near critical".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%1:/compact".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 1_000,
+            pane_id: "%2".into(),
+            provider: Some("Claude".into()),
+            role: Some("Main".into()),
+            situation: "Verbose review".into(),
+            action: "verbose-output".into(),
+            severity: "concern".into(),
+            source_kind: "Heuristic".into(),
+            reason_summary: "verbose output".into(),
+            suggested_command: None,
+            is_strong: false,
+            dedup_key: "%2:verbose".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    let costs = SqliteCostUsageSink::open(&db_path).unwrap();
+    for obs in [
+        CostObservation {
+            ts_unix_ms: 2_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            cumulative_cost_usd: 0.40,
+        },
+        CostObservation {
+            ts_unix_ms: 3_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            cumulative_cost_usd: 0.74,
+        },
+        CostObservation {
+            ts_unix_ms: 2_000,
+            pane_id: "%2".into(),
+            provider: Provider::Claude,
+            cumulative_cost_usd: 0.38,
+        },
+    ] {
+        costs.record_observation(&obs).unwrap();
+    }
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 10_000,
+        })
+        .unwrap();
+
+    assert!((snapshot.cost_breakdown.total_usd - 1.12).abs() < 1e-9);
+    assert!(
+        snapshot
+            .cost_breakdown
+            .by_pane
+            .iter()
+            .any(|row| row.label == "%1 Codex" && (row.cost_delta_usd - 0.74).abs() < 1e-9)
+    );
+    assert!(
+        snapshot
+            .cost_breakdown
+            .by_model
+            .iter()
+            .any(|row| row.label == "Codex" && (row.cost_delta_usd - 0.74).abs() < 1e-9)
+    );
+    assert!(
+        snapshot
+            .cost_breakdown
+            .by_situation
+            .iter()
+            .any(|row| row.label == "Context pressure" && (row.cost_delta_usd - 0.74).abs() < 1e-9)
+    );
+}
+
+#[test]
+fn cost_breakdown_no_data_returns_empty_groups() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 10_000,
+        })
+        .unwrap();
+
+    assert_eq!(snapshot.cost_breakdown.total_usd, 0.0);
+    assert!(snapshot.cost_breakdown.by_pane.is_empty());
+    assert!(snapshot.cost_breakdown.by_model.is_empty());
+    assert!(snapshot.cost_breakdown.by_situation.is_empty());
+}
+
+#[test]
+fn anomaly_correlations_group_two_panes_in_same_minute() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let sink = SqliteAnomalySink::open(&db_path).unwrap();
+    for (pane, kind, confidence) in [
+        ("%1", AnomalyKind::ErrorBurst, AnomalyConfidence::High),
+        (
+            "%2",
+            AnomalyKind::CacheDiscontinuity,
+            AnomalyConfidence::Medium,
+        ),
+    ] {
+        sink.insert_anomaly_event(&AnomalyEvent {
+            timestamp: 1_700_000_020,
+            pane_id: pane.into(),
+            kind,
+            confidence,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "correlated".into(),
+            evidence: Vec::new(),
+        })
+        .unwrap();
+    }
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: 1_700_000_000_000,
+            until_ms: 1_700_000_120_000,
+        })
+        .unwrap();
+
+    assert_eq!(snapshot.anomaly_correlations.len(), 1);
+    let row = &snapshot.anomaly_correlations[0];
+    assert_eq!(row.pane_count, 2);
+    assert!(row.summary.contains("%1(ErrorBurst:high)"));
+    assert!(row.summary.contains("%2(CacheDiscontinuity:medium)"));
+}
+
+#[test]
+fn anomaly_correlations_ignore_same_pane_or_different_minutes() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let sink = SqliteAnomalySink::open(&db_path).unwrap();
+    for (ts, pane) in [
+        (1_700_000_020, "%1"),
+        (1_700_000_030, "%1"),
+        (1_700_000_180, "%2"),
+    ] {
+        sink.insert_anomaly_event(&AnomalyEvent {
+            timestamp: ts,
+            pane_id: pane.into(),
+            kind: AnomalyKind::ErrorBurst,
+            confidence: AnomalyConfidence::High,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "not correlated".into(),
+            evidence: Vec::new(),
+        })
+        .unwrap();
+    }
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: 1_700_000_000_000,
+            until_ms: 1_700_000_240_000,
+        })
+        .unwrap();
+
+    assert!(snapshot.anomaly_correlations.is_empty());
 }
 
 #[test]
@@ -440,6 +954,108 @@ fn cache_summary_reports_cache_states_latest_ratio_token_growth_and_cost_delta()
 }
 
 #[test]
+fn cache_summary_buckets_token_growth_by_pane_and_provider() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+
+    let tokens = SqliteTokenUsageSink::open(&db_path).unwrap();
+    for sample in [
+        TokenSample {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(1_000),
+            output_tokens: Some(10),
+            cost_usd: None,
+            cached_input_tokens: Some(0),
+        },
+        TokenSample {
+            ts_unix_ms: 2_000,
+            pane_id: "%2".into(),
+            provider: Provider::Gemini,
+            input_tokens: Some(10),
+            output_tokens: Some(5),
+            cost_usd: None,
+            cached_input_tokens: Some(90),
+        },
+        TokenSample {
+            ts_unix_ms: 3_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(1_100),
+            output_tokens: Some(20),
+            cost_usd: None,
+            cached_input_tokens: Some(100),
+        },
+        TokenSample {
+            ts_unix_ms: 4_000,
+            pane_id: "%2".into(),
+            provider: Provider::Gemini,
+            input_tokens: Some(20),
+            output_tokens: Some(10),
+            cost_usd: None,
+            cached_input_tokens: Some(80),
+        },
+    ] {
+        tokens.record_sample(&sample).unwrap();
+    }
+
+    let costs = SqliteCostUsageSink::open(&db_path).unwrap();
+    costs
+        .record_observation(&CostObservation {
+            ts_unix_ms: 1_500,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            cumulative_cost_usd: 0.20,
+        })
+        .unwrap();
+    costs
+        .record_observation(&CostObservation {
+            ts_unix_ms: 2_500,
+            pane_id: "%2".into(),
+            provider: Provider::Gemini,
+            cumulative_cost_usd: 0.03,
+        })
+        .unwrap();
+
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 5_000,
+        })
+        .unwrap();
+
+    assert_eq!(snapshot.cache.token_growth, Some(110));
+    assert!((snapshot.cache.cost_delta_usd.unwrap() - 0.23).abs() < 0.000_001);
+    assert_eq!(snapshot.cache.latest_cache_ratio, Some(0.8));
+    assert_eq!(snapshot.data_completeness.pane_bucket_count, 2);
+    assert_eq!(snapshot.data_completeness.token_sample_count, 4);
+    assert_eq!(snapshot.data_completeness.cache_ratio_bucket_count, 2);
+    assert_eq!(snapshot.data_completeness.cost_delta_bucket_count, 2);
+
+    let codex = snapshot
+        .pane_buckets
+        .iter()
+        .find(|bucket| bucket.pane_id == "%1" && bucket.provider == "Codex")
+        .unwrap();
+    assert_eq!(codex.token_growth, Some(100));
+    assert_eq!(codex.latest_cache_ratio, Some(0.08));
+    assert!((codex.cost_delta_usd.unwrap() - 0.20).abs() < 0.000_001);
+    assert_eq!(codex.sample_count, 2);
+
+    let gemini = snapshot
+        .pane_buckets
+        .iter()
+        .find(|bucket| bucket.pane_id == "%2" && bucket.provider == "Gemini")
+        .unwrap();
+    assert_eq!(gemini.token_growth, Some(10));
+    assert_eq!(gemini.latest_cache_ratio, Some(0.8));
+    assert!((gemini.cost_delta_usd.unwrap() - 0.03).abs() < 0.000_001);
+    assert_eq!(gemini.sample_count, 2);
+}
+
+#[test]
 fn cache_summary_ignores_trailing_sparse_token_row_for_ratio_and_growth() {
     let td = tempdir().unwrap();
     let db_path = td.path().join("qmonster.db");
@@ -531,6 +1147,57 @@ fn cache_summary_saturates_token_growth_on_counter_reset() {
         .unwrap();
 
     assert_eq!(snapshot.cache.token_growth, Some(0));
+}
+
+#[test]
+fn cache_summary_continues_token_growth_after_counter_reset() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+
+    let tokens = SqliteTokenUsageSink::open(&db_path).unwrap();
+    for sample in [
+        TokenSample {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(1_000),
+            output_tokens: Some(10),
+            cost_usd: None,
+            cached_input_tokens: Some(500),
+        },
+        TokenSample {
+            ts_unix_ms: 2_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(100),
+            output_tokens: Some(20),
+            cost_usd: None,
+            cached_input_tokens: Some(50),
+        },
+        TokenSample {
+            ts_unix_ms: 3_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(160),
+            output_tokens: Some(30),
+            cost_usd: None,
+            cached_input_tokens: Some(40),
+        },
+    ] {
+        tokens.record_sample(&sample).unwrap();
+    }
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: now_ms + 60_000,
+        })
+        .unwrap();
+
+    assert_eq!(snapshot.cache.token_growth, Some(60));
+    assert_eq!(snapshot.pane_buckets[0].token_growth, Some(60));
 }
 
 #[test]
@@ -710,6 +1377,128 @@ fn insights_lifecycle_counts_outcomes_and_ttl_ignored() {
             .iter()
             .any(|item| item.outcome == "ignored" && item.action.contains("cache"))
     );
+}
+
+#[test]
+fn insights_lifecycle_reports_action_metric_impact_windows() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+
+    let compact_id = lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 10_000,
+            pane_id: "%1".into(),
+            provider: Some("Codex".into()),
+            role: Some("Review".into()),
+            situation: "Context pressure".into(),
+            action: "/compact".into(),
+            severity: "warning".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "context near critical".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%1:/compact".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: 20_000,
+            recommendation_event_id: Some(compact_id),
+            pane_id: "%1".into(),
+            action: "/compact".into(),
+            outcome: RecommendationOutcome::Completed,
+            audit_event_id: Some(42),
+            summary: "prompt sent".into(),
+        })
+        .unwrap();
+
+    let tokens = SqliteTokenUsageSink::open(&db_path).unwrap();
+    for sample in [
+        TokenSample {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(100),
+            output_tokens: Some(10),
+            cost_usd: None,
+            cached_input_tokens: Some(100),
+        },
+        TokenSample {
+            ts_unix_ms: 9_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(300),
+            output_tokens: Some(20),
+            cost_usd: None,
+            cached_input_tokens: Some(700),
+        },
+        TokenSample {
+            ts_unix_ms: 20_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(300),
+            output_tokens: Some(20),
+            cost_usd: None,
+            cached_input_tokens: Some(700),
+        },
+        TokenSample {
+            ts_unix_ms: 30_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            input_tokens: Some(340),
+            output_tokens: Some(25),
+            cost_usd: None,
+            cached_input_tokens: Some(160),
+        },
+    ] {
+        tokens.record_sample(&sample).unwrap();
+    }
+
+    let costs = SqliteCostUsageSink::open(&db_path).unwrap();
+    costs
+        .record_observation(&CostObservation {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            cumulative_cost_usd: 0.20,
+        })
+        .unwrap();
+    costs
+        .record_observation(&CostObservation {
+            ts_unix_ms: 30_000,
+            pane_id: "%1".into(),
+            provider: Provider::Codex,
+            cumulative_cost_usd: 0.24,
+        })
+        .unwrap();
+
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 40_000,
+        })
+        .unwrap();
+
+    let impact = snapshot
+        .action_impacts
+        .iter()
+        .find(|impact| impact.action == "/compact")
+        .unwrap();
+    assert_eq!(impact.event_id, compact_id);
+    assert_eq!(impact.pane_id, "%1");
+    assert_eq!(impact.provider.as_deref(), Some("Codex"));
+    assert_eq!(impact.outcome, "completed");
+    assert_eq!(impact.before_token_growth, Some(200));
+    assert_eq!(impact.after_token_growth, Some(40));
+    assert_eq!(impact.token_growth_delta, Some(-160));
+    assert!((impact.before_cost_delta_usd.unwrap() - 0.20).abs() < 0.000_001);
+    assert!((impact.after_cost_delta_usd.unwrap() - 0.04).abs() < 0.000_001);
+    assert!((impact.cost_delta_usd.unwrap() + 0.16).abs() < 0.000_001);
+    assert_eq!(impact.before_cache_ratio, Some(0.7));
+    assert_eq!(impact.after_cache_ratio, Some(0.32));
 }
 
 #[test]

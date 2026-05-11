@@ -568,8 +568,11 @@ side_effects (N):
     pane을 만들고 `claude:1:main`, `codex:1:review`, `gemini:1:research`,
     `qmonster:1:monitor` title을 설정하는 launcher)와
     `~/.tmux/qmonster.tmux.conf` (mouse/history/navigation/title helper)를
-    생성합니다. 실행 후 `tmux source-file ~/.tmux/qmonster.tmux.conf`,
-    `~/ts.sh qmonster ~/Qmonster` 순서로 사용합니다.
+    생성합니다. `~/ts.sh`는 새 session을 만들 때
+    `~/.tmux/qmonster.tmux.conf`가 있으면 pane split 전에 자동으로
+    source합니다. 현재 tmux server에 helper binding을 즉시 반영하려면
+    `tmux source-file ~/.tmux/qmonster.tmux.conf`를 한 번 실행한 뒤
+    `~/ts.sh qmonster ~/Qmonster`를 사용합니다.
   - **조작**: `1` / `2` / `3` / `4`, `Tab`, `←` / `→` 탭 전환,
     `↑` / `↓` 또는 `j` / `k` / mouse wheel 스크롤, `y` 현재
     탭 스니펫 복사, `P` 다시 / `q` / `Esc` 닫기.

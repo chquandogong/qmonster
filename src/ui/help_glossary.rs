@@ -93,7 +93,8 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
         ],
         HelpTopic::PaneStatus => &[
             "status: Qmonster가 pane의 provider/role을 얼마나 확실히 식별했는지 보여줍니다.",
-            "high/medium/low confidence는 identity resolver의 신뢰도입니다.",
+            "high/medium/low/conflict confidence는 identity resolver의 신뢰도입니다.",
+            "conflict는 title과 command가 서로 다른 provider를 가리켜 provider별 metric을 억제했다는 뜻입니다.",
         ],
         HelpTopic::PaneSignals => &[
             "signals: 터미널 출력과 동작 패턴에서 감지한 특이사항입니다.",
@@ -188,7 +189,8 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
         ],
         HelpTopic::PaneStatus => &[
             "status: how confidently Qmonster identified the pane provider and role.",
-            "high/medium/low confidence comes from the identity resolver.",
+            "high/medium/low/conflict confidence comes from the identity resolver.",
+            "conflict means title and command evidence disagree, so provider-specific metrics were suppressed.",
         ],
         HelpTopic::PaneSignals => &[
             "signals: unusual terminal output or behavior patterns.",

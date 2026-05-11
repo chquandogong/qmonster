@@ -65,6 +65,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: format!("cost_usd at ts={ts}"),
+            evidence: Vec::new(),
         }
     }
 

@@ -1255,6 +1255,8 @@ shows the `ui.footer.*` JSON template plus an OAuth-stays-informational
 note (per FAQ-documented OAuth cache limit). The Tmux tab copies a
 bundle installer that writes `~/ts.sh` and
 `~/.tmux/qmonster.tmux.conf` for the recommended four-pane workflow.
+When `~/ts.sh` creates a new session, it sources the Qmonster tmux
+config before splitting panes if the config file exists.
 
 v1.28.0 continues **Phase F** with **F-7-config operator-tunable cache thresholds**:
 new `CacheConfig` struct in `src/app/config.rs` with 6 fields

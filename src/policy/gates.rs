@@ -399,6 +399,11 @@ mod tests {
     }
 
     #[test]
+    fn provider_specific_suppressed_on_identity_conflict() {
+        assert!(!allow_provider_specific(IdentityConfidence::Conflict));
+    }
+
+    #[test]
     fn aggressive_mode_requires_quota_tight_flag() {
         assert!(!allow_aggressive(false));
         assert!(allow_aggressive(true));

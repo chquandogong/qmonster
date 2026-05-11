@@ -87,6 +87,44 @@ impl SqliteAuditSink {
     }
 }
 
+pub fn recent_audit_max_severity_at(
+    path: &Path,
+    now: chrono::DateTime<Utc>,
+    window_secs: i64,
+) -> Result<Option<Severity>, SqliteError> {
+    let since = now - chrono::Duration::seconds(window_secs.max(0));
+    let conn =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| SqliteError::Open(e.to_string()))?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT severity FROM audit_events
+             WHERE ts_utc >= ?1 AND ts_utc <= ?2",
+        )
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    let rows = stmt
+        .query_map(
+            rusqlite::params![since.to_rfc3339(), now.to_rfc3339()],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    let mut top: Option<Severity> = None;
+    for row in rows {
+        if let Some(severity) = parse_severity(&row.map_err(|e| SqliteError::Query(e.to_string()))?)
+        {
+            top = Some(top.map_or(severity, |current| current.max(severity)));
+        }
+    }
+    Ok(top)
+}
+
+pub fn recent_audit_max_severity(
+    path: &Path,
+    window_secs: i64,
+) -> Result<Option<Severity>, SqliteError> {
+    recent_audit_max_severity_at(path, Utc::now(), window_secs)
+}
+
 impl EventSink for SqliteAuditSink {
     fn record(&self, event: AuditEvent) {
         let conn = self.db.connection().lock().expect("poisoned");
@@ -154,6 +192,7 @@ fn parse_kind(s: &str) -> Option<AuditEventKind> {
         "RuntimeRefreshCompleted" => Some(AuditEventKind::RuntimeRefreshCompleted),
         "RuntimeRefreshFailed" => Some(AuditEventKind::RuntimeRefreshFailed),
         "RuntimeRefreshBlocked" => Some(AuditEventKind::RuntimeRefreshBlocked),
+        "IdentitySuppressed" => Some(AuditEventKind::IdentitySuppressed),
         "TokenUsageReadFailed" => Some(AuditEventKind::TokenUsageReadFailed),
         _ => None,
     }
@@ -229,6 +268,7 @@ mod tests {
     use crate::domain::identity::{Provider, Role};
     use crate::domain::recommendation::Severity;
     use crate::store::sink::EventSink;
+    use chrono::TimeZone as _;
     use tempfile::TempDir;
 
     fn sample(kind: AuditEventKind) -> AuditEvent {
@@ -417,6 +457,47 @@ mod tests {
         let sink = SqliteAuditSink::open(&db_path).unwrap();
         let rows = sink.recent(10).unwrap();
         assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn recent_audit_max_severity_respects_recency_window() {
+        let td = TempDir::new().unwrap();
+        let path = td.path().join("q.db");
+        let _sink = SqliteAuditSink::open(&path).unwrap();
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute(
+            "INSERT INTO audit_events (ts_utc, kind, severity, pane_id, summary)
+             VALUES (?1, 'AlertFired', 'Risk', '%1', 'old')",
+            [Utc.with_ymd_and_hms(2026, 5, 11, 10, 0, 0)
+                .unwrap()
+                .to_rfc3339()],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO audit_events (ts_utc, kind, severity, pane_id, summary)
+             VALUES (?1, 'AlertFired', 'Warning', '%1', 'recent')",
+            [Utc.with_ymd_and_hms(2026, 5, 11, 10, 14, 0)
+                .unwrap()
+                .to_rfc3339()],
+        )
+        .unwrap();
+        let now = Utc.with_ymd_and_hms(2026, 5, 11, 10, 15, 0).unwrap();
+
+        let severity = recent_audit_max_severity_at(&path, now, 5 * 60).unwrap();
+
+        assert_eq!(severity, Some(Severity::Warning));
+    }
+
+    #[test]
+    fn recent_audit_max_severity_returns_none_without_recent_rows() {
+        let td = TempDir::new().unwrap();
+        let path = td.path().join("q.db");
+        let _sink = SqliteAuditSink::open(&path).unwrap();
+        let now = Utc.with_ymd_and_hms(2026, 5, 11, 10, 15, 0).unwrap();
+
+        let severity = recent_audit_max_severity_at(&path, now, 5 * 60).unwrap();
+
+        assert_eq!(severity, None);
     }
 
     #[test]

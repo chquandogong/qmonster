@@ -120,6 +120,7 @@ pub struct AnomalyEvent {
     pub severity: Severity,
     pub promoted: bool,
     pub reason: String,
+    pub evidence: Vec<AnomalyEvidence>,
 }
 
 #[cfg(test)]
@@ -204,6 +205,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: "cost_usd: 0.10 → 25.40".to_string(),
+            evidence: Vec::new(),
         };
         assert_eq!(event.timestamp, 1_700_000_000);
         assert_eq!(event.kind, AnomalyKind::CostSlope);

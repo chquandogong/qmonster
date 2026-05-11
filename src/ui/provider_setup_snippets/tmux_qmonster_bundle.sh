@@ -102,6 +102,9 @@ sync_pane_directories() {
 
 if ! tmux has-session -t "$session_name" 2>/dev/null; then
   tmux new-session -d -s "$session_name" -c "$target_dir"
+  if [[ -f "$HOME/.tmux/qmonster.tmux.conf" ]]; then
+    tmux source-file "$HOME/.tmux/qmonster.tmux.conf"
+  fi
   tmux split-window -h -c "$target_dir" -t "${session_name}:0"
   tmux split-window -v -c "$target_dir" -t "${session_name}:0.0"
   tmux split-window -v -c "$target_dir" -t "${session_name}:0.1"

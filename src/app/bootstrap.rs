@@ -96,6 +96,11 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// per session even if the comparison stays true for multiple
     /// polls. Evicted alongside `identity_history` on lifecycle reset.
     pub reported_drifts: std::collections::HashSet<(String, String)>,
+    /// Slice 0 Attribution Lock: per-session dedup for
+    /// `IdentitySuppressed` audit rows. Cleared when the pane lifecycle
+    /// resets or when the conflict resolves, so a fresh contradiction is
+    /// visible without logging every poll.
+    pub identity_conflicts_logged: std::collections::HashSet<String>,
     /// Phase F F-9 (dynamic profile switching): per-pane sliding
     /// window of `error_hint` observations, most-recent-first. The
     /// event loop pushes `signals.error_hint` to the front each tick
@@ -210,6 +215,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             pressure_metric_cache: std::collections::HashMap::new(),
             identity_history: std::collections::HashMap::new(),
             reported_drifts: std::collections::HashSet::new(),
+            identity_conflicts_logged: std::collections::HashSet::new(),
             recent_error_observations: std::collections::HashMap::new(),
             auto_snapshot_dedup: std::collections::HashMap::new(),
             anomaly_history: std::collections::HashMap::new(),

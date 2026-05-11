@@ -12,14 +12,20 @@ pub mod snapshots;
 pub(crate) mod sqlite;
 pub mod token_usage;
 
-pub use anomaly_history::{AnomalyHistorySnapshot, push_snapshot_into_history};
+pub use anomaly_history::{
+    AnomalyHistorySnapshot, push_snapshot_into_history, push_snapshot_into_history_at,
+};
 pub use anomaly_sink::SqliteAnomalySink;
 pub use archive_fs::{ArchiveOutcome, ArchiveWriter};
-pub use audit::{AuditRow, SqliteAuditSink};
+pub use audit::{
+    AuditRow, SqliteAuditSink, recent_audit_max_severity, recent_audit_max_severity_at,
+};
 pub use cost_usage::{CostBudgetAlert, CostBudgetAlertLevel, CostObservation, SqliteCostUsageSink};
 pub use insights::{
-    ActionLedgerRow, CacheInsightSummary, InsightsSnapshot, InsightsWindow,
-    RecommendationTimelineItem, SituationSummary, SqliteInsightsStore,
+    ActionImpactSummary, ActionLedgerRow, CacheInsightSummary, CostBreakdownRow,
+    CostBreakdownSummary, CrossPaneAnomalyCorrelation, InsightsDataCompleteness, InsightsSnapshot,
+    InsightsWindow, LastCompactPayoffSummary, NextBestActionItem, NextBestActionSummary,
+    PaneInsightBucket, RecommendationTimelineItem, SituationSummary, SqliteInsightsStore,
 };
 pub use paths::QmonsterPaths;
 pub use recommendation_lifecycle::{

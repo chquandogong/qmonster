@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{cmp::Ordering, collections::BTreeMap, path::Path};
 
 use chrono::TimeZone as _;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -25,6 +25,136 @@ pub struct CacheInsightSummary {
     pub latest_cache_ratio: Option<f64>,
     pub token_growth: Option<i64>,
     pub cost_delta_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PaneInsightBucket {
+    pub pane_id: String,
+    pub provider: String,
+    pub latest_cache_ratio: Option<f64>,
+    pub token_growth: Option<i64>,
+    pub cost_delta_usd: Option<f64>,
+    pub sample_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NextBestActionItem {
+    pub ts_label: String,
+    pub pane_id: String,
+    pub provider: Option<String>,
+    pub situation: &'static str,
+    pub action: String,
+    pub severity: String,
+    pub reason_summary: String,
+    pub suggested_command: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NextBestActionSummary {
+    pub data_available: bool,
+    pub action: Option<NextBestActionItem>,
+    pub open_proposal_count: u64,
+}
+
+impl NextBestActionSummary {
+    fn unavailable() -> Self {
+        Self {
+            data_available: false,
+            action: None,
+            open_proposal_count: 0,
+        }
+    }
+
+    fn no_pending() -> Self {
+        Self {
+            data_available: true,
+            action: None,
+            open_proposal_count: 0,
+        }
+    }
+}
+
+impl Default for NextBestActionSummary {
+    fn default() -> Self {
+        Self::unavailable()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LastCompactPayoffSummary {
+    pub status: String,
+    pub outcome_ts_label: Option<String>,
+    pub age_label: Option<String>,
+    pub pane_id: Option<String>,
+    pub input_tokens_saved: Option<i64>,
+    pub cost_usd_saved: Option<f64>,
+    pub before_cache_state: Option<String>,
+    pub after_cache_state: Option<String>,
+    pub sample_count: u64,
+}
+
+impl Default for LastCompactPayoffSummary {
+    fn default() -> Self {
+        Self {
+            status: "n/a".into(),
+            outcome_ts_label: None,
+            age_label: None,
+            pane_id: None,
+            input_tokens_saved: None,
+            cost_usd_saved: None,
+            before_cache_state: None,
+            after_cache_state: None,
+            sample_count: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CostBreakdownRow {
+    pub label: String,
+    pub cost_delta_usd: f64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CostBreakdownSummary {
+    pub total_usd: f64,
+    pub by_pane: Vec<CostBreakdownRow>,
+    pub by_model: Vec<CostBreakdownRow>,
+    pub by_situation: Vec<CostBreakdownRow>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CrossPaneAnomalyCorrelation {
+    pub window_label: String,
+    pub pane_count: usize,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ActionImpactSummary {
+    pub event_id: i64,
+    pub outcome_ts_label: String,
+    pub pane_id: String,
+    pub provider: Option<String>,
+    pub action: String,
+    pub outcome: String,
+    pub before_token_growth: Option<i64>,
+    pub after_token_growth: Option<i64>,
+    pub token_growth_delta: Option<i64>,
+    pub before_cost_delta_usd: Option<f64>,
+    pub after_cost_delta_usd: Option<f64>,
+    pub cost_delta_usd: Option<f64>,
+    pub before_cache_ratio: Option<f64>,
+    pub after_cache_ratio: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InsightsDataCompleteness {
+    pub pane_bucket_count: usize,
+    pub token_sample_count: u64,
+    pub cache_ratio_bucket_count: usize,
+    pub cost_delta_bucket_count: usize,
+    pub action_impact_count: usize,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -56,9 +186,82 @@ pub struct InsightsSnapshot {
     pub window: InsightsWindow,
     pub situations: Vec<SituationSummary>,
     pub cache: CacheInsightSummary,
+    pub pane_buckets: Vec<PaneInsightBucket>,
+    pub next_best_action: NextBestActionSummary,
+    pub last_compact_payoff: LastCompactPayoffSummary,
+    pub cost_breakdown: CostBreakdownSummary,
+    pub anomaly_correlations: Vec<CrossPaneAnomalyCorrelation>,
+    pub action_impacts: Vec<ActionImpactSummary>,
+    pub data_completeness: InsightsDataCompleteness,
     pub timeline: Vec<RecommendationTimelineItem>,
     pub actions: Vec<ActionLedgerRow>,
     pub ignored_available: bool,
+}
+
+#[derive(Debug, Default)]
+struct PaneInsightRollup {
+    pane_buckets: Vec<PaneInsightBucket>,
+    latest_cache_ratio: Option<f64>,
+    token_growth: Option<i64>,
+    cost_delta_usd: Option<f64>,
+}
+
+#[derive(Debug)]
+struct PaneInsightAccumulator {
+    pane_id: String,
+    provider: String,
+    latest_cache_ratio: Option<f64>,
+    previous_input_tokens: Option<i64>,
+    token_growth: i64,
+    saw_input_tokens: bool,
+    cost_delta_usd: Option<f64>,
+    sample_count: u64,
+}
+
+impl PaneInsightAccumulator {
+    fn new(pane_id: String, provider: String) -> Self {
+        Self {
+            pane_id,
+            provider,
+            latest_cache_ratio: None,
+            previous_input_tokens: None,
+            token_growth: 0,
+            saw_input_tokens: false,
+            cost_delta_usd: None,
+            sample_count: 0,
+        }
+    }
+
+    fn observe_token_sample(&mut self, input_tokens: Option<i64>, cache_ratio: Option<f64>) {
+        self.sample_count += 1;
+        if let Some(input_tokens) = input_tokens {
+            if let Some(previous) = self.previous_input_tokens
+                && input_tokens >= previous
+            {
+                self.token_growth += input_tokens - previous;
+            }
+            self.previous_input_tokens = Some(input_tokens);
+            self.saw_input_tokens = true;
+        }
+        if let Some(cache_ratio) = cache_ratio {
+            self.latest_cache_ratio = Some(cache_ratio);
+        }
+    }
+
+    fn observe_cost_delta(&mut self, cost_delta_usd: f64) {
+        self.cost_delta_usd = Some(self.cost_delta_usd.unwrap_or(0.0) + cost_delta_usd);
+    }
+
+    fn into_bucket(self) -> PaneInsightBucket {
+        PaneInsightBucket {
+            pane_id: self.pane_id,
+            provider: self.provider,
+            latest_cache_ratio: self.latest_cache_ratio,
+            token_growth: self.saw_input_tokens.then_some(self.token_growth),
+            cost_delta_usd: self.cost_delta_usd,
+            sample_count: self.sample_count,
+        }
+    }
 }
 
 pub struct SqliteInsightsStore {
@@ -224,6 +427,14 @@ fn outcome_for_kind(kind: &str) -> &'static str {
     }
 }
 
+fn metric_delta_i64(before: Option<i64>, after: Option<i64>) -> Option<i64> {
+    before.zip(after).map(|(before, after)| after - before)
+}
+
+fn metric_delta_f64(before: Option<f64>, after: Option<f64>) -> Option<f64> {
+    before.zip(after).map(|(before, after)| after - before)
+}
+
 fn apply_lifecycle_outcome(row: &mut ActionLedgerRow, outcome: &str) {
     match outcome {
         "accepted" => row.accepted += 1,
@@ -290,6 +501,488 @@ fn cache_ratio(input: Option<i64>, cached: Option<i64>) -> Option<f64> {
     } else {
         Some((cached / total * 100.0).round() / 100.0)
     }
+}
+
+fn bucket_entry(
+    buckets: &mut BTreeMap<(String, String), PaneInsightAccumulator>,
+    pane_id: String,
+    provider: String,
+) -> &mut PaneInsightAccumulator {
+    buckets
+        .entry((pane_id.clone(), provider.clone()))
+        .or_insert_with(|| PaneInsightAccumulator::new(pane_id, provider))
+}
+
+fn sort_pane_buckets(buckets: &mut [PaneInsightBucket]) {
+    buckets.sort_by(|a, b| {
+        b.token_growth
+            .unwrap_or(0)
+            .cmp(&a.token_growth.unwrap_or(0))
+            .then_with(|| {
+                b.cost_delta_usd
+                    .unwrap_or(0.0)
+                    .partial_cmp(&a.cost_delta_usd.unwrap_or(0.0))
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then_with(|| b.sample_count.cmp(&a.sample_count))
+            .then_with(|| a.pane_id.cmp(&b.pane_id))
+            .then_with(|| a.provider.cmp(&b.provider))
+    });
+}
+
+fn collect_pane_insight_rollup(
+    conn: &Connection,
+    window: InsightsWindow,
+) -> Result<PaneInsightRollup, SqliteError> {
+    let mut buckets = BTreeMap::<(String, String), PaneInsightAccumulator>::new();
+    let mut latest_cache_ratio = None;
+
+    if table_exists(conn, "token_usage_samples")? {
+        if table_has_column(conn, "token_usage_samples", "cached_input_tokens")? {
+            let mut stmt = conn
+                .prepare_cached(
+                    "SELECT pane_id, provider, input_tokens, cached_input_tokens \
+                     FROM token_usage_samples \
+                     WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
+                     ORDER BY ts_unix_ms ASC, id ASC",
+                )
+                .map_err(|e| SqliteError::Query(e.to_string()))?;
+            let rows = stmt
+                .query_map(params![window.since_ms, window.until_ms], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                        row.get::<_, Option<i64>>(3)?,
+                    ))
+                })
+                .map_err(|e| SqliteError::Query(e.to_string()))?;
+            for row in rows {
+                let (pane_id, provider, input_tokens, cached_input_tokens) =
+                    row.map_err(|e| SqliteError::Query(e.to_string()))?;
+                let ratio = cache_ratio(input_tokens, cached_input_tokens);
+                bucket_entry(&mut buckets, pane_id, provider)
+                    .observe_token_sample(input_tokens, ratio);
+                if let Some(ratio) = ratio {
+                    latest_cache_ratio = Some(ratio);
+                }
+            }
+        } else {
+            let mut stmt = conn
+                .prepare_cached(
+                    "SELECT pane_id, provider, input_tokens \
+                     FROM token_usage_samples \
+                     WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
+                     ORDER BY ts_unix_ms ASC, id ASC",
+                )
+                .map_err(|e| SqliteError::Query(e.to_string()))?;
+            let rows = stmt
+                .query_map(params![window.since_ms, window.until_ms], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                    ))
+                })
+                .map_err(|e| SqliteError::Query(e.to_string()))?;
+            for row in rows {
+                let (pane_id, provider, input_tokens) =
+                    row.map_err(|e| SqliteError::Query(e.to_string()))?;
+                bucket_entry(&mut buckets, pane_id, provider)
+                    .observe_token_sample(input_tokens, None);
+            }
+        }
+    }
+
+    let mut cost_delta_usd = None;
+    if table_exists(conn, "cost_usage_events")? {
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT pane_id, provider, SUM(cost_usd_delta) \
+                 FROM cost_usage_events \
+                 WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
+                 GROUP BY pane_id, provider \
+                 ORDER BY pane_id ASC, provider ASC",
+            )
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![window.since_ms, window.until_ms], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, f64>(2)?,
+                ))
+            })
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        for row in rows {
+            let (pane_id, provider, delta) = row.map_err(|e| SqliteError::Query(e.to_string()))?;
+            bucket_entry(&mut buckets, pane_id, provider).observe_cost_delta(delta);
+            cost_delta_usd = Some(cost_delta_usd.unwrap_or(0.0) + delta);
+        }
+    }
+
+    let mut pane_buckets: Vec<PaneInsightBucket> = buckets
+        .into_values()
+        .map(PaneInsightAccumulator::into_bucket)
+        .collect();
+    sort_pane_buckets(&mut pane_buckets);
+
+    let mut token_growth = None;
+    for bucket in &pane_buckets {
+        if let Some(growth) = bucket.token_growth {
+            token_growth = Some(token_growth.unwrap_or(0) + growth);
+        }
+    }
+
+    Ok(PaneInsightRollup {
+        pane_buckets,
+        latest_cache_ratio,
+        token_growth,
+        cost_delta_usd,
+    })
+}
+
+fn collect_metric_window_for_pane(
+    conn: &Connection,
+    window: InsightsWindow,
+    pane_id: &str,
+    provider: Option<&str>,
+) -> Result<MetricWindowSummary, SqliteError> {
+    let mut buckets = BTreeMap::<(String, String), PaneInsightAccumulator>::new();
+    let mut latest_cache_ratio = None;
+
+    if table_exists(conn, "token_usage_samples")? {
+        if table_has_column(conn, "token_usage_samples", "cached_input_tokens")? {
+            let mut stmt = conn
+                .prepare_cached(
+                    "SELECT pane_id, provider, input_tokens, cached_input_tokens \
+                     FROM token_usage_samples \
+                     WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
+                       AND pane_id = ?3 \
+                       AND (?4 IS NULL OR provider = ?4) \
+                     ORDER BY ts_unix_ms ASC, id ASC",
+                )
+                .map_err(|e| SqliteError::Query(e.to_string()))?;
+            let rows = stmt
+                .query_map(
+                    params![window.since_ms, window.until_ms, pane_id, provider],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, Option<i64>>(2)?,
+                            row.get::<_, Option<i64>>(3)?,
+                        ))
+                    },
+                )
+                .map_err(|e| SqliteError::Query(e.to_string()))?;
+            for row in rows {
+                let (pane_id, provider, input_tokens, cached_input_tokens) =
+                    row.map_err(|e| SqliteError::Query(e.to_string()))?;
+                let ratio = cache_ratio(input_tokens, cached_input_tokens);
+                bucket_entry(&mut buckets, pane_id, provider)
+                    .observe_token_sample(input_tokens, ratio);
+                if let Some(ratio) = ratio {
+                    latest_cache_ratio = Some(ratio);
+                }
+            }
+        } else {
+            let mut stmt = conn
+                .prepare_cached(
+                    "SELECT pane_id, provider, input_tokens \
+                     FROM token_usage_samples \
+                     WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
+                       AND pane_id = ?3 \
+                       AND (?4 IS NULL OR provider = ?4) \
+                     ORDER BY ts_unix_ms ASC, id ASC",
+                )
+                .map_err(|e| SqliteError::Query(e.to_string()))?;
+            let rows = stmt
+                .query_map(
+                    params![window.since_ms, window.until_ms, pane_id, provider],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, Option<i64>>(2)?,
+                        ))
+                    },
+                )
+                .map_err(|e| SqliteError::Query(e.to_string()))?;
+            for row in rows {
+                let (pane_id, provider, input_tokens) =
+                    row.map_err(|e| SqliteError::Query(e.to_string()))?;
+                bucket_entry(&mut buckets, pane_id, provider)
+                    .observe_token_sample(input_tokens, None);
+            }
+        }
+    }
+
+    let mut cost_delta_usd = None;
+    if table_exists(conn, "cost_usage_events")? {
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT pane_id, provider, SUM(cost_usd_delta) \
+                 FROM cost_usage_events \
+                 WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
+                   AND pane_id = ?3 \
+                   AND (?4 IS NULL OR provider = ?4) \
+                 GROUP BY pane_id, provider",
+            )
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let rows = stmt
+            .query_map(
+                params![window.since_ms, window.until_ms, pane_id, provider],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, f64>(2)?,
+                    ))
+                },
+            )
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        for row in rows {
+            let (pane_id, provider, delta) = row.map_err(|e| SqliteError::Query(e.to_string()))?;
+            bucket_entry(&mut buckets, pane_id, provider).observe_cost_delta(delta);
+            cost_delta_usd = Some(cost_delta_usd.unwrap_or(0.0) + delta);
+        }
+    }
+
+    let mut token_growth = None;
+    let mut sample_count = 0;
+    for bucket in buckets
+        .into_values()
+        .map(PaneInsightAccumulator::into_bucket)
+    {
+        sample_count += bucket.sample_count;
+        if let Some(growth) = bucket.token_growth {
+            token_growth = Some(token_growth.unwrap_or(0) + growth);
+        }
+    }
+
+    Ok(MetricWindowSummary {
+        latest_cache_ratio,
+        token_growth,
+        cost_delta_usd,
+        sample_count,
+    })
+}
+
+fn data_completeness_for(
+    pane_buckets: &[PaneInsightBucket],
+    action_impacts: &[ActionImpactSummary],
+) -> InsightsDataCompleteness {
+    InsightsDataCompleteness {
+        pane_bucket_count: pane_buckets.len(),
+        token_sample_count: pane_buckets.iter().map(|bucket| bucket.sample_count).sum(),
+        cache_ratio_bucket_count: pane_buckets
+            .iter()
+            .filter(|bucket| bucket.latest_cache_ratio.is_some())
+            .count(),
+        cost_delta_bucket_count: pane_buckets
+            .iter()
+            .filter(|bucket| bucket.cost_delta_usd.is_some())
+            .count(),
+        action_impact_count: action_impacts.len(),
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CostEventRow {
+    ts_unix_ms: i64,
+    pane_id: String,
+    provider: String,
+    cost_delta_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+struct CostSituationEvent {
+    ts_unix_ms: i64,
+    pane_id: String,
+    situation: &'static str,
+}
+
+fn collect_cost_breakdown(
+    conn: &Connection,
+    window: InsightsWindow,
+) -> Result<CostBreakdownSummary, SqliteError> {
+    if !table_exists(conn, "cost_usage_events")? {
+        return Ok(CostBreakdownSummary::default());
+    }
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT ts_unix_ms, pane_id, provider, cost_usd_delta
+             FROM cost_usage_events
+             WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2
+             ORDER BY ts_unix_ms ASC, id ASC",
+        )
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    let rows = stmt
+        .query_map(params![window.since_ms, window.until_ms], |row| {
+            Ok(CostEventRow {
+                ts_unix_ms: row.get(0)?,
+                pane_id: row.get(1)?,
+                provider: row.get(2)?,
+                cost_delta_usd: row.get(3)?,
+            })
+        })
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    let mut cost_rows = Vec::new();
+    for row in rows {
+        cost_rows.push(row.map_err(|e| SqliteError::Query(e.to_string()))?);
+    }
+    if cost_rows.is_empty() {
+        return Ok(CostBreakdownSummary::default());
+    }
+
+    let situation_events = collect_cost_situation_events(conn, window)?;
+    let mut by_pane = BTreeMap::<String, f64>::new();
+    let mut by_model = BTreeMap::<String, f64>::new();
+    let mut by_situation = BTreeMap::<String, f64>::new();
+    let mut total_usd = 0.0;
+    for row in cost_rows {
+        total_usd += row.cost_delta_usd;
+        *by_pane
+            .entry(format!("{} {}", row.pane_id, row.provider))
+            .or_default() += row.cost_delta_usd;
+        *by_model.entry(row.provider.clone()).or_default() += row.cost_delta_usd;
+        let situation = situation_for_cost_row(&row, &situation_events);
+        *by_situation.entry(situation.to_string()).or_default() += row.cost_delta_usd;
+    }
+
+    Ok(CostBreakdownSummary {
+        total_usd,
+        by_pane: sorted_cost_rows(by_pane),
+        by_model: sorted_cost_rows(by_model),
+        by_situation: sorted_cost_rows(by_situation),
+    })
+}
+
+fn collect_cost_situation_events(
+    conn: &Connection,
+    window: InsightsWindow,
+) -> Result<Vec<CostSituationEvent>, SqliteError> {
+    if !table_exists(conn, "recommendation_events")? {
+        return Ok(Vec::new());
+    }
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT ts_unix_ms, pane_id, situation, action
+             FROM recommendation_events
+             WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2
+             ORDER BY ts_unix_ms ASC, id ASC",
+        )
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    let rows = stmt
+        .query_map(params![window.since_ms, window.until_ms], |row| {
+            let situation: String = row.get(2)?;
+            let action: String = row.get(3)?;
+            Ok(CostSituationEvent {
+                ts_unix_ms: row.get(0)?,
+                pane_id: row.get(1)?,
+                situation: static_situation_label(&situation, &action),
+            })
+        })
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| SqliteError::Query(e.to_string()))?);
+    }
+    Ok(out)
+}
+
+fn situation_for_cost_row<'a>(row: &CostEventRow, events: &'a [CostSituationEvent]) -> &'a str {
+    events
+        .iter()
+        .filter(|event| event.pane_id == row.pane_id && event.ts_unix_ms <= row.ts_unix_ms)
+        .max_by_key(|event| event.ts_unix_ms)
+        .map(|event| event.situation)
+        .unwrap_or("Other")
+}
+
+fn sorted_cost_rows(rows: BTreeMap<String, f64>) -> Vec<CostBreakdownRow> {
+    let mut rows: Vec<CostBreakdownRow> = rows
+        .into_iter()
+        .map(|(label, cost_delta_usd)| CostBreakdownRow {
+            label,
+            cost_delta_usd,
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        b.cost_delta_usd
+            .partial_cmp(&a.cost_delta_usd)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.label.cmp(&b.label))
+    });
+    rows
+}
+
+#[derive(Debug, Clone)]
+struct AnomalyCorrelationEvent {
+    minute: i64,
+    pane_id: String,
+    kind: String,
+    confidence: String,
+}
+
+fn collect_anomaly_correlations(
+    conn: &Connection,
+    window: InsightsWindow,
+) -> Result<Vec<CrossPaneAnomalyCorrelation>, SqliteError> {
+    if !table_exists(conn, "anomaly_events")? {
+        return Ok(Vec::new());
+    }
+    let since_secs = window.since_ms.div_euclid(1000);
+    let until_secs = window.until_ms.div_euclid(1000);
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT ts_unix_secs, pane_id, kind, confidence
+             FROM anomaly_events
+             WHERE ts_unix_secs >= ?1 AND ts_unix_secs <= ?2
+             ORDER BY ts_unix_secs ASC, id ASC",
+        )
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    let rows = stmt
+        .query_map(params![since_secs, until_secs], |row| {
+            let ts: i64 = row.get(0)?;
+            Ok(AnomalyCorrelationEvent {
+                minute: ts.div_euclid(60),
+                pane_id: row.get(1)?,
+                kind: row.get(2)?,
+                confidence: row.get(3)?,
+            })
+        })
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+    let mut buckets = BTreeMap::<i64, Vec<AnomalyCorrelationEvent>>::new();
+    for row in rows {
+        let event = row.map_err(|e| SqliteError::Query(e.to_string()))?;
+        buckets.entry(event.minute).or_default().push(event);
+    }
+    let mut out = Vec::new();
+    for (minute, events) in buckets {
+        let pane_count = events
+            .iter()
+            .map(|event| event.pane_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
+        if pane_count < 2 {
+            continue;
+        }
+        let summary = events
+            .iter()
+            .map(|event| format!("{}({}:{})", event.pane_id, event.kind, event.confidence))
+            .collect::<Vec<_>>()
+            .join(" + ");
+        out.push(CrossPaneAnomalyCorrelation {
+            window_label: rfc3339_from_ms(minute.saturating_mul(60_000)),
+            pane_count,
+            summary,
+        });
+    }
+    out.reverse();
+    out.truncate(10);
+    Ok(out)
 }
 
 fn cache_state_from_action(action: &str) -> Option<&'static str> {
@@ -387,8 +1080,13 @@ struct LifecycleEventRow {
     id: i64,
     ts_unix_ms: i64,
     pane_id: String,
+    provider: Option<String>,
     situation: &'static str,
     action: String,
+    severity: String,
+    reason_summary: String,
+    suggested_command: Option<String>,
+    is_strong: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -399,6 +1097,17 @@ struct LifecycleOutcomeRow {
     action: String,
     outcome: String,
 }
+
+#[derive(Debug, Default)]
+struct MetricWindowSummary {
+    latest_cache_ratio: Option<f64>,
+    token_growth: Option<i64>,
+    cost_delta_usd: Option<f64>,
+    sample_count: u64,
+}
+
+const ACTION_IMPACT_WINDOW_MS: i64 = 10 * 60 * 1000;
+const NEXT_BEST_ACTION_LOOKBACK_MS: i64 = 24 * 60 * 60 * 1000;
 
 impl SqliteInsightsStore {
     pub fn open(path: &Path) -> Result<Self, SqliteError> {
@@ -435,10 +1144,15 @@ impl SqliteInsightsStore {
         }
 
         let lifecycle = lifecycle_snapshot(&_conn, window, ignored_ttl_secs)?;
+        snapshot.next_best_action = lifecycle.next_best_action;
+        snapshot.last_compact_payoff = lifecycle.last_compact_payoff;
         if lifecycle.events_seen {
             snapshot.situations = lifecycle.situations;
             snapshot.actions = lifecycle.actions;
             snapshot.timeline = lifecycle.timeline;
+            snapshot.action_impacts = lifecycle.action_impacts;
+            snapshot.data_completeness =
+                data_completeness_for(&snapshot.pane_buckets, &snapshot.action_impacts);
             snapshot.ignored_available = true;
         }
         Ok(snapshot)
@@ -499,80 +1213,12 @@ impl SqliteInsightsStore {
             }
         }
 
-        let mut first_input = None;
-        let mut latest_input = None;
-        let mut latest_ratio = None;
-        if table_exists(&_conn, "token_usage_samples")? {
-            if table_has_column(&_conn, "token_usage_samples", "cached_input_tokens")? {
-                let mut stmt = _conn
-                    .prepare_cached(
-                        "SELECT input_tokens, cached_input_tokens \
-                         FROM token_usage_samples \
-                         WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
-                         ORDER BY ts_unix_ms ASC, id ASC",
-                    )
-                    .map_err(|e| SqliteError::Query(e.to_string()))?;
-                let rows = stmt
-                    .query_map(params![window.since_ms, window.until_ms], |row| {
-                        Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?))
-                    })
-                    .map_err(|e| SqliteError::Query(e.to_string()))?;
-                for row in rows {
-                    let (input_tokens, cached_input_tokens) =
-                        row.map_err(|e| SqliteError::Query(e.to_string()))?;
-                    if let Some(input_tokens) = input_tokens {
-                        if first_input.is_none() {
-                            first_input = Some(input_tokens);
-                        }
-                        latest_input = Some(input_tokens);
-                    }
-                    if let Some(ratio) = cache_ratio(input_tokens, cached_input_tokens) {
-                        latest_ratio = Some(ratio);
-                    }
-                }
-            } else {
-                let mut stmt = _conn
-                    .prepare_cached(
-                        "SELECT input_tokens \
-                         FROM token_usage_samples \
-                         WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2 \
-                         ORDER BY ts_unix_ms ASC, id ASC",
-                    )
-                    .map_err(|e| SqliteError::Query(e.to_string()))?;
-                let rows = stmt
-                    .query_map(params![window.since_ms, window.until_ms], |row| {
-                        row.get::<_, Option<i64>>(0)
-                    })
-                    .map_err(|e| SqliteError::Query(e.to_string()))?;
-                for row in rows {
-                    let input_tokens = row.map_err(|e| SqliteError::Query(e.to_string()))?;
-                    if let Some(input_tokens) = input_tokens {
-                        if first_input.is_none() {
-                            first_input = Some(input_tokens);
-                        }
-                        latest_input = Some(input_tokens);
-                    }
-                }
-            }
-        }
-        cache.latest_cache_ratio = latest_ratio;
-        cache.token_growth =
-            first_input.zip(latest_input).map(
-                |(first, latest)| {
-                    if latest >= first { latest - first } else { 0 }
-                },
-            );
-
-        if table_exists(&_conn, "cost_usage_events")? {
-            cache.cost_delta_usd = _conn
-                .query_row(
-                    "SELECT SUM(cost_usd_delta) FROM cost_usage_events \
-                     WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2",
-                    params![window.since_ms, window.until_ms],
-                    |row| row.get::<_, Option<f64>>(0),
-                )
-                .map_err(|e| SqliteError::Query(e.to_string()))?;
-        }
+        let pane_rollup = collect_pane_insight_rollup(&_conn, window)?;
+        cache.latest_cache_ratio = pane_rollup.latest_cache_ratio;
+        cache.token_growth = pane_rollup.token_growth;
+        cache.cost_delta_usd = pane_rollup.cost_delta_usd;
+        let cost_breakdown = collect_cost_breakdown(&_conn, window)?;
+        let anomaly_correlations = collect_anomaly_correlations(&_conn, window)?;
 
         let mut ledger_stmt = _conn
             .prepare_cached(
@@ -622,11 +1268,19 @@ impl SqliteInsightsStore {
         let actions = actions_by_name.into_values().collect();
         timeline.reverse();
         timeline.truncate(10);
+        let data_completeness = data_completeness_for(&pane_rollup.pane_buckets, &[]);
 
         Ok(InsightsSnapshot {
             window,
             situations,
             cache,
+            pane_buckets: pane_rollup.pane_buckets,
+            next_best_action: NextBestActionSummary::unavailable(),
+            last_compact_payoff: LastCompactPayoffSummary::default(),
+            cost_breakdown,
+            anomaly_correlations,
+            action_impacts: Vec::new(),
+            data_completeness,
             timeline,
             actions,
             ignored_available: false,
@@ -636,9 +1290,12 @@ impl SqliteInsightsStore {
 
 struct LifecycleSnapshotParts {
     events_seen: bool,
+    next_best_action: NextBestActionSummary,
+    last_compact_payoff: LastCompactPayoffSummary,
     situations: Vec<SituationSummary>,
     timeline: Vec<RecommendationTimelineItem>,
     actions: Vec<ActionLedgerRow>,
+    action_impacts: Vec<ActionImpactSummary>,
 }
 
 fn lifecycle_snapshot(
@@ -648,7 +1305,8 @@ fn lifecycle_snapshot(
 ) -> Result<LifecycleSnapshotParts, SqliteError> {
     let mut event_stmt = conn
         .prepare_cached(
-            "SELECT id, ts_unix_ms, pane_id, situation, action
+            "SELECT id, ts_unix_ms, pane_id, provider, situation, action,
+                    severity, reason_summary, suggested_command, is_strong
              FROM recommendation_events
              WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2
              ORDER BY id ASC",
@@ -656,14 +1314,19 @@ fn lifecycle_snapshot(
         .map_err(|e| SqliteError::Query(e.to_string()))?;
     let event_rows = event_stmt
         .query_map(params![window.since_ms, window.until_ms], |row| {
-            let action: String = row.get(4)?;
-            let situation: String = row.get(3)?;
+            let action: String = row.get(5)?;
+            let situation: String = row.get(4)?;
             Ok(LifecycleEventRow {
                 id: row.get(0)?,
                 ts_unix_ms: row.get(1)?,
                 pane_id: row.get(2)?,
+                provider: row.get(3)?,
                 situation: static_situation_label(&situation, &action),
                 action,
+                severity: row.get(6)?,
+                reason_summary: row.get(7)?,
+                suggested_command: row.get(8)?,
+                is_strong: row.get::<_, i64>(9)? != 0,
             })
         })
         .map_err(|e| SqliteError::Query(e.to_string()))?;
@@ -675,9 +1338,12 @@ fn lifecycle_snapshot(
     if events.is_empty() {
         return Ok(LifecycleSnapshotParts {
             events_seen: false,
+            next_best_action: NextBestActionSummary::no_pending(),
+            last_compact_payoff: LastCompactPayoffSummary::default(),
             situations: Vec::new(),
             timeline: Vec::new(),
             actions: Vec::new(),
+            action_impacts: Vec::new(),
         });
     }
 
@@ -709,12 +1375,14 @@ fn lifecycle_snapshot(
     let mut situations_by_name = std::collections::BTreeMap::<&'static str, u64>::new();
     let mut actions_by_name = std::collections::BTreeMap::<String, ActionLedgerRow>::new();
     let mut event_situations = std::collections::HashMap::<i64, &'static str>::new();
+    let mut events_by_id = std::collections::HashMap::<i64, LifecycleEventRow>::new();
     let mut event_has_outcome = std::collections::BTreeSet::<i64>::new();
     let mut timeline = Vec::new();
 
     for event in &events {
         *situations_by_name.entry(event.situation).or_default() += 1;
         event_situations.insert(event.id, event.situation);
+        events_by_id.insert(event.id, event.clone());
         let entry = actions_by_name
             .entry(event.action.clone())
             .or_insert_with(|| ActionLedgerRow {
@@ -759,6 +1427,18 @@ fn lifecycle_snapshot(
     }
     event_has_outcome = consumed_event_ids;
 
+    let accepted_event_ids: std::collections::BTreeSet<i64> = outcomes
+        .iter()
+        .enumerate()
+        .filter(|(_, outcome)| outcome.outcome == "accepted")
+        .filter_map(|(idx, outcome)| {
+            outcome
+                .recommendation_event_id
+                .or_else(|| matched_unlinked_outcomes.get(&idx).copied())
+        })
+        .collect();
+    let next_best_action = next_best_action_for(&events, &accepted_event_ids, window);
+
     for (idx, outcome) in outcomes.iter().enumerate() {
         let matched_event_id = outcome
             .recommendation_event_id
@@ -781,6 +1461,72 @@ fn lifecycle_snapshot(
             outcome: outcome.outcome.clone(),
         });
     }
+
+    let mut action_impacts = Vec::new();
+    let mut last_compact_payoff = LastCompactPayoffSummary::default();
+    let mut last_compact_outcome_ts = None;
+    for (idx, outcome) in outcomes.iter().enumerate() {
+        if outcome.outcome == "accepted" || outcome.outcome == "hidden" {
+            continue;
+        }
+        let Some(event_id) = outcome
+            .recommendation_event_id
+            .or_else(|| matched_unlinked_outcomes.get(&idx).copied())
+        else {
+            continue;
+        };
+        let Some(event) = events_by_id.get(&event_id) else {
+            continue;
+        };
+        let provider = event.provider.as_deref();
+        let before = collect_metric_window_for_pane(
+            conn,
+            InsightsWindow {
+                since_ms: window
+                    .since_ms
+                    .max(event.ts_unix_ms.saturating_sub(ACTION_IMPACT_WINDOW_MS)),
+                until_ms: event.ts_unix_ms,
+            },
+            &event.pane_id,
+            provider,
+        )?;
+        let after = collect_metric_window_for_pane(
+            conn,
+            InsightsWindow {
+                since_ms: outcome.ts_unix_ms,
+                until_ms: window
+                    .until_ms
+                    .min(outcome.ts_unix_ms.saturating_add(ACTION_IMPACT_WINDOW_MS)),
+            },
+            &event.pane_id,
+            provider,
+        )?;
+        action_impacts.push(ActionImpactSummary {
+            event_id,
+            outcome_ts_label: rfc3339_from_ms(outcome.ts_unix_ms),
+            pane_id: event.pane_id.clone(),
+            provider: event.provider.clone(),
+            action: event.action.clone(),
+            outcome: outcome.outcome.clone(),
+            before_token_growth: before.token_growth,
+            after_token_growth: after.token_growth,
+            token_growth_delta: metric_delta_i64(before.token_growth, after.token_growth),
+            before_cost_delta_usd: before.cost_delta_usd,
+            after_cost_delta_usd: after.cost_delta_usd,
+            cost_delta_usd: metric_delta_f64(before.cost_delta_usd, after.cost_delta_usd),
+            before_cache_ratio: before.latest_cache_ratio,
+            after_cache_ratio: after.latest_cache_ratio,
+        });
+        if event.action == "/compact"
+            && outcome.outcome == "completed"
+            && last_compact_outcome_ts.is_none_or(|ts| outcome.ts_unix_ms >= ts)
+        {
+            last_compact_payoff = compact_payoff_from(event, outcome, &before, &after, window);
+            last_compact_outcome_ts = Some(outcome.ts_unix_ms);
+        }
+    }
+    action_impacts.reverse();
+    action_impacts.truncate(10);
 
     let ttl_ms =
         i64::try_from(u128::from(ignored_ttl_secs).saturating_mul(1000)).unwrap_or(i64::MAX);
@@ -817,8 +1563,120 @@ fn lifecycle_snapshot(
 
     Ok(LifecycleSnapshotParts {
         events_seen: true,
+        next_best_action,
+        last_compact_payoff,
         situations,
         timeline,
         actions,
+        action_impacts,
     })
+}
+
+fn next_best_action_for(
+    events: &[LifecycleEventRow],
+    accepted_event_ids: &std::collections::BTreeSet<i64>,
+    window: InsightsWindow,
+) -> NextBestActionSummary {
+    let since_ms = window.until_ms.saturating_sub(NEXT_BEST_ACTION_LOOKBACK_MS);
+    let pending: Vec<&LifecycleEventRow> = events
+        .iter()
+        .filter(|event| {
+            event.is_strong
+                && !accepted_event_ids.contains(&event.id)
+                && event.ts_unix_ms >= since_ms
+                && event.ts_unix_ms <= window.until_ms
+        })
+        .collect();
+    let action = pending
+        .iter()
+        .copied()
+        .max_by_key(|event| (event.ts_unix_ms, event.id))
+        .map(|event| NextBestActionItem {
+            ts_label: rfc3339_from_ms(event.ts_unix_ms),
+            pane_id: event.pane_id.clone(),
+            provider: event.provider.clone(),
+            situation: event.situation,
+            action: event.action.clone(),
+            severity: event.severity.clone(),
+            reason_summary: event.reason_summary.clone(),
+            suggested_command: event.suggested_command.clone(),
+        });
+
+    NextBestActionSummary {
+        data_available: true,
+        action,
+        open_proposal_count: pending.len() as u64,
+    }
+}
+
+fn compact_payoff_from(
+    event: &LifecycleEventRow,
+    outcome: &LifecycleOutcomeRow,
+    before: &MetricWindowSummary,
+    after: &MetricWindowSummary,
+    window: InsightsWindow,
+) -> LastCompactPayoffSummary {
+    let sample_count = before.sample_count.saturating_add(after.sample_count);
+    let mut summary = LastCompactPayoffSummary {
+        status: "n/a".into(),
+        outcome_ts_label: Some(rfc3339_from_ms(outcome.ts_unix_ms)),
+        age_label: Some(payoff_age_label(
+            window.until_ms.saturating_sub(outcome.ts_unix_ms),
+        )),
+        pane_id: Some(event.pane_id.clone()),
+        input_tokens_saved: None,
+        cost_usd_saved: metric_delta_f64(after.cost_delta_usd, before.cost_delta_usd),
+        before_cache_state: before.latest_cache_ratio.map(cache_state_label),
+        after_cache_state: after.latest_cache_ratio.map(cache_state_label),
+        sample_count,
+    };
+    if sample_count < 6 {
+        return summary;
+    }
+    let Some(before_growth) = before.token_growth else {
+        return summary;
+    };
+    let Some(after_growth) = after.token_growth else {
+        return summary;
+    };
+    let saved = before_growth.saturating_sub(after_growth);
+    summary.input_tokens_saved = Some(saved);
+    if !payoff_delta_is_significant(saved, before_growth) {
+        summary.status = "neutral".into();
+    } else if saved > 0 {
+        summary.status = "saved".into();
+    } else {
+        summary.status = "regressed".into();
+    }
+    summary
+}
+
+fn payoff_delta_is_significant(saved: i64, before_growth: i64) -> bool {
+    let abs = saved.unsigned_abs();
+    if abs >= 1_000 {
+        return true;
+    }
+    let baseline = before_growth.unsigned_abs();
+    baseline > 0 && (abs as f64 / baseline as f64) >= 0.05
+}
+
+fn cache_state_label(ratio: f64) -> String {
+    if ratio < 0.25 {
+        "cold".into()
+    } else if ratio < 0.70 {
+        "warm".into()
+    } else {
+        "hot".into()
+    }
+}
+
+fn payoff_age_label(age_ms: i64) -> String {
+    let secs = (age_ms.max(0) / 1000) as u64;
+    if secs < 60 {
+        format!("{secs}s ago")
+    } else if secs < 3_600 {
+        format!("{}m ago", secs / 60)
+    } else {
+        format!("{}h ago", secs / 3_600)
+    }
 }

@@ -10,7 +10,7 @@ pub mod qmonster;
 mod runtime;
 
 use crate::adapters::common::PaneTailHistory;
-use crate::domain::identity::{Provider, ResolvedIdentity};
+use crate::domain::identity::{IdentityConfidence, Provider, ResolvedIdentity};
 use crate::domain::signal::SignalSet;
 use crate::policy::claude_settings::ClaudeSettings;
 use crate::policy::pricing::PricingTable;
@@ -62,12 +62,17 @@ pub fn parse_for_with_environment(
     proc_root: &std::path::Path,
     home_dir: Option<&std::path::Path>,
 ) -> SignalSet {
-    let mut signals = match ctx.identity.identity.provider {
-        Provider::Claude => claude::ClaudeAdapter.parse(ctx),
-        Provider::Codex => codex::CodexAdapter.parse(ctx),
-        Provider::Gemini => gemini::GeminiAdapter.parse(ctx),
-        Provider::Qmonster => qmonster::QmonsterAdapter.parse(ctx),
-        Provider::Unknown => common::parse_common_signals(ctx.tail),
+    let identity_conflict = matches!(ctx.identity.confidence, IdentityConfidence::Conflict);
+    let mut signals = if identity_conflict {
+        common::parse_common_signals(ctx.tail)
+    } else {
+        match ctx.identity.identity.provider {
+            Provider::Claude => claude::ClaudeAdapter.parse(ctx),
+            Provider::Codex => codex::CodexAdapter.parse(ctx),
+            Provider::Gemini => gemini::GeminiAdapter.parse(ctx),
+            Provider::Qmonster => qmonster::QmonsterAdapter.parse(ctx),
+            Provider::Unknown => common::parse_common_signals(ctx.tail),
+        }
     };
     // F-1: process_memory_mb fill from /proc descendant RSS when the
     // adapter left it None (Gemini's status-table ProviderOfficial
@@ -91,6 +96,7 @@ pub fn parse_for_with_environment(
     // stronger SourceKind must not be clobbered by this Heuristic
     // fallback.
     if signals.agent_memory_bytes.is_none()
+        && !identity_conflict
         && !ctx.current_path.is_empty()
         && let Some(bytes) = agent_memory::read_agent_memory_bytes_with_filesystem(
             ctx.identity.identity.provider,
@@ -109,13 +115,53 @@ pub fn parse_for_with_environment(
     // statusline. Sidefile-on-default (G-2) means most operators have
     // the file available; absence is silent (best-effort enrichment).
     if matches!(ctx.identity.identity.provider, Provider::Claude)
+        && !identity_conflict
         && !ctx.current_path.is_empty()
+        && claude_sidefile_process_confirmed(ctx, proc_root)
         && let Some(home) = home_dir
         && let Some(sidefile) = claude_sidefile::read_sidefile_for_path(home, ctx.current_path)
     {
         apply_claude_sidefile(&mut signals, sidefile);
     }
     signals
+}
+
+fn claude_sidefile_process_confirmed(ctx: &ParserContext, proc_root: &std::path::Path) -> bool {
+    let Some(pid) = ctx.pane_pid else {
+        return true;
+    };
+    let Some(desc) = process_memory::read_descendant_cli_process_with_proc_root(pid, proc_root)
+    else {
+        return false;
+    };
+    cli_process_basename_contains(&desc, "claude")
+}
+
+fn cli_process_basename_contains(
+    desc: &process_memory::CliProcessDescriptor,
+    needle: &str,
+) -> bool {
+    if desc.comm.eq_ignore_ascii_case(needle) {
+        return true;
+    }
+    desc.argv
+        .iter()
+        .any(|arg| path_basename_contains(arg, needle))
+        || desc
+            .exe_path
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.to_ascii_lowercase().contains(needle))
+}
+
+fn path_basename_contains(path: &str, needle: &str) -> bool {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path)
+        .to_ascii_lowercase()
+        .contains(needle)
 }
 
 /// Phase F F-5b (v1.31.0): copy sidefile fields into the SignalSet
@@ -272,6 +318,35 @@ mod sidefile_integration_tests {
         fs::write(dir.join(format!("{sid}.json")), body).unwrap();
     }
 
+    fn write_proc_pid(root: &std::path::Path, pid: u32, comm: &str, children: &[u32]) {
+        let dir = root.join(pid.to_string());
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("status"), format!("Name:\t{comm}\nVmRSS:\t1 kB\n")).unwrap();
+        let task_dir = dir.join("task").join(pid.to_string());
+        fs::create_dir_all(&task_dir).unwrap();
+        fs::write(
+            task_dir.join("children"),
+            children
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+        .unwrap();
+    }
+
+    fn write_proc_cmdline(root: &std::path::Path, pid: u32, argv: &[&str]) {
+        let mut bytes = Vec::new();
+        for (idx, arg) in argv.iter().enumerate() {
+            if idx > 0 {
+                bytes.push(0);
+            }
+            bytes.extend_from_slice(arg.as_bytes());
+        }
+        bytes.push(0);
+        fs::write(root.join(pid.to_string()).join("cmdline"), bytes).unwrap();
+    }
+
     #[test]
     fn sidefile_enriches_claude_pane_with_raw_token_counts_cost_and_resets_at() {
         let tmp = tempdir().unwrap();
@@ -305,9 +380,13 @@ mod sidefile_integration_tests {
         let pricing = PricingTable::empty();
         let settings = ClaudeSettings::empty();
         let history = PaneTailHistory::empty();
-        let proc_root = tmp.path().join("proc-empty");
+        let proc_root = tmp.path().join("proc");
+        write_proc_pid(&proc_root, 1, "bash", &[2]);
+        write_proc_pid(&proc_root, 2, "claude", &[]);
+        write_proc_cmdline(&proc_root, 2, &["claude", "--print"]);
         let mut c = ctx(&id, "", &pricing, &settings, &history);
         c.current_path = cwd;
+        c.pane_pid = Some(1);
 
         let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
 
@@ -396,5 +475,64 @@ mod sidefile_integration_tests {
         c.current_path = cwd;
         let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
         assert!(signals.cost_usd.is_none());
+    }
+
+    #[test]
+    fn sidefile_skipped_for_conflicting_claude_identity() {
+        let tmp = tempdir().unwrap();
+        let cwd = "/repo/qmonster";
+        write_sidefile_for(
+            tmp.path(),
+            "abc",
+            &format!(r#"{{"cwd":"{cwd}","session_id":"abc","cost":{{"total_cost_usd":99.0}}}}"#),
+        );
+        let id = ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Claude,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::Conflict,
+        };
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let proc_root = tmp.path().join("proc-empty");
+        let mut c = ctx(&id, "", &pricing, &settings, &history);
+        c.current_path = cwd;
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
+
+        assert!(signals.cost_usd.is_none());
+        assert!(signals.cache_hit_ratio.is_none());
+        assert!(signals.runtime_facts.is_empty());
+    }
+
+    #[test]
+    fn sidefile_skipped_when_descendant_process_is_not_claude() {
+        let tmp = tempdir().unwrap();
+        let cwd = "/repo/qmonster";
+        write_sidefile_for(
+            tmp.path(),
+            "abc",
+            &format!(r#"{{"cwd":"{cwd}","session_id":"abc","cost":{{"total_cost_usd":99.0}}}}"#),
+        );
+        let proc_root = tmp.path().join("proc");
+        write_proc_pid(&proc_root, 1, "bash", &[2]);
+        write_proc_pid(&proc_root, 2, "node", &[]);
+        write_proc_cmdline(&proc_root, 2, &["node", "/usr/bin/gemini"]);
+        let id = claude_id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let mut c = ctx(&id, "", &pricing, &settings, &history);
+        c.current_path = cwd;
+        c.pane_pid = Some(1);
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
+
+        assert!(signals.cost_usd.is_none());
+        assert!(signals.runtime_facts.is_empty());
     }
 }

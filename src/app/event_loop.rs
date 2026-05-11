@@ -106,10 +106,12 @@ where
         {
             ctx.runtime_refresh_tail_overlays.remove(&pane.pane_id);
         }
+        let effective_command =
+            enhance_command_with_descendant_cmdline(&pane.current_command, pane.pane_pid);
         let raw = crate::domain::identity::RawPaneInput {
             pane_id: pane.pane_id.clone(),
             title: pane.title.clone(),
-            current_command: pane.current_command.clone(),
+            current_command: effective_command.clone(),
             tail: parse_tail.clone(),
         };
         let resolved = ctx.resolver.resolve(&raw);
@@ -133,6 +135,7 @@ where
             ctx.identity_history.remove(&pane.pane_id);
             let pane_id_owned = pane.pane_id.clone();
             ctx.reported_drifts.retain(|(p, _)| p != &pane_id_owned);
+            ctx.identity_conflicts_logged.remove(&pane.pane_id);
             // Phase F F-9: a re-spawned pane is a fresh error history.
             // Carrying the old error rate forward would let a stale
             // burst trip the profile-switch rule on the new lifetime.
@@ -151,6 +154,27 @@ where
                 .retain(|(pid, _kind), _v| pid != &pane.pane_id);
         }
 
+        if matches!(
+            resolved.confidence,
+            crate::domain::identity::IdentityConfidence::Conflict
+        ) {
+            if ctx.identity_conflicts_logged.insert(pane.pane_id.clone()) {
+                ctx.sink.record(AuditEvent {
+                    kind: AuditEventKind::IdentitySuppressed,
+                    pane_id: pane.pane_id.clone(),
+                    severity: Severity::Concern,
+                    summary: format!(
+                        "identity conflict suppressed provider metrics: title={} command={}",
+                        pane.title, effective_command
+                    ),
+                    provider: Some(resolved.identity.provider),
+                    role: Some(resolved.identity.role),
+                });
+            }
+        } else {
+            ctx.identity_conflicts_logged.remove(&pane.pane_id);
+        }
+
         if pane.dead {
             reports.push(PaneReport {
                 pane_id: pane.pane_id,
@@ -163,7 +187,7 @@ where
                 effects: vec![],
                 dead: true,
                 current_path: pane.current_path.clone(),
-                current_command: pane.current_command.clone(),
+                current_command: effective_command,
                 cross_pane_findings: vec![],
                 idle_state: None,
                 idle_state_entered_at: None,
@@ -193,7 +217,10 @@ where
             current_path: &pane.current_path,
         };
         let mut signals = crate::adapters::parse_for(&parse_ctx);
-        if let Some(fact) = crate::app::cli_version::resolve_cli_version_fact(
+        if !matches!(
+            resolved.confidence,
+            crate::domain::identity::IdentityConfidence::Conflict
+        ) && let Some(fact) = crate::app::cli_version::resolve_cli_version_fact(
             resolved.identity.provider,
             &parse_tail,
             pane.pane_pid,
@@ -211,6 +238,9 @@ where
         if matches!(
             resolved.identity.provider,
             crate::domain::identity::Provider::Codex
+        ) && !matches!(
+            resolved.confidence,
+            crate::domain::identity::IdentityConfidence::Conflict
         ) && let Some(rl) = ctx.codex_rate_limits.as_ref()
         {
             apply_codex_rate_limits(&mut signals, rl);
@@ -259,7 +289,9 @@ where
             .as_ref()
             .map(|sink| sink.recent_samples(&pane.pane_id, 20))
         {
-            Some(Ok(samples)) => samples,
+            Some(Ok(samples)) => {
+                filter_token_samples_for_provider(samples, resolved.identity.provider)
+            }
             Some(Err(e)) => {
                 if ctx
                     .token_usage_read_failed_logged
@@ -305,6 +337,9 @@ where
         {
             let cap = gates.anomaly_window_polls.max(1);
             let entry = ctx.anomaly_history.entry(pane.pane_id.clone()).or_default();
+            entry
+                .tick_unix_secs_samples
+                .push_front((current_unix_ms() / 1000) as u64);
             let provider_label = format!("{:?}", resolved.identity.provider);
             entry
                 .identity_snapshots
@@ -541,8 +576,8 @@ where
                         let history = ctx.anomaly_history.entry(pane.pane_id.clone()).or_default();
                         // snapshots is newest-first; replay oldest-first so
                         // deque ordering matches live push semantics:
-                        for (_, snap) in snapshots.iter().rev() {
-                            crate::store::push_snapshot_into_history(history, snap);
+                        for (tick, snap) in snapshots.iter().rev() {
+                            crate::store::push_snapshot_into_history_at(history, *tick, snap);
                         }
                         history.trim(window_polls);
                     }
@@ -613,6 +648,7 @@ where
                 severity: sig.severity,
                 promoted: promoted_bool,
                 reason,
+                evidence: sig.evidence.clone(),
             };
             ctx.anomaly_events_ring.push(event.clone());
             events_pushed_this_tick.push(event);
@@ -625,10 +661,12 @@ where
             let snap = crate::store::AnomalyHistorySnapshot::capture_tick(&tick_history);
             let result = anomaly_sink.with_transaction(|tx| {
                 for sig_event in &events_pushed_this_tick {
+                    let evidence_json =
+                        crate::store::anomaly_sink::encode_evidence_json(&sig_event.evidence)?;
                     tx.execute(
                         "INSERT INTO anomaly_events
-                         (ts_unix_secs, pane_id, kind, confidence, severity, promoted, reason)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                         (ts_unix_secs, pane_id, kind, confidence, severity, promoted, reason, evidence_json)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                         rusqlite::params![
                             sig_event.timestamp as i64,
                             sig_event.pane_id,
@@ -637,6 +675,7 @@ where
                             sig_event.severity.label(),
                             sig_event.promoted as i64,
                             sig_event.reason,
+                            evidence_json,
                         ],
                     )
                     .map_err(|e| crate::store::sqlite::SqliteError::Query(e.to_string()))?;
@@ -699,15 +738,6 @@ where
                 .record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
         }
 
-        // F-1+ enhancement: tmux's `pane_current_command` reports the
-        // foreground process's basename, so Codex/Gemini panes show
-        // `node` (those CLIs ship as Node scripts). When the basename
-        // is a generic interpreter, walk the descendant tree and
-        // replace with the full `/proc/<pid>/cmdline` so operators
-        // see e.g. `node /usr/bin/codex` instead of bare `node`.
-        let display_command =
-            enhance_command_with_descendant_cmdline(&pane.current_command, pane.pane_pid);
-
         reports.push(PaneReport {
             pane_id: pane.pane_id,
             session_name: pane.session_name,
@@ -719,7 +749,7 @@ where
             effects: out.effects,
             dead: false,
             current_path: pane.current_path.clone(),
-            current_command: display_command,
+            current_command: effective_command,
             cross_pane_findings: vec![],
             idle_state,
             idle_state_entered_at: entered_at,
@@ -855,6 +885,19 @@ pub fn current_unix_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+fn filter_token_samples_for_provider(
+    samples: Vec<crate::store::TokenSample>,
+    provider: Provider,
+) -> Vec<crate::store::TokenSample> {
+    if matches!(provider, Provider::Qmonster | Provider::Unknown) {
+        return Vec::new();
+    }
+    samples
+        .into_iter()
+        .filter(|sample| sample.provider == provider)
+        .collect()
 }
 
 /// Replace `pane_current_command` (the foreground process's basename

@@ -92,6 +92,11 @@ pub enum AuditEventKind {
     RuntimeRefreshCompleted,
     RuntimeRefreshFailed,
     RuntimeRefreshBlocked,
+    /// Slice 0 Attribution Lock: resolver saw contradictory high-value
+    /// identity evidence and suppressed provider-specific enrichment for
+    /// this pane. Summary carries metadata only (title + command), never
+    /// raw pane tail bytes.
+    IdentitySuppressed,
     /// Phase F F-3 (v1.48.0+ remediation): `recent_samples` against the
     /// `SqliteTokenUsageSink` returned an error during a poll tick. The
     /// in-memory sparkline degrades to empty for that pane; this event is
@@ -136,6 +141,7 @@ impl AuditEventKind {
             AuditEventKind::RuntimeRefreshCompleted => "RuntimeRefreshCompleted",
             AuditEventKind::RuntimeRefreshFailed => "RuntimeRefreshFailed",
             AuditEventKind::RuntimeRefreshBlocked => "RuntimeRefreshBlocked",
+            AuditEventKind::IdentitySuppressed => "IdentitySuppressed",
             AuditEventKind::TokenUsageReadFailed => "TokenUsageReadFailed",
         }
     }
@@ -310,6 +316,7 @@ mod tests {
                 AuditEventKind::RuntimeRefreshBlocked,
                 "RuntimeRefreshBlocked",
             ),
+            (AuditEventKind::IdentitySuppressed, "IdentitySuppressed"),
             (AuditEventKind::TokenUsageReadFailed, "TokenUsageReadFailed"),
         ];
         for (kind, expected) in cases {

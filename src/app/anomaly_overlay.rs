@@ -49,6 +49,10 @@ pub fn handle_anomaly_overlay_key(
             overlay.cycle_filter();
             true
         }
+        KeyCode::Char('e') if overlay.is_open() => {
+            overlay.toggle_evidence();
+            true
+        }
         _ => false,
     }
 }
@@ -281,6 +285,7 @@ mod tests {
                 severity: Severity::Warning,
                 promoted: true,
                 reason: "one".to_string(),
+                evidence: Vec::new(),
             },
             AnomalyEvent {
                 timestamp: 2,
@@ -290,6 +295,7 @@ mod tests {
                 severity: Severity::Warning,
                 promoted: true,
                 reason: "two".to_string(),
+                evidence: Vec::new(),
             },
             AnomalyEvent {
                 timestamp: 3,
@@ -299,6 +305,7 @@ mod tests {
                 severity: Severity::Warning,
                 promoted: true,
                 reason: "three".to_string(),
+                evidence: Vec::new(),
             },
             AnomalyEvent {
                 timestamp: 4,
@@ -308,6 +315,7 @@ mod tests {
                 severity: Severity::Warning,
                 promoted: true,
                 reason: "four".to_string(),
+                evidence: Vec::new(),
             },
             AnomalyEvent {
                 timestamp: 5,
@@ -317,6 +325,7 @@ mod tests {
                 severity: Severity::Warning,
                 promoted: true,
                 reason: "five".to_string(),
+                evidence: Vec::new(),
             },
         ]);
 
@@ -384,6 +393,19 @@ mod tests {
         assert!(!handle_anomaly_overlay_key(&mut o, 5, KeyCode::Char('f')));
     }
 
+    #[test]
+    fn e_toggles_anomaly_evidence_only_when_open() {
+        let mut o = AnomalyOverlay::new();
+        assert!(!handle_anomaly_overlay_key(&mut o, 5, KeyCode::Char('e')));
+        assert!(!o.evidence_expanded());
+
+        o.open();
+        assert!(handle_anomaly_overlay_key(&mut o, 5, KeyCode::Char('e')));
+        assert!(o.evidence_expanded());
+        assert!(handle_anomaly_overlay_key(&mut o, 5, KeyCode::Char('e')));
+        assert!(!o.evidence_expanded());
+    }
+
     /// v1.58.0: AnomalyFilter::matches gates rows correctly.
     #[test]
     fn anomaly_filter_matches_per_variant() {
@@ -399,6 +421,7 @@ mod tests {
             severity: Severity::Warning,
             promoted: true,
             reason: "h".into(),
+            evidence: Vec::new(),
         };
         let medium_promoted = AnomalyEvent {
             confidence: AnomalyConfidence::Medium,

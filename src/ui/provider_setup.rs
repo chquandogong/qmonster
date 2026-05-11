@@ -521,6 +521,7 @@ pub fn render_tab_content(
             out.push(
                 "  It creates/reattaches a tiled session and sets canonical pane titles.".into(),
             );
+            out.push("  New sessions source ~/.tmux/qmonster.tmux.conf before pane splits.".into());
 
             section(&mut out, "Files Created By Copied Installer");
             out.push(detail_row(
@@ -855,6 +856,7 @@ mod tests {
         assert!(text.contains("~/ts.sh"));
         assert!(text.contains("~/.tmux/qmonster.tmux.conf"));
         assert!(text.contains("tmux source-file ~/.tmux/qmonster.tmux.conf"));
+        assert!(text.contains("New sessions source ~/.tmux/qmonster.tmux.conf before pane splits"));
         assert!(text.contains("~/ts.sh qmonster ~/Qmonster"));
         assert!(text.contains("claude:1:main"));
         assert!(text.contains("Preview: y copies this content"));
@@ -1001,5 +1003,31 @@ mod tests {
         assert!(text.contains("chmod 0755 \"$HOME/ts.sh\""));
         assert!(text.contains("claude:1:main"));
         assert!(text.contains("set -g mouse on"));
+    }
+
+    #[test]
+    fn snippet_for_tab_tmux_sources_conf_before_new_session_splits() {
+        let overlay = ProviderSetupOverlay {
+            tab: ProviderSetupTab::Tmux,
+            ..Default::default()
+        };
+        let (_, text) = snippet_for_tab(&overlay);
+        let new_session = text
+            .find("tmux new-session -d -s \"$session_name\" -c \"$target_dir\"")
+            .expect("tmux launcher must create a detached session");
+        let source_guard = text
+            .find("if [[ -f \"$HOME/.tmux/qmonster.tmux.conf\" ]]; then")
+            .expect("tmux launcher must guard optional qmonster conf source");
+        let source_file = text
+            .find("tmux source-file \"$HOME/.tmux/qmonster.tmux.conf\"")
+            .expect("tmux launcher must source qmonster conf");
+        let first_split = text
+            .find("tmux split-window -h -c \"$target_dir\" -t \"${session_name}:0\"")
+            .expect("tmux launcher must create the second pane");
+
+        assert!(
+            new_session < source_guard && source_guard < source_file && source_file < first_split,
+            "qmonster tmux conf must be sourced after session creation and before pane splits"
+        );
     }
 }
