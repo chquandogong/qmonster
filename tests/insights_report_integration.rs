@@ -2,8 +2,9 @@ use qmonster::insights_report::{
     empty_insights_snapshot, format_insights_report_lines, parse_since_arg, resolve_insights_paths,
 };
 use qmonster::store::{
-    ActionImpactSummary, ActionLedgerRow, CacheInsightSummary, InsightsDataCompleteness,
-    InsightsSnapshot, InsightsWindow, NextBestActionItem, NextBestActionSummary, PaneInsightBucket,
+    ActionImpactSummary, ActionLedgerRow, CacheInsightSummary, CostBreakdownRow,
+    CostBreakdownSummary, InsightsDataCompleteness, InsightsSnapshot, InsightsWindow,
+    NextBestActionItem, NextBestActionSummary, PaneDataCompleteness, PaneInsightBucket,
     RecommendationTimelineItem, SituationSummary,
 };
 use tempfile::tempdir;
@@ -99,6 +100,7 @@ fn insights_report_renders_action_ledger() {
             cache_ratio_bucket_count: 1,
             cost_delta_bucket_count: 1,
             action_impact_count: 1,
+            panes: vec![],
         },
         timeline: vec![RecommendationTimelineItem {
             ts_label: "2026-05-07T12:00:00Z".into(),
@@ -161,6 +163,100 @@ fn insights_report_renders_action_ledger() {
 }
 
 #[test]
+fn insights_report_labels_cost_breakdown_provider_group_honestly() {
+    let snapshot = InsightsSnapshot {
+        window: InsightsWindow {
+            since_ms: 0,
+            until_ms: 86_400_000,
+        },
+        situations: vec![],
+        cache: CacheInsightSummary::default(),
+        pane_buckets: vec![],
+        next_best_action: NextBestActionSummary {
+            data_available: true,
+            action: None,
+            open_proposal_count: 0,
+        },
+        last_compact_payoff: Default::default(),
+        cost_breakdown: CostBreakdownSummary {
+            total_usd: 0.42,
+            by_pane: vec![],
+            by_model: vec![CostBreakdownRow {
+                label: "Codex".into(),
+                cost_delta_usd: 0.42,
+            }],
+            by_situation: vec![],
+        },
+        anomaly_correlations: Vec::new(),
+        action_impacts: vec![],
+        data_completeness: InsightsDataCompleteness::default(),
+        timeline: vec![],
+        actions: vec![],
+        ignored_available: false,
+    };
+
+    let joined = format_insights_report_lines(&snapshot).join("\n");
+
+    assert!(joined.contains("by provider: Codex $0.4200"));
+    assert!(!joined.contains("by model: Codex $0.4200"));
+}
+
+#[test]
+fn insights_report_renders_pane_data_completeness_statuses() {
+    let snapshot = InsightsSnapshot {
+        window: InsightsWindow {
+            since_ms: 0,
+            until_ms: 86_400_000,
+        },
+        situations: vec![],
+        cache: CacheInsightSummary::default(),
+        pane_buckets: vec![],
+        next_best_action: NextBestActionSummary {
+            data_available: true,
+            action: None,
+            open_proposal_count: 0,
+        },
+        last_compact_payoff: Default::default(),
+        cost_breakdown: Default::default(),
+        anomaly_correlations: Vec::new(),
+        action_impacts: vec![],
+        data_completeness: InsightsDataCompleteness {
+            pane_bucket_count: 1,
+            token_sample_count: 3,
+            cache_ratio_bucket_count: 1,
+            cost_delta_bucket_count: 0,
+            action_impact_count: 0,
+            panes: vec![
+                PaneDataCompleteness {
+                    pane_id: "%1".into(),
+                    provider: "Codex".into(),
+                    status: "ok".into(),
+                    coverage_pct: Some(100.0),
+                    elapsed_secs: Some(4),
+                    missing_polls: Some(0),
+                },
+                PaneDataCompleteness {
+                    pane_id: "%9".into(),
+                    provider: "Codex".into(),
+                    status: "suppressed".into(),
+                    coverage_pct: None,
+                    elapsed_secs: None,
+                    missing_polls: None,
+                },
+            ],
+        },
+        timeline: vec![],
+        actions: vec![],
+        ignored_available: false,
+    };
+
+    let joined = format_insights_report_lines(&snapshot).join("\n");
+
+    assert!(joined.contains("%1 Codex ok coverage 100.0% missing 0 elapsed 4s"));
+    assert!(joined.contains("%9 Codex suppressed coverage n/a missing n/a elapsed n/a"));
+}
+
+#[test]
 fn insights_report_renders_action_rate_summary() {
     let snapshot = InsightsSnapshot {
         window: InsightsWindow {
@@ -207,6 +303,63 @@ fn insights_report_renders_action_rate_summary() {
     assert!(joined.contains("accepted rate: 40.0%"));
     assert!(joined.contains("completion rate: 50.0%"));
     assert!(joined.contains("ignored rate: 20.0%"));
+}
+
+#[test]
+fn insights_report_renders_learning_outcomes_and_rule_tuning_candidates() {
+    let snapshot = InsightsSnapshot {
+        window: InsightsWindow {
+            since_ms: 0,
+            until_ms: 86_400_000,
+        },
+        situations: vec![],
+        cache: CacheInsightSummary::default(),
+        pane_buckets: vec![],
+        next_best_action: NextBestActionSummary {
+            data_available: true,
+            action: None,
+            open_proposal_count: 0,
+        },
+        last_compact_payoff: Default::default(),
+        cost_breakdown: Default::default(),
+        anomaly_correlations: Vec::new(),
+        action_impacts: vec![],
+        data_completeness: InsightsDataCompleteness::default(),
+        timeline: vec![],
+        actions: vec![
+            ActionLedgerRow {
+                action: "/compact".into(),
+                emitted: 2,
+                accepted: 1,
+                improved: 1,
+                ..ActionLedgerRow::default()
+            },
+            ActionLedgerRow {
+                action: "quota-pressure: pace requests".into(),
+                emitted: 3,
+                no_effect: 2,
+                ignored: 1,
+                ..ActionLedgerRow::default()
+            },
+            ActionLedgerRow {
+                action: "cache: avoid /compact while cache is hot".into(),
+                emitted: 1,
+                avoided: 1,
+                ..ActionLedgerRow::default()
+            },
+        ],
+        ignored_available: true,
+    };
+
+    let joined = format_insights_report_lines(&snapshot).join("\n");
+
+    assert!(joined.contains("Outcome Learning"));
+    assert!(joined.contains("/compact: accepted 1, improved 1, avoided 0, no_effect 0"));
+    assert!(joined.contains(
+        "cache: avoid /compact while cache is hot: accepted 0, improved 0, avoided 1, no_effect 0"
+    ));
+    assert!(joined.contains("Rule Tuning Candidates"));
+    assert!(joined.contains("quota-pressure: pace requests: no_effect 2, ignored 1"));
 }
 
 #[test]

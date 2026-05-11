@@ -25,7 +25,8 @@ pub use insights::{
     ActionImpactSummary, ActionLedgerRow, CacheInsightSummary, CostBreakdownRow,
     CostBreakdownSummary, CrossPaneAnomalyCorrelation, InsightsDataCompleteness, InsightsSnapshot,
     InsightsWindow, LastCompactPayoffSummary, NextBestActionItem, NextBestActionSummary,
-    PaneInsightBucket, RecommendationTimelineItem, SituationSummary, SqliteInsightsStore,
+    PaneDataCompleteness, PaneInsightBucket, RecommendationTimelineItem, SituationSummary,
+    SqliteInsightsStore,
 };
 pub use paths::QmonsterPaths;
 pub use recommendation_lifecycle::{

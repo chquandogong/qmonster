@@ -148,13 +148,24 @@ pub struct ActionImpactSummary {
     pub after_cache_ratio: Option<f64>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PaneDataCompleteness {
+    pub pane_id: String,
+    pub provider: String,
+    pub status: String,
+    pub coverage_pct: Option<f64>,
+    pub elapsed_secs: Option<u64>,
+    pub missing_polls: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct InsightsDataCompleteness {
     pub pane_bucket_count: usize,
     pub token_sample_count: u64,
     pub cache_ratio_bucket_count: usize,
     pub cost_delta_bucket_count: usize,
     pub action_impact_count: usize,
+    pub panes: Vec<PaneDataCompleteness>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -170,6 +181,11 @@ pub struct ActionLedgerRow {
     pub snapshot_written: u64,
     pub hidden: u64,
     pub ignored: u64,
+    pub avoided: u64,
+    pub expired: u64,
+    pub suppressed: u64,
+    pub no_effect: u64,
+    pub improved: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -446,6 +462,11 @@ fn apply_lifecycle_outcome(row: &mut ActionLedgerRow, outcome: &str) {
         "snapshot_written" | "auto_snapshot_written" => row.snapshot_written += 1,
         "hidden" => row.hidden += 1,
         "ignored" => row.ignored += 1,
+        "avoided" => row.avoided += 1,
+        "expired" => row.expired += 1,
+        "suppressed" => row.suppressed += 1,
+        "no_effect" => row.no_effect += 1,
+        "improved" => row.improved += 1,
         _ => {}
     }
 }
@@ -769,11 +790,15 @@ fn collect_metric_window_for_pane(
     })
 }
 
+const DATA_COMPLETENESS_EXPECTED_POLL_MS: i64 = 2_000;
+
 fn data_completeness_for(
+    conn: &Connection,
+    window: InsightsWindow,
     pane_buckets: &[PaneInsightBucket],
     action_impacts: &[ActionImpactSummary],
-) -> InsightsDataCompleteness {
-    InsightsDataCompleteness {
+) -> Result<InsightsDataCompleteness, SqliteError> {
+    Ok(InsightsDataCompleteness {
         pane_bucket_count: pane_buckets.len(),
         token_sample_count: pane_buckets.iter().map(|bucket| bucket.sample_count).sum(),
         cache_ratio_bucket_count: pane_buckets
@@ -785,7 +810,103 @@ fn data_completeness_for(
             .filter(|bucket| bucket.cost_delta_usd.is_some())
             .count(),
         action_impact_count: action_impacts.len(),
+        panes: collect_pane_data_completeness(conn, window)?,
+    })
+}
+
+fn collect_pane_data_completeness(
+    conn: &Connection,
+    window: InsightsWindow,
+) -> Result<Vec<PaneDataCompleteness>, SqliteError> {
+    let mut panes = BTreeMap::<(String, String), PaneDataCompleteness>::new();
+    if table_exists(conn, "token_usage_samples")? {
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT pane_id, provider, COUNT(*), MIN(ts_unix_ms), MAX(ts_unix_ms)
+                 FROM token_usage_samples
+                 WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2
+                 GROUP BY pane_id, provider",
+            )
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![window.since_ms, window.until_ms], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, u64>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        for row in rows {
+            let (pane_id, provider, sample_count, min_ts, max_ts) =
+                row.map_err(|e| SqliteError::Query(e.to_string()))?;
+            let elapsed_ms = max_ts.saturating_sub(min_ts).max(0);
+            let expected_polls =
+                (elapsed_ms / DATA_COMPLETENESS_EXPECTED_POLL_MS + 1).max(1) as u64;
+            let missing_polls = expected_polls.saturating_sub(sample_count);
+            let coverage_pct = ((sample_count as f64 / expected_polls as f64) * 100.0).min(100.0);
+            let coverage_pct = (coverage_pct * 10.0).round() / 10.0;
+            let status = if matches!(provider.as_str(), "Qmonster" | "Unknown") {
+                "unsupported"
+            } else if coverage_pct >= 80.0 {
+                "ok"
+            } else {
+                "?"
+            };
+            panes.insert(
+                (pane_id.clone(), provider.clone()),
+                PaneDataCompleteness {
+                    pane_id,
+                    provider,
+                    status: status.into(),
+                    coverage_pct: Some(coverage_pct),
+                    elapsed_secs: Some((elapsed_ms / 1000) as u64),
+                    missing_polls: Some(missing_polls),
+                },
+            );
+        }
     }
+
+    if table_exists(conn, "audit_events")? {
+        let (since_utc, until_utc) = window_rfc3339_bounds(window);
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT pane_id, provider
+                 FROM audit_events
+                 WHERE kind = 'IdentitySuppressed'
+                   AND ts_utc >= ?1
+                   AND ts_utc <= ?2
+                 ORDER BY ts_utc ASC, id ASC",
+            )
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![since_utc, until_utc], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?
+                        .unwrap_or_else(|| "unknown".into()),
+                ))
+            })
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        for row in rows {
+            let (pane_id, provider) = row.map_err(|e| SqliteError::Query(e.to_string()))?;
+            panes.insert(
+                (pane_id.clone(), provider.clone()),
+                PaneDataCompleteness {
+                    pane_id,
+                    provider,
+                    status: "suppressed".into(),
+                    coverage_pct: None,
+                    elapsed_secs: None,
+                    missing_polls: None,
+                },
+            );
+        }
+    }
+
+    Ok(panes.into_values().collect())
 }
 
 #[derive(Debug, Clone)]
@@ -954,13 +1075,16 @@ fn collect_anomaly_correlations(
             })
         })
         .map_err(|e| SqliteError::Query(e.to_string()))?;
-    let mut buckets = BTreeMap::<i64, Vec<AnomalyCorrelationEvent>>::new();
+    let mut buckets = BTreeMap::<(i64, String, String), Vec<AnomalyCorrelationEvent>>::new();
     for row in rows {
         let event = row.map_err(|e| SqliteError::Query(e.to_string()))?;
-        buckets.entry(event.minute).or_default().push(event);
+        buckets
+            .entry((event.minute, event.kind.clone(), event.confidence.clone()))
+            .or_default()
+            .push(event);
     }
     let mut out = Vec::new();
-    for (minute, events) in buckets {
+    for ((minute, _kind, _confidence), events) in buckets {
         let pane_count = events
             .iter()
             .map(|event| event.pane_id.as_str())
@@ -1079,6 +1203,7 @@ fn static_situation_label(situation: &str, action: &str) -> &'static str {
 struct LifecycleEventRow {
     id: i64,
     ts_unix_ms: i64,
+    last_seen_unix_ms: i64,
     pane_id: String,
     provider: Option<String>,
     situation: &'static str,
@@ -1151,8 +1276,12 @@ impl SqliteInsightsStore {
             snapshot.actions = lifecycle.actions;
             snapshot.timeline = lifecycle.timeline;
             snapshot.action_impacts = lifecycle.action_impacts;
-            snapshot.data_completeness =
-                data_completeness_for(&snapshot.pane_buckets, &snapshot.action_impacts);
+            snapshot.data_completeness = data_completeness_for(
+                &_conn,
+                window,
+                &snapshot.pane_buckets,
+                &snapshot.action_impacts,
+            )?;
             snapshot.ignored_available = true;
         }
         Ok(snapshot)
@@ -1268,7 +1397,8 @@ impl SqliteInsightsStore {
         let actions = actions_by_name.into_values().collect();
         timeline.reverse();
         timeline.truncate(10);
-        let data_completeness = data_completeness_for(&pane_rollup.pane_buckets, &[]);
+        let data_completeness =
+            data_completeness_for(&_conn, window, &pane_rollup.pane_buckets, &[])?;
 
         Ok(InsightsSnapshot {
             window,
@@ -1303,30 +1433,37 @@ fn lifecycle_snapshot(
     window: InsightsWindow,
     ignored_ttl_secs: u64,
 ) -> Result<LifecycleSnapshotParts, SqliteError> {
+    let last_seen_expr = if table_has_column(conn, "recommendation_events", "last_seen_unix_ms")? {
+        "COALESCE(last_seen_unix_ms, ts_unix_ms)"
+    } else {
+        "ts_unix_ms"
+    };
+    let event_sql = format!(
+        "SELECT id, ts_unix_ms, {last_seen_expr}, pane_id, provider, situation, action,
+                severity, reason_summary, suggested_command, is_strong
+         FROM recommendation_events
+         WHERE {last_seen_expr} >= ?1 AND ts_unix_ms <= ?2
+         ORDER BY id ASC"
+    );
     let mut event_stmt = conn
-        .prepare_cached(
-            "SELECT id, ts_unix_ms, pane_id, provider, situation, action,
-                    severity, reason_summary, suggested_command, is_strong
-             FROM recommendation_events
-             WHERE ts_unix_ms >= ?1 AND ts_unix_ms <= ?2
-             ORDER BY id ASC",
-        )
+        .prepare_cached(&event_sql)
         .map_err(|e| SqliteError::Query(e.to_string()))?;
     let event_rows = event_stmt
         .query_map(params![window.since_ms, window.until_ms], |row| {
-            let action: String = row.get(5)?;
-            let situation: String = row.get(4)?;
+            let action: String = row.get(6)?;
+            let situation: String = row.get(5)?;
             Ok(LifecycleEventRow {
                 id: row.get(0)?,
                 ts_unix_ms: row.get(1)?,
-                pane_id: row.get(2)?,
-                provider: row.get(3)?,
+                last_seen_unix_ms: row.get(2)?,
+                pane_id: row.get(3)?,
+                provider: row.get(4)?,
                 situation: static_situation_label(&situation, &action),
                 action,
-                severity: row.get(6)?,
-                reason_summary: row.get(7)?,
-                suggested_command: row.get(8)?,
-                is_strong: row.get::<_, i64>(9)? != 0,
+                severity: row.get(7)?,
+                reason_summary: row.get(8)?,
+                suggested_command: row.get(9)?,
+                is_strong: row.get::<_, i64>(10)? != 0,
             })
         })
         .map_err(|e| SqliteError::Query(e.to_string()))?;
@@ -1518,7 +1655,7 @@ fn lifecycle_snapshot(
             after_cache_ratio: after.latest_cache_ratio,
         });
         if event.action == "/compact"
-            && outcome.outcome == "completed"
+            && matches!(outcome.outcome.as_str(), "completed" | "improved")
             && last_compact_outcome_ts.is_none_or(|ts| outcome.ts_unix_ms >= ts)
         {
             last_compact_payoff = compact_payoff_from(event, outcome, &before, &after, window);
@@ -1535,6 +1672,9 @@ fn lifecycle_snapshot(
             continue;
         }
         if window.until_ms.saturating_sub(event.ts_unix_ms) < ttl_ms {
+            continue;
+        }
+        if window.until_ms.saturating_sub(event.last_seen_unix_ms) < ttl_ms {
             continue;
         }
         let entry = actions_by_name
@@ -1583,16 +1723,16 @@ fn next_best_action_for(
         .filter(|event| {
             event.is_strong
                 && !accepted_event_ids.contains(&event.id)
-                && event.ts_unix_ms >= since_ms
+                && event.last_seen_unix_ms >= since_ms
                 && event.ts_unix_ms <= window.until_ms
         })
         .collect();
     let action = pending
         .iter()
         .copied()
-        .max_by_key(|event| (event.ts_unix_ms, event.id))
+        .max_by_key(|event| (event.last_seen_unix_ms, event.id))
         .map(|event| NextBestActionItem {
-            ts_label: rfc3339_from_ms(event.ts_unix_ms),
+            ts_label: rfc3339_from_ms(event.last_seen_unix_ms),
             pane_id: event.pane_id.clone(),
             provider: event.provider.clone(),
             situation: event.situation,

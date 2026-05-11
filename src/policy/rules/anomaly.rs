@@ -34,6 +34,10 @@ pub struct AnomalyHistory {
     /// Observation timestamp per tick, most-recent-first. Used by
     /// slope detectors to normalize sparse or delayed samples by real
     /// elapsed time instead of assuming the nominal poll interval.
+    pub tick_unix_ms_samples: VecDeque<u64>,
+    /// Legacy persisted observation timestamp per tick, most-recent-first.
+    /// SQLite replay still stores seconds, so detectors fall back to this
+    /// deque when millisecond ticks are unavailable.
     pub tick_unix_secs_samples: VecDeque<u64>,
     /// IdentityChurn input: (provider_label, current_path) snapshot
     /// per tick. Most-recent-first.
@@ -85,6 +89,9 @@ impl AnomalyHistory {
     pub fn trim(&mut self, cap: usize) {
         while self.tick_unix_secs_samples.len() > cap {
             self.tick_unix_secs_samples.pop_back();
+        }
+        while self.tick_unix_ms_samples.len() > cap {
+            self.tick_unix_ms_samples.pop_back();
         }
         while self.identity_snapshots.len() > cap {
             self.identity_snapshots.pop_back();
@@ -557,6 +564,21 @@ pub fn detect_cross_pane_edit_cluster(
 }
 
 fn elapsed_secs_for_window(history: &AnomalyHistory, window_polls: usize) -> Option<f64> {
+    let ms_ticks: Vec<u64> = history
+        .tick_unix_ms_samples
+        .iter()
+        .take(window_polls)
+        .copied()
+        .collect();
+    if ms_ticks.len() >= window_polls {
+        let newest = *ms_ticks.first()?;
+        let oldest = *ms_ticks.last()?;
+        let elapsed_ms = newest.saturating_sub(oldest);
+        if elapsed_ms > 0 {
+            return Some(elapsed_ms as f64 / 1000.0);
+        }
+    }
+
     let ticks: Vec<u64> = history
         .tick_unix_secs_samples
         .iter()
@@ -572,14 +594,16 @@ fn elapsed_secs_for_window(history: &AnomalyHistory, window_polls: usize) -> Opt
     (elapsed > 0).then_some(elapsed as f64)
 }
 
+const NOMINAL_POLL_INTERVAL_SECS: f64 = 2.0;
+
 fn nominal_elapsed_secs(window_polls: usize) -> f64 {
-    (window_polls as f64) * 5.0
+    (window_polls as f64) * NOMINAL_POLL_INTERVAL_SECS
 }
 
 /// CostSlope: cost_usd cumulative delta over `window_polls` ticks,
 /// normalized to USD per hour. Fires when slope ≥ `threshold_usd_per_hour`.
 /// Uses real sample timestamps when available; otherwise falls back to
-/// the legacy `window_polls × 5s` nominal polling interval.
+/// the default `window_polls × 2s` nominal polling interval.
 /// Confidence: `High` at ≥ 1.5× threshold, otherwise `Medium`.
 pub fn detect_cost_slope(
     history: &AnomalyHistory,
@@ -642,7 +666,7 @@ pub fn detect_cost_slope(
 
 /// TokenSlope: input_tokens cumulative delta over `window_polls`,
 /// normalized to tokens-per-poll. Real elapsed time is converted back
-/// into 5-second poll-equivalent units when timestamps are available.
+/// into default-poll-equivalent units when timestamps are available.
 /// `output_tokens` is evidence-only.
 /// Fires when `slope_per_poll >= threshold_input_per_poll`.
 /// Confidence: `High` at ≥ 1.5× threshold, otherwise `Medium`.
@@ -671,7 +695,7 @@ pub fn detect_token_slope(
     }
     let window_secs = elapsed_secs_for_window(history, window_polls)
         .unwrap_or_else(|| nominal_elapsed_secs(window_polls));
-    let poll_equivalent = (window_secs / 5.0).max(1.0);
+    let poll_equivalent = (window_secs / NOMINAL_POLL_INTERVAL_SECS).max(1.0);
     let slope_per_poll = (newest - oldest) as f64 / poll_equivalent;
     if slope_per_poll < threshold_input_per_poll as f64 {
         return None;
@@ -926,7 +950,7 @@ pub fn promote_anomalies_to_recommendations(
                         "subagent_hint observed {count} times in {} polls, co-occurring with other anomalies (correlation, not attribution)",
                         sig.window_polls
                     ),
-                    "the subagent run is likely the source of the co-occurring anomaly; review the subagent's recent output".to_string(),
+                    "subagent activity is correlated with the co-occurring anomaly; review the subagent's recent output before attributing cause".to_string(),
                 )
             }
         };
@@ -1560,6 +1584,14 @@ mod tests {
         h
     }
 
+    fn cost_history_with_ms_ticks(samples: Vec<Option<f64>>, ticks: Vec<u64>) -> AnomalyHistory {
+        let mut h = cost_history(samples);
+        for tick in ticks.into_iter().rev() {
+            h.tick_unix_ms_samples.push_front(tick);
+        }
+        h
+    }
+
     #[test]
     fn detect_cost_slope_pure_positive_high_confidence() {
         // window=20 polls × 5s = 100s. cost climbs 0 → 100 → slope = 100/100 * 3600 = 3600 USD/hour.
@@ -1578,10 +1610,11 @@ mod tests {
 
     #[test]
     fn detect_cost_slope_pure_positive_medium_confidence() {
-        // 20-cent delta over 100s = 7.2 USD/hour → ≥ 5.0 threshold but < 7.5 → Medium.
-        let mut samples = vec![Some(0.20)];
+        // 7-cent delta over the default 40s fallback = 6.3 USD/hour
+        // → ≥ 5.0 threshold but < 7.5 → Medium.
+        let mut samples = vec![Some(0.07)];
         for i in (0..19).rev() {
-            samples.push(Some((i as f64) * (0.20 / 19.0)));
+            samples.push(Some((i as f64) * (0.07 / 19.0)));
         }
         let h = cost_history(samples);
         let sig = detect_cost_slope(&h, 20, 5.0, 1_700_000_000).unwrap();
@@ -1601,6 +1634,17 @@ mod tests {
     }
 
     #[test]
+    fn detect_cost_slope_fallback_uses_default_two_second_poll_interval() {
+        let mut samples = vec![Some(0.23)];
+        for i in (0..19).rev() {
+            samples.push(Some((i as f64) * (0.23 / 19.0)));
+        }
+        let h = cost_history(samples);
+
+        assert!(detect_cost_slope(&h, 20, 20.0, 1_700_000_000).is_some());
+    }
+
+    #[test]
     fn detect_cost_slope_uses_actual_elapsed_seconds_when_available() {
         let mut samples = vec![Some(1.0)];
         for i in (0..19).rev() {
@@ -1608,6 +1652,18 @@ mod tests {
         }
         let ticks: Vec<u64> = (0..20).map(|i| 1_700_000_000 - i * 60).collect();
         let h = cost_history_with_ticks(samples, ticks);
+
+        assert!(detect_cost_slope(&h, 20, 20.0, 1_700_000_000).is_none());
+    }
+
+    #[test]
+    fn detect_cost_slope_prefers_millisecond_ticks_when_available() {
+        let mut samples = vec![Some(1.0)];
+        for i in (0..19).rev() {
+            samples.push(Some((i as f64) * (1.0 / 19.0)));
+        }
+        let ticks: Vec<u64> = (0..20).map(|i| 1_700_000_000_000 - i * 60_000).collect();
+        let h = cost_history_with_ms_ticks(samples, ticks);
 
         assert!(detect_cost_slope(&h, 20, 20.0, 1_700_000_000).is_none());
     }
@@ -2001,6 +2057,35 @@ mod tests {
             1,
             "Medium SubagentSideEffect must promote at default Medium threshold (v1.45.0 dead-code fix)"
         );
+    }
+
+    #[test]
+    fn subagent_side_effect_next_step_describes_correlation_not_source_attribution() {
+        use crate::domain::anomaly::{
+            AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal,
+        };
+        use crate::domain::origin::SourceKind;
+        let gates = fixture_gates();
+        let signal = AnomalySignal {
+            kind: AnomalyKind::SubagentSideEffect,
+            confidence: AnomalyConfidence::Medium,
+            severity: severity_for(AnomalyConfidence::Medium),
+            window_polls: 20,
+            evidence: vec![AnomalyEvidence {
+                metric_name: "subagent_hint",
+                before: "0".to_string(),
+                after: "3".to_string(),
+                sample_count: 20,
+                source_kind: SourceKind::Estimated,
+            }],
+            detected_at: 1_700_000_000,
+        };
+
+        let recs = promote_anomalies_to_recommendations(&[signal], &gates);
+        let next_step = recs[0].next_step.as_deref().unwrap();
+
+        assert!(next_step.contains("correlated"));
+        assert!(!next_step.contains("likely the source"));
     }
 
     #[test]

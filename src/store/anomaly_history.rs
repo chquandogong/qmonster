@@ -85,6 +85,9 @@ pub fn push_snapshot_into_history_at(
     snap: &AnomalyHistorySnapshot,
 ) {
     history.tick_unix_secs_samples.push_front(tick_unix_secs);
+    history
+        .tick_unix_ms_samples
+        .push_front(tick_unix_secs.saturating_mul(1000));
     // Unconditional: mirrors event_loop which always pushes identity and
     // error_hint regardless of signal presence.
     let id = snap

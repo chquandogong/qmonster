@@ -576,17 +576,13 @@ fn cost_breakdown_no_data_returns_empty_groups() {
 }
 
 #[test]
-fn anomaly_correlations_group_two_panes_in_same_minute() {
+fn anomaly_correlations_group_two_panes_with_same_kind_and_confidence_in_same_minute() {
     let td = tempdir().unwrap();
     let db_path = td.path().join("qmonster.db");
     let sink = SqliteAnomalySink::open(&db_path).unwrap();
     for (pane, kind, confidence) in [
         ("%1", AnomalyKind::ErrorBurst, AnomalyConfidence::High),
-        (
-            "%2",
-            AnomalyKind::CacheDiscontinuity,
-            AnomalyConfidence::Medium,
-        ),
+        ("%2", AnomalyKind::ErrorBurst, AnomalyConfidence::High),
     ] {
         sink.insert_anomaly_event(&AnomalyEvent {
             timestamp: 1_700_000_020,
@@ -613,7 +609,44 @@ fn anomaly_correlations_group_two_panes_in_same_minute() {
     let row = &snapshot.anomaly_correlations[0];
     assert_eq!(row.pane_count, 2);
     assert!(row.summary.contains("%1(ErrorBurst:high)"));
-    assert!(row.summary.contains("%2(CacheDiscontinuity:medium)"));
+    assert!(row.summary.contains("%2(ErrorBurst:high)"));
+}
+
+#[test]
+fn anomaly_correlations_do_not_group_different_kinds_in_same_minute() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let sink = SqliteAnomalySink::open(&db_path).unwrap();
+    for (pane, kind, confidence) in [
+        ("%1", AnomalyKind::ErrorBurst, AnomalyConfidence::High),
+        (
+            "%2",
+            AnomalyKind::CacheDiscontinuity,
+            AnomalyConfidence::High,
+        ),
+    ] {
+        sink.insert_anomaly_event(&AnomalyEvent {
+            timestamp: 1_700_000_020,
+            pane_id: pane.into(),
+            kind,
+            confidence,
+            severity: Severity::Warning,
+            promoted: true,
+            reason: "same minute but different detector".into(),
+            evidence: Vec::new(),
+        })
+        .unwrap();
+    }
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: 1_700_000_000_000,
+            until_ms: 1_700_000_120_000,
+        })
+        .unwrap();
+
+    assert!(snapshot.anomaly_correlations.is_empty());
 }
 
 #[test]
@@ -1033,6 +1066,14 @@ fn cache_summary_buckets_token_growth_by_pane_and_provider() {
     assert_eq!(snapshot.data_completeness.token_sample_count, 4);
     assert_eq!(snapshot.data_completeness.cache_ratio_bucket_count, 2);
     assert_eq!(snapshot.data_completeness.cost_delta_bucket_count, 2);
+    assert_eq!(snapshot.data_completeness.panes.len(), 2);
+    assert!(snapshot.data_completeness.panes.iter().any(|pane| {
+        pane.pane_id == "%1"
+            && pane.provider == "Codex"
+            && pane.status == "ok"
+            && pane.coverage_pct == Some(100.0)
+            && pane.missing_polls == Some(0)
+    }));
 
     let codex = snapshot
         .pane_buckets
@@ -1053,6 +1094,44 @@ fn cache_summary_buckets_token_growth_by_pane_and_provider() {
     assert_eq!(gemini.latest_cache_ratio, Some(0.8));
     assert!((gemini.cost_delta_usd.unwrap() - 0.03).abs() < 0.000_001);
     assert_eq!(gemini.sample_count, 2);
+}
+
+#[test]
+fn data_completeness_marks_identity_suppressed_panes() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let _tokens = SqliteTokenUsageSink::open(&db_path).unwrap();
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute(
+        "INSERT INTO audit_events
+         (ts_utc, kind, severity, pane_id, provider, role, summary)
+         VALUES (?1, 'IdentitySuppressed', 'Concern', '%9', 'Codex', 'Review', 'identity conflict')",
+        [chrono::Utc
+            .timestamp_millis_opt(5_000)
+            .single()
+            .unwrap()
+            .to_rfc3339()],
+    )
+    .unwrap();
+
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 10_000,
+        })
+        .unwrap();
+
+    let pane = snapshot
+        .data_completeness
+        .panes
+        .iter()
+        .find(|pane| pane.pane_id == "%9")
+        .unwrap();
+    assert_eq!(pane.provider, "Codex");
+    assert_eq!(pane.status, "suppressed");
+    assert_eq!(pane.coverage_pct, None);
+    assert_eq!(pane.missing_polls, None);
 }
 
 #[test]
@@ -1377,6 +1456,201 @@ fn insights_lifecycle_counts_outcomes_and_ttl_ignored() {
             .iter()
             .any(|item| item.outcome == "ignored" && item.action.contains("cache"))
     );
+}
+
+#[test]
+fn insights_lifecycle_dedupes_repeated_active_recommendation() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+
+    let first_id = lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Some("Codex".into()),
+            role: Some("Review".into()),
+            situation: "Context pressure".into(),
+            action: "/compact".into(),
+            severity: "warning".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "context near critical".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%1:/compact".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    let second_id = lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 8_000,
+            pane_id: "%1".into(),
+            provider: Some("Codex".into()),
+            role: Some("Review".into()),
+            situation: "Context pressure".into(),
+            action: "/compact".into(),
+            severity: "warning".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "context still near critical".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%1:/compact".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+
+    assert_eq!(first_id, second_id);
+
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot_with_ignored_ttl(
+            InsightsWindow {
+                since_ms: 0,
+                until_ms: 10_000,
+            },
+            5,
+        )
+        .unwrap();
+
+    let compact = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "/compact")
+        .unwrap();
+    assert_eq!(compact.emitted, 1);
+    assert_eq!(compact.ignored, 0);
+    assert_eq!(snapshot.next_best_action.open_proposal_count, 1);
+    assert_eq!(
+        snapshot
+            .next_best_action
+            .action
+            .as_ref()
+            .map(|action| action.reason_summary.as_str()),
+        Some("context still near critical")
+    );
+}
+
+#[test]
+fn insights_lifecycle_counts_learning_outcomes() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+
+    let compact_id = lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Some("Codex".into()),
+            role: Some("Review".into()),
+            situation: "Context pressure".into(),
+            action: "/compact".into(),
+            severity: "warning".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "context near critical".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%1:/compact".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: 2_000,
+            recommendation_event_id: Some(compact_id),
+            pane_id: "%1".into(),
+            action: "/compact".into(),
+            outcome: RecommendationOutcome::Improved,
+            audit_event_id: None,
+            summary: "token growth improved after compact".into(),
+        })
+        .unwrap();
+
+    let cache_id = lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 3_000,
+            pane_id: "%2".into(),
+            provider: Some("Codex".into()),
+            role: Some("Main".into()),
+            situation: "Context pressure".into(),
+            action: "cache: avoid /compact while cache is hot".into(),
+            severity: "concern".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "cache is hot".into(),
+            suggested_command: None,
+            is_strong: false,
+            dedup_key: "%2:cache-hot".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: 4_000,
+            recommendation_event_id: Some(cache_id),
+            pane_id: "%2".into(),
+            action: "cache: avoid /compact while cache is hot".into(),
+            outcome: RecommendationOutcome::Avoided,
+            audit_event_id: None,
+            summary: "operator avoided compact and cache stayed useful".into(),
+        })
+        .unwrap();
+
+    let noisy_id = lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 5_000,
+            pane_id: "%3".into(),
+            provider: Some("Codex".into()),
+            role: Some("Main".into()),
+            situation: "Quota-tight / cost".into(),
+            action: "quota-pressure: pace requests".into(),
+            severity: "concern".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "quota pressure is high".into(),
+            suggested_command: None,
+            is_strong: false,
+            dedup_key: "%3:quota-pressure".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: 6_000,
+            recommendation_event_id: Some(noisy_id),
+            pane_id: "%3".into(),
+            action: "quota-pressure: pace requests".into(),
+            outcome: RecommendationOutcome::NoEffect,
+            audit_event_id: None,
+            summary: "quota pressure persisted after action".into(),
+        })
+        .unwrap();
+
+    let store = SqliteInsightsStore::open(&db_path).unwrap();
+    let snapshot = store
+        .snapshot(InsightsWindow {
+            since_ms: 0,
+            until_ms: 10_000,
+        })
+        .unwrap();
+
+    let compact = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "/compact")
+        .unwrap();
+    assert_eq!(compact.improved, 1);
+
+    let cache = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "cache: avoid /compact while cache is hot")
+        .unwrap();
+    assert_eq!(cache.avoided, 1);
+
+    let quota = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "quota-pressure: pace requests")
+        .unwrap();
+    assert_eq!(quota.no_effect, 1);
 }
 
 #[test]

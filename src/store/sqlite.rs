@@ -107,7 +107,9 @@ CREATE TABLE IF NOT EXISTS recommendation_events (
     suggested_command       TEXT,
     is_strong               INTEGER NOT NULL,
     dedup_key               TEXT    NOT NULL,
-    threshold_snapshot_json TEXT
+    threshold_snapshot_json TEXT,
+    last_seen_unix_ms       INTEGER,
+    occurrence_count        INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_recommendation_events_ts
     ON recommendation_events(ts_unix_ms DESC);
@@ -203,6 +205,37 @@ impl AuditDb {
                 return Err(SqliteError::Query(msg));
             }
         }
+        if let Err(e) = conn.execute(
+            "ALTER TABLE recommendation_events ADD COLUMN last_seen_unix_ms INTEGER",
+            [],
+        ) {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(SqliteError::Query(msg));
+            }
+        }
+        if let Err(e) = conn.execute(
+            "ALTER TABLE recommendation_events ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1",
+            [],
+        ) {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(SqliteError::Query(msg));
+            }
+        }
+        conn.execute(
+            "UPDATE recommendation_events
+             SET last_seen_unix_ms = ts_unix_ms
+             WHERE last_seen_unix_ms IS NULL",
+            [],
+        )
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_recommendation_events_pane_dedup_seen
+             ON recommendation_events(pane_id, dedup_key, last_seen_unix_ms DESC)",
+            [],
+        )
+        .map_err(|e| SqliteError::Query(e.to_string()))?;
         Ok(Self {
             conn: Mutex::new(conn),
         })

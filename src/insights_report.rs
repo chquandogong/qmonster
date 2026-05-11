@@ -150,7 +150,7 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
         format_cost_breakdown_rows(&snapshot.cost_breakdown.by_pane)
     ));
     lines.push(format!(
-        "  by model: {}",
+        "  by provider: {}",
         format_cost_breakdown_rows(&snapshot.cost_breakdown.by_model)
     ));
     lines.push(format!(
@@ -238,6 +238,29 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
         "  action impacts: {}",
         snapshot.data_completeness.action_impact_count
     ));
+    if snapshot.data_completeness.panes.is_empty() {
+        lines.push("  pane status: none".into());
+    } else {
+        lines.push("  pane status:".into());
+        for pane in snapshot.data_completeness.panes.iter().take(8) {
+            let coverage = pane
+                .coverage_pct
+                .map(|value| format!("{value:.1}%"))
+                .unwrap_or_else(|| "n/a".into());
+            let missing = pane
+                .missing_polls
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "n/a".into());
+            let elapsed = pane
+                .elapsed_secs
+                .map(|value| format!("{value}s"))
+                .unwrap_or_else(|| "n/a".into());
+            lines.push(format!(
+                "    {} {} {} coverage {} missing {} elapsed {}",
+                pane.pane_id, pane.provider, pane.status, coverage, missing, elapsed
+            ));
+        }
+    }
     lines.push(String::new());
     lines.push("Action Ledger".into());
     if snapshot.actions.is_empty() {
@@ -250,7 +273,7 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
                 "n/a".into()
             };
             lines.push(format!(
-                "  {} emitted={} accepted={} rejected={} blocked={} completed={} failed={} archived={} snapshot={} hidden={} ignored={}",
+                "  {} emitted={} accepted={} rejected={} blocked={} completed={} failed={} archived={} snapshot={} hidden={} ignored={} avoided={} no_effect={} improved={}",
                 row.action,
                 row.emitted,
                 row.accepted,
@@ -262,6 +285,9 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
                 row.snapshot_written,
                 row.hidden,
                 ignored,
+                row.avoided,
+                row.no_effect,
+                row.improved,
             ));
         }
     }
@@ -286,6 +312,41 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
             "n/a".into()
         };
         lines.push(format!("  ignored rate: {ignored_rate}"));
+    }
+    if !snapshot.actions.is_empty() {
+        lines.push(String::new());
+        lines.push("Outcome Learning".into());
+        for row in &snapshot.actions {
+            if row.accepted == 0
+                && row.improved == 0
+                && row.avoided == 0
+                && row.no_effect == 0
+                && row.expired == 0
+                && row.suppressed == 0
+            {
+                continue;
+            }
+            lines.push(format!(
+                "  {}: accepted {}, improved {}, avoided {}, no_effect {}",
+                row.action, row.accepted, row.improved, row.avoided, row.no_effect
+            ));
+        }
+        lines.push(String::new());
+        lines.push("Rule Tuning Candidates".into());
+        let mut any_candidate = false;
+        for row in &snapshot.actions {
+            if row.no_effect == 0 && row.ignored == 0 && row.rejected == 0 {
+                continue;
+            }
+            any_candidate = true;
+            lines.push(format!(
+                "  {}: no_effect {}, ignored {}, rejected {}",
+                row.action, row.no_effect, row.ignored, row.rejected
+            ));
+        }
+        if !any_candidate {
+            lines.push("  none".into());
+        }
     }
     lines.push(String::new());
     lines.push("Recent Timeline".into());

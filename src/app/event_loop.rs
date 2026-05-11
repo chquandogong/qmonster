@@ -337,9 +337,9 @@ where
         {
             let cap = gates.anomaly_window_polls.max(1);
             let entry = ctx.anomaly_history.entry(pane.pane_id.clone()).or_default();
-            entry
-                .tick_unix_secs_samples
-                .push_front((current_unix_ms() / 1000) as u64);
+            let now_unix_ms = current_unix_ms() as u64;
+            entry.tick_unix_ms_samples.push_front(now_unix_ms);
+            entry.tick_unix_secs_samples.push_front(now_unix_ms / 1000);
             let provider_label = format!("{:?}", resolved.identity.provider);
             entry
                 .identity_snapshots

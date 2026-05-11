@@ -251,17 +251,29 @@ fn now_strip_summary_for(
     now_unix_secs: u64,
     cost_budget_usd: f64,
 ) -> NowStripSummary {
-    if let Some(report) = reports.iter().find(|report| {
-        matches!(
-            report.idle_state.or(report.signals.idle_state),
-            Some(
+    if let Some((report, idle_cause)) = reports
+        .iter()
+        .filter_map(|report| {
+            report
+                .idle_state
+                .or(report.signals.idle_state)
+                .map(|idle_cause| (report, idle_cause))
+        })
+        .find(|(_, idle_cause)| {
+            matches!(
+                idle_cause,
                 crate::domain::signal::IdleCause::PermissionWait
                     | crate::domain::signal::IdleCause::InputWait
             )
-        )
-    }) {
+        })
+    {
+        let (label, hint) = match idle_cause {
+            crate::domain::signal::IdleCause::PermissionWait => ("WAIT APPROVAL", "Enter approve"),
+            crate::domain::signal::IdleCause::InputWait => ("WAIT INPUT", "respond in pane"),
+            _ => unreachable!("wait-state filter admits only permission or input waits"),
+        };
         return NowStripSummary {
-            text: format!("{} WAIT INPUT — Enter approve · q skip", report.pane_id),
+            text: format!("{} {label} — {hint} · q skip", report.pane_id),
             severity: crate::domain::recommendation::Severity::Risk,
         };
     }
@@ -2309,7 +2321,22 @@ mod tests {
 
         let summary = now_strip_summary_for(&[report], &[], 1_700_000_000, 200.0);
 
-        assert_eq!(summary.text, "%1 WAIT INPUT — Enter approve · q skip");
+        assert_eq!(summary.text, "%1 WAIT APPROVAL — Enter approve · q skip");
+        assert_eq!(
+            summary.severity,
+            crate::domain::recommendation::Severity::Risk
+        );
+    }
+
+    #[test]
+    fn now_strip_labels_input_wait_distinctly() {
+        use crate::domain::signal::IdleCause;
+        let mut report = pending_actions_pane_report(false, vec![]);
+        report.idle_state = Some(IdleCause::InputWait);
+
+        let summary = now_strip_summary_for(&[report], &[], 1_700_000_000, 200.0);
+
+        assert_eq!(summary.text, "%1 WAIT INPUT — respond in pane · q skip");
         assert_eq!(
             summary.severity,
             crate::domain::recommendation::Severity::Risk

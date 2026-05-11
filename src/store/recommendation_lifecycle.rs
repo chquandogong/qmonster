@@ -41,6 +41,11 @@ pub enum RecommendationOutcome {
     AutoSnapshotWritten,
     Hidden,
     Ignored,
+    Avoided,
+    Expired,
+    Suppressed,
+    NoEffect,
+    Improved,
 }
 
 impl RecommendationOutcome {
@@ -56,6 +61,11 @@ impl RecommendationOutcome {
             RecommendationOutcome::AutoSnapshotWritten => "auto_snapshot_written",
             RecommendationOutcome::Hidden => "hidden",
             RecommendationOutcome::Ignored => "ignored",
+            RecommendationOutcome::Avoided => "avoided",
+            RecommendationOutcome::Expired => "expired",
+            RecommendationOutcome::Suppressed => "suppressed",
+            RecommendationOutcome::NoEffect => "no_effect",
+            RecommendationOutcome::Improved => "improved",
         }
     }
 
@@ -71,6 +81,11 @@ impl RecommendationOutcome {
             "auto_snapshot_written" => RecommendationOutcome::AutoSnapshotWritten,
             "hidden" => RecommendationOutcome::Hidden,
             "ignored" => RecommendationOutcome::Ignored,
+            "avoided" => RecommendationOutcome::Avoided,
+            "expired" => RecommendationOutcome::Expired,
+            "suppressed" => RecommendationOutcome::Suppressed,
+            "no_effect" => RecommendationOutcome::NoEffect,
+            "improved" => RecommendationOutcome::Improved,
             _ => return None,
         })
     }
@@ -107,12 +122,71 @@ impl SqliteRecommendationLifecycleSink {
             .connection()
             .lock()
             .map_err(|e| SqliteError::Query(e.to_string()))?;
+        let active_event_id: Option<i64> = conn
+            .query_row(
+                "SELECT e.id
+                 FROM recommendation_events e
+                 WHERE e.pane_id = ?1
+                   AND e.dedup_key = ?2
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM recommendation_outcomes o
+                       WHERE o.recommendation_event_id = e.id
+                         AND o.outcome IN (
+                             'rejected', 'completed', 'failed', 'blocked',
+                             'archived', 'snapshot_written',
+                             'auto_snapshot_written', 'hidden', 'ignored',
+                             'avoided', 'expired', 'suppressed',
+                             'no_effect', 'improved'
+                         )
+                   )
+                 ORDER BY COALESCE(e.last_seen_unix_ms, e.ts_unix_ms) DESC, e.id DESC
+                 LIMIT 1",
+                rusqlite::params![event.pane_id.as_str(), event.dedup_key.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+        if let Some(id) = active_event_id {
+            conn.execute(
+                "UPDATE recommendation_events
+                 SET last_seen_unix_ms = MAX(COALESCE(last_seen_unix_ms, ts_unix_ms), ?1),
+                     provider = ?2,
+                     role = ?3,
+                     situation = ?4,
+                     action = ?5,
+                     severity = ?6,
+                     source_kind = ?7,
+                     reason_summary = ?8,
+                     suggested_command = ?9,
+                     is_strong = ?10,
+                     threshold_snapshot_json = ?11,
+                     occurrence_count = COALESCE(occurrence_count, 1) + 1
+                 WHERE id = ?12",
+                rusqlite::params![
+                    event.ts_unix_ms,
+                    event.provider.as_deref(),
+                    event.role.as_deref(),
+                    event.situation.as_str(),
+                    event.action.as_str(),
+                    event.severity.as_str(),
+                    event.source_kind.as_str(),
+                    event.reason_summary.as_str(),
+                    event.suggested_command.as_deref(),
+                    event.is_strong as i64,
+                    event.threshold_snapshot_json.as_deref(),
+                    id,
+                ],
+            )
+            .map_err(|e| SqliteError::Query(e.to_string()))?;
+            return Ok(id);
+        }
         conn.execute(
             "INSERT INTO recommendation_events
              (ts_unix_ms, pane_id, provider, role, situation, action, severity,
               source_kind, reason_summary, suggested_command, is_strong, dedup_key,
-              threshold_snapshot_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+              threshold_snapshot_json, last_seen_unix_ms, occurrence_count)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 1)",
             rusqlite::params![
                 event.ts_unix_ms,
                 event.pane_id.as_str(),
@@ -127,6 +201,7 @@ impl SqliteRecommendationLifecycleSink {
                 event.is_strong as i64,
                 event.dedup_key.as_str(),
                 event.threshold_snapshot_json.as_deref(),
+                event.ts_unix_ms,
             ],
         )
         .map_err(|e| SqliteError::Query(e.to_string()))?;
@@ -253,6 +328,73 @@ mod tests {
     }
 
     #[test]
+    fn lifecycle_sink_updates_active_duplicate_recommendation() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("audit.db");
+        let sink = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+        let first = sink
+            .insert_recommendation_event(&RecommendationEventRecord {
+                ts_unix_ms: 1_000,
+                pane_id: "%1".into(),
+                provider: Some("Codex".into()),
+                role: Some("Review".into()),
+                situation: "Context pressure".into(),
+                action: "/compact".into(),
+                severity: "warning".into(),
+                source_kind: "Estimated".into(),
+                reason_summary: "context near critical".into(),
+                suggested_command: Some("/compact".into()),
+                is_strong: true,
+                dedup_key: "%1:/compact".into(),
+                threshold_snapshot_json: None,
+            })
+            .unwrap();
+        let second = sink
+            .insert_recommendation_event(&RecommendationEventRecord {
+                ts_unix_ms: 8_000,
+                pane_id: "%1".into(),
+                provider: Some("Codex".into()),
+                role: Some("Review".into()),
+                situation: "Context pressure".into(),
+                action: "/compact".into(),
+                severity: "warning".into(),
+                source_kind: "Estimated".into(),
+                reason_summary: "context still near critical".into(),
+                suggested_command: Some("/compact".into()),
+                is_strong: true,
+                dedup_key: "%1:/compact".into(),
+                threshold_snapshot_json: None,
+            })
+            .unwrap();
+
+        assert_eq!(first, second);
+
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        let (count, first_seen, last_seen, occurrences, reason): (i64, i64, i64, i64, String) =
+            conn.query_row(
+                "SELECT count(*), min(ts_unix_ms), max(last_seen_unix_ms),
+                        max(occurrence_count), max(reason_summary)
+                 FROM recommendation_events",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(first_seen, 1_000);
+        assert_eq!(last_seen, 8_000);
+        assert_eq!(occurrences, 2);
+        assert_eq!(reason, "context still near critical");
+    }
+
+    #[test]
     fn lifecycle_outcome_label_round_trips() {
         for outcome in [
             RecommendationOutcome::Accepted,
@@ -265,6 +407,11 @@ mod tests {
             RecommendationOutcome::AutoSnapshotWritten,
             RecommendationOutcome::Hidden,
             RecommendationOutcome::Ignored,
+            RecommendationOutcome::Avoided,
+            RecommendationOutcome::Expired,
+            RecommendationOutcome::Suppressed,
+            RecommendationOutcome::NoEffect,
+            RecommendationOutcome::Improved,
         ] {
             assert_eq!(
                 RecommendationOutcome::try_from_label(outcome.label()),
