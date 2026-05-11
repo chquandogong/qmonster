@@ -1,14 +1,152 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-08 (Claude, v2.0.0 milestone marker + consistency sweep on top of the v1.60.0 polish baseline)_
+_Last updated: 2026-05-11 (Claude, v2.1.0 r2 cross-validated synthesis-slice implementation bundle on top of the v2.0.0 milestone)_
 
 ## Mission
 
-- Title: Qmonster v2.0.0 — milestone marker + cross-cutting consistency sweep. Every operator-facing surface (alerts / panes / settings / metrics / anomaly / insights / help / fx / theme) is polished, the v1.58.0-deferred Light theme is closed by v1.60.0, and the version-surface table (README.md, VERSION.md, PROJECT_BRIEF.md header, mission.yaml, mission-history.yaml meta, package.json) aligns on v2.0.0. No code-behaviour change beyond a help-modal prose tweak that documents the v1.59.0 dual `/` semantic (Alerts focus → filter input; Panes focus → split-cycle). v2.0.0 is the operator-chosen marker for "every dashboard surface is polished" — not a semver breaking-change signal.
-- Version surfaces: npm package metadata `qmonster@2.0.0`; local Git tag pending sync commit; GitHub Release publication is CI-owned.
-- Branch / worktree at handoff start: `main`, tag `v2.0.0` to be created at the ledger sync commit. v1.60.0 is the immediate prior tagged baseline.
+- Title: Qmonster v2.1.0 — r2 cross-validated synthesis-slice implementation bundle. Ships Slice 0 Attribution Lock (descendant-exe-aware identity resolver, `IdentityConfidence::Conflict`, suppression of provider adapter / Claude sidefile / CLI version / Codex rate-limit / profile recommendations on conflict panes, `IdentitySuppressed` audit kind, multi-evidence Claude sidefile matching), Slice 1 pane-bucketed Insights re-aggregation, Slice 2 ROI loop closure (`/compact` payoff windows + avoided/accepted families + rule tuning candidates), Slice 3 anomaly time-normalization (`ts_unix_ms` slopes) + `evidence_json` schema migration + inline evidence sub-row expansion, Slice 4 data completeness, Slice 6 live-smoke validation matrix + `--once` fixtures, plus UI synthesis slices A-I (Now strip, next-best-action, payoff chip, anomaly evidence row expansion, ETA chips with timestamp normalization, policy mini-strip, cost breakdown by pane/model/situation, cross-pane correlation hints, audit severity chip). No new modals, no new detectors, no automatic actuation (3-way Claude/Codex/Gemini consensus).
+- Version surfaces: npm package metadata `qmonster@2.1.0`; local Git tag `v2.1.0` to be created at this ledger sync commit; GitHub Release publication is CI-owned.
+- Branch / worktree at handoff start: `main`, tag `v2.1.0` to be created at the ledger sync commit. v2.0.0 is the immediate prior tagged baseline.
 - Release publication state: **v2.0.0 is published** (verified 2026-05-08). Run `25550704578` completed success in 7m15s at 2026-05-08T10:37:44Z; GitHub Release `v2.0.0` (published 2026-05-08T10:37:18Z) carries the full asset set (`qmonster-v2.0.0-linux-x86_64.tar.gz`, `qmonster-2.0.0.tgz`, `qmonster-v2.0.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 2.0.0`. **v1.60.0 is published** (run `25548715050` completed success in 7m44s at 2026-05-08T09:51:00Z). **v1.59.0 is published** (verified 2026-05-08). Run `25546295476` completed success in 6m53s at 2026-05-08T08:53:19Z; GitHub Release `v1.59.0` (published 2026-05-08T08:52:59Z) carries the full asset set (`qmonster-v1.59.0-linux-x86_64.tar.gz`, `qmonster-1.59.0.tgz`, `qmonster-v1.59.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 1.59.0`. **v1.58.0 + v1.58.1 are published**: v1.58.0 run `25544151924` (7m22s, 2026-05-08T08:02:49Z), v1.58.1 run `25544690855` (7m23s, 2026-05-08T08:16:08Z). **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s).
-- Current phase: All prior phases complete. v1.50.0–v1.60.0 publication baselines still apply; v2.0.0 is a milestone marker + cross-cutting consistency sweep on top of the v1.60.0 polish bundle — no new phase is opened.
+- Current phase: All prior phases complete. v1.50.0–v2.0.0 publication baselines still apply; v2.1.0 ships the r2 cross-validated synthesis-slice implementation on top of the v2.0.0 milestone — no new phase is opened, the work is bundled as the first feature minor on the v2.x line.
+
+## v2.1.0 Feature State
+
+v2.1.0 tags the autonomous main-pane implementation of the r2 plan that
+Claude / Codex / Gemini consolidated in
+`.docs/claude/Qmonster-v2.0.0-2026-05-08-claude-init-vs-impl-evaluation-r2.md`.
+Implementation landed in commit `a3abe0e` (~3996 line changes across 33
+files) plus the two cross-validation working-doc commits `ee6de0d` and
+`362fe6f`. Highlights:
+
+1. **Slice 0 — Attribution Lock** (`src/domain/identity.rs`,
+   `src/adapters/mod.rs`, `src/adapters/process_memory.rs`,
+   `src/store/audit.rs`, `src/domain/audit.rs`):
+   - Descendant process walk through `node` / `bash` / `python` / `sh`
+     wrappers to find the real entry binary (`codex`, `gemini`,
+     `claude`, `qmonster`).
+   - New `IdentityConfidence::Conflict` state when canonical title and
+     descendant binary disagree. Provider adapter enrichment, Claude
+     sidefile boost, CLI version facts, Codex account rate-limit
+     enrichment, and provider-profile recommendations are **all
+     suppressed** on conflict panes. Pane card header shows an
+     `IDENTITY CONFLICT` chip with a one-line "provider says X, command
+     says Y" explanation.
+   - Claude sidefile boost now requires at least **2 independent
+     evidences** out of (session id, transcript path, descendant exe,
+     sidefile mtime TTL). Ambiguous matches surface `cache ?` /
+     `cost ?` / `reset ?` instead of silently inheriting another pane's
+     official numbers.
+   - New `IdentitySuppressed` audit-event kind emitted once per pane
+     conflict episode (metadata-only, no PII).
+   - 3 new integration scenarios in `tests/event_loop_integration.rs`
+     (node wrapper + Claude sidefile, stale title + qmonster cmd,
+     canonical title vs descendant exe mismatch).
+
+2. **Slice 1 — Pane-bucketed Insights** (`src/store/insights.rs`
+   ~1014-line refactor, `src/insights_report.rs` +217 lines):
+   - All Insights SQL re-grouped by `pane_id` so `first_input`,
+     `latest_input`, `cost_delta`, `cache_ratio` stay pane-coherent.
+   - New report sections: "Top contributors" (token growth / cost
+     delta / cache drift top panes) and "data completeness" (per-pane
+     coverage % + missing-poll count).
+   - 4-state labelling: `n/a` (no data), `?` (pending), `suppressed`
+     (provider gap or conflict), `unsupported` (structurally
+     unavailable for the provider).
+   - Counter resets and provider changes are split into separate
+     analytical segments so a session restart never inflates token
+     growth numbers.
+
+3. **Slice 2 — ROI loop closure** (`src/store/insights.rs`,
+   `src/insights_report.rs`, alerts panel):
+   - Pre/post sample windows (±5 min around outcome) compute the
+     before/after delta for `/compact` and profile-switch
+     recommendations. Significance threshold + minimum sample count
+     gate noisy estimates as `inconclusive` instead of false-positive
+     payoffs.
+   - **Outcome families separated**: `avoided` (operator declined when
+     it was the right call — cache hot) vs `accepted` (operator
+     accepted with cache cold). Same accepted-rate can hide very
+     different operational meaning; families surface this.
+   - New "Action Payoff" section in the Insights overlay + alerts strip
+     "last action" chip:
+     `last /compact 12m ago · saved ~8K input · cache cold→warm · $0.03 [Est]`.
+   - **Rule tuning candidates** list highlights rules with
+     `accepted_rate ≥ 50%` but no metric improvement, or
+     `ignored_rate ≥ 50%` with suspected false positives.
+
+4. **Slice 3 — Anomaly time-normalization + evidence enrichment**
+   (`src/policy/rules/anomaly.rs` +155 lines, `src/store/anomaly_sink.rs`
+   +130 lines, `src/ui/anomaly_overlay.rs` +107 lines,
+   `src/store/anomaly_history.rs`):
+   - `cost_slope` and `token_slope` detectors now compute elapsed time
+     from `sample.ts_unix_ms` differences instead of the previous
+     `window_polls × 5s` hard-coded assumption. Changing poll interval
+     no longer skews detection.
+   - `evidence_json` column added to `anomaly_events` (additive
+     migration, nullable, read-side fallback to `reason`). Detectors
+     stash their full evidence vector (kind, before/after, coverage)
+     here.
+   - `n` overlay inline `e` key expands the selected row into 1–3
+     evidence sub-rows. Coverage-low samples (sparse polls) drop
+     detector confidence one step instead of false-firing.
+   - `memory_growth`, `error_burst`, and `subagent_side_effect`
+     evidence now carry baseline ratios, dominant kind labels,
+     co-occurring anomaly kinds, and time-interval data respectively.
+
+5. **Slice 4 — Insights data completeness**: snapshots surface
+   `coverage_pct`, `sample_count`, `elapsed_secs` per pane so the
+   operator can tell `n/a` (no data yet) from `?` (data is loading).
+
+6. **Slice 6 — Live-smoke validation enrichment**
+   (`docs/ai/VALIDATION.md` +155 lines): identity matrix (provider ×
+   wrapper × stale title × sidefile presence) with expected confidence
+   + suppression outcomes, plus 3 `--once` golden fixtures under
+   `tests/integration/once_fixtures/`.
+
+7. **UI synthesis slices A-I** (`src/ui/dashboard.rs` +425 lines,
+   `src/ui/metrics.rs` +197 lines, `src/ui/panels.rs` +204 lines,
+   `src/ui/insights.rs`, `src/ui/anomaly_overlay.rs`,
+   `src/ui/provider_setup.rs` +28 lines):
+   - **Slice A — Now strip** atop the alerts panel: 5-priority queue
+     (PermissionWait / InputWait first → Risk severity strong rec →
+     quota 5h ≥ 0.85 / cost ≥ 80% → recent promoted anomaly → healthy
+     fallback). `IdentityConfidence::Conflict` panes are auto-excluded
+     from NBA selection so suppressed numbers can never become a
+     prescriptive action.
+   - **Slice B — Next-Best-Action header** at the top of the Insights
+     overlay: prescriptive "do this next" line backed by recent
+     payoff data so the recommendation isn't blind.
+   - **Slice C — `/compact` payoff chip** on the alerts strip (closes
+     the Slice 2 ROI loop visually).
+   - **Slice D — Anomaly evidence row expansion** (closes Slice 3
+     evidence persistence visually).
+   - **Slice E — ETA chips with timestamp normalization**: new
+     `src/policy/eta.rs` pure helper. CTX / 5H / 7D / cost thresholds
+     project linear slope through the recent N=12 sample window using
+     `ts_unix_ms` differences (Conflict pane auto-suppress so ETA
+     never displays on a pane whose attribution is broken).
+   - **Slice F — Policy mini-strip** in pane cards: identity
+     confidence + metric provenance + suppressed/conflict badges in
+     one collapsed row.
+   - **Slice G — Cost breakdown** by pane × model × situation in the
+     Insights overlay (built directly on Slice 1's pane-bucket SQL).
+   - **Slice H — Cross-pane correlation hint**: when two panes show
+     similar token-growth patterns within a 5-minute window, Insights
+     emits "possible duplicated context — consider sharing
+     checkpoints" advisory (post-processing, not a new detector).
+   - **Slice I — Dashboard audit severity chip**: surfaces audit
+     events at their severity tint inline with the alerts header
+     instead of needing the audit overlay.
+
+No new modals were added (3-way Claude/Codex/Gemini consensus).
+No new detectors were added — the existing 8 detector set is
+stabilized via attribution lock + time normalization first. No
+automatic actuation was added — Gemini's "cost-reactive auto profile
+switch" stays at the recommendation level only (spec §9.1 Layer 5).
+
+Lib tests **1445 → 1478 (+33)**, integration tests **65 → 68 (+3)**.
+fmt + clippy clean. Full suite green in 1.12s.
 
 ## v2.0.0 Milestone Marker
 
@@ -773,14 +911,14 @@ These commits were on `main` after the `v1.50.0` tag; they ride v1.51.0:
 
 ## Validation Baseline
 
-Most recent v2.0.0 validation at the release commit:
+Most recent v2.1.0 validation at the release commit:
 
-- `cargo fmt --all --check`
-- `cargo test --all-targets` — 1445 lib tests + 65 integration tests + supporting suites, all green (no new test logic in v2.0.0; +11 from incremental coverage already in tree compared to the v1.60.0 baseline).
-- `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
-- `git diff --check`
+- `cargo fmt --all --check` — clean.
+- `cargo test --all-targets` — **1478 lib tests + 68 integration tests + supporting suites**, all green in 1.12s. +33 lib / +3 integration since v2.0.0 cover Slice 0 attribution-lock scenarios, Slice 1 pane-bucket aggregation, Slice 2 payoff window families, Slice 3 timestamp normalization + evidence_json migration round-trip, and Slice A-I UI synthesis surface tests.
+- `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args` — clean.
+- `git diff --check` — clean.
 
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v1.60.0 still apply when the v2.0.0 release workflow runs.
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v2.0.0 still apply when the v2.1.0 release workflow runs.
 
 Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
 

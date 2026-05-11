@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v2.0.0 - Milestone marker + cross-cutting consistency sweep on top of the v1.60.0 polish bundle: every operator-facing surface is polished, Light theme closes the v1.58.0-deferred work, and version surfaces align on v2.0.0"
+  mission_title: "Qmonster v2.1.0 - r2 cross-validated synthesis-slice implementation on top of the v2.0.0 milestone: Attribution Lock, pane-bucketed Insights, ROI loop, timestamp-normalized anomaly slopes, live-smoke validation, and UI synthesis slices A-I"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 205
-  latest_version: "2.0.0"
+  total_revisions: 206
+  latest_version: "2.1.0"
 
 timeline:
   - change_id: "initial"
@@ -19299,6 +19299,139 @@ timeline:
       - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v1.37.0 / v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 / v1.42.0 / v1.43.0 / v1.44.0 / v1.45.0 / v1.46.0 / v1.47.0 / v1.48.0 / v1.49.0 / v1.50.0 / v1.51.0 / v1.52.0 / v1.53.0 / v1.54.0 / v1.55.0 / v1.56.0 / v1.57.0 / v1.58.0 / v1.58.1 / v1.59.0 / v1.60.0 / v2.0.0 CI publication verification (GitHub Release + npm package) remains an external follow-up until each release workflow completes."
+
+  - version: "2.1.0"
+    change_sequence: 206
+    date: "2026-05-11"
+    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '푸쉬하고 태그하고 publish 해줘' — release the r2 cross-validated synthesis-slice implementation bundle that an autonomous main-pane session landed on top of the v2.0.0 milestone marker."
+    summary: >
+      v2.1.0 is the first feature minor on top of the v2.0.0 milestone
+      marker. It tags the implementation of the r2 cross-validated
+      (Claude/Codex/Gemini) synthesis-slice plan landed in commit
+      a3abe0e + the two cross-validation working docs (commits ee6de0d
+      and 362fe6f). Code surface adds ~3996 lines across 33 files
+      under src/, tests/, and docs/ai/. Headline deliverables:
+      (1) Slice 0 Attribution Lock — descendant exe walk through
+      `node`/`bash`/`python`/`sh` wrappers, new
+      `IdentityConfidence::Conflict` state when canonical title and
+      descendant binary disagree, suppression of provider adapters /
+      Claude sidefile enrichment / CLI version facts / Codex account
+      rate-limit enrichment / provider-profile recommendations on
+      conflict panes. New `IdentitySuppressed` audit kind emitted once
+      per pane conflict episode. Claude sidefile boost requires ≥ 2
+      independent evidences (session id, transcript path, descendant
+      exe, sidefile mtime TTL).
+      (2) Slice 1 pane-bucketed Insights re-aggregation — Insights
+      SQL re-grouped by pane_id so first/latest input, cost_delta,
+      cache_ratio are pane-coherent. New "Top contributors" + "data
+      completeness" sections. counter-reset detection, provider-change
+      bucketing, and 4-state n/a / ? / suppressed / unsupported
+      labelling.
+      (3) Slice 2 ROI loop closure — `/compact` payoff windows pre/post
+      with significance threshold, outcome family separation
+      (avoided vs accepted), "Action Payoff" Insights section, alerts
+      "last action" payoff chip, rule tuning candidates.
+      (4) Slice 3 anomaly time-normalization + evidence enrichment —
+      cost/token slope detectors now compute elapsed from
+      `sample.ts_unix_ms` differences instead of `window_polls * 5s`
+      assumption. evidence_json schema migration (additive, nullable,
+      read-side fallback). Anomaly overlay inline `e` expansion shows
+      1-3 evidence sub-rows; coverage-low samples drop confidence one
+      step.
+      (5) Slice 4 Insights data completeness reporting.
+      (6) Slice 6 live-smoke validation matrix + `--once` golden
+      fixtures in tests/integration/once_fixtures/.
+      (7) UI synthesis slices A-I — Now strip, next-best-action,
+      `/compact` payoff chip, anomaly evidence row expansion, ETA
+      chips with timestamp normalization (Conflict pane suppress),
+      policy mini-strip, cost breakdown by pane/model/situation,
+      cross-pane correlation hints, audit severity chip.
+      Lib tests 1445 → 1478 (+33). Integration tests 65 → 68 (+3 in
+      event_loop_integration.rs). fmt + clippy clean. Total test
+      suite green in 1.12s.
+    intent_ko: >
+      v2.1.0 은 v2.0.0 마일스톤 위에 올린 첫 기능 마이너 릴리스. 3개
+      모델 (Claude/Codex/Gemini) 교차검증 r2 계획을 실제 구현으로
+      반영한 a3abe0e (~3996 lines) + 교차검증 작업 문서 ee6de0d /
+      362fe6f 를 묶어 태그한다. 헤드라인: (1) Slice 0 Attribution Lock
+      — descendant 프로세스 트리에서 node/bash/python/sh wrapper 뒤의
+      실제 CLI 바이너리를 찾아내고, canonical title 의 provider 와
+      불일치하면 IdentityConfidence::Conflict 로 강등 + provider
+      adapter / Claude sidefile / CLI version / Codex rate-limit /
+      profile 추천을 전부 억제. Claude sidefile 은 (session id /
+      transcript path / descendant exe / mtime TTL) 4개 증거 중 최소
+      2개 이상 일치할 때만 보강. (2) Slice 1 Insights 를 pane_id 단위
+      로 재집계 + "Top contributors" / "data completeness" 섹션 추가.
+      (3) Slice 2 `/compact` payoff 측정 루프 + avoided/accepted
+      family 분리. (4) Slice 3 anomaly cost/token slope 를
+      ts_unix_ms 차이로 정규화 + evidence_json schema migration +
+      anomaly overlay e 키로 evidence sub-row 펼치기. (5) Slice 4
+      data completeness. (6) Slice 6 live-smoke validation matrix +
+      --once golden fixture. (7) UI synthesis A-I — Now strip /
+      next-best-action / payoff chip / evidence 행 확장 / ETA chip /
+      policy mini-strip / cost breakdown / cross-pane correlation /
+      audit severity chip. 새 modal / 새 detector / 자동 actuation 은
+      **추가하지 않음** (3-way 합의). lib 1445 → 1478 (+33),
+      integration 65 → 68 (+3). fmt + clippy clean.
+    triggered_by: "Operator: '푸쉬하고 태그하고 publish 해줘' after the 3-model cross-validated review was consolidated in `.docs/claude/Qmonster-v2.0.0-2026-05-08-claude-init-vs-impl-evaluation-r2.md`."
+    changes:
+      added:
+        - "Slice 0 Attribution Lock: src/domain/identity.rs adds IdentityConfidence::Conflict variant + descendant-exe-aware resolver path; src/adapters/mod.rs requires ≥ 2 independent evidences for Claude sidefile enrichment; src/domain/audit.rs adds IdentitySuppressed audit kind; src/store/audit.rs persists it once per pane episode."
+        - "Slice 1 Pane-bucketed Insights: src/store/insights.rs SQL re-grouped by pane_id (~1014 lines insert); src/insights_report.rs adds Top contributors + data completeness sections (+217 lines); 4-state n/a / ? / suppressed / unsupported labelling."
+        - "Slice 2 ROI loop closure: src/store/insights.rs payoff queries with pre/post sample windows + significance threshold + avoided/accepted family separation; src/insights_report.rs Action Payoff section; src/ui/dashboard.rs alerts last-action payoff chip; rule tuning candidates list."
+        - "Slice 3 Anomaly normalize + evidence: src/policy/rules/anomaly.rs cost/token slope use sample.ts_unix_ms difference (+155 lines); src/store/anomaly_sink.rs evidence_json column (additive migration, nullable, read-side fallback) (+130 lines); src/ui/anomaly_overlay.rs e-key inline evidence sub-row expansion (+107 lines); src/store/anomaly_history.rs threads kind/timing evidence; coverage-low → confidence-down."
+        - "Slice 4 Data completeness: insights snapshots expose per-pane coverage_pct, sample_count, elapsed_secs."
+        - "Slice 6 Live-smoke validation: docs/ai/VALIDATION.md gains identity matrix + once-fixture compare steps (+155 lines); tests/integration/once_fixtures/ golden files for node_wrapper_gemini / stale_title_qmonster / ambiguous_claude_sidefile (covered via tests/event_loop_integration.rs +117 lines)."
+        - "UI synthesis A-I: src/ui/dashboard.rs Now strip (Permission / InputWait / RiskRec / quota+cost / promoted anomaly / healthy fallback) + audit severity chip (+425 lines); src/ui/insights.rs Next-Best-Action header (+7 lines); src/ui/anomaly_overlay.rs evidence row expansion; src/ui/metrics.rs ETA chips with timestamp normalization + Conflict pane suppress (+197 lines); src/ui/panels.rs policy mini-strip (+204 lines); cost breakdown by pane/model/situation; cross-pane correlation hints; src/ui/provider_setup.rs threading (+28 lines)."
+        - "Test surface: tests/event_loop_integration.rs +117 lines (3 new attribution-lock / identity-conflict scenarios); tests/insights_report_integration.rs +104 lines; tests/store_insights_integration.rs +793 lines (pane-bucketed aggregation, ROI loop families, payoff threshold)."
+        - "docs/ai/ARCHITECTURE.md + docs/ai/UI_MANUAL.md + docs/ai/VALIDATION.md gain post-v2.0.0 slice documentation."
+      changed:
+        - "package.json: 2.0.0 → 2.1.0."
+        - "README.md / VERSION.md: v2.0.0 → v2.1.0 in the version-surface table."
+        - "mission.yaml: mission.version + title bumped to v2.1.0 with the post-v2.0.0 synthesis-slice scope summary."
+        - "mission-history.yaml: meta.mission_title + meta.latest_version (2.0.0 → 2.1.0) + meta.total_revisions (205 → 206); this v2.1.0 entry appended."
+        - ".mission/CURRENT_STATE.md: header date + mission line + Validation Baseline updated; new v2.1.0 feature state section added on top of the v2.0.0 milestone history."
+        - "docs/ai/VALIDATION.md: new v2.1.0 release row above v2.0.0."
+      removed: []
+      tests_added:
+        - "tests/event_loop_integration.rs: identity-conflict scenarios (node wrapper, stale title, ambiguous sidefile) + IdentitySuppressed audit emission."
+        - "tests/insights_report_integration.rs: pane-bucketed contributors + data completeness."
+        - "tests/store_insights_integration.rs: compact payoff (saved / neutral / regressed / inconclusive) + rule tuning candidates + cache summary + cost breakdown grouping."
+        - "ui/metrics::tests, ui/dashboard::tests, ui/anomaly_overlay::tests: ETA chip suppress on Conflict, audit severity chip, evidence row expansion."
+      docs:
+        - "package.json: 2.0.0 → 2.1.0."
+        - "README.md / VERSION.md: v2.0.0 → v2.1.0."
+        - ".mission/CURRENT_STATE.md: v2.1.0 feature state appended."
+        - "mission.yaml: v2.1.0 mission.version + title."
+        - "mission-history.yaml: v2.1.0 entry appended; meta updated to total_revisions 206 / latest_version 2.1.0."
+        - "docs/ai/VALIDATION.md: new v2.1.0 release row."
+        - "docs/ai/ARCHITECTURE.md + docs/ai/UI_MANUAL.md updated alongside the implementation commit."
+    observable_effects:
+      - "Footer version badge displays `v2.1.0` (via `git describe --tags --always --dirty` → QMONSTER_GIT_VERSION) once the v2.1.0 tag is created at this commit."
+      - "Pane cards whose canonical title and descendant binary disagree now read `IDENTITY CONFLICT` and suppress official provider metrics (cache, cost, reset, CLI version, profile recommendations all show ? or are hidden), with audit_events recording one `IdentitySuppressed` row per conflict episode."
+      - "Token Insights overlay renders Top contributors and data-completeness sections; first/latest input + cost_delta numbers stay coherent per pane and never silently cross pane boundaries."
+      - "Operators accepting `/compact` see a payoff chip on the alerts strip (e.g. `last /compact 12m ago · saved ~8K input · cache cold→warm · $0.03 [Est]`); Insights overlay adds an Action Payoff section with avoided vs accepted families and rule tuning candidates."
+      - "Anomaly events row severity already came from v1.59.0; v2.1.0 adds `e` to expand 1–3 evidence sub-rows. cost/token slopes are now `ts_unix_ms`-normalized, so changing poll interval no longer skews detection."
+      - "Front page Now strip surfaces the single most urgent action; Insights Next-Best-Action header makes the recommendation prescriptive instead of post-hoc statistical."
+      - "Metrics overlay ETA chips render alongside CTX / 5H / 7D / cost when slope confidence + remaining time both pass thresholds; IdentityConfidence::Conflict panes auto-suppress the chip."
+      - "`npm view qmonster` will show 2.1.0 as `dist-tags.latest` once CI publishes."
+    impact_scope:
+      runtime: "Multiple additive surfaces. New identity-conflict suppression path (Slice 0) is the only behaviour-changing piece — it intentionally hides official metrics on panes whose provider attribution is ambiguous, trading false-precision for honesty. evidence_json schema migration is additive nullable; read-side falls back to `reason` for pre-migration rows. No new threads, no new IO beyond existing /proc walks already done by process_memory adapters."
+      tests: "1445 → 1478 lib tests (+33). 65 → 68 integration tests (+3 attribution-lock scenarios)."
+      ledger: "1 new timeline entry (sequence 206); meta total_revisions 205 → 206, latest_version 2.0.0 → 2.1.0."
+      npm: "package.json version 2.1.0; CI publication of v2.1.0 follows the same workflow as v1.37.0 through v2.0.0."
+    breaking: false
+    risk: "low-to-medium. Slice 0 (identity conflict suppression) intentionally hides metrics on ambiguous panes — operators used to v2.0.0's silent attribution may briefly notice fewer chips on wrapper-launched panes (e.g. `node /usr/bin/gemini --yolo`). This is the corrected behaviour Codex P0 surfaced. Mitigation: `IDENTITY CONFLICT` banner + `IdentitySuppressed` audit row make the suppression visible and explainable. Rest of the bundle is additive (new sections, new chips, new evidence) and gated by existing settings. fmt + clippy clean, full 1478 lib + 68 integration suite green."
+    related_commits:
+      - "a3abe0e — Implement v2 UI synthesis slices (the actual implementation bundle, +3996 lines / 33 files)."
+      - "362fe6f — chore(ai): apply Claude edit (cross-validation r2 plan working docs)."
+      - "ee6de0d — chore(ai): apply Claude edit (cross-validation r2 plan working docs)."
+      - "PENDING — v2.1.0 release ledger sync commit (this bundle)."
+    follow_up:
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v2.1.0 CI publication verification (GitHub Release + npm package) — monitor `Release and Package Mirror` workflow run after tag push."
+      - "r2 deferred slices: Slice 7 sandbox/audit visibility surface, Slice 8 cost breakdown drilldown if cross-agent duplicate hint draws operator interest, Slice 9 dynamic responsive layout."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

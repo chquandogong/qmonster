@@ -1,6 +1,6 @@
 mission:
-  version: "2.0.0"
-  title: "Qmonster v2.0.0 - Milestone marker + cross-cutting consistency sweep on top of the v1.60.0 polish bundle: every operator-facing surface (alerts/panes/settings/metrics/anomaly/insights/help/fx) is polished, Light theme closes the v1.58.0-deferred work, and version surfaces (README/VERSION/PROJECT_BRIEF/mission ledger/VALIDATION/CURRENT_STATE) align on v2.0.0"
+  version: "2.1.0"
+  title: "Qmonster v2.1.0 - r2 cross-validated synthesis-slice implementation on top of the v2.0.0 milestone: Attribution Lock + identity conflict suppression, pane-bucketed Insights re-aggregation, action-impact/ROI loop, timestamp-normalized anomaly slope detection, Insights data completeness, live-smoke validation docs, and UI synthesis slices A-I (Now strip, next-best-action, /compact payoff, anomaly evidence expansion, ETA chips, policy mini-strip, cost breakdown, cross-pane correlations, audit severity chip)"
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
