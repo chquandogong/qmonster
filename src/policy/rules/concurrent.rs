@@ -186,6 +186,12 @@ pub fn eval_concurrent_files(panes: &[PaneView<'_>], gates: &PolicyGates) -> Vec
             continue;
         }
         let anchor = group[0].identity.identity.pane_id.clone();
+        let anchor_branch = group[0]
+            .signals
+            .git_branch
+            .as_ref()
+            .map(|m| m.value.as_str())
+            .unwrap_or("");
         let others: Vec<String> = group[1..]
             .iter()
             .map(|v| v.identity.identity.pane_id.clone())
@@ -204,9 +210,7 @@ pub fn eval_concurrent_files(panes: &[PaneView<'_>], gates: &PolicyGates) -> Vec
             ),
             severity: Severity::Warning,
             source_kind: SourceKind::Heuristic,
-            suggested_command: Some(
-                "# coordinate via research pane: tmux select-pane -t <research_pane_id>".into(),
-            ),
+            suggested_command: Some(build_concurrent_suggested_command(anchor_branch)),
             paths: vec![file.clone()],
         });
     }
@@ -976,6 +980,51 @@ mod tests {
         );
         assert!(
             suggestion.contains("split off main into a new worktree"),
+            "branch must be interpolated: {suggestion}"
+        );
+    }
+
+    #[test]
+    fn concurrent_file_edit_finding_includes_worktree_split_hint() {
+        let id_a = mk_id(Role::Main, "%1");
+        let id_b = mk_id(Role::Main, "%2");
+        let signals = SignalSet {
+            active_files: vec!["src/lib.rs".into()],
+            git_branch: Some(MetricValue::new(
+                "feature/abc".to_string(),
+                SourceKind::ProviderOfficial,
+            )),
+            ..busy_signals()
+        };
+        let views = vec![
+            PaneView {
+                identity: &id_a,
+                signals: &signals,
+                current_path: "/repo",
+                window_label: "",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &signals,
+                current_path: "/repo",
+                window_label: "",
+            },
+        ];
+        let gates = PolicyGates {
+            cross_pane_file_findings: true,
+            ..PolicyGates::default()
+        };
+        let findings = eval_concurrent_files(&views, &gates);
+        assert!(!findings.is_empty(), "file-edit finding must fire");
+        assert_eq!(findings[0].kind, CrossPaneKind::ConcurrentFileEdit);
+        let suggestion = findings[0]
+            .suggested_command
+            .as_ref()
+            .expect("hint present");
+        assert!(suggestion.contains("tmux select-pane"));
+        assert!(suggestion.contains("git worktree add -b"));
+        assert!(
+            suggestion.contains("split off feature/abc into a new worktree"),
             "branch must be interpolated: {suggestion}"
         );
     }
