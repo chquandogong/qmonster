@@ -38,7 +38,7 @@ taking destructive action by default.
 | npm                 | `qmonster@2.2.0`                                       |
 | Rust                | `1.88+`                                                |
 | Runtime version     | `git describe --tags --always --dirty` from `build.rs` |
-| Cargo crate version | Internal metadata only                                 |
+| Cargo crate version | `2.2.0`                                                |
 
 ## Why
 
@@ -197,8 +197,8 @@ available from Claude sidefiles and Codex app-server only.
 
 ## Releases
 
-The operator-facing version is the Git tag and npm version, not the
-internal Cargo crate version. Release automation publishes:
+The operator-facing version is the Git tag, npm version, and Cargo crate
+version kept in lockstep. Release automation publishes:
 
 - GitHub Release with Linux x86_64 binary tarball, npm tarball, and checksums
 - npmjs package: `qmonster`

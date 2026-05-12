@@ -1,13 +1,13 @@
 # Versioning
 
-Qmonster has three version surfaces. They intentionally serve different
-audiences.
+Qmonster has three version surfaces. They are kept aligned so Cargo,
+npm, and operator-facing release metadata all report the same release.
 
 | Surface        | Current  | Meaning                                                                                                 |
 | -------------- | -------- | ------------------------------------------------------------------------------------------------------- |
 | Mission ledger | `v2.2.0` | Operator-facing implementation/history version. This is what tags and `mission-history.yaml` track.     |
 | npm package    | `2.2.0`  | Installable package version for the npm registry; matches the ledger tag semver without the `v` prefix. |
-| Cargo crate    | `0.1.0`  | Internal Rust crate metadata. It is not the operator-facing runtime version.                            |
+| Cargo crate    | `2.2.0`  | Rust crate metadata; matches npm and the ledger tag semver without the `v` prefix.                      |
 
 The running TUI displays `git describe --tags --always --dirty`, captured
 by `build.rs` as `QMONSTER_GIT_VERSION`. Tagged source builds therefore

@@ -1,12 +1,13 @@
 # Releasing Qmonster
 
-Qmonster keeps the public operator version in the mission ledger and npm
-package metadata. `Cargo.toml` stays at its internal crate version.
+Qmonster keeps the public operator version aligned across the mission
+ledger, npm package metadata, and Cargo package metadata.
 
 ## Release Surfaces
 
 - Git tag: `vX.Y.Z`
 - npmjs package: `qmonster@X.Y.Z`
+- Cargo package: `qmonster X.Y.Z`
 - GitHub Packages mirror: `@chquandogong/qmonster@X.Y.Z`
 - GitHub Release assets: Linux x86_64 binary tarball, npm package
   tarball, SPDX-JSON SBOM, SBOM diff summary, and checksums.
@@ -37,8 +38,8 @@ detail in GitHub Releases, `mission-history.yaml`, and canonical docs.
 
 ## Manual Checklist
 
-1. Update `README.md`, `VERSION.md`, `package.json`, `mission.yaml`, and
-   `mission-history.yaml`.
+1. Update `README.md`, `VERSION.md`, `package.json`, `Cargo.toml`,
+   `Cargo.lock`, `mission.yaml`, and `mission-history.yaml`.
 2. Run the validation gates from `docs/ai/VALIDATION.md`.
 3. Run the local release dry-run before tagging:
 

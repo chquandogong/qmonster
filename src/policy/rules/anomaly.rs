@@ -681,6 +681,119 @@ pub fn detect_cost_slope(
     })
 }
 
+/// TokenSlope: input_tokens cumulative delta over `window_polls`,
+/// normalized to tokens-per-poll. Real elapsed time is converted back
+/// into default-poll-equivalent units when timestamps are available.
+/// Fires when `slope_per_poll >= threshold_input_per_poll`.
+/// Confidence: `High` at ≥ 1.5× threshold, otherwise `Medium`.
+pub fn detect_token_slope(
+    history: &AnomalyHistory,
+    window_polls: usize,
+    threshold_input_per_poll: u64,
+    now_unix_seconds: u64,
+) -> Option<AnomalySignal> {
+    if history.input_token_samples.len() < window_polls {
+        return None;
+    }
+    let window: Vec<u64> = history
+        .input_token_samples
+        .iter()
+        .take(window_polls)
+        .filter_map(|s| *s)
+        .collect();
+    if window.len() < 2 {
+        return None;
+    }
+    let newest = window.first().copied().unwrap();
+    let oldest = window.last().copied().unwrap();
+    if newest < oldest {
+        return None;
+    }
+    let window_secs = elapsed_secs_for_window(history, window_polls)
+        .unwrap_or_else(|| nominal_elapsed_secs(window_polls));
+    let poll_equivalent = (window_secs / NOMINAL_POLL_INTERVAL_SECS).max(1.0);
+    let slope_per_poll = (newest - oldest) as f64 / poll_equivalent;
+    if slope_per_poll < threshold_input_per_poll as f64 {
+        return None;
+    }
+    let confidence = if slope_per_poll >= threshold_input_per_poll as f64 * 1.5 {
+        AnomalyConfidence::High
+    } else {
+        AnomalyConfidence::Medium
+    };
+    Some(AnomalySignal {
+        kind: AnomalyKind::TokenSlope,
+        confidence,
+        severity: severity_for(confidence),
+        evidence: vec![
+            AnomalyEvidence {
+                metric_name: "input_tokens_per_poll",
+                before: format!("{oldest}"),
+                after: format!("{newest}"),
+                sample_count: window.len(),
+                source_kind: SourceKind::ProviderOfficial,
+            },
+            AnomalyEvidence {
+                metric_name: "sample_coverage",
+                before: format!("{}/{}", window.len(), window_polls),
+                after: format!("elapsed_secs={window_secs:.0}"),
+                sample_count: window.len(),
+                source_kind: SourceKind::Estimated,
+            },
+        ],
+        window_polls,
+        detected_at: now_unix_seconds,
+    })
+}
+
+/// MemoryGrowth: simple delta of `process_memory_mb` over the window
+/// in MB. Fires when growth ≥ `threshold_mb`. Confidence: `High` at
+/// ≥ 1.5× threshold, otherwise `Medium`.
+pub fn detect_memory_growth(
+    history: &AnomalyHistory,
+    window_polls: usize,
+    threshold_mb: f64,
+    now_unix_seconds: u64,
+) -> Option<AnomalySignal> {
+    if history.process_memory_samples.len() < window_polls {
+        return None;
+    }
+    let window: Vec<f64> = history
+        .process_memory_samples
+        .iter()
+        .take(window_polls)
+        .filter_map(|s| *s)
+        .collect();
+    if window.len() < 2 {
+        return None;
+    }
+    let newest = window.first().copied().unwrap();
+    let oldest = window.last().copied().unwrap();
+    let growth_mb = newest - oldest;
+    if growth_mb < threshold_mb {
+        return None;
+    }
+    let confidence = if growth_mb >= threshold_mb * 1.5 {
+        AnomalyConfidence::High
+    } else {
+        AnomalyConfidence::Medium
+    };
+    Some(AnomalySignal {
+        kind: AnomalyKind::MemoryGrowth,
+        confidence,
+        severity: severity_for(confidence),
+        evidence: vec![AnomalyEvidence {
+            metric_name: "process_memory_mb",
+            before: format!("{oldest:.0}"),
+            after: format!("{newest:.0}"),
+            sample_count: window.len(),
+            source_kind: SourceKind::Estimated,
+        }],
+        window_polls,
+        detected_at: now_unix_seconds,
+    })
+}
+
 pub fn promote_anomalies_to_recommendations(
     signals: &[AnomalySignal],
     gates: &crate::policy::gates::PolicyGates,
@@ -779,6 +892,43 @@ pub fn promote_anomalies_to_recommendations(
                         .to_string(),
                 )
             }
+            AnomalyKind::MemoryGrowth => {
+                let (oldest, newest) = evidence
+                    .map(|e| (e.before.clone(), e.after.clone()))
+                    .unwrap_or((String::new(), String::new()));
+                (
+                    "anomaly: memory growth detected",
+                    format!(
+                        "process memory grew from {oldest} MB to {newest} MB over the {} polls window; confidence {}",
+                        sig.window_polls,
+                        sig.confidence.label()
+                    ),
+                    "check the provider for memory leak; consider restart if growth is sustained"
+                        .to_string(),
+                )
+            }
+            AnomalyKind::SubagentSideEffect => {
+                let count = evidence.map(|e| e.sample_count).unwrap_or(0);
+                (
+                    SUBAGENT_SIDE_EFFECT_ACTION,
+                    format!(
+                        "⚠ correlation only — providers do not expose per-subagent token attribution. \
+                         subagent_hint observed {count} times in {} polls while other anomalies fired in the same window",
+                        sig.window_polls
+                    ),
+                    "the subagent activity is *correlated* with the co-occurring anomaly, not proven to be the source. inspect the subagent's recent output before attributing cause".to_string(),
+                )
+            }
+        };
+        out.push(Recommendation {
+            action,
+            reason,
+            severity: sig.severity,
+            source_kind,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: Some(next_step),
             profile: None,
         });
     }
@@ -1585,6 +1735,55 @@ mod tests {
         h
     }
 
+    #[test]
+    fn detect_token_slope_pure_positive_high_confidence() {
+        let mut input = vec![Some(800_000)];
+        input.extend(vec![Some(0); 19]);
+        let output = vec![None; 20];
+        let h = token_history(input, output);
+
+        let sig = detect_token_slope(&h, 20, 20_000, 1_700_000_000).unwrap();
+
+        assert_eq!(sig.confidence, AnomalyConfidence::High);
+        assert_eq!(sig.severity, Severity::Warning);
+        assert_eq!(sig.kind, AnomalyKind::TokenSlope);
+    }
+
+    #[test]
+    fn detect_token_slope_reports_coverage_and_elapsed_seconds() {
+        let mut input = vec![Some(1_000_000)];
+        input.extend(vec![Some(0); 19]);
+        let output = vec![None; 20];
+        let ticks: Vec<u64> = (0..20).map(|i| 1_700_000_000 - i * 5).collect();
+        let h = token_history_with_ticks(input, output, ticks);
+
+        let sig = detect_token_slope(&h, 20, 20_000, 1_700_000_000).unwrap();
+        let coverage = sig
+            .evidence
+            .iter()
+            .find(|e| e.metric_name == "sample_coverage")
+            .unwrap();
+
+        assert_eq!(coverage.before, "20/20");
+        assert_eq!(coverage.after, "elapsed_secs=95");
+    }
+
+    #[test]
+    fn detect_memory_growth_pure_positive_high_confidence() {
+        let mut h = AnomalyHistory::default();
+        h.process_memory_samples.push_front(Some(1800.0));
+        for _ in 0..19 {
+            h.process_memory_samples.push_back(Some(100.0));
+        }
+
+        let sig = detect_memory_growth(&h, 20, 1024.0, 1_700_000_000).unwrap();
+
+        assert_eq!(sig.confidence, AnomalyConfidence::High);
+        assert_eq!(sig.severity, Severity::Warning);
+        assert_eq!(sig.kind, AnomalyKind::MemoryGrowth);
+    }
+
+    #[test]
     fn promote_matrix_5_kind_distinct_actions() {
         let signals: Vec<AnomalySignal> = vec![
             AnomalyKind::IdentityChurn,
@@ -1681,6 +1880,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn promote_gate_high_threshold_admits_high() {
         use crate::domain::anomaly::{
             AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal,

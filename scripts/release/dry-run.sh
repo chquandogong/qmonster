@@ -43,6 +43,11 @@ if [ "$package_version" != "$tag_version" ]; then
   echo "ERROR: package.json version $package_version does not match tag $TAG_NAME" >&2
   exit 1
 fi
+cargo_version="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const m=JSON.parse(s);const pkg=m.packages.find(p=>p.name==="qmonster");process.stdout.write(pkg ? pkg.version : "");});')"
+if [ "$cargo_version" != "$tag_version" ]; then
+  echo "ERROR: Cargo.toml version $cargo_version does not match tag $TAG_NAME" >&2
+  exit 1
+fi
 
 # 2. Run release validation (subset that doesn't require CI env).
 echo "[dry-run] Validation: cargo fmt + git diff --check + cargo test + cargo clippy"

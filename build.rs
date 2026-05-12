@@ -1,8 +1,9 @@
 //! Build script: capture a git-based version string at compile time and
 //! expose it to the crate via `env!("QMONSTER_GIT_VERSION")`. The TUI
-//! footer badge renders this instead of `CARGO_PKG_VERSION` so the
-//! version operators see reflects the actual code in the binary — not
-//! the rarely-bumped package version in Cargo.toml.
+//! footer badge renders this instead of `CARGO_PKG_VERSION` so tagged
+//! builds can show the exact git tag or dirty state. Cargo package
+//! metadata is still kept aligned with release semver for build output
+//! and nongit fallback labels.
 //!
 //! Fallback: if `git` is unavailable or the repo isn't a git tree
 //! (e.g. shipped from a tarball), the label falls back to
