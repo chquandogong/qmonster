@@ -7,6 +7,7 @@ use crate::app::path_resolution::{RootSource, default_config_path, pick_root};
 use crate::app::safety_audit::apply_override_with_audit;
 use crate::store::{
     CacheInsightSummary, InMemorySink, InsightsSnapshot, InsightsWindow, QmonsterPaths,
+    RecEngagementSnapshot,
 };
 
 fn checked_seconds(value: u64, multiplier: u64, unit: &str) -> Result<u64> {
@@ -483,6 +484,80 @@ fn format_usd(value: Option<f64>) -> String {
     value
         .map(|value| format!("${value:.4}"))
         .unwrap_or_else(|| "n/a".into())
+}
+
+/// Render a recommendation-engagement snapshot for the `rec-engagement`
+/// CLI subcommand. Drives the MDR P2-1 measurement plan without
+/// requiring the operator to run raw SQL.
+pub fn format_rec_engagement_lines(snapshot: &RecEngagementSnapshot) -> Vec<String> {
+    let mut lines = Vec::new();
+    lines.push("Recommendation Engagement".into());
+    lines.push(format!(
+        "  window: {} ms → {} ms",
+        snapshot.window.since_ms, snapshot.window.until_ms
+    ));
+    if snapshot.tables_missing {
+        lines.push(
+            "  no lifecycle ledger yet — Qmonster has not surfaced or archived any \
+             recommendation events into this audit DB."
+                .into(),
+        );
+        return lines;
+    }
+    if snapshot.rows.is_empty() {
+        lines.push("  no recommendation events surfaced in this window.".into());
+        return lines;
+    }
+
+    // Two slices: anomaly:* and everything else, so the operator sees
+    // the MDR-P2-1 cohort separately.
+    let (anomaly, other): (Vec<&crate::store::RecEngagementRow>, _) = snapshot
+        .rows
+        .iter()
+        .partition(|r| r.action.starts_with("anomaly:"));
+
+    let header = format!(
+        "  {:<36} {:>9} {:>7} {:>9} {:>8} {:>7} {:>11}",
+        "ACTION", "SURFACED", "COPIED", "ACCEPTED", "IGNORED", "OTHER", "ENGAGEMENT"
+    );
+
+    let mut emit_slice = |label: &str, rows: &[&crate::store::RecEngagementRow]| {
+        if rows.is_empty() {
+            return;
+        }
+        lines.push(format!("  {label}"));
+        lines.push(header.clone());
+        for row in rows {
+            let rate = match row.engagement_rate() {
+                Some(r) => format!("{:>10.1}%", r * 100.0),
+                None => "         -".into(),
+            };
+            lines.push(format!(
+                "  {:<36} {:>9} {:>7} {:>9} {:>8} {:>7} {rate}",
+                truncate_label(&row.action, 36),
+                row.surfaced,
+                row.copied,
+                row.accepted,
+                row.ignored,
+                row.other_outcome,
+            ));
+        }
+    };
+
+    emit_slice("anomaly:* (MDR-P2-1 cohort)", &anomaly);
+    emit_slice("other actions", &other);
+
+    lines
+}
+
+fn truncate_label(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+        out.push('…');
+        out
+    }
 }
 
 pub fn empty_insights_snapshot(window: InsightsWindow) -> InsightsSnapshot {

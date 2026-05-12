@@ -9,6 +9,17 @@
 //! descendant, the helper returns `None` (honesty rule: Qmonster does
 //! not fabricate metrics).
 //!
+//! ## Platform support
+//!
+//! The no-arg production entry points (`read_descendant_rss_mb`,
+//! `read_descendant_cmdline`, `read_descendant_cli_process`) read from
+//! `/proc` and are Linux-only. On other targets they are stubbed to
+//! return `None`, which causes upstream surfaces (`MEM` chip,
+//! `CMD` column wrapping, identity attribution boost) to degrade
+//! honestly — empty placeholder rather than fabricated value. The
+//! `_with_proc_root` variants stay cross-platform so unit tests can
+//! exercise the BFS logic on any host.
+//!
 //! Note: `comm` is matched against `KNOWN_CLI_COMMS` by exact equality.
 //! Linux truncates `comm` to 15 bytes (`TASK_COMM_LEN - 1`) — long
 //! binary names will not match and will be classified as non-CLI.
@@ -39,8 +50,19 @@ pub struct CliProcessDescriptor {
 
 /// Default `/proc` root. Tests pass a tempdir-rooted alternative via
 /// `read_descendant_rss_mb_with_proc_root`.
+///
+/// Linux-only: on other platforms returns `None` so callers degrade
+/// honestly to a missing-metric placeholder rather than a fabricated
+/// or panicking path. The internal BFS helper stays cross-platform for
+/// testing.
+#[cfg(target_os = "linux")]
 pub fn read_descendant_rss_mb(pane_pid: u32) -> Option<f64> {
     read_descendant_rss_mb_with_proc_root(pane_pid, Path::new("/proc"))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn read_descendant_rss_mb(_pane_pid: u32) -> Option<f64> {
+    None
 }
 
 /// Test-friendly variant: pass an alternate `/proc` root (typically a
@@ -130,12 +152,26 @@ fn read_pid_comm(pid: u32, proc_root: &Path) -> Option<String> {
 /// exists, or when every descendant is a generic shell. The caller
 /// is responsible for falling back to `pane_current_command` in that
 /// case.
+///
+/// Linux-only: on other platforms returns `None` (see module docs).
+#[cfg(target_os = "linux")]
 pub fn read_descendant_cmdline(pane_pid: u32) -> Option<String> {
     read_descendant_cmdline_with_proc_root(pane_pid, Path::new("/proc"))
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn read_descendant_cmdline(_pane_pid: u32) -> Option<String> {
+    None
+}
+
+#[cfg(target_os = "linux")]
 pub fn read_descendant_cli_process(pane_pid: u32) -> Option<CliProcessDescriptor> {
     read_descendant_cli_process_with_proc_root(pane_pid, Path::new("/proc"))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn read_descendant_cli_process(_pane_pid: u32) -> Option<CliProcessDescriptor> {
+    None
 }
 
 /// Test-friendly variant: pass an alternate `/proc` root.

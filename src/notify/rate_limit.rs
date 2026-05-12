@@ -89,4 +89,71 @@ mod tests {
         assert!(l.should_fire("%1", "permission", Severity::Risk, dt));
         assert!(!l.should_fire("%2", "log-storm", Severity::Warning, dt));
     }
+
+    #[test]
+    fn different_actions_on_same_pane_are_independent() {
+        // Throttling a "log-storm" notification on %1 must not suppress
+        // a separate "permission-wait" notification on the same pane.
+        let mut l = RateLimiter::new();
+        let t0 = Instant::now();
+        assert!(l.should_fire("%1", "log-storm", Severity::Warning, t0));
+        assert!(l.should_fire("%1", "permission-wait", Severity::Risk, t0));
+        // Within 1s neither fires again.
+        let dt = t0 + Duration::from_secs(1);
+        assert!(!l.should_fire("%1", "log-storm", Severity::Warning, dt));
+        assert!(!l.should_fire("%1", "permission-wait", Severity::Risk, dt));
+    }
+
+    #[test]
+    fn same_action_on_different_panes_is_independent() {
+        let mut l = RateLimiter::new();
+        let t0 = Instant::now();
+        assert!(l.should_fire("%1", "log-storm", Severity::Warning, t0));
+        // A second pane firing the same action immediately must not be
+        // throttled by %1's recent fire.
+        assert!(l.should_fire("%2", "log-storm", Severity::Warning, t0));
+    }
+
+    #[test]
+    fn concern_severity_obeys_sixty_second_gap() {
+        let mut l = RateLimiter::new();
+        let t0 = Instant::now();
+        l.should_fire("%1", "ctx-warn", Severity::Concern, t0);
+        // 59 seconds later: still throttled.
+        assert!(!l.should_fire(
+            "%1",
+            "ctx-warn",
+            Severity::Concern,
+            t0 + Duration::from_secs(59)
+        ));
+        // 60 seconds later: free to fire.
+        assert!(l.should_fire(
+            "%1",
+            "ctx-warn",
+            Severity::Concern,
+            t0 + Duration::from_secs(60)
+        ));
+    }
+
+    #[test]
+    fn safe_severity_uses_longest_gap() {
+        let mut l = RateLimiter::new();
+        let t0 = Instant::now();
+        l.should_fire("%1", "noise", Severity::Safe, t0);
+        // 119s later still throttled — Safe gets the longest gap (120s).
+        assert!(!l.should_fire("%1", "noise", Severity::Safe, t0 + Duration::from_secs(119)));
+        assert!(l.should_fire("%1", "noise", Severity::Safe, t0 + Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn first_fire_resets_window_even_when_severity_changes_on_second_call() {
+        // If a pane escalates Concern → Warning on the same action,
+        // the second call's severity decides whether the window has
+        // elapsed. With Warning's 30s gap, a Concern fire at t0
+        // should NOT block a Warning escalation at t0 + 31s.
+        let mut l = RateLimiter::new();
+        let t0 = Instant::now();
+        l.should_fire("%1", "ctx", Severity::Concern, t0);
+        assert!(l.should_fire("%1", "ctx", Severity::Warning, t0 + Duration::from_secs(31)));
+    }
 }

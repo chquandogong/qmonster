@@ -29,21 +29,21 @@
 //! Request line (NDJSON, exactly one JSON object per line):
 //!
 //! ```json
-//! {"method":"initialize","id":0,"jsonrpc":"2.0",
+//! {"method":"initialize","id":1,"jsonrpc":"2.0",
 //!  "params":{"clientInfo":{"name":"qmonster","version":"<v>"}}}
 //! ```
 //!
 //! Initialize response:
 //!
 //! ```json
-//! {"id":0,"result":{"userAgent":"...","codexHome":"...",
+//! {"id":1,"result":{"userAgent":"...","codexHome":"...",
 //!  "platformFamily":"unix","platformOs":"linux"}}
 //! ```
 //!
 //! Rate-limits request:
 //!
 //! ```json
-//! {"method":"account/rateLimits/read","id":1,"jsonrpc":"2.0"}
+//! {"method":"account/rateLimits/read","id":2,"jsonrpc":"2.0"}
 //! ```
 //!
 //! Rate-limits response (fields of interest only — extra ignored):
@@ -204,9 +204,12 @@ impl<IO: JsonRpcIo> CodexAppServer<IO> {
     /// initialized — call [`Self::initialize`] before any other
     /// method.
     pub fn new(io: IO) -> Self {
+        // next_id starts at 1: id=0 is sometimes ambiguous with
+        // "no id" in JSON-RPC server implementations, and starting at
+        // 1 keeps client-issued ids strictly positive integers.
         Self {
             io,
-            next_id: 0,
+            next_id: 1,
             initialized: false,
         }
     }
@@ -237,11 +240,7 @@ impl<IO: JsonRpcIo> CodexAppServer<IO> {
             }
         });
         self.send_request(&req)?;
-        let resp = self.read_response()?;
-        // TODO: strict id matching — protocol is line-by-line
-        // synchronous so responses arrive in order and matching by
-        // id is currently redundant. Revisit if we add concurrent
-        // requests.
+        let resp = self.read_response_for(id)?;
         if let Some(err) = resp.get("error") {
             return Err(format!("initialize returned error: {err}"));
         }
@@ -272,7 +271,7 @@ impl<IO: JsonRpcIo> CodexAppServer<IO> {
             "jsonrpc": "2.0",
         });
         self.send_request(&req)?;
-        let resp = self.read_response()?;
+        let resp = self.read_response_for(id)?;
         if let Some(err) = resp.get("error") {
             return Err(format!("rateLimits/read returned error: {err}"));
         }
@@ -294,7 +293,7 @@ impl<IO: JsonRpcIo> CodexAppServer<IO> {
             .map_err(|e| format!("failed to write request: {e}"))
     }
 
-    fn read_response(&mut self) -> Result<Value, String> {
+    fn read_response_for(&mut self, expected_id: u64) -> Result<Value, String> {
         loop {
             let line = self
                 .io
@@ -310,7 +309,24 @@ impl<IO: JsonRpcIo> CodexAppServer<IO> {
             if value.get("id").is_none() && value.get("method").is_some() {
                 continue;
             }
-            return Ok(value);
+            // Strict id matching: a response addressed to a different id is
+            // a protocol violation under our single-inflight assumption.
+            // Surface it instead of silently consuming, so a future
+            // multi-request rework hits an honest error rather than a
+            // misrouted response.
+            match value.get("id").and_then(Value::as_u64) {
+                Some(id) if id == expected_id => return Ok(value),
+                Some(id) => {
+                    return Err(format!(
+                        "response id mismatch: got {id}, expected {expected_id}"
+                    ));
+                }
+                None => {
+                    return Err(
+                        "response missing `id` field (and is not a notification)".to_string()
+                    );
+                }
+            }
         }
     }
 }
@@ -389,7 +405,7 @@ mod tests {
     #[test]
     fn spawn_writes_initialize_then_returns_user_agent() {
         let io = VecDequeIo::new(vec![
-            r#"{"id":0,"jsonrpc":"2.0","result":{"userAgent":"foo/1.0","codexHome":"/tmp/cx"}}"#,
+            r#"{"id":1,"jsonrpc":"2.0","result":{"userAgent":"foo/1.0","codexHome":"/tmp/cx"}}"#,
         ]);
         let mut client = CodexAppServer::new(io);
         let ua = client
@@ -496,9 +512,12 @@ mod tests {
     }
 
     #[test]
-    fn initialize_returns_err_when_response_id_mismatched_or_error_field() {
+    fn initialize_returns_err_when_response_carries_error_field() {
+        // id matches; the failure path is the JSON-RPC `error` object.
+        // (Strict id-mismatch failure is covered separately by
+        // `read_response_errors_on_id_mismatch`.)
         let io = VecDequeIo::new(vec![
-            r#"{"id":99,"jsonrpc":"2.0","error":{"code":-32000,"message":"boom"}}"#,
+            r#"{"id":1,"jsonrpc":"2.0","error":{"code":-32000,"message":"boom"}}"#,
         ]);
         let mut client = CodexAppServer::new(io);
         let err = client
@@ -559,6 +578,39 @@ mod tests {
         assert_eq!(rl.secondary.unwrap().used_percent, 9);
         assert_eq!(rl.primary.unwrap().resets_at_unix_seconds, 1777896971);
         assert_eq!(rl.secondary.unwrap().resets_at_unix_seconds, 1777959698);
+    }
+
+    #[test]
+    fn read_response_errors_on_id_mismatch() {
+        // Protocol violation: server returns id=999 for our id=1
+        // initialize. We must surface this rather than silently consume
+        // the response.
+        let io = VecDequeIo::new(vec![
+            r#"{"id":999,"jsonrpc":"2.0","result":{"userAgent":""}}"#,
+        ]);
+        let mut client = CodexAppServer::new(io);
+        let err = client
+            .initialize("qm", "1.x")
+            .expect_err("id mismatch must error");
+        assert!(
+            err.contains("id mismatch") && err.contains("999") && err.contains("expected 1"),
+            "error must name both ids; got: {err}"
+        );
+    }
+
+    #[test]
+    fn read_response_errors_on_response_missing_id() {
+        // Malformed response with neither id nor method should error rather
+        // than be treated as a valid result.
+        let io = VecDequeIo::new(vec![r#"{"jsonrpc":"2.0","result":{}}"#]);
+        let mut client = CodexAppServer::new(io);
+        let err = client
+            .initialize("qm", "1.x")
+            .expect_err("missing-id response must error");
+        assert!(
+            err.contains("missing `id`"),
+            "error must mention missing id; got: {err}"
+        );
     }
 
     #[test]

@@ -5,6 +5,7 @@ pub mod audit;
 pub mod cost_usage;
 pub mod insights;
 pub mod paths;
+pub mod rec_engagement;
 pub mod recommendation_lifecycle;
 pub mod retention;
 pub mod sink;
@@ -29,6 +30,7 @@ pub use insights::{
     SqliteInsightsStore,
 };
 pub use paths::QmonsterPaths;
+pub use rec_engagement::{RecEngagementRow, RecEngagementSnapshot, rec_engagement_snapshot};
 pub use recommendation_lifecycle::{
     RecommendationEventRecord, RecommendationOutcome, RecommendationOutcomeRecord,
     SqliteRecommendationLifecycleSink,
