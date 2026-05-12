@@ -1286,6 +1286,8 @@ where
                                         DashboardHoverView {
                                             split: dashboard_split,
                                             hover_help_trigger: ctx.config.ux.hover_help_trigger,
+                                            alerts_focused: focus == FocusedPanel::Alerts,
+                                            panes_focused: focus == FocusedPanel::Panes,
                                             alert_state: &dashboard.alert_state,
                                             pane_state: &dashboard.pane_state,
                                             notices: &dashboard.notices,

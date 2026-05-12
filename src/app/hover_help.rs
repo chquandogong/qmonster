@@ -8,7 +8,7 @@ use crate::app::config::HoverHelpTrigger;
 use crate::app::event_loop::PaneReport;
 use crate::app::keymap::rect_contains;
 use crate::app::system_notice::SystemNotice;
-use crate::ui::dashboard::{DashboardSplit, dashboard_rects};
+use crate::ui::dashboard::{DashboardSplit, FooterStatusChip, dashboard_rects};
 use crate::ui::help_glossary::HelpTopic;
 
 const HOVER_HELP_LABEL_ZONE_WIDTH: u16 = 32;
@@ -52,6 +52,8 @@ impl HoverHelpState {
 pub struct DashboardHoverView<'a> {
     pub split: DashboardSplit,
     pub hover_help_trigger: HoverHelpTrigger,
+    pub alerts_focused: bool,
+    pub panes_focused: bool,
     pub alert_state: &'a ListState,
     pub pane_state: &'a ListState,
     pub notices: &'a [SystemNotice],
@@ -80,6 +82,10 @@ pub fn dashboard_hover_topic(
     view: DashboardHoverView<'_>,
 ) -> Option<HelpTopic> {
     let rects = dashboard_rects(viewport, view.split);
+    if rect_contains(rects.now_strip, column, row) {
+        return Some(HelpTopic::DashboardNowStrip);
+    }
+
     if rect_contains(rects.alerts, column, row) {
         let inner = rects.alerts.inner(Margin {
             vertical: 1,
@@ -139,6 +145,37 @@ pub fn dashboard_hover_topic(
         return Some(HelpTopic::DashboardDivider);
     }
     if rect_contains(rects.footer, column, row) {
+        let proposal_count = view
+            .reports
+            .iter()
+            .filter(|report| {
+                crate::app::prompt_send_actions::first_prompt_send_proposal(report).is_some()
+            })
+            .count();
+        let (copy_count, _) = crate::ui::alerts::copy_alert_count(
+            view.notices,
+            view.reports,
+            view.hidden_until,
+            view.now,
+        );
+        let focus =
+            crate::ui::dashboard::footer_focus_label(view.alerts_focused, view.panes_focused);
+        match crate::ui::dashboard::footer_status_chip_at(
+            rects.footer,
+            focus,
+            view.split,
+            proposal_count,
+            copy_count,
+            column,
+            row,
+        ) {
+            Some(FooterStatusChip::Proposal) => {
+                return Some(HelpTopic::DashboardFooterProposalChip);
+            }
+            Some(FooterStatusChip::Copy) => return Some(HelpTopic::DashboardFooterCopyChip),
+            Some(FooterStatusChip::Audit) => return Some(HelpTopic::DashboardFooterAuditChip),
+            None => {}
+        }
         let keys = crate::ui::dashboard::footer_keys_badge_rect(rects.footer);
         if rect_contains(keys, column, row) {
             return Some(HelpTopic::DashboardFooter);
@@ -210,6 +247,8 @@ mod tests {
         let view = |hover_help_trigger| DashboardHoverView {
             split,
             hover_help_trigger,
+            alerts_focused: true,
+            panes_focused: false,
             alert_state: &alert_state,
             pane_state: &pane_state,
             notices: &notices,
@@ -268,6 +307,8 @@ mod tests {
         let view = |hover_help_trigger| DashboardHoverView {
             split,
             hover_help_trigger,
+            alerts_focused: true,
+            panes_focused: false,
             alert_state: &alert_state,
             pane_state: &pane_state,
             notices: &notices,
@@ -288,6 +329,112 @@ mod tests {
                 viewport,
                 rects.footer.x.saturating_add(badge.width).saturating_add(4),
                 badge.y,
+                view(HoverHelpTrigger::Label)
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn now_strip_has_hover_topic() {
+        let viewport = Rect::new(0, 0, 120, 40);
+        let split = DashboardSplit::default();
+        let rects = dashboard_rects(viewport, split);
+        let alert_state = ListState::default();
+        let pane_state = ListState::default();
+        let notices = Vec::new();
+        let reports = Vec::new();
+        let fresh_alerts = HashSet::new();
+        let alert_times = HashMap::new();
+        let hidden_until = HashMap::new();
+        let now = Instant::now();
+
+        let view = DashboardHoverView {
+            split,
+            hover_help_trigger: HoverHelpTrigger::Label,
+            alerts_focused: true,
+            panes_focused: false,
+            alert_state: &alert_state,
+            pane_state: &pane_state,
+            notices: &notices,
+            reports: &reports,
+            fresh_alerts: &fresh_alerts,
+            alert_times: &alert_times,
+            hidden_until: &hidden_until,
+            now,
+            target_label: "main",
+        };
+
+        assert_eq!(
+            dashboard_hover_topic(
+                viewport,
+                rects.now_strip.x.saturating_add(2),
+                rects.now_strip.y,
+                view,
+            ),
+            Some(HelpTopic::DashboardNowStrip)
+        );
+    }
+
+    #[test]
+    fn footer_status_chips_have_specific_hover_topics() {
+        let viewport = Rect::new(0, 0, 120, 40);
+        let split = DashboardSplit::default();
+        let rects = dashboard_rects(viewport, split);
+        let keys_badge = crate::ui::dashboard::footer_keys_badge_rect(rects.footer);
+        let text_x = keys_badge
+            .x
+            .saturating_add(keys_badge.width)
+            .saturating_add(1);
+        let head = format!(
+            "focus: alerts \u{00b7} split {}% \u{00b7} ",
+            split.alerts_percent()
+        );
+        let p_x = text_x.saturating_add(head.chars().count() as u16);
+        let y_x = p_x.saturating_add("\u{2605}p:0 \u{00b7} ".chars().count() as u16);
+        let a_x = y_x.saturating_add("\u{2605}y:0 \u{00b7} ".chars().count() as u16);
+        let alert_state = ListState::default();
+        let pane_state = ListState::default();
+        let notices = Vec::new();
+        let reports = Vec::new();
+        let fresh_alerts = HashSet::new();
+        let alert_times = HashMap::new();
+        let hidden_until = HashMap::new();
+        let now = Instant::now();
+
+        let view = |hover_help_trigger| DashboardHoverView {
+            split,
+            hover_help_trigger,
+            alerts_focused: true,
+            panes_focused: false,
+            alert_state: &alert_state,
+            pane_state: &pane_state,
+            notices: &notices,
+            reports: &reports,
+            fresh_alerts: &fresh_alerts,
+            alert_times: &alert_times,
+            hidden_until: &hidden_until,
+            now,
+            target_label: "main",
+        };
+
+        assert_eq!(
+            dashboard_hover_topic(viewport, p_x, rects.footer.y, view(HoverHelpTrigger::Label)),
+            Some(HelpTopic::DashboardFooterProposalChip)
+        );
+        assert_eq!(
+            dashboard_hover_topic(viewport, y_x, rects.footer.y, view(HoverHelpTrigger::Label)),
+            Some(HelpTopic::DashboardFooterCopyChip)
+        );
+        assert_eq!(
+            dashboard_hover_topic(viewport, a_x, rects.footer.y, view(HoverHelpTrigger::Label)),
+            Some(HelpTopic::DashboardFooterAuditChip)
+        );
+        assert_eq!(
+            dashboard_hover_topic(
+                viewport,
+                text_x.saturating_add(2),
+                rects.footer.y,
                 view(HoverHelpTrigger::Label)
             ),
             None

@@ -21,7 +21,7 @@
   배너로 돌아갑니다. 터미널은 OS-level IME 상태를 앱에 노출하지
   않으므로 첫 비ASCII 키스트로크가 트리거 시점입니다.
 - **Footer**: 2줄 상태 바입니다. 첫 줄은 현재 focus, Alerts/Panes split
-  비율, `★p`/`★y` 카운터를 보여주고, 둘째 줄은 왼쪽 `keys` 칩과
+  비율, `★p`/`★y`/`★a` 카운터를 보여주고, 둘째 줄은 왼쪽 `keys` 칩과
   자주 쓰는 핵심 키, 오른쪽 버전 배지를 한 줄에 맞춰 보여줍니다.
   `keys` 칩에 마우스를 올리거나 `K`를 누르면 기존의 긴 키 목록이
   title/footer 없는 넓은 key legend로 열립니다. legend는 Move / Layout /
@@ -62,11 +62,14 @@ the window and the footer/hint carries controls plus
 있을 때만 help를 엽니다. `row` trigger로 바꾸면 기존처럼 행 전체 hover에서
 열립니다. Alerts에서는 `bulk hide`, 헤더, `dismiss`,
 `summary`, detail(`next`/`run`/`anchor`/`others`), copy hint를 행별로
-설명합니다. Panes에서는 헤더(provider/role/CLI version), `state`,
+설명합니다. 최상단 `Now` row는 현재 우선순위 요약을 설명합니다.
+Panes에서는 헤더(provider/role/CLI version), `state`,
 `path`, `cmd`, `status`, `signals`, metrics, tokens/cache io, runtime
 facts(`session`/`loaded` 포함), recommendations/profile을 행별로 설명합니다.
-footer의 `keys` 칩은 `ux.hover_help = false`여도 항상 key legend를
-열 수 있는 예외입니다. hover help 제목에는 현재 언어와 `H/L` 힌트가 표시되고, 본문 하단에는
+하단 상태 줄의 `★p`, `★y`, `★a`는 각각 prompt-send 제안 수, 복사 가능한
+alert 수, 최근 audit 심각도에 대한 help를 엽니다. footer의 `keys` 칩은
+`ux.hover_help = false`여도 항상 key legend를 열 수 있는 예외입니다.
+hover help 제목에는 현재 언어와 `H/L` 힌트가 표시되고, 본문 하단에는
 `H` toggle, `L` language, `S` Settings 저장 위치가 같이 표시됩니다.
 명시적 overlay가 열려 있으면 dashboard hover help는 숨겨집니다.
 
@@ -928,8 +931,9 @@ dispatch로 확장되었습니다.
 
 - **Header chip** — pane card 제목에 `★p`, alert 제목에 `★y`가
   붙고 severity 색으로 강조됩니다.
-- **Footer counter** — 화면 하단에 `★p:N · ★y:M` 카운터가 항상
-  표시됩니다 (0이면 dim, 양수면 severity 색).
+- **Footer counter** — 화면 하단에 `★p:N · ★y:M · ★a:X` 카운터가
+  항상 표시됩니다 (`★p`/`★y`는 0이면 dim, 양수면 severity 색;
+  `★a`는 최근 audit 심각도를 0/C/W/R로 표시).
 
 **모달 layout**
 

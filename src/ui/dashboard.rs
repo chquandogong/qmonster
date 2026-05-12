@@ -473,6 +473,13 @@ struct FooterCounters {
     audit_top_severity: Option<crate::domain::recommendation::Severity>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FooterStatusChip {
+    Proposal,
+    Copy,
+    Audit,
+}
+
 pub fn render_target_picker(
     frame: &mut Frame<'_>,
     state: &mut ListState,
@@ -1031,13 +1038,7 @@ fn render_footer(
     split: DashboardSplit,
     counters: FooterCounters,
 ) {
-    let focus = if alerts_focused {
-        "focus: alerts"
-    } else if panes_focused {
-        "focus: panes"
-    } else {
-        "focus: overlay"
-    };
+    let focus = footer_focus_label(alerts_focused, panes_focused);
     let badge = version_badge_rect(area);
     let keys_badge = footer_keys_badge_rect(area);
     let text_x = keys_badge
@@ -1069,6 +1070,79 @@ fn render_footer(
         .render(badge, buf);
 }
 
+pub fn footer_focus_label(alerts_focused: bool, panes_focused: bool) -> &'static str {
+    if alerts_focused {
+        "focus: alerts"
+    } else if panes_focused {
+        "focus: panes"
+    } else {
+        "focus: overlay"
+    }
+}
+
+pub fn footer_status_chip_at(
+    area: Rect,
+    focus: &str,
+    split: DashboardSplit,
+    proposal_count: usize,
+    copy_count: usize,
+    column: u16,
+    row: u16,
+) -> Option<FooterStatusChip> {
+    if row != area.y || area.height == 0 || area.width == 0 {
+        return None;
+    }
+
+    let keys_badge = footer_keys_badge_rect(area);
+    let version_badge = version_badge_rect(area);
+    let text_x = keys_badge
+        .x
+        .saturating_add(keys_badge.width)
+        .saturating_add(1);
+    let text_right = version_badge.x.saturating_sub(1);
+    if column < text_x || column >= text_right {
+        return None;
+    }
+
+    let head = footer_status_head(focus, split);
+    let p_label = format!("\u{2605}p:{proposal_count}");
+    let y_label = format!("\u{2605}y:{copy_count}");
+    let a_label = "\u{2605}a:0";
+    let p_start = text_x.saturating_add(text_cells(&head));
+    let y_start = p_start
+        .saturating_add(text_cells(&p_label))
+        .saturating_add(text_cells(" \u{00b7} "));
+    let a_start = y_start
+        .saturating_add(text_cells(&y_label))
+        .saturating_add(text_cells(" \u{00b7} "));
+
+    if column_in_text(column, p_start, &p_label) {
+        Some(FooterStatusChip::Proposal)
+    } else if column_in_text(column, y_start, &y_label) {
+        Some(FooterStatusChip::Copy)
+    } else if column_in_text(column, a_start, a_label) {
+        Some(FooterStatusChip::Audit)
+    } else {
+        None
+    }
+}
+
+fn footer_status_head(focus: &str, split: DashboardSplit) -> String {
+    format!(
+        "{focus} \u{00b7} split {}% \u{00b7} ",
+        split.alerts_percent()
+    )
+}
+
+fn column_in_text(column: u16, start: u16, text: &str) -> bool {
+    let end = start.saturating_add(text_cells(text));
+    column >= start && column < end
+}
+
+fn text_cells(text: &str) -> u16 {
+    text.chars().count().min(u16::MAX as usize) as u16
+}
+
 /// v1.39 Pending-action discoverability surface B: build the footer
 /// as styled `Line`s so the always-visible `★p:N · ★y:M` counter
 /// chip can render in severity color when N>0 / dim on 0. The first
@@ -1079,10 +1153,7 @@ fn footer_lines(
     split: DashboardSplit,
     counters: &FooterCounters,
 ) -> Vec<Line<'static>> {
-    let head = format!(
-        "{focus} \u{00b7} split {}% \u{00b7} ",
-        split.alerts_percent()
-    );
+    let head = footer_status_head(focus, split);
     let p_chip = footer_chip_span(
         "\u{2605}p",
         counters.proposal_count,

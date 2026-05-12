@@ -27,6 +27,14 @@ pub enum HelpTopic {
     DashboardFooter,
     /// v1.58.0: bottom-right version badge — click to open Git overlay.
     DashboardVersionBadge,
+    /// Topmost `Now` strip: one-line current-priority summary.
+    DashboardNowStrip,
+    /// Footer `★p` chip: pending prompt-send proposal count.
+    DashboardFooterProposalChip,
+    /// Footer `★y` chip: copyable suggested-command alert count.
+    DashboardFooterCopyChip,
+    /// Footer `★a` chip: recent audit severity indicator.
+    DashboardFooterAuditChip,
 }
 
 pub fn language_label(language: HelpLanguage) -> &'static str {
@@ -127,14 +135,34 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
             "비ASCII 알파벳 입력 시(한글/카타카나 등) `⚠ HANGUL/IME ACTIVE` 배너로 바뀌고 첫 활성화 시 BEL이 한 번 울립니다 (v1.51.0+, 3초 TTL).",
         ],
         HelpTopic::DashboardFooter => &[
-            "Footer: 현재 focus, Alerts/Panes split 비율, 보류 중인 액션 카운터(★p / ★y), 그리고 주요 키바인딩 클러스터를 한 줄에 모읍니다.",
-            "★p는 수락 가능한 prompt-send 제안 수, ★y는 복사 가능한 suggested_command 알림 수입니다.",
+            "Footer: 현재 focus, Alerts/Panes split 비율, 보류 중인 액션/감사 카운터(★p / ★y / ★a), 그리고 주요 키바인딩 클러스터를 한 줄에 모읍니다.",
+            "★p는 수락 가능한 prompt-send 제안 수, ★y는 복사 가능한 suggested_command 알림 수, ★a는 최근 audit 심각도입니다.",
             "키 클러스터는 ` · `로 구분되며 모달이 열리면 풋터의 focus 표시가 `overlay`로 바뀝니다.",
         ],
         HelpTopic::DashboardVersionBadge => &[
             "버전 배지: 우측 하단에 `git describe --tags --always --dirty`로 박힌 빌드 버전이 표시됩니다.",
             "클릭하면 Git overlay가 열려 origin URL, 브랜치/HEAD, 변경 내역, Recent Commits, Contributors를 한 번에 볼 수 있습니다.",
             "v1.51.0부터 build.rs가 `.git/refs/tags`도 추적하므로 새 태그 부착 후 재빌드 시 자동으로 갱신됩니다.",
+        ],
+        HelpTopic::DashboardNowStrip => &[
+            "Now row: 화면 맨 위에서 지금 가장 중요한 상태를 한 줄로 요약합니다.",
+            "입력/승인 대기, Risk 추천, quota/cost 압박, 최근 anomaly, healthy 상태 순서로 우선순위를 정합니다.",
+            "`p send`/`d dismiss`는 선택된 제안 조치, `see m`/`see n`은 Metrics/Anomaly overlay에서 세부 내용을 보라는 뜻입니다.",
+        ],
+        HelpTopic::DashboardFooterProposalChip => &[
+            "★p: 수락/거절 가능한 pending prompt-send 제안이 있는 pane 수입니다.",
+            "포커스가 해당 pane/제안에 있을 때 p는 수락, d는 거절 경로로 들어갑니다.",
+            "a Pending Actions overlay를 열면 모든 ★p 항목을 한 곳에서 보고 선택/일괄 처리할 수 있습니다.",
+        ],
+        HelpTopic::DashboardFooterCopyChip => &[
+            "★y: suggested_command가 있어 y로 복사 가능한 alert 수입니다.",
+            "Alerts 포커스에서 해당 alert를 선택하고 y를 누르면 표시된 run 명령을 클립보드로 복사합니다.",
+            "a Pending Actions overlay에서도 ★y 항목을 모아 보고 선택한 항목을 복사할 수 있습니다.",
+        ],
+        HelpTopic::DashboardFooterAuditChip => &[
+            "★a: 최근 15분 audit 이벤트의 최고 심각도입니다.",
+            "0은 최근 유효 심각도 없음, C/W/R은 Concern/Warning/Risk를 뜻합니다.",
+            "Warning/Risk는 색으로 강조되고, Concern/0은 상태 줄을 과도하게 끌어당기지 않도록 dim 처리됩니다.",
         ],
     }
 }
@@ -223,14 +251,34 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
             "Typing a non-ASCII letter (Hangul/CJK/...) flips the divider into a `⚠ HANGUL/IME ACTIVE` banner and fires the terminal BEL once on activation (v1.51.0+, 3s TTL).",
         ],
         HelpTopic::DashboardFooter => &[
-            "Footer: current focus, Alerts/Panes split ratio, pending-action counters (★p / ★y), and the main keybinding cluster.",
-            "★p counts accept-able prompt-send proposals; ★y counts alerts with a copyable suggested_command.",
+            "Footer: current focus, Alerts/Panes split ratio, pending-action/audit counters (★p / ★y / ★a), and the main keybinding cluster.",
+            "★p counts acceptable prompt-send proposals; ★y counts alerts with a copyable suggested_command; ★a is recent audit severity.",
             "Keys are ` · `-separated; the focus marker flips to `overlay` while a modal owns the keyboard.",
         ],
         HelpTopic::DashboardVersionBadge => &[
             "Version badge: bottom-right tag/commit string from `git describe --tags --always --dirty`, embedded by build.rs.",
             "Click it to open the Git overlay — origin URL, branch/HEAD, working-tree changes, Recent Commits, Contributors.",
             "v1.51.0+ tracks `.git/refs/tags` so a fresh `git tag` triggers an automatic rebuild on next `cargo build`.",
+        ],
+        HelpTopic::DashboardNowStrip => &[
+            "Now row: the topmost one-line summary of the most important current condition.",
+            "Priority order is input/approval waits, Risk recommendations, quota/cost pressure, recent anomalies, then healthy status.",
+            "`p send`/`d dismiss` point to proposal actions; `see m`/`see n` points to Metrics or Anomaly details.",
+        ],
+        HelpTopic::DashboardFooterProposalChip => &[
+            "★p: count of panes with pending prompt-send proposals that can be accepted or dismissed.",
+            "When focus is on the matching pane/proposal, p accepts and d dismisses through the proposal path.",
+            "Open the a Pending Actions overlay to review, select, and bulk-dispatch all ★p items.",
+        ],
+        HelpTopic::DashboardFooterCopyChip => &[
+            "★y: count of alerts with a suggested_command that can be copied with y.",
+            "With Alerts focus on that alert, y copies the rendered run command to the clipboard.",
+            "The a Pending Actions overlay also collects ★y items for review and selected copy dispatch.",
+        ],
+        HelpTopic::DashboardFooterAuditChip => &[
+            "★a: highest severity from audit events in the recent 15-minute window.",
+            "0 means no recent severity; C/W/R mean Concern, Warning, or Risk.",
+            "Warning/Risk are severity-colored; Concern/0 stay dim so the status line remains calm.",
         ],
     }
 }
@@ -262,6 +310,10 @@ mod tests {
             HelpTopic::DashboardDivider,
             HelpTopic::DashboardFooter,
             HelpTopic::DashboardVersionBadge,
+            HelpTopic::DashboardNowStrip,
+            HelpTopic::DashboardFooterProposalChip,
+            HelpTopic::DashboardFooterCopyChip,
+            HelpTopic::DashboardFooterAuditChip,
         ];
         for topic in topics {
             assert!(!help_lines(topic, HelpLanguage::Ko).is_empty());
