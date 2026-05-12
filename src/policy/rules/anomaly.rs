@@ -779,50 +779,6 @@ pub fn promote_anomalies_to_recommendations(
                         .to_string(),
                 )
             }
-            AnomalyKind::MemoryGrowth => {
-                let (oldest, newest) = evidence
-                    .map(|e| (e.before.clone(), e.after.clone()))
-                    .unwrap_or((String::new(), String::new()));
-                (
-                    "anomaly: memory growth detected",
-                    format!(
-                        "process memory grew from {oldest} MB to {newest} MB over the {} polls window; confidence {}",
-                        sig.window_polls,
-                        sig.confidence.label()
-                    ),
-                    "check the provider for memory leak; consider restart if growth is sustained"
-                        .to_string(),
-                )
-            }
-            AnomalyKind::SubagentSideEffect => {
-                let count = evidence.map(|e| e.sample_count).unwrap_or(0);
-                // v2.2.0 (P1-2) honesty rule: lead with the disclaimer
-                // so the operator reads "correlation only" BEFORE the
-                // numeric evidence. The previous prose buried the
-                // disclaimer in parens at the end of the reason, where
-                // operators routinely skipped past it. Providers do not
-                // expose per-subagent token attribution, so any causal
-                // inference here is the operator's, not Qmonster's.
-                (
-                    SUBAGENT_SIDE_EFFECT_ACTION,
-                    format!(
-                        "⚠ correlation only — providers do not expose per-subagent token attribution. \
-                         subagent_hint observed {count} times in {} polls while other anomalies fired in the same window",
-                        sig.window_polls
-                    ),
-                    "the subagent activity is *correlated* with the co-occurring anomaly, not proven to be the source. inspect the subagent's recent output before attributing cause".to_string(),
-                )
-            }
-        };
-        out.push(Recommendation {
-            action,
-            reason,
-            severity: sig.severity,
-            source_kind,
-            suggested_command: None,
-            side_effects: vec![],
-            is_strong: false,
-            next_step: Some(next_step),
             profile: None,
         });
     }
