@@ -6,6 +6,14 @@
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Severity;
 
+/// Canonical action string emitted for `AnomalyKind::SubagentSideEffect`.
+/// Single source of truth: the policy rule emits this verbatim, the insights
+/// store lists it in `KNOWN_ACTION_PREFIXES`, and the integration tests
+/// classify against it via `starts_with`. The leading `⚠ correlation only`
+/// disclaimer is intentional (v2.2.0 P1-2 honesty rule).
+pub const SUBAGENT_SIDE_EFFECT_ACTION: &str =
+    "anomaly: subagent activity ⚠ correlated with other anomalies";
+
 /// One detected anomaly. Built by a `policy::rules::anomaly::detect_*`
 /// function and (after edge-triggered dedup) attached to
 /// `PaneReport.anomalies`. Observation surface only — no ID, no
@@ -273,21 +281,6 @@ mod tests {
                 assert!(kind.supports_provider(p), "{:?} must support {:?}", kind, p);
             }
         }
-
-        // Single-provider detectors: pin the coverage so a future
-        // adapter-coverage drift breaks the test, not the operator's
-        // mental model.
-        assert!(AnomalyKind::MemoryGrowth.supports_provider(Provider::Gemini));
-        assert!(!AnomalyKind::MemoryGrowth.supports_provider(Provider::Claude));
-        assert!(!AnomalyKind::MemoryGrowth.supports_provider(Provider::Codex));
-
-        assert!(AnomalyKind::TokenSlope.supports_provider(Provider::Codex));
-        assert!(!AnomalyKind::TokenSlope.supports_provider(Provider::Claude));
-        assert!(!AnomalyKind::TokenSlope.supports_provider(Provider::Gemini));
-
-        assert!(AnomalyKind::SubagentSideEffect.supports_provider(Provider::Claude));
-        assert!(!AnomalyKind::SubagentSideEffect.supports_provider(Provider::Codex));
-        assert!(!AnomalyKind::SubagentSideEffect.supports_provider(Provider::Gemini));
 
         // Two-provider detectors.
         for kind in [

@@ -317,7 +317,7 @@ const KNOWN_ACTION_PREFIXES: &[&str] = &[
     "anomaly: error burst detected",
     "anomaly: identity churn detected",
     "anomaly: memory growth detected",
-    "anomaly: subagent activity ⚠ correlated with other anomalies",
+    crate::domain::anomaly::SUBAGENT_SIDE_EFFECT_ACTION,
     "quota-tight: consider enabling",
     "quota-pressure: pace requests",
     "cost-budget: 80% reached",
@@ -473,6 +473,12 @@ fn apply_lifecycle_outcome(row: &mut ActionLedgerRow, outcome: &str) {
     }
 }
 
+// Terminal = closes the recommendation lifecycle so TTL-ignored counting no
+// longer applies to the originating event. Engagement-only signals like
+// `copied` must NOT close the lifecycle (the operator still hasn't accepted
+// or dismissed the rec). The default is intentionally terminal so unknown /
+// historical outcome strings fail closed: a new non-terminal outcome must
+// opt in explicitly here.
 fn is_terminal_lifecycle_outcome(outcome: &str) -> bool {
     !matches!(outcome, "copied")
 }
@@ -1614,7 +1620,7 @@ fn lifecycle_snapshot(
     let mut last_compact_payoff = LastCompactPayoffSummary::default();
     let mut last_compact_outcome_ts = None;
     for (idx, outcome) in outcomes.iter().enumerate() {
-        if outcome.outcome == "accepted" || outcome.outcome == "hidden" {
+        if matches!(outcome.outcome.as_str(), "accepted" | "copied" | "hidden") {
             continue;
         }
         let Some(event_id) = outcome

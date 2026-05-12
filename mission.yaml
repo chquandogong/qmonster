@@ -1632,10 +1632,10 @@ mission:
       value: "src/policy/rules/anomaly.rs::⚠ correlation only"
     - index: 18
       kind: file-contains
-      value: "src/store/recommendation_lifecycle.rs::RecommendationOutcome::Copied => \"copied\""
+      value: 'src/store/recommendation_lifecycle.rs::RecommendationOutcome::Copied => "copied"'
     - index: 19
       kind: command
-      value: "cargo test -q insights_lifecycle_counts_unlinked_copied_but_keeps_ttl_ignored_pending && cargo test -q snapshot_matches_unlinked_copied_outcomes_by_pane_and_action"
+      value: "cargo test -q -- insights_lifecycle_counts_unlinked_copied_but_keeps_ttl_ignored_pending snapshot_matches_unlinked_copied_outcomes_by_pane_and_action"
     - index: 20
       kind: command
       value: "cargo test -q insights_counts_live_colon_actions_by_situation"

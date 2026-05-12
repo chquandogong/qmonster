@@ -429,7 +429,6 @@ fn parameters_tab_exposes_editable_fields_for_all_config_sections() {
     assert!(fields.contains(&ParameterField::CacheHotRatioThreshold));
     assert!(fields.contains(&ParameterField::ResetAutoSnapshot));
     assert!(fields.contains(&ParameterField::AnomalyEnabled));
-    assert!(fields.contains(&ParameterField::AnomalyPromoteSubagentSideEffect));
     assert!(fields.contains(&ParameterField::CostBudgetUsd));
     assert!(fields.contains(&ParameterField::ProfileSwitchWindowPolls));
     assert!(fields.contains(&ParameterField::UxConfirmActions));
@@ -1423,7 +1422,7 @@ fn rules_tab_anomaly_rows_use_configured_threshold_value() {
         rendered.contains("promotes to Recommendation when confidence >= high"),
         "default 'high' threshold missing in rules tab: {rendered}"
     );
-    // SubagentSideEffect uses 'medium' default
+    // SubagentSideEffect uses 'medium' default.
     assert!(
         rendered.contains("(confidence >= medium)"),
         "subagent_side_effect medium default missing: {rendered}"

@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-12 (Claude, v2.2.0 critical-eval-driven improvement bundle on top of v2.1.0)_
+_Last updated: 2026-05-12 (Claude, post-v2.2.0 stabilization on top of the v2.2.0 critical-eval-driven improvement bundle)_
 
 ## Mission
 
@@ -10,6 +10,50 @@ _Last updated: 2026-05-12 (Claude, v2.2.0 critical-eval-driven improvement bundl
 - Branch / worktree at handoff start: `main`, tag `v2.2.0` to be created at the ledger sync commit. v2.1.0 is the immediate prior tagged baseline.
 - Release publication state: **v2.2.0 is published** (verified 2026-05-12). The first tag push at commit `94df2f6` triggered run `25712627303` which failed at 1m23s in `Run release validation`: the new P1-3 `ledger_helper_writes_copied_outcome_on_successful_copy` test called `arboard::Clipboard::new()` directly and the GitHub Actions runner has no display server. Hotfix `44946e8` introduces a generic `copy_selected_alert_command_with_ledger<F>` inner so tests can inject a deterministic closure; `to_clipboard_with_ledger` stays a thin wrapper for production. The v2.2.0 tag was deleted from origin and re-created at `44946e8` (no force-push), mirroring the v1.55.0 fmt+clippy re-tag pattern. The successful re-tag run `25712761819` completed in 7m29s at 2026-05-12T04:16:09Z; GitHub Release `v2.2.0` (published 2026-05-12T04:15:40Z) carries the full asset set (`qmonster-v2.2.0-linux-x86_64.tar.gz` 4.29MB, `qmonster-2.2.0.tgz` 1.34MB, `qmonster-v2.2.0-sbom.spdx.json` 535KB, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 2.2.0`. The companion `CI` workflow run `25712760989` on the hotfix commit completed success in 3m51s. **v2.1.0 is published** (verified 2026-05-11). Run `25649969794` completed success in 7m18s at 2026-05-11T04:23:14Z; GitHub Release `v2.1.0` (published 2026-05-11T04:22:52Z) carries the full asset set (`qmonster-v2.1.0-linux-x86_64.tar.gz`, `qmonster-2.1.0.tgz`, `qmonster-v2.1.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 2.1.0`. The companion `CI` workflow run `25649968220` on the v2.1.0 ledger sync commit `6c49536` also completed success. **v2.0.0 is published** (verified 2026-05-08). Run `25550704578` completed success in 7m15s at 2026-05-08T10:37:44Z; GitHub Release `v2.0.0` (published 2026-05-08T10:37:18Z) carries the full asset set (`qmonster-v2.0.0-linux-x86_64.tar.gz`, `qmonster-2.0.0.tgz`, `qmonster-v2.0.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 2.0.0`. **v1.60.0 is published** (run `25548715050` completed success in 7m44s at 2026-05-08T09:51:00Z). **v1.59.0 is published** (verified 2026-05-08). Run `25546295476` completed success in 6m53s at 2026-05-08T08:53:19Z; GitHub Release `v1.59.0` (published 2026-05-08T08:52:59Z) carries the full asset set (`qmonster-v1.59.0-linux-x86_64.tar.gz`, `qmonster-1.59.0.tgz`, `qmonster-v1.59.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 1.59.0`. **v1.58.0 + v1.58.1 are published**: v1.58.0 run `25544151924` (7m22s, 2026-05-08T08:02:49Z), v1.58.1 run `25544690855` (7m23s, 2026-05-08T08:16:08Z). **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s).
 - Current phase: All prior phases complete. v1.50.0–v2.0.0 publication baselines still apply; v2.1.0 ships the r2 cross-validated synthesis-slice implementation on top of the v2.0.0 milestone — no new phase is opened, the work is bundled as the first feature minor on the v2.x line.
+
+## Post-v2.2.0 Stabilization (unreleased)
+
+On top of the published v2.2.0 bundle, two follow-up bundles land in tree
+before the next tag is cut:
+
+1. **`2dcb5b5` — post-v2.2.0 critical-review improvement bundle (9 items)**
+   plus **`afe37ee` — footer status chip mouse-click actions**. These close
+   secondary findings from the v2.2.0 critical evaluation that did not
+   block release.
+
+2. **`dc31b28` — copied-outcome lifecycle stabilization + done_when_refs
+   binding (10 files, +254 / -31)**. Three coordinated axes:
+   - *Copied as a non-terminal lifecycle outcome.* `ActionLedgerRow.copied`,
+     `apply_lifecycle_outcome("copied")`, `is_terminal_lifecycle_outcome`,
+     and `rec_engagement_snapshot`'s CTE all treat clipboard copies as
+     engagement telemetry that does **not** suppress TTL-ignored counting
+     on the originating event. The CTE attaches unlinked copy outcomes
+     (written with `recommendation_event_id = None`) to the latest prior
+     event on the same `(pane_id, action)` inside the reporting window.
+   - *SubagentSideEffect label normalization.* The emitted action string
+     carries a leading `⚠` (U+26A0) marker; the canonical literal lives in
+     `domain::anomaly::SUBAGENT_SIDE_EFFECT_ACTION` and is referenced by
+     `policy::rules::anomaly`, `store::insights::KNOWN_ACTION_PREFIXES`,
+     and the integration tests. `situation_for_action` matches both the
+     legacy and current labels via `starts_with("anomaly: subagent
+     activity")` so older audit DBs keep grouping under "Code exploration".
+   - *Mission `done_when_refs` 100 % coverage.* All 23 `done_when` items
+     bind to a concrete validator (eval-ref / file-exists / file-contains /
+     command), and `cargo_fmt_check_passes` joins `cargo_build_passes`,
+     `cargo_test_passes`, and `cargo_clippy_clean` in the eval set. The
+     clippy gate flag (`-A clippy::uninlined_format_args`) is mirrored in
+     `scripts/verify-shared.sh`.
+
+   Validation at this snapshot: `npx mission-spec eval` reports **23/23
+   done_when passed**; `cargo test --all-targets` is **1648 green** (lib
+   1511 + integration 68 + 69 supporting); `cargo fmt --all --check` and
+   `cargo clippy --all-targets -- -D warnings -A
+   clippy::uninlined_format_args` clean.
+
+These stabilization bundles do not change the v2.2.0 release surface and
+are not user-visible behaviour changes — they harden the lifecycle
+attribution model and tighten mission verifiability before the next minor
+bump.
 
 ## v2.1.0 Feature State
 

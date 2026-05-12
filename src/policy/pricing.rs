@@ -143,6 +143,12 @@ provider = "claude"
 model = "claude-sonnet-4-6"
 input_per_1m = 3.00
 output_per_1m = 15.00
+
+[[entries]]
+provider = "gemini"
+model = "gemini-3.1-pro"
+input_per_1m = 1.25
+output_per_1m = 5.00
 "#,
         );
         let t = PricingTable::load_from_toml(f.path()).unwrap();
@@ -151,6 +157,9 @@ output_per_1m = 15.00
         assert!((r.output_per_1m - 10.00).abs() < f64::EPSILON);
         let r2 = t.lookup(Provider::Claude, "claude-sonnet-4-6").unwrap();
         assert!((r2.output_per_1m - 15.00).abs() < f64::EPSILON);
+        let r3 = t.lookup(Provider::Gemini, "gemini-3.1-pro").unwrap();
+        assert!((r3.input_per_1m - 1.25).abs() < f64::EPSILON);
+        assert!((r3.output_per_1m - 5.00).abs() < f64::EPSILON);
     }
 
     #[test]

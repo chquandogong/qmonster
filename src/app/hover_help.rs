@@ -161,16 +161,16 @@ pub fn dashboard_hover_topic(
         );
         let focus =
             crate::ui::dashboard::footer_focus_label(view.alerts_focused, view.panes_focused);
-        match crate::ui::dashboard::footer_status_chip_at(
-            rects.footer,
+        match crate::ui::dashboard::footer_status_chip_at(crate::ui::dashboard::FooterChipQuery {
+            area: rects.footer,
             focus,
-            view.split,
+            split: view.split,
             proposal_count,
             copy_count,
-            view.audit_recent_severity,
+            audit_top_severity: view.audit_recent_severity,
             column,
             row,
-        ) {
+        }) {
             Some(FooterStatusChip::Proposal) => {
                 return Some(HelpTopic::DashboardFooterProposalChip);
             }

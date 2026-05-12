@@ -1080,36 +1080,42 @@ pub fn footer_focus_label(alerts_focused: bool, panes_focused: bool) -> &'static
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn footer_status_chip_at(
-    area: Rect,
-    focus: &str,
-    split: DashboardSplit,
-    proposal_count: usize,
-    copy_count: usize,
-    audit_top_severity: Option<crate::domain::recommendation::Severity>,
-    column: u16,
-    row: u16,
-) -> Option<FooterStatusChip> {
-    if row != area.y || area.height == 0 || area.width == 0 {
+/// Inputs for `footer_status_chip_at`. Bundled into a struct so the
+/// function does not accumulate positional arguments as the footer gains
+/// new chips (each chip needs a count + label, plus the cursor position to
+/// hit-test against). All fields are immediate values from the renderer's
+/// current frame; the struct is not stored.
+pub struct FooterChipQuery<'a> {
+    pub area: Rect,
+    pub focus: &'a str,
+    pub split: DashboardSplit,
+    pub proposal_count: usize,
+    pub copy_count: usize,
+    pub audit_top_severity: Option<crate::domain::recommendation::Severity>,
+    pub column: u16,
+    pub row: u16,
+}
+
+pub fn footer_status_chip_at(q: FooterChipQuery<'_>) -> Option<FooterStatusChip> {
+    if q.row != q.area.y || q.area.height == 0 || q.area.width == 0 {
         return None;
     }
 
-    let keys_badge = footer_keys_badge_rect(area);
-    let version_badge = version_badge_rect(area);
+    let keys_badge = footer_keys_badge_rect(q.area);
+    let version_badge = version_badge_rect(q.area);
     let text_x = keys_badge
         .x
         .saturating_add(keys_badge.width)
         .saturating_add(1);
     let text_right = version_badge.x.saturating_sub(1);
-    if column < text_x || column >= text_right {
+    if q.column < text_x || q.column >= text_right {
         return None;
     }
 
-    let head = footer_status_head(focus, split);
-    let p_label = format!("\u{2605}p:{proposal_count}");
-    let y_label = format!("\u{2605}y:{copy_count}");
-    let a_letter = audit_top_severity.map(|s| s.letter()).unwrap_or("0");
+    let head = footer_status_head(q.focus, q.split);
+    let p_label = format!("\u{2605}p:{}", q.proposal_count);
+    let y_label = format!("\u{2605}y:{}", q.copy_count);
+    let a_letter = q.audit_top_severity.map(|s| s.letter()).unwrap_or("0");
     let a_label = format!("\u{2605}a:{a_letter}");
     let p_start = text_x.saturating_add(text_cells(&head));
     let y_start = p_start
@@ -1119,11 +1125,11 @@ pub fn footer_status_chip_at(
         .saturating_add(text_cells(&y_label))
         .saturating_add(text_cells(" \u{00b7} "));
 
-    if column_in_text(column, p_start, &p_label) {
+    if column_in_text(q.column, p_start, &p_label) {
         Some(FooterStatusChip::Proposal)
-    } else if column_in_text(column, y_start, &y_label) {
+    } else if column_in_text(q.column, y_start, &y_label) {
         Some(FooterStatusChip::Copy)
-    } else if column_in_text(column, a_start, &a_label) {
+    } else if column_in_text(q.column, a_start, &a_label) {
         Some(FooterStatusChip::Audit)
     } else {
         None

@@ -8,7 +8,9 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal};
+use crate::domain::anomaly::{
+    AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal, SUBAGENT_SIDE_EFFECT_ACTION,
+};
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::{Recommendation, Severity};
 use crate::policy::gates::PolicyGates;
@@ -1021,7 +1023,7 @@ pub fn promote_anomalies_to_recommendations(
                 // expose per-subagent token attribution, so any causal
                 // inference here is the operator's, not Qmonster's.
                 (
-                    "anomaly: subagent activity ⚠ correlated with other anomalies",
+                    SUBAGENT_SIDE_EFFECT_ACTION,
                     format!(
                         "⚠ correlation only — providers do not expose per-subagent token attribution. \
                          subagent_hint observed {count} times in {} polls while other anomalies fired in the same window",

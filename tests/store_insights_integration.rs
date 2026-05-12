@@ -986,6 +986,49 @@ fn cache_summary_reports_cache_states_latest_ratio_token_growth_and_cost_delta()
     assert!((snapshot.cache.cost_delta_usd.unwrap() - 0.08).abs() < 0.000_001);
 }
 
+/// Backward-compat pin: audit rows written before the v2.2.0 P1-2 honesty
+/// rename still classify under "Code exploration". `situation_for_action`'s
+/// `starts_with("anomaly: subagent activity")` matches both the legacy label
+/// (no ⚠) and the current label, so old databases keep grouping correctly.
+#[test]
+fn insights_classifies_legacy_subagent_label_as_code_exploration() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let audit = SqliteAuditSink::open(&db_path).unwrap();
+
+    // Pre-v2.2 emission — no ⚠ U+26A0 marker.
+    audit.record(audit_event(
+        AuditEventKind::AlertFired,
+        "%legacy",
+        "anomaly: subagent activity correlated with other anomalies: legacy DB row",
+    ));
+    // Current emission for the same kind.
+    audit.record(audit_event(
+        AuditEventKind::AlertFired,
+        "%current",
+        "anomaly: subagent activity ⚠ correlated with other anomalies: current row",
+    ));
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot(InsightsWindow {
+            since_ms: now_ms - 60_000,
+            until_ms: now_ms + 60_000,
+        })
+        .unwrap();
+
+    let code_exploration = snapshot
+        .situations
+        .iter()
+        .find(|s| s.situation == "Code exploration")
+        .expect("Code exploration situation must exist for subagent activity rows");
+    assert_eq!(
+        code_exploration.emitted, 2,
+        "both legacy and current subagent labels must group under Code exploration"
+    );
+}
+
 #[test]
 fn cache_summary_buckets_token_growth_by_pane_and_provider() {
     let td = tempdir().unwrap();
@@ -1524,6 +1567,10 @@ fn insights_lifecycle_counts_unlinked_copied_but_keeps_ttl_ignored_pending() {
                 .timeline
                 .iter()
                 .any(|item| item.outcome == "ignored")
+    );
+    assert!(
+        snapshot.action_impacts.is_empty(),
+        "copy telemetry is not an action completion window"
     );
 }
 

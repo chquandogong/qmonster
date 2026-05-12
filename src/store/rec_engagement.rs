@@ -26,6 +26,7 @@ pub struct RecEngagementRow {
     pub accepted: u64,
     pub ignored: u64,
     pub other_outcome: u64,
+    pub engaged_events: u64,
 }
 
 impl RecEngagementRow {
@@ -36,8 +37,7 @@ impl RecEngagementRow {
         if self.surfaced == 0 {
             return None;
         }
-        let engaged = self.copied + self.accepted;
-        Some(engaged as f64 / self.surfaced as f64)
+        Some(self.engaged_events as f64 / self.surfaced as f64)
     }
 }
 
@@ -104,7 +104,11 @@ pub fn rec_engagement_snapshot(
                     COALESCE(SUM(CASE WHEN o.outcome = 'accepted' THEN 1 ELSE 0 END), 0) AS accepted,
                     COALESCE(SUM(CASE WHEN o.outcome = 'ignored'  THEN 1 ELSE 0 END), 0) AS ignored,
                     COALESCE(SUM(CASE WHEN o.outcome NOT IN ('copied','accepted','ignored')
-                                       AND o.outcome IS NOT NULL THEN 1 ELSE 0 END), 0) AS other_outcome
+                                       AND o.outcome IS NOT NULL THEN 1 ELSE 0 END), 0) AS other_outcome,
+                    COUNT(DISTINCT CASE
+                        WHEN o.outcome IN ('copied','accepted') THEN o.event_id
+                        ELSE NULL
+                    END) AS engaged_events
              FROM recommendation_events e
              LEFT JOIN matched_outcomes o
                     ON o.event_id = e.id
@@ -124,6 +128,7 @@ pub fn rec_engagement_snapshot(
                 accepted: r.get::<_, i64>(3)?.max(0) as u64,
                 ignored: r.get::<_, i64>(4)?.max(0) as u64,
                 other_outcome: r.get::<_, i64>(5)?.max(0) as u64,
+                engaged_events: r.get::<_, i64>(6)?.max(0) as u64,
             })
         })
         .map_err(|e| SqliteError::Query(e.to_string()))?
@@ -209,6 +214,7 @@ mod tests {
             accepted: 1,
             ignored: 3,
             other_outcome: 1,
+            engaged_events: 3,
         };
         let rate = row.engagement_rate().unwrap();
         // (2 + 1) / 10 = 0.3
@@ -322,6 +328,37 @@ mod tests {
     }
 
     #[test]
+    fn engagement_rate_counts_distinct_engaged_events() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("audit.sqlite");
+        let sink = SqliteRecommendationLifecycleSink::open(&path).unwrap();
+
+        let t = 1_000_000_000_000_i64;
+        let event_id = write_event(&sink, "context-pressure: checkpoint", t);
+        write_outcome(&sink, event_id, RecommendationOutcome::Copied, t + 10);
+        write_outcome(&sink, event_id, RecommendationOutcome::Accepted, t + 20);
+
+        let snap = rec_engagement_snapshot(
+            &path,
+            InsightsWindow {
+                since_ms: t - 1,
+                until_ms: t + 1_000,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(snap.rows.len(), 1);
+        assert_eq!(snap.rows[0].surfaced, 1);
+        assert_eq!(snap.rows[0].copied, 1);
+        assert_eq!(snap.rows[0].accepted, 1);
+        assert_eq!(
+            snap.rows[0].engagement_rate(),
+            Some(1.0),
+            "copy + accept on the same event must not report 200% engagement"
+        );
+    }
+
+    #[test]
     fn snapshot_window_excludes_old_events() {
         let tmp = tempdir().unwrap();
         let path = tmp.path().join("audit.sqlite");
@@ -343,5 +380,126 @@ mod tests {
         .unwrap();
         assert_eq!(snap.rows.len(), 1);
         assert_eq!(snap.rows[0].action, "new");
+    }
+
+    fn write_unlinked_copy(
+        sink: &SqliteRecommendationLifecycleSink,
+        pane_id: &str,
+        action: &str,
+        ts: i64,
+    ) {
+        sink.insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: ts,
+            recommendation_event_id: None,
+            pane_id: pane_id.into(),
+            action: action.into(),
+            outcome: RecommendationOutcome::Copied,
+            audit_event_id: None,
+            summary: "`/compact`".into(),
+        })
+        .unwrap();
+    }
+
+    /// Repeated `y` presses on the same recommendation must each count as a
+    /// copy — the operator pressing twice is two engagement signals, not one.
+    /// surfaced stays at 1 (the event was emitted once).
+    #[test]
+    fn repeated_unlinked_copies_each_count() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("audit.sqlite");
+        let sink = SqliteRecommendationLifecycleSink::open(&path).unwrap();
+
+        let t = 1_000_000_000_000_i64;
+        let _e = write_event(&sink, "context-pressure: checkpoint", t);
+        for offset in [10, 20, 30] {
+            write_unlinked_copy(&sink, "%1", "context-pressure: checkpoint", t + offset);
+        }
+
+        let snap = rec_engagement_snapshot(
+            &path,
+            InsightsWindow {
+                since_ms: t - 1,
+                until_ms: t + 1_000,
+            },
+        )
+        .unwrap();
+        assert_eq!(snap.rows.len(), 1);
+        assert_eq!(snap.rows[0].surfaced, 1);
+        assert_eq!(snap.rows[0].copied, 3);
+    }
+
+    /// An unlinked copy on pane B must not be attributed to an event from
+    /// pane A, even if the action string matches. The CTE's inner subquery
+    /// filters by pane_id; pin it so a future SQL rewrite cannot regress.
+    #[test]
+    fn unlinked_copy_does_not_match_cross_pane_event() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("audit.sqlite");
+        let sink = SqliteRecommendationLifecycleSink::open(&path).unwrap();
+
+        let t = 1_000_000_000_000_i64;
+        // Event on pane A only.
+        sink.insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: t,
+            pane_id: "%A".into(),
+            provider: Some("claude".into()),
+            role: Some("main".into()),
+            situation: "ctx".into(),
+            action: "context-pressure: checkpoint".into(),
+            severity: "Concern".into(),
+            source_kind: "ProjectCanonical".into(),
+            reason_summary: "event on pane A".into(),
+            suggested_command: None,
+            is_strong: false,
+            dedup_key: "A|ctx|t".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+        // Copy on pane B — must not be attributed to pane A's event.
+        write_unlinked_copy(&sink, "%B", "context-pressure: checkpoint", t + 10);
+
+        let snap = rec_engagement_snapshot(
+            &path,
+            InsightsWindow {
+                since_ms: t - 1,
+                until_ms: t + 1_000,
+            },
+        )
+        .unwrap();
+        // Pane A's event is the only surfaced row; the orphan copy on B is
+        // not attached (no matching pane B event), so copied stays at 0.
+        assert_eq!(snap.rows.len(), 1);
+        assert_eq!(snap.rows[0].surfaced, 1);
+        assert_eq!(
+            snap.rows[0].copied, 0,
+            "cross-pane copy must not bleed into pane A's row"
+        );
+    }
+
+    /// A copy outcome with no prior matching event in the window is silently
+    /// dropped from `rec_engagement_snapshot` (there is no row to attach it
+    /// to). This matches the linked-outcome behaviour where outcomes whose
+    /// event lies outside the window are also not surfaced.
+    #[test]
+    fn unlinked_copy_without_prior_event_is_dropped() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("audit.sqlite");
+        let sink = SqliteRecommendationLifecycleSink::open(&path).unwrap();
+
+        let t = 1_000_000_000_000_i64;
+        write_unlinked_copy(&sink, "%1", "context-pressure: checkpoint", t + 10);
+
+        let snap = rec_engagement_snapshot(
+            &path,
+            InsightsWindow {
+                since_ms: t - 1,
+                until_ms: t + 1_000,
+            },
+        )
+        .unwrap();
+        assert!(
+            snap.rows.is_empty(),
+            "orphan copy must not synthesize a row"
+        );
     }
 }

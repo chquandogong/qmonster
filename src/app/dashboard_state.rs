@@ -263,14 +263,16 @@ pub fn handle_dashboard_mouse(
                     view.now,
                 );
                 match crate::ui::dashboard::footer_status_chip_at(
-                    rects.footer,
-                    focus_label,
-                    *view.split,
-                    proposal_count,
-                    copy_count,
-                    view.audit_recent_severity,
-                    event.column,
-                    event.row,
+                    crate::ui::dashboard::FooterChipQuery {
+                        area: rects.footer,
+                        focus: focus_label,
+                        split: *view.split,
+                        proposal_count,
+                        copy_count,
+                        audit_top_severity: view.audit_recent_severity,
+                        column: event.column,
+                        row: event.row,
+                    },
                 ) {
                     Some(crate::ui::dashboard::FooterStatusChip::Proposal)
                     | Some(crate::ui::dashboard::FooterStatusChip::Copy) => {
