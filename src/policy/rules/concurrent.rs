@@ -239,7 +239,11 @@ fn resolve_against(current_path: &str, candidate: &str) -> String {
 /// the hint stays grammatical when `ConcurrentFileEdit` fires without
 /// a `git_branch` signal.
 fn build_concurrent_suggested_command(branch: &str) -> String {
-    let branch_label = if branch.is_empty() { "<branch>" } else { branch };
+    let branch_label = if branch.is_empty() {
+        "<branch>"
+    } else {
+        branch
+    };
     format!(
         "# coordinate via research pane:                tmux select-pane -t <research_pane_id>\n\
          # or split off {branch_label} into a new worktree:   git worktree add -b <new-branch> <new-path>"
