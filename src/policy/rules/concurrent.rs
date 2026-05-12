@@ -102,9 +102,7 @@ pub fn eval_concurrent(panes: &[PaneView<'_>], gates: &PolicyGates) -> Vec<Cross
                 ),
                 severity: Severity::Warning,
                 source_kind: SourceKind::Estimated,
-                suggested_command: Some(
-                    "# coordinate via research pane: tmux select-pane -t <research_pane_id>".into(),
-                ),
+                suggested_command: Some(build_concurrent_suggested_command(&key.branch)),
                 paths: Vec::new(),
             });
         }
@@ -226,6 +224,22 @@ fn resolve_against(current_path: &str, candidate: &str) -> String {
     }
     let trimmed = current_path.trim_end_matches('/');
     format!("{trimmed}/{candidate}")
+}
+
+/// Build the two-line suggested-command hint shared by
+/// `ConcurrentMutatingWork` and `ConcurrentFileEdit`. The first line
+/// keeps the historical "coordinate via research pane" tmux nudge; the
+/// second line offers the alternative resolution path — split one pane
+/// into a new git worktree. The current branch is interpolated when
+/// known; an empty branch falls back to the `<branch>` placeholder so
+/// the hint stays grammatical when `ConcurrentFileEdit` fires without
+/// a `git_branch` signal.
+fn build_concurrent_suggested_command(branch: &str) -> String {
+    let branch_label = if branch.is_empty() { "<branch>" } else { branch };
+    format!(
+        "# coordinate via research pane:                tmux select-pane -t <research_pane_id>\n\
+         # or split off {branch_label} into a new worktree:   git worktree add -b <new-branch> <new-path>"
+    )
 }
 
 #[cfg(test)]
@@ -925,5 +939,44 @@ mod tests {
         }];
         let findings = eval_concurrent_files(&views, &gates_with_file_findings(true));
         assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn concurrent_mutating_finding_includes_worktree_split_hint() {
+        let id_a = mk_id(Role::Main, "%1");
+        let id_b = mk_id(Role::Main, "%2");
+        let s = busy_branch_signals("main");
+        let views = vec![
+            PaneView {
+                identity: &id_a,
+                signals: &s,
+                current_path: "/repo",
+                window_label: "",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &s,
+                current_path: "/repo",
+                window_label: "",
+            },
+        ];
+        let findings = eval_concurrent(&views, &PolicyGates::default());
+        assert_eq!(findings.len(), 1);
+        let suggestion = findings[0]
+            .suggested_command
+            .as_ref()
+            .expect("hint present");
+        assert!(
+            suggestion.contains("tmux select-pane"),
+            "legacy research-pane hint must remain: {suggestion}"
+        );
+        assert!(
+            suggestion.contains("git worktree add -b"),
+            "worktree split hint must be added: {suggestion}"
+        );
+        assert!(
+            suggestion.contains("split off main into a new worktree"),
+            "branch must be interpolated: {suggestion}"
+        );
     }
 }
