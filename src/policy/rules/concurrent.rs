@@ -1030,6 +1030,46 @@ mod tests {
     }
 
     #[test]
+    fn cross_window_concurrent_work_keeps_consolidate_suggestion() {
+        let id_a = mk_id(Role::Main, "%1");
+        let id_b = mk_id(Role::Main, "%2");
+        let s = busy_branch_signals("main");
+        let views = vec![
+            PaneView {
+                identity: &id_a,
+                signals: &s,
+                current_path: "/repo",
+                window_label: "main-win",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &s,
+                current_path: "/repo",
+                window_label: "scratch-win",
+            },
+        ];
+        let gates = PolicyGates {
+            cross_window_findings: true,
+            ..PolicyGates::default()
+        };
+        let findings = eval_concurrent(&views, &gates);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].kind, CrossPaneKind::CrossWindowConcurrentWork);
+        let suggestion = findings[0]
+            .suggested_command
+            .as_ref()
+            .expect("hint present");
+        assert!(
+            suggestion.contains("consolidate windows"),
+            "legacy consolidate-windows hint must remain on cross-window findings: {suggestion}"
+        );
+        assert!(
+            !suggestion.contains("git worktree add"),
+            "worktree split must NOT bleed into cross-window findings: {suggestion}"
+        );
+    }
+
+    #[test]
     fn concurrent_file_edit_with_missing_branch_falls_back_to_placeholder() {
         let id_a = mk_id(Role::Main, "%1");
         let id_b = mk_id(Role::Main, "%2");
