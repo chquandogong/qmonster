@@ -263,6 +263,7 @@ where
                         .ok()
                         .flatten()
                 });
+                dashboard.audit_recent_severity = audit_recent_severity;
                 terminal.draw(|frame| {
                     render_dashboard_frame(
                         frame,
@@ -1297,6 +1298,7 @@ where
                                             hidden_until: &dashboard.alert_hide_deadlines,
                                             now,
                                             target_label: &target,
+                                            audit_recent_severity: dashboard.audit_recent_severity,
                                         },
                                     ) {
                                         hover_help.set_hover(topic, m.column, m.row, now);
@@ -1326,11 +1328,33 @@ where
                                     alert_times: &dashboard.alert_times,
                                     target_label: &target,
                                     now,
+                                    audit_recent_severity: dashboard.audit_recent_severity,
                                 },
                             );
-                            if action == DashboardMouseAction::OpenGitModal {
-                                let panel = capture_repo_panel();
-                                git_modal.open(panel.title, panel.lines);
+                            match action {
+                                DashboardMouseAction::OpenGitModal => {
+                                    let panel = capture_repo_panel();
+                                    git_modal.open(panel.title, panel.lines);
+                                }
+                                DashboardMouseAction::OpenPendingActionsModal => {
+                                    if !pending_actions.seen_first_open() {
+                                        dashboard.push_notice(
+                                            crate::app::system_notice::SystemNotice {
+                                                title: "a overlay: confirm_actions bypass".into(),
+                                                body: "p/d/y inside the Pending Actions overlay dispatch immediately, ignoring `[ux] confirm_actions`. The right-pane live explainer is the confirmation. (UI_MANUAL §8.7 — fired once per session.)".into(),
+                                                severity: crate::domain::recommendation::Severity::Concern,
+                                                source_kind: crate::domain::origin::SourceKind::ProjectCanonical,
+                                            },
+                                            now,
+                                        );
+                                        pending_actions.mark_first_open_seen();
+                                    }
+                                    pending_actions.open();
+                                }
+                                DashboardMouseAction::OpenAnomalyEventsModal => {
+                                    anomaly_overlay.open();
+                                }
+                                DashboardMouseAction::None => {}
                             }
                             let hidden_keys = newly_hidden_alert_keys(
                                 &hidden_before,

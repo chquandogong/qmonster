@@ -25,6 +25,7 @@ pub struct DashboardRuntimeState {
     /// Empty buffer (just-pressed `/`) shows all rows + the input
     /// prompt so the operator can start typing.
     pub alert_filter: Option<String>,
+    pub audit_recent_severity: Option<crate::domain::recommendation::Severity>,
 }
 
 impl DashboardRuntimeState {
@@ -64,6 +65,7 @@ impl DashboardRuntimeState {
             alert_times,
             alert_hide_deadlines,
             alert_filter: None,
+            audit_recent_severity: None,
         }
     }
 

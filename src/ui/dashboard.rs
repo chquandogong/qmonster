@@ -1086,6 +1086,7 @@ pub fn footer_status_chip_at(
     split: DashboardSplit,
     proposal_count: usize,
     copy_count: usize,
+    audit_top_severity: Option<crate::domain::recommendation::Severity>,
     column: u16,
     row: u16,
 ) -> Option<FooterStatusChip> {
@@ -1107,7 +1108,8 @@ pub fn footer_status_chip_at(
     let head = footer_status_head(focus, split);
     let p_label = format!("\u{2605}p:{proposal_count}");
     let y_label = format!("\u{2605}y:{copy_count}");
-    let a_label = "\u{2605}a:0";
+    let a_letter = audit_top_severity.map(|s| s.letter()).unwrap_or("0");
+    let a_label = format!("\u{2605}a:{a_letter}");
     let p_start = text_x.saturating_add(text_cells(&head));
     let y_start = p_start
         .saturating_add(text_cells(&p_label))
@@ -1120,7 +1122,7 @@ pub fn footer_status_chip_at(
         Some(FooterStatusChip::Proposal)
     } else if column_in_text(column, y_start, &y_label) {
         Some(FooterStatusChip::Copy)
-    } else if column_in_text(column, a_start, a_label) {
+    } else if column_in_text(column, a_start, &a_label) {
         Some(FooterStatusChip::Audit)
     } else {
         None

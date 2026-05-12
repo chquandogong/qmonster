@@ -59,12 +59,15 @@ pub struct DashboardMouseView<'a> {
     pub alert_times: &'a HashMap<String, String>,
     pub target_label: &'a str,
     pub now: Instant,
+    pub audit_recent_severity: Option<crate::domain::recommendation::Severity>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DashboardMouseAction {
     None,
     OpenGitModal,
+    OpenPendingActionsModal,
+    OpenAnomalyEventsModal,
 }
 
 pub fn handle_dashboard_selection_key(view: DashboardSelectionKeyView<'_>, key: KeyCode) -> bool {
@@ -239,6 +242,45 @@ pub fn handle_dashboard_mouse(
             }
             if rect_contains(version_badge_rect(rects.footer), event.column, event.row) {
                 return DashboardMouseAction::OpenGitModal;
+            }
+            if rect_contains(rects.footer, event.column, event.row) {
+                let focus_label = crate::ui::dashboard::footer_focus_label(
+                    *view.focus == FocusedPanel::Alerts,
+                    *view.focus == FocusedPanel::Panes,
+                );
+                let proposal_count = view
+                    .reports
+                    .iter()
+                    .filter(|report| {
+                        crate::app::prompt_send_actions::first_prompt_send_proposal(report)
+                            .is_some()
+                    })
+                    .count();
+                let (copy_count, _) = crate::ui::alerts::copy_alert_count(
+                    view.notices,
+                    view.reports,
+                    view.alert_hide_deadlines,
+                    view.now,
+                );
+                match crate::ui::dashboard::footer_status_chip_at(
+                    rects.footer,
+                    focus_label,
+                    *view.split,
+                    proposal_count,
+                    copy_count,
+                    view.audit_recent_severity,
+                    event.column,
+                    event.row,
+                ) {
+                    Some(crate::ui::dashboard::FooterStatusChip::Proposal)
+                    | Some(crate::ui::dashboard::FooterStatusChip::Copy) => {
+                        return DashboardMouseAction::OpenPendingActionsModal;
+                    }
+                    Some(crate::ui::dashboard::FooterStatusChip::Audit) => {
+                        return DashboardMouseAction::OpenAnomalyEventsModal;
+                    }
+                    None => {}
+                }
             }
             if let Some(row) = list_row_at(rects.alerts, event) {
                 *view.focus = FocusedPanel::Alerts;
@@ -695,6 +737,7 @@ mod tests {
                 alert_times: &times,
                 target_label: "all sessions",
                 now: Instant::now(),
+                audit_recent_severity: None,
             },
         );
 
@@ -744,6 +787,7 @@ mod tests {
                 alert_times: &times,
                 target_label: "all sessions",
                 now: Instant::now(),
+                audit_recent_severity: None,
             },
         );
 

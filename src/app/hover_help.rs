@@ -63,6 +63,7 @@ pub struct DashboardHoverView<'a> {
     pub hidden_until: &'a HashMap<String, Instant>,
     pub now: Instant,
     pub target_label: &'a str,
+    pub audit_recent_severity: Option<crate::domain::recommendation::Severity>,
 }
 
 fn hover_trigger_accepts_column(trigger: HoverHelpTrigger, inner: Rect, column: u16) -> bool {
@@ -166,6 +167,7 @@ pub fn dashboard_hover_topic(
             view.split,
             proposal_count,
             copy_count,
+            view.audit_recent_severity,
             column,
             row,
         ) {
@@ -258,6 +260,7 @@ mod tests {
             hidden_until: &hidden_until,
             now,
             target_label: "main",
+            audit_recent_severity: None,
         };
 
         assert_eq!(
@@ -318,6 +321,7 @@ mod tests {
             hidden_until: &hidden_until,
             now,
             target_label: "main",
+            audit_recent_severity: None,
         };
 
         assert_eq!(
@@ -363,6 +367,7 @@ mod tests {
             hidden_until: &hidden_until,
             now,
             target_label: "main",
+            audit_recent_severity: None,
         };
 
         assert_eq!(
@@ -416,6 +421,7 @@ mod tests {
             hidden_until: &hidden_until,
             now,
             target_label: "main",
+            audit_recent_severity: None,
         };
 
         assert_eq!(

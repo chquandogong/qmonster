@@ -1026,7 +1026,7 @@ dim 안내 줄이 explainer 패널에 표시됩니다.
 
 ### 8.8 Anomaly Events Overlay (v1.46.0)
 
-Press `n` to open the Anomaly Events overlay. Shows the last 100
+Press `n` (or click the `★a:X` status chip in the footer) to open the Anomaly Events overlay. This overlay is directly tied to the `★a` indicator, allowing you to quickly inspect recent audit events, especially when Risk or Warning severities are present. Shows the last 100
 `AnomalySignal`s recorded this session, newest first, with columns:
 Time / Pane / Kind / Conf / Promoted / Reason.
 
