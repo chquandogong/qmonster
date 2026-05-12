@@ -1028,4 +1028,50 @@ mod tests {
             "branch must be interpolated: {suggestion}"
         );
     }
+
+    #[test]
+    fn concurrent_file_edit_with_missing_branch_falls_back_to_placeholder() {
+        let id_a = mk_id(Role::Main, "%1");
+        let id_b = mk_id(Role::Main, "%2");
+        let signals = SignalSet {
+            active_files: vec!["src/lib.rs".into()],
+            // NO git_branch — the fallback path.
+            ..busy_signals()
+        };
+        let views = vec![
+            PaneView {
+                identity: &id_a,
+                signals: &signals,
+                current_path: "/repo",
+                window_label: "",
+            },
+            PaneView {
+                identity: &id_b,
+                signals: &signals,
+                current_path: "/repo",
+                window_label: "",
+            },
+        ];
+        let gates = PolicyGates {
+            cross_pane_file_findings: true,
+            ..PolicyGates::default()
+        };
+        let findings = eval_concurrent_files(&views, &gates);
+        assert!(
+            !findings.is_empty(),
+            "file-edit finding must still fire without git_branch"
+        );
+        let suggestion = findings[0]
+            .suggested_command
+            .as_ref()
+            .expect("hint present");
+        assert!(
+            suggestion.contains("split off <branch> into a new worktree"),
+            "missing branch must fall back to the <branch> placeholder: {suggestion}"
+        );
+        assert!(
+            suggestion.contains("git worktree add -b"),
+            "worktree command must still appear: {suggestion}"
+        );
+    }
 }
