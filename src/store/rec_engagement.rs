@@ -72,13 +72,33 @@ pub fn rec_engagement_snapshot(
         });
     }
 
-    // Per-action surfaced count from recommendation_events.
-    // recommendation_outcomes is keyed by both event_id (preferred) and
-    // (pane_id, action). We aggregate on the event-id join so that
-    // every outcome is attributed to the action that surfaced it.
+    // Per-action surfaced count from recommendation_events. Clipboard copies
+    // are intentionally written without an event id, so match them to the
+    // latest prior event with the same pane/action inside the reporting window.
     let mut stmt = conn
         .prepare(
-            "SELECT e.action,
+            "WITH matched_outcomes AS (
+                 SELECT
+                     COALESCE(
+                         o.recommendation_event_id,
+                         (
+                             SELECT e2.id
+                             FROM recommendation_events e2
+                             WHERE e2.pane_id = o.pane_id
+                               AND e2.action = o.action
+                               AND e2.ts_unix_ms <= o.ts_unix_ms
+                               AND e2.ts_unix_ms >= ?1
+                               AND e2.ts_unix_ms <  ?2
+                             ORDER BY e2.ts_unix_ms DESC, e2.id DESC
+                             LIMIT 1
+                         )
+                     ) AS event_id,
+                     o.outcome
+                 FROM recommendation_outcomes o
+                 WHERE o.ts_unix_ms >= ?1
+                   AND o.ts_unix_ms <  ?2
+             )
+             SELECT e.action,
                     COUNT(DISTINCT e.id) AS surfaced,
                     COALESCE(SUM(CASE WHEN o.outcome = 'copied'   THEN 1 ELSE 0 END), 0) AS copied,
                     COALESCE(SUM(CASE WHEN o.outcome = 'accepted' THEN 1 ELSE 0 END), 0) AS accepted,
@@ -86,10 +106,8 @@ pub fn rec_engagement_snapshot(
                     COALESCE(SUM(CASE WHEN o.outcome NOT IN ('copied','accepted','ignored')
                                        AND o.outcome IS NOT NULL THEN 1 ELSE 0 END), 0) AS other_outcome
              FROM recommendation_events e
-             LEFT JOIN recommendation_outcomes o
-                    ON o.recommendation_event_id = e.id
-                   AND o.ts_unix_ms >= ?1
-                   AND o.ts_unix_ms <  ?2
+             LEFT JOIN matched_outcomes o
+                    ON o.event_id = e.id
              WHERE e.ts_unix_ms >= ?1
                AND e.ts_unix_ms <  ?2
              GROUP BY e.action
@@ -265,6 +283,42 @@ mod tests {
         assert_eq!(r1.copied, 0);
         assert_eq!(r1.accepted, 0);
         assert!(r1.engagement_rate().unwrap().abs() < 1e-9);
+    }
+
+    #[test]
+    fn snapshot_matches_unlinked_copied_outcomes_by_pane_and_action() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("audit.sqlite");
+        let sink = SqliteRecommendationLifecycleSink::open(&path).unwrap();
+
+        let t = 1_000_000_000_000_i64;
+        let _event_id = write_event(&sink, "context-pressure: checkpoint", t);
+        sink.insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: t + 10,
+            recommendation_event_id: None,
+            pane_id: "%1".into(),
+            action: "context-pressure: checkpoint".into(),
+            outcome: RecommendationOutcome::Copied,
+            audit_event_id: None,
+            summary: "`/compact`".into(),
+        })
+        .unwrap();
+
+        let snap = rec_engagement_snapshot(
+            &path,
+            InsightsWindow {
+                since_ms: t - 1,
+                until_ms: t + 1_000,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(snap.rows.len(), 1);
+        assert_eq!(snap.rows[0].surfaced, 1);
+        assert_eq!(
+            snap.rows[0].copied, 1,
+            "clipboard copies are written without recommendation_event_id"
+        );
     }
 
     #[test]

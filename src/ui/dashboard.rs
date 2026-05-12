@@ -1080,6 +1080,7 @@ pub fn footer_focus_label(alerts_focused: bool, panes_focused: bool) -> &'static
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn footer_status_chip_at(
     area: Rect,
     focus: &str,

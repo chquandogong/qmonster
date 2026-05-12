@@ -172,6 +172,7 @@ pub struct InsightsDataCompleteness {
 pub struct ActionLedgerRow {
     pub action: String,
     pub emitted: u64,
+    pub copied: u64,
     pub accepted: u64,
     pub rejected: u64,
     pub blocked: u64,
@@ -316,7 +317,7 @@ const KNOWN_ACTION_PREFIXES: &[&str] = &[
     "anomaly: error burst detected",
     "anomaly: identity churn detected",
     "anomaly: memory growth detected",
-    "anomaly: subagent activity correlated with other anomalies",
+    "anomaly: subagent activity ⚠ correlated with other anomalies",
     "quota-tight: consider enabling",
     "quota-pressure: pace requests",
     "cost-budget: 80% reached",
@@ -453,6 +454,7 @@ fn metric_delta_f64(before: Option<f64>, after: Option<f64>) -> Option<f64> {
 
 fn apply_lifecycle_outcome(row: &mut ActionLedgerRow, outcome: &str) {
     match outcome {
+        "copied" => row.copied += 1,
         "accepted" => row.accepted += 1,
         "rejected" => row.rejected += 1,
         "completed" => row.completed += 1,
@@ -469,6 +471,10 @@ fn apply_lifecycle_outcome(row: &mut ActionLedgerRow, outcome: &str) {
         "improved" => row.improved += 1,
         _ => {}
     }
+}
+
+fn is_terminal_lifecycle_outcome(outcome: &str) -> bool {
+    !matches!(outcome, "copied")
 }
 
 fn rfc3339_from_ms(ms: i64) -> String {
@@ -1126,6 +1132,8 @@ fn cache_state_from_action(action: &str) -> Option<&'static str> {
 }
 
 fn situation_for_action(action: &str) -> &'static str {
+    // Keep the pre-v2.2 labels here for historical audit/lifecycle rows. They
+    // are no longer current policy emissions, but old DBs still need grouping.
     if matches!(
         action,
         "archive-preview-suggested"
@@ -1140,10 +1148,9 @@ fn situation_for_action(action: &str) -> &'static str {
         "Log storm / repeated output"
     } else if matches!(
         action,
-        "anomaly: cross-pane edit cluster detected"
-            | "anomaly: identity churn detected"
-            | "anomaly: subagent activity correlated with other anomalies"
-    ) || action.contains("code-exploration")
+        "anomaly: cross-pane edit cluster detected" | "anomaly: identity churn detected"
+    ) || action.starts_with("anomaly: subagent activity")
+        || action.contains("code-exploration")
         || action.starts_with("identity-drift:")
         || action.contains("cross-pane")
         || action.contains("ConcurrentFileEdit")
@@ -1513,7 +1520,7 @@ fn lifecycle_snapshot(
     let mut actions_by_name = std::collections::BTreeMap::<String, ActionLedgerRow>::new();
     let mut event_situations = std::collections::HashMap::<i64, &'static str>::new();
     let mut events_by_id = std::collections::HashMap::<i64, LifecycleEventRow>::new();
-    let mut event_has_outcome = std::collections::BTreeSet::<i64>::new();
+    let mut terminal_event_ids = std::collections::BTreeSet::<i64>::new();
     let mut timeline = Vec::new();
 
     for event in &events {
@@ -1537,13 +1544,15 @@ fn lifecycle_snapshot(
     }
 
     for outcome in &outcomes {
-        if let Some(event_id) = outcome.recommendation_event_id {
-            event_has_outcome.insert(event_id);
+        if let Some(event_id) = outcome.recommendation_event_id
+            && is_terminal_lifecycle_outcome(&outcome.outcome)
+        {
+            terminal_event_ids.insert(event_id);
         }
     }
 
     let mut matched_unlinked_outcomes = std::collections::HashMap::<usize, i64>::new();
-    let mut consumed_event_ids = event_has_outcome.clone();
+    let mut consumed_event_ids = terminal_event_ids.clone();
     for (idx, outcome) in outcomes.iter().enumerate() {
         if outcome.recommendation_event_id.is_some() {
             continue;
@@ -1558,11 +1567,13 @@ fn lifecycle_snapshot(
             })
             .max_by_key(|event| (event.ts_unix_ms, event.id))
         {
-            consumed_event_ids.insert(event.id);
+            if is_terminal_lifecycle_outcome(&outcome.outcome) {
+                consumed_event_ids.insert(event.id);
+            }
             matched_unlinked_outcomes.insert(idx, event.id);
         }
     }
-    event_has_outcome = consumed_event_ids;
+    terminal_event_ids = consumed_event_ids;
 
     let accepted_event_ids: std::collections::BTreeSet<i64> = outcomes
         .iter()
@@ -1668,7 +1679,7 @@ fn lifecycle_snapshot(
     let ttl_ms =
         i64::try_from(u128::from(ignored_ttl_secs).saturating_mul(1000)).unwrap_or(i64::MAX);
     for event in &events {
-        if event_has_outcome.contains(&event.id) {
+        if terminal_event_ids.contains(&event.id) {
             continue;
         }
         if window.until_ms.saturating_sub(event.ts_unix_ms) < ttl_ms {

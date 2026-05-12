@@ -728,7 +728,7 @@ sidefile/app-server channel that hasn't been wired_ (Codex
 | `process_memory_mb` (RSS)                                         |       ✅ `/proc/<pid>/status` walk       |                           ✅ same                            |              ✅ same               | OS-level signal, provider-agnostic.                               |
 | `agent_memory_bytes`                                              | ✅ `~/.claude/f<pane>/agent-*.yaml` scan |                   ❌ no equivalent surface                   |      ❌ no equivalent surface      | Claude-only by file-path convention.                              |
 | `idle_state` (PermissionWait / InputWait / Working / Idle)        |              ✅ classifier               |  ✅ classifier (Codex-specific cursor + 5h-limit detection)  |           ✅ classifier            | Common-tier markers populate the obvious cases first.             |
-| `error_hint` / `verbose_answer` / `repeated_output` / `log_storm` |             ✅ tail patterns             |                       ✅ tail patterns                       |          ✅ tail patterns          | All `Heuristic`.                                                  |
+| `error_hint` / `verbose_answer` / `log_storm`                     |             ✅ tail patterns             |                       ✅ tail patterns                       |          ✅ tail patterns          | All `Heuristic`.                                                  |
 | `active_files` (tool-call markers)                                |       ✅ Claude tool-call markers        |                 ❌ no marker contract today                  |    ❌ no marker contract today     | Fuels F-8 `ConcurrentFileEdit` + Phase 7 `CrossPaneEditCluster`.  |
 
 ### Detector / rule reach implications

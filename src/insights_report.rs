@@ -274,9 +274,10 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
                 "n/a".into()
             };
             lines.push(format!(
-                "  {} emitted={} accepted={} rejected={} blocked={} completed={} failed={} archived={} snapshot={} hidden={} ignored={} avoided={} no_effect={} improved={}",
+                "  {} emitted={} copied={} accepted={} rejected={} blocked={} completed={} failed={} archived={} snapshot={} hidden={} ignored={} avoided={} no_effect={} improved={}",
                 row.action,
                 row.emitted,
+                row.copied,
                 row.accepted,
                 row.rejected,
                 row.blocked,
@@ -294,11 +295,13 @@ pub fn format_insights_report_lines(snapshot: &InsightsSnapshot) -> Vec<String> 
     }
     if !snapshot.actions.is_empty() {
         let emitted: u64 = snapshot.actions.iter().map(|row| row.emitted).sum();
+        let copied: u64 = snapshot.actions.iter().map(|row| row.copied).sum();
         let accepted: u64 = snapshot.actions.iter().map(|row| row.accepted).sum();
         let completed: u64 = snapshot.actions.iter().map(|row| row.completed).sum();
         let ignored: u64 = snapshot.actions.iter().map(|row| row.ignored).sum();
         lines.push(String::new());
         lines.push("Action Rates".into());
+        lines.push(format!("  copied rate: {}", format_rate(copied, emitted)));
         lines.push(format!(
             "  accepted rate: {}",
             format_rate(accepted, emitted)

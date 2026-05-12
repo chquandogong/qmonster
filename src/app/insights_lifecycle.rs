@@ -253,6 +253,8 @@ fn threshold_snapshot_json(config: &QmonsterConfig, provider: Provider) -> Optio
 }
 
 fn situation_for_action(action: &str) -> &'static str {
+    // Legacy labels remain for already-written audit/lifecycle rows; current
+    // policy emissions use newer anomaly names.
     if matches!(
         action,
         "archive-preview-suggested"
@@ -267,10 +269,9 @@ fn situation_for_action(action: &str) -> &'static str {
         "Log storm / repeated output"
     } else if matches!(
         action,
-        "anomaly: cross-pane edit cluster detected"
-            | "anomaly: identity churn detected"
-            | "anomaly: subagent activity correlated with other anomalies"
-    ) || action.contains("code-exploration")
+        "anomaly: cross-pane edit cluster detected" | "anomaly: identity churn detected"
+    ) || action.starts_with("anomaly: subagent activity")
+        || action.contains("code-exploration")
         || action.starts_with("identity-drift:")
         || action.contains("cross-pane")
         || action.contains("ConcurrentFileEdit")

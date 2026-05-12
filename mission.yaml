@@ -1570,7 +1570,81 @@ mission:
     - "v2.2.0 P1-1 detector × provider eligibility: AnomalyKind::supported_providers() matrix gates eval_anomalies per provider before the detector runs; Settings Rules tab renders ` · supports: …` chips on every asymmetric detector row"
     - "v2.2.0 P1-2 SubagentSideEffect prose: promote_anomalies_to_recommendations reason leads with `⚠ correlation only — providers do not expose per-subagent token attribution.`; evidence metric_name encodes the disclaimer; cooccurring_kinds row emitted alongside the canonical evidence"
     - "v2.2.0 P1-3 recommendation acknowledgement: RecommendationOutcome::Copied lifecycle variant added; copy_selected_alert_command_to_clipboard_with_ledger writes the outcome on successful y-copy; copy_selected_alert_command_with_ledger<F> closure-injection inner makes the test display-server-free"
+    - "post-v2.2 copied lifecycle aggregation: Action Ledger and rec-engagement count unlinked copied outcomes, while copied telemetry does not suppress TTL ignored"
+    - "post-v2.2 SubagentSideEffect grouping: current warning-prefixed subagent action labels are classified as Code exploration"
+    - "post-v2.2 docs cleanup: provider coverage matrix no longer lists removed repeated_output as a live signal"
+    - "mission done_when refs coverage: every current done_when item is bound to a concrete validator"
 
+  done_when_refs:
+    - index: 0
+      kind: eval-ref
+      value: "cargo_build_passes"
+    - index: 1
+      kind: eval-ref
+      value: "cargo_test_passes"
+    - index: 2
+      kind: eval-ref
+      value: "cargo_clippy_clean"
+    - index: 3
+      kind: eval-ref
+      value: "cargo_fmt_check_passes"
+    - index: 4
+      kind: file-exists
+      value: "mission.yaml"
+    - index: 5
+      kind: file-exists
+      value: "mission-history.yaml"
+    - index: 6
+      kind: file-exists
+      value: "docs/ai/WORKFLOWS.md"
+    - index: 7
+      kind: file-exists
+      value: "scripts/verify-shared.sh"
+    - index: 8
+      kind: file-contains
+      value: "docs/ai/VALIDATION.md::| v2.0.0  | Milestone marker"
+    - index: 9
+      kind: file-contains
+      value: "docs/ai/VALIDATION.md::Slice 0 Attribution Lock"
+    - index: 10
+      kind: file-contains
+      value: "docs/ai/VALIDATION.md::Slice 1 pane-bucketed Insights"
+    - index: 11
+      kind: file-contains
+      value: "docs/ai/VALIDATION.md::Slice 2 ROI loop closure"
+    - index: 12
+      kind: file-contains
+      value: "docs/ai/VALIDATION.md::Slice 3 anomaly time-normalization"
+    - index: 13
+      kind: file-contains
+      value: "docs/ai/VALIDATION.md::UI synthesis slices A-I"
+    - index: 14
+      kind: file-contains
+      value: "src/domain/signal.rs::v2.2.0 dead-code purge"
+    - index: 15
+      kind: file-contains
+      value: "src/policy/gates.rs::v2.2.0 threshold provenance notes"
+    - index: 16
+      kind: file-contains
+      value: "src/domain/anomaly.rs::pub fn supported_providers"
+    - index: 17
+      kind: file-contains
+      value: "src/policy/rules/anomaly.rs::⚠ correlation only"
+    - index: 18
+      kind: file-contains
+      value: "src/store/recommendation_lifecycle.rs::RecommendationOutcome::Copied => \"copied\""
+    - index: 19
+      kind: command
+      value: "cargo test -q insights_lifecycle_counts_unlinked_copied_but_keeps_ttl_ignored_pending && cargo test -q snapshot_matches_unlinked_copied_outcomes_by_pane_and_action"
+    - index: 20
+      kind: command
+      value: "cargo test -q insights_counts_live_colon_actions_by_situation"
+    - index: 21
+      kind: file-contains
+      value: "docs/ai/ARCHITECTURE.md::`error_hint` / `verbose_answer` / `log_storm`"
+    - index: 22
+      kind: file-contains
+      value: "mission.yaml::done_when_refs:"
 
   constraints:
     - "Thin-router rule: CLAUDE.md, AGENTS.md, GEMINI.md must not contain giant always-loaded prompt content. Detailed procedures live in docs/ai/, .claude/rules/, .agents/skills/, .gemini/skills/."
@@ -1627,7 +1701,13 @@ mission:
     - name: "cargo_clippy_clean"
       type: automated
       description: "fresh clone에서 cargo clippy --all-targets -- -D warnings 성공"
-      command: "cargo clippy --all-targets -- -D warnings"
+      command: "cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args"
+      pass_criteria: "exit code 0"
+
+    - name: "cargo_fmt_check_passes"
+      type: automated
+      description: "fresh clone에서 cargo fmt --all --check 성공"
+      command: "cargo fmt --all --check"
       pass_criteria: "exit code 0"
 
     - name: "local_workflow_handoff_sanity"

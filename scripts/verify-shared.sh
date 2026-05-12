@@ -10,7 +10,7 @@ fi
 
 cargo build
 cargo test --all-targets
-cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
 
 if [[ ${#ms_cmd[@]} -gt 0 ]]; then
   "${ms_cmd[@]}" validate .

@@ -804,7 +804,7 @@ fn insights_counts_live_colon_actions_by_situation() {
         (
             AuditEventKind::AlertFired,
             "%7f",
-            "anomaly: subagent activity correlated with other anomalies: multi-signal cluster",
+            "anomaly: subagent activity ⚠ correlated with other anomalies: multi-signal cluster",
         ),
         (
             AuditEventKind::RecommendationEmitted,
@@ -1455,6 +1455,75 @@ fn insights_lifecycle_counts_outcomes_and_ttl_ignored() {
             .timeline
             .iter()
             .any(|item| item.outcome == "ignored" && item.action.contains("cache"))
+    );
+}
+
+#[test]
+fn insights_lifecycle_counts_unlinked_copied_but_keeps_ttl_ignored_pending() {
+    let td = tempdir().unwrap();
+    let db_path = td.path().join("qmonster.db");
+    let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+
+    lifecycle
+        .insert_recommendation_event(&RecommendationEventRecord {
+            ts_unix_ms: 1_000,
+            pane_id: "%1".into(),
+            provider: Some("Codex".into()),
+            role: Some("Review".into()),
+            situation: "Context pressure".into(),
+            action: "context-pressure: checkpoint".into(),
+            severity: "warning".into(),
+            source_kind: "Estimated".into(),
+            reason_summary: "context near threshold".into(),
+            suggested_command: Some("/compact".into()),
+            is_strong: true,
+            dedup_key: "%1:context-pressure".into(),
+            threshold_snapshot_json: None,
+        })
+        .unwrap();
+    lifecycle
+        .insert_recommendation_outcome(&RecommendationOutcomeRecord {
+            ts_unix_ms: 2_000,
+            recommendation_event_id: None,
+            pane_id: "%1".into(),
+            action: "context-pressure: checkpoint".into(),
+            outcome: RecommendationOutcome::Copied,
+            audit_event_id: None,
+            summary: "`/compact`".into(),
+        })
+        .unwrap();
+
+    let snapshot = SqliteInsightsStore::open(&db_path)
+        .unwrap()
+        .snapshot_with_ignored_ttl(
+            InsightsWindow {
+                since_ms: 0,
+                until_ms: 10_000,
+            },
+            5,
+        )
+        .unwrap();
+
+    let row = snapshot
+        .actions
+        .iter()
+        .find(|row| row.action == "context-pressure: checkpoint")
+        .unwrap();
+    assert_eq!(row.emitted, 1);
+    assert_eq!(row.copied, 1);
+    assert_eq!(
+        row.ignored, 1,
+        "copying is engagement telemetry, not a terminal outcome"
+    );
+    assert!(
+        snapshot
+            .timeline
+            .iter()
+            .any(|item| item.outcome == "copied")
+            && snapshot
+                .timeline
+                .iter()
+                .any(|item| item.outcome == "ignored")
     );
 }
 

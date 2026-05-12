@@ -112,6 +112,7 @@ fn insights_report_renders_action_ledger() {
         actions: vec![ActionLedgerRow {
             action: "/compact".into(),
             emitted: 1,
+            copied: 1,
             accepted: 1,
             completed: 1,
             ..ActionLedgerRow::default()
@@ -153,6 +154,7 @@ fn insights_report_renders_action_ledger() {
     assert!(joined.contains("cost deltas: 1/1 buckets"));
     assert!(joined.contains("action impacts: 1"));
     assert!(joined.contains("/compact"));
+    assert!(joined.contains("copied=1"));
     assert!(joined.contains("ignored classification: unavailable"));
     assert!(joined.contains("ignored=n/a"));
     assert!(!joined.contains("ignored=0"));
@@ -281,6 +283,7 @@ fn insights_report_renders_action_rate_summary() {
             ActionLedgerRow {
                 action: "/compact".into(),
                 emitted: 4,
+                copied: 1,
                 accepted: 2,
                 completed: 1,
                 ignored: 1,
@@ -300,6 +303,7 @@ fn insights_report_renders_action_rate_summary() {
     let joined = lines.join("\n");
 
     assert!(joined.contains("Action Rates"));
+    assert!(joined.contains("copied rate: 20.0%"));
     assert!(joined.contains("accepted rate: 40.0%"));
     assert!(joined.contains("completion rate: 50.0%"));
     assert!(joined.contains("ignored rate: 20.0%"));
