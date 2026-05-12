@@ -1701,7 +1701,7 @@ mission:
     - name: "cargo_clippy_clean"
       type: automated
       description: "fresh clone에서 cargo clippy --all-targets -- -D warnings 성공"
-      command: "cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args"
+      command: "cargo clippy --all-targets -- -D warnings"
       pass_criteria: "exit code 0"
 
     - name: "cargo_fmt_check_passes"

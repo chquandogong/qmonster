@@ -13,14 +13,14 @@ supersede an earlier phase's negative scope item; those cases are
 called out inline.
 Current local verification (2026-05-06): `cargo fmt --all --check`,
 `git diff --check`, `cargo test --all-targets`,
-`cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,
+`cargo clippy --all-targets -- -D warnings`,
 `cargo build --release`, `npm pack --dry-run`, and
 `scripts/verify-shared.sh` pass for v1.41.0. Current code-level
 verification at the v1.41.0 release commit is
 `cargo test --all-targets` with 1028 lib tests, 50 event-loop
 integration tests, 18 false-positive regression tests, and 6
 idle-state regression tests passing, plus `cargo build --release`,
-`cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,
+`cargo clippy --all-targets -- -D warnings`,
 `git diff --check`, and `npm pack --dry-run`.
 Official
 `mission-spec validate .` is still unavailable locally because
@@ -28,13 +28,13 @@ Official
 back to the lite ledger-structure check after cargo checks.
 Latest focused verification (2026-05-07): `cargo fmt --all --check`,
 `git diff --check`, `cargo test --all-targets`, and
-`cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`
+`cargo clippy --all-targets -- -D warnings`
 pass for the Phase 8 footer/help/S/P/anomaly discoverability pass
 (1211 lib tests plus CLI, event-loop, false-positive, idle-state,
 insights-report, and store-insights integration suites).
 Latest focused verification (2026-05-11): `cargo fmt --all --check`,
 `git diff --check`, `cargo test --all-targets`,
-`cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,
+`cargo clippy --all-targets -- -D warnings`,
 `scripts/verify-shared.sh`, and `cargo build --release` pass for the
 post-v2.0.0 slice set: attribution lock follow-ups, pane-bucketed
 Insights, action-impact windows, timestamp-normalized anomaly slope

@@ -983,55 +983,6 @@ pub fn promote_anomalies_to_recommendations(
                         .to_string(),
                 )
             }
-            AnomalyKind::TokenSlope => {
-                let (oldest, newest) = evidence
-                    .map(|e| (e.before.clone(), e.after.clone()))
-                    .unwrap_or((String::new(), String::new()));
-                (
-                    "anomaly: token slope detected",
-                    format!(
-                        "input tokens climbing from {oldest} to {newest} over the {} polls window; confidence {}",
-                        sig.window_polls,
-                        sig.confidence.label()
-                    ),
-                    "check for repeated long inputs; consider /compact or context profile switch"
-                        .to_string(),
-                )
-            }
-            AnomalyKind::MemoryGrowth => {
-                let (oldest, newest) = evidence
-                    .map(|e| (e.before.clone(), e.after.clone()))
-                    .unwrap_or((String::new(), String::new()));
-                (
-                    "anomaly: memory growth detected",
-                    format!(
-                        "process memory grew from {oldest} MB to {newest} MB over the {} polls window; confidence {}",
-                        sig.window_polls,
-                        sig.confidence.label()
-                    ),
-                    "check the provider for memory leak; consider restart if growth is sustained"
-                        .to_string(),
-                )
-            }
-            AnomalyKind::SubagentSideEffect => {
-                let count = evidence.map(|e| e.sample_count).unwrap_or(0);
-                // v2.2.0 (P1-2) honesty rule: lead with the disclaimer
-                // so the operator reads "correlation only" BEFORE the
-                // numeric evidence. The previous prose buried the
-                // disclaimer in parens at the end of the reason, where
-                // operators routinely skipped past it. Providers do not
-                // expose per-subagent token attribution, so any causal
-                // inference here is the operator's, not Qmonster's.
-                (
-                    SUBAGENT_SIDE_EFFECT_ACTION,
-                    format!(
-                        "⚠ correlation only — providers do not expose per-subagent token attribution. \
-                         subagent_hint observed {count} times in {} polls while other anomalies fired in the same window",
-                        sig.window_polls
-                    ),
-                    "the subagent activity is *correlated* with the co-occurring anomaly, not proven to be the source. inspect the subagent's recent output before attributing cause".to_string(),
-                )
-            }
         };
         out.push(Recommendation {
             action,
@@ -1064,7 +1015,12 @@ mod tests {
             anomaly_error_burst_threshold: 0.5,
             anomaly_cache_discontinuity_drop: 0.30,
             anomaly_cross_pane_cluster_min_findings: 3,
-            ..PolicyGates::default()
+            anomaly_cost_slope_usd_per_hour: 20.0,
+            anomaly_promote_identity_churn: AnomalyConfidence::High,
+            anomaly_promote_error_burst: AnomalyConfidence::High,
+            anomaly_promote_cache_discontinuity: AnomalyConfidence::High,
+            anomaly_promote_cross_pane_edit_cluster: AnomalyConfidence::High,
+            anomaly_promote_cost_slope: AnomalyConfidence::High,
         }
     }
 
@@ -1571,9 +1527,6 @@ mod tests {
                 "6".to_string(),
             ),
             AnomalyKind::CostSlope => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
-            AnomalyKind::TokenSlope => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
-            AnomalyKind::MemoryGrowth => unreachable!("Phase 7 v2 detectors land in Tasks 5-9"),
-            AnomalyKind::SubagentSideEffect => {
                 unreachable!("Phase 7 v2 detectors land in Tasks 5-9")
             }
         };
@@ -1846,7 +1799,6 @@ mod tests {
         }
         let h = token_history(input, vec![Some(0u64); 20]);
         let sig = detect_token_slope(&h, 20, 20_000, 1_700_000_000).unwrap();
-        assert_eq!(sig.kind, AnomalyKind::TokenSlope);
         assert_eq!(sig.confidence, AnomalyConfidence::High);
         assert_eq!(sig.severity, Severity::Warning);
         assert_eq!(sig.evidence[0].metric_name, "input_tokens_per_poll");
@@ -1914,7 +1866,6 @@ mod tests {
         }
         let h = memory_history(process, vec![None; 20]);
         let sig = detect_memory_growth(&h, 20, 1024.0, 1_700_000_000).unwrap();
-        assert_eq!(sig.kind, AnomalyKind::MemoryGrowth);
         assert_eq!(sig.confidence, AnomalyConfidence::High);
         assert_eq!(sig.severity, Severity::Warning);
         assert_eq!(sig.evidence[0].metric_name, "process_memory_mb");
@@ -1975,9 +1926,7 @@ mod tests {
         hints.insert(0, true);
         hints.insert(0, true); // 2 subagent_hint=true ticks
         let h = subagent_history(hints);
-        let others = vec![make_other_anomaly(AnomalyKind::TokenSlope)];
         let sig = detect_subagent_side_effect(&h, &others, 20, 1_700_000_000).unwrap();
-        assert_eq!(sig.kind, AnomalyKind::SubagentSideEffect);
         assert_eq!(sig.confidence, AnomalyConfidence::Medium);
         assert_eq!(sig.severity, Severity::Concern);
         // v2.2.0 (P1-2): evidence metric_name encodes the honesty disclaimer.
@@ -2115,7 +2064,6 @@ mod tests {
             "ErrorBurst should fire: {kinds:?}"
         );
         assert!(
-            kinds.contains(&AnomalyKind::SubagentSideEffect),
             "SubagentSideEffect should fire: {kinds:?}"
         );
         let burst_idx = kinds
@@ -2124,7 +2072,6 @@ mod tests {
             .unwrap();
         let side_idx = kinds
             .iter()
-            .position(|k| *k == AnomalyKind::SubagentSideEffect)
             .unwrap();
         assert!(
             side_idx > burst_idx,
@@ -2169,11 +2116,9 @@ mod tests {
         );
         let kinds: Vec<AnomalyKind> = result.iter().map(|s| s.kind).collect();
         assert!(
-            !kinds.contains(&AnomalyKind::TokenSlope),
             "TokenSlope must not fire on Claude even with matching history: {kinds:?}"
         );
         assert!(
-            !kinds.contains(&AnomalyKind::MemoryGrowth),
             "MemoryGrowth must not fire on Claude even with matching history: {kinds:?}"
         );
     }
@@ -2186,9 +2131,6 @@ mod tests {
             AnomalyKind::CacheDiscontinuity,
             AnomalyKind::CrossPaneEditCluster,
             AnomalyKind::CostSlope,
-            AnomalyKind::TokenSlope,
-            AnomalyKind::MemoryGrowth,
-            AnomalyKind::SubagentSideEffect,
         ]
         .into_iter()
         .map(|k| AnomalySignal {
@@ -2286,7 +2228,6 @@ mod tests {
         use crate::domain::origin::SourceKind;
         let gates = fixture_gates(); // default subagent_side_effect = Medium
         let signal = AnomalySignal {
-            kind: AnomalyKind::SubagentSideEffect,
             confidence: AnomalyConfidence::Medium,
             severity: severity_for(AnomalyConfidence::Medium),
             window_polls: 20,
@@ -2315,7 +2256,6 @@ mod tests {
         use crate::domain::origin::SourceKind;
         let gates = fixture_gates();
         let signal = AnomalySignal {
-            kind: AnomalyKind::SubagentSideEffect,
             confidence: AnomalyConfidence::Medium,
             severity: severity_for(AnomalyConfidence::Medium),
             window_polls: 20,
@@ -2347,7 +2287,6 @@ mod tests {
             ..fixture_gates()
         };
         let signal = AnomalySignal {
-            kind: AnomalyKind::SubagentSideEffect,
             confidence: AnomalyConfidence::Medium,
             severity: severity_for(AnomalyConfidence::Medium),
             window_polls: 20,
