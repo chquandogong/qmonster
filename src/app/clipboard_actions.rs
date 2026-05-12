@@ -43,6 +43,24 @@ pub fn copy_selected_alert_command_to_clipboard_with_ledger(
     sink: Option<&crate::store::SqliteRecommendationLifecycleSink>,
     now_unix_ms: i64,
 ) -> SystemNotice {
+    copy_selected_alert_command_with_ledger(view, sink, now_unix_ms, copy_text_to_clipboard)
+}
+
+/// v2.2.0 (P1-3) testable inner: same contract as
+/// `copy_selected_alert_command_to_clipboard_with_ledger` but takes the
+/// clipboard write function as a closure. The public `..._to_clipboard_*`
+/// wrapper passes `copy_text_to_clipboard`; tests inject a deterministic
+/// closure so CI runners without a display server can still verify the
+/// ledger write contract.
+pub fn copy_selected_alert_command_with_ledger<F>(
+    view: AlertCommandCopyView<'_>,
+    sink: Option<&crate::store::SqliteRecommendationLifecycleSink>,
+    now_unix_ms: i64,
+    copy_text: F,
+) -> SystemNotice
+where
+    F: FnOnce(&str) -> Result<(), String>,
+{
     let identity = crate::ui::alerts::selected_alert_recommendation_identity(
         view.alert_state,
         view.notices,
@@ -52,7 +70,7 @@ pub fn copy_selected_alert_command_to_clipboard_with_ledger(
         view.hidden_until,
         view.now,
     );
-    let notice = copy_selected_alert_command(view, copy_text_to_clipboard);
+    let notice = copy_selected_alert_command(view, copy_text);
     if notice.title == "command copied"
         && let Some((pane_id, action)) = identity
         && let Some(sink) = sink
@@ -269,6 +287,10 @@ mod tests {
         // v2.2.0 (P1-3): when the operator hits `y` on a recommendation-class
         // alert AND the clipboard write succeeds, the lifecycle ledger gains
         // a `RecommendationOutcome::Copied` row.
+        //
+        // v2.2.0 hotfix: use the generic `_with_ledger` variant with an
+        // injected closure so CI runners without a display server (no
+        // arboard backend) can still verify the contract.
         use crate::store::{RecommendationOutcome, SqliteRecommendationLifecycleSink};
         let mut state = ListState::default();
         state.select(Some(0));
@@ -281,10 +303,11 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let sink = SqliteRecommendationLifecycleSink::open(&tmp.path().join("audit.db")).unwrap();
 
-        let notice = copy_selected_alert_command_to_clipboard_with_ledger(
+        let notice = copy_selected_alert_command_with_ledger(
             view(&state, &[], &reports, &fresh, &times, &hidden),
             Some(&sink),
             1_700_000_000_000,
+            |_text| Ok(()),
         );
         assert_eq!(notice.title, "command copied");
 
@@ -307,8 +330,9 @@ mod tests {
 
     #[test]
     fn ledger_helper_skips_outcome_when_copy_fails_or_no_sink() {
-        // Failure path: clipboard refuses → no row written.
-        // No-sink path: nothing to write to → no panic, just no row.
+        // Two contracts pinned here:
+        //   (a) clipboard write failure → no row, despite sink being present.
+        //   (b) None sink + success → no panic, no row.
         use crate::store::SqliteRecommendationLifecycleSink;
         let mut state = ListState::default();
         state.select(Some(0));
@@ -321,17 +345,25 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let sink = SqliteRecommendationLifecycleSink::open(&tmp.path().join("audit.db")).unwrap();
 
-        // No-sink path returns the regular notice and does not crash.
-        let notice = copy_selected_alert_command_to_clipboard_with_ledger(
+        // (a) Failure path: clipboard refuses → no row written.
+        let notice_fail = copy_selected_alert_command_with_ledger(
+            view(&state, &[], &reports, &fresh, &times, &hidden),
+            Some(&sink),
+            1_700_000_000_000,
+            |_text| Err("no display server".into()),
+        );
+        assert_eq!(notice_fail.title, "clipboard unavailable");
+
+        // (b) No-sink path with successful copy → no panic, no row.
+        let notice_ok = copy_selected_alert_command_with_ledger(
             view(&state, &[], &reports, &fresh, &times, &hidden),
             None,
             1_700_000_000_000,
+            |_text| Ok(()),
         );
-        // Note: real clipboard may or may not work in tests, so don't assert
-        // success — only that the function returned without panic.
-        let _ = notice.title;
+        assert_eq!(notice_ok.title, "command copied");
 
-        // After the no-sink call, the with-sink DB must still have 0 rows.
+        // Neither call wrote to the ledger.
         let count: i64 = sink
             .db_for_test()
             .connection()
@@ -343,6 +375,9 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(count, 0, "no rows written when sink is None");
+        assert_eq!(
+            count, 0,
+            "no rows: copy failure suppresses ledger; None sink has nowhere to write"
+        );
     }
 }
