@@ -245,21 +245,33 @@ fn quota_pressure_recommendations(
     let candidates: Vec<(Option<&'static str>, f32, f32, f32, &'static str)> = vec![
         (
             None,
-            signals.quota_pressure.as_ref().map(|m| m.value).unwrap_or(0.0),
+            signals
+                .quota_pressure
+                .as_ref()
+                .map(|m| m.value)
+                .unwrap_or(0.0),
             gates.quota_warning_pct,
             gates.quota_critical_pct,
             "generic",
         ),
         (
             Some("5h"),
-            signals.quota_5h_pressure.as_ref().map(|m| m.value).unwrap_or(0.0),
+            signals
+                .quota_5h_pressure
+                .as_ref()
+                .map(|m| m.value)
+                .unwrap_or(0.0),
             gates.quota_5h_warning_pct,
             gates.quota_5h_critical_pct,
             "5h",
         ),
         (
             Some("weekly"),
-            signals.quota_weekly_pressure.as_ref().map(|m| m.value).unwrap_or(0.0),
+            signals
+                .quota_weekly_pressure
+                .as_ref()
+                .map(|m| m.value)
+                .unwrap_or(0.0),
             gates.quota_weekly_warning_pct,
             gates.quota_weekly_critical_pct,
             "weekly",

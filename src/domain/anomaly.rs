@@ -270,12 +270,7 @@ mod tests {
         // Provider-agnostic: identity + error burst fire for all 3.
         for kind in [AnomalyKind::IdentityChurn, AnomalyKind::ErrorBurst] {
             for p in [Provider::Claude, Provider::Codex, Provider::Gemini] {
-                assert!(
-                    kind.supports_provider(p),
-                    "{:?} must support {:?}",
-                    kind,
-                    p
-                );
+                assert!(kind.supports_provider(p), "{:?} must support {:?}", kind, p);
             }
         }
 

@@ -1077,7 +1077,14 @@ mod tests {
             ("codex", "/r"),
         ]);
         let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
-        let result = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &history, &gates, &mut dedup, 1_700_000_000);
+        let result = eval_anomalies(
+            "%1",
+            crate::domain::identity::Provider::Claude,
+            &history,
+            &gates,
+            &mut dedup,
+            1_700_000_000,
+        );
         assert!(result.is_empty());
         assert!(dedup.is_empty());
     }
@@ -1094,21 +1101,49 @@ mod tests {
         let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
 
         // Tick 1: detector returns Some, dedup empty → emit, dedup set
-        let r1 = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &history, &gates, &mut dedup, 1_700_000_000);
+        let r1 = eval_anomalies(
+            "%1",
+            crate::domain::identity::Provider::Claude,
+            &history,
+            &gates,
+            &mut dedup,
+            1_700_000_000,
+        );
         assert_eq!(r1.len(), 1);
         assert_eq!(r1[0].kind, AnomalyKind::IdentityChurn);
 
         // Tick 2: detector still Some, dedup occupied → suppress
-        let r2 = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &history, &gates, &mut dedup, 1_700_000_005);
+        let r2 = eval_anomalies(
+            "%1",
+            crate::domain::identity::Provider::Claude,
+            &history,
+            &gates,
+            &mut dedup,
+            1_700_000_005,
+        );
         assert!(r2.is_empty());
 
         // Tick 3: history clears (only one snapshot left) → detector None, rearm
         let quiet = churn_history(vec![("claude", "/r")]);
-        let r3 = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &quiet, &gates, &mut dedup, 1_700_000_010);
+        let r3 = eval_anomalies(
+            "%1",
+            crate::domain::identity::Provider::Claude,
+            &quiet,
+            &gates,
+            &mut dedup,
+            1_700_000_010,
+        );
         assert!(r3.is_empty());
 
         // Tick 4: detector Some again, dedup rearmed → emit
-        let r4 = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &history, &gates, &mut dedup, 1_700_000_015);
+        let r4 = eval_anomalies(
+            "%1",
+            crate::domain::identity::Provider::Claude,
+            &history,
+            &gates,
+            &mut dedup,
+            1_700_000_015,
+        );
         assert_eq!(r4.len(), 1, "should re-emit after rearm");
     }
 
@@ -1124,7 +1159,14 @@ mod tests {
             ("codex", "/r"),
         ]);
         let mut dedup: HashMap<(String, AnomalyKind), Option<u64>> = HashMap::new();
-        let result = eval_anomalies("%1", crate::domain::identity::Provider::Claude, &history, &gates, &mut dedup, 1_700_000_000);
+        let result = eval_anomalies(
+            "%1",
+            crate::domain::identity::Provider::Claude,
+            &history,
+            &gates,
+            &mut dedup,
+            1_700_000_000,
+        );
         assert!(
             result.is_empty(),
             "Medium signal filtered at min_confidence=High"
@@ -2001,7 +2043,8 @@ mod tests {
             rec.reason
         );
         assert!(
-            rec.reason.contains("providers do not expose per-subagent token attribution"),
+            rec.reason
+                .contains("providers do not expose per-subagent token attribution"),
             "reason must spell out the structural attribution gap: {}",
             rec.reason
         );

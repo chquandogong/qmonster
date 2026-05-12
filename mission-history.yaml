@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v2.1.0 - r2 cross-validated synthesis-slice implementation on top of the v2.0.0 milestone: Attribution Lock, pane-bucketed Insights, ROI loop, timestamp-normalized anomaly slopes, live-smoke validation, and UI synthesis slices A-I"
+  mission_title: "Qmonster v2.2.0 - critical-eval-driven improvement bundle on top of v2.1.0: P0 dead-code purge + log_storm/quota-window dedup + inline threshold provenance tags, P1-1 detector × provider eligibility matrix gating eval_anomalies, P1-2 SubagentSideEffect correlation-only prose, P1-3 RecommendationOutcome::Copied lifecycle ledger row from y-copy"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 206
-  latest_version: "2.1.0"
+  total_revisions: 207
+  latest_version: "2.2.0"
 
 timeline:
   - change_id: "initial"
@@ -19432,6 +19432,193 @@ timeline:
       - "Tag protection/ruleset activation remains a GitHub Settings task."
       - "v2.1.0 CI publication verification (GitHub Release + npm package) — monitor `Release and Package Mirror` workflow run after tag push."
       - "r2 deferred slices: Slice 7 sandbox/audit visibility surface, Slice 8 cost breakdown drilldown if cross-agent duplicate hint draws operator interest, Slice 9 dynamic responsive layout."
+
+  - version: "2.2.0"
+    change_sequence: 207
+    date: "2026-05-12"
+    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '커밋, 태그, 배포까지 해줘요' after agreeing to the critical-evaluation improvement plan."
+    summary: >
+      v2.2.0 is the critical-eval-driven improvement bundle on top of
+      v2.1.0. It implements the P0/P1 items from the v2.2.0 critical
+      evaluation that the operator ran on the v2.1.0 baseline (`코드를
+      자세히 분석하여, 비판적으로 평가해줘`). Codex's v2.0.0 evaluation
+      had already addressed identity attribution + ROI loop + anomaly
+      timestamp normalization, which made this pass a pruning-first
+      pass focused on dead signals, double-firing rules, threshold
+      honesty, and provider asymmetry in the anomaly subsystem.
+      P0 (dead-code purge + dedup):
+      - `SignalSet.repeated_output` field deleted — `common.rs:257`
+        hardcoded `false` and no adapter ever populated true; the
+        rule in `alerts.rs:30` and `repeated_cache_suggest` (+ its
+        `aggressive_repeated_cache_suggest`) in `advisories.rs` were
+        silent dead paths. Removed alongside 13 test references.
+      - `TaskType::CodeExploration / LogTriage / Summary` variants
+        removed — no adapter populated them; only `Review`,
+        `Automation`, `SessionResume`, `Unknown` remain.
+      - `code_exploration` advisory dropped its dead matches! arm
+        and now triggers solely on `verbose_answer` (itself flagged
+        for measurement-deprecation in `VERBOSE_MARKERS` docstring).
+      - `log_storm` was double-firing as a Warning alert
+        (`alerts.rs`) AND as a Concern advisory with quota_tight
+        aggressive variant (`advisories.rs`). Alert path removed —
+        the advisory is strictly richer; `ArchiveLocal` effect
+        unchanged. `error_hint`'s `!s.log_storm` guard was no
+        longer needed and was dropped.
+      - `quota_pressure_recommendations` was firing up to three near-
+        identical recs simultaneously (generic + 5h + weekly).
+        Replaced with a select-most-urgent-by-headroom path:
+        smallest `critical_pct - value` wins, with 5h > weekly >
+        generic tiebreak. Two new tests pin both directions
+        (`split_quota_pressure_promotes_only_most_urgent_window`,
+        `split_quota_pressure_picks_5h_when_5h_is_more_urgent`).
+      P0-3 (threshold provenance):
+      - Every magic number in `PolicyGates::default()` now carries
+        an inline provenance tag: `measured` / `intuition` /
+        `mirrors X` / `safety`. Documents the audit result honestly
+        (most thresholds are intuition-driven; P1-3 telemetry is
+        the planned vehicle for measured replacements).
+      - `config/qmonster.example.toml` `[anomaly]` header points
+        operators at the inline source-side tags.
+      P1-1 (detector × provider eligibility):
+      - `AnomalyKind::supported_providers()` declares the per-detector
+        adapter coverage: `MemoryGrowth` → Gemini only,
+        `TokenSlope` → Codex only, `SubagentSideEffect` → Claude
+        only, `CacheDiscontinuity` / `CrossPaneEditCluster` →
+        Claude + Codex, `CostSlope` → all three (pricing-curated),
+        `IdentityChurn` / `ErrorBurst` → all three. Closes the
+        biggest honesty leak from the critical eval (MemoryGrowth
+        is silent on Claude/Codex panes — operators previously
+        had no way to know).
+      - `eval_anomalies` takes a `provider: Provider` parameter and
+        short-circuits ineligible detectors before they run
+        (dedup map is not polluted). Existing tests updated to
+        pass `Provider::Claude` explicitly; one test rewritten
+        (`eval_anomalies_runs_subagent_side_effect_after_others`
+        now uses ErrorBurst instead of TokenSlope so it can co-fire
+        with SubagentSideEffect on Claude). New test
+        `eval_anomalies_skips_unsupported_detectors_per_provider`
+        pins the guard.
+      - `supports_suffix` helper in `src/ui/settings.rs` adds a
+        ` · supports: …` chip to every asymmetric anomaly rule
+        row; fully cross-provider detectors keep their row clean.
+      P1-2 (SubagentSideEffect honesty prose):
+      - `promote_anomalies_to_recommendations` reason for
+        `SubagentSideEffect` now leads with
+        `⚠ correlation only — providers do not expose per-subagent
+        token attribution.` instead of burying the disclaimer
+        at the end of the prose.
+      - Detector emits a second `cooccurring_kinds` evidence row
+        alongside the renamed `subagent_correlation_NOT_attribution`
+        metric (metric_name encodes the disclaimer so renderers
+        that strip prose still surface the constraint).
+      P1-3 (recommendation acknowledgement tracking):
+      - `RecommendationOutcome::Copied` variant added to
+        `src/store/recommendation_lifecycle.rs`. Foundation for
+        P2-1 (anomaly subsystem keep-or-trim) measurement-driven
+        decision.
+      - `copy_selected_alert_command_to_clipboard_with_ledger`
+        in `src/app/clipboard_actions.rs` parses the alert key
+        for `rec|{pane_id}|{action}|...`, and on successful
+        clipboard write inserts a `RecommendationOutcome::Copied`
+        row into the ledger. `tui_loop.rs:980-1000` `y` handler
+        switched to the ledger-aware helper (ledger failure does
+        not surface to the operator — clipboard copy already
+        succeeded).
+      P2 deferrals (not executed in this pass):
+      - `.mission/decisions/MDR-DRAFT-v2.2.0-P2-1-anomaly-subsystem-future.md`
+        — anomaly subsystem keep-or-trim decision waiting on 2
+        weeks of P1-3 telemetry.
+      - `.mission/decisions/MDR-DRAFT-v2.2.0-P2-3-severity-source-simplification.md`
+        — severity/SourceKind enum simplification (5×4 → 3×2)
+        needs operator approval; contract-change cost vs
+        cognitive-load reduction trade-off documented.
+      - P2-2 overlay consolidation deliberately excluded per
+        explicit operator instruction during the v2.2.0 pass.
+      Test results: 1491 lib tests (was 1485 at v2.1.0 + a few
+      from Codex insights lifecycle fix) + 136 integration tests,
+      all green. fmt + clippy clean.
+    intent_ko: >
+      v2.2.0 는 v2.1.0 r2 합성 슬라이스 위에 올린 비판평가 기반 개선
+      번들입니다. Codex 의 v2.0.0 평가가 이미 식별 귀속 + ROI 루프 +
+      이상 징후 시간 정규화를 닫았기 때문에, 이번 패스는 "죽은 신호 +
+      이중 발화 + 임계치 정직성 + 이상 징후 공급자 비대칭"에 집중한
+      가지치기-우선 작업입니다. P0 데드 코드 정리(`repeated_output`
+      필드 + 알림/조언 규칙 + 죽은 `TaskType` 변종 + `log_storm`
+      알림/조언 중복 발화 + 쿼터 윈도우 3개→1개), P0-3 모든 매직
+      넘버에 인라인 출처 태그(measured/intuition/mirrors/safety),
+      P1-1 `AnomalyKind::supported_providers()` 매트릭스로 공급자별
+      detector 게이팅(MemoryGrowth-on-Claude 침묵 honesty leak
+      마감), P1-2 SubagentSideEffect 문구 리드를 `⚠ correlation
+      only —` 로 변경, P1-3 `RecommendationOutcome::Copied`
+      라이프사이클 추가 + `y` 복사 경로에서 기록. P2-1 / P2-3 결정은
+      MDR 드래프트로 보류, P2-2 overlay 통합은 운영자 지시로 제외.
+      cargo test --all-targets 1491 lib + 136 integration green,
+      fmt + clippy clean.
+    files_changed:
+      added:
+        - ".mission/decisions/MDR-DRAFT-v2.2.0-P2-1-anomaly-subsystem-future.md (anomaly subsystem keep/trim decision draft)"
+        - ".mission/decisions/MDR-DRAFT-v2.2.0-P2-3-severity-source-simplification.md (severity/source enum simplification draft)"
+      modified:
+        - "src/domain/signal.rs: drop repeated_output field; trim TaskType variants to {Unknown, Review, SessionResume, Automation}."
+        - "src/domain/anomaly.rs: AnomalyKind::supported_providers() + supports_provider() + 2 new tests."
+        - "src/adapters/common.rs: drop repeated_output: false; VERBOSE_MARKERS docstring measurement-deprecation note."
+        - "src/policy/rules/alerts.rs: drop log_storm alert path + drop repeated_output rule + drop !log_storm guard on error_hint; new dedup-locking test."
+        - "src/policy/rules/advisories.rs: drop repeated_cache_suggest + aggressive variant + caller; code_exploration triggers solely on verbose_answer; quota_pressure_recommendations dedup to most-urgent window."
+        - "src/policy/rules/auto_memory.rs: shrink test cases for removed TaskType variants."
+        - "src/policy/rules/anomaly.rs: eval_anomalies + detect_subagent_side_effect take provider param; SubagentSideEffect prose + evidence rows reworked."
+        - "src/policy/gates.rs: inline provenance tags on every Default impl threshold."
+        - "src/policy/engine.rs: swap repeated_output assertion with subagent_hint in Concern-only Notify test."
+        - "src/app/event_loop.rs: pass resolved.identity.provider to eval_anomalies."
+        - "src/app/tui_loop.rs: y handler routes through copy_selected_alert_command_to_clipboard_with_ledger."
+        - "src/app/clipboard_actions.rs: new ledger-aware copy helper + 2 ledger tests."
+        - "src/store/recommendation_lifecycle.rs: add RecommendationOutcome::Copied variant + label + try_from_label + #[cfg(test)] db_for_test accessor."
+        - "src/ui/panels.rs: drop repeated_output chip from secondary_signal_chips + sync test."
+        - "src/ui/alerts.rs: parse_recommendation_key helper + selected_alert_recommendation_identity public helper."
+        - "src/ui/settings.rs: supports_suffix helper appended to all 8 anomaly rule rows + 2 new tests pinning asymmetric/symmetric expected chip presence."
+        - "tests/false_positive_regression.rs: update assertions for removed TaskType variants."
+      removed: []
+      tests_added:
+        - "domain/anomaly: supported_providers_matrix_locks_v2_2_0_coverage + unknown_and_qmonster_provider_are_never_supported."
+        - "policy/rules/anomaly: eval_anomalies_skips_unsupported_detectors_per_provider + subagent_side_effect_evidence_includes_cooccurring_kinds + promote_anomalies_subagent_reason_leads_with_disclaimer."
+        - "policy/rules/advisories: split_quota_pressure_promotes_only_most_urgent_window + split_quota_pressure_picks_5h_when_5h_is_more_urgent."
+        - "policy/rules/alerts: log_storm_alert_path_removed_in_v2_2_0."
+        - "app/clipboard_actions: ledger_helper_writes_copied_outcome_on_successful_copy + ledger_helper_skips_outcome_when_copy_fails_or_no_sink."
+        - "ui/settings: rules_tab_anomaly_rows_show_supports_suffix_for_asymmetric_detectors + rules_tab_omits_supports_suffix_for_fully_cross_provider_detectors."
+      docs:
+        - "package.json: 2.1.0 → 2.2.0."
+        - "README.md / VERSION.md: v2.1.0 → v2.2.0."
+        - ".mission/CURRENT_STATE.md: v2.2.0 mission line + publication state pending row."
+        - "mission.yaml: mission.version + title bumped to v2.2.0."
+        - "mission-history.yaml: this v2.2.0 entry appended; meta total_revisions 206 → 207, latest_version 2.1.0 → 2.2.0."
+        - "docs/ai/PROJECT_BRIEF.md: Version + Date line append v2.2.0 entry."
+        - "docs/ai/ARCHITECTURE.md: date footer adds v2.2.0 entry."
+        - "docs/ai/VALIDATION.md: header date adds v2.2.0 entry + corrected historical Phase 1 / Phase 3 references for removed repeated-output rule and moved log-storm rule."
+        - "docs/ai/UI_MANUAL.md: signals chip list drops `repeated output` (with v2.2.0 explanation note)."
+        - "config/qmonster.example.toml: [anomaly] header points operators at the inline source-side provenance tags."
+    observable_effects:
+      - "Footer version badge displays `v2.2.0` (via `git describe --tags --always --dirty` → QMONSTER_GIT_VERSION) once the v2.2.0 tag is created at this commit."
+      - "Alert queue noise drops: log_storm now fires once (Concern advisory), not twice (Warning alert + Concern advisory). Quota pressure fires once per pane, not up to three times."
+      - "Settings overlay Rules tab now carries `supports: …` chips on asymmetric anomaly detectors so operators can see at a glance which detectors fire on which provider."
+      - "SubagentSideEffect promoted recommendation prose now leads with `⚠ correlation only —` instead of burying the honesty disclaimer at the end."
+      - "Operators pressing `y` to copy a recommendation-class alert command now leave a `RecommendationOutcome::Copied` row in the lifecycle ledger; this is the measurement foundation for the P2-1 anomaly subsystem keep-or-trim decision."
+      - "MemoryGrowth / TokenSlope / SubagentSideEffect detectors no longer waste detector time on panes whose provider can't populate the underlying signal (Claude/Codex/Gemini asymmetry varies per detector)."
+      - "`npm view qmonster` will show 2.2.0 as `dist-tags.latest` once CI publishes."
+    impact_scope:
+      runtime: "Mostly subtractive (~275 LOC removed for dead signals/rules/tests). Additive surfaces: detector × provider eligibility guard, RecommendationOutcome::Copied ledger row, SubagentSideEffect prose disclaimer + cooccurring_kinds evidence row, Settings Rules supports chips. No new threads, no new IO, no new schema columns. The eval_anomalies signature change (added provider param) is a per-call-site update only."
+      tests: "1485 → 1491 lib tests (+6 net after removing 13 dead-code tests and adding 11 new). 136 integration tests unchanged."
+      ledger: "1 new timeline entry (sequence 207); meta total_revisions 206 → 207, latest_version 2.1.0 → 2.2.0."
+      npm: "package.json version 2.2.0; CI publication of v2.2.0 follows the same workflow as v1.37.0 through v2.1.0."
+    breaking: false
+    risk: "low. Subtractive changes (dead-code purge) cannot break operator-visible behaviour — the removed signals never fired in production. The two behaviour-changing pieces — log_storm alert path removal and quota window dedup — both reduce alert noise; the advisory path retains the runnable archive command and the highest-pressure window still fires. P1-1 provider eligibility guard short-circuits detectors that would have silently produced no output anyway. P1-3 ledger write is fault-tolerant (sink failure does not surface to the operator). fmt + clippy clean."
+    related_commits:
+      - "9d01a01 — chore(ai): apply Claude edit (P0/P1/P2 implementation auto-captured by session hook)."
+      - "PENDING — v2.2.0 release ledger sync commit (this bundle)."
+    follow_up:
+      - "P1-3 telemetry needs to accumulate at least 2 weeks of operator engagement data before the P2-1 MDR draft can be promoted to an active decision."
+      - "P2-3 severity/source enum simplification awaits operator approval — it is a contract change with non-trivial migration cost."
+      - "Phase 7 D3 per-subagent token attribution remains provider-blocked."
+      - "Tag protection/ruleset activation remains a GitHub Settings task."
+      - "v2.2.0 CI publication verification (GitHub Release + npm package) — monitor `Release and Package Mirror` workflow run after tag push."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

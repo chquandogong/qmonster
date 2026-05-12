@@ -279,8 +279,7 @@ mod tests {
         let times = HashMap::new();
         let hidden = HashMap::new();
         let tmp = tempfile::TempDir::new().unwrap();
-        let sink =
-            SqliteRecommendationLifecycleSink::open(&tmp.path().join("audit.db")).unwrap();
+        let sink = SqliteRecommendationLifecycleSink::open(&tmp.path().join("audit.db")).unwrap();
 
         let notice = copy_selected_alert_command_to_clipboard_with_ledger(
             view(&state, &[], &reports, &fresh, &times, &hidden),
@@ -320,8 +319,7 @@ mod tests {
         let times = HashMap::new();
         let hidden = HashMap::new();
         let tmp = tempfile::TempDir::new().unwrap();
-        let sink =
-            SqliteRecommendationLifecycleSink::open(&tmp.path().join("audit.db")).unwrap();
+        let sink = SqliteRecommendationLifecycleSink::open(&tmp.path().join("audit.db")).unwrap();
 
         // No-sink path returns the regular notice and does not crash.
         let notice = copy_selected_alert_command_to_clipboard_with_ledger(

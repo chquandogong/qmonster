@@ -1,7 +1,7 @@
 # VALIDATION
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (implementation validation sync) / 2026-05-11 (current — v2.1.0 ledger sync; release log + live-smoke validation matrix updated through v2.1.0 r2 synthesis-slice bundle)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (implementation validation sync) / 2026-05-11 (v2.1.0 ledger sync; release log + live-smoke validation matrix updated through v2.1.0 r2 synthesis-slice bundle) / 2026-05-12 (current — v2.2.0 critical-eval improvement bundle: P0 dead-code purge (`SignalSet.repeated_output` field + alerts/advisories rules; `TaskType::{CodeExploration,LogTriage,Summary}` variants; `log_storm` alert dedup with advisory; quota-window dedup to one most-urgent rec), P0-3 inline threshold provenance tags on every `PolicyGates::default()` magic number, P1-1 `AnomalyKind::supported_providers()` matrix gating `eval_anomalies` per provider + Settings Rules `supports: …` chips, P1-2 SubagentSideEffect prose lead-with-disclaimer (`⚠ correlation only —`) + evidence row `cooccurring_kinds`, P1-3 `RecommendationOutcome::Copied` lifecycle row written from the `y`-copy path. P2 decisions stay drafted in `.mission/decisions/MDR-DRAFT-v2.2.0-*` pending measurement and operator approval.)
 
 This doc defines what "good" looks like for Qmonster at each phase, and
 what reviewers (Codex, Gemini, and the human operator) should
@@ -115,8 +115,11 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
       and `panel_title_marks_identity_conflict`.
 - [x] `adapters/` never performs identity inference.
 - [x] Basic alert extraction in `policy/rules/alerts.rs`: input-wait,
-      permission-wait, log-storm, repeated-output, verbose-answer,
-      error-hint, **subagent-hint**.
+      permission-wait, verbose-answer, error-hint, **subagent-hint**.
+      (`log-storm` and `repeated-output` historically ran here too;
+      `log-storm` moved to `advisories.rs` only as part of the v2.2.0
+      dedup, and `repeated-output` was removed in v2.2.0 as dead code —
+      no adapter ever populated the underlying signal.)
 - [x] **Subagent detection warning** fires when the tail matches the
       detector vocabulary (provider-specific patterns; initially
       `Heuristic`) and tells the operator "token consumption may be
@@ -174,7 +177,9 @@ pane_id)` with an `IdentityConfidence` level. Provider-specific
 
 - [x] A–G canonical rules each fire in a reproducible test fixture:
       log-storm, code-exploration, context-pressure, verbose-output,
-      permission-wait, quota-tight, repeated-output.
+      permission-wait, quota-tight. (`repeated-output` rule was removed
+      in v2.2.0 because the underlying `SignalSet.repeated_output` was
+      always `false` — no adapter ever populated it.)
 - [x] **Concurrent-work warning** across panes (Gemini G-11). v1.15.23
       narrows the old project-level proxy: fires only when two or more
       busy Main/Review panes share both `current_path` and

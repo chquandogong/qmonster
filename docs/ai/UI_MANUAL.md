@@ -162,8 +162,9 @@ session:window · Provider role · %pane_id
 - `blocked` 줄은 가장 중요한 대기 상태만 따로 보여줍니다.
   `waiting for input`, `approval needed`
 - `signals` 줄은 그 외 상태를 보여줍니다.
-  `log storm`, `repeated output`, `verbose output`, `error hint`,
-  `subagent activity`
+  `log storm`, `verbose output`, `error hint`, `subagent activity`
+  (`repeated output` 칩은 v2.2.0에서 dead-code 정리로 제거 — 어떤
+  adapter도 채우지 않던 신호였습니다.)
 - `metrics` 줄은 badge 형태로 표시됩니다.
   `CTX 90%`, `QUOTA 5H 47%`, `QUOTA WEEK 62%`,
   `TOKENS 12345 [Official]`, `COST $0.42 [Estimate]`,

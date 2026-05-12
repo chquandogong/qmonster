@@ -991,8 +991,7 @@ where
                                         // `y` copy lands as a
                                         // `RecommendationOutcome::Copied` row
                                         // when the alert is recommendation-class.
-                                        let now_unix_ms =
-                                            crate::app::event_loop::current_unix_ms() as i64;
+                                        let now_unix_ms = crate::app::event_loop::current_unix_ms();
                                         let notice =
                                             copy_selected_alert_command_to_clipboard_with_ledger(
                                                 view,

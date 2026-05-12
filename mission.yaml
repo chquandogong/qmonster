@@ -1,6 +1,6 @@
 mission:
-  version: "2.1.0"
-  title: "Qmonster v2.1.0 - r2 cross-validated synthesis-slice implementation on top of the v2.0.0 milestone: Attribution Lock + identity conflict suppression, pane-bucketed Insights re-aggregation, action-impact/ROI loop, timestamp-normalized anomaly slope detection, Insights data completeness, live-smoke validation docs, and UI synthesis slices A-I (Now strip, next-best-action, /compact payoff, anomaly evidence expansion, ETA chips, policy mini-strip, cost breakdown, cross-pane correlations, audit severity chip)"
+  version: "2.2.0"
+  title: "Qmonster v2.2.0 - critical-eval-driven improvement bundle on top of v2.1.0: P0 dead-code purge (repeated_output / dead TaskType variants / log_storm + quota-window dedup) + inline threshold provenance tags; P1-1 AnomalyKind::supported_providers() matrix gating eval_anomalies per provider + Settings Rules supports chips; P1-2 SubagentSideEffect prose leads with correlation-only disclaimer; P1-3 RecommendationOutcome::Copied lifecycle variant written from y-copy. P2-1 anomaly subsystem keep-or-trim decision and P2-3 severity/source label simplification deferred to .mission/decisions/MDR-DRAFT-v2.2.0-* pending measurement data and operator approval. P2-2 overlay consolidation excluded per operator instruction."
 
   goal: |
     Qmonster is a Rust TUI that observes multiple AI CLI panes inside a
