@@ -49,7 +49,7 @@ echo "[dry-run] Validation: cargo fmt + git diff --check + cargo test + cargo cl
 cargo fmt --all --check
 git diff --check
 cargo test --all-targets >/dev/null
-cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args 2>&1 | tail -3
+cargo clippy --all-targets -- -D warnings 2>&1 | tail -3
 
 # 2b. cargo audit (rustsec). Mirrors ci.yml + release.yml so a fresh
 # RUSTSEC advisory blocks the local dry-run too. Best-effort: install

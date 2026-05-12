@@ -40,6 +40,6 @@ Re-run parser and UI validation when any of these changes:
 cargo fmt --all --check
 git diff --check
 cargo test --all-targets
-cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args
+cargo clippy --all-targets -- -D warnings
 npm pack --dry-run
 ```
