@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-12 (Claude, post-v2.2.0 stabilization on top of the v2.2.0 critical-eval-driven improvement bundle)_
+_Last updated: 2026-05-13 (Claude, dependabot dep-bump cleanup on top of post-v2.2.0 stabilization)_
 
 ## Mission
 
@@ -54,6 +54,74 @@ These stabilization bundles do not change the v2.2.0 release surface and
 are not user-visible behaviour changes — they harden the lifecycle
 attribution model and tighten mission verifiability before the next minor
 bump.
+
+## 2026-05-13 Dependabot dep-bump cleanup (unreleased)
+
+A focused pass on the seven open PRs that had accumulated against
+the post-v2.2.0 working set. All seven are now closed or merged
+without a release surface change:
+
+- **PR #10** (`feat/worktree-split-advisory`) closed without merge.
+  The worktree-split hint commits (bb90620 + ac62264 + 9ecb6c5 +
+  6814d63 + 59c0a43) already lived on local main with byte-identical
+  diffs for `src/policy/rules/concurrent.rs`. The PR branch's CI was
+  red on a `clippy::too_many_arguments` lint against
+  `footer_status_chip_at`; main had independently refactored that
+  signature into the `FooterChipQuery` struct (afe37ee), so the lint
+  fix never propagated back to the PR branch.
+
+- **PR #9** merged (`83a7af6`). `actions/attest-build-provenance`
+  v3 → v4 — a thin wrapper over `actions/attest`; existing
+  release.yml wiring continues to work.
+
+- **PR #6** merged (`ecb90ed`). `thiserror` 1.0.69 → 2.0.18. The
+  crate is only consumed via `#[derive(Error)]`, so the major bump
+  required no source change.
+
+- **PRs #4, #5, #7, #8** closed in favour of bundle commit
+  `33252f8`. The four bumps — `crossterm` 0.28.1 → 0.29.0,
+  `rusqlite` 0.32.1 → 0.39.0, `toml` 0.8.23 → 1.1.2+spec-1.1.0,
+  `toml_edit` 0.22.27 → 0.25.11+spec-1.1.0 — are independent
+  Cargo.toml/Cargo.lock changes whose individual dependabot-CI
+  runs had all gone green against the post-thiserror-2 base, but
+  each sequential merge would have forced the other three into a
+  full rebase + recreate + CI cycle. Bundling collapses
+  ≈ 25 min of sequential churn into a single ~5 min CI
+  verification.
+
+- **rusqlite 0.39 `u64: FromSql` workaround** (`d4694fc`)
+  preemptively applied to `src/store/insights.rs:845` *before* the
+  bundle landed. rusqlite 0.38 disabled the default `u64`/`usize`
+  `ToSql`/`FromSql` impls, so reading `COUNT(*)` as `u64` directly
+  fails the trait bound. Switching the column read to
+  `row.get::<_, i64>(2)?.max(0) as u64` compiles on both 0.32 and
+  0.39 with identical behaviour on the values SQLite actually
+  produces (`COUNT(*) ≥ 0`).
+
+The cleanup also pushed eight unpushed `chore(ai)` commits and a
+single `chore(fmt)` rustfmt fix on `src/policy/rules/anomaly.rs`
+that had been left behind by the post-stabilization auto-commit
+flow. Main is now flush with `origin/main` at `33252f8`.
+
+Validation at this snapshot:
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --all-targets -- -D warnings -A
+  clippy::uninlined_format_args` — clean.
+- `cargo test --all-targets` — **1439 lib + 68 integration + 70
+  supporting** tests, all green. (The pre-existing flaky
+  `app::cli_version::tests::node_cli_probe_uses_exact_interpreter_and_script`
+  test — likely an ETXTBSY race on the fake `node` shim under
+  parallel cargo test load — was observed to fail intermittently
+  on PR #9's initial CI run; a single `gh run rerun --failed`
+  cleared it and main's CI on every commit since `83a7af6` has
+  been green.)
+- Main CI on bundle commit `33252f8` (workflow run
+  `25774997063`) completed success in 5m10s at
+  2026-05-13T02:48:27Z.
+
+No release surface change; the dep-bump set is post-v2.2.0
+unreleased state, to ride into the next tagged minor.
 
 ## v2.1.0 Feature State
 
@@ -252,7 +320,19 @@ For per-tag deltas and prose narratives older than v2.0.0, consult:
 
 ## Validation Baseline
 
-Most recent v2.1.0 validation at the release commit:
+Most recent validation at the live `origin/main` HEAD (`33252f8`,
+2026-05-13 post-dep-bump-bundle):
+
+- `cargo fmt --all --check` — clean.
+- `cargo test --all-targets` — **1439 lib + 68 integration + 70 supporting**, all green locally; CI run `25774997063` confirmed the same on the Ubuntu runner in 5m10s.
+- `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args` — clean.
+- `git diff --check` — clean.
+
+Lib-test count is slightly lower than v2.1.0 (1478 → 1439) because
+the v2.2.0 P0 dead-code purge removed several detector branches and
+their unit tests; integration count is unchanged. See `mission-history.yaml` for the per-tag delta.
+
+Earlier v2.1.0 validation at the release commit (for handoff):
 
 - `cargo fmt --all --check` — clean.
 - `cargo test --all-targets` — **1478 lib tests + 68 integration tests + supporting suites**, all green in 1.12s. +33 lib / +3 integration since v2.0.0 cover Slice 0 attribution-lock scenarios, Slice 1 pane-bucket aggregation, Slice 2 payoff window families, Slice 3 timestamp normalization + evidence_json migration round-trip, and Slice A-I UI synthesis surface tests.
