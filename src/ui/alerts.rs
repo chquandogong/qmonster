@@ -620,10 +620,6 @@ struct RelatedAlertContext {
     group_key: String,
     pane_id: String,
     connector_label: String,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "rendered by Task 3 related context rail")
-    )]
     total: usize,
     steps: Vec<RelatedAlertStep>,
     evidence: Vec<RelatedAlertEvidence>,
@@ -631,16 +627,8 @@ struct RelatedAlertContext {
 
 #[derive(Debug, Clone)]
 struct RelatedAlertStep {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "rendered by Task 3 related context rail")
-    )]
     marker: &'static str,
     label: String,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "rendered by Task 3 related context rail")
-    )]
     is_current: bool,
 }
 
@@ -1524,6 +1512,36 @@ fn alert_entry_lines(
     }
 }
 
+fn related_summary_line(related: &RelatedAlertContext) -> String {
+    aligned_detail(
+        "related",
+        &format!(
+            "{} alerts on {} · {}",
+            related.total, related.pane_id, related.connector_label
+        ),
+    )
+}
+
+fn related_rail_line(related: &RelatedAlertContext) -> String {
+    let body = related
+        .steps
+        .iter()
+        .map(|step| {
+            let marker = if step.is_current { "o" } else { step.marker };
+            format!("{marker} {}", step.label)
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    aligned_detail("rail", &body)
+}
+
+fn related_evidence_line(evidence: &RelatedAlertEvidence) -> String {
+    aligned_detail(
+        "included",
+        &format!("{} [{}]", evidence.action, evidence.source_label),
+    )
+}
+
 fn alert_item_lines(
     item: &AlertItem,
     width: usize,
@@ -1559,6 +1577,29 @@ fn alert_item_lines(
                 .into_iter()
                 .map(Line::from),
         );
+    }
+    if let Some(related) = item.related.as_ref() {
+        for detail in [related_summary_line(related), related_rail_line(related)] {
+            lines.extend(
+                wrap_with_prefix(&detail, width, &continuation, &continuation)
+                    .into_iter()
+                    .map(|line| Line::styled(line, Style::default().fg(theme::text_dim()))),
+            );
+        }
+        if is_selected {
+            for evidence in &related.evidence {
+                lines.extend(
+                    wrap_with_prefix(
+                        &related_evidence_line(evidence),
+                        width,
+                        &continuation,
+                        &continuation,
+                    )
+                    .into_iter()
+                    .map(|line| Line::styled(line, Style::default().fg(theme::text_dim()))),
+                );
+            }
+        }
     }
     // v1.38 §6.5: on the currently selected alert only, when its
     // `suggested_command` is `Some(cmd)`, append a dim
@@ -3052,6 +3093,118 @@ mod tests {
             "{dump}"
         );
         assert!(dump.contains("copy    : `/compact`"), "{dump}");
+    }
+
+    #[test]
+    fn renders_related_context_rail_without_collapsing_alerts() {
+        let compact_quota = rec(
+            "quota-pressure: compact soon",
+            "quota pressure can recover after compact",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            None,
+        );
+        let compact_profile = rec(
+            "profile-switch: compact profile",
+            "profile switch should happen after compact",
+            Severity::Concern,
+            SourceKind::ProjectCanonical,
+            Some("/compact"),
+            None,
+        );
+        let report = base_report(vec![compact_quota, compact_profile]);
+        let mut state = ListState::default();
+        state.select(Some(0));
+        let area = Rect::new(0, 0, 100, 18);
+        let mut buf = Buffer::empty(area);
+        let view = AlertView {
+            notices: &[],
+            reports: &[report],
+            fresh_alerts: &HashSet::new(),
+            alert_times: &HashMap::new(),
+            hidden_until: &HashMap::new(),
+            now: Instant::now(),
+            target_label: "all",
+            focused: true,
+            filter: None,
+        };
+
+        render_alerts(area, &mut buf, &mut state, view);
+
+        let dump = buffer_to_string(&buf);
+        assert!(!dump.contains("FLOW Context recovery"), "{dump}");
+        assert!(
+            dump.contains("related : 2 alerts on %1 · same /compact path"),
+            "{dump}"
+        );
+        assert!(
+            dump.contains("rail : o quota-pressure | profile-switch"),
+            "{dump}"
+        );
+        assert!(
+            dump.contains("included: quota-pressure: compact soon [Estimate]"),
+            "{dump}"
+        );
+        assert!(
+            dump.contains("included: profile-switch: compact profile [Qmonster]"),
+            "{dump}"
+        );
+    }
+
+    #[test]
+    fn unselected_related_context_omits_evidence_but_keeps_rail() {
+        let compact_quota = rec(
+            "quota-pressure: compact soon",
+            "quota pressure can recover after compact",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            None,
+        );
+        let compact_profile = rec(
+            "profile-switch: compact profile",
+            "profile switch should happen after compact",
+            Severity::Concern,
+            SourceKind::ProjectCanonical,
+            Some("/compact"),
+            None,
+        );
+        let notice = SystemNotice {
+            title: "startup".into(),
+            body: "ready".into(),
+            severity: Severity::Good,
+            source_kind: SourceKind::ProjectCanonical,
+        };
+        let report = base_report(vec![compact_quota, compact_profile]);
+        let mut state = ListState::default();
+        state.select(Some(2));
+        let area = Rect::new(0, 0, 100, 18);
+        let mut buf = Buffer::empty(area);
+        let view = AlertView {
+            notices: &[notice],
+            reports: &[report],
+            fresh_alerts: &HashSet::new(),
+            alert_times: &HashMap::new(),
+            hidden_until: &HashMap::new(),
+            now: Instant::now(),
+            target_label: "all",
+            focused: true,
+            filter: None,
+        };
+
+        render_alerts(area, &mut buf, &mut state, view);
+
+        let dump = buffer_to_string(&buf);
+        assert!(
+            dump.contains("related : 2 alerts on %1 · same /compact path"),
+            "{dump}"
+        );
+        assert!(
+            dump.contains("rail : | quota-pressure o profile-switch"),
+            "{dump}"
+        );
+        assert!(!dump.contains("included: quota-pressure"), "{dump}");
     }
 
     #[test]
