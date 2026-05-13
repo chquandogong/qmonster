@@ -1956,6 +1956,37 @@ fn pane_card_does_not_show_proposal_when_collapsed() {
 }
 
 #[test]
+fn collapsed_pane_with_pending_proposal_does_not_shift_hover_topics() {
+    use crate::domain::recommendation::RequestedEffect;
+    use crate::ui::help_glossary::HelpTopic;
+
+    let mut first = sample_pane_report();
+    first.effects.push(RequestedEffect::PromptSendProposed {
+        target_pane_id: first.pane_id.clone(),
+        slash_command: "/compact".into(),
+        proposal_id: "pid-1".into(),
+    });
+
+    let mut second = sample_pane_report();
+    second.pane_id = "%2".into();
+    second.identity.identity.pane_id = "%2".into();
+    second.current_command = "codex".into();
+
+    let reports = vec![first, second];
+    let mut state = ListState::default();
+    state.select(Some(1));
+    let wrap_width = 80;
+
+    let first_height = pane_list_lines_with_width(&reports[0], false, true, wrap_width).len() as u16;
+
+    assert_eq!(
+        pane_help_topic_at_row(&reports, &state, first_height, wrap_width),
+        Some(HelpTopic::PaneHeader),
+        "row after first collapsed pane should start second pane header"
+    );
+}
+
+#[test]
 fn pane_card_title_carries_pending_proposal_chip() {
     // v1.39 surface A: pane card title must carry a `★p` chip
     // when the pane has a pending PromptSendProposed effect, so
