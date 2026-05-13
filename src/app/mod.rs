@@ -39,6 +39,7 @@ pub mod terminal_session;
 pub mod tmux_source;
 pub mod tui_loop;
 pub mod version_drift;
+pub(crate) mod worktree_info;
 
 pub use bootstrap::Context;
 pub use config::{
