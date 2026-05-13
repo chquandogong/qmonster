@@ -132,7 +132,7 @@ fn pane_cards_render_current_command_row() {
         .collect();
     assert!(
         text.iter()
-            .any(|line| line.starts_with("  cmd     : target/release/qmonster")),
+            .any(|line| line.starts_with("├ cmd     : target/release/qmonster")),
         "pane list must expose the tmux current command: {text:?}"
     );
 
@@ -1757,16 +1757,18 @@ fn pane_card_path_line_wraps_when_narrow() {
     let mut rep = sample_pane_report();
     rep.current_path = "/home/operator/long/worktree/path/that/exceeds/width".into();
     let lines = pane_list_lines_with_width(&rep, true, false, 30);
-    // Find the path row; it should span ≥ 2 lines with continuation rows
-    // indented to the value column. Sectioned rows are prefixed with the
-    // 2-space section indent, so the path row starts at column 2.
+    // Sectioned rows render as a tree: the path row sits first in WHERE
+    // (not last), so its first line is prefixed with `├ ` and its
+    // wrapped continuation lines carry the parent's `│ ` bar followed by
+    // the usual `cont_indent` (label_col + ": " worth of spaces = 10).
     let start = lines
         .iter()
-        .position(|l| line_text(l).starts_with("  path    : "))
+        .position(|l| line_text(l).starts_with("├ path    : "))
         .expect("path row must be present");
+    let cont_prefix = "│           "; // │ + space + 10-space cont_indent
     let mut path_lines: Vec<&Line> = vec![&lines[start]];
     for line in lines.iter().skip(start + 1) {
-        if line_text(line).starts_with("          ") {
+        if line_text(line).starts_with(cont_prefix) {
             path_lines.push(line);
         } else {
             break;
@@ -1775,8 +1777,8 @@ fn pane_card_path_line_wraps_when_narrow() {
     assert!(path_lines.len() >= 2, "long path must wrap into ≥ 2 lines");
     let cont = line_text(path_lines[1]);
     assert!(
-        cont.starts_with("          "),
-        "continuation must be indented to value column, got: {cont:?}"
+        cont.starts_with(cont_prefix),
+        "continuation must carry the parent bar and value-column indent, got: {cont:?}"
     );
 }
 

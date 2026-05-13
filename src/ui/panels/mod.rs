@@ -336,16 +336,6 @@ impl PaneSectionOptions {
     }
 }
 
-fn pane_topic_lines(
-    lines: impl IntoIterator<Item = Line<'static>>,
-    topic: HelpTopic,
-) -> Vec<PaneRenderLine> {
-    lines
-        .into_iter()
-        .map(|line| pane_topic_line(line, topic))
-        .collect()
-}
-
 fn pane_topic_line(line: Line<'static>, topic: HelpTopic) -> PaneRenderLine {
     PaneRenderLine {
         line,
@@ -362,28 +352,112 @@ fn pane_section_header(title: &'static str) -> Line<'static> {
     )
 }
 
-fn push_pane_section(
-    rows: &mut Vec<PaneRenderLine>,
-    title: &'static str,
-    topic: HelpTopic,
-    section_rows: Vec<PaneRenderLine>,
-) {
-    if section_rows.is_empty() {
-        return;
-    }
-    rows.push(pane_topic_line(pane_section_header(title), topic));
-    rows.extend(section_rows.into_iter().map(indent_pane_row));
-}
-
-const SECTION_INDENT: &str = "  ";
 const SECTION_INDENT_WIDTH: u16 = 2;
 
-fn indent_pane_row(mut row: PaneRenderLine) -> PaneRenderLine {
-    let mut spans = Vec::with_capacity(row.line.spans.len() + 1);
-    spans.push(Span::raw(SECTION_INDENT));
-    spans.append(&mut row.line.spans);
-    row.line.spans = spans;
-    row
+struct PaneSectionRow {
+    /// First line + any continuation lines produced by wrapping.
+    lines: Vec<Line<'static>>,
+    topic: HelpTopic,
+    /// Sub-detail rows nested under this row (rendered one level deeper).
+    children: Vec<PaneSectionRow>,
+}
+
+impl PaneSectionRow {
+    fn leaf(lines: Vec<Line<'static>>, topic: HelpTopic) -> Self {
+        Self {
+            lines,
+            topic,
+            children: Vec::new(),
+        }
+    }
+}
+
+/// Split a flat `Vec<Line>` into logical row groups. A line whose first
+/// span starts with whitespace is treated as a continuation of the
+/// preceding row; otherwise it starts a new row. Matches the shape
+/// produced by `wrap_aligned_field` (label prefix on the first line,
+/// space-padded `cont_indent` on continuations) and by `wrap_badge_line`
+/// (label-bearing prefix span on the first line, whitespace-only
+/// `continuation_prefix` on continuations).
+fn group_into_section_rows(
+    lines: Vec<Line<'static>>,
+    topic: HelpTopic,
+) -> Vec<PaneSectionRow> {
+    let mut rows: Vec<PaneSectionRow> = Vec::new();
+    for line in lines {
+        let is_continuation = line
+            .spans
+            .first()
+            .and_then(|s| s.content.chars().next())
+            .is_some_and(|c| c.is_whitespace());
+        if is_continuation
+            && let Some(last) = rows.last_mut()
+        {
+            last.lines.push(line);
+            continue;
+        }
+        rows.push(PaneSectionRow::leaf(vec![line], topic));
+    }
+    rows
+}
+
+fn push_pane_section_tree(
+    out: &mut Vec<PaneRenderLine>,
+    title: &'static str,
+    topic: HelpTopic,
+    rows: Vec<PaneSectionRow>,
+) {
+    if rows.is_empty() {
+        return;
+    }
+    out.push(pane_topic_line(pane_section_header(title), topic));
+    render_section_rows(out, &[], rows);
+}
+
+fn render_section_rows(
+    out: &mut Vec<PaneRenderLine>,
+    ancestor_continues: &[bool],
+    rows: Vec<PaneSectionRow>,
+) {
+    let last_idx = rows.len().saturating_sub(1);
+    for (i, row) in rows.into_iter().enumerate() {
+        let is_last = i == last_idx;
+        let PaneSectionRow {
+            lines,
+            topic,
+            children,
+        } = row;
+        for (line_idx, mut line) in lines.into_iter().enumerate() {
+            let prefix = build_tree_prefix(ancestor_continues, is_last, line_idx == 0);
+            let mut spans = Vec::with_capacity(line.spans.len() + 1);
+            spans.push(Span::raw(prefix));
+            spans.append(&mut line.spans);
+            line.spans = spans;
+            out.push(PaneRenderLine {
+                line,
+                topic: Some(topic),
+            });
+        }
+        if !children.is_empty() {
+            let mut next_ancestors: Vec<bool> = ancestor_continues.to_vec();
+            next_ancestors.push(!is_last);
+            render_section_rows(out, &next_ancestors, children);
+        }
+    }
+}
+
+fn build_tree_prefix(ancestor_continues: &[bool], is_last: bool, is_first: bool) -> String {
+    let mut s = String::with_capacity((ancestor_continues.len() + 1) * 2);
+    for &cont in ancestor_continues {
+        s.push_str(if cont { "│ " } else { "  " });
+    }
+    s.push_str(match (is_first, is_last) {
+        (true, false) => "├ ",
+        (true, true) => "└ ",
+        (false, false) => "│ ",
+        (false, true) => "  ",
+    });
+    s
 }
 
 fn pane_sectioned_rows(
@@ -397,15 +471,16 @@ fn pane_sectioned_rows(
     let section_wrap = wrap_width.saturating_sub(SECTION_INDENT_WIDTH);
     let detail_wrap = section_wrap.saturating_sub(SECTION_INDENT_WIDTH);
 
-    let mut now_rows = pane_topic_lines(
+    let mut now_rows: Vec<PaneSectionRow> = Vec::new();
+    now_rows.extend(group_into_section_rows(
         render_pane_state_row_with_flash(report, now, flash, section_wrap),
         HelpTopic::PaneState,
-    );
-    now_rows.extend(pane_topic_lines(
+    ));
+    now_rows.extend(group_into_section_rows(
         blocking_signal_lines(&report.signals, section_wrap),
         HelpTopic::PaneSignals,
     ));
-    now_rows.extend(pane_topic_lines(
+    now_rows.extend(group_into_section_rows(
         signal_badge_lines(
             "signals",
             secondary_signal_chips(&report.signals),
@@ -417,7 +492,7 @@ fn pane_sectioned_rows(
         && let Some((_target, slash)) =
             crate::app::prompt_send_actions::first_prompt_send_proposal(report)
     {
-        now_rows.extend(pane_topic_lines(
+        now_rows.extend(group_into_section_rows(
             wrap_aligned_field(
                 "proposal",
                 &format!("{slash}  \u{2192} press p to accept \u{00b7} d to reject"),
@@ -426,23 +501,24 @@ fn pane_sectioned_rows(
             HelpTopic::PaneRecommendation,
         ));
     }
-    push_pane_section(&mut rows, "NOW", HelpTopic::PaneState, now_rows);
+    push_pane_section_tree(&mut rows, "NOW", HelpTopic::PaneState, now_rows);
 
-    let mut where_rows = pane_topic_lines(
+    let mut where_rows: Vec<PaneSectionRow> = Vec::new();
+    where_rows.extend(group_into_section_rows(
         wrap_aligned_field("path", &path_row_value(report), section_wrap),
         HelpTopic::PanePath,
-    );
-    where_rows.extend(pane_topic_lines(
+    ));
+    where_rows.extend(group_into_section_rows(
         wrap_aligned_field("cmd", &display_command(&report.current_command), section_wrap),
         HelpTopic::PaneCommand,
     ));
-    where_rows.extend(pane_topic_lines(
+    where_rows.extend(group_into_section_rows(
         wrap_aligned_field("status", &state_summary_line(report), section_wrap),
         HelpTopic::PaneStatus,
     ));
-    push_pane_section(&mut rows, "WHERE", HelpTopic::PanePath, where_rows);
+    push_pane_section_tree(&mut rows, "WHERE", HelpTopic::PanePath, where_rows);
 
-    let mut pressure_rows = pane_topic_lines(
+    let mut pressure_rows: Vec<PaneSectionRow> = group_into_section_rows(
         metric_badge_lines(
             &report.signals,
             report.identity.identity.provider,
@@ -453,15 +529,24 @@ fn pane_sectioned_rows(
     match options.token_rows {
         PaneTokenRows::ExpandedList => {
             if token_rows_supported(report.identity.identity.provider) {
-                pressure_rows.push(pane_topic_line(
-                    token_sparkline_status_line(&report.recent_token_samples, &report.signals),
+                pressure_rows.push(PaneSectionRow::leaf(
+                    vec![token_sparkline_status_line(
+                        &report.recent_token_samples,
+                        &report.signals,
+                    )],
                     HelpTopic::PaneTokens,
                 ));
                 if let Some(line) = token_io_line(report) {
-                    pressure_rows.push(pane_topic_line(Line::from(line), HelpTopic::PaneTokens));
+                    pressure_rows.push(PaneSectionRow::leaf(
+                        vec![Line::from(line)],
+                        HelpTopic::PaneTokens,
+                    ));
                 }
                 if let Some(line) = cache_token_io_line(report) {
-                    pressure_rows.push(pane_topic_line(Line::from(line), HelpTopic::PaneTokens));
+                    pressure_rows.push(PaneSectionRow::leaf(
+                        vec![Line::from(line)],
+                        HelpTopic::PaneTokens,
+                    ));
                 }
             }
         }
@@ -469,58 +554,56 @@ fn pane_sectioned_rows(
             if token_rows_supported(report.identity.identity.provider)
                 && let Some(line) = token_breakdown_line(report)
             {
-                pressure_rows.push(pane_topic_line(Line::from(line), HelpTopic::PaneTokens));
+                pressure_rows.push(PaneSectionRow::leaf(
+                    vec![Line::from(line)],
+                    HelpTopic::PaneTokens,
+                ));
             }
         }
     }
-    push_pane_section(&mut rows, "PRESSURE", HelpTopic::PaneMetrics, pressure_rows);
+    push_pane_section_tree(&mut rows, "PRESSURE", HelpTopic::PaneMetrics, pressure_rows);
 
-    let runtime_rows = pane_topic_lines(
+    let runtime_rows = group_into_section_rows(
         runtime_badge_lines_wrapped(&report.signals, section_wrap),
         HelpTopic::PaneRuntime,
     );
-    push_pane_section(&mut rows, "RUNTIME", HelpTopic::PaneRuntime, runtime_rows);
+    push_pane_section_tree(&mut rows, "RUNTIME", HelpTopic::PaneRuntime, runtime_rows);
 
-    let mut recommendation_rows = Vec::new();
+    let mut recommendation_rows: Vec<PaneSectionRow> = Vec::new();
     for rec in report
         .recommendations
         .iter()
         .take(options.recommendation_limit)
     {
-        recommendation_rows.extend(pane_topic_lines(
-            wrap_aligned_field(severity_label(rec.severity), &rec.reason, section_wrap),
-            HelpTopic::PaneRecommendation,
-        ));
+        let parent_lines = wrap_aligned_field(severity_label(rec.severity), &rec.reason, section_wrap);
+        let mut children: Vec<PaneSectionRow> = Vec::new();
         for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
             let formatted = expanded_detail_field(&detail);
-            recommendation_rows.extend(
-                pane_topic_lines(
-                    reflow_already_aligned(&formatted, detail_wrap),
-                    HelpTopic::PaneRecommendation,
-                )
-                .into_iter()
-                .map(indent_pane_row),
-            );
+            children.push(PaneSectionRow::leaf(
+                reflow_already_aligned(&formatted, detail_wrap),
+                HelpTopic::PaneRecommendation,
+            ));
         }
         for line in format_profile_lines(rec) {
             let formatted = expanded_detail_field(&line);
-            recommendation_rows.extend(
-                pane_topic_lines(
-                    reflow_already_aligned(&formatted, detail_wrap),
-                    HelpTopic::PaneProfile,
-                )
-                .into_iter()
-                .map(indent_pane_row),
-            );
+            children.push(PaneSectionRow::leaf(
+                reflow_already_aligned(&formatted, detail_wrap),
+                HelpTopic::PaneProfile,
+            ));
         }
+        recommendation_rows.push(PaneSectionRow {
+            lines: parent_lines,
+            topic: HelpTopic::PaneRecommendation,
+            children,
+        });
     }
     if recommendation_rows.is_empty() && options.show_empty_recommendations {
-        recommendation_rows.extend(pane_topic_lines(
+        recommendation_rows.push(PaneSectionRow::leaf(
             wrap_aligned_field("status", "no active recommendations", section_wrap),
             HelpTopic::PaneRecommendation,
         ));
     }
-    push_pane_section(
+    push_pane_section_tree(
         &mut rows,
         "RECOMMENDATIONS",
         HelpTopic::PaneRecommendation,
