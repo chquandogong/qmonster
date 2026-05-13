@@ -2280,6 +2280,10 @@ mod tests {
         }
     }
 
+    fn entry_title(entry: &AlertEntry) -> String {
+        entry.title()
+    }
+
     #[test]
     fn context_recovery_flow_groups_context_and_cache_on_same_pane() {
         let context = rec(
