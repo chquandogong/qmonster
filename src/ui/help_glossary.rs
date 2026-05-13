@@ -75,7 +75,7 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
         ],
         HelpTopic::AlertDetail => &[
             "details: summary 아래의 next/run/anchor/others 또는 FLOW rail 같은 추가 정보입니다.",
-            "FLOW rail은 신호 -> 후속 근거 -> 권장 다음 조치를 순서대로 보여줍니다.",
+            "FLOW rail은 원인 신호 -> 후속 근거 -> 선행 조치 -> 실행 명령을 순서대로 보여줍니다.",
             "included 행은 FLOW가 묶은 원본 alert 근거입니다.",
             "profile, side_effects, lever가 있으면 설정 변경의 근거와 트레이드오프를 함께 보여줍니다.",
         ],
@@ -193,7 +193,7 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
         ],
         HelpTopic::AlertDetail => &[
             "details: extra next/run/anchor/others rows or FLOW rail rows below the summary.",
-            "A FLOW rail shows signal -> follow-on evidence -> recommended next step.",
+            "A FLOW rail shows cause signal -> follow-on evidence -> prerequisite action -> command.",
             "included rows list the original alerts used as evidence.",
             "profile, side_effects, and lever rows explain config-change tradeoffs when present.",
         ],
@@ -327,12 +327,24 @@ mod tests {
 
     #[test]
     fn alert_help_mentions_flow_rows_in_both_languages() {
-        let ko = help_lines(HelpTopic::AlertHeader, HelpLanguage::Ko).join("\n");
-        let en = help_lines(HelpTopic::AlertHeader, HelpLanguage::En).join("\n");
+        let ko = [
+            help_lines(HelpTopic::AlertHeader, HelpLanguage::Ko),
+            help_lines(HelpTopic::AlertDetail, HelpLanguage::Ko),
+        ]
+        .concat()
+        .join("\n");
+        let en = [
+            help_lines(HelpTopic::AlertHeader, HelpLanguage::En),
+            help_lines(HelpTopic::AlertDetail, HelpLanguage::En),
+        ]
+        .concat()
+        .join("\n");
 
         assert!(ko.contains("FLOW"));
         assert!(ko.contains("묶"));
+        assert!(ko.contains("실행 명령"));
         assert!(en.contains("FLOW"));
         assert!(en.contains("groups related alerts"));
+        assert!(en.contains("command"));
     }
 }
