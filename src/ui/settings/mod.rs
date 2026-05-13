@@ -865,6 +865,9 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | AnomalyPromoteCacheDiscontinuity
         | AnomalyPromoteCrossPaneEditCluster
         | AnomalyPromoteCostSlope
+        | AnomalyPromoteTokenSlope
+        | AnomalyPromoteMemoryGrowth
+        | AnomalyPromoteSubagentSideEffect
         | FxEffect => Enum,
         StorageRoot | FxText => Text,
         TmuxPollIntervalMs
@@ -890,6 +893,8 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | AnomalyCacheDiscontinuityDrop
         | AnomalyCrossPaneClusterMinFindings
         | AnomalyCostSlopeUsdPerHour
+        | AnomalyTokenSlopeInputPerPoll
+        | AnomalyMemoryGrowthMb
         | AnomalyRetentionDays
         | CostBudgetUsd
         | ProfileSwitchWindowPolls
@@ -946,12 +951,17 @@ fn parameter_section_label(field: ParameterField) -> &'static str {
         | AnomalyCacheDiscontinuityDrop
         | AnomalyCrossPaneClusterMinFindings
         | AnomalyCostSlopeUsdPerHour
+        | AnomalyTokenSlopeInputPerPoll
+        | AnomalyMemoryGrowthMb
         | AnomalyRetentionDays => "Anomaly",
         AnomalyPromoteIdentityChurn
         | AnomalyPromoteErrorBurst
         | AnomalyPromoteCacheDiscontinuity
         | AnomalyPromoteCrossPaneEditCluster
-        | AnomalyPromoteCostSlope => "Anomaly Promote",
+        | AnomalyPromoteCostSlope
+        | AnomalyPromoteTokenSlope
+        | AnomalyPromoteMemoryGrowth
+        | AnomalyPromoteSubagentSideEffect => "Anomaly Promote",
         CostBudgetUsd
         | ProfileSwitchEnabled
         | ProfileSwitchWindowPolls
@@ -1015,12 +1025,17 @@ fn parameter_label(field: ParameterField) -> &'static str {
         AnomalyCacheDiscontinuityDrop => "anomaly cache_discontinuity_drop",
         AnomalyCrossPaneClusterMinFindings => "anomaly cross_pane_cluster_min",
         AnomalyCostSlopeUsdPerHour => "anomaly cost_slope_usd_per_hour",
+        AnomalyTokenSlopeInputPerPoll => "anomaly token_slope_input_per_poll",
+        AnomalyMemoryGrowthMb => "anomaly memory_growth_mb",
         AnomalyRetentionDays => "anomaly retention_days",
         AnomalyPromoteIdentityChurn => "anomaly.promote identity_churn",
         AnomalyPromoteErrorBurst => "anomaly.promote error_burst",
         AnomalyPromoteCacheDiscontinuity => "anomaly.promote cache_discontinuity",
         AnomalyPromoteCrossPaneEditCluster => "anomaly.promote cross_pane_edit_cluster",
         AnomalyPromoteCostSlope => "anomaly.promote cost_slope",
+        AnomalyPromoteTokenSlope => "anomaly.promote token_slope",
+        AnomalyPromoteMemoryGrowth => "anomaly.promote memory_growth",
+        AnomalyPromoteSubagentSideEffect => "anomaly.promote subagent_side_effect",
         CostBudgetUsd => "cost budget_usd",
         ProfileSwitchEnabled => "profile_switch enabled",
         ProfileSwitchWindowPolls => "profile_switch window_polls",
@@ -1084,6 +1099,8 @@ fn parameter_toml_path(field: ParameterField) -> Vec<&'static str> {
         AnomalyCacheDiscontinuityDrop => vec!["anomaly", "cache_discontinuity_drop"],
         AnomalyCrossPaneClusterMinFindings => vec!["anomaly", "cross_pane_cluster_min_findings"],
         AnomalyCostSlopeUsdPerHour => vec!["anomaly", "cost_slope_usd_per_hour"],
+        AnomalyTokenSlopeInputPerPoll => vec!["anomaly", "token_slope_input_per_poll"],
+        AnomalyMemoryGrowthMb => vec!["anomaly", "memory_growth_mb"],
         AnomalyRetentionDays => vec!["anomaly", "retention_days"],
         AnomalyPromoteIdentityChurn => vec!["anomaly", "promote", "identity_churn"],
         AnomalyPromoteErrorBurst => vec!["anomaly", "promote", "error_burst"],
@@ -1092,6 +1109,9 @@ fn parameter_toml_path(field: ParameterField) -> Vec<&'static str> {
             vec!["anomaly", "promote", "cross_pane_edit_cluster"]
         }
         AnomalyPromoteCostSlope => vec!["anomaly", "promote", "cost_slope"],
+        AnomalyPromoteTokenSlope => vec!["anomaly", "promote", "token_slope"],
+        AnomalyPromoteMemoryGrowth => vec!["anomaly", "promote", "memory_growth"],
+        AnomalyPromoteSubagentSideEffect => vec!["anomaly", "promote", "subagent_side_effect"],
         CostBudgetUsd => vec!["cost", "budget_usd"],
         ProfileSwitchEnabled => vec!["profile_switch", "enabled"],
         ProfileSwitchWindowPolls => vec!["profile_switch", "window_polls"],
@@ -1161,6 +1181,8 @@ fn parameter_value_for_display(config: &QmonsterConfig, field: ParameterField) -
         AnomalyCostSlopeUsdPerHour => {
             format!("{:.2}", config.anomaly.cost_slope_usd_per_hour)
         }
+        AnomalyTokenSlopeInputPerPoll => config.anomaly.token_slope_input_per_poll.to_string(),
+        AnomalyMemoryGrowthMb => format!("{:.0} MB", config.anomaly.memory_growth_mb),
         AnomalyRetentionDays => format!("{}d", config.anomaly.retention_days),
         AnomalyPromoteIdentityChurn => config.anomaly.promote.identity_churn.clone(),
         AnomalyPromoteErrorBurst => config.anomaly.promote.error_burst.clone(),
@@ -1169,6 +1191,9 @@ fn parameter_value_for_display(config: &QmonsterConfig, field: ParameterField) -
             config.anomaly.promote.cross_pane_edit_cluster.clone()
         }
         AnomalyPromoteCostSlope => config.anomaly.promote.cost_slope.clone(),
+        AnomalyPromoteTokenSlope => config.anomaly.promote.token_slope.clone(),
+        AnomalyPromoteMemoryGrowth => config.anomaly.promote.memory_growth.clone(),
+        AnomalyPromoteSubagentSideEffect => config.anomaly.promote.subagent_side_effect.clone(),
         CostBudgetUsd => format!("${:.2}", config.cost.budget_usd),
         ProfileSwitchEnabled => on_off(config.profile_switch.enabled).into(),
         ProfileSwitchWindowPolls => format!("{} polls", config.profile_switch.window_polls),
@@ -1215,6 +1240,8 @@ fn parameter_value_for_edit(config: &QmonsterConfig, field: ParameterField) -> S
             config.anomaly.cross_pane_cluster_min_findings.to_string()
         }
         AnomalyCostSlopeUsdPerHour => config.anomaly.cost_slope_usd_per_hour.to_string(),
+        AnomalyTokenSlopeInputPerPoll => config.anomaly.token_slope_input_per_poll.to_string(),
+        AnomalyMemoryGrowthMb => config.anomaly.memory_growth_mb.to_string(),
         AnomalyRetentionDays => config.anomaly.retention_days.to_string(),
         CostBudgetUsd => config.cost.budget_usd.to_string(),
         ProfileSwitchWindowPolls => config.profile_switch.window_polls.to_string(),
@@ -1357,6 +1384,18 @@ fn cycle_parameter_enum(config: &mut QmonsterConfig, field: ParameterField) -> R
             config.anomaly.promote.cost_slope =
                 confidence_next(&config.anomaly.promote.cost_slope)?;
         }
+        AnomalyPromoteTokenSlope => {
+            config.anomaly.promote.token_slope =
+                confidence_next(&config.anomaly.promote.token_slope)?;
+        }
+        AnomalyPromoteMemoryGrowth => {
+            config.anomaly.promote.memory_growth =
+                confidence_next(&config.anomaly.promote.memory_growth)?;
+        }
+        AnomalyPromoteSubagentSideEffect => {
+            config.anomaly.promote.subagent_side_effect =
+                confidence_next(&config.anomaly.promote.subagent_side_effect)?;
+        }
         FxEffect => config.fx.effect = config.fx.effect.cycle(),
         _ => {}
     }
@@ -1473,6 +1512,12 @@ fn apply_parameter_edit(
         }
         AnomalyCostSlopeUsdPerHour => {
             config.anomaly.cost_slope_usd_per_hour = parse_nonnegative_f64(label, raw)?;
+        }
+        AnomalyTokenSlopeInputPerPoll => {
+            config.anomaly.token_slope_input_per_poll = parse_u64_value(label, raw, 0)?;
+        }
+        AnomalyMemoryGrowthMb => {
+            config.anomaly.memory_growth_mb = parse_nonnegative_f64(label, raw)?;
         }
         AnomalyRetentionDays => config.anomaly.retention_days = parse_u64_value(label, raw, 1)?,
         CostBudgetUsd => config.cost.budget_usd = parse_nonnegative_f64(label, raw)?,
@@ -1618,6 +1663,10 @@ fn merge_parameter_field(
         AnomalyCostSlopeUsdPerHour => {
             set_nested_f64(doc, &path, config.anomaly.cost_slope_usd_per_hour);
         }
+        AnomalyTokenSlopeInputPerPoll => {
+            set_nested_i64(doc, &path, config.anomaly.token_slope_input_per_poll as i64);
+        }
+        AnomalyMemoryGrowthMb => set_nested_f64(doc, &path, config.anomaly.memory_growth_mb),
         AnomalyRetentionDays => set_nested_i64(doc, &path, config.anomaly.retention_days as i64),
         AnomalyPromoteIdentityChurn => {
             set_nested_str(doc, &path, &config.anomaly.promote.identity_churn);
@@ -1633,6 +1682,15 @@ fn merge_parameter_field(
         }
         AnomalyPromoteCostSlope => {
             set_nested_str(doc, &path, &config.anomaly.promote.cost_slope);
+        }
+        AnomalyPromoteTokenSlope => {
+            set_nested_str(doc, &path, &config.anomaly.promote.token_slope);
+        }
+        AnomalyPromoteMemoryGrowth => {
+            set_nested_str(doc, &path, &config.anomaly.promote.memory_growth);
+        }
+        AnomalyPromoteSubagentSideEffect => {
+            set_nested_str(doc, &path, &config.anomaly.promote.subagent_side_effect);
         }
         CostBudgetUsd => set_nested_f64(doc, &path, config.cost.budget_usd),
         ProfileSwitchEnabled => set_nested_bool(doc, &path, config.profile_switch.enabled),
@@ -2938,6 +2996,21 @@ fn build_parameter_body_lines(
             format!("{:.2}", config.anomaly.cost_slope_usd_per_hour),
             format!("{:.2}", defaults.anomaly.cost_slope_usd_per_hour),
         ),
+        setting_row(
+            "anomaly token_slope_input_per_poll",
+            config.anomaly.token_slope_input_per_poll.to_string(),
+            defaults.anomaly.token_slope_input_per_poll.to_string(),
+        ),
+        setting_row(
+            "anomaly memory_growth_mb",
+            format!("{:.0}", config.anomaly.memory_growth_mb),
+            format!("{:.0}", defaults.anomaly.memory_growth_mb),
+        ),
+        setting_row(
+            "anomaly retention_days",
+            config.anomaly.retention_days.to_string(),
+            defaults.anomaly.retention_days.to_string(),
+        ),
         Line::from(""),
         reference_header_line("Anomaly Promote (per-kind threshold)"),
         setting_row(
@@ -2965,7 +3038,28 @@ fn build_parameter_body_lines(
             config.anomaly.promote.cost_slope.clone(),
             defaults.anomaly.promote.cost_slope.clone(),
         ),
+        setting_row(
+            "anomaly.promote token_slope",
+            config.anomaly.promote.token_slope.clone(),
+            defaults.anomaly.promote.token_slope.clone(),
+        ),
+        setting_row(
+            "anomaly.promote memory_growth",
+            config.anomaly.promote.memory_growth.clone(),
+            defaults.anomaly.promote.memory_growth.clone(),
+        ),
+        setting_row(
+            "anomaly.promote subagent_side_effect",
+            config.anomaly.promote.subagent_side_effect.clone(),
+            defaults.anomaly.promote.subagent_side_effect.clone(),
+        ),
         Line::from(""),
+        reference_header_line("Cost / Profile"),
+        setting_row(
+            "cost budget_usd",
+            format!("${:.2}", config.cost.budget_usd),
+            format!("${:.2}", defaults.cost.budget_usd),
+        ),
         setting_row(
             "profile_switch enabled/threshold/window",
             format!(
@@ -3276,6 +3370,35 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
                 config.anomaly.window_polls,
                 config.anomaly.promote.cost_slope,
                 supports_suffix(crate::domain::anomaly::AnomalyKind::CostSlope),
+            ),
+        ),
+        rule_row(
+            "anomaly: TokenSlope",
+            format!(
+                "fires when input_tokens slope >= {} per poll over {} polls; promotes to Recommendation when confidence >= {}{}",
+                config.anomaly.token_slope_input_per_poll,
+                config.anomaly.window_polls,
+                config.anomaly.promote.token_slope,
+                supports_suffix(crate::domain::anomaly::AnomalyKind::TokenSlope),
+            ),
+        ),
+        rule_row(
+            "anomaly: MemoryGrowth",
+            format!(
+                "fires when process_memory_mb grows >= {:.0} MB over {} polls; promotes to Recommendation when confidence >= {}{}",
+                config.anomaly.memory_growth_mb,
+                config.anomaly.window_polls,
+                config.anomaly.promote.memory_growth,
+                supports_suffix(crate::domain::anomaly::AnomalyKind::MemoryGrowth),
+            ),
+        ),
+        rule_row(
+            "anomaly: SubagentSideEffect",
+            format!(
+                "fires when subagent_hint observed in {} polls AND another anomaly fires (correlation, not attribution); promotes when subagent_hint co-occurs with another anomaly (confidence >= {}){}",
+                config.anomaly.window_polls,
+                config.anomaly.promote.subagent_side_effect,
+                supports_suffix(crate::domain::anomaly::AnomalyKind::SubagentSideEffect),
             ),
         ),
         Line::from(""),
@@ -3662,12 +3785,19 @@ fn parameter_help_text(field: ParameterField) -> &'static str {
             "minimum cross-pane findings needed to form an edit cluster anomaly"
         }
         AnomalyCostSlopeUsdPerHour => "cost growth rate threshold for cost-slope anomaly detection",
+        AnomalyTokenSlopeInputPerPoll => {
+            "input-token growth threshold per poll for token-slope anomalies"
+        }
+        AnomalyMemoryGrowthMb => "resident-memory growth threshold for memory anomalies",
         AnomalyRetentionDays => "number of days to retain anomaly event history",
         AnomalyPromoteIdentityChurn
         | AnomalyPromoteErrorBurst
         | AnomalyPromoteCacheDiscontinuity
         | AnomalyPromoteCrossPaneEditCluster
-        | AnomalyPromoteCostSlope => {
+        | AnomalyPromoteCostSlope
+        | AnomalyPromoteTokenSlope
+        | AnomalyPromoteMemoryGrowth
+        | AnomalyPromoteSubagentSideEffect => {
             "per-anomaly confidence threshold used before promoting an anomaly into a recommendation"
         }
         CostBudgetUsd => "operator budget used by cost-budget warning rules",
@@ -3710,7 +3840,10 @@ fn parameter_value_help(field: ParameterField) -> &'static str {
         | AnomalyPromoteErrorBurst
         | AnomalyPromoteCacheDiscontinuity
         | AnomalyPromoteCrossPaneEditCluster
-        | AnomalyPromoteCostSlope => "low | medium | high",
+        | AnomalyPromoteCostSlope
+        | AnomalyPromoteTokenSlope
+        | AnomalyPromoteMemoryGrowth
+        | AnomalyPromoteSubagentSideEffect => "low | medium | high",
         ActionsAutoNotifications
         | ActionsAutoArchive
         | ActionsAutoPromptSend

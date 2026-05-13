@@ -359,6 +359,21 @@ where
             entry
                 .cost_usd_samples
                 .push_front(signals.cost_usd.as_ref().map(|m| m.value));
+            entry
+                .input_token_samples
+                .push_front(signals.input_tokens.as_ref().map(|m| m.value));
+            entry
+                .output_token_samples
+                .push_front(signals.output_tokens.as_ref().map(|m| m.value));
+            entry
+                .process_memory_samples
+                .push_front(signals.process_memory_mb.as_ref().map(|m| m.value));
+            entry
+                .agent_memory_samples
+                .push_front(signals.agent_memory_bytes.as_ref().map(|m| m.value));
+            entry
+                .subagent_hint_samples
+                .push_front(signals.subagent_hint);
             entry.trim(cap);
         }
 
@@ -676,8 +691,9 @@ where
                     "INSERT OR REPLACE INTO anomaly_history_snapshots
                      (pane_id, tick_unix_secs, identity_provider, identity_path,
                       error_hint, cache_hit_ratio, cache_drift_fire,
-                      cross_pane_edit_paths_json, cost_usd)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                      cross_pane_edit_paths_json, cost_usd, input_tokens, output_tokens,
+                      process_memory_mb, agent_memory_bytes, subagent_hint)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                     rusqlite::params![
                         pane.pane_id,
                         now_secs as i64,
@@ -688,6 +704,11 @@ where
                         snap.cache_drift_fire as i64,
                         cross_paths_json,
                         snap.cost_usd,
+                        snap.input_tokens.map(|n| n as i64),
+                        snap.output_tokens.map(|n| n as i64),
+                        snap.process_memory_mb,
+                        snap.agent_memory_bytes.map(|n| n as i64),
+                        snap.subagent_hint as i64,
                     ],
                 )
                 .map_err(|e| crate::store::sqlite::SqliteError::Query(e.to_string()))?;
@@ -1494,7 +1515,7 @@ mod tests {
         use crate::domain::recommendation::Severity;
 
         let sig = AnomalySignal {
-            kind: AnomalyKind::CostSlope,
+            kind: AnomalyKind::SubagentSideEffect,
             confidence: AnomalyConfidence::Medium,
             severity: Severity::Concern,
             evidence: vec![],

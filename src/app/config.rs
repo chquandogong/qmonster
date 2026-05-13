@@ -353,6 +353,14 @@ pub struct AnomalyConfig {
     /// `(cost_now - cost_oldest) / window_secs * 3600 >= cost_slope_usd_per_hour`.
     /// Default 20.0 (matches prelim spec § Configuration).
     pub cost_slope_usd_per_hour: f64,
+    /// Phase 7 v2 (v1.45.0): TokenSlope detector threshold. Fires when
+    /// `(input_now - input_oldest) / window_polls >= token_slope_input_per_poll`.
+    /// Default 20_000 (matches prelim spec § Configuration).
+    pub token_slope_input_per_poll: u64,
+    /// Phase 7 v2 (v1.45.0): MemoryGrowth detector threshold. Fires when
+    /// `process_memory_mb_now - process_memory_mb_oldest >= memory_growth_mb`.
+    /// Default 1024.0 (matches prelim spec § Configuration).
+    pub memory_growth_mb: f64,
     /// Phase 7 v3(c): retention horizon for anomaly_events rows;
     /// default 30; 100K hard cap handled by sink.
     pub retention_days: u64,
@@ -366,6 +374,7 @@ pub struct AnomalyConfig {
 /// filter) — `[anomaly.promote]` gates promotion only.
 ///
 /// Defaults preserve v1.45.0 behavior for the 7 kinds that today
+/// promote only at High confidence; `subagent_side_effect = "medium"`
 /// activates the previously-unreachable v1.45.0 promote-matrix branch
 /// for `SubagentSideEffect`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -376,6 +385,9 @@ pub struct AnomalyPromoteConfig {
     pub cache_discontinuity: String,
     pub cross_pane_edit_cluster: String,
     pub cost_slope: String,
+    pub token_slope: String,
+    pub memory_growth: String,
+    pub subagent_side_effect: String,
 }
 
 impl Default for AnomalyPromoteConfig {
@@ -386,6 +398,9 @@ impl Default for AnomalyPromoteConfig {
             cache_discontinuity: "high".to_string(),
             cross_pane_edit_cluster: "high".to_string(),
             cost_slope: "high".to_string(),
+            token_slope: "high".to_string(),
+            memory_growth: "high".to_string(),
+            subagent_side_effect: "medium".to_string(),
         }
     }
 }
@@ -408,6 +423,8 @@ impl Default for AnomalyConfig {
             cache_discontinuity_drop: 0.30,
             cross_pane_cluster_min_findings: 3,
             cost_slope_usd_per_hour: 20.0,
+            token_slope_input_per_poll: 20_000,
+            memory_growth_mb: 1024.0,
             retention_days: 30,
             promote: AnomalyPromoteConfig::default(),
         }
@@ -1736,6 +1753,8 @@ enabled = false
     fn anomaly_config_v2_defaults() {
         let c = AnomalyConfig::default();
         assert!((c.cost_slope_usd_per_hour - 20.0).abs() < f64::EPSILON);
+        assert_eq!(c.token_slope_input_per_poll, 20_000);
+        assert!((c.memory_growth_mb - 1024.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -1743,15 +1762,21 @@ enabled = false
         let toml = r#"
 [anomaly]
 cost_slope_usd_per_hour = 30.0
+token_slope_input_per_poll = 50000
+memory_growth_mb = 2048
 "#;
         let cfg: QmonsterConfig = toml::from_str(toml).expect("parse");
         assert!((cfg.anomaly.cost_slope_usd_per_hour - 30.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.anomaly.token_slope_input_per_poll, 50_000);
+        assert!((cfg.anomaly.memory_growth_mb - 2048.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn anomaly_config_v2_missing_section_keeps_defaults() {
         let cfg: QmonsterConfig = toml::from_str("").expect("parse");
         assert!((cfg.anomaly.cost_slope_usd_per_hour - 20.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.anomaly.token_slope_input_per_poll, 20_000);
+        assert!((cfg.anomaly.memory_growth_mb - 1024.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -1791,12 +1816,16 @@ retention_days = 45
         assert_eq!(p.cache_discontinuity, "high");
         assert_eq!(p.cross_pane_edit_cluster, "high");
         assert_eq!(p.cost_slope, "high");
+        assert_eq!(p.token_slope, "high");
+        assert_eq!(p.memory_growth, "high");
+        assert_eq!(p.subagent_side_effect, "medium");
     }
 
     #[test]
     fn anomaly_config_includes_promote_default() {
         let c = AnomalyConfig::default();
         assert_eq!(c.promote.identity_churn, "high");
+        assert_eq!(c.promote.subagent_side_effect, "medium");
     }
 
     #[test]
@@ -1811,5 +1840,6 @@ retention_days = 45
         "#;
         let cfg: QmonsterConfig = toml::from_str(toml).expect("parse");
         assert_eq!(cfg.anomaly.promote.cost_slope, "high");
+        assert_eq!(cfg.anomaly.promote.subagent_side_effect, "medium");
     }
 }

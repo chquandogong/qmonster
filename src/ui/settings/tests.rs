@@ -1264,8 +1264,8 @@ fn rules_tab_anomaly_rows_show_promotion_annotation() {
     let expected_phrase = "promotes to Recommendation when confidence >= high";
     let count = rendered.matches(expected_phrase).count();
     assert_eq!(
-        count, 5,
-        "expected 5 anomaly rules with promotion annotation; got {count}: {rendered}"
+        count, 7,
+        "expected 7 anomaly rules with promotion annotation; got {count}: {rendered}"
     );
 }
 
@@ -1285,6 +1285,22 @@ fn parameters_tab_shows_v2_anomaly_thresholds() {
         rendered.contains("20.00"),
         "expected 20.00 for cost_slope_usd_per_hour: {rendered}"
     );
+    assert!(
+        rendered.contains("anomaly token_slope_input_per_poll"),
+        "missing token_slope_input_per_poll row: {rendered}"
+    );
+    assert!(
+        rendered.contains("20000"),
+        "expected 20000 for token_slope_input_per_poll: {rendered}"
+    );
+    assert!(
+        rendered.contains("anomaly memory_growth_mb"),
+        "missing memory_growth_mb row: {rendered}"
+    );
+    assert!(
+        rendered.contains("1024"),
+        "expected 1024 for memory_growth_mb: {rendered}"
+    );
 }
 
 #[test]
@@ -1298,6 +1314,18 @@ fn rules_tab_shows_v2_anomaly_rows() {
     assert!(
         rendered.contains("anomaly: CostSlope"),
         "missing CostSlope: {rendered}"
+    );
+    assert!(
+        rendered.contains("anomaly: TokenSlope"),
+        "missing TokenSlope: {rendered}"
+    );
+    assert!(
+        rendered.contains("anomaly: MemoryGrowth"),
+        "missing MemoryGrowth: {rendered}"
+    );
+    assert!(
+        rendered.contains("anomaly: SubagentSideEffect"),
+        "missing SubagentSideEffect: {rendered}"
     );
 }
 
@@ -1313,6 +1341,19 @@ fn rules_tab_anomaly_rows_show_supports_suffix_for_asymmetric_detectors() {
     let lines = build_body_lines(&s, &config);
     let rendered = rendered_text(&lines);
 
+    // Single-provider detectors must name their lone supported provider.
+    assert!(
+        rendered.contains("supports: Gemini"),
+        "MemoryGrowth row should show 'supports: Gemini': {rendered}"
+    );
+    assert!(
+        rendered.contains("supports: Codex"),
+        "TokenSlope row should show 'supports: Codex': {rendered}"
+    );
+    assert!(
+        rendered.contains("supports: Claude"),
+        "SubagentSideEffect row should show 'supports: Claude': {rendered}"
+    );
     // Two-provider detectors should show both names.
     assert!(
         rendered.contains("supports: Claude / Codex"),
@@ -1359,6 +1400,10 @@ fn parameters_tab_includes_anomaly_promote_section() {
         "section header missing: {rendered}"
     );
     assert!(
+        rendered.contains("anomaly.promote subagent_side_effect"),
+        "subagent_side_effect row missing"
+    );
+    assert!(
         rendered.contains("anomaly.promote cost_slope"),
         "cost_slope row missing"
     );
@@ -1372,10 +1417,15 @@ fn rules_tab_anomaly_rows_use_configured_threshold_value() {
     s.switch_tab(SettingsTab::Rules);
     let lines = build_body_lines(&s, &config);
     let rendered = rendered_text(&lines);
-    // 5 slope-style detectors use the standard phrase with the dynamic threshold value
+    // 7 slope-style detectors use the standard phrase with the dynamic threshold value
     assert!(
         rendered.contains("promotes to Recommendation when confidence >= high"),
         "default 'high' threshold missing in rules tab: {rendered}"
+    );
+    // SubagentSideEffect uses 'medium' default.
+    assert!(
+        rendered.contains("(confidence >= medium)"),
+        "subagent_side_effect medium default missing: {rendered}"
     );
 }
 
