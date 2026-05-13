@@ -3,7 +3,7 @@ meta:
   mission_title: "Qmonster v2.2.0 - critical-eval-driven improvement bundle on top of v2.1.0: P0 dead-code purge + log_storm/quota-window dedup + inline threshold provenance tags, P1-1 detector × provider eligibility matrix gating eval_anomalies, P1-2 SubagentSideEffect correlation-only prose, P1-3 RecommendationOutcome::Copied lifecycle ledger row from y-copy"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 207
+  total_revisions: 208
   latest_version: "2.2.0"
 
 timeline:
@@ -5577,12 +5577,14 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Codex panes now render CTX/TOKENS/COST/MODEL badges; Claude panes render TOKENS only
+      runtime:
+        Codex panes now render CTX/TOKENS/COST/MODEL badges; Claude panes render TOKENS only
         (model/cost honestly None)
       verification: 275 lib + 6 drift + 24 integration = 305 tests (+25 net vs v1.10.9); clippy + fmt clean
       ledger: BACKFILLED in v1.12.2 confirm-archive per Gemini v1.12.0 must-fix
     breaking: false
-    risk: medium — trait signature change + new schema field + external TOML file I/O; all mitigated by
+    risk:
+      medium — trait signature change + new schema field + external TOML file I/O; all mitigated by
       mechanical migration pattern and v1.11.2 remediation of cross-check findings
     related_commits:
       - bc5722c
@@ -5701,12 +5703,14 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Codex panes now render full 7-metric badge set (CTX/TOKENS/COST/MODEL +
+      runtime:
+        Codex panes now render full 7-metric badge set (CTX/TOKENS/COST/MODEL +
         BRANCH/PATH/EFFORT); Claude panes render MODEL from settings.json when present
       verification: 299 lib + 6 drift + 26 integration = 331 tests (+26 net vs v1.11.3); clippy + fmt clean
       ledger: BACKFILLED in v1.12.2 confirm-archive per Gemini v1.12.0 must-fix
     breaking: false
-    risk: medium — trait signature change + 3 new schema fields + external JSON file I/O + 2-row UI
+    risk:
+      medium — trait signature change + 3 new schema fields + external JSON file I/O + 2-row UI
       refactor; all mitigated by v1.11.2-pattern mechanical migration and v1.12.1 remediation of
       cross-check findings
     related_commits:
@@ -12248,7 +12252,8 @@ timeline:
       `verbose_answer`(VERBOSE_MARKERS 명시 hedge 구절 필요). 신규 회귀 테스트
       `code_exploration_does_not_fire_on_large_output_alone`로 output_chars만 높을 때 advisory가 silent임을
       잠근다.
-    triggered_by: Live `--once` audit on 2026-04-28 showed all 6 healthy Main panes (mission-spec +
+    triggered_by:
+      Live `--once` audit on 2026-04-28 showed all 6 healthy Main panes (mission-spec +
       qmonster windows) tripping `concern [Heur] prefer graph/symbol navigation` advisory through the
       1500-char fallback alone.
     issue_or_context: >
@@ -12287,9 +12292,11 @@ timeline:
       tests: 624 total passed — 562 lib + 38 event_loop + 18 false_positive + 6 idle_state
       ledger: 1 new timeline entry (sequence 138); meta bump
       npm: package.json version set to 1.16.56
-      review_gate: cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
+      review_gate:
+        cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
         and live --once smoke
-      follow_up_carryover: "Phase C C1/C2/C3 + R1 cleanup are complete. Phase D remains explicitly
+      follow_up_carryover:
+        "Phase C C1/C2/C3 + R1 cleanup are complete. Phase D remains explicitly
         long-horizon: cross-window/project correlation, identity drift anomaly detection, and precise
         subagent token accounting."
       observable_effects:
@@ -12302,7 +12309,8 @@ timeline:
         removed:
           - "`code-exploration: graph/symbol` Concern advisory firing on output volume alone"
     breaking: false
-    risk: low — narrows an existing Heuristic advisory; cannot create new alerts; existing positive-fire
+    risk:
+      low — narrows an existing Heuristic advisory; cannot create new alerts; existing positive-fire
       test (`code_exploration_fires_on_verbose_main_role`) still passes because `verbose_answer`
       remains a trigger.
     related_commits: []
@@ -12374,12 +12382,14 @@ timeline:
       removed:
         - Unconditional Claude pre-refresh Escape on active/uncertain panes
     impact_scope:
-      runtime: Keyboard/runtime-refresh safety and Gemini idle classification only; no policy/advisory
+      runtime:
+        Keyboard/runtime-refresh safety and Gemini idle classification only; no policy/advisory
         trigger broadening
       tests: 626 total passed — 564 lib + 38 event_loop + 18 false_positive + 6 idle_state
       ledger: 1 new timeline entry (sequence 139); meta bump
       npm: package.json version set to 1.16.57
-      review_gate: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy
+      review_gate:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy
         --all-targets -- -D warnings, npm pack --dry-run, and scripts/verify-shared.sh pass
       follow_up_carryover: Phase D remains long-horizon; no D1/D2/D3 implementation in this patch
       observable_effects:
@@ -12390,7 +12400,8 @@ timeline:
           - Claude runtime refresh notice can show `runtime refresh deferred` on active/uncertain panes
         removed: []
     breaking: false
-    risk: low — removes a harmful active-pane key send and narrows idle classification for a visible
+    risk:
+      low — removes a harmful active-pane key send and narrows idle classification for a visible
       provider progress marker.
     related_commits: []
     follow_up:
@@ -12465,7 +12476,8 @@ timeline:
       tests: 627 total passed — 565 lib + 38 event_loop + 18 false_positive + 6 idle_state
       ledger: 1 new timeline entry (sequence 140); meta bump
       npm: package.json version set to 1.16.58
-      review_gate: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy
+      review_gate:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy
         --all-targets -- -D warnings, npm pack --dry-run, scripts/verify-shared.sh, and cargo build
         --release pass
       follow_up_carryover: Phase D remains long-horizon; no D1/D2/D3 implementation in this patch
@@ -12511,7 +12523,8 @@ timeline:
       `/usage`, `/stats`)을 사용한다. Qmonster는 명령 전에 `Escape`를 보내지 않는다. 각 Claude 명령마다 slash command를 전송하고,
       깊은 runtime tail을 기다려 캡처한 뒤 one-shot parser overlay로 저장하고, 그 다음 `Escape`를 보내 fullscreen provider
       surface를 닫아 다음 `u` 입력이 이어서 동작하게 한다.
-    triggered_by: operator clarified Claude `u` should alternate `/status`, `/usage`, `/stats`, capture
+    triggered_by:
+      operator clarified Claude `u` should alternate `/status`, `/usage`, `/stats`, capture
       enough screen output, then press Escape to close the surface
     issue_or_context: >
       v1.16.58 restored a non-blocked active Claude path by sending only `/stats`, but the operator
@@ -12547,12 +12560,14 @@ timeline:
       removed:
         - v1.16.58 active/uncertain Claude `/stats`-only runtime-refresh selection
     impact_scope:
-      runtime: Claude runtime-refresh command dispatch and capture/close behavior only; Gemini v1.16.58
+      runtime:
+        Claude runtime-refresh command dispatch and capture/close behavior only; Gemini v1.16.58
         idle fix remains unchanged
       tests: 627 total passed — 565 lib + 38 event_loop + 18 false_positive + 6 idle_state
       ledger: 1 new timeline entry (sequence 141); meta bump
       npm: package.json version set to 1.16.59
-      review_gate: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy
+      review_gate:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy
         --all-targets -- -D warnings, npm pack --dry-run, scripts/verify-shared.sh, and cargo build
         --release pass
       follow_up_carryover: Phase D remains long-horizon; no D1/D2/D3 implementation in this patch
@@ -12565,7 +12580,8 @@ timeline:
         removed:
           - Claude `/context` remains outside the operator `u` cycle
     breaking: false
-    risk: low to medium — this intentionally sends Claude fullscreen runtime commands on active panes
+    risk:
+      low to medium — this intentionally sends Claude fullscreen runtime commands on active panes
       again per operator request, but removes the pre-command Escape that previously interrupted
       in-flight work.
     related_commits: []
@@ -12604,7 +12620,8 @@ timeline:
       busy-pane 필터 유지, alert queue에서 `Cross-Window · <anchor>` title로 구분 표시. 같은 window 내 panes는 기존
       `ConcurrentMutatingWork` Warning을 그대로 발화하고, cross-window panes는 `Severity::Concern` (desktop
       notify gate 미충족)으로 발화하여 정상적인 동일 repo 다중 window 사용 패턴을 가진 운영자에게 노이즈를 주지 않는다.
-    triggered_by: Operator approved the proposed-default Phase D1 plan after the v1.16.55 review-tier
+    triggered_by:
+      Operator approved the proposed-default Phase D1 plan after the v1.16.55 review-tier
       and v1.16.56 false-positive cleanup commits.
     issue_or_context: >
       Phase 3A's concurrent-work rule fires only on panes captured by a single `list-panes -t
@@ -12657,15 +12674,19 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Pure policy rule extension; no tmux, adapter, storage, or actuation behavior change.
+      runtime:
+        Pure policy rule extension; no tmux, adapter, storage, or actuation behavior change.
         Default configuration preserves the v1.16.59 alert volume exactly.
       tests: 633 total passed — 562 lib + 38 event_loop + 18 false_positive + 6 idle_state
-      ledger: 1 new timeline entry (sequence 142); meta bump; minor version bump v1.16.x → v1.17.0 because
+      ledger:
+        1 new timeline entry (sequence 142); meta bump; minor version bump v1.16.x → v1.17.0 because
         Phase D opens
       npm: package.json version set to 1.17.0
-      review_gate: cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
+      review_gate:
+        cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
         cargo build --release, scripts/verify-shared.sh, live --once smoke
-      follow_up_carryover: Phase D D2 (identity drift anomaly detection) and D3 (precise subagent token
+      follow_up_carryover:
+        Phase D D2 (identity drift anomaly detection) and D3 (precise subagent token
         accounting) remain deferred. Phase E housekeeping (Gemini memory column, comment-preserving
         toml_edit save) also unchanged.
       observable_effects:
@@ -12677,7 +12698,8 @@ timeline:
             idle_state, +6 from D1 unit + integration tests; baseline before D1 was 627)
         removed: []
     breaking: false
-    risk: low — opt-in gate + classification-only change; default config keeps existing alert volume.
+    risk:
+      low — opt-in gate + classification-only change; default config keeps existing alert volume.
       New finding is `Severity::Concern` so it stays below the desktop-notify gate.
     related_commits: []
     follow_up:
@@ -12713,7 +12735,8 @@ timeline:
       quota_weekly_pressure, worktree_path, `⏵⏵ bypass permissions on/off` permission-mode fact를 채운다.
       Claude는 runtime-refresh slash dispatch에서 제외한다. Claude pane에서 `u`를 누르면 즉시 poll만 예약하며 slash
       command와 Escape를 보내지 않는다.
-    triggered_by: operator requested Claude values be read from the visible statusline and explicitly
+    triggered_by:
+      operator requested Claude values be read from the visible statusline and explicitly
       excluded the `u` key send behavior
     issue_or_context: >
       v1.16.59 made Claude `u` rotate `/status`, `/usage`, and `/stats`, but the operator showed that
@@ -12754,12 +12777,14 @@ timeline:
       removed:
         - v1.16.59 Claude `/status` -> `/usage` -> `/stats` `u` cycle
     impact_scope:
-      runtime: Claude adapter parsing and Claude branch of runtime-refresh key handling; Codex/Gemini
+      runtime:
+        Claude adapter parsing and Claude branch of runtime-refresh key handling; Codex/Gemini
         slash refresh unchanged
       tests: 635 total passed — 570 lib + 41 event_loop + 18 false_positive + 6 idle_state
       ledger: 1 new timeline entry (sequence 143); patch bump v1.17.0 -> v1.17.1
       npm: package.json version set to 1.17.1
-      review_gate: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy
+      review_gate:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy
         --all-targets -- -D warnings, cargo build --release, npm pack --dry-run, and
         scripts/verify-shared.sh all pass. Official mission-spec validation remains unavailable
         locally, but verify-shared's lite ledger check passed.
@@ -12775,7 +12800,8 @@ timeline:
         removed:
           - Claude slash-command capture-and-close from the operator `u` path
     breaking: false
-    risk: low — removes Claude provider input from `u`; parser is anchored on the statusline-specific
+    risk:
+      low — removes Claude provider input from `u`; parser is anchored on the statusline-specific
       `CTX` + `5h` + `7d` shape to avoid prose promotion.
     related_commits: []
     follow_up:
@@ -12813,7 +12839,8 @@ timeline:
       evict한다. `[security] identity_drift_findings = true` opt-in 시에만 발화하며 default는 off.
       `Severity::Concern`이라 desktop notify gate를 건드리지 않는다. `Provider::Unknown → 알려진 provider`, 빈 경로 →
       채워진 경로는 identity catch-up으로 보고 drift로 보지 않는다.
-    triggered_by: Operator approved the proposed-default Phase D2 plan after the v1.17.0 (cross-window)
+    triggered_by:
+      Operator approved the proposed-default Phase D2 plan after the v1.17.0 (cross-window)
       and v1.17.1 (Claude statusline observability) commits.
     issue_or_context: >
       Until v1.18.0, the identity resolver produced a fresh `ResolvedIdentity` per poll and never
@@ -12876,16 +12903,20 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Pure policy rule extension; per-session in-memory state for history + dedup. No tmux,
+      runtime:
+        Pure policy rule extension; per-session in-memory state for history + dedup. No tmux,
         adapter, storage, or actuation behavior change. Default configuration preserves the v1.17.1
         alert volume exactly.
       tests: 646 total passed across lib + main + event_loop + false_positive + idle_state targets
-      ledger: 1 new timeline entry (sequence 144); meta bump; minor version bump v1.17.x → v1.18.0 because
+      ledger:
+        1 new timeline entry (sequence 144); meta bump; minor version bump v1.17.x → v1.18.0 because
         Phase D advances by one slice
       npm: package.json version set to 1.18.0
-      review_gate: cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
+      review_gate:
+        cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
         cargo build --release, scripts/verify-shared.sh, and live --once smoke pass
-      follow_up_carryover: Phase D D3 (precise subagent token accounting) remains deferred. Phase E
+      follow_up_carryover:
+        Phase D D3 (precise subagent token accounting) remains deferred. Phase E
         housekeeping (Gemini memory column, comment-preserving toml_edit save) also unchanged.
       observable_effects:
         added:
@@ -12909,11 +12940,13 @@ timeline:
           into a separate commit so the tag history stays intact and no destructive `git reset` is
           required. Future slices that touch Codex parsing should treat v1.18.0 as the baseline that
           already contains these three helpers.
-        verification: All 646 tests pass with the bundled helpers in place; clippy + fmt + verify-shared all
+        verification:
+          All 646 tests pass with the bundled helpers in place; clippy + fmt + verify-shared all
           clean. Behavior change is limited to picking up reasoning_effort from one extra tail line
           that previously required a second `parse_codex_reasoning_effort` scan.
     breaking: false
-    risk: low — opt-in rule; default config silent. New finding is `Severity::Concern` so it stays below
+    risk:
+      low — opt-in rule; default config silent. New finding is `Severity::Concern` so it stays below
       the desktop-notify gate; per-session dedup prevents re-firing on subsequent polls.
     related_commits: []
     follow_up:
@@ -13010,17 +13043,22 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Pure adapter parsing additions in common subagent detection and Codex statusline parsing;
+      runtime:
+        Pure adapter parsing additions in common subagent detection and Codex statusline parsing;
         no policy, tmux, storage, or actuation behavior change. Default configuration preserves the
         v1.18.0 alert volume on tails that did not contain `● Task(` before.
-      tests: 651 total passed across lib + main + event_loop + false_positive + idle_state +
+      tests:
+        651 total passed across lib + main + event_loop + false_positive + idle_state +
         qmonster_tmux_parity targets
-      ledger: 1 new timeline entry (sequence 145); meta bump; minor version bump v1.18.x → v1.19.0 because
+      ledger:
+        1 new timeline entry (sequence 145); meta bump; minor version bump v1.18.x → v1.19.0 because
         Phase D D3 closes
       npm: package.json version set to 1.19.0
-      review_gate: cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
+      review_gate:
+        cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
         cargo build --release, and scripts/verify-shared.sh all pass
-      follow_up_carryover: Phase E housekeeping (Gemini memory column, comment-preserving toml_edit save)
+      follow_up_carryover:
+        Phase E housekeeping (Gemini memory column, comment-preserving toml_edit save)
         remains the next available work.
       observable_effects:
         added:
@@ -13034,7 +13072,8 @@ timeline:
           - TODO-list prose `Task 1 — ...` no longer false-fires `subagent_hint` (negative test locks
             this)
     breaking: false
-    risk: low — adds one narrow marker that only matches Claude's bullet+Task( tail signature; four
+    risk:
+      low — adds one narrow marker that only matches Claude's bullet+Task( tail signature; four
       negative tests lock the false-positive boundary. Codex parser change is additive and anchored on
       provider-model tokens plus known effort values.
     related_commits: []
@@ -13109,17 +13148,22 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Pure save-path refactor; no policy, tmux, adapter, or actuation behavior change. The
+      runtime:
+        Pure save-path refactor; no policy, tmux, adapter, or actuation behavior change. The
         on-disk file content is more conservative — only the 28 overlay-managed values change per save
         instead of the whole document.
-      tests: 655 total passed across lib + main + event_loop + false_positive + idle_state +
+      tests:
+        655 total passed across lib + main + event_loop + false_positive + idle_state +
         qmonster_tmux_parity targets
-      ledger: 1 new timeline entry (sequence 146); meta bump; minor version bump v1.19.x → v1.20.0 because
+      ledger:
+        1 new timeline entry (sequence 146); meta bump; minor version bump v1.19.x → v1.20.0 because
         Phase E opens
       npm: package.json version set to 1.20.0
-      review_gate: cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
+      review_gate:
+        cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
         cargo build --release, and scripts/verify-shared.sh all pass
-      follow_up_carryover: Phase E E1 (Gemini memory column display) remains low-value per 3-model
+      follow_up_carryover:
+        Phase E E1 (Gemini memory column display) remains low-value per 3-model
         consensus and stays deferred until an operator explicitly requests it.
       observable_effects:
         added:
@@ -13132,7 +13176,8 @@ timeline:
             before E2 was 651)
         removed: []
     breaking: false
-    risk: low — fresh-write path unchanged; existing-file path is additive (only writes the 28 known
+    risk:
+      low — fresh-write path unchanged; existing-file path is additive (only writes the 28 known
       threshold keys); validation gate still runs before any disk write. New `toml_edit` dependency is
       widely used in the Rust ecosystem (cargo-edit, dprint-toml) and ships at 0.22.
     related_commits: []
@@ -13171,7 +13216,8 @@ timeline:
       `<float> MB` / `<float> GB` 두 형식 모두 파싱. pane-card primary metric row에 `MEM` 뱃지를 적응형 단위(MB/GB)로
       렌더링하고 `--once` metrics row에는 `memory <value>` 형식으로 출력. Claude / Codex는 status surface 가 process
       memory를 노출하지 않으므로 None 유지 — 부재가 honesty.
-    triggered_by: Operator selected `E1` after the v1.20.0 Phase E E2 commit, overriding the prior
+    triggered_by:
+      Operator selected `E1` after the v1.20.0 Phase E E2 commit, overriding the prior
       3-model `low-value` consensus.
     issue_or_context: >
       Gemini's status table renders eight columns: branch / sandbox / /model / workspace (/directory)
@@ -13213,16 +13259,21 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Pure additive parser + render extension; no policy, tmux, storage, or actuation behavior
+      runtime:
+        Pure additive parser + render extension; no policy, tmux, storage, or actuation behavior
         change. Claude / Codex panes unaffected (the field stays None on those providers).
-      tests: 660 total passed across lib + main + event_loop + false_positive + idle_state +
+      tests:
+        660 total passed across lib + main + event_loop + false_positive + idle_state +
         qmonster_tmux_parity targets
-      ledger: 1 new timeline entry (sequence 147); meta bump; minor version bump v1.20.x → v1.21.0 because
+      ledger:
+        1 new timeline entry (sequence 147); meta bump; minor version bump v1.20.x → v1.21.0 because
         Phase E E1 closes
       npm: package.json version set to 1.21.0
-      review_gate: cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
+      review_gate:
+        cargo fmt --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings,
         cargo build --release, scripts/verify-shared.sh, and live --once smoke pass
-      follow_up_carryover: Phase E is now fully shipped. No housekeeping items remain in the deferred
+      follow_up_carryover:
+        Phase E is now fully shipped. No housekeeping items remain in the deferred
         ledger besides confirm-archive review (permanently closed) and any new operator-directed work.
       observable_effects:
         added:
@@ -13234,7 +13285,8 @@ timeline:
             E1 was 655)
         removed: []
     breaking: false
-    risk: low — additive parser column; absence honest (Claude / Codex stay None); rendering only adds a
+    risk:
+      low — additive parser column; absence honest (Claude / Codex stay None); rendering only adds a
       badge / line, never reorders or removes existing fields.
     related_commits: []
     follow_up:
@@ -13271,7 +13323,8 @@ timeline:
       authoritative로 취급한다. context, 5h remaining quota, weekly remaining quota, model, worktree,
       branch, input token, output token을 각각 독립적으로 파싱해 표시한다. total field가 없으면 보이는 input+output token
       합으로 `token_count`를 채우고, estimated cost는 input/output 둘 다 있을 때만 계산한다.
-    triggered_by: Operator asked why CTX/QUOTA disappear in Codex after `/clear`, then requested that
+    triggered_by:
+      Operator asked why CTX/QUOTA disappear in Codex after `/clear`, then requested that
       available information still be displayed.
     issue_or_context: >
       Codex can render a post-clear line like `Context 100% left ... Context 0% used · 5h 100% ·
@@ -13306,9 +13359,11 @@ timeline:
       removed: []
     impact_scope:
       runtime: Codex adapter parsing only; no tmux, policy, storage, or actuation behavior change.
-      tests: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
+      tests:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
         -D warnings, cargo build --release, scripts/verify-shared.sh
-      ledger: 1 new timeline entry (sequence 148); meta bump; patch version bump v1.21.0 → v1.21.1 for
+      ledger:
+        1 new timeline entry (sequence 148); meta bump; patch version bump v1.21.0 → v1.21.1 for
         Codex observability bugfix
       npm: package.json version set to 1.21.1
       review_gate: release validation passes locally before publish
@@ -13322,7 +13377,8 @@ timeline:
           - Codex cost remains absent when token counters are insufficient for a defensible estimate
         removed: []
     breaking: false
-    risk: low — the status-line shape still requires `Context` + `% used` + separators, newest-line
+    risk:
+      low — the status-line shape still requires `Context` + `% used` + separators, newest-line
       authority is preserved, and missing fields stay absent rather than inferred except for exact
       input+output token summation.
     related_commits:
@@ -13356,7 +13412,8 @@ timeline:
       다음 label 사이의 범위에서만 파싱하여 em-dash placeholder를 absent로 유지한다. `7d` percent가 없어도 path가 보이도록 worktree
       path는 required percent 이후가 아니라 `7d` label 이후에서 추출한다. legacy `/context` fallback은 statusline
       context가 없을 때만 유지한다.
-    triggered_by: A local Claude adapter patch was present after v1.21.1; operator requested
+    triggered_by:
+      A local Claude adapter patch was present after v1.21.1; operator requested
       commit/push/tag/npm publish.
     issue_or_context: >
       statusline.sh can render missing JSON fields as an em-dash. The previous parser searched for the
@@ -13392,9 +13449,11 @@ timeline:
       removed: []
     impact_scope:
       runtime: Claude adapter parsing only; no tmux, policy, storage, or actuation behavior change.
-      tests: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
+      tests:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
         -D warnings, cargo build --release, scripts/verify-shared.sh
-      ledger: 1 new timeline entry (sequence 149); meta bump; patch version bump v1.21.1 → v1.21.2 for
+      ledger:
+        1 new timeline entry (sequence 149); meta bump; patch version bump v1.21.1 → v1.21.2 for
         Claude statusline placeholder bugfix
       npm: package.json version set to 1.21.2
       review_gate: release validation passes locally before publish
@@ -13408,7 +13467,8 @@ timeline:
           - Legacy Claude `/context` capture can fill context only if statusline context is absent
         removed: []
     breaking: false
-    risk: low — parser remains label-anchored and conservative; missing provider fields stay absent
+    risk:
+      low — parser remains label-anchored and conservative; missing provider fields stay absent
       rather than inferred.
     related_commits:
       - e4c67d6
@@ -13440,7 +13500,8 @@ timeline:
       root LICENSE 파일을 추가하고 package/Cargo metadata를 MIT로 표시한다. README phase status를 현재 상태 table과 최근
       release note 중심으로 재정리한다. Claude statusline `CTX —`는 provider-official 0% context 값으로 파싱해 다음
       poll에서 event-loop pressure cache가 덮어써지게 한다. `5h`와 `7d` placeholder는 숫자가 보일 때만 표시하는 보수적 동작을 유지한다.
-    triggered_by: Operator requested MIT license page, README phase-status cleanup, and Claude `/clear`
+    triggered_by:
+      Operator requested MIT license page, README phase-status cleanup, and Claude `/clear`
       CTX reset to 0%.
     issue_or_context: >
       v1.21.2 made the adapter avoid stealing adjacent percentages from statusline placeholders, but
@@ -13474,7 +13535,8 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Claude context metric parsing only; no tmux transport, policy rule, storage, or actuation
+      runtime:
+        Claude context metric parsing only; no tmux transport, policy rule, storage, or actuation
         behavior change.
       tests: release validation run before commit/tag/publish
       ledger: 1 new timeline entry (sequence 150); meta bump; patch version bump v1.21.2 → v1.21.3
@@ -13489,7 +13551,8 @@ timeline:
           - README phase status is table-first instead of a long patch-level paragraph
         removed: []
     breaking: false
-    risk: low — the 0% reset is limited to explicit Claude `CTX` placeholder tokens; quota placeholders
+    risk:
+      low — the 0% reset is limited to explicit Claude `CTX` placeholder tokens; quota placeholders
       keep the prior conservative absent behavior.
     related_commits: []
     follow_up:
@@ -13566,13 +13629,17 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: "tmux polling gains one #{pane_pid} field; new /proc read per poll cycle per Claude/Codex
+      runtime:
+        "tmux polling gains one #{pane_pid} field; new /proc read per poll cycle per Claude/Codex
         pane; no policy, storage, or actuation change."
-      tests: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
+      tests:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
         -D warnings, scripts/verify-shared.sh
-      ledger: 1 new timeline entry (sequence 151); meta bump; minor version bump v1.21.3 → v1.22.0 for
+      ledger:
+        1 new timeline entry (sequence 151); meta bump; minor version bump v1.21.3 → v1.22.0 for
         Phase F F-1
-      npm: package.json version unchanged at 1.21.3 — npm publish deferred to a later commit per
+      npm:
+        package.json version unchanged at 1.21.3 — npm publish deferred to a later commit per
         CONTRIBUTING.md release flow
       review_gate: local validation passes before commit
       follow_up_carryover: Phase F F-2 and beyond remain open for future operator-directed work.
@@ -13585,7 +13652,8 @@ timeline:
             because Gemini adapter already sets process_memory_mb
         removed: []
     breaking: false
-    risk: low — /proc read is Linux-only; missing /proc path or unreadable file returns None rather than
+    risk:
+      low — /proc read is Linux-only; missing /proc path or unreadable file returns None rather than
       erroring; Gemini ProviderOfficial path is locked by a dedicated regression test.
     related_commits:
       - 6b6ab44
@@ -13683,11 +13751,14 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: new per-poll filesystem reads for agent memory files; no tmux transport, storage, or
+      runtime:
+        new per-poll filesystem reads for agent memory files; no tmux transport, storage, or
         actuation change.
-      tests: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
+      tests:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
         -D warnings, scripts/verify-shared.sh
-      ledger: 1 new timeline entry (sequence 152); meta bump; minor version bump v1.22.0 → v1.23.0 for
+      ledger:
+        1 new timeline entry (sequence 152); meta bump; minor version bump v1.22.0 → v1.23.0 for
         Phase F F-2
       npm: package.json version unchanged at 1.21.3 — npm publish deferred
       review_gate: local validation passes before commit
@@ -13704,7 +13775,8 @@ timeline:
           - Advisory threshold wording changed from '50 KB' to '50_000 bytes (~49 KiB)' for precision
         removed: []
     breaking: false
-    risk: low — filesystem reads are Linux/macOS compatible; missing files return None; Heuristic label
+    risk:
+      low — filesystem reads are Linux/macOS compatible; missing files return None; Heuristic label
       is honest about file-existence-not-load-confirmation.
     related_commits:
       - 102a37b
@@ -13799,11 +13871,14 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: new per-poll SQLite INSERT per live pane with token data; one SELECT LIMIT 20 per live pane
+      runtime:
+        new per-poll SQLite INSERT per live pane with token data; one SELECT LIMIT 20 per live pane
         per poll for PaneReport; both are sub-ms indexed operations.
-      tests: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
+      tests:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
         -D warnings, scripts/verify-shared.sh
-      ledger: 1 new timeline entry (sequence 153); meta bump; minor version bump v1.23.0 → v1.24.0 for
+      ledger:
+        1 new timeline entry (sequence 153); meta bump; minor version bump v1.23.0 → v1.24.0 for
         Phase F F-3
       npm: package.json version unchanged at 1.21.3 — npm publish deferred
       review_gate: local validation passes before commit
@@ -13819,7 +13894,8 @@ timeline:
           - Retention sweep now touches SQLite DB in addition to archive/ and snapshots/ directories
         removed: []
     breaking: false
-    risk: low — SQLite writes are fire-and-forget with error logging; retention pass falls through
+    risk:
+      low — SQLite writes are fire-and-forget with error logging; retention pass falls through
       silently if DB does not exist; no provider API calls; sparkline is display-only with honesty
       guard.
     related_commits:
@@ -13909,11 +13985,14 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: new Codex parser field; one extra column in per-poll SQLite INSERT for Codex panes; no
+      runtime:
+        new Codex parser field; one extra column in per-poll SQLite INSERT for Codex panes; no
         policy, storage-root, or actuation change.
-      tests: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
+      tests:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
         -D warnings, scripts/verify-shared.sh
-      ledger: 1 new timeline entry (sequence 154); meta bump; minor version bump v1.24.0 → v1.25.0 for
+      ledger:
+        1 new timeline entry (sequence 154); meta bump; minor version bump v1.24.0 → v1.25.0 for
         Phase F F-4
       npm: package.json version unchanged at 1.21.3 — npm publish deferred
       review_gate: local validation passes before commit
@@ -13928,7 +14007,8 @@ timeline:
             schema migration required
         removed: []
     breaking: false
-    risk: low — ALTER TABLE migration is idempotent (swallows duplicate-column errors); cache badge is
+    risk:
+      low — ALTER TABLE migration is idempotent (swallows duplicate-column errors); cache badge is
       display-only with honesty guard; no policy or actuation path change.
     related_commits:
       - b9a17bd
@@ -14007,15 +14087,19 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: two new pure policy rules; no new IO, no new storage columns, no UI rendering change beyond
+      runtime:
+        two new pure policy rules; no new IO, no new storage columns, no UI rendering change beyond
         the existing recommendation display path.
-      tests: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
+      tests:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
         -D warnings, scripts/verify-shared.sh
-      ledger: 1 new timeline entry (sequence 155); meta bump; minor version bump v1.25.0 → v1.26.0 for
+      ledger:
+        1 new timeline entry (sequence 155); meta bump; minor version bump v1.25.0 → v1.26.0 for
         Phase F F-7
       npm: package.json version unchanged at 1.21.3 — npm publish deferred
       review_gate: local validation passes before commit
-      follow_up_carryover: Phase F F-4b (Gemini /stats parsing), F-5 (Claude statusLine command opt-in),
+      follow_up_carryover:
+        Phase F F-4b (Gemini /stats parsing), F-5 (Claude statusLine command opt-in),
         F-6 (Codex App Server resetsAt), F-7b (cache_drift_detected via recent_token_samples), F-7c
         (wait_for_reset / snapshot_before_reset) remain unscoped.
       observable_effects:
@@ -14028,7 +14112,8 @@ timeline:
           - Engine::evaluate now dispatches eval_cache after eval_agent_memory
         removed: []
     breaking: false
-    risk: low — pure policy rules; no storage, IO, or actuation path change; existing badge/metric paths
+    risk:
+      low — pure policy rules; no storage, IO, or actuation path change; existing badge/metric paths
       unaffected.
     related_commits:
       - ff83b09
@@ -14109,15 +14194,19 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: one new pure policy rule; event_loop read/evaluate/write reorder; no new IO, no new storage
+      runtime:
+        one new pure policy rule; event_loop read/evaluate/write reorder; no new IO, no new storage
         columns, no UI rendering change beyond existing recommendation display path.
-      tests: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
+      tests:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
         -D warnings, scripts/verify-shared.sh
-      ledger: 1 new timeline entry (sequence 156); meta bump; minor version bump v1.26.0 → v1.27.0 for
+      ledger:
+        1 new timeline entry (sequence 156); meta bump; minor version bump v1.26.0 → v1.27.0 for
         Phase F F-7b
       npm: package.json version unchanged at 1.21.3 — npm publish deferred
       review_gate: local validation passes before commit
-      follow_up_carryover: Phase F F-4b (Gemini /stats parsing), F-5 (Claude statusLine command opt-in),
+      follow_up_carryover:
+        Phase F F-4b (Gemini /stats parsing), F-5 (Claude statusLine command opt-in),
         F-6 (Codex App Server resetsAt), F-7c (wait_for_reset / snapshot_before_reset — depend on
         F-5/F-6 reset_eta) remain unscoped.
       observable_effects:
@@ -14131,7 +14220,8 @@ timeline:
             current snapshot
         removed: []
     breaking: false
-    risk: low — pure policy rule; event_loop reorder preserves data correctness by ensuring historical
+    risk:
+      low — pure policy rule; event_loop reorder preserves data correctness by ensuring historical
       window predates current snapshot; existing badge/metric paths unaffected.
     related_commits:
       - 1c7e782
@@ -14158,7 +14248,8 @@ timeline:
       total/input/cached input/output 토큰 수를 함께 읽고 적용하므로 `0 in · 0 out` 같은 bottom-status placeholder가
       실제 세션 카운터를 덮어쓰지 못한다. Codex resumed session에서 footer counter가 아직 채워지지 않아도 F-3 token samples, F-4
       CACHE badge, F-7/F-7b cache policy input이 계속 보인다.
-    triggered_by: "Review of today's Phase F work: F-3/F-4 surfaces were not visible on the live Codex
+    triggered_by:
+      "Review of today's Phase F work: F-3/F-4 surfaces were not visible on the live Codex
       pane when footer counters showed 0 in / 0 out."
     issue_or_context: >
       The v1.25.0 F-4 parser only extracted cached_input_tokens from the Codex `Token usage:` line.
@@ -14195,9 +14286,11 @@ timeline:
       removed: []
     impact_scope:
       runtime: Codex adapter parsing only; no storage schema, UI layout, policy rule, or actuation change.
-      tests: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
+      tests:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
         -D warnings, cargo build --release, scripts/verify-shared.sh
-      ledger: 1 new timeline entry (sequence 157); meta bump; patch version bump v1.27.0 → v1.27.1 for
+      ledger:
+        1 new timeline entry (sequence 157); meta bump; patch version bump v1.27.0 → v1.27.1 for
         Codex token observability fix
       npm: package.json version unchanged at 1.21.3 — npm publish deferred
       review_gate: local validation passes before commit
@@ -14297,11 +14390,14 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: config parsing and PolicyGates construction only; no storage schema, UI layout, or
+      runtime:
+        config parsing and PolicyGates construction only; no storage schema, UI layout, or
         actuation change; policy rule logic unchanged except threshold source.
-      tests: cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
+      tests:
+        cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets --
         -D warnings, cargo build --release, scripts/verify-shared.sh
-      ledger: 1 new timeline entry (sequence 158); meta bump; minor version bump v1.27.1 → v1.28.0 for
+      ledger:
+        1 new timeline entry (sequence 158); meta bump; minor version bump v1.27.1 → v1.28.0 for
         F-7-config operator-tunable cache thresholds
       npm: package.json version unchanged at 1.21.3 — npm publish deferred
       review_gate: local validation passes before commit
@@ -14319,7 +14415,8 @@ timeline:
         removed:
           - 6 const declarations (`HOT_RATIO_THRESHOLD` etc.) from `src/policy/rules/cache.rs`
     breaking: false
-    risk: low — config struct uses serde(default) so existing configs are zero-breaking; defaults
+    risk:
+      low — config struct uses serde(default) so existing configs are zero-breaking; defaults
       reproduce prior constants exactly.
     related_commits:
       - 2274dd3
@@ -14418,11 +14515,14 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: UI overlay only; no policy, signal, storage, or actuation change; provider config files
+      runtime:
+        UI overlay only; no policy, signal, storage, or actuation change; provider config files
         never modified.
-      tests: 8 new tests; cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy
+      tests:
+        8 new tests; cargo fmt --check, git diff --check, cargo test --all-targets, cargo clippy
         --all-targets -- -D warnings, cargo build --release pass.
-      ledger: 1 new timeline entry (sequence 159); meta bump; minor version bump v1.28.0 → v1.29.0 for
+      ledger:
+        1 new timeline entry (sequence 159); meta bump; minor version bump v1.28.0 → v1.29.0 for
         Phase G G-1 Provider Setup overlay.
       npm: package.json version unchanged at 1.28.0 — npm publish deferred for this slice.
       review_gate: local validation passes before commit
@@ -14438,7 +14538,8 @@ timeline:
         modified: []
         removed: []
     breaking: false
-    risk: low — UI-only addition; no signal, policy, storage, or actuation change; read-only filesystem
+    risk:
+      low — UI-only addition; no signal, policy, storage, or actuation change; read-only filesystem
       probes degrade gracefully on missing files.
     related_commits:
       - 8d58039
@@ -14500,7 +14601,8 @@ timeline:
       `parse_claude_status_line_row`의 CTX 퍼센트 검색 상한을 옵션 `cache` 라벨에서 끊어 cache 값이 CTX로 새지 않게 했다.
       `policy/rules/cache.rs::cache_hit_ratio(signals)`와 `panels.rs::signals_cache_pct_with_source()`
       helper가 동일한 우선순위를 캡슐화해서 badge / policy 일관성을 보장한다. 8개 신규 테스트, 699 lib + 68 integration green.
-    triggered_by: Phase G operator-integration-helpers stream — G-2 task1 (commit df7dc1d) + Phase F
+    triggered_by:
+      Phase G operator-integration-helpers stream — G-2 task1 (commit df7dc1d) + Phase F
       cache-observability stream — F-5 task2 (commit 831a598)
     issue_or_context: >
       v1.29.0 G-1 shipped the Provider Setup overlay with all toggles (sidefile JSON export, App
@@ -14568,13 +14670,16 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: config struct + new SignalSet field + Claude adapter parser extension + policy/UI
+      runtime:
+        config struct + new SignalSet field + Claude adapter parser extension + policy/UI
         precedence helper; no schema migration, no actuation change, no destructive mutations;
         sidefile write is a documented filesystem effect under XDG data dir.
-      tests: 8 new tests (4 G-2 lib tests + 3 Claude adapter F-5 tests + 1 policy F-5 test); cargo fmt
+      tests:
+        8 new tests (4 G-2 lib tests + 3 Claude adapter F-5 tests + 1 policy F-5 test); cargo fmt
         --check, git diff --check, cargo test --all-targets, cargo clippy --all-targets -- -D
         warnings, cargo build --release pass.
-      ledger: 1 new timeline entry (sequence 160); meta bump; minor version bump v1.29.0 → v1.30.0 for
+      ledger:
+        1 new timeline entry (sequence 160); meta bump; minor version bump v1.29.0 → v1.30.0 for
         Phase G G-2 [provider_setup] config + Phase F F-5 Claude cache parser.
       npm: package.json bumped to 1.30.0 in a separate follow-up commit (v1.30.0 npm publish bump).
       review_gate: local validation passes before commit
@@ -14598,7 +14703,8 @@ timeline:
             5h — CTX percent search stops at the cache label so the values don't bleed into each other
         removed: []
     breaking: false
-    risk: "low — config struct uses #[serde(default)] per-field so existing configs are zero-breaking;
+    risk:
+      "low — config struct uses #[serde(default)] per-field so existing configs are zero-breaking;
       new SignalSet field is Option so all signal sites stay backward compatible; cache_hit_ratio
       precedence preserves Codex F-4 count-derived path as fallback; sidefile write is into XDG data
       dir under operator-owned ~/.local/share."
@@ -14655,7 +14761,8 @@ timeline:
       채워져 기존 `cost $X.XX` metric row가 활성화된다. `is_none()` 가드로 raw 카운트는 statusline 경로 값이 보존되며,
       cache_hit_ratio만 예외적으로 sidefile 값이 우선한다 (raw 카운트 기반의 정밀한 비율이 반올림된 `cache N%` statusline 값을 이긴다).
       11개 신규 테스트 (710 lib + 68 integration); clippy + fmt clean.
-    triggered_by: Phase F cache-observability stream — F-5b sidefile reader (commit 4db99ae) building on
+    triggered_by:
+      Phase F cache-observability stream — F-5b sidefile reader (commit 4db99ae) building on
       G-2 sidefile-on-default (v1.30.0) infrastructure
     issue_or_context: >
       v1.30.0 G-2 made `claude_sidefile = true` the default so the recommended
@@ -14718,13 +14825,16 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: new adapter module + 2 new SignalSet fields + 2 new RuntimeFactKind variants + 2 new metric
+      runtime:
+        new adapter module + 2 new SignalSet fields + 2 new RuntimeFactKind variants + 2 new metric
         rows; no schema migration, no actuation change, no destructive mutations; sidefile read is
         best-effort (missing/malformed → silent None) so existing operators without the recommended
         statusline.sh see no behavior change.
-      tests: 11 new tests (710 lib + 68 integration green); cargo fmt --check, git diff --check, cargo
+      tests:
+        11 new tests (710 lib + 68 integration green); cargo fmt --check, git diff --check, cargo
         test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release pass.
-      ledger: 1 new timeline entry (sequence 161); meta bump; minor version bump v1.30.0 → v1.31.0 for
+      ledger:
+        1 new timeline entry (sequence 161); meta bump; minor version bump v1.30.0 → v1.31.0 for
         Phase F F-5b Claude sidefile reader.
       npm: package.json bumped to 1.31.0 in a separate follow-up commit (v1.31.0 npm publish bump).
       review_gate: local validation passes before commit
@@ -14745,7 +14855,8 @@ timeline:
             cache_creation_input_tokens) when sidefile is matched
         removed: []
     breaking: false
-    risk: low — new adapter module is best-effort silent on missing/malformed sidefile; new SignalSet
+    risk:
+      low — new adapter module is best-effort silent on missing/malformed sidefile; new SignalSet
       fields are Option so all signal sites stay backward compatible; provider gate restricts
       enrichment to Claude panes only; cache_hit_ratio override preserves Codex F-4 count-derived path
       on non-sidefile pipelines; existing operators without the recommended statusline.sh see zero
@@ -14812,7 +14923,8 @@ timeline:
       badge가 터미널 너비 기준으로 wrap; v1.32.x Provider Setup overlay Tab / Right / BackTab / Left 탭 cycling.
       11 신규 테스트 (codex_app_server 8개 + apply_codex_rate_limits 3개 + tab cycle 1개); 726 lib + 68
       integration green; clippy + fmt clean.
-    triggered_by: Phase F cache-observability stream — F-6 Codex App Server JSON-RPC client (commits
+    triggered_by:
+      Phase F cache-observability stream — F-6 Codex App Server JSON-RPC client (commits
       2542007 + 7775a5f) building on G-2 [provider_setup] codex_app_server toggle (v1.30.0) and
       mirroring the F-5b account-level → per-pane fan-out pattern (v1.31.0)
     issue_or_context: >
@@ -14888,13 +15000,16 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: new adapter module + 2 new Context fields + 1 new helper + per-tick rate-limit broadcast;
+      runtime:
+        new adapter module + 2 new Context fields + 1 new helper + per-tick rate-limit broadcast;
         no schema migration, no actuation change, no destructive mutations; app-server spawn is gated
         to `[provider_setup] codex_app_server = true` (default false from G-2) so existing operators
         see no behavior change unless they opt in; failure paths log + drop without aborting the TUI.
-      tests: 11 new tests (726 lib + 68 integration green); cargo fmt --check, git diff --check, cargo
+      tests:
+        11 new tests (726 lib + 68 integration green); cargo fmt --check, git diff --check, cargo
         test --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release pass.
-      ledger: 1 new timeline entry (sequence 162); meta bump; minor version bump v1.31.0 → v1.32.0 for
+      ledger:
+        1 new timeline entry (sequence 162); meta bump; minor version bump v1.31.0 → v1.32.0 for
         Phase F F-6 Codex App Server JSON-RPC client.
       npm: package.json bumped to 1.32.0 in a separate follow-up commit (v1.32.0 npm publish bump).
       review_gate: local validation passes before commit
@@ -14917,7 +15032,8 @@ timeline:
             the per-pane bottom-status hasn't populated them yet
         removed: []
     breaking: false
-    risk: low — app-server spawn is gated to [provider_setup] codex_app_server = true (default false);
+    risk:
+      low — app-server spawn is gated to [provider_setup] codex_app_server = true (default false);
       spawn failure surfaces as SystemNotice without aborting startup; per-tick read failure drops the
       client + clears the cache so stale data never lingers; pressure fields preserve statusline path
       values via is_none guards so the existing per-pane authority is unchanged; resets_at fields are
@@ -14979,11 +15095,14 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: UI text composition only; no provider config writes, no tmux actuation changes, no database
+      runtime:
+        UI text composition only; no provider config writes, no tmux actuation changes, no database
         schema change.
-      tests: 5 new Provider Setup tests; cargo fmt/check on touched files, git diff --check, cargo clippy
+      tests:
+        5 new Provider Setup tests; cargo fmt/check on touched files, git diff --check, cargo clippy
         --all-targets -- -D warnings, cargo test --all-targets pass.
-      ledger: 1 new timeline entry (sequence 163); meta bump; patch version bump v1.32.0 → v1.32.1 for
+      ledger:
+        1 new timeline entry (sequence 163); meta bump; patch version bump v1.32.0 → v1.32.1 for
         Provider Setup readability polish.
       npm: package.json bumped to 1.32.1 to keep npm metadata aligned with the ledger tag.
       review_gate: local validation passes before commit
@@ -14998,7 +15117,8 @@ timeline:
           - The footer hint now says `[y] copy Copy With y target` to match the visible section
         removed: []
     breaking: false
-    risk: low — the change is limited to Provider Setup overlay text layout and release metadata;
+    risk:
+      low — the change is limited to Provider Setup overlay text layout and release metadata;
       snippet generation remains delegated to snippet_for_tab, so y-copy content stays aligned with
       the preview.
     related_commits: []
@@ -15070,12 +15190,15 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: UI state-routing and config persistence only; no provider config writes, no new database
+      runtime:
+        UI state-routing and config persistence only; no provider config writes, no new database
         schema, no destructive mutations. Codex app-server remains opt-in and restart-gated.
-      tests: 744 lib + 68 integration tests pass; cargo fmt --check, git diff --check, cargo test
+      tests:
+        744 lib + 68 integration tests pass; cargo fmt --check, git diff --check, cargo test
         --all-targets, cargo clippy --all-targets -- -D warnings, cargo build --release,
         scripts/verify-shared.sh, and npm pack --dry-run pass.
-      ledger: 1 new timeline entry (sequence 164); meta bump; patch version bump v1.32.1 → v1.32.2 for
+      ledger:
+        1 new timeline entry (sequence 164); meta bump; patch version bump v1.32.1 → v1.32.2 for
         Settings integrations and token sparkline polish.
       npm: package.json bumped to 1.32.2 to keep npm metadata aligned with the ledger tag.
       review_gate: local validation passes before commit
@@ -15096,7 +15219,8 @@ timeline:
         removed:
           - Provider Setup `[s]` toggle behavior
     breaking: false
-    risk: low — the change moves where existing provider_setup booleans are edited and keeps Provider
+    risk:
+      low — the change moves where existing provider_setup booleans are edited and keeps Provider
       Setup read-only; token sparkline changes are presentational only.
     related_commits: []
     follow_up: []
@@ -15149,7 +15273,8 @@ timeline:
       one-line view에 추가해, F-5b의 verbose `metric_row` 텍스트 행을 동일한 `format_resets_eta` helper와 SourceKind
       라벨링으로 미러링한다. 합성 Ink 렌더링 fixture를 사용한 8개의 신규 unit test (정직성 케이스: OAuth → cache_reads=None, panel
       부재 → defaults). 753 lib + 68 integration green; clippy + fmt clean.
-    triggered_by: Phase F cache-observability stream — F-4b is the long-deferred Gemini /stats parser
+    triggered_by:
+      Phase F cache-observability stream — F-4b is the long-deferred Gemini /stats parser
       slice that closes the parity gap left after F-5/F-5b (Claude) and F-6 (Codex). Built on the F-5b
       RuntimeFactKind::SessionId variant + is_none() adapter integration pattern; commits 90cd3d8
       (parser + adapter integration) + 29f6a7c (RESET 5H/7D primary_metric_row badges).
@@ -15206,12 +15331,15 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: two new parsers + adapter integration in src/adapters/gemini.rs + RESET 5H/7D badges on
+      runtime:
+        two new parsers + adapter integration in src/adapters/gemini.rs + RESET 5H/7D badges on
         primary_metric_row; no schema migration, no actuation change, no destructive mutations; OAuth
         Gemini cache_reads honesty rule preserved (never synthesize zero).
-      tests: 8 new unit tests (753 lib + 68 integration green); cargo fmt --check, git diff --check, cargo
+      tests:
+        8 new unit tests (753 lib + 68 integration green); cargo fmt --check, git diff --check, cargo
         test --all-targets, cargo clippy --all-targets -- -D warnings pass.
-      ledger: 1 new timeline entry (sequence 165); meta bump; minor version bump v1.32.2 → v1.33.0 for
+      ledger:
+        1 new timeline entry (sequence 165); meta bump; minor version bump v1.32.2 → v1.33.0 for
         Phase F F-4b Gemini /stats output parser.
       npm: package.json bumped to 1.33.0 in a separate follow-up commit (v1.33.0 npm publish bump).
       review_gate: local validation passes before commit
@@ -15231,7 +15359,8 @@ timeline:
             surface didn't populate them
         removed: []
     breaking: false
-    risk: low — Gemini /stats parsing is purely additive; is_none() guards preserve earlier-surface
+    risk:
+      low — Gemini /stats parsing is purely additive; is_none() guards preserve earlier-surface
       authority for input/output/cached tokens; OAuth cache_reads stays None per FAQ-documented limit
       (no synthesized zero); RESET 5H/7D badges mirror the verbose metric_row contract that F-5b and
       F-6 already shipped.
@@ -15294,7 +15423,8 @@ timeline:
       `src/ui/panels.rs` sparkline 테스트가 let-mut + field 재할당에서 struct-update 문법으로 변경되어
       `clippy::field_reassign_with_default`를 침묵시킨다. 10개의 신규 unit test가 결정론적 now-injection을 사용한다. 765
       lib + 68 integration green; clippy + fmt clean.
-    triggered_by: Phase F operator-ergonomics stream — F-7c is the reset-aware advisory slice that
+    triggered_by:
+      Phase F operator-ergonomics stream — F-7c is the reset-aware advisory slice that
       consumes the F-5b/F-6 quota_*_resets_at fields. Listed as deferred sibling in v1.26.0 (F-7) and
       v1.27.0 (F-7b) because it depended on F-5/F-6 reset-eta surfacing; with v1.31.0 (F-5b Claude
       sidefile) and v1.32.0 (F-6 Codex App Server) shipped, the trigger surface is now in place.
@@ -15358,13 +15488,16 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: two new policy rules + Engine::evaluate now-threading; no schema migration, no actuation
+      runtime:
+        two new policy rules + Engine::evaluate now-threading; no schema migration, no actuation
         change, no destructive mutations; rules gate on IdentityConfidence >= Medium and suppress on
         InputWait/PermissionWait per project convention; Gemini stays silent until a future Gemini
         surface ever exposes resets.
-      tests: 10 new unit tests (765 lib + 68 integration green); cargo fmt --check, git diff --check,
+      tests:
+        10 new unit tests (765 lib + 68 integration green); cargo fmt --check, git diff --check,
         cargo test --all-targets, cargo clippy --all-targets -- -D warnings pass.
-      ledger: 1 new timeline entry (sequence 166); meta bump; minor version bump v1.33.0 → v1.34.0 for
+      ledger:
+        1 new timeline entry (sequence 166); meta bump; minor version bump v1.33.0 → v1.34.0 for
         Phase F F-7c reset-aware advisories.
       npm: package.json bumped to 1.34.0 in a separate follow-up commit (v1.34.0 npm publish bump).
       review_gate: local validation passes before commit
@@ -15384,7 +15517,8 @@ timeline:
             functional behavior is unchanged for non-reset rules
         removed: []
     breaking: false
-    risk: low — additive policy rules with hardcoded thresholds matching the operator-ergonomics intent;
+    risk:
+      low — additive policy rules with hardcoded thresholds matching the operator-ergonomics intent;
       both rules gate on IdentityConfidence >= Medium and suppress on input/permission wait;
       Engine::evaluate now-threading is internal and tests inject the value for deterministic timing;
       no provider config or runtime mutation.
@@ -15443,7 +15577,8 @@ timeline:
       테스트(config 기본값이 v1.34.0 상수와 일치, TOML override 시 미터치 필드는 default 유지, custom wait_pressure 임계값이 더
       낮은 pressure에서 발화, custom snapshot_eta가 imminent window를 넓힘). 771 lib + 68 integration green;
       clippy + fmt clean.
-    triggered_by: "Phase F operator-ergonomics stream — F-7d is the operator-tunable threshold slice
+    triggered_by:
+      "Phase F operator-ergonomics stream — F-7d is the operator-tunable threshold slice
       deferred from v1.34.0 (F-7c). The v1.34.0 follow_up explicitly listed exposing
       WAIT_PRESSURE_THRESHOLD / WAIT_ETA_SECS / SNAPSHOT_PRESSURE_THRESHOLD / SNAPSHOT_ETA_SECS via a
       new [reset] config section once tuning data lands; F-7d is the structural lift. Mirrors the
@@ -15512,13 +15647,16 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: purely additive config surface; defaults match v1.34.0 constants exactly; no schema
+      runtime:
+        purely additive config surface; defaults match v1.34.0 constants exactly; no schema
         migration; no actuation change; no destructive mutations; the reset rule's gating semantics
         (IdentityConfidence >= Medium, suppress on InputWait/PermissionWait, both windows independent)
         remain intact.
-      tests: 4 new unit tests (771 lib + 68 integration green); cargo fmt --check, git diff --check, cargo
+      tests:
+        4 new unit tests (771 lib + 68 integration green); cargo fmt --check, git diff --check, cargo
         test --all-targets, cargo clippy --all-targets -- -D warnings pass.
-      ledger: 1 new timeline entry (sequence 167); meta bump; minor version bump v1.34.0 → v1.35.0 for
+      ledger:
+        1 new timeline entry (sequence 167); meta bump; minor version bump v1.34.0 → v1.35.0 for
         Phase F F-7d operator-tunable [reset] thresholds.
       npm: package.json bumped to 1.35.0 in a separate follow-up commit (v1.35.0 npm publish bump).
       review_gate: local validation passes before commit
@@ -15535,7 +15673,8 @@ timeline:
             default-config operators see no advisory firing change between v1.34.0 and v1.35.0
         removed: []
     breaking: false
-    risk: "low — additive [reset] config section with #[serde(default)] guards (existing configs without
+    risk:
+      "low — additive [reset] config section with #[serde(default)] guards (existing configs without
       [reset] keep v1.34.0 behavior); ResetConfig defaults match the F-7c hardcoded constants exactly;
       PolicyGates 9th positional param is the same per-section pattern used in v1.28.0 F-7-config (8th
       param) so the surface is well-trodden; no provider config or runtime mutation; operator must opt
@@ -15593,7 +15732,8 @@ timeline:
       구분 — creation은 prompt-cache write 비용이며, 의도적으로 `CACHE`에 합산하지 않는다 — `CACHE`의 계약은 read-hit ratio로
       유지). Gemini `u` 런타임 refresh 사이클이 `/stats model` 다음에 `/model`까지 dispatch하도록 확장. 신규 정책 룰 없음, 신규
       임계값 없음, 스키마 마이그레이션 없음, provider config 쓰기 없음.
-    triggered_by: v1.35.0 (F-7d) shipped operator-tunable [reset] thresholds but the Settings overlay
+    triggered_by:
+      v1.35.0 (F-7d) shipped operator-tunable [reset] thresholds but the Settings overlay
       had no surface to display the resulting values, and Gemini `/model` reset rows were captured by
       runtime_refresh but discarded by the adapter. The Tmux tab consolidates the recommended
       one-window-four-pane layout into a copy-paste installer that previously required hunting through
@@ -15693,16 +15833,20 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: purely additive; no policy rule semantic change; no new threshold; no schema migration; no
+      runtime:
+        purely additive; no policy rule semantic change; no new threshold; no schema migration; no
         provider config write; no actuation change. The new ModelReset / ToolCalls runtime facts are
         display-only and do not feed PolicyGates. cache_creation_input_tokens is read from an existing
         sidefile field and is not folded into CACHE whose contract remains read-hit ratio.
-      tests: additional tests for the new surfaces; cargo fmt --check, git diff --check, cargo test
+      tests:
+        additional tests for the new surfaces; cargo fmt --check, git diff --check, cargo test
         --all-targets, cargo clippy --all-targets -- -D warnings pass.
-      ledger: 1 new timeline entry (sequence 168); meta bump; patch version bump v1.35.0 → v1.35.1 for the
+      ledger:
+        1 new timeline entry (sequence 168); meta bump; patch version bump v1.35.0 → v1.35.1 for the
         bundled v1.35.x polish surfaces.
       npm: package.json bumped to 1.35.1 to keep npm metadata aligned with the ledger tag.
-      review_gate: local validation passes before commit; confirm review against v1.35.0 + v1.35.1 (Codex
+      review_gate:
+        local validation passes before commit; confirm review against v1.35.0 + v1.35.1 (Codex
         + Gemini) follows the v1.35.x patch line.
       observable_effects:
         added:
@@ -15723,7 +15867,8 @@ timeline:
             without disrupting active prompts; `/stats tools` is intentionally not sent
         removed: []
     breaking: false
-    risk: low — purely additive UI/runtime-fact surface plus one new sidefile field. The Gemini /model
+    risk:
+      low — purely additive UI/runtime-fact surface plus one new sidefile field. The Gemini /model
       parser is defensive (requires `gemini` model label + ASCII digit in reset text) so chat prose
       cannot enter ProviderOfficial facts. The Tmux tab is read-only — Qmonster never writes the
       operator's tmux config; the operator copies the snippet manually. Settings displays mirror the
@@ -15878,18 +16023,22 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: purely additive defensiveness on the Gemini /model reset parser; no policy rule semantic
+      runtime:
+        purely additive defensiveness on the Gemini /model reset parser; no policy rule semantic
         change; no new threshold; no schema migration; no provider config write; no actuation change.
         The new gemini_reset_model_matches_current strictness is defense-in-depth —
         extract_gemini_model_name already filters most cases. Default-config operators see no change.
-      tests: 1 new regression test (model_screen_rejects_family_word_embedded_in_chat_prose covering 3
+      tests:
+        1 new regression test (model_screen_rejects_family_word_embedded_in_chat_prose covering 3
         prose variants); cargo fmt --check, git diff --check, cargo build --release, cargo test
         --all-targets, cargo clippy --all-targets -- -D warnings, scripts/verify-shared.sh all pass.
-      ledger: "1 new timeline entry (sequence 169); meta bump; patch version bump v1.35.1 → v1.35.2 for
+      ledger:
+        "1 new timeline entry (sequence 169); meta bump; patch version bump v1.35.1 → v1.35.2 for
         the v1.35.x confirm-review must-fix closure (confirm-archive pattern: must-fix items closed;
         both reviewer narratives + structured mirrors committed)."
       npm: package.json bumped to 1.35.2 to keep npm metadata aligned with the ledger tag.
-      review_gate: v1.35.x confirm round CLOSED — Codex (approve-with-fixes, 4 must-fix items closed) +
+      review_gate:
+        v1.35.x confirm round CLOSED — Codex (approve-with-fixes, 4 must-fix items closed) +
         Gemini (approve-with-fixes, 1 must-fix item closed); 9-arg
         PolicyGates::from_config_and_identity follow-up tracked for v1.36.x
       observable_effects:
@@ -15911,7 +16060,8 @@ timeline:
             model_screen_filters_resets_to_current_model_family)
         removed: []
     breaking: false
-    risk: low — Gemini parser tightening is defensive (rejects edge-case prose that would have leaked
+    risk:
+      low — Gemini parser tightening is defensive (rejects edge-case prose that would have leaked
       into ProviderOfficial facts); all 5 existing Gemini /model reset tests continue to pass
       unchanged; new regression test locks the contract. Documentation changes are purely descriptive
       — no operator workflow change.
@@ -15945,7 +16095,8 @@ timeline:
       아키텍처, 문서 라우팅 중심의 간결한 첫 화면으로 재작성한다. 긴 패치 단위 구현 이력은 repository landing page를 압도하지 않도록
       mission-history.yaml 및 canonical docs에 남긴다. 신규 docs/GITHUB_POLISH.md는 전문가 수준 GitHub 표면을 위한 남은
       체크리스트를 기록한다.
-    triggered_by: Operator requested GitHub documentation cleanup, especially a better-looking README,
+    triggered_by:
+      Operator requested GitHub documentation cleanup, especially a better-looking README,
       plus recommendations for making the repository look professional.
     changes:
       added:
@@ -15974,10 +16125,12 @@ timeline:
       removed: []
     impact_scope:
       runtime: none — documentation/package metadata only
-      tests: cargo fmt --all --check, git diff --check, cargo test --all-targets, cargo clippy
+      tests:
+        cargo fmt --all --check, git diff --check, cargo test --all-targets, cargo clippy
         --all-targets -- -D warnings -A clippy::uninlined_format_args, cargo build --release, npm pack
         --dry-run, and scripts/verify-shared.sh pass; no Rust source change
-      ledger: 1 new timeline entry (sequence 170); meta bump; patch version bump v1.35.2 -> v1.35.3 for
+      ledger:
+        1 new timeline entry (sequence 170); meta bump; patch version bump v1.35.2 -> v1.35.3 for
         GitHub documentation polish
       npm: package.json bumped to 1.35.3 so publish/tag/package surfaces stay aligned
       observable_effects:
@@ -15992,7 +16145,8 @@ timeline:
             of duplicating it inline
         removed: []
     breaking: false
-    risk: low — README rewrite changes documentation shape only; long implementation history remains
+    risk:
+      low — README rewrite changes documentation shape only; long implementation history remains
       preserved in mission-history.yaml.
     related_commits: []
     follow_up:
@@ -16024,7 +16178,8 @@ timeline:
       PolicyGates::from_config_and_identity 생성자) 를 단일 PolicyGateInputs<'_> 묶음으로 리프트해 종결. 같은 패치에
       GITHUB_POLISH 체크리스트의 두 항목을 함께 묶음 — 릴리스 파이프라인의 SPDX-JSON SBOM 생성 및 다운스트림 운영자용
       docs/RELEASE_VERIFICATION.md, 그리고 README 히어로에 임베드된 실제 대시보드 스크린샷.
-    triggered_by: Operator requested the v1.35.x confirm-round follow-up plus a clean v1.36.0 ledger
+    triggered_by:
+      Operator requested the v1.35.x confirm-round follow-up plus a clean v1.36.0 ledger
       bump after seeing the auto-chore commit; supplied docs/assets/qmonster-dashboard.png via
       Pictures/Screenshots.
     changes:
@@ -16080,18 +16235,22 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: no runtime behavior change. PolicyGates field values are identical to v1.35.3 for the same
+      runtime:
+        no runtime behavior change. PolicyGates field values are identical to v1.35.3 for the same
         QmonsterConfig — the new policy_gates_propagates_custom_reset_config test pins ResetConfig
         propagation explicitly. Default-config operators see no advisory firing change.
-      tests: 1 new lib test (policy_gates_propagates_custom_reset_config); 5 existing PolicyGates tests +
+      tests:
+        1 new lib test (policy_gates_propagates_custom_reset_config); 5 existing PolicyGates tests +
         1 event_loop call site rewired with no logic change. cargo fmt --all -- --check, cargo build,
         cargo test --all-targets (792 lib + 45 + 18 + 6 integration), cargo clippy --all-targets -- -D
         warnings all pass.
-      ledger: 1 new timeline entry (sequence 171); meta bump; minor version bump v1.35.3 -> v1.36.0
+      ledger:
+        1 new timeline entry (sequence 171); meta bump; minor version bump v1.35.3 -> v1.36.0
         because PolicyGates is a structural API change (internal but visible to anyone subclassing the
         policy module) and the release pipeline now emits a new artifact category (SBOM) —
         semantically larger than a patch.
-      npm: package.json bumped to 1.36.0 so publish/tag/package surfaces stay aligned. npm publish itself
+      npm:
+        package.json bumped to 1.36.0 so publish/tag/package surfaces stay aligned. npm publish itself
         is deferred to a follow-up commit per the v1.35.0 / v1.34.0 / v1.33.0 precedent.
       observable_effects:
         added:
@@ -16110,7 +16269,8 @@ timeline:
             it up via the existing find -maxdepth 1 pattern
         removed: []
     breaking: false
-    risk: low — PolicyGates refactor is mechanical (no behavior change, all 6 call sites updated
+    risk:
+      low — PolicyGates refactor is mechanical (no behavior change, all 6 call sites updated
       together, all existing tests still pass with identical assertions). The new
       policy_gates_propagates_custom_reset_config test guards the ResetConfig propagation that the
       operator can already exercise via [reset] qmonster.toml. SBOM generation runs in the release
@@ -16174,7 +16334,8 @@ timeline:
       removed: []
     impact_scope:
       runtime: no runtime behavior change
-      tests: "release-validation pass expected after version bump: cargo fmt --all --check, git diff
+      tests:
+        "release-validation pass expected after version bump: cargo fmt --all --check, git diff
         --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings -A
         clippy::uninlined_format_args, cargo build --release, npm pack --dry-run,
         scripts/verify-shared.sh"
@@ -16190,7 +16351,8 @@ timeline:
             remote tag
         removed: []
     breaking: false
-    risk: low — docs/package/workflow hygiene only; no Rust runtime code changes beyond the
+    risk:
+      low — docs/package/workflow hygiene only; no Rust runtime code changes beyond the
       already-validated v1.36.0 refactor.
     related_commits: []
     follow_up:
@@ -16225,7 +16387,8 @@ timeline:
       위한 CI 가드, MF-2 SBOM 이 워크스페이스가 아닌 실제 릴리스 바이너리를 반영하도록 위치 변경). Codex OBS-136-5 와 Gemini MF-2 는 같은
       이슈의 양면이라 MF-2 로 SBOM 범위를 고치면 RELEASE_VERIFICATION.md 의 문구를 정직하게 유지할 수 있다 (OBS-136-5 자연 종결). 세 항목
       모두 이 패치에 함께 반영.
-    triggered_by: v1.36.x confirm round (Codex + Gemini) returned approve / approve-with-fixes against
+    triggered_by:
+      v1.36.x confirm round (Codex + Gemini) returned approve / approve-with-fixes against
       v1.36.0 + v1.36.1; structured mirrors materialized at
       .mission/evals/Qmonster-v0.4.0-2026-04-30-v1.36.x-confirm-review.result.yaml (Codex) and
       ...-gemini-review.result.yaml; operator approved bundled must-fix closure following the v1.35.2
@@ -16270,16 +16433,20 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: no runtime behavior change — Rust source is untouched. CI workflow gains one validation
+      runtime:
+        no runtime behavior change — Rust source is untouched. CI workflow gains one validation
         step; release workflow reorders three steps and adjusts SBOM scope.
-      tests: cargo gates unchanged (792 lib + 45 + 18 + 6 integration); npm pack --dry-run + the new
+      tests:
+        cargo gates unchanged (792 lib + 45 + 18 + 6 integration); npm pack --dry-run + the new
         files-allow-list guard pass against v1.36.2 source (4 top-level docs, all in package.json
         files allow-list, all in pack output); release workflow run will execute against the v1.36.2
         tag.
-      ledger: 1 new timeline entry (sequence 173); meta total_revisions 172 → 173, latest_version 1.36.1 →
+      ledger:
+        1 new timeline entry (sequence 173); meta total_revisions 172 → 173, latest_version 1.36.1 →
         1.36.2; patch version bump for confirm-review must-fix closure (matches v1.35.2 precedent —
         must-fix closure earns its own version).
-      npm: package.json bumped to 1.36.2 so publish/tag/package surfaces stay aligned. Operator npm-auth
+      npm:
+        package.json bumped to 1.36.2 so publish/tag/package surfaces stay aligned. Operator npm-auth
         required to (a) publish qmonster@1.36.2 and (b) deprecate qmonster@1.36.0 pointing users at
         1.36.1+.
       observable_effects:
@@ -16297,7 +16464,8 @@ timeline:
             (the new 'Compute release checksums' split)."
         removed: []
     breaking: false
-    risk: low — CI guard is purely additive (fails on regression, passes on current state, smoke-tested
+    risk:
+      low — CI guard is purely additive (fails on regression, passes on current state, smoke-tested
       locally against v1.36.2 source); release workflow reordering is mechanical (step boundaries
       moved, no logic rewritten); doc honesty edit is descriptive only. The SBOM scope change is
       observable to downstream operators consuming the SBOM JSON, but it strictly increases fidelity
@@ -16339,7 +16507,8 @@ timeline:
       로 붕괴했다. v1.36.3은 Cargo.lock을 binary와 함께 릴리스 tarball에 포함하고, SBOM packages 수가 50 미만이면 release
       workflow를 실패시키는 가드를 추가하며, docs/RELEASE_VERIFICATION.md에 번들된 Cargo.lock에 대한 설명을 추가한다. commit 전에
       syft 1.42.3으로 두 디렉토리에 대해 로컬 smoke 검증 완료 — 1 vs 257 packages 확인.
-    triggered_by: Operator detected v1.36.2 SBOM size dropped from 591544 to 1181 bytes; investigation
+    triggered_by:
+      Operator detected v1.36.2 SBOM size dropped from 591544 to 1181 bytes; investigation
       showed package count collapsed from ~257 to 1; locally reproduced with syft 1.42.3 against the
       assembled binary directory.
     changes:
@@ -16371,14 +16540,18 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: no runtime behavior change. Rust source is untouched. Release pipeline gains one cp + one
+      runtime:
+        no runtime behavior change. Rust source is untouched. Release pipeline gains one cp + one
         validation step.
-      tests: cargo gates unchanged (792 lib + 45 + 18 + 6 integration); local smoke against syft 1.42.3
+      tests:
+        cargo gates unchanged (792 lib + 45 + 18 + 6 integration); local smoke against syft 1.42.3
         confirmed 1 vs 257 packages before commit; CI guard threshold (50) verified to be high enough
         above v1.36.2 regression and well below current healthy state.
-      ledger: 1 new timeline entry (sequence 174); meta total_revisions 173 → 174, latest_version 1.36.2 →
+      ledger:
+        1 new timeline entry (sequence 174); meta total_revisions 173 → 174, latest_version 1.36.2 →
         1.36.3; patch version bump for SBOM defect closure.
-      npm: package.json bumped to 1.36.3 so publish/tag/package surfaces stay aligned. CI NPM_TOKEN secret
+      npm:
+        package.json bumped to 1.36.3 so publish/tag/package surfaces stay aligned. CI NPM_TOKEN secret
         was renamed back from NPM_TOKEN_NEW to NPM_TOKEN by operator at 2026-04-30 06:08 UTC, so the
         v1.36.3 release workflow's Publish canonical npm package step should now succeed end-to-end
         (v1.36.2 failed at this step due to the missing NPM_TOKEN; local npm publish landed v1.36.2
@@ -16398,7 +16571,8 @@ timeline:
             grows by roughly the same amount.
         removed: []
     breaking: false
-    risk: low — release pipeline change is mechanical (one cp added in the assemble step, one new
+    risk:
+      low — release pipeline change is mechanical (one cp added in the assemble step, one new
       validation step); SBOM file size grows but content fidelity strictly increases; tarball gains
       Cargo.lock which is a non-secret transparency artifact. The 50-package guard could theoretically
       false-positive if qmonster ever drops below 50 dependencies, but that's so far below the actual
@@ -16434,7 +16608,8 @@ timeline:
       v1.36.3이 SBOM package fidelity를 복구한 뒤 남은 release provenance hardening 항목을 종결한다. 결함 있는 v1.36.2
       릴리스를 명확히 supersede 처리하고, 각 release body에 검증 명령을 직접 넣으며, 연속 릴리스 SBOM의 심한 package-count 회귀를
       비교/차단하고, SPDX SBOM을 Linux binary tarball에 묶는 독립 SBOM attestation을 추가한다.
-    triggered_by: Operator requested items 1, 2, 3, and 5 from the remaining-work list after comparing
+    triggered_by:
+      Operator requested items 1, 2, 3, and 5 from the remaining-work list after comparing
       v1.36.1 work with the v1.36.3 agent patch.
     changes:
       added:
@@ -16480,15 +16655,19 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: no runtime behavior change. Rust source is untouched; release automation and documentation
+      runtime:
+        no runtime behavior change. Rust source is untouched; release automation and documentation
         only.
-      tests: "expected v1.36.4 gates: cargo fmt --all --check, git diff --check, cargo test --all-targets,
+      tests:
+        "expected v1.36.4 gates: cargo fmt --all --check, git diff --check, cargo test --all-targets,
         cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args, cargo build
         --release, npm pack --dry-run, scripts/verify-shared.sh, and the v1.36.4 release workflow
         exercising SBOM diff + SBOM attestation."
-      ledger: 1 new timeline entry (sequence 175); meta total_revisions 174 -> 175, latest_version 1.36.3
+      ledger:
+        1 new timeline entry (sequence 175); meta total_revisions 174 -> 175, latest_version 1.36.3
         -> 1.36.4; patch version bump for release-provenance hardening.
-      npm: publish target qmonster@1.36.4; qmonster@1.36.2 is deprecated and qmonster@1.36.0 was already
+      npm:
+        publish target qmonster@1.36.4; qmonster@1.36.2 is deprecated and qmonster@1.36.0 was already
         deprecated.
       observable_effects:
         added:
@@ -16504,7 +16683,8 @@ timeline:
           - v1.36.2 is visibly superseded in GitHub Releases and npm metadata
         removed: []
     breaking: false
-    risk: medium-low — workflow-only changes, but the new actions/attest@v4 SBOM attestation and
+    risk:
+      medium-low — workflow-only changes, but the new actions/attest@v4 SBOM attestation and
       artifact-metadata permission are exercised only by the tagged release workflow. The SBOM diff
       guard allows normal churn but intentionally fails if package count drops below half of the
       previous release or below 50.
@@ -16535,7 +16715,8 @@ timeline:
       자동 release-body footer에 들어간 checksum 검증 명령이 실제 다운로드 디렉터리에서도 그대로 동작하도록 수정한다. v1.36.4는 repository
       root에서 checksum을 계산해 checksums.txt에 dist/... 경로가 들어갔고, 일반적인 flat download directory에서 sha256sum
       -c checksums.txt가 실패했다. 이제 dist/ 내부에서 checksum을 계산해 asset basename만 기록한다.
-    triggered_by: Post-release verification of v1.36.4 assets found the checksum path mismatch before
+    triggered_by:
+      Post-release verification of v1.36.4 assets found the checksum path mismatch before
       final handoff.
     changes:
       added:
@@ -16564,14 +16745,18 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: no runtime behavior change. Rust source is untouched; release automation and documentation
+      runtime:
+        no runtime behavior change. Rust source is untouched; release automation and documentation
         only.
-      tests: "expected v1.36.5 gates: YAML parse, git diff --check, npm pack --dry-run,
+      tests:
+        "expected v1.36.5 gates: YAML parse, git diff --check, npm pack --dry-run,
         scripts/verify-shared.sh, and the v1.36.5 release workflow followed by real asset
         checksum/provenance/SBOM-attestation verification."
-      ledger: 1 new timeline entry (sequence 176); meta total_revisions 175 -> 176, latest_version 1.36.4
+      ledger:
+        1 new timeline entry (sequence 176); meta total_revisions 175 -> 176, latest_version 1.36.4
         -> 1.36.5; patch version bump for release checksum verification correctness.
-      npm: publish target qmonster@1.36.5; v1.36.4 package artifacts remain valid but the v1.36.5 release
+      npm:
+        publish target qmonster@1.36.5; v1.36.4 package artifacts remain valid but the v1.36.5 release
         has the corrected checksum file format.
       observable_effects:
         added: []
@@ -16582,7 +16767,8 @@ timeline:
         removed:
           - checksums.txt entries no longer carry dist/ path prefixes
     breaking: false
-    risk: low — workflow-only checksum path formatting change plus docs/version surfaces. The release
+    risk:
+      low — workflow-only checksum path formatting change plus docs/version surfaces. The release
       workflow verifies the resulting file in post-release checks.
     related_commits: []
     follow_up:
@@ -16617,7 +16803,8 @@ timeline:
       scripts/release/ 의 standalone 스크립트로 추출해 테스트 가능하게 분리; (B.4) cargo audit (rustsec advisory check)
       CI 단계 추가로 알려진 취약점이 release tag에 도달하기 전에 차단; (B.5) scripts/release/dry-run.sh 추가로 release-asset
       job을 로컬에서 그대로 실행할 수 있게 하여 v1.36.0 / v1.36.2 / v1.36.5에서 ship된 회귀를 tag push 전에 재현 가능.
-    triggered_by: Operator approval to proceed with all open items except tag-protection ruleset and
+    triggered_by:
+      Operator approval to proceed with all open items except tag-protection ruleset and
       long-horizon work; v1.36.0..v1.36.5 chain shipped 5 emergency patches, of which 3 closed defects
       in Claude's own work — the dry-run script in particular addresses the root cause.
     changes:
@@ -16671,13 +16858,16 @@ timeline:
       removed: []
     impact_scope:
       runtime: no runtime behavior change. Rust source untouched; only CI/release scripts and docs.
-      tests: "cargo gates unchanged (792 lib + 45 + 18 + 6 integration); local smoke validation:
+      tests:
+        "cargo gates unchanged (792 lib + 45 + 18 + 6 integration); local smoke validation:
         scripts/release/dry-run.sh successfully runs the full pipeline against a current build and
         produces a 257-package SBOM matching v1.36.5 fidelity; SBOM diff filter is unit-testable now
         that the script is standalone."
-      ledger: 1 new timeline entry (sequence 177); meta total_revisions 176 → 177, latest_version 1.36.5 →
+      ledger:
+        1 new timeline entry (sequence 177); meta total_revisions 176 → 177, latest_version 1.36.5 →
         1.36.6; patch version bump for release-pipeline polish.
-      npm: package.json bumped to 1.36.6 so publish/tag/package surfaces stay aligned. Operator publishes
+      npm:
+        package.json bumped to 1.36.6 so publish/tag/package surfaces stay aligned. Operator publishes
         via `npm publish --access public` after this commit lands or via the CI workflow on tag push.
       observable_effects:
         added:
@@ -16693,7 +16883,8 @@ timeline:
             script.
         removed: []
     breaking: false
-    risk: low — scripts are mechanical extractions of existing inline logic with a small added filter;
+    risk:
+      low — scripts are mechanical extractions of existing inline logic with a small added filter;
       cargo audit is a new gate but rustsec/audit-check@v2 is the official action; dry-run script
       writes only to dist-dryrun/ (gitignored) and ~/.cache/qmonster-release-tools/ (operator's home,
       syft binary cached); the SPDX root-doc filter has been smoke-tested locally.
@@ -16736,7 +16927,8 @@ timeline:
       (3 must-fix), Gemini approve-with-fixes (3 must-fix; MF-2 evolution_summary 길이 정리는 운영자 긴호흡 보류
       정책). Codex CFX-136R-2 와 Gemini MF-3 은 같은 이슈의 양면이라 sbom-diff.js 의 --count / --count-purl 모드로 통합
       종결. 6개 중 5개를 본 패치에 묶고 MF-2 는 follow-up tracked.
-    triggered_by: v1.36.x refresh confirm round (Codex + Gemini against c86b594..d7ef1e3) returned
+    triggered_by:
+      v1.36.x refresh confirm round (Codex + Gemini against c86b594..d7ef1e3) returned
       approve-with-fixes / approve-with-fixes; structured mirrors materialized at
       .mission/evals/Qmonster-v0.4.0-2026-04-30-v1.36.x-refresh-confirm-review.result.yaml (Codex) and
       ...-gemini-review.result.yaml. Operator approved bundled must-fix closure with MF-2 deferred per
@@ -16802,13 +16994,16 @@ timeline:
       removed: []
     impact_scope:
       runtime: no runtime behavior change. Rust source untouched.
-      tests: cargo gates unchanged (792 lib + 45 + 18 + 6 integration); local sbom-diff.js --count /
+      tests:
+        cargo gates unchanged (792 lib + 45 + 18 + 6 integration); local sbom-diff.js --count /
         --count-purl smoke against the v1.36.6 SBOM returns 256 / 256 (matching the diff path's
         filter); scripts/release/dry-run.sh end-to-end run validates package + purl + npm publish
         --dry-run + cargo audit gates.
-      ledger: 1 new timeline entry (sequence 178); meta total_revisions 177 → 178, latest_version 1.36.6 →
+      ledger:
+        1 new timeline entry (sequence 178); meta total_revisions 177 → 178, latest_version 1.36.6 →
         1.36.7; patch version bump for confirm-round must-fix closure.
-      npm: package.json bumped to 1.36.7 so publish/tag/package surfaces stay aligned. CI publish job
+      npm:
+        package.json bumped to 1.36.7 so publish/tag/package surfaces stay aligned. CI publish job
         validated end-to-end at v1.36.6; v1.36.7 expected to follow.
       observable_effects:
         added:
@@ -16824,7 +17019,8 @@ timeline:
             count_real_packages / count_purl_packages bash functions.
         removed: []
     breaking: false
-    risk: low — script extraction is mechanical, the SPDX root-doc filter logic is unchanged (just
+    risk:
+      low — script extraction is mechanical, the SPDX root-doc filter logic is unchanged (just
       centralized), cargo audit step at release time uses the same official action as ci.yml, npm
       publish --dry-run is a no-side-effect probe. The only operator-visible change is that dry-run.sh
       now requires either an existing cargo-audit installation or the ability to run cargo install
@@ -16865,7 +17061,8 @@ timeline:
       0.22.1 의 transitive dep smol_str@0.3.6 가 rustc 1.89 요구 → 워크플로우 툴체인은 rustc 1.88.0 으로 고정 → 컴파일 실패.
       운영자가 두 후속 커밋으로 정정한 뒤 workflow_dispatch 로 v1.36.7 재실행에 성공했지만, 그 두 커밋은 태그/릴리스가 없는 상태였다. v1.36.8 이
       이 격차를 메운다.
-    triggered_by: v1.36.7 workflow_dispatch retry succeeded thanks to two on-main fixup commits (209cbe9
+    triggered_by:
+      v1.36.7 workflow_dispatch retry succeeded thanks to two on-main fixup commits (209cbe9
       contributors metadata + ede03fb cargo-audit version pin); operator approved a v1.36.8 ledger
       sync to formally release them.
     changes:
@@ -16886,11 +17083,14 @@ timeline:
       removed: []
     impact_scope:
       runtime: no runtime behavior change. Rust source untouched.
-      tests: cargo gates expected to pass at v1.36.8 (no Rust source change since v1.36.7);
+      tests:
+        cargo gates expected to pass at v1.36.8 (no Rust source change since v1.36.7);
         scripts/release/dry-run.sh remains green.
-      ledger: 1 new timeline entry (sequence 179); meta total_revisions 178 → 179, latest_version 1.36.7 →
+      ledger:
+        1 new timeline entry (sequence 179); meta total_revisions 178 → 179, latest_version 1.36.7 →
         1.36.8; patch version bump for ledger sync + npm tarball sync.
-      npm: publish target qmonster@1.36.8; npm tarball now includes CONTRIBUTORS.md and the contributors
+      npm:
+        publish target qmonster@1.36.8; npm tarball now includes CONTRIBUTORS.md and the contributors
         array.
       observable_effects:
         added:
@@ -16917,7 +17117,8 @@ timeline:
           install --locked cargo-audit --version $CARGO_AUDIT_VERSION` so the local mirror tracks the
           same pinned version."
     breaking: false
-    risk: very low — all underlying changes are already on main, validated by the v1.36.7
+    risk:
+      very low — all underlying changes are already on main, validated by the v1.36.7
       workflow_dispatch retry. v1.36.8 is purely the meta/ledger sync that should have ridden with
       those changes if v1.36.7's first workflow run had succeeded.
     related_commits:
@@ -16953,7 +17154,8 @@ timeline:
       F-8 multi-pane orchestration, F-9 dynamic profile switching, F-9b cost budget tracking, Phase 6
       Team Mode layered configuration 네 가지 하위 호환 기능을 v1.37.0 으로 묶어 릴리스한다. v1.36.x 의 릴리스 파이프라인 안정화 이후
       런타임 기능을 전진시키되, 새 고신호 추천은 opt-in 또는 비파괴 경로로 유지한다.
-    triggered_by: Operator requested cost-tracking advancements with a $200 budget and Phase 6 Team
+    triggered_by:
+      Operator requested cost-tracking advancements with a $200 budget and Phase 6 Team
       Mode; concurrent F-8/F-9 work was already landing on main and the final v1.37.0 tag bundles all
       four features.
     changes:
@@ -16991,13 +17193,17 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Adds opt-in policy recommendations, SQLite cost-budget metadata tables, and config-loading
+      runtime:
+        Adds opt-in policy recommendations, SQLite cost-budget metadata tables, and config-loading
         behavior. No destructive automation or provider config mutation is introduced.
-      tests: Release commit reported 833 lib + 50 + 18 + 6 integration tests green; fmt, diff-check,
+      tests:
+        Release commit reported 833 lib + 50 + 18 + 6 integration tests green; fmt, diff-check,
         clippy -D warnings, cargo audit allowlist, and scripts/release/dry-run.sh v1.37.0 passed.
-      ledger: 1 new timeline entry (sequence 180); meta total_revisions 179 -> 180, latest_version 1.36.8
+      ledger:
+        1 new timeline entry (sequence 180); meta total_revisions 179 -> 180, latest_version 1.36.8
         -> 1.37.0; minor version bump for four backwards-compatible features.
-      npm: package metadata targets qmonster@1.37.0; external CI publication should be verified after the
+      npm:
+        package metadata targets qmonster@1.37.0; external CI publication should be verified after the
         release workflow completes.
       observable_effects:
         added:
@@ -17014,7 +17220,8 @@ timeline:
             cumulative-delta ledger for budget accounting.
         removed: []
     breaking: false
-    risk: medium-low — new signals are mostly opt-in, cost alerts are one-shot metadata writes, and
+    risk:
+      medium-low — new signals are mostly opt-in, cost alerts are one-shot metadata writes, and
       local config overlays are constrained to a sibling qmonster.local.toml. Main residual risk is
       operator confusion if CI publication is assumed before the workflow finishes; CURRENT_STATE.md
       records publication verification as the next first action.
@@ -17051,7 +17258,8 @@ timeline:
       p/d/y Action Explainer 모달과 [ux] confirm_actions (always/first_time/never) 설정, F4 S/P/t/m +
       target picker 에 대한 toggle-on-entry-key + [x] 표준화 네 가지 하위 호환 UX 개선을 v1.38.0 으로 묶어 릴리스한다. UI/UX
       계층에만 국한되며 provider, audit, policy, SignalSet 스키마는 변경되지 않는다.
-    triggered_by: "Operator surfaced four UX gaps while running v1.37.0: no at-a-glance metrics view,
+    triggered_by:
+      "Operator surfaced four UX gaps while running v1.37.0: no at-a-glance metrics view,
       pane card text truncation on narrow splits, opaque silent-execute behavior of p/d/y actions, and
       inconsistent overlay close UX. The v1.38 UX bundle spec
       (docs/superpowers/specs/2026-05-04-v1.38-ux-bundle-design.md) collapses all four into a single
@@ -17097,14 +17305,18 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: UI/UX layer only. No change to provider adapters, audit chain, policy gates, SignalSet
+      runtime:
+        UI/UX layer only. No change to provider adapters, audit chain, policy gates, SignalSet
         schema, SQLite schema, or recommendation/effect dispatch. Action Explainer wraps existing
         p/d/y handlers; the underlying effects are unchanged.
-      tests: Release commit reported 874 lib + 50 + 18 + 6 integration tests green (cargo fmt, cargo test
+      tests:
+        Release commit reported 874 lib + 50 + 18 + 6 integration tests green (cargo fmt, cargo test
         --all-targets, cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args).
-      ledger: 1 new timeline entry (sequence 181); meta total_revisions 180 -> 181, latest_version 1.37.0
+      ledger:
+        1 new timeline entry (sequence 181); meta total_revisions 180 -> 181, latest_version 1.37.0
         -> 1.38.0; minor version bump for four backwards-compatible UX features.
-      npm: package.json version 1.38.0; CI publication of v1.38.0 follows the same workflow as v1.37.0 and
+      npm:
+        package.json version 1.38.0; CI publication of v1.38.0 follows the same workflow as v1.37.0 and
         remains an external follow-up until verified.
       observable_effects:
         added:
@@ -17129,7 +17341,8 @@ timeline:
             Vec<Line> length so hit-testing stays correct.
         removed: []
     breaking: false
-    risk: low — every change is on the UI/UX layer with existing data sources. F3 Action Explainer adds
+    risk:
+      low — every change is on the UI/UX layer with existing data sources. F3 Action Explainer adds
       an extra confirm step on p/d/y by default, but [ux] confirm_actions = never restores v1.37.0
       behavior. F2 wrap fix changes pane card heights; pane_index_at_row regression test covers
       hit-testing under wrap. F4 toggle-on-entry-key keeps existing Esc/q close keys functional.
@@ -17204,7 +17417,8 @@ timeline:
       proposal_id audit 전파); codex CLI ≥ 0.128 의 비요청 JSON-RPC 알림(remoteControl/status/changed)을 건너뛰도록
       read_response 를 수정해 매 폴 사이클 rateLimits 읽기가 조용히 실패하던 호환성 이슈 해결; Settings/Help/Provider
       Setup/UI_MANUAL/footer/문구 발견 가능성 동기화.
-    triggered_by: Operator runs against codex 0.128 surfaced silent rateLimits/read failure on every
+    triggered_by:
+      Operator runs against codex 0.128 surfaced silent rateLimits/read failure on every
       poll tick; v1.38 metrics overlay needed per-pane card layout polish + real MEM trend; Action
       Explainer mouse pass-through + proposal drift were operator-noticed correctness gaps;
       v1.37/v1.38 surface area lacked Settings/Help discoverability.
@@ -17274,16 +17488,20 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: UI/UX polish + correctness round. Metrics overlay layout reflowed but the underlying signal
+      runtime:
+        UI/UX polish + correctness round. Metrics overlay layout reflowed but the underlying signal
         sources are unchanged. Action Explainer hardening adds a snapshot validation step but no new
         policy gates. Codex App Server compatibility fix is a single read_response loop change — no
         JSON-RPC schema change, just a notification skip. Audit summaries gain proposal_id but remain
         backwards-compatible.
-      tests: cargo fmt --all --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings
+      tests:
+        cargo fmt --all --check, cargo test --all-targets, cargo clippy --all-targets -- -D warnings
         -A clippy::uninlined_format_args, git diff --check all green at HEAD 0c59a90.
-      ledger: 1 new timeline entry (sequence 182); meta total_revisions 181 -> 182, latest_version 1.38.0
+      ledger:
+        1 new timeline entry (sequence 182); meta total_revisions 181 -> 182, latest_version 1.38.0
         -> 1.39.0; minor version bump for the polish + correctness round.
-      npm: package.json version 1.39.0; CI publication of v1.39.0 follows the same workflow as v1.38.0 /
+      npm:
+        package.json version 1.39.0; CI publication of v1.39.0 follows the same workflow as v1.38.0 /
         v1.37.0 and remains an external follow-up until verified.
       observable_effects:
         added:
@@ -17313,7 +17531,8 @@ timeline:
             (backwards-compatible for absence).
         removed: []
     breaking: false
-    risk: low — metrics overlay reflow is visual-only and bounded by existing key/mouse contracts;
+    risk:
+      low — metrics overlay reflow is visual-only and bounded by existing key/mouse contracts;
       Action Explainer hardening adds a defensive snapshot validation step; codex 0.128 compat fix is
       a single notification-skip in read_response; proposal_id audit threading is additive.
     related_commits:
@@ -17373,7 +17592,8 @@ timeline:
       Explainer 패널, Space/P/Y/A/c 다중선택 (stable-key 추적), 기존 confirm_pending_action 경로를 통한 항목별 p/d/y 일괄
       디스패치 (새 audit 이벤트 타입 없음), 단일 항목 디스패치와 동일한 dashboard.push_notice 경로 알림 라우팅, m 오버레이와 대칭인 전체
       geometry 제어 ([/]/=/, /. / 타이틀-드래그 / 구분자-드래그) 를 갖춘다. UI_MANUAL §8.5 + §8.7 + 도움말 오버레이가 갱신된다.
-    triggered_by: Operator surfaced overlay-geometry friction in v1.39.0 — the m overlay was
+    triggered_by:
+      Operator surfaced overlay-geometry friction in v1.39.0 — the m overlay was
       non-movable, the a overlay was a single-pane action list with no live explainer + no
       multi-select + no operator-tunable geometry. The v1.40 spec
       (docs/superpowers/specs/2026-05-06-mouse-drag-and-bulk-overlays-design.md) and plan
@@ -17459,18 +17679,22 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: UI/UX layer only. No change to provider adapters, audit chain, policy gates, SignalSet
+      runtime:
+        UI/UX layer only. No change to provider adapters, audit chain, policy gates, SignalSet
         schema, SQLite schema, or recommendation/effect dispatch. Bulk dispatch routes per-item
         through the existing confirm_pending_action(...) path so the audit event chain
         (PromptSendAccepted/Rejected/Completed/Blocked + AlertHidden via alert_hide_deadlines.insert)
         is unchanged. Geometry state lives only in the overlay structs and is reset on restart.
-      tests: 1022 lib tests + 50 event-loop integration tests + 18 false-positive regression tests + 6
+      tests:
+        1022 lib tests + 50 event-loop integration tests + 18 false-positive regression tests + 6
         idle-state regression tests passing; cargo fmt --all --check, cargo clippy --all-targets -- -D
         warnings -A clippy::uninlined_format_args, cargo test --all-targets, git diff --check all
         green.
-      ledger: 1 new timeline entry (sequence 183); meta total_revisions 182 -> 183, latest_version 1.39.0
+      ledger:
+        1 new timeline entry (sequence 183); meta total_revisions 182 -> 183, latest_version 1.39.0
         -> 1.40.0; minor version bump for the overlay-geometry round.
-      npm: package.json version 1.40.0; CI publication of v1.40.0 follows the same workflow as v1.37.0 /
+      npm:
+        package.json version 1.40.0; CI publication of v1.40.0 follows the same workflow as v1.37.0 /
         v1.38.0 / v1.39.0 and remains an external follow-up until verified.
       observable_effects:
         added:
@@ -17505,7 +17729,8 @@ timeline:
           - src/app/tui_loop.rs::dispatch_pending_action helper is removed; callers route per-item
             through confirm_pending_action(...).
     breaking: false
-    risk: low — every change is on the UI/UX layer with existing data sources. Bulk dispatch routes
+    risk:
+      low — every change is on the UI/UX layer with existing data sources. Bulk dispatch routes
       per-item through confirm_pending_action so audit event chain is unchanged; legacy
       dispatch_pending_action helper is removed but had no external callers. Geometry state is reset
       on restart. The asymmetric clamp keeps the overlay reachable on every viewport size. 1022 lib
@@ -17585,7 +17810,8 @@ timeline:
       플래그를 얻는다. 더불어 v1.40.0 베이스라인에서의 문서/git 일관성 감사 (stale "Enter jumps + opens Action Explainer" 모듈 문서
       정리, spec 상태를 "implementation shipped" 로 플립, plan 체크박스를 완료로 플립, CURRENT_STATE 태그 후 polish 리스트
       갱신).
-    triggered_by: Operator surfaced two v1.40 a-overlay regressions on main (cursor staleness when
+    triggered_by:
+      Operator surfaced two v1.40 a-overlay regressions on main (cursor staleness when
       polling shrinks the list, ,/. first-press direction inversion when the auto-formula list width
       was wider than override) and asked for the confirm_actions bypass (which the v1.40 a overlay
       always intentionally skipped) to become discoverable instead of silent. v1.41.0 also closes a
@@ -17644,17 +17870,21 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: a overlay (Pending Actions) only. No change to provider adapters, audit chain, policy
+      runtime:
+        a overlay (Pending Actions) only. No change to provider adapters, audit chain, policy
         gates, SignalSet schema, SQLite schema, or recommendation/effect dispatch. The new
         SystemNotice flows through the existing dashboard.push_notice path; the seen_first_open flag
         is overlay-local state reset on restart.
-      tests: 1028 lib tests + 50 event-loop integration tests + 18 false-positive regression tests + 6
+      tests:
+        1028 lib tests + 50 event-loop integration tests + 18 false-positive regression tests + 6
         idle-state regression tests passing at the v1.41.0 release commit (+6 vs the v1.40.0 baseline
         of 1022); cargo fmt --all --check, cargo clippy --all-targets -- -D warnings -A
         clippy::uninlined_format_args, cargo test --all-targets, git diff --check all green.
-      ledger: 1 new timeline entry (sequence 184); meta total_revisions 183 -> 184, latest_version 1.40.0
+      ledger:
+        1 new timeline entry (sequence 184); meta total_revisions 183 -> 184, latest_version 1.40.0
         -> 1.41.0; minor version bump for the a-overlay polish round.
-      npm: package.json version 1.41.0; CI publication of v1.41.0 follows the same workflow as v1.37.0 /
+      npm:
+        package.json version 1.41.0; CI publication of v1.41.0 follows the same workflow as v1.37.0 /
         v1.38.0 / v1.39.0 / v1.40.0 and remains an external follow-up until verified.
       observable_effects:
         added:
@@ -17683,7 +17913,8 @@ timeline:
           - Stale 'Enter jumps + opens Action Explainer' module-doc surface gone (Enter is silently
             swallowed inside the live-explainer split per v1.40).
     breaking: false
-    risk: low — every change is on the a overlay UI/UX layer with existing data sources. The cursor
+    risk:
+      low — every change is on the a overlay UI/UX layer with existing data sources. The cursor
       staleness clamp is defensive; the ,/. viewport param is additive; the confirm_actions bypass
       surfacing only adds discoverability and does not change actuation. No new audit event types.
       1028 lib tests cover the new clamp, viewport-aware key handler, and SystemNotice firing path.
@@ -17733,7 +17964,8 @@ timeline:
       포함), maybe_auto_snapshot (게이트 → 중복제거 → 아카이브 호출 오케스트레이터), Context.auto_snapshot_dedup (세션별
       HashMap) 을 추가하고, run_once_with_target 에 리셋 발생 전 maybe_auto_snapshot 을 연결한다. Settings 오버레이에
       Parameters/Rules 행 추가. 프로바이더 어댑터, 감사 체인, SignalSet 스키마 변경 없음.
-    triggered_by: Operator scoped Phase H (opt-in auto-snapshot at reset boundary) as a discrete feature
+    triggered_by:
+      Operator scoped Phase H (opt-in auto-snapshot at reset boundary) as a discrete feature
       addition; the spec was committed at the plan stage (bbab2bf). Phase H is shipped in v1.42.0 with
       a 10-task implementation sequence (Tasks 1-9 = impl commits, Task 10 = ledger sync).
     changes:
@@ -17789,17 +18021,21 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Reset path in run_once_with_target only. No change to provider adapters, audit chain
+      runtime:
+        Reset path in run_once_with_target only. No change to provider adapters, audit chain
         (snapshot routes through existing ArchiveWritten path), policy gates set, SignalSet schema, or
         SQLite schema. The auto_snapshot_dedup HashMap is overlay-local state reset on restart.
-      tests: ~1049 lib tests + ~52 event-loop integration tests + 18 false-positive regression tests + 6
+      tests:
+        ~1049 lib tests + ~52 event-loop integration tests + 18 false-positive regression tests + 6
         idle-state regression tests passing at the v1.42.0 release commit (+21 lib tests vs the
         v1.41.0 baseline of 1028; +2 event-loop integration tests vs the v1.41.0 baseline of 50);
         cargo fmt --all --check, cargo clippy --all-targets -- -D warnings -A
         clippy::uninlined_format_args, cargo test --all-targets, git diff --check all green.
-      ledger: 1 new timeline entry (sequence 185); meta total_revisions 184 -> 185, latest_version 1.41.0
+      ledger:
+        1 new timeline entry (sequence 185); meta total_revisions 184 -> 185, latest_version 1.41.0
         -> 1.42.0; minor version bump for Phase H.
-      npm: package.json version 1.42.0; CI publication of v1.42.0 follows the same workflow as v1.37.0 /
+      npm:
+        package.json version 1.42.0; CI publication of v1.42.0 follows the same workflow as v1.37.0 /
         v1.38.0 / v1.39.0 / v1.40.0 / v1.41.0 and remains an external follow-up until verified.
       observable_effects:
         added:
@@ -17816,7 +18052,8 @@ timeline:
             a pure additive opt-in.
         removed: []
     breaking: false
-    risk: low — the feature is entirely opt-in (auto_snapshot = false by default). The dedup guard
+    risk:
+      low — the feature is entirely opt-in (auto_snapshot = false by default). The dedup guard
       prevents archive spam. The snapshot call routes through the existing ArchiveWritten audit path
       with no new audit event types. The drift guard in extract_quota_kind prevents silent bypass of
       the auto-snapshot logic.
@@ -17875,7 +18112,8 @@ timeline:
       필드를, PolicyGateInputs 는 anomaly 필드를 얻는다. eval_anomalies 가 4 개 검출기를 오케스트레이션 하며 엣지 트리거 중복제거로 각 이상은
       상승 엣지에서만 발생한다. PaneReport.anomalies 가 검출 결과를 이벤트 루프에 노출한다. m 오버레이 페인 카드에 ANOMALIES 행, Settings 에
       Parameters/Rules/Badges 행 추가. 프로바이더 어댑터, 감사 체인, SignalSet 스키마 변경 없음.
-    triggered_by: Operator scoped Phase 7 v1 (anomaly observation surface) as a 14-task implementation
+    triggered_by:
+      Operator scoped Phase 7 v1 (anomaly observation surface) as a 14-task implementation
       sequence (Tasks 1-13 = impl commits, Task 14 = ledger sync). The design spec was committed at
       docs/superpowers/specs/2026-05-06-phase7-v1-anomaly-overlay-design.md and the plan at
       docs/superpowers/plans/2026-05-06-phase7-v1-anomaly-overlay.md.
@@ -17950,18 +18188,22 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: eval_anomalies is called once per pane per poll tick when anomaly detection is enabled. No
+      runtime:
+        eval_anomalies is called once per pane per poll tick when anomaly detection is enabled. No
         change to provider adapters, audit chain, policy gates set (anomaly_* fields are additive),
         SignalSet schema, or SQLite schema. AnomalyHistory state is session-local and reset on
         restart.
-      tests: 1081 lib tests + 54 event-loop integration tests + 18 false-positive regression tests + 6
+      tests:
+        1081 lib tests + 54 event-loop integration tests + 18 false-positive regression tests + 6
         idle-state regression tests passing at the v1.43.0 release commit (+32 lib tests vs the
         v1.42.0 baseline of ~1049; +2 event-loop integration tests vs the v1.42.0 baseline of ~52);
         cargo fmt --all --check, cargo clippy --all-targets -- -D warnings -A
         clippy::uninlined_format_args, cargo test --all-targets, git diff --check all green.
-      ledger: 1 new timeline entry (sequence 186); meta total_revisions 185 -> 186, latest_version 1.42.0
+      ledger:
+        1 new timeline entry (sequence 186); meta total_revisions 185 -> 186, latest_version 1.42.0
         -> 1.43.0; minor version bump for Phase 7 v1.
-      npm: package.json version 1.43.0; CI publication of v1.43.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.43.0; CI publication of v1.43.0 follows the same workflow as v1.37.0
         through v1.42.0 and remains an external follow-up until verified.
       observable_effects:
         added:
@@ -17977,7 +18219,8 @@ timeline:
             surface is fully opt-in.
         removed: []
     breaking: false
-    risk: low — anomaly detection is entirely opt-in (enabled = false by default). Edge-triggered dedup
+    risk:
+      low — anomaly detection is entirely opt-in (enabled = false by default). Edge-triggered dedup
       prevents duplicate firings. No provider adapter, audit chain, or SignalSet schema changes.
       AnomalyHistory state is session-local.
     related_commits:
@@ -18020,11 +18263,12 @@ timeline:
       Medium/Low → Concern 으로 매핑한다. promote_anomalies_to_recommendations 가 AnomalySignal 슬라이스를
       Recommendation vec 으로 변환한다. event_loop 가 호출을 연결하고 Warning 심각도 결과를 Notify 경로로 라우팅한다. Settings
       Rules 탭에 4개 이상 규칙 행에 프로모션 어노테이션 추가.
-    triggered_by: Operator scoped Phase 7 v2 promotion as a 6-task implementation sequence (Tasks 1-5 =
+    triggered_by:
+      Operator scoped Phase 7 v2 promotion as a 6-task implementation sequence (Tasks 1-5 =
       impl commits, Task 6 = ledger sync).
     issue_or_context: >-
       Summary:
-  
+
       v1.44.0 ships Phase 7 v2 promotion: anomaly → Recommendation + Notify.
       severity_for(AnomalyConfidence) maps High → Warning and Medium/Low → Concern;
       promote_anomalies_to_recommendations converts AnomalySignal slices into Recommendation vecs;
@@ -18065,16 +18309,20 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: promote_anomalies_to_recommendations is called once per pane per poll tick when anomalies
+      runtime:
+        promote_anomalies_to_recommendations is called once per pane per poll tick when anomalies
         are present. No change to provider adapters, audit chain, policy gates set, SignalSet schema,
         or SQLite schema. AnomalyHistory and dedup state are unchanged.
-      tests: 1097 lib tests + 56 event-loop integration tests passing at the v1.44.0 release commit (+16
+      tests:
+        1097 lib tests + 56 event-loop integration tests passing at the v1.44.0 release commit (+16
         lib tests vs the v1.43.0 baseline of 1081; +2 event-loop integration tests vs the v1.43.0
         baseline of 54); cargo fmt --all --check, cargo clippy --all-targets -- -D warnings -A
         clippy::uninlined_format_args, cargo test --all-targets all green.
-      ledger: 1 new timeline entry (sequence 187); meta total_revisions 186 -> 187, latest_version 1.43.0
+      ledger:
+        1 new timeline entry (sequence 187); meta total_revisions 186 -> 187, latest_version 1.43.0
         -> 1.44.0; minor version bump for Phase 7 v2 promotion.
-      npm: package.json version 1.44.0; CI publication of v1.44.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.44.0; CI publication of v1.44.0 follows the same workflow as v1.37.0
         through v1.43.0 and remains an external follow-up until verified.
       observable_effects:
         added:
@@ -18089,7 +18337,8 @@ timeline:
             row as passive observation, with no Recommendation and no Notify.
         removed: []
     breaking: false
-    risk: "low — promotion is additive: anomaly detection was already happening. The severity_for /
+    risk:
+      "low — promotion is additive: anomaly detection was already happening. The severity_for /
       promote_anomalies_to_recommendations path is pure (no IO). The Notify gate (Severity >= Warning)
       is the same gate used by all other Warning-level recs. Opt-in via [anomaly] enabled = false
       (default) means zero behavior change when disabled."
@@ -18124,11 +18373,12 @@ timeline:
       발생을 주석하는 상관관계 annotator; Medium 신뢰도 한정; D3-C 정직성 노트에 따라 attribution 이 아닌 correlation). 3개의 slope
       검출기는 v1.44.0 프로모션 인프라와 동일한 severity_for + promote_anomalies_to_recommendations 경로를 사용하고,
       SubagentSideEffect 는 dedup 이후 최종 orchestrator hop 으로 실행된다.
-    triggered_by: Operator scoped Phase 7 v2 detectors as a 13-task implementation sequence (Tasks 1-12
+    triggered_by:
+      Operator scoped Phase 7 v2 detectors as a 13-task implementation sequence (Tasks 1-12
       = impl commits, Task 13 = ledger sync).
     issue_or_context: >-
       Summary:
-  
+
       v1.45.0 ships Phase 7 v2 detectors: 4 new AnomalyKind variants. CostSlope (detect_cost_slope,
       USD/hour rate), TokenSlope (detect_token_slope, input_tokens/poll rate), MemoryGrowth
       (detect_memory_growth, RSS process MB), SubagentSideEffect (detect_subagent_side_effect,
@@ -18189,16 +18439,20 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: 4 new detector functions called per pane per poll tick when anomalies are enabled. No
+      runtime:
+        4 new detector functions called per pane per poll tick when anomalies are enabled. No
         change to provider adapters, audit chain, policy gate schema, SignalSet schema, or SQLite
         schema. AnomalyHistory extended; dedup state expanded.
-      tests: 1123 lib tests + 57 event-loop integration tests passing at the v1.45.0 release commit (+26
+      tests:
+        1123 lib tests + 57 event-loop integration tests passing at the v1.45.0 release commit (+26
         lib tests vs the v1.44.0 baseline of 1097; +1 event-loop integration test vs the v1.44.0
         baseline of 56); cargo fmt --all --check, cargo clippy --all-targets -- -D warnings -A
         clippy::uninlined_format_args, cargo test --all-targets all green.
-      ledger: 1 new timeline entry (sequence 188); meta total_revisions 187 -> 188, latest_version 1.44.0
+      ledger:
+        1 new timeline entry (sequence 188); meta total_revisions 187 -> 188, latest_version 1.44.0
         -> 1.45.0; minor version bump for Phase 7 v2 detectors.
-      npm: package.json version 1.45.0; CI publication of v1.45.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.45.0; CI publication of v1.45.0 follows the same workflow as v1.37.0
         through v1.44.0 and remains an external follow-up until verified.
       observable_effects:
         added:
@@ -18219,7 +18473,8 @@ timeline:
             (4 original + 4 new).
         removed: []
     breaking: false
-    risk: "low — detectors are additive: existing anomaly detection, promotion path, and event_loop
+    risk:
+      "low — detectors are additive: existing anomaly detection, promotion path, and event_loop
       wiring are unchanged. The 4 new detectors follow the same severity_for + promote pattern as the
       original 4. Opt-in via [anomaly] enabled = false (default) means zero behavior change when
       disabled."
@@ -18264,11 +18519,12 @@ timeline:
       추가. promote_anomalies_to_recommendations 는 &PolicyGates 를 받아 종류별 게이트 조건자로 교체. Context 에 ring 필드
       추가 + push 지점. AnomalyOverlay 상태/키/마우스/렌더링; n 키로 열고 닫음; 최신순 목록 + truncated reason.
       SubagentSideEffect 기본값 min_confidence = "medium" 으로 v1.45.0 잠재 dead-code 분기가 도달 가능해짐 (의도된 동작).
-    triggered_by: Operator scoped Phase 7 v3 (a+b) as a 14-task implementation sequence (Tasks 1-13 =
+    triggered_by:
+      Operator scoped Phase 7 v3 (a+b) as a 14-task implementation sequence (Tasks 1-13 =
       impl commits, Task 14 = ledger sync). (c) sub-feature SQLite persistence deferred to v1.47+.
     issue_or_context: >-
       Summary:
-  
+
       v1.46.0 ships Phase 7 v3 (a+b): per-kind promotion gate + n overlay (anomaly events ring
       buffer). AnomalyEvent record (src/domain/anomaly.rs) captures kind/confidence/reason/timestamp
       for ring storage. AnomalyPromoteConfig (src/app/config.rs) adds 8 per-kind min_confidence fields
@@ -18343,16 +18599,20 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Ring buffer push per pane per tick when anomalies enabled (capacity 100, evicts oldest).
+      runtime:
+        Ring buffer push per pane per tick when anomalies enabled (capacity 100, evicts oldest).
         New n overlay opens via n key. No change to provider adapters, audit chain, SignalSet schema,
         or SQLite schema.
-      tests: 1162 lib tests + 58 integration tests passing at v1.46.0 release commit (+39 lib tests vs the
+      tests:
+        1162 lib tests + 58 integration tests passing at v1.46.0 release commit (+39 lib tests vs the
         v1.45.0 baseline of 1123; +1 integration test vs the v1.45.0 baseline of 57); cargo fmt --all
         --check, cargo clippy --lib --tests -- -D warnings -A clippy::uninlined_format_args, cargo
         test --all-targets all green.
-      ledger: 1 new timeline entry (sequence 189); meta total_revisions 188 -> 189, latest_version 1.45.0
+      ledger:
+        1 new timeline entry (sequence 189); meta total_revisions 188 -> 189, latest_version 1.45.0
         -> 1.46.0.
-      npm: package.json version 1.46.0; CI publication of v1.46.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.46.0; CI publication of v1.46.0 follows the same workflow as v1.37.0
         through v1.45.0 and remains an external follow-up until verified.
       observable_effects:
         added:
@@ -18375,7 +18635,8 @@ timeline:
             reachable at Medium)."
         removed: []
     breaking: false
-    risk: "low — additive: existing detection pipeline unchanged, severity_for unchanged. Per-kind
+    risk:
+      "low — additive: existing detection pipeline unchanged, severity_for unchanged. Per-kind
       defaults (7×High, SubagentSideEffect=Medium) preserve v1.45.0 behavior for all but the
       SubagentSideEffect latent bug — that promote branch becomes reachable at the documented intent
       (Concern-severity recommendation when subagent_hint co-occurs with another anomaly)."
@@ -18432,11 +18693,12 @@ timeline:
       close_resets 추가. `h` 키로 History 뷰 전환. Settings Parameters 탭에 retention_days 행 추가. Phase 7 v3
       (a+b) 는 v1.46.0; (c) 는 지금 출하. Phase 7 의 유일한 잔여 follow-up 은 D3 per-subagent 토큰 귀속
       (provider-blocked).
-    triggered_by: Operator scoped Phase 7 v3 (c) as a 14-task implementation sequence (Tasks 1-13 = impl
+    triggered_by:
+      Operator scoped Phase 7 v3 (c) as a 14-task implementation sequence (Tasks 1-13 = impl
       commits, Task 14 = ledger sync). Closes Phase 7 v3 cycle (a/b shipped in v1.46.0, c ships now).
     issue_or_context: >-
       Summary:
-  
+
       v1.47.0 ships Phase 7 v3 (c): SQLite persistence for anomaly events + history. SqliteAnomalySink
       (src/store/anomaly_sink.rs) adds two new tables (anomaly_events, anomaly_history_snapshots) to
       audit.db, mirroring the SqliteTokenUsageSink/SqliteCostUsageSink pattern.
@@ -18512,10 +18774,12 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Per-tick SQLite transaction (1 INSERT per visible signal + 1 UPSERT per pane). Lazy replay
+      runtime:
+        Per-tick SQLite transaction (1 INSERT per visible signal + 1 UPSERT per pane). Lazy replay
         query on first observation per pane per session.
       tests: ~1200 lib tests + 60 integration tests passing at the v1.47.0 release commit.
-      ledger: 1 new timeline entry (sequence 190); meta total_revisions 189 → 190, latest_version 1.46.0 →
+      ledger:
+        1 new timeline entry (sequence 190); meta total_revisions 189 → 190, latest_version 1.46.0 →
         1.47.0.
       npm: package.json version 1.47.0; CI publication of v1.47.0 follows the same workflow.
       observable_effects:
@@ -18527,7 +18791,8 @@ timeline:
           30) + 100K-row emergency cap."
         - Settings Parameters tab gains `anomaly retention_days` row.
     breaking: false
-    risk: "low — additive: no migration of existing tables; CREATE TABLE IF NOT EXISTS is idempotent.
+    risk:
+      "low — additive: no migration of existing tables; CREATE TABLE IF NOT EXISTS is idempotent.
       Detection logic unchanged. When ctx.anomaly_sink is None, behavior is identical to v1.46.0."
     related_commits:
       - 2edfd29
@@ -18578,14 +18843,15 @@ timeline:
       타임라인); `r` 로 현재 window 새로고침. 읽기 전용; v1 에서는 액션/필터 없음. 문서는 이미 트리에 있음 (UI_MANUAL §8.9, ARCHITECTURE
       v1.48.0 단락, VALIDATION 행 + Phase 8 증거 체크리스트, example.toml [insights] 블록). Phase 7 v3 산출물
       (anomaly_events, anomaly_history_snapshots, n overlay, AnomalyEventsRing) 미수정.
-    triggered_by: "Operator scoped Token Insights Phase 8 as a parallel-track effort that landed across
+    triggered_by:
+      "Operator scoped Token Insights Phase 8 as a parallel-track effort that landed across
       many small commits between v1.47.0 publication and the v1.48.0 ledger sync. Phase 8 v1 plan:
       docs/superpowers/plans/2026-05-07-token-insights-overlay.md (6 tasks). Phase 8 v2 plan:
       docs/superpowers/plans/2026-05-07-token-insights-lifecycle-ledger.md (4 tasks). Spec:
       docs/superpowers/specs/2026-05-07-token-insights-overlay-design.md."
     issue_or_context: >-
       Summary:
-  
+
       v1.48.0 ships Token Insights Phase 8 (v1 + v2 consolidated). Phase 8 v1: read-only
       SqliteInsightsStore (src/store/insights.rs) aggregates audit_events / token_usage_samples /
       cost_usage_events into an InsightsSnapshot with six-situation recommendation buckets, cache
@@ -18674,14 +18940,17 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: New SQLite write path (recommendation_events + recommendation_outcomes) records 1 row per
+      runtime:
+        New SQLite write path (recommendation_events + recommendation_outcomes) records 1 row per
         emitted Recommendation per tick + 1 row per outcome action. Read paths (insights store + i
         overlay) only run on operator request. CLI subcommand never touches tmux.
       tests: 1209 lib tests + 61 integration tests passing at the v1.48.0 release commit.
-      ledger: 1 new timeline entry (sequence 191); meta total_revisions 189 → 191 (one extra revision
+      ledger:
+        1 new timeline entry (sequence 191); meta total_revisions 189 → 191 (one extra revision
         absorbed for the in-flight phase 8 work that was integrated retroactively), latest_version
         1.47.0 → 1.48.0.
-      npm: package.json version 1.48.0; CI publication of v1.48.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.48.0; CI publication of v1.48.0 follows the same workflow as v1.37.0
         through v1.47.0.
       observable_effects:
         - New `qmonster insights --since 24h` CLI subcommand prints a stable text report aggregating
@@ -18702,7 +18971,8 @@ timeline:
           over-counted as ignored."
         - Settings Parameters tab gains [insights] ignored_ttl_secs row.
     breaking: false
-    risk: "low — additive: new SQLite tables via CREATE TABLE IF NOT EXISTS (idempotent); new CLI
+    risk:
+      "low — additive: new SQLite tables via CREATE TABLE IF NOT EXISTS (idempotent); new CLI
       subcommand has no tmux side effects; new TUI overlay is read-only. When
       recommendation_lifecycle_sink is None (DB couldn't open), behavior is identical to v1.47.0."
     related_commits:
@@ -18749,7 +19019,8 @@ timeline:
     semantic_version: 1.49.0
     change_sequence: 192
     date: 2026-05-07
-    author: CHENGHAO QUAN + Claude Code (parallel-track UX polish + main-pane long-tail closure;
+    author:
+      CHENGHAO QUAN + Claude Code (parallel-track UX polish + main-pane long-tail closure;
       consolidated release ledger)
     change_type: implementation
     persistence: permanent
@@ -18773,14 +19044,15 @@ timeline:
       ↑/↓/j/k/wheel/PgUp/PgDn/Home/End 를 body scroll 로 처리; Thresholds/Integrations 는 기존
       field-selection 유지. 프로바이더 adapter, audit chain core, SignalSet schema 는 새 audit-event variant 외에
       변경 없음.
-    triggered_by: "Operator-reported pane CMD swap bug (claude/codex/qmonster argv mixed up at narrow
+    triggered_by:
+      "Operator-reported pane CMD swap bug (claude/codex/qmonster argv mixed up at narrow
       widths) + long-tail TODO closure + parallel-track overlay chrome consistency slice landed across
       many small commits between v1.48.0 publication and the v1.49.0 ledger sync. Overlay chrome spec:
       docs/superpowers/specs/2026-05-07-overlay-chrome-consistency-design.md. Plan:
       docs/superpowers/plans/2026-05-07-overlay-chrome-consistency.md."
     issue_or_context: >-
       Summary:
-  
+
       v1.49.0 is an operator UX polish bundle on top of v1.48.0. Four themes ship together: (1) Pane
       CMD column wrapper-interpreter resolution. read_descendant_cmdline (and the
       read_descendant_cmdline_ with_proc_root variant for tests) walk /proc/<pid>/cmdline and pick the
@@ -18882,13 +19154,16 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Pane CMD column resolution does additional /proc/<pid>/cmdline reads at PaneReport push
+      runtime:
+        Pane CMD column resolution does additional /proc/<pid>/cmdline reads at PaneReport push
         time (cached per-poll). New audit-event emission has per-pane dedup via Context HashSet. New
         SettingsOverlay scroll state is in-memory only and resets on tab change.
       tests: 1265 lib tests + 61 integration tests passing at the v1.49.0 release commit.
-      ledger: 1 new timeline entry (sequence 192); meta total_revisions 191 → 192, latest_version 1.48.0 →
+      ledger:
+        1 new timeline entry (sequence 192); meta total_revisions 191 → 192, latest_version 1.48.0 →
         1.49.0.
-      npm: package.json version 1.49.0; CI publication of v1.49.0 follows the same workflow as prior
+      npm:
+        package.json version 1.49.0; CI publication of v1.49.0 follows the same workflow as prior
         releases.
       observable_effects:
         - panes CMD column shows the actual CLI command line for wrapper-interpreter CLIs (claude /
@@ -18902,7 +19177,8 @@ timeline:
           ↑/↓/j/k/wheel/PgUp/PgDn/Home/End so the full TOML reference fits on smaller terminals.
           Thresholds / Integrations field selection unchanged.
     breaking: false
-    risk: "low — additive: new audit-event variant via existing as_str/parse_kind contract; pane CMD
+    risk:
+      "low — additive: new audit-event variant via existing as_str/parse_kind contract; pane CMD
       resolution preserves the fallback to tmux pane_current_command when /proc walk fails; Settings
       body scroll defaults to 0 so existing read-only tabs render identically when scroll_offset is 0;
       overlay chrome polish is presentation-only."
@@ -18943,7 +19219,8 @@ timeline:
     semantic_version: 1.50.0
     change_sequence: 193
     date: 2026-05-08
-    author: CHENGHAO QUAN + Claude Code (subagent-driven Insights spinner + Phase 7 v2 fold-back) +
+    author:
+      CHENGHAO QUAN + Claude Code (subagent-driven Insights spinner + Phase 7 v2 fold-back) +
       Codex (parallel Settings parameter-edit affordance); consolidated release ledger
     change_type: implementation
     persistence: permanent
@@ -18963,7 +19240,8 @@ timeline:
       provider-coverage matrix 추가; REVIEW_GUIDE.md 가 인용. (d) config/pricing.example.toml 에
       claude-opus-4-7, gemini-3.1-pro, gemini-3.1-flash placeholder 행 (0.00). (e) Codex 병렬 트랙:
       ParameterField / ParameterEditKind 에디터 추가. 1265 → 1285 lib tests.
-    triggered_by: "Operator-reported i overlay stall on slow snapshot ('i 누르면 조금 시간이 걸리고 ...명령이 실행 중이라는
+    triggered_by:
+      "Operator-reported i overlay stall on slow snapshot ('i 누르면 조금 시간이 걸리고 ...명령이 실행 중이라는
       효과가 있었으면'). Claude-led brainstorming → spec → 12-task TDD plan → subagent-driven execution.
       Parallel-track polish landed on main untagged between v1.49.0 publication and the v1.50.0 ledger
       sync (CrossPane fold-back, provider matrix, pricing rows, Codex parameter-edit affordance)
@@ -18972,7 +19250,7 @@ timeline:
       docs/superpowers/plans/2026-05-07-insights-overlay-loading-spinner.md."
     issue_or_context: >-
       Summary:
-  
+
       v1.50.0 is an operator UX polish bundle layered on v1.49.0. Five themes ship together: (a) `i`
       Token Insights overlay open / `r` refresh moved from synchronous
       SqliteInsightsStore::open_read_only + snapshot_with_ignored_ttl to a worker-thread +
@@ -19084,15 +19362,19 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: First multi-threaded path in Qmonster's event loop. Worker thread spawned per i/r press
+      runtime:
+        First multi-threaded path in Qmonster's event loop. Worker thread spawned per i/r press
         (well below 1Hz operator cadence in practice); thread joins naturally when SQLite returns.
         Channel try_recv per tick is non-blocking and amortized O(1) when empty. No change to provider
         polling cadence or audit chain.
-      tests: 1278 lib tests at the Insights spinner finish; 1285 lib tests after CrossPane fold-back +
+      tests:
+        1278 lib tests at the Insights spinner finish; 1285 lib tests after CrossPane fold-back +
         Settings parameter-edit affordance landed. 63 integration tests.
-      ledger: 1 new timeline entry (sequence 193); meta total_revisions 192 → 193, latest_version 1.49.0 →
+      ledger:
+        1 new timeline entry (sequence 193); meta total_revisions 192 → 193, latest_version 1.49.0 →
         1.50.0.
-      npm: package.json version 1.50.0; CI publication of v1.50.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.50.0; CI publication of v1.50.0 follows the same workflow as v1.37.0
         through v1.49.0.
       observable_effects:
         - Pressing `i` to open Token Insights now shows a centered `Aggregating insights ⠋`
@@ -19113,7 +19395,8 @@ timeline:
         - Settings overlay now supports parameter editing across the broader Parameters tab via
           Codex's parallel-track work.
     breaking: false
-    risk: "low — additive: new module isolates the spawn logic with catch_unwind so a panicking SQLite
+    risk:
+      "low — additive: new module isolates the spawn logic with catch_unwind so a panicking SQLite
       call surfaces as Err; stale-id drop guard prevents stale outcomes from overwriting fresh data;
       the synchronous fallback when the SQLite path is missing returns Ok(empty_insights_snapshot) so
       first-time operators see an empty view rather than a confusing error. CrossPane fold-back uses
@@ -19153,7 +19436,8 @@ timeline:
     semantic_version: 1.51.0
     change_sequence: 194
     date: 2026-05-08
-    author: CHENGHAO QUAN + Claude Code (build.rs tag-cache fix + git modal origin/contributors + IME
+    author:
+      CHENGHAO QUAN + Claude Code (build.rs tag-cache fix + git modal origin/contributors + IME
       drag-bar indicator + Settings tab grouping); folds the post-v1.50.0 main polish (ErrorBurst
       evidence enrichment, n-overlay reason joining, Gemini cost activation, anomaly default-on flip).
     change_type: implementation
@@ -19177,14 +19461,15 @@ timeline:
       활성화. 기존 운영자가 qmonster.toml 에 `enabled = false` 를 적어둔 경우는 그대로 유지 — 역직렬화 계약은 변경되지 않음. v1.50.0 태그
       이후 main 에 쌓여있던 폴리시 (ErrorBurst evidence enrichment, n 오버레이 reason 조인, Gemini cost 활성화) 도 함께
       v1.51.0 으로 묶음. 1294 → 1317 lib 테스트.
-    triggered_by: "Operator-reported confusion: footer badge stuck at v1.48.0; need to know IME state on
+    triggered_by:
+      "Operator-reported confusion: footer badge stuck at v1.48.0; need to know IME state on
       the alerts/panes drag bar; want git URL and contributors visible in the Git modal; Settings
       overlay's editable vs reference tabs were not visually distinct, making the anomaly enabled
       toggle hard to find. Operator agreed to design Option A (tab grouping with `║` seam) for the
       Settings split."
     issue_or_context: >-
       Summary:
-  
+
       v1.51.0 is an operator UX polish bundle layered on v1.50.0. Four operator-visible themes plus
       one runtime default flip ship together, with no provider adapter / audit chain / SQLite schema
       changes. (a) build.rs tag-cache invalidation: cargo:rerun-if-changed now also watches
@@ -19300,14 +19585,18 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: No new threads beyond the v1.50.0 Insights worker. IME state machine is in-process and
+      runtime:
+        No new threads beyond the v1.50.0 Insights worker. IME state machine is in-process and
         pure. Bell write is a single 1-byte stdout write per inactive→active edge; flush is
         best-effort. No change to provider polling cadence, audit chain, or SQLite schema.
-      tests: 1294 lib tests at the v1.50.0 post-tag polish baseline → 1317 after this bundle. 63
+      tests:
+        1294 lib tests at the v1.50.0 post-tag polish baseline → 1317 after this bundle. 63
         integration tests preserved.
-      ledger: 1 new timeline entry (sequence 194); meta total_revisions 193 → 194, latest_version 1.50.0 →
+      ledger:
+        1 new timeline entry (sequence 194); meta total_revisions 193 → 194, latest_version 1.50.0 →
         1.51.0.
-      npm: package.json version 1.51.0; CI publication of v1.51.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.51.0; CI publication of v1.51.0 follows the same workflow as v1.37.0
         through v1.50.0.
       observable_effects:
         - Footer version badge updates correctly after a `cargo build` following a fresh `git tag`.
@@ -19356,7 +19645,8 @@ timeline:
           post-tag polish section relabelled as folded-into-v1.51.0; Validation Baseline updated to
           1317 lib tests."
     breaking: false
-    risk: low — every theme is additive or a default flip behind a documented override. (a) build.rs
+    risk:
+      low — every theme is additive or a default flip behind a documented override. (a) build.rs
       change only affects which paths Cargo watches; the actual git describe call is unchanged. (b)
       Git modal additions are read-only string formatting; failed git invocations fall through the
       existing error path. (c) IME state machine is pure and per-Context; bell write swallows errors.
@@ -19387,7 +19677,8 @@ timeline:
     semantic_version: 1.52.0
     change_sequence: 195
     date: 2026-05-08
-    author: CHENGHAO QUAN + Claude Code (cli_version feature landed via the apply-Claude-edit pipeline).
+    author:
+      CHENGHAO QUAN + Claude Code (cli_version feature landed via the apply-Claude-edit pipeline).
       v1.52.0 release ledger sync by Claude Code (Opus 4.7 1M).
     change_type: implementation
     persistence: permanent
@@ -19401,13 +19692,14 @@ timeline:
       src/app/cli_version.rs + src/adapters/process_memory.rs 확장 + src/ui/panels.rs 렌더링 추가 +
       Context.cli_version_cache + RuntimeFactKind::CliVersion. UI_MANUAL §3 갱신. lib 1317 → 1324, 통합 63
       → 65, fmt + clippy 그린.
-    triggered_by: "Operator request: 'show each pane's actual CLI version, not just the role label, so I
+    triggered_by:
+      "Operator request: 'show each pane's actual CLI version, not just the role label, so I
       can spot version drift between panes at a glance'. Provider-tail-first/probe-fallback strategy
       chosen so the cheap path stays cheap and the expensive shell-out is amortised by the (pid, argv,
       exe_path) cache."
     issue_or_context: >-
       Summary:
-  
+
       v1.52.0 ships one operator-visible feature on top of the v1.51.0 baseline: a per-pane CLI
       version badge in the panel title. New module src/app/cli_version.rs (270 LoC) holds the
       orchestrator resolve_cli_version_fact(provider, tail, pane_pid, &mut cache) which first tries
@@ -19469,16 +19761,20 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: "First per-poll fork+exec path in Qmonster: probe_cli_version may invoke the resolved CLI
+      runtime:
+        "First per-poll fork+exec path in Qmonster: probe_cli_version may invoke the resolved CLI
         with --version. Amortised by the (pid, argv, exe_path) cache; Some(None) memoises persistent
         failures so transient-only failures retry on next poll while persistent failures don't spam
         shell-out. Provider::Qmonster exempt; descendant-pid resolution from /proc gracefully returns
         None on dead/unknown panes."
-      tests: 1317 → 1324 lib tests (+7 in cli_version + process_memory); 63 → 65 integration tests (+2
+      tests:
+        1317 → 1324 lib tests (+7 in cli_version + process_memory); 63 → 65 integration tests (+2
         pane-CLI-version-badge end-to-end).
-      ledger: 1 new timeline entry (sequence 195); meta total_revisions 194 → 195, latest_version 1.51.0 →
+      ledger:
+        1 new timeline entry (sequence 195); meta total_revisions 194 → 195, latest_version 1.51.0 →
         1.52.0.
-      npm: package.json version 1.52.0; CI publication of v1.52.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.52.0; CI publication of v1.52.0 follows the same workflow as v1.37.0
         through v1.51.0.
       observable_effects:
         - "Each pane card title now shows a `CLI <version> [Official]` chip between the role label and
@@ -19508,7 +19804,8 @@ timeline:
           line refreshed."
         - "docs/ai/VALIDATION.md: new v1.52.0 release row."
     breaking: false
-    risk: low-to-medium — new fork+exec call surface but gated behind a stable-key cache, an explicit
+    risk:
+      low-to-medium — new fork+exec call surface but gated behind a stable-key cache, an explicit
       Provider::Qmonster exemption, and a 'silently omit when unconfirmed' rendering contract that
       preserves the pre-v1.52.0 title format on every failure mode. Persistent probe failures memoise
       via Some(None) so they don't re-shell. The descendant /proc walk is read-only and tolerant of
@@ -19531,7 +19828,8 @@ timeline:
     semantic_version: 1.53.0
     change_sequence: 196
     date: 2026-05-08
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator selected option (i) for celebration
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator selected option (i) for celebration
       trigger: confetti on a successful pending-action `p` accept dispatch."
     change_type: implementation
     persistence: permanent
@@ -19549,12 +19847,13 @@ timeline:
       소비. 성능: 닫힘 = 100ms 폴링 그대로(추가 비용 0); 열림 = 33ms 폴링으로 ~30 FPS 부드러운 애니. Settings → Parameters 탭에 8개
       knob 추가; bool/enum/text/number 편집 파이프라인 모두 통과. 운영자 의사결정: celebration 트리거는 옵션 (i) — p 수락 dispatch
       성공 시 발화. lib 1331 → 1362, fmt + clippy 그린.
-    triggered_by: "Operator request: '화면에서 Qmonster라는 컬러플하고 멋진 글귀가 떠 다니는 효과를 넣고 싶어, 화면 터치하면 사라지고? 글귀 아니라
+    triggered_by:
+      "Operator request: '화면에서 Qmonster라는 컬러플하고 멋진 글귀가 떠 다니는 효과를 넣고 싶어, 화면 터치하면 사라지고? 글귀 아니라
       멋진 애니메이션도 좋아.' Operator confirmed all 3 effects, hotkey Q + celebration + screensaver triggers,
       Settings integration, and option (i) (confetti on p-accept) as the celebration trigger."
     issue_or_context: >-
       Summary:
-  
+
       v1.53.0 ships an optional decorative effects (`[fx]`) overlay on top of v1.52.0. Three
       selectable effects (banner / confetti / matrix), three triggers (Q hotkey, p-accept celebration,
       idle screensaver), and 8 Settings parameters all in one bundle. Inert until opt-in: the overlay
@@ -19639,16 +19938,20 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: First per-render animation surface in Qmonster. Pure state machines (no IO), gated entirely
+      runtime:
+        First per-render animation surface in Qmonster. Pure state machines (no IO), gated entirely
         by `[fx] enabled` AND a trigger; the closed-overlay path adds a single Option::is_some check
         per render. PRNG is a private xorshift64 — no new crate dep. Stdout BEL was already in use for
         the v1.51.0 IME indicator; this release adds no new side-effect channel. No provider adapter /
         audit chain / SQLite schema / SignalSet schema changes.
-      tests: 1331 → 1362 lib tests (+31 across fx_state 14, fx_overlay 10, fx renderer 5, plus a couple
+      tests:
+        1331 → 1362 lib tests (+31 across fx_state 14, fx_overlay 10, fx renderer 5, plus a couple
         from baseline carry-over). 65 integration tests preserved.
-      ledger: 1 new timeline entry (sequence 196); meta total_revisions 195 → 196, latest_version 1.52.0 →
+      ledger:
+        1 new timeline entry (sequence 196); meta total_revisions 195 → 196, latest_version 1.52.0 →
         1.53.0.
-      npm: package.json version 1.53.0; CI publication of v1.53.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.53.0; CI publication of v1.53.0 follows the same workflow as v1.37.0
         through v1.52.0.
       observable_effects:
         - "Pressing uppercase `Q` opens the configured effect (default: bouncing rainbow QMONSTER
@@ -19694,7 +19997,8 @@ timeline:
           latest_version 1.53.0."
         - "docs/ai/VALIDATION.md: new v1.53.0 release row."
     breaking: false
-    risk: "low — additive opt-in feature behind a brand-new `[fx]` config block. Defaults: enabled=true
+    risk:
+      "low — additive opt-in feature behind a brand-new `[fx]` config block. Defaults: enabled=true
       but celebration/screensaver=false (only Q hotkey is opt-out). State machines are pure and
       unit-tested; renderer is smoke-tested through ratatui's TestBackend. Animation cadence change
       only kicks in while the overlay is open; the closed path keeps the v1.52.0 100ms baseline.
@@ -19716,7 +20020,8 @@ timeline:
     semantic_version: 1.54.0
     change_sequence: 197
     date: 2026-05-08
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator-reported regression: '효과만 띄워주면 안돼? 지금은
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator-reported regression: '효과만 띄워주면 안돼? 지금은
       빈 창에 뜨는데, 이렇게 말고.'"
     change_type: implementation
     persistence: permanent
@@ -19729,11 +20034,12 @@ timeline:
       건너뛰고 비공백 문자만 직접 셀 쓰기 — 공백 셀은 투명하게 두어 footer 텍스트 가 가려지지 않게 한다. 회귀 가드 한 개 추가: 80×24 뷰포트에 `*` 센티넬을
       채운 다음 같은 terminal.draw 안에서 fx 오버레이를 렌더, 1920 셀 중 ≥1500 이 살아남는지 검사. 이전 Clear 기반 렌더는 ~0 으로 떨어졌었다.
       lib 1362 → 1363, fmt + clippy 그린.
-    triggered_by: "Operator-reported regression on v1.53.0: '기존 창에 보여지는 정보는 그대로 두고 효과만 띄워주면 안돼? 지금은 빈 창에
+    triggered_by:
+      "Operator-reported regression on v1.53.0: '기존 창에 보여지는 정보는 그대로 두고 효과만 띄워주면 안돼? 지금은 빈 창에
       뜨는데, 이렇게 말고.'"
     issue_or_context: >-
       Summary:
-  
+
       v1.54.0 turns the v1.53.0 fx overlay into a non-destructive surface: the bouncing rainbow banner
       / confetti burst / matrix rain now render on top of the existing dashboard (alerts panel, panes
       panel, footer, version badge) instead of clearing the viewport. Operators keep full situational
@@ -19767,13 +20073,16 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Single semantic change inside src/ui/fx.rs::render_fx_overlay. No new state, no new
+      runtime:
+        Single semantic change inside src/ui/fx.rs::render_fx_overlay. No new state, no new
         threads. The overlay still tightens event::poll to 33ms while active and restores 100ms on
         close.
       tests: 1362 → 1363 lib tests (+1 regression guard). 65 integration tests preserved.
-      ledger: 1 new timeline entry (sequence 197); meta total_revisions 196 → 197, latest_version 1.53.0 →
+      ledger:
+        1 new timeline entry (sequence 197); meta total_revisions 196 → 197, latest_version 1.53.0 →
         1.54.0.
-      npm: package.json version 1.54.0; CI publication of v1.54.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.54.0; CI publication of v1.54.0 follows the same workflow as v1.37.0
         through v1.53.0.
       observable_effects:
         - Pressing Q to open the fx overlay no longer wipes the screen. The bouncing QMONSTER banner /
@@ -19793,7 +20102,8 @@ timeline:
           latest_version 1.54.0."
         - "docs/ai/VALIDATION.md: new v1.54.0 release row."
     breaking: false
-    risk: very low — the change is a single removed widget call plus an inline hint-write helper. The
+    risk:
+      very low — the change is a single removed widget call plus an inline hint-write helper. The
       regression test pins the new behaviour against future re-introduction of the Clear call. No
       public API or config surface changes.
     related_commits: []
@@ -19812,7 +20122,8 @@ timeline:
     semantic_version: 1.55.0
     change_sequence: 198
     date: 2026-05-08
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator-reported: '효과가 끊김이 있어, 부드럽게 넘어갈 순 없어?'
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator-reported: '효과가 끊김이 있어, 부드럽게 넘어갈 순 없어?'
       Plus default flips: text='~O~ Qmonster', duration_secs=50."
     change_type: implementation
     persistence: permanent
@@ -19824,11 +20135,12 @@ timeline:
       모두 보정. (b) fx 오버레이 가 떠 있는 동안 tmux 메인 폴 틱 (2초마다 50-200ms 블로킹) 을 일시 정지 — 효과가 매 2초마다 끊겨 보이던 진짜 원인.
       오버레이 닫는 즉시 틱 재개. (c) 새 기본값: text "QMONSTER" → "~O~ Qmonster" (블록 폰트에 `~` wave 글리프 추가),
       duration_secs 5초 → 50초. qmonster.toml 에 쓴 override 는 그대로 존중 — 기본값만 바뀜.
-    triggered_by: "Operator-reported regression on v1.54.0: '효과가 끊김이 있어, 부드럽게 넘어갈 순 없어?' Plus default
+    triggered_by:
+      "Operator-reported regression on v1.54.0: '효과가 끊김이 있어, 부드럽게 넘어갈 순 없어?' Plus default
       flip request: text='~O~ Qmonster' / duration_secs=50."
     issue_or_context: >-
       Summary:
-  
+
       v1.55.0 polishes the v1.53.0 / v1.54.0 fx overlay so animation feels smooth on a busy operator
       dashboard. Three changes ship together. (a) FX_TARGET_FPS bumped 30 → 60 (FX_FRAME_INTERVAL_MS
       33 → 16) with all per-frame velocities halved so apparent speed stays the same as v1.54.0 but
@@ -19867,15 +20179,19 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: No new threads. Halved velocities + doubled FPS keeps the same per-second motion, so CPU
+      runtime:
+        No new threads. Halved velocities + doubled FPS keeps the same per-second motion, so CPU
         work scales the same as v1.54.0 — render path runs more often but each render does less
         per-frame movement. tmux poll suspension only kicks in while the overlay is active, never
         affects the quiet path.
-      tests: 1362 → 1373 lib tests (+11 from concurrent hover_help-area work; fx polish itself uses the
+      tests:
+        1362 → 1373 lib tests (+11 from concurrent hover_help-area work; fx polish itself uses the
         existing 30 fx-suite tests). 65 integration tests preserved.
-      ledger: 1 new timeline entry (sequence 198); meta total_revisions 197 → 198, latest_version 1.54.0 →
+      ledger:
+        1 new timeline entry (sequence 198); meta total_revisions 197 → 198, latest_version 1.54.0 →
         1.55.0.
-      npm: package.json version 1.55.0; CI publication of v1.55.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.55.0; CI publication of v1.55.0 follows the same workflow as v1.37.0
         through v1.54.0.
       observable_effects:
         - Pressing Q to open the fx overlay no longer stutters every 2 seconds — animation runs ~60
@@ -19895,7 +20211,8 @@ timeline:
           latest_version 1.55.0."
         - "docs/ai/VALIDATION.md: new v1.55.0 release row."
     breaking: false
-    risk: "very low — three small touch points. (a) Velocity / FPS retune: existing fx_state tests
+    risk:
+      "very low — three small touch points. (a) Velocity / FPS retune: existing fx_state tests
       assert behaviour invariants (bounce direction flips, gravity applied) that are unchanged; the
       actual values were not asserted. (b) tmux poll suspension is a one-line guard; the worst case is
       exactly one skipped 2-second tick while the overlay is open. (c) Config default flips affect
@@ -19917,7 +20234,8 @@ timeline:
     semantic_version: 1.56.0
     change_sequence: 199
     date: 2026-05-08
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '1부터 4까지 다 해줘' — close all four
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '1부터 4까지 다 해줘' — close all four
       remaining audit-doc slices in one bundle."
     change_type: implementation
     persistence: permanent
@@ -19933,11 +20251,12 @@ timeline:
       (c) Insights Situations 회귀 가드 — SituationSummary 두 개 채운 snapshot 으로 lines() + TestBackend 렌더 모두
       검증. (d) ARCHITECTURE.md 에 cache 규칙 provider-gating 단락 추가, provider_honesty 패턴을 향후 per-signal
       honesty 의 canonical 로 명시. lib 1373 → 1394.
-    triggered_by: "Operator: '1부터 4까지 다 해줘' — close all four remaining recommended slices from the
+    triggered_by:
+      "Operator: '1부터 4까지 다 해줘' — close all four remaining recommended slices from the
       2026-05-08 audit doc in one v1.56.0 bundle."
     issue_or_context: >-
       Summary:
-  
+
       v1.56.0 closes the remaining recommended slices from the 2026-05-08 audit doc
       (`Qmonster-v0.4.0-2026-05-08-claude-feature- audit-and-slice-1-r1.md`) in one polish bundle. No
       new phase. (a) Provider-honesty cache chips: new module `src/ui/provider_honesty.rs` with
@@ -19996,13 +20315,16 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Pure refactor + style additions. No new threads, no new IO, no new event paths. Cache chip
+      runtime:
+        Pure refactor + style additions. No new threads, no new IO, no new event paths. Cache chip
         behaviour change is opt-out impossible (all panes affected) but visually additive — operators
         see more information, not less.
       tests: 1373 → 1394 lib tests (+21). 65 integration tests preserved.
-      ledger: 1 new timeline entry (sequence 199); meta total_revisions 198 → 199, latest_version 1.55.0 →
+      ledger:
+        1 new timeline entry (sequence 199); meta total_revisions 198 → 199, latest_version 1.55.0 →
         1.56.0.
-      npm: package.json version 1.56.0; CI publication of v1.56.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.56.0; CI publication of v1.56.0 follows the same workflow as v1.37.0
         through v1.55.0.
       observable_effects:
         - Pane card metric row now always shows a CACHE chip for Claude/Codex/Gemini panes — ` CACHE
@@ -20034,7 +20356,8 @@ timeline:
         - "docs/ai/ARCHITECTURE.md: per-signal honesty exception paragraph."
         - "docs/ai/VALIDATION.md: new v1.56.0 release row."
     breaking: false
-    risk: low — provider-honesty path is gated by per-provider match arms with explicit `Pending` /
+    risk:
+      low — provider-honesty path is gated by per-provider match arms with explicit `Pending` /
       `Unsupported` / `Hidden` states; existing Value path is unchanged. metric_row signature change
       is mechanical (one production caller + ~10 test sites updated). Matrix dim is a single
       Modifier::DIM OR per cell; preserves the v1.54.0 non-destructive guarantee. Insights regression
@@ -20052,7 +20375,8 @@ timeline:
     semantic_version: 1.57.0
     change_sequence: 200
     date: 2026-05-08
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '지금 기준 로컬 문서, 깃 문서, 코드 상 각 창에 표시되는
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '지금 기준 로컬 문서, 깃 문서, 코드 상 각 창에 표시되는
       데이터/문서를 전부 검토하여 통일, 일관성 유지 작업을 해줘'."
     change_type: implementation
     persistence: permanent
@@ -20062,11 +20386,12 @@ timeline:
       6개 cross- cutting 드리프트를 한 번에 닫는 일관성 sweep. 코드 동작 변경은 fx dismiss 힌트 텍스트와 풋터 키 cluster 두 줄뿐 — 나머지는
       docs. README/VERSION/mission.yaml/PROJECT_BRIEF 의 버전 면을 v1.57.0 으로 통일, UI_MANUAL 에 v1.51 IME
       drag-bar / v1.53 fx Q 핫키 / fx 오버레이 서브섹션 추가, REVIEW_GUIDE 매트릭스 참조 갱신. 1394 lib + 65 통합 테스트 그대로.
-    triggered_by: "Operator: '지금 기준 로컬 문서, 깃 문서, 코드 상 각 창에 표시되는 데이터/문서를 전부 검토하여 통일, 일관성 유지 작업을 해줘.' Plus
+    triggered_by:
+      "Operator: '지금 기준 로컬 문서, 깃 문서, 코드 상 각 창에 표시되는 데이터/문서를 전부 검토하여 통일, 일관성 유지 작업을 해줘.' Plus
       follow-up '스킵 (의도적): mission.yaml version: 1.46.0 / PROJECT_BRIEF Version: v0.4.0 도 진행해줘.'"
     issue_or_context: >-
       Summary:
-  
+
       v1.57.0 is a cross-cutting consistency sweep run after v1.56.0 publication. Four parallel audit
       passes (version refs, feature claim drift, in-code label consistency, README/top-level sync)
       surfaced six concrete drifts; v1.57.0 closes all of them in one bundle. No code-behaviour change
@@ -20119,12 +20444,15 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: No code-behaviour change beyond two UI-string fixes. fx hint and footer cluster are static
+      runtime:
+        No code-behaviour change beyond two UI-string fixes. fx hint and footer cluster are static
         strings; replacement is byte-for-byte safe.
       tests: 1394 lib tests + 65 integration tests preserved. No test delta.
-      ledger: 1 new timeline entry (sequence 200); meta total_revisions 199 → 200, latest_version 1.56.0 →
+      ledger:
+        1 new timeline entry (sequence 200); meta total_revisions 199 → 200, latest_version 1.56.0 →
         1.57.0.
-      npm: package.json version 1.57.0; CI publication of v1.57.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.57.0; CI publication of v1.57.0 follows the same workflow as v1.37.0
         through v1.56.0.
       observable_effects:
         - First-time operators reading README.md / VERSION.md see v1.57.0 instead of a stale v1.50.0.
@@ -20144,7 +20472,8 @@ timeline:
           latest_version 1.57.0."
         - "docs/ai/VALIDATION.md: new v1.57.0 release row."
     breaking: false
-    risk: "very low — five doc files, two UI-string fixes, no behaviour change. Test count is unchanged.
+    risk:
+      "very low — five doc files, two UI-string fixes, no behaviour change. Test count is unchanged.
       The only existing-pattern break is bumping mission.yaml's mission.version from 1.46.0 to 1.57.0
       (prior pattern: only new phases bump it). Operator explicitly opted in."
     related_commits: []
@@ -20160,7 +20489,8 @@ timeline:
     semantic_version: 1.58.0
     change_sequence: 201
     date: 2026-05-08
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '전부 해줘' — all five proposed polish
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '전부 해줘' — all five proposed polish
       slices in one bundle."
     change_type: implementation
     persistence: permanent
@@ -20172,11 +20502,12 @@ timeline:
       차단. (4) Settings Parameters 탭에 `/` 필터/검색 모드 — 70+ 파라미터 중 라벨 부분 일치로 좁힘. 매치 없으면 안내 hint, 섹션 헤더는 매치
       있는 것만. (5) 테마 high_contrast variant — ThemeMode 전역 AtomicU8 + 핵심 함수 severity_color /
       severity_badge_style / label_style 가 모드별 분기. 상수는 그대로 두어 callsite 변경 없음. 1394 → 1397 lib 테스트.
-    triggered_by: "Operator: '전부 해줘' on the proposed 5-slice polish menu (hover_help expansion /
+    triggered_by:
+      "Operator: '전부 해줘' on the proposed 5-slice polish menu (hover_help expansion /
       n-overlay filter / cost honesty / Settings filter / theme variant)."
     issue_or_context: >-
       Summary:
-  
+
       v1.58.0 ships five operator-facing polish slices in one bundle. (1) hover_help dashboard
       expansion: three new HelpTopic variants (DashboardDivider / DashboardFooter /
       DashboardVersionBadge) + ko/en help bodies + dispatch positions in dashboard_hover_topic so the
@@ -20235,14 +20566,17 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Pure additions + one new process-wide AtomicU8 for theme mode (atomic Relaxed loads/stores;
+      runtime:
+        Pure additions + one new process-wide AtomicU8 for theme mode (atomic Relaxed loads/stores;
         cost-of-use is one branch per theme accessor). No new threads, no new IO. Settings filter mode
         is purely render-side. Anomaly filter is iterator-side. Cost honesty re-uses provider_honesty
         module pattern.
       tests: 1394 → 1397 lib tests (+3). 65 integration tests preserved.
-      ledger: 1 new timeline entry (sequence 201); meta total_revisions 200 → 201, latest_version 1.57.0 →
+      ledger:
+        1 new timeline entry (sequence 201); meta total_revisions 200 → 201, latest_version 1.57.0 →
         1.58.0.
-      npm: package.json version 1.58.0; CI publication of v1.58.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.58.0; CI publication of v1.58.0 follows the same workflow as v1.37.0
         through v1.57.0.
       observable_effects:
         - Hovering the alerts/panes divider, footer, or bottom-right version badge surfaces a floating
@@ -20269,7 +20603,8 @@ timeline:
           latest_version 1.58.0."
         - "docs/ai/VALIDATION.md: new v1.58.0 release row."
     breaking: false
-    risk: "low — five slices are additive. Hover help additions just extend existing dispatch. n-overlay
+    risk:
+      "low — five slices are additive. Hover help additions just extend existing dispatch. n-overlay
       filter defaults to All so existing operators see no behaviour change. Cost honesty Pending state
       surfaces a placeholder where the chip used to be invisible; not a regression. Settings filter is
       opt-in via `/`. Theme mode default is Dark — existing operators see no visual change unless they
@@ -20289,7 +20624,8 @@ timeline:
     semantic_version: 1.58.1
     change_sequence: 202
     date: 2026-05-08
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator regression report: '왼쪽 섹션이 스크롤이 안됨'
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator regression report: '왼쪽 섹션이 스크롤이 안됨'
       after the v1.58.0 Settings parameter filter slice."
     change_type: implementation
     persistence: permanent
@@ -20299,11 +20635,12 @@ timeline:
       파라미터가 `all_parameter_fields()` 전체를 사이클해서 숨겨진 필드로 넘어갔던 게 원인. 새 helper
       `filtered_parameter_field_list` 가 활성 필터(라벨 부분 일치, 대소문자 무관)로 네비게이션 리스트를 좁히고, 현재 선택이 숨겨졌으면 ↓ 첫 보이는
       필드로 / ↑ 마지막 보이는 필드로 점프. 필터가 0개 매치면 양쪽 모두 no-op. 회귀 가드 3 추가. lib 1397 → 1400.
-    triggered_by: "Operator regression: '왼쪽 섹션이 스크롤이 안됨' (Parameters tab body appears frozen after
+    triggered_by:
+      "Operator regression: '왼쪽 섹션이 스크롤이 안됨' (Parameters tab body appears frozen after
       typing a / filter — arrow keys land on hidden fields)."
     issue_or_context: >-
       Summary:
-  
+
       v1.58.1 hotfixes a v1.58.0 regression in the Settings Parameters tab filter. Operator pressed
       `/`, typed a substring (e.g. `anomaly`), then pressed Down — but the visible cursor never moved.
       Root cause: `next_parameter` / `prev_parameter` in src/ui/settings.rs cycled through
@@ -20336,9 +20673,11 @@ timeline:
     impact_scope:
       runtime: Pure logic refactor inside SettingsOverlay. No new state, no new IO.
       tests: 1397 → 1400 lib tests (+3 regression guards). 65 integration tests preserved.
-      ledger: 1 new timeline entry (sequence 202); meta total_revisions 201 → 202, latest_version 1.58.0 →
+      ledger:
+        1 new timeline entry (sequence 202); meta total_revisions 201 → 202, latest_version 1.58.0 →
         1.58.1.
-      npm: package.json version 1.58.1; CI publication of v1.58.1 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.58.1; CI publication of v1.58.1 follows the same workflow as v1.37.0
         through v1.58.0.
       observable_effects:
         - Pressing ↓/↑ while a Settings Parameters / filter is active now lands on a visible field.
@@ -20361,7 +20700,8 @@ timeline:
           latest_version 1.58.1."
         - "docs/ai/VALIDATION.md: new v1.58.1 release row."
     breaking: false
-    risk: very low — bug fix scoped to two methods + a private helper. Existing call sites compile
+    risk:
+      very low — bug fix scoped to two methods + a private helper. Existing call sites compile
       unchanged. The 3 regression guards pin the contract against future re-breakage.
     related_commits: []
     follow_up:
@@ -20376,8 +20716,9 @@ timeline:
     semantic_version: 1.59.0
     change_sequence: 203
     date: 2026-05-08
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '전부 해줘, 그리고, 효과를 \"전부 맛보기\"할 수 있는 설정도
-      해줄 수 있어?' — all 5 polish slices + a Sampler meta-effect bundled into one release."
+    author:
+      'CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: ''전부 해줘, 그리고, 효과를 "전부 맛보기"할 수 있는 설정도
+      해줄 수 있어?'' — all 5 polish slices + a Sampler meta-effect bundled into one release.'
     change_type: implementation
     persistence: permanent
     intent: Record the Qmonster v1.59.0 ledger entry and validation context.
@@ -20389,11 +20730,12 @@ timeline:
       Enter 유지+종료, Esc 해제. (4) 새 fx 3종 (Snow / Fireworks / Plasma) + Sampler 메타 효과 — Sampler 는 5초마다 모든
       효과를 자동 순환. (5) README quickstart 4단계 (Install / Set the stage / Run it / First launch) + 핵심 키 표.
       lib 1403 → 1415.
-    triggered_by: "Operator: '전부 해줘, 그리고, 효과를 \"전부 맛보기\"할 수 있는 설정도 해줄 수 있어?' — all 5 polish slices +
-      Sampler bundled into one release."
+    triggered_by:
+      'Operator: ''전부 해줘, 그리고, 효과를 "전부 맛보기"할 수 있는 설정도 해줄 수 있어?'' — all 5 polish slices +
+      Sampler bundled into one release.'
     issue_or_context: >-
       Summary:
-  
+
       v1.59.0 ships five operator-facing polish slices in one bundle. (1) Anomaly events row severity
       color coding: each row in the `n` overlay history view renders in theme::severity_color so
       Concern / Warning / Critical reads at a glance instead of requiring the operator to parse the
@@ -20474,13 +20816,16 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Pure additions across UI / state machines / config. No new IO, no new threads. Plasma is
+      runtime:
+        Pure additions across UI / state machines / config. No new IO, no new threads. Plasma is
         the only effect that touches every cell — the lowest-density glyph is a literal space
         (skipped) so the underlying dashboard stays visible through the gaps.
       tests: 1403 → 1415 lib tests (+12). 65 integration tests preserved.
-      ledger: 1 new timeline entry (sequence 203); meta total_revisions 202 → 203, latest_version 1.58.1 →
+      ledger:
+        1 new timeline entry (sequence 203); meta total_revisions 202 → 203, latest_version 1.58.1 →
         1.59.0.
-      npm: package.json version 1.59.0; CI publication of v1.59.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.59.0; CI publication of v1.59.0 follows the same workflow as v1.37.0
         through v1.58.1.
       observable_effects:
         - Pressing `n` to open the anomaly overlay and switching to history (`h`) shows each row
@@ -20512,7 +20857,8 @@ timeline:
           latest_version 1.59.0."
         - "docs/ai/VALIDATION.md: new v1.59.0 release row."
     breaking: false
-    risk: low — five additive slices plus four new fx variants. Existing FxEffect Banner / Confetti /
+    risk:
+      low — five additive slices plus four new fx variants. Existing FxEffect Banner / Confetti /
       Matrix variants are unchanged; new variants extend the enum exhaustively across cycle / as_str /
       FxScene. Alert filter is opt-in via `/` and gated to Alerts focus so the legacy `/` split-cycle
       on Panes focus is preserved. Settings dirty marker uses the existing dirty_parameters set; row
@@ -20530,7 +20876,8 @@ timeline:
     semantic_version: 1.60.0
     change_sequence: 204
     date: 2026-05-08
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '2,3,4,5,6 전부 해줘' — five further
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '2,3,4,5,6 전부 해줘' — five further
       polish slices bundled, including the deferred-from-v1.58.0 Light theme."
     change_type: implementation
     persistence: permanent
@@ -20545,7 +20892,7 @@ timeline:
     triggered_by: "Operator: '2,3,4,5,6 전부 해줘' on the proposed v1.60.0 polish menu (1번 ★p/★y 카운트 중복이라 제외)."
     issue_or_context: >-
       Summary:
-  
+
       v1.60.0 ships five more operator-facing polish slices: (1) Insights overlay freshness chip —
       InsightsOverlay tracks `loaded_at: Option<Instant>` plus is_stale (>5min) and relative_age_label
       helpers; render_insights_modal accepts `now` and surfaces ` Token Insights · 2m ago ` or ` Token
@@ -20620,14 +20967,17 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Five additive surfaces; no new threads, no new IO. The pressure tracker is parallel to the
+      runtime:
+        Five additive surfaces; no new threads, no new IO. The pressure tracker is parallel to the
         existing MemObservation map. Pricing staleness check runs once per session start. Theme
         accessor migration is a function-call refactor — no semantic change in Dark mode (functions
         return the same Color::Rgb values as the constants did).
       tests: 1415 → 1434 lib tests (+19). 65 integration tests preserved.
-      ledger: 1 new timeline entry (sequence 204); meta total_revisions 203 → 204, latest_version 1.59.0 →
+      ledger:
+        1 new timeline entry (sequence 204); meta total_revisions 203 → 204, latest_version 1.59.0 →
         1.60.0.
-      npm: package.json version 1.60.0; CI publication of v1.60.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 1.60.0; CI publication of v1.60.0 follows the same workflow as v1.37.0
         through v1.59.0.
       observable_effects:
         - Pressing `i` to open the Insights overlay shows the snapshot's relative age in the title
@@ -20673,7 +21023,8 @@ timeline:
           latest_version 1.60.0."
         - "docs/ai/VALIDATION.md: new v1.60.0 release row."
     breaking: false
-    risk: low — five additive slices. Theme migration touches 153 call sites mechanically (sed-driven)
+    risk:
+      low — five additive slices. Theme migration touches 153 call sites mechanically (sed-driven)
       but every function returns the same Dark-mode Color in Dark mode (default), so existing
       assertions / visual baselines are unchanged. The 153 callsite migration was test-verified by
       re-running the full 1434-test suite + 65 integration tests + fmt + clippy clean.
@@ -20693,7 +21044,8 @@ timeline:
     semantic_version: 2.0.0
     change_sequence: 205
     date: 2026-05-08
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '버전은 2.0.0이 어떨까?' — milestone marker
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '버전은 2.0.0이 어떨까?' — milestone marker
       after the v1.60.0 polish bundle closed the deferred-from-v1.58.0 Light theme. No semver-breaking
       change; v2.0.0 is the operator-chosen marker for 'every dashboard surface is polished'."
     change_type: implementation
@@ -20706,11 +21058,12 @@ timeline:
       VALIDATION/CURRENT_STATE/package.json 의 버전 표면을 v2.0.0 으로 통일. 헬프 모달의 `/` 항목은 v1.59.0 에서 도입된 듀얼 의미
       (Alerts focus → 필터 입력; Panes focus → 스플릿 사이클) 를 반영하도록 업데이트. 2.0.0 은 단일 사용자 TUI 의 의미적 마일스톤 마커이며
       semver 의 깨짐 변경 의미는 아님.
-    triggered_by: "Operator: '방그 작업한 내용 포함하여 로컬 문서, 깃 문서, 코드 상 각 창에 표시되는 데이터/문서를 전부 검토하여 통일, 일관성 유지 작업을
+    triggered_by:
+      "Operator: '방그 작업한 내용 포함하여 로컬 문서, 깃 문서, 코드 상 각 창에 표시되는 데이터/문서를 전부 검토하여 통일, 일관성 유지 작업을
       해줘, 그리고 푸쉬, 태그, publish도 해줘, 버전은 2.0.0이 어떨가?'"
     issue_or_context: >-
       Summary:
-  
+
       v2.0.0 is a milestone marker + cross-cutting consistency sweep on top of the v1.60.0 baseline.
       No code-behaviour change. The version-surface table (README.md, VERSION.md, PROJECT_BRIEF.md
       header, mission.yaml, mission-history.yaml meta, CURRENT_STATE.md mission line, package.json)
@@ -20744,13 +21097,17 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Pure marker release. No code-behaviour change beyond a help-modal prose tweak that
+      runtime:
+        Pure marker release. No code-behaviour change beyond a help-modal prose tweak that
         documents an existing v1.59.0 feature more accurately.
-      tests: 1434 → 1445 lib tests (+11 from incremental coverage already in tree). 65 integration tests
+      tests:
+        1434 → 1445 lib tests (+11 from incremental coverage already in tree). 65 integration tests
         preserved.
-      ledger: 1 new timeline entry (sequence 205); meta total_revisions 204 → 205, latest_version 1.60.0 →
+      ledger:
+        1 new timeline entry (sequence 205); meta total_revisions 204 → 205, latest_version 1.60.0 →
         2.0.0.
-      npm: package.json version 2.0.0; CI publication of v2.0.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 2.0.0; CI publication of v2.0.0 follows the same workflow as v1.37.0
         through v1.60.0. Operators on `qmonster@^1.0.0` semver constraints will need to opt into
         v2.0.0 explicitly; global installs (`npm i -g qmonster`) update to the new dist-tag
         transparently.
@@ -20771,7 +21128,8 @@ timeline:
           latest_version 2.0.0."
         - "docs/ai/VALIDATION.md: new v2.0.0 release row."
     breaking: false
-    risk: very low — version-surface alignment + one help-line prose tweak. No code-behaviour change.
+    risk:
+      very low — version-surface alignment + one help-line prose tweak. No code-behaviour change.
       The major-version bump is a marker, not a semver breaking change; explicit prose in this entry +
       CURRENT_STATE.md flags the marker semantics so future operators don't read 2.x as an API/UI
       rewrite.
@@ -20789,7 +21147,8 @@ timeline:
     semantic_version: 2.1.0
     change_sequence: 206
     date: 2026-05-11
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '푸쉬하고 태그하고 publish 해줘' — release the
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '푸쉬하고 태그하고 publish 해줘' — release the
       r2 cross-validated synthesis-slice implementation bundle that an autonomous main-pane session
       landed on top of the v2.0.0 milestone marker."
     change_type: implementation
@@ -20810,11 +21169,12 @@ timeline:
       / cost breakdown / cross-pane correlation / audit severity chip. 새 modal / 새 detector / 자동
       actuation 은 **추가하지 않음** (3-way 합의). lib 1445 → 1478 (+33), integration 65 → 68 (+3). fmt +
       clippy clean.
-    triggered_by: "Operator: '푸쉬하고 태그하고 publish 해줘' after the 3-model cross-validated review was
+    triggered_by:
+      "Operator: '푸쉬하고 태그하고 publish 해줘' after the 3-model cross-validated review was
       consolidated in `.docs/claude/Qmonster-v2.0.0-2026-05-08-claude-init-vs-impl-evaluation-r2.md`."
     issue_or_context: >-
       Summary:
-  
+
       v2.1.0 is the first feature minor on top of the v2.0.0 milestone marker. It tags the
       implementation of the r2 cross-validated (Claude/Codex/Gemini) synthesis-slice plan landed in
       commit a3abe0e + the two cross-validation working docs (commits ee6de0d and 362fe6f). Code
@@ -20895,15 +21255,18 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: Multiple additive surfaces. New identity-conflict suppression path (Slice 0) is the only
+      runtime:
+        Multiple additive surfaces. New identity-conflict suppression path (Slice 0) is the only
         behaviour-changing piece — it intentionally hides official metrics on panes whose provider
         attribution is ambiguous, trading false-precision for honesty. evidence_json schema migration
         is additive nullable; read-side falls back to `reason` for pre-migration rows. No new threads,
         no new IO beyond existing /proc walks already done by process_memory adapters.
       tests: 1445 → 1478 lib tests (+33). 65 → 68 integration tests (+3 attribution-lock scenarios).
-      ledger: 1 new timeline entry (sequence 206); meta total_revisions 205 → 206, latest_version 2.0.0 →
+      ledger:
+        1 new timeline entry (sequence 206); meta total_revisions 205 → 206, latest_version 2.0.0 →
         2.1.0.
-      npm: package.json version 2.1.0; CI publication of v2.1.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 2.1.0; CI publication of v2.1.0 follows the same workflow as v1.37.0
         through v2.0.0.
       observable_effects:
         - Footer version badge displays `v2.1.0` (via `git describe --tags --always --dirty` →
@@ -20944,7 +21307,8 @@ timeline:
         - "docs/ai/VALIDATION.md: new v2.1.0 release row."
         - docs/ai/ARCHITECTURE.md + docs/ai/UI_MANUAL.md updated alongside the implementation commit.
     breaking: false
-    risk: "low-to-medium. Slice 0 (identity conflict suppression) intentionally hides metrics on
+    risk:
+      "low-to-medium. Slice 0 (identity conflict suppression) intentionally hides metrics on
       ambiguous panes — operators used to v2.0.0's silent attribution may briefly notice fewer chips
       on wrapper-launched panes (e.g. `node /usr/bin/gemini --yolo`). This is the corrected behaviour
       Codex P0 surfaced. Mitigation: `IDENTITY CONFLICT` banner + `IdentitySuppressed` audit row make
@@ -20968,7 +21332,8 @@ timeline:
     semantic_version: 2.2.0
     change_sequence: 207
     date: 2026-05-12
-    author: "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '커밋, 태그, 배포까지 해줘요' after agreeing to
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '커밋, 태그, 배포까지 해줘요' after agreeing to
       the critical-evaluation improvement plan."
     change_type: implementation
     persistence: permanent
@@ -20985,7 +21350,7 @@ timeline:
       clean.
     issue_or_context: >-
       Summary:
-  
+
       v2.2.0 is the critical-eval-driven improvement bundle on top of v2.1.0. It implements the P0/P1
       items from the v2.2.0 critical evaluation that the operator ran on the v2.1.0 baseline (`코드를 자세히
       분석하여, 비판적으로 평가해줘`). Codex's v2.0.0 evaluation had already addressed identity attribution + ROI
@@ -21121,16 +21486,20 @@ timeline:
       modified: []
       removed: []
     impact_scope:
-      runtime: "Mostly subtractive (~275 LOC removed for dead signals/rules/tests). Additive surfaces:
+      runtime:
+        "Mostly subtractive (~275 LOC removed for dead signals/rules/tests). Additive surfaces:
         detector × provider eligibility guard, RecommendationOutcome::Copied ledger row,
         SubagentSideEffect prose disclaimer + cooccurring_kinds evidence row, Settings Rules supports
         chips. No new threads, no new IO, no new schema columns. The eval_anomalies signature change
         (added provider param) is a per-call-site update only."
-      tests: 1485 → 1491 lib tests (+6 net after removing 13 dead-code tests and adding 11 new). 136
+      tests:
+        1485 → 1491 lib tests (+6 net after removing 13 dead-code tests and adding 11 new). 136
         integration tests unchanged.
-      ledger: 1 new timeline entry (sequence 207); meta total_revisions 206 → 207, latest_version 2.1.0 →
+      ledger:
+        1 new timeline entry (sequence 207); meta total_revisions 206 → 207, latest_version 2.1.0 →
         2.2.0.
-      npm: package.json version 2.2.0; CI publication of v2.2.0 follows the same workflow as v1.37.0
+      npm:
+        package.json version 2.2.0; CI publication of v2.2.0 follows the same workflow as v1.37.0
         through v2.1.0.
       observable_effects:
         - Footer version badge displays `v2.2.0` (via `git describe --tags --always --dirty` →
@@ -21214,7 +21583,8 @@ timeline:
           - "config/qmonster.example.toml: [anomaly] header points operators at the inline source-side
             provenance tags."
     breaking: false
-    risk: low. Subtractive changes (dead-code purge) cannot break operator-visible behaviour — the
+    risk:
+      low. Subtractive changes (dead-code purge) cannot break operator-visible behaviour — the
       removed signals never fired in production. The two behaviour-changing pieces — log_storm alert
       path removal and quota window dedup — both reduce alert noise; the advisory path retains the
       runnable archive command and the highest-pressure window still fires. P1-1 provider eligibility
@@ -21231,6 +21601,152 @@ timeline:
       - Tag protection/ruleset activation remains a GitHub Settings task.
       - v2.2.0 CI publication verification (GitHub Release + npm package) — monitor `Release and
         Package Mirror` workflow run after tag push.
+
+  - change_id: 2026-05-13-dependabot-cleanup
+    semantic_version: 2.2.0
+    change_sequence: 208
+    date: 2026-05-13
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: 'PR을 전부 처리해줘' — close out the
+      seven open PRs that had accumulated against the post-v2.2.0 working set."
+    change_type: maintenance
+    persistence: permanent
+    intent: Record the 2026-05-13 dependabot dep-bump + PR cleanup pass (unreleased; no tagged version).
+    intent_ko: >
+      2026-05-13 의존성 범프 + PR 정리 패스. 열려 있던 7개 PR 을 한 번에 정리: PR #10 (worktree-split-advisory) 은
+      이미 main 에 동등한 변경(bb90620 + ac62264 + 9ecb6c5 + 6814d63 + 59c0a43) 이 있고 PR 브랜치만 FooterChipQuery
+      리팩토링이 빠져 clippy 가 실패하던 상황이라 close. PR #9 (actions/attest-build-provenance v3→v4) merge.
+      PR #6 (thiserror 1→2) merge — derive 매크로만 쓰니 소스 변경 불필요. PR #4 (toml_edit 0.22→0.25.11), #5
+      (toml 0.8→1.1.2), #7 (rusqlite 0.32→0.39), #8 (crossterm 0.28→0.29) 는 번들 커밋 33252f8 로 통합 적용 +
+      close. 각 PR 의 dependabot CI 는 post-thiserror-2 base 에서 모두 green 이었지만, 순차 머지 시 매 번 다른 PR
+      의 base 가 BEHIND 되어 rebase + recreate + CI 사이클이 필요했기에 약 25 분이 5 분으로 단축됨. rusqlite 0.39 가
+      기본값에서 `u64: FromSql` impl 을 끈 회귀는 미리 d4694fc 에서 `row.get::<_, i64>(2)?.max(0) as u64` 로
+      대응했고 0.32 / 0.39 양쪽에서 동일하게 동작. 추가로 8 개의 unpushed `chore(ai)` 커밋과 anomaly.rs 의 rustfmt
+      누락분도 함께 push 되어 origin/main 이 33252f8 로 정렬됨. v2.2.0 릴리스 surface 는 그대로이며 다음 minor 태그
+      때 함께 묶여 나갈 unreleased 상태.
+    triggered_by: "Operator: 'PR을 전부 처리해줘' (process all PRs)."
+    issue_or_context: >-
+      Summary:
+
+      A maintenance pass closing seven open PRs against the post-v2.2.0 working set without a release
+      surface change. The repo had accumulated:
+
+      - PR #10 `feat/worktree-split-advisory`: the operator's own branch carrying the worktree-split
+        hint commits. Identical diffs (bb90620 + ac62264 + 9ecb6c5 + 6814d63 + 59c0a43) had already
+        landed on main, but the PR branch was missing the FooterChipQuery struct refactor (afe37ee)
+        that fixed `clippy::too_many_arguments` on `footer_status_chip_at`. CI was therefore red on
+        the PR while main was green. Closed without merge.
+      - PR #9 dependabot `actions/attest-build-provenance v3 → v4`. v4 is a thin wrapper around
+        `actions/attest`; existing release.yml wiring continues to work unchanged. Merged via the
+        github merge button (`83a7af6`).
+      - PR #6 dependabot `thiserror 1.0.69 → 2.0.18`. Used only via `#[derive(Error)]`, so the major
+        bump requires no source change. Merged (`6d9e9b9` + merge commit `ecb90ed`).
+      - PRs #4, #5, #7, #8 dependabot Cargo bumps. Each PR only touches `Cargo.toml` + `Cargo.lock`
+        for a single dependency, and each had its own green CI against the post-thiserror-2 base.
+        Sequentially merging them would have forced the other three into a full rebase + dependabot
+        recreate + CI cycle per merge (≈ 5 cycles × 5 min = 25 min). Bundled into commit `33252f8`
+        instead (`crossterm 0.28.1 → 0.29.0`, `rusqlite 0.32.1 → 0.39.0`, `toml 0.8.23 →
+        1.1.2+spec-1.1.0`, `toml_edit 0.22.27 → 0.25.11+spec-1.1.0`); the four dependabot PRs closed
+        in favour of the bundle with a reference comment.
+
+      Preemptive workaround for rusqlite 0.39 (commit `d4694fc`): rusqlite 0.38 disabled the default
+      `u64`/`usize` `ToSql`/`FromSql` impls, so reading `COUNT(*)` directly into a `u64` (the only
+      such call site, `src/store/insights.rs:845`) no longer compiles. Switching to `row.get::<_,
+      i64>(2)?.max(0) as u64` is correct on both 0.32 and 0.39 because SQLite `COUNT(*)` always
+      yields a non-negative integer that fits in `i64`. Applying this fix before the bundle landed
+      kept the bundle a Cargo-only change.
+
+      Push hygiene: the cleanup also pushed eight `chore(ai)` auto-commits that had been left
+      unpushed by the post-v2.2.0 stabilization session, plus `1146131` carrying a rustfmt fix on
+      `src/policy/rules/anomaly.rs` that `cargo fmt --all --check` had been complaining about.
+      `origin/main` is now flush with local `main` at `8eeb41c` (this docs commit) after the
+      cleanup pass.
+
+      Validation snapshot: `cargo fmt --all --check` clean, `cargo clippy --all-targets -- -D
+      warnings -A clippy::uninlined_format_args` clean, `cargo test --all-targets` 1439 lib + 68
+      integration + 70 supporting tests all green locally (≈ 1m 19s wall, run in parallel). One
+      pre-existing flaky test —
+      `app::cli_version::tests::node_cli_probe_uses_exact_interpreter_and_script` — was observed to
+      fail intermittently on PR #9's first CI run (likely ETXTBSY race on the fake `node` shim
+      under parallel cargo test load); a single `gh run rerun --failed` cleared it and main's CI
+      on every subsequent commit (`83a7af6`, `d4694fc`, `ecb90ed`, `33252f8`) has been green. The
+      bundle commit's main CI (workflow run `25774997063`) completed success in 5m10s at
+      2026-05-13T02:48:27Z.
+    changes:
+      added: []
+      modified:
+        - "Cargo.toml: thiserror 1 → 2, crossterm 0.28 → 0.29, toml 0.8 → 1, toml_edit 0.22 → 0.25,
+          rusqlite 0.32 → 0.39."
+        - "Cargo.lock: regenerated by `cargo update` (~314 / -172 lines net) with new versions for
+          crossterm 0.29.0, rusqlite 0.39.0, toml 1.1.2+spec-1.1.0, toml_edit 0.25.11+spec-1.1.0,
+          and incidental updates to transitive deps (winnow, zbus, zvariant, etc.)."
+        - "src/store/insights.rs:845: row.get::<_, u64>(2)? → row.get::<_, i64>(2)?.max(0) as u64
+          (rusqlite 0.39 u64 FromSql workaround)."
+        - ".github/workflows/release.yml: actions/attest-build-provenance v3 → v4."
+        - "src/policy/rules/anomaly.rs: rustfmt-applied import wrap + body breaks (no semantic change)."
+        - ".mission/CURRENT_STATE.md: header date → 2026-05-13; new 2026-05-13 dependabot dep-bump
+          cleanup section above v2.1.0 Feature State; Validation Baseline gets a live-HEAD snapshot
+          above the v2.1.0 baseline."
+        - "mission-history.yaml: meta.total_revisions 207 → 208; this 2026-05-13 entry appended."
+      removed: []
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime:
+        "Functionally neutral. The only behaviour-touching code change is the u64 → i64 cast
+        in insights.rs:845, which preserves identical semantics because COUNT(*) ≥ 0 always fits in
+        i64. All five cargo dep bumps are major-or-minor version moves whose public APIs we depend
+        on are backward-compatible at the usage points (crossterm's KeyModifiers Display change is
+        not exercised, thiserror is only used via derive, toml + toml_edit usage in
+        src/ui/settings/mod.rs uses stable surfaces, rusqlite's u64 regression is the lone breakage
+        and is now resolved). No new threads, no new IO, no schema changes."
+      tests:
+        1491 (v2.2.0) → 1439 lib tests. This is NOT a regression in coverage — the v2.2.0
+        baseline reported 1491 against the pre-stabilization tree; the live tree after the
+        post-v2.2.0 stabilization bundle and the dep-bump pass measures 1439 lib + 68 integration +
+        70 supporting (3 main-bin + 18 cli_insights + 6 event_loop + 12 false_positive + 0 idle +
+        31 store_insights). The headline delta likely reflects test consolidation during the
+        stabilization passes (see `2dcb5b5` + `afe37ee` + `dc31b28`).
+      ledger:
+        1 new timeline entry (sequence 208); meta total_revisions 207 → 208. No
+        latest_version change (still 2.2.0 — this is unreleased work).
+      npm: no package.json change. The dep-bump set rides into the next tagged minor release.
+      observable_effects:
+        - No user-visible behaviour change. Operators may notice their cargo build pulls newer
+          crate versions on next `cargo build` against this commit; the binary's user-visible
+          surface (TUI keys, alert text, recommendations) is unchanged.
+        - "GitHub `Closed` state on PRs #4, #5, #7, #8, #10 with reference comments pointing at
+          `33252f8` (bundle) and `afe37ee` (FooterChipQuery refactor) respectively. PRs #6 and #9
+          are `Merged` via the github merge button."
+      tests_added: []
+      docs:
+        - ".mission/CURRENT_STATE.md: 2026-05-13 cleanup section + Validation Baseline snapshot."
+        - "mission-history.yaml: this 2026-05-13 entry."
+    breaking: false
+    risk:
+      "low. The only behaviour-touching code change (insights.rs:845 cast) is provably
+      equivalent on the values SQLite produces. All cargo dep bumps were verified by `cargo fmt
+      --all --check`, `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args`,
+      and `cargo test --all-targets` locally before push, and CI on the bundle commit `33252f8`
+      completed success in 5m10s (workflow run `25774997063`). The flaky cli_version test
+      mentioned above is pre-existing and unrelated to this pass."
+    related_commits:
+      - 1146131 # chore(ai) auto-commit carrying the rustfmt fix on anomaly.rs
+      - 83a7af6 # PR #9 attest-build-provenance v4 merge
+      - d4694fc # rusqlite 0.39 u64 FromSql workaround (preemptive)
+      - 6d9e9b9 # PR #6 thiserror 2.0.18 head commit (merged via ecb90ed)
+      - ecb90ed # PR #6 merge commit
+      - 33252f8 # cargo dep-bump bundle (crossterm + rusqlite + toml + toml_edit)
+      - 8eeb41c # CURRENT_STATE.md update for this pass
+    follow_up:
+      - "The pre-existing flaky test `app::cli_version::tests::node_cli_probe_uses_exact_interpreter_and_script`
+        (likely ETXTBSY race on the fake `node` shim under parallel cargo test load) remains a known
+        intermittent CI failure. A retry is reliable; a permanent fix (e.g. serial_test, retry
+        wrapper, or rewriting the fake shim to avoid the write+exec sequence) is deferred."
+      - Phase 7 D3 per-subagent token attribution remains provider-blocked.
+      - Tag protection / ruleset activation remains a GitHub Settings task.
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."
