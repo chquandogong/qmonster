@@ -40,6 +40,17 @@ fn line_text(line: &Line<'_>) -> String {
         .collect()
 }
 
+fn line_texts(lines: &[Line<'_>]) -> Vec<String> {
+    lines.iter().map(line_text).collect()
+}
+
+fn index_containing(lines: &[String], needle: &str) -> usize {
+    lines
+        .iter()
+        .position(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("missing {needle:?} in lines: {lines:#?}"))
+}
+
 fn future_unix_seconds(offset: std::time::Duration) -> u64 {
     std::time::SystemTime::now()
         .checked_add(offset)
@@ -1789,6 +1800,114 @@ fn pane_help_topic_at_row_maps_core_rows() {
     assert_eq!(
         pane_help_topic_at_row(&reports, &state, 4, 100),
         Some(HelpTopic::PaneMetrics)
+    );
+}
+
+#[test]
+fn expanded_pane_uses_sectioned_single_column_order() {
+    use crate::domain::recommendation::{Recommendation, RequestedEffect, Severity};
+
+    let mut rep = sample_pane_report();
+    rep.current_path = "/home/chquan/Qmonster".into();
+    rep.current_command = "codex".into();
+    rep.signals.cost_usd = Some(MetricValue::new(3.0, SourceKind::ProviderOfficial));
+    rep.signals.runtime_facts.push(RuntimeFact::new(
+        RuntimeFactKind::Sandbox,
+        "workspace-write",
+        SourceKind::ProviderOfficial,
+    ));
+    rep.effects.push(RequestedEffect::PromptSendProposed {
+        target_pane_id: rep.pane_id.clone(),
+        slash_command: "/compact".into(),
+        proposal_id: "proposal-1".into(),
+    });
+    rep.recommendations = vec![Recommendation {
+        action: "cache: drift detected",
+        reason: "cache drift detected - /compact will let cache rebuild".into(),
+        severity: Severity::Concern,
+        source_kind: SourceKind::Heuristic,
+        suggested_command: Some("/compact".into()),
+        side_effects: vec![],
+        is_strong: false,
+        next_step: Some("snapshot before compact".into()),
+        profile: None,
+    }];
+
+    let lines = pane_list_lines_with_width(&rep, true, false, 120);
+    let text = line_texts(&lines);
+
+    let title = index_containing(&text, "qwork:1");
+    let now = index_containing(&text, "NOW");
+    let proposal = index_containing(&text, "proposal");
+    let where_section = index_containing(&text, "WHERE");
+    let path = index_containing(&text, "path    : /home/chquan/Qmonster");
+    let command = index_containing(&text, "cmd     : codex");
+    let pressure = index_containing(&text, "PRESSURE");
+    let metrics = index_containing(&text, "metrics");
+    let runtime = index_containing(&text, "RUNTIME");
+    let modes = index_containing(&text, "modes");
+    let recommendations = index_containing(&text, "RECOMMENDATIONS");
+    let rec = index_containing(&text, "CONCERN");
+
+    assert!(title < now, "title should precede NOW: {text:#?}");
+    assert!(now < proposal, "NOW should contain proposal rows: {text:#?}");
+    assert!(proposal < where_section, "NOW should precede WHERE: {text:#?}");
+    assert!(where_section < path, "WHERE should contain path rows: {text:#?}");
+    assert!(path < command, "path should precede command: {text:#?}");
+    assert!(command < pressure, "WHERE should precede PRESSURE: {text:#?}");
+    assert!(pressure < metrics, "PRESSURE should contain metrics: {text:#?}");
+    assert!(metrics < runtime, "PRESSURE should precede RUNTIME: {text:#?}");
+    assert!(runtime < modes, "RUNTIME should contain runtime facts: {text:#?}");
+    assert!(
+        modes < recommendations,
+        "RUNTIME should precede RECOMMENDATIONS: {text:#?}"
+    );
+    assert!(
+        recommendations < rec,
+        "RECOMMENDATIONS should contain recommendation rows: {text:#?}"
+    );
+}
+
+#[test]
+fn collapsed_pane_keeps_flat_layout_without_section_headers() {
+    let mut rep = sample_pane_report();
+    rep.current_path = "/home/chquan/Qmonster".into();
+    rep.current_command = "codex".into();
+    rep.signals.cost_usd = Some(MetricValue::new(3.0, SourceKind::ProviderOfficial));
+    rep.signals.runtime_facts.push(RuntimeFact::new(
+        RuntimeFactKind::Sandbox,
+        "workspace-write",
+        SourceKind::ProviderOfficial,
+    ));
+
+    let lines = pane_list_lines_with_width(&rep, false, false, 120);
+    let text = line_texts(&lines);
+
+    for header in ["NOW", "WHERE", "PRESSURE", "RUNTIME", "RECOMMENDATIONS"] {
+        assert!(
+            !text.iter().any(|line| line.trim() == header),
+            "collapsed pane must not render section header {header}: {text:#?}"
+        );
+    }
+    assert!(
+        text.iter()
+            .any(|line| line.starts_with("path    : /home/chquan/Qmonster")),
+        "collapsed pane should keep existing path row: {text:#?}"
+    );
+}
+
+#[test]
+fn expanded_pane_keeps_empty_recommendations_state_under_section() {
+    let rep = sample_pane_report();
+    let lines = pane_list_lines_with_width(&rep, true, false, 120);
+    let text = line_texts(&lines);
+
+    let recommendations = index_containing(&text, "RECOMMENDATIONS");
+    let empty = index_containing(&text, "status  : no active recommendations");
+
+    assert!(
+        recommendations < empty,
+        "empty recommendation state should live under RECOMMENDATIONS: {text:#?}"
     );
 }
 
