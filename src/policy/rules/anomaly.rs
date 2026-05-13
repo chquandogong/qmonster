@@ -5,9 +5,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::domain::anomaly::{
-    AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal,
-};
+use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvidence, AnomalyKind, AnomalySignal};
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::{Recommendation, Severity};
 use crate::policy::gates::PolicyGates;
@@ -807,11 +805,24 @@ mod tests {
     #[test]
     fn detect_error_burst_evidence_carries_dominant_error_kind() {
         let mut h = AnomalyHistory::default();
-        for _ in 0..8 { h.error_hints.push_front(true); h.error_hint_kinds.push_front(Some("rust_panic")); }
-        for _ in 0..4 { h.error_hints.push_front(true); h.error_hint_kinds.push_front(Some("error_prefix")); }
-        for _ in 0..8 { h.error_hints.push_front(false); h.error_hint_kinds.push_front(None); }
+        for _ in 0..8 {
+            h.error_hints.push_front(true);
+            h.error_hint_kinds.push_front(Some("rust_panic"));
+        }
+        for _ in 0..4 {
+            h.error_hints.push_front(true);
+            h.error_hint_kinds.push_front(Some("error_prefix"));
+        }
+        for _ in 0..8 {
+            h.error_hints.push_front(false);
+            h.error_hint_kinds.push_front(None);
+        }
         let sig = detect_error_burst(&h, 20, 0.5, 1_700_000_000).unwrap();
-        let dominant = sig.evidence.iter().find(|e| e.metric_name == "dominant_kind").unwrap();
+        let dominant = sig
+            .evidence
+            .iter()
+            .find(|e| e.metric_name == "dominant_kind")
+            .unwrap();
         assert_eq!(dominant.before, "rust_panic");
     }
 
@@ -819,11 +830,13 @@ mod tests {
     fn trim_caps_each_deque_to_capacity() {
         let mut h = AnomalyHistory::default();
         for i in 0..30 {
-            h.identity_snapshots.push_front((format!("p{i}"), format!("/path{i}")));
+            h.identity_snapshots
+                .push_front((format!("p{i}"), format!("/path{i}")));
             h.error_hints.push_front(i % 2 == 0);
             h.cache_hit_ratios.push_front(Some(i as f32 / 30.0));
             h.cache_drift_fires.push_front(i % 3 == 0);
-            h.cross_pane_edit_paths.push_front(vec![format!("/abs/file{i}.rs")]);
+            h.cross_pane_edit_paths
+                .push_front(vec![format!("/abs/file{i}.rs")]);
             h.cost_usd_samples.push_front(Some(i as f64));
         }
         h.trim(20);
@@ -833,8 +846,12 @@ mod tests {
 
     fn cache_history(ratios: Vec<Option<f32>>, drift_fires: Vec<bool>) -> AnomalyHistory {
         let mut h = AnomalyHistory::default();
-        for r in ratios.into_iter().rev() { h.cache_hit_ratios.push_front(r); }
-        for d in drift_fires.into_iter().rev() { h.cache_drift_fires.push_front(d); }
+        for r in ratios.into_iter().rev() {
+            h.cache_hit_ratios.push_front(r);
+        }
+        for d in drift_fires.into_iter().rev() {
+            h.cache_drift_fires.push_front(d);
+        }
         h
     }
 
@@ -850,7 +867,8 @@ mod tests {
     fn cross_pane_history(per_tick_paths: Vec<Vec<&str>>) -> AnomalyHistory {
         let mut h = AnomalyHistory::default();
         for tick in per_tick_paths.into_iter().rev() {
-            h.cross_pane_edit_paths.push_front(tick.into_iter().map(String::from).collect());
+            h.cross_pane_edit_paths
+                .push_front(tick.into_iter().map(String::from).collect());
         }
         h
     }
@@ -866,14 +884,18 @@ mod tests {
 
     fn cost_history(samples: Vec<Option<f64>>) -> AnomalyHistory {
         let mut h = AnomalyHistory::default();
-        for s in samples.into_iter().rev() { h.cost_usd_samples.push_front(s); }
+        for s in samples.into_iter().rev() {
+            h.cost_usd_samples.push_front(s);
+        }
         h
     }
 
     #[test]
     fn detect_cost_slope_pure_positive_high_confidence() {
         let mut samples = vec![Some(100.0)];
-        for i in (0..19).rev() { samples.push(Some((i as f64) * (100.0 / 19.0))); }
+        for i in (0..19).rev() {
+            samples.push(Some((i as f64) * (100.0 / 19.0)));
+        }
         let h = cost_history(samples);
         let sig = detect_cost_slope(&h, 20, 20.0, 1_700_000_000).unwrap();
         assert_eq!(sig.kind, AnomalyKind::CostSlope);
@@ -883,16 +905,39 @@ mod tests {
     fn make_signal(kind: AnomalyKind, confidence: AnomalyConfidence) -> AnomalySignal {
         let severity = severity_for(confidence);
         let (metric_name, before, after) = match kind {
-            AnomalyKind::IdentityChurn => ("provider_path", "claude:/r".to_string(), "codex:/r".to_string()),
+            AnomalyKind::IdentityChurn => (
+                "provider_path",
+                "claude:/r".to_string(),
+                "codex:/r".to_string(),
+            ),
             AnomalyKind::ErrorBurst => ("error_rate", "0.10".to_string(), "0.80".to_string()),
-            AnomalyKind::CacheDiscontinuity => ("cache_hit_ratio", "0.85".to_string(), "0.40".to_string()),
-            AnomalyKind::CrossPaneEditCluster => ("concurrent_edit_path", "/r/foo.rs".to_string(), "6".to_string()),
-            AnomalyKind::CostSlope => ("cost_slope_usd_per_hour", "0.10".to_string(), "25.40".to_string()),
+            AnomalyKind::CacheDiscontinuity => {
+                ("cache_hit_ratio", "0.85".to_string(), "0.40".to_string())
+            }
+            AnomalyKind::CrossPaneEditCluster => (
+                "concurrent_edit_path",
+                "/r/foo.rs".to_string(),
+                "6".to_string(),
+            ),
+            AnomalyKind::CostSlope => (
+                "cost_slope_usd_per_hour",
+                "0.10".to_string(),
+                "25.40".to_string(),
+            ),
         };
         AnomalySignal {
-            kind, confidence, severity,
-            evidence: vec![AnomalyEvidence { metric_name, before, after, sample_count: 6, source_kind: SourceKind::Estimated }],
-            window_polls: 20, detected_at: 1_700_000_000,
+            kind,
+            confidence,
+            severity,
+            evidence: vec![AnomalyEvidence {
+                metric_name,
+                before,
+                after,
+                sample_count: 6,
+                source_kind: SourceKind::Estimated,
+            }],
+            window_polls: 20,
+            detected_at: 1_700_000_000,
         }
     }
 
