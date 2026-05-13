@@ -132,6 +132,11 @@ hover_help_trigger = "label" # "label" | "row"
   recovery에서는 `/compact`가 있으면 그것을 우선 복사합니다.
 - Enter/Space hide는 FLOW key를 대상으로 합니다. 같은 구성의 flow가
   숨겨진 동안 included 원본 alert들은 top-level로 다시 흩어지지 않습니다.
+- `related` / `rail` 행은 FLOW로 접을 만큼 강한 관계는 아니지만 같은 pane의
+  command 또는 recovery signal을 공유하는 alert들이 있을 때 표시됩니다.
+  이 경우 alert들은 계속 개별 top-level 항목으로 남고, hide/copy/severity
+  정렬도 각 alert 기준으로 유지됩니다. 선택된 alert는 `included` 행으로
+  관련 sibling action/source를 짧게 보여줍니다.
 
 - Alerts 맨 위 `bulk hide :` 줄의 severity chip은 **actionable alert만**
   대상으로 합니다. `c`로 지울 수 있는 system notice는 여기에 포함되지
