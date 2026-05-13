@@ -6,14 +6,6 @@
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Severity;
 
-/// Canonical action string emitted for `AnomalyKind::SubagentSideEffect`.
-/// Single source of truth: the policy rule emits this verbatim, the insights
-/// store lists it in `KNOWN_ACTION_PREFIXES`, and the integration tests
-/// classify against it via `starts_with`. The leading `⚠ correlation only`
-/// disclaimer is intentional (v2.2.0 P1-2 honesty rule).
-pub const SUBAGENT_SIDE_EFFECT_ACTION: &str =
-    "anomaly: subagent activity ⚠ correlated with other anomalies";
-
 /// One detected anomaly. Built by a `policy::rules::anomaly::detect_*`
 /// function and (after edge-triggered dedup) attached to
 /// `PaneReport.anomalies`. Observation surface only — no ID, no
@@ -31,8 +23,7 @@ pub struct AnomalySignal {
     pub detected_at: u64,
 }
 
-/// Phase 7 v1 ships four detector kinds; v2 adds the remaining four
-/// (`CostSlope`, `TokenSlope`, `MemoryGrowth`, `SubagentSideEffect`).
+/// Phase 7 v1 ships four detector kinds; v2 adds CostSlope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AnomalyKind {
     IdentityChurn,
@@ -40,9 +31,6 @@ pub enum AnomalyKind {
     CacheDiscontinuity,
     CrossPaneEditCluster,
     CostSlope,
-    TokenSlope,
-    MemoryGrowth,
-    SubagentSideEffect,
 }
 
 impl AnomalyKind {
@@ -53,9 +41,6 @@ impl AnomalyKind {
             AnomalyKind::CacheDiscontinuity => "CacheDiscontinuity",
             AnomalyKind::CrossPaneEditCluster => "CrossPaneEditCluster",
             AnomalyKind::CostSlope => "CostSlope",
-            AnomalyKind::TokenSlope => "TokenSlope",
-            AnomalyKind::MemoryGrowth => "MemoryGrowth",
-            AnomalyKind::SubagentSideEffect => "SubagentSideEffect",
         }
     }
 
@@ -66,9 +51,6 @@ impl AnomalyKind {
             "CacheDiscontinuity" => AnomalyKind::CacheDiscontinuity,
             "CrossPaneEditCluster" => AnomalyKind::CrossPaneEditCluster,
             "CostSlope" => AnomalyKind::CostSlope,
-            "TokenSlope" => AnomalyKind::TokenSlope,
-            "MemoryGrowth" => AnomalyKind::MemoryGrowth,
-            "SubagentSideEffect" => AnomalyKind::SubagentSideEffect,
             _ => return None,
         })
     }
@@ -78,23 +60,6 @@ impl AnomalyKind {
     /// when the detector consumes provider-agnostic signals. Otherwise
     /// returns the explicit list of providers whose adapter populates
     /// the detector's required input signal.
-    ///
-    /// Used by `n` overlay + Settings Rules tab to render
-    /// `n/a (provider)` instead of leaving operators to wonder why a
-    /// detector is dim. This is the canonical reference for the
-    /// detector-provider coverage matrix flagged in the v2.2.0
-    /// critical evaluation (the `MemoryGrowth`-on-Claude silent-dead
-    /// problem).
-    ///
-    /// **Provenance**: this matrix mirrors what each `detect_*` function
-    /// in `policy::rules::anomaly` actually consumes — verified against
-    /// the adapter `SignalSet` writes as of v2.2.0:
-    /// - `process_memory_mb`        → Gemini only (status table)
-    /// - `cost_usd`                 → Codex (Pricing-derived)
-    /// - `cached_input_tokens` /    → Codex tokens (welcome panel),
-    ///   `cache_hit_ratio`            Claude % (statusline)
-    /// - `subagent_hint` (`● Task`) → Claude tool-call marker
-    /// - `error_hint` / identity     → all 3 providers
     pub fn supported_providers(self) -> &'static [crate::domain::identity::Provider] {
         use crate::domain::identity::Provider::*;
         match self {
@@ -119,20 +84,6 @@ impl AnomalyKind {
             // populated through the same `signals.cost_usd` path —
             // include both as "supported when pricing curated".
             AnomalyKind::CostSlope => &[Claude, Codex, Gemini],
-            // Token slope needs cumulative `input_tokens`. Codex
-            // populates from bottom status line. Claude `token_count`
-            // surfaces output tokens not cumulative input — leave
-            // unsupported until Claude exposes a cumulative input
-            // counter. Gemini status table does not expose either.
-            AnomalyKind::TokenSlope => &[Codex],
-            // Memory growth needs `process_memory_mb`. Only Gemini
-            // populates this from its status-table `memory` column.
-            AnomalyKind::MemoryGrowth => &[Gemini],
-            // Subagent side effect needs `subagent_hint`. The
-            // `SUBAGENT_MARKERS` cross-provider phrase list catches
-            // `● Task(` (Claude). Codex/Gemini have no equivalent
-            // sub-agent surface (their multi-step tools run in-context).
-            AnomalyKind::SubagentSideEffect => &[Claude],
         }
     }
 
@@ -227,12 +178,6 @@ mod tests {
     #[test]
     fn kind_labels_cover_v2_variants() {
         assert_eq!(AnomalyKind::CostSlope.label(), "CostSlope");
-        assert_eq!(AnomalyKind::TokenSlope.label(), "TokenSlope");
-        assert_eq!(AnomalyKind::MemoryGrowth.label(), "MemoryGrowth");
-        assert_eq!(
-            AnomalyKind::SubagentSideEffect.label(),
-            "SubagentSideEffect"
-        );
     }
 
     #[test]
@@ -243,9 +188,6 @@ mod tests {
             AnomalyKind::CacheDiscontinuity,
             AnomalyKind::CrossPaneEditCluster,
             AnomalyKind::CostSlope,
-            AnomalyKind::TokenSlope,
-            AnomalyKind::MemoryGrowth,
-            AnomalyKind::SubagentSideEffect,
         ];
         for kind in kinds {
             assert_eq!(AnomalyKind::try_from_label(kind.label()), Some(kind));
@@ -307,9 +249,6 @@ mod tests {
             AnomalyKind::CacheDiscontinuity,
             AnomalyKind::CrossPaneEditCluster,
             AnomalyKind::CostSlope,
-            AnomalyKind::TokenSlope,
-            AnomalyKind::MemoryGrowth,
-            AnomalyKind::SubagentSideEffect,
         ];
         for kind in kinds {
             assert!(

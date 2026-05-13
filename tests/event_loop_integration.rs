@@ -2960,8 +2960,6 @@ fn event_loop_anomalies_fire_when_enabled_and_history_full() {
         cache_discontinuity_drop: 0.30,
         cross_pane_cluster_min_findings: 3,
         cost_slope_usd_per_hour: 20.0,
-        token_slope_input_per_poll: 20_000,
-        memory_growth_mb: 1024.0,
         retention_days: 30,
         promote: AnomalyPromoteConfig::default(),
     };
@@ -3087,8 +3085,6 @@ fn event_loop_promotes_warning_anomalies_to_recommendations_and_notify() {
         cache_discontinuity_drop: 0.30,
         cross_pane_cluster_min_findings: 3,
         cost_slope_usd_per_hour: 20.0,
-        token_slope_input_per_poll: 20_000,
-        memory_growth_mb: 1024.0,
         retention_days: 30,
         promote: AnomalyPromoteConfig::default(),
     };
@@ -3230,8 +3226,6 @@ fn event_loop_v2_detector_history_push_does_not_panic() {
         cache_discontinuity_drop: 0.30,
         cross_pane_cluster_min_findings: 3,
         cost_slope_usd_per_hour: 20.0,
-        token_slope_input_per_poll: 20_000,
-        memory_growth_mb: 1024.0,
         retention_days: 30,
         promote: AnomalyPromoteConfig::default(),
     };
@@ -3252,11 +3246,6 @@ fn event_loop_v2_detector_history_push_does_not_panic() {
         .get("%99")
         .expect("AnomalyHistory entry exists after 5 ticks");
     assert_eq!(history.cost_usd_samples.len(), 5);
-    assert_eq!(history.input_token_samples.len(), 5);
-    assert_eq!(history.output_token_samples.len(), 5);
-    assert_eq!(history.process_memory_samples.len(), 5);
-    assert_eq!(history.agent_memory_samples.len(), 5);
-    assert_eq!(history.subagent_hint_samples.len(), 5);
 }
 
 #[test]
@@ -3295,8 +3284,6 @@ fn event_loop_pushes_anomaly_events_into_ring_buffer() {
         cache_discontinuity_drop: 0.30,
         cross_pane_cluster_min_findings: 3,
         cost_slope_usd_per_hour: 20.0,
-        token_slope_input_per_poll: 20_000,
-        memory_growth_mb: 1024.0,
         retention_days: 30,
         promote: AnomalyPromoteConfig::default(),
     };
@@ -3393,8 +3380,6 @@ fn event_loop_persists_anomaly_event_to_audit_db() {
         cache_discontinuity_drop: 0.30,
         cross_pane_cluster_min_findings: 3,
         cost_slope_usd_per_hour: 20.0,
-        token_slope_input_per_poll: 20_000,
-        memory_growth_mb: 1024.0,
         promote: AnomalyPromoteConfig::default(),
         retention_days: 30,
     };
@@ -3448,11 +3433,6 @@ fn event_loop_replays_anomaly_history_on_first_observation() {
             cache_drift_fire: false,
             cross_pane_edit_paths: Vec::new(),
             cost_usd: Some(1.0 + offset as f64 * 0.5),
-            input_tokens: Some(100 + offset),
-            output_tokens: Some(50 + offset),
-            process_memory_mb: Some(120.0 + offset as f64),
-            agent_memory_bytes: Some(1_000_000),
-            subagent_hint: false,
         };
         writer_sink
             .upsert_anomaly_history_snapshot("%99", now_secs - offset, &snap)
@@ -3474,8 +3454,6 @@ fn event_loop_replays_anomaly_history_on_first_observation() {
         cache_discontinuity_drop: 0.30,
         cross_pane_cluster_min_findings: 3,
         cost_slope_usd_per_hour: 20.0,
-        token_slope_input_per_poll: 20_000,
-        memory_growth_mb: 1024.0,
         promote: AnomalyPromoteConfig::default(),
         retention_days: 30,
     };

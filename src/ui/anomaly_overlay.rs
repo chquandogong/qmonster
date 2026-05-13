@@ -489,8 +489,7 @@ fn format_event_evidence_lines(
 fn anomaly_basis_label(kind: crate::domain::anomaly::AnomalyKind) -> Option<&'static str> {
     use crate::domain::anomaly::AnomalyKind;
     match kind {
-        AnomalyKind::ErrorBurst | AnomalyKind::MemoryGrowth => Some("heuristic"),
-        AnomalyKind::SubagentSideEffect => Some("correlation"),
+        AnomalyKind::ErrorBurst => Some("heuristic"),
         _ => None,
     }
 }

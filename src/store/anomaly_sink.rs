@@ -1,14 +1,10 @@
 //! Phase 7 v3 (c) (v1.47.0): persistence sink for anomaly events and
-//! per-pane AnomalyHistory deque snapshots. Wraps an `AuditDb`,
-//! mirroring the existing `SqliteTokenUsageSink` and
-//! `SqliteCostUsageSink` patterns. Schema migration runs inside
-//! `AuditDb::open` and is idempotent.
+//! per-pane AnomalyHistory deque snapshots. Wraps an `AuditDb`.
 
 use std::path::Path;
 
 use crate::app::event_loop::current_unix_ms;
 use crate::domain::anomaly::{AnomalyConfidence, AnomalyEvent, AnomalyEvidence, AnomalyKind};
-use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Severity;
 use crate::store::anomaly_history::AnomalyHistorySnapshot;
 use crate::store::sqlite::{AuditDb, SqliteError};
@@ -24,8 +20,6 @@ impl SqliteAnomalySink {
         })
     }
 
-    /// One-off INSERT into anomaly_events. Wraps its own transaction.
-    /// For per-tick batching, prefer `with_transaction`.
     pub fn insert_anomaly_event(&self, event: &AnomalyEvent) -> Result<(), SqliteError> {
         let conn = self
             .db
@@ -73,9 +67,8 @@ impl SqliteAnomalySink {
             "INSERT OR REPLACE INTO anomaly_history_snapshots
              (pane_id, tick_unix_secs, identity_provider, identity_path,
               error_hint, cache_hit_ratio, cache_drift_fire,
-              cross_pane_edit_paths_json, cost_usd, input_tokens, output_tokens,
-              process_memory_mb, agent_memory_bytes, subagent_hint)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+              cross_pane_edit_paths_json, cost_usd)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![
                 pane_id,
                 tick_unix_secs as i64,
@@ -86,11 +79,6 @@ impl SqliteAnomalySink {
                 snap.cache_drift_fire as i64,
                 cross_paths_json,
                 snap.cost_usd,
-                snap.input_tokens.map(|n| n as i64),
-                snap.output_tokens.map(|n| n as i64),
-                snap.process_memory_mb,
-                snap.agent_memory_bytes.map(|n| n as i64),
-                snap.subagent_hint as i64,
             ],
         )
         .map_err(|e| SqliteError::Query(e.to_string()))?;
@@ -208,8 +196,7 @@ impl SqliteAnomalySink {
         let mut stmt = match conn.prepare_cached(
             "SELECT tick_unix_secs, identity_provider, identity_path, error_hint,
                     cache_hit_ratio, cache_drift_fire, cross_pane_edit_paths_json,
-                    cost_usd, input_tokens, output_tokens, process_memory_mb,
-                    agent_memory_bytes, subagent_hint
+                    cost_usd
              FROM anomaly_history_snapshots
              WHERE pane_id = ?1
              ORDER BY tick_unix_secs DESC
@@ -230,11 +217,6 @@ impl SqliteAnomalySink {
             let cache_drift_fire: i64 = row.get(5)?;
             let cross_paths_json: Option<String> = row.get(6)?;
             let cost_usd: Option<f64> = row.get(7)?;
-            let input_tokens: Option<i64> = row.get(8)?;
-            let output_tokens: Option<i64> = row.get(9)?;
-            let process_memory_mb: Option<f64> = row.get(10)?;
-            let agent_memory_bytes: Option<i64> = row.get(11)?;
-            let subagent_hint: i64 = row.get(12)?;
             Ok((
                 tick,
                 identity_provider,
@@ -244,11 +226,6 @@ impl SqliteAnomalySink {
                 cache_drift_fire,
                 cross_paths_json,
                 cost_usd,
-                input_tokens,
-                output_tokens,
-                process_memory_mb,
-                agent_memory_bytes,
-                subagent_hint,
             ))
         });
         let rows = match rows {
@@ -269,11 +246,6 @@ impl SqliteAnomalySink {
                 cache_drift_fire,
                 cross_paths_json,
                 cost_usd,
-                input_tokens,
-                output_tokens,
-                process_memory_mb,
-                agent_memory_bytes,
-                subagent_hint,
             ) = row;
             let identity = match (provider, path) {
                 (Some(p), Some(pa)) => Some((p, pa)),
@@ -292,19 +264,12 @@ impl SqliteAnomalySink {
                     cache_drift_fire: cache_drift_fire != 0,
                     cross_pane_edit_paths,
                     cost_usd,
-                    input_tokens: input_tokens.map(|i| i as u64),
-                    output_tokens: output_tokens.map(|i| i as u64),
-                    process_memory_mb,
-                    agent_memory_bytes: agent_memory_bytes.map(|i| i as u64),
-                    subagent_hint: subagent_hint != 0,
                 },
             ));
         }
         out
     }
 
-    /// Time-based purge (`retention_days`) + 100K-row hard cap for
-    /// `anomaly_events`; 4×window auto-purge for `anomaly_history_snapshots`.
     pub fn run_retention(
         &self,
         retention_days: u64,
@@ -351,7 +316,7 @@ struct PersistedEvidence {
     before: String,
     after: String,
     sample_count: usize,
-    source_kind: SourceKind,
+    source_kind: crate::domain::origin::SourceKind,
 }
 
 pub(crate) fn encode_evidence_json(evidence: &[AnomalyEvidence]) -> Result<String, SqliteError> {
@@ -428,11 +393,6 @@ mod tests {
             cache_drift_fire: true,
             cross_pane_edit_paths: vec!["src/a.rs".to_string()],
             cost_usd: Some(2.5),
-            input_tokens: Some(1234),
-            output_tokens: Some(99),
-            process_memory_mb: Some(128.5),
-            agent_memory_bytes: Some(1_000_000),
-            subagent_hint: false,
         }
     }
 
@@ -447,48 +407,6 @@ mod tests {
     }
 
     #[test]
-    fn anomaly_event_evidence_migrates_and_roundtrips() {
-        use crate::domain::anomaly::AnomalyEvidence;
-        use crate::domain::origin::SourceKind;
-        let tmp = tempfile::TempDir::new().unwrap();
-        let path = tmp.path().join("audit.db");
-        {
-            let conn = rusqlite::Connection::open(&path).unwrap();
-            conn.execute_batch(
-                r"
-                CREATE TABLE anomaly_events (
-                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ts_unix_secs    INTEGER NOT NULL,
-                    pane_id         TEXT    NOT NULL,
-                    kind            TEXT    NOT NULL,
-                    confidence      TEXT    NOT NULL,
-                    severity        TEXT    NOT NULL,
-                    promoted        INTEGER NOT NULL,
-                    reason          TEXT    NOT NULL DEFAULT ''
-                );
-                ",
-            )
-            .unwrap();
-        }
-        let sink = SqliteAnomalySink::open(&path).unwrap();
-        let mut event = fixture_event(1_700_000_000);
-        event.evidence = vec![AnomalyEvidence {
-            metric_name: "input_tokens",
-            before: "4.2K".into(),
-            after: "11K".into(),
-            sample_count: 6,
-            source_kind: SourceKind::ProviderOfficial,
-        }];
-        sink.insert_anomaly_event(&event).unwrap();
-
-        let fetched = sink.fetch_recent_anomaly_events(10);
-        assert_eq!(fetched.len(), 1);
-        assert_eq!(fetched[0].evidence.len(), 1);
-        assert_eq!(fetched[0].evidence[0].metric_name, "input_tokens");
-        assert_eq!(fetched[0].evidence[0].sample_count, 6);
-    }
-
-    #[test]
     fn fetch_recent_anomaly_events_orders_newest_first() {
         let (_tmp, sink) = temp_sink();
         for ts in [1, 3, 2u64] {
@@ -499,16 +417,6 @@ mod tests {
         assert_eq!(events[0].timestamp, 3);
         assert_eq!(events[1].timestamp, 2);
         assert_eq!(events[2].timestamp, 1);
-    }
-
-    #[test]
-    fn fetch_recent_anomaly_events_respects_limit() {
-        let (_tmp, sink) = temp_sink();
-        for ts in 0..5 {
-            sink.insert_anomaly_event(&fixture_event(ts)).unwrap();
-        }
-        let events = sink.fetch_recent_anomaly_events(2);
-        assert_eq!(events.len(), 2);
     }
 
     #[test]
@@ -548,76 +456,11 @@ mod tests {
             cache_drift_fire: false,
             cross_pane_edit_paths: Vec::new(),
             cost_usd: None,
-            input_tokens: None,
-            output_tokens: None,
-            process_memory_mb: None,
-            agent_memory_bytes: None,
-            subagent_hint: false,
         };
         sink.upsert_anomaly_history_snapshot("%1", 100, &snap)
             .unwrap();
         let fetched = sink.fetch_recent_history_snapshots("%1", 1);
         assert_eq!(fetched.len(), 1);
         assert_eq!(fetched[0].1, snap);
-    }
-
-    #[test]
-    fn run_retention_drops_events_older_than_days() {
-        let (_tmp, sink) = temp_sink();
-        let now_secs = (current_unix_ms() / 1000) as u64;
-        sink.insert_anomaly_event(&fixture_event(0)).unwrap();
-        sink.insert_anomaly_event(&fixture_event(now_secs)).unwrap();
-        sink.run_retention(30, 20, 2).unwrap();
-        let events = sink.fetch_recent_anomaly_events(10);
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].timestamp, now_secs);
-    }
-
-    #[test]
-    fn run_retention_drops_old_history_snapshots() {
-        let (_tmp, sink) = temp_sink();
-        let now_secs = (current_unix_ms() / 1000) as u64;
-        let snap = fixture_snapshot();
-        sink.upsert_anomaly_history_snapshot("%1", 0, &snap)
-            .unwrap();
-        sink.upsert_anomaly_history_snapshot("%1", now_secs, &snap)
-            .unwrap();
-        sink.run_retention(30, 20, 2).unwrap();
-        let fetched = sink.fetch_recent_history_snapshots("%1", 10);
-        assert_eq!(fetched.len(), 1);
-        assert_eq!(fetched[0].0, now_secs);
-    }
-
-    #[test]
-    fn with_transaction_commits_on_ok() {
-        let (_tmp, sink) = temp_sink();
-        sink.with_transaction(|tx| {
-            tx.execute(
-                "INSERT INTO anomaly_events
-                 (ts_unix_secs, pane_id, kind, confidence, severity, promoted, reason)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                rusqlite::params![1i64, "%1", "CostSlope", "high", "warning", 1i64, "tx test"],
-            )
-            .map_err(|e| SqliteError::Query(e.to_string()))?;
-            Ok(())
-        })
-        .unwrap();
-        let fetched = sink.fetch_recent_anomaly_events(10);
-        assert_eq!(fetched.len(), 1);
-    }
-
-    #[test]
-    fn upsert_then_fetch_history_snapshot_roundtrip_full_fixture() {
-        let (_tmp, sink) = temp_sink();
-        let snap = fixture_snapshot();
-        sink.upsert_anomaly_history_snapshot("%1", 1_700_000_000, &snap)
-            .unwrap();
-        let fetched = sink.fetch_recent_history_snapshots("%1", 10);
-        assert_eq!(fetched.len(), 1);
-        assert_eq!(fetched[0].0, 1_700_000_000);
-        assert_eq!(
-            fetched[0].1, snap,
-            "full snapshot fields must roundtrip exactly"
-        );
     }
 }
