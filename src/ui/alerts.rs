@@ -606,17 +606,19 @@ fn block(title: &str, focused: bool) -> Block<'_> {
 }
 
 pub fn alert_fingerprints(notices: &[SystemNotice], reports: &[PaneReport]) -> HashSet<String> {
-    collect_entries(
-        notices,
-        reports,
-        &HashSet::new(),
-        &HashMap::new(),
-        &HashMap::new(),
-        Instant::now(),
-    )
-    .into_iter()
-    .map(|entry| entry.key().to_string())
-    .collect()
+    let mut out = HashSet::new();
+    for notice in notices {
+        out.insert(notice_key(notice));
+    }
+    for report in reports {
+        for rec in &report.recommendations {
+            out.insert(recommendation_key(&report.pane_id, rec));
+        }
+        for finding in &report.cross_pane_findings {
+            out.insert(finding_key(finding));
+        }
+    }
+    out
 }
 
 #[derive(Debug, Clone)]
@@ -651,6 +653,7 @@ enum AlertEntry {
     Flow(AlertFlow),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AlertFlowFamily {
     ContextRecovery,
@@ -665,6 +668,7 @@ struct AlertFlow {
     timestamp: String,
     timestamp_sort_key: u32,
     severity: Severity,
+    kind_priority: u8,
     source_kind: SourceKind,
     color: Color,
     is_new: bool,
@@ -684,6 +688,7 @@ struct AlertFlowStep {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(dead_code)]
 enum ContextRecoveryCategory {
     Context,
     Cache,
@@ -849,6 +854,7 @@ fn collect_items(
     out
 }
 
+#[allow(dead_code)]
 fn collect_entries(
     notices: &[SystemNotice],
     reports: &[PaneReport],
@@ -868,6 +874,7 @@ fn collect_entries(
     project_alert_entries(items, fresh_alerts, hidden_until, now)
 }
 
+#[allow(dead_code)]
 fn project_alert_entries(
     items: Vec<AlertItem>,
     fresh_alerts: &HashSet<String>,
@@ -933,6 +940,7 @@ fn project_alert_entries(
     entries
 }
 
+#[allow(dead_code)]
 fn sort_entries(entries: &mut [AlertEntry]) {
     entries.sort_by(|a, b| {
         b.severity()
@@ -1007,6 +1015,7 @@ fn alert_item_matches_filter(item: &AlertItem, needle: &str) -> bool {
     false
 }
 
+#[allow(dead_code)]
 fn context_recovery_category(item: &AlertItem) -> Option<ContextRecoveryCategory> {
     let (_, action) = parse_recommendation_key(&item.key)?;
     if action.starts_with("context-pressure:") {
@@ -1019,6 +1028,7 @@ fn context_recovery_category(item: &AlertItem) -> Option<ContextRecoveryCategory
         return Some(ContextRecoveryCategory::Snapshot);
     }
     if action.starts_with("cache:")
+        && action.contains("drift detected")
         && (action.contains("/compact") || item.headline.contains("/compact"))
     {
         return Some(ContextRecoveryCategory::Cache);
@@ -1026,12 +1036,14 @@ fn context_recovery_category(item: &AlertItem) -> Option<ContextRecoveryCategory
     None
 }
 
+#[allow(dead_code)]
 fn context_recovery_flow_key(pane_id: &str, included: &[AlertItem]) -> String {
     let mut keys: Vec<&str> = included.iter().map(|item| item.key.as_str()).collect();
     keys.sort_unstable();
     format!("flow|context-recovery|{pane_id}|{}", keys.join("\u{1f}"))
 }
 
+#[allow(dead_code)]
 fn build_context_recovery_flow(
     key: String,
     pane_id: String,
@@ -1049,6 +1061,11 @@ fn build_context_recovery_flow(
         .map(|item| item.source_kind)
         .max_by_key(|source| source_authority_rank(*source))
         .unwrap_or(SourceKind::Heuristic);
+    let kind_priority = included
+        .iter()
+        .map(|item| item.kind.priority())
+        .max()
+        .unwrap_or(AlertKind::Recommendation.priority());
     let timestamp = included
         .iter()
         .max_by_key(|item| item.timestamp_sort_key)
@@ -1066,6 +1083,7 @@ fn build_context_recovery_flow(
         timestamp,
         timestamp_sort_key,
         severity,
+        kind_priority,
         source_kind,
         color: theme::severity_color(severity),
         is_new,
@@ -1078,6 +1096,7 @@ fn build_context_recovery_flow(
     }
 }
 
+#[allow(dead_code)]
 fn source_authority_rank(source: SourceKind) -> u8 {
     match source {
         SourceKind::ProviderOfficial => 4,
@@ -1087,6 +1106,7 @@ fn source_authority_rank(source: SourceKind) -> u8 {
     }
 }
 
+#[allow(dead_code)]
 fn flow_command_and_identity(included: &[AlertItem]) -> (Option<String>, Option<(String, String)>) {
     let preferred = included
         .iter()
@@ -1101,6 +1121,7 @@ fn flow_command_and_identity(included: &[AlertItem]) -> (Option<String>, Option<
     )
 }
 
+#[allow(dead_code)]
 fn context_recovery_summary(included: &[AlertItem], command: Option<&str>) -> String {
     let has_context = included
         .iter()
@@ -1122,6 +1143,7 @@ fn context_recovery_summary(included: &[AlertItem], command: Option<&str>) -> St
     }
 }
 
+#[allow(dead_code)]
 fn context_recovery_steps(included: &[AlertItem], command: Option<&str>) -> Vec<AlertFlowStep> {
     let mut steps = Vec::new();
     if included
@@ -1638,7 +1660,7 @@ impl AlertEntry {
     fn kind_priority(&self) -> u8 {
         match self {
             AlertEntry::Item(item) => item.kind.priority(),
-            AlertEntry::Flow(_) => AlertKind::Recommendation.priority(),
+            AlertEntry::Flow(flow) => flow.kind_priority,
         }
     }
 
@@ -1904,7 +1926,7 @@ mod tests {
     }
 
     #[test]
-    fn alert_fingerprints_include_flow_key_not_included_raw_keys() {
+    fn context_recovery_flow_key_uses_stable_projected_key() {
         let context = rec(
             "context-pressure: checkpoint",
             "context near warning threshold",
@@ -1923,14 +1945,136 @@ mod tests {
         );
         let raw_context_key = recommendation_key("%1", &context);
         let raw_cache_key = recommendation_key("%1", &cache);
-        let report = base_report(vec![context, cache]);
+        let report = base_report(vec![context.clone(), cache.clone()]);
 
-        let keys = alert_fingerprints(&[], &[report]);
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
 
-        assert_eq!(keys.len(), 1);
-        assert!(keys.iter().any(|key| key.starts_with("flow|context-recovery|%1|")));
-        assert!(!keys.contains(&raw_context_key));
-        assert!(!keys.contains(&raw_cache_key));
+        let entry_keys: Vec<&str> = entries.iter().map(|entry| entry.key()).collect();
+        assert_eq!(entry_keys.len(), 1);
+        assert!(entry_keys[0].starts_with("flow|context-recovery|%1|"));
+        assert!(!entry_keys.contains(&raw_context_key.as_str()));
+        assert!(!entry_keys.contains(&raw_cache_key.as_str()));
+    }
+
+    #[test]
+    fn context_recovery_flow_does_not_group_hot_cache_advice() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let hot_cache = rec(
+            "cache: avoid /compact while cache is hot",
+            "cache is still hot after a recent reset",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, hot_cache]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|entry| matches!(entry, AlertEntry::Item(_))));
+    }
+
+    #[test]
+    fn context_recovery_flow_does_not_group_cold_cache_advice() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cold_cache = rec(
+            "cache: /compact is safe — cache is cold",
+            "cache has cooled and compact is safe",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, cold_cache]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|entry| matches!(entry, AlertEntry::Item(_))));
+    }
+
+    #[test]
+    fn context_recovery_flow_preserves_highest_included_kind_priority() {
+        let mut strong_context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        strong_context.is_strong = true;
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Warning,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let plain = rec(
+            "notify-input-wait",
+            "waiting for user input",
+            Severity::Warning,
+            SourceKind::ProjectCanonical,
+            None,
+            None,
+        );
+        let report = base_report(vec![strong_context.clone(), cache.clone(), plain.clone()]);
+        let times = HashMap::from([
+            (recommendation_key("%1", &strong_context), "14:23:12".into()),
+            (recommendation_key("%1", &cache), "14:23:12".into()),
+            (recommendation_key("%1", &plain), "14:23:12".into()),
+        ]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &times,
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert!(entries[0].as_flow().is_some(), "flow should sort before plain recommendation");
+        assert!(matches!(entries[1], AlertEntry::Item(_)));
     }
 
     #[test]
