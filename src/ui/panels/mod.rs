@@ -278,20 +278,6 @@ fn pane_list_help_topics_with_width(
             Some(HelpTopic::PaneRuntime),
             runtime_badge_lines_wrapped(&report.signals, wrap_width).len(),
         );
-        if let Some((_target, slash)) =
-            crate::app::prompt_send_actions::first_prompt_send_proposal(report)
-        {
-            push_topic_count(
-                &mut topics,
-                Some(HelpTopic::PaneRecommendation),
-                wrap_aligned_field(
-                    "proposal",
-                    &format!("{slash}  \u{2192} press p to accept \u{00b7} d to reject"),
-                    wrap_width,
-                )
-                .len(),
-            );
-        }
     }
 
     if with_separator {
