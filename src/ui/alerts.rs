@@ -606,19 +606,17 @@ fn block(title: &str, focused: bool) -> Block<'_> {
 }
 
 pub fn alert_fingerprints(notices: &[SystemNotice], reports: &[PaneReport]) -> HashSet<String> {
-    let mut out = HashSet::new();
-    for notice in notices {
-        out.insert(notice_key(notice));
-    }
-    for report in reports {
-        for rec in &report.recommendations {
-            out.insert(recommendation_key(&report.pane_id, rec));
-        }
-        for finding in &report.cross_pane_findings {
-            out.insert(finding_key(finding));
-        }
-    }
-    out
+    collect_entries(
+        notices,
+        reports,
+        &HashSet::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        Instant::now(),
+    )
+    .into_iter()
+    .map(|entry| entry.key().to_string())
+    .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -644,6 +642,53 @@ enum AlertKind {
     Checkpoint,
     CrossPane,
     Recommendation,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+enum AlertEntry {
+    Item(AlertItem),
+    Flow(AlertFlow),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AlertFlowFamily {
+    ContextRecovery,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+struct AlertFlow {
+    key: String,
+    family: AlertFlowFamily,
+    pane_id: String,
+    timestamp: String,
+    timestamp_sort_key: u32,
+    severity: Severity,
+    source_kind: SourceKind,
+    color: Color,
+    is_new: bool,
+    hide_deadline: Option<Instant>,
+    summary: String,
+    steps: Vec<AlertFlowStep>,
+    included: Vec<AlertItem>,
+    suggested_command: Option<String>,
+    command_identity: Option<(String, String)>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+struct AlertFlowStep {
+    marker: &'static str,
+    text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ContextRecoveryCategory {
+    Context,
+    Cache,
+    CacheAnomaly,
+    Snapshot,
 }
 
 #[derive(Debug, Clone)]
@@ -804,6 +849,101 @@ fn collect_items(
     out
 }
 
+fn collect_entries(
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    fresh_alerts: &HashSet<String>,
+    alert_times: &HashMap<String, String>,
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> Vec<AlertEntry> {
+    let items = collect_items(
+        notices,
+        reports,
+        fresh_alerts,
+        alert_times,
+        hidden_until,
+        now,
+    );
+    project_alert_entries(items, fresh_alerts, hidden_until, now)
+}
+
+fn project_alert_entries(
+    items: Vec<AlertItem>,
+    fresh_alerts: &HashSet<String>,
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> Vec<AlertEntry> {
+    let mut consumed = HashSet::new();
+    let mut flows = Vec::new();
+
+    let mut by_pane: HashMap<String, Vec<usize>> = HashMap::new();
+    for (idx, item) in items.iter().enumerate() {
+        if let Some((pane_id, _)) = parse_recommendation_key(&item.key)
+            && context_recovery_category(item).is_some()
+        {
+            by_pane.entry(pane_id).or_default().push(idx);
+        }
+    }
+
+    for (pane_id, indexes) in by_pane {
+        let categories: HashSet<ContextRecoveryCategory> = indexes
+            .iter()
+            .filter_map(|idx| context_recovery_category(&items[*idx]))
+            .collect();
+        if categories.len() < 2 {
+            continue;
+        }
+        let included: Vec<AlertItem> = indexes.iter().map(|idx| items[*idx].clone()).collect();
+        let key = context_recovery_flow_key(&pane_id, &included);
+        match visible_hide_deadline(hidden_until, &key, now) {
+            Some(hide_deadline) => {
+                for idx in indexes {
+                    consumed.insert(idx);
+                }
+                flows.push(AlertEntry::Flow(build_context_recovery_flow(
+                    key,
+                    pane_id,
+                    included,
+                    hide_deadline,
+                    fresh_alerts,
+                )));
+            }
+            None => {
+                for idx in indexes {
+                    consumed.insert(idx);
+                }
+            }
+        }
+    }
+
+    let mut entries: Vec<AlertEntry> = items
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, item)| {
+            if consumed.contains(&idx) {
+                None
+            } else {
+                Some(AlertEntry::Item(item))
+            }
+        })
+        .chain(flows)
+        .collect();
+    sort_entries(&mut entries);
+    entries
+}
+
+fn sort_entries(entries: &mut [AlertEntry]) {
+    entries.sort_by(|a, b| {
+        b.severity()
+            .cmp(&a.severity())
+            .then_with(|| b.is_new().cmp(&a.is_new()))
+            .then_with(|| b.timestamp_sort_key().cmp(&a.timestamp_sort_key()))
+            .then_with(|| b.kind_priority().cmp(&a.kind_priority()))
+            .then_with(|| a.key().cmp(b.key()))
+    });
+}
+
 fn non_empty_command(command: Option<&str>) -> Option<String> {
     let cmd = command.map(str::trim).filter(|cmd| !cmd.is_empty())?;
     if cmd.starts_with('#') || contains_angle_placeholder(cmd) {
@@ -865,6 +1005,166 @@ fn alert_item_matches_filter(item: &AlertItem, needle: &str) -> bool {
         return true;
     }
     false
+}
+
+fn context_recovery_category(item: &AlertItem) -> Option<ContextRecoveryCategory> {
+    let (_, action) = parse_recommendation_key(&item.key)?;
+    if action.starts_with("context-pressure:") {
+        return Some(ContextRecoveryCategory::Context);
+    }
+    if action == "anomaly: cache discontinuity detected" {
+        return Some(ContextRecoveryCategory::CacheAnomaly);
+    }
+    if action.starts_with("snapshot before ") {
+        return Some(ContextRecoveryCategory::Snapshot);
+    }
+    if action.starts_with("cache:")
+        && (action.contains("/compact") || item.headline.contains("/compact"))
+    {
+        return Some(ContextRecoveryCategory::Cache);
+    }
+    None
+}
+
+fn context_recovery_flow_key(pane_id: &str, included: &[AlertItem]) -> String {
+    let mut keys: Vec<&str> = included.iter().map(|item| item.key.as_str()).collect();
+    keys.sort_unstable();
+    format!("flow|context-recovery|{pane_id}|{}", keys.join("\u{1f}"))
+}
+
+fn build_context_recovery_flow(
+    key: String,
+    pane_id: String,
+    included: Vec<AlertItem>,
+    hide_deadline: Option<Instant>,
+    fresh_alerts: &HashSet<String>,
+) -> AlertFlow {
+    let severity = included
+        .iter()
+        .map(|item| item.severity)
+        .max()
+        .unwrap_or(Severity::Concern);
+    let source_kind = included
+        .iter()
+        .map(|item| item.source_kind)
+        .max_by_key(|source| source_authority_rank(*source))
+        .unwrap_or(SourceKind::Heuristic);
+    let timestamp = included
+        .iter()
+        .max_by_key(|item| item.timestamp_sort_key)
+        .map(|item| item.timestamp.clone())
+        .unwrap_or_else(|| "--:--:--".into());
+    let timestamp_sort_key = sortable_timestamp(&timestamp);
+    let is_new = fresh_alerts.contains(&key) || included.iter().any(|item| item.is_new);
+    let (suggested_command, command_identity) = flow_command_and_identity(&included);
+    let steps = context_recovery_steps(&included, suggested_command.as_deref());
+
+    AlertFlow {
+        key,
+        family: AlertFlowFamily::ContextRecovery,
+        pane_id,
+        timestamp,
+        timestamp_sort_key,
+        severity,
+        source_kind,
+        color: theme::severity_color(severity),
+        is_new,
+        hide_deadline,
+        summary: context_recovery_summary(&included, suggested_command.as_deref()),
+        steps,
+        included,
+        suggested_command,
+        command_identity,
+    }
+}
+
+fn source_authority_rank(source: SourceKind) -> u8 {
+    match source {
+        SourceKind::ProviderOfficial => 4,
+        SourceKind::ProjectCanonical => 3,
+        SourceKind::Heuristic => 2,
+        SourceKind::Estimated => 1,
+    }
+}
+
+fn flow_command_and_identity(included: &[AlertItem]) -> (Option<String>, Option<(String, String)>) {
+    let preferred = included
+        .iter()
+        .find(|item| item.suggested_command.as_deref() == Some("/compact"))
+        .or_else(|| included.iter().find(|item| item.suggested_command.is_some()));
+    let Some(item) = preferred else {
+        return (None, None);
+    };
+    (
+        item.suggested_command.clone(),
+        parse_recommendation_key(&item.key),
+    )
+}
+
+fn context_recovery_summary(included: &[AlertItem], command: Option<&str>) -> String {
+    let has_context = included
+        .iter()
+        .any(|item| context_recovery_category(item) == Some(ContextRecoveryCategory::Context));
+    let has_cache = included.iter().any(|item| {
+        matches!(
+            context_recovery_category(item),
+            Some(ContextRecoveryCategory::Cache | ContextRecoveryCategory::CacheAnomaly)
+        )
+    });
+    match (has_context, has_cache, command) {
+        (true, true, Some("/compact")) => {
+            "context pressure led to cache drift; snapshot before compact".into()
+        }
+        (true, true, _) => "context pressure and cache drift share one recovery path".into(),
+        (true, false, _) => "context pressure has a related recovery step".into(),
+        (false, true, _) => "cache drift has a related recovery step".into(),
+        (false, false, _) => "related recovery alerts share one response path".into(),
+    }
+}
+
+fn context_recovery_steps(included: &[AlertItem], command: Option<&str>) -> Vec<AlertFlowStep> {
+    let mut steps = Vec::new();
+    if included
+        .iter()
+        .any(|item| context_recovery_category(item) == Some(ContextRecoveryCategory::Context))
+    {
+        steps.push(AlertFlowStep {
+            marker: "o",
+            text: "context pressure detected".into(),
+        });
+    }
+    if included.iter().any(|item| {
+        matches!(
+            context_recovery_category(item),
+            Some(ContextRecoveryCategory::Cache | ContextRecoveryCategory::CacheAnomaly)
+        )
+    }) {
+        steps.push(AlertFlowStep {
+            marker: "|",
+            text: "cache drift/discontinuity detected".into(),
+        });
+    }
+    if included
+        .iter()
+        .any(|item| context_recovery_category(item) == Some(ContextRecoveryCategory::Snapshot))
+        || included.iter().any(|item| {
+            item.details
+                .iter()
+                .any(|detail| detail.to_ascii_lowercase().contains("snapshot"))
+        })
+    {
+        steps.push(AlertFlowStep {
+            marker: "o",
+            text: "snapshot before reset".into(),
+        });
+    }
+    if let Some(cmd) = command {
+        steps.push(AlertFlowStep {
+            marker: "|",
+            text: format!("then run {cmd}"),
+        });
+    }
+    steps
 }
 
 fn bulk_hide_line(items: &[AlertItem]) -> Line<'static> {
@@ -1312,6 +1612,90 @@ impl AlertKind {
     }
 }
 
+#[allow(dead_code)]
+impl AlertEntry {
+    fn key(&self) -> &str {
+        match self {
+            AlertEntry::Item(item) => &item.key,
+            AlertEntry::Flow(flow) => &flow.key,
+        }
+    }
+
+    fn severity(&self) -> Severity {
+        match self {
+            AlertEntry::Item(item) => item.severity,
+            AlertEntry::Flow(flow) => flow.severity,
+        }
+    }
+
+    fn timestamp_sort_key(&self) -> u32 {
+        match self {
+            AlertEntry::Item(item) => item.timestamp_sort_key,
+            AlertEntry::Flow(flow) => flow.timestamp_sort_key,
+        }
+    }
+
+    fn kind_priority(&self) -> u8 {
+        match self {
+            AlertEntry::Item(item) => item.kind.priority(),
+            AlertEntry::Flow(_) => AlertKind::Recommendation.priority(),
+        }
+    }
+
+    fn is_new(&self) -> bool {
+        match self {
+            AlertEntry::Item(item) => item.is_new,
+            AlertEntry::Flow(flow) => flow.is_new,
+        }
+    }
+
+    fn hide_deadline(&self) -> Option<Instant> {
+        match self {
+            AlertEntry::Item(item) => item.hide_deadline,
+            AlertEntry::Flow(flow) => flow.hide_deadline,
+        }
+    }
+
+    fn suggested_command(&self) -> Option<&str> {
+        match self {
+            AlertEntry::Item(item) => item.suggested_command.as_deref(),
+            AlertEntry::Flow(flow) => flow.suggested_command.as_deref(),
+        }
+    }
+
+    fn source_kind(&self) -> SourceKind {
+        match self {
+            AlertEntry::Item(item) => item.source_kind,
+            AlertEntry::Flow(flow) => flow.source_kind,
+        }
+    }
+
+    fn title(&self) -> String {
+        match self {
+            AlertEntry::Item(item) => item.title.clone(),
+            AlertEntry::Flow(flow) => flow.title(),
+        }
+    }
+
+    #[cfg(test)]
+    fn as_flow(&self) -> Option<&AlertFlow> {
+        match self {
+            AlertEntry::Flow(flow) => Some(flow),
+            AlertEntry::Item(_) => None,
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl AlertFlow {
+    fn title(&self) -> String {
+        let family = match self.family {
+            AlertFlowFamily::ContextRecovery => "Context recovery",
+        };
+        format!("FLOW {family} · {} alerts · active", self.included.len())
+    }
+}
+
 impl SeverityChip {
     fn count_label(&self) -> String {
         if self.pending > 0 && self.pending < self.total {
@@ -1381,6 +1765,172 @@ mod tests {
             recent_token_samples: Vec::new(), // F-3: test fixture; production fetches via event_loop
             anomalies: vec![],
         }
+    }
+
+    fn rec(
+        action: &'static str,
+        reason: &str,
+        severity: Severity,
+        source_kind: SourceKind,
+        suggested_command: Option<&str>,
+        next_step: Option<&str>,
+    ) -> Recommendation {
+        Recommendation {
+            action,
+            reason: reason.into(),
+            severity,
+            source_kind,
+            suggested_command: suggested_command.map(str::to_string),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: next_step.map(str::to_string),
+            profile: None,
+        }
+    }
+
+    fn report_with_pane(pane_id: &str, recs: Vec<Recommendation>) -> PaneReport {
+        let mut report = base_report(recs);
+        report.pane_id = pane_id.into();
+        report.identity.identity.pane_id = pane_id.into();
+        report
+    }
+
+    #[test]
+    fn context_recovery_flow_groups_context_and_cache_on_same_pane() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context.clone(), cache.clone()]);
+        let times = HashMap::from([
+            (recommendation_key("%1", &context), "14:23:08".into()),
+            (recommendation_key("%1", &cache), "14:23:12".into()),
+        ]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &times,
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 1, "context/cache should collapse into one flow");
+        let flow = entries[0].as_flow().expect("entry must be a flow");
+        assert_eq!(flow.pane_id, "%1");
+        assert_eq!(flow.severity, Severity::Warning);
+        assert_eq!(flow.suggested_command.as_deref(), Some("/compact"));
+        assert_eq!(
+            flow.command_identity.as_ref().map(|(_, action)| action.as_str()),
+            Some("context-pressure: checkpoint")
+        );
+        assert_eq!(flow.included.len(), 2);
+        assert!(flow.title().contains("Context recovery"));
+        assert!(flow.summary.contains("context pressure"));
+    }
+
+    #[test]
+    fn context_recovery_flow_requires_two_categories() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let report = base_report(vec![context]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert!(matches!(entries[0], AlertEntry::Item(_)));
+    }
+
+    #[test]
+    fn context_recovery_flow_does_not_merge_different_panes() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let reports = vec![
+            report_with_pane("%1", vec![context]),
+            report_with_pane("%2", vec![cache]),
+        ];
+
+        let entries = collect_entries(
+            &[],
+            &reports,
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|entry| matches!(entry, AlertEntry::Item(_))));
+    }
+
+    #[test]
+    fn alert_fingerprints_include_flow_key_not_included_raw_keys() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let raw_context_key = recommendation_key("%1", &context);
+        let raw_cache_key = recommendation_key("%1", &cache);
+        let report = base_report(vec![context, cache]);
+
+        let keys = alert_fingerprints(&[], &[report]);
+
+        assert_eq!(keys.len(), 1);
+        assert!(keys.iter().any(|key| key.starts_with("flow|context-recovery|%1|")));
+        assert!(!keys.contains(&raw_context_key));
+        assert!(!keys.contains(&raw_cache_key));
     }
 
     #[test]
