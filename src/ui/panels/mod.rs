@@ -312,6 +312,7 @@ struct PaneRenderLine {
     topic: Option<HelpTopic>,
 }
 
+#[allow(dead_code)]
 enum PaneTokenRows {
     ExpandedList,
     PanelBody,
@@ -334,6 +335,7 @@ impl PaneSectionOptions {
         }
     }
 
+    #[allow(dead_code)]
     fn panel_body() -> Self {
         Self {
             recommendation_limit: 6,

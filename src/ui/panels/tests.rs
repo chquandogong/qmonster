@@ -1791,14 +1791,22 @@ fn pane_help_topic_at_row_maps_core_rows() {
     );
     assert_eq!(
         pane_help_topic_at_row(&reports, &state, 2, 100),
-        Some(HelpTopic::PaneCommand)
+        Some(HelpTopic::PanePath)
     );
     assert_eq!(
         pane_help_topic_at_row(&reports, &state, 3, 100),
-        Some(HelpTopic::PaneStatus)
+        Some(HelpTopic::PaneCommand)
     );
     assert_eq!(
         pane_help_topic_at_row(&reports, &state, 4, 100),
+        Some(HelpTopic::PaneStatus)
+    );
+    assert_eq!(
+        pane_help_topic_at_row(&reports, &state, 5, 100),
+        Some(HelpTopic::PaneMetrics)
+    );
+    assert_eq!(
+        pane_help_topic_at_row(&reports, &state, 6, 100),
         Some(HelpTopic::PaneMetrics)
     );
 }
