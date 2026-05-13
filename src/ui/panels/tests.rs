@@ -216,6 +216,30 @@ fn pane_panel_uses_sectioned_order_and_keeps_top_six_recommendations() {
 }
 
 #[test]
+fn pane_panel_keeps_empty_recommendations_state_under_section() {
+    let rep = sample_pane_report();
+
+    let mut buf = Buffer::empty(Rect::new(0, 0, 100, 12));
+    render_pane_panel(Rect::new(0, 0, 100, 12), &mut buf, &rep);
+    let rendered: String = (0..12)
+        .map(|y| (0..100).map(|x| buf[(x, y)].symbol()).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let recommendations = rendered
+        .find("RECOMMENDATIONS")
+        .unwrap_or_else(|| panic!("RECOMMENDATIONS missing in panel: {rendered}"));
+    let empty = rendered
+        .find("status  : no active recommendations")
+        .unwrap_or_else(|| panic!("empty recommendation state missing in panel: {rendered}"));
+
+    assert!(
+        recommendations < empty,
+        "empty recommendation state should live under RECOMMENDATIONS in panel: {rendered}"
+    );
+}
+
+#[test]
 fn expanded_recommendation_detail_fields_align_to_label_column() {
     assert_eq!(
         expanded_detail_field("next    : press s to snapshot"),

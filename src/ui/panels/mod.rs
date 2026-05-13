@@ -331,7 +331,7 @@ impl PaneSectionOptions {
             recommendation_limit: 6,
             include_proposal: false,
             token_rows: PaneTokenRows::PanelBody,
-            show_empty_recommendations: false,
+            show_empty_recommendations: true,
         }
     }
 }
