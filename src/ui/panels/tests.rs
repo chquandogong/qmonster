@@ -176,11 +176,7 @@ fn pane_panel_uses_sectioned_order_and_keeps_top_six_recommendations() {
     let mut buf = Buffer::empty(Rect::new(0, 0, 120, 24));
     render_pane_panel(Rect::new(0, 0, 120, 24), &mut buf, &rep);
     let rendered: String = (0..24)
-        .map(|y| {
-            (0..120)
-                .map(|x| buf[(x, y)].symbol())
-                .collect::<String>()
-        })
+        .map(|y| (0..120).map(|x| buf[(x, y)].symbol()).collect::<String>())
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -1929,14 +1925,35 @@ fn expanded_pane_uses_sectioned_single_column_order() {
     let rec = index_containing(&text, "CONCERN");
 
     assert!(title < now, "title should precede NOW: {text:#?}");
-    assert!(now < proposal, "NOW should contain proposal rows: {text:#?}");
-    assert!(proposal < where_section, "NOW should precede WHERE: {text:#?}");
-    assert!(where_section < path, "WHERE should contain path rows: {text:#?}");
+    assert!(
+        now < proposal,
+        "NOW should contain proposal rows: {text:#?}"
+    );
+    assert!(
+        proposal < where_section,
+        "NOW should precede WHERE: {text:#?}"
+    );
+    assert!(
+        where_section < path,
+        "WHERE should contain path rows: {text:#?}"
+    );
     assert!(path < command, "path should precede command: {text:#?}");
-    assert!(command < pressure, "WHERE should precede PRESSURE: {text:#?}");
-    assert!(pressure < metrics, "PRESSURE should contain metrics: {text:#?}");
-    assert!(metrics < runtime, "PRESSURE should precede RUNTIME: {text:#?}");
-    assert!(runtime < modes, "RUNTIME should contain runtime facts: {text:#?}");
+    assert!(
+        command < pressure,
+        "WHERE should precede PRESSURE: {text:#?}"
+    );
+    assert!(
+        pressure < metrics,
+        "PRESSURE should contain metrics: {text:#?}"
+    );
+    assert!(
+        metrics < runtime,
+        "PRESSURE should precede RUNTIME: {text:#?}"
+    );
+    assert!(
+        runtime < modes,
+        "RUNTIME should contain runtime facts: {text:#?}"
+    );
     assert!(
         modes < recommendations,
         "RUNTIME should precede RECOMMENDATIONS: {text:#?}"
@@ -1965,8 +1982,7 @@ fn expanded_pane_help_topics_follow_sectioned_rows() {
     rep.signals.cost_usd = Some(MetricValue::new(3.0, SourceKind::ProviderOfficial));
     rep.signals.input_tokens = Some(MetricValue::new(1_234_567, SourceKind::ProviderOfficial));
     rep.signals.output_tokens = Some(MetricValue::new(45_678, SourceKind::ProviderOfficial));
-    rep.signals.cached_input_tokens =
-        Some(MetricValue::new(150_000, SourceKind::ProviderOfficial));
+    rep.signals.cached_input_tokens = Some(MetricValue::new(150_000, SourceKind::ProviderOfficial));
     rep.signals.cache_creation_input_tokens =
         Some(MetricValue::new(770, SourceKind::ProviderOfficial));
     rep.signals.runtime_facts.push(RuntimeFact::new(
@@ -2024,8 +2040,14 @@ fn expanded_pane_help_topics_follow_sectioned_rows() {
             index_containing(&text, "RECOMMENDATIONS"),
             HelpTopic::PaneRecommendation,
         ),
-        (index_containing(&text, "CONCERN"), HelpTopic::PaneRecommendation),
-        (index_containing(&text, "next"), HelpTopic::PaneRecommendation),
+        (
+            index_containing(&text, "CONCERN"),
+            HelpTopic::PaneRecommendation,
+        ),
+        (
+            index_containing(&text, "next"),
+            HelpTopic::PaneRecommendation,
+        ),
         (index_containing(&text, "profile"), HelpTopic::PaneProfile),
         (index_containing(&text, "lever"), HelpTopic::PaneProfile),
     ];
@@ -2140,7 +2162,8 @@ fn collapsed_pane_with_pending_proposal_does_not_shift_hover_topics() {
     state.select(Some(1));
     let wrap_width = 80;
 
-    let first_height = pane_list_lines_with_width(&reports[0], false, true, wrap_width).len() as u16;
+    let first_height =
+        pane_list_lines_with_width(&reports[0], false, true, wrap_width).len() as u16;
 
     assert_eq!(
         pane_help_topic_at_row(&reports, &state, first_height, wrap_width),

@@ -223,9 +223,15 @@ fn pane_list_help_topics_with_width(
     let mut topics = vec![Some(HelpTopic::PaneHeader)];
     if expanded {
         topics.extend(
-            pane_sectioned_rows(report, now, None, wrap_width, PaneSectionOptions::expanded_list())
-                .into_iter()
-                .map(|row| row.topic),
+            pane_sectioned_rows(
+                report,
+                now,
+                None,
+                wrap_width,
+                PaneSectionOptions::expanded_list(),
+            )
+            .into_iter()
+            .map(|row| row.topic),
         );
     } else {
         push_topic_count(
@@ -334,7 +340,10 @@ fn pane_topic_lines(
     lines: impl IntoIterator<Item = Line<'static>>,
     topic: HelpTopic,
 ) -> Vec<PaneRenderLine> {
-    lines.into_iter().map(|line| pane_topic_line(line, topic)).collect()
+    lines
+        .into_iter()
+        .map(|line| pane_topic_line(line, topic))
+        .collect()
 }
 
 fn pane_topic_line(line: Line<'static>, topic: HelpTopic) -> PaneRenderLine {
@@ -384,7 +393,11 @@ fn pane_sectioned_rows(
         HelpTopic::PaneSignals,
     ));
     now_rows.extend(pane_topic_lines(
-        signal_badge_lines("signals", secondary_signal_chips(&report.signals), wrap_width),
+        signal_badge_lines(
+            "signals",
+            secondary_signal_chips(&report.signals),
+            wrap_width,
+        ),
         HelpTopic::PaneSignals,
     ));
     if options.include_proposal
@@ -417,7 +430,11 @@ fn pane_sectioned_rows(
     push_pane_section(&mut rows, "WHERE", HelpTopic::PanePath, where_rows);
 
     let mut pressure_rows = pane_topic_lines(
-        metric_badge_lines(&report.signals, report.identity.identity.provider, wrap_width),
+        metric_badge_lines(
+            &report.signals,
+            report.identity.identity.provider,
+            wrap_width,
+        ),
         HelpTopic::PaneMetrics,
     );
     match options.token_rows {
@@ -559,9 +576,15 @@ fn pane_list_lines_with_flash(
     let mut lines = vec![pane_panel_title_line(report, now, flash)];
     if expanded {
         lines.extend(
-            pane_sectioned_rows(report, now, flash, wrap_width, PaneSectionOptions::expanded_list())
-                .into_iter()
-                .map(|row| row.line),
+            pane_sectioned_rows(
+                report,
+                now,
+                flash,
+                wrap_width,
+                PaneSectionOptions::expanded_list(),
+            )
+            .into_iter()
+            .map(|row| row.line),
         );
     } else {
         for row in render_pane_state_row_with_flash(report, now, flash, wrap_width) {
