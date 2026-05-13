@@ -620,6 +620,10 @@ struct RelatedAlertContext {
     group_key: String,
     pane_id: String,
     connector_label: String,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "rendered by Task 3 related context rail")
+    )]
     total: usize,
     steps: Vec<RelatedAlertStep>,
     evidence: Vec<RelatedAlertEvidence>,
@@ -627,8 +631,16 @@ struct RelatedAlertContext {
 
 #[derive(Debug, Clone)]
 struct RelatedAlertStep {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "rendered by Task 3 related context rail")
+    )]
     marker: &'static str,
     label: String,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "rendered by Task 3 related context rail")
+    )]
     is_current: bool,
 }
 
@@ -1053,10 +1065,15 @@ fn build_related_context(
     current_idx: usize,
 ) -> RelatedAlertContext {
     let pane_id = recommendation_pane_id(&items[current_idx]).unwrap_or_default();
-    let steps = indexes
+    let mut displayed_steps = indexes.iter().copied().take(4).collect::<Vec<_>>();
+    if !displayed_steps.contains(&current_idx)
+        && let Some(last) = displayed_steps.last_mut()
+    {
+        *last = current_idx;
+    }
+    let steps = displayed_steps
         .iter()
         .copied()
-        .take(4)
         .map(|idx| RelatedAlertStep {
             marker: if idx == current_idx { "o" } else { "|" },
             label: related_step_label(&items[idx]),
@@ -2285,6 +2302,90 @@ mod tests {
     }
 
     #[test]
+    fn related_context_includes_current_step_for_truncated_groups() {
+        let recs = vec![
+            rec(
+                "action:zero",
+                "zero should stay in top view",
+                Severity::Warning,
+                SourceKind::Estimated,
+                Some("/compact"),
+                None,
+            ),
+            rec(
+                "action:one",
+                "one should stay in top view",
+                Severity::Warning,
+                SourceKind::Estimated,
+                Some("/compact"),
+                None,
+            ),
+            rec(
+                "action:two",
+                "two should stay in top view",
+                Severity::Warning,
+                SourceKind::Estimated,
+                Some("/compact"),
+                None,
+            ),
+            rec(
+                "action:three",
+                "three should stay in top view",
+                Severity::Warning,
+                SourceKind::Estimated,
+                Some("/compact"),
+                None,
+            ),
+            rec(
+                "action:four",
+                "four should be truncated unless current-step guaranteed",
+                Severity::Warning,
+                SourceKind::Estimated,
+                Some("/compact"),
+                None,
+            ),
+        ];
+        let times = HashMap::from([
+            (recommendation_key("%1", &recs[0]), "14:33:05".into()),
+            (recommendation_key("%1", &recs[1]), "14:33:04".into()),
+            (recommendation_key("%1", &recs[2]), "14:33:03".into()),
+            (recommendation_key("%1", &recs[3]), "14:33:02".into()),
+            (recommendation_key("%1", &recs[4]), "14:33:01".into()),
+        ]);
+        let report = base_report(recs.clone());
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &times,
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 5);
+        let target = entries.iter().find(|entry| match entry {
+            AlertEntry::Item(item) => item.headline.contains("four should"),
+            AlertEntry::Flow(_) => false,
+        });
+        let target = match target.expect("target entry should remain visible") {
+            AlertEntry::Item(item) => item,
+            AlertEntry::Flow(_) => panic!("target entry is an item"),
+        };
+        let related = target
+            .related
+            .as_ref()
+            .expect("target entry should include related context");
+        assert_eq!(related.steps.len(), 4);
+        let current_step = related
+            .steps
+            .iter()
+            .find(|step| step.is_current)
+            .expect("current item should keep a step in a truncated group");
+        assert_eq!(current_step.marker, "o");
+    }
+
+    #[test]
     fn context_recovery_flow_groups_context_and_cache_on_same_pane() {
         let context = rec(
             "context-pressure: checkpoint",
@@ -2401,6 +2502,7 @@ mod tests {
                 .iter()
                 .all(|entry| matches!(entry, AlertEntry::Item(_)))
         );
+        assert_eq!(entry_title(&entries[0]), "Recommendation · %1");
 
         let related: Vec<&RelatedAlertContext> = entries.iter().filter_map(item_related).collect();
         assert_eq!(
