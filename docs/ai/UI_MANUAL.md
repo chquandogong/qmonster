@@ -149,6 +149,13 @@ session:window · Provider role · %pane_id
 
 - 예:
   `qmonster:0 · Codex review · CLI 0.122.0 [Official] · %57`
+- 선택된 pane가 펼쳐진 상태에서는 같은 정보를 한 줄 목록으로 섞지 않고
+  `NOW`, `WHERE`, `PRESSURE`, `RUNTIME`, `RECOMMENDATIONS` 구역으로
+  나눠 보여줍니다. `NOW`는 현재 state/blocked/signals/proposal,
+  `WHERE`는 path/cmd/status, `PRESSURE`는 metrics/tokens/cache,
+  `RUNTIME`은 provider runtime facts, `RECOMMENDATIONS`는 추천과
+  detail/profile 정보를 담습니다. 접힌 pane 행은 기존처럼 flat row로
+  유지됩니다.
 - `CLI` 버전 배지는 Qmonster monitor pane에는 표시하지 않습니다. provider가
   화면에 직접 노출한 버전을 우선 사용하고, 없으면 `/proc`에서 현재 pane의
   descendant CLI `pid`/`exe`/`argv`를 확인한 뒤 그 exact executable/script에

@@ -1841,7 +1841,7 @@ fn pane_index_at_row_handles_wrapped_path_line() {
 }
 
 #[test]
-fn pane_help_topic_at_row_maps_core_rows() {
+fn pane_help_topic_at_row_maps_sectioned_core_rows() {
     use crate::ui::help_glossary::HelpTopic;
 
     let mut rep = sample_pane_report();
