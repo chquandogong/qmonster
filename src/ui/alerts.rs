@@ -612,6 +612,37 @@ struct AlertItem {
     color: Color,
     is_new: bool,
     hide_deadline: Option<Instant>,
+    related: Option<RelatedAlertContext>,
+}
+
+#[derive(Debug, Clone)]
+struct RelatedAlertContext {
+    group_key: String,
+    pane_id: String,
+    connector_label: String,
+    total: usize,
+    steps: Vec<RelatedAlertStep>,
+    evidence: Vec<RelatedAlertEvidence>,
+}
+
+#[derive(Debug, Clone)]
+struct RelatedAlertStep {
+    marker: &'static str,
+    label: String,
+    is_current: bool,
+}
+
+#[derive(Debug, Clone)]
+struct RelatedAlertEvidence {
+    action: String,
+    source_label: String,
+}
+
+#[derive(Debug, Clone)]
+struct RelatedConnector {
+    rank: u8,
+    key: String,
+    label: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -710,6 +741,7 @@ fn collect_items(
             color,
             is_new,
             hide_deadline,
+            related: None,
         });
     }
     for rep in reports {
@@ -736,6 +768,7 @@ fn collect_items(
                 color,
                 is_new,
                 hide_deadline,
+                related: None,
             });
         }
     }
@@ -785,6 +818,7 @@ fn collect_items(
                 color,
                 is_new,
                 hide_deadline,
+                related: None,
             });
         }
     }
@@ -812,6 +846,7 @@ fn collect_items(
                 color,
                 is_new,
                 hide_deadline,
+                related: None,
             });
         }
     }
@@ -894,20 +929,171 @@ fn project_alert_entries(
         }
     }
 
-    let mut entries: Vec<AlertEntry> = items
+    let mut visible_items: Vec<AlertItem> = items
         .into_iter()
         .enumerate()
         .filter_map(|(idx, item)| {
             if consumed.contains(&idx) {
                 None
             } else {
-                Some(AlertEntry::Item(item))
+                Some(item)
             }
         })
+        .collect();
+    apply_related_contexts(&mut visible_items);
+
+    let mut entries: Vec<AlertEntry> = visible_items
+        .into_iter()
+        .map(AlertEntry::Item)
         .chain(flows)
         .collect();
     sort_entries(&mut entries);
     entries
+}
+
+fn apply_related_contexts(items: &mut [AlertItem]) {
+    let mut groups: HashMap<String, (RelatedConnector, Vec<usize>)> = HashMap::new();
+    for (idx, item) in items.iter().enumerate() {
+        let Some(pane_id) = recommendation_pane_id(item) else {
+            continue;
+        };
+        for connector in related_connectors(item) {
+            let group_key = format!("related|{pane_id}|{}", connector.key);
+            groups
+                .entry(group_key)
+                .or_insert_with(|| (connector, Vec::new()))
+                .1
+                .push(idx);
+        }
+    }
+
+    let mut candidates: Vec<(String, RelatedConnector, Vec<usize>)> = groups
+        .into_iter()
+        .filter_map(|(group_key, (connector, indexes))| {
+            (indexes.len() >= 2).then_some((group_key, connector, indexes))
+        })
+        .collect();
+    candidates.sort_by(|a, b| {
+        b.1.rank
+            .cmp(&a.1.rank)
+            .then_with(|| a.1.label.cmp(&b.1.label))
+            .then_with(|| a.0.cmp(&b.0))
+    });
+
+    for (group_key, connector, indexes) in candidates {
+        for idx in indexes.iter().copied() {
+            if items[idx].related.is_none() {
+                items[idx].related = Some(build_related_context(
+                    &group_key, &connector, items, &indexes, idx,
+                ));
+            }
+        }
+    }
+}
+
+fn recommendation_pane_id(item: &AlertItem) -> Option<String> {
+    parse_recommendation_key(&item.key).map(|(pane_id, _)| pane_id)
+}
+
+fn recommendation_action(item: &AlertItem) -> Option<String> {
+    parse_recommendation_key(&item.key).map(|(_, action)| action)
+}
+
+fn related_connectors(item: &AlertItem) -> Vec<RelatedConnector> {
+    if item.kind != AlertKind::Recommendation {
+        return Vec::new();
+    }
+    let mut connectors = Vec::new();
+    if let Some(cmd) = item.suggested_command.as_deref() {
+        connectors.push(RelatedConnector {
+            rank: 40,
+            key: format!("cmd|{cmd}"),
+            label: format!("same {cmd} path"),
+        });
+    }
+    if let Some(category) = context_recovery_category(item) {
+        connectors.push(RelatedConnector {
+            rank: 30,
+            key: format!("context-recovery|{category:?}"),
+            label: "same pane recovery".into(),
+        });
+    }
+    if item
+        .details
+        .iter()
+        .any(|detail| detail.to_ascii_lowercase().contains("snapshot before"))
+    {
+        connectors.push(RelatedConnector {
+            rank: 20,
+            key: "recovery-path|snapshot-before".into(),
+            label: "same pane recovery".into(),
+        });
+    }
+    if let Some(action) = recommendation_action(item)
+        && let Some(family) = action
+            .split(':')
+            .next()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    {
+        connectors.push(RelatedConnector {
+            rank: 10,
+            key: format!("family|{family}"),
+            label: "same action family".into(),
+        });
+    }
+    connectors
+}
+
+fn build_related_context(
+    group_key: &str,
+    connector: &RelatedConnector,
+    items: &[AlertItem],
+    indexes: &[usize],
+    current_idx: usize,
+) -> RelatedAlertContext {
+    let pane_id = recommendation_pane_id(&items[current_idx]).unwrap_or_default();
+    let steps = indexes
+        .iter()
+        .copied()
+        .take(4)
+        .map(|idx| RelatedAlertStep {
+            marker: if idx == current_idx { "o" } else { "|" },
+            label: related_step_label(&items[idx]),
+            is_current: idx == current_idx,
+        })
+        .collect();
+    let evidence = indexes
+        .iter()
+        .copied()
+        .map(|idx| RelatedAlertEvidence {
+            action: recommendation_action(&items[idx])
+                .unwrap_or_else(|| items[idx].headline.clone()),
+            source_label: source_kind_label(items[idx].source_kind).to_string(),
+        })
+        .collect();
+    RelatedAlertContext {
+        group_key: group_key.to_string(),
+        pane_id,
+        connector_label: connector.label.clone(),
+        total: indexes.len(),
+        steps,
+        evidence,
+    }
+}
+
+fn related_step_label(item: &AlertItem) -> String {
+    match context_recovery_category(item) {
+        Some(ContextRecoveryCategory::Context) => "context pressure".into(),
+        Some(ContextRecoveryCategory::Cache | ContextRecoveryCategory::CacheAnomaly) => {
+            "cache drift".into()
+        }
+        Some(ContextRecoveryCategory::Snapshot) => "snapshot before reset".into(),
+        None => recommendation_action(item)
+            .and_then(|action| action.split(':').next().map(str::trim).map(str::to_string))
+            .filter(|label| !label.is_empty())
+            .unwrap_or_else(|| "related alert".into()),
+    }
 }
 
 fn sort_entries(entries: &mut [AlertEntry]) {
@@ -981,7 +1167,29 @@ fn alert_item_matches_filter(item: &AlertItem, needle: &str) -> bool {
     {
         return true;
     }
+    if let Some(related) = item.related.as_ref()
+        && related_context_matches_filter(related, needle)
+    {
+        return true;
+    }
     false
+}
+
+fn related_context_matches_filter(related: &RelatedAlertContext, needle: &str) -> bool {
+    related.group_key.to_ascii_lowercase().contains(needle)
+        || related.pane_id.to_ascii_lowercase().contains(needle)
+        || related
+            .connector_label
+            .to_ascii_lowercase()
+            .contains(needle)
+        || related
+            .steps
+            .iter()
+            .any(|step| step.label.to_ascii_lowercase().contains(needle))
+        || related.evidence.iter().any(|evidence| {
+            evidence.action.to_ascii_lowercase().contains(needle)
+                || evidence.source_label.to_ascii_lowercase().contains(needle)
+        })
 }
 
 fn alert_entry_matches_filter(entry: &AlertEntry, needle: &str) -> bool {
@@ -2065,6 +2273,13 @@ mod tests {
         report
     }
 
+    fn item_related(entry: &AlertEntry) -> Option<&RelatedAlertContext> {
+        match entry {
+            AlertEntry::Item(item) => item.related.as_ref(),
+            AlertEntry::Flow(_) => None,
+        }
+    }
+
     #[test]
     fn context_recovery_flow_groups_context_and_cache_on_same_pane() {
         let context = rec(
@@ -2141,6 +2356,131 @@ mod tests {
 
         assert_eq!(entries.len(), 1);
         assert!(matches!(entries[0], AlertEntry::Item(_)));
+    }
+
+    #[test]
+    fn related_context_links_same_pane_same_command_without_collapsing() {
+        let compact_quota = rec(
+            "quota-pressure: compact soon",
+            "quota pressure can recover after compact",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            None,
+        );
+        let compact_profile = rec(
+            "profile-switch: compact profile",
+            "profile switch should happen after compact",
+            Severity::Concern,
+            SourceKind::ProjectCanonical,
+            Some("/compact"),
+            None,
+        );
+        let report = base_report(vec![compact_quota.clone(), compact_profile.clone()]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(
+            entries.len(),
+            2,
+            "weak related context must not collapse into FLOW"
+        );
+        assert!(
+            entries
+                .iter()
+                .all(|entry| matches!(entry, AlertEntry::Item(_)))
+        );
+
+        let related: Vec<&RelatedAlertContext> = entries.iter().filter_map(item_related).collect();
+        assert_eq!(
+            related.len(),
+            2,
+            "both visible siblings should carry related context"
+        );
+        assert!(related.iter().all(|ctx| ctx.total == 2));
+        assert!(related.iter().all(|ctx| ctx.pane_id == "%1"));
+        assert!(
+            related
+                .iter()
+                .all(|ctx| ctx.connector_label == "same /compact path")
+        );
+    }
+
+    #[test]
+    fn related_context_does_not_link_different_panes() {
+        let first = rec(
+            "quota-pressure: compact soon",
+            "first pane compact",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            None,
+        );
+        let second = rec(
+            "profile-switch: compact profile",
+            "second pane compact",
+            Severity::Concern,
+            SourceKind::ProjectCanonical,
+            Some("/compact"),
+            None,
+        );
+        let reports = vec![
+            report_with_pane("%1", vec![first]),
+            report_with_pane("%2", vec![second]),
+        ];
+
+        let entries = collect_entries(
+            &[],
+            &reports,
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|entry| item_related(entry).is_none()));
+    }
+
+    #[test]
+    fn related_context_does_not_decorate_items_consumed_by_flow() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, cache]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].as_flow().is_some());
+        assert!(item_related(&entries[0]).is_none());
     }
 
     #[test]
@@ -3292,6 +3632,7 @@ mod tests {
             color: Color::Yellow,
             is_new: false,
             hide_deadline: Some(Instant::now() + Duration::from_secs(9)),
+            related: None,
         };
         let line = dismiss_line_text(&item, Instant::now());
         assert!(line.contains("[x] auto-hide"));
@@ -3315,6 +3656,7 @@ mod tests {
             color: Color::Yellow,
             is_new: false,
             hide_deadline: None,
+            related: None,
         };
         let line = dismiss_line_text(&item, Instant::now());
         assert!(line.contains("[ ] click hide"));
@@ -3337,6 +3679,7 @@ mod tests {
             color: Color::Yellow,
             is_new: false,
             hide_deadline: None,
+            related: None,
         };
 
         // Empty needle short-circuits to true.
@@ -3363,6 +3706,63 @@ mod tests {
         item.suggested_command = None;
         assert!(alert_item_matches_filter(&item, "throttled"));
         assert!(!alert_item_matches_filter(&item, "diag"));
+    }
+
+    #[test]
+    fn alert_filter_matches_related_context_fields() {
+        let quota = rec(
+            "quota-pressure: compact soon",
+            "quota pressure can recover after compact",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            None,
+        );
+        let profile = rec(
+            "profile-switch: compact profile",
+            "profile switch should happen after compact",
+            Severity::Concern,
+            SourceKind::ProjectCanonical,
+            Some("/compact"),
+            None,
+        );
+        let report = base_report(vec![quota.clone(), profile.clone()]);
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        let first = match &entries[0] {
+            AlertEntry::Item(item) => item,
+            AlertEntry::Flow(_) => panic!("expected plain alert"),
+        };
+        let related = first
+            .related
+            .as_ref()
+            .expect("related context should be attached");
+        assert!(alert_item_matches_filter(first, "same /compact path"));
+        assert!(alert_item_matches_filter(first, "quota-pressure"));
+        assert!(alert_item_matches_filter(first, "estimate"));
+        assert_eq!(related.total, 2);
+        assert_eq!(related.pane_id, "%1");
+        assert!(related.connector_label.contains("same /compact path"));
+        assert!(
+            related
+                .evidence
+                .iter()
+                .any(|e| e.source_label == "Estimate")
+        );
+        assert!(
+            related
+                .steps
+                .iter()
+                .any(|step| step.label.contains("quota-pressure"))
+        );
     }
 
     #[test]
