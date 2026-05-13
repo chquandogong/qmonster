@@ -112,7 +112,7 @@ pub struct AlertMouseHit {
 /// the first row answers "what should I look at first?" instead of
 /// replaying discovery order.
 pub fn render_alerts(area: Rect, buf: &mut Buffer, state: &mut ListState, view: AlertView<'_>) {
-    let mut items = collect_items(
+    let mut entries = collect_entries(
         view.notices,
         view.reports,
         view.fresh_alerts,
@@ -127,12 +127,12 @@ pub fn render_alerts(area: Rect, buf: &mut Buffer, state: &mut ListState, view: 
     if let Some(n) = needle.as_deref()
         && !n.is_empty()
     {
-        items.retain(|item| alert_item_matches_filter(item, n));
+        entries.retain(|entry| alert_entry_matches_filter(entry, n));
     }
-    let new_count = items.iter().filter(|item| item.is_new).count();
-    let pending_hide_count = items
+    let new_count = entries.iter().filter(|entry| entry.is_new()).count();
+    let pending_hide_count = entries
         .iter()
-        .filter(|item| item.hide_deadline.is_some())
+        .filter(|entry| entry.hide_deadline().is_some())
         .count();
     // v1.59.0: surface the active filter in the panel title so the
     // operator can tell at a glance why the visible count is small.
@@ -144,7 +144,7 @@ pub fn render_alerts(area: Rect, buf: &mut Buffer, state: &mut ListState, view: 
     let title = format!(
         "Alerts · target {} || visible:{} · new:{} · auto-hide:{}{filter_chip}",
         view.target_label,
-        items.len(),
+        entries.len(),
         new_count,
         pending_hide_count,
     );
@@ -160,21 +160,23 @@ pub fn render_alerts(area: Rect, buf: &mut Buffer, state: &mut ListState, view: 
         .split(inner);
     let bulk_area = layout[0];
     let list_area = layout[1];
-    Paragraph::new(bulk_hide_line(&items))
+    Paragraph::new(bulk_hide_line(&entries))
         .style(Style::default().fg(theme::text_dim()))
         .render(bulk_area, buf);
-    if items.is_empty() {
+    if entries.is_empty() {
         Paragraph::new("no alerts")
             .style(Style::default().fg(theme::text_dim()))
             .render(list_area, buf);
     } else if list_area.height > 0 {
-        sync_list_selection(state, items.len());
+        sync_list_selection(state, entries.len());
         let item_width = list_width(inner.width);
         let selected = state.selected();
-        let alert_items: Vec<ListItem<'static>> = items
+        let alert_items: Vec<ListItem<'static>> = entries
             .iter()
             .enumerate()
-            .map(|(idx, item)| alert_list_item(item, item_width, view.now, Some(idx) == selected))
+            .map(|(idx, entry)| {
+                alert_entry_list_item(entry, item_width, view.now, Some(idx) == selected)
+            })
             .collect();
         StatefulWidget::render(
             List::new(alert_items)
@@ -188,7 +190,7 @@ pub fn render_alerts(area: Rect, buf: &mut Buffer, state: &mut ListState, view: 
 }
 
 pub fn bulk_hide_severity_at_column(view: AlertView<'_>, column: u16) -> Option<Severity> {
-    let items = collect_items(
+    let entries = collect_entries(
         view.notices,
         view.reports,
         view.fresh_alerts,
@@ -196,7 +198,7 @@ pub fn bulk_hide_severity_at_column(view: AlertView<'_>, column: u16) -> Option<
         view.hidden_until,
         view.now,
     );
-    severity_chips(&items)
+    entry_severity_chips(&entries)
         .into_iter()
         .find(|chip| column >= chip.start_col && column < chip.end_col)
         .map(|chip| chip.severity)
@@ -217,7 +219,7 @@ pub fn alert_hit_at_row(
     width: usize,
     row: u16,
 ) -> Option<AlertMouseHit> {
-    let items = collect_items(
+    let entries = collect_entries(
         view.notices,
         view.reports,
         view.fresh_alerts,
@@ -227,9 +229,9 @@ pub fn alert_hit_at_row(
     );
     let mut remaining = row;
     let selected = state.selected();
-    for (idx, item) in items.iter().enumerate().skip(state.offset()) {
-        let dismiss_height = dismiss_line_count(item, width, view.now) as u16;
-        let height = alert_item_lines(item, width, view.now, Some(idx) == selected).len() as u16;
+    for (idx, entry) in entries.iter().enumerate().skip(state.offset()) {
+        let dismiss_height = entry_dismiss_line_count(entry, width, view.now) as u16;
+        let height = alert_entry_lines(entry, width, view.now, Some(idx) == selected).len() as u16;
         if remaining < height {
             return Some(AlertMouseHit {
                 index: idx,
@@ -249,7 +251,7 @@ pub fn alert_help_topic_at_row(
 ) -> Option<crate::ui::help_glossary::HelpTopic> {
     use crate::ui::help_glossary::HelpTopic;
 
-    let items = collect_items(
+    let entries = collect_entries(
         view.notices,
         view.reports,
         view.fresh_alerts,
@@ -259,10 +261,10 @@ pub fn alert_help_topic_at_row(
     );
     let mut remaining = row;
     let selected = state.selected();
-    for (idx, item) in items.iter().enumerate().skip(state.offset()) {
+    for (idx, entry) in entries.iter().enumerate().skip(state.offset()) {
         let is_selected = Some(idx) == selected;
-        let dismiss_height = dismiss_line_count(item, width, view.now) as u16;
-        let height = alert_item_lines(item, width, view.now, is_selected).len() as u16;
+        let dismiss_height = entry_dismiss_line_count(entry, width, view.now) as u16;
+        let height = alert_entry_lines(entry, width, view.now, is_selected).len() as u16;
         if remaining < height {
             if remaining == 0 {
                 return Some(HelpTopic::AlertHeader);
@@ -270,10 +272,10 @@ pub fn alert_help_topic_at_row(
             if remaining < 1 + dismiss_height {
                 return Some(HelpTopic::AlertDismiss);
             }
-            if is_alert_summary_row(item, width, remaining, dismiss_height) {
+            if is_alert_summary_row(entry, width, remaining, dismiss_height) {
                 return Some(HelpTopic::AlertSummary);
             }
-            if is_selected && is_alert_copy_row(item, width, remaining, height) {
+            if is_selected && is_alert_copy_row(entry, width, remaining, height) {
                 return Some(HelpTopic::AlertCopy);
             }
             if remaining + 1 >= height {
@@ -287,37 +289,21 @@ pub fn alert_help_topic_at_row(
 }
 
 fn is_alert_summary_row(
-    item: &AlertItem,
+    entry: &AlertEntry,
     width: usize,
     remaining: u16,
     dismiss_height: u16,
 ) -> bool {
-    let prefix = timestamp_prefix(item);
-    let continuation = continuation_prefix(&prefix);
-    let summary_height = wrap_with_prefix(
-        &aligned_detail("summary", &item.headline),
-        width,
-        &continuation,
-        &continuation,
-    )
-    .len() as u16;
+    let summary_height = entry_summary_line_count(entry, width) as u16;
     let start = 1 + dismiss_height;
     remaining >= start && remaining < start.saturating_add(summary_height)
 }
 
-fn is_alert_copy_row(item: &AlertItem, width: usize, remaining: u16, height: u16) -> bool {
-    let Some(cmd) = item.suggested_command.as_deref() else {
+fn is_alert_copy_row(entry: &AlertEntry, width: usize, remaining: u16, height: u16) -> bool {
+    let copy_height = entry_copy_line_count(entry, width) as u16;
+    if copy_height == 0 {
         return false;
-    };
-    let prefix = timestamp_prefix(item);
-    let continuation = continuation_prefix(&prefix);
-    let copy_height = wrap_with_prefix(
-        &aligned_detail("copy", &format!("`{cmd}`  → press y to copy")),
-        width,
-        &continuation,
-        &continuation,
-    )
-    .len() as u16;
+    }
     let start = height.saturating_sub(1).saturating_sub(copy_height);
     remaining >= start && remaining < height.saturating_sub(1)
 }
@@ -328,7 +314,7 @@ pub fn alert_count(
     hidden_until: &HashMap<String, Instant>,
     now: Instant,
 ) -> usize {
-    collect_items(
+    collect_entries(
         notices,
         reports,
         &HashSet::new(),
@@ -345,7 +331,7 @@ pub fn visible_alert_keys(
     hidden_until: &HashMap<String, Instant>,
     now: Instant,
 ) -> Vec<String> {
-    collect_items(
+    collect_entries(
         notices,
         reports,
         &HashSet::new(),
@@ -354,7 +340,7 @@ pub fn visible_alert_keys(
         now,
     )
     .into_iter()
-    .map(|item| item.key)
+    .map(|entry| entry.key().to_string())
     .collect()
 }
 
@@ -368,7 +354,7 @@ pub fn selected_alert_suggested_command(
     now: Instant,
 ) -> Option<String> {
     let idx = state.selected()?;
-    collect_items(
+    collect_entries(
         notices,
         reports,
         fresh_alerts,
@@ -377,7 +363,7 @@ pub fn selected_alert_suggested_command(
         now,
     )
     .get(idx)
-    .and_then(|item| item.suggested_command.clone())
+    .and_then(|entry| entry.suggested_command().map(str::to_string))
 }
 
 /// v1.38 Phase D Task 20: extended companion to
@@ -396,7 +382,7 @@ pub fn selected_alert_suggested_command_meta(
     now: Instant,
 ) -> Option<(String, String, Severity, SourceKind)> {
     let idx = state.selected()?;
-    let items = collect_items(
+    let entries = collect_entries(
         notices,
         reports,
         fresh_alerts,
@@ -404,9 +390,14 @@ pub fn selected_alert_suggested_command_meta(
         hidden_until,
         now,
     );
-    let item = items.get(idx)?;
-    let cmd = item.suggested_command.as_ref()?.clone();
-    Some((item.title.clone(), cmd, item.severity, item.source_kind))
+    let entry = entries.get(idx)?;
+    let cmd = entry.suggested_command()?.to_string();
+    Some((
+        entry.title(),
+        cmd,
+        entry.severity(),
+        entry.command_source_kind(),
+    ))
 }
 
 /// v2.2.0 (P1-3): companion to `selected_alert_suggested_command_meta`
@@ -426,7 +417,7 @@ pub fn selected_alert_recommendation_identity(
     now: Instant,
 ) -> Option<(String, String)> {
     let idx = state.selected()?;
-    let items = collect_items(
+    let entries = collect_entries(
         notices,
         reports,
         fresh_alerts,
@@ -434,8 +425,9 @@ pub fn selected_alert_recommendation_identity(
         hidden_until,
         now,
     );
-    let item = items.get(idx)?;
-    parse_recommendation_key(&item.key)
+    entries
+        .get(idx)
+        .and_then(AlertEntry::recommendation_identity)
 }
 
 /// Parses the `rec|{pane_id}|{action}|{sev}|{reason}` key shape into
@@ -455,7 +447,7 @@ pub fn actionable_alert_keys_for_severity(
     now: Instant,
     severity: Severity,
 ) -> Vec<String> {
-    collect_items(
+    collect_entries(
         notices,
         reports,
         &HashSet::new(),
@@ -464,8 +456,8 @@ pub fn actionable_alert_keys_for_severity(
         now,
     )
     .into_iter()
-    .filter(|item| item.kind.is_actionable() && item.severity == severity)
-    .map(|item| item.key)
+    .filter(|entry| entry.is_actionable() && entry.severity() == severity)
+    .map(|entry| entry.key().to_string())
     .collect()
 }
 
@@ -475,7 +467,7 @@ pub fn pending_auto_hide_count(
     hidden_until: &HashMap<String, Instant>,
     now: Instant,
 ) -> usize {
-    collect_items(
+    collect_entries(
         notices,
         reports,
         &HashSet::new(),
@@ -484,7 +476,7 @@ pub fn pending_auto_hide_count(
         now,
     )
     .into_iter()
-    .filter(|item| item.hide_deadline.is_some())
+    .filter(|entry| entry.hide_deadline().is_some())
     .count()
 }
 
@@ -507,7 +499,7 @@ pub fn copy_alert_count(
 ) -> (usize, Option<Severity>) {
     let mut count = 0usize;
     let mut top: Option<Severity> = None;
-    for item in collect_items(
+    for entry in collect_entries(
         notices,
         reports,
         &HashSet::new(),
@@ -515,9 +507,9 @@ pub fn copy_alert_count(
         hidden_until,
         now,
     ) {
-        if item.suggested_command.is_some() {
+        if entry.suggested_command().is_some() {
             count += 1;
-            top = Some(top.map_or(item.severity, |t| t.max(item.severity)));
+            top = Some(top.map_or(entry.severity(), |t| t.max(entry.severity())));
         }
     }
     (count, top)
@@ -555,7 +547,7 @@ pub fn alert_items_with_command(
     hidden_until: &HashMap<String, Instant>,
     now: Instant,
 ) -> Vec<CommandAlertEntry> {
-    let items = collect_items(
+    let entries = collect_entries(
         notices,
         reports,
         fresh_alerts,
@@ -563,32 +555,18 @@ pub fn alert_items_with_command(
         hidden_until,
         now,
     );
-    items
+    entries
         .into_iter()
         .enumerate()
-        .filter_map(|(idx, item)| {
-            let command = item.suggested_command.clone()?;
-            // Recover pane_id from the alert key prefix `rec|<pane>|...`
-            // and `finding|<anchor>|...`. SystemNotice keys produce
-            // None here so we don't accidentally jump panes.
-            let pane_id = item
-                .key
-                .strip_prefix("rec|")
-                .and_then(|tail| tail.split('|').next())
-                .map(|s| s.to_string())
-                .or_else(|| {
-                    item.key
-                        .strip_prefix("finding|")
-                        .and_then(|tail| tail.split('|').next())
-                        .map(|s| s.to_string())
-                });
+        .filter_map(|(idx, entry)| {
+            let command = entry.suggested_command()?.to_string();
             Some(CommandAlertEntry {
                 alert_idx: idx,
                 command,
-                title: item.title,
-                severity: item.severity,
-                source: item.source_kind,
-                pane_id,
+                title: entry.title(),
+                severity: entry.severity(),
+                source: entry.command_source_kind(),
+                pane_id: entry.pane_id(),
             })
         })
         .collect()
@@ -606,19 +584,17 @@ fn block(title: &str, focused: bool) -> Block<'_> {
 }
 
 pub fn alert_fingerprints(notices: &[SystemNotice], reports: &[PaneReport]) -> HashSet<String> {
-    let mut out = HashSet::new();
-    for notice in notices {
-        out.insert(notice_key(notice));
-    }
-    for report in reports {
-        for rec in &report.recommendations {
-            out.insert(recommendation_key(&report.pane_id, rec));
-        }
-        for finding in &report.cross_pane_findings {
-            out.insert(finding_key(finding));
-        }
-    }
-    out
+    collect_entries(
+        notices,
+        reports,
+        &HashSet::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        Instant::now(),
+    )
+    .into_iter()
+    .map(|entry| entry.key().to_string())
+    .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -644,6 +620,57 @@ enum AlertKind {
     Checkpoint,
     CrossPane,
     Recommendation,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+enum AlertEntry {
+    Item(AlertItem),
+    Flow(AlertFlow),
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AlertFlowFamily {
+    ContextRecovery,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+struct AlertFlow {
+    key: String,
+    family: AlertFlowFamily,
+    pane_id: String,
+    timestamp: String,
+    timestamp_sort_key: u32,
+    severity: Severity,
+    kind_priority: u8,
+    source_kind: SourceKind,
+    color: Color,
+    is_new: bool,
+    hide_deadline: Option<Instant>,
+    summary: String,
+    steps: Vec<AlertFlowStep>,
+    included: Vec<AlertItem>,
+    suggested_command: Option<String>,
+    command_identity: Option<(String, String)>,
+    command_source_kind: Option<SourceKind>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+struct AlertFlowStep {
+    marker: &'static str,
+    text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(dead_code)]
+enum ContextRecoveryCategory {
+    Context,
+    Cache,
+    CacheAnomaly,
+    Snapshot,
 }
 
 #[derive(Debug, Clone)]
@@ -804,6 +831,104 @@ fn collect_items(
     out
 }
 
+#[allow(dead_code)]
+fn collect_entries(
+    notices: &[SystemNotice],
+    reports: &[PaneReport],
+    fresh_alerts: &HashSet<String>,
+    alert_times: &HashMap<String, String>,
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> Vec<AlertEntry> {
+    let items = collect_items(
+        notices,
+        reports,
+        fresh_alerts,
+        alert_times,
+        hidden_until,
+        now,
+    );
+    project_alert_entries(items, fresh_alerts, hidden_until, now)
+}
+
+#[allow(dead_code)]
+fn project_alert_entries(
+    items: Vec<AlertItem>,
+    fresh_alerts: &HashSet<String>,
+    hidden_until: &HashMap<String, Instant>,
+    now: Instant,
+) -> Vec<AlertEntry> {
+    let mut consumed = HashSet::new();
+    let mut flows = Vec::new();
+
+    let mut by_pane: HashMap<String, Vec<usize>> = HashMap::new();
+    for (idx, item) in items.iter().enumerate() {
+        if let Some((pane_id, _)) = parse_recommendation_key(&item.key)
+            && context_recovery_category(item).is_some()
+        {
+            by_pane.entry(pane_id).or_default().push(idx);
+        }
+    }
+
+    for (pane_id, indexes) in by_pane {
+        let categories: HashSet<ContextRecoveryCategory> = indexes
+            .iter()
+            .filter_map(|idx| context_recovery_category(&items[*idx]))
+            .collect();
+        if categories.len() < 2 {
+            continue;
+        }
+        let included: Vec<AlertItem> = indexes.iter().map(|idx| items[*idx].clone()).collect();
+        let key = context_recovery_flow_key(&pane_id, &included);
+        match visible_hide_deadline(hidden_until, &key, now) {
+            Some(hide_deadline) => {
+                for idx in indexes {
+                    consumed.insert(idx);
+                }
+                flows.push(AlertEntry::Flow(build_context_recovery_flow(
+                    key,
+                    pane_id,
+                    included,
+                    hide_deadline,
+                    fresh_alerts,
+                )));
+            }
+            None => {
+                for idx in indexes {
+                    consumed.insert(idx);
+                }
+            }
+        }
+    }
+
+    let mut entries: Vec<AlertEntry> = items
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, item)| {
+            if consumed.contains(&idx) {
+                None
+            } else {
+                Some(AlertEntry::Item(item))
+            }
+        })
+        .chain(flows)
+        .collect();
+    sort_entries(&mut entries);
+    entries
+}
+
+#[allow(dead_code)]
+fn sort_entries(entries: &mut [AlertEntry]) {
+    entries.sort_by(|a, b| {
+        b.severity()
+            .cmp(&a.severity())
+            .then_with(|| b.is_new().cmp(&a.is_new()))
+            .then_with(|| b.timestamp_sort_key().cmp(&a.timestamp_sort_key()))
+            .then_with(|| b.kind_priority().cmp(&a.kind_priority()))
+            .then_with(|| a.key().cmp(b.key()))
+    });
+}
+
 fn non_empty_command(command: Option<&str>) -> Option<String> {
     let cmd = command.map(str::trim).filter(|cmd| !cmd.is_empty())?;
     if cmd.starts_with('#') || contains_angle_placeholder(cmd) {
@@ -867,8 +992,226 @@ fn alert_item_matches_filter(item: &AlertItem, needle: &str) -> bool {
     false
 }
 
-fn bulk_hide_line(items: &[AlertItem]) -> Line<'static> {
-    let chips = severity_chips(items);
+fn alert_entry_matches_filter(entry: &AlertEntry, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    match entry {
+        AlertEntry::Item(item) => alert_item_matches_filter(item, needle),
+        AlertEntry::Flow(flow) => {
+            if flow.title().to_ascii_lowercase().contains(needle) {
+                return true;
+            }
+            if flow.summary.to_ascii_lowercase().contains(needle) {
+                return true;
+            }
+            if flow
+                .steps
+                .iter()
+                .any(|step| step.text.to_ascii_lowercase().contains(needle))
+            {
+                return true;
+            }
+            if flow.pane_id.to_ascii_lowercase().contains(needle) {
+                return true;
+            }
+            if let Some(cmd) = flow.suggested_command.as_deref()
+                && cmd.to_ascii_lowercase().contains(needle)
+            {
+                return true;
+            }
+            flow.included
+                .iter()
+                .any(|item| alert_item_matches_filter(item, needle))
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn context_recovery_category(item: &AlertItem) -> Option<ContextRecoveryCategory> {
+    let (_, action) = parse_recommendation_key(&item.key)?;
+    if action.starts_with("context-pressure:") {
+        return Some(ContextRecoveryCategory::Context);
+    }
+    if action == "anomaly: cache discontinuity detected" {
+        return Some(ContextRecoveryCategory::CacheAnomaly);
+    }
+    if action.starts_with("snapshot before ") {
+        return Some(ContextRecoveryCategory::Snapshot);
+    }
+    if action.starts_with("cache:")
+        && action.contains("drift detected")
+        && (action.contains("/compact") || item.headline.contains("/compact"))
+    {
+        return Some(ContextRecoveryCategory::Cache);
+    }
+    None
+}
+
+#[allow(dead_code)]
+fn context_recovery_flow_key(pane_id: &str, included: &[AlertItem]) -> String {
+    let mut keys: Vec<&str> = included.iter().map(|item| item.key.as_str()).collect();
+    keys.sort_unstable();
+    format!("flow|context-recovery|{pane_id}|{}", keys.join("\u{1f}"))
+}
+
+#[allow(dead_code)]
+fn build_context_recovery_flow(
+    key: String,
+    pane_id: String,
+    included: Vec<AlertItem>,
+    hide_deadline: Option<Instant>,
+    fresh_alerts: &HashSet<String>,
+) -> AlertFlow {
+    let severity = included
+        .iter()
+        .map(|item| item.severity)
+        .max()
+        .unwrap_or(Severity::Concern);
+    let source_kind = included
+        .iter()
+        .map(|item| item.source_kind)
+        .max_by_key(|source| source_authority_rank(*source))
+        .unwrap_or(SourceKind::Heuristic);
+    let kind_priority = included
+        .iter()
+        .map(|item| item.kind.priority())
+        .max()
+        .unwrap_or(AlertKind::Recommendation.priority());
+    let timestamp = included
+        .iter()
+        .max_by_key(|item| item.timestamp_sort_key)
+        .map(|item| item.timestamp.clone())
+        .unwrap_or_else(|| "--:--:--".into());
+    let timestamp_sort_key = sortable_timestamp(&timestamp);
+    let is_new = fresh_alerts.contains(&key) || included.iter().any(|item| item.is_new);
+    let (suggested_command, command_identity, command_source_kind) =
+        flow_command_and_identity(&included);
+    let steps = context_recovery_steps(&included, suggested_command.as_deref());
+
+    AlertFlow {
+        key,
+        family: AlertFlowFamily::ContextRecovery,
+        pane_id,
+        timestamp,
+        timestamp_sort_key,
+        severity,
+        kind_priority,
+        source_kind,
+        color: theme::severity_color(severity),
+        is_new,
+        hide_deadline,
+        summary: context_recovery_summary(&included, suggested_command.as_deref()),
+        steps,
+        included,
+        suggested_command,
+        command_identity,
+        command_source_kind,
+    }
+}
+
+#[allow(dead_code)]
+fn source_authority_rank(source: SourceKind) -> u8 {
+    match source {
+        SourceKind::ProviderOfficial => 4,
+        SourceKind::ProjectCanonical => 3,
+        SourceKind::Heuristic => 2,
+        SourceKind::Estimated => 1,
+    }
+}
+
+#[allow(dead_code)]
+fn flow_command_and_identity(
+    included: &[AlertItem],
+) -> (Option<String>, Option<(String, String)>, Option<SourceKind>) {
+    let preferred = included
+        .iter()
+        .find(|item| item.suggested_command.as_deref() == Some("/compact"))
+        .or_else(|| {
+            included
+                .iter()
+                .find(|item| item.suggested_command.is_some())
+        });
+    let Some(item) = preferred else {
+        return (None, None, None);
+    };
+    (
+        item.suggested_command.clone(),
+        parse_recommendation_key(&item.key),
+        Some(item.source_kind),
+    )
+}
+
+#[allow(dead_code)]
+fn context_recovery_summary(included: &[AlertItem], command: Option<&str>) -> String {
+    let has_context = included
+        .iter()
+        .any(|item| context_recovery_category(item) == Some(ContextRecoveryCategory::Context));
+    let has_cache = included.iter().any(|item| {
+        matches!(
+            context_recovery_category(item),
+            Some(ContextRecoveryCategory::Cache | ContextRecoveryCategory::CacheAnomaly)
+        )
+    });
+    match (has_context, has_cache, command) {
+        (true, true, Some("/compact")) => {
+            "context pressure led to cache drift; snapshot before compact".into()
+        }
+        (true, true, _) => "context pressure and cache drift share one recovery path".into(),
+        (true, false, _) => "context pressure has a related recovery step".into(),
+        (false, true, _) => "cache drift has a related recovery step".into(),
+        (false, false, _) => "related recovery alerts share one response path".into(),
+    }
+}
+
+#[allow(dead_code)]
+fn context_recovery_steps(included: &[AlertItem], command: Option<&str>) -> Vec<AlertFlowStep> {
+    let mut steps = Vec::new();
+    if included
+        .iter()
+        .any(|item| context_recovery_category(item) == Some(ContextRecoveryCategory::Context))
+    {
+        steps.push(AlertFlowStep {
+            marker: "o",
+            text: "context pressure detected".into(),
+        });
+    }
+    if included.iter().any(|item| {
+        matches!(
+            context_recovery_category(item),
+            Some(ContextRecoveryCategory::Cache | ContextRecoveryCategory::CacheAnomaly)
+        )
+    }) {
+        steps.push(AlertFlowStep {
+            marker: "|",
+            text: "cache drift/discontinuity detected".into(),
+        });
+    }
+    if included
+        .iter()
+        .any(|item| context_recovery_category(item) == Some(ContextRecoveryCategory::Snapshot))
+        || included.iter().any(|item| {
+            item.details
+                .iter()
+                .any(|detail| detail.to_ascii_lowercase().contains("snapshot"))
+        })
+    {
+        steps.push(AlertFlowStep {
+            marker: "o",
+            text: "snapshot before reset".into(),
+        });
+    }
+    if let Some(cmd) = command {
+        steps.push(AlertFlowStep {
+            marker: "|",
+            text: format!("then run {cmd}"),
+        });
+    }
+    steps
+}
+
+fn bulk_hide_line(entries: &[AlertEntry]) -> Line<'static> {
+    let chips = entry_severity_chips(entries);
     let mut spans = vec![Span::styled(
         BULK_HIDE_PREFIX.to_string(),
         Style::default()
@@ -902,7 +1245,7 @@ fn bulk_hide_line(items: &[AlertItem]) -> Line<'static> {
     Line::from(spans)
 }
 
-fn severity_chips(items: &[AlertItem]) -> Vec<SeverityChip> {
+fn entry_severity_chips(entries: &[AlertEntry]) -> Vec<SeverityChip> {
     let mut chips = Vec::new();
     let mut start_col = BULK_HIDE_PREFIX.chars().count() as u16;
     for severity in [
@@ -912,9 +1255,9 @@ fn severity_chips(items: &[AlertItem]) -> Vec<SeverityChip> {
         Severity::Good,
         Severity::Safe,
     ] {
-        let matching: Vec<&AlertItem> = items
+        let matching: Vec<&AlertEntry> = entries
             .iter()
-            .filter(|item| item.kind.is_actionable() && item.severity == severity)
+            .filter(|entry| entry.is_actionable() && entry.severity() == severity)
             .collect();
         if matching.is_empty() {
             continue;
@@ -922,7 +1265,7 @@ fn severity_chips(items: &[AlertItem]) -> Vec<SeverityChip> {
         let total = matching.len();
         let pending = matching
             .iter()
-            .filter(|item| item.hide_deadline.is_some())
+            .filter(|entry| entry.hide_deadline().is_some())
             .count();
         let width = SeverityChip::display_text(severity, total, pending)
             .chars()
@@ -939,10 +1282,39 @@ fn severity_chips(items: &[AlertItem]) -> Vec<SeverityChip> {
     chips
 }
 
+#[allow(dead_code)]
+fn severity_chips(items: &[AlertItem]) -> Vec<SeverityChip> {
+    let entries: Vec<AlertEntry> = items.iter().cloned().map(AlertEntry::Item).collect();
+    entry_severity_chips(&entries)
+}
+
 fn list_width(inner_width: u16) -> usize {
     inner_width.saturating_sub(3) as usize
 }
 
+fn alert_entry_list_item(
+    entry: &AlertEntry,
+    width: usize,
+    now: Instant,
+    is_selected: bool,
+) -> ListItem<'static> {
+    ListItem::new(alert_entry_lines(entry, width, now, is_selected))
+        .style(alert_style(entry.color(), entry.is_new()))
+}
+
+fn alert_entry_lines(
+    entry: &AlertEntry,
+    width: usize,
+    now: Instant,
+    is_selected: bool,
+) -> Vec<Line<'static>> {
+    match entry {
+        AlertEntry::Item(item) => alert_item_lines(item, width, now, is_selected),
+        AlertEntry::Flow(flow) => alert_flow_lines(flow, width, now, is_selected),
+    }
+}
+
+#[allow(dead_code)]
 fn alert_list_item(
     item: &AlertItem,
     width: usize,
@@ -997,16 +1369,89 @@ fn alert_item_lines(
     // `aligned_detail` and backticks to match the `run` / `summary` /
     // `dismiss` sibling rows.
     if is_selected && let Some(cmd) = item.suggested_command.as_deref() {
-        for wrapped in wrap_with_prefix(
-            &aligned_detail("copy", &format!("`{cmd}`  → press y to copy")),
-            width,
-            &continuation,
-            &continuation,
-        ) {
+        for wrapped in wrap_copy_detail(width, &continuation, cmd) {
             lines.push(Line::styled(
                 wrapped,
                 Style::default().fg(theme::text_dim()),
             ));
+        }
+    }
+    lines.push(Line::styled(
+        format!(
+            "{}{}",
+            continuation,
+            "─".repeat(width.saturating_sub(continuation.chars().count()).max(8))
+        ),
+        Style::default().fg(theme::text_dim()),
+    ));
+    lines
+}
+
+fn alert_flow_lines(
+    flow: &AlertFlow,
+    width: usize,
+    now: Instant,
+    is_selected: bool,
+) -> Vec<Line<'static>> {
+    let prefix = format!("[{}] ", flow.timestamp);
+    let continuation = continuation_prefix(&prefix);
+    let mut lines = vec![flow_title_line(flow, &prefix)];
+    lines.extend(
+        wrap_with_prefix(
+            &flow_dismiss_line_text(flow, now),
+            width,
+            &continuation,
+            &continuation,
+        )
+        .into_iter()
+        .map(Line::from),
+    );
+    lines.extend(
+        wrap_with_prefix(
+            &aligned_detail("summary", &flow.summary),
+            width,
+            &continuation,
+            &continuation,
+        )
+        .into_iter()
+        .map(Line::from),
+    );
+    for step in &flow.steps {
+        lines.extend(
+            wrap_with_prefix(
+                &format!("{} {}", step.marker, step.text),
+                width,
+                &continuation,
+                &continuation,
+            )
+            .into_iter()
+            .map(Line::from),
+        );
+    }
+    if is_selected {
+        for item in &flow.included {
+            let evidence = parse_recommendation_key(&item.key)
+                .map(|(_, action)| action)
+                .unwrap_or_else(|| item.headline.clone());
+            let evidence = format!("{} [{}]", evidence, source_kind_label(item.source_kind));
+            lines.extend(
+                wrap_with_prefix(
+                    &aligned_detail("included", &evidence),
+                    width,
+                    &continuation,
+                    &continuation,
+                )
+                .into_iter()
+                .map(|line| Line::styled(line, Style::default().fg(theme::text_dim()))),
+            );
+        }
+        if let Some(cmd) = flow.suggested_command.as_deref() {
+            for wrapped in wrap_copy_detail(width, &continuation, cmd) {
+                lines.push(Line::styled(
+                    wrapped,
+                    Style::default().fg(theme::text_dim()),
+                ));
+            }
         }
     }
     lines.push(Line::styled(
@@ -1034,6 +1479,20 @@ fn dismiss_line_text(item: &AlertItem, now: Instant) -> String {
     }
 }
 
+fn flow_dismiss_line_text(flow: &AlertFlow, now: Instant) -> String {
+    match flow.hide_deadline {
+        Some(deadline) => {
+            let remaining = deadline.saturating_duration_since(now);
+            let secs = remaining.as_secs().max(1);
+            aligned_detail(
+                "dismiss",
+                &format!("[x] auto-hide in {secs}s · click undo · Enter/Space undo"),
+            )
+        }
+        None => aligned_detail("dismiss", "[ ] click hide · Enter/Space hide"),
+    }
+}
+
 fn dismiss_line_count(item: &AlertItem, width: usize, now: Instant) -> usize {
     let prefix = timestamp_prefix(item);
     let continuation = continuation_prefix(&prefix);
@@ -1044,6 +1503,23 @@ fn dismiss_line_count(item: &AlertItem, width: usize, now: Instant) -> usize {
         &continuation,
     )
     .len()
+}
+
+fn entry_dismiss_line_count(entry: &AlertEntry, width: usize, now: Instant) -> usize {
+    match entry {
+        AlertEntry::Item(item) => dismiss_line_count(item, width, now),
+        AlertEntry::Flow(flow) => {
+            let prefix = format!("[{}] ", flow.timestamp);
+            let continuation = continuation_prefix(&prefix);
+            wrap_with_prefix(
+                &flow_dismiss_line_text(flow, now),
+                width,
+                &continuation,
+                &continuation,
+            )
+            .len()
+        }
+    }
 }
 
 fn title_line(item: &AlertItem, prefix: &str) -> Line<'static> {
@@ -1071,15 +1547,98 @@ fn title_line(item: &AlertItem, prefix: &str) -> Line<'static> {
     // its severity so the operator can spot copyable items in the
     // alert queue without selecting each one. Mirrors the `★p` chip
     // on pane cards (panels.rs).
-    if item.suggested_command.is_some() {
+    if let Some(label) = item_action_label(item.suggested_command.is_some()) {
         spans.push(Span::styled(
-            "  \u{2605}y",
+            format!("  {label}"),
             Style::default()
                 .fg(theme::severity_color(item.severity))
                 .add_modifier(Modifier::BOLD),
         ));
     }
     Line::from(spans)
+}
+
+fn flow_title_line(flow: &AlertFlow, prefix: &str) -> Line<'static> {
+    let mut spans = vec![Span::raw(prefix.to_string())];
+    if flow.is_new {
+        spans.push(Span::styled(
+            "NEW ",
+            Style::default()
+                .fg(theme::text_primary())
+                .bg(theme::badge_bg())
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    spans.push(Span::styled(
+        format!(" {} ", severity_badge_text(flow.severity)),
+        theme::severity_badge_style(flow.severity).add_modifier(Modifier::BOLD),
+    ));
+    spans.push(Span::raw(" "));
+    spans.push(Span::styled(
+        flow.title(),
+        Style::default().add_modifier(Modifier::BOLD),
+    ));
+    if let Some(label) = item_action_label(flow.suggested_command.is_some()) {
+        spans.push(Span::styled(
+            format!("  {label}"),
+            Style::default()
+                .fg(theme::severity_color(flow.severity))
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    Line::from(spans)
+}
+
+fn item_action_label(has_command: bool) -> Option<&'static str> {
+    has_command.then_some("\u{2605}y")
+}
+
+fn entry_summary_line_count(entry: &AlertEntry, width: usize) -> usize {
+    match entry {
+        AlertEntry::Item(item) => {
+            let prefix = timestamp_prefix(item);
+            let continuation = continuation_prefix(&prefix);
+            wrap_with_prefix(
+                &aligned_detail("summary", &item.headline),
+                width,
+                &continuation,
+                &continuation,
+            )
+            .len()
+        }
+        AlertEntry::Flow(flow) => {
+            let prefix = format!("[{}] ", flow.timestamp);
+            let continuation = continuation_prefix(&prefix);
+            wrap_with_prefix(
+                &aligned_detail("summary", &flow.summary),
+                width,
+                &continuation,
+                &continuation,
+            )
+            .len()
+        }
+    }
+}
+
+fn entry_copy_line_count(entry: &AlertEntry, width: usize) -> usize {
+    let Some(cmd) = entry.suggested_command() else {
+        return 0;
+    };
+    let prefix = match entry {
+        AlertEntry::Item(item) => timestamp_prefix(item),
+        AlertEntry::Flow(flow) => format!("[{}] ", flow.timestamp),
+    };
+    let continuation = continuation_prefix(&prefix);
+    wrap_copy_detail(width, &continuation, cmd).len()
+}
+
+fn wrap_copy_detail(width: usize, continuation: &str, cmd: &str) -> Vec<String> {
+    let detail = aligned_detail("copy", &format!("`{cmd}`  → press y to copy"));
+    if continuation.chars().count() + detail.chars().count() <= width {
+        vec![format!("{continuation}{detail}")]
+    } else {
+        wrap_with_prefix(&detail, width, continuation, continuation)
+    }
 }
 
 fn alert_style(color: Color, is_new: bool) -> Style {
@@ -1156,7 +1715,7 @@ pub fn recommendation_detail_lines(rec: &Recommendation) -> Vec<String> {
 }
 
 fn aligned_detail(label: &str, value: &str) -> String {
-    format!("{label:<DETAIL_LABEL_WIDTH$}: {value}")
+    format!("{label:<width$}: {value}", width = DETAIL_LABEL_WIDTH)
 }
 
 fn severity_badge_text(sev: Severity) -> &'static str {
@@ -1312,6 +1871,135 @@ impl AlertKind {
     }
 }
 
+#[allow(dead_code)]
+impl AlertEntry {
+    fn key(&self) -> &str {
+        match self {
+            AlertEntry::Item(item) => &item.key,
+            AlertEntry::Flow(flow) => &flow.key,
+        }
+    }
+
+    fn severity(&self) -> Severity {
+        match self {
+            AlertEntry::Item(item) => item.severity,
+            AlertEntry::Flow(flow) => flow.severity,
+        }
+    }
+
+    fn timestamp_sort_key(&self) -> u32 {
+        match self {
+            AlertEntry::Item(item) => item.timestamp_sort_key,
+            AlertEntry::Flow(flow) => flow.timestamp_sort_key,
+        }
+    }
+
+    fn kind_priority(&self) -> u8 {
+        match self {
+            AlertEntry::Item(item) => item.kind.priority(),
+            AlertEntry::Flow(flow) => flow.kind_priority,
+        }
+    }
+
+    fn is_new(&self) -> bool {
+        match self {
+            AlertEntry::Item(item) => item.is_new,
+            AlertEntry::Flow(flow) => flow.is_new,
+        }
+    }
+
+    fn hide_deadline(&self) -> Option<Instant> {
+        match self {
+            AlertEntry::Item(item) => item.hide_deadline,
+            AlertEntry::Flow(flow) => flow.hide_deadline,
+        }
+    }
+
+    fn suggested_command(&self) -> Option<&str> {
+        match self {
+            AlertEntry::Item(item) => item.suggested_command.as_deref(),
+            AlertEntry::Flow(flow) => flow.suggested_command.as_deref(),
+        }
+    }
+
+    fn source_kind(&self) -> SourceKind {
+        match self {
+            AlertEntry::Item(item) => item.source_kind,
+            AlertEntry::Flow(flow) => flow.source_kind,
+        }
+    }
+
+    fn command_source_kind(&self) -> SourceKind {
+        match self {
+            AlertEntry::Item(item) => item.source_kind,
+            AlertEntry::Flow(flow) => flow.command_source_kind.unwrap_or(flow.source_kind),
+        }
+    }
+
+    fn title(&self) -> String {
+        match self {
+            AlertEntry::Item(item) => item.title.clone(),
+            AlertEntry::Flow(flow) => flow.title(),
+        }
+    }
+
+    fn color(&self) -> Color {
+        match self {
+            AlertEntry::Item(item) => item.color,
+            AlertEntry::Flow(flow) => flow.color,
+        }
+    }
+
+    fn pane_id(&self) -> Option<String> {
+        match self {
+            AlertEntry::Item(item) => item
+                .key
+                .strip_prefix("rec|")
+                .and_then(|tail| tail.split('|').next())
+                .map(|s| s.to_string())
+                .or_else(|| {
+                    item.key
+                        .strip_prefix("finding|")
+                        .and_then(|tail| tail.split('|').next())
+                        .map(|s| s.to_string())
+                }),
+            AlertEntry::Flow(flow) => Some(flow.pane_id.clone()),
+        }
+    }
+
+    fn recommendation_identity(&self) -> Option<(String, String)> {
+        match self {
+            AlertEntry::Item(item) => parse_recommendation_key(&item.key),
+            AlertEntry::Flow(flow) => flow.command_identity.clone(),
+        }
+    }
+
+    fn is_actionable(&self) -> bool {
+        match self {
+            AlertEntry::Item(item) => item.kind.is_actionable(),
+            AlertEntry::Flow(_) => true,
+        }
+    }
+
+    #[cfg(test)]
+    fn as_flow(&self) -> Option<&AlertFlow> {
+        match self {
+            AlertEntry::Flow(flow) => Some(flow),
+            AlertEntry::Item(_) => None,
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl AlertFlow {
+    fn title(&self) -> String {
+        let family = match self.family {
+            AlertFlowFamily::ContextRecovery => "Context recovery",
+        };
+        format!("FLOW {family} · {} alerts · active", self.included.len())
+    }
+}
+
 impl SeverityChip {
     fn count_label(&self) -> String {
         if self.pending > 0 && self.pending < self.total {
@@ -1381,6 +2069,626 @@ mod tests {
             recent_token_samples: Vec::new(), // F-3: test fixture; production fetches via event_loop
             anomalies: vec![],
         }
+    }
+
+    fn rec(
+        action: &'static str,
+        reason: &str,
+        severity: Severity,
+        source_kind: SourceKind,
+        suggested_command: Option<&str>,
+        next_step: Option<&str>,
+    ) -> Recommendation {
+        Recommendation {
+            action,
+            reason: reason.into(),
+            severity,
+            source_kind,
+            suggested_command: suggested_command.map(str::to_string),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: next_step.map(str::to_string),
+            profile: None,
+        }
+    }
+
+    fn report_with_pane(pane_id: &str, recs: Vec<Recommendation>) -> PaneReport {
+        let mut report = base_report(recs);
+        report.pane_id = pane_id.into();
+        report.identity.identity.pane_id = pane_id.into();
+        report
+    }
+
+    #[test]
+    fn context_recovery_flow_groups_context_and_cache_on_same_pane() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context.clone(), cache.clone()]);
+        let times = HashMap::from([
+            (recommendation_key("%1", &context), "14:23:08".into()),
+            (recommendation_key("%1", &cache), "14:23:12".into()),
+        ]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &times,
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(
+            entries.len(),
+            1,
+            "context/cache should collapse into one flow"
+        );
+        let flow = entries[0].as_flow().expect("entry must be a flow");
+        assert_eq!(flow.pane_id, "%1");
+        assert_eq!(flow.severity, Severity::Warning);
+        assert_eq!(flow.suggested_command.as_deref(), Some("/compact"));
+        assert_eq!(
+            flow.command_identity
+                .as_ref()
+                .map(|(_, action)| action.as_str()),
+            Some("context-pressure: checkpoint")
+        );
+        assert_eq!(flow.included.len(), 2);
+        assert!(flow.title().contains("Context recovery"));
+        assert!(flow.summary.contains("context pressure"));
+    }
+
+    #[test]
+    fn context_recovery_flow_requires_two_categories() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let report = base_report(vec![context]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert!(matches!(entries[0], AlertEntry::Item(_)));
+    }
+
+    #[test]
+    fn context_recovery_flow_does_not_merge_different_panes() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let reports = vec![
+            report_with_pane("%1", vec![context]),
+            report_with_pane("%2", vec![cache]),
+        ];
+
+        let entries = collect_entries(
+            &[],
+            &reports,
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert!(
+            entries
+                .iter()
+                .all(|entry| matches!(entry, AlertEntry::Item(_)))
+        );
+    }
+
+    #[test]
+    fn context_recovery_flow_key_uses_stable_projected_key() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let raw_context_key = recommendation_key("%1", &context);
+        let raw_cache_key = recommendation_key("%1", &cache);
+        let report = base_report(vec![context.clone(), cache.clone()]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        let entry_keys: Vec<&str> = entries.iter().map(|entry| entry.key()).collect();
+        assert_eq!(entry_keys.len(), 1);
+        assert!(entry_keys[0].starts_with("flow|context-recovery|%1|"));
+        assert!(!entry_keys.contains(&raw_context_key.as_str()));
+        assert!(!entry_keys.contains(&raw_cache_key.as_str()));
+    }
+
+    #[test]
+    fn context_recovery_flow_does_not_group_hot_cache_advice() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let hot_cache = rec(
+            "cache: avoid /compact while cache is hot",
+            "cache is still hot after a recent reset",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, hot_cache]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert!(
+            entries
+                .iter()
+                .all(|entry| matches!(entry, AlertEntry::Item(_)))
+        );
+    }
+
+    #[test]
+    fn context_recovery_flow_does_not_group_cold_cache_advice() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cold_cache = rec(
+            "cache: /compact is safe — cache is cold",
+            "cache has cooled and compact is safe",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, cold_cache]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert!(
+            entries
+                .iter()
+                .all(|entry| matches!(entry, AlertEntry::Item(_)))
+        );
+    }
+
+    #[test]
+    fn context_recovery_flow_preserves_highest_included_kind_priority() {
+        let mut strong_context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        strong_context.is_strong = true;
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Warning,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let plain = rec(
+            "notify-input-wait",
+            "waiting for user input",
+            Severity::Warning,
+            SourceKind::ProjectCanonical,
+            None,
+            None,
+        );
+        let report = base_report(vec![strong_context.clone(), cache.clone(), plain.clone()]);
+        let times = HashMap::from([
+            (recommendation_key("%1", &strong_context), "14:23:12".into()),
+            (recommendation_key("%1", &cache), "14:23:12".into()),
+            (recommendation_key("%1", &plain), "14:23:12".into()),
+        ]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &times,
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert!(
+            entries[0].as_flow().is_some(),
+            "flow should sort before plain recommendation"
+        );
+        assert!(matches!(entries[1], AlertEntry::Item(_)));
+    }
+
+    #[test]
+    fn selected_flow_copies_compact_and_returns_source_recommendation_identity() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, cache]);
+        let mut state = ListState::default();
+        state.select(Some(0));
+
+        let cmd = selected_alert_suggested_command(
+            &state,
+            &[],
+            std::slice::from_ref(&report),
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+        let identity = selected_alert_recommendation_identity(
+            &state,
+            &[],
+            std::slice::from_ref(&report),
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(cmd.as_deref(), Some("/compact"));
+        assert_eq!(
+            identity,
+            Some(("%1".into(), "context-pressure: checkpoint".into()))
+        );
+    }
+
+    #[test]
+    fn selected_flow_copy_meta_and_pending_action_use_command_source_kind() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, cache]);
+        let mut state = ListState::default();
+        state.select(Some(0));
+
+        let meta = selected_alert_suggested_command_meta(
+            &state,
+            &[],
+            std::slice::from_ref(&report),
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        )
+        .expect("flow should expose copy metadata");
+        let entries = alert_items_with_command(
+            &[],
+            std::slice::from_ref(&report),
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(meta.1, "/compact");
+        assert_eq!(meta.3, SourceKind::Estimated);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].command, "/compact");
+        assert_eq!(entries[0].source, SourceKind::Estimated);
+    }
+
+    #[test]
+    fn flow_visible_keys_fingerprints_and_bulk_hide_count_once() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, cache]);
+        let now = Instant::now();
+
+        let keys = visible_alert_keys(&[], std::slice::from_ref(&report), &HashMap::new(), now);
+        let warning = actionable_alert_keys_for_severity(
+            &[],
+            std::slice::from_ref(&report),
+            &HashMap::new(),
+            now,
+            Severity::Warning,
+        );
+        let fingerprints = alert_fingerprints(&[], std::slice::from_ref(&report));
+
+        assert_eq!(keys.len(), 1);
+        assert!(keys[0].starts_with("flow|context-recovery|%1|"));
+        assert_eq!(warning, keys);
+        assert_eq!(fingerprints, keys.into_iter().collect());
+    }
+
+    #[test]
+    fn alert_filter_matches_included_alert_and_keeps_flow_visible() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, cache]);
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert!(alert_entry_matches_filter(&entries[0], "0.72"));
+    }
+
+    #[test]
+    fn alert_items_with_command_reports_flow_command_and_pane() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, cache]);
+
+        let entries = alert_items_with_command(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].command, "/compact");
+        assert_eq!(entries[0].pane_id.as_deref(), Some("%1"));
+        assert!(entries[0].title.contains("FLOW Context recovery"));
+    }
+
+    #[test]
+    fn renders_context_recovery_flow_with_timeline_rail() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, cache]);
+        let mut state = ListState::default();
+        state.select(Some(0));
+        let area = Rect::new(0, 0, 96, 18);
+        let mut buf = Buffer::empty(area);
+        let view = AlertView {
+            notices: &[],
+            reports: &[report],
+            fresh_alerts: &HashSet::new(),
+            alert_times: &HashMap::new(),
+            hidden_until: &HashMap::new(),
+            now: Instant::now(),
+            target_label: "all",
+            focused: true,
+            filter: None,
+        };
+
+        render_alerts(area, &mut buf, &mut state, view);
+
+        let dump = buffer_to_string(&buf);
+        assert!(dump.contains("FLOW Context recovery"), "{dump}");
+        assert!(
+            dump.contains("summary : context pressure led to cache drift"),
+            "{dump}"
+        );
+        assert!(dump.contains("o context pressure detected"), "{dump}");
+        assert!(
+            dump.contains("| cache drift/discontinuity detected"),
+            "{dump}"
+        );
+        assert!(dump.contains("| then run /compact"), "{dump}");
+        assert!(
+            dump.contains("included: context-pressure: checkpoint [Estimate]"),
+            "{dump}"
+        );
+        assert!(
+            dump.contains(
+                "included: cache: drift detected — /compact will let cache rebuild [Heur]"
+            ),
+            "{dump}"
+        );
+        assert!(dump.contains("copy    : `/compact`"), "{dump}");
+    }
+
+    #[test]
+    fn unselected_flow_omits_included_and_copy_detail() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let notice = SystemNotice {
+            title: "startup".into(),
+            body: "ready".into(),
+            severity: Severity::Good,
+            source_kind: SourceKind::ProjectCanonical,
+        };
+        let report = base_report(vec![context, cache]);
+        let mut state = ListState::default();
+        state.select(Some(1));
+        let area = Rect::new(0, 0, 96, 18);
+        let mut buf = Buffer::empty(area);
+        let view = AlertView {
+            notices: &[notice],
+            reports: &[report],
+            fresh_alerts: &HashSet::new(),
+            alert_times: &HashMap::new(),
+            hidden_until: &HashMap::new(),
+            now: Instant::now(),
+            target_label: "all",
+            focused: true,
+            filter: None,
+        };
+
+        render_alerts(area, &mut buf, &mut state, view);
+
+        let dump = buffer_to_string(&buf);
+        assert!(dump.contains("FLOW Context recovery"), "{dump}");
+        assert!(!dump.contains("included: context-pressure"), "{dump}");
+        assert!(!dump.contains("press y to copy"), "{dump}");
     }
 
     #[test]

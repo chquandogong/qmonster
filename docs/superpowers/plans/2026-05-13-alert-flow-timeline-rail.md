@@ -176,7 +176,7 @@ fn context_recovery_flow_does_not_merge_different_panes() {
 }
 
 #[test]
-fn alert_fingerprints_include_flow_key_not_included_raw_keys() {
+fn context_recovery_flow_key_uses_stable_projected_key() {
     let context = rec(
         "context-pressure: checkpoint",
         "context near warning threshold",
@@ -195,14 +195,136 @@ fn alert_fingerprints_include_flow_key_not_included_raw_keys() {
     );
     let raw_context_key = recommendation_key("%1", &context);
     let raw_cache_key = recommendation_key("%1", &cache);
-    let report = base_report(vec![context, cache]);
+    let report = base_report(vec![context.clone(), cache.clone()]);
 
-    let keys = alert_fingerprints(&[], &[report]);
+    let entries = collect_entries(
+        &[],
+        &[report],
+        &HashSet::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        Instant::now(),
+    );
 
-    assert_eq!(keys.len(), 1);
-    assert!(keys.iter().any(|key| key.starts_with("flow|context-recovery|%1|")));
-    assert!(!keys.contains(&raw_context_key));
-    assert!(!keys.contains(&raw_cache_key));
+    let entry_keys: Vec<&str> = entries.iter().map(|entry| entry.key()).collect();
+    assert_eq!(entry_keys.len(), 1);
+    assert!(entry_keys[0].starts_with("flow|context-recovery|%1|"));
+    assert!(!entry_keys.contains(&raw_context_key.as_str()));
+    assert!(!entry_keys.contains(&raw_cache_key.as_str()));
+}
+
+#[test]
+fn context_recovery_flow_does_not_group_hot_cache_advice() {
+    let context = rec(
+        "context-pressure: checkpoint",
+        "context near warning threshold",
+        Severity::Warning,
+        SourceKind::Estimated,
+        Some("/compact"),
+        Some("press 's' to snapshot + archive first"),
+    );
+    let hot_cache = rec(
+        "cache: avoid /compact while cache is hot",
+        "cache is still hot after a recent reset",
+        Severity::Concern,
+        SourceKind::Heuristic,
+        None,
+        None,
+    );
+    let report = base_report(vec![context, hot_cache]);
+
+    let entries = collect_entries(
+        &[],
+        &[report],
+        &HashSet::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        Instant::now(),
+    );
+
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().all(|entry| matches!(entry, AlertEntry::Item(_))));
+}
+
+#[test]
+fn context_recovery_flow_does_not_group_cold_cache_advice() {
+    let context = rec(
+        "context-pressure: checkpoint",
+        "context near warning threshold",
+        Severity::Warning,
+        SourceKind::Estimated,
+        Some("/compact"),
+        Some("press 's' to snapshot + archive first"),
+    );
+    let cold_cache = rec(
+        "cache: /compact is safe — cache is cold",
+        "cache has cooled and compact is safe",
+        Severity::Concern,
+        SourceKind::Heuristic,
+        None,
+        None,
+    );
+    let report = base_report(vec![context, cold_cache]);
+
+    let entries = collect_entries(
+        &[],
+        &[report],
+        &HashSet::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        Instant::now(),
+    );
+
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().all(|entry| matches!(entry, AlertEntry::Item(_))));
+}
+
+#[test]
+fn context_recovery_flow_preserves_highest_included_kind_priority() {
+    let mut strong_context = rec(
+        "context-pressure: checkpoint",
+        "context near warning threshold",
+        Severity::Warning,
+        SourceKind::Estimated,
+        Some("/compact"),
+        Some("press 's' to snapshot + archive first"),
+    );
+    strong_context.is_strong = true;
+    let cache = rec(
+        "cache: drift detected — /compact will let cache rebuild",
+        "cache hit ratio dropped from 0.72 to 0.38",
+        Severity::Warning,
+        SourceKind::Heuristic,
+        None,
+        None,
+    );
+    let plain = rec(
+        "notify-input-wait",
+        "waiting for user input",
+        Severity::Warning,
+        SourceKind::ProjectCanonical,
+        None,
+        None,
+    );
+    let report = base_report(vec![strong_context.clone(), cache.clone(), plain.clone()]);
+    let times = HashMap::from([
+        (recommendation_key("%1", &strong_context), "14:23:12".into()),
+        (recommendation_key("%1", &cache), "14:23:12".into()),
+        (recommendation_key("%1", &plain), "14:23:12".into()),
+    ]);
+
+    let entries = collect_entries(
+        &[],
+        &[report],
+        &HashSet::new(),
+        &times,
+        &HashMap::new(),
+        Instant::now(),
+    );
+
+    assert_eq!(entries.len(), 2);
+    assert!(entries[0].as_flow().is_some(), "flow should sort before plain recommendation");
+    assert!(matches!(entries[1], AlertEntry::Item(_)));
 }
 ```
 
@@ -619,25 +741,13 @@ fn context_recovery_steps(included: &[AlertItem], command: Option<&str>) -> Vec<
 }
 ```
 
-- [ ] **Step 6: Update `alert_fingerprints`**
+- [ ] **Step 6: Keep live fingerprints raw until helper wiring**
 
-Replace `alert_fingerprints` with this entry-based version.
-
-```rust
-pub fn alert_fingerprints(notices: &[SystemNotice], reports: &[PaneReport]) -> HashSet<String> {
-    collect_entries(
-        notices,
-        reports,
-        &HashSet::new(),
-        &HashMap::new(),
-        &HashMap::new(),
-        Instant::now(),
-    )
-    .into_iter()
-    .map(|entry| entry.key().to_string())
-    .collect()
-}
-```
+Do not switch `alert_fingerprints` in Task 1. The live queue still
+renders raw `AlertItem`s until Task 2, so fingerprints must remain keyed
+to the raw visible rows for now. The projected flow key is covered by
+the `context_recovery_flow_key_uses_stable_projected_key` test and the
+actual live fingerprint switch happens atomically in Task 2.
 
 - [ ] **Step 7: Run projection tests and commit**
 
@@ -647,7 +757,10 @@ Run:
 cargo test -q context_recovery_flow_groups_context_and_cache_on_same_pane
 cargo test -q context_recovery_flow_requires_two_categories
 cargo test -q context_recovery_flow_does_not_merge_different_panes
-cargo test -q alert_fingerprints_include_flow_key_not_included_raw_keys
+cargo test -q context_recovery_flow_key_uses_stable_projected_key
+cargo test -q context_recovery_flow_does_not_group_hot_cache_advice
+cargo test -q context_recovery_flow_does_not_group_cold_cache_advice
+cargo test -q context_recovery_flow_preserves_highest_included_kind_priority
 ```
 
 Expected: PASS.
@@ -665,6 +778,12 @@ git commit -m "feat(alerts): add context recovery flow projection"
 
 **Files:**
 - Modify: `src/ui/alerts.rs`
+
+Execution note: this task must be implemented together with Task 3.
+`alert_fingerprints`, visible-list helpers, hit testing, and
+`render_alerts` must all switch to `AlertEntry` in the same commit.
+Switching helpers before render (or render before helpers) breaks
+freshness, timestamps, selection, and hide behavior.
 
 - [ ] **Step 1: Write failing helper tests**
 
@@ -895,7 +1014,29 @@ pub fn selected_alert_recommendation_identity(
 ```
 
 Update `selected_alert_suggested_command_meta`, `actionable_alert_keys_for_severity`,
-`pending_auto_hide_count`, `copy_alert_count`, and `alert_items_with_command` with the same entry access pattern.
+`pending_auto_hide_count`, `copy_alert_count`, `alert_fingerprints`, and
+`alert_items_with_command` with the same entry access pattern. This is
+the point where live freshness/timestamp/hide keys switch to projected
+flow keys, because the visible-list helpers are switching at the same
+time.
+
+Use this body for `alert_fingerprints`:
+
+```rust
+pub fn alert_fingerprints(notices: &[SystemNotice], reports: &[PaneReport]) -> HashSet<String> {
+    collect_entries(
+        notices,
+        reports,
+        &HashSet::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        Instant::now(),
+    )
+    .into_iter()
+    .map(|entry| entry.key().to_string())
+    .collect()
+}
+```
 
 Use this body for `alert_items_with_command`:
 
@@ -980,6 +1121,7 @@ cargo test -q selected_flow_copies_compact_and_returns_source_recommendation_ide
 cargo test -q flow_visible_keys_and_bulk_hide_count_once
 cargo test -q alert_filter_matches_included_alert_and_keeps_flow_visible
 cargo test -q alert_items_with_command_reports_flow_command_and_pane
+cargo test -q context_recovery_flow_key_uses_stable_projected_key
 ```
 
 Expected: PASS.
@@ -1591,7 +1733,8 @@ If Step 5 required no code changes, do not create an empty commit.
 ### Spec Coverage
 
 - Flow family and same-pane context/cache/snapshot grouping: Task 1.
-- Flow key and fresh fingerprint behavior: Task 1.
+- Flow key projection: Task 1.
+- Live freshness/fingerprint behavior: Task 2.
 - Severity/source/timestamp derivation: Task 1.
 - Command copy and lifecycle attribution: Task 2.
 - Visible list helpers, hide keys, bulk hide, filter, pending actions: Task 2.

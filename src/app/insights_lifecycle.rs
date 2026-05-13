@@ -98,19 +98,18 @@ pub fn record_hidden_alert_outcomes(
     };
     let mut seen = BTreeSet::new();
     for key in alert_keys {
-        if !seen.insert(key.clone()) {
-            continue;
+        for (pane_id, action) in lifecycle_targets_for_alert_key(&key, reports) {
+            if !seen.insert((pane_id.clone(), action.clone())) {
+                continue;
+            }
+            record_recommendation_outcome(
+                Some(sink),
+                &pane_id,
+                &action,
+                RecommendationOutcome::Hidden,
+                "alert hidden by operator",
+            );
         }
-        let Some((pane_id, action)) = lifecycle_target_for_recommendation_key(&key, reports) else {
-            continue;
-        };
-        record_recommendation_outcome(
-            Some(sink),
-            &pane_id,
-            &action,
-            RecommendationOutcome::Hidden,
-            "alert hidden by operator",
-        );
     }
 }
 
@@ -208,6 +207,23 @@ fn lifecycle_target_for_recommendation_key(
         pane_id,
         lifecycle_action_for_rec(&report.pane_id, rec, &report.effects),
     ))
+}
+
+fn lifecycle_targets_for_alert_key(key: &str, reports: &[PaneReport]) -> Vec<(String, String)> {
+    if let Some(target) = lifecycle_target_for_recommendation_key(key, reports) {
+        return vec![target];
+    }
+
+    let Some(rest) = key.strip_prefix("flow|context-recovery|") else {
+        return Vec::new();
+    };
+    let Some((_, included_keys)) = rest.split_once('|') else {
+        return Vec::new();
+    };
+    included_keys
+        .split('\u{1f}')
+        .filter_map(|included_key| lifecycle_target_for_recommendation_key(included_key, reports))
+        .collect()
 }
 
 fn threshold_snapshot_json(config: &QmonsterConfig, provider: Provider) -> Option<String> {
@@ -439,5 +455,122 @@ mod tests {
         assert_eq!(row.snapshot_written, 1);
         assert_eq!(row.ignored, 0);
         assert!(snapshot.actions.iter().all(|row| row.action != "snapshot"));
+    }
+
+    #[test]
+    fn hidden_flow_key_records_hidden_outcomes_for_included_recommendations() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("qmonster.db");
+        let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
+        let context = Recommendation {
+            action: "context-pressure: checkpoint",
+            reason: "context near warning threshold".into(),
+            severity: Severity::Warning,
+            source_kind: SourceKind::Estimated,
+            suggested_command: Some("/compact".into()),
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        let cache = Recommendation {
+            action: "cache: drift detected — /compact will let cache rebuild",
+            reason: "cache hit ratio dropped from 0.72 to 0.38".into(),
+            severity: Severity::Concern,
+            source_kind: SourceKind::Heuristic,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        };
+        for (idx, rec) in [context.clone(), cache.clone()].into_iter().enumerate() {
+            lifecycle
+                .insert_recommendation_event(&RecommendationEventRecord {
+                    ts_unix_ms: 1_000 + idx as i64,
+                    pane_id: "%1".into(),
+                    provider: Some("Claude".into()),
+                    role: Some("Main".into()),
+                    situation: "Context pressure".into(),
+                    action: rec.action.to_string(),
+                    severity: rec.severity.label().into(),
+                    source_kind: rec.source_kind.to_string(),
+                    reason_summary: rec.reason.clone(),
+                    suggested_command: rec.suggested_command.clone(),
+                    is_strong: rec.is_strong,
+                    dedup_key: format!("%1:{}:{}", rec.action, idx),
+                    threshold_snapshot_json: None,
+                })
+                .unwrap();
+        }
+        let reports = vec![PaneReport {
+            pane_id: "%1".into(),
+            session_name: "qwork".into(),
+            window_index: "1".into(),
+            provider: Provider::Claude,
+            identity: ResolvedIdentity {
+                identity: PaneIdentity {
+                    provider: Provider::Claude,
+                    instance: 1,
+                    role: Role::Main,
+                    pane_id: "%1".into(),
+                },
+                confidence: IdentityConfidence::High,
+            },
+            signals: SignalSet::default(),
+            recommendations: vec![context.clone(), cache.clone()],
+            effects: Vec::new(),
+            dead: false,
+            current_path: String::new(),
+            current_command: String::new(),
+            cross_pane_findings: Vec::new(),
+            idle_state: None,
+            idle_state_entered_at: Some(Instant::now()),
+            recent_token_samples: Vec::new(),
+            anomalies: Vec::new(),
+        }];
+        let flow_key = format!(
+            "flow|context-recovery|%1|{}",
+            [
+                format!(
+                    "rec|%1|{}|{}|{}",
+                    cache.action,
+                    cache.severity.letter(),
+                    cache.reason
+                ),
+                format!(
+                    "rec|%1|{}|{}|{}",
+                    context.action,
+                    context.severity.letter(),
+                    context.reason
+                ),
+            ]
+            .join("\u{1f}")
+        );
+
+        record_hidden_alert_outcomes(Some(&lifecycle), &reports, [flow_key]);
+
+        let snapshot = SqliteInsightsStore::open(&db_path)
+            .unwrap()
+            .snapshot_with_ignored_ttl(
+                InsightsWindow {
+                    since_ms: 0,
+                    until_ms: current_unix_ms().saturating_add(1_000),
+                },
+                0,
+            )
+            .unwrap();
+        let context_row = snapshot
+            .actions
+            .iter()
+            .find(|row| row.action == context.action)
+            .expect("context row should exist");
+        let cache_row = snapshot
+            .actions
+            .iter()
+            .find(|row| row.action == cache.action)
+            .expect("cache row should exist");
+        assert_eq!(context_row.hidden, 1);
+        assert_eq!(cache_row.hidden, 1);
     }
 }

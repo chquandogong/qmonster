@@ -60,7 +60,8 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
         ],
         HelpTopic::AlertHeader => &[
             "헤더: 알림 발생 시각, NEW 여부, 심각도, 제목을 한 줄에 모읍니다.",
-            "제목은 Recommendation/Checkpoint와 관련 pane ID를 보여줍니다.",
+            "제목은 Recommendation/Checkpoint/FLOW와 관련 pane ID 또는 흐름 이름을 보여줍니다.",
+            "FLOW는 같은 대응 경로를 공유하는 관련 alert를 하나로 묶은 행입니다.",
             "★y 칩은 바로 실행 가능한 추천 명령이 있음을 뜻합니다.",
         ],
         HelpTopic::AlertDismiss => &[
@@ -73,8 +74,9 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
             "예: 입력 대기, cross-pane 파일 충돌, 비용/토큰 압박 같은 판단 이유가 표시됩니다.",
         ],
         HelpTopic::AlertDetail => &[
-            "details: summary 아래의 next/run/anchor/others 같은 추가 정보입니다.",
-            "next는 다음 조치, run은 추천 셸 명령, anchor/others는 연관 pane을 뜻합니다.",
+            "details: summary 아래의 next/run/anchor/others 또는 FLOW rail 같은 추가 정보입니다.",
+            "FLOW rail은 원인 신호 -> 후속 근거 -> 선행 조치 -> 실행 명령을 순서대로 보여줍니다.",
+            "included 행은 FLOW가 묶은 원본 alert 근거입니다.",
             "profile, side_effects, lever가 있으면 설정 변경의 근거와 트레이드오프를 함께 보여줍니다.",
         ],
         HelpTopic::AlertCopy => &[
@@ -176,7 +178,8 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
         ],
         HelpTopic::AlertHeader => &[
             "header: timestamp, NEW badge, severity, and alert title in one row.",
-            "The title names the alert type and related pane ID.",
+            "The title names the alert type, including Recommendation, Checkpoint, or FLOW.",
+            "FLOW groups related alerts that share one response path.",
             "The ★y chip means the alert has a copyable command suggestion.",
         ],
         HelpTopic::AlertDismiss => &[
@@ -189,8 +192,9 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
             "Examples include waiting for input, cross-pane file conflict, or cost/token pressure.",
         ],
         HelpTopic::AlertDetail => &[
-            "details: extra next/run/anchor/others rows below the summary.",
-            "next is the suggested response, run is a shell command, anchor/others identify related panes.",
+            "details: extra next/run/anchor/others rows or FLOW rail rows below the summary.",
+            "A FLOW rail shows cause signal -> follow-on evidence -> prerequisite action -> command.",
+            "included rows list the original alerts used as evidence.",
             "profile, side_effects, and lever rows explain config-change tradeoffs when present.",
         ],
         HelpTopic::AlertCopy => &[
@@ -319,5 +323,20 @@ mod tests {
             assert!(!help_lines(topic, HelpLanguage::Ko).is_empty());
             assert!(!help_lines(topic, HelpLanguage::En).is_empty());
         }
+    }
+
+    #[test]
+    fn alert_help_mentions_flow_rows_in_both_languages() {
+        let ko_header = help_lines(HelpTopic::AlertHeader, HelpLanguage::Ko).join("\n");
+        let ko_detail = help_lines(HelpTopic::AlertDetail, HelpLanguage::Ko).join("\n");
+        let en_header = help_lines(HelpTopic::AlertHeader, HelpLanguage::En).join("\n");
+        let en_detail = help_lines(HelpTopic::AlertDetail, HelpLanguage::En).join("\n");
+
+        assert!(ko_header.contains("FLOW"));
+        assert!(ko_header.contains("묶"));
+        assert!(ko_detail.contains("실행 명령"));
+        assert!(en_header.contains("FLOW"));
+        assert!(en_header.contains("groups related alerts"));
+        assert!(en_detail.contains("-> command"));
     }
 }
