@@ -179,6 +179,13 @@ pub(crate) enum WorktreeRole {
 /// rev-parse --git-common-dir --git-dir` once; spawning git is the
 /// only side effect. Returns `None` on empty input, non-existent
 /// cwd, non-git cwd, git failure, or any parse anomaly.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Consumed by WorktreeRoleCache in Task 2 of the worktree-role plan; remove this attribute when wiring the cache."
+    )
+)]
 pub(crate) fn resolve_worktree_role(current_path: &str) -> Option<WorktreeRole> {
     let trimmed = current_path.trim();
     if trimmed.is_empty() {
