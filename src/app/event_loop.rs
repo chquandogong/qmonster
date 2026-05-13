@@ -1209,13 +1209,6 @@ pub struct PaneReport {
     /// `Context.worktree_role_cache` on the event loop — this is a
     /// derived local-fs fact, not a provider signal, and is kept off
     /// `SignalSet` so the `SourceKind` contract stays untouched.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Plumbed through PaneReport in Task 3 so the field is wired and round-tripped under cfg(test); the pane-card path-row UI consumer lands in Task 4 of the worktree-role plan and removes this attribute then."
-        )
-    )]
     pub(crate) worktree_role: Option<crate::app::worktree_info::WorktreeRole>,
     pub current_command: String,
     pub cross_pane_findings: Vec<crate::domain::recommendation::CrossPaneFinding>,
