@@ -161,6 +161,20 @@ session:window · Provider role · %pane_id
   `RUNTIME`은 provider runtime facts, `RECOMMENDATIONS`는 추천과
   detail/profile 정보를 담습니다. 접힌 pane 행은 기존처럼 flat row로
   유지됩니다.
+- v2.3.0부터 펼친 pane card는 각 섹션 헤더 아래 행에 트리 글리프를
+  덧붙입니다. 형제 행 중 마지막은 `└ `, 그 외에는 `├ `로 시작하고,
+  랩 발생 시의 continuation 라인은 위쪽 형제가 더 있으면 `│ `, 마지막
+  형제의 본문이면 공백 2칸으로 이어집니다. 깊이당 2 cell씩 들여쓰기
+  되며, `RECOMMENDATIONS`의 하위 디테일(`next` / `run` / `lever` /
+  `effect` / `profile`)은 한 단계 더 들어갑니다. 트리 분기는 섹션 폭을
+  깎지 않도록 `section_wrap = wrap_width - 2`, `detail_wrap = wrap_width
+  - 4`로 wrap budget을 미리 차감합니다.
+- `path` 행은 pane의 cwd가 linked git worktree(`git worktree add` 형
+  sibling checkout)이면 ` · wt of <parent-repo-root>` 접미사를 붙여
+  부모 repo root를 함께 보여줍니다 (v2.3.0). 결과는 `WorktreeRoleCache`
+  (10초 TTL, 128-key LRU)로 캐싱되어 폴링당 git 호출이 폭주하지
+  않습니다. Primary worktree와 non-git cwd는 변동 없이 기존 표시 그대로
+  유지됩니다.
 - `CLI` 버전 배지는 Qmonster monitor pane에는 표시하지 않습니다. provider가
   화면에 직접 노출한 버전을 우선 사용하고, 없으면 `/proc`에서 현재 pane의
   descendant CLI `pid`/`exe`/`argv`를 확인한 뒤 그 exact executable/script에

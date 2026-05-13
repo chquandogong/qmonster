@@ -379,10 +379,7 @@ impl PaneSectionRow {
 /// space-padded `cont_indent` on continuations) and by `wrap_badge_line`
 /// (label-bearing prefix span on the first line, whitespace-only
 /// `continuation_prefix` on continuations).
-fn group_into_section_rows(
-    lines: Vec<Line<'static>>,
-    topic: HelpTopic,
-) -> Vec<PaneSectionRow> {
+fn group_into_section_rows(lines: Vec<Line<'static>>, topic: HelpTopic) -> Vec<PaneSectionRow> {
     let mut rows: Vec<PaneSectionRow> = Vec::new();
     for line in lines {
         let is_continuation = line
@@ -390,9 +387,7 @@ fn group_into_section_rows(
             .first()
             .and_then(|s| s.content.chars().next())
             .is_some_and(|c| c.is_whitespace());
-        if is_continuation
-            && let Some(last) = rows.last_mut()
-        {
+        if is_continuation && let Some(last) = rows.last_mut() {
             last.lines.push(line);
             continue;
         }
@@ -509,7 +504,11 @@ fn pane_sectioned_rows(
         HelpTopic::PanePath,
     ));
     where_rows.extend(group_into_section_rows(
-        wrap_aligned_field("cmd", &display_command(&report.current_command), section_wrap),
+        wrap_aligned_field(
+            "cmd",
+            &display_command(&report.current_command),
+            section_wrap,
+        ),
         HelpTopic::PaneCommand,
     ));
     where_rows.extend(group_into_section_rows(
@@ -575,7 +574,8 @@ fn pane_sectioned_rows(
         .iter()
         .take(options.recommendation_limit)
     {
-        let parent_lines = wrap_aligned_field(severity_label(rec.severity), &rec.reason, section_wrap);
+        let parent_lines =
+            wrap_aligned_field(severity_label(rec.severity), &rec.reason, section_wrap);
         let mut children: Vec<PaneSectionRow> = Vec::new();
         for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
             let formatted = expanded_detail_field(&detail);

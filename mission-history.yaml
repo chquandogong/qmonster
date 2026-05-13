@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v2.2.0 - critical-eval-driven improvement bundle on top of v2.1.0: P0 dead-code purge + log_storm/quota-window dedup + inline threshold provenance tags, P1-1 detector × provider eligibility matrix gating eval_anomalies, P1-2 SubagentSideEffect correlation-only prose, P1-3 RecommendationOutcome::Copied lifecycle ledger row from y-copy"
+  mission_title: "Qmonster v2.3.0 - post-v2.2.0 stabilization + UX bundle on top of v2.2.0: path-row worktree-role hint, sectioned pane panel layout with tree branches, alert related-context rail, post-v2.2.0 critical-review 9-item bundle + footer chip mouse actions, copied-outcome lifecycle stabilization + done_when_refs 100 % coverage, settings module split, dependabot bump (thiserror 2 / crossterm 0.29 / rusqlite 0.39 / toml 1.1 / toml_edit 0.25 / attest-build-provenance v4)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 208
-  latest_version: "2.2.0"
+  total_revisions: 209
+  latest_version: "2.3.0"
 
 timeline:
   - change_id: "initial"
@@ -21745,6 +21745,206 @@ timeline:
         (likely ETXTBSY race on the fake `node` shim under parallel cargo test load) remains a known
         intermittent CI failure. A retry is reliable; a permanent fix (e.g. serial_test, retry
         wrapper, or rewriting the fake shim to avoid the write+exec sequence) is deferred."
+      - Phase 7 D3 per-subagent token attribution remains provider-blocked.
+      - Tag protection / ruleset activation remains a GitHub Settings task.
+
+  - change_id: v2.3.0-ledger-entry
+    semantic_version: 2.3.0
+    change_sequence: 209
+    date: 2026-05-13
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '커밋, 푸쉬, 태그 및 publish 해줘요'
+      after agreeing to roll the post-v2.2.0 stabilization + UX bundle into a minor."
+    change_type: implementation
+    persistence: permanent
+    intent: Record the Qmonster v2.3.0 ledger entry and validation context.
+    intent_ko: >
+      v2.3.0 은 v2.2.0 위에 누적된 post-stabilization + UX 번들을 minor 로 묶어 올린 릴리스. (a) pane card path 행이 linked git
+      worktree 일 때 ` · wt of <parent>` 접미사를 붙임 — `WorktreeRoleCache`(10s TTL, 128-key LRU) 가 `git rev-parse
+      --git-common-dir` 결과를 메모. (b) expanded pane panel body 가 NOW / WHERE / PRESSURE / RUNTIME / RECOMMENDATIONS
+      섹션으로 묶이고, 각 행에 `├ / └ / │` 트리 글리프 + 깊이당 2칸 들여쓰기를 적용. 추천 하위 디테일(next / run / lever / effect / profile)은
+      한 단계 더 들여씀. (c) alerts overlay 가 항목별 related action lifecycle / family 칩을 별도 rail 로 노출 — projection gate
+      로 stale context 방지. (d) post-v2.2.0 critical-review 9-item 번들 + footer status chip 마우스 클릭 액션 + FooterChipQuery
+      구조체 도입(`clippy::too_many_arguments` 해소). (e) copied-outcome 라이프사이클 정착(`ActionLedgerRow.copied`, 비-종단
+      `apply_lifecycle_outcome("copied")`, unlinked copy outcome 을 동일 (pane_id, action) 의 직전 이벤트에 attach 하는 CTE) +
+      SubagentSideEffect 라벨 정규화(`⚠` canonical via `domain::anomaly::SUBAGENT_SIDE_EFFECT_ACTION`) + `done_when_refs`
+      100 % 커버리지(23/23 binder + `cargo_fmt_check_passes` eval). (f) `src/ui/settings.rs` 를 `src/ui/settings/{mod,model,tests}.rs`
+      로 분할. (g) dependabot bump: thiserror 1→2, crossterm 0.28→0.29, rusqlite 0.32→0.39, toml 0.8→1.1, toml_edit
+      0.22→0.25, attest-build-provenance v3→v4 (rusqlite 0.39 의 `u64: FromSql` 회귀는 `src/store/insights.rs:845`
+      에서 `i64.max(0) as u64` 로 우회). 1560 lib + 31 integration green, fmt + clippy clean.
+    issue_or_context: >-
+      Summary:
+
+      v2.3.0 bundles the unreleased post-v2.2.0 work into a single minor tag. The release surface is
+      a mix of UX features and stabilization. The seven axes:
+
+      - **Path-row worktree-role hint** (PR #11 merged at `1cd2a11`, seven commits `ab54ae1`,
+        `7f64af6`, `3257190`, `7097fad`, `f9f0cc7`, `8b37ebb`, `1da3ae3`, `cd90c06`, `df842b9`,
+        `138301c`, `ee3214f`, `d1b8e9f`, `9206968`, `120448d`, plus rebase cleanup `9206968` and
+        ledger entry `3521023`). New `pub(crate) enum WorktreeRole { Primary, Linked { parent_repo_root } }`
+        in `src/app/worktree_info.rs`; `resolve_worktree_role` runs `git rev-parse --git-common-dir` +
+        `--git-dir` and canonicalizes both before equality, returning `None` on empty/missing/non-git
+        cwd or any git failure. `WorktreeRoleCache` memoizes both `Some` and `None` with a 10 s TTL
+        (`WORKTREE_ROLE_TTL`) and 128-key insertion-order eviction. Threaded through `PaneReport.worktree_role`
+        and `Context.worktree_role_cache`. Renderer `path_row_value(report)` in `src/ui/panels/mod.rs`
+        appends ` · wt of <display_path(parent_repo_root)>` for `Linked` and falls through to
+        `display_path(&report.current_path)` otherwise. `WorktreeRole` deliberately stays off
+        `SignalSet` — it is a local-fs derived fact, not a provider signal.
+
+      - **Sectioned pane panel layout with tree branches** (commits `692db73`, `fbd9da9`, `66d49f8`,
+        `c9654d8`, `a16e482`, `68b808d`, `8601139`, `33fee0b`, `b3a3c77`, `91b6520`, `a5eccc1`,
+        `5e4a8f1`, `6431a5e`, plus this-session indent/tree work in `477dd89` + `a87fd9c`, and the
+        rustfmt drift fix this commit carries). Expanded pane card body now groups under NOW / WHERE
+        / PRESSURE / RUNTIME / RECOMMENDATIONS section headers. Each section row renders with a 2-cell
+        indent + tree glyph (`├ ` first / `└ ` last sibling, `│ ` / `  ` for wrapped continuations).
+        RECOMMENDATIONS sub-detail rows (`next`, `run`, `lever`, `effect`, `profile`) indent another
+        level. The renderer (`pane_sectioned_rows` + `push_pane_section_tree` + `render_section_rows`
+        in `src/ui/panels/mod.rs`) groups the flat `Vec<Line>` returned by helpers
+        (`runtime_badge_lines_wrapped` returns multi-row output) into logical row groups via a
+        first-char-whitespace heuristic before applying the tree prefix. `section_wrap = wrap_width
+        - 2` and `detail_wrap = wrap_width - 4` budget the wrap engine for the indent. Collapsed
+        pane list view (no section headers) is unchanged.
+
+      - **Alert related-context rail** (commits `b3333b0`, `1e4b6e8`, `183608f`, `1fa77ae`, `38f7e56`,
+        `8284d55`, `2c89dea`, merge `4893d4f`). Alerts overlay surfaces related action lifecycle /
+        family chips per item via a dedicated rail. A projection gate keeps the rail from rendering
+        stale context, and a fallback constrains family inference to the related-action surface.
+        Includes the related-context test helper.
+
+      - **Post-v2.2.0 critical-review improvement bundle (9 items)** (`2dcb5b5`) and **footer status
+        chip mouse-click actions + FooterChipQuery struct** (`afe37ee`) — close out secondary findings
+        from the v2.2.0 critical evaluation that did not block release. The FooterChipQuery struct
+        also un-blocks dependabot PR #10 (worktree-split-advisory) by resolving the
+        `clippy::too_many_arguments` lint on `footer_status_chip_at`.
+
+      - **Copied-outcome lifecycle stabilization + done_when_refs binding** (`dc31b28`, ~+254/-31
+        across 10 files). Three coordinated axes: (1) `Copied` is a non-terminal lifecycle outcome —
+        `ActionLedgerRow.copied`, `apply_lifecycle_outcome("copied")`, `is_terminal_lifecycle_outcome`,
+        and `rec_engagement_snapshot`'s CTE all treat clipboard copies as engagement telemetry that
+        does not suppress TTL-ignored counting; the CTE attaches unlinked copy outcomes to the latest
+        prior event on the same (pane_id, action) inside the reporting window. (2) SubagentSideEffect
+        label normalization — the emitted action string carries a leading `⚠` marker, the canonical
+        literal lives in `domain::anomaly::SUBAGENT_SIDE_EFFECT_ACTION`, and `situation_for_action`
+        matches both legacy and current labels so older audit DBs keep grouping under "Code
+        exploration". (3) `done_when_refs` 100 % coverage — all 23 `done_when` items bind to a
+        concrete validator and `cargo_fmt_check_passes` joins the eval set; the clippy gate flag
+        (`-A clippy::uninlined_format_args`) is mirrored in `scripts/verify-shared.sh`.
+
+      - **SubagentSideEffect + v2.2.0 thresholds restoration** (`5d466d6`) on top of the stabilization
+        bundles, plus the `worktree-split-advisory` commits (`bb90620`, `ac62264`, `9ecb6c5`,
+        `6814d63`, `59c0a43`) which already landed on main with byte-identical diffs before PR #10
+        was closed.
+
+      - **Settings module split** — `src/ui/settings.rs` extracted into `src/ui/settings/mod.rs` +
+        `src/ui/settings/model.rs` (state + edit buffer) + `src/ui/settings/tests.rs` to keep the
+        rendering and input concerns isolated from data.
+
+      - **Dependabot dep-bump cleanup** (entry 208 — `33252f8` bundle + `83a7af6` attest-build-provenance
+        v4 + `ecb90ed` thiserror 2 + `d4694fc` rusqlite 0.39 `u64: FromSql` workaround). All seven
+        open PRs closed or merged.
+
+      Validation snapshot at this commit: `cargo fmt --all --check` clean; `cargo clippy --all-targets
+      -- -D warnings -A clippy::uninlined_format_args` clean; `cargo test --all-targets` 1560 lib +
+      31 supporting integration tests green. Mission-spec eval expected to report ≥ 22/23
+      done_when passed (the worktree base-vs-main P0-3 / P1-2 deltas documented in CURRENT_STATE.md
+      have already been closed on main).
+    changes:
+      added:
+        - "src/app/worktree_info.rs: pure resolver + TTL cache for primary-vs-linked git worktree role."
+        - "src/ui/settings/mod.rs + src/ui/settings/model.rs + src/ui/settings/tests.rs (settings.rs split)."
+      modified:
+        - "src/ui/panels/mod.rs: PaneSectionRow tree + push_pane_section_tree + render_section_rows +
+          group_into_section_rows + build_tree_prefix; path_row_value() adds ` · wt of <parent>` for
+          linked worktrees; section_wrap / detail_wrap budget the wrap engine for tree indent."
+        - "src/ui/panels/tests.rs: tests updated for sectioned tree prefix (`├ cmd     : `, `├ path
+          : ` + `│           ` continuation)."
+        - "src/ui/alerts.rs: related-context rail projection + tests."
+        - "src/app/event_loop.rs: WorktreeRoleCache lookup at PaneReport construction sites; provider
+          param threaded through eval_anomalies (carried over from v2.2.0)."
+        - "src/store/insights.rs: rec_engagement_snapshot CTE attaches unlinked Copied outcomes;
+          `row.get::<_, i64>(2)?.max(0) as u64` for rusqlite 0.39 `u64: FromSql` regression at :845."
+        - "Cargo.toml: thiserror 1 → 2, crossterm 0.28 → 0.29, toml 0.8 → 1, toml_edit 0.22 → 0.25,
+          rusqlite 0.32 → 0.39; version 2.2.0 → 2.3.0."
+        - "Cargo.lock: regenerated by `cargo update` with new versions for crossterm 0.29.0, rusqlite
+          0.39.0, toml 1.1.2+spec-1.1.0, toml_edit 0.25.11+spec-1.1.0, and incidental transitive
+          updates (winnow, zbus, zvariant, etc.)."
+        - "src/domain/anomaly.rs: SUBAGENT_SIDE_EFFECT_ACTION canonical literal."
+        - "src/policy/rules/anomaly.rs: rustfmt-applied wrap (no semantic change)."
+        - "src/store/recommendation_lifecycle.rs: ActionLedgerRow.copied non-terminal outcome."
+        - "scripts/verify-shared.sh: mirror `-A clippy::uninlined_format_args` for eval parity."
+        - ".github/workflows/release.yml: actions/attest-build-provenance v3 → v4."
+        - "mission.yaml: mission.version + title bumped to v2.3.0."
+        - "mission-history.yaml: this v2.3.0 entry appended; meta total_revisions 208 → 209,
+          latest_version 2.2.0 → 2.3.0."
+        - "VERSION.md / README.md: version surfaces (Mission ledger / npm / Cargo) 2.2.0 → 2.3.0."
+        - ".mission/CURRENT_STATE.md: header date → 2026-05-13; v2.3.0 release sync stanza."
+        - "package.json: 2.2.0 → 2.3.0."
+        - "docs/ai/PROJECT_BRIEF.md: Version + date line append v2.3.0 entry."
+        - "docs/ai/VALIDATION.md: header date adds v2.3.0 entry."
+        - "docs/ai/ARCHITECTURE.md: date footer adds v2.3.0 entry."
+        - "docs/ai/UI_MANUAL.md: pane card sectioned layout + tree-glyph + worktree-role hint note."
+      removed: []
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime:
+        "Additive UX bundle. New `WorktreeRoleCache` adds one git-rev-parse per distinct cwd per 10 s
+        TTL window (~5 ticks at the nominal 2 s tmux poll cadence). Pane panel rendering grows by
+        the tree-prefix span per indented line; collapsed pane list view is unchanged. Alerts overlay
+        gains a related-context rail. No new threads, no new IO outside git rev-parse, no schema
+        changes. Cargo dep-bumps are major-or-minor moves whose public APIs we depend on are
+        backward-compatible at the usage points; rusqlite's `u64: FromSql` regression is the only
+        breakage and is handled at the single call site."
+      tests:
+        1491 (v2.2.0) → 1560 lib tests (+69). 31 supporting integration tests (mission-spec eval +
+        insights lifecycle + store insights + tmux pane parity). New regression coverage: path-row
+        worktree-role rendering (Linked / Primary / None), sectioned tree-prefix assertions on
+        `pane_cards_render_current_command_row` + `pane_card_path_line_wraps_when_narrow`,
+        related-context rail lifecycle, ActionLedgerRow.copied non-terminal semantics.
+      ledger:
+        1 new timeline entry (sequence 209); meta total_revisions 208 → 209, latest_version 2.2.0 →
+        2.3.0.
+      npm:
+        package.json version 2.3.0; CI publication of v2.3.0 follows the same `Release and Package
+        Mirror` workflow as v1.37.0 through v2.2.0.
+      observable_effects:
+        - Footer version badge displays `v2.3.0` (via `git describe --tags --always --dirty` →
+          QMONSTER_GIT_VERSION) once the v2.3.0 tag is created at this commit.
+        - "Pane card `path` row appends ` · wt of <parent>` when the pane's cwd is a linked git
+          worktree."
+        - "Expanded pane card body renders as a sectioned tree (NOW / WHERE / PRESSURE / RUNTIME /
+          RECOMMENDATIONS section headers with `├ / └ / │` glyphs)."
+        - "Alerts overlay shows related action lifecycle / family chips on a dedicated rail."
+        - "Footer status chips respond to mouse clicks."
+        - "`y` clipboard copy on a recommendation-class alert writes a non-terminal Copied lifecycle
+          row that does not suppress TTL-ignored counting on the originating event."
+        - "`npm view qmonster` will show 2.3.0 as `dist-tags.latest` once CI publishes."
+    breaking: false
+    risk:
+      low. The UX additions are surface-only with no behaviour change in the existing alert /
+      recommendation / anomaly pipelines. The lifecycle CTE change keeps the prior semantics for
+      non-Copied outcomes and only adds non-terminal Copied attach behaviour. The cargo dep-bumps
+      were validated end-to-end (fmt / clippy / 1560 lib tests / 31 supporting tests) before this
+      ledger sync.
+    related_commits:
+      - 4893d4f # alert-related-context-rail merge into main
+      - 1cd2a11 # PR #11 path-row worktree-role hint merge
+      - a87fd9c # panes section tree (this session)
+      - 477dd89 # panes section indent (this session)
+      - 33252f8 # cargo dep-bump bundle
+      - dc31b28 # copied-outcome lifecycle + done_when_refs binding
+      - afe37ee # footer status chip mouse-click + FooterChipQuery
+      - 2dcb5b5 # post-v2.2.0 critical-review 9-item bundle
+      - 5d466d6 # SubagentSideEffect + v2.2.0 thresholds restoration
+    follow_up:
+      - v2.3.0 CI publication verification (GitHub Release + npm) — monitor `Release and Package
+        Mirror` workflow run after tag push.
+      - Codex cross-check pass on the v2.3.0 surface (post-v2.2.0 features have not been
+        cross-validated yet).
+      - The pre-existing flaky test `app::cli_version::tests::node_cli_probe_uses_exact_interpreter_and_script`
+        remains a known intermittent CI failure pending a permanent fix.
       - Phase 7 D3 per-subagent token attribution remains provider-blocked.
       - Tag protection / ruleset activation remains a GitHub Settings task.
 
