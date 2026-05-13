@@ -1430,14 +1430,13 @@ fn alert_flow_lines(
     }
     if is_selected {
         for item in &flow.included {
+            let evidence = parse_recommendation_key(&item.key)
+                .map(|(_, action)| action)
+                .unwrap_or_else(|| item.headline.clone());
+            let evidence = format!("{} [{}]", evidence, source_kind_label(item.source_kind));
             lines.extend(
                 wrap_with_prefix(
-                    &aligned_detail(
-                        "included",
-                        &parse_recommendation_key(&item.key)
-                            .map(|(_, action)| action)
-                            .unwrap_or_else(|| item.headline.clone()),
-                    ),
+                    &aligned_detail("included", &evidence),
                     width,
                     &continuation,
                     &continuation,
@@ -2631,7 +2630,13 @@ mod tests {
         );
         assert!(dump.contains("| then run /compact"), "{dump}");
         assert!(
-            dump.contains("included: context-pressure: checkpoint"),
+            dump.contains("included: context-pressure: checkpoint [Estimate]"),
+            "{dump}"
+        );
+        assert!(
+            dump.contains(
+                "included: cache: drift detected — /compact will let cache rebuild [Heur]"
+            ),
             "{dump}"
         );
         assert!(dump.contains("copy    : `/compact`"), "{dump}");
