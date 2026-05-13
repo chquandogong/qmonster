@@ -779,6 +779,12 @@ git commit -m "feat(alerts): add context recovery flow projection"
 **Files:**
 - Modify: `src/ui/alerts.rs`
 
+Execution note: this task must be implemented together with Task 3.
+`alert_fingerprints`, visible-list helpers, hit testing, and
+`render_alerts` must all switch to `AlertEntry` in the same commit.
+Switching helpers before render (or render before helpers) breaks
+freshness, timestamps, selection, and hide behavior.
+
 - [ ] **Step 1: Write failing helper tests**
 
 Add these tests to `src/ui/alerts.rs`.
