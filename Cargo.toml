@@ -15,7 +15,7 @@ toml = "0.8"
 toml_edit = "0.22"
 anyhow = "1"
 arboard = { version = "3", default-features = false }
-thiserror = "1"
+thiserror = "2"
 clap = { version = "4", features = ["derive"] }
 notify-rust = "4"
 directories = "5"
