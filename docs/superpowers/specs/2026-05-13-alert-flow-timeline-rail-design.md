@@ -156,6 +156,7 @@ struct AlertFlow {
     steps: Vec<AlertFlowStep>,
     included: Vec<AlertItem>,
     suggested_command: Option<String>,
+    command_identity: Option<(String, String)>, // (pane_id, action) for lifecycle ledger
 }
 
 struct AlertFlowStep {
@@ -200,8 +201,10 @@ sort included recommendation keys before joining.
 - `hide_deadline`: pending only when the flow key itself is pending.
 
 Do not infer that hiding one included alert hides the flow. Flow hide
-uses the flow key. Included source alerts are suppressed from the
-top-level list only while they are represented by the visible flow.
+uses the flow key. When a flow key is pending or expired in the hide
+map, the included source alerts stay suppressed for that same flow
+composition; if the composition changes and a different flow key is
+created, the new flow can appear as a fresh alert.
 
 ## 9. Timeline Steps
 
@@ -263,6 +266,8 @@ key can be added later if the selected view becomes too tall.
 `y` on a selected flow copies `AlertFlow.suggested_command` when present.
 For Context Recovery, prefer `/compact` over other commands. If no
 runnable command exists, the existing no-copy behavior applies.
+Lifecycle attribution should use `AlertFlow.command_identity`, pointing
+at the included recommendation that supplied the copied command.
 
 ### 11.4 Dismiss
 
