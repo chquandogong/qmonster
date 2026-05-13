@@ -231,8 +231,7 @@ pub fn alert_hit_at_row(
     let selected = state.selected();
     for (idx, entry) in entries.iter().enumerate().skip(state.offset()) {
         let dismiss_height = entry_dismiss_line_count(entry, width, view.now) as u16;
-        let height =
-            alert_entry_lines(entry, width, view.now, Some(idx) == selected).len() as u16;
+        let height = alert_entry_lines(entry, width, view.now, Some(idx) == selected).len() as u16;
         if remaining < height {
             return Some(AlertMouseHit {
                 index: idx,
@@ -289,7 +288,12 @@ pub fn alert_help_topic_at_row(
     None
 }
 
-fn is_alert_summary_row(entry: &AlertEntry, width: usize, remaining: u16, dismiss_height: u16) -> bool {
+fn is_alert_summary_row(
+    entry: &AlertEntry,
+    width: usize,
+    remaining: u16,
+    dismiss_height: u16,
+) -> bool {
     let summary_height = entry_summary_line_count(entry, width) as u16;
     let start = 1 + dismiss_height;
     remaining >= start && remaining < start.saturating_add(summary_height)
@@ -388,7 +392,12 @@ pub fn selected_alert_suggested_command_meta(
     );
     let entry = entries.get(idx)?;
     let cmd = entry.suggested_command()?.to_string();
-    Some((entry.title(), cmd, entry.severity(), entry.source_kind()))
+    Some((
+        entry.title(),
+        cmd,
+        entry.severity(),
+        entry.command_source_kind(),
+    ))
 }
 
 /// v2.2.0 (P1-3): companion to `selected_alert_suggested_command_meta`
@@ -416,7 +425,9 @@ pub fn selected_alert_recommendation_identity(
         hidden_until,
         now,
     );
-    entries.get(idx).and_then(AlertEntry::recommendation_identity)
+    entries
+        .get(idx)
+        .and_then(AlertEntry::recommendation_identity)
 }
 
 /// Parses the `rec|{pane_id}|{action}|{sev}|{reason}` key shape into
@@ -554,7 +565,7 @@ pub fn alert_items_with_command(
                 command,
                 title: entry.title(),
                 severity: entry.severity(),
-                source: entry.source_kind(),
+                source: entry.command_source_kind(),
                 pane_id: entry.pane_id(),
             })
         })
@@ -643,6 +654,7 @@ struct AlertFlow {
     included: Vec<AlertItem>,
     suggested_command: Option<String>,
     command_identity: Option<(String, String)>,
+    command_source_kind: Option<SourceKind>,
 }
 
 #[allow(dead_code)]
@@ -1008,7 +1020,9 @@ fn alert_entry_matches_filter(entry: &AlertEntry, needle: &str) -> bool {
             {
                 return true;
             }
-            flow.included.iter().any(|item| alert_item_matches_filter(item, needle))
+            flow.included
+                .iter()
+                .any(|item| alert_item_matches_filter(item, needle))
         }
     }
 }
@@ -1071,7 +1085,8 @@ fn build_context_recovery_flow(
         .unwrap_or_else(|| "--:--:--".into());
     let timestamp_sort_key = sortable_timestamp(&timestamp);
     let is_new = fresh_alerts.contains(&key) || included.iter().any(|item| item.is_new);
-    let (suggested_command, command_identity) = flow_command_and_identity(&included);
+    let (suggested_command, command_identity, command_source_kind) =
+        flow_command_and_identity(&included);
     let steps = context_recovery_steps(&included, suggested_command.as_deref());
 
     AlertFlow {
@@ -1091,6 +1106,7 @@ fn build_context_recovery_flow(
         included,
         suggested_command,
         command_identity,
+        command_source_kind,
     }
 }
 
@@ -1105,17 +1121,24 @@ fn source_authority_rank(source: SourceKind) -> u8 {
 }
 
 #[allow(dead_code)]
-fn flow_command_and_identity(included: &[AlertItem]) -> (Option<String>, Option<(String, String)>) {
+fn flow_command_and_identity(
+    included: &[AlertItem],
+) -> (Option<String>, Option<(String, String)>, Option<SourceKind>) {
     let preferred = included
         .iter()
         .find(|item| item.suggested_command.as_deref() == Some("/compact"))
-        .or_else(|| included.iter().find(|item| item.suggested_command.is_some()));
+        .or_else(|| {
+            included
+                .iter()
+                .find(|item| item.suggested_command.is_some())
+        });
     let Some(item) = preferred else {
-        return (None, None);
+        return (None, None, None);
     };
     (
         item.suggested_command.clone(),
         parse_recommendation_key(&item.key),
+        Some(item.source_kind),
     )
 }
 
@@ -1409,9 +1432,12 @@ fn alert_flow_lines(
         for item in &flow.included {
             lines.extend(
                 wrap_with_prefix(
-                    &aligned_detail("included", &parse_recommendation_key(&item.key)
-                        .map(|(_, action)| action)
-                        .unwrap_or_else(|| item.headline.clone())),
+                    &aligned_detail(
+                        "included",
+                        &parse_recommendation_key(&item.key)
+                            .map(|(_, action)| action)
+                            .unwrap_or_else(|| item.headline.clone()),
+                    ),
                     width,
                     &continuation,
                     &continuation,
@@ -1904,6 +1930,13 @@ impl AlertEntry {
         }
     }
 
+    fn command_source_kind(&self) -> SourceKind {
+        match self {
+            AlertEntry::Item(item) => item.source_kind,
+            AlertEntry::Flow(flow) => flow.command_source_kind.unwrap_or(flow.source_kind),
+        }
+    }
+
     fn title(&self) -> String {
         match self {
             AlertEntry::Item(item) => item.title.clone(),
@@ -2100,13 +2133,19 @@ mod tests {
             Instant::now(),
         );
 
-        assert_eq!(entries.len(), 1, "context/cache should collapse into one flow");
+        assert_eq!(
+            entries.len(),
+            1,
+            "context/cache should collapse into one flow"
+        );
         let flow = entries[0].as_flow().expect("entry must be a flow");
         assert_eq!(flow.pane_id, "%1");
         assert_eq!(flow.severity, Severity::Warning);
         assert_eq!(flow.suggested_command.as_deref(), Some("/compact"));
         assert_eq!(
-            flow.command_identity.as_ref().map(|(_, action)| action.as_str()),
+            flow.command_identity
+                .as_ref()
+                .map(|(_, action)| action.as_str()),
             Some("context-pressure: checkpoint")
         );
         assert_eq!(flow.included.len(), 2);
@@ -2172,7 +2211,11 @@ mod tests {
         );
 
         assert_eq!(entries.len(), 2);
-        assert!(entries.iter().all(|entry| matches!(entry, AlertEntry::Item(_))));
+        assert!(
+            entries
+                .iter()
+                .all(|entry| matches!(entry, AlertEntry::Item(_)))
+        );
     }
 
     #[test]
@@ -2243,7 +2286,11 @@ mod tests {
         );
 
         assert_eq!(entries.len(), 2);
-        assert!(entries.iter().all(|entry| matches!(entry, AlertEntry::Item(_))));
+        assert!(
+            entries
+                .iter()
+                .all(|entry| matches!(entry, AlertEntry::Item(_)))
+        );
     }
 
     #[test]
@@ -2276,7 +2323,11 @@ mod tests {
         );
 
         assert_eq!(entries.len(), 2);
-        assert!(entries.iter().all(|entry| matches!(entry, AlertEntry::Item(_))));
+        assert!(
+            entries
+                .iter()
+                .all(|entry| matches!(entry, AlertEntry::Item(_)))
+        );
     }
 
     #[test]
@@ -2323,7 +2374,10 @@ mod tests {
         );
 
         assert_eq!(entries.len(), 2);
-        assert!(entries[0].as_flow().is_some(), "flow should sort before plain recommendation");
+        assert!(
+            entries[0].as_flow().is_some(),
+            "flow should sort before plain recommendation"
+        );
         assert!(matches!(entries[1], AlertEntry::Item(_)));
     }
 
@@ -2373,6 +2427,54 @@ mod tests {
             identity,
             Some(("%1".into(), "context-pressure: checkpoint".into()))
         );
+    }
+
+    #[test]
+    fn selected_flow_copy_meta_and_pending_action_use_command_source_kind() {
+        let context = rec(
+            "context-pressure: checkpoint",
+            "context near warning threshold",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            Some("press 's' to snapshot + archive first"),
+        );
+        let cache = rec(
+            "cache: drift detected — /compact will let cache rebuild",
+            "cache hit ratio dropped from 0.72 to 0.38",
+            Severity::Concern,
+            SourceKind::Heuristic,
+            None,
+            None,
+        );
+        let report = base_report(vec![context, cache]);
+        let mut state = ListState::default();
+        state.select(Some(0));
+
+        let meta = selected_alert_suggested_command_meta(
+            &state,
+            &[],
+            &[report.clone()],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        )
+        .expect("flow should expose copy metadata");
+        let entries = alert_items_with_command(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(meta.1, "/compact");
+        assert_eq!(meta.3, SourceKind::Estimated);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].command, "/compact");
+        assert_eq!(entries[0].source, SourceKind::Estimated);
     }
 
     #[test]
@@ -2518,11 +2620,20 @@ mod tests {
 
         let dump = buffer_to_string(&buf);
         assert!(dump.contains("FLOW Context recovery"), "{dump}");
-        assert!(dump.contains("summary : context pressure led to cache drift"), "{dump}");
+        assert!(
+            dump.contains("summary : context pressure led to cache drift"),
+            "{dump}"
+        );
         assert!(dump.contains("o context pressure detected"), "{dump}");
-        assert!(dump.contains("| cache drift/discontinuity detected"), "{dump}");
+        assert!(
+            dump.contains("| cache drift/discontinuity detected"),
+            "{dump}"
+        );
         assert!(dump.contains("| then run /compact"), "{dump}");
-        assert!(dump.contains("included: context-pressure: checkpoint"), "{dump}");
+        assert!(
+            dump.contains("included: context-pressure: checkpoint"),
+            "{dump}"
+        );
         assert!(dump.contains("copy    : `/compact`"), "{dump}");
     }
 
