@@ -2024,11 +2024,11 @@ fn expanded_pane_help_topics_follow_sectioned_rows() {
         is_strong: false,
         next_step: Some("snapshot before compact".into()),
         profile: Some(ProviderProfile {
-            name: "claude-default".into(),
+            name: "claude-default",
             levers: vec![ProfileLever {
-                key: "BASH_MAX_OUTPUT_LENGTH".into(),
-                value: "30000".into(),
-                citation: "provider docs".into(),
+                key: "BASH_MAX_OUTPUT_LENGTH",
+                value: "30000",
+                citation: "provider docs",
                 source_kind: SourceKind::ProviderOfficial,
             }],
             side_effects: vec![],
