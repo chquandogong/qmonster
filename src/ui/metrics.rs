@@ -2349,6 +2349,7 @@ mod tests {
             effects: vec![],
             dead: false,
             current_path: "/repo".into(),
+            worktree_role: None,
             current_command: provider_str.to_string(),
             cross_pane_findings: vec![],
             idle_state: None,

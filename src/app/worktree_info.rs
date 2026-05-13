@@ -274,10 +274,6 @@ impl WorktreeRoleCache {
         }
     }
 
-    #[expect(
-        dead_code,
-        reason = "Production entry point that wraps lookup_at with Instant::now(); wired into the pane-card path row in Task 3 of the worktree-role plan."
-    )]
     pub(crate) fn lookup(&mut self, current_path: &str) -> Option<WorktreeRole> {
         self.lookup_at(current_path, std::time::Instant::now())
     }
