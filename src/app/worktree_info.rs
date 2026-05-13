@@ -333,10 +333,24 @@ mod tests {
 
     #[test]
     fn resolve_worktree_role_returns_linked_with_parent_root_for_added_worktree() {
-        let repo = clean_repo();
-        let worktree_dir = repo.path().parent().unwrap().join("linked-wt");
+        // Wrap both the primary checkout and the linked worktree inside a
+        // single parent tempdir so both directories are cleaned on drop and
+        // parallel `cargo test` runs do not race on a shared `/tmp/linked-wt`.
+        let parent = tempfile::tempdir().expect("tempdir");
+        let primary = parent.path().join("primary");
+        std::fs::create_dir(&primary).expect("create primary dir");
+
+        // Inline clean_repo() against the explicit `primary` path.
+        git(&primary, &["init", "-b", "main"]);
+        git(&primary, &["config", "user.email", "qmonster@example.test"]);
+        git(&primary, &["config", "user.name", "Qmonster Test"]);
+        std::fs::write(primary.join("README.md"), "test\n").expect("write fixture");
+        git(&primary, &["add", "README.md"]);
+        git(&primary, &["commit", "-m", "init"]);
+
+        let worktree_dir = parent.path().join("linked");
         git(
-            repo.path(),
+            &primary,
             &[
                 "worktree",
                 "add",
@@ -352,7 +366,7 @@ mod tests {
 
         match role {
             WorktreeRole::Linked { parent_repo_root } => {
-                let canonical_repo = std::fs::canonicalize(repo.path()).unwrap();
+                let canonical_repo = std::fs::canonicalize(&primary).unwrap();
                 let canonical_parent = std::fs::canonicalize(&parent_repo_root).unwrap();
                 assert_eq!(
                     canonical_parent, canonical_repo,
