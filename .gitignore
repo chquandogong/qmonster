@@ -24,6 +24,9 @@ CLAUDE.local.md
 # local server PID/log directory. Local-only working state.
 /.superpowers/brainstorm/
 
+# Isolated feature worktrees created by Superpowers/Codex workflows.
+/.worktrees/
+
 # mission-spec plugin install slot (tool code, not project state)
 /.mission-spec/
 
