@@ -303,7 +303,13 @@ impl WorktreeRoleCache {
                 }
             }
         }
-        self.entries.insert(key, CachedRole { role, cached_at: now });
+        self.entries.insert(
+            key,
+            CachedRole {
+                role,
+                cached_at: now,
+            },
+        );
     }
 
     #[cfg(test)]
@@ -507,8 +513,15 @@ mod tests {
         let second = cache.lookup_at(&key, t0 + Duration::from_secs(5));
         let third = cache.lookup_at(&key, t0 + Duration::from_secs(11));
 
-        assert_eq!(first, second, "within-TTL lookup must return the cached value");
-        assert_eq!(cache.spawn_count(), 2, "TTL expiry must trigger a re-resolve");
+        assert_eq!(
+            first, second,
+            "within-TTL lookup must return the cached value"
+        );
+        assert_eq!(
+            cache.spawn_count(),
+            2,
+            "TTL expiry must trigger a re-resolve"
+        );
         assert!(matches!(third, Some(WorktreeRole::Primary)));
     }
 
