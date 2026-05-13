@@ -149,6 +149,77 @@ fn pane_cards_render_current_command_row() {
 }
 
 #[test]
+fn pane_panel_uses_sectioned_order_and_keeps_top_six_recommendations() {
+    use crate::domain::recommendation::{Recommendation, Severity};
+
+    let mut rep = sample_pane_report();
+    rep.signals.cost_usd = Some(MetricValue::new(3.0, SourceKind::ProviderOfficial));
+    rep.signals.runtime_facts.push(RuntimeFact::new(
+        RuntimeFactKind::Sandbox,
+        "workspace-write",
+        SourceKind::ProviderOfficial,
+    ));
+    rep.recommendations = (0..7)
+        .map(|idx| Recommendation {
+            action: "panel-test",
+            reason: format!("panel recommendation {idx}"),
+            severity: Severity::Concern,
+            source_kind: SourceKind::Heuristic,
+            suggested_command: None,
+            side_effects: vec![],
+            is_strong: false,
+            next_step: None,
+            profile: None,
+        })
+        .collect();
+
+    let mut buf = Buffer::empty(Rect::new(0, 0, 120, 24));
+    render_pane_panel(Rect::new(0, 0, 120, 24), &mut buf, &rep);
+    let rendered: String = (0..24)
+        .map(|y| {
+            (0..120)
+                .map(|x| buf[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let where_section = rendered
+        .find("WHERE")
+        .unwrap_or_else(|| panic!("WHERE missing in panel: {rendered}"));
+    let pressure = rendered
+        .find("PRESSURE")
+        .unwrap_or_else(|| panic!("PRESSURE missing in panel: {rendered}"));
+    let runtime = rendered
+        .find("RUNTIME")
+        .unwrap_or_else(|| panic!("RUNTIME missing in panel: {rendered}"));
+    let recommendations = rendered
+        .find("RECOMMENDATIONS")
+        .unwrap_or_else(|| panic!("RECOMMENDATIONS missing in panel: {rendered}"));
+
+    assert!(
+        where_section < pressure,
+        "WHERE should precede PRESSURE in panel: {rendered}"
+    );
+    assert!(
+        pressure < runtime,
+        "PRESSURE should precede RUNTIME in panel: {rendered}"
+    );
+    assert!(
+        runtime < recommendations,
+        "RUNTIME should precede RECOMMENDATIONS in panel: {rendered}"
+    );
+    assert!(
+        rendered.contains("panel recommendation 5"),
+        "panel should keep the current top 6 recommendation limit: {rendered}"
+    );
+    assert!(
+        !rendered.contains("panel recommendation 6"),
+        "panel should not render a seventh recommendation: {rendered}"
+    );
+}
+
+#[test]
 fn expanded_recommendation_detail_fields_align_to_label_column() {
     assert_eq!(
         expanded_detail_field("next    : press s to snapshot"),

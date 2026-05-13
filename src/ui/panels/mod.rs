@@ -298,7 +298,6 @@ struct PaneRenderLine {
     topic: Option<HelpTopic>,
 }
 
-#[allow(dead_code)]
 enum PaneTokenRows {
     ExpandedList,
     PanelBody,
@@ -321,7 +320,6 @@ impl PaneSectionOptions {
         }
     }
 
-    #[allow(dead_code)]
     fn panel_body() -> Self {
         Self {
             recommendation_limit: 6,
@@ -816,61 +814,16 @@ pub fn panel_body(report: &PaneReport) -> Vec<ListItem<'static>> {
 }
 
 fn panel_body_with_width(report: &PaneReport, wrap_width: u16) -> Vec<ListItem<'static>> {
-    let mut items = Vec::new();
-    for row in render_pane_state_row(report) {
-        items.push(ListItem::new(row));
-    }
-    items.push(ListItem::new(aligned_field(
-        "path",
-        &path_row_value(report),
-    )));
-    for line in wrap_aligned_field("cmd", &display_command(&report.current_command), wrap_width) {
-        items.push(ListItem::new(line));
-    }
-    items.push(ListItem::new(aligned_field(
-        "status",
-        &state_summary_line(report),
-    )));
-    for line in blocking_signal_lines(&report.signals, wrap_width) {
-        items.push(ListItem::new(line));
-    }
-    for line in signal_badge_lines(
-        "signals",
-        secondary_signal_chips(&report.signals),
+    pane_sectioned_rows(
+        report,
+        Instant::now(),
+        None,
         wrap_width,
-    ) {
-        items.push(ListItem::new(line));
-    }
-
-    for row in metric_badge_lines(
-        &report.signals,
-        report.identity.identity.provider,
-        wrap_width,
-    ) {
-        items.push(ListItem::new(row));
-    }
-    if token_rows_supported(report.identity.identity.provider)
-        && let Some(line) = token_breakdown_line(report)
-    {
-        items.push(ListItem::new(line));
-    }
-
-    for rec in report.recommendations.iter().take(6) {
-        items.push(ListItem::new(aligned_field(
-            severity_label(rec.severity),
-            &rec.reason,
-        )));
-        for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
-            items.push(ListItem::new(expanded_detail_field(&detail)));
-        }
-        // v1.8.1: expose the structured ProviderProfile payload so the
-        // operator can audit lever key/value/citation/SourceKind
-        // directly in the panel (Codex P4-1 finding #1 closed).
-        for line in format_profile_lines(rec) {
-            items.push(ListItem::new(expanded_detail_field(&line)));
-        }
-    }
-    items
+        PaneSectionOptions::panel_body(),
+    )
+    .into_iter()
+    .map(|row| ListItem::new(row.line))
+    .collect()
 }
 
 fn pane_badge_wrap_width(area: Rect) -> u16 {
@@ -2160,6 +2113,7 @@ fn format_elapsed(d: std::time::Duration) -> String {
 /// Used by the pane card and directly in tests. Delegates to the
 /// `_with_flash` variant with `BADGE_WRAP_FALLBACK_WIDTH` so existing
 /// no-flash callers don't need to plumb a `wrap_width` parameter.
+#[cfg(test)]
 fn render_pane_state_row(report: &PaneReport) -> Vec<Line<'static>> {
     render_pane_state_row_with_flash(report, Instant::now(), None, BADGE_WRAP_FALLBACK_WIDTH)
 }
