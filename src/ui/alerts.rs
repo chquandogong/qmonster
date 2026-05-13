@@ -1003,7 +1003,6 @@ fn related_connectors(item: &AlertItem) -> Vec<RelatedConnector> {
         return Vec::new();
     }
     let mut connectors = Vec::new();
-    let has_command_connector = item.suggested_command.is_some();
     let recovery_category = context_recovery_category(item);
     let has_snapshot_recovery = item
         .details
@@ -1028,20 +1027,6 @@ fn related_connectors(item: &AlertItem) -> Vec<RelatedConnector> {
             rank: 20,
             key: "recovery-path|snapshot-before".into(),
             label: "same pane recovery".into(),
-        });
-    }
-    if let Some(action) = recommendation_action(item)
-        && (has_command_connector || recovery_category.is_some() || has_snapshot_recovery)
-        && let Some(family) = action
-            .split(':')
-            .next()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-    {
-        connectors.push(RelatedConnector {
-            rank: 10,
-            key: format!("family|{family}"),
-            label: "same action family".into(),
         });
     }
     connectors
@@ -2665,6 +2650,39 @@ mod tests {
     }
 
     #[test]
+    fn related_context_does_not_link_same_family_with_different_commands() {
+        let compact = rec(
+            "maintenance: compact first",
+            "compact first",
+            Severity::Warning,
+            SourceKind::Estimated,
+            Some("/compact"),
+            None,
+        );
+        let snapshot = rec(
+            "maintenance: snapshot first",
+            "snapshot first",
+            Severity::Warning,
+            SourceKind::ProjectCanonical,
+            Some("qmonster snapshot"),
+            None,
+        );
+        let report = base_report(vec![compact, snapshot]);
+
+        let entries = collect_entries(
+            &[],
+            &[report],
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|entry| item_related(entry).is_none()));
+    }
+
+    #[test]
     fn context_recovery_flow_does_not_merge_different_panes() {
         let context = rec(
             "context-pressure: checkpoint",
@@ -3112,6 +3130,14 @@ mod tests {
         let mut state = ListState::default();
         state.select(Some(0));
 
+        let entries = collect_entries(
+            &[],
+            std::slice::from_ref(&report),
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Instant::now(),
+        );
         let cmd = selected_alert_suggested_command(
             &state,
             &[],
@@ -3122,6 +3148,7 @@ mod tests {
             Instant::now(),
         );
 
+        assert!(entries.iter().all(|entry| item_related(entry).is_none()));
         assert_eq!(cmd.as_deref(), Some("/compact"));
     }
 
