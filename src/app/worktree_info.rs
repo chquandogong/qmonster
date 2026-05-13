@@ -161,6 +161,65 @@ fn run_git(repo_root: &Path, args: &[&str]) -> Option<String> {
     Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Whether the pane's cwd is the primary checkout of a git repo or a
+/// linked worktree created via `git worktree add`. None when the cwd
+/// is not a git working tree at all, or when git is unavailable.
+///
+/// This is a *derived* fact about local git state — distinct from the
+/// `signals.worktree_path` metric, which carries the value the
+/// provider's statusline printed (and is stamped `ProviderOfficial`).
+/// Keep the two off each other's source-kind contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum WorktreeRole {
+    Primary,
+    Linked { parent_repo_root: PathBuf },
+}
+
+/// Resolve the worktree role of `current_path`. Runs `git -C <path>
+/// rev-parse --git-common-dir --git-dir` once; spawning git is the
+/// only side effect. Returns `None` on empty input, non-existent
+/// cwd, non-git cwd, git failure, or any parse anomaly.
+pub(crate) fn resolve_worktree_role(current_path: &str) -> Option<WorktreeRole> {
+    let trimmed = current_path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let cwd = Path::new(trimmed);
+    if !cwd.exists() {
+        return None;
+    }
+
+    let common_dir_raw = run_git(cwd, &["rev-parse", "--git-common-dir"])?;
+    let git_dir_raw = run_git(cwd, &["rev-parse", "--git-dir"])?;
+
+    let common_dir = canonicalize_git_path(cwd, &common_dir_raw)?;
+    let git_dir = canonicalize_git_path(cwd, &git_dir_raw)?;
+
+    if common_dir == git_dir {
+        return Some(WorktreeRole::Primary);
+    }
+
+    let parent_repo_root = common_dir.parent()?.to_path_buf();
+    Some(WorktreeRole::Linked { parent_repo_root })
+}
+
+/// `git rev-parse --git-{common-,}dir` returns paths relative to the
+/// cwd it was invoked from. Canonicalize so Primary detection (path
+/// equality) is robust against `.git` vs absolute spellings.
+fn canonicalize_git_path(cwd: &Path, raw: &str) -> Option<PathBuf> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let candidate = Path::new(trimmed);
+    let absolute = if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        cwd.join(candidate)
+    };
+    std::fs::canonicalize(&absolute).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,5 +316,66 @@ mod tests {
             suggestion.path.ends_with("feat-worktree-copy-split"),
             "path must be a flat sibling directory, got: {suggestion:?}"
         );
+    }
+
+    #[test]
+    fn resolve_worktree_role_returns_primary_for_main_checkout() {
+        let repo = clean_repo();
+
+        let role = resolve_worktree_role(repo.path().to_str().unwrap())
+            .expect("clean repo should resolve as a git repo");
+
+        assert!(
+            matches!(role, WorktreeRole::Primary),
+            "main checkout must resolve as Primary, got {role:?}"
+        );
+    }
+
+    #[test]
+    fn resolve_worktree_role_returns_linked_with_parent_root_for_added_worktree() {
+        let repo = clean_repo();
+        let worktree_dir = repo.path().parent().unwrap().join("linked-wt");
+        git(
+            repo.path(),
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feat-x",
+                worktree_dir.to_str().unwrap(),
+                "HEAD",
+            ],
+        );
+
+        let role = resolve_worktree_role(worktree_dir.to_str().unwrap())
+            .expect("linked worktree should resolve as a git repo");
+
+        match role {
+            WorktreeRole::Linked { parent_repo_root } => {
+                let canonical_repo = std::fs::canonicalize(repo.path()).unwrap();
+                let canonical_parent = std::fs::canonicalize(&parent_repo_root).unwrap();
+                assert_eq!(
+                    canonical_parent, canonical_repo,
+                    "Linked.parent_repo_root must resolve to the primary checkout"
+                );
+            }
+            other => panic!("linked worktree must resolve as Linked, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_worktree_role_returns_none_for_non_git_cwd() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        assert!(
+            resolve_worktree_role(dir.path().to_str().unwrap()).is_none(),
+            "non-git cwd must return None, not Primary"
+        );
+    }
+
+    #[test]
+    fn resolve_worktree_role_returns_none_for_empty_or_missing_cwd() {
+        assert!(resolve_worktree_role("").is_none());
+        assert!(resolve_worktree_role("   ").is_none());
+        assert!(resolve_worktree_role("/this/path/does/not/exist/qmonster-plan").is_none());
     }
 }
