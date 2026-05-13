@@ -643,6 +643,7 @@ mod tests {
             effects: vec![RequestedEffect::Notify],
             dead: false,
             current_path: "/repo".into(),
+            worktree_role: None,
             current_command: "cli".into(),
             cross_pane_findings: vec![],
             idle_state: None,

@@ -55,6 +55,108 @@ are not user-visible behaviour changes — they harden the lifecycle
 attribution model and tighten mission verifiability before the next minor
 bump.
 
+## 2026-05-13 Path-row worktree-role hint (branch — unmerged)
+
+Branch `worktree-feat-path-row-worktree-role` (worktree at
+`.claude/worktrees/feat-path-row-worktree-role`, branched from `ad5f351`).
+Seven commits, 16 files, +507/-3. Adds a ` · wt of <parent-repo-root>`
+suffix to the pane-card `path` row when the pane's cwd resolves to a
+linked git worktree (`git worktree add`-style sibling checkout). Primary
+worktrees and non-git cwds render unchanged.
+
+- **`ab54ae1` — pure resolver.** `pub(crate) enum WorktreeRole { Primary,
+  Linked { parent_repo_root: PathBuf } }` plus
+  `resolve_worktree_role(current_path: &str) -> Option<WorktreeRole>`
+  in `src/app/worktree_info.rs`. Runs `git rev-parse --git-common-dir`
+  / `--git-dir` once and canonicalizes both before equality; returns
+  `None` on empty/missing/non-git cwd or any git failure. Lives next to
+  `suggest_worktree_split_command` so all worktree-shaped git knowledge
+  stays in one module. `WorktreeRole` is deliberately kept off
+  `SignalSet` — this is a derived local-fs fact, not a provider signal,
+  so the `SourceKind::ProviderOfficial` contract on
+  `signals.worktree_path` (the provider statusline value) stays
+  untouched.
+
+- **`7f64af6` — test isolation fix.** Initial linked-worktree test
+  hardcoded `/tmp/linked-wt` (a shared path under `tempfile`'s `/tmp`
+  parent), which survived across runs and raced under parallel `cargo
+  test`. Rewrapped both the primary and the linked checkout inside a
+  single parent tempdir.
+
+- **`3257190` + `7097fad` — TTL cache.** `WorktreeRoleCache` memoizes
+  both `Some` and `None` results with a 10s TTL (`WORKTREE_ROLE_TTL`)
+  and 128-key insertion-order eviction (`WORKTREE_ROLE_CACHE_CAPACITY`).
+  At nominal 2s tmux poll cadence this means ~5 ticks per distinct cwd
+  per resolution. `lookup_at` takes an explicit `Instant` so tests can
+  drive TTL boundaries without sleeping; `lookup` wraps it with
+  `Instant::now()` for production. `3257190` was a transient bridge
+  with `#[cfg_attr(not(test), expect(dead_code, reason = "..."))]` to
+  keep the clippy gate green between the resolver commit and the cache
+  commit; `7097fad` removes that bridge as the cache consumes the
+  resolver from production code.
+
+- **`f9f0cc7` — plumbing through `PaneReport`.** Adds `pub(crate)
+  worktree_role: Option<WorktreeRole>` to `PaneReport` (next to
+  `current_path`) and `pub(crate) worktree_role_cache:
+  WorktreeRoleCache` to `Context<P, N>` (initialized via
+  `WorktreeRoleCache::default()` in `Context::new`). Both
+  `PaneReport` construction sites in `event_loop.rs` (dead pane and
+  live pane) call `ctx.worktree_role_cache.lookup(&pane.current_path)`.
+  Test fixtures at 12 sites across `src/app/` and `src/ui/` get
+  `worktree_role: None,` literals. Visibility is `pub(crate)` on both
+  fields to match the `pub(crate)` types they hold — same precedent as
+  `Context::cli_version_cache: pub(crate)` (a `pub` field would have
+  tripped `clippy::private_interfaces` under `-D warnings`).
+  A new `event_loop::tests::pane_report_worktree_role_is_some_linked_for_added_worktree_cwd`
+  test confirms the cache type is reachable from
+  `event_loop`'s namespace and resolves a real linked worktree
+  fixture. The field carried a `#[cfg_attr(not(test), expect(dead_code,
+  reason = "...Task 4..."))]` bridge until the renderer commit landed.
+
+- **`8b37ebb` — rustfmt cleanup.** Pre-existing fmt issues from the
+  resolver/cache commits that the gate caught at the Task 3 endpoint.
+  Mechanical rustfmt rewrap of two long-arg calls — no semantic
+  change.
+
+- **`95f3ecf` — renderer.** New `path_row_value(report)` helper in
+  `src/ui/panels/mod.rs` (next to `display_path` / `display_command`)
+  returns the base `display_path(&report.current_path)` for `Primary`
+  and `None` roles, or appends ` · wt of
+  <display_path(parent_repo_root)>` for `Linked`. Three call sites
+  switch to the helper: `pane_list_lines_with_flash` (`:413-417`),
+  `panel_body_with_width` (`:709-712`), and the `HelpTopic::PanePath`
+  topic-count at `:230-234`. The parent repo root passes through the
+  same `display_path` (which does `ellipsize(_, 80)` but no `$HOME`
+  collapse — matching the primary cwd's behaviour). Three tests in
+  `src/ui/panels/tests.rs` cover Linked / Primary / None; established
+  pattern is to call `pane_list_lines_with_flash` and assert via
+  `line_text` extraction. Bridge attribute on `PaneReport.worktree_role`
+  removed at this commit (renderer is the production consumer).
+
+  `metric_badge_lines` / `context_metric_row` / `runtime_text_groups`
+  are deliberately untouched — they render the orthogonal
+  `signals.worktree_path` metric (provider statusline value), which is
+  a separate `SourceKind::ProviderOfficial` contract.
+
+Validation at branch HEAD (`95f3ecf`): `cargo fmt --all --check` clean;
+`cargo clippy --all-targets -- -D warnings -A
+clippy::uninlined_format_args` clean; `cargo test --all-targets` green
+(lib **1460** = +14 from worktree base 1446, +3 over Task-3 baseline
+1457; integration 69; supporting suites unchanged). `npx mission-spec
+eval` reports **21/23** — `v2.2.0 P0-3` (gates.rs inline provenance) and
+`v2.2.0 P1-2` (anomaly.rs SubagentSideEffect prose) both fail because
+the worktree base `ad5f351` predates the 16 main commits that landed
+the alert-flow-timeline-rail work plus `5d466d6` (which restored those
+two v2.2.0 surfaces). On main HEAD `5ccf040` the same eval reports
+**22/23**; only the P1-2 prose check fails there. **These two failures
+are pre-existing relative to the worktree's base, not caused by the
+path-row feature.** A rebase onto main before merge will close the
+P0-3 gap (and may surface conflicts on `src/ui/panels/mod.rs`
+where the alert-flow work also lives).
+
+No release surface change; the path-row hint is local UX polish that
+will ride into the next tagged minor. No mission contract change.
+
 ## 2026-05-13 Dependabot dep-bump cleanup (unreleased)
 
 A focused pass on the seven open PRs that had accumulated against

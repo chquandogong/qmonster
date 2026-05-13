@@ -870,7 +870,7 @@ pub fn detect_subagent_side_effect(
                 after: kinds_csv,
                 sample_count: other_anomalies.len(),
                 source_kind: SourceKind::Estimated,
-            }
+            },
         ],
         window_polls,
         detected_at: now_unix_seconds,

@@ -627,6 +627,7 @@ mod tests {
             effects: Vec::new(),
             dead: false,
             current_path: String::new(),
+            worktree_role: None,
             current_command: String::new(),
             cross_pane_findings: Vec::new(),
             idle_state: None,

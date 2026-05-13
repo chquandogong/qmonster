@@ -23,6 +23,7 @@ fn base_report() -> PaneReport {
         effects: vec![],
         dead: false,
         current_path: "/repo".into(),
+        worktree_role: None,
         current_command: "claude".into(),
         cross_pane_findings: vec![],
         idle_state: None,
@@ -1927,4 +1928,76 @@ fn format_resets_eta_caps_at_14_days() {
 fn format_resets_eta_returns_none_for_past_timestamps() {
     // A timestamp in the past → None.
     assert!(format_resets_eta(0).is_none(), "past timestamp must reject");
+}
+
+#[test]
+fn path_row_appends_wt_of_suffix_when_pane_is_in_linked_worktree() {
+    use crate::app::worktree_info::WorktreeRole;
+    use std::path::PathBuf;
+
+    let mut report = base_report();
+    report.current_path = "/home/operator/proj-feat-x".into();
+    report.worktree_role = Some(WorktreeRole::Linked {
+        parent_repo_root: PathBuf::from("/home/operator/proj"),
+    });
+
+    let lines = pane_list_lines_with_flash(&report, false, false, Instant::now(), None, 200);
+    let path_row = lines
+        .iter()
+        .map(line_text)
+        .find(|s| s.trim_start().starts_with("path"))
+        .expect("path row must be present");
+
+    assert!(
+        path_row.contains("/proj-feat-x"),
+        "primary cwd must still render, got {path_row:?}"
+    );
+    assert!(
+        path_row.contains(" · wt of "),
+        "linked worktree must append ` · wt of ` separator, got {path_row:?}"
+    );
+    assert!(
+        path_row.contains("/proj"),
+        "linked worktree must surface the parent repo root, got {path_row:?}"
+    );
+}
+
+#[test]
+fn path_row_renders_unchanged_for_primary_worktree() {
+    use crate::app::worktree_info::WorktreeRole;
+
+    let mut report = base_report();
+    report.current_path = "/home/operator/proj".into();
+    report.worktree_role = Some(WorktreeRole::Primary);
+
+    let lines = pane_list_lines_with_flash(&report, false, false, Instant::now(), None, 200);
+    let path_row = lines
+        .iter()
+        .map(line_text)
+        .find(|s| s.trim_start().starts_with("path"))
+        .expect("path row must be present");
+
+    assert!(
+        !path_row.contains(" · wt of "),
+        "primary worktree must NOT add a worktree suffix, got {path_row:?}"
+    );
+}
+
+#[test]
+fn path_row_renders_unchanged_when_worktree_role_is_none() {
+    let mut report = base_report();
+    report.current_path = "/tmp/non-git-cwd".into();
+    report.worktree_role = None;
+
+    let lines = pane_list_lines_with_flash(&report, false, false, Instant::now(), None, 200);
+    let path_row = lines
+        .iter()
+        .map(line_text)
+        .find(|s| s.trim_start().starts_with("path"))
+        .expect("path row must be present");
+
+    assert!(
+        !path_row.contains(" · wt of "),
+        "non-git cwd must NOT add a worktree suffix, got {path_row:?}"
+    );
 }

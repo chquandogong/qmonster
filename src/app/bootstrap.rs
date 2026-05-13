@@ -84,6 +84,15 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// `/context` and `/usage` are separate screens; caching lets the UI show
     /// CTX and quota windows together after both have been observed.
     pub pressure_metric_cache: std::collections::HashMap<String, PanePressureCache>,
+    /// Phase v2.3.0 (worktree-role hint): TTL cache for the local-git
+    /// "this cwd is the primary checkout vs. a linked worktree"
+    /// classification. Keyed by absolute cwd, default 10 s TTL, 128-key
+    /// cap (see `WORKTREE_ROLE_TTL` / `WORKTREE_ROLE_CACHE_CAPACITY`).
+    /// Populated per-pane each tick from
+    /// `pane.current_path`; the resolved role rides on `PaneReport.worktree_role`
+    /// and the pane card renderer appends a `· wt of <parent>` suffix to
+    /// the `path` row when the role is `Linked`.
+    pub(crate) worktree_role_cache: crate::app::worktree_info::WorktreeRoleCache,
     /// Phase D D2 (v1.18.0): last observed `Provider` + `current_path`
     /// per pane. Drift detection compares this snapshot against the
     /// just-resolved identity each tick. Cleared on
@@ -213,6 +222,7 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             runtime_refresh_tail_overlays: std::collections::HashMap::new(),
             cli_version_cache: std::collections::HashMap::new(),
             pressure_metric_cache: std::collections::HashMap::new(),
+            worktree_role_cache: crate::app::worktree_info::WorktreeRoleCache::default(),
             identity_history: std::collections::HashMap::new(),
             reported_drifts: std::collections::HashSet::new(),
             identity_conflicts_logged: std::collections::HashSet::new(),
