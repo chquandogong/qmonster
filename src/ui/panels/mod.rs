@@ -230,7 +230,7 @@ fn pane_list_help_topics_with_width(
     push_topic_count(
         &mut topics,
         Some(HelpTopic::PanePath),
-        wrap_aligned_field("path", &display_path(&report.current_path), wrap_width).len(),
+        wrap_aligned_field("path", &path_row_value(report), wrap_width).len(),
     );
     push_topic_count(
         &mut topics,
@@ -412,7 +412,7 @@ fn pane_list_lines_with_flash(
     }
     lines.extend(wrap_aligned_field(
         "path",
-        &display_path(&report.current_path),
+        &path_row_value(report),
         wrap_width,
     ));
     lines.extend(wrap_aligned_field(
@@ -708,7 +708,7 @@ fn panel_body_with_width(report: &PaneReport, wrap_width: u16) -> Vec<ListItem<'
     }
     items.push(ListItem::new(aligned_field(
         "path",
-        &display_path(&report.current_path),
+        &path_row_value(report),
     )));
     for line in wrap_aligned_field("cmd", &display_command(&report.current_command), wrap_width) {
         items.push(ListItem::new(line));
@@ -1031,6 +1031,24 @@ fn display_command(command: &str) -> String {
         // `node /home/u/.nvm/versions/node/v22/bin/codex --foo --bar …`)
         // never truncates on the right edge.
         command.to_string()
+    }
+}
+
+/// Append a ` · wt of <parent>` suffix to a base `path` cell when the
+/// pane's cwd resolves to a linked git worktree. Returns the base
+/// value unchanged for Primary and None roles. The parent repo root
+/// is run through the same `display_path` helper so its ellipsis
+/// behaviour matches the primary cwd's.
+fn path_row_value(report: &PaneReport) -> String {
+    let base = display_path(&report.current_path);
+    match report.worktree_role.as_ref() {
+        Some(crate::app::worktree_info::WorktreeRole::Linked { parent_repo_root }) => {
+            format!(
+                "{base} · wt of {}",
+                display_path(&parent_repo_root.display().to_string())
+            )
+        }
+        _ => base,
     }
 }
 

@@ -160,37 +160,37 @@ impl Default for PolicyGates {
             // safety: opt-in advisory surface for permissive runtime posture
             security_posture_advisories: false,
             identity_confidence: IdentityConfidence::Unknown,
-            cost_warning_usd: 5.0, // [intuition]
-            cost_critical_usd: 20.0, // [intuition]
-            context_warning_pct: 0.75, // [intuition]
-            context_critical_pct: 0.85, // [intuition]
-            quota_warning_pct: 0.75, // [intuition]
-            quota_critical_pct: 0.85, // [intuition]
-            quota_5h_warning_pct: 0.75, // [intuition]
-            quota_5h_critical_pct: 0.85, // [intuition]
-            quota_weekly_warning_pct: 0.75, // [intuition]
+            cost_warning_usd: 5.0,           // [intuition]
+            cost_critical_usd: 20.0,         // [intuition]
+            context_warning_pct: 0.75,       // [intuition]
+            context_critical_pct: 0.85,      // [intuition]
+            quota_warning_pct: 0.75,         // [intuition]
+            quota_critical_pct: 0.85,        // [intuition]
+            quota_5h_warning_pct: 0.75,      // [intuition]
+            quota_5h_critical_pct: 0.85,     // [intuition]
+            quota_weekly_warning_pct: 0.75,  // [intuition]
             quota_weekly_critical_pct: 0.85, // [intuition]
-            cache_hot_ratio: 0.6, // [intuition]
-            cache_cold_ratio: 0.3, // [intuition]
-            cache_hot_low_ctx: 0.7, // [intuition]
-            cache_cold_high_ctx: 0.6, // [intuition]
-            cache_drift_drop: 0.30, // [intuition]
-            cache_drift_min_samples: 4, // [intuition]
-            reset_wait_pressure: 0.85, // [intuition]
-            reset_wait_eta_secs: 30 * 60, // [intuition]
-            reset_snapshot_pressure: 0.50, // [intuition]
+            cache_hot_ratio: 0.6,            // [intuition]
+            cache_cold_ratio: 0.3,           // [intuition]
+            cache_hot_low_ctx: 0.7,          // [intuition]
+            cache_cold_high_ctx: 0.6,        // [intuition]
+            cache_drift_drop: 0.30,          // [intuition]
+            cache_drift_min_samples: 4,      // [intuition]
+            reset_wait_pressure: 0.85,       // [intuition]
+            reset_wait_eta_secs: 30 * 60,    // [intuition]
+            reset_snapshot_pressure: 0.50,   // [intuition]
             reset_snapshot_eta_secs: 5 * 60, // [intuition]
             reset_auto_snapshot: false,
             anomaly_enabled: false,
             anomaly_window_polls: 20, // [intuition]
             anomaly_min_confidence: crate::domain::anomaly::AnomalyConfidence::Medium,
-            anomaly_identity_churn_min_flips: 3, // [intuition]
-            anomaly_error_burst_threshold: 0.5, // [intuition]
+            anomaly_identity_churn_min_flips: 3,    // [intuition]
+            anomaly_error_burst_threshold: 0.5,     // [intuition]
             anomaly_cache_discontinuity_drop: 0.30, // [intuition]
             anomaly_cross_pane_cluster_min_findings: 3, // [intuition]
-            anomaly_cost_slope_usd_per_hour: 20.0, // [intuition]
+            anomaly_cost_slope_usd_per_hour: 20.0,  // [intuition]
             anomaly_token_slope_input_per_poll: 20_000, // [intuition]
-            anomaly_memory_growth_mb: 1024.0, // [intuition]
+            anomaly_memory_growth_mb: 1024.0,       // [intuition]
             anomaly_promote_identity_churn: crate::domain::anomaly::AnomalyConfidence::High,
             anomaly_promote_error_burst: crate::domain::anomaly::AnomalyConfidence::High,
             anomaly_promote_cache_discontinuity: crate::domain::anomaly::AnomalyConfidence::High,
@@ -204,7 +204,7 @@ impl Default for PolicyGates {
             identity_drift_findings: false,
             cross_pane_file_findings: false,
             profile_switch_enabled: false,
-            profile_switch_window: 10, // [intuition]
+            profile_switch_window: 10,      // [intuition]
             profile_switch_error_rate: 0.5, // [intuition]
         }
     }

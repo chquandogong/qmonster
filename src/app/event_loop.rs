@@ -176,6 +176,7 @@ where
         }
 
         if pane.dead {
+            let worktree_role = ctx.worktree_role_cache.lookup(&pane.current_path);
             reports.push(PaneReport {
                 pane_id: pane.pane_id,
                 session_name: pane.session_name,
@@ -187,6 +188,7 @@ where
                 effects: vec![],
                 dead: true,
                 current_path: pane.current_path.clone(),
+                worktree_role,
                 current_command: effective_command,
                 cross_pane_findings: vec![],
                 idle_state: None,
@@ -739,6 +741,7 @@ where
                 .record(alert_event(&pane.pane_id, rec, resolved.identity.provider));
         }
 
+        let worktree_role = ctx.worktree_role_cache.lookup(&pane.current_path);
         reports.push(PaneReport {
             pane_id: pane.pane_id,
             session_name: pane.session_name,
@@ -750,6 +753,7 @@ where
             effects: out.effects,
             dead: false,
             current_path: pane.current_path.clone(),
+            worktree_role,
             current_command: effective_command,
             cross_pane_findings: vec![],
             idle_state,
@@ -1197,6 +1201,15 @@ pub struct PaneReport {
     pub effects: Vec<RequestedEffect>,
     pub dead: bool,
     pub current_path: String,
+    /// Phase v2.3.0 (worktree-role hint): resolved git worktree role
+    /// for `current_path`. `Some(Primary)` when the cwd is the main
+    /// checkout, `Some(Linked { .. })` when it is a `git worktree
+    /// add`-style linked worktree, `None` when the cwd is not inside a
+    /// git repo (or git is unavailable). Populated via
+    /// `Context.worktree_role_cache` on the event loop — this is a
+    /// derived local-fs fact, not a provider signal, and is kept off
+    /// `SignalSet` so the `SourceKind` contract stays untouched.
+    pub(crate) worktree_role: Option<crate::app::worktree_info::WorktreeRole>,
     pub current_command: String,
     pub cross_pane_findings: Vec<crate::domain::recommendation::CrossPaneFinding>,
     /// Current idle cause, if any. Mirrors `signals.idle_state` but
@@ -1523,5 +1536,84 @@ mod tests {
             detected_at: 1_700_000_000,
         };
         assert_eq!(anomaly_event_reason(&sig), "");
+    }
+
+    #[test]
+    fn pane_report_worktree_role_is_some_linked_for_added_worktree_cwd() {
+        use crate::app::worktree_info::{WorktreeRole, WorktreeRoleCache};
+        use crate::domain::identity::{
+            IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+        };
+        use crate::domain::signal::SignalSet;
+        use std::process::Command;
+        let parent = tempfile::tempdir().expect("tempdir");
+        let primary = parent.path().join("primary");
+        std::fs::create_dir(&primary).expect("create primary dir");
+        let run = |args: &[&str]| {
+            Command::new("git")
+                .arg("-C")
+                .arg(&primary)
+                .args(args)
+                .output()
+                .expect("git runs");
+        };
+        run(&["init", "-b", "main"]);
+        run(&["config", "user.email", "qmonster@example.test"]);
+        run(&["config", "user.name", "Qmonster Test"]);
+        std::fs::write(primary.join("README.md"), "hi\n").unwrap();
+        run(&["add", "README.md"]);
+        run(&["commit", "-m", "init"]);
+        let linked = parent.path().join("linked");
+        run(&[
+            "worktree",
+            "add",
+            "-b",
+            "feat",
+            linked.to_str().unwrap(),
+            "HEAD",
+        ]);
+
+        let mut cache = WorktreeRoleCache::default();
+        let role = cache.lookup(linked.to_str().unwrap());
+
+        assert!(
+            matches!(role, Some(WorktreeRole::Linked { .. })),
+            "linked worktree cwd must resolve to Linked, got {role:?}"
+        );
+
+        // Round-trip the cached role through a PaneReport literal to keep
+        // the field's read-path lit until Task 4's UI consumer lands.
+        let linked_path = linked.to_str().unwrap().to_string();
+        let report = PaneReport {
+            pane_id: "%1".into(),
+            session_name: "qwork".into(),
+            window_index: "1".into(),
+            provider: Provider::Claude,
+            identity: ResolvedIdentity {
+                identity: PaneIdentity {
+                    provider: Provider::Claude,
+                    instance: 1,
+                    role: Role::Main,
+                    pane_id: "%1".into(),
+                },
+                confidence: IdentityConfidence::High,
+            },
+            signals: SignalSet::default(),
+            recommendations: vec![],
+            effects: vec![],
+            dead: false,
+            current_path: linked_path,
+            worktree_role: role,
+            current_command: String::new(),
+            cross_pane_findings: vec![],
+            idle_state: None,
+            idle_state_entered_at: None,
+            recent_token_samples: Vec::new(),
+            anomalies: vec![],
+        };
+        assert!(
+            matches!(report.worktree_role, Some(WorktreeRole::Linked { .. })),
+            "PaneReport must carry the Linked role through to its consumers"
+        );
     }
 }

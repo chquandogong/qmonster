@@ -630,6 +630,7 @@ mod tests {
             dead: false,
             recommendations: recs,
             current_path: "/repo".into(),
+            worktree_role: None,
             current_command: "claude".into(),
             cross_pane_findings: vec![],
             idle_state: None,
