@@ -327,24 +327,16 @@ mod tests {
 
     #[test]
     fn alert_help_mentions_flow_rows_in_both_languages() {
-        let ko = [
-            help_lines(HelpTopic::AlertHeader, HelpLanguage::Ko),
-            help_lines(HelpTopic::AlertDetail, HelpLanguage::Ko),
-        ]
-        .concat()
-        .join("\n");
-        let en = [
-            help_lines(HelpTopic::AlertHeader, HelpLanguage::En),
-            help_lines(HelpTopic::AlertDetail, HelpLanguage::En),
-        ]
-        .concat()
-        .join("\n");
+        let ko_header = help_lines(HelpTopic::AlertHeader, HelpLanguage::Ko).join("\n");
+        let ko_detail = help_lines(HelpTopic::AlertDetail, HelpLanguage::Ko).join("\n");
+        let en_header = help_lines(HelpTopic::AlertHeader, HelpLanguage::En).join("\n");
+        let en_detail = help_lines(HelpTopic::AlertDetail, HelpLanguage::En).join("\n");
 
-        assert!(ko.contains("FLOW"));
-        assert!(ko.contains("묶"));
-        assert!(ko.contains("실행 명령"));
-        assert!(en.contains("FLOW"));
-        assert!(en.contains("groups related alerts"));
-        assert!(en.contains("command"));
+        assert!(ko_header.contains("FLOW"));
+        assert!(ko_header.contains("묶"));
+        assert!(ko_detail.contains("실행 명령"));
+        assert!(en_header.contains("FLOW"));
+        assert!(en_header.contains("groups related alerts"));
+        assert!(en_detail.contains("-> command"));
     }
 }
