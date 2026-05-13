@@ -114,6 +114,25 @@ hover_help_trigger = "label" # "label" | "row"
   새 분류로, 동일 `current_path` + `git_branch` panes가 2개 이상의
   tmux window에 걸쳐 있을 때 `[security] cross_window_findings = true`
   opt-in 시 발화합니다.
+
+### Alert Flow 읽는 법
+
+- `FLOW` 행은 서로 관련된 recommendation alert들이 하나의 대응 흐름을
+  만들 때 표시됩니다. 첫 구현 범위는 context/cache/snapshot/`/compact`
+  계열의 **Context recovery** 흐름입니다.
+- 기본 목록에서는 원본 alert들이 중복 top-level 행으로 흩어지지 않고,
+  `FLOW Context recovery · N alerts · active` 한 행으로 대표됩니다.
+- `summary` 아래 rail은 `o` / `|` 접두사로 원인 신호, 후속 근거,
+  선행 조치, 실행 명령을 순서대로 보여줍니다.
+- 선택된 FLOW 행은 `included` 행으로 묶인 원본 alert action과 source를
+  보여줍니다. 이는 flow가 어떤 근거로 만들어졌는지 확인하기 위한
+  evidence입니다.
+- FLOW에 실행 가능한 command가 있으면 기존 alert와 같이 제목에 `★y`가
+  붙고, Alerts focus에서 `y`로 현재 대표 command를 복사합니다. Context
+  recovery에서는 `/compact`가 있으면 그것을 우선 복사합니다.
+- Enter/Space hide는 FLOW key를 대상으로 합니다. 같은 구성의 flow가
+  숨겨진 동안 included 원본 alert들은 top-level로 다시 흩어지지 않습니다.
+
 - Alerts 맨 위 `bulk hide :` 줄의 severity chip은 **actionable alert만**
   대상으로 합니다. `c`로 지울 수 있는 system notice는 여기에 포함되지
   않습니다.
