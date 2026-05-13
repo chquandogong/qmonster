@@ -159,13 +159,18 @@ mod tests {
             reason: "same branch and path".into(),
             severity: Severity::Concern,
             source_kind: SourceKind::ProjectCanonical,
-            suggested_command: None,
+            suggested_command: Some(
+                "git -C /repo worktree add -b main-split /repo-main-split HEAD".into(),
+            ),
             paths: Vec::new(),
         });
 
         let lines = format_once_report_lines(&[report], &QmonsterConfig::defaults());
 
         assert!(lines.iter().any(|line| line.contains("CROSS-PANE")));
+        assert!(lines.iter().any(|line| {
+            line == "  run: git -C /repo worktree add -b main-split /repo-main-split HEAD"
+        }));
         assert!(lines.iter().any(|line| line == "  path: /repo"));
         assert!(lines.iter().any(|line| line == "  cmd: claude"));
     }

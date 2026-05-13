@@ -1184,7 +1184,16 @@ mod tests {
             .as_deref()
             .expect("suggested_command present");
         assert!(cmd.contains("tmux capture-pane"), "got: {cmd}");
+        assert!(cmd.contains("-t %1"), "must target the real pane id: {cmd}");
         assert!(cmd.contains("~/.qmonster/archive/"), "got: {cmd}");
+        assert!(
+            !cmd.contains("<pane_id>"),
+            "copyable command must not contain placeholders: {cmd}"
+        );
+        assert!(
+            !cmd.trim_start().starts_with('#'),
+            "copyable command must be executable, not an instructional comment: {cmd}"
+        );
     }
 
     #[test]
@@ -1271,7 +1280,7 @@ mod tests {
     }
 
     #[test]
-    fn aggressive_verbose_review_suggests_attribution_edit() {
+    fn aggressive_verbose_review_uses_next_step_not_copyable_comment() {
         let id = id_high(Role::Review);
         let s = SignalSet {
             verbose_answer: true,
@@ -1287,11 +1296,17 @@ mod tests {
             .iter()
             .find(|r| r.action == "aggressive: strip attribution")
             .expect("aggressive_verbose_review fires under quota_tight");
-        let cmd = adv
-            .suggested_command
-            .as_deref()
-            .expect("populated in v1.7.1");
-        assert!(cmd.contains("attribution"), "got: {cmd}");
+        assert!(
+            adv.suggested_command.is_none(),
+            "config edits are not executable copy commands"
+        );
+        assert!(
+            adv.next_step
+                .as_deref()
+                .unwrap_or_default()
+                .contains("attribution"),
+            "non-executable edit instruction belongs in next_step: {adv:?}"
+        );
     }
 
     fn cost(v: f64) -> SignalSet {

@@ -950,7 +950,7 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_mutating_finding_includes_worktree_split_hint() {
+    fn concurrent_mutating_policy_does_not_emit_placeholder_copy_command() {
         let id_a = mk_id(Role::Main, "%1");
         let id_b = mk_id(Role::Main, "%2");
         let s = busy_branch_signals("main");
@@ -970,26 +970,14 @@ mod tests {
         ];
         let findings = eval_concurrent(&views, &PolicyGates::default());
         assert_eq!(findings.len(), 1);
-        let suggestion = findings[0]
-            .suggested_command
-            .as_ref()
-            .expect("hint present");
         assert!(
-            suggestion.contains("tmux select-pane"),
-            "legacy research-pane hint must remain: {suggestion}"
-        );
-        assert!(
-            suggestion.contains("git worktree add -b"),
-            "worktree split hint must be added: {suggestion}"
-        );
-        assert!(
-            suggestion.contains("split off main into a new worktree"),
-            "branch must be interpolated: {suggestion}"
+            findings[0].suggested_command.is_none(),
+            "pure policy must not expose placeholder/comment text as a y-copy command"
         );
     }
 
     #[test]
-    fn concurrent_file_edit_finding_includes_worktree_split_hint() {
+    fn concurrent_file_edit_policy_does_not_emit_placeholder_copy_command() {
         let id_a = mk_id(Role::Main, "%1");
         let id_b = mk_id(Role::Main, "%2");
         let signals = SignalSet {
@@ -1021,15 +1009,9 @@ mod tests {
         let findings = eval_concurrent_files(&views, &gates);
         assert!(!findings.is_empty(), "file-edit finding must fire");
         assert_eq!(findings[0].kind, CrossPaneKind::ConcurrentFileEdit);
-        let suggestion = findings[0]
-            .suggested_command
-            .as_ref()
-            .expect("hint present");
-        assert!(suggestion.contains("tmux select-pane"));
-        assert!(suggestion.contains("git worktree add -b"));
         assert!(
-            suggestion.contains("split off feature/abc into a new worktree"),
-            "branch must be interpolated: {suggestion}"
+            findings[0].suggested_command.is_none(),
+            "app layer may enrich with a real git command, but policy must not emit placeholders"
         );
     }
 
@@ -1074,7 +1056,7 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_file_edit_with_missing_branch_falls_back_to_placeholder() {
+    fn concurrent_file_edit_with_missing_branch_has_no_copyable_command() {
         let id_a = mk_id(Role::Main, "%1");
         let id_b = mk_id(Role::Main, "%2");
         let signals = SignalSet {
@@ -1105,17 +1087,9 @@ mod tests {
             !findings.is_empty(),
             "file-edit finding must still fire without git_branch"
         );
-        let suggestion = findings[0]
-            .suggested_command
-            .as_ref()
-            .expect("hint present");
         assert!(
-            suggestion.contains("split off <branch> into a new worktree"),
-            "missing branch must fall back to the <branch> placeholder: {suggestion}"
-        );
-        assert!(
-            suggestion.contains("git worktree add -b"),
-            "worktree command must still appear: {suggestion}"
+            findings[0].suggested_command.is_none(),
+            "missing branch must not fall back to a placeholder command"
         );
     }
 }
