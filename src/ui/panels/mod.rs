@@ -9,6 +9,7 @@ use crate::app::event_loop::PaneReport;
 use crate::domain::identity::{IdentityConfidence, Provider, Role};
 use crate::domain::recommendation::Recommendation;
 use crate::domain::signal::{IdleCause, RuntimeFact, RuntimeFactKind, SignalSet};
+use crate::ui::help_glossary::HelpTopic;
 use crate::ui::labels::{ellipsize, format_count_with_suffix, source_kind_label};
 use crate::ui::provider_honesty::{self, CacheMetricStatus};
 use crate::ui::theme;
@@ -217,72 +218,66 @@ fn pane_list_help_topics_with_width(
     expanded: bool,
     with_separator: bool,
     wrap_width: u16,
-) -> Vec<Option<crate::ui::help_glossary::HelpTopic>> {
-    use crate::ui::help_glossary::HelpTopic;
-
+) -> Vec<Option<HelpTopic>> {
     let now = Instant::now();
     let mut topics = vec![Some(HelpTopic::PaneHeader)];
-    push_topic_count(
-        &mut topics,
-        Some(HelpTopic::PaneState),
-        render_pane_state_row_with_flash(report, now, None, wrap_width).len(),
-    );
-    push_topic_count(
-        &mut topics,
-        Some(HelpTopic::PanePath),
-        wrap_aligned_field("path", &path_row_value(report), wrap_width).len(),
-    );
-    push_topic_count(
-        &mut topics,
-        Some(HelpTopic::PaneCommand),
-        wrap_aligned_field("cmd", &display_command(&report.current_command), wrap_width).len(),
-    );
-    push_topic_count(
-        &mut topics,
-        Some(HelpTopic::PaneStatus),
-        wrap_aligned_field("status", &state_summary_line(report), wrap_width).len(),
-    );
-    push_topic_count(
-        &mut topics,
-        Some(HelpTopic::PaneSignals),
-        blocking_signal_lines(&report.signals, wrap_width).len(),
-    );
-    push_topic_count(
-        &mut topics,
-        Some(HelpTopic::PaneSignals),
-        signal_badge_lines(
-            "signals",
-            secondary_signal_chips(&report.signals),
-            wrap_width,
-        )
-        .len(),
-    );
-    push_topic_count(
-        &mut topics,
-        Some(HelpTopic::PaneMetrics),
-        metric_badge_lines(
-            &report.signals,
-            report.identity.identity.provider,
-            wrap_width,
-        )
-        .len(),
-    );
     if expanded {
-        topics.push(Some(HelpTopic::PaneTokens));
-        if token_io_line(report).is_some() {
-            topics.push(Some(HelpTopic::PaneTokens));
-        }
-        if cache_token_io_line(report).is_some() {
-            topics.push(Some(HelpTopic::PaneTokens));
-        }
-    }
-    push_topic_count(
-        &mut topics,
-        Some(HelpTopic::PaneRuntime),
-        runtime_badge_lines_wrapped(&report.signals, wrap_width).len(),
-    );
-
-    if expanded {
+        topics.extend(
+            pane_sectioned_rows(report, now, None, wrap_width, PaneSectionOptions::expanded_list())
+                .into_iter()
+                .map(|row| row.topic),
+        );
+    } else {
+        push_topic_count(
+            &mut topics,
+            Some(HelpTopic::PaneState),
+            render_pane_state_row_with_flash(report, now, None, wrap_width).len(),
+        );
+        push_topic_count(
+            &mut topics,
+            Some(HelpTopic::PanePath),
+            wrap_aligned_field("path", &path_row_value(report), wrap_width).len(),
+        );
+        push_topic_count(
+            &mut topics,
+            Some(HelpTopic::PaneCommand),
+            wrap_aligned_field("cmd", &display_command(&report.current_command), wrap_width).len(),
+        );
+        push_topic_count(
+            &mut topics,
+            Some(HelpTopic::PaneStatus),
+            wrap_aligned_field("status", &state_summary_line(report), wrap_width).len(),
+        );
+        push_topic_count(
+            &mut topics,
+            Some(HelpTopic::PaneSignals),
+            blocking_signal_lines(&report.signals, wrap_width).len(),
+        );
+        push_topic_count(
+            &mut topics,
+            Some(HelpTopic::PaneSignals),
+            signal_badge_lines(
+                "signals",
+                secondary_signal_chips(&report.signals),
+                wrap_width,
+            )
+            .len(),
+        );
+        push_topic_count(
+            &mut topics,
+            Some(HelpTopic::PaneMetrics),
+            metric_badge_lines(
+                &report.signals,
+                report.identity.identity.provider,
+                wrap_width,
+            )
+            .len(),
+        );
+        push_topic_count(
+            &mut topics,
+            Some(HelpTopic::PaneRuntime),
+            runtime_badge_lines_wrapped(&report.signals, wrap_width).len(),
+        );
         if let Some((_target, slash)) =
             crate::app::prompt_send_actions::first_prompt_send_proposal(report)
         {
@@ -295,36 +290,6 @@ fn pane_list_help_topics_with_width(
                     wrap_width,
                 )
                 .len(),
-            );
-        }
-        for rec in report.recommendations.iter().take(3) {
-            push_topic_count(
-                &mut topics,
-                Some(HelpTopic::PaneRecommendation),
-                wrap_aligned_field(severity_label(rec.severity), &rec.reason, wrap_width).len(),
-            );
-            for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
-                let formatted = expanded_detail_field(&detail);
-                push_topic_count(
-                    &mut topics,
-                    Some(HelpTopic::PaneRecommendation),
-                    reflow_already_aligned(&formatted, wrap_width).len(),
-                );
-            }
-            for line in format_profile_lines(rec) {
-                let formatted = expanded_detail_field(&line);
-                push_topic_count(
-                    &mut topics,
-                    Some(HelpTopic::PaneProfile),
-                    reflow_already_aligned(&formatted, wrap_width).len(),
-                );
-            }
-        }
-        if report.recommendations.is_empty() {
-            push_topic_count(
-                &mut topics,
-                Some(HelpTopic::PaneRecommendation),
-                wrap_aligned_field("status", "no active recommendations", wrap_width).len(),
             );
         }
     }
@@ -340,6 +305,205 @@ where
     T: Copy,
 {
     topics.extend(std::iter::repeat_n(topic, count));
+}
+
+struct PaneRenderLine {
+    line: Line<'static>,
+    topic: Option<HelpTopic>,
+}
+
+enum PaneTokenRows {
+    ExpandedList,
+    PanelBody,
+}
+
+struct PaneSectionOptions {
+    recommendation_limit: usize,
+    include_proposal: bool,
+    token_rows: PaneTokenRows,
+    show_empty_recommendations: bool,
+}
+
+impl PaneSectionOptions {
+    fn expanded_list() -> Self {
+        Self {
+            recommendation_limit: 3,
+            include_proposal: true,
+            token_rows: PaneTokenRows::ExpandedList,
+            show_empty_recommendations: true,
+        }
+    }
+
+    fn panel_body() -> Self {
+        Self {
+            recommendation_limit: 6,
+            include_proposal: false,
+            token_rows: PaneTokenRows::PanelBody,
+            show_empty_recommendations: false,
+        }
+    }
+}
+
+fn pane_topic_lines(
+    lines: impl IntoIterator<Item = Line<'static>>,
+    topic: HelpTopic,
+) -> Vec<PaneRenderLine> {
+    lines.into_iter().map(|line| pane_topic_line(line, topic)).collect()
+}
+
+fn pane_topic_line(line: Line<'static>, topic: HelpTopic) -> PaneRenderLine {
+    PaneRenderLine {
+        line,
+        topic: Some(topic),
+    }
+}
+
+fn pane_section_header(title: &'static str) -> Line<'static> {
+    Line::styled(
+        title,
+        Style::default()
+            .fg(theme::text_dim())
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+fn push_pane_section(
+    rows: &mut Vec<PaneRenderLine>,
+    title: &'static str,
+    topic: HelpTopic,
+    section_rows: Vec<PaneRenderLine>,
+) {
+    if section_rows.is_empty() {
+        return;
+    }
+    rows.push(pane_topic_line(pane_section_header(title), topic));
+    rows.extend(section_rows);
+}
+
+fn pane_sectioned_rows(
+    report: &PaneReport,
+    now: Instant,
+    flash: Option<&PaneStateFlash>,
+    wrap_width: u16,
+    options: PaneSectionOptions,
+) -> Vec<PaneRenderLine> {
+    let mut rows = Vec::new();
+
+    let mut now_rows = pane_topic_lines(
+        render_pane_state_row_with_flash(report, now, flash, wrap_width),
+        HelpTopic::PaneState,
+    );
+    now_rows.extend(pane_topic_lines(
+        blocking_signal_lines(&report.signals, wrap_width),
+        HelpTopic::PaneSignals,
+    ));
+    now_rows.extend(pane_topic_lines(
+        signal_badge_lines("signals", secondary_signal_chips(&report.signals), wrap_width),
+        HelpTopic::PaneSignals,
+    ));
+    if options.include_proposal
+        && let Some((_target, slash)) =
+            crate::app::prompt_send_actions::first_prompt_send_proposal(report)
+    {
+        now_rows.extend(pane_topic_lines(
+            wrap_aligned_field(
+                "proposal",
+                &format!("{slash}  \u{2192} press p to accept \u{00b7} d to reject"),
+                wrap_width,
+            ),
+            HelpTopic::PaneRecommendation,
+        ));
+    }
+    push_pane_section(&mut rows, "NOW", HelpTopic::PaneState, now_rows);
+
+    let mut where_rows = pane_topic_lines(
+        wrap_aligned_field("path", &path_row_value(report), wrap_width),
+        HelpTopic::PanePath,
+    );
+    where_rows.extend(pane_topic_lines(
+        wrap_aligned_field("cmd", &display_command(&report.current_command), wrap_width),
+        HelpTopic::PaneCommand,
+    ));
+    where_rows.extend(pane_topic_lines(
+        wrap_aligned_field("status", &state_summary_line(report), wrap_width),
+        HelpTopic::PaneStatus,
+    ));
+    push_pane_section(&mut rows, "WHERE", HelpTopic::PanePath, where_rows);
+
+    let mut pressure_rows = pane_topic_lines(
+        metric_badge_lines(&report.signals, report.identity.identity.provider, wrap_width),
+        HelpTopic::PaneMetrics,
+    );
+    match options.token_rows {
+        PaneTokenRows::ExpandedList => {
+            if token_rows_supported(report.identity.identity.provider) {
+                pressure_rows.push(pane_topic_line(
+                    token_sparkline_status_line(&report.recent_token_samples, &report.signals),
+                    HelpTopic::PaneTokens,
+                ));
+                if let Some(line) = token_io_line(report) {
+                    pressure_rows.push(pane_topic_line(Line::from(line), HelpTopic::PaneTokens));
+                }
+                if let Some(line) = cache_token_io_line(report) {
+                    pressure_rows.push(pane_topic_line(Line::from(line), HelpTopic::PaneTokens));
+                }
+            }
+        }
+        PaneTokenRows::PanelBody => {
+            if token_rows_supported(report.identity.identity.provider)
+                && let Some(line) = token_breakdown_line(report)
+            {
+                pressure_rows.push(pane_topic_line(Line::from(line), HelpTopic::PaneTokens));
+            }
+        }
+    }
+    push_pane_section(&mut rows, "PRESSURE", HelpTopic::PaneMetrics, pressure_rows);
+
+    let runtime_rows = pane_topic_lines(
+        runtime_badge_lines_wrapped(&report.signals, wrap_width),
+        HelpTopic::PaneRuntime,
+    );
+    push_pane_section(&mut rows, "RUNTIME", HelpTopic::PaneRuntime, runtime_rows);
+
+    let mut recommendation_rows = Vec::new();
+    for rec in report
+        .recommendations
+        .iter()
+        .take(options.recommendation_limit)
+    {
+        recommendation_rows.extend(pane_topic_lines(
+            wrap_aligned_field(severity_label(rec.severity), &rec.reason, wrap_width),
+            HelpTopic::PaneRecommendation,
+        ));
+        for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
+            let formatted = expanded_detail_field(&detail);
+            recommendation_rows.extend(pane_topic_lines(
+                reflow_already_aligned(&formatted, wrap_width),
+                HelpTopic::PaneRecommendation,
+            ));
+        }
+        for line in format_profile_lines(rec) {
+            let formatted = expanded_detail_field(&line);
+            recommendation_rows.extend(pane_topic_lines(
+                reflow_already_aligned(&formatted, wrap_width),
+                HelpTopic::PaneProfile,
+            ));
+        }
+    }
+    if recommendation_rows.is_empty() && options.show_empty_recommendations {
+        recommendation_rows.extend(pane_topic_lines(
+            wrap_aligned_field("status", "no active recommendations", wrap_width),
+            HelpTopic::PaneRecommendation,
+        ));
+    }
+    push_pane_section(
+        &mut rows,
+        "RECOMMENDATIONS",
+        HelpTopic::PaneRecommendation,
+        recommendation_rows,
+    );
+
+    rows
 }
 
 fn highlight_style(_focused: bool) -> Style {
@@ -407,86 +571,48 @@ fn pane_list_lines_with_flash(
 ) -> Vec<Line<'static>> {
     let flash = matching_state_flash(report, now, flash);
     let mut lines = vec![pane_panel_title_line(report, now, flash)];
-    for row in render_pane_state_row_with_flash(report, now, flash, wrap_width) {
-        lines.push(row);
-    }
-    lines.extend(wrap_aligned_field(
-        "path",
-        &path_row_value(report),
-        wrap_width,
-    ));
-    lines.extend(wrap_aligned_field(
-        "cmd",
-        &display_command(&report.current_command),
-        wrap_width,
-    ));
-    lines.extend(wrap_aligned_field(
-        "status",
-        &state_summary_line(report),
-        wrap_width,
-    ));
-
-    lines.extend(blocking_signal_lines(&report.signals, wrap_width));
-    lines.extend(signal_badge_lines(
-        "signals",
-        secondary_signal_chips(&report.signals),
-        wrap_width,
-    ));
-
-    for row in metric_badge_lines(
-        &report.signals,
-        report.identity.identity.provider,
-        wrap_width,
-    ) {
-        lines.push(row);
-    }
-    if expanded && token_rows_supported(report.identity.identity.provider) {
-        lines.push(token_sparkline_status_line(
-            &report.recent_token_samples,
-            &report.signals,
-        ));
-        if let Some(line) = token_io_line(report) {
-            lines.push(Line::from(line));
-        }
-        if let Some(line) = cache_token_io_line(report) {
-            lines.push(Line::from(line));
-        }
-    }
-    for row in runtime_badge_lines_wrapped(&report.signals, wrap_width) {
-        lines.push(row);
-    }
-
     if expanded {
-        if let Some((_target, slash)) =
-            crate::app::prompt_send_actions::first_prompt_send_proposal(report)
-        {
-            lines.extend(wrap_aligned_field(
-                "proposal",
-                &format!("{slash}  \u{2192} press p to accept \u{00b7} d to reject"),
-                wrap_width,
-            ));
+        lines.extend(
+            pane_sectioned_rows(report, now, flash, wrap_width, PaneSectionOptions::expanded_list())
+                .into_iter()
+                .map(|row| row.line),
+        );
+    } else {
+        for row in render_pane_state_row_with_flash(report, now, flash, wrap_width) {
+            lines.push(row);
         }
-        for rec in report.recommendations.iter().take(3) {
-            lines.extend(wrap_aligned_field(
-                severity_label(rec.severity),
-                &rec.reason,
-                wrap_width,
-            ));
-            for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
-                let formatted = expanded_detail_field(&detail);
-                lines.extend(reflow_already_aligned(&formatted, wrap_width));
-            }
-            for line in format_profile_lines(rec) {
-                let formatted = expanded_detail_field(&line);
-                lines.extend(reflow_already_aligned(&formatted, wrap_width));
-            }
+        lines.extend(wrap_aligned_field(
+            "path",
+            &path_row_value(report),
+            wrap_width,
+        ));
+        lines.extend(wrap_aligned_field(
+            "cmd",
+            &display_command(&report.current_command),
+            wrap_width,
+        ));
+        lines.extend(wrap_aligned_field(
+            "status",
+            &state_summary_line(report),
+            wrap_width,
+        ));
+
+        lines.extend(blocking_signal_lines(&report.signals, wrap_width));
+        lines.extend(signal_badge_lines(
+            "signals",
+            secondary_signal_chips(&report.signals),
+            wrap_width,
+        ));
+
+        for row in metric_badge_lines(
+            &report.signals,
+            report.identity.identity.provider,
+            wrap_width,
+        ) {
+            lines.push(row);
         }
-        if report.recommendations.is_empty() {
-            lines.extend(wrap_aligned_field(
-                "status",
-                "no active recommendations",
-                wrap_width,
-            ));
+        for row in runtime_badge_lines_wrapped(&report.signals, wrap_width) {
+            lines.push(row);
         }
     }
 
