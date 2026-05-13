@@ -622,17 +622,20 @@ enum AlertKind {
     Recommendation,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum AlertEntry {
     Item(AlertItem),
     Flow(AlertFlow),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AlertFlowFamily {
     ContextRecovery,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct AlertFlow {
     key: String,
@@ -654,6 +657,7 @@ struct AlertFlow {
     command_source_kind: Option<SourceKind>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct AlertFlowStep {
     marker: &'static str,
@@ -661,6 +665,7 @@ struct AlertFlowStep {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(dead_code)]
 enum ContextRecoveryCategory {
     Context,
     Cache,
@@ -826,6 +831,7 @@ fn collect_items(
     out
 }
 
+#[allow(dead_code)]
 fn collect_entries(
     notices: &[SystemNotice],
     reports: &[PaneReport],
@@ -845,6 +851,7 @@ fn collect_entries(
     project_alert_entries(items, fresh_alerts, hidden_until, now)
 }
 
+#[allow(dead_code)]
 fn project_alert_entries(
     items: Vec<AlertItem>,
     fresh_alerts: &HashSet<String>,
@@ -910,6 +917,7 @@ fn project_alert_entries(
     entries
 }
 
+#[allow(dead_code)]
 fn sort_entries(entries: &mut [AlertEntry]) {
     entries.sort_by(|a, b| {
         b.severity()
@@ -1019,6 +1027,7 @@ fn alert_entry_matches_filter(entry: &AlertEntry, needle: &str) -> bool {
     }
 }
 
+#[allow(dead_code)]
 fn context_recovery_category(item: &AlertItem) -> Option<ContextRecoveryCategory> {
     let (_, action) = parse_recommendation_key(&item.key)?;
     if action.starts_with("context-pressure:") {
@@ -1039,12 +1048,14 @@ fn context_recovery_category(item: &AlertItem) -> Option<ContextRecoveryCategory
     None
 }
 
+#[allow(dead_code)]
 fn context_recovery_flow_key(pane_id: &str, included: &[AlertItem]) -> String {
     let mut keys: Vec<&str> = included.iter().map(|item| item.key.as_str()).collect();
     keys.sort_unstable();
     format!("flow|context-recovery|{pane_id}|{}", keys.join("\u{1f}"))
 }
 
+#[allow(dead_code)]
 fn build_context_recovery_flow(
     key: String,
     pane_id: String,
@@ -1099,6 +1110,7 @@ fn build_context_recovery_flow(
     }
 }
 
+#[allow(dead_code)]
 fn source_authority_rank(source: SourceKind) -> u8 {
     match source {
         SourceKind::ProviderOfficial => 4,
@@ -1108,6 +1120,7 @@ fn source_authority_rank(source: SourceKind) -> u8 {
     }
 }
 
+#[allow(dead_code)]
 fn flow_command_and_identity(
     included: &[AlertItem],
 ) -> (Option<String>, Option<(String, String)>, Option<SourceKind>) {
@@ -1129,6 +1142,7 @@ fn flow_command_and_identity(
     )
 }
 
+#[allow(dead_code)]
 fn context_recovery_summary(included: &[AlertItem], command: Option<&str>) -> String {
     let has_context = included
         .iter()
@@ -1150,6 +1164,7 @@ fn context_recovery_summary(included: &[AlertItem], command: Option<&str>) -> St
     }
 }
 
+#[allow(dead_code)]
 fn context_recovery_steps(included: &[AlertItem], command: Option<&str>) -> Vec<AlertFlowStep> {
     let mut steps = Vec::new();
     if included
@@ -1267,7 +1282,7 @@ fn entry_severity_chips(entries: &[AlertEntry]) -> Vec<SeverityChip> {
     chips
 }
 
-#[cfg(test)]
+#[allow(dead_code)]
 fn severity_chips(items: &[AlertItem]) -> Vec<SeverityChip> {
     let entries: Vec<AlertEntry> = items.iter().cloned().map(AlertEntry::Item).collect();
     entry_severity_chips(&entries)
@@ -1297,6 +1312,17 @@ fn alert_entry_lines(
         AlertEntry::Item(item) => alert_item_lines(item, width, now, is_selected),
         AlertEntry::Flow(flow) => alert_flow_lines(flow, width, now, is_selected),
     }
+}
+
+#[allow(dead_code)]
+fn alert_list_item(
+    item: &AlertItem,
+    width: usize,
+    now: Instant,
+    is_selected: bool,
+) -> ListItem<'static> {
+    ListItem::new(alert_item_lines(item, width, now, is_selected))
+        .style(alert_style(item.color, item.is_new))
 }
 
 fn alert_item_lines(
@@ -1845,6 +1871,7 @@ impl AlertKind {
     }
 }
 
+#[allow(dead_code)]
 impl AlertEntry {
     fn key(&self) -> &str {
         match self {
@@ -1892,6 +1919,13 @@ impl AlertEntry {
         match self {
             AlertEntry::Item(item) => item.suggested_command.as_deref(),
             AlertEntry::Flow(flow) => flow.suggested_command.as_deref(),
+        }
+    }
+
+    fn source_kind(&self) -> SourceKind {
+        match self {
+            AlertEntry::Item(item) => item.source_kind,
+            AlertEntry::Flow(flow) => flow.source_kind,
         }
     }
 
@@ -1956,6 +1990,7 @@ impl AlertEntry {
     }
 }
 
+#[allow(dead_code)]
 impl AlertFlow {
     fn title(&self) -> String {
         let family = match self.family {
