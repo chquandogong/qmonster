@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use std::{path::Path, process::Command};
 
 use qmonster::app::bootstrap::Context;
 use qmonster::app::config::QmonsterConfig;
@@ -984,6 +985,29 @@ fn busy_codex_tail(path: &str, branch: &str) -> String {
     )
 }
 
+fn init_clean_git_repo(path: &Path) {
+    let run = |args: &[&str]| {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .expect("git command runs");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    run(&["init", "-b", "main"]);
+    run(&["config", "user.email", "qmonster@example.test"]);
+    run(&["config", "user.name", "Qmonster Test"]);
+    std::fs::write(path.join("README.md"), "test\n").expect("write fixture");
+    run(&["add", "README.md"]);
+    run(&["commit", "-m", "init"]);
+}
+
 #[test]
 fn concurrent_mutating_work_surfaces_in_cross_pane_findings() {
     use qmonster::domain::recommendation::CrossPaneKind;
@@ -1018,6 +1042,44 @@ fn concurrent_mutating_work_surfaces_in_cross_pane_findings() {
 
     // Anchor must be the lexicographically smaller pane ID ("%1" < "%2").
     assert_eq!(finding.anchor_pane_id, "%1");
+}
+
+#[test]
+fn concurrent_mutating_work_enriches_clean_repo_with_worktree_command() {
+    use qmonster::domain::recommendation::CrossPaneKind;
+
+    let repo = tempfile::tempdir().expect("temp repo");
+    init_clean_git_repo(repo.path());
+    let repo_path = repo.path().to_str().expect("utf8 path");
+    let tail = busy_codex_tail(repo_path, "main");
+    let source = FixturePaneSource {
+        panes: vec![
+            pane_with_path("%1", "codex:1:main", "node", &tail, false, repo_path),
+            pane_with_path("%2", "codex:2:main", "node", &tail, false, repo_path),
+        ],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    let finding = reports
+        .iter()
+        .flat_map(|r| r.cross_pane_findings.iter())
+        .find(|f| matches!(f.kind, CrossPaneKind::ConcurrentMutatingWork))
+        .expect("concurrent finding");
+    let cmd = finding
+        .suggested_command
+        .as_deref()
+        .expect("clean git repo should get executable worktree command");
+
+    assert!(cmd.starts_with("git -C "), "got: {cmd}");
+    assert!(cmd.contains(" worktree add -b "), "got: {cmd}");
+    assert!(cmd.contains("main-split"), "got: {cmd}");
+    assert!(
+        !cmd.contains('<') && !cmd.trim_start().starts_with('#'),
+        "command must be copyable as-is: {cmd}"
+    );
 }
 
 #[test]

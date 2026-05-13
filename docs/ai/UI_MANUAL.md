@@ -466,8 +466,10 @@ side_effects (N):
   (`[fx] celebration_enabled = true` 시) 과 idle 스크린세이버
   (`[fx] screensaver_enabled = true` 시) 트리거도 같은 오버레이를 사용
 - `y`: Alerts focus에서 선택된 alert의 `run` command를 system clipboard에
-  복사합니다. 선택 항목에 `suggested_command`가 없거나 clipboard backend를
-  열 수 없으면 `SystemNotice`로 이유를 표시합니다.
+  복사합니다. `run` command는 실제 shell command 또는 provider slash
+  command만 대상입니다. `# ...` 주석이나 `<placeholder>`가 포함된 값은
+  copy 대상에서 제외되고, 선택 항목에 복사 가능한 command가 없거나
+  clipboard backend를 열 수 없으면 `SystemNotice`로 이유를 표시합니다.
 - `c`: system notice clear
 - `p` / `d` / `y`: 기본은 사전 explainer 모달이 떠서 무엇을 send/reject/copy
   하는지, 왜 추천하는지(reason + source), audit chain, 그리고 현재
@@ -924,8 +926,8 @@ dispatch로 확장되었습니다.
 
 - pending prompt-send proposal을 보유한 모든 pane (operator가
   `p`/`d`로 처리할 수 있는 항목)
-- `suggested_command`가 있는 모든 alert (operator가 `y`로 복사할
-  수 있는 항목)
+- 실행 가능한 `suggested_command`가 있는 모든 alert (operator가 `y`로
+  복사할 수 있는 항목)
 
 본 overlay 외에도 항목 존재는 두 가지 다른 surface로 노출됩니다:
 

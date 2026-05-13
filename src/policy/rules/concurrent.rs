@@ -86,9 +86,7 @@ pub fn eval_concurrent(panes: &[PaneView<'_>], gates: &PolicyGates) -> Vec<Cross
                 ),
                 severity: Severity::Concern,
                 source_kind: SourceKind::Estimated,
-                suggested_command: Some(
-                    "# consolidate windows: tmux move-pane -s <pane_id> -t <other_window>".into(),
-                ),
+                suggested_command: None,
                 paths: Vec::new(),
             });
         } else {
@@ -102,7 +100,7 @@ pub fn eval_concurrent(panes: &[PaneView<'_>], gates: &PolicyGates) -> Vec<Cross
                 ),
                 severity: Severity::Warning,
                 source_kind: SourceKind::Estimated,
-                suggested_command: Some(build_concurrent_suggested_command(&key.branch)),
+                suggested_command: None,
                 paths: Vec::new(),
             });
         }
@@ -186,12 +184,6 @@ pub fn eval_concurrent_files(panes: &[PaneView<'_>], gates: &PolicyGates) -> Vec
             continue;
         }
         let anchor = group[0].identity.identity.pane_id.clone();
-        let anchor_branch = group[0]
-            .signals
-            .git_branch
-            .as_ref()
-            .map(|m| m.value.as_str())
-            .unwrap_or("");
         let others: Vec<String> = group[1..]
             .iter()
             .map(|v| v.identity.identity.pane_id.clone())
@@ -210,7 +202,7 @@ pub fn eval_concurrent_files(panes: &[PaneView<'_>], gates: &PolicyGates) -> Vec
             ),
             severity: Severity::Warning,
             source_kind: SourceKind::Heuristic,
-            suggested_command: Some(build_concurrent_suggested_command(anchor_branch)),
+            suggested_command: None,
             paths: vec![file.clone()],
         });
     }
@@ -228,26 +220,6 @@ fn resolve_against(current_path: &str, candidate: &str) -> String {
     }
     let trimmed = current_path.trim_end_matches('/');
     format!("{trimmed}/{candidate}")
-}
-
-/// Build the two-line suggested-command hint shared by
-/// `ConcurrentMutatingWork` and `ConcurrentFileEdit`. The first line
-/// keeps the historical "coordinate via research pane" tmux nudge; the
-/// second line offers the alternative resolution path — split one pane
-/// into a new git worktree. The current branch is interpolated when
-/// known; an empty branch falls back to the `<branch>` placeholder so
-/// the hint stays grammatical when `ConcurrentFileEdit` fires without
-/// a `git_branch` signal.
-fn build_concurrent_suggested_command(branch: &str) -> String {
-    let branch_label = if branch.is_empty() {
-        "<branch>"
-    } else {
-        branch
-    };
-    format!(
-        "# coordinate via research pane:                tmux select-pane -t <research_pane_id>\n\
-         # or split off {branch_label} into a new worktree:   git worktree add -b <new-branch> <new-path>"
-    )
 }
 
 #[cfg(test)]
@@ -1016,7 +988,7 @@ mod tests {
     }
 
     #[test]
-    fn cross_window_concurrent_work_keeps_consolidate_suggestion() {
+    fn cross_window_concurrent_work_has_no_placeholder_copy_command() {
         let id_a = mk_id(Role::Main, "%1");
         let id_b = mk_id(Role::Main, "%2");
         let s = busy_branch_signals("main");
@@ -1041,17 +1013,9 @@ mod tests {
         let findings = eval_concurrent(&views, &gates);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].kind, CrossPaneKind::CrossWindowConcurrentWork);
-        let suggestion = findings[0]
-            .suggested_command
-            .as_ref()
-            .expect("hint present");
         assert!(
-            suggestion.contains("consolidate windows"),
-            "legacy consolidate-windows hint must remain on cross-window findings: {suggestion}"
-        );
-        assert!(
-            !suggestion.contains("git worktree add"),
-            "worktree split must NOT bleed into cross-window findings: {suggestion}"
+            findings[0].suggested_command.is_none(),
+            "cross-window consolidation needs operator-selected targets, so it must not expose placeholder y-copy text"
         );
     }
 

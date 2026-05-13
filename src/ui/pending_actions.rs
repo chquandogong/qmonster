@@ -348,8 +348,8 @@ impl PendingActionsOverlay {
 
 /// One actionable item the overlay lists. `Proposal` matches a pane
 /// carrying a `PromptSendProposed` effect (operator presses `p`/`d`);
-/// `Copy` matches an alert with a `suggested_command` (operator
-/// presses `y`). Index slots reference the live `reports` /
+/// `Copy` matches an alert with an executable `suggested_command`
+/// (operator presses `y`). Index slots reference the live `reports` /
 /// `alert_items` lists at collection time so the caller can drive
 /// `pane_state.select(...)` / `alert_state.select(...)`.
 #[derive(Debug, Clone)]

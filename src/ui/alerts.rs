@@ -48,9 +48,10 @@ fn append_actionable_tail(prefix: String, rec: &Recommendation) -> String {
 }
 
 fn actionable_tail(next_step: Option<&str>, suggested_command: Option<&str>) -> Option<String> {
+    let suggested_command = non_empty_command(suggested_command);
     match (
-        next_step.filter(|s| !s.is_empty()),
-        suggested_command.filter(|s| !s.is_empty()),
+        next_step.map(str::trim).filter(|s| !s.is_empty()),
+        suggested_command.as_deref(),
     ) {
         (None, None) => None,
         (None, Some(cmd)) => Some(format!("run: `{cmd}`")),
@@ -488,8 +489,8 @@ pub fn pending_auto_hide_count(
 }
 
 /// v1.39 Pending-action discoverability surface B (footer counter).
-/// Returns the number of currently-visible alerts whose
-/// `suggested_command` is `Some(_)` — i.e., the alerts that the
+/// Returns the number of currently-visible alerts whose executable
+/// `suggested_command` survived filtering — i.e., the alerts that the
 /// operator can `y`-copy. Reuses `collect_items` so this matches
 /// exactly what `render_alerts` would render (same hide / sort
 /// pipeline). Caller passes the same `notices`/`reports`/`hidden_until`
@@ -524,7 +525,7 @@ pub fn copy_alert_count(
 
 /// v1.39 Pending-action discoverability surface C (overlay).
 /// Per-alert metadata for `ui::pending_actions::collect_pending_items`.
-/// Each entry corresponds to an alert with a non-empty
+/// Each entry corresponds to an alert with an executable
 /// `suggested_command`, exposing enough state for the overlay to
 /// render a row and to drive `alert_state.select(idx)` when the
 /// operator presses Enter.
@@ -804,10 +805,36 @@ fn collect_items(
 }
 
 fn non_empty_command(command: Option<&str>) -> Option<String> {
-    command
-        .map(str::trim)
-        .filter(|cmd| !cmd.is_empty())
-        .map(str::to_string)
+    let cmd = command.map(str::trim).filter(|cmd| !cmd.is_empty())?;
+    if cmd.starts_with('#') || contains_angle_placeholder(cmd) {
+        return None;
+    }
+    Some(cmd.to_string())
+}
+
+fn contains_angle_placeholder(command: &str) -> bool {
+    let bytes = command.as_bytes();
+    let mut idx = 0;
+    while idx < bytes.len() {
+        if bytes[idx] != b'<' {
+            idx += 1;
+            continue;
+        }
+        if let Some(end_rel) = command[idx + 1..].find('>') {
+            let body = &command[idx + 1..idx + 1 + end_rel];
+            if !body.is_empty()
+                && body
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+            {
+                return true;
+            }
+            idx += end_rel + 2;
+        } else {
+            break;
+        }
+    }
+    false
 }
 
 /// v1.59.0: case-insensitive substring match for the alert filter.
@@ -1541,7 +1568,7 @@ mod tests {
             reason: "state-critical task detected".into(),
             severity: Severity::Concern,
             source_kind: SourceKind::ProjectCanonical,
-            suggested_command: Some("# config-edit ...".into()),
+            suggested_command: Some("qmonster --once".into()),
             side_effects: vec![],
             is_strong: false,
             next_step: Some("record in CURRENT_STATE first".into()),
@@ -1551,7 +1578,7 @@ mod tests {
         let next_idx = body
             .find("next: record in CURRENT_STATE first")
             .expect("next segment");
-        let run_idx = body.find("run: `# config-edit ...`").expect("run segment");
+        let run_idx = body.find("run: `qmonster --once`").expect("run segment");
         assert!(next_idx < run_idx, "next must precede run. body: {body}");
     }
 
@@ -1614,6 +1641,66 @@ mod tests {
     }
 
     #[test]
+    fn selected_alert_suggested_command_rejects_comment_and_placeholder_commands() {
+        let rep = base_report(vec![
+            Recommendation {
+                action: "comment command",
+                reason: "not executable".into(),
+                severity: Severity::Warning,
+                source_kind: SourceKind::ProjectCanonical,
+                suggested_command: Some("# edit config/qmonster.toml".into()),
+                side_effects: vec![],
+                is_strong: false,
+                next_step: None,
+                profile: None,
+            },
+            Recommendation {
+                action: "placeholder command",
+                reason: "not concrete".into(),
+                severity: Severity::Concern,
+                source_kind: SourceKind::ProjectCanonical,
+                suggested_command: Some("git worktree add -b <branch> <path>".into()),
+                side_effects: vec![],
+                is_strong: false,
+                next_step: None,
+                profile: None,
+            },
+        ]);
+        let mut state = ListState::default();
+        let reports = vec![rep];
+
+        state.select(Some(0));
+        assert!(
+            selected_alert_suggested_command(
+                &state,
+                &[],
+                &reports,
+                &HashSet::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+                Instant::now(),
+            )
+            .is_none(),
+            "comment commands must not be copyable"
+        );
+
+        state.select(Some(1));
+        assert!(
+            selected_alert_suggested_command(
+                &state,
+                &[],
+                &reports,
+                &HashSet::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+                Instant::now(),
+            )
+            .is_none(),
+            "placeholder commands must not be copyable"
+        );
+    }
+
+    #[test]
     fn selected_alert_suggested_command_uses_render_sort_inputs() {
         let old = Recommendation {
             action: "a-old",
@@ -1668,7 +1755,9 @@ mod tests {
             reason: "coordinate edits".into(),
             severity: Severity::Warning,
             source_kind: SourceKind::Estimated,
-            suggested_command: Some("# coordinate via research pane".into()),
+            suggested_command: Some(
+                "git -C /repo worktree add -b main-split /repo-main-split HEAD".into(),
+            ),
             paths: Vec::new(),
         });
         let items = collect_items(
@@ -1682,13 +1771,13 @@ mod tests {
 
         assert_eq!(
             items[0].suggested_command.as_deref(),
-            Some("# coordinate via research pane")
+            Some("git -C /repo worktree add -b main-split /repo-main-split HEAD")
         );
         assert!(
             items[0]
                 .details
                 .iter()
-                .any(|line| line.contains("run") && line.contains("coordinate via research pane")),
+                .any(|line| line.contains("run") && line.contains("git -C /repo")),
             "cross-pane alert details must render copyable run command: {:?}",
             items[0].details
         );

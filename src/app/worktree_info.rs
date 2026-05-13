@@ -13,8 +13,7 @@ pub(crate) fn suggest_worktree_split_command(
     current_branch: &str,
 ) -> Option<WorktreeSplitSuggestion> {
     let current_path = current_path.trim();
-    let current_branch = current_branch.trim();
-    if current_path.is_empty() || current_branch.is_empty() {
+    if current_path.is_empty() {
         return None;
     }
 
@@ -23,7 +22,12 @@ pub(crate) fn suggest_worktree_split_command(
         return None;
     }
 
-    let branch_slug = slug_for_ref(current_branch)?;
+    let current_branch = if current_branch.trim().is_empty() {
+        run_git(&repo_root, &["branch", "--show-current"])?
+    } else {
+        current_branch.trim().to_string()
+    };
+    let branch_slug = slug_for_ref(&current_branch)?;
     let branch_name = first_available_branch_name(&repo_root, &format!("{branch_slug}-split"))?;
     let repo_name = repo_root
         .file_name()
@@ -32,7 +36,8 @@ pub(crate) fn suggest_worktree_split_command(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "worktree".into());
     let parent = repo_root.parent()?;
-    let path = first_available_path(parent.join(format!("{repo_name}-{branch_name}")));
+    let path_branch = slug_for_path_component(&branch_name);
+    let path = first_available_path(parent.join(format!("{repo_name}-{path_branch}")));
 
     Some(WorktreeSplitSuggestion {
         command: format!(
@@ -47,8 +52,7 @@ pub(crate) fn suggest_worktree_split_command(
 }
 
 fn repo_root(current_path: &Path) -> Option<PathBuf> {
-    run_git(current_path, &["rev-parse", "--show-toplevel"])
-        .map(|raw| PathBuf::from(raw.trim()))
+    run_git(current_path, &["rev-parse", "--show-toplevel"]).map(|raw| PathBuf::from(raw.trim()))
 }
 
 fn is_clean(repo_root: &Path) -> Option<bool> {
@@ -179,7 +183,10 @@ mod tests {
     fn clean_repo() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tempdir");
         git(dir.path(), &["init", "-b", "main"]);
-        git(dir.path(), &["config", "user.email", "qmonster@example.test"]);
+        git(
+            dir.path(),
+            &["config", "user.email", "qmonster@example.test"],
+        );
         git(dir.path(), &["config", "user.name", "Qmonster Test"]);
         std::fs::write(dir.path().join("README.md"), "test\n").expect("write fixture");
         git(dir.path(), &["add", "README.md"]);
@@ -191,13 +198,12 @@ mod tests {
     fn clean_repo_gets_executable_worktree_add_command() {
         let repo = clean_repo();
 
-        let suggestion =
-            suggest_worktree_split_command(repo.path().to_str().unwrap(), "main")
-                .expect("clean repo should produce a command");
+        let suggestion = suggest_worktree_split_command(repo.path().to_str().unwrap(), "main")
+            .expect("clean repo should produce a command");
 
         assert_eq!(suggestion.branch_name, "main-split");
         assert!(
-            suggestion.path.ends_with("qmonster-worktree-main-split"),
+            suggestion.path.ends_with("main-split"),
             "path should be deterministic and sibling-safe: {suggestion:?}"
         );
         assert!(
@@ -225,6 +231,31 @@ mod tests {
         assert!(
             suggest_worktree_split_command(repo.path().to_str().unwrap(), "main").is_none(),
             "dirty repos need a next-step/checkpoint, not a copyable branch split command"
+        );
+    }
+
+    #[test]
+    fn empty_branch_falls_back_to_git_current_branch() {
+        let repo = clean_repo();
+
+        let suggestion = suggest_worktree_split_command(repo.path().to_str().unwrap(), "")
+            .expect("git current branch should fill missing provider branch");
+
+        assert_eq!(suggestion.branch_name, "main-split");
+    }
+
+    #[test]
+    fn branch_slash_is_preserved_for_branch_but_flattened_for_path() {
+        let repo = clean_repo();
+
+        let suggestion =
+            suggest_worktree_split_command(repo.path().to_str().unwrap(), "feat/worktree-copy")
+                .expect("slash branch should still produce command");
+
+        assert_eq!(suggestion.branch_name, "feat/worktree-copy-split");
+        assert!(
+            suggestion.path.ends_with("feat-worktree-copy-split"),
+            "path must be a flat sibling directory, got: {suggestion:?}"
         );
     }
 }

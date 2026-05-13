@@ -22,6 +22,13 @@ pub fn format_once_report_lines(reports: &[PaneReport], config: &QmonsterConfig)
                 f.anchor_pane_id,
                 f.other_pane_ids.join(", "),
             ));
+            if let Some(command) = f
+                .suggested_command
+                .as_deref()
+                .filter(|s| !s.trim().is_empty())
+            {
+                lines.push(format!("  run: {}", command.trim()));
+            }
         }
     }
 

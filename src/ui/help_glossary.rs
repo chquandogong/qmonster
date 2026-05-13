@@ -61,7 +61,7 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
         HelpTopic::AlertHeader => &[
             "헤더: 알림 발생 시각, NEW 여부, 심각도, 제목을 한 줄에 모읍니다.",
             "제목은 Recommendation/Checkpoint와 관련 pane ID를 보여줍니다.",
-            "★y 칩은 바로 복사 가능한 추천 명령이 있음을 뜻합니다.",
+            "★y 칩은 바로 실행 가능한 추천 명령이 있음을 뜻합니다.",
         ],
         HelpTopic::AlertDismiss => &[
             "dismiss: 이 알림을 목록에서 숨길지 또는 숨김 예약을 되돌릴지 제어합니다.",
@@ -78,8 +78,8 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
             "profile, side_effects, lever가 있으면 설정 변경의 근거와 트레이드오프를 함께 보여줍니다.",
         ],
         HelpTopic::AlertCopy => &[
-            "copy: 선택된 알림에 suggested_command가 있을 때만 나타나는 힌트입니다.",
-            "알림에 포커스가 있을 때 y를 누르면 표시된 명령을 클립보드로 복사합니다.",
+            "copy: 선택된 알림에 실행 가능한 suggested_command가 있을 때만 나타나는 힌트입니다.",
+            "알림에 포커스가 있을 때 y를 누르면 표시된 shell/slash 명령을 클립보드로 복사합니다.",
         ],
         HelpTopic::PaneHeader => &[
             "pane 헤더: tmux session/window, provider, role, CLI version, pane ID를 요약합니다.",
@@ -155,7 +155,7 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
             "a Pending Actions overlay를 열면 모든 ★p 항목을 한 곳에서 보고 선택/일괄 처리할 수 있습니다.",
         ],
         HelpTopic::DashboardFooterCopyChip => &[
-            "★y: suggested_command가 있어 y로 복사 가능한 alert 수입니다.",
+            "★y: 실행 가능한 suggested_command가 있어 y로 복사 가능한 alert 수입니다.",
             "Alerts 포커스에서 해당 alert를 선택하고 y를 누르면 표시된 run 명령을 클립보드로 복사합니다.",
             "a Pending Actions overlay에서도 ★y 항목을 모아 보고 선택한 항목을 복사할 수 있습니다.",
         ],
@@ -194,8 +194,8 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
             "profile, side_effects, and lever rows explain config-change tradeoffs when present.",
         ],
         HelpTopic::AlertCopy => &[
-            "copy: shown only when the selected alert has a suggested_command.",
-            "With alert focus, press y to copy the displayed command to the clipboard.",
+            "copy: shown only when the selected alert has an executable suggested_command.",
+            "With alert focus, press y to copy the displayed shell/slash command to the clipboard.",
         ],
         HelpTopic::PaneHeader => &[
             "pane header: tmux session/window, provider, role, CLI version, and pane ID.",
@@ -271,7 +271,7 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
             "Open the a Pending Actions overlay to review, select, and bulk-dispatch all ★p items.",
         ],
         HelpTopic::DashboardFooterCopyChip => &[
-            "★y: count of alerts with a suggested_command that can be copied with y.",
+            "★y: count of alerts with an executable suggested_command that can be copied with y.",
             "With Alerts focus on that alert, y copies the rendered run command to the clipboard.",
             "The a Pending Actions overlay also collects ★y items for review and selected copy dispatch.",
         ],

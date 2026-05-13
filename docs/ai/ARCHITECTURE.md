@@ -421,10 +421,12 @@ Ratatui widgets. Current operator surfaces:
    recommendations, provider-profile payload, metrics, and runtime
    facts (`modes`, `access`, `loaded`, `restrict`).
 4. Alert command ergonomics: recommendation and cross-pane alert
-   `suggested_command` values render as `run:` lines; when Alerts are
-   focused, `y` copies the selected alert's command to the system
-   clipboard and reports missing-command/backend-failure cases as system
-   notices. `c` clears system notices.
+   `suggested_command` values render as `run:` lines only when they are
+   concrete shell commands or in-pane slash-commands; comments and
+   `<placeholder>` commands are filtered out. When Alerts are focused,
+   `y` copies the selected alert's command to the system clipboard and
+   reports missing-command/backend-failure cases as system notices.
+   `c` clears system notices.
 5. Overlays for target selection (session -> window), help/legend, and
    Git status from the bottom-right version badge.
 6. Source labels rendered in long form (`[Official]`, `[Qmonster]`,

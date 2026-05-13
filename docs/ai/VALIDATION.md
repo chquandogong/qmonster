@@ -216,10 +216,12 @@ cross_window_findings = true`. Default config preserves the
       both the per-pane history and the dedup keys for that pane.
 - [x] Recommendations may carry a `suggested_command: Option<String>`
       for copy-paste ergonomics. The value must be runnable on a single
-      surface (shell command, in-pane slash-command, or `# config-edit …`
-      comment pointer) — mixed-mode prose (e.g. TUI keybinding prose
-      plus a slash-command) belongs in `next_step`, not here. Rendered
-      by both the alert queue and `--once` with a ``run: `…``` prefix.
+      surface (shell command or in-pane slash-command). Config-edit
+      instructions, comments, placeholders, and mixed-mode prose
+      (e.g. TUI keybinding prose plus a slash-command) belong in
+      `next_step`, not here. Rendered by both the alert queue and
+      `--once` with a ``run: `…``` prefix; the interactive copy path
+      defensively suppresses `# …` comments and `<placeholder>` values.
 - [x] v1.15.24 makes `suggested_command` copyable in the interactive
       TUI: when Alerts are focused, `y` copies the selected alert's
       non-empty `run:` command to the system clipboard via `arboard`.

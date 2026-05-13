@@ -769,13 +769,45 @@ where
 
     fold_finding_paths_into_history(&findings, &mut ctx.anomaly_history);
 
-    for f in findings {
+    for mut f in findings {
+        enrich_cross_pane_finding_with_worktree_command(&mut f, &reports);
         if let Some(r) = reports.iter_mut().find(|r| r.pane_id == f.anchor_pane_id) {
             r.cross_pane_findings.push(f);
         }
     }
 
     Ok((reports, all_auto_notices))
+}
+
+fn enrich_cross_pane_finding_with_worktree_command(
+    finding: &mut crate::domain::recommendation::CrossPaneFinding,
+    reports: &[PaneReport],
+) {
+    use crate::domain::recommendation::CrossPaneKind;
+
+    if finding.suggested_command.is_some()
+        || !matches!(
+            finding.kind,
+            CrossPaneKind::ConcurrentMutatingWork | CrossPaneKind::ConcurrentFileEdit
+        )
+    {
+        return;
+    }
+
+    let Some(anchor) = reports.iter().find(|r| r.pane_id == finding.anchor_pane_id) else {
+        return;
+    };
+    let branch = anchor
+        .signals
+        .git_branch
+        .as_ref()
+        .map(|m| m.value.as_str())
+        .unwrap_or("");
+    if let Some(suggestion) =
+        crate::app::worktree_info::suggest_worktree_split_command(&anchor.current_path, branch)
+    {
+        finding.suggested_command = Some(suggestion.command);
+    }
 }
 
 /// Build the `reason` string the `n` overlay and the `anomaly_events`

@@ -52,11 +52,12 @@ pub struct Recommendation {
     pub reason: String,
     pub severity: Severity,
     pub source_kind: SourceKind,
-    /// Executable command intended for copy-paste: shell invocation,
-    /// in-pane slash-command, or `# config-edit …` comment pointer. Must
-    /// be runnable or copy-pastable on a single surface; mixed-surface
-    /// prose belongs in `next_step` instead. Renderers prefix this with
-    /// `run:` in the UI and `--once` output.
+    /// Executable command intended for copy-paste: shell invocation or
+    /// in-pane slash-command. Must be runnable on a single surface; prose,
+    /// config-edit instructions, and placeholder commands belong in
+    /// `next_step` instead. Renderers prefix this with `run:` in the UI
+    /// and `--once` output, and the alert copy path filters comments /
+    /// angle-bracket placeholders defensively.
     pub suggested_command: Option<String>,
     pub side_effects: Vec<String>,
     /// G-7: if true, this recommendation is rendered in a dedicated

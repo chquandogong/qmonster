@@ -66,7 +66,7 @@ pub fn eval_advisories(
 }
 
 fn log_storm_advisory(
-    _id: &ResolvedIdentity,
+    id: &ResolvedIdentity,
     signals: &SignalSet,
     gates: &PolicyGates,
 ) -> Option<Recommendation> {
@@ -81,7 +81,10 @@ fn log_storm_advisory(
         reason: "heavy ingress — use RTK-style ingress filter and produce a context-mode summary after archive".into(),
         severity: Severity::Concern,
         source_kind: SourceKind::Heuristic,
-        suggested_command: Some("tmux capture-pane -pS -2000 > ~/.qmonster/archive/$(date +%F)-<pane_id>.log".into()),
+        suggested_command: Some(format!(
+            "mkdir -p ~/.qmonster/archive && tmux capture-pane -p -S -2000 -t {} > ~/.qmonster/archive/$(date +%F)-{}.log",
+            id.identity.pane_id, id.identity.pane_id
+        )),
         side_effects: vec![],
         is_strong: false,
         next_step: None,
@@ -96,12 +99,12 @@ fn aggressive_log_storm() -> Recommendation {
             .into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Heuristic,
-        suggested_command: Some(
-            "# edit config/qmonster.toml: [logging] sensitivity = \"minimal\"".into(),
-        ),
+        suggested_command: None,
         side_effects: vec![],
         is_strong: false,
-        next_step: None,
+        next_step: Some(
+            "edit config/qmonster.toml: set [logging] sensitivity = \"minimal\"".into(),
+        ),
         profile: None,
     }
 }
@@ -175,10 +178,10 @@ fn aggressive_context_pressure_warning() -> Recommendation {
         reason: "quota-tight: apply terse output profile and archive anything >500 chars".into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Heuristic,
-        suggested_command: Some("# edit config/qmonster.toml: [token] strategy = \"terse\"".into()),
+        suggested_command: None,
         side_effects: vec![],
         is_strong: false,
-        next_step: None,
+        next_step: Some("edit config/qmonster.toml: set [token] strategy = \"terse\"".into()),
         profile: None,
     }
 }
@@ -214,10 +217,10 @@ fn aggressive_context_pressure_critical() -> Recommendation {
         reason: "quota-tight critical: clamp max-output tokens and archive all non-trivial panes".into(),
         severity: Severity::Risk,
         source_kind: SourceKind::Heuristic,
-        suggested_command: Some("# edit config/qmonster.toml: [token] strategy = \"terse\" + [logging] sensitivity = \"minimal\"".into()),
+        suggested_command: None,
         side_effects: vec![],
         is_strong: false,
-        next_step: None,
+        next_step: Some("edit config/qmonster.toml: set [token] strategy = \"terse\" and [logging] sensitivity = \"minimal\"".into()),
         profile: None,
     }
 }
@@ -476,10 +479,10 @@ fn verbose_review(
             .into(),
         severity: Severity::Concern,
         source_kind: SourceKind::Heuristic,
-        suggested_command: Some("# edit config/qmonster.toml: [review] style = \"terse\"".into()),
+        suggested_command: None,
         side_effects: vec![],
         is_strong: false,
-        next_step: None,
+        next_step: Some("edit config/qmonster.toml: set [review] style = \"terse\"".into()),
         profile: None,
     })
 }
@@ -490,12 +493,10 @@ fn aggressive_verbose_review() -> Recommendation {
         reason: "quota-tight: drop attribution footer and preamble on review output".into(),
         severity: Severity::Warning,
         source_kind: SourceKind::Heuristic,
-        suggested_command: Some(
-            "# edit ~/.claude/settings.json: \"attribution\": { \"commit\": false }".into(),
-        ),
+        suggested_command: None,
         side_effects: vec![],
         is_strong: false,
-        next_step: None,
+        next_step: Some("edit ~/.claude/settings.json: set attribution.commit = false".into()),
         profile: None,
     }
 }
@@ -518,10 +519,10 @@ fn quota_tight_nudge(
         reason: "sustained context pressure — consider enabling `quota_tight` in config to unlock aggressive token-saver recommendations".into(),
         severity: Severity::Concern,
         source_kind: SourceKind::Heuristic,
-        suggested_command: Some("# set quota_tight = true under [token] in config/qmonster.toml".into()),
+        suggested_command: None,
         side_effects: vec![],
         is_strong: false,
-        next_step: None,
+        next_step: Some("edit config/qmonster.toml: set [token] quota_tight = true".into()),
         profile: None,
     })
 }
