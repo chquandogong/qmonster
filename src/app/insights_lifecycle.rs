@@ -463,7 +463,7 @@ mod tests {
         let db_path = tmp.path().join("qmonster.db");
         let lifecycle = SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
         let context = Recommendation {
-            action: "context-pressure: checkpoint".into(),
+            action: "context-pressure: checkpoint",
             reason: "context near warning threshold".into(),
             severity: Severity::Warning,
             source_kind: SourceKind::Estimated,
@@ -474,7 +474,7 @@ mod tests {
             profile: None,
         };
         let cache = Recommendation {
-            action: "cache: drift detected — /compact will let cache rebuild".into(),
+            action: "cache: drift detected — /compact will let cache rebuild",
             reason: "cache hit ratio dropped from 0.72 to 0.38".into(),
             severity: Severity::Concern,
             source_kind: SourceKind::Heuristic,

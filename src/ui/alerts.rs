@@ -2406,7 +2406,7 @@ mod tests {
         let cmd = selected_alert_suggested_command(
             &state,
             &[],
-            &[report.clone()],
+            std::slice::from_ref(&report),
             &HashSet::new(),
             &HashMap::new(),
             &HashMap::new(),
@@ -2415,7 +2415,7 @@ mod tests {
         let identity = selected_alert_recommendation_identity(
             &state,
             &[],
-            &[report],
+            std::slice::from_ref(&report),
             &HashSet::new(),
             &HashMap::new(),
             &HashMap::new(),
@@ -2454,7 +2454,7 @@ mod tests {
         let meta = selected_alert_suggested_command_meta(
             &state,
             &[],
-            &[report.clone()],
+            std::slice::from_ref(&report),
             &HashSet::new(),
             &HashMap::new(),
             &HashMap::new(),
@@ -2463,7 +2463,7 @@ mod tests {
         .expect("flow should expose copy metadata");
         let entries = alert_items_with_command(
             &[],
-            &[report],
+            std::slice::from_ref(&report),
             &HashSet::new(),
             &HashMap::new(),
             &HashMap::new(),
@@ -2498,15 +2498,15 @@ mod tests {
         let report = base_report(vec![context, cache]);
         let now = Instant::now();
 
-        let keys = visible_alert_keys(&[], &[report.clone()], &HashMap::new(), now);
+        let keys = visible_alert_keys(&[], std::slice::from_ref(&report), &HashMap::new(), now);
         let warning = actionable_alert_keys_for_severity(
             &[],
-            &[report.clone()],
+            std::slice::from_ref(&report),
             &HashMap::new(),
             now,
             Severity::Warning,
         );
-        let fingerprints = alert_fingerprints(&[], &[report]);
+        let fingerprints = alert_fingerprints(&[], std::slice::from_ref(&report));
 
         assert_eq!(keys.len(), 1);
         assert!(keys[0].starts_with("flow|context-recovery|%1|"));
