@@ -132,7 +132,7 @@ fn pane_cards_render_current_command_row() {
         .collect();
     assert!(
         text.iter()
-            .any(|line| line.starts_with("cmd     : target/release/qmonster")),
+            .any(|line| line.starts_with("  cmd     : target/release/qmonster")),
         "pane list must expose the tmux current command: {text:?}"
     );
 
@@ -1758,10 +1758,11 @@ fn pane_card_path_line_wraps_when_narrow() {
     rep.current_path = "/home/operator/long/worktree/path/that/exceeds/width".into();
     let lines = pane_list_lines_with_width(&rep, true, false, 30);
     // Find the path row; it should span ≥ 2 lines with continuation rows
-    // indented to the value column (label_col + 2 = 10 spaces).
+    // indented to the value column. Sectioned rows are prefixed with the
+    // 2-space section indent, so the path row starts at column 2.
     let start = lines
         .iter()
-        .position(|l| line_text(l).starts_with("path    : "))
+        .position(|l| line_text(l).starts_with("  path    : "))
         .expect("path row must be present");
     let mut path_lines: Vec<&Line> = vec![&lines[start]];
     for line in lines.iter().skip(start + 1) {

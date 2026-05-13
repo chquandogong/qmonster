@@ -372,7 +372,18 @@ fn push_pane_section(
         return;
     }
     rows.push(pane_topic_line(pane_section_header(title), topic));
-    rows.extend(section_rows);
+    rows.extend(section_rows.into_iter().map(indent_pane_row));
+}
+
+const SECTION_INDENT: &str = "  ";
+const SECTION_INDENT_WIDTH: u16 = 2;
+
+fn indent_pane_row(mut row: PaneRenderLine) -> PaneRenderLine {
+    let mut spans = Vec::with_capacity(row.line.spans.len() + 1);
+    spans.push(Span::raw(SECTION_INDENT));
+    spans.append(&mut row.line.spans);
+    row.line.spans = spans;
+    row
 }
 
 fn pane_sectioned_rows(
@@ -383,20 +394,22 @@ fn pane_sectioned_rows(
     options: PaneSectionOptions,
 ) -> Vec<PaneRenderLine> {
     let mut rows = Vec::new();
+    let section_wrap = wrap_width.saturating_sub(SECTION_INDENT_WIDTH);
+    let detail_wrap = section_wrap.saturating_sub(SECTION_INDENT_WIDTH);
 
     let mut now_rows = pane_topic_lines(
-        render_pane_state_row_with_flash(report, now, flash, wrap_width),
+        render_pane_state_row_with_flash(report, now, flash, section_wrap),
         HelpTopic::PaneState,
     );
     now_rows.extend(pane_topic_lines(
-        blocking_signal_lines(&report.signals, wrap_width),
+        blocking_signal_lines(&report.signals, section_wrap),
         HelpTopic::PaneSignals,
     ));
     now_rows.extend(pane_topic_lines(
         signal_badge_lines(
             "signals",
             secondary_signal_chips(&report.signals),
-            wrap_width,
+            section_wrap,
         ),
         HelpTopic::PaneSignals,
     ));
@@ -408,7 +421,7 @@ fn pane_sectioned_rows(
             wrap_aligned_field(
                 "proposal",
                 &format!("{slash}  \u{2192} press p to accept \u{00b7} d to reject"),
-                wrap_width,
+                section_wrap,
             ),
             HelpTopic::PaneRecommendation,
         ));
@@ -416,15 +429,15 @@ fn pane_sectioned_rows(
     push_pane_section(&mut rows, "NOW", HelpTopic::PaneState, now_rows);
 
     let mut where_rows = pane_topic_lines(
-        wrap_aligned_field("path", &path_row_value(report), wrap_width),
+        wrap_aligned_field("path", &path_row_value(report), section_wrap),
         HelpTopic::PanePath,
     );
     where_rows.extend(pane_topic_lines(
-        wrap_aligned_field("cmd", &display_command(&report.current_command), wrap_width),
+        wrap_aligned_field("cmd", &display_command(&report.current_command), section_wrap),
         HelpTopic::PaneCommand,
     ));
     where_rows.extend(pane_topic_lines(
-        wrap_aligned_field("status", &state_summary_line(report), wrap_width),
+        wrap_aligned_field("status", &state_summary_line(report), section_wrap),
         HelpTopic::PaneStatus,
     ));
     push_pane_section(&mut rows, "WHERE", HelpTopic::PanePath, where_rows);
@@ -433,7 +446,7 @@ fn pane_sectioned_rows(
         metric_badge_lines(
             &report.signals,
             report.identity.identity.provider,
-            wrap_width,
+            section_wrap,
         ),
         HelpTopic::PaneMetrics,
     );
@@ -463,7 +476,7 @@ fn pane_sectioned_rows(
     push_pane_section(&mut rows, "PRESSURE", HelpTopic::PaneMetrics, pressure_rows);
 
     let runtime_rows = pane_topic_lines(
-        runtime_badge_lines_wrapped(&report.signals, wrap_width),
+        runtime_badge_lines_wrapped(&report.signals, section_wrap),
         HelpTopic::PaneRuntime,
     );
     push_pane_section(&mut rows, "RUNTIME", HelpTopic::PaneRuntime, runtime_rows);
@@ -475,27 +488,35 @@ fn pane_sectioned_rows(
         .take(options.recommendation_limit)
     {
         recommendation_rows.extend(pane_topic_lines(
-            wrap_aligned_field(severity_label(rec.severity), &rec.reason, wrap_width),
+            wrap_aligned_field(severity_label(rec.severity), &rec.reason, section_wrap),
             HelpTopic::PaneRecommendation,
         ));
         for detail in crate::ui::alerts::recommendation_detail_lines(rec) {
             let formatted = expanded_detail_field(&detail);
-            recommendation_rows.extend(pane_topic_lines(
-                reflow_already_aligned(&formatted, wrap_width),
-                HelpTopic::PaneRecommendation,
-            ));
+            recommendation_rows.extend(
+                pane_topic_lines(
+                    reflow_already_aligned(&formatted, detail_wrap),
+                    HelpTopic::PaneRecommendation,
+                )
+                .into_iter()
+                .map(indent_pane_row),
+            );
         }
         for line in format_profile_lines(rec) {
             let formatted = expanded_detail_field(&line);
-            recommendation_rows.extend(pane_topic_lines(
-                reflow_already_aligned(&formatted, wrap_width),
-                HelpTopic::PaneProfile,
-            ));
+            recommendation_rows.extend(
+                pane_topic_lines(
+                    reflow_already_aligned(&formatted, detail_wrap),
+                    HelpTopic::PaneProfile,
+                )
+                .into_iter()
+                .map(indent_pane_row),
+            );
         }
     }
     if recommendation_rows.is_empty() && options.show_empty_recommendations {
         recommendation_rows.extend(pane_topic_lines(
-            wrap_aligned_field("status", "no active recommendations", wrap_width),
+            wrap_aligned_field("status", "no active recommendations", section_wrap),
             HelpTopic::PaneRecommendation,
         ));
     }
