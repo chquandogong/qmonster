@@ -842,7 +842,7 @@ fn collect_pane_data_completeness(
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, u64>(2)?,
+                    row.get::<_, i64>(2)?.max(0) as u64,
                     row.get::<_, i64>(3)?,
                     row.get::<_, i64>(4)?,
                 ))
