@@ -1877,6 +1877,98 @@ fn expanded_pane_uses_sectioned_single_column_order() {
 }
 
 #[test]
+fn expanded_pane_help_topics_follow_sectioned_rows() {
+    use crate::domain::profile::{ProfileLever, ProviderProfile};
+    use crate::domain::recommendation::{Recommendation, RequestedEffect, Severity};
+    use crate::ui::help_glossary::HelpTopic;
+
+    let mut rep = sample_pane_report();
+    let now = std::time::Instant::now();
+    rep.idle_state = Some(IdleCause::InputWait);
+    rep.idle_state_entered_at = Some(now);
+    rep.effects.push(RequestedEffect::PromptSendProposed {
+        target_pane_id: rep.pane_id.clone(),
+        slash_command: "/compact".into(),
+        proposal_id: "proposal-1".into(),
+    });
+    rep.signals.cost_usd = Some(MetricValue::new(3.0, SourceKind::ProviderOfficial));
+    rep.signals.input_tokens = Some(MetricValue::new(1_234_567, SourceKind::ProviderOfficial));
+    rep.signals.output_tokens = Some(MetricValue::new(45_678, SourceKind::ProviderOfficial));
+    rep.signals.cached_input_tokens =
+        Some(MetricValue::new(150_000, SourceKind::ProviderOfficial));
+    rep.signals.cache_creation_input_tokens =
+        Some(MetricValue::new(770, SourceKind::ProviderOfficial));
+    rep.signals.runtime_facts.push(RuntimeFact::new(
+        RuntimeFactKind::Sandbox,
+        "workspace-write",
+        SourceKind::ProviderOfficial,
+    ));
+    rep.recommendations = vec![Recommendation {
+        action: "cache: drift detected",
+        reason: "cache drift detected - /compact will let cache rebuild".into(),
+        severity: Severity::Concern,
+        source_kind: SourceKind::Heuristic,
+        suggested_command: Some("/compact".into()),
+        side_effects: vec![],
+        is_strong: false,
+        next_step: Some("snapshot before compact".into()),
+        profile: Some(ProviderProfile {
+            name: "claude-default".into(),
+            levers: vec![ProfileLever {
+                key: "BASH_MAX_OUTPUT_LENGTH".into(),
+                value: "30000".into(),
+                citation: "provider docs".into(),
+                source_kind: SourceKind::ProviderOfficial,
+            }],
+            side_effects: vec![],
+            source_kind: SourceKind::ProjectCanonical,
+        }),
+    }];
+
+    let reports = vec![rep];
+    let mut state = ListState::default();
+    state.select(Some(0));
+
+    let lines = pane_list_lines_with_width(&reports[0], true, false, 120);
+    let text = line_texts(&lines);
+
+    let row_expectations = [
+        (index_containing(&text, "NOW"), HelpTopic::PaneState),
+        (index_containing(&text, "state"), HelpTopic::PaneState),
+        (
+            index_containing(&text, "proposal"),
+            HelpTopic::PaneRecommendation,
+        ),
+        (index_containing(&text, "WHERE"), HelpTopic::PanePath),
+        (index_containing(&text, "path"), HelpTopic::PanePath),
+        (index_containing(&text, "cmd"), HelpTopic::PaneCommand),
+        (index_containing(&text, "PRESSURE"), HelpTopic::PaneMetrics),
+        (index_containing(&text, "metrics"), HelpTopic::PaneMetrics),
+        (index_containing(&text, "tokens  :"), HelpTopic::PaneTokens),
+        (index_containing(&text, "token io"), HelpTopic::PaneTokens),
+        (index_containing(&text, "cache io"), HelpTopic::PaneTokens),
+        (index_containing(&text, "RUNTIME"), HelpTopic::PaneRuntime),
+        (index_containing(&text, "modes"), HelpTopic::PaneRuntime),
+        (
+            index_containing(&text, "RECOMMENDATIONS"),
+            HelpTopic::PaneRecommendation,
+        ),
+        (index_containing(&text, "CONCERN"), HelpTopic::PaneRecommendation),
+        (index_containing(&text, "next"), HelpTopic::PaneRecommendation),
+        (index_containing(&text, "profile"), HelpTopic::PaneProfile),
+        (index_containing(&text, "lever"), HelpTopic::PaneProfile),
+    ];
+
+    for (row, expected) in row_expectations {
+        assert_eq!(
+            pane_help_topic_at_row(&reports, &state, row as u16, 120),
+            Some(expected),
+            "row {row} should map to {expected:?}: {text:#?}"
+        );
+    }
+}
+
+#[test]
 fn collapsed_pane_keeps_flat_layout_without_section_headers() {
     let mut rep = sample_pane_report();
     rep.current_path = "/home/chquan/Qmonster".into();
