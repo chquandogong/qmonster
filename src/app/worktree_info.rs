@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WorktreeSplitSuggestion {
@@ -179,13 +180,6 @@ pub(crate) enum WorktreeRole {
 /// rev-parse --git-common-dir --git-dir` once; spawning git is the
 /// only side effect. Returns `None` on empty input, non-existent
 /// cwd, non-git cwd, git failure, or any parse anomaly.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Consumed by WorktreeRoleCache in Task 2 of the worktree-role plan; remove this attribute when wiring the cache."
-    )
-)]
 pub(crate) fn resolve_worktree_role(current_path: &str) -> Option<WorktreeRole> {
     let trimmed = current_path.trim();
     if trimmed.is_empty() {
@@ -225,6 +219,111 @@ fn canonicalize_git_path(cwd: &Path, raw: &str) -> Option<PathBuf> {
         cwd.join(candidate)
     };
     std::fs::canonicalize(&absolute).ok()
+}
+
+/// Default TTL for cached worktree-role lookups. At nominal 2 s tmux
+/// poll cadence this covers ~5 ticks, so a six-pane setup spawns at
+/// most ~6 git processes per 10 s instead of ~6 per tick. Tune via
+/// `with_ttl` if real-world poll cadence diverges.
+pub(crate) const WORKTREE_ROLE_TTL: Duration = Duration::from_secs(10);
+
+/// Default cap; per-pane keys with cleanup at the LRU-by-insertion
+/// edge are sufficient — operators rarely watch >128 distinct cwds.
+pub(crate) const WORKTREE_ROLE_CACHE_CAPACITY: usize = 128;
+
+#[derive(Debug)]
+pub(crate) struct WorktreeRoleCache {
+    entries: std::collections::HashMap<String, CachedRole>,
+    insertion_order: std::collections::VecDeque<String>,
+    ttl: Duration,
+    capacity: usize,
+    spawn_count: usize,
+}
+
+#[derive(Debug, Clone)]
+struct CachedRole {
+    role: Option<WorktreeRole>,
+    cached_at: std::time::Instant,
+}
+
+impl Default for WorktreeRoleCache {
+    fn default() -> Self {
+        Self::with_capacity_and_ttl(WORKTREE_ROLE_CACHE_CAPACITY, WORKTREE_ROLE_TTL)
+    }
+}
+
+impl WorktreeRoleCache {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "TTL-only constructor for callers that accept the default capacity; tests use it today and production wiring in Task 3 may swap to it if poll cadence diverges."
+        )
+    )]
+    pub(crate) fn with_ttl(ttl: Duration) -> Self {
+        Self::with_capacity_and_ttl(WORKTREE_ROLE_CACHE_CAPACITY, ttl)
+    }
+
+    pub(crate) fn with_capacity_and_ttl(capacity: usize, ttl: Duration) -> Self {
+        Self {
+            entries: std::collections::HashMap::with_capacity(capacity),
+            insertion_order: std::collections::VecDeque::with_capacity(capacity),
+            ttl,
+            capacity: capacity.max(1),
+            spawn_count: 0,
+        }
+    }
+
+    #[expect(
+        dead_code,
+        reason = "Production entry point that wraps lookup_at with Instant::now(); wired into the pane-card path row in Task 3 of the worktree-role plan."
+    )]
+    pub(crate) fn lookup(&mut self, current_path: &str) -> Option<WorktreeRole> {
+        self.lookup_at(current_path, std::time::Instant::now())
+    }
+
+    pub(crate) fn lookup_at(
+        &mut self,
+        current_path: &str,
+        now: std::time::Instant,
+    ) -> Option<WorktreeRole> {
+        if let Some(cached) = self.entries.get(current_path)
+            && now.saturating_duration_since(cached.cached_at) < self.ttl
+        {
+            return cached.role.clone();
+        }
+        let role = resolve_worktree_role(current_path);
+        self.spawn_count += 1;
+        self.insert(current_path.to_string(), role.clone(), now);
+        role
+    }
+
+    fn insert(&mut self, key: String, role: Option<WorktreeRole>, now: std::time::Instant) {
+        if !self.entries.contains_key(&key) {
+            self.insertion_order.push_back(key.clone());
+            while self.insertion_order.len() > self.capacity {
+                if let Some(oldest) = self.insertion_order.pop_front() {
+                    self.entries.remove(&oldest);
+                }
+            }
+        }
+        self.entries.insert(key, CachedRole { role, cached_at: now });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn spawn_count(&self) -> usize {
+        self.spawn_count
+    }
+
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn contains_key(&self, key: &str) -> bool {
+        self.entries.contains_key(key)
+    }
 }
 
 #[cfg(test)]
@@ -398,5 +497,56 @@ mod tests {
         assert!(resolve_worktree_role("").is_none());
         assert!(resolve_worktree_role("   ").is_none());
         assert!(resolve_worktree_role("/this/path/does/not/exist/qmonster-plan").is_none());
+    }
+
+    #[test]
+    fn worktree_role_cache_hits_within_ttl_and_misses_after() {
+        use std::time::{Duration, Instant};
+        let repo = clean_repo();
+        let key = repo.path().to_str().unwrap().to_string();
+
+        let mut cache = WorktreeRoleCache::with_ttl(Duration::from_secs(10));
+        let t0 = Instant::now();
+        let first = cache.lookup_at(&key, t0);
+        let second = cache.lookup_at(&key, t0 + Duration::from_secs(5));
+        let third = cache.lookup_at(&key, t0 + Duration::from_secs(11));
+
+        assert_eq!(first, second, "within-TTL lookup must return the cached value");
+        assert_eq!(cache.spawn_count(), 2, "TTL expiry must trigger a re-resolve");
+        assert!(matches!(third, Some(WorktreeRole::Primary)));
+    }
+
+    #[test]
+    fn worktree_role_cache_caps_entries_and_evicts_oldest() {
+        use std::time::{Duration, Instant};
+        let mut cache = WorktreeRoleCache::with_capacity_and_ttl(2, Duration::from_secs(60));
+        let t0 = Instant::now();
+
+        let _ = cache.lookup_at("/nonexistent/a", t0);
+        let _ = cache.lookup_at("/nonexistent/b", t0);
+        let _ = cache.lookup_at("/nonexistent/c", t0);
+
+        assert_eq!(cache.len(), 2, "cache must respect the capacity cap");
+        assert!(
+            !cache.contains_key("/nonexistent/a"),
+            "oldest entry must be evicted when capacity is exceeded"
+        );
+    }
+
+    #[test]
+    fn worktree_role_cache_caches_none_results_too() {
+        use std::time::{Duration, Instant};
+        let mut cache = WorktreeRoleCache::with_ttl(Duration::from_secs(10));
+        let t0 = Instant::now();
+
+        let first = cache.lookup_at("/nonexistent/qmonster-plan", t0);
+        let second = cache.lookup_at("/nonexistent/qmonster-plan", t0 + Duration::from_secs(1));
+
+        assert!(first.is_none() && second.is_none());
+        assert_eq!(
+            cache.spawn_count(),
+            1,
+            "None results must be memoized too — otherwise every non-git pane spawns git every tick"
+        );
     }
 }
