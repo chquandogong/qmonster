@@ -204,7 +204,7 @@ jobs:
           )
 
       - name: Generate artifact attestations
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             dist/qmonster-${{ env.TAG_NAME }}-linux-x86_64.tar.gz
