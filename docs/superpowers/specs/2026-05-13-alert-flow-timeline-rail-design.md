@@ -98,14 +98,16 @@ should read them as one response path.
 ### 5.1 Context Recovery
 
 The initial flow family groups recommendation-class alerts on the same
-pane when at least two of these categories are present:
+pane when at least two of these categories are present. Matching is by
+classifier, not by rendering text, because some current action strings
+use Unicode punctuation.
 
-| Category | Matching actions |
+| Category | Classifier |
 | --- | --- |
-| Context pressure | `context-pressure: checkpoint`, `context-pressure: act now` |
-| Cache compact guidance | `cache: avoid /compact while cache is hot`, `cache: /compact is safe - cache is cold`, `cache: drift detected - /compact will let cache rebuild` |
-| Cache anomaly | `anomaly: cache discontinuity detected` |
-| Snapshot precondition | `snapshot before 5h window resets`, `snapshot before weekly window resets` |
+| Context pressure | `action.starts_with("context-pressure:")` |
+| Cache compact guidance | `action.starts_with("cache:")` and `action` or `reason` mentions `/compact` |
+| Cache anomaly | `action == "anomaly: cache discontinuity detected"` |
+| Snapshot precondition | `action.starts_with("snapshot before ")` |
 
 The display name is `Context recovery`.
 
@@ -191,9 +193,8 @@ sort included recommendation keys before joining.
 ## 8. Severity, Source, and Freshness
 
 - `severity`: maximum severity among included alerts.
-- `source_kind`: highest-authority included source by current UI
-  display ordering if one exists; otherwise use the source of the most
-  severe included alert.
+- `source_kind`: highest-authority included source using the explicit
+  order `ProviderOfficial > ProjectCanonical > Heuristic > Estimated`.
 - `timestamp`: latest included alert timestamp.
 - `is_new`: true when any included alert is new.
 - `hide_deadline`: pending only when the flow key itself is pending.
