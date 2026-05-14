@@ -25,6 +25,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # Catch new vulnerable / disallowed-license deps at PR diff time
+      # — runs only on pull_request events, before any cargo work. Push
+      # / workflow_dispatch events skip this step. fail-on-severity is
+      # set to moderate so MDR-accepted low advisories (e.g. the
+      # accepted lru RUSTSEC-2026-0002) do not block routine PRs.
+      - name: Dependency Review (PR only)
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure
+
       - name: Install Rust toolchain
         run: |
           rustup toolchain install 1.88.0 --profile minimal
