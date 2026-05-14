@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v2.3.5 - patches on top of v2.3.0 (supply-chain hardening Phase A+B + cli_version tail v-prefix gate + alerts UX polish + Trusted Publishers OIDC-only publish-auth verified on npm@11.14.1 + metrics overlay card polish). v2.3.0 surface preserved: post-v2.2.0 stabilization + UX bundle on top of v2.2.0: path-row worktree-role hint, sectioned pane panel layout with tree branches, alert related-context rail, post-v2.2.0 critical-review 9-item bundle + footer chip mouse actions, copied-outcome lifecycle stabilization + done_when_refs 100 % coverage, settings module split, dependabot bump (thiserror 2 / crossterm 0.29 / rusqlite 0.39 / toml 1.1 / toml_edit 0.25 / attest-build-provenance v4)"
+  mission_title: "Qmonster v2.3.6 - patches on top of v2.3.0 (supply-chain hardening Phase A+B + cli_version tail v-prefix gate + alerts UX polish + Trusted Publishers OIDC-only publish-auth verified on npm@11.14.1 + metrics overlay card polish + Phase D hygiene bundle: ci.yml cache key, release.yml id-token comment, README install notice, SECURITY.md AI tooling expectations, dependency-review-action PR gate, prebuilt-npm MDR draft). v2.3.0 surface preserved: post-v2.2.0 stabilization + UX bundle on top of v2.2.0: path-row worktree-role hint, sectioned pane panel layout with tree branches, alert related-context rail, post-v2.2.0 critical-review 9-item bundle + footer chip mouse actions, copied-outcome lifecycle stabilization + done_when_refs 100 % coverage, settings module split, dependabot bump (thiserror 2 / crossterm 0.29 / rusqlite 0.39 / toml 1.1 / toml_edit 0.25 / attest-build-provenance v4)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 214
-  latest_version: "2.3.5"
+  total_revisions: 215
+  latest_version: "2.3.6"
 
 timeline:
   - change_id: "initial"
@@ -22532,6 +22532,166 @@ timeline:
       - If publish fails, restore the env block + early-exit in a v2.3.6
         hotfix, capture the npm error verbatim in the evidence ledger, and
         coordinate with the npmjs.com TP entry to identify the field drift.
+
+  - change_id: v2.3.6-phase-d-bundle
+    semantic_version: 2.3.6
+    change_sequence: 215
+    date: 2026-05-14
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: '커밋, 푸쉬, 태그 및 publish 해줘'
+      after the Phase D batches landed."
+    change_type: hardening
+    persistence: permanent
+    intent: Phase D hygiene bundle — post-v2.3.5 refinement triggered by the 2026-05-14 supply-chain incident-response report. CI cache key hashes the workflow file, release.yml header reminds future contributors about Sigstore identity sharing, README install block explains the source-distribution surface, SECURITY.md codifies AI tooling guardrails, ci.yml gains a PR-only dependency-review gate, and a prebuilt-npm-distribution MDR draft is recorded.
+    intent_ko: >
+      v2.3.6 은 2026-05-14 공급망 incident-response 리포트 (`.docs/claude/v2.3.x-supplychain-incident-response-report.md`)
+      대응의 Phase D 일괄 묶음. 새 기능 없음 — 보안 자세 다듬기. (1) D1.1 ci.yml cargo 캐시 키가
+      `Cargo.lock` 외에 `.github/workflows/ci.yml` 도 hash 에 포함해 워크플로 변경이 캐시 재사용을
+      무효화. (2) D1.2 release.yml `jobs:` 위에 헤더 코멘트 추가 — id-token / attestations
+      권한을 가진 잡에 새 step 을 넣을 때 Sigstore identity 가 공유됨을 환기. (3) D1.3 README
+      Quick Start install 박스에 Notice 콜아웃 추가 — `npm install qmonster` 가 prebuilt 다운로드가
+      아니라 로컬 cargo build 트리거임을 명시하고 prebuilt 다운로드 경로 안내. (4) D1.4 SECURITY.md
+      "AI Tooling Expectations" 섹션 6 가드레일 명문화. (5) D3.1 ci.yml 에 SHA-pinned
+      `actions/dependency-review-action@2031cfc0…` (v4.9.0) PR-only step 추가, fail-on-severity=moderate.
+      (6) D4.3 `.mission/decisions/MDR-DRAFT-v2.3.x-supplychain-prebuilt-npm-distribution.md` 초안
+      — Option A (status quo) / B (qmonster-bin sibling) / C (postinstall rejected) 비교, Option A
+      유지 권고. 이 릴리스는 v2.3.5 이후 NPM_TOKEN secret 이 삭제된 상태의 첫 OIDC-only publish — TP
+      가 정상 동작하는지 재확인 겸함.
+    issue_or_context: >-
+      Summary:
+
+      The 2026-05-14 supply-chain incident-response report
+      (`.docs/claude/v2.3.x-supplychain-incident-response-report.md`) catalogued five HIGH/MEDIUM
+      and four LOW residual risks beyond the v2.3.5 OIDC-only milestone. Phase D bundles the
+      autonomous-actionable items in one micro-release; user-side UI actions and decision-pending
+      items are tracked separately:
+
+      - **D1.1 — ci.yml cache key includes workflow file hash** (commit `f9cf8a8`). Closes report
+        §9.1 (HIGH). The cargo cache `key` and `restore-keys` now hash both `Cargo.lock` and
+        `.github/workflows/ci.yml`, so a workflow change (new gate, new step) invalidates cache
+        reuse instead of slipping through the `cargo-${{ runner.os }}-` fallback. Ref-scoping
+        remains the primary defense; this is belt-and-suspenders.
+
+      - **D1.2 — release.yml id-token discipline comment** (commit `f9cf8a8`). Closes report
+        §9.3 (MEDIUM). A header comment block above `jobs:` reminds contributors / AI-generated
+        edits that any new step added to a job carrying `id-token: write` or `attestations: write`
+        inherits the same Sigstore identity, and steps with untrusted input must split into a
+        narrower job. Behavioural no-op; pure guard against future drift.
+
+      - **D1.3 — README install notice** (commit `f9cf8a8`). Closes report §9.5 (info). The Quick
+        Start Install block now carries a Notice callout that `npm install qmonster` is a source
+        distribution, not a prebuilt binary download; ~270 transitive crates compile locally, each
+        with potential `build.rs` execution. The notice points operators at the
+        `gh release download` + `gh attestation verify` flow for the maintainer-built tarball.
+        Phase B3 already added "Verifying a download" inside the Releases section; this is the
+        sharper Install-time call-out the report flagged as missing.
+
+      - **D1.4 — SECURITY.md AI Tooling Expectations** (commit `f9cf8a8`). Closes report §11
+        forward-looking AI bot guardrails. A new section codifies six guardrails that take effect
+        the moment any GitHub OAuth-delegated AI agent enters the repository: no `workflow:write`
+        to any AI agent, separate bot identity from maintainer, bot commits via PR only, ruleset
+        bypass unchanged from admin-only, raw tmux content must not flow unmasked to hosted
+        models, and the maintainer's daily-use PAT should split the `workflow` scope into a
+        separate fine-grained token. Pure documentation; activates the constraints when the
+        scenario materialises.
+
+      - **D1.5 — Evidence ledger Watchpoints** (gitignored, local-only). Five trigger rows for the
+        lru advisory, dependabot weekly run, TP drift, npm CLI rotation, and the C1 trigger.
+
+      - **D3.1 — actions/dependency-review-action PR gate** (commit `eb00f66`). Closes report
+        §10.5. ci.yml gains a SHA-pinned step
+        `actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48` (v4.9.0)
+        gated on `github.event_name == 'pull_request'`, with `fail-on-severity: moderate` so
+        MDR-accepted low advisories do not block routine PRs and
+        `comment-summary-in-pr: on-failure`. Complements `cargo audit` by catching findings at
+        PR diff time instead of post-push.
+
+      - **D4.3 — Prebuilt npm distribution MDR draft** (commit `c17eb3e`). Closes report §10.4
+        (decision-pending). `.mission/decisions/MDR-DRAFT-v2.3.x-supplychain-prebuilt-npm-distribution.md`
+        weighs Option A (source distribution, status quo), Option B (`qmonster-bin` sibling
+        prebuilt-binary package via npm `optionalDependencies` pattern), and Option C (`postinstall`
+        download on the existing package, rejected on principle for conflicting with the A6
+        lifecycle-script guard). Recommends Option A for the v2.3.x line, with four explicit
+        re-open triggers tying back to cargo-vet adoption, install friction signals, build.rs
+        0-day events, and co-maintainer capacity.
+
+      Items intentionally not closed by v2.3.6 (recorded as pending in the evidence ledger
+      Watchpoints + task list): D2.1+D2.2 secret scanning expansion (gh api silently rejects;
+      user-side UI toggle only), D2.3 PAT scope split (user-side GitHub Settings), D3.2 cargo-vet
+      adoption (multi-day initiative with policy decision), D4.1 co-maintainer + admin separation
+      (governance decision), D4.2 required_signatures (same as C1, deferred earlier).
+
+      First OIDC-only publish without NPM_TOKEN being present anywhere in the repository secrets
+      (deleted by the maintainer after v2.3.5 success). If publish succeeds, it re-confirms the
+      Trusted Publisher entry on npmjs.com is still aligned with `release.yml`; if it fails, the
+      recovery path is the v2.3.3 hotfix pattern (restore env block + new NPM_TOKEN secret) in a
+      v2.3.7 follow-up.
+
+      Validation snapshot: `cargo check --offline` passes; `cargo test --lib` 1564/1564 (no `src/`
+      changes since v2.3.5); mission.yaml + mission-history.yaml meta updated.
+    changes:
+      added:
+        - ".mission/decisions/MDR-DRAFT-v2.3.x-supplychain-prebuilt-npm-distribution.md (D4.3 decision draft)."
+      modified:
+        - ".github/workflows/ci.yml: cargo cache key + restore-keys hash both Cargo.lock and .github/workflows/ci.yml; new SHA-pinned PR-only Dependency Review step (actions/dependency-review-action@2031cfc0… v4.9.0)."
+        - ".github/workflows/release.yml: header comment above `jobs:` reminding contributors about id-token / attestations propagation across steps in the same job."
+        - "README.md: Quick Start → Install Notice callout describing the source-distribution surface and the prebuilt-binary download flow."
+        - "SECURITY.md: new AI Tooling Expectations section with six guardrails."
+        - "Cargo.toml + Cargo.lock + package.json + mission.yaml + VERSION.md + README.md: version 2.3.5 → 2.3.6."
+      removed: []
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime:
+        "No `src/` code change. CI / release workflows gain a dependency-review step on pull_request
+        events plus tighter cache invalidation; release.yml gets a documentation-only header
+        comment. README + SECURITY.md grow operator-facing sections. The MDR draft is a decision
+        artefact under .mission/decisions/."
+      tests:
+        Unchanged at 1564 lib + supporting integration tests. Validation reduced to
+        `cargo check --offline`.
+      ledger:
+        1 new timeline entry (sequence 215); meta total_revisions 214 → 215, latest_version
+        2.3.5 → 2.3.6.
+      npm:
+        package.json version 2.3.6; CI publication runs the same `Release and Package Mirror`
+        workflow as v2.3.5, with `npm@11.14.1` and OIDC-only authentication. NPM_TOKEN secret is
+        gone from repo settings, so this publish has no token fallback — if TP drifts at the
+        npmjs.com side, the publish step fails hard.
+      observable_effects:
+        - "Footer version badge displays `v2.3.6` once the tag is cut."
+        - "ci.yml on a fresh PR shows the new Dependency Review step blocking when a moderate+
+          advisory is introduced; the post-push cargo-audit gate continues to run regardless."
+        - "Cargo cache misses on the next PR that edits `.github/workflows/ci.yml` even if
+          Cargo.lock is unchanged — by design."
+        - "release.yml publish step succeeds via OIDC only, confirming TP is still aligned."
+    breaking: false
+    risk:
+      Low overall. The biggest single risk is OIDC publish-auth failing if the npmjs.com TP entry
+      has drifted since v2.3.5 — recoverable via the v2.3.3 hotfix pattern in a v2.3.7 follow-up.
+      Dependency-review-action is a new external action surface but SHA-pinned, scoped to
+      pull_request only, with `contents: read` already at workflow level. Cache key change is
+      defensive — worst case is a one-time cache miss on the next PR. README / SECURITY.md / MDR
+      are documentation-only.
+    related_commits:
+      - f9cf8a8 # D1 batch (cache key + id-token comment + README notice + SECURITY AI guardrails)
+      - eb00f66 # D3.1 dependency-review-action PR gate
+      - c17eb3e # D4.3 prebuilt-npm-distribution MDR draft
+      - e044442 # v2.3.5 publication verification (immediate prior state record)
+    follow_up:
+      - Watch the v2.3.6 release workflow end-to-end. Confirm the publish step succeeds without
+        NPM_TOKEN anywhere in repo settings — that re-confirms Trusted Publishers on the
+        npmjs.com side.
+      - D2.1 + D2.2 secret scanning expansion: gh api PATCH was silently rejected; maintainer
+        toggles via https://github.com/chquandogong/qmonster/settings/security_analysis.
+      - D2.3 PAT scope review: current PAT carries `gist, read:org, repo, workflow`; split
+        `workflow` into a separate fine-grained token for daily-use isolation.
+      - D3.2 cargo-vet adoption: separate workstream, 1-2 days scoping plus policy decision on
+        Mozilla / Bytecode Alliance imports + the initial exempt baseline.
+      - D4.1 co-maintainer + admin separation, D4.2 required_signatures (same as C1, deferred),
+        D4.3 final pick between Option A and Option B per the new MDR.
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

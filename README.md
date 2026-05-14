@@ -34,11 +34,11 @@ taking destructive action by default.
 
 | Surface             | Current                                                |
 | ------------------- | ------------------------------------------------------ |
-| Release             | `v2.3.5`                                               |
-| npm                 | `qmonster@2.3.5`                                       |
+| Release             | `v2.3.6`                                               |
+| npm                 | `qmonster@2.3.6`                                       |
 | Rust                | `1.88+`                                                |
 | Runtime version     | `git describe --tags --always --dirty` from `build.rs` |
-| Cargo crate version | `2.3.5`                                                |
+| Cargo crate version | `2.3.6`                                                |
 
 ## Why
 
@@ -89,10 +89,10 @@ cargo build --release
 > provenance) instead of compiling locally:
 >
 > ```sh
-> gh release download v2.3.5 --pattern '*-linux-x86_64.tar.gz' --repo chquandogong/qmonster
-> gh attestation verify qmonster-v2.3.5-linux-x86_64.tar.gz --owner chquandogong
-> tar -xzf qmonster-v2.3.5-linux-x86_64.tar.gz
-> ./qmonster-v2.3.5-linux-x86_64/qmonster --help
+> gh release download v2.3.6 --pattern '*-linux-x86_64.tar.gz' --repo chquandogong/qmonster
+> gh attestation verify qmonster-v2.3.6-linux-x86_64.tar.gz --owner chquandogong
+> tar -xzf qmonster-v2.3.6-linux-x86_64.tar.gz
+> ./qmonster-v2.3.6-linux-x86_64/qmonster --help
 > ```
 
 **Set the stage** — Qmonster watches a tmux session that already has
