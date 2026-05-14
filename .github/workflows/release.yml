@@ -238,13 +238,17 @@ jobs:
     name: Publish npm and GitHub Packages mirrors
     needs: release
     runs-on: ubuntu-latest
-    # npm publish auth runs exclusively through Trusted Publishers
-    # (OIDC). The npmjs.com side is registered for chquandogong/qmonster
-    # against this workflow file; the publish step below relies on the
-    # id-token: write permission below to exchange a short-lived OIDC
-    # token for a publish credential. NPM_TOKEN is retired — no
-    # fallback path remains. A misconfigured TP entry on the npmjs.com
-    # side will fail the publish step rather than silently re-auth.
+    # npm publish auth target is Trusted Publishers (OIDC). The
+    # npmjs.com entry is registered for chquandogong/qmonster against
+    # this workflow file. id-token: write below exchanges a short-lived
+    # OIDC token for both provenance signing and the publish
+    # credential. NODE_AUTH_TOKEN env stays as a fallback while we
+    # verify the TP publish-auth path works end-to-end on the upgraded
+    # npm CLI — v2.3.2 attempted OIDC-only with stock npm 10.x and the
+    # publish PUT returned 404 (provenance signing did work). v2.3.3
+    # bumps the CLI to 11.5+ via the upgrade step below so the TP path
+    # is actually exercised; once a release succeeds with the env block
+    # removed, the fallback can be retired again.
     permissions:
       contents: read # checkout
       id-token: write # npm OIDC / Trusted Publishers
@@ -271,10 +275,24 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Upgrade npm for Trusted Publishers publish-auth
+        # setup-node@v6 + node 20 ships npm 10.x; Trusted Publishers
+        # publish-auth (separate from provenance signing, which works
+        # on older npm) requires npm 11.5+. Pull the latest 11.x line.
+        run: |
+          npm install -g npm@11
+          npm --version
+
       - name: Publish canonical npm package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "NPM_TOKEN is not configured; skipping npmjs publish."
+            exit 0
+          fi
           if npm view "qmonster@$version" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
             echo "qmonster@$version already exists on npmjs; skipping."
             exit 0

@@ -28,10 +28,13 @@ cargo clippy --all-targets -- -D warnings
 
 It then builds the release binary, creates or updates the GitHub Release,
 publishes `qmonster` to npmjs via Trusted Publishers OIDC (npmjs.com
-side is registered for chquandogong/qmonster against this workflow),
-and publishes the scoped GitHub Packages mirror using `GITHUB_TOKEN`.
-Release assets are also signed with GitHub artifact attestations, and
-the Linux tarball gets a dedicated SBOM attestation.
+side is registered for chquandogong/qmonster against this workflow,
+with `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` as a transitional
+fallback while we verify the TP publish-auth path on the upgraded npm
+CLI), and publishes the scoped GitHub Packages mirror using
+`GITHUB_TOKEN`. Release assets are also signed with GitHub artifact
+attestations, and the Linux tarball gets a dedicated SBOM
+attestation.
 
 Generated GitHub Release notes use `.github/release.yml`. Keep README
 focused on the current product surface; put patch-level implementation
@@ -120,9 +123,8 @@ gh api /repos/chquandogong/qmonster/rulesets \
 
 ### npmjs publish auth — Trusted Publishers
 
-`release.yml`'s `publish` job carries `id-token: write`, and `npm
-publish` runs exclusively through Trusted Publishers OIDC. The
-matching entry on npmjs.com:
+`release.yml`'s `publish` job carries `id-token: write`, and the
+matching Trusted Publisher entry on npmjs.com:
 
 - Provider: GitHub Actions
 - Organization or user: `chquandogong`
@@ -130,13 +132,17 @@ matching entry on npmjs.com:
 - Workflow filename: `release.yml`
 - Environment name: (blank — the workflow does not use a GitHub Environment)
 
-`NPM_TOKEN` was retired in v2.3.2 after the Trusted Publisher entry
-was verified end-to-end. There is no fallback path: if the TP entry
-on the npmjs.com side is removed or its fields drift from the
-workflow signature, the publish step fails hard instead of silently
-re-authenticating. Recovery is to fix the TP entry (or temporarily
-re-introduce a `NODE_AUTH_TOKEN` env block + secret pair) and
-re-tag.
+A separate `Upgrade npm for Trusted Publishers publish-auth` step in
+the publish job runs `npm install -g npm@11` before publishing.
+`setup-node@v6` + node 20 ships npm 10.x, and TP publish-auth
+(distinct from provenance signing) requires npm 11.5+. v2.3.2
+attempted OIDC-only publish with stock npm 10.x and the PUT
+returned 404 even though provenance signing succeeded; v2.3.3
+introduces the upgrade step and keeps `NODE_AUTH_TOKEN: ${{
+secrets.NPM_TOKEN }}` as a transitional fallback. Once a release
+succeeds with the env block removed (and OIDC publish confirmed in
+the workflow log), the fallback can be retired again — at that
+point `NPM_TOKEN` secret deletion is the final step.
 
 ### Workflow permissions surface
 
