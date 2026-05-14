@@ -628,6 +628,13 @@ fn card_rows(
     mem_observations: &HashMap<String, MemObservation>,
     pressure: PressureObservation,
 ) -> Vec<Line<'static>> {
+    if matches!(
+        report.identity.identity.provider,
+        crate::domain::identity::Provider::Qmonster
+    ) {
+        return qmonster_card_rows(report, mem_observations);
+    }
+
     let bar_cells = bar_cells_for_left_half(left_half_width);
     let s = &report.signals;
 
@@ -676,22 +683,49 @@ fn card_rows(
     }
 
     if !report.anomalies.is_empty() {
-        let count = report.anomalies.len();
-        let pieces: Vec<String> = report
-            .anomalies
-            .iter()
-            .map(|a| format!("{}:{}", a.kind.label(), a.confidence.label()))
-            .collect();
-        let summary = format!("ANOMALIES {} {}", count, pieces.join(", "));
-        lines.push(Line::from(Span::styled(
-            summary,
-            Style::default().fg(theme::severity_color(
-                crate::domain::recommendation::Severity::Concern,
-            )),
-        )));
+        lines.push(anomalies_summary_line(report));
     }
 
     lines
+}
+
+fn qmonster_card_rows(
+    report: &PaneReport,
+    mem_observations: &HashMap<String, MemObservation>,
+) -> Vec<Line<'static>> {
+    let obs = mem_observations
+        .get(&report.pane_id)
+        .cloned()
+        .unwrap_or_default();
+    let rss_arrow = obs.rss_trend.map(|t| t.arrow()).unwrap_or("─");
+    let mem_text = report
+        .signals
+        .process_memory_mb
+        .as_ref()
+        .map(|m| format!("MEM {} MiB {}", m.value as i64, rss_arrow))
+        .unwrap_or_else(|| format!("MEM {DASH}"));
+
+    let mut lines = vec![Line::from(mem_text)];
+    if !report.anomalies.is_empty() {
+        lines.push(anomalies_summary_line(report));
+    }
+    lines
+}
+
+fn anomalies_summary_line(report: &PaneReport) -> Line<'static> {
+    let count = report.anomalies.len();
+    let pieces: Vec<String> = report
+        .anomalies
+        .iter()
+        .map(|a| format!("{}:{}", a.kind.label(), a.confidence.label()))
+        .collect();
+    let summary = format!("ANOMALIES {} {}", count, pieces.join(", "));
+    Line::from(Span::styled(
+        summary,
+        Style::default().fg(theme::severity_color(
+            crate::domain::recommendation::Severity::Concern,
+        )),
+    ))
 }
 
 fn card_row(
@@ -1689,6 +1723,45 @@ mod tests {
             !row4.contains("·"),
             "row 4 should drop the ` · ` separator when only COST is present: {row4}"
         );
+    }
+
+    #[test]
+    fn qmonster_metrics_card_omits_unrelated_placeholder_rows() {
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::MetricValue;
+        use ratatui::layout::Rect;
+
+        let mut rep = base_test_report("qmonster:1:monitor");
+        rep.signals.process_memory_mb = Some(MetricValue::new(188.0, SourceKind::Heuristic));
+
+        let lines = render_metrics_lines(
+            &MetricsOverlay::default(),
+            "tgt",
+            std::slice::from_ref(&rep),
+            Rect::new(0, 0, 120, 30),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
+        let rendered = lines
+            .iter()
+            .map(line_to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(
+            rendered.contains("qmonster:1:monitor"),
+            "missing qmonster card divider: {rendered}"
+        );
+        assert!(
+            rendered.contains("MEM 188 MiB"),
+            "missing MEM row: {rendered}"
+        );
+        for unrelated in ["CTX", "5H", "7D", "CACHE", "TOKENS", "COST", "MEM-FILE"] {
+            assert!(
+                !rendered.contains(unrelated),
+                "qmonster card should omit unrelated {unrelated} placeholder row:\n{rendered}"
+            );
+        }
     }
 
     #[test]

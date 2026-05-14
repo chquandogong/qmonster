@@ -814,6 +814,9 @@ side_effects (N):
 
 - divider 한 줄 (`━ provider:instance:role · pane_id ━━…━`)
 - 4개 content 행 — 두 열로 분리 (`<left> │ <right>`)
+- Qmonster monitor pane은 provider token/cache/quota surface가 없으므로
+  placeholder 행을 만들지 않고 `MEM <v> MiB <arrow>` compact 행만
+  보여줍니다.
 
 **왼쪽 열 (bounded)**: CTX / 5H / 7D / CACHE.
 
