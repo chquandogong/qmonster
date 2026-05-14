@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install Rust toolchain
         run: |
@@ -32,7 +32,7 @@ jobs:
           rustup component add rustfmt clippy
 
       - name: Cache Cargo registry and target
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.cargo/registry
@@ -60,6 +60,34 @@ jobs:
 
       - name: Audit cargo dependencies for known advisories
         run: cargo audit
+
+      - name: Verify npm package has no lifecycle scripts or runtime deps
+        # Supply-chain guard: the npm wrapper must remain a thin
+        # cargo-run shim. Lifecycle scripts (preinstall, install,
+        # postinstall, prepare, prepublishOnly, prepack) or a non-empty
+        # dependencies/devDependencies list would expand the published
+        # tarball's trust surface — fail CI before they reach the
+        # registry.
+        run: |
+          set -euo pipefail
+          node -e '
+            const pkg = require("./package.json");
+            const forbidden = ["preinstall","install","postinstall","prepare","prepublishOnly","prepack"];
+            const scripts = pkg.scripts || {};
+            const badScripts = forbidden.filter(n => Object.prototype.hasOwnProperty.call(scripts, n));
+            const deps = Object.keys(pkg.dependencies || {});
+            const devDeps = Object.keys(pkg.devDependencies || {});
+            const failures = [];
+            if (badScripts.length) failures.push("forbidden lifecycle scripts: " + badScripts.join(", "));
+            if (deps.length) failures.push("non-empty dependencies: " + deps.join(", "));
+            if (devDeps.length) failures.push("non-empty devDependencies: " + devDeps.join(", "));
+            if (failures.length) {
+              console.error("ERROR: npm package surface check failed:");
+              for (const f of failures) console.error("  - " + f);
+              process.exit(1);
+            }
+            console.log("OK: package.json has no lifecycle scripts and no runtime dependencies.");
+          '
 
       - name: Dry-run npm package
         run: npm pack --dry-run

@@ -5,33 +5,40 @@ maintained, trustworthy, and easy to evaluate from the GitHub page.
 
 ## Already In Place
 
-| Area                    | Status                                                                           |
-| ----------------------- | -------------------------------------------------------------------------------- |
-| README first impression | Banner, badges, short product summary, quick start, data contract                |
-| Release automation      | GitHub Release assets, npm publish, GitHub Packages mirror                       |
-| CI                      | fmt, whitespace, tests, clippy, npm package dry-run                              |
-| Community routing       | Issue forms, PR template, Discussion templates, support doc                      |
-| Security routing        | `SECURITY.md` and private advisory link                                          |
-| Dependency automation   | Dependabot for Cargo, npm, and GitHub Actions                                    |
-| Social preview          | Uploaded in GitHub Settings; source asset at `docs/assets/qmonster-social-preview.png` |
-| Package metadata        | npm keywords, repository, homepage, license, files allow-list                    |
-| Ownership routing       | `.github/CODEOWNERS`                                                             |
-| Release notes           | `.github/release.yml` generated-notes categories                                 |
+| Area                    | Status                                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| README first impression | Banner, badges, short product summary, quick start, data contract                        |
+| Release automation      | GitHub Release assets, npm publish, GitHub Packages mirror                               |
+| CI                      | fmt, whitespace, tests, clippy, npm package dry-run                                      |
+| Community routing       | Issue forms, PR template, Discussion templates, support doc                              |
+| Security routing        | `SECURITY.md` and private advisory link                                                  |
+| Dependency automation   | Dependabot for Cargo, npm, and GitHub Actions                                            |
+| Social preview          | Uploaded in GitHub Settings; source asset at `docs/assets/qmonster-social-preview.png`   |
+| Package metadata        | npm keywords, repository, homepage, license, files allow-list                            |
+| Ownership routing       | `.github/CODEOWNERS`                                                                     |
+| Release notes           | `.github/release.yml` generated-notes categories                                         |
 | Release provenance      | GitHub artifact attestations, SBOM attestation, SPDX-JSON SBOM, SBOM diff + risk summary |
-| Compatibility docs      | `docs/COMPATIBILITY.md`                                                          |
-| Demo fixtures           | `examples/demo/` sanitized provider tails                                        |
-| Architecture visual     | `docs/assets/qmonster-architecture.svg`                                          |
-| Dashboard screenshot    | `docs/assets/qmonster-dashboard.png` (embedded in README hero)                   |
-| Community conduct       | `CODE_OF_CONDUCT.md`                                                             |
-| Branch protection       | `main` requires `Rust, docs, and package checks`; admin bypass remains available |
+| Compatibility docs      | `docs/COMPATIBILITY.md`                                                                  |
+| Demo fixtures           | `examples/demo/` sanitized provider tails                                                |
+| Architecture visual     | `docs/assets/qmonster-architecture.svg`                                                  |
+| Dashboard screenshot    | `docs/assets/qmonster-dashboard.png` (embedded in README hero)                           |
+| Community conduct       | `CODE_OF_CONDUCT.md`                                                                     |
+| Branch protection       | `main` requires `Rust, docs, and package checks`; admin bypass remains available         |
 
 ## Recommended Next Steps
 
 1. Protect release tags.
    Restrict `v*` tag creation/deletion to maintainers so publish events
-   cannot be triggered accidentally. An evaluate-mode starter payload
-   lives in `.github/rulesets/release-tags.example.json`; add the right
-   maintainer bypass path before switching it to active.
+   cannot be triggered accidentally. The active-mode ruleset payload
+   lives in `.github/rulesets/release-tags.json` with an admin bypass.
+   Register it once with:
+
+   ```
+   gh api -X POST /repos/chquandogong/qmonster/rulesets \
+     --input .github/rulesets/release-tags.json
+   ```
+
+   Verify with `gh api /repos/chquandogong/qmonster/rulesets`.
 
 2. Refresh the dashboard screenshot when the TUI changes substantively.
    The current asset lives at `docs/assets/qmonster-dashboard.png` and
