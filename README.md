@@ -78,6 +78,23 @@ cd qmonster
 cargo build --release
 ```
 
+> **Notice — the npm package is a source distribution, not a prebuilt binary.**
+> `npm install qmonster` downloads a tarball that wraps `Cargo.toml` +
+> `Cargo.lock` + `src/`; first invocation runs `cargo build --release`
+> locally and compiles ~270 transitive crates, each of which may execute
+> a `build.rs` at compile time. Trust extends to your local Rust toolchain
+> and the crates.io packages it fetches.
+>
+> If you would rather run the maintainer-built binary (with SLSA build
+> provenance) instead of compiling locally:
+>
+> ```sh
+> gh release download v2.3.5 --pattern '*-linux-x86_64.tar.gz' --repo chquandogong/qmonster
+> gh attestation verify qmonster-v2.3.5-linux-x86_64.tar.gz --owner chquandogong
+> tar -xzf qmonster-v2.3.5-linux-x86_64.tar.gz
+> ./qmonster-v2.3.5-linux-x86_64/qmonster --help
+> ```
+
 **Set the stage** — Qmonster watches a tmux session that already has
 your AI CLI panes running. Spin one up however you like, then attach:
 

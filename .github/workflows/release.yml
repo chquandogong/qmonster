@@ -23,6 +23,15 @@ env:
   TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   CARGO_AUDIT_VERSION: "0.22.1"
 
+# Discipline reminder for future contributors / AI-generated edits:
+# any new step added to a job that already holds `id-token: write` or
+# `attestations: write` shares the same OIDC identity. Before introducing
+# a step that runs untrusted input — a downloaded URL, an env-injected
+# script, an action that executes arbitrary `run:` blocks — split the
+# work into a separate job with its own narrower permissions so the
+# Sigstore identity exposed to that step cannot stamp the release
+# artifacts.
+
 jobs:
   release:
     name: Build GitHub release assets

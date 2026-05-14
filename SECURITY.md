@@ -87,3 +87,42 @@ Qmonster is operated by a single maintainer at present
   maintainer taking over would read these (in that order) to
   reconstruct the current goal, surface, and rationale without
   depending on the outgoing maintainer's auto memory.
+
+## AI Tooling Expectations
+
+Qmonster is developed with AI-assisted local tooling (Claude Code,
+Codex, Gemini CLI). All AI-generated output today flows through the
+maintainer's local workstation, is reviewed before commit, and
+appears under the maintainer's GitHub identity. There is no
+GitHub OAuth-delegated AI agent on this repository.
+
+Guardrails for future automation, codified now so they cannot drift
+in if a GitHub App or bot is introduced later:
+
+- **Never grant `workflow:write` to an AI agent.** Workflow file edits
+  must remain a human-reviewed action. An agent token with
+  `workflow:write` would let a single prompt-injection rewrite
+  `release.yml` and bypass every supply-chain gate documented above.
+- **Bot identity must be separate from maintainer identity.** Any
+  future automation runs under a dedicated GitHub user (e.g.
+  `qmonster-bot`) with its own SSH/PAT, scoped to a `bot/*` branch
+  prefix. The maintainer's identity stays attached to human-reviewed
+  commits.
+- **Bot commits land via PR, not direct push.** Branch protection on
+  `main` already requires PR for non-admin actors; the bot account
+  inherits that gate even if a future co-maintainer admin is added.
+- **No AI agent may bypass the tag protection ruleset.** Ruleset
+  `bypass_actors` is intentionally pinned to `RepositoryRole: 5`
+  (admin) only. Bot accounts are not admins.
+- **External LLM calls must not echo raw tmux content unmasked.**
+  Qmonster's runtime principle ("raw tmux tails must not be written
+  to SQLite") extends to outbound prompts: any future automation that
+  forwards pane content to a hosted model must strip provider
+  secrets, OAuth tokens, and prompts before sending. The local AI
+  tools used today are the maintainer's responsibility to vet.
+- **PAT scope separation.** The maintainer's daily-use PAT should
+  hold the minimum scopes needed for normal push (`repo`, `gist`).
+  The `workflow` scope — needed only when editing
+  `.github/workflows/` — should live in a separate fine-grained
+  token, not co-resident with the AI tooling's day-to-day
+  credentials.
