@@ -278,9 +278,13 @@ jobs:
       - name: Upgrade npm for Trusted Publishers publish-auth
         # setup-node@v6 + node 20 ships npm 10.x; Trusted Publishers
         # publish-auth (separate from provenance signing, which works
-        # on older npm) requires npm 11.5+. Pull the latest 11.x line.
+        # on older npm) requires npm 11.5+. Pin to a specific minor so
+        # the publish CLI version is gated by explicit PR review rather
+        # than `@11` floating to whatever 11.x is current at run time.
+        # Dependabot does not bump globally-installed npm versions, so
+        # rotate this pin manually alongside other npm-side hygiene.
         run: |
-          npm install -g npm@11
+          npm install -g npm@11.14.1
           npm --version
 
       - name: Publish canonical npm package
