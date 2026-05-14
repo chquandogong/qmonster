@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v2.3.1 - patch on top of v2.3.0 (supply-chain hardening Phase A+B + cli_version tail v-prefix gate + alerts UX polish). v2.3.0 surface preserved: post-v2.2.0 stabilization + UX bundle on top of v2.2.0: path-row worktree-role hint, sectioned pane panel layout with tree branches, alert related-context rail, post-v2.2.0 critical-review 9-item bundle + footer chip mouse actions, copied-outcome lifecycle stabilization + done_when_refs 100 % coverage, settings module split, dependabot bump (thiserror 2 / crossterm 0.29 / rusqlite 0.39 / toml 1.1 / toml_edit 0.25 / attest-build-provenance v4)"
+  mission_title: "Qmonster v2.3.2 - patches on top of v2.3.0 (supply-chain hardening Phase A+B + cli_version tail v-prefix gate + alerts UX polish + NPM_TOKEN retirement after Trusted Publishers verification). v2.3.0 surface preserved: post-v2.2.0 stabilization + UX bundle on top of v2.2.0: path-row worktree-role hint, sectioned pane panel layout with tree branches, alert related-context rail, post-v2.2.0 critical-review 9-item bundle + footer chip mouse actions, copied-outcome lifecycle stabilization + done_when_refs 100 % coverage, settings module split, dependabot bump (thiserror 2 / crossterm 0.29 / rusqlite 0.39 / toml 1.1 / toml_edit 0.25 / attest-build-provenance v4)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 210
-  latest_version: "2.3.1"
+  total_revisions: 211
+  latest_version: "2.3.2"
 
 timeline:
   - change_id: "initial"
@@ -22109,6 +22109,102 @@ timeline:
       - Phase C of the supply-chain plan (enforce_admins, required_signatures, bus-factor
         CODEOWNERS, SBOM diff regression check, RustSec SLO in mission.yaml) remains open and not
         yet scheduled.
+
+  - change_id: v2.3.2-npm-token-retirement
+    semantic_version: 2.3.2
+    change_sequence: 211
+    date: 2026-05-14
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: 'a로 가자' after the npmjs.com
+      Trusted Publisher entry for chquandogong/qmonster was registered against release.yml."
+    change_type: hardening
+    persistence: permanent
+    intent: Retire NPM_TOKEN fallback in the release.yml publish step now that the npmjs.com Trusted Publisher entry is registered end-to-end. npm publish authenticates exclusively via OIDC.
+    intent_ko: >
+      v2.3.2 는 v2.3.1 위의 single-axis 패치. B1.0 npm Trusted Publisher 등록이 끝나서, release.yml
+      publish step 의 `env: NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` 블록과 NPM_TOKEN 이 비었을
+      때의 early-exit 검사를 제거. 이 commit/tag 가 트리거하는 릴리스가 첫 OIDC-only publish 라
+      end-to-end 검증을 겸함. NPM_TOKEN secret 자체의 삭제는 maintainer 후속 작업
+      (gh secret delete NPM_TOKEN).
+    issue_or_context: >-
+      Summary:
+
+      v2.3.2 is a focused single-axis patch. The npmjs.com Trusted Publisher entry for
+      chquandogong/qmonster against `release.yml` (workflow file, blank Environment) was
+      registered as part of the B1.0 follow-up to v2.3.1. With TP in place, the `publish`
+      job's `id-token: write` permission is enough for `npm publish` to exchange a
+      short-lived OIDC token for a publish credential. The NPM_TOKEN secret had been
+      kept as a transitional fallback through v2.3.1; this commit removes the surface:
+
+      - `.github/workflows/release.yml` `publish` job: the `env: NODE_AUTH_TOKEN: ${{
+        secrets.NPM_TOKEN }}` block on the "Publish canonical npm package" step is
+        removed, along with the `if [ -z "${NODE_AUTH_TOKEN:-}" ]` early-exit. The
+        Trusted Publishers migration comment on the job is rewritten from "transitional
+        fallback" to "exclusively through Trusted Publishers".
+      - `docs/RELEASING.md` Automated Flow paragraph drops the "falls back to
+        NPM_TOKEN during the transition" wording; the Supply-Chain Controls section is
+        updated to state that NPM_TOKEN is retired and recovery is to fix the TP entry
+        (or temporarily re-introduce the env block + secret) rather than auto-fallback.
+
+      The release this commit cuts is the first OIDC-only publish on this package, so it
+      doubles as the verification of the TP setup itself. If the npmjs.com side has any
+      field mismatch (owner / repo / workflow filename / environment), the publish step
+      will fail rather than silently re-authenticate — that is the deliberate post-cleanup
+      shape.
+
+      Validation snapshot at this commit: `cargo check --offline` passes; mission.yaml +
+      mission-history.yaml meta updated; no code paths in `src/` change.
+    changes:
+      added: []
+      modified:
+        - ".github/workflows/release.yml: publish job comment rewritten to OIDC-only; NODE_AUTH_TOKEN env block and NPM_TOKEN-empty early-exit removed from the Publish canonical npm package step."
+        - "docs/RELEASING.md: Automated Flow paragraph and Supply-Chain Controls auth section updated to reflect NPM_TOKEN retirement."
+        - "Cargo.toml + Cargo.lock + package.json + mission.yaml + VERSION.md + README.md: version 2.3.1 → 2.3.2."
+      removed: []
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime:
+        "No `src/` code change. The release workflow is the only consumer of the env
+        change. Publication now requires a working TP entry on npmjs.com; if the entry
+        drifts or is removed, the publish step fails hard."
+      tests:
+        Unchanged at 1563 lib + supporting integration tests; no `src/` modifications.
+        Validation reduced to `cargo check --offline`.
+      ledger:
+        1 new timeline entry (sequence 211); meta total_revisions 210 → 211,
+        latest_version 2.3.1 → 2.3.2.
+      npm:
+        package.json version 2.3.2; CI publication runs the same `Release and Package
+        Mirror` workflow with `id-token: write` on the publish job, authenticating via
+        Trusted Publishers OIDC only.
+      observable_effects:
+        - "Footer version badge displays `v2.3.2` once the v2.3.2 tag is created."
+        - "Release workflow `Publish canonical npm package` step no longer references
+          NPM_TOKEN; OIDC is the sole auth channel for npm publish."
+        - "Workflow log on the v2.3.2 publish step shows OIDC token acquisition (no
+          NODE_AUTH_TOKEN echo)."
+        - "If npmjs.com Trusted Publisher entry drifts, the publish step fails hard with
+          a clear auth error rather than silently falling back."
+    breaking: false
+    risk:
+      Medium for the publish step on this single tag only. If the npmjs.com TP entry has
+      any field mismatch, this release fails at the publish step. Recovery is to fix the
+      entry (or temporarily re-introduce the env block + a fresh NPM_TOKEN secret) and
+      re-tag. Rest of the workflow (release-asset job, GitHub Packages mirror) is
+      unaffected.
+    related_commits:
+      - 70c87e3 # v2.3.1 ledger sync (immediately prior tag)
+      - 9e3a556 # Phase B step 1 — job-level permissions + Trusted Publishers prep
+    follow_up:
+      - Delete NPM_TOKEN secret once the v2.3.2 release run succeeds end-to-end
+        (maintainer: `gh secret delete NPM_TOKEN`).
+      - Update `.docs/claude/v2.3.x-supplychain-evidence.md` with the v2.3.2
+        publication verification block (mirror the v2.3.1 entry).
+      - If publish fails, capture the npm CLI error verbatim and verify the TP entry
+        fields on https://www.npmjs.com/package/qmonster/access before re-tagging.
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

@@ -27,12 +27,11 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 It then builds the release binary, creates or updates the GitHub Release,
-publishes `qmonster` to npmjs (via Trusted Publishers OIDC when the
-matching entry is configured on npmjs.com; falls back to `NPM_TOKEN`
-during the transition), and publishes the scoped GitHub Packages
-mirror using `GITHUB_TOKEN`. Release assets are also signed with
-GitHub artifact attestations, and the Linux tarball gets a dedicated
-SBOM attestation.
+publishes `qmonster` to npmjs via Trusted Publishers OIDC (npmjs.com
+side is registered for chquandogong/qmonster against this workflow),
+and publishes the scoped GitHub Packages mirror using `GITHUB_TOKEN`.
+Release assets are also signed with GitHub artifact attestations, and
+the Linux tarball gets a dedicated SBOM attestation.
 
 Generated GitHub Release notes use `.github/release.yml`. Keep README
 focused on the current product surface; put patch-level implementation
@@ -121,9 +120,9 @@ gh api /repos/chquandogong/qmonster/rulesets \
 
 ### npmjs publish auth — Trusted Publishers
 
-`release.yml`'s `publish` job carries `id-token: write` so `npm
-publish` can use Trusted Publishers when the matching entry is
-configured on npmjs.com:
+`release.yml`'s `publish` job carries `id-token: write`, and `npm
+publish` runs exclusively through Trusted Publishers OIDC. The
+matching entry on npmjs.com:
 
 - Provider: GitHub Actions
 - Organization or user: `chquandogong`
@@ -131,10 +130,13 @@ configured on npmjs.com:
 - Workflow filename: `release.yml`
 - Environment name: (blank — the workflow does not use a GitHub Environment)
 
-Until TP is registered, the `NODE_AUTH_TOKEN` env block in the publish
-step falls back to the `NPM_TOKEN` secret. Once a Trusted Publisher
-release succeeds end-to-end, delete the `env` block AND remove the
-`NPM_TOKEN` secret to retire the fallback.
+`NPM_TOKEN` was retired in v2.3.2 after the Trusted Publisher entry
+was verified end-to-end. There is no fallback path: if the TP entry
+on the npmjs.com side is removed or its fields drift from the
+workflow signature, the publish step fails hard instead of silently
+re-authenticating. Recovery is to fix the TP entry (or temporarily
+re-introduce a `NODE_AUTH_TOKEN` env block + secret pair) and
+re-tag.
 
 ### Workflow permissions surface
 

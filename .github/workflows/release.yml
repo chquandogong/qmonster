@@ -238,12 +238,13 @@ jobs:
     name: Publish npm and GitHub Packages mirrors
     needs: release
     runs-on: ubuntu-latest
-    # Trusted Publishers migration target: once npmjs.com has the TP
-    # entry configured for chquandogong/qmonster on this workflow,
-    # `npm publish` exchanges the OIDC token (id-token: write below)
-    # for a short-lived publish token and the NPM_TOKEN secret becomes
-    # unnecessary. The NODE_AUTH_TOKEN env block below stays as a
-    # transitional fallback until the first OIDC release confirms.
+    # npm publish auth runs exclusively through Trusted Publishers
+    # (OIDC). The npmjs.com side is registered for chquandogong/qmonster
+    # against this workflow file; the publish step below relies on the
+    # id-token: write permission below to exchange a short-lived OIDC
+    # token for a publish credential. NPM_TOKEN is retired — no
+    # fallback path remains. A misconfigured TP entry on the npmjs.com
+    # side will fail the publish step rather than silently re-auth.
     permissions:
       contents: read # checkout
       id-token: write # npm OIDC / Trusted Publishers
@@ -271,15 +272,9 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish canonical npm package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "NPM_TOKEN is not configured; skipping npmjs publish."
-            exit 0
-          fi
           if npm view "qmonster@$version" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
             echo "qmonster@$version already exists on npmjs; skipping."
             exit 0
