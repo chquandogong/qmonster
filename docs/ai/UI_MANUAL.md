@@ -138,6 +138,10 @@ hover_help_trigger = "label" # "label" | "row"
   정렬도 각 alert 기준으로 유지됩니다. 선택되지 않은 alert는 짧은
   `related` 요약만 보여주며, 선택된 alert만 `rail`과 `included` 행으로
   관련 sibling action/source를 펼쳐 보여줍니다.
+- Alerts는 Panes처럼 카드화하지 않고 row queue를 유지합니다. 대신 선택된
+  alert/FLOW의 detail은 `├` / `└` / `│` tree glyph로 summary, related
+  rail, included evidence, copy action을 구분해 보여줍니다. 선택되지 않은
+  row는 기존처럼 compact하게 유지됩니다.
 
 - Alerts 맨 위 `bulk hide :` 줄의 severity chip은 **actionable alert만**
   대상으로 합니다. `c`로 지울 수 있는 system notice는 여기에 포함되지

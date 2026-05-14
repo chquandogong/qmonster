@@ -638,6 +638,18 @@ struct RelatedAlertEvidence {
 }
 
 #[derive(Debug, Clone)]
+enum TreeDetailBlock {
+    Row {
+        label: String,
+        body: String,
+    },
+    Children {
+        label: String,
+        children: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone)]
 struct RelatedConnector {
     rank: u8,
     key: String,
@@ -1499,18 +1511,19 @@ fn alert_entry_lines(
 }
 
 fn related_summary_line(related: &RelatedAlertContext) -> String {
+    aligned_detail("related", &related_summary_body(related))
+}
+
+fn related_summary_body(related: &RelatedAlertContext) -> String {
     let connector = related
         .connector_label
         .strip_prefix("same ")
         .unwrap_or(&related.connector_label);
-    aligned_detail(
-        "related",
-        &format!("{} on {} · {}", related.total, related.pane_id, connector),
-    )
+    format!("{} on {} · {}", related.total, related.pane_id, connector)
 }
 
-fn related_rail_line(related: &RelatedAlertContext) -> String {
-    let body = related
+fn related_rail_body(related: &RelatedAlertContext) -> String {
+    related
         .steps
         .iter()
         .map(|step| {
@@ -1518,15 +1531,99 @@ fn related_rail_line(related: &RelatedAlertContext) -> String {
             format!("{marker} {}", step.label)
         })
         .collect::<Vec<_>>()
-        .join(" ");
-    aligned_detail("rail", &body)
+        .join(" ")
 }
 
-fn related_evidence_line(evidence: &RelatedAlertEvidence) -> String {
-    aligned_detail(
-        "included",
-        &format!("{} [{}]", evidence.action, evidence.source_label),
+fn related_evidence_body(evidence: &RelatedAlertEvidence) -> String {
+    format!("{} [{}]", evidence.action, evidence.source_label)
+}
+
+fn tree_detail_line(branch: &str, label: &str, body: &str) -> String {
+    format!(
+        "{branch} {label:<width$} {body}",
+        width = DETAIL_LABEL_WIDTH
     )
+}
+
+fn tree_parent_line(branch: &str, label: &str) -> String {
+    format!("{branch} {label}")
+}
+
+fn tree_child_line(branch: &str, body: &str) -> String {
+    format!("│ {branch} {body}")
+}
+
+fn parse_aligned_detail(detail: &str) -> (String, String) {
+    detail
+        .split_once(':')
+        .map(|(label, body)| (label.trim().to_string(), body.trim_start().to_string()))
+        .unwrap_or_else(|| ("detail".into(), detail.to_string()))
+}
+
+fn copy_action_body(cmd: &str) -> String {
+    format!("y copy `{cmd}`")
+}
+
+fn render_tree_detail_blocks(
+    lines: &mut Vec<Line<'static>>,
+    blocks: &[TreeDetailBlock],
+    width: usize,
+    continuation: &str,
+    style: Style,
+) {
+    for (idx, block) in blocks.iter().enumerate() {
+        let branch = if idx + 1 == blocks.len() {
+            "└"
+        } else {
+            "├"
+        };
+        match block {
+            TreeDetailBlock::Row { label, body } => push_wrapped_styled(
+                lines,
+                &tree_detail_line(branch, label, body),
+                width,
+                continuation,
+                style,
+            ),
+            TreeDetailBlock::Children { label, children } => {
+                push_wrapped_styled(
+                    lines,
+                    &tree_parent_line(branch, label),
+                    width,
+                    continuation,
+                    style,
+                );
+                for (child_idx, child) in children.iter().enumerate() {
+                    let child_branch = if child_idx + 1 == children.len() {
+                        "└"
+                    } else {
+                        "├"
+                    };
+                    push_wrapped_styled(
+                        lines,
+                        &tree_child_line(child_branch, child),
+                        width,
+                        continuation,
+                        style,
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn push_wrapped_styled(
+    lines: &mut Vec<Line<'static>>,
+    text: &str,
+    width: usize,
+    continuation: &str,
+    style: Style,
+) {
+    lines.extend(
+        wrap_with_prefix(text, width, continuation, continuation)
+            .into_iter()
+            .map(|line| Line::styled(line, style)),
+    );
 }
 
 fn alert_item_lines(
@@ -1548,64 +1645,70 @@ fn alert_item_lines(
         .into_iter()
         .map(Line::from),
     );
-    lines.extend(
-        wrap_with_prefix(
-            &aligned_detail("summary", &item.headline),
+    if is_selected {
+        let mut blocks = vec![TreeDetailBlock::Row {
+            label: "summary".into(),
+            body: item.headline.clone(),
+        }];
+        for detail in &item.details {
+            let (label, body) = parse_aligned_detail(detail);
+            if label == "run" && item.suggested_command.is_some() {
+                continue;
+            }
+            blocks.push(TreeDetailBlock::Row { label, body });
+        }
+        if let Some(related) = item.related.as_ref() {
+            blocks.push(TreeDetailBlock::Row {
+                label: "related".into(),
+                body: related_summary_body(related),
+            });
+            blocks.push(TreeDetailBlock::Row {
+                label: "rail".into(),
+                body: related_rail_body(related),
+            });
+            blocks.push(TreeDetailBlock::Children {
+                label: "included".into(),
+                children: related.evidence.iter().map(related_evidence_body).collect(),
+            });
+        }
+        if let Some(cmd) = item.suggested_command.as_deref() {
+            blocks.push(TreeDetailBlock::Row {
+                label: "action".into(),
+                body: copy_action_body(cmd),
+            });
+        }
+        render_tree_detail_blocks(
+            &mut lines,
+            &blocks,
             width,
             &continuation,
-            &continuation,
-        )
-        .into_iter()
-        .map(Line::from),
-    );
-    for detail in &item.details {
-        lines.extend(
-            wrap_with_prefix(detail, width, &continuation, &continuation)
-                .into_iter()
-                .map(Line::from),
+            Style::default().fg(theme::text_dim()),
         );
-    }
-    if let Some(related) = item.related.as_ref() {
-        let related_summary = related_summary_line(related);
+    } else {
         lines.extend(
-            wrap_with_prefix(&related_summary, width, &continuation, &continuation)
-                .into_iter()
-                .map(|line| Line::styled(line, Style::default().fg(theme::text_dim()))),
+            wrap_with_prefix(
+                &aligned_detail("summary", &item.headline),
+                width,
+                &continuation,
+                &continuation,
+            )
+            .into_iter()
+            .map(Line::from),
         );
-        if is_selected {
-            let rail = related_rail_line(related);
+        for detail in &item.details {
             lines.extend(
-                wrap_with_prefix(&rail, width, &continuation, &continuation)
+                wrap_with_prefix(detail, width, &continuation, &continuation)
+                    .into_iter()
+                    .map(Line::from),
+            );
+        }
+        if let Some(related) = item.related.as_ref() {
+            let related_summary = related_summary_line(related);
+            lines.extend(
+                wrap_with_prefix(&related_summary, width, &continuation, &continuation)
                     .into_iter()
                     .map(|line| Line::styled(line, Style::default().fg(theme::text_dim()))),
             );
-            for evidence in &related.evidence {
-                lines.extend(
-                    wrap_with_prefix(
-                        &related_evidence_line(evidence),
-                        width,
-                        &continuation,
-                        &continuation,
-                    )
-                    .into_iter()
-                    .map(|line| Line::styled(line, Style::default().fg(theme::text_dim()))),
-                );
-            }
-        }
-    }
-    // v1.38 §6.5: on the currently selected alert only, when its
-    // `suggested_command` is `Some(cmd)`, append a dim
-    // `copy    : `<cmd>`  → press y to copy` line below the existing
-    // detail rows so the operator can see the runnable command and the
-    // keypress hint without reaching for the metrics overlay. Uses
-    // `aligned_detail` and backticks to match the `run` / `summary` /
-    // `dismiss` sibling rows.
-    if is_selected && let Some(cmd) = item.suggested_command.as_deref() {
-        for wrapped in wrap_copy_detail(width, &continuation, cmd) {
-            lines.push(Line::styled(
-                wrapped,
-                Style::default().fg(theme::text_dim()),
-            ));
         }
     }
     lines.push(Line::styled(
@@ -1638,20 +1741,41 @@ fn alert_flow_lines(
         .into_iter()
         .map(Line::from),
     );
-    lines.extend(
-        wrap_with_prefix(
-            &aligned_detail("summary", &flow.summary),
+    if is_selected {
+        let mut blocks = vec![TreeDetailBlock::Row {
+            label: "summary".into(),
+            body: flow.summary.clone(),
+        }];
+        for step in &flow.steps {
+            if flow.suggested_command.is_some() && step.text.starts_with("then run ") {
+                continue;
+            }
+            blocks.push(TreeDetailBlock::Row {
+                label: flow_step_tree_label(&step.text).into(),
+                body: step.text.clone(),
+            });
+        }
+        blocks.push(TreeDetailBlock::Children {
+            label: "included".into(),
+            children: flow.included.iter().map(flow_included_body).collect(),
+        });
+        if let Some(cmd) = flow.suggested_command.as_deref() {
+            blocks.push(TreeDetailBlock::Row {
+                label: "action".into(),
+                body: copy_action_body(cmd),
+            });
+        }
+        render_tree_detail_blocks(
+            &mut lines,
+            &blocks,
             width,
             &continuation,
-            &continuation,
-        )
-        .into_iter()
-        .map(Line::from),
-    );
-    for step in &flow.steps {
+            Style::default().fg(theme::text_dim()),
+        );
+    } else {
         lines.extend(
             wrap_with_prefix(
-                &format!("{} {}", step.marker, step.text),
+                &aligned_detail("summary", &flow.summary),
                 width,
                 &continuation,
                 &continuation,
@@ -1659,31 +1783,17 @@ fn alert_flow_lines(
             .into_iter()
             .map(Line::from),
         );
-    }
-    if is_selected {
-        for item in &flow.included {
-            let evidence = parse_recommendation_key(&item.key)
-                .map(|(_, action)| action)
-                .unwrap_or_else(|| item.headline.clone());
-            let evidence = format!("{} [{}]", evidence, source_kind_label(item.source_kind));
+        for step in &flow.steps {
             lines.extend(
                 wrap_with_prefix(
-                    &aligned_detail("included", &evidence),
+                    &format!("{} {}", step.marker, step.text),
                     width,
                     &continuation,
                     &continuation,
                 )
                 .into_iter()
-                .map(|line| Line::styled(line, Style::default().fg(theme::text_dim()))),
+                .map(Line::from),
             );
-        }
-        if let Some(cmd) = flow.suggested_command.as_deref() {
-            for wrapped in wrap_copy_detail(width, &continuation, cmd) {
-                lines.push(Line::styled(
-                    wrapped,
-                    Style::default().fg(theme::text_dim()),
-                ));
-            }
         }
     }
     lines.push(Line::styled(
@@ -1695,6 +1805,27 @@ fn alert_flow_lines(
         Style::default().fg(theme::text_dim()),
     ));
     lines
+}
+
+fn flow_step_tree_label(text: &str) -> &'static str {
+    if text.starts_with("context pressure") {
+        "cause"
+    } else if text.starts_with("cache ") {
+        "evidence"
+    } else if text.starts_with("snapshot ") {
+        "prep"
+    } else if text.starts_with("then run ") {
+        "action"
+    } else {
+        "signal"
+    }
+}
+
+fn flow_included_body(item: &AlertItem) -> String {
+    let evidence = parse_recommendation_key(&item.key)
+        .map(|(_, action)| action)
+        .unwrap_or_else(|| item.headline.clone());
+    format!("{} [{}]", evidence, source_kind_label(item.source_kind))
 }
 
 fn dismiss_line_text(item: &AlertItem, now: Instant) -> String {
@@ -1861,16 +1992,13 @@ fn entry_copy_line_count(entry: &AlertEntry, width: usize) -> usize {
         AlertEntry::Flow(flow) => format!("[{}] ", flow.timestamp),
     };
     let continuation = continuation_prefix(&prefix);
-    wrap_copy_detail(width, &continuation, cmd).len()
-}
-
-fn wrap_copy_detail(width: usize, continuation: &str, cmd: &str) -> Vec<String> {
-    let detail = aligned_detail("copy", &format!("`{cmd}`  → press y to copy"));
-    if continuation.chars().count() + detail.chars().count() <= width {
-        vec![format!("{continuation}{detail}")]
-    } else {
-        wrap_with_prefix(&detail, width, continuation, continuation)
-    }
+    wrap_with_prefix(
+        &tree_detail_line("└", "action", &copy_action_body(cmd)),
+        width,
+        &continuation,
+        &continuation,
+    )
+    .len()
 }
 
 fn alert_style(color: Color, is_new: bool) -> Style {
@@ -3306,26 +3434,24 @@ mod tests {
         let dump = buffer_to_string(&buf);
         assert!(dump.contains("FLOW Context recovery"), "{dump}");
         assert!(
-            dump.contains("summary : context pressure led to cache drift"),
+            dump.contains("├ summary context pressure led to cache drift"),
             "{dump}"
         );
-        assert!(dump.contains("o context pressure detected"), "{dump}");
+        assert!(dump.contains("├ cause context pressure detected"), "{dump}");
         assert!(
-            dump.contains("| cache drift/discontinuity detected"),
+            dump.contains("├ evidence cache drift/discontinuity detected"),
             "{dump}"
         );
-        assert!(dump.contains("| then run /compact"), "{dump}");
+        assert!(dump.contains("└ action y copy `/compact`"), "{dump}");
+        assert!(dump.contains("├ included"), "{dump}");
         assert!(
-            dump.contains("included: context-pressure: checkpoint [Estimate]"),
+            dump.contains("│ ├ context-pressure: checkpoint [Estimate]"),
             "{dump}"
         );
         assert!(
-            dump.contains(
-                "included: cache: drift detected — /compact will let cache rebuild [Heur]"
-            ),
+            dump.contains("│ └ cache: drift detected — /compact will let cache rebuild [Heur]"),
             "{dump}"
         );
-        assert!(dump.contains("copy    : `/compact`"), "{dump}");
     }
 
     #[test]
@@ -3367,19 +3493,25 @@ mod tests {
 
         let dump = buffer_to_string(&buf);
         assert!(!dump.contains("FLOW Context recovery"), "{dump}");
-        assert!(dump.contains("related : 2 on %1 · /compact path"), "{dump}");
         assert!(
-            dump.contains("rail : [o] quota-pressure [ ] profile-switch"),
+            dump.contains("├ summary [Estimate] quota pressure can recover after compact"),
+            "{dump}"
+        );
+        assert!(dump.contains("├ related 2 on %1 · /compact path"), "{dump}");
+        assert!(
+            dump.contains("├ rail [o] quota-pressure [ ] profile-switch"),
+            "{dump}"
+        );
+        assert!(dump.contains("├ included"), "{dump}");
+        assert!(
+            dump.contains("│ ├ quota-pressure: compact soon [Estimate]"),
             "{dump}"
         );
         assert!(
-            dump.contains("included: quota-pressure: compact soon [Estimate]"),
+            dump.contains("│ └ profile-switch: compact profile [Qmonster]"),
             "{dump}"
         );
-        assert!(
-            dump.contains("included: profile-switch: compact profile [Qmonster]"),
-            "{dump}"
-        );
+        assert!(dump.contains("└ action y copy `/compact`"), "{dump}");
     }
 
     #[test]
@@ -4360,8 +4492,8 @@ mod tests {
 
         let dump = buffer_to_string(&buf);
         assert!(
-            dump.contains("press y to copy"),
-            "selected alert with suggested_command must render copy line: {dump}"
+            dump.contains("└ action y copy `/clear`"),
+            "selected alert with suggested_command must render tree action line: {dump}"
         );
         assert!(
             dump.contains("/clear"),
@@ -4429,7 +4561,7 @@ mod tests {
             .position(|line| {
                 line.spans
                     .iter()
-                    .any(|span| span.content.as_ref().contains("press y to copy"))
+                    .any(|span| span.content.as_ref().contains("y copy `/clear`"))
             })
             .expect("copy row") as u16;
         assert_eq!(
