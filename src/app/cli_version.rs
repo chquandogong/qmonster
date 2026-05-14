@@ -68,7 +68,11 @@ pub(crate) fn parse_cli_version_from_tail(provider: Provider, tail: &str) -> Opt
             Provider::Gemini => lower.contains("gemini cli"),
             Provider::Qmonster | Provider::Unknown => false,
         };
-        if anchored && let Some(version) = extract_version_token(line) {
+        // Require an explicit `v` prefix on the version token. Chat
+        // and status lines often mention models like "Opus 4.7" next
+        // to "Claude Code", and accepting bare numerics would surface
+        // the model version as the CLI version.
+        if anchored && let Some(version) = extract_version_token(line, true) {
             return Some(cli_version_fact(version, Some(provider)));
         }
     }
@@ -83,7 +87,7 @@ pub(crate) fn probe_cli_version(desc: &CliProcessDescriptor) -> Option<RuntimeFa
     }
     let first_line = first_non_empty_output_line(&out.stdout)
         .or_else(|| first_non_empty_output_line(&out.stderr))?;
-    let version = extract_version_token(&first_line)?;
+    let version = extract_version_token(&first_line, false)?;
     Some(cli_version_fact(version, None))
 }
 
@@ -134,7 +138,7 @@ fn first_non_empty_output_line(bytes: &[u8]) -> Option<String> {
         .map(str::to_string)
 }
 
-fn extract_version_token(text: &str) -> Option<String> {
+fn extract_version_token(text: &str, require_v_prefix: bool) -> Option<String> {
     let chars: Vec<char> = text.chars().collect();
     for start in 0..chars.len() {
         let ch = chars[start];
@@ -143,7 +147,11 @@ fn extract_version_token(text: &str) -> Option<String> {
                 .get(start + 1)
                 .map(|next| next.is_ascii_digit())
                 .unwrap_or(false);
-        if !starts_with_v && !ch.is_ascii_digit() {
+        if require_v_prefix {
+            if !starts_with_v {
+                continue;
+            }
+        } else if !starts_with_v && !ch.is_ascii_digit() {
             continue;
         }
 
@@ -215,6 +223,33 @@ mod tests {
         assert_eq!(fact.kind, RuntimeFactKind::CliVersion);
         assert_eq!(fact.value, "0.39.0-preview.0");
         assert_eq!(fact.source_kind, SourceKind::ProviderOfficial);
+    }
+
+    #[test]
+    fn claude_banner_surface_extracts_cli_version() {
+        let tail = "Claude Code v2.1.141";
+
+        let fact = parse_cli_version_from_tail(Provider::Claude, tail).unwrap();
+
+        assert_eq!(fact.kind, RuntimeFactKind::CliVersion);
+        assert_eq!(fact.value, "2.1.141");
+        assert_eq!(fact.source_kind, SourceKind::ProviderOfficial);
+    }
+
+    #[test]
+    fn claude_model_mention_does_not_leak_into_cli_version() {
+        // Chat/status text mentioning a model next to "Claude Code"
+        // must not be mistaken for the CLI version.
+        let tail = "I'm using Claude Code with Opus 4.7 today.";
+
+        assert!(parse_cli_version_from_tail(Provider::Claude, tail).is_none());
+    }
+
+    #[test]
+    fn claude_anchor_without_version_token_yields_none() {
+        let tail = "✻ Welcome to Claude Code!\nSelect model > Opus 4.7";
+
+        assert!(parse_cli_version_from_tail(Provider::Claude, tail).is_none());
     }
 
     #[test]
