@@ -208,6 +208,22 @@ Release flow lives in [docs/RELEASING.md](docs/RELEASING.md). Long-form
 history lives in `mission-history.yaml`; the README only tracks the
 current operator surface.
 
+**Verifying a download** — the released npm tarball and Linux binary
+both carry SLSA build provenance and SBOM attestations. After
+`npm install -g qmonster`, run:
+
+```sh
+npm audit signatures                                           # npm registry signature + provenance chain
+gh attestation verify qmonster-X.Y.Z.tgz --owner chquandogong  # GitHub attestation against this repo
+```
+
+These prove the _tarball_ came from this repository's release
+workflow. The `qmonster` binary itself is compiled by `cargo` on your
+machine on first run, so end-to-end trust also depends on your Rust
+toolchain and the crates.io packages it fetches. Full command set
+(Linux binary tarball, SBOM, scope notes) lives in
+[docs/RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md).
+
 ## Architecture
 
 <p align="center">

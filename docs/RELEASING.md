@@ -27,10 +27,12 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 It then builds the release binary, creates or updates the GitHub Release,
-publishes `qmonster` to npmjs when `NPM_TOKEN` is configured, and publishes
-the scoped GitHub Packages mirror using `GITHUB_TOKEN`. Release assets are
-also signed with GitHub artifact attestations, and the Linux tarball gets a
-dedicated SBOM attestation.
+publishes `qmonster` to npmjs (via Trusted Publishers OIDC when the
+matching entry is configured on npmjs.com; falls back to `NPM_TOKEN`
+during the transition), and publishes the scoped GitHub Packages
+mirror using `GITHUB_TOKEN`. Release assets are also signed with
+GitHub artifact attestations, and the Linux tarball gets a dedicated
+SBOM attestation.
 
 Generated GitHub Release notes use `.github/release.yml`. Keep README
 focused on the current product surface; put patch-level implementation
@@ -78,6 +80,84 @@ detail in GitHub Releases, `mission-history.yaml`, and canonical docs.
 
    Use GitHub CLI 2.49.0 or newer. If `gh attestation verify` is not
    recognized, upgrade `gh` before running release-attestation checks.
+
+## Supply-Chain Controls
+
+These controls back the `Release and Package Mirror` workflow above.
+Keep them aligned whenever the workflow or release surface changes.
+
+### Action pin discipline
+
+All `uses:` entries in `.github/workflows/` are pinned to the full
+commit SHA with a trailing `# vX.Y.Z` comment so Dependabot's
+`github-actions` ecosystem can bump both at once. Floating major tags
+like `@v6` would let an upstream action vendor replay attestations
+without notice. Sweep with:
+
+```bash
+grep -nE 'uses: [^#]+@v[0-9]+' .github/workflows/*.yml
+```
+
+Non-empty output means a floating pin has slipped in. Resolve the
+exact commit SHA for the desired tag and replace:
+
+```bash
+gh api /repos/<owner>/<action>/commits/<tag> --jq .sha
+```
+
+### Tag protection ruleset
+
+`v*` tag creation/update/deletion is bound by an active ruleset that
+only the repository admin role bypasses. The source of truth is
+`.github/rulesets/release-tags.json`. To register or refresh after
+edits:
+
+```bash
+gh api -X POST /repos/chquandogong/qmonster/rulesets \
+  --input .github/rulesets/release-tags.json
+gh api /repos/chquandogong/qmonster/rulesets \
+  --jq '.[] | {id, name, enforcement, target}'
+```
+
+### npmjs publish auth — Trusted Publishers
+
+`release.yml`'s `publish` job carries `id-token: write` so `npm
+publish` can use Trusted Publishers when the matching entry is
+configured on npmjs.com:
+
+- Provider: GitHub Actions
+- Organization or user: `chquandogong`
+- Repository: `qmonster`
+- Workflow filename: `release.yml`
+- Environment name: (blank — the workflow does not use a GitHub Environment)
+
+Until TP is registered, the `NODE_AUTH_TOKEN` env block in the publish
+step falls back to the `NPM_TOKEN` secret. Once a Trusted Publisher
+release succeeds end-to-end, delete the `env` block AND remove the
+`NPM_TOKEN` secret to retire the fallback.
+
+### Workflow permissions surface
+
+The release workflow declares `permissions: {}` at the workflow level
+so any new job must declare its own narrower set. Current allocation:
+
+| Job       | Permissions                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------- |
+| `release` | `contents: write` (gh release), `id-token: write`, `attestations: write` (actions/attest\*) |
+| `publish` | `contents: read` (checkout), `id-token: write` (npm OIDC), `packages: write` (GHP mirror)   |
+
+Never widen back to workflow-level write — it expands the blast
+radius of any compromised step.
+
+### npm package surface
+
+CI fails (`Verify npm package has no lifecycle scripts or runtime
+deps` in `ci.yml`) if `package.json` grows any of
+`preinstall`/`install`/`postinstall`/`prepare`/`prepublishOnly`/`prepack`
+or a non-empty `dependencies` / `devDependencies` list. The npm
+wrapper must stay a thin cargo-run shim with zero registry-time code
+execution. If a real change is needed, justify it in the PR and
+update this guard with the same PR.
 
 ## SNS Preview
 

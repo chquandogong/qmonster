@@ -102,3 +102,38 @@ The risk summary is not a vulnerability scan. It highlights review
 signals such as purl coverage, version coverage, missing license/supplier
 assertions, and added packages from a small security/runtime attention
 set.
+
+## 6. npm package signatures
+
+The canonical `qmonster` npm package is registered with provenance via
+`actions/attest-build-provenance` and signed using npm's own Sigstore
+chain. After installing on a candidate machine, both layers verify in
+one shot:
+
+```sh
+npm audit signatures
+```
+
+A clean run on a fresh `npm install -g qmonster` proves (a) the tarball
+fetched from the registry matches what npm registered, and (b) the
+tarball was produced by this repository's `release.yml` workflow on a
+GitHub-hosted runner — same chain as `gh attestation verify` but
+through npm's infrastructure rather than GitHub's.
+
+## Scope of these verifications
+
+Every check above is **about the tarball**, not the resulting
+`qmonster` binary on your machine. The npm tarball ships `Cargo.lock`,
+`src/`, and the build scripts; on first run `cargo build` compiles a
+binary using your local Rust toolchain. End-to-end trust therefore
+extends to:
+
+- Whoever published the tarball (this repository, verifiable by the
+  checks above).
+- The exact dependency set frozen in the shipped `Cargo.lock`, which
+  the SBOM also describes.
+- Your local `rustc` / `cargo` and the crates.io tarballs they fetch.
+
+A passing `gh attestation verify` plus `npm audit signatures` together
+do not certify the compiled binary you end up running; they certify
+the _input_ (tarball + lockfile) that drove the build.
