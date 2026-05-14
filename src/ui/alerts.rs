@@ -1553,13 +1553,6 @@ fn tree_child_line(branch: &str, body: &str) -> String {
     format!("│ {branch} {body}")
 }
 
-fn parse_aligned_detail(detail: &str) -> (String, String) {
-    detail
-        .split_once(':')
-        .map(|(label, body)| (label.trim().to_string(), body.trim_start().to_string()))
-        .unwrap_or_else(|| ("detail".into(), detail.to_string()))
-}
-
 fn copy_action_body(cmd: &str) -> String {
     format!("y copy `{cmd}`")
 }
@@ -1645,23 +1638,34 @@ fn alert_item_lines(
         .into_iter()
         .map(Line::from),
     );
+    lines.extend(
+        wrap_with_prefix(
+            &aligned_detail("summary", &item.headline),
+            width,
+            &continuation,
+            &continuation,
+        )
+        .into_iter()
+        .map(Line::from),
+    );
+    for detail in &item.details {
+        lines.extend(
+            wrap_with_prefix(detail, width, &continuation, &continuation)
+                .into_iter()
+                .map(Line::from),
+        );
+    }
+    if let Some(related) = item.related.as_ref() {
+        let related_summary = related_summary_line(related);
+        lines.extend(
+            wrap_with_prefix(&related_summary, width, &continuation, &continuation)
+                .into_iter()
+                .map(|line| Line::styled(line, Style::default().fg(theme::text_dim()))),
+        );
+    }
     if is_selected {
-        let mut blocks = vec![TreeDetailBlock::Row {
-            label: "summary".into(),
-            body: item.headline.clone(),
-        }];
-        for detail in &item.details {
-            let (label, body) = parse_aligned_detail(detail);
-            if label == "run" && item.suggested_command.is_some() {
-                continue;
-            }
-            blocks.push(TreeDetailBlock::Row { label, body });
-        }
+        let mut blocks = Vec::new();
         if let Some(related) = item.related.as_ref() {
-            blocks.push(TreeDetailBlock::Row {
-                label: "related".into(),
-                body: related_summary_body(related),
-            });
             blocks.push(TreeDetailBlock::Row {
                 label: "rail".into(),
                 body: related_rail_body(related),
@@ -1677,37 +1681,13 @@ fn alert_item_lines(
                 body: copy_action_body(cmd),
             });
         }
-        render_tree_detail_blocks(
-            &mut lines,
-            &blocks,
-            width,
-            &continuation,
-            Style::default().fg(theme::text_dim()),
-        );
-    } else {
-        lines.extend(
-            wrap_with_prefix(
-                &aligned_detail("summary", &item.headline),
+        if !blocks.is_empty() {
+            render_tree_detail_blocks(
+                &mut lines,
+                &blocks,
                 width,
                 &continuation,
-                &continuation,
-            )
-            .into_iter()
-            .map(Line::from),
-        );
-        for detail in &item.details {
-            lines.extend(
-                wrap_with_prefix(detail, width, &continuation, &continuation)
-                    .into_iter()
-                    .map(Line::from),
-            );
-        }
-        if let Some(related) = item.related.as_ref() {
-            let related_summary = related_summary_line(related);
-            lines.extend(
-                wrap_with_prefix(&related_summary, width, &continuation, &continuation)
-                    .into_iter()
-                    .map(|line| Line::styled(line, Style::default().fg(theme::text_dim()))),
+                Style::default().fg(theme::text_dim()),
             );
         }
     }
@@ -1741,41 +1721,20 @@ fn alert_flow_lines(
         .into_iter()
         .map(Line::from),
     );
-    if is_selected {
-        let mut blocks = vec![TreeDetailBlock::Row {
-            label: "summary".into(),
-            body: flow.summary.clone(),
-        }];
-        for step in &flow.steps {
-            if flow.suggested_command.is_some() && step.text.starts_with("then run ") {
-                continue;
-            }
-            blocks.push(TreeDetailBlock::Row {
-                label: flow_step_tree_label(&step.text).into(),
-                body: step.text.clone(),
-            });
-        }
-        blocks.push(TreeDetailBlock::Children {
-            label: "included".into(),
-            children: flow.included.iter().map(flow_included_body).collect(),
-        });
-        if let Some(cmd) = flow.suggested_command.as_deref() {
-            blocks.push(TreeDetailBlock::Row {
-                label: "action".into(),
-                body: copy_action_body(cmd),
-            });
-        }
-        render_tree_detail_blocks(
-            &mut lines,
-            &blocks,
+    lines.extend(
+        wrap_with_prefix(
+            &aligned_detail("summary", &flow.summary),
             width,
             &continuation,
-            Style::default().fg(theme::text_dim()),
-        );
-    } else {
+            &continuation,
+        )
+        .into_iter()
+        .map(Line::from),
+    );
+    for step in &flow.steps {
         lines.extend(
             wrap_with_prefix(
-                &aligned_detail("summary", &flow.summary),
+                &format!("{} {}", step.marker, step.text),
                 width,
                 &continuation,
                 &continuation,
@@ -1783,16 +1742,28 @@ fn alert_flow_lines(
             .into_iter()
             .map(Line::from),
         );
-        for step in &flow.steps {
-            lines.extend(
-                wrap_with_prefix(
-                    &format!("{} {}", step.marker, step.text),
-                    width,
-                    &continuation,
-                    &continuation,
-                )
-                .into_iter()
-                .map(Line::from),
+    }
+    if is_selected {
+        let mut blocks = Vec::new();
+        if !flow.included.is_empty() {
+            blocks.push(TreeDetailBlock::Children {
+                label: "included".into(),
+                children: flow.included.iter().map(flow_included_body).collect(),
+            });
+        }
+        if let Some(cmd) = flow.suggested_command.as_deref() {
+            blocks.push(TreeDetailBlock::Row {
+                label: "action".into(),
+                body: copy_action_body(cmd),
+            });
+        }
+        if !blocks.is_empty() {
+            render_tree_detail_blocks(
+                &mut lines,
+                &blocks,
+                width,
+                &continuation,
+                Style::default().fg(theme::text_dim()),
             );
         }
     }
@@ -1805,20 +1776,6 @@ fn alert_flow_lines(
         Style::default().fg(theme::text_dim()),
     ));
     lines
-}
-
-fn flow_step_tree_label(text: &str) -> &'static str {
-    if text.starts_with("context pressure") {
-        "cause"
-    } else if text.starts_with("cache ") {
-        "evidence"
-    } else if text.starts_with("snapshot ") {
-        "prep"
-    } else if text.starts_with("then run ") {
-        "action"
-    } else {
-        "signal"
-    }
 }
 
 fn flow_included_body(item: &AlertItem) -> String {
@@ -3434,14 +3391,16 @@ mod tests {
         let dump = buffer_to_string(&buf);
         assert!(dump.contains("FLOW Context recovery"), "{dump}");
         assert!(
-            dump.contains("├ summary context pressure led to cache drift"),
+            dump.contains("summary : context pressure led to cache drift"),
             "{dump}"
         );
-        assert!(dump.contains("├ cause context pressure detected"), "{dump}");
+        assert!(dump.contains("o context pressure detected"), "{dump}");
         assert!(
-            dump.contains("├ evidence cache drift/discontinuity detected"),
+            dump.contains("| cache drift/discontinuity detected"),
             "{dump}"
         );
+        assert!(dump.contains("o snapshot before reset"), "{dump}");
+        assert!(dump.contains("| then run /compact"), "{dump}");
         assert!(dump.contains("└ action y copy `/compact`"), "{dump}");
         assert!(dump.contains("├ included"), "{dump}");
         assert!(
@@ -3494,10 +3453,11 @@ mod tests {
         let dump = buffer_to_string(&buf);
         assert!(!dump.contains("FLOW Context recovery"), "{dump}");
         assert!(
-            dump.contains("├ summary [Estimate] quota pressure can recover after compact"),
+            dump.contains("summary : [Estimate] quota pressure can recover after compact"),
             "{dump}"
         );
-        assert!(dump.contains("├ related 2 on %1 · /compact path"), "{dump}");
+        assert!(dump.contains("run : `/compact`"), "{dump}");
+        assert!(dump.contains("related : 2 on %1 · /compact path"), "{dump}");
         assert!(
             dump.contains("├ rail [o] quota-pressure [ ] profile-switch"),
             "{dump}"
