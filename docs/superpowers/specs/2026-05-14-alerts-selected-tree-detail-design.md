@@ -1,30 +1,30 @@
-# Alerts Selected Tree Detail Design
+# Alerts Stable Selection Detail Design
 
 ## Goal
 
-Keep the Alerts panel as a dense priority queue while making the selected
-alert read more like the sectioned tree layout used by pane cards.
+Keep the Alerts panel as a dense priority queue while making selected rows
+show extra structure without rewriting the base row the cursor landed on.
 
 ## Decision
 
 Do not convert Alerts to cards. Alerts are volatile queue items, so row
-density matters more than framed card presentation. Instead, keep the
-existing row list and render tree-shaped detail only for the selected
-row.
+density matters more than framed card presentation. Selection should be
+additive: render the same base lines for selected and non-selected rows,
+then append a small tree-shaped detail block only where extra context is
+available.
 
 ## Behavior
 
 - Non-selected alerts keep the existing compact row style.
-- Selected recommendation rows render detail labels as a small tree:
-  `├ summary`, `├ next`, `├ related`, `├ rail`, `├ included`,
-  and `└ action` as applicable. The selected tree uses `action` for
-  copyable commands instead of repeating both `run` and `copy`.
-- Selected related rows keep the compact `related` summary, then show
-  nested sibling evidence under the selected row.
-- Selected `FLOW Context recovery` rows render their timeline as tree
-  branches: cause/evidence/prep/included/action.
-- Unselected `FLOW` rows stay compact and continue hiding included/copy
-  detail.
+- Selected recommendation rows keep the same `summary`, detail, `run`,
+  and compact `related` summary lines as non-selected rows.
+- Selected related rows append a small tree block for `rail`, nested
+  sibling `included` evidence, and optional `action`.
+- Selected `FLOW Context recovery` rows keep the same summary and timeline
+  rail (`o` / `|`) as non-selected rows, then append `included` evidence
+  and optional `action`.
+- Selection changes vertical expansion only; it does not relabel existing
+  base lines.
 - No behavior changes to projection, sorting, hide, bulk counts, filters,
   or copy metadata.
 
@@ -39,4 +39,5 @@ row.
 
 - `cargo test --lib related_context`
 - `cargo test --lib context_recovery_flow`
+- `cargo test --lib`
 - `cargo fmt -- --check`
