@@ -1499,12 +1499,13 @@ fn alert_entry_lines(
 }
 
 fn related_summary_line(related: &RelatedAlertContext) -> String {
+    let connector = related
+        .connector_label
+        .strip_prefix("same ")
+        .unwrap_or(&related.connector_label);
     aligned_detail(
         "related",
-        &format!(
-            "{} alerts on {} · {}",
-            related.total, related.pane_id, related.connector_label
-        ),
+        &format!("{} on {} · {}", related.total, related.pane_id, connector),
     )
 }
 
@@ -1565,14 +1566,19 @@ fn alert_item_lines(
         );
     }
     if let Some(related) = item.related.as_ref() {
-        for detail in [related_summary_line(related), related_rail_line(related)] {
+        let related_summary = related_summary_line(related);
+        lines.extend(
+            wrap_with_prefix(&related_summary, width, &continuation, &continuation)
+                .into_iter()
+                .map(|line| Line::styled(line, Style::default().fg(theme::text_dim()))),
+        );
+        if is_selected {
+            let rail = related_rail_line(related);
             lines.extend(
-                wrap_with_prefix(&detail, width, &continuation, &continuation)
+                wrap_with_prefix(&rail, width, &continuation, &continuation)
                     .into_iter()
                     .map(|line| Line::styled(line, Style::default().fg(theme::text_dim()))),
             );
-        }
-        if is_selected {
             for evidence in &related.evidence {
                 lines.extend(
                     wrap_with_prefix(
@@ -3361,10 +3367,7 @@ mod tests {
 
         let dump = buffer_to_string(&buf);
         assert!(!dump.contains("FLOW Context recovery"), "{dump}");
-        assert!(
-            dump.contains("related : 2 alerts on %1 · same /compact path"),
-            "{dump}"
-        );
+        assert!(dump.contains("related : 2 on %1 · /compact path"), "{dump}");
         assert!(
             dump.contains("rail : [o] quota-pressure [ ] profile-switch"),
             "{dump}"
@@ -3380,7 +3383,7 @@ mod tests {
     }
 
     #[test]
-    fn unselected_related_context_omits_evidence_but_keeps_rail() {
+    fn unselected_related_context_shows_summary_only() {
         let compact_quota = rec(
             "quota-pressure: compact soon",
             "quota pressure can recover after compact",
@@ -3423,14 +3426,8 @@ mod tests {
         render_alerts(area, &mut buf, &mut state, view);
 
         let dump = buffer_to_string(&buf);
-        assert!(
-            dump.contains("related : 2 alerts on %1 · same /compact path"),
-            "{dump}"
-        );
-        assert!(
-            dump.contains("rail : [ ] quota-pressure [o] profile-switch"),
-            "{dump}"
-        );
+        assert!(dump.contains("related : 2 on %1 · /compact path"), "{dump}");
+        assert!(!dump.contains("rail :"), "{dump}");
         assert!(!dump.contains("included: quota-pressure"), "{dump}");
     }
 
