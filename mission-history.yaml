@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v2.3.4 - patches on top of v2.3.0 (supply-chain hardening Phase A+B + cli_version tail v-prefix gate + alerts UX polish + Trusted Publishers attempt with NPM_TOKEN fallback restored after v2.3.2 publish PUT 404 on stock npm 10.x + npm publish CLI pinned to 11.14.1 + metrics overlay card polish). v2.3.0 surface preserved: post-v2.2.0 stabilization + UX bundle on top of v2.2.0: path-row worktree-role hint, sectioned pane panel layout with tree branches, alert related-context rail, post-v2.2.0 critical-review 9-item bundle + footer chip mouse actions, copied-outcome lifecycle stabilization + done_when_refs 100 % coverage, settings module split, dependabot bump (thiserror 2 / crossterm 0.29 / rusqlite 0.39 / toml 1.1 / toml_edit 0.25 / attest-build-provenance v4)"
+  mission_title: "Qmonster v2.3.5 - patches on top of v2.3.0 (supply-chain hardening Phase A+B + cli_version tail v-prefix gate + alerts UX polish + Trusted Publishers OIDC-only publish-auth verified on npm@11.14.1 + metrics overlay card polish). v2.3.0 surface preserved: post-v2.2.0 stabilization + UX bundle on top of v2.2.0: path-row worktree-role hint, sectioned pane panel layout with tree branches, alert related-context rail, post-v2.2.0 critical-review 9-item bundle + footer chip mouse actions, copied-outcome lifecycle stabilization + done_when_refs 100 % coverage, settings module split, dependabot bump (thiserror 2 / crossterm 0.29 / rusqlite 0.39 / toml 1.1 / toml_edit 0.25 / attest-build-provenance v4)"
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 213
-  latest_version: "2.3.4"
+  total_revisions: 214
+  latest_version: "2.3.5"
 
 timeline:
   - change_id: "initial"
@@ -22431,6 +22431,107 @@ timeline:
         `NPM_TOKEN`-empty early-exit will be the actual Trusted Publishers
         publish-auth verification; `NPM_TOKEN` secret deletion only happens after
         that release succeeds.
+
+  - change_id: v2.3.5-oidc-only-retry
+    semantic_version: 2.3.5
+    change_sequence: 214
+    date: 2026-05-14
+    author:
+      "CHENGHAO QUAN + Claude Code (Opus 4.7 1M). Operator: 'go' to retry the OIDC-only
+      publish path now that npm@11.14.1 is pinned and v2.3.4 ran cleanly."
+    change_type: hardening
+    persistence: permanent
+    intent: Retry Trusted Publishers OIDC-only publish path on the upgraded npm CLI. release.yml publish step has the NODE_AUTH_TOKEN env block + NPM_TOKEN-empty early-exit removed; npm@11.14.1 pin retained from v2.3.4. If publish succeeds, NPM_TOKEN secret deletion is unblocked.
+    intent_ko: >
+      v2.3.5 는 v2.3.2 에서 실패했던 OIDC-only publish 시도의 재현. 차이는 이번엔 npm 11.14.1
+      이 publish CLI 로 들어와 있다는 것. v2.3.2 는 stock npm 10.x 가 TP publish-auth 를 지원
+      안 해서 PUT 가 404 였고, v2.3.3 이 `npm install -g npm@11` step 을 추가 + NODE_AUTH_TOKEN
+      fallback 을 복원했지만 그 fallback 이 있는 한 OIDC 가 진짜로 사용됐는지 로그상 구분 불가
+      였음. v2.3.4 는 floating `@11` 을 `@11.14.1` 로 핀 + metrics overlay 폴리시 묶음 — auth
+      경로는 그대로 두고 npm 버전만 고정. v2.3.5 는 다시 env block + early-exit 를 제거해
+      OIDC 만 남김. publish 가 통과하면 TP publish-auth 가 npm 11.x 에서 실제로 동작한다는
+      end-to-end 증거가 되고, NPM_TOKEN secret 폐기가 풀린다. 실패하면 v2.3.3 패턴으로 env
+      block 복원하는 hotfix (v2.3.6) 로 회복.
+    issue_or_context: >-
+      Summary:
+
+      v2.3.5 closes the loop on the Trusted Publishers OIDC-only verification that
+      v2.3.2 attempted and v2.3.3 deferred. The release.yml publish step changes:
+
+      - Drop `env: NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` block.
+      - Drop the `if [ -z "${NODE_AUTH_TOKEN:-}" ]; then ... exit 0; fi`
+        early-exit.
+      - Keep the `npm install -g npm@11.14.1` upgrade step from v2.3.3 +
+        v2.3.4 so npm has TP publish-auth support (added in npm 11.5).
+      - Rewrite the publish-job comment to document the full retry history
+        (v2.3.2 attempt → v2.3.3 fallback restoration → v2.3.4 confirmation
+        → v2.3.5 retry).
+
+      Recovery path if publish fails (mirrors v2.3.3): revert this commit's
+      release.yml changes — bring back the env block + early-exit — and cut
+      v2.3.6 as a hotfix. NPM_TOKEN secret stays in place either way until
+      this release verifies clean.
+
+      `docs/RELEASING.md` Automated Flow and Supply-Chain Controls auth
+      section are rewritten back to the OIDC-only wording with the v2.3.5
+      history line. No other files change beyond version-surface bumps.
+
+      Validation: `cargo check --offline` passes; mission.yaml +
+      mission-history.yaml meta updated.
+    changes:
+      added: []
+      modified:
+        - ".github/workflows/release.yml: Publish canonical npm package step has NODE_AUTH_TOKEN env block + NPM_TOKEN-empty early-exit removed. Publish job comment rewritten with the full retry history."
+        - "docs/RELEASING.md: Automated Flow + Supply-Chain Controls auth section reverted to the OIDC-only wording with the v2.3.5 history line."
+        - "Cargo.toml + Cargo.lock + package.json + mission.yaml + VERSION.md + README.md: version 2.3.4 → 2.3.5."
+      removed: []
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime:
+        "No `src/` code change. The release workflow's publish step is the only
+        consumer of the env-block change. Publication now requires a working
+        TP entry on npmjs.com + npm 11.5+; if either drifts the publish step
+        fails hard."
+      tests:
+        Unchanged at 1564 lib + supporting integration tests; no `src/` modifications.
+      ledger:
+        1 new timeline entry (sequence 214); meta total_revisions 213 → 214,
+        latest_version 2.3.4 → 2.3.5.
+      npm:
+        package.json version 2.3.5; CI publication runs the same `Release and
+        Package Mirror` workflow with npm 11.14.1, this time without any
+        token fallback in the publish step. If TP works end-to-end, publish
+        succeeds and the Sigstore provenance log records both the build
+        attestation and the publish event.
+      observable_effects:
+        - "Footer version badge displays `v2.3.5` once the tag is cut."
+        - "Workflow log on the publish step shows OIDC authentication and the
+          provenance line, with no NODE_AUTH_TOKEN env reference."
+        - "If TP misconfigures, publish fails hard rather than silently
+          falling back. Recovery is to fix the npmjs.com TP entry (or
+          temporarily re-introduce env block + a fresh NPM_TOKEN secret) and
+          re-tag."
+    breaking: false
+    risk:
+      Medium for the publish step on this single tag. If TP setup drifts or
+      npm 11.x has a regression on TP publish-auth, this release fails at the
+      publish step. Recovery via v2.3.6 hotfix that restores the env block
+      pattern from v2.3.3. NPM_TOKEN secret stays in repo settings either
+      way; deletion is contingent on this release succeeding.
+    related_commits:
+      - d956249 # v2.3.4 release ledger sync (immediately prior tag)
+      - 3fcef51 # v2.3.3 release (added npm@11 upgrade + restored fallback)
+      - b38d96e # v2.3.2 release (first OIDC-only attempt; failed)
+    follow_up:
+      - If v2.3.5 publish succeeds end-to-end, maintainer runs `gh secret delete NPM_TOKEN`
+        to retire the secret. Update `.docs/claude/v2.3.x-supplychain-evidence.md`
+        with the TP-only verification block.
+      - If publish fails, restore the env block + early-exit in a v2.3.6
+        hotfix, capture the npm error verbatim in the evidence ledger, and
+        coordinate with the npmjs.com TP entry to identify the field drift.
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

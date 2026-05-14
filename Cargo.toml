@@ -1,6 +1,6 @@
 [package]
 name = "qmonster"
-version = "2.3.4"
+version = "2.3.5"
 edition = "2024"
 rust-version = "1.88"
 default-run = "qmonster"
