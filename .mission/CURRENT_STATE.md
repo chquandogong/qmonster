@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-21 (Claude, v2.4.0 ledger sync — first feature minor on the v2.x line. Provider::Antigravity (Google's new agy CLI replacing Gemini CLI on 2026-06-18 for free / Pro / Ultra users) added via Tasks-1-7 TDD bundle routed through Provider::Unknown's minimal common::parse_common_signals path; six independent ObserveOnly gates (adapter dispatch + AnomalyKind matrix + provider_honesty Hidden + profile_switch None + insights coverage "unsupported" + token-sample filter) keep agy panes off every analytic surface. Provider Setup overlay gains 5th "agy" tab; recommended tmux bundle pane 0.2 swapped to agy:1:research with Enterprise-Gemini substitute comment. detect_provider_title reorder (spinner-activity + diamond-Ready before keyword fallback) fixes Claude main pane misclassified as Gemini when activity sentence mentions another provider. process_memory descendant-walk gains 2-tier priority (dedicated CLI binaries beat generic interpreters). Gemini code / fixtures / mission history untouched — Enterprise / Cloud / Standard Gemini CLI retains support past 2026-06-18. Lib 1564 → 1572 (+8), integration 69 → 70 (+1), fmt + clippy clean. v2.3.6 baseline still applies for the supply-chain Phase A+B+C+D closure; this release adds no new security surface)_
+_Last updated: 2026-05-21 (Claude, v2.4.1 patch — Provider Setup tab header regression fix + ALL refactor. v2.4.0 shipped `Provider::Antigravity` through the enum + key dispatcher + mouse hit-test but `dashboard::render_provider_setup_modal` carried a hand-written 4-entry tab array that silently rendered only `Claude/Codex/Gemini/Tmux`; the `4 agy` keystroke and click both worked but the header showed 4 tabs. v2.4.1 introduces `ProviderSetupTab::ALL` + `index()` as a single source of truth, `dashboard.rs` and `TAB_BY_INDEX` now consume `ALL`, and `all_constant_is_in_sync_with_index_method_and_labels` regression test pins length + uniqueness + non-empty labels + index() position match (the `index()` method is `match`-based so a future enum variant addition becomes a compile error before the test even runs). Also corrects the v2.4.0 ledger-sync miss in `README.md` (Cargo crate version row was still `2.3.6`). Lib 1572 → 1573 (+1 regression test), integration 70 unchanged, fmt + clippy + test all green. v2.4.0 prose and v2.3.6 supply-chain baseline below remain verbatim — this is a one-file code patch + ledger sync with no new security or behaviour surface)_
 
 ## Mission
 
@@ -122,6 +122,64 @@ a2caa51 feat(identity): add Provider::Antigravity variant (no behavior change ye
    `src/domain/anomaly.rs::unknown_and_qmonster_provider_are_never_supported`
    to include `antigravity` in the test name; the body already
    asserts the new coverage.
+
+## v2.4.1 — Provider Setup Tab Header Regression Fix + ALL Refactor
+
+Patch release on top of v2.4.0. v2.4.0 shipped `Provider::Antigravity`
+in `ProviderSetupTab` (enum), `handle_provider_setup_overlay_key`
+(keymap), and `left_click_on_tabs_row_switches_tabs` (mouse hit-test
+covering the `agy` label cell). All three were 5-tab aware. But
+`src/ui/dashboard.rs::render_provider_setup_modal` carried a
+hand-written 4-entry tab array that silently rendered only
+`Claude/Codex/Gemini/Tmux`. Operators pressing `P` saw 4 tabs in the
+header even though `4` (agy) and `5` (Tmux) were both reachable by
+keystroke. The drift survived CI because the mouse-click test
+verified the `agy` cell coordinates against `provider_setup_tab_index_at`
+hit-testing rather than the rendered header line.
+
+**Fix + future-proof** (commit chain `afa262a..b34e8bc`, before this
+ledger sync commit):
+
+1. `afa262a chore(ai): apply Claude edit` — one-line `Antigravity`
+   addition to the hand-written array (auto-commit captured by the
+   project's edit hook before the refactor landed).
+2. `b34e8bc release: v2.4.1 — Provider Setup tab header fix + ALL
+   refactor` — single source of truth:
+   - `src/ui/provider_setup.rs`: new `pub const ALL: [Self; 5]`
+     and `pub fn index(self) -> usize` on `ProviderSetupTab`.
+     `index()` is `match`-based so future enum variant additions
+     are a compile error before tests run.
+   - `src/ui/dashboard.rs`: header now uses
+     `ProviderSetupTab::ALL.iter().map(|t| Line::from(t.label()))`
+     and `active_idx = overlay.tab.index()`; the hand-written array
+     and `match`-to-index mapping are deleted.
+   - `src/app/provider_setup_overlay.rs`:
+     `const TAB_BY_INDEX: [ProviderSetupTab; 5] = ProviderSetupTab::ALL`
+     (aliased; the 5-entry literal is gone).
+   - New regression test
+     `all_constant_is_in_sync_with_index_method_and_labels` in
+     `src/ui/provider_setup.rs` pins: `ALL.len() == 5`, each entry
+     appears exactly once, every `label()` non-empty, and
+     `tab.index() == ALL.iter().position(...)` for every variant.
+
+**README.md correction**: v2.4.0 ledger sync left the `Cargo crate
+version` row at the stale `2.3.6` value. This release ships it to
+`2.4.1` alongside the `Release` + `npm` rows.
+
+**Validation at this commit**:
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args` clean.
+- `cargo test --all-targets`: **1573 lib + 70 integration + 70
+  supporting**, all green. Lib +1 over v2.4.0 (1572 → 1573) for the
+  new regression test; integration unchanged at 70.
+- Live verification: `P` overlay on the running qmonster pane shows
+  `│ Claude │ Codex │ Gemini │ agy │ Tmux │` (captured via
+  `tmux capture-pane`); footer reads `v2.4.1`.
+
+No new behaviour surface, no new audit kind, no new policy gate, no
+new RequestedEffect, no SQLite schema change. The v2.3.6 supply-chain
+Phase A+B+C+D closure baseline continues to apply unchanged.
 
 ## Post-v2.2.0 Stabilization (unreleased)
 

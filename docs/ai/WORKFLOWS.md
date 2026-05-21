@@ -1,7 +1,7 @@
 # WORKFLOWS
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-05-21 (v2.4.0 ledger sync — Bootstrap-section tmux pane 0.2 slug updated to `agy:1:research` in the v2.4.0 commit; Gemini r1 reviewer narrative kept verbatim) / 2026-05-21 (current — v2.4.1 ledger sync; workflow loop, working-doc rotation, and `.docs`/`.mission` discipline rules below unchanged at the v2.4.1 baseline)
 
 ## 1. Planning loop (current round)
 

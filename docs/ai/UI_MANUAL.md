@@ -591,11 +591,12 @@ side_effects (N):
   `Home` / `End`로 스크롤합니다. modal 오른쪽 위 `[x]`를 클릭하거나
   `S`를 다시 누르거나 (`숫자 편집 중 제외`) `q` / `Esc`로 닫습니다. `w` 저장은 로드된 TOML의 코멘트와
   관련 없는 섹션을 보존하면서 Settings가 소유한 key만 갱신합니다.
-- **Provider Setup (G-1, v1.29.0)**:
-  `P`로 열립니다. 4개 탭(Claude / Codex / Gemini / Tmux)을 `1` / `2` / `3` / `4`로
-  전환하며, provider 탭은 해당 statusline / footer / config 파일을
-  Qmonster가 데이터를 수집할 수 있도록 어떻게 셋업할지 안내하고,
-  Tmux 탭은 추천 4-pane 실행 환경을 설치하는 방법을 안내합니다.
+- **Provider Setup (G-1, v1.29.0; v2.4.0에서 `agy` 5번째 탭 추가)**:
+  `P`로 열립니다. 5개 탭(Claude / Codex / Gemini / agy / Tmux)을
+  `1` / `2` / `3` / `4` / `5`로 전환하며, provider 탭은 해당
+  statusline / footer / config 파일을 Qmonster가 데이터를 수집할
+  수 있도록 어떻게 셋업할지 안내하고, Tmux 탭은 추천 4-pane 실행
+  환경을 설치하는 방법을 안내합니다.
   탭 본문은 두 부분으로 구성됩니다: (1) 현재 상태 헤더 — read-only
   filesystem 프로브로 감지한 `~/.claude/statusline.sh`,
   `~/.codex/config.toml`, `~/.gemini/settings.json`의 존재 여부와
@@ -621,6 +622,17 @@ side_effects (N):
     템플릿과, OAuth는 그대로 유지하되 cache 필드는 FAQ-documented OAuth
     한계로 인해 노출되지 않는다는 informational note (API key 전환은
     운영자 선호에 따라 deferred).
+  - **agy 탭 (v2.4.0)**: Google이 2026-06-18부터 free / Pro / Ultra /
+    Code Assist 개인 라이선스에서 Gemini CLI를 대체하기로 발표한 새
+    Antigravity CLI(`agy`)를 위한 탭입니다. 짧고 솔직한 안내 — agy는
+    Antigravity IDE의 launcher이고 문서화된 headless API가 아직
+    없으므로, Qmonster는 `agy` 패널을 ObserveOnly로 식별만 합니다
+    (`agy:N:role` canonical title 또는 pane current_command `agy`
+    토큰). 모든 분석 표면(anomaly / profile / cache / cost / insights
+    coverage / token sample)은 6개 독립 게이트로 차단되며, 복사할
+    수 있는 스니펫이 없습니다. Enterprise / Cloud / Standard Gemini
+    CLI 라이선스는 2026-06-18 이후에도 유지되므로 Gemini 탭은 계속
+    유효합니다.
   - **Tmux 탭**: 추천 4-pane 워크플로우 설치 스크립트를 `y`로 복사합니다.
     복사한 스크립트를 실행하면 `~/ts.sh` (Claude/Codex/Gemini/Qmonster
     pane을 만들고 `claude:1:main`, `codex:1:review`, `agy:1:research`,
@@ -631,7 +643,8 @@ side_effects (N):
     source합니다. 현재 tmux server에 helper binding을 즉시 반영하려면
     `tmux source-file ~/.tmux/qmonster.tmux.conf`를 한 번 실행한 뒤
     `~/ts.sh qmonster ~/Qmonster`를 사용합니다.
-  - **조작**: `1` / `2` / `3` / `4`, `Tab`, `←` / `→` 탭 전환,
+  - **조작**: `1` / `2` / `3` / `4` / `5`, `Tab`, `←` / `→` 탭 전환
+    (v2.4.0부터 `4 agy` / `5 Tmux`로 키 이동),
     `↑` / `↓` 또는 `j` / `k` / mouse wheel 스크롤, `y` 현재
     탭 스니펫 복사, `P` 다시 / `q` / `Esc` 닫기.
   - **Read-only**: Qmonster는 어떤 provider 설정 파일에도 절대 쓰지

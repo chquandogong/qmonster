@@ -3,8 +3,8 @@ meta:
   mission_title: "Qmonster v2.4.0 - first feature minor on the v2.x line. Adds Provider::Antigravity (Google's new agy CLI replacing Gemini CLI for free / Pro / Ultra users on 2026-06-18) via a Tasks-1-7 TDD bundle routed through Provider::Unknown's minimal common::parse_common_signals path. Six independent ObserveOnly gates (adapter dispatch + AnomalyKind matrix + provider_honesty Hidden chips + profile_switch None + insights data-completeness 'unsupported' + token-sample filter exclusion) keep agy panes off every analytic surface. Provider Setup overlay (P key) gains a 5th 'agy' tab; recommended tmux bundle pane 0.2 flips from gemini:1:research to agy:1:research with an Enterprise-Gemini substitute comment. detect_provider_title reorder fixes Claude main pane misclassified as Gemini when its working-state activity sentence mentions another provider (e.g. '⠂ Migrate from Gemini CLI to Agy CLI'). process_memory descendant-walk gains a two-tier priority (dedicated CLI binaries beat generic interpreters). Gemini code, fixtures, mission history untouched — Enterprise / Cloud / Standard Gemini CLI retains support past 2026-06-18. v2.3.6 surface preserved: Phase D hygiene bundle (ci.yml cache key + workflow file hash, release.yml id-token comment, README install notice, SECURITY.md AI tooling expectations, dependency-review-action PR gate, prebuilt-npm MDR draft) on top of v2.3.5 OIDC-only verification on npm@11.14.1, v2.3.0 surface preserved (post-v2.2.0 stabilization + UX bundle: path-row worktree-role hint, sectioned pane panel tree branches, alert related-context rail, copied-outcome lifecycle, done_when_refs 100 % coverage, settings module split, dependabot bump)."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 216
-  latest_version: "2.4.0"
+  total_revisions: 217
+  latest_version: "2.4.1"
 
 timeline:
   - change_id: "initial"
@@ -22844,6 +22844,139 @@ timeline:
       - "When Google ships a documented Antigravity headless companion binary or stabilizes an agy session-screen tail format, graduate Antigravity from common::parse_common_signals to a dedicated src/adapters/antigravity.rs adapter with a real fixture under tests/fixtures/real/."
       - "Backfill docs/ai/VALIDATION.md release log rows for v2.2.0 / v2.3.0 / v2.3.1 — v2.3.6 in a separate doc-only commit. The table currently jumps from v2.1.0 to v2.4.0."
       - "Rename src/domain/anomaly.rs::unknown_and_qmonster_provider_are_never_supported to include `antigravity` in the test name; the body already asserts the new coverage."
+
+  - change_id: "v2.4.1-providersetup-tabheader-regression-fix"
+    semantic_version: "2.4.1"
+    change_sequence: 217
+    date: "2026-05-21"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (Opus 4.7 1M context)"
+    change_type: "patch"
+    motivation_type: "regression-fix"
+    persistence: "permanent"
+    intent: >
+      v2.4.0 shipped `Provider::Antigravity` end-to-end through the
+      `ProviderSetupTab` enum, the keymap dispatcher (`KeyCode::Char('4')
+      => ProviderSetupTab::Antigravity`), and the mouse hit-test
+      (`left_click_on_tabs_row_switches_tabs` covers the `agy` label
+      cell at `inner_x + 27`). All three layers were 5-tab aware. But
+      `src/ui/dashboard.rs::render_provider_setup_modal` carried a
+      hand-written 4-entry tab-title array
+      (`[Claude, Codex, Gemini, Tmux]`) plus a parallel 5-arm
+      `active_idx` match. The header silently rendered only 4 tabs
+      even though `4 agy` was reachable by keystroke + click. The
+      drift survived CI because the mouse-click regression test
+      verified the `agy` cell coordinates against
+      `provider_setup_tab_index_at` hit-testing rather than the
+      rendered header line; no test exercised the header's
+      ratatui-Tabs widget vector.
+
+      v2.4.1 closes both the immediate header bug AND the structural
+      drift risk that allowed it. Two commits on top of v2.4.0
+      (`a2618dc`):
+
+      - `afa262a chore(ai): apply Claude edit` — one-line addition of
+        `ProviderSetupTab::Antigravity` to the hand-written 4-entry
+        array (auto-commit captured by the project's `chore(ai)` edit
+        hook the moment the Edit tool wrote the file, before the
+        refactor landed).
+
+      - `b34e8bc release: v2.4.1 — Provider Setup tab header fix +
+        ALL refactor` — single source of truth refactor:
+        * `src/ui/provider_setup.rs`: new `pub const ALL: [Self; 5]`
+          and `pub fn index(self) -> usize` on `ProviderSetupTab`.
+          `index()` is a `match` expression so future enum variants
+          force a compile error before any test runs.
+        * `src/ui/dashboard.rs::render_provider_setup_modal` now
+          builds tab titles via
+          `ProviderSetupTab::ALL.iter().map(|t| Line::from(t.label())).collect()`
+          and computes `active_idx = overlay.tab.index()`. The
+          hand-written 5-entry array (post-`afa262a`) AND the parallel
+          5-arm match are both deleted.
+        * `src/app/provider_setup_overlay.rs`: the existing
+          `const TAB_BY_INDEX: [ProviderSetupTab; 5] = [...]` literal
+          becomes a one-line alias
+          `const TAB_BY_INDEX: [ProviderSetupTab; 5] = ProviderSetupTab::ALL;`.
+        * New regression test
+          `all_constant_is_in_sync_with_index_method_and_labels` in
+          `src/ui/provider_setup.rs` pins four properties: `ALL.len()
+          == 5`, every entry appears exactly once, every `label()`
+          non-empty, and `tab.index() == ALL.iter().position(...)`
+          holds for every variant.
+
+      Also corrects a v2.4.0 ledger-sync miss: `README.md` left the
+      `Cargo crate version` row at `2.3.6` even though Cargo.toml was
+      already at `2.4.0`. This patch ships the row to `2.4.1`
+      alongside the `Release` + `npm` rows.
+
+      Lib tests 1572 → 1573 (+1 regression test). Integration tests
+      70 unchanged. `cargo fmt --all --check` + `cargo clippy
+      --all-targets -- -D warnings -A clippy::uninlined_format_args`
+      + `cargo test --all-targets` all green. Live verification: the
+      running qmonster pane after `cargo build --release` + process
+      restart shows `│ Claude │ Codex │ Gemini │ agy │ Tmux │` in
+      the `P` overlay header (captured via `tmux capture-pane`), and
+      the footer reads `v2.4.1` once `git describe --tags` picks up
+      the new annotated tag.
+    changes:
+      added:
+        - "ProviderSetupTab::ALL: [Self; 5] const + ProviderSetupTab::index(self) -> usize match-based method in src/ui/provider_setup.rs."
+        - "Regression test src/ui/provider_setup.rs::tests::all_constant_is_in_sync_with_index_method_and_labels (length + uniqueness + non-empty labels + index() position match)."
+      modified:
+        - "src/ui/dashboard.rs::render_provider_setup_modal: hand-written 4/5-entry tab array + parallel active_idx match replaced with ProviderSetupTab::ALL.iter() + overlay.tab.index()."
+        - "src/app/provider_setup_overlay.rs: TAB_BY_INDEX collapsed to a one-line alias of ProviderSetupTab::ALL."
+        - "README.md: Release row v2.4.0 → v2.4.1; npm row qmonster@2.4.0 → qmonster@2.4.1; gh release download examples bumped to v2.4.1; Cargo crate version row corrected 2.3.6 → 2.4.1 (v2.4.0 ledger-sync miss)."
+        - "Cargo.toml + Cargo.lock + package.json + VERSION.md + mission.yaml + .mission/CURRENT_STATE.md + docs/ai/VALIDATION.md: version 2.4.0 → 2.4.1 surface alignment."
+      removed: []
+    done_when_delta:
+      added: []
+      modified: []
+      removed: []
+    impact_scope:
+      runtime:
+        "Provider Setup overlay (`P` key) now renders five tabs
+        (`Claude / Codex / Gemini / agy / Tmux`) in the header, matching
+        the v2.4.0-shipped keymap (`1` Claude through `5` Tmux) and
+        mouse hit-test. No other dashboard surface, audit kind, policy
+        gate, RequestedEffect, anomaly detector, or insights aggregation
+        is affected. ObserveOnly behaviour for Antigravity panes is
+        byte-identical to v2.4.0 — the six ObserveOnly gates (adapter
+        dispatch, AnomalyKind matrix, provider_honesty Hidden,
+        profile_switch None, insights coverage `unsupported`,
+        token-sample filter) are untouched."
+      tests:
+        "Lib 1572 → 1573 (+1: all_constant_is_in_sync_with_index_method_and_labels).
+        Integration 70 unchanged. fmt + clippy + test --all-targets all green."
+      ledger:
+        "1 new timeline entry (sequence 217); meta total_revisions 216 → 217,
+        latest_version 2.4.0 → 2.4.1."
+      npm:
+        "package.json version 2.4.1; CI publication runs the same
+        `Release and Package Mirror` workflow established at v2.3.6
+        with `npm@11.14.1` and OIDC-only Trusted Publishers
+        authentication. NPM_TOKEN remains absent from repo settings."
+      observable_effects:
+        - "Footer version badge displays `v2.4.1` after the tag is cut and the binary is rebuilt."
+        - "`P` key opens the Provider Setup overlay with 5 tab labels visible (`Claude / Codex / Gemini / agy / Tmux`)."
+        - "All keystroke + mouse routes that already worked in v2.4.0 continue to work; the regression fix is render-only."
+    breaking: false
+    risk:
+      "Very low. The fix removes a 4-vs-5 mismatch — both sides now
+      consume `ProviderSetupTab::ALL`. Because `index()` is
+      `match`-based and `ALL` is checked by the new regression test,
+      any future enum variant addition that forgets either constant
+      becomes a compile error (index match exhaustiveness) or a test
+      failure (ALL length / position) before the regression can ship
+      again."
+    related_commits:
+      - afa262a # auto-commit: 1-line Antigravity addition to dashboard.rs hand-written array
+      - b34e8bc # release: v2.4.1 — Provider Setup tab header fix + ALL refactor
+    follow_up:
+      - "Watch the v2.4.1 release workflow. This is the 3rd OIDC-only publish after v2.3.6 + v2.4.0 verified the path."
+      - "Backfill docs/ai/VALIDATION.md release log rows for v2.2.0 / v2.3.0 / v2.3.1 — v2.3.6 in a separate doc-only commit (carried over from v2.4.0)."
+      - "Rename src/domain/anomaly.rs::unknown_and_qmonster_provider_are_never_supported to include `antigravity` in the test name (carried over from v2.4.0)."
+      - "If a future provider gets a Provider Setup tab, the addition only requires touching ProviderSetupTab + ProviderSetupTab::ALL + ProviderSetupTab::index() + render_tab_content/snippet_for_tab arms; dashboard.rs and TAB_BY_INDEX pick up the new tab automatically via ALL."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

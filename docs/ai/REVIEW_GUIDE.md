@@ -1,7 +1,7 @@
 # REVIEW_GUIDE
 
 - Version: v0.4.0
-- Date: 2026-04-20 / 2026-05-11 (current — v2.1.0 ledger sync; provider-coverage matrix and rubric reaffirmed at the v2.1.0 synthesis-slice baseline)
+- Date: 2026-04-20 / 2026-05-11 (v2.1.0 ledger sync; provider-coverage matrix and rubric reaffirmed at the v2.1.0 synthesis-slice baseline) / 2026-05-13 (v2.3.0 release — rubric unchanged; post-v2.2.0 stabilization + UX bundle landed on top of v2.2.0) / 2026-05-21 (v2.4.0 — `Provider::Antigravity` ObserveOnly identification; reviewer-guide note: when reviewing a new provider, follow the same six-gate ObserveOnly pattern (`AnomalyKind::supports_provider` matrix + `provider_honesty` Hidden chips + `profile_switch` None + insights coverage `unsupported` + token-sample filter + adapter dispatch through `common::parse_common_signals`) until a documented headless companion exists) / 2026-05-21 (current — v2.4.1 patch: tab header drift catch — reviewers should now ask "does the rendered UI consume the canonical const (e.g. `ProviderSetupTab::ALL`) or a hand-written copy?" whenever a new provider/tab/enum variant lands; an enum + dispatcher + hit-test all updated but a separate ratatui render-side array forgotten is the failure mode the v2.4.0 → v2.4.1 patch closed)
 
 This is the contract that every reviewer (Codex cross-check, Gemini
 research/policy/safety, human sign-off) works to. It defines what is
