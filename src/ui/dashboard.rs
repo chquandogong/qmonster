@@ -726,23 +726,11 @@ pub fn render_provider_setup_modal(
         .map(crate::ui::provider_setup::detect_gemini_footer_state)
         .unwrap_or_default();
 
-    let tab_titles: Vec<Line<'_>> = [
-        crate::ui::provider_setup::ProviderSetupTab::Claude,
-        crate::ui::provider_setup::ProviderSetupTab::Codex,
-        crate::ui::provider_setup::ProviderSetupTab::Gemini,
-        crate::ui::provider_setup::ProviderSetupTab::Antigravity,
-        crate::ui::provider_setup::ProviderSetupTab::Tmux,
-    ]
-    .iter()
-    .map(|t| Line::from(t.label()))
-    .collect();
-    let active_idx = match overlay.tab {
-        crate::ui::provider_setup::ProviderSetupTab::Claude => 0,
-        crate::ui::provider_setup::ProviderSetupTab::Codex => 1,
-        crate::ui::provider_setup::ProviderSetupTab::Gemini => 2,
-        crate::ui::provider_setup::ProviderSetupTab::Antigravity => 3,
-        crate::ui::provider_setup::ProviderSetupTab::Tmux => 4,
-    };
+    let tab_titles: Vec<Line<'_>> = crate::ui::provider_setup::ProviderSetupTab::ALL
+        .iter()
+        .map(|t| Line::from(t.label()))
+        .collect();
+    let active_idx = overlay.tab.index();
     let tabs = Tabs::new(tab_titles)
         .select(active_idx)
         .block(

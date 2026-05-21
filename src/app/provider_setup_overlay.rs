@@ -22,13 +22,7 @@ use crate::ui::dashboard::{
 };
 use crate::ui::provider_setup::{ProviderSetupOverlay, ProviderSetupTab, snippet_for_tab};
 
-const TAB_BY_INDEX: [ProviderSetupTab; 5] = [
-    ProviderSetupTab::Claude,
-    ProviderSetupTab::Codex,
-    ProviderSetupTab::Gemini,
-    ProviderSetupTab::Antigravity,
-    ProviderSetupTab::Tmux,
-];
+const TAB_BY_INDEX: [ProviderSetupTab; 5] = ProviderSetupTab::ALL;
 
 /// Returns `true` when the operator pressed the entry key on an
 /// open Provider Setup overlay; the caller should close() and skip

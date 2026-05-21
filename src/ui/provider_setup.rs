@@ -21,6 +21,18 @@ pub enum ProviderSetupTab {
 }
 
 impl ProviderSetupTab {
+    /// Every tab in render / dispatch order. Single source of truth —
+    /// `dashboard::render_provider_setup_modal` and the keymap's
+    /// `TAB_BY_INDEX` both consume this so adding a variant only
+    /// requires touching `ProviderSetupTab` and this constant.
+    pub const ALL: [Self; 5] = [
+        Self::Claude,
+        Self::Codex,
+        Self::Gemini,
+        Self::Antigravity,
+        Self::Tmux,
+    ];
+
     pub fn label(self) -> &'static str {
         match self {
             ProviderSetupTab::Claude => "Claude",
@@ -28,6 +40,16 @@ impl ProviderSetupTab {
             ProviderSetupTab::Gemini => "Gemini",
             ProviderSetupTab::Antigravity => "agy",
             ProviderSetupTab::Tmux => "Tmux",
+        }
+    }
+
+    pub fn index(self) -> usize {
+        match self {
+            ProviderSetupTab::Claude => 0,
+            ProviderSetupTab::Codex => 1,
+            ProviderSetupTab::Gemini => 2,
+            ProviderSetupTab::Antigravity => 3,
+            ProviderSetupTab::Tmux => 4,
         }
     }
 
@@ -598,6 +620,44 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn all_constant_is_in_sync_with_index_method_and_labels() {
+        // v2.4.0 shipped with `ProviderSetupTab::Antigravity` declared
+        // in the enum + handled in the keymap dispatcher + locked by
+        // mouse hit-test, but a hand-written 4-tab array in
+        // `dashboard.rs::render_provider_setup_modal` silently rendered
+        // only Claude/Codex/Gemini/Tmux. This test pins three properties
+        // so a future variant addition cannot repeat the same drift:
+        // - `ALL` carries every variant exactly once (length + uniqueness)
+        // - `index()` returns the position inside `ALL`
+        // - every entry resolves to a non-empty user-visible label
+        // `index()` is match-based, so adding a variant without updating
+        // it is a compile error before this test even runs.
+        assert_eq!(
+            ProviderSetupTab::ALL.len(),
+            5,
+            "ProviderSetupTab::ALL must carry every variant"
+        );
+        for (i, tab) in ProviderSetupTab::ALL.iter().enumerate() {
+            assert_eq!(
+                tab.index(),
+                i,
+                "ALL[{i}] = {tab:?} but tab.index() = {} — \
+                 ALL and index() must stay in lock-step",
+                tab.index()
+            );
+            assert!(
+                !tab.label().is_empty(),
+                "{tab:?} must have a non-empty header label"
+            );
+            let occurrences = ProviderSetupTab::ALL.iter().filter(|t| **t == *tab).count();
+            assert_eq!(
+                occurrences, 1,
+                "{tab:?} appears {occurrences}× in ALL — must be exactly once"
+            );
+        }
+    }
 
     #[test]
     fn detect_claude_state_reports_missing_when_no_file() {
