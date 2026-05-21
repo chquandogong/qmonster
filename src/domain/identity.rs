@@ -15,6 +15,7 @@ pub enum Provider {
     Claude,
     Codex,
     Gemini,
+    Antigravity,
     Qmonster,
     Unknown,
 }
@@ -155,6 +156,7 @@ fn parse_canonical_title(title: &str) -> Option<(Provider, u32, Role)> {
         "claude" => Provider::Claude,
         "codex" => Provider::Codex,
         "gemini" => Provider::Gemini,
+        "agy" => Provider::Antigravity,
         "qmonster" => Provider::Qmonster,
         _ => return None,
     };
@@ -215,6 +217,8 @@ fn detect_provider_command(s: &str) -> Provider {
         Provider::Claude
     } else if contains_word(&lower, "codex") {
         Provider::Codex
+    } else if contains_word(&lower, "agy") {
+        Provider::Antigravity
     } else if contains_word(&lower, "gemini") {
         Provider::Gemini
     } else {
@@ -234,7 +238,7 @@ fn fallback_role(provider: Provider, confidence: IdentityConfidence) -> Role {
         return Role::Unknown;
     }
     match provider {
-        Provider::Claude | Provider::Codex | Provider::Gemini => Role::Main,
+        Provider::Claude | Provider::Codex | Provider::Gemini | Provider::Antigravity => Role::Main,
         Provider::Qmonster => Role::Monitor,
         Provider::Unknown => Role::Unknown,
     }

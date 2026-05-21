@@ -182,6 +182,7 @@ fn provider_to_str(p: Provider) -> &'static str {
         Provider::Claude => "Claude",
         Provider::Codex => "Codex",
         Provider::Gemini => "Gemini",
+        Provider::Antigravity => "Antigravity",
         Provider::Qmonster => "Qmonster",
         Provider::Unknown => "Unknown",
     }

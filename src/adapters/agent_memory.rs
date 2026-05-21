@@ -111,7 +111,7 @@ fn candidate_files(
                 out.push(home.join(".gemini").join("GEMINI.md"));
             }
         }
-        Provider::Qmonster | Provider::Unknown => {}
+        Provider::Antigravity | Provider::Qmonster | Provider::Unknown => {}
     }
     out
 }

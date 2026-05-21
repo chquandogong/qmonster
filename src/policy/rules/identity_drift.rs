@@ -113,6 +113,7 @@ fn provider_label(p: Provider) -> &'static str {
         Provider::Claude => "Claude",
         Provider::Codex => "Codex",
         Provider::Gemini => "Gemini",
+        Provider::Antigravity => "agy",
         Provider::Qmonster => "Qmonster",
         Provider::Unknown => "Unknown",
     }

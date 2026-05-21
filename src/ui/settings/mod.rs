@@ -3157,6 +3157,7 @@ fn supports_suffix(kind: crate::domain::anomaly::AnomalyKind) -> String {
             Provider::Claude => "Claude",
             Provider::Codex => "Codex",
             Provider::Gemini => "Gemini",
+            Provider::Antigravity => "agy",
             Provider::Qmonster => "Qmonster",
             Provider::Unknown => "Unknown",
         })

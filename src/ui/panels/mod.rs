@@ -778,6 +778,7 @@ fn provider_color(provider: Provider) -> Color {
         Provider::Claude => Color::Rgb(200, 175, 120),
         Provider::Codex => Color::Rgb(120, 175, 205),
         Provider::Gemini => Color::Rgb(140, 185, 145),
+        Provider::Antigravity => theme::text_primary(),
         Provider::Qmonster => Color::Rgb(175, 160, 210),
         Provider::Unknown => theme::text_primary(),
     }
@@ -1261,6 +1262,7 @@ fn provider_label(provider: Provider) -> &'static str {
         Provider::Claude => "Claude",
         Provider::Codex => "Codex",
         Provider::Gemini => "Gemini",
+        Provider::Antigravity => "agy",
         Provider::Qmonster => "Qmonster",
         Provider::Unknown => "Unknown",
     }

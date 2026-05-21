@@ -66,7 +66,7 @@ pub(crate) fn parse_cli_version_from_tail(provider: Provider, tail: &str) -> Opt
             Provider::Claude => lower.contains("claude code") || lower.contains("claude cli"),
             Provider::Codex => lower.contains("openai codex") || lower.contains("codex cli"),
             Provider::Gemini => lower.contains("gemini cli"),
-            Provider::Qmonster | Provider::Unknown => false,
+            Provider::Antigravity | Provider::Qmonster | Provider::Unknown => false,
         };
         // Require an explicit `v` prefix on the version token. Chat
         // and status lines often mention models like "Opus 4.7" next

@@ -70,6 +70,7 @@ pub fn parse_for_with_environment(
             Provider::Claude => claude::ClaudeAdapter.parse(ctx),
             Provider::Codex => codex::CodexAdapter.parse(ctx),
             Provider::Gemini => gemini::GeminiAdapter.parse(ctx),
+            Provider::Antigravity => common::parse_common_signals(ctx.tail),
             Provider::Qmonster => qmonster::QmonsterAdapter.parse(ctx),
             Provider::Unknown => common::parse_common_signals(ctx.tail),
         }

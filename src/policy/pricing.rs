@@ -105,6 +105,7 @@ fn parse_provider(s: &str) -> Result<Provider, PricingError> {
         "claude" => Ok(Provider::Claude),
         "codex" => Ok(Provider::Codex),
         "gemini" => Ok(Provider::Gemini),
+        "antigravity" => Ok(Provider::Antigravity),
         "qmonster" => Ok(Provider::Qmonster),
         _ => Err(PricingError::UnknownProvider(s.to_string())),
     }

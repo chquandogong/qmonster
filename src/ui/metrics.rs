@@ -442,6 +442,7 @@ fn pane_label(r: &PaneReport) -> String {
         crate::domain::identity::Provider::Claude => "claude",
         crate::domain::identity::Provider::Codex => "codex",
         crate::domain::identity::Provider::Gemini => "gemini",
+        crate::domain::identity::Provider::Antigravity => "agy",
         crate::domain::identity::Provider::Qmonster => "qmonster",
         crate::domain::identity::Provider::Unknown => "?",
     };

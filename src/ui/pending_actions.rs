@@ -500,6 +500,7 @@ fn pane_label(report: &PaneReport) -> String {
         Provider::Claude => "claude",
         Provider::Codex => "codex",
         Provider::Gemini => "gemini",
+        Provider::Antigravity => "agy",
         Provider::Qmonster => "qmonster",
         Provider::Unknown => "?",
     };

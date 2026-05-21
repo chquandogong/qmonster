@@ -116,6 +116,7 @@ fn profile_targets_for_provider(provider: Provider) -> Option<(&'static str, &'s
         Provider::Claude => Some(("claude-default", "claude-script-low-token")),
         Provider::Codex => Some(("codex-default", "codex-script-low-token")),
         Provider::Gemini => Some(("gemini-default", "gemini-script-low-token")),
+        Provider::Antigravity => None,
         Provider::Qmonster | Provider::Unknown => None,
     }
 }

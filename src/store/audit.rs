@@ -224,6 +224,7 @@ fn provider_to_str(p: Provider) -> &'static str {
         Provider::Claude => "Claude",
         Provider::Codex => "Codex",
         Provider::Gemini => "Gemini",
+        Provider::Antigravity => "Antigravity",
         Provider::Qmonster => "Qmonster",
         Provider::Unknown => "Unknown",
     }
@@ -234,6 +235,7 @@ fn parse_provider(s: &str) -> Option<Provider> {
         "Claude" => Some(Provider::Claude),
         "Codex" => Some(Provider::Codex),
         "Gemini" => Some(Provider::Gemini),
+        "Antigravity" => Some(Provider::Antigravity),
         "Qmonster" => Some(Provider::Qmonster),
         "Unknown" => Some(Provider::Unknown),
         _ => None,

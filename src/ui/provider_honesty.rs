@@ -53,7 +53,7 @@ pub(crate) fn cache_metric_status(s: &SignalSet, provider: Provider) -> CacheMet
                 CacheMetricStatus::Pending
             }
         }
-        Provider::Qmonster | Provider::Unknown => CacheMetricStatus::Hidden,
+        Provider::Antigravity | Provider::Qmonster | Provider::Unknown => CacheMetricStatus::Hidden,
     }
 }
 
@@ -98,7 +98,7 @@ pub(crate) fn cost_metric_status(s: &SignalSet, provider: Provider) -> CostMetri
         };
     }
     match provider {
-        Provider::Qmonster | Provider::Unknown => CostMetricStatus::Hidden,
+        Provider::Antigravity | Provider::Qmonster | Provider::Unknown => CostMetricStatus::Hidden,
         Provider::Claude | Provider::Codex | Provider::Gemini => {
             if s.input_tokens.is_some() || s.output_tokens.is_some() {
                 CostMetricStatus::Pending

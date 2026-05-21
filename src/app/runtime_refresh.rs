@@ -23,6 +23,7 @@ pub fn runtime_refresh_provider_label(provider: Provider) -> &'static str {
         Provider::Claude => "Claude",
         Provider::Codex => "Codex",
         Provider::Gemini => "Gemini",
+        Provider::Antigravity => "agy",
         Provider::Qmonster => "Qmonster",
         Provider::Unknown => "Unknown provider",
     }
@@ -465,7 +466,7 @@ fn runtime_refresh_provider_commands(
             &["/model", "/stats session", "/stats model"]
         }
         Provider::Gemini => &["/stats session", "/stats model"],
-        Provider::Qmonster | Provider::Unknown => &[],
+        Provider::Antigravity | Provider::Qmonster | Provider::Unknown => &[],
     }
 }
 
@@ -492,6 +493,7 @@ fn runtime_refresh_provider_key(provider: Provider) -> &'static str {
         Provider::Claude => "claude",
         Provider::Codex => "codex",
         Provider::Gemini => "gemini",
+        Provider::Antigravity => "agy",
         Provider::Qmonster => "qmonster",
         Provider::Unknown => "unknown",
     }

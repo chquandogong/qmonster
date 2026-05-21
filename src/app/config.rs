@@ -869,6 +869,7 @@ impl CostConfig {
             Provider::Claude => self.claude.as_ref(),
             Provider::Codex => self.codex.as_ref(),
             Provider::Gemini => self.gemini.as_ref(),
+            Provider::Antigravity => None,
             Provider::Qmonster | Provider::Unknown => None,
         }
     }
@@ -932,6 +933,7 @@ impl ContextConfig {
             Provider::Claude => self.claude.as_ref(),
             Provider::Codex => self.codex.as_ref(),
             Provider::Gemini => self.gemini.as_ref(),
+            Provider::Antigravity => None,
             Provider::Qmonster | Provider::Unknown => None,
         }
     }
@@ -1035,6 +1037,7 @@ impl QuotaConfig {
                 QuotaWindow::Single => self.codex.as_ref(),
             },
             Provider::Gemini => self.gemini.as_ref(),
+            Provider::Antigravity => None,
             Provider::Qmonster | Provider::Unknown => None,
         }
     }
