@@ -928,7 +928,10 @@ fn filter_token_samples_for_provider(
     samples: Vec<crate::store::TokenSample>,
     provider: Provider,
 ) -> Vec<crate::store::TokenSample> {
-    if matches!(provider, Provider::Qmonster | Provider::Unknown) {
+    if matches!(
+        provider,
+        Provider::Antigravity | Provider::Qmonster | Provider::Unknown
+    ) {
         return Vec::new();
     }
     samples

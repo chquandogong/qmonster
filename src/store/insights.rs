@@ -860,7 +860,7 @@ fn collect_pane_data_completeness(
             let missing_polls = expected_polls.saturating_sub(sample_count);
             let coverage_pct = ((sample_count as f64 / expected_polls as f64) * 100.0).min(100.0);
             let coverage_pct = (coverage_pct * 10.0).round() / 10.0;
-            let status = if matches!(provider.as_str(), "Qmonster" | "Unknown") {
+            let status = if matches!(provider.as_str(), "Antigravity" | "Qmonster" | "Unknown") {
                 "unsupported"
             } else if coverage_pct >= 80.0 {
                 "ok"
