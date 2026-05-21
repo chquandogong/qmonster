@@ -5,9 +5,9 @@ npm, and operator-facing release metadata all report the same release.
 
 | Surface        | Current  | Meaning                                                                                                 |
 | -------------- | -------- | ------------------------------------------------------------------------------------------------------- |
-| Mission ledger | `v2.3.6` | Operator-facing implementation/history version. This is what tags and `mission-history.yaml` track.     |
-| npm package    | `2.3.6`  | Installable package version for the npm registry; matches the ledger tag semver without the `v` prefix. |
-| Cargo crate    | `2.3.6`  | Rust crate metadata; matches npm and the ledger tag semver without the `v` prefix.                      |
+| Mission ledger | `v2.4.0` | Operator-facing implementation/history version. This is what tags and `mission-history.yaml` track.     |
+| npm package    | `2.4.0`  | Installable package version for the npm registry; matches the ledger tag semver without the `v` prefix. |
+| Cargo crate    | `2.4.0`  | Rust crate metadata; matches npm and the ledger tag semver without the `v` prefix.                      |
 
 The running TUI displays `git describe --tags --always --dirty`, captured
 by `build.rs` as `QMONSTER_GIT_VERSION`. Tagged source builds therefore

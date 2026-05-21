@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-14 (Claude, v2.3.6 publication verified — Phase D hygiene bundle release: ci.yml cache key + workflow file hash, release.yml id-token discipline comment, README install notice, SECURITY.md AI tooling expectations, actions/dependency-review-action PR gate, prebuilt-npm-distribution MDR draft; first OIDC-only publish after NPM_TOKEN secret deletion — re-confirms TP entry alignment on npmjs.com; v2.3.x supply-chain hardening Phase A+B+C+D closed for autonomous-actionable items, D2.1/D2.2/D2.3 await maintainer UI, D3.2 cargo-vet + D4 governance decisions remain open, lru advisory MDR open)_
+_Last updated: 2026-05-21 (Claude, v2.4.0 ledger sync — first feature minor on the v2.x line. Provider::Antigravity (Google's new agy CLI replacing Gemini CLI on 2026-06-18 for free / Pro / Ultra users) added via Tasks-1-7 TDD bundle routed through Provider::Unknown's minimal common::parse_common_signals path; six independent ObserveOnly gates (adapter dispatch + AnomalyKind matrix + provider_honesty Hidden + profile_switch None + insights coverage "unsupported" + token-sample filter) keep agy panes off every analytic surface. Provider Setup overlay gains 5th "agy" tab; recommended tmux bundle pane 0.2 swapped to agy:1:research with Enterprise-Gemini substitute comment. detect_provider_title reorder (spinner-activity + diamond-Ready before keyword fallback) fixes Claude main pane misclassified as Gemini when activity sentence mentions another provider. process_memory descendant-walk gains 2-tier priority (dedicated CLI binaries beat generic interpreters). Gemini code / fixtures / mission history untouched — Enterprise / Cloud / Standard Gemini CLI retains support past 2026-06-18. Lib 1564 → 1572 (+8), integration 69 → 70 (+1), fmt + clippy clean. v2.3.6 baseline still applies for the supply-chain Phase A+B+C+D closure; this release adds no new security surface)_
 
 ## Mission
 
@@ -11,6 +11,117 @@ _Last updated: 2026-05-14 (Claude, v2.3.6 publication verified — Phase D hygie
 - Branch / worktree at handoff start: `main`, tag `v2.3.0` to be created at the ledger sync commit. v2.2.0 is the immediate prior tagged baseline.
 - Release publication state: **v2.3.6 is published** (verified 2026-05-14). Tag push at commit `86698b8` triggered `Release and Package Mirror` workflow run `25853840739`, which completed success; GitHub Release `v2.3.6` carries the full asset set; `npm view qmonster@2.3.6 dist.attestations.provenance.predicateType` is `https://slsa.dev/provenance/v1`, provenance statement published to Sigstore transparency log index `1534352286`; `npm view qmonster dist-tags` shows `latest = 2.3.6`. **v2.3.6 is the first OIDC-only publish on this package after the NPM_TOKEN secret was deleted from repo settings** — the publish step succeeded with no token fallback present, re-confirming the npmjs.com Trusted Publisher entry stays aligned with `release.yml`. v2.3.6 bundles the autonomous-actionable items from the 2026-05-14 supply-chain incident-response report's Phase D (`f9cf8a8` D1 batch — ci.yml cache key + release.yml id-token comment + README install notice + SECURITY.md AI tooling expectations, `eb00f66` D3.1 dependency-review-action PR gate, `c17eb3e` D4.3 prebuilt-npm-distribution MDR draft). **v2.3.5 is published** (verified 2026-05-14). Tag push at commit `382b93e` triggered `Release and Package Mirror` workflow run `25846457886`, which completed success; GitHub Release `v2.3.5` carries the full asset set; `npm view qmonster@2.3.5 dist.attestations.provenance.predicateType` is `https://slsa.dev/provenance/v1`, `dist.signatures` carries the standard Sigstore keyid, provenance was published to Sigstore transparency log index `1532286420`; `npm view qmonster dist-tags` shows `latest = 2.3.5`. **v2.3.5 is the OIDC-only verification release** — `release.yml` publish step has the `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` env block and `NPM_TOKEN`-empty early-exit removed, leaving Trusted Publishers OIDC as the only auth path. The publish step succeeded, proving TP publish-auth works end-to-end on npm 11.14.1. **The NPM_TOKEN secret is now safe to retire** via `gh secret delete NPM_TOKEN`; the workflow has no remaining references to it. **v2.3.4 is published** (verified 2026-05-14). Tag push at commit `d956249` triggered `Release and Package Mirror` workflow run `25845955107`, which completed success; GitHub Release `v2.3.4` (published 2026-05-14T06:46:37Z) carries the full asset set (`qmonster-v2.3.4-linux-x86_64.tar.gz` 4.39 MB, `qmonster-2.3.4.tgz` 1.38 MB, `qmonster-v2.3.4-sbom.spdx.json` 580 KB, `sbom-diff-summary.txt` 805 B, `checksums.txt` 372 B); `npm view qmonster@2.3.4 dist.attestations.provenance.predicateType` is `https://slsa.dev/provenance/v1` and `dist.signatures` carries the same `SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U` Sigstore key as prior releases; `npm view qmonster dist-tags` shows `latest = 2.3.4`. v2.3.4 bundles `bce982f` (Upgrade npm step pinned to `npm@11.14.1`, was floating `@11`) and `b9e2caf` (metrics overlay card rendering polish in `src/ui/metrics.rs` + `docs/ai/UI_MANUAL.md`); lib tests grew 1563 → 1564 with the new metrics regression. **v2.3.3 is published** (verified 2026-05-14). Tag push at commit `3fcef51` triggered `Release and Package Mirror` workflow run `25844474365`, which completed success: release-asset job built the full artifact set, the new `Upgrade npm for Trusted Publishers publish-auth` step installed `npm@11.14.1`, and `npm publish --access public --provenance` returned 0 with a Sigstore-logged provenance statement (log index `1531660936`); `npm view qmonster dist-tags` shows `latest = 2.3.3`; SBOM diff vs v2.3.2 shows 272 → 272 packages, only delta is the `qmonster` crate version. v2.3.3 is the hotfix release for the v2.3.2 npm publish failure described next. **v2.3.2 is partially published** (cut 2026-05-14, commit `b38d96e`, workflow run `25843940371`): release-asset job + GitHub Release `v2.3.2` succeeded with the full asset set (binary tarball + SBOM + diff + checksums + attestations); the publish step's `npm publish` attempted the first OIDC-only auth path on this package and the provenance signing succeeded (Sigstore log `1531483713`), but the registry PUT returned `404 'qmonster@2.3.2' is not in this registry` because `setup-node@v6.4.0` + node 20 ships npm 10.x and Trusted Publishers publish-auth (distinct from provenance signing) needs npm 11.5+; `npm owner ls qmonster` confirms `chquandogong` is the sole package owner so the TP registrant identity is correct. npm registry stays at 2.3.1 → jumps to 2.3.3; the 2.3.2 npm slot remains absent (GitHub Release `v2.3.2` stays published for archaeological reference). The v2.3.3 hotfix adds the `npm install -g npm@11` upgrade step before `Publish canonical npm package` and re-introduces `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` plus the NPM_TOKEN-empty early-exit as a transitional fallback so any future TP misconfiguration cannot block the release again. Whether v2.3.3's publish actually authenticated via OIDC TP (npm 11.5+ feature) or via the restored NPM_TOKEN fallback is not distinguishable from the workflow log — both auth paths emit the same `npm notice` output. The next release cycle that removes the env block while keeping the npm@11 upgrade will be the actual OIDC-only verification. **v2.3.1 is published** (verified 2026-05-14). Tag push at commit `70c87e3` triggered `Release and Package Mirror` workflow run `25843134839`, which completed success in 7m22s at 2026-05-14T05:22:57Z; GitHub Release `v2.3.1` (published 2026-05-14T05:22:26Z) carries the full asset set (`qmonster-v2.3.1-linux-x86_64.tar.gz` 4.39 MB, `qmonster-2.3.1.tgz` 1.37 MB, `qmonster-v2.3.1-sbom.spdx.json` 580 KB, `sbom-diff-summary.txt` 805 B, `checksums.txt` 372 B); `npm view qmonster@2.3.1 dist.attestations.provenance.predicateType` reports `https://slsa.dev/provenance/v1` and `dist.signatures` carries an npm Sigstore signature; SBOM diff vs v2.3.0 shows 272 → 272 packages, the only added/removed entry being the `qmonster` crate itself. v2.3.1 is the supply-chain hardening patch on top of v2.3.0 (active tag protection ruleset id 16375762, 8 GitHub Actions `uses:` SHA-pinned, ci.yml npm package surface guard, Dependabot security updates enabled, release.yml per-job permissions, Trusted Publishers migration target prepared on the publish job, RELEASING / RELEASE_VERIFICATION / README user-side verification docs; cli_version tail parser requires `v` prefix; alerts UX polish auto-commits 942a822 + 64c89fd; lru `IterMut` Stacked Borrows advisory accepted via `.mission/decisions/MDR-DRAFT-v2.3.x-supplychain-lru-stacked-borrows-acceptance.md` pending the ratatui 0.30 bump). The active tag protection ruleset blocked the v2.3.1 tag push at the GitHub API layer ("Cannot create ref due to creations being restricted") and admitted it only via the admin bypass actor — first end-to-end verification that the ruleset is enforcing the design. **v2.3.0 is published** (verified 2026-05-13). Tag push at commit `c8f20fe` triggered `Release and Package Mirror` workflow run `25790698215`, which completed success in 7m30s at 2026-05-13T09:39:14Z; GitHub Release `v2.3.0` (published 2026-05-13T09:38:49Z) carries the full asset set (`qmonster-v2.3.0-linux-x86_64.tar.gz` 4.39MB, `qmonster-2.3.0.tgz` 1.37MB, `qmonster-v2.3.0-sbom.spdx.json` 580KB, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 2.3.0`. The companion `CI` workflow run `25790687284` on the same commit completed success. The prior CI run `25789113538` on the alert-related-context-rail merge had failed on a `cargo fmt --check` drift in `src/ui/panels/mod.rs` (group_into_section_rows + cmd row + parent_lines rewrap); the v2.3.0 ledger sync commit absorbs that rustfmt fix. **v2.2.0 is published** (verified 2026-05-12). The first tag push at commit `94df2f6` triggered run `25712627303` which failed at 1m23s in `Run release validation`: the new P1-3 `ledger_helper_writes_copied_outcome_on_successful_copy` test called `arboard::Clipboard::new()` directly and the GitHub Actions runner has no display server. Hotfix `44946e8` introduces a generic `copy_selected_alert_command_with_ledger<F>` inner so tests can inject a deterministic closure; `to_clipboard_with_ledger` stays a thin wrapper for production. The v2.2.0 tag was deleted from origin and re-created at `44946e8` (no force-push), mirroring the v1.55.0 fmt+clippy re-tag pattern. The successful re-tag run `25712761819` completed in 7m29s at 2026-05-12T04:16:09Z; GitHub Release `v2.2.0` (published 2026-05-12T04:15:40Z) carries the full asset set (`qmonster-v2.2.0-linux-x86_64.tar.gz` 4.29MB, `qmonster-2.2.0.tgz` 1.34MB, `qmonster-v2.2.0-sbom.spdx.json` 535KB, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 2.2.0`. The companion `CI` workflow run `25712760989` on the hotfix commit completed success in 3m51s. **v2.1.0 is published** (verified 2026-05-11). Run `25649969794` completed success in 7m18s at 2026-05-11T04:23:14Z; GitHub Release `v2.1.0` (published 2026-05-11T04:22:52Z) carries the full asset set (`qmonster-v2.1.0-linux-x86_64.tar.gz`, `qmonster-2.1.0.tgz`, `qmonster-v2.1.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 2.1.0`. The companion `CI` workflow run `25649968220` on the v2.1.0 ledger sync commit `6c49536` also completed success. **v2.0.0 is published** (verified 2026-05-08). Run `25550704578` completed success in 7m15s at 2026-05-08T10:37:44Z; GitHub Release `v2.0.0` (published 2026-05-08T10:37:18Z) carries the full asset set (`qmonster-v2.0.0-linux-x86_64.tar.gz`, `qmonster-2.0.0.tgz`, `qmonster-v2.0.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 2.0.0`. **v1.60.0 is published** (run `25548715050` completed success in 7m44s at 2026-05-08T09:51:00Z). **v1.59.0 is published** (verified 2026-05-08). Run `25546295476` completed success in 6m53s at 2026-05-08T08:53:19Z; GitHub Release `v1.59.0` (published 2026-05-08T08:52:59Z) carries the full asset set (`qmonster-v1.59.0-linux-x86_64.tar.gz`, `qmonster-1.59.0.tgz`, `qmonster-v1.59.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`); `npm view qmonster dist-tags` shows `latest = 1.59.0`. **v1.58.0 + v1.58.1 are published**: v1.58.0 run `25544151924` (7m22s, 2026-05-08T08:02:49Z), v1.58.1 run `25544690855` (7m23s, 2026-05-08T08:16:08Z). **v1.55.0 is published** (re-tag after fmt+clippy fixes). `Release and Package Mirror` workflow run `25541168214` (2026-05-08, 6m57s, success) created GitHub Release `v1.55.0` (published 2026-05-08T06:47:00Z) with full asset set (`qmonster-v1.55.0-linux-x86_64.tar.gz`, `qmonster-1.55.0.tgz`, `qmonster-v1.55.0-sbom.spdx.json`, `sbom-diff-summary.txt`, `checksums.txt`) and published `qmonster@1.55.0` to npm + GitHub Packages mirror. The original v1.55.0 push (run `25539312814`) failed in 22s on `cargo fmt --check` (anomaly_overlay.rs:718 multi-line saturating_sub chain), and a follow-up clippy `manual_clamp` lint failure on hover_help.rs was fixed in `2b79e88`; the v1.55.0 tag was deleted from origin and re-created at the fixed HEAD `2b79e88` (no force-push). **v1.54.0 is also published** (run `25537887533`, 7m5s, GitHub Release published 2026-05-08T05:11:41Z). v1.53.0 is published (run `25537122599`, 6m48s). v1.52.0 is published (run `25535686447`, 7m2s). v1.51.0 is published (run `25535433723`, 7m2s). v1.50.0 is published (run `25505209461`, 7m26s).
 - Current phase: All prior phases complete. v1.50.0–v2.0.0 publication baselines still apply; v2.1.0 ships the r2 cross-validated synthesis-slice implementation on top of the v2.0.0 milestone — no new phase is opened, the work is bundled as the first feature minor on the v2.x line.
+
+## v2.4.0 — agy (Antigravity) CLI Pane Identification
+
+This release recognizes Google's new Antigravity CLI (`agy`) as a 6th
+`Provider` enum variant. Triggered by Google's 2026-05-19 announcement
+that Gemini CLI will stop serving free / Pro / Ultra / Code Assist
+individual users on 2026-06-18 in favour of agy. Enterprise / Cloud /
+Standard licenses retain Gemini CLI access; this project's daily
+workflow migrates ahead of the sunset.
+
+**ObserveOnly contract — six independent gates** (defense in depth):
+1. `src/adapters/mod.rs:73` — Antigravity dispatch routes to
+   `common::parse_common_signals` (same as Provider::Unknown). No
+   provider-specific adapter.
+2. `src/domain/anomaly.rs::AnomalyKind::supports_provider` matrix —
+   none of the 8 detector variants ever claims Antigravity.
+3. `src/ui/provider_honesty.rs` — `cache_metric_status` and
+   `cost_metric_status` return `Hidden` for Antigravity (no chip
+   rendered).
+4. `src/policy/rules/profile_switch.rs::profile_targets_for_provider`
+   returns `None` for Antigravity (no token-optimization
+   recommendations).
+5. `src/store/insights.rs:863` — data-completeness coverage marks
+   Antigravity panes as `"unsupported"` (excluded from coverage_pct
+   grading instead of penalized).
+6. `src/app/event_loop.rs::filter_token_samples_for_provider` — agy
+   token samples are dropped (parallel to Qmonster / Unknown).
+
+**Pane card surface**: `provider_label` returns lowercase `"agy"` for
+Antigravity (matches the binary name). The full `"Antigravity"` enum
+spelling appears only in audit / token_usage / cost_usage serialization
+strings.
+
+**Provider Setup overlay (`P` key) gains a 5th tab**:
+- Tab order: `1 Claude | 2 Codex | 3 Gemini | 4 agy | 5 Tmux` (Tmux
+  shifts from key 4 to key 5).
+- agy tab content is short and honest — no statusline / sidefile /
+  headless API, all chips Hidden, all detectors gated off, no copy
+  snippet.
+
+**Recommended tmux bundle**
+(`src/ui/provider_setup_snippets/tmux_qmonster_bundle.sh`) flips pane
+0.2 from `gemini:1:research` to `agy:1:research`. A comment line above
+points Enterprise Gemini CLI users at the legacy substitute. Mirrored
+in `docs/ai/UI_MANUAL.md` and `docs/ai/WORKFLOWS.md` Bootstrap section;
+the WORKFLOWS.md Gemini-review narrative (Gemini r1 reviewer) keeps the
+legacy slug verbatim — that paragraph describes historical review
+process, not the migration target.
+
+**Bundled fixes**:
+- `e40c056` — `detect_provider_title` reorder so braille-spinner
+  activity (≥ 2-word activity sentence) and the diamond + `Ready (`
+  opener run BEFORE the keyword fallback. Live bug discovered during
+  this very session: the Claude main pane's working-state title
+  literally read `⠂ Migrate from Gemini CLI to Agy CLI`, the keyword
+  fallback picked Gemini, and the pane card rendered as Gemini-Conflict.
+  Reorder fix is locked by a regression test using the exact failing
+  title. The 2-token spinner guard still excludes Codex's single-word
+  working-state titles (`⠼ Qmonster`) which fall through to the
+  tail-detection layer.
+- `d3ea04c` — `src/adapters/process_memory.rs` 2-tier descendant-walk
+  priority: `KNOWN_DEDICATED_CLI_COMMS` (claude/codex/gemini/agy/
+  qmonster, tier 2) beats `KNOWN_INTERPRETER_COMMS` (node/python/
+  python3, tier 1) by class; RSS breaks ties within class.
+  `read_pid_stats` return type changed from `(u64, bool)` to
+  `(u64, u8)`. Production Codex/Gemini panes (node-hosted, no dedicated
+  descendant) and Claude (native, already tier 2) see identical RSS
+  attribution to v2.3.6; the refactor only activates when both a
+  dedicated CLI binary and a generic interpreter coexist in the same
+  pane's descendant tree.
+
+**Gemini hygiene**: Zero Gemini code path, fixture, test, or
+mission-history reference modified. All `gemini:1:research` slugs in
+`tests/event_loop_integration.rs`, `src/ui/metrics.rs` test fixtures,
+`src/tmux/polling.rs`, `src/domain/identity.rs::qmonster_command_overrides_stale_canonical_provider_title`,
+`docs/ai/WORKFLOWS.md:20` (Gemini r1 reviewer narrative),
+`config/qmonster.example.toml:227` (canonical-pane example comment),
+and the new `tmux_qmonster_bundle.sh` substitute comment all stay
+verbatim.
+
+**Test counts**: Lib 1564 → 1572 (+8), integration 69 → 70 (+1).
+fmt + clippy clean (`-D warnings -A clippy::uninlined_format_args`).
+
+**Branch / commit chain** (10 commits, `b54b6ef..e40c056` on `main`):
+```
+e40c056 fix(identity): braille spinner activity beats keyword fallback
+5b89389 feat(provider-setup): add Antigravity (agy) tab + swap recommended pane 0.2
+bb752cd test(integration): agy pane identifies as Antigravity, emits nothing else
+1217fe8 test(anomaly): lock Antigravity out of every detector support matrix
+d3ea04c feat(process_memory): recognize agy in KNOWN_CLI_COMMS
+dab891e test(panels): pane card renders 'agy' label for Antigravity provider
+0d59dc8 test(identity): lock agy canonical title parsing + Gemini-conflict honesty
+a33e20c test(identity): lock agy command resolution to Provider::Antigravity
+99a9f96 feat(identity): include Antigravity in ObserveOnly matches! filters
+a2caa51 feat(identity): add Provider::Antigravity variant (no behavior change yet)
+```
+
+**Active follow-ups (out-of-branch)**:
+1. When Google ships a documented Antigravity headless companion
+   binary or stabilizes an agy session-screen tail format, graduate
+   Antigravity from `common::parse_common_signals` to a dedicated
+   `src/adapters/antigravity.rs` adapter with a real fixture under
+   `tests/fixtures/real/`. Until then, command-based identification is
+   the honest ceiling.
+2. Backfill `docs/ai/VALIDATION.md` release-log rows for v2.2.0 /
+   v2.3.0 / v2.3.1 — v2.3.6 in a separate doc-only commit. The table
+   currently jumps from v2.1.0 to v2.4.0.
+3. Rename
+   `src/domain/anomaly.rs::unknown_and_qmonster_provider_are_never_supported`
+   to include `antigravity` in the test name; the body already
+   asserts the new coverage.
 
 ## Post-v2.2.0 Stabilization (unreleased)
 
