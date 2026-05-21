@@ -3604,3 +3604,78 @@ fn insights_load_channel_supports_try_recv_drain() {
     assert!(outcome.result.is_err());
     assert!(ctx.insights_load_rx.try_recv().is_err());
 }
+
+#[test]
+fn agy_pane_is_identified_but_emits_no_anomaly_or_recommendation() {
+    // Task 7 — ObserveOnly contract end-to-end lock.
+    //
+    // A 2-pane workspace: Claude main (%1) + agy:1:research (%3).
+    // After one full event-loop tick:
+    //   1. The agy pane resolves to Provider::Antigravity.
+    //   2. The agy pane's anomalies are empty (matrix ObserveOnly gate).
+    //   3. The agy pane's recommendations are empty (no policy rule fires).
+    //   4. The Claude pane's anomalies and recommendations carry no
+    //      Antigravity reference (cross-pollination guard).
+    //
+    // anomaly.enabled is left at its default (true) so the anomaly matrix
+    // is fully active — the empty result proves the ObserveOnly contract
+    // at the matrix level, not the off-path shortcircuit.
+    let source = FixturePaneSource {
+        panes: vec![
+            pane("%1", "claude:1:main", "claude", "", false),
+            pane("%3", "agy:1:research", "agy", "", false),
+        ],
+    };
+    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
+    let sink = Box::new(InMemorySink::new());
+    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
+
+    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
+    assert_eq!(reports.len(), 2, "both panes must appear in the snapshot");
+
+    // --- Property 1 + 2 + 3: agy pane ---
+    let agy = reports
+        .iter()
+        .find(|r| r.pane_id == "%3")
+        .expect("agy pane must appear in the snapshot");
+
+    assert_eq!(
+        agy.identity.identity.provider,
+        Provider::Antigravity,
+        "agy pane must resolve to Provider::Antigravity"
+    );
+    assert!(
+        agy.anomalies.is_empty(),
+        "agy pane must emit no anomalies (ObserveOnly contract); got: {:?}",
+        agy.anomalies
+    );
+    assert!(
+        agy.recommendations.is_empty(),
+        "agy pane must emit no recommendations (ObserveOnly contract); got: {:?}",
+        agy.recommendations
+    );
+
+    // --- Property 4: Claude pane cross-pollination guard ---
+    let claude = reports
+        .iter()
+        .find(|r| r.pane_id == "%1")
+        .expect("claude pane must appear in the snapshot");
+
+    assert_eq!(
+        claude.identity.identity.provider,
+        Provider::Claude,
+        "claude pane must resolve to Provider::Claude"
+    );
+    for a in &claude.anomalies {
+        assert!(
+            !format!("{a:?}").contains("Antigravity"),
+            "claude pane anomaly must not reference Antigravity; got: {a:?}"
+        );
+    }
+    for r in &claude.recommendations {
+        assert!(
+            !format!("{r:?}").contains("Antigravity"),
+            "claude pane recommendation must not reference Antigravity; got: {r:?}"
+        );
+    }
+}
