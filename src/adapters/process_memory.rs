@@ -30,8 +30,23 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Dedicated AI/CLI binaries — highest priority in the RSS and identity
+/// walks. A dedicated-binary comm beats a generic interpreter even when
+/// the interpreter has a larger RSS.
+const KNOWN_DEDICATED_CLI_COMMS: &[&str] = &["claude", "codex", "gemini", "agy", "qmonster"];
+
+/// Generic language runtimes that may host an AI CLI. Lower priority
+/// than `KNOWN_DEDICATED_CLI_COMMS` — they appear in `KNOWN_CLI_COMMS`
+/// for identity resolution (bash → node /usr/bin/codex), but the RSS
+/// walk prefers a dedicated binary when one exists in the tree.
+const KNOWN_INTERPRETER_COMMS: &[&str] = &["node", "python", "python3"];
+
+/// Union: everything that counts as a "known CLI comm" for identity /
+/// cmdline resolution (both tiers combined). Kept for the
+/// `read_descendant_cli_process` BFS which only cares about CLI vs.
+/// non-CLI, not the intra-CLI tier order.
 const KNOWN_CLI_COMMS: &[&str] = &[
-    "claude", "codex", "gemini", "qmonster", "node", "python", "python3",
+    "claude", "codex", "gemini", "agy", "qmonster", "node", "python", "python3",
 ];
 
 /// BFS depth cap. Real shell→CLI trees are depth 1–3 (bash → claude,
@@ -69,30 +84,33 @@ pub fn read_descendant_rss_mb(_pane_pid: u32) -> Option<f64> {
 /// `tempdir`) so the descendant walk operates on a controlled tree.
 #[doc(hidden)]
 pub fn read_descendant_rss_mb_with_proc_root(pane_pid: u32, proc_root: &Path) -> Option<f64> {
-    // Breadth-first walk, depth-capped. Pick the candidate with the
-    // best class (CLI comm beats non-CLI) and within a class the highest
-    // RSS. The shell PID itself is a candidate: a pane with no AI CLI
-    // child still gets a number (its shell), conveyed honestly via
-    // SourceKind::Heuristic upstream.
+    // Breadth-first walk, depth-capped. Candidates are ranked by a
+    // two-tier priority:
+    //   2 = dedicated CLI binary (claude, codex, gemini, agy, qmonster)
+    //   1 = generic interpreter (node, python, python3)
+    //   0 = unknown comm (shell, wrapper, etc.)
+    // Within a tier, pick the highest RSS. The shell PID itself is a
+    // candidate: a pane with no AI CLI child still gets a number (its
+    // shell), conveyed honestly via SourceKind::Heuristic upstream.
     let mut frontier: Vec<u32> = vec![pane_pid];
     let mut visited: HashSet<u32> = HashSet::new();
     visited.insert(pane_pid);
     let mut depth = 0;
     let mut best_rss_kb: Option<u64> = None;
-    let mut best_is_cli_comm = false;
+    let mut best_tier: u8 = 0;
 
     while !frontier.is_empty() && depth < MAX_DEPTH {
         let mut next: Vec<u32> = Vec::new();
         for pid in &frontier {
-            if let Some((rss_kb, is_cli_comm)) = read_pid_stats(*pid, proc_root) {
-                let replace = match (best_is_cli_comm, is_cli_comm) {
-                    (false, true) => true,
-                    (true, false) => false,
-                    _ => rss_kb > best_rss_kb.unwrap_or(0),
+            if let Some((rss_kb, tier)) = read_pid_stats(*pid, proc_root) {
+                let replace = match tier.cmp(&best_tier) {
+                    std::cmp::Ordering::Greater => true,
+                    std::cmp::Ordering::Less => false,
+                    std::cmp::Ordering::Equal => rss_kb > best_rss_kb.unwrap_or(0),
                 };
                 if replace {
                     best_rss_kb = Some(rss_kb);
-                    best_is_cli_comm = is_cli_comm;
+                    best_tier = tier;
                 }
             }
             for child in read_children(*pid, proc_root) {
@@ -108,7 +126,11 @@ pub fn read_descendant_rss_mb_with_proc_root(pane_pid: u32, proc_root: &Path) ->
     best_rss_kb.map(|kb| (kb as f64) / 1024.0)
 }
 
-fn read_pid_stats(pid: u32, proc_root: &Path) -> Option<(u64, bool)> {
+/// Returns `(rss_kb, tier)` where tier is:
+///   2 = dedicated AI/CLI binary (`KNOWN_DEDICATED_CLI_COMMS`)
+///   1 = generic interpreter (`KNOWN_INTERPRETER_COMMS`)
+///   0 = unknown comm
+fn read_pid_stats(pid: u32, proc_root: &Path) -> Option<(u64, u8)> {
     let status_path: PathBuf = proc_root.join(pid.to_string()).join("status");
     let status = fs::read_to_string(&status_path).ok()?;
     let mut rss_kb: Option<u64> = None;
@@ -124,11 +146,12 @@ fn read_pid_stats(pid: u32, proc_root: &Path) -> Option<(u64, bool)> {
         }
     }
     let rss = rss_kb?;
-    let is_cli_comm = comm
-        .as_deref()
-        .map(|c| KNOWN_CLI_COMMS.contains(&c))
-        .unwrap_or(false);
-    Some((rss, is_cli_comm))
+    let tier = match comm.as_deref() {
+        Some(c) if KNOWN_DEDICATED_CLI_COMMS.contains(&c) => 2,
+        Some(c) if KNOWN_INTERPRETER_COMMS.contains(&c) => 1,
+        _ => 0,
+    };
+    Some((rss, tier))
 }
 
 fn read_pid_comm(pid: u32, proc_root: &Path) -> Option<String> {
@@ -362,6 +385,27 @@ mod tests {
         write_proc_pid(root, 1, "bash", 4_000, &[]);
         let mb = read_descendant_rss_mb_with_proc_root(1, root).unwrap();
         assert!((mb - (4_000.0 / 1024.0)).abs() < 0.001);
+    }
+
+    #[test]
+    fn agy_descendant_is_preferred_over_node_shell_in_rss_walk() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        // Pane shell → node wrapper → agy. The wrapper has a huge RSS, but
+        // `node` is a generic interpreter; `agy` is a known CLI comm and must
+        // win the class tie-break even though its RSS is smaller.
+        write_proc_pid(root, 100, "bash", 4_000, &[200]);
+        write_proc_pid(root, 200, "node", 999_000, &[300]);
+        write_proc_pid(root, 300, "agy", 250_000, &[]);
+
+        let mb = read_descendant_rss_mb_with_proc_root(100, root)
+            .expect("agy descendant must produce an RSS value");
+        // 250_000 kB ≈ 244.14 MiB. CLI-comm class preference wins over
+        // node's 999_000 kB heuristic RSS.
+        assert!(
+            (mb - (250_000.0 / 1024.0)).abs() < 0.001,
+            "expected agy RSS (~244.14 MiB), got {mb}"
+        );
     }
 
     #[test]
