@@ -730,6 +730,7 @@ pub fn render_provider_setup_modal(
         crate::ui::provider_setup::ProviderSetupTab::Claude,
         crate::ui::provider_setup::ProviderSetupTab::Codex,
         crate::ui::provider_setup::ProviderSetupTab::Gemini,
+        crate::ui::provider_setup::ProviderSetupTab::Antigravity,
         crate::ui::provider_setup::ProviderSetupTab::Tmux,
     ]
     .iter()
