@@ -2372,3 +2372,30 @@ fn path_row_renders_unchanged_when_worktree_role_is_none() {
         "non-git cwd must NOT add a worktree suffix, got {path_row:?}"
     );
 }
+
+#[test]
+fn pane_card_renders_agy_label_for_antigravity_provider() {
+    let mut rep = base_report();
+    rep.provider = Provider::Antigravity;
+    rep.identity = ResolvedIdentity {
+        identity: PaneIdentity {
+            provider: Provider::Antigravity,
+            instance: 1,
+            role: Role::Research,
+            pane_id: "%3".into(),
+        },
+        confidence: IdentityConfidence::High,
+    };
+
+    let lines = pane_list_lines(&rep, true, false);
+    let rendered: String = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
+
+    assert!(
+        rendered.contains("agy"),
+        "pane card title chip must show 'agy' for Antigravity provider; rendered:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("Antigravity"),
+        "pane card must use the short 'agy' label, not the enum variant name; rendered:\n{rendered}"
+    );
+}
