@@ -512,6 +512,30 @@ mod tests {
     }
 
     #[test]
+    fn agy_canonical_title_resolves_high_confidence() {
+        // Operator names the tmux pane `agy:1:research` and runs `agy` in it.
+        // Canonical title + matching command = High confidence.
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("agy:1:research", "agy", ""));
+        assert_eq!(out.identity.provider, Provider::Antigravity);
+        assert_eq!(out.identity.instance, 1);
+        assert_eq!(out.identity.role, Role::Research);
+        assert_eq!(out.confidence, IdentityConfidence::High);
+    }
+
+    #[test]
+    fn agy_canonical_title_vs_stale_gemini_command_marks_conflict() {
+        // Honesty regression: a pane whose tmux title was renamed to
+        // `agy:1:research` but whose `current_command` still shows
+        // `node /usr/bin/gemini` must mark Conflict — we do NOT silently
+        // claim the agy identity for a pane still running Gemini.
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("agy:1:research", "node /usr/bin/gemini --yolo", ""));
+        assert_eq!(out.identity.provider, Provider::Antigravity);
+        assert_eq!(out.confidence, IdentityConfidence::Conflict);
+    }
+
+    #[test]
     fn no_hints_yields_unknown() {
         let r = IdentityResolver::new();
         let out = r.resolve(&raw("bash", "bash", "no signal here"));
