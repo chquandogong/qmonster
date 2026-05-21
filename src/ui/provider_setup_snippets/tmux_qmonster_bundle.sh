@@ -80,7 +80,9 @@ apply_canonical_pane_titles() {
 
   tmux select-pane -t "${session_name}:0.0" -T "claude:1:main"
   tmux select-pane -t "${session_name}:0.1" -T "codex:1:review"
-  tmux select-pane -t "${session_name}:0.2" -T "gemini:1:research"
+  # Pane 0.2 → agy:1:research. Enterprise Gemini CLI users can substitute
+  # "gemini:1:research" here if they're staying on Gemini past 2026-06-18.
+  tmux select-pane -t "${session_name}:0.2" -T "agy:1:research"
   tmux select-pane -t "${session_name}:0.3" -T "qmonster:1:monitor"
 }
 

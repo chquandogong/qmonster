@@ -22,10 +22,11 @@ use crate::ui::dashboard::{
 };
 use crate::ui::provider_setup::{ProviderSetupOverlay, ProviderSetupTab, snippet_for_tab};
 
-const TAB_BY_INDEX: [ProviderSetupTab; 4] = [
+const TAB_BY_INDEX: [ProviderSetupTab; 5] = [
     ProviderSetupTab::Claude,
     ProviderSetupTab::Codex,
     ProviderSetupTab::Gemini,
+    ProviderSetupTab::Antigravity,
     ProviderSetupTab::Tmux,
 ];
 
@@ -56,7 +57,8 @@ pub fn handle_provider_setup_overlay_key(
         KeyCode::Char('1') => overlay.switch_tab(ProviderSetupTab::Claude),
         KeyCode::Char('2') => overlay.switch_tab(ProviderSetupTab::Codex),
         KeyCode::Char('3') => overlay.switch_tab(ProviderSetupTab::Gemini),
-        KeyCode::Char('4') => overlay.switch_tab(ProviderSetupTab::Tmux),
+        KeyCode::Char('4') => overlay.switch_tab(ProviderSetupTab::Antigravity),
+        KeyCode::Char('5') => overlay.switch_tab(ProviderSetupTab::Tmux),
         KeyCode::Tab | KeyCode::Right => overlay.next_tab(),
         KeyCode::BackTab | KeyCode::Left => overlay.previous_tab(),
         KeyCode::Up | KeyCode::Char('k') => overlay.scroll_up(),
@@ -210,6 +212,8 @@ mod tests {
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Char('3'));
         assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Char('4'));
+        assert_eq!(overlay.tab, ProviderSetupTab::Antigravity);
+        handle_provider_setup_overlay_key(&mut overlay, KeyCode::Char('5'));
         assert_eq!(overlay.tab, ProviderSetupTab::Tmux);
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Char('1'));
         assert_eq!(overlay.tab, ProviderSetupTab::Claude);
@@ -224,12 +228,16 @@ mod tests {
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Right);
         assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Tab);
+        assert_eq!(overlay.tab, ProviderSetupTab::Antigravity);
+        handle_provider_setup_overlay_key(&mut overlay, KeyCode::Tab);
         assert_eq!(overlay.tab, ProviderSetupTab::Tmux);
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Right);
         assert_eq!(overlay.tab, ProviderSetupTab::Claude);
 
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::BackTab);
         assert_eq!(overlay.tab, ProviderSetupTab::Tmux);
+        handle_provider_setup_overlay_key(&mut overlay, KeyCode::Left);
+        assert_eq!(overlay.tab, ProviderSetupTab::Antigravity);
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::Left);
         assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
         handle_provider_setup_overlay_key(&mut overlay, KeyCode::BackTab);
@@ -324,8 +332,17 @@ mod tests {
         );
         assert_eq!(overlay.tab, ProviderSetupTab::Gemini);
 
-        // Click on an 'm' in "Tmux" (inner_x + 28).
-        let tmux_x = inner_x + 28;
+        // Click on 'g' in "agy" (inner_x + 27).
+        let agy_x = inner_x + 27;
+        handle_provider_setup_overlay_mouse(
+            &mut overlay,
+            viewport,
+            mouse(MouseEventKind::Down(MouseButton::Left), agy_x, row),
+        );
+        assert_eq!(overlay.tab, ProviderSetupTab::Antigravity);
+
+        // Click on an 'm' in "Tmux" (inner_x + 34).
+        let tmux_x = inner_x + 34;
         handle_provider_setup_overlay_mouse(
             &mut overlay,
             viewport,

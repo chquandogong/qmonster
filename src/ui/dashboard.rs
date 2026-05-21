@@ -634,13 +634,13 @@ pub fn provider_setup_modal_rects(viewport: Rect) -> ProviderSetupModalRects {
     }
 }
 
-/// Map a left-click column on the tabs row to a tab index (0/1/2/3).
+/// Map a left-click column on the tabs row to a tab index (0/1/2/3/4).
 /// Uses the actual rendered tab layout — ratatui's `Tabs` widget
-/// renders left-aligned ` Claude │ Codex │ Gemini │ Tmux ` inside the border,
+/// renders left-aligned ` Claude │ Codex │ Gemini │ agy │ Tmux ` inside the border,
 /// not equal slots, so a naive width split would mis-route
 /// clicks on a wide modal (later tab regions would map to the
 /// always-Claude left third). Boundaries derived from the fixed
-/// `Claude` (6) / `Codex` (5) / `Gemini` (6) / `Tmux` (4) label widths plus
+/// `Claude` (6) / `Codex` (5) / `Gemini` (6) / `agy` (3) / `Tmux` (4) label widths plus
 /// 1-cell padding around each label and 1-cell `│` divider between
 /// adjacent tabs. Returns None for columns outside the rendered tab
 /// region (including the empty space to the right of `Tmux`) so
@@ -666,12 +666,17 @@ pub fn provider_setup_tab_index_at(tabs: Rect, column: u16) -> Option<usize> {
     //   24      : trailing space
     //   25      : "│" divider
     //   26      : leading space
-    //   27..=30 : "Tmux"        (4 cells)
-    //   31      : trailing space
+    //   27..=29 : "agy"         (3 cells)
+    //   30      : trailing space
+    //   31      : "│" divider
+    //   32      : leading space
+    //   33..=36 : "Tmux"        (4 cells)
+    //   37      : trailing space
     let claude_end = inner_x.saturating_add(8); // first column belonging to Codex
     let codex_end = inner_x.saturating_add(16); // first column belonging to Gemini
-    let gemini_end = inner_x.saturating_add(25); // first column belonging to Tmux
-    let tmux_end = inner_x.saturating_add(32); // first column past "Tmux "
+    let gemini_end = inner_x.saturating_add(25); // first column belonging to agy
+    let agy_end = inner_x.saturating_add(32); // first column belonging to Tmux
+    let tmux_end = inner_x.saturating_add(38); // first column past "Tmux "
     if column >= tmux_end {
         return None;
     }
@@ -681,8 +686,10 @@ pub fn provider_setup_tab_index_at(tabs: Rect, column: u16) -> Option<usize> {
         Some(1)
     } else if column < gemini_end {
         Some(2)
-    } else {
+    } else if column < agy_end {
         Some(3)
+    } else {
+        Some(4)
     }
 }
 
@@ -732,7 +739,8 @@ pub fn render_provider_setup_modal(
         crate::ui::provider_setup::ProviderSetupTab::Claude => 0,
         crate::ui::provider_setup::ProviderSetupTab::Codex => 1,
         crate::ui::provider_setup::ProviderSetupTab::Gemini => 2,
-        crate::ui::provider_setup::ProviderSetupTab::Tmux => 3,
+        crate::ui::provider_setup::ProviderSetupTab::Antigravity => 3,
+        crate::ui::provider_setup::ProviderSetupTab::Tmux => 4,
     };
     let tabs = Tabs::new(tab_titles)
         .select(active_idx)
@@ -2976,16 +2984,17 @@ mod tests {
 
     #[test]
     fn provider_setup_tab_index_at_uses_label_aware_boundaries() {
-        // Tabs rendered as ` Claude │ Codex │ Gemini │ Tmux ` left-aligned
+        // Tabs rendered as ` Claude │ Codex │ Gemini │ agy │ Tmux ` left-aligned
         // inside a single-cell border — the function maps each click
         // column to whichever label region it lands on, NOT to a
         // naive equal-width partition.
-        let tabs = Rect::new(10, 0, 48, 3);
+        let tabs = Rect::new(10, 0, 54, 3);
         // inner_x = 11
         // claude_end = 19  (first column belonging to Codex region)
         // codex_end = 27   (first column belonging to Gemini region)
-        // gemini_end = 36  (first column belonging to Tmux region)
-        // tmux_end = 43    (first column past " Tmux ")
+        // gemini_end = 36  (first column belonging to agy region)
+        // agy_end = 43     (first column belonging to Tmux region)
+        // tmux_end = 49    (first column past " Tmux ")
         //
         // Claude region: columns 10..=18 (border + leading space + "Claude" + trailing space)
         assert_eq!(provider_setup_tab_index_at(tabs, 10), Some(0));
@@ -2999,13 +3008,17 @@ mod tests {
         assert_eq!(provider_setup_tab_index_at(tabs, 27), Some(2));
         assert_eq!(provider_setup_tab_index_at(tabs, 30), Some(2)); // 'm' of "Gemini"
         assert_eq!(provider_setup_tab_index_at(tabs, 35), Some(2));
-        // Tmux region: columns 36..=42 (divider + leading space + "Tmux" + trailing space)
+        // agy region: columns 36..=42 (divider + leading space + "agy" + trailing space)
         assert_eq!(provider_setup_tab_index_at(tabs, 36), Some(3));
-        assert_eq!(provider_setup_tab_index_at(tabs, 39), Some(3)); // 'm' of "Tmux"
+        assert_eq!(provider_setup_tab_index_at(tabs, 38), Some(3)); // 'y' of "agy"
         assert_eq!(provider_setup_tab_index_at(tabs, 42), Some(3));
+        // Tmux region: columns 43..=48 (divider + leading space + "Tmux" + trailing space)
+        assert_eq!(provider_setup_tab_index_at(tabs, 43), Some(4));
+        assert_eq!(provider_setup_tab_index_at(tabs, 46), Some(4)); // 'm' of "Tmux"
+        assert_eq!(provider_setup_tab_index_at(tabs, 48), Some(4));
         // Past the rendered tabs (within the wide tabs rect): None
-        assert_eq!(provider_setup_tab_index_at(tabs, 43), None);
         assert_eq!(provider_setup_tab_index_at(tabs, 49), None);
+        assert_eq!(provider_setup_tab_index_at(tabs, 55), None);
         // Out of the tabs rect entirely: None
         assert_eq!(provider_setup_tab_index_at(tabs, 9), None);
     }

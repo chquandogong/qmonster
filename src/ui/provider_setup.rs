@@ -16,6 +16,7 @@ pub enum ProviderSetupTab {
     Claude,
     Codex,
     Gemini,
+    Antigravity,
     Tmux,
 }
 
@@ -25,6 +26,7 @@ impl ProviderSetupTab {
             ProviderSetupTab::Claude => "Claude",
             ProviderSetupTab::Codex => "Codex",
             ProviderSetupTab::Gemini => "Gemini",
+            ProviderSetupTab::Antigravity => "agy",
             ProviderSetupTab::Tmux => "Tmux",
         }
     }
@@ -33,7 +35,8 @@ impl ProviderSetupTab {
         match self {
             ProviderSetupTab::Claude => ProviderSetupTab::Codex,
             ProviderSetupTab::Codex => ProviderSetupTab::Gemini,
-            ProviderSetupTab::Gemini => ProviderSetupTab::Tmux,
+            ProviderSetupTab::Gemini => ProviderSetupTab::Antigravity,
+            ProviderSetupTab::Antigravity => ProviderSetupTab::Tmux,
             ProviderSetupTab::Tmux => ProviderSetupTab::Claude,
         }
     }
@@ -43,7 +46,8 @@ impl ProviderSetupTab {
             ProviderSetupTab::Claude => ProviderSetupTab::Tmux,
             ProviderSetupTab::Codex => ProviderSetupTab::Claude,
             ProviderSetupTab::Gemini => ProviderSetupTab::Codex,
-            ProviderSetupTab::Tmux => ProviderSetupTab::Gemini,
+            ProviderSetupTab::Antigravity => ProviderSetupTab::Gemini,
+            ProviderSetupTab::Tmux => ProviderSetupTab::Antigravity,
         }
     }
 }
@@ -295,6 +299,7 @@ pub fn snippet_for_tab(overlay: &ProviderSetupOverlay) -> (&'static str, String)
             "Gemini ~/.gemini/settings.json",
             String::from(GEMINI_FOOTER_SETTINGS),
         ),
+        ProviderSetupTab::Antigravity => ("", String::new()),
         ProviderSetupTab::Tmux => (
             "Qmonster tmux bundle installer",
             String::from(TMUX_QMONSTER_BUNDLE),
@@ -354,6 +359,9 @@ fn append_copy_contract(out: &mut Vec<String>, overlay: &ProviderSetupOverlay) {
                 "Not copied",
                 "/stats instructions and auth note below",
             ));
+        }
+        ProviderSetupTab::Antigravity => {
+            // Nothing to copy — agy has no documented headless setup surface.
         }
         ProviderSetupTab::Tmux => {
             out.push(detail_row("Target", "~/ts.sh + ~/.tmux/qmonster.tmux.conf"));
@@ -515,6 +523,41 @@ pub fn render_tab_content(
                 out.push(line.to_string());
             }
         }
+        ProviderSetupTab::Antigravity => {
+            section(&mut out, "Current Status");
+            out.push(detail_row(
+                "agy CLI",
+                "not auto-detected — no documented status surface",
+            ));
+            out.push(detail_row(
+                "Documented surface",
+                "agy is the launcher for the Antigravity IDE; no headless API yet",
+            ));
+
+            section(&mut out, "Identification");
+            out.push("  Qmonster recognizes agy panes via:".into());
+            out.push("  - canonical tmux title `agy:N:role` (preferred), or".into());
+            out.push("  - pane current_command containing the `agy` token.".into());
+            out.push("  The pane card title chip shows `agy`.".into());
+
+            section(&mut out, "What Is Hidden (ObserveOnly contract)");
+            out.push("  cache / cost / token chips → Hidden — no documented surface".into());
+            out.push("  anomaly detectors → all 8 detectors gated off for agy".into());
+            out.push("  profile-switch recommendations → none".into());
+            out.push("  insights coverage → marked `unsupported` (not penalized)".into());
+
+            section(&mut out, "Background");
+            out.push("  Gemini CLI sunsets 2026-06-18 for free / Pro / Ultra users.".into());
+            out.push("  Enterprise / Cloud / Standard licenses retain Gemini CLI.".into());
+            out.push("  Antigravity CLI (`agy`) is the migration target for".into());
+            out.push("  personal / Pro / Ultra users. When Google ships a".into());
+            out.push("  documented headless companion or stabilizes an agy".into());
+            out.push("  session-screen format, a real adapter will land and".into());
+            out.push("  these surfaces will turn on.".into());
+
+            section(&mut out, "Settings");
+            out.push("  No setup steps. Nothing to copy on this tab.".into());
+        }
         ProviderSetupTab::Tmux => {
             section(&mut out, "Purpose");
             out.push("  Recommended tmux launcher for the four-pane Qmonster workflow.".into());
@@ -540,7 +583,7 @@ pub fn render_tab_content(
             section(&mut out, "Pane Titles");
             out.push(detail_row("0.0", "claude:1:main"));
             out.push(detail_row("0.1", "codex:1:review"));
-            out.push(detail_row("0.2", "gemini:1:research"));
+            out.push(detail_row("0.2", "agy:1:research"));
             out.push(detail_row("0.3", "qmonster:1:monitor"));
 
             append_copy_contract(&mut out, overlay);
@@ -1028,6 +1071,44 @@ mod tests {
         assert!(
             new_session < source_guard && source_guard < source_file && source_file < first_split,
             "qmonster tmux conf must be sourced after session creation and before pane splits"
+        );
+    }
+
+    #[test]
+    fn render_tab_content_antigravity_emits_observeonly_notice_without_copy_block() {
+        // The Antigravity tab is read-only — no snippet to copy, no
+        // append_copy_contract / append_copied_preview block. The body
+        // must mention the ObserveOnly contract explicitly.
+        let overlay = ProviderSetupOverlay {
+            tab: ProviderSetupTab::Antigravity,
+            ..Default::default()
+        };
+        let claude = ClaudeState {
+            statusline_script_present: false,
+            statusline_size_bytes: 0,
+            exports_cache_read: false,
+            exports_cache_creation: false,
+            exports_input_tokens: false,
+            sidefile_export_present: false,
+        };
+        let codex = CodexState {
+            config_present: false,
+            app_server_running: false,
+        };
+        let gemini = GeminiFooterState::default();
+        let lines = render_tab_content(&overlay, &claude, &codex, &gemini);
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("ObserveOnly"),
+            "tab must mention ObserveOnly contract; got:\n{joined}"
+        );
+        assert!(
+            joined.contains("agy"),
+            "tab must mention 'agy' label; got:\n{joined}"
+        );
+        assert!(
+            !joined.contains("Press `y` to copy") && !joined.contains("Copied preview"),
+            "Antigravity tab must NOT include copy-contract or copied-preview blocks; got:\n{joined}"
         );
     }
 }

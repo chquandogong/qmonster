@@ -96,7 +96,7 @@ writes any of these files:
 6. Bootstrap the four-pane layout via the Provider Setup overlay
    (`P` → `Tmux` tab → copy the installer) — it writes `~/ts.sh` plus
    `~/.tmux/qmonster.tmux.conf` and reattaches the canonical
-   `claude:1:main` / `codex:1:review` / `gemini:1:research` /
+   `claude:1:main` / `codex:1:review` / `agy:1:research` /
    `qmonster:1:monitor` pane titles. Operators who prefer to seed from
    the repo can reference `tmux/qmonster.tmux.conf.example` directly.
    Canonical pane titles remain the best way to mark roles exactly.

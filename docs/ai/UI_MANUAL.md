@@ -623,7 +623,7 @@ side_effects (N):
     운영자 선호에 따라 deferred).
   - **Tmux 탭**: 추천 4-pane 워크플로우 설치 스크립트를 `y`로 복사합니다.
     복사한 스크립트를 실행하면 `~/ts.sh` (Claude/Codex/Gemini/Qmonster
-    pane을 만들고 `claude:1:main`, `codex:1:review`, `gemini:1:research`,
+    pane을 만들고 `claude:1:main`, `codex:1:review`, `agy:1:research`,
     `qmonster:1:monitor` title을 설정하는 launcher)와
     `~/.tmux/qmonster.tmux.conf` (mouse/history/navigation/title helper)를
     생성합니다. `~/ts.sh`는 새 session을 만들 때
