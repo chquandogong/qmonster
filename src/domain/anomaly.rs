@@ -322,6 +322,11 @@ mod tests {
                 "{:?} must not claim Qmonster support",
                 kind
             );
+            assert!(
+                !kind.supports_provider(Provider::Antigravity),
+                "{:?} must not claim Antigravity support — ObserveOnly contract",
+                kind
+            );
         }
     }
 
