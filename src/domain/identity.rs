@@ -490,6 +490,28 @@ mod tests {
     }
 
     #[test]
+    fn agy_command_resolves_antigravity_medium_confidence_main_role() {
+        // User runs `agy` directly in a tmux pane (no canonical title set).
+        // We resolve to Antigravity with Medium confidence — the title fallback
+        // is `Role::Main` (same shape as other CLI providers).
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("bash", "agy", ""));
+        assert_eq!(out.identity.provider, Provider::Antigravity);
+        assert_eq!(out.identity.role, Role::Main);
+        assert_eq!(out.confidence, IdentityConfidence::Medium);
+    }
+
+    #[test]
+    fn agy_command_does_not_collide_with_agency_word() {
+        // `contains_word` must use token-boundary matching: a process
+        // named `agency-service` must NOT resolve as Antigravity even
+        // though its 3-char prefix `agy` would substring-match.
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("bash", "agency-service --port 8080", ""));
+        assert_eq!(out.identity.provider, Provider::Unknown);
+    }
+
+    #[test]
     fn no_hints_yields_unknown() {
         let r = IdentityResolver::new();
         let out = r.resolve(&raw("bash", "bash", "no signal here"));
