@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_and_qmonster_provider_are_never_supported() {
+    fn unknown_qmonster_and_antigravity_providers_are_never_supported() {
         use crate::domain::identity::Provider;
         let kinds = [
             AnomalyKind::IdentityChurn,

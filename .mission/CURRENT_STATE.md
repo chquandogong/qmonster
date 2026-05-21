@@ -114,14 +114,21 @@ a2caa51 feat(identity): add Provider::Antigravity variant (no behavior change ye
    Antigravity from `common::parse_common_signals` to a dedicated
    `src/adapters/antigravity.rs` adapter with a real fixture under
    `tests/fixtures/real/`. Until then, command-based identification is
-   the honest ceiling.
-2. Backfill `docs/ai/VALIDATION.md` release-log rows for v2.2.0 /
+   the honest ceiling. *(Still active — depends on Google.)*
+2. ~~Backfill `docs/ai/VALIDATION.md` release-log rows for v2.2.0 /
    v2.3.0 / v2.3.1 — v2.3.6 in a separate doc-only commit. The table
-   currently jumps from v2.1.0 to v2.4.0.
-3. Rename
+   currently jumps from v2.1.0 to v2.4.0.~~ **CLOSED in v2.4.1
+   follow-up cleanup** — 8 rows added (v2.2.0 / v2.3.0 / v2.3.1 /
+   v2.3.2 / v2.3.3 / v2.3.4 / v2.3.5 / v2.3.6) with one-line scope +
+   accurate test counts; release log is now contiguous v2.0.0 →
+   v2.4.1.
+3. ~~Rename
    `src/domain/anomaly.rs::unknown_and_qmonster_provider_are_never_supported`
    to include `antigravity` in the test name; the body already
-   asserts the new coverage.
+   asserts the new coverage.~~ **CLOSED in v2.4.1 follow-up cleanup**
+   — renamed to
+   `unknown_qmonster_and_antigravity_providers_are_never_supported`;
+   1573 lib tests still green.
 
 ## v2.4.1 — Provider Setup Tab Header Regression Fix + ALL Refactor
 
@@ -588,33 +595,51 @@ For per-tag deltas and prose narratives older than v2.0.0, consult:
 ## Active Follow-Ups
 
 1. Phase 7 D3 per-subagent token attribution remains blocked until providers expose structured per-subagent counters.
-2. Tag protection / ruleset activation remains a GitHub Settings task.
+2. ~~Tag protection / ruleset activation remains a GitHub Settings task.~~ **CLOSED (v2.3.1, 2026-05-14)**: tag-creation ruleset id `16375762` activated with admin bypass; every subsequent tag push (v2.3.1 / v2.3.2 / v2.3.3 / v2.3.4 / v2.3.5 / v2.3.6 / v2.4.0 / v2.4.1) admits via the bypass actor and the GitHub API surfaces the `Cannot create ref due to creations being restricted` admit log line — first end-to-end verification at v2.3.1, latest at v2.4.1.
+3. When Google ships a documented Antigravity headless companion binary or stabilizes an `agy` session-screen tail format, graduate Antigravity from `common::parse_common_signals` to a dedicated `src/adapters/antigravity.rs` adapter with a real fixture under `tests/fixtures/real/`. Until then, command-based identification is the honest ceiling. *(carried from v2.4.0 release; depends on Google.)*
 
 ## Validation Baseline
 
-Most recent validation at the live `origin/main` HEAD (`33252f8`,
-2026-05-13 post-dep-bump-bundle):
+Most recent validation at the live `origin/main` HEAD (`dec046e`,
+v2.4.1 ledger sync, 2026-05-21):
 
 - `cargo fmt --all --check` — clean.
-- `cargo test --all-targets` — **1439 lib + 68 integration + 70 supporting**, all green locally; CI run `25774997063` confirmed the same on the Ubuntu runner in 5m10s.
+- `cargo test --all-targets` — **1573 lib + 70 integration + 70 supporting** = 1713 total, all green locally in ~1.5s; CI run `26212056231` confirmed the same on the Ubuntu runner; `Release and Package Mirror` workflow run `26212056663` completed success in 7 min, publishing the full asset set + npm `qmonster@2.4.1` with SLSA v1 provenance (predicateType `https://slsa.dev/provenance/v1`, Sigstore keyid `SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U`).
 - `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args` — clean.
 - `git diff --check` — clean.
 
-Lib-test count is slightly lower than v2.1.0 (1478 → 1439) because
-the v2.2.0 P0 dead-code purge removed several detector branches and
-their unit tests; integration count is unchanged. See `mission-history.yaml` for the per-tag delta.
+Lib-test count progression: v2.1.0 1478 → v2.2.0 1491 (P0 dead-code
+purge removed several detector branches and their unit tests; net +6
+after adding 11 new and removing 13 dead-code tests) → v2.3.0 1560 →
+v2.3.1 1563 → v2.3.4 1564 → v2.4.0 1572 → v2.4.1 **1573** (+1
+regression test: `all_constant_is_in_sync_with_index_method_and_labels`).
+Integration count was 68 through v2.2.0, then 69 at v2.3.0 baseline,
+then 70 at v2.4.0 (E2E `agy_pane_is_identified_but_emits_no_anomaly_or_recommendation`).
+See `mission-history.yaml` for the per-tag delta.
 
-Earlier v2.1.0 validation at the release commit (for handoff):
+The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff
+guard, dependency-review-action PR gate, OIDC-only TP publish, etc.)
+inherited from v2.3.6 through v2.4.1 still apply when the next tagged
+release workflow runs. NPM_TOKEN remains absent from repo settings —
+v2.3.6 / v2.4.0 / v2.4.1 are all OIDC-only publishes.
 
-- `cargo fmt --all --check` — clean.
-- `cargo test --all-targets` — **1478 lib tests + 68 integration tests + supporting suites**, all green in 1.12s. +33 lib / +3 integration since v2.0.0 cover Slice 0 attribution-lock scenarios, Slice 1 pane-bucket aggregation, Slice 2 payoff window families, Slice 3 timestamp normalization + evidence_json migration round-trip, and Slice A-I UI synthesis surface tests.
-- `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args` — clean.
-- `git diff --check` — clean.
-
-The release pipeline gates (`scripts/release/dry-run.sh`, SBOM diff guard, etc.) inherited from v1.37.0 through v2.0.0 still apply when the v2.1.0 release workflow runs.
-
-Use `docs/ai/VALIDATION.md` for the full gate list before any future tagged release.
+Use `docs/ai/VALIDATION.md` for the full gate list and per-release
+log (now backfilled through v2.2.0) before any future tagged release.
 
 ## Next First Action
 
-Pick the next follow-up from the Active Follow-Ups list. Phase 7 D3 stays provider-blocked; tag protection / ruleset activation is operator-side. Otherwise pick the next slice from the post-v1.49.0 audit's recommended list (`.docs/claude/Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md`): `error_burst` evidence enrichment (signal shape change), an `m`-overlay smoke render test that exercises a Gemini pane with pricing entered to lock the cost_slope activation contract.
+Active Follow-Ups list is down to two remaining items, both of which
+are blocked on external decisions: (1) Phase 7 D3 per-subagent token
+attribution stays provider-blocked, and (3) Antigravity adapter
+graduation stays blocked on Google publishing a documented `agy`
+headless companion binary. The previously-active "tag protection
+ruleset" item was closed at v2.3.1 (verified through v2.4.1), and the
+v2.4.0-era follow-ups (VALIDATION backfill + anomaly test rename)
+were closed in the v2.4.1 follow-up cleanup commit.
+
+If both blocked items remain external, pick the next slice from the
+post-v1.49.0 audit's recommended list
+(`.docs/claude/Qmonster-v0.4.0-2026-05-08-claude-feature-audit-and-slice-1-r1.md`):
+`error_burst` evidence enrichment (signal shape change), or an
+`m`-overlay smoke render test that exercises a Gemini pane with
+pricing entered to lock the `cost_slope` activation contract.
