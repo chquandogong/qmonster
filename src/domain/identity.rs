@@ -174,22 +174,16 @@ fn parse_canonical_title(title: &str) -> Option<(Provider, u32, Role)> {
 fn detect_provider_title(s: &str) -> Provider {
     let trimmed = s.trim_start();
     let lower = s.to_lowercase();
-    if lower.contains("claude code") || contains_word(&lower, "claude") {
-        return Provider::Claude;
-    }
-    if contains_word(&lower, "codex") {
-        return Provider::Codex;
-    }
-    if contains_word(&lower, "gemini") {
-        return Provider::Gemini;
-    }
 
-    // S3-5 fallback: Claude Code's working-state title leads with a
-    // braille spinner glyph (U+2800..=U+28FF) and follows with the
-    // activity description, e.g. `⠂ Analyze project implementation`.
-    // The glyph alone is not enough; we require a non-empty
-    // description suffix of at least 2 whitespace-separated tokens
-    // so unrelated single-glyph titles do not get claimed for Claude.
+    // Claude Code's working-state title: braille spinner glyph
+    // (U+2800..=U+28FF) followed by an activity description of at
+    // least 2 whitespace-separated tokens, e.g. `⠂ Analyze project
+    // implementation` or `⠂ Migrate from Gemini CLI to Agy CLI`.
+    // Checked BEFORE the keyword fallback because the activity
+    // sentence may itself name other providers — the spinner is the
+    // stronger signal. The 2-token guard excludes Codex's single-word
+    // working-state titles (`⠼ Qmonster`) which fall through to the
+    // tail-detection layer.
     if let Some(first) = trimmed.chars().next()
         && ('\u{2800}'..='\u{28FF}').contains(&first)
     {
@@ -199,10 +193,24 @@ fn detect_provider_title(s: &str) -> Provider {
         }
     }
 
-    // S3-5 fallback: Gemini's idle title is `◇  Ready (project-name)`.
-    // Both the diamond glyph AND the literal `Ready (` opener must
-    // appear; the diamond alone shows up in unrelated UI contexts.
+    // Gemini's idle title is `◇  Ready (project-name)`. Both the
+    // diamond glyph AND the literal `Ready (` opener must appear;
+    // the diamond alone shows up in unrelated UI contexts. Checked
+    // before the keyword fallback for the same reason as the
+    // spinner-activity guard above.
     if trimmed.contains('◇') && lower.contains("ready (") {
+        return Provider::Gemini;
+    }
+
+    // Keyword fallback for non-canonical titles that explicitly name
+    // a provider (e.g. `Claude Code`, `gemini-migration-feature`).
+    if lower.contains("claude code") || contains_word(&lower, "claude") {
+        return Provider::Claude;
+    }
+    if contains_word(&lower, "codex") {
+        return Provider::Codex;
+    }
+    if contains_word(&lower, "gemini") {
         return Provider::Gemini;
     }
 
@@ -509,6 +517,23 @@ mod tests {
         let r = IdentityResolver::new();
         let out = r.resolve(&raw("bash", "agency-service --port 8080", ""));
         assert_eq!(out.identity.provider, Provider::Unknown);
+    }
+
+    #[test]
+    fn claude_spinner_activity_mentioning_gemini_still_resolves_to_claude() {
+        // Regression for a real user-observed misclassification: a
+        // Claude Code working-state title whose activity sentence
+        // mentions another provider's name (e.g. the user is asking
+        // Claude to migrate FROM Gemini TO agy) was being claimed by
+        // the keyword fallback as Gemini, then marked Conflict against
+        // the `claude` command. The braille spinner is the stronger
+        // signal — it must win over keyword presence anywhere in the
+        // activity sentence.
+        let r = IdentityResolver::new();
+        let out = r.resolve(&raw("⠂ Migrate from Gemini CLI to Agy CLI", "claude", ""));
+        assert_eq!(out.identity.provider, Provider::Claude);
+        assert_eq!(out.identity.role, Role::Main);
+        assert_eq!(out.confidence, IdentityConfidence::Medium);
     }
 
     #[test]
