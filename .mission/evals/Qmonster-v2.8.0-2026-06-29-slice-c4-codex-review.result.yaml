@@ -1,0 +1,45 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-06-29"
+  target_versions:
+    - "2.8.0"
+  commit_range: "063259a..dc7f5dd (Slice C4 — src/adapters/agy_sidefile.rs +quota fields, src/adapters/mod.rs quota fill, src/ui/provider_setup.rs AGY_SIDEFILE_BLOCK quota jq, src/policy/engine.rs regression, docs/ai/ARCHITECTURE.md)"
+  scope: "Release gate for v2.8.0 — Slice C4 agy quota enrichment: maps agy structured quota onto the existing SignalSet quota_5h_pressure/quota_weekly_pressure (+ _resets_at), active-model-aware (model.id gemini→gemini-*, else 3p-*), structured-only (sidefile), reusing the C3 reader/enrichment/recommended-block. Zero new SignalSet fields, opt-in [provider_setup] agy_enrichment, ProviderOfficial. ObserveOnly INHERITED from the C3 engine guard."
+  evidence_mode: "Live `codex exec --dangerously-bypass-approvals-and-sandbox` (codex-cli 0.142.3, medium effort; our environment is externally sandboxed, so codex's nested bwrap sandbox can't init). Read the full branch diff + spec + src from disk; `git status` confirmed 0 file changes (read-only honored). Verification run: `cargo test agy --all-targets` passed."
+  internal_review_first: "An opus whole-branch review preceded Codex: verdict Ready-to-merge YES, no Critical/Important. It traced every consumer of the newly-populated agy quota fields (eval_alerts, eval_reset, eval_advisories, eval_profiles, profile_switch, maybe_auto_snapshot, the event_loop post-engine appends, anomaly persistence, apply_codex_rate_limits, the UI) and confirmed ZERO leak — C4 inherits C3's zero-recommendation guarantee. The 4 known cosmetic test/doc Minors were judged non-blocking."
+  verdict: approve-with-fixes
+  local_validation:
+    cargo_fmt_check: pass
+    cargo_clippy_all_targets_d_warnings: pass
+    cargo_test_all_targets: pass
+    test_counts: "1642 lib + 140 integration/supporting (after remediation); the known-flaky node_cli_probe ETXTBSY test re-ran green"
+  summary:
+    code_assessment: "C4 cleanly inherits C3's ObserveOnly hardening — both opus and Codex independently confirmed no quota-field consumer leaks agy onto a recommendation or actuation surface (Engine::evaluate early-returns for agy before advisories/profiles/reset; post-engine appends are !observe_only-gated; auto-snapshot depends on the empty rec set; UI is display-only). End-to-end key alignment (block jq keys == AgySidefile fields == SignalSet fills) is exact; active-model `$fam` selection edge cases (null/GPT-OSS/Claude → 3p, Gemini → gemini) verified live."
+    primary_risk: "A jq empty-stream truncation in the recommended block (data-loss edge case), closed pre-release."
+  must_fix_before_release:
+    - id: CFX-C4-1
+      severity: important
+      file: "src/ui/provider_setup.rs"
+      title: "AGY_SIDEFILE_BLOCK jq used `reset_time | fromdateiso8601?` — on a missing/malformed reset_time the `?` yields an EMPTY STREAM, which makes jq emit NO object, so `> sidefile.json` truncates the file to empty and loses ALL quota enrichment (incl. the valid pressure fields, which the `// 1` default otherwise protects)."
+      proposed_change: 'Use `(try (.quota[$fam + "-5h"].reset_time | fromdateiso8601) catch null)` (and weekly) so a bad/absent reset yields null, keeping the object intact. + pin it in the snippet test (assert all 4 quota keys + the `catch null` form).'
+      status: closed
+      closed_by: "dc7f5dd"
+      note: "Verified: a payload missing gemini-5h.reset_time now emits a full object with quota_5h_resets_at: null + intact pressure/weekly fields (not empty output)."
+  minor:
+    - id: MIN-C4-1
+      description: "The block snippet test was substring-only (which is why the empty-stream bug escaped per-task review) — strengthened to assert all 4 quota keys + `catch null`."
+      closed_by: "dc7f5dd"
+    - id: MIN-C4-2
+      description: "The enrichment test asserted SourceKind only on quota_5h_pressure — strengthened to also pin provider=Antigravity + confidence + a reset field."
+      closed_by: "dc7f5dd"
+    - id: MIN-C4-3
+      description: "(opus-recorded, accepted) the agy_sidefile parse test swapped 2 pre-existing asserts for the 4 quota ones; the agy_enriched regression's quota value omits .with_provider in the TEST (production fill has it); task-4-report doc hygiene. Cosmetic; non-blocking."
+  observations:
+    - id: OBS-C4-1
+      severity: good
+      description: "The two-reviewer gate held its value again: opus confirmed no ObserveOnly leak (the central risk); Codex independently caught the jq empty-stream data-loss bug that opus and all per-task reviews missed."
+    - id: OBS-C4-2
+      severity: good
+      description: "C4 added NO new ObserveOnly gating — it relies entirely on C3's engine-level provider_is_observe_only guard + the event-loop post-engine guards, both confirmed to cover the quota signals. The design goal (inherit the closed surface) held."
+  notes_gemini_leg: "Gemini r1 retired (individual-tier sunset; MDR-DRAFT-v2.5.x). Contract = Codex (structural) + human sign-off."

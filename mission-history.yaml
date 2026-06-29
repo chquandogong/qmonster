@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v2.7.0 - Slice C3 agy structured/scrape enrichment: agy panes DISPLAY model + context% + context_window_size + token_count (footer scrape fill-when-absent + sidefile override, opt-in agy_enrichment default false, ProviderOfficial, zero new SignalSet fields); spike-confirmed statusLine.command stdin contract + recommended sidefile block in the Provider Setup agy tab; ObserveOnly hardened — engine-level provider_is_observe_only guard + all post-engine rec appends gated so agy emits zero recommendations; opus caught the first advisory leak (013cb31), Codex approve-with-fixes caught quota_tight + post-engine identity-drift + footer top-vs-bottom (closed 414fb9b/5fb2c87); Gemini leg retired -> Codex + human. PRIOR — Qmonster v2.6.0 - v2.5.0 migration-backlog bundle (Claude sidefile distinct-session ambiguity guard closes F-5b; Slice C2 agy activity RuntimeFact, opt-in/Heuristic/ObserveOnly; Slice D context_window_size, Codex-scrape-primary + sidefile/rollout backstops; Codex approve-with-fixes, two attribution gaps closed in 1cd6af6; Gemini leg stays retired -> Codex + human). PRIOR — Qmonster v2.5.0 - structured data-source migration (Claude sidefile-preferred pressures + Codex codex-tui rollout backstop + agy ObserveOnly; Gemini cross-review leg retired -> Codex + human). PRIOR — Qmonster v2.4.0 - first feature minor on the v2.x line. Adds Provider::Antigravity (Google's new agy CLI replacing Gemini CLI for free / Pro / Ultra users on 2026-06-18) via a Tasks-1-7 TDD bundle routed through Provider::Unknown's minimal common::parse_common_signals path. Six independent ObserveOnly gates (adapter dispatch + AnomalyKind matrix + provider_honesty Hidden chips + profile_switch None + insights data-completeness 'unsupported' + token-sample filter exclusion) keep agy panes off every analytic surface. Provider Setup overlay (P key) gains a 5th 'agy' tab; recommended tmux bundle pane 0.2 flips from gemini:1:research to agy:1:research with an Enterprise-Gemini substitute comment. detect_provider_title reorder fixes Claude main pane misclassified as Gemini when its working-state activity sentence mentions another provider (e.g. '⠂ Migrate from Gemini CLI to Agy CLI'). process_memory descendant-walk gains a two-tier priority (dedicated CLI binaries beat generic interpreters). Gemini code, fixtures, mission history untouched — Enterprise / Cloud / Standard Gemini CLI retains support past 2026-06-18. v2.3.6 surface preserved: Phase D hygiene bundle (ci.yml cache key + workflow file hash, release.yml id-token comment, README install notice, SECURITY.md AI tooling expectations, dependency-review-action PR gate, prebuilt-npm MDR draft) on top of v2.3.5 OIDC-only verification on npm@11.14.1, v2.3.0 surface preserved (post-v2.2.0 stabilization + UX bundle: path-row worktree-role hint, sectioned pane panel tree branches, alert related-context rail, copied-outcome lifecycle, done_when_refs 100 % coverage, settings module split, dependabot bump)."
+  mission_title: "Qmonster v2.8.0 - Slice C4 agy quota enrichment: maps agy structured quota (active-model-aware gemini-*/3p-*) onto existing SignalSet quota_5h/weekly_pressure + resets, opt-in, ProviderOfficial, structured-only, zero new fields; ObserveOnly INHERITED from C3 engine guard (zero recs even with quota — opus + Codex confirmed no leak); Codex approve-with-fixes caught a jq empty-stream truncation bug, fixed null-safe (dc7f5dd). PRIOR — Qmonster v2.7.0 - Slice C3 agy structured/scrape enrichment: agy panes DISPLAY model + context% + context_window_size + token_count (footer scrape fill-when-absent + sidefile override, opt-in agy_enrichment default false, ProviderOfficial, zero new SignalSet fields); spike-confirmed statusLine.command stdin contract + recommended sidefile block in the Provider Setup agy tab; ObserveOnly hardened — engine-level provider_is_observe_only guard + all post-engine rec appends gated so agy emits zero recommendations; opus caught the first advisory leak (013cb31), Codex approve-with-fixes caught quota_tight + post-engine identity-drift + footer top-vs-bottom (closed 414fb9b/5fb2c87); Gemini leg retired -> Codex + human. PRIOR — Qmonster v2.6.0 - v2.5.0 migration-backlog bundle (Claude sidefile distinct-session ambiguity guard closes F-5b; Slice C2 agy activity RuntimeFact, opt-in/Heuristic/ObserveOnly; Slice D context_window_size, Codex-scrape-primary + sidefile/rollout backstops; Codex approve-with-fixes, two attribution gaps closed in 1cd6af6; Gemini leg stays retired -> Codex + human). PRIOR — Qmonster v2.5.0 - structured data-source migration (Claude sidefile-preferred pressures + Codex codex-tui rollout backstop + agy ObserveOnly; Gemini cross-review leg retired -> Codex + human). PRIOR — Qmonster v2.4.0 - first feature minor on the v2.x line. Adds Provider::Antigravity (Google's new agy CLI replacing Gemini CLI for free / Pro / Ultra users on 2026-06-18) via a Tasks-1-7 TDD bundle routed through Provider::Unknown's minimal common::parse_common_signals path. Six independent ObserveOnly gates (adapter dispatch + AnomalyKind matrix + provider_honesty Hidden chips + profile_switch None + insights data-completeness 'unsupported' + token-sample filter exclusion) keep agy panes off every analytic surface. Provider Setup overlay (P key) gains a 5th 'agy' tab; recommended tmux bundle pane 0.2 flips from gemini:1:research to agy:1:research with an Enterprise-Gemini substitute comment. detect_provider_title reorder fixes Claude main pane misclassified as Gemini when its working-state activity sentence mentions another provider (e.g. '⠂ Migrate from Gemini CLI to Agy CLI'). process_memory descendant-walk gains a two-tier priority (dedicated CLI binaries beat generic interpreters). Gemini code, fixtures, mission history untouched — Enterprise / Cloud / Standard Gemini CLI retains support past 2026-06-18. v2.3.6 surface preserved: Phase D hygiene bundle (ci.yml cache key + workflow file hash, release.yml id-token comment, README install notice, SECURITY.md AI tooling expectations, dependency-review-action PR gate, prebuilt-npm MDR draft) on top of v2.3.5 OIDC-only verification on npm@11.14.1, v2.3.0 surface preserved (post-v2.2.0 stabilization + UX bundle: path-row worktree-role hint, sectioned pane panel tree branches, alert related-context rail, copied-outcome lifecycle, done_when_refs 100 % coverage, settings module split, dependabot bump)."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 220
-  latest_version: "2.7.0"
+  total_revisions: 221
+  latest_version: "2.8.0"
 
 timeline:
   - change_id: "initial"
@@ -23193,6 +23193,70 @@ timeline:
     follow_up:
       - "Release ritual DONE (2026-06-29): pushed main (26d22a7..a9719e6) + annotated tag v2.7.0 on a9719e6 (admin-bypass) triggered Release and Package Mirror run 28376710917 — both jobs success. Verified: npm latest=2.7.0, provenance predicateType=https://slsa.dev/provenance/v1 (OIDC Trusted Publishers, no NPM_TOKEN), GitHub Release v2.7.0 published (not prerelease, 5 assets)."
       - "agy quota/tier + session-cost ARE on the statusLine stdin (spike-confirmed) but OUT of v2.7.0 scope; a later slice can map agy quota -> quota_5h/weekly pressures + reset etas and surface plan_tier with NO new spike needed."
+      - "Gemini 2nd-reviewer reinstatement still blocked on operator Enterprise/API tier config (MDR-DRAFT-v2.5.x-gemini-crossreview-retirement); cross-review stays Codex + human."
+
+  - change_id: "v2.8.0-slice-c4-agy-quota-enrichment"
+    semantic_version: "2.8.0"
+    change_sequence: 221
+    date: "2026-06-29"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (Opus 4.8 1M context)"
+    change_type: "minor"
+    motivation_type: "feature"
+    persistence: "permanent"
+    intent: >
+      Slice C4 — agy quota enrichment, extending Slice C3 (v2.7.0) via the same
+      subagent-driven TDD + opus whole-branch + external Codex cross-review. agy
+      panes now show quota windows at parity with Claude: the agy structured
+      sidefile (the C3 reader) carries quota, and the C3 enrichment branch fills
+      the EXISTING SignalSet quota_5h_pressure / quota_weekly_pressure (+
+      quota_5h_resets_at / quota_weekly_resets_at) — zero new SignalSet fields,
+      opt-in via `[provider_setup] agy_enrichment`, ProviderOfficial,
+      structured-only (no footer quota).
+
+      Active-model-aware: the operator-applied AGY_SIDEFILE_BLOCK jq binds `$fam`
+      = (model.id lowercased startswith gemini ? gemini : 3p) and reads
+      `.quota[$fam + "-5h"]` / `[$fam + "-weekly"]`, so a Gemini session shows its
+      gemini-* quota and a Claude/GPT-OSS session shows 3p-*. pressure =
+      1 - remaining_fraction (clamped in Rust); resets via fromdateiso8601.
+
+      ObserveOnly INHERITED from C3 — no new gating. The quota advisory
+      (quota_pressure_recommendations) lives inside eval_advisories, which the C3
+      `provider_is_observe_only` guard in Engine::evaluate returns before for agy;
+      the regression test was extended (agy + quota_5h_pressure 0.95 → zero
+      recommendations). opus traced every quota consumer (alerts, reset,
+      advisories, profiles, profile_switch, auto-snapshot, the event_loop
+      post-engine appends, anomaly persistence, apply_codex_rate_limits, the UI)
+      and confirmed ZERO leak; Codex (approve-with-fixes) independently confirmed
+      it AND caught an Important jq bug opus missed: the block emitted
+      `reset_time | fromdateiso8601?`, whose `?` yields an EMPTY STREAM on a
+      missing/malformed reset_time, making jq emit no object so the
+      `> sidefile.json` redirect TRUNCATED the whole sidefile to empty (losing
+      the valid pressure fields too). Fixed null-safe with
+      `try (... | fromdateiso8601) catch null` (commit dc7f5dd) + a test pinning
+      the catch-null form.
+
+      Validation: 1640 -> 1642 lib tests (+2), 140 integration/supporting. fmt +
+      clippy (-D warnings) clean (--all-targets). Cross-review: opus internal
+      whole-branch (Ready-to-merge YES, no leak) + Codex external
+      approve-with-fixes (the jq empty-stream Important closed in dc7f5dd;
+      controller verified the missing-reset payload now emits a full object with
+      null reset) + human sign-off. Gemini r1 stays retired. plan_tier +
+      session-cost remain OUT of scope (tier is on the stdin but low-value; cost
+      is not on the stdin). No new SignalSet field, SQLite surface, audit kind,
+      anomaly, or gating.
+    related_commits:
+      - dc7f5dd # Codex fix: agy quota jq resets null-safe (try/catch) + strengthen tests
+      - 965c0d3 # Task 4: ObserveOnly regression (quota) + ARCHITECTURE docs
+      - 29a2aed # Task 3: AGY_SIDEFILE_BLOCK active-model-aware quota jq
+      - 5ab138f # style: cargo fmt agy quota test (whitespace)
+      - 89106b0 # Task 2: fill agy quota onto SignalSet from sidefile
+      - 82ddfe0 # Task 1: AgySidefile quota fields
+      - 0f4bfdd # release: v2.8.0 version surfaces
+    follow_up:
+      - "Release ritual: version surfaces (0f4bfdd) + this ledger synced; tag v2.8.0 + push main + OIDC npm publish is the immediate next step — STOPPED before the irreversible tag/npm, awaiting explicit operator sign-off (릴리스). CURRENT_STATE carries verified-published details after the run."
+      - "agy plan_tier + session-cost still OUT of scope: tier IS on the statusLine stdin (a future slice could surface it via a RuntimeFact, no new SignalSet field); session-cost is NOT on the stdin (subscription tier; /usage is interactive-only)."
       - "Gemini 2nd-reviewer reinstatement still blocked on operator Enterprise/API tier config (MDR-DRAFT-v2.5.x-gemini-crossreview-retirement); cross-review stays Codex + human."
 
 evolution_summary:

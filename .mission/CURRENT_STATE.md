@@ -1,6 +1,49 @@
 # CURRENT_STATE
 
-_Last updated: 2026-06-29 (Claude, v2.7.0 — Slice C3 agy structured/scrape enrichment: model/context%/window/tokens for agy via footer + sidefile, ObserveOnly hardened; see the v2.7.0 section directly below)._
+_Last updated: 2026-06-29 (Claude, v2.8.0 — Slice C4 agy quota enrichment: agy quota windows (5h/weekly pressure + resets) via the structured sidefile, active-model-aware, ObserveOnly inherited from C3; see the v2.8.0 section directly below)._
+
+## v2.8.0 — Slice C4: agy quota enrichment
+
+Extends Slice C3 (v2.7.0): agy panes now show **quota windows** at parity with
+Claude — `quota_5h_pressure` / `quota_weekly_pressure` (+ resets), reusing
+existing `SignalSet` fields (zero new), opt-in via `[provider_setup]
+agy_enrichment`, `ProviderOfficial`, **structured-only** (the agy sidefile; no
+footer quota). Subagent-driven TDD + opus whole-branch + Codex gate.
+
+- **Active-model-aware:** the operator-applied `AGY_SIDEFILE_BLOCK` jq binds
+  `$fam` (model.id `gemini`→`gemini-*`, else `3p-*` for Claude/GPT-OSS) and reads
+  `.quota[$fam-5h]` / `[$fam-weekly]` — a Gemini session shows its gemini-* quota,
+  a Claude/GPT-OSS session shows 3p-*. pressure = `1 − remaining_fraction`
+  (clamped); resets = `reset_time` → unix via `try (fromdateiso8601) catch null`.
+- **ObserveOnly inherited from C3 (no new gating):** the quota advisory lives in
+  `eval_advisories`, which the C3 `provider_is_observe_only` guard in
+  `Engine::evaluate` returns before for agy → agy emits **zero recommendations**
+  even with quota populated. Regression extended (agy + `quota_5h_pressure=0.95`
+  → zero recs).
+
+**Tests:** 1640 → 1642 lib (+2), 140 integration/supporting. fmt + clippy clean.
+
+**Cross-review (release gate):** **opus** whole-branch — Ready-to-merge YES, no
+leak (traced every quota consumer: alerts / reset / advisories / profiles /
+auto-snapshot / post-engine appends / anomaly-persistence / UI). **Codex**
+`approve-with-fixes` — confirmed no leak AND caught an Important jq bug opus
+missed: `fromdateiso8601?` on a missing `reset_time` emitted an empty stream → jq
+emitted no object → the `> sidefile.json` redirect truncated the whole sidefile
+to empty (losing valid pressure too); fixed null-safe with `try … catch null`
+(`dc7f5dd`), verified. **Human sign-off** (Gemini leg retired). Artifact:
+`.mission/evals/Qmonster-v2.8.0-2026-06-29-slice-c4-codex-review.result.yaml`.
+
+**Release state: PREPPED ON `main`** (`dc7f5dd` code + `0f4bfdd` version surfaces
++ this ledger); tag + OIDC npm publish awaits explicit operator sign-off
+(`릴리스`) — the irreversible step. This section is updated to PUBLISHED +
+verification after the Release and Package Mirror run.
+
+**Follow-ups:** (1) agy plan_tier + session-cost OUT of scope — tier is on the
+statusLine stdin (a future slice could surface it via a RuntimeFact, no new
+field); session-cost is not on the stdin; (2) Gemini 2nd-reviewer reinstatement
+stays blocked on operator Enterprise/API config.
+
+---
 
 ## v2.7.0 — Slice C3: agy structured/scrape enrichment
 
