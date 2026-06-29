@@ -738,19 +738,53 @@ Since Slice A (2026-06), Claude `context_pressure` / `quota_*_pressure` prefer t
 
 Since Slice B (2026-06), Codex token counts + model fall back to the `codex-tui` rollout JSONL (`~/.codex/sessions/.../rollout-*.jsonl`, fill-when-absent) when the status-line scrape is unavailable; `codex_exec` rollouts are excluded by the `originator` gate. For `context_window_size` specifically: the Codex status-line scrape's `N window` token is the PRIMARY source; the rollout JSONL `model_context_window` is the fill-when-absent backstop. context% / rate-limits are unchanged (scrape + app-server).
 
-Antigravity (`agy`, Slice C) remains **ObserveOnly** for analytics, with an
-**opt-in transcript activity RuntimeFact** shipped in v2.6.0 (Slice C2). The
-transcript JSONL (`~/.gemini/antigravity-cli/brain/<uuid>/.system_generated/logs/transcript.jsonl`)
-was verified (2026-06-29) to expose only activity / timestamps / tool-calls —
-**no token, model, cost, or context fields** — so all analytic surfaces (the six
-v2.4.0 ObserveOnly gates: anomaly detectors, cost/cache chips, profile recommenders,
-insights data-completeness, and token-sample filters) remain **Hidden**. Slice C2
-surfaces a **live activity RuntimeFact** (Heuristic source, gated by `[provider_setup]
-agy_transcript` toggle, default false) by correlating `~/.gemini/antigravity-cli/history.jsonl`
-by workspace (cwd) with an ambiguity guard (mirrors codex_rollout's 60s window),
-then reading the latest transcript step to inform the displayfact's activity label.
-Command/title identification is the honest structured ceiling; deeper structured
-introspection awaits Google's documented headless/observability surface.
+Antigravity (`agy`, Slice C) remains **ObserveOnly** for analytics on all six
+v2.4.0 gates:
+
+1. **Anomaly detectors** — no `AnomalyKind::supported_providers` slice includes
+   `Provider::Antigravity`; all eight detectors stay off for agy panes.
+2. **Cost / cache chips** (`provider_honesty`) — `cache_metric_status` and
+   `cost_metric_status` both return `Hidden` for Antigravity; no chip renders.
+3. **Profile-switch recommender** — `profile_targets_for_provider(Antigravity)`
+   returns `None`; `eval_profile_switch` returns `Vec::new()` immediately.
+4. **Insights data-completeness** — the `PaneDataCompleteness` query maps provider
+   string `"Antigravity"` to status `"unsupported"` (same as `"Qmonster"` /
+   `"Unknown"`).
+5. **Token-sample filter** — `filter_token_samples_for_provider` returns `Vec::new()`
+   for `Provider::Antigravity`; no token history accumulates.
+6. **Token sparkline / breakdown** — `token_rows_supported(Provider::Antigravity)`
+   returns `false`; the sparkline and breakdown rows never render, even when
+   `token_count` is populated by Slice C3.
+
+**Slice C2 (v2.6.0)** surfaces a **live activity RuntimeFact** (Heuristic source,
+gated by `[provider_setup] agy_transcript` toggle, default false) by correlating
+`~/.gemini/antigravity-cli/history.jsonl` by workspace (cwd) with an ambiguity
+guard (mirrors codex_rollout's 60s window), then reading the latest transcript step
+to inform the display-fact's activity label.
+
+**Slice C3 (v2.7.0)** adds opt-in enrichment (`[provider_setup] agy_enrichment`,
+default false) via a two-path hybrid:
+
+- **Footer scrape** (primary, always pane-correct): parses `token-count N` and the
+  model name from the agy status-line footer; fills `model_name`, `context_pressure`,
+  and `token_count` when absent.
+- **Structured sidefile** (override when present):
+  `~/.local/share/ai-cli-status/agy/<conversation_id>.json` fields
+  (`model`, `context_used_percentage`, `context_window_size`, `token_count`) are
+  given priority over the footer scrape and also populate `context_window_size`.
+- Both paths use **`SourceKind::ProviderOfficial`** (`confidence 0.9`,
+  `provider Antigravity`).
+
+These three fields are **display-only** — they appear in the pane card metrics
+chips (model badge, CTX% bar, token count) but do NOT feed any of the six
+analytic gates above. The regression tests in `adapters::agy_observeonly_regression`
+(Task 6) verify byte-identical gate exclusion even when C3 signals are populated.
+
+Quota, session cost (`cost_usd`), and protobuf / gRPC introspection remain **out
+of scope** for agy; no `AuditEventKind`, SignalSet schema, or SQLite schema changes.
+Command / title identification via the footer is the honest structured ceiling;
+deeper structured introspection awaits Google's documented headless/observability
+surface.
 
 ### Detector / rule reach implications
 

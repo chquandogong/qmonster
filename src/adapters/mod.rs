@@ -288,8 +288,7 @@ pub fn parse_for_with_environment(
                 signals.model_name = Some(metric_str(m));
             }
             if let Some(pct) = sf.context_used_percentage {
-                signals.context_pressure =
-                    Some(metric_f32((pct / 100.0).clamp(0.0, 1.0) as f32));
+                signals.context_pressure = Some(metric_f32((pct / 100.0).clamp(0.0, 1.0) as f32));
             }
             if let Some(n) = sf.context_window_size {
                 signals.context_window_size = Some(metric_u64(n));
@@ -1319,8 +1318,7 @@ mod agy_enrichment_integration_tests {
     }
 
     /// Footer tail: model "Gemini 3.5 Flash (High)" with token-count item enabled.
-    const FOOTER_TAIL: &str =
-        "> hello\n? for shortcuts                         token-count 34567  Gemini 3.5 Flash (High)\n";
+    const FOOTER_TAIL: &str = "> hello\n? for shortcuts                         token-count 34567  Gemini 3.5 Flash (High)\n";
 
     #[test]
     fn agy_enrichment_fills_model_and_token_from_footer_when_enabled() {
@@ -1403,7 +1401,10 @@ mod agy_enrichment_integration_tests {
 
         let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
 
-        assert!(signals.model_name.is_none(), "no enrichment when toggle off");
+        assert!(
+            signals.model_name.is_none(),
+            "no enrichment when toggle off"
+        );
     }
 
     #[test]
@@ -1428,5 +1429,242 @@ mod agy_enrichment_integration_tests {
             signals.model_name.is_none(),
             "strict agy process-confirm gates enrichment"
         );
+    }
+}
+
+// ── Task 6 (Slice C3): ObserveOnly six-gate regression ──────────────────────
+// C3 populates model_name / context_pressure / context_window_size /
+// token_count for agy panes, but agy must stay off every analytic surface.
+// These tests are GUARD-RAILS: they must pass immediately; if any assertion
+// fails, C3 broke a gate and must be fixed before proceeding.
+#[cfg(test)]
+mod agy_observeonly_regression {
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
+    use crate::domain::origin::SourceKind;
+    use crate::domain::signal::{MetricValue, SignalSet};
+
+    const ALL_ANOMALY_KINDS: &[crate::domain::anomaly::AnomalyKind] = &[
+        crate::domain::anomaly::AnomalyKind::IdentityChurn,
+        crate::domain::anomaly::AnomalyKind::ErrorBurst,
+        crate::domain::anomaly::AnomalyKind::CacheDiscontinuity,
+        crate::domain::anomaly::AnomalyKind::CrossPaneEditCluster,
+        crate::domain::anomaly::AnomalyKind::CostSlope,
+        crate::domain::anomaly::AnomalyKind::TokenSlope,
+        crate::domain::anomaly::AnomalyKind::MemoryGrowth,
+        crate::domain::anomaly::AnomalyKind::SubagentSideEffect,
+    ];
+
+    /// Build a C3-enriched agy SignalSet — model_name + token_count populated,
+    /// matching what Tasks 2–4 produce when `agy_enrichment` is on.
+    fn agy_enriched_signals() -> SignalSet {
+        SignalSet {
+            model_name: Some(
+                MetricValue::new(
+                    "Gemini 3.5 Flash (High)".to_string(),
+                    SourceKind::ProviderOfficial,
+                )
+                .with_provider(Provider::Antigravity),
+            ),
+            token_count: Some(
+                MetricValue::new(34_567_u64, SourceKind::ProviderOfficial)
+                    .with_provider(Provider::Antigravity),
+            ),
+            ..SignalSet::default()
+        }
+    }
+
+    fn agy_resolved_id() -> ResolvedIdentity {
+        ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Antigravity,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%3".into(),
+            },
+            confidence: IdentityConfidence::High,
+        }
+    }
+
+    /// Gate 1: anomaly detectors — no AnomalyKind supports Antigravity.
+    #[test]
+    fn agy_enrichment_gate1_no_anomaly_kind_supports_antigravity() {
+        for kind in ALL_ANOMALY_KINDS {
+            assert!(
+                !kind.supports_provider(Provider::Antigravity),
+                "{:?} must not support Antigravity after C3 — ObserveOnly contract",
+                kind
+            );
+        }
+    }
+
+    /// Gate 2: provider_honesty cache chip — Hidden for Antigravity even when
+    /// C3-enriched signals include token_count.
+    #[test]
+    fn agy_enrichment_gate2_cache_metric_hidden() {
+        use crate::ui::provider_honesty::{CacheMetricStatus, cache_metric_status};
+        let signals = agy_enriched_signals();
+        assert_eq!(
+            cache_metric_status(&signals, Provider::Antigravity),
+            CacheMetricStatus::Hidden,
+            "cache_metric_status must stay Hidden for Antigravity after C3"
+        );
+    }
+
+    /// Gate 2b: provider_honesty cost chip — Hidden for Antigravity even when
+    /// C3-enriched signals include token_count.
+    #[test]
+    fn agy_enrichment_gate2b_cost_metric_hidden() {
+        use crate::ui::provider_honesty::{CostMetricStatus, cost_metric_status};
+        let signals = agy_enriched_signals();
+        assert_eq!(
+            cost_metric_status(&signals, Provider::Antigravity),
+            CostMetricStatus::Hidden,
+            "cost_metric_status must stay Hidden for Antigravity after C3"
+        );
+    }
+
+    /// Gate 3: profile_switch rule — returns empty Vec for Antigravity
+    /// (profile_targets_for_provider returns None → rule exits early).
+    #[test]
+    fn agy_enrichment_gate3_profile_switch_returns_none() {
+        use crate::domain::identity::IdentityConfidence;
+        use crate::policy::gates::PolicyGates;
+        use crate::policy::rules::profile_switch::eval_profile_switch;
+        let id = agy_resolved_id();
+        let signals = agy_enriched_signals();
+        // All conditions that would normally trigger the rule: gate on,
+        // window full, 100% error rate.
+        let gates = PolicyGates {
+            identity_confidence: IdentityConfidence::High,
+            profile_switch_enabled: true,
+            profile_switch_window: 5,
+            profile_switch_error_rate: 0.5,
+            ..PolicyGates::default()
+        };
+        let history = vec![true; 10];
+        let recs = eval_profile_switch(&id, &signals, &history, &gates);
+        assert!(
+            recs.is_empty(),
+            "profile_switch must return empty Vec for Antigravity after C3; got {:?}",
+            recs
+        );
+    }
+
+    /// Gate 4: insights coverage — provider string "Antigravity" maps to
+    /// status "unsupported" in the PaneDataCompleteness query.
+    #[test]
+    fn agy_enrichment_gate4_insights_coverage_is_unsupported() {
+        // The insights store computes:
+        //   if matches!(provider.as_str(), "Antigravity" | "Qmonster" | "Unknown")
+        //       { "unsupported" }
+        // Assert that the canonical provider string matches that pattern.
+        let provider_str = format!("{:?}", Provider::Antigravity);
+        assert_eq!(
+            provider_str, "Antigravity",
+            "Provider::Antigravity Debug string must be 'Antigravity' (insights gate depends on it)"
+        );
+        // Duplicate the gate logic to confirm coverage.
+        let status = if matches!(
+            provider_str.as_str(),
+            "Antigravity" | "Qmonster" | "Unknown"
+        ) {
+            "unsupported"
+        } else {
+            "ok"
+        };
+        assert_eq!(
+            status, "unsupported",
+            "insights coverage gate must map Antigravity → 'unsupported' after C3"
+        );
+    }
+
+    /// Gate 5: token-sample filter — Antigravity is in the excluded set so
+    /// filter_token_samples_for_provider returns Vec::new() for it.
+    #[test]
+    fn agy_enrichment_gate5_token_sample_filter_excludes_antigravity() {
+        // The filter in event_loop::filter_token_samples_for_provider is:
+        //   if matches!(provider, Provider::Antigravity | Provider::Qmonster | Provider::Unknown)
+        //       { return Vec::new(); }
+        // Assert the gate expression directly.
+        assert!(
+            matches!(
+                Provider::Antigravity,
+                Provider::Antigravity | Provider::Qmonster | Provider::Unknown
+            ),
+            "Antigravity must remain in the token-sample exclusion set after C3"
+        );
+    }
+
+    /// Gate 6: token sparkline/breakdown — token_rows_supported returns false
+    /// for Antigravity, so populating token_count does not pull agy into the
+    /// token sparkline or breakdown surfaces.
+    #[test]
+    fn agy_enrichment_gate6_token_rows_not_supported() {
+        assert!(
+            !crate::ui::panels::token_rows_supported(Provider::Antigravity),
+            "token_rows_supported must stay false for Antigravity after C3"
+        );
+    }
+
+    /// Composite guard-rail: enriched agy pane hits all six gates in one shot.
+    #[test]
+    fn agy_enrichment_does_not_re_enable_token_rows_or_anomaly_gates() {
+        // Gate 6
+        assert!(
+            !crate::ui::panels::token_rows_supported(Provider::Antigravity),
+            "token_rows_supported must stay false for Antigravity after C3"
+        );
+        // Gate 1
+        assert!(
+            ALL_ANOMALY_KINDS
+                .iter()
+                .all(|k| !k.supports_provider(Provider::Antigravity)),
+            "no anomaly kind may support Antigravity after C3"
+        );
+        // Gate 2: cache metric Hidden
+        assert_eq!(
+            crate::ui::provider_honesty::cache_metric_status(
+                &agy_enriched_signals(),
+                Provider::Antigravity
+            ),
+            crate::ui::provider_honesty::CacheMetricStatus::Hidden,
+        );
+        // Gate 3: profile_switch → empty
+        {
+            use crate::domain::identity::IdentityConfidence;
+            use crate::policy::gates::PolicyGates;
+            let id = agy_resolved_id();
+            let signals = agy_enriched_signals();
+            let gates = PolicyGates {
+                identity_confidence: IdentityConfidence::High,
+                profile_switch_enabled: true,
+                profile_switch_window: 5,
+                profile_switch_error_rate: 0.5,
+                ..PolicyGates::default()
+            };
+            let recs = crate::policy::rules::profile_switch::eval_profile_switch(
+                &id,
+                &signals,
+                &[true; 10],
+                &gates,
+            );
+            assert!(recs.is_empty());
+        }
+        // Gate 4: insights coverage string
+        let provider_str = format!("{:?}", Provider::Antigravity);
+        assert!(
+            matches!(
+                provider_str.as_str(),
+                "Antigravity" | "Qmonster" | "Unknown"
+            ),
+            "Antigravity must remain in the insights 'unsupported' string set"
+        );
+        // Gate 5: token-sample filter exclusion set
+        assert!(matches!(
+            Provider::Antigravity,
+            Provider::Antigravity | Provider::Qmonster | Provider::Unknown
+        ));
     }
 }

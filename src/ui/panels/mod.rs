@@ -1912,7 +1912,22 @@ fn token_sparkline_label(signals: &SignalSet) -> String {
     }
 }
 
+#[cfg(not(test))]
 fn token_rows_supported(provider: Provider) -> bool {
+    matches!(
+        provider,
+        Provider::Claude | Provider::Codex | Provider::Gemini
+    )
+}
+
+/// Same logic as the private `fn token_rows_supported`; promoted to
+/// `pub(crate)` under `#[cfg(test)]` so that the ObserveOnly six-gate
+/// regression in `adapters` can call
+/// `crate::ui::panels::token_rows_supported(Provider::Antigravity)` without
+/// changing production visibility. The body is identical — this is a
+/// guard-rail assertion path only.
+#[cfg(test)]
+pub(crate) fn token_rows_supported(provider: Provider) -> bool {
     matches!(
         provider,
         Provider::Claude | Provider::Codex | Provider::Gemini

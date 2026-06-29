@@ -622,17 +622,37 @@ side_effects (N):
     템플릿과, OAuth는 그대로 유지하되 cache 필드는 FAQ-documented OAuth
     한계로 인해 노출되지 않는다는 informational note (API key 전환은
     운영자 선호에 따라 deferred).
-  - **agy 탭 (v2.4.0)**: Google이 2026-06-18부터 free / Pro / Ultra /
-    Code Assist 개인 라이선스에서 Gemini CLI를 대체하기로 발표한 새
-    Antigravity CLI(`agy`)를 위한 탭입니다. 짧고 솔직한 안내 — agy는
-    Antigravity IDE의 launcher이고 문서화된 headless API가 아직
-    없으므로, Qmonster는 `agy` 패널을 ObserveOnly로 식별만 합니다
+  - **agy 탭 (v2.4.0; v2.7.0에서 `agy_enrichment` 지원 추가)**:
+    Google이 2026-06-18부터 free / Pro / Ultra / Code Assist 개인
+    라이선스에서 Gemini CLI를 대체하기로 발표한 새 Antigravity
+    CLI(`agy`)를 위한 탭입니다. 짧고 솔직한 안내 — agy는 Antigravity
+    IDE의 launcher이고 문서화된 headless API가 아직 없으므로,
+    Qmonster는 `agy` 패널을 ObserveOnly로 식별만 합니다
     (`agy:N:role` canonical title 또는 pane current_command `agy`
     토큰). 모든 분석 표면(anomaly / profile / cache / cost / insights
-    coverage / token sample)은 6개 독립 게이트로 차단되며, 복사할
-    수 있는 스니펫이 없습니다. Enterprise / Cloud / Standard Gemini
-    CLI 라이선스는 2026-06-18 이후에도 유지되므로 Gemini 탭은 계속
-    유효합니다.
+    coverage / token sample)은 6개 독립 게이트로 차단됩니다.
+    Enterprise / Cloud / Standard Gemini CLI 라이선스는 2026-06-18
+    이후에도 유지되므로 Gemini 탭은 계속 유효합니다.
+
+    **v2.7.0 — `agy_enrichment` opt-in (Slice C3)**: `S` Settings →
+    `Integrations`에서 `agy_enrichment`를 `ON`으로 설정하면
+    (`[provider_setup] agy_enrichment = true`, default off), agy
+    pane card에 `model_name` · `context%` · `token_count` 배지가
+    표시됩니다. 데이터는 pane 하단 status-line footer의 스크래핑
+    (footer scrape, 항상 해당 pane 전용)과 선택적 structured
+    sidefile(`~/.local/share/ai-cli-status/agy/<conversation_id>.json`,
+    sidefile이 있으면 footer보다 우선)을 통해 수집됩니다. 두 경로 모두
+    `SourceKind::ProviderOfficial`을 사용합니다.
+
+    footer scrape가 model / token-count를 파싱하려면 `agy`의 status-line이
+    해당 정보를 포함해야 합니다. 이를 위해 **Provider Setup agy 탭**은
+    `agy_enrichment`가 ON일 때 `statusLine.command` 설정 블록을 포함한
+    **권장 설정 스니펫** (`y`로 복사)을 제공합니다 — `agy`가 status-line에
+    token-count와 model 이름을 출력하도록 구성하는 블록입니다. 이
+    스니펫의 구체적인 내용은 `agy` configuration API가 확정되는 시점에
+    정식 배포됩니다. 6개 analytic gate는 `agy_enrichment`가 ON이어도
+    변경되지 않으며 모두 차단 상태를 유지합니다.
+
   - **Tmux 탭**: 추천 4-pane 워크플로우 설치 스크립트를 `y`로 복사합니다.
     복사한 스크립트를 실행하면 `~/ts.sh` (Claude/Codex/Gemini/Qmonster
     pane을 만들고 `claude:1:main`, `codex:1:review`, `agy:1:research`,
