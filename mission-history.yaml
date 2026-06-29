@@ -23255,7 +23255,7 @@ timeline:
       - 82ddfe0 # Task 1: AgySidefile quota fields
       - 0f4bfdd # release: v2.8.0 version surfaces
     follow_up:
-      - "Release ritual: version surfaces (0f4bfdd) + this ledger synced; tag v2.8.0 + push main + OIDC npm publish is the immediate next step — STOPPED before the irreversible tag/npm, awaiting explicit operator sign-off (릴리스). CURRENT_STATE carries verified-published details after the run."
+      - "Release ritual DONE (2026-06-29): pushed main (3510be8..257fde3) + annotated tag v2.8.0 on 257fde3 (admin-bypass) triggered Release and Package Mirror run 28381340639 — both jobs success. Verified: npm latest=2.8.0, provenance predicateType=https://slsa.dev/provenance/v1 (OIDC Trusted Publishers, no NPM_TOKEN), GitHub Release v2.8.0 published (not prerelease, 5 assets)."
       - "agy plan_tier + session-cost still OUT of scope: tier IS on the statusLine stdin (a future slice could surface it via a RuntimeFact, no new SignalSet field); session-cost is NOT on the stdin (subscription tier; /usage is interactive-only)."
       - "Gemini 2nd-reviewer reinstatement still blocked on operator Enterprise/API tier config (MDR-DRAFT-v2.5.x-gemini-crossreview-retirement); cross-review stays Codex + human."
 

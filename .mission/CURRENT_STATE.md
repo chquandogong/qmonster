@@ -33,10 +33,14 @@ to empty (losing valid pressure too); fixed null-safe with `try … catch null`
 (`dc7f5dd`), verified. **Human sign-off** (Gemini leg retired). Artifact:
 `.mission/evals/Qmonster-v2.8.0-2026-06-29-slice-c4-codex-review.result.yaml`.
 
-**Release state: PREPPED ON `main`** (`dc7f5dd` code + `0f4bfdd` version surfaces
-+ this ledger); tag + OIDC npm publish awaits explicit operator sign-off
-(`릴리스`) — the irreversible step. This section is updated to PUBLISHED +
-verification after the Release and Package Mirror run.
+**Release state: v2.8.0 is PUBLISHED** (verified 2026-06-29). `main` pushed
+(`3510be8..257fde3`); annotated tag `v2.8.0` on `257fde3` (admin-bypass on the
+creation ruleset) triggered `Release and Package Mirror` run `28381340639`, both
+jobs success (build assets + publish). `npm view qmonster dist-tags` → `latest =
+2.8.0`; provenance `predicateType` → `https://slsa.dev/provenance/v1` (OIDC
+Trusted Publishers, no NPM_TOKEN); GitHub Release `v2.8.0` published (not
+prerelease, 5 assets). Version surfaces (package.json / Cargo.toml / Cargo.lock /
+VERSION.md / README) + mission ledger all at 2.8.0.
 
 **Follow-ups:** (1) agy plan_tier + session-cost OUT of scope — tier is on the
 statusLine stdin (a future slice could surface it via a RuntimeFact, no new
