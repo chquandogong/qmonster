@@ -350,9 +350,13 @@ pub fn handle_runtime_refresh_action<P: PaneSource>(
 }
 
 fn runtime_refresh_captures_then_closes(provider: Provider, command: &str) -> bool {
+    // narrow vNext (Slice 6c): the Gemini `/model` capture-then-close
+    // special case was removed with the rest of the Gemini interactive
+    // enrichment. Only Claude's fullscreen runtime surfaces still need
+    // a capture-then-Escape cycle.
     matches!(
         (provider, command),
-        (Provider::Claude, "/status" | "/usage" | "/stats") | (Provider::Gemini, "/model")
+        (Provider::Claude, "/status" | "/usage" | "/stats")
     )
 }
 
@@ -367,8 +371,7 @@ fn capture_runtime_refresh_tail<P: PaneSource>(
     command: &str,
     capture_lines: usize,
 ) -> Result<String, crate::tmux::polling::PollingError> {
-    if provider != Provider::Claude && !matches!((provider, command), (Provider::Gemini, "/model"))
-    {
+    if provider != Provider::Claude {
         return source.capture_tail(pane_id, capture_lines);
     }
 
@@ -392,16 +395,14 @@ fn capture_runtime_refresh_tail<P: PaneSource>(
 }
 
 fn runtime_refresh_capture_ready(provider: Provider, command: &str, tail: &str) -> bool {
-    let lower = tail.to_lowercase();
-    if provider == Provider::Gemini && command == "/model" {
-        return (lower.contains("select model") || lower.contains("model usage"))
-            && (lower.contains("reset:") || lower.contains("resets:"));
-    }
-
+    // narrow vNext (Slice 6c): the Gemini `/model` capture-ready probe
+    // was removed with the rest of the Gemini interactive enrichment.
+    // Only Claude's fullscreen runtime surfaces need a readiness gate.
     if provider != Provider::Claude {
         return true;
     }
 
+    let lower = tail.to_lowercase();
     match command {
         "/context" => claude_context_capture_ready(&lower),
         "/usage" => claude_usage_capture_ready(&lower),
@@ -459,33 +460,30 @@ fn runtime_refresh_provider_commands(
     idle_state: Option<IdleCause>,
 ) -> &'static [&'static str] {
     // Keep this list to provider-owned control/status surfaces.
+    //
+    // narrow vNext (Slice 6c): Gemini's `/model` + `/stats session` +
+    // `/stats model` interactive enrichment was removed. Gemini's
+    // individual tier is sunset (operators migrate to agy), so pressing
+    // `u` on a Gemini pane no longer dispatches any slash command — its
+    // always-visible status table (context / quota / memory / model)
+    // already carries the core signal without an interactive surface.
+    let _ = idle_state;
     match provider {
         Provider::Claude => &[],
         Provider::Codex => &["/status"],
-        Provider::Gemini if gemini_model_refresh_allowed(idle_state) => {
-            &["/model", "/stats session", "/stats model"]
-        }
-        Provider::Gemini => &["/stats session", "/stats model"],
+        Provider::Gemini => &[],
         Provider::Antigravity | Provider::Qmonster | Provider::Unknown => &[],
     }
 }
 
-fn gemini_model_refresh_allowed(idle_state: Option<IdleCause>) -> bool {
-    matches!(
-        idle_state,
-        Some(IdleCause::WorkComplete | IdleCause::Stale | IdleCause::LimitHit)
-    )
-}
-
 fn runtime_refresh_command_scope(
-    provider: Provider,
-    idle_state: Option<IdleCause>,
+    _provider: Provider,
+    _idle_state: Option<IdleCause>,
 ) -> &'static str {
-    match provider {
-        Provider::Gemini if gemini_model_refresh_allowed(idle_state) => "idle",
-        Provider::Gemini => "active",
-        _ => "default",
-    }
+    // narrow vNext (Slice 6c): Gemini no longer cycles slash commands
+    // (the only provider that did), so there is no distinct
+    // active/idle command scope to track anymore.
+    "default"
 }
 
 fn runtime_refresh_provider_key(provider: Provider) -> &'static str {
@@ -849,31 +847,26 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_commands_for_gemini_only_use_model_when_idle() {
-        assert_eq!(
-            runtime_refresh_commands(Provider::Gemini, None),
-            ["/stats session", "/stats model"]
-        );
-        assert_eq!(
-            runtime_refresh_commands(Provider::Gemini, Some(IdleCause::WorkComplete)),
-            ["/model", "/stats session", "/stats model"]
-        );
-        assert_eq!(
-            runtime_refresh_commands(Provider::Gemini, Some(IdleCause::Stale)),
-            ["/model", "/stats session", "/stats model"]
-        );
-        assert_eq!(
-            runtime_refresh_commands(Provider::Gemini, Some(IdleCause::LimitHit)),
-            ["/model", "/stats session", "/stats model"]
-        );
-        assert_eq!(
-            runtime_refresh_commands(Provider::Gemini, Some(IdleCause::InputWait)),
-            ["/stats session", "/stats model"]
-        );
-        assert_eq!(
-            runtime_refresh_commands(Provider::Gemini, Some(IdleCause::PermissionWait)),
-            ["/stats session", "/stats model"]
-        );
+    fn runtime_refresh_commands_for_gemini_are_empty_in_every_idle_state() {
+        // narrow vNext (Slice 6c): the Gemini `/model` + `/stats
+        // session` + `/stats model` interactive enrichment was removed.
+        // Pressing `u` on a Gemini pane now dispatches nothing — the
+        // always-visible status table already carries the core signal.
+        // No idle state re-enables a slash command.
+        for idle in [
+            None,
+            Some(IdleCause::WorkComplete),
+            Some(IdleCause::Stale),
+            Some(IdleCause::LimitHit),
+            Some(IdleCause::InputWait),
+            Some(IdleCause::PermissionWait),
+        ] {
+            assert_eq!(
+                runtime_refresh_commands(Provider::Gemini, idle),
+                &[] as &[&str],
+                "Gemini runtime refresh must be empty for idle_state {idle:?}"
+            );
+        }
     }
 
     #[test]
@@ -1009,100 +1002,26 @@ mod tests {
     }
 
     #[test]
-    fn runtime_refresh_gemini_model_captures_then_closes_surface() {
-        let source = RecordingRefreshSource::with_capture(
-            "Select Model\nGemini 2.5 Pro\nReset: 5:00 PM (in 1h 12m)",
-        );
-        let mut overlays = HashMap::new();
-        let outcome = send_runtime_refresh_commands(
-            &source,
-            "%3",
-            Provider::Gemini,
-            Some(IdleCause::WorkComplete),
-            &["/model"],
-            40,
-            &mut overlays,
-        );
-
-        assert_eq!(
-            source.calls(),
-            vec!["keys:%3:/model", "capture:%3:300", "key:%3:Escape"]
-        );
-        assert_eq!(
-            overlays.get("%3").map(String::as_str),
-            Some("Select Model\nGemini 2.5 Pro\nReset: 5:00 PM (in 1h 12m)")
-        );
-        assert_eq!(
-            outcome,
-            RuntimeRefreshSendOutcome {
-                failed: None,
-                captured_and_closed: true
-            }
-        );
-    }
-
-    #[test]
-    fn runtime_refresh_gemini_model_retries_until_reset_rows_are_visible() {
-        let source = SequencedCaptureSource::new(&[
-            "Select Model\nLoading models...",
-            "Select Model\nPro ▬▬▬▬▬▬▬▬▬▬▬ 5% Resets: 6:45 PM (19h 32m)",
-        ]);
-        let mut overlays = HashMap::new();
-        let outcome = send_runtime_refresh_commands(
-            &source,
-            "%3",
-            Provider::Gemini,
-            Some(IdleCause::WorkComplete),
-            &["/model"],
-            40,
-            &mut overlays,
-        );
-
-        assert_eq!(
-            source.calls(),
-            vec![
-                "keys:%3:/model",
-                "capture:%3:300",
-                "capture:%3:300",
-                "key:%3:Escape",
-            ]
-        );
-        assert_eq!(
-            overlays.get("%3").map(String::as_str),
-            Some("Select Model\nPro ▬▬▬▬▬▬▬▬▬▬▬ 5% Resets: 6:45 PM (19h 32m)")
-        );
-        assert_eq!(
-            outcome,
-            RuntimeRefreshSendOutcome {
-                failed: None,
-                captured_and_closed: true
-            }
-        );
-    }
-
-    #[test]
-    fn runtime_refresh_gemini_stats_do_not_close_with_escape() {
-        let source = RecordingRefreshSource::with_capture("Gemini stats");
-        let mut overlays = HashMap::new();
-        let outcome = send_runtime_refresh_commands(
-            &source,
-            "%3",
-            Provider::Gemini,
-            Some(IdleCause::WorkComplete),
-            &["/stats session"],
-            40,
-            &mut overlays,
-        );
-
-        assert_eq!(source.calls(), vec!["keys:%3:/stats session"]);
-        assert!(overlays.is_empty());
-        assert_eq!(
-            outcome,
-            RuntimeRefreshSendOutcome {
-                failed: None,
-                captured_and_closed: false
-            }
-        );
+    fn runtime_refresh_gemini_no_longer_captures_then_closes_any_command() {
+        // narrow vNext (Slice 6c): the Gemini `/model` capture-then-
+        // Escape special case was removed along with the rest of the
+        // Gemini interactive enrichment. No Gemini command triggers the
+        // capture-then-close cycle anymore; only Claude's fullscreen
+        // runtime surfaces still do.
+        for command in ["/model", "/stats session", "/stats model"] {
+            assert!(
+                !runtime_refresh_captures_then_closes(Provider::Gemini, command),
+                "Gemini `{command}` must not capture-then-close after Slice 6c"
+            );
+        }
+        // Claude's capture-then-close path is untouched (core pressure
+        // signals flow through it).
+        for command in ["/status", "/usage", "/stats"] {
+            assert!(
+                runtime_refresh_captures_then_closes(Provider::Claude, command),
+                "Claude `{command}` capture-then-close must stay intact"
+            );
+        }
     }
 
     #[test]
@@ -1122,80 +1041,29 @@ System prompt: 8.6k tokens (0.9%)";
     }
 
     #[test]
-    fn runtime_refresh_dispatch_cycles_active_gemini_stats_without_model() {
+    fn runtime_refresh_dispatch_for_gemini_is_empty_in_every_idle_state() {
+        // narrow vNext (Slice 6c): with the Gemini interactive
+        // enrichment removed, `u` on a Gemini pane dispatches nothing —
+        // the dispatch helper returns an empty command list and never
+        // touches the per-pane cycling offsets, in any idle state.
         let mut offsets = HashMap::new();
-        assert_eq!(
-            runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
-            ["/stats session"]
-        );
-        assert_eq!(
-            runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
-            ["/stats model"]
-        );
-        assert_eq!(
-            runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
-            ["/stats session"]
+        for idle in [
+            None,
+            Some(IdleCause::WorkComplete),
+            Some(IdleCause::Stale),
+            Some(IdleCause::LimitHit),
+            Some(IdleCause::InputWait),
+        ] {
+            assert!(
+                runtime_refresh_dispatch_commands(Provider::Gemini, idle, "%2", &mut offsets)
+                    .is_empty(),
+                "Gemini dispatch must be empty for idle_state {idle:?}"
+            );
+        }
+        assert!(
+            offsets.is_empty(),
+            "empty Gemini command list must never populate cycling offsets"
         );
         assert!(!runtime_refresh_sends_escape_first(Provider::Gemini, None));
-    }
-
-    #[test]
-    fn runtime_refresh_dispatch_cycles_idle_gemini_model_and_used_stats_sources() {
-        let mut offsets = HashMap::new();
-        assert_eq!(
-            runtime_refresh_dispatch_commands(
-                Provider::Gemini,
-                Some(IdleCause::WorkComplete),
-                "%2",
-                &mut offsets,
-            ),
-            ["/model"]
-        );
-        assert_eq!(
-            runtime_refresh_dispatch_commands(
-                Provider::Gemini,
-                Some(IdleCause::WorkComplete),
-                "%2",
-                &mut offsets,
-            ),
-            ["/stats session"]
-        );
-        assert_eq!(
-            runtime_refresh_dispatch_commands(
-                Provider::Gemini,
-                Some(IdleCause::WorkComplete),
-                "%2",
-                &mut offsets,
-            ),
-            ["/stats model"]
-        );
-        assert_eq!(
-            runtime_refresh_dispatch_commands(
-                Provider::Gemini,
-                Some(IdleCause::WorkComplete),
-                "%2",
-                &mut offsets,
-            ),
-            ["/model"]
-        );
-        assert!(!runtime_refresh_sends_escape_first(Provider::Gemini, None));
-    }
-
-    #[test]
-    fn runtime_refresh_dispatch_keeps_active_and_idle_gemini_cycles_separate() {
-        let mut offsets = HashMap::new();
-        assert_eq!(
-            runtime_refresh_dispatch_commands(Provider::Gemini, None, "%2", &mut offsets),
-            ["/stats session"]
-        );
-        assert_eq!(
-            runtime_refresh_dispatch_commands(
-                Provider::Gemini,
-                Some(IdleCause::Stale),
-                "%2",
-                &mut offsets,
-            ),
-            ["/model"]
-        );
     }
 }

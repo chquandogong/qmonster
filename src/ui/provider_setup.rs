@@ -357,7 +357,7 @@ fn append_copy_contract(out: &mut Vec<String>, overlay: &ProviderSetupOverlay) {
             out.push(detail_row("Content", "footer visibility JSON snippet"));
             out.push(detail_row(
                 "Not copied",
-                "/stats instructions and auth note below",
+                "runtime refresh note and auth note below",
             ));
         }
         // agy is ObserveOnly: nothing is copied for it.
@@ -495,18 +495,12 @@ pub fn render_tab_content(
             append_copy_contract(&mut out, overlay);
             append_copied_preview(&mut out, overlay);
 
-            section(
-                &mut out,
-                "/stats + /model periodic dispatch (not copied by y)",
-            );
-            out.push("When the selected Gemini pane is idle, `u` cycles `/model` →".into());
-            out.push("`/stats session` → `/stats model`.".into());
-            out.push(
-                "While Gemini is active, `u` skips `/model` and cycles only the stats panels."
-                    .into(),
-            );
-            out.push("`/stats tools` is not sent because Qmonster does not parse it today.".into());
-            out.push("No additional setup needed — just keep using `u` periodically.".into());
+            section(&mut out, "Runtime refresh (narrow vNext)");
+            out.push("Gemini's status table is parsed live from the pane tail —".into());
+            out.push("context / quota / memory / model need no slash command.".into());
+            out.push("`u` on a Gemini pane dispatches nothing; the `/stats` + `/model`".into());
+            out.push("interactive enrichment was removed (individual tier sunset —".into());
+            out.push("operators migrate to agy).".into());
 
             section(&mut out, "Auth note (informational, not copied by y)");
             for line in GEMINI_AUTH_NOTE.lines() {
@@ -890,8 +884,8 @@ mod tests {
         assert!(text.contains("Target"));
         assert!(text.contains("~/.gemini/settings.json"));
         assert!(text.contains("Not copied"));
-        assert!(text.contains("/stats instructions and auth note below"));
-        assert!(text.contains("/stats + /model periodic dispatch (not copied by y)"));
+        assert!(text.contains("runtime refresh note and auth note below"));
+        assert!(text.contains("Runtime refresh (narrow vNext)"));
         assert!(text.contains("Auth note (informational, not copied by y)"));
     }
 
