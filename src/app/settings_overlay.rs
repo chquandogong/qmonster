@@ -15,12 +15,10 @@ use crate::ui::settings::{
 
 const NO_CONFIG_PATH_SAVE_ERROR: &str =
     "no config path \u{2014} restart with `--config PATH` to enable save";
-const TAB_BY_INDEX: [SettingsTab; 5] = [
+const TAB_BY_INDEX: [SettingsTab; 3] = [
     SettingsTab::Thresholds,
     SettingsTab::Integrations,
     SettingsTab::Parameters,
-    SettingsTab::Rules,
-    SettingsTab::Badges,
 ];
 
 /// Returns `true` when the operator pressed the entry key on a
@@ -118,20 +116,8 @@ pub fn handle_settings_overlay_key_with_viewport(
         KeyCode::Char('1') if !editing => overlay.switch_tab(SettingsTab::Thresholds),
         KeyCode::Char('2') if !editing => overlay.switch_tab(SettingsTab::Integrations),
         KeyCode::Char('3') if !editing => overlay.switch_tab(SettingsTab::Parameters),
-        KeyCode::Char('4') if !editing => overlay.switch_tab(SettingsTab::Rules),
-        KeyCode::Char('5') if !editing => overlay.switch_tab(SettingsTab::Badges),
         KeyCode::Tab if !editing => overlay.next_tab(),
         KeyCode::BackTab if !editing => overlay.previous_tab(),
-        KeyCode::Up if !editing && tab_uses_body_scroll(overlay.tab()) => overlay.scroll_up(),
-        KeyCode::Down if !editing && tab_uses_body_scroll(overlay.tab()) => {
-            overlay.scroll_down(max_scroll)
-        }
-        KeyCode::Char('k') if !editing && tab_uses_body_scroll(overlay.tab()) => {
-            overlay.scroll_up()
-        }
-        KeyCode::Char('j') if !editing && tab_uses_body_scroll(overlay.tab()) => {
-            overlay.scroll_down(max_scroll)
-        }
         KeyCode::PageUp if !editing => overlay.page_up(page_rows),
         KeyCode::PageDown if !editing => overlay.page_down(page_rows, max_scroll),
         KeyCode::Home if !editing => overlay.scroll_top(),
@@ -178,10 +164,6 @@ pub fn handle_settings_overlay_key_with_viewport(
     true
 }
 
-fn tab_uses_body_scroll(tab: SettingsTab) -> bool {
-    matches!(tab, SettingsTab::Rules | SettingsTab::Badges)
-}
-
 fn move_selection_up(overlay: &mut SettingsOverlay, config: &QmonsterConfig, viewport: Rect) {
     match overlay.tab() {
         SettingsTab::Thresholds => overlay.prev_field(),
@@ -190,7 +172,6 @@ fn move_selection_up(overlay: &mut SettingsOverlay, config: &QmonsterConfig, vie
             overlay.prev_parameter();
             keep_selected_parameter_visible(overlay, config, viewport);
         }
-        SettingsTab::Rules | SettingsTab::Badges => {}
     }
 }
 
@@ -202,7 +183,6 @@ fn move_selection_down(overlay: &mut SettingsOverlay, config: &QmonsterConfig, v
             overlay.next_parameter();
             keep_selected_parameter_visible(overlay, config, viewport);
         }
-        SettingsTab::Rules | SettingsTab::Badges => {}
     }
 }
 
@@ -213,7 +193,6 @@ fn edit_or_toggle(overlay: &mut SettingsOverlay, config: &mut QmonsterConfig) {
         SettingsTab::Parameters => {
             let _ = overlay.activate_parameter(config);
         }
-        SettingsTab::Rules | SettingsTab::Badges => {}
     }
 }
 
@@ -300,18 +279,6 @@ pub fn handle_settings_overlay_mouse(
                 overlay.select_parameter(field);
                 keep_selected_parameter_visible(overlay, config, viewport);
             }
-        }
-        MouseEventKind::ScrollUp
-            if tab_uses_body_scroll(overlay.tab())
-                && rect_contains(rects.body, event.column, event.row) =>
-        {
-            overlay.scroll_up();
-        }
-        MouseEventKind::ScrollDown
-            if tab_uses_body_scroll(overlay.tab())
-                && rect_contains(rects.body, event.column, event.row) =>
-        {
-            overlay.scroll_down(settings_max_scroll(overlay, config, viewport));
         }
         MouseEventKind::ScrollUp
             if overlay.tab() == SettingsTab::Thresholds
@@ -427,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn key_handler_switches_tabs_and_keeps_read_only_tabs_read_only() {
+    fn key_handler_switches_among_the_three_editable_tabs() {
         let mut overlay = SettingsOverlay::new();
         let mut config = QmonsterConfig::defaults();
         overlay.open();
@@ -436,17 +403,13 @@ mod tests {
         assert_eq!(overlay.tab(), SettingsTab::Integrations);
         handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('3'));
         assert_eq!(overlay.tab(), SettingsTab::Parameters);
-        handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('e'));
-        assert!(overlay.edit_buffer().is_none());
 
+        // Tab wraps Parameters -> Thresholds (only three tabs remain).
         handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Tab);
-        assert_eq!(overlay.tab(), SettingsTab::Rules);
-        handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('5'));
-        assert_eq!(overlay.tab(), SettingsTab::Badges);
-        handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('e'));
-        assert!(overlay.edit_buffer().is_none());
+        assert_eq!(overlay.tab(), SettingsTab::Thresholds);
+        // BackTab wraps Thresholds -> Parameters.
         handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::BackTab);
-        assert_eq!(overlay.tab(), SettingsTab::Rules);
+        assert_eq!(overlay.tab(), SettingsTab::Parameters);
         handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('1'));
         assert_eq!(overlay.tab(), SettingsTab::Thresholds);
 
@@ -537,7 +500,7 @@ mod tests {
         let mut config = QmonsterConfig::defaults();
         overlay.open();
         overlay.switch_tab(SettingsTab::Parameters);
-        overlay.select_parameter(ParameterField::FxText);
+        overlay.select_parameter(ParameterField::StorageRoot);
         overlay.start_edit(&config);
         overlay.replace_edit_buffer_for_test("");
 
@@ -598,22 +561,6 @@ mod tests {
             mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 35, row),
         );
         assert_eq!(overlay.tab(), SettingsTab::Parameters);
-
-        handle_settings_overlay_mouse(
-            &mut overlay,
-            &mut config,
-            viewport,
-            mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 50, row),
-        );
-        assert_eq!(overlay.tab(), SettingsTab::Rules);
-
-        handle_settings_overlay_mouse(
-            &mut overlay,
-            &mut config,
-            viewport,
-            mouse(MouseEventKind::Down(MouseButton::Left), inner_x + 60, row),
-        );
-        assert_eq!(overlay.tab(), SettingsTab::Badges);
 
         handle_settings_overlay_mouse(
             &mut overlay,
@@ -723,134 +670,6 @@ mod tests {
                 crate::ui::settings::Bound::Warning,
             )
         );
-    }
-
-    #[test]
-    fn mouse_body_field_selection_is_disabled_on_read_only_tabs() {
-        let mut overlay = SettingsOverlay::new();
-        let mut config = QmonsterConfig::defaults();
-        overlay.open();
-        overlay.switch_tab(SettingsTab::Rules);
-        let viewport = Rect::new(0, 0, 120, 40);
-        let rects = settings_modal_rects(viewport);
-        let body_inner = rects.body.inner(ratatui::layout::Margin {
-            vertical: 1,
-            horizontal: 1,
-        });
-        let before = overlay.selected();
-
-        handle_settings_overlay_mouse(
-            &mut overlay,
-            &mut config,
-            viewport,
-            mouse(
-                MouseEventKind::Down(MouseButton::Left),
-                body_inner.x + 34,
-                body_inner.y + 1,
-            ),
-        );
-        assert_eq!(overlay.selected(), before);
-
-        handle_settings_overlay_mouse(
-            &mut overlay,
-            &mut config,
-            viewport,
-            mouse(
-                MouseEventKind::ScrollDown,
-                body_inner.x + 10,
-                body_inner.y + 1,
-            ),
-        );
-        assert_eq!(overlay.selected(), before);
-    }
-
-    #[test]
-    fn read_only_tabs_scroll_body_with_keyboard() {
-        let mut overlay = SettingsOverlay::new();
-        let mut config = QmonsterConfig::defaults();
-        let viewport = Rect::new(0, 0, 80, 12);
-        overlay.open();
-        overlay.switch_tab(SettingsTab::Rules);
-
-        assert_eq!(overlay.scroll_offset(), 0);
-        handle_settings_overlay_key_with_viewport(
-            &mut overlay,
-            &mut config,
-            None,
-            viewport,
-            KeyCode::Down,
-        );
-        assert_eq!(overlay.scroll_offset(), 1);
-        handle_settings_overlay_key_with_viewport(
-            &mut overlay,
-            &mut config,
-            None,
-            viewport,
-            KeyCode::Char('j'),
-        );
-        assert_eq!(overlay.scroll_offset(), 2);
-        handle_settings_overlay_key_with_viewport(
-            &mut overlay,
-            &mut config,
-            None,
-            viewport,
-            KeyCode::PageDown,
-        );
-        assert!(overlay.scroll_offset() > 2);
-        handle_settings_overlay_key_with_viewport(
-            &mut overlay,
-            &mut config,
-            None,
-            viewport,
-            KeyCode::Home,
-        );
-        assert_eq!(overlay.scroll_offset(), 0);
-        handle_settings_overlay_key_with_viewport(
-            &mut overlay,
-            &mut config,
-            None,
-            viewport,
-            KeyCode::End,
-        );
-        assert!(overlay.scroll_offset() > 0);
-        handle_settings_overlay_key_with_viewport(
-            &mut overlay,
-            &mut config,
-            None,
-            viewport,
-            KeyCode::PageUp,
-        );
-        assert!(
-            overlay.scroll_offset()
-                < crate::ui::settings::settings_max_scroll(&overlay, &config, viewport)
-        );
-    }
-
-    #[test]
-    fn mouse_wheel_scrolls_read_only_body() {
-        let mut overlay = SettingsOverlay::new();
-        let mut config = QmonsterConfig::defaults();
-        overlay.open();
-        overlay.switch_tab(SettingsTab::Rules);
-        let viewport = Rect::new(0, 0, 80, 12);
-        let rects = settings_modal_rects(viewport);
-        let body_inner = rects.body.inner(ratatui::layout::Margin {
-            vertical: 1,
-            horizontal: 1,
-        });
-
-        assert!(handle_settings_overlay_mouse(
-            &mut overlay,
-            &mut config,
-            viewport,
-            mouse(
-                MouseEventKind::ScrollDown,
-                body_inner.x + 1,
-                body_inner.y + 1,
-            ),
-        ));
-
-        assert_eq!(overlay.scroll_offset(), 1);
     }
 
     #[test]

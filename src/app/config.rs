@@ -42,8 +42,6 @@ pub struct QmonsterConfig {
     pub profile_switch: ProfileSwitchConfig,
     #[serde(default)]
     pub ux: UxConfig,
-    #[serde(default)]
-    pub fx: FxConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -607,97 +605,6 @@ impl HelpLanguage {
     }
 }
 
-/// v1.53.0: optional decorative effects.
-///
-/// Three triggers are supported:
-/// - operator hotkey `Q` (`hotkey_enabled = true`)
-/// - celebration on a successful pending-action `p` accept
-///   (`celebration_enabled = true`)
-/// - screensaver after `screensaver_idle_secs` of no input
-///   (`screensaver_enabled = true`)
-///
-/// Click anywhere or press any key to dismiss. While the overlay is
-/// active the main loop tightens its `event::poll` to ~33ms (30 FPS);
-/// while inactive the regular 100ms cadence is preserved so v1.53.0
-/// adds zero cost to the quiet path.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct FxConfig {
-    pub enabled: bool,
-    pub text: String,
-    pub effect: FxEffect,
-    /// Auto-dismiss after this many seconds. 0 means "stay until
-    /// dismissed by click/keypress".
-    pub duration_secs: u32,
-    pub hotkey_enabled: bool,
-    pub celebration_enabled: bool,
-    pub screensaver_enabled: bool,
-    pub screensaver_idle_secs: u32,
-}
-
-impl Default for FxConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            // v1.55.0: friendlier banner default. The block font now
-            // renders `~` as a wave glyph; the operator can override.
-            text: "~O~ Qmonster".to_string(),
-            effect: FxEffect::Banner,
-            // v1.55.0: 5s was too short for a celebration / screensaver
-            // moment to land; 50s gives the operator room to enjoy it.
-            duration_secs: 50,
-            hotkey_enabled: true,
-            celebration_enabled: false,
-            screensaver_enabled: false,
-            screensaver_idle_secs: 600,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
-pub enum FxEffect {
-    Banner,
-    Confetti,
-    Matrix,
-    /// v1.59.0: snowflakes drifting top→bottom with horizontal sway.
-    Snow,
-    /// v1.59.0: rockets arc up + explode into gravity-bound sparks.
-    Fireworks,
-    /// v1.59.0: full-screen sin/cos field; per-cell color cycles.
-    Plasma,
-    /// v1.59.0: meta-scene that auto-cycles through every other
-    /// effect every ~5 seconds. Lets the operator "taste" them all
-    /// without flipping the config between runs.
-    Sampler,
-}
-
-impl FxEffect {
-    pub fn cycle(self) -> Self {
-        match self {
-            Self::Banner => Self::Confetti,
-            Self::Confetti => Self::Matrix,
-            Self::Matrix => Self::Snow,
-            Self::Snow => Self::Fireworks,
-            Self::Fireworks => Self::Plasma,
-            Self::Plasma => Self::Sampler,
-            Self::Sampler => Self::Banner,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Banner => "banner",
-            Self::Confetti => "confetti",
-            Self::Matrix => "matrix",
-            Self::Snow => "snow",
-            Self::Fireworks => "fireworks",
-            Self::Plasma => "plasma",
-            Self::Sampler => "sampler",
-        }
-    }
-}
-
 /// Operator-controlled security posture surfacing. Runtime facts remain
 /// visible as badges regardless of this setting; enabling this flag
 /// promotes permissive modes into passive Concern recommendations.
@@ -1052,7 +959,6 @@ impl QmonsterConfig {
             anomaly: AnomalyConfig::default(),
             profile_switch: ProfileSwitchConfig::default(),
             ux: UxConfig::default(),
-            fx: FxConfig::default(),
         }
     }
 }

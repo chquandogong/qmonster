@@ -126,17 +126,16 @@ pub(super) fn scopes_for_section(section: Section) -> &'static [Scope] {
     }
 }
 
-/// Top-level pages inside the Settings modal. Thresholds and
-/// Integrations are editable; Parameters, Rules, and Badges are
-/// read-only reference pages for the currently loaded runtime
-/// configuration.
+/// Top-level pages inside the Settings modal. All three are editable
+/// pages over the currently loaded runtime configuration: Thresholds
+/// edits cost/context/quota thresholds, Integrations toggles the
+/// provider sidefile export, and Parameters edits the remaining
+/// runtime config surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {
     Thresholds,
     Integrations,
     Parameters,
-    Rules,
-    Badges,
 }
 
 impl SettingsTab {
@@ -145,8 +144,6 @@ impl SettingsTab {
             SettingsTab::Thresholds => "Thresholds",
             SettingsTab::Integrations => "Integrations",
             SettingsTab::Parameters => "Parameters",
-            SettingsTab::Rules => "Rules",
-            SettingsTab::Badges => "Badges",
         }
     }
 
@@ -155,8 +152,6 @@ impl SettingsTab {
             SettingsTab::Thresholds => 0,
             SettingsTab::Integrations => 1,
             SettingsTab::Parameters => 2,
-            SettingsTab::Rules => 3,
-            SettingsTab::Badges => 4,
         }
     }
 
@@ -164,40 +159,23 @@ impl SettingsTab {
         match self {
             SettingsTab::Thresholds => SettingsTab::Integrations,
             SettingsTab::Integrations => SettingsTab::Parameters,
-            SettingsTab::Parameters => SettingsTab::Rules,
-            SettingsTab::Rules => SettingsTab::Badges,
-            SettingsTab::Badges => SettingsTab::Thresholds,
+            SettingsTab::Parameters => SettingsTab::Thresholds,
         }
     }
 
     pub const fn previous(self) -> Self {
         match self {
-            SettingsTab::Thresholds => SettingsTab::Badges,
+            SettingsTab::Thresholds => SettingsTab::Parameters,
             SettingsTab::Integrations => SettingsTab::Thresholds,
             SettingsTab::Parameters => SettingsTab::Integrations,
-            SettingsTab::Rules => SettingsTab::Parameters,
-            SettingsTab::Badges => SettingsTab::Rules,
         }
-    }
-
-    /// v1.51.0: Thresholds / Integrations / Parameters carry editable
-    /// rows; Rules / Badges are reference-only. Used by the tab strip
-    /// renderer to draw a `║` between groups and to suffix the body
-    /// title with `(editable)` vs `(reference)`.
-    pub const fn is_editable(self) -> bool {
-        matches!(
-            self,
-            SettingsTab::Thresholds | SettingsTab::Integrations | SettingsTab::Parameters
-        )
     }
 }
 
-pub(super) const SETTINGS_TABS: [SettingsTab; 5] = [
+pub(super) const SETTINGS_TABS: [SettingsTab; 3] = [
     SettingsTab::Thresholds,
     SettingsTab::Integrations,
     SettingsTab::Parameters,
-    SettingsTab::Rules,
-    SettingsTab::Badges,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,14 +266,6 @@ pub enum ParameterField {
     ProfileSwitchEnabled,
     ProfileSwitchWindowPolls,
     ProfileSwitchErrorRateThreshold,
-    FxEnabled,
-    FxText,
-    FxEffect,
-    FxDurationSecs,
-    FxHotkeyEnabled,
-    FxCelebrationEnabled,
-    FxScreensaverEnabled,
-    FxScreensaverIdleSecs,
 }
 
 pub fn all_parameter_fields() -> Vec<ParameterField> {
@@ -359,14 +329,6 @@ pub fn all_parameter_fields() -> Vec<ParameterField> {
         ProfileSwitchEnabled,
         ProfileSwitchWindowPolls,
         ProfileSwitchErrorRateThreshold,
-        FxEnabled,
-        FxText,
-        FxEffect,
-        FxDurationSecs,
-        FxHotkeyEnabled,
-        FxCelebrationEnabled,
-        FxScreensaverEnabled,
-        FxScreensaverIdleSecs,
     ]
 }
 

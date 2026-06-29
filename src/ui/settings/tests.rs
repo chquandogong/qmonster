@@ -123,13 +123,9 @@ fn tab_navigation_cycles_and_is_noop_during_edit() {
     s.next_tab();
     assert_eq!(s.tab(), SettingsTab::Parameters);
     s.next_tab();
-    assert_eq!(s.tab(), SettingsTab::Rules);
-    s.next_tab();
-    assert_eq!(s.tab(), SettingsTab::Badges);
-    s.next_tab();
     assert_eq!(s.tab(), SettingsTab::Thresholds);
     s.previous_tab();
-    assert_eq!(s.tab(), SettingsTab::Badges);
+    assert_eq!(s.tab(), SettingsTab::Parameters);
 
     s.switch_tab(SettingsTab::Thresholds);
     s.start_edit(&cfg());
@@ -151,51 +147,45 @@ fn settings_tab_index_at_uses_rendered_label_boundaries() {
     let inner_x = tabs.x + 1;
 
     // Layout (relative to inner_x):
-    //   [0,13]  "1 Thresholds"  (12 chars + 2 padding)
+    //   [0,13]  "1 Thresholds"   (12 chars + 2 padding)
     //   14      `│` divider
     //   [15,30] "2 Integrations" (14 chars + 2 padding)
     //   31      `│` divider
-    //   [32,45] "3 Parameters"  (12 chars + 2 padding)
-    //   46      `║` divider (editable→reference seam)
-    //   [47,55] "4 Rules"       (7 chars + 2 padding)
-    //   56      `│` divider
-    //   [57,66] "5 Badges"      (8 chars + 2 padding)
+    //   [32,45] "3 Parameters"   (12 chars + 2 padding)
     assert_eq!(settings_tab_index_at(tabs, inner_x + 2), Some(0));
     assert_eq!(settings_tab_index_at(tabs, inner_x + 20), Some(1));
     assert_eq!(settings_tab_index_at(tabs, inner_x + 35), Some(2));
-    assert_eq!(settings_tab_index_at(tabs, inner_x + 50), Some(3));
-    assert_eq!(settings_tab_index_at(tabs, inner_x + 60), Some(4));
+    // Past the final label there is no fourth/fifth tab to hit.
+    assert_eq!(settings_tab_index_at(tabs, inner_x + 50), None);
     assert_eq!(settings_tab_index_at(tabs, inner_x + 80), None);
     assert_eq!(settings_tab_index_at(tabs, tabs.x - 1), None);
 }
 
 #[test]
-fn settings_tab_strip_renders_inter_group_seam_between_parameters_and_rules() {
-    // v1.51.0: tab strip uses `│` between same-group tabs and `║`
-    // at the editable/reference seam. Pin both glyphs so a future
-    // refactor can't silently drop the visual cue.
+fn settings_tab_strip_renders_single_group_dividers() {
+    // narrow vNext: the three surviving tabs are all editable, so the
+    // strip uses a `│` divider between every pair and never the old
+    // `║` editable/reference seam.
     let line = settings_tab_strip_line(SettingsTab::Thresholds);
     let rendered: String = line
         .spans
         .iter()
         .map(|s| s.content.clone().into_owned())
         .collect();
+    assert!(rendered.contains("1 Thresholds "), "rendered: {rendered}");
     assert!(rendered.contains("3 Parameters "), "rendered: {rendered}");
-    assert!(
-        rendered.contains("║"),
-        "inter-group seam missing: {rendered}"
-    );
     assert!(
         rendered.contains("│"),
         "intra-group divider missing: {rendered}"
     );
-    // The seam must sit between Parameters and Rules — i.e., the
-    // last `║` should appear before "4 Rules" and after "Parameters".
-    let seam_at = rendered.find('║').expect("seam present");
-    let params_at = rendered.find("Parameters").expect("Parameters present");
-    let rules_at = rendered.find("Rules").expect("Rules present");
-    assert!(seam_at > params_at, "seam must follow Parameters");
-    assert!(seam_at < rules_at, "seam must precede Rules");
+    assert!(
+        !rendered.contains("║"),
+        "reference-group seam must be gone: {rendered}"
+    );
+    assert!(
+        !rendered.contains("Rules") && !rendered.contains("Badges"),
+        "reference tabs must not appear in the strip: {rendered}"
+    );
 }
 
 #[test]
@@ -373,7 +363,7 @@ fn settings_edit_hint_distinguishes_text_parameters() {
     let mut s = SettingsOverlay::new();
     s.open();
     s.switch_tab(SettingsTab::Parameters);
-    s.select_parameter(ParameterField::FxText);
+    s.select_parameter(ParameterField::StorageRoot);
     s.start_edit(&config);
 
     let text = rendered_text(&hint_lines(&s));
@@ -501,33 +491,6 @@ fn save_writes_parameter_values_into_existing_toml() {
 }
 
 #[test]
-fn rules_tab_shows_dynamic_activation_conditions() {
-    let mut config = cfg();
-    config.cache.hot_ratio_threshold = 0.7;
-    config.reset.wait_pressure_threshold = 0.75;
-    config.reset.wait_eta_secs = 10 * 60;
-    config.reset.snapshot_eta_secs = 90;
-    config.security.identity_drift_findings = true;
-    let mut s = SettingsOverlay::new();
-    s.open();
-    s.switch_tab(SettingsTab::Rules);
-
-    let rendered = rendered_text(&build_body_lines(&s, &config));
-
-    assert!(rendered.contains("cache hot wait"));
-    assert!(rendered.contains("cache > 70%"));
-    assert!(rendered.contains("wait for reset"));
-    assert!(rendered.contains("5h/weekly pressure >= 75% and eta <= 10m"));
-    assert!(rendered.contains("snapshot before reset"));
-    assert!(rendered.contains("any eta <= 1m30s and pressure >= 50%"));
-    assert!(rendered.contains("reset sources"));
-    assert!(rendered.contains("identity drift"));
-    assert!(rendered.contains("security.identity_drift_findings = on"));
-    // Phase H: annotation telling operators the rule has an actuation hook
-    assert!(rendered.contains("auto when [reset] auto_snapshot = true"));
-}
-
-#[test]
 fn parameters_tab_shows_reset_auto_snapshot_row() {
     // default: auto_snapshot = false
     let config_default = cfg();
@@ -560,29 +523,6 @@ fn parameters_tab_shows_reset_auto_snapshot_row() {
         rendered_on.contains("default off"),
         "enabled auto_snapshot must show 'default off'"
     );
-}
-
-#[test]
-fn badges_tab_explains_cost_context_and_source_labels() {
-    let s = {
-        let mut s = SettingsOverlay::new();
-        s.open();
-        s.switch_tab(SettingsTab::Badges);
-        s
-    };
-
-    let rendered = rendered_text(&build_body_lines(&s, &cfg()));
-
-    assert!(rendered.contains("[Official]"));
-    assert!(rendered.contains("CTX N%"));
-    assert!(rendered.contains("context window used, not remaining"));
-    assert!(rendered.contains("COST $N"));
-    assert!(rendered.contains("Claude sidefile total_cost_usd"));
-    assert!(rendered.contains("Codex/Gemini cost is Estimate"));
-    assert!(rendered.contains("pricing.toml"));
-    assert!(rendered.contains("zero-rate entries keep COST hidden"));
-    assert!(rendered.contains("CALLS N"));
-    assert!(rendered.contains("RESET model"));
 }
 
 // -----------------------------------------------------------------
@@ -1174,62 +1114,6 @@ fn parameters_tab_shows_anomaly_section() {
 }
 
 #[test]
-fn rules_tab_shows_four_anomaly_rows() {
-    let config = QmonsterConfig::defaults();
-    let mut s = SettingsOverlay::new();
-    s.open();
-    s.switch_tab(SettingsTab::Rules);
-    let lines = build_body_lines(&s, &config);
-    let rendered = rendered_text(&lines);
-    assert!(
-        rendered.contains("anomaly: IdentityChurn"),
-        "missing IdentityChurn: {rendered}"
-    );
-    assert!(
-        rendered.contains("anomaly: ErrorBurst"),
-        "missing ErrorBurst: {rendered}"
-    );
-    assert!(
-        rendered.contains("anomaly: CacheDiscontinuity"),
-        "missing CacheDiscontinuity: {rendered}"
-    );
-    assert!(
-        rendered.contains("anomaly: CrossPaneEditCluster"),
-        "missing CrossPaneEditCluster: {rendered}"
-    );
-}
-
-#[test]
-fn badges_tab_includes_anomalies_description() {
-    let config = QmonsterConfig::defaults();
-    let mut s = SettingsOverlay::new();
-    s.open();
-    s.switch_tab(SettingsTab::Badges);
-    let lines = build_body_lines(&s, &config);
-    let rendered = rendered_text(&lines);
-    assert!(
-        rendered.contains("ANOMALIES"),
-        "missing ANOMALIES badge: {rendered}"
-    );
-}
-
-#[test]
-fn rules_tab_anomaly_rows_show_promotion_annotation() {
-    let config = QmonsterConfig::defaults();
-    let mut s = SettingsOverlay::new();
-    s.open();
-    s.switch_tab(SettingsTab::Rules);
-    let lines = build_body_lines(&s, &config);
-    let rendered = rendered_text(&lines);
-    let expected_phrase = "promotes to Recommendation when confidence >= high";
-    let count = rendered.matches(expected_phrase).count();
-    assert_eq!(
-        count, 7,
-        "expected 7 anomaly rules with promotion annotation; got {count}: {rendered}"
-    );
-}
-
-#[test]
 fn parameters_tab_shows_v2_anomaly_thresholds() {
     let config = QmonsterConfig::defaults();
     let mut s = SettingsOverlay::new();
@@ -1264,90 +1148,6 @@ fn parameters_tab_shows_v2_anomaly_thresholds() {
 }
 
 #[test]
-fn rules_tab_shows_v2_anomaly_rows() {
-    let config = QmonsterConfig::defaults();
-    let mut s = SettingsOverlay::new();
-    s.open();
-    s.switch_tab(SettingsTab::Rules);
-    let lines = build_body_lines(&s, &config);
-    let rendered = rendered_text(&lines);
-    assert!(
-        rendered.contains("anomaly: CostSlope"),
-        "missing CostSlope: {rendered}"
-    );
-    assert!(
-        rendered.contains("anomaly: TokenSlope"),
-        "missing TokenSlope: {rendered}"
-    );
-    assert!(
-        rendered.contains("anomaly: MemoryGrowth"),
-        "missing MemoryGrowth: {rendered}"
-    );
-    assert!(
-        rendered.contains("anomaly: SubagentSideEffect"),
-        "missing SubagentSideEffect: {rendered}"
-    );
-}
-
-#[test]
-fn rules_tab_anomaly_rows_show_supports_suffix_for_asymmetric_detectors() {
-    // v2.2.0 (P1-1): rule rows for asymmetric detectors must surface
-    // a `supports:` chip so operators can tell at a glance that
-    // MemoryGrowth fires only on Gemini, TokenSlope only on Codex, etc.
-    let config = QmonsterConfig::defaults();
-    let mut s = SettingsOverlay::new();
-    s.open();
-    s.switch_tab(SettingsTab::Rules);
-    let lines = build_body_lines(&s, &config);
-    let rendered = rendered_text(&lines);
-
-    // Single-provider detectors must name their lone supported provider.
-    assert!(
-        rendered.contains("supports: Gemini"),
-        "MemoryGrowth row should show 'supports: Gemini': {rendered}"
-    );
-    assert!(
-        rendered.contains("supports: Codex"),
-        "TokenSlope row should show 'supports: Codex': {rendered}"
-    );
-    assert!(
-        rendered.contains("supports: Claude"),
-        "SubagentSideEffect row should show 'supports: Claude': {rendered}"
-    );
-    // Two-provider detectors should show both names.
-    assert!(
-        rendered.contains("supports: Claude / Codex"),
-        "CacheDiscontinuity / CrossPaneEditCluster should show 'supports: Claude / Codex': {rendered}"
-    );
-}
-
-#[test]
-fn rules_tab_omits_supports_suffix_for_fully_cross_provider_detectors() {
-    // Honesty rule: only surface the chip when the detector is
-    // *asymmetric*. ErrorBurst + IdentityChurn fire on all 3
-    // providers — restating that would just be noise.
-    let config = QmonsterConfig::defaults();
-    let mut s = SettingsOverlay::new();
-    s.open();
-    s.switch_tab(SettingsTab::Rules);
-    let lines = build_body_lines(&s, &config);
-    let rendered = rendered_text(&lines);
-    // Find the IdentityChurn row and verify it ends without
-    // " · supports:" before the next rule label.
-    let cut = rendered
-        .find("anomaly: IdentityChurn")
-        .expect("IdentityChurn row");
-    let next = rendered[cut..]
-        .find("anomaly: ErrorBurst")
-        .expect("ErrorBurst follows IdentityChurn");
-    let row = &rendered[cut..cut + next];
-    assert!(
-        !row.contains("supports:"),
-        "IdentityChurn is fully cross-provider — row must not carry a supports chip: {row}"
-    );
-}
-
-#[test]
 fn parameters_tab_includes_anomaly_promote_section() {
     let config = QmonsterConfig::defaults();
     let mut s = SettingsOverlay::new();
@@ -1366,26 +1166,6 @@ fn parameters_tab_includes_anomaly_promote_section() {
     assert!(
         rendered.contains("anomaly.promote cost_slope"),
         "cost_slope row missing"
-    );
-}
-
-#[test]
-fn rules_tab_anomaly_rows_use_configured_threshold_value() {
-    let config = QmonsterConfig::defaults();
-    let mut s = SettingsOverlay::new();
-    s.open();
-    s.switch_tab(SettingsTab::Rules);
-    let lines = build_body_lines(&s, &config);
-    let rendered = rendered_text(&lines);
-    // 7 slope-style detectors use the standard phrase with the dynamic threshold value
-    assert!(
-        rendered.contains("promotes to Recommendation when confidence >= high"),
-        "default 'high' threshold missing in rules tab: {rendered}"
-    );
-    // SubagentSideEffect uses 'medium' default.
-    assert!(
-        rendered.contains("(confidence >= medium)"),
-        "subagent_side_effect medium default missing: {rendered}"
     );
 }
 

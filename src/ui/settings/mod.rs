@@ -838,11 +838,7 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | SecurityCrossPaneFileFindings
         | ResetAutoSnapshot
         | AnomalyEnabled
-        | ProfileSwitchEnabled
-        | FxEnabled
-        | FxHotkeyEnabled
-        | FxCelebrationEnabled
-        | FxScreensaverEnabled => Bool,
+        | ProfileSwitchEnabled => Bool,
         TmuxSource
         | RefreshPolicy
         | LoggingSensitivity
@@ -859,9 +855,8 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | AnomalyPromoteCostSlope
         | AnomalyPromoteTokenSlope
         | AnomalyPromoteMemoryGrowth
-        | AnomalyPromoteSubagentSideEffect
-        | FxEffect => Enum,
-        StorageRoot | FxText => Text,
+        | AnomalyPromoteSubagentSideEffect => Enum,
+        StorageRoot => Text,
         TmuxPollIntervalMs
         | TmuxCaptureLines
         | IdleStillnessPolls
@@ -888,9 +883,7 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | AnomalyRetentionDays
         | CostBudgetUsd
         | ProfileSwitchWindowPolls
-        | ProfileSwitchErrorRateThreshold
-        | FxDurationSecs
-        | FxScreensaverIdleSecs => Number,
+        | ProfileSwitchErrorRateThreshold => Number,
     }
 }
 
@@ -955,14 +948,6 @@ fn parameter_section_label(field: ParameterField) -> &'static str {
         | ProfileSwitchEnabled
         | ProfileSwitchWindowPolls
         | ProfileSwitchErrorRateThreshold => "Cost / Profile",
-        FxEnabled
-        | FxText
-        | FxEffect
-        | FxDurationSecs
-        | FxHotkeyEnabled
-        | FxCelebrationEnabled
-        | FxScreensaverEnabled
-        | FxScreensaverIdleSecs => "FX",
     }
 }
 
@@ -1027,14 +1012,6 @@ fn parameter_label(field: ParameterField) -> &'static str {
         ProfileSwitchEnabled => "profile_switch enabled",
         ProfileSwitchWindowPolls => "profile_switch window_polls",
         ProfileSwitchErrorRateThreshold => "profile_switch error_rate_threshold",
-        FxEnabled => "fx enabled",
-        FxText => "fx text",
-        FxEffect => "fx effect",
-        FxDurationSecs => "fx duration_secs",
-        FxHotkeyEnabled => "fx hotkey_enabled",
-        FxCelebrationEnabled => "fx celebration_enabled",
-        FxScreensaverEnabled => "fx screensaver_enabled",
-        FxScreensaverIdleSecs => "fx screensaver_idle_secs",
     }
 }
 
@@ -1101,14 +1078,6 @@ fn parameter_toml_path(field: ParameterField) -> Vec<&'static str> {
         ProfileSwitchEnabled => vec!["profile_switch", "enabled"],
         ProfileSwitchWindowPolls => vec!["profile_switch", "window_polls"],
         ProfileSwitchErrorRateThreshold => vec!["profile_switch", "error_rate_threshold"],
-        FxEnabled => vec!["fx", "enabled"],
-        FxText => vec!["fx", "text"],
-        FxEffect => vec!["fx", "effect"],
-        FxDurationSecs => vec!["fx", "duration_secs"],
-        FxHotkeyEnabled => vec!["fx", "hotkey_enabled"],
-        FxCelebrationEnabled => vec!["fx", "celebration_enabled"],
-        FxScreensaverEnabled => vec!["fx", "screensaver_enabled"],
-        FxScreensaverIdleSecs => vec!["fx", "screensaver_idle_secs"],
     }
 }
 
@@ -1183,14 +1152,6 @@ fn parameter_value_for_display(config: &QmonsterConfig, field: ParameterField) -
         ProfileSwitchErrorRateThreshold => {
             pct_label(f64::from(config.profile_switch.error_rate_threshold))
         }
-        FxEnabled => on_off(config.fx.enabled).into(),
-        FxText => config.fx.text.clone(),
-        FxEffect => config.fx.effect.as_str().into(),
-        FxDurationSecs => format!("{}s", config.fx.duration_secs),
-        FxHotkeyEnabled => on_off(config.fx.hotkey_enabled).into(),
-        FxCelebrationEnabled => on_off(config.fx.celebration_enabled).into(),
-        FxScreensaverEnabled => on_off(config.fx.screensaver_enabled).into(),
-        FxScreensaverIdleSecs => format!("{}s", config.fx.screensaver_idle_secs),
     }
 }
 
@@ -1227,9 +1188,6 @@ fn parameter_value_for_edit(config: &QmonsterConfig, field: ParameterField) -> S
         CostBudgetUsd => config.cost.budget_usd.to_string(),
         ProfileSwitchWindowPolls => config.profile_switch.window_polls.to_string(),
         ProfileSwitchErrorRateThreshold => config.profile_switch.error_rate_threshold.to_string(),
-        FxText => config.fx.text.clone(),
-        FxDurationSecs => config.fx.duration_secs.to_string(),
-        FxScreensaverIdleSecs => config.fx.screensaver_idle_secs.to_string(),
         _ => parameter_value_for_display(config, field),
     }
 }
@@ -1279,10 +1237,6 @@ fn toggle_parameter_bool(config: &mut QmonsterConfig, field: ParameterField) {
         ResetAutoSnapshot => config.reset.auto_snapshot = !config.reset.auto_snapshot,
         AnomalyEnabled => config.anomaly.enabled = !config.anomaly.enabled,
         ProfileSwitchEnabled => config.profile_switch.enabled = !config.profile_switch.enabled,
-        FxEnabled => config.fx.enabled = !config.fx.enabled,
-        FxHotkeyEnabled => config.fx.hotkey_enabled = !config.fx.hotkey_enabled,
-        FxCelebrationEnabled => config.fx.celebration_enabled = !config.fx.celebration_enabled,
-        FxScreensaverEnabled => config.fx.screensaver_enabled = !config.fx.screensaver_enabled,
         _ => {}
     }
 }
@@ -1377,7 +1331,6 @@ fn cycle_parameter_enum(config: &mut QmonsterConfig, field: ParameterField) -> R
             config.anomaly.promote.subagent_side_effect =
                 confidence_next(&config.anomaly.promote.subagent_side_effect)?;
         }
-        FxEffect => config.fx.effect = config.fx.effect.cycle(),
         _ => {}
     }
     Ok(())
@@ -1501,23 +1454,6 @@ fn apply_parameter_edit(
         }
         ProfileSwitchErrorRateThreshold => {
             config.profile_switch.error_rate_threshold = parse_unit_f32(label, raw)?;
-        }
-        FxText => {
-            // Banner free text — accept any printable ASCII; renderer
-            // upper-cases for the block-letter lookup.
-            let trimmed = raw.trim();
-            if trimmed.is_empty() {
-                return Err(format!("{label}: must not be empty"));
-            }
-            config.fx.text = trimmed.to_string();
-        }
-        FxDurationSecs => {
-            config.fx.duration_secs = parse_u64_value(label, raw, 0)? as u32;
-        }
-        FxScreensaverIdleSecs => {
-            // 60s minimum — anything shorter would chew through cache
-            // every iteration and is almost certainly a typo.
-            config.fx.screensaver_idle_secs = parse_u64_value(label, raw, 60)? as u32;
         }
         _ => return Err(format!("{label}: use Space/e to toggle or cycle")),
     }
@@ -1672,16 +1608,6 @@ fn merge_parameter_field(
                 &path,
                 f64::from(config.profile_switch.error_rate_threshold),
             );
-        }
-        FxEnabled => set_nested_bool(doc, &path, config.fx.enabled),
-        FxText => set_nested_str(doc, &path, &config.fx.text),
-        FxEffect => set_nested_str(doc, &path, config.fx.effect.as_str()),
-        FxDurationSecs => set_nested_i64(doc, &path, config.fx.duration_secs as i64),
-        FxHotkeyEnabled => set_nested_bool(doc, &path, config.fx.hotkey_enabled),
-        FxCelebrationEnabled => set_nested_bool(doc, &path, config.fx.celebration_enabled),
-        FxScreensaverEnabled => set_nested_bool(doc, &path, config.fx.screensaver_enabled),
-        FxScreensaverIdleSecs => {
-            set_nested_i64(doc, &path, config.fx.screensaver_idle_secs as i64);
         }
     }
 }
@@ -2251,11 +2177,9 @@ pub fn render_settings_modal(
     let rects = settings_modal_rects(frame.area());
     frame.render_widget(Clear, rects.area);
 
-    // v1.51.0: custom tab strip with a `║` divider between the
-    // editable group (Thresholds / Integrations / Parameters) and the
-    // reference group (Rules / Badges). The single-`│` divider stays
-    // between same-group tabs so the inner spacing matches the prior
-    // ratatui Tabs widget; only the inter-group seam is highlighted.
+    // v1.51.0: custom tab strip with a `│` divider between the three
+    // editable tabs (Thresholds / Integrations / Parameters). The inner
+    // spacing matches the prior ratatui Tabs widget.
     let tab_block = Block::default()
         .title("Settings")
         .borders(Borders::ALL)
@@ -2356,8 +2280,7 @@ pub fn settings_tab_index_at(tabs: Rect, column: u16) -> Option<usize> {
         return None;
     }
     // v1.51.0: layout mirrors `settings_tab_strip_line` — one border
-    // cell, then ` label ` per tab, with `│` between same-group tabs
-    // and `║` between the editable and reference groups. Empty space
+    // cell, then ` label ` per tab, with `│` between tabs. Empty space
     // to the right of the final label is intentionally not clickable.
     let mut cursor = tabs.x.saturating_add(1);
     for (idx, tab) in SETTINGS_TABS.iter().enumerate() {
@@ -2384,11 +2307,9 @@ pub(crate) fn settings_numbered_label(tab: SettingsTab) -> String {
     format!("{n} {}", tab.label())
 }
 
-/// v1.51.0: build the styled tab strip with explicit dividers — `│`
-/// between same-group tabs, `║` between the editable group
-/// (Thresholds/Integrations/Parameters) and the reference group
-/// (Rules/Badges). Replaces ratatui's `Tabs` widget so we can vary the
-/// inter-tab divider per position.
+/// v1.51.0: build the styled tab strip with explicit `│` dividers
+/// between tabs. Replaces ratatui's `Tabs` widget so the inter-tab
+/// divider and numbered labels render consistently with the hit-test.
 pub(crate) fn settings_tab_strip_line(active: SettingsTab) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = Vec::new();
     for (idx, tab) in SETTINGS_TABS.iter().enumerate() {
@@ -2402,15 +2323,7 @@ pub(crate) fn settings_tab_strip_line(active: SettingsTab) -> Line<'static> {
         };
         spans.push(Span::styled(label, style));
         if idx + 1 < SETTINGS_TABS.len() {
-            // Inter-group seam fires when the current tab is the last
-            // editable tab and the next tab is the first reference tab.
-            let next = SETTINGS_TABS[idx + 1];
-            let seam = if tab.is_editable() != next.is_editable() {
-                "║"
-            } else {
-                "│"
-            };
-            spans.push(Span::styled(seam, Style::default().fg(theme::text_dim())));
+            spans.push(Span::styled("│", Style::default().fg(theme::text_dim())));
         }
     }
     Line::from(spans)
@@ -2550,15 +2463,13 @@ fn rect_contains(rect: Rect, x: u16, y: u16) -> bool {
 }
 
 fn settings_body_title(tab: SettingsTab) -> &'static str {
-    // v1.51.0: suffix every tab title with `(editable)` or `(reference)`
-    // so the operator can tell at a glance whether arrow / Enter / `e`
-    // will mutate config or just navigate.
+    // v1.51.0: suffix every tab title with `(editable)` so the operator
+    // can tell at a glance that arrow / Enter / `e` mutate config. All
+    // three surviving tabs are editable.
     match tab {
         SettingsTab::Thresholds => " Settings — cost / context / quota thresholds  (editable) ",
         SettingsTab::Integrations => " Settings — provider integrations  (editable) ",
         SettingsTab::Parameters => " Settings — configured parameters  (editable) ",
-        SettingsTab::Rules => " Settings — rule conditions  (reference) ",
-        SettingsTab::Badges => " Settings — badge glossary  (reference) ",
     }
 }
 
@@ -2567,8 +2478,6 @@ fn build_body_lines<'a>(overlay: &'a SettingsOverlay, config: &'a QmonsterConfig
         SettingsTab::Thresholds => build_threshold_body_lines(overlay, config),
         SettingsTab::Integrations => build_integration_body_lines(overlay, config),
         SettingsTab::Parameters => build_parameter_body_lines(overlay, config),
-        SettingsTab::Rules => build_rule_body_lines(overlay, config),
-        SettingsTab::Badges => build_badge_body_lines(overlay),
     }
 }
 
@@ -3078,380 +2987,6 @@ fn remove_status_footer(lines: &mut Vec<Line<'static>>) {
     }
 }
 
-/// v2.2.0 (P1-1): operator-facing supports-matrix suffix for anomaly
-/// detector rule rows. Renders e.g. ` · supports: Claude` so the operator
-/// can tell at a glance which detectors fire on which provider. Returns
-/// empty string for fully cross-provider detectors to avoid clutter.
-fn supports_suffix(kind: crate::domain::anomaly::AnomalyKind) -> String {
-    use crate::domain::identity::Provider;
-    let supports = kind.supported_providers();
-    // Skip the suffix when the detector is fully cross-provider
-    // (Claude + Codex + Gemini). The matrix-presence chip is intended
-    // to flag *asymmetries*, not restate the common case.
-    let all_three = [Provider::Claude, Provider::Codex, Provider::Gemini];
-    if supports.len() == all_three.len() && all_three.iter().all(|p| supports.contains(p)) {
-        return String::new();
-    }
-    let labels: Vec<&'static str> = supports
-        .iter()
-        .map(|p| match p {
-            Provider::Claude => "Claude",
-            Provider::Codex => "Codex",
-            Provider::Gemini => "Gemini",
-            Provider::Antigravity => "agy",
-            Provider::Qmonster => "Qmonster",
-            Provider::Unknown => "Unknown",
-        })
-        .collect();
-    format!(" · supports: {}", labels.join(" / "))
-}
-
-fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> Vec<Line<'static>> {
-    vec![
-        reference_header_line("Shared Gates"),
-        rule_row(
-            "provider-specific",
-            "identity confidence must be Medium or High".into(),
-        ),
-        rule_row(
-            "attention wait",
-            "cache and memory advisories suppress on input/permission wait".into(),
-        ),
-        rule_row(
-            "aggressive profiles",
-            format!("token.quota_tight must be {}", on_off(true)),
-        ),
-        rule_row(
-            "action explainer",
-            format!(
-                "p/d/y opens modal: always = every time, first_time = once per kind per session, never = skipped; target must exist; current = {}",
-                confirm_actions_label(config.ux.confirm_actions)
-            ),
-        ),
-        Line::from(""),
-        reference_header_line("Pressure Rules"),
-        rule_row(
-            "cost pressure",
-            format!(
-                "warning >= ${:.2}; critical >= ${:.2}; provider overrides apply",
-                config.cost.warning_usd, config.cost.critical_usd
-            ),
-        ),
-        rule_row(
-            "cost budget",
-            format!(
-                "one-shot 80% (concern) / 100% (warning) alerts; budget = ${:.2}; 0.0 disables",
-                config.cost.budget_usd
-            ),
-        ),
-        rule_row(
-            "context pressure",
-            format!(
-                "warning >= {}; critical >= {}",
-                pct_label(f64::from(config.context.warning_pct)),
-                pct_label(f64::from(config.context.critical_pct))
-            ),
-        ),
-        rule_row(
-            "quota pressure",
-            format!(
-                "warning >= {}; critical >= {}; Claude/Codex split 5h + weekly",
-                pct_label(f64::from(config.quota.warning_pct)),
-                pct_label(f64::from(config.quota.critical_pct))
-            ),
-        ),
-        rule_row(
-            "profile switch",
-            format!(
-                "error-rate over {} polls >= {}; recommends script-low-token profile; enabled = {}",
-                config.profile_switch.window_polls,
-                pct_label(f64::from(config.profile_switch.error_rate_threshold)),
-                on_off(config.profile_switch.enabled)
-            ),
-        ),
-        Line::from(""),
-        reference_header_line("Reset"),
-        rule_row(
-            "wait for reset",
-            format!(
-                "5h/weekly pressure >= {} and eta <= {}",
-                pct_label(f64::from(config.reset.wait_pressure_threshold)),
-                seconds_label(config.reset.wait_eta_secs)
-            ),
-        ),
-        rule_row(
-            "snapshot before reset",
-            format!(
-                "any eta <= {} and pressure >= {}; suggests s snapshot (auto when [reset] auto_snapshot = true)",
-                seconds_label(config.reset.snapshot_eta_secs),
-                pct_label(f64::from(config.reset.snapshot_pressure_threshold))
-            ),
-        ),
-        rule_row(
-            "reset sources",
-            "Claude sidefile / Codex app-server; Gemini silent until resets_at exists".into(),
-        ),
-        Line::from(""),
-        reference_header_line("Cache / Memory"),
-        rule_row(
-            "cache hot wait",
-            format!(
-                "cache > {} and context < {}",
-                pct_label(config.cache.hot_ratio_threshold),
-                pct_label(f64::from(config.cache.hot_low_ctx_threshold))
-            ),
-        ),
-        rule_row(
-            "cache cold compact",
-            format!(
-                "cache < {} and context > {}",
-                pct_label(config.cache.cold_ratio_threshold),
-                pct_label(f64::from(config.cache.cold_high_ctx_threshold))
-            ),
-        ),
-        rule_row(
-            "cache drift",
-            format!(
-                "drop >= {} over >= {} token samples",
-                pct_label(config.cache.drift_drop_threshold),
-                config.cache.drift_min_samples
-            ),
-        ),
-        rule_row("memory bloat", "agent memory files > 50,000 bytes".into()),
-        Line::from(""),
-        reference_header_line("Opt-in Findings"),
-        rule_row(
-            "security posture",
-            format!(
-                "security.posture_advisories = {}",
-                on_off(config.security.posture_advisories)
-            ),
-        ),
-        rule_row(
-            "cross-window",
-            format!(
-                "security.cross_window_findings = {}; same repo+branch in >=2 windows",
-                on_off(config.security.cross_window_findings)
-            ),
-        ),
-        rule_row(
-            "cross-pane file",
-            format!(
-                "security.cross_pane_file_findings = {}; same absolute file edited from >=2 panes",
-                on_off(config.security.cross_pane_file_findings)
-            ),
-        ),
-        rule_row(
-            "identity drift",
-            format!(
-                "security.identity_drift_findings = {}; provider/path changes between polls",
-                on_off(config.security.identity_drift_findings)
-            ),
-        ),
-        rule_row(
-            "prompt send",
-            format!(
-                "actions.mode != observe_only and auto_prompt_send = {}",
-                on_off(config.actions.allow_auto_prompt_send)
-            ),
-        ),
-        Line::from(""),
-        reference_header_line("Anomaly Detectors"),
-        rule_row(
-            "anomaly: IdentityChurn",
-            format!(
-                "fires when (provider, path) flips >= {} times in {} polls; promotes to Recommendation when confidence >= {}{}",
-                config.anomaly.identity_churn_min_flips,
-                config.anomaly.window_polls,
-                config.anomaly.promote.identity_churn,
-                supports_suffix(crate::domain::anomaly::AnomalyKind::IdentityChurn),
-            ),
-        ),
-        rule_row(
-            "anomaly: ErrorBurst",
-            format!(
-                "fires when error rate >= {:.0}% over {} polls; promotes to Recommendation when confidence >= {}{}",
-                config.anomaly.error_burst_threshold * 100.0,
-                config.anomaly.window_polls,
-                config.anomaly.promote.error_burst,
-                supports_suffix(crate::domain::anomaly::AnomalyKind::ErrorBurst),
-            ),
-        ),
-        rule_row(
-            "anomaly: CacheDiscontinuity",
-            format!(
-                "fires when cache_hit_ratio drops >= {:.0}pp OR F-7b fires >= 2x in {} polls; promotes to Recommendation when confidence >= {}{}",
-                config.anomaly.cache_discontinuity_drop * 100.0,
-                config.anomaly.window_polls,
-                config.anomaly.promote.cache_discontinuity,
-                supports_suffix(crate::domain::anomaly::AnomalyKind::CacheDiscontinuity),
-            ),
-        ),
-        rule_row(
-            "anomaly: CrossPaneEditCluster",
-            format!(
-                "fires when >= {} ConcurrentFileEdit findings target the same path in {} polls; promotes to Recommendation when confidence >= {}{}",
-                config.anomaly.cross_pane_cluster_min_findings,
-                config.anomaly.window_polls,
-                config.anomaly.promote.cross_pane_edit_cluster,
-                supports_suffix(crate::domain::anomaly::AnomalyKind::CrossPaneEditCluster),
-            ),
-        ),
-        rule_row(
-            "anomaly: CostSlope",
-            format!(
-                "fires when cost slope >= {:.2} USD/hour over {} polls; promotes to Recommendation when confidence >= {}{}",
-                config.anomaly.cost_slope_usd_per_hour,
-                config.anomaly.window_polls,
-                config.anomaly.promote.cost_slope,
-                supports_suffix(crate::domain::anomaly::AnomalyKind::CostSlope),
-            ),
-        ),
-        rule_row(
-            "anomaly: TokenSlope",
-            format!(
-                "fires when input_tokens slope >= {} per poll over {} polls; promotes to Recommendation when confidence >= {}{}",
-                config.anomaly.token_slope_input_per_poll,
-                config.anomaly.window_polls,
-                config.anomaly.promote.token_slope,
-                supports_suffix(crate::domain::anomaly::AnomalyKind::TokenSlope),
-            ),
-        ),
-        rule_row(
-            "anomaly: MemoryGrowth",
-            format!(
-                "fires when process_memory_mb grows >= {:.0} MB over {} polls; promotes to Recommendation when confidence >= {}{}",
-                config.anomaly.memory_growth_mb,
-                config.anomaly.window_polls,
-                config.anomaly.promote.memory_growth,
-                supports_suffix(crate::domain::anomaly::AnomalyKind::MemoryGrowth),
-            ),
-        ),
-        rule_row(
-            "anomaly: SubagentSideEffect",
-            format!(
-                "fires when subagent_hint observed in {} polls AND another anomaly fires (correlation, not attribution); promotes when subagent_hint co-occurs with another anomaly (confidence >= {}){}",
-                config.anomaly.window_polls,
-                config.anomaly.promote.subagent_side_effect,
-                supports_suffix(crate::domain::anomaly::AnomalyKind::SubagentSideEffect),
-            ),
-        ),
-        Line::from(""),
-        status_line(overlay),
-    ]
-}
-
-fn build_badge_body_lines(overlay: &SettingsOverlay) -> Vec<Line<'static>> {
-    vec![
-        reference_header_line("Source Labels"),
-        badge_row(
-            "[Official]",
-            "reported by the provider surface or provider-backed sidefile/app-server",
-        ),
-        badge_row(
-            "[Estimate]",
-            "computed by Qmonster from observed provider values; useful for trend, verify before acting",
-        ),
-        badge_row(
-            "[Heur]",
-            "heuristic local observation such as /proc memory, file scan, or output pattern",
-        ),
-        badge_row(
-            "[Qmonster]",
-            "project rule, policy, profile, or local config",
-        ),
-        Line::from(""),
-        reference_header_line("Metric Badges"),
-        badge_row(
-            "CTX N%",
-            "context window used, not remaining; higher means closer to compact/clear pressure",
-        ),
-        badge_row(
-            "QUOTA N%",
-            "single quota window used; Gemini status-table quota is normalized to used percentage",
-        ),
-        badge_row(
-            "QUOTA 5H/WEEK",
-            "rolling 5-hour / weekly limit used; Claude statusline and Codex status/app-server surfaces",
-        ),
-        badge_row(
-            "RESET 5H/7D",
-            "countdown until provider reset timestamp; Claude sidefile or Codex app-server supplies resets_at; rendered as 4d 6h for >=24h, 2h13m / 45m / 30s for <24h",
-        ),
-        badge_row(
-            "TOKENS N",
-            "provider-visible session token count; selected pane also shows prompt=input+cached and recent delta",
-        ),
-        badge_row(
-            "token io",
-            "expanded pane input/output token counts from provider stats when both sides are known",
-        ),
-        badge_row(
-            "CACHE N%",
-            "cache_read / (input + cache_read); ? means waiting for a capable surface, — means this provider/auth surface does not expose cache reads",
-        ),
-        badge_row(
-            "cache io",
-            "expanded pane cache read/create token counts when a provider sidefile or stats panel exposes them",
-        ),
-        badge_row(
-            "COST $N",
-            "Claude sidefile total_cost_usd is Official; Codex/Gemini cost is Estimate from input/output tokens plus ~/.qmonster/config/pricing.toml; zero-rate entries keep COST hidden",
-        ),
-        badge_row(
-            "MODEL",
-            "current provider model parsed from the provider status surface",
-        ),
-        badge_row(
-            "MEM",
-            "process resident memory; Gemini Official, Claude/Codex local /proc heuristic; metrics overlay shows ▲/▼/─ trend vs last poll",
-        ),
-        badge_row(
-            "MEM-FILE",
-            "bytes in AGENTS.md / CLAUDE.md / GEMINI.md style memory files loaded from repo/home paths",
-        ),
-        Line::from(""),
-        reference_header_line("Context / Runtime"),
-        badge_row(
-            "PATH / BRANCH",
-            "provider-reported working directory and git branch when visible",
-        ),
-        badge_row(
-            "EFFORT",
-            "reasoning effort parsed from provider status/config surfaces",
-        ),
-        badge_row(
-            "PERM / MODE",
-            "permission or autonomy mode such as bypass permissions, YOLO, or sandbox mode",
-        ),
-        badge_row(
-            "DIR / AGENTS",
-            "allowed directory or provider agent config path",
-        ),
-        badge_row(
-            "SID / XSCRIPT",
-            "Claude/Gemini session id and Claude transcript path when exported",
-        ),
-        badge_row("CALLS N", "Gemini /stats session Tool Calls count"),
-        badge_row(
-            "RESET model",
-            "Gemini /model Reset line with provider-rendered time and remaining duration",
-        ),
-        badge_row(
-            "TOOL / SKILL",
-            "loaded or observed tool/skill/plugin/runtime capability",
-        ),
-        Line::from(""),
-        reference_header_line("Anomaly"),
-        badge_row(
-            "ANOMALIES",
-            "anomaly count and kinds per pane (in m overlay); aggregated from D2/F-9/F-3+F-7b/F-8 history",
-        ),
-        Line::from(""),
-        status_line(overlay),
-    ]
-}
-
 fn reference_header_line(label: &'static str) -> Line<'static> {
     Line::from(vec![Span::styled(
         format!("  {label}"),
@@ -3459,17 +2994,6 @@ fn reference_header_line(label: &'static str) -> Line<'static> {
             .fg(theme::text_primary())
             .add_modifier(Modifier::BOLD),
     )])
-}
-
-fn badge_row(label: &'static str, meaning: &'static str) -> Line<'static> {
-    Line::from(vec![
-        Span::raw("    "),
-        Span::styled(
-            format!("{label:<17}"),
-            Style::default().fg(theme::text_dim()),
-        ),
-        Span::styled(meaning, Style::default().fg(theme::text_primary())),
-    ])
 }
 
 fn setting_row(label: &'static str, value: String, default: String) -> Line<'static> {
@@ -3737,18 +3261,6 @@ fn parameter_help_text(field: ParameterField) -> &'static str {
         ProfileSwitchErrorRateThreshold => {
             "error-rate threshold required before profile-switch recommendations fire"
         }
-        FxEnabled => "enables the optional full-screen visual effects overlay",
-        FxText => "text shown by the banner-style visual effect",
-        FxEffect => "selects the visual effect style used by the hotkey/screensaver overlay",
-        FxDurationSecs => {
-            "auto-dismiss duration for visual effects; zero means stay until dismissed"
-        }
-        FxHotkeyEnabled => {
-            "enables the operator hotkey for manually opening the visual effect overlay"
-        }
-        FxCelebrationEnabled => "enables celebratory effects after eligible successful actions",
-        FxScreensaverEnabled => "enables the idle screensaver-style visual effect overlay",
-        FxScreensaverIdleSecs => "idle time before the screensaver-style visual effect can open",
     }
 }
 
@@ -3760,7 +3272,6 @@ fn parameter_value_help(field: ParameterField) -> &'static str {
         UxHelpLanguage => "ko | en",
         UxTheme => "dark | high_contrast | light",
         TmuxSource => "auto | polling | control_mode",
-        FxEffect => "banner | confetti | matrix | snow | fireworks | plasma | sampler",
         RefreshPolicy => "manual_only | automatic",
         LoggingSensitivity => "minimal | balanced | forensic",
         ActionsMode => "observe_only | recommend_only | safe_auto",
@@ -3785,12 +3296,8 @@ fn parameter_value_help(field: ParameterField) -> &'static str {
         | SecurityCrossPaneFileFindings
         | ResetAutoSnapshot
         | AnomalyEnabled
-        | ProfileSwitchEnabled
-        | FxEnabled
-        | FxHotkeyEnabled
-        | FxCelebrationEnabled
-        | FxScreensaverEnabled => "on | off",
-        StorageRoot | FxText => "free text; blank keeps the configured empty value",
+        | ProfileSwitchEnabled => "on | off",
+        StorageRoot => "free text; blank keeps the configured empty value",
         _ => "numeric threshold; edit with e/Enter, then save with w",
     }
 }
@@ -3879,17 +3386,6 @@ fn parameter_row_line(
             Style::default().fg(theme::text_dim()),
         ),
         Span::styled(action, Style::default().fg(theme::text_dim())),
-    ])
-}
-
-fn rule_row(label: &'static str, condition: String) -> Line<'static> {
-    Line::from(vec![
-        Span::raw("    "),
-        Span::styled(
-            format!("{label:<20}"),
-            Style::default().fg(theme::text_dim()),
-        ),
-        Span::styled(condition, Style::default().fg(theme::text_primary())),
     ])
 }
 
@@ -4119,23 +3615,20 @@ fn hint_lines_with_scroll(
     let editing = overlay.edit_buffer().is_some();
     let line1 = if editing {
         settings_edit_hint_line(overlay)
-    } else if overlay.tab() == SettingsTab::Thresholds {
-        "  [1]-[5]/[Tab] tab · ↑/↓ select · e/Enter edit · c clear · w write · q/Esc close"
-    } else if overlay.tab() == SettingsTab::Integrations {
-        "  [1]-[5]/[Tab] tab · ↑/↓ select · Space/e/Enter toggle · w write · q/Esc close"
-    } else if overlay.tab() == SettingsTab::Parameters {
-        "  [1]-[5]/[Tab] tab · ↑/↓ select · e/Enter edit/cycle · Space toggle · H hover · L language · w write · q/Esc close"
     } else {
-        "  [1]-[5]/[Tab] tab · ↑/↓/j/k/wheel scroll · PgUp/PgDn · Home/End · q/Esc close"
+        match overlay.tab() {
+            SettingsTab::Thresholds => {
+                "  [1]-[3]/[Tab] tab · ↑/↓ select · e/Enter edit · c clear · w write · q/Esc close"
+            }
+            SettingsTab::Integrations => {
+                "  [1]-[3]/[Tab] tab · ↑/↓ select · Space/e/Enter toggle · w write · q/Esc close"
+            }
+            SettingsTab::Parameters => {
+                "  [1]-[3]/[Tab] tab · ↑/↓ select · e/Enter edit/cycle · Space toggle · H hover · L language · w write · q/Esc close"
+            }
+        }
     };
-    let line2 = if matches!(
-        overlay.tab(),
-        SettingsTab::Thresholds | SettingsTab::Integrations | SettingsTab::Parameters
-    ) {
-        "  Edits stay in memory until 'w' writes back to the loaded TOML."
-    } else {
-        "  This tab is read-only reference."
-    };
+    let line2 = "  Edits stay in memory until 'w' writes back to the loaded TOML.";
     let line2 = match scroll {
         Some((offset, max)) => {
             format!(
