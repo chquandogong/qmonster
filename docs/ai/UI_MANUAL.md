@@ -27,10 +27,11 @@
   title/footer 없는 넓은 key legend로 열립니다. legend는 Move / Layout /
   Actions / Overlays 그룹으로 나뉘어 한눈에 스캔할 수 있게 표시됩니다.
 - **Overlay**: `t`로 target picker, `S`로 settings, `P`로 provider setup,
-  `m`/`n`/`a`/`i`로 Metrics / Anomaly Events / Pending Actions /
-  Token Insights overlay, `Q`로 decorative fx overlay (banner / confetti /
-  matrix), `?`로 help, footer 오른쪽 아래 버전 배지를
-  클릭하면 Git overlay가 열립니다.
+  `?`로 help, footer 오른쪽 아래 버전 배지를 클릭하면 Git overlay가
+  열립니다. (narrow vNext에서 Metrics `m` / Anomaly Events `n` /
+  Pending Actions `a` / Token Insights `i` / decorative fx `Q` 오버레이는
+  제거되었습니다. 현재 상시 오버레이는 `?` Help과 `S` Settings, 그리고
+  optional Git뿐입니다.)
 - **Scroll status**: 주요 스크롤 가능한 modal/overlay와 list-style 창은
   footer/hint에 `scroll x/y · more` 또는 `scroll x/y · END`를 표시해
   더 내려갈 내용이 있는지 바로 알 수 있게 합니다.
@@ -45,16 +46,18 @@
 ### Overlay chrome contract
 
 Large persistent overlays share the same chrome controls:
-`[` / `]` resize, `=` resets size and position, title-row drag moves
-the modal, mouse wheel over the modal body and `↑` / `↓` scroll, the
-same entry key closes the overlay, and `[x]` / `Esc` / `q` close where
-the overlay is not in an edit sub-mode. In the first
-chrome-consistency slice this applies to `m` Metrics, `a` Pending
-Actions, `i` Token Insights, and `n` Anomaly Events. `S` Settings keeps
-edit-mode guards, and short confirmation modals intentionally remain
-non-resizable. For the large scrollable overlays, the title identifies
-the window and the footer/hint carries controls plus
-`scroll x/y · more/END`.
+the same entry key closes the overlay, and `[x]` / `Esc` / `q` close
+where the overlay is not in an edit sub-mode. `S` Settings keeps
+edit-mode guards on number editing; its read-only tabs scroll with
+`↑` / `↓` / `j` / `k` / mouse wheel / `PgUp` / `PgDn` / `Home` / `End`.
+Short confirmation modals intentionally remain non-resizable. For the
+large scrollable overlays, the title identifies the window and the
+footer/hint carries controls plus `scroll x/y · more/END`.
+
+(narrow vNext removed the movable/resizable `m` / `a` / `i` / `n`
+overlays, so the `[` / `]` resize · `=` geometry-reset · title-row drag
+chrome no longer applies to any overlay — those keys now act only on
+the Alerts/Panes split.)
 
 ### Floating hover help
 
@@ -65,9 +68,10 @@ the window and the footer/hint carries controls plus
 설명합니다. 최상단 `Now` row는 현재 우선순위 요약을 설명합니다.
 Panes에서는 헤더(provider/role/CLI version), `state`,
 `path`, `cmd`, `status`, `signals`, metrics, tokens/cache io, runtime
-facts(`session`/`loaded` 포함), recommendations/profile을 행별로 설명합니다.
+facts(`session`/`loaded` 포함), recommendations를 행별로 설명합니다.
 하단 상태 줄의 `★p`, `★y`, `★a`는 각각 prompt-send 제안 수, 복사 가능한
-alert 수, 최근 audit 심각도에 대한 help를 엽니다. footer의 `keys` 칩은
+alert 수, 최근 audit 심각도에 대한 help를 엽니다 (display-only 카운터 —
+클릭해도 오버레이를 열지 않습니다). footer의 `keys` 칩은
 `ux.hover_help = false`여도 항상 key legend를 열 수 있는 예외입니다.
 hover help 제목에는 현재 언어와 `H/L` 힌트가 표시되고, 본문 하단에는
 `H` toggle, `L` language, `S` Settings 저장 위치가 같이 표시됩니다.
@@ -162,20 +166,23 @@ session:window · Provider role · %pane_id
 - 예:
   `qmonster:0 · Codex review · CLI 0.122.0 [Official] · %57`
 - 선택된 pane가 펼쳐진 상태에서는 같은 정보를 한 줄 목록으로 섞지 않고
-  `NOW`, `WHERE`, `PRESSURE`, `RUNTIME`, `RECOMMENDATIONS` 구역으로
-  나눠 보여줍니다. `NOW`는 현재 state/blocked/signals/proposal,
-  `WHERE`는 path/cmd/status, `PRESSURE`는 metrics/tokens/cache,
-  `RUNTIME`은 provider runtime facts, `RECOMMENDATIONS`는 추천과
-  detail/profile 정보를 담습니다. 접힌 pane 행은 기존처럼 flat row로
-  유지됩니다.
-- v2.3.0부터 펼친 pane card는 각 섹션 헤더 아래 행에 트리 글리프를
-  덧붙입니다. 형제 행 중 마지막은 `└ `, 그 외에는 `├ `로 시작하고,
-  랩 발생 시의 continuation 라인은 위쪽 형제가 더 있으면 `│ `, 마지막
-  형제의 본문이면 공백 2칸으로 이어집니다. 깊이당 2 cell씩 들여쓰기
-  되며, `RECOMMENDATIONS`의 하위 디테일(`next` / `run` / `lever` /
-  `effect` / `profile`)은 한 단계 더 들어갑니다. 트리 분기는 섹션 폭을
-  깎지 않도록 `section_wrap = wrap_width - 2`, `detail_wrap = wrap_width
-  - 4`로 wrap budget을 미리 차감합니다.
+  **4개 구역** `IDENTITY`, `NOW`, `PRESSURE`, `NEXT`로 나눠 보여줍니다
+  (narrow vNext에서 재구성 — 기존 NOW/WHERE/PRESSURE/RUNTIME/
+  RECOMMENDATIONS 5구역을 단순화). `IDENTITY`는 안정적인 "누가/어디서"
+  정보로 path/cmd 행을 담습니다 (provider/role/CLI 버전과 IDENTITY
+  CONFLICT 줄은 카드 제목 줄에 그대로 남습니다). `NOW`는 현재
+  state/blocked/signals/proposal, `PRESSURE`는 metrics/tokens/cache에
+  더해 이전 `RUNTIME` 구역의 provider runtime facts(modes/access/loaded
+  /restrict)를 합쳐 담습니다, `NEXT`는 추천과 그 detail을 담습니다
+  (이전 `RECOMMENDATIONS`에서 이름 변경). 접힌 pane 행은 기존처럼 flat
+  row로 유지됩니다.
+- 펼친 pane card는 각 섹션 헤더 아래 행에 트리 글리프를 덧붙입니다.
+  형제 행 중 마지막은 `└ `, 그 외에는 `├ `로 시작하고, 랩 발생 시의
+  continuation 라인은 위쪽 형제가 더 있으면 `│ `, 마지막 형제의 본문
+  이면 공백 2칸으로 이어집니다. 깊이당 2 cell씩 들여쓰기되며, `NEXT`의
+  하위 디테일(`next` / `run` / `lever` / `effect`)은 한 단계 더 들어
+  갑니다. 트리 분기는 섹션 폭을 깎지 않도록 `section_wrap = wrap_width
+  - 2`, `detail_wrap = wrap_width - 4`로 wrap budget을 미리 차감합니다.
 - `path` 행은 pane의 cwd가 linked git worktree(`git worktree add` 형
   sibling checkout)이면 ` · wt of <parent-repo-root>` 접미사를 붙여
   부모 repo root를 함께 보여줍니다 (v2.3.0). 결과는 `WorktreeRoleCache`
@@ -318,15 +325,16 @@ session:window · Provider role · %pane_id
   persisted as cumulative counts. When fewer than 2 samples have been
   recorded for the pane, the selected card shows `TOKENS collecting
 N/2` instead of staying blank. Token-source providers today: Codex
-  (bottom-status `1.51M in / 20.4K out` and `/status` token usage),
-  Claude sidefile (`input_tokens` / `output_tokens` / cache reads),
-  and Gemini `/stats model` after the operator cycles `u`.
+  (bottom-status `1.51M in / 20.4K out` and `/status` token usage) and
+  Claude sidefile (`input_tokens` / `output_tokens` / cache reads).
+  (Gemini는 narrow vNext에서 status-table-core로 축소되어 더 이상
+  `/stats model` 토큰 enrichment를 제공하지 않습니다.)
 - `CACHE` badge shows the cache hit ratio for the pane's cumulative
   prompt input — `cache_hit_ratio = cached_input_tokens /
 (input_tokens + cached_input_tokens) × 100`, formatted with one
   decimal. Source label tracks `cached_input_tokens.source_kind`
-  (`[Official]` for Codex `/status`, Claude sidefile/statusline cache,
-  and Gemini `/stats model` when Cache Reads is visible). Format:
+  (`[Official]` for Codex `/status` and Claude sidefile/statusline
+  cache). Format:
   `cache <N.N>%` (text) or `CACHE <N.N>%` (TUI). `CACHE ?` means the
   provider can expose cache data but this tick has not produced it yet.
   `CACHE —` means the current provider/auth surface has produced related
@@ -385,26 +393,21 @@ cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
   표시합니다. Claude는 statusline에서 모델/effort/path와
   `⏵⏵ bypass permissions on/off`를 읽습니다. 선택된 Claude pane에서 `u`를
   눌러도 slash command나 `Escape`를 보내지 않고 다음 poll만 당겨옵니다.
-  Codex와 Gemini는 선택된 pane에서 `u`를 누르면 provider의 read-only runtime
+  Codex는 선택된 pane에서 `u`를 누르면 provider의 read-only runtime
   slash command와 terminal submit(`C-m`, Enter-equivalent)을 보냅니다:
-  Codex `/status`, Gemini idle/stale/limit-hit pane에서는 `/model` →
-  `/stats session` → `/stats model`, active pane에서는 `/stats session` →
-  `/stats model`.
-  Gemini `/stats ...` 명령은 pre-`Escape` 없이 순환하지만, `/model`은
-  picker 화면을 열기 때문에 Qmonster가 필요한 tail을 캡처한 뒤 `Escape`로
-  한 번 닫아 다음 `u` cycle 명령이 바로 실행 가능하게 합니다.
-  `/model`의 `Reset:` / `Resets:` 모델별 행은 `limits:` runtime fact와
-  `metrics:` `RESET` 배지로 표시합니다. 현재 status table의 `/model`
-  값이 `gemini-3.1-pro-preview`이면 `Pro`로 시작하는 reset 행만 남기고,
-  `Flash` / `Flash Lite` 행은 표시하지 않습니다. 닫힌 picker 화면은 live
-  scrollback에 남지 않으므로, 이 reset 캡처는 다음 `/model` 캡처나 pane
-  lifecycle reset 전까지 유지되어 다음 poll에서 배지가 사라지지 않습니다.
-  `/stats tools`는 현재 Qmonster가 파싱하는 표출 항목이 없어 보내지
-  않습니다. `thinking...`
-  진행 표시가 있으면 tail이 몇 poll 동안 같아도 `IDLE`로 떨어지지 않고,
-  live prompt가 남아 있어도
-  최근 tail이 변하는 동안은 active로 유지됩니다. 다음 poll에서
-  캡처와 읽을 수 있는 로컬 provider 설정을 `RuntimeFact`로 파싱합니다.
+  Codex `/status`.
+  narrow vNext (Slice 6c)에서 Gemini의 `/model` + `/stats session` +
+  `/stats model` interactive enrichment는 제거되었습니다 — Gemini는
+  status-table-core로 축소되어, 항상 보이는 status table(context /
+  quota / memory / model)이 core 신호를 이미 담고 있으므로 `u`를 눌러도
+  더 이상 slash command를 보내지 않습니다. Claude pane에서 Qmonster가
+  읽는 capture-ready 표면(`/context` · `/usage` · `/status` · `/stats`)은
+  운영자가 직접 열어둔 화면을 파싱하는 surface일 뿐, `u`가 Claude에
+  명령을 보내지는 않습니다.
+  `thinking...` 진행 표시가 있으면 tail이 몇 poll 동안 같아도 `IDLE`로
+  떨어지지 않고, live prompt가 남아 있어도 최근 tail이 변하는 동안은
+  active로 유지됩니다. 다음 poll에서 캡처와 읽을 수 있는 로컬 provider
+  설정을 `RuntimeFact`로 파싱합니다.
   Claude `/btw`는 작업 중에도 즉시 실행되지만 도구/내부 상태 접근이 없는
   side question이라 runtime fact source로 쓰지 않습니다.
   예: `PERM`, `MODE`, `SANDBOX`, `DIR`, `AGENTS`, `TOOL`, `SKILL`,
@@ -419,8 +422,9 @@ cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
   `[security] posture_advisories = true`를 켜면 같은 관측값이
   `security-posture: review permissive runtime` Concern recommendation으로
   승격됩니다. 이 advisory는 passive이며 Notify를 울리지 않습니다.
-- 선택된 pane는 recommendation과 provider profile payload를 아래로
-  펼쳐서 보여줍니다.
+- 선택된 pane는 recommendation을 `NEXT` 구역 아래로 펼쳐서 보여줍니다.
+  (narrow vNext에서 provider-profile recommender가 제거되어, lever 목록을
+  나열하던 `profile:` payload 블록은 더 이상 표시되지 않습니다.)
 - 선택된 (펼쳐진) pane 카드에 pending prompt-send proposal이 있으면
   카드 상세 영역에 `proposal:` 한 줄이 표시됩니다.
   예: `proposal: /compact  → press p to accept · d to reject`.
@@ -450,38 +454,29 @@ cached) output=20,355` → `CACHE 87.4% [Official]` (1,317,376 of
 
 Alert 제목과 pane recommendation 줄에서 같은 단어가 사용됩니다.
 
-## 6. Provider Profile 표시
+## 6. Provider Profile 표시 (제거됨 — narrow vNext)
 
-provider profile recommendation이 뜨면 pane 상세에 아래 형식으로 나옵니다.
+provider-profile recommender(3×2 grid: Claude/Codex/Gemini × baseline/
+aggressive, review-tier `codex-review` / `gemini-policy-review`, lever +
+`side_effects` 렌더)는 narrow vNext에서 통째로 제거되었습니다 —
+`Recommendation.profile` 필드와 `ui::panels::format_profile_lines`
+렌더러도 함께 삭제되었습니다. pane 상세에는 더 이상 `profile:` 블록이
+표시되지 않습니다.
 
-```text
-profile: claude-default (3 levers) [Qmonster]
-[Official] KEY = VALUE — citation
-side_effects (N):
-- operator-visible trade-off
-```
-
-- profile 이름은 프로젝트가 정하므로 `[Qmonster]`
-- 각 lever는 자기 source label을 따로 가집니다.
-- aggressive profile만 `side_effects`가 붙고, baseline profile은 보통
-  생략됩니다.
-- Review-role profile인 `codex-review`와 `gemini-policy-review`도 같은
-  형식으로 표시됩니다. 이 둘은 local-only / policy-review 운영 trade-off를
-  보여주기 위해 `side_effects`를 함께 표시합니다.
+남아 있는 것: `[profile_switch]` opt-in 룰(error-rate 기반으로
+script-low-token 프로파일 *이름*을 추천하는 별개 룰; lever payload를
+렌더하지 않음)과 `[security] posture_advisories` 같은 일반 recommendation은
+계속 `NEXT` 구역에 나타납니다.
 
 ## 7. 조작
 
 - `Mouse wheel`: 포인터 아래 리스트나 modal 스크롤
 - `Mouse left`: alert, pane, target 선택
 - `Mouse double`: alert hide 토글
-- `Mouse drag`: Alerts/Panes divider로 두 창 높이 조절, 큰 overlay(`m/a/i/n`)의
-  제목 줄 드래그로 modal 이동, `a` overlay separator 드래그로 list/explainer
-  비율 조절
-- `[` / `]`: Alerts 창 높이 줄이기 / 키우기 (Panes는 남은 높이 사용). `m/a/i/n`
-  overlay가 열려 있으면 해당 modal을 5% 단계로 resize
+- `Mouse drag`: Alerts/Panes divider로 두 창 높이 조절
+- `[` / `]`: Alerts 창 높이 줄이기 / 키우기 (Panes는 남은 높이 사용)
 - `/`: Alerts/Panes split 비율 한 단계씩 순환
-- `=`: Alerts/Panes split 기본값으로 reset. `m/a/i/n` overlay가 열려 있으면
-  해당 modal geometry도 기본 size + position으로 reset
+- `=`: Alerts/Panes split 기본값으로 reset
 - `Enter/Space`: 선택된 alert hide 토글
 - `Tab`: alerts / panes focus 전환
 - `↑/↓`, `j/k`: 현재 focus된 리스트 한 칸 이동
@@ -494,29 +489,12 @@ side_effects (N):
 - `r`: version drift 재확인
 - `s`: snapshot 저장
 - `u`: Claude pane에서는 statusline 기반 즉시 poll만 요청하고 provider 입력을
-  보내지 않습니다. Codex/Gemini pane에서는 provider runtime slash source를
-  하나씩 순환 실행해 상태 갱신을 요청합니다. `observe_only`에서는 Codex/Gemini
-  pane 입력을 바꾸지 않기 위해 차단하고 `RuntimeRefreshBlocked`를 기록합니다.
-  성공/실패는 `RuntimeRefreshRequested`, `RuntimeRefreshCompleted`,
+  보내지 않습니다. Codex pane에서는 provider runtime slash source(`/status`)를
+  실행해 상태 갱신을 요청합니다. narrow vNext에서 Gemini는 status-table-core로
+  축소되어 `u`가 어떤 slash command도 보내지 않습니다(즉시 poll만). `observe_only`
+  에서는 Codex pane 입력을 바꾸지 않기 위해 차단하고 `RuntimeRefreshBlocked`를
+  기록합니다. 성공/실패는 `RuntimeRefreshRequested`, `RuntimeRefreshCompleted`,
   `RuntimeRefreshFailed`로 audit log에 남습니다.
-- `m`: Metrics overlay 토글. `[` / `]` resize, `=` geometry reset, 제목 줄
-  drag move, wheel/↑/↓ scroll, `m`/`Esc`/`q`/`[x]`로 닫기
-- `n`: Anomaly Events overlay 토글. `[` / `]` resize, `=` geometry reset,
-  제목 줄 drag move, wheel/↑/↓ scroll, `h` Ring/History 전환,
-  `n`/`Esc`/`q`/`[x]`로 닫기
-- `i`: Token Insights overlay 토글. 현재 `[insights] default_window_secs`
-  창의 recommendation lifecycle / cache / action ledger를 SQLite에서 읽어
-  보여줍니다. `[` / `]` resize, `=` geometry reset, 제목 줄 drag move,
-  `r` refresh, wheel/↑/↓ scroll, `i`/`Esc`/`q`/`[x]`로 닫기
-- `Q` (대문자, 소문자 `q`와 구분): decorative fx overlay 열기 — 운영자가
-  `[fx] effect`로 고른 효과 (banner / confetti / matrix)를 dashboard 위에
-  비파괴 렌더로 띄움. 클릭 또는 아무 키나 눌러 dismiss, 또는
-  `[fx] duration_secs` 후 자동 종료. `[fx] hotkey_enabled = false`이면
-  비활성화됨. v1.55.0 이후 60 FPS + dashboard tmux poll 일시정지로
-  부드럽게 재생되며, v1.56.0 이후 matrix 효과는 백드롭을 살짝 어둡게
-  처리해 dashboard와 시각적으로 구분됩니다. p 액션 수락 셀레브레이션
-  (`[fx] celebration_enabled = true` 시) 과 idle 스크린세이버
-  (`[fx] screensaver_enabled = true` 시) 트리거도 같은 오버레이를 사용
 - `y`: Alerts focus에서 선택된 alert의 `run` command를 system clipboard에
   복사합니다. `run` command는 실제 shell command 또는 provider slash
   command만 대상입니다. `# ...` 주석이나 `<placeholder>`가 포함된 값은
@@ -538,13 +516,14 @@ side_effects (N):
 - `S`, `P`, `t`: 진입 키를 다시 누르면 overlay가 닫힙니다 (Settings는 숫자 편집
   중에는 예외 — 편집 모드에서는 S가 닫지 않음). 기존 q / Esc / [x] 닫기는
   그대로 유지됩니다.
-- `S`: settings overlay 열기.
+- `S`: settings overlay 열기 (탭 `1` Thresholds / `2` Integrations /
+  `3` Parameters — narrow vNext에서 `Rules` / `Badges` 탭은 제거).
   화살표로 필드 이동, `e` 또는 `Enter`로 편집 시작, 숫자 입력 후
   `Enter`로 commit, `Esc`로 편집 취소, provider override row에서 `c`로
-  override 제거, `w`로 loaded TOML에 저장합니다. `Parameters` / `Rules` /
-  `Badges` read-only 탭에서는 `↑` / `↓` / `j` / `k` / mouse wheel로 body
-  scroll, `PgUp` / `PgDn` page scroll, `Home` / `End` 처음/끝 이동을
-  지원합니다. `--config` 없이 시작해도 표준 저장 경로는
+  override 제거, `w`로 loaded TOML에 저장합니다. `Parameters` read-only
+  탭에서는 `↑` / `↓` / `j` / `k` / mouse wheel로 body scroll, `PgUp` /
+  `PgDn` page scroll, `Home` / `End` 처음/끝 이동을 지원합니다.
+  `--config` 없이 시작해도 표준 저장 경로는
   `~/.qmonster/config/qmonster.toml`입니다.
 - `q`, `Esc`: 종료 또는 overlay 닫기
 
@@ -563,34 +542,29 @@ side_effects (N):
   현재 repo root, branch, HEAD, upstream ahead/behind, worktree 변경 요약,
   최근 커밋을 보여줍니다.
 - **Settings**:
-  `S`로 열립니다. `1` / `2` / `3` / `4` / `5`,
-  `Tab` / `Shift+Tab`, 또는 마우스 클릭으로
-  `Thresholds` / `Integrations` / `Parameters` / `Rules` / `Badges`
-  탭을 전환합니다. `Thresholds`는 cost / context / quota의
-  warning/critical 값을 조정하고, `Integrations`는
-  `[provider_setup] claude_sidefile` 및 `codex_app_server`를
-  `Space` / `e` / `Enter` 또는 마우스 클릭으로 토글합니다.
+  `S`로 열립니다. **3개 탭** `Thresholds` / `Integrations` / `Parameters`를
+  `1` / `2` / `3`, `Tab` / `Shift+Tab`, 또는 마우스 클릭으로 전환합니다
+  (narrow vNext에서 `Rules` · `Badges` 탭은 제거되었습니다 — 둘 다
+  제거된 overlay/badge 표면을 설명하던 read-only 탭이었습니다).
+  `Thresholds`는 cost / context / quota의 warning/critical 값을 조정하고,
+  `Integrations`는 `[provider_setup] claude_sidefile` 하나만 `Space` /
+  `e` / `Enter` 또는 마우스 클릭으로 토글합니다 (codex_app_server
+  토글은 app-server enrichment와 함께 제거).
   `Parameters`는 현재 주요 설정값과 기본값 차이를 보여줍니다. 충분히 넓은
   화면에서는 왼쪽이 설정 리스트, 오른쪽이 `Selected parameter help` 패널인
   2-column layout으로 표시됩니다. 좁은 화면에서는 같은 내용을 stacked
   layout으로 표시합니다. help 패널은 TOML key, 현재값과 기본값, 의미, 허용
   값, 관련 shortcut, `w` 저장 전까지 runtime-only라는 저장 상태를 설명합니다.
-  여기에는
-  `[insights]` ignored/default window, `[anomaly]` retention/promote,
-  `[reset]` snapshot/wait threshold, `[provider_setup]` 상태가 포함됩니다.
+  여기에는 `[reset]` snapshot/wait threshold, `[cache]` 임계값,
+  `[provider_setup]` 상태 등이 포함됩니다.
   Parameters 탭에서는 `H`가 `ux.hover_help`, `L`이 `ux.help_language`를
   즉시 토글하고 dirty 상태로 표시합니다. `ux.hover_help_trigger`는
   `label` 또는 `row`로 cycle/edit할 수 있습니다.
-  `Rules`는 cache / quota / reset / memory / security / insights TTL /
-  anomaly detector 정책이 발동하는 조건을 읽기 전용으로 보여줍니다.
-  `Badges`는 `CTX`, `COST`,
-  `TOKENS`, `CACHE`, `RESET`, `CALLS`, `token io`, `cache io`와
-  `[Official]` / `[Estimate]` / `[Heur]` / `[Qmonster]` source label의
-  뜻을 설명합니다. `Parameters` / `Rules` / `Badges`는 read-only body가
-  modal 높이를 넘을 때 `↑` / `↓` / `j` / `k` / wheel / `PgUp` / `PgDn` /
-  `Home` / `End`로 스크롤합니다. modal 오른쪽 위 `[x]`를 클릭하거나
-  `S`를 다시 누르거나 (`숫자 편집 중 제외`) `q` / `Esc`로 닫습니다. `w` 저장은 로드된 TOML의 코멘트와
-  관련 없는 섹션을 보존하면서 Settings가 소유한 key만 갱신합니다.
+  `Parameters` read-only body가 modal 높이를 넘을 때 `↑` / `↓` / `j` /
+  `k` / wheel / `PgUp` / `PgDn` / `Home` / `End`로 스크롤합니다. modal
+  오른쪽 위 `[x]`를 클릭하거나 `S`를 다시 누르거나 (`숫자 편집 중 제외`)
+  `q` / `Esc`로 닫습니다. `w` 저장은 로드된 TOML의 코멘트와 관련 없는
+  섹션을 보존하면서 Settings가 소유한 key만 갱신합니다.
 - **Provider Setup (G-1, v1.29.0; v2.4.0에서 `agy` 5번째 탭 추가)**:
   `P`로 열립니다. 5개 탭(Claude / Codex / Gemini / agy / Tmux)을
   `1` / `2` / `3` / `4` / `5`로 전환하며, provider 탭은 해당
@@ -602,9 +576,8 @@ side_effects (N):
   `~/.codex/config.toml`, `~/.gemini/settings.json`의 존재 여부와
   핵심 필드(예: `cache_read_input_tokens` export, `ui.footer.*`
   boolean) 상태; (2) 권장 설정 스니펫 — 복붙 가능한 텍스트로 렌더됩니다.
-  Provider Setup에서 연결한 telemetry는 `m` Metrics, `n` Anomaly Events,
-  `i` Token Insights 표면의 입력 품질을 높입니다. 관련 threshold,
-  retention, insight window는 `S` Settings에서 확인합니다.
+  Provider Setup에서 연결한 telemetry는 pane card의 metrics/cache/quota
+  배지 품질을 높입니다. 관련 threshold는 `S` Settings에서 확인합니다.
   - **Claude 탭**: cache 비율 계산이 포함된 추천 `statusline.sh` (bash).
     sidefile JSON export 블록
     (`~/.local/share/ai-cli-status/claude/<session_id>.json`) 포함 여부는
@@ -614,44 +587,31 @@ side_effects (N):
   - **Codex 탭**: `/statusline` 토글 리스트(어떤 항목이 bottom status에
     실리도록 권장하는지)와 `/status` welcome panel을 주기적으로 띄워
     `(+ N cached)` 필드가 Qmonster F-4 cache parser에 도달하게 하는
-    가이드입니다. Codex App Server 사용 여부는 `S` Settings →
-    `Integrations`의 `[provider_setup] codex_app_server` 값으로
-    결정됩니다. Provider Setup은 현재 값을 표시하고, `y`로 복사되는
-    안내 스니펫을 그 값에 맞춰 보여줍니다.
+    가이드입니다. (narrow vNext에서 Codex App Server enrichment와 그
+    `[provider_setup] codex_app_server` 토글은 제거되어 Codex reset-ETA
+    행은 더 이상 제공되지 않습니다.)
   - **Gemini 탭**: `~/.gemini/settings.json`의 `ui.footer.*` 권장 JSON
     템플릿과, OAuth는 그대로 유지하되 cache 필드는 FAQ-documented OAuth
     한계로 인해 노출되지 않는다는 informational note (API key 전환은
     운영자 선호에 따라 deferred).
-  - **agy 탭 (v2.4.0; v2.7.0에서 `agy_enrichment` 지원 추가)**:
+  - **agy 탭 (v2.4.0; narrow vNext에서 ObserveOnly-only로 환원)**:
     Google이 2026-06-18부터 free / Pro / Ultra / Code Assist 개인
     라이선스에서 Gemini CLI를 대체하기로 발표한 새 Antigravity
     CLI(`agy`)를 위한 탭입니다. 짧고 솔직한 안내 — agy는 Antigravity
     IDE의 launcher이고 문서화된 headless API가 아직 없으므로,
-    Qmonster는 `agy` 패널을 ObserveOnly로 식별만 합니다
+    Qmonster는 `agy` 패널을 **ObserveOnly로 식별만** 합니다
     (`agy:N:role` canonical title 또는 pane current_command `agy`
-    토큰). 모든 분석 표면(anomaly / profile / cache / cost / insights
-    coverage / token sample)은 6개 독립 게이트로 차단됩니다.
+    토큰). 모든 분석 표면(anomaly / profile-switch / cache / cost /
+    token sample)은 독립 게이트로 차단됩니다.
     Enterprise / Cloud / Standard Gemini CLI 라이선스는 2026-06-18
     이후에도 유지되므로 Gemini 탭은 계속 유효합니다.
 
-    **v2.7.0 — `agy_enrichment` opt-in (Slice C3)**: `S` Settings →
-    `Integrations`에서 `agy_enrichment`를 `ON`으로 설정하면
-    (`[provider_setup] agy_enrichment = true`, default off), agy
-    pane card에 `model_name` · `context%` · `token_count` 배지가
-    표시됩니다. 데이터는 pane 하단 status-line footer의 스크래핑
-    (footer scrape, 항상 해당 pane 전용)과 선택적 structured
-    sidefile(`~/.local/share/ai-cli-status/agy/<conversation_id>.json`,
-    sidefile이 있으면 footer보다 우선)을 통해 수집됩니다. 두 경로 모두
-    `SourceKind::ProviderOfficial`을 사용합니다.
-
-    footer scrape가 model / token-count를 파싱하려면 `agy`의 status-line이
-    해당 정보를 포함해야 합니다. 이를 위해 **Provider Setup agy 탭**은
-    `agy_enrichment`가 ON일 때 `statusLine.command` 설정 블록을 포함한
-    **권장 설정 스니펫** (`y`로 복사)을 제공합니다 — `agy`가 status-line에
-    token-count와 model 이름을 출력하도록 구성하는 블록입니다. 이
-    스니펫의 구체적인 내용은 `agy` configuration API가 확정되는 시점에
-    정식 배포됩니다. 6개 analytic gate는 `agy_enrichment`가 ON이어도
-    변경되지 않으며 모두 차단 상태를 유지합니다.
+    (narrow vNext에서 agy enrichment — footer scrape + structured
+    sidefile로 `model_name` · `context%` · `token_count` · quota를
+    채우던 v2.7.0/v2.8.0 `agy_enrichment` 경로와 그 `statusLine.command`
+    권장 스니펫 + `[provider_setup] agy_enrichment` 토글 — 은 통째로
+    제거되었습니다. agy 탭은 다시 짧은 ObserveOnly 안내만 보여주며,
+    어떤 enrichment 배지도 표시하지 않습니다.)
 
   - **Tmux 탭**: 추천 4-pane 워크플로우 설치 스크립트를 `y`로 복사합니다.
     복사한 스크립트를 실행하면 `~/ts.sh` (Claude/Codex/Gemini/Qmonster
@@ -671,7 +631,7 @@ side_effects (N):
     않습니다. 운영자가 표시된 스니펫을 수동으로 복사해 적용합니다.
   - **v1.30.0 업데이트 (G-2)**: `qmonster.toml`에 새로
     `[provider_setup]` 섹션이 생겼습니다 (`claude_sidefile = true`
-    기본 / `codex_app_server = false` 기본). 이 값들은 `S`
+    기본 — narrow vNext 기준 Integrations가 토글하는 유일한 키). 이 값은 `S`
     Settings → `Integrations`에서 편집합니다. `P`로 overlay를 열면
     Provider Setup은 이 값을 읽어 현재 상태와 `y` 복사 대상을
     표시합니다. Sidefile-on-default는
@@ -713,72 +673,23 @@ side_effects (N):
       반올림된 statusline `cache N%` 값을 덮어씁니다. 이 결과
       F-7 / F-7b cache rule이 Claude pane에서 더 정밀하게
       발동합니다.
-  - **v1.32.0 업데이트 (F-6) — Codex App Server**: G-2의
-    `[provider_setup] codex_app_server = true` 토글이 켜져 있을 때
-    Qmonster TUI는 startup에서 `codex app-server` 자식 프로세스를
-    한 번 띄워 JSON-RPC `account/rateLimits/read`를 polling tick마다
-    호출합니다. 응답의 5h / weekly 창이 갖는 `resets_at_unix_seconds`
-    타임스탬프가 모든 Codex pane에 broadcast되어, Claude pane과
-    동일한 **`5h resets in <eta>` / `7d resets in <eta>` 행**이
-    Codex pane card에도 표시됩니다 (Codex tmux statusline은 reset
-    timestamp를 노출하지 않고 percentage만 보여주므로 app-server만
-    가능한 새 정보). 포맷은 F-5b의 `format_resets_eta`와 같은
-    `2h13m` / `45m` / `30s`입니다. Pressure 필드 (`quota_5h_pressure`
-    / `quota_weekly_pressure`)는 statusline 경로가 채우지 않았을
-    때만 app-server 값으로 채워집니다 (`is_none()` 가드 — 기존
-    per-pane 권한 유지). 시작 시 spawn 결과는 `SystemNotice`로
-    안내됩니다 — 성공: "Codex App Server started" (Severity::Good),
-    실패: "Codex App Server failed to start: <reason>"
-    (Severity::Warning). Spawn 실패해도 TUI는 정상 시작합니다.
-    reset eta가 안 보이면 `S` Settings → `Integrations`에서
-    `codex_app_server`가 ON인지 확인하고 `w`로 저장한 뒤 Qmonster를
-    재시작하세요. 별도 터미널에서 서버를 띄우거나 JSON-RPC 메시지를
-    수동으로 보낼 필요는 없습니다. Qmonster가 startup에서
-    `codex app-server`를 spawn하고 `initialize` 및
-    `account/rateLimits/read`를 전송합니다. Linux에서는 bubblewrap 우회를 위해 spawn 시
-    `-c sandbox_mode="danger-full-access"` 플래그가 자동으로
-    추가됩니다.
-  - **v1.33.0 업데이트 (F-4b) — Gemini /stats + /model parser**: 운영자가
-    `u` 키를 cycle해 Gemini pane에서 `/stats session`, `/stats model`,
-    그리고 idle/stale/limit-hit 상태일 때만 `/model`을 dispatch하면,
-    그 출력을 Qmonster가 파싱해 다음 정보를 Gemini pane card에 채웁니다:
-    - **누적 input / output token 카운트**: `/stats model` 출력의
-      `Tokens` 섹션에서 `Total` / `Input` / `Output` 행을 읽어
-      `input_tokens` / `output_tokens` 필드에 채웁니다 (`is_none()`
-      가드 — 더 이른 surface가 이미 채웠다면 그대로 둠). model 파서는
-      `input_tokens`와 `output_tokens`가 **둘 다** 추출됐을 때만 값을
-      씁니다 (정직성 규칙: 반쪽 데이터 금지).
-    - **CACHE 배지** (API key / Vertex Gemini만): `/stats model` 출력의
-      `Cache Reads` 행이 보이면 `cached_input_tokens`로 들어가 CACHE
-      배지가 표시됩니다. **OAuth Gemini는 FAQ-documented Google 제약**
-      으로 인해 `Cache Reads` 행이 출력에 없으므로 CACHE 배지도
-      나타나지 않습니다 — Qmonster는 0을 합성하지 않습니다 (정직성
-      규칙).
-    - **SID runtime fact 배지**: `/stats session` 출력의 `Session ID:`
-      를 읽어 `RuntimeFactKind::SessionId` (F-5b에서 도입)가 채워지고,
-      Gemini pane card에도 SID 배지가 표시됩니다.
-    - **CALLS runtime fact 배지**: `/stats session` 출력의 `Tool Calls:`
-      선두 숫자를 읽어 `CALLS <N> [Official]`로 표시합니다.
-    - **RESET runtime fact / metric 배지**: `/model` 화면의 모델별
-      `Reset:` / `Resets:` 행을 읽어 provider가 렌더한 reset 시각과
-      남은 시간을 그대로 `RESET <model> <time/remaining> [Official]`
-      형태로 표시합니다. Qmonster는 현재 status table의 `/model` 값을
-      기준으로 같은 모델 family만 남깁니다 (`gemini-3.1-pro-preview`는
-      `Pro`, `gemini-*-flash-lite`는 `Flash Lite`, `gemini-*-flash`는
-      `Flash`). 전체 값은 `limits:` runtime fact 줄에 남고, 같은 값은
-      상단 `metrics:` 줄에도 표시됩니다. 닫힌 `/model` picker 캡처는
-      다음 `/model` 캡처나 pane lifecycle reset 전까지 유지됩니다. 이
-      값은 Gemini 모델별 display-only runtime fact이며, F-7c
-      reset-aware 정책 룰의 `quota_*_resets_at` 입력과는 별개입니다.
-  - **v1.33.x polish (RESET 5H / RESET 7D 배지)**: 컴팩트 한-줄 metric
-    행에 `RESET 5H <eta>` / `RESET 7D <eta>` 배지가 추가되어, F-5b의
-    verbose `metric_row` 텍스트 행과 같은 `format_resets_eta` helper
-    및 SourceKind 라벨링을 사용합니다. Claude sidefile 또는 Codex
-    app-server 경로가 `quota_*_resets_at`을 채웠을 때 표시됩니다.
+  - **Codex App Server (F-6) — 제거됨 (narrow vNext)**: `codex
+app-server` JSON-RPC `account/rateLimits/read` enrichment와 그
+    `[provider_setup] codex_app_server` 토글이 제거되었습니다. Codex의
+    `5h resets in <eta>` / `7d resets in <eta>` reset-ETA 행은 더 이상
+    제공되지 않습니다 (Claude sidefile reset eta는 그대로 유지). Codex의
+    `quota_5h_pressure` / `quota_weekly_pressure`는 계속 bottom status
+    line에서 채워집니다.
+  - **Gemini /stats + /model enrichment (F-4b) — 제거됨 (narrow vNext)**:
+    `u` 사이클로 `/stats session` · `/stats model` · `/model`을
+    dispatch해 누적 토큰 / Cache Reads / SID / CALLS / 모델별 RESET을
+    채우던 interactive enrichment가 제거되었습니다. Gemini는 다시
+    status-table-core(`context` / `quota` / `memory` / `model`)만
+    파싱합니다. Gemini `u`는 어떤 slash command도 보내지 않습니다.
   - **v1.34.0 업데이트 (F-7c) — reset-aware 어드바이저리**: quota
     window가 reset에 가까워질 때 두 가지 신규 어드바이저리가 alert
-    queue에 표시됩니다. 이는 기존의 `5h resets in <eta>` /
-    `7d resets in <eta>` 배지(F-5b/F-6 경로)를 운영 행동으로
+    queue에 표시됩니다. 이는 Claude sidefile이 채우는 `5h resets in
+<eta>` / `7d resets in <eta>` 배지(F-5b 경로)를 운영 행동으로
     연결합니다.
     - **`quota: pause until 5h/weekly window resets`** (Concern,
       ProjectCanonical): `quota_*_pressure >= 85%`이고 해당 window의
@@ -815,8 +726,7 @@ side_effects (N):
       그대로 보간하므로 `wait_pressure_threshold = 0.75`로 조정하면
       어드바이저리가 75% pressure에서 발화하고 reason에도 75%로
       표시됩니다 (원본 85%가 아님). `S` Settings → `Parameters`는
-      현재 `[reset]` 값과 기본값 차이를 보여주고, `S` Settings → `Rules`
-      는 `wait_for_reset` / `snapshot_before_reset` 발화 조건을 보여줍니다.
+      현재 `[reset]` 값과 기본값 차이를 보여줍니다.
       편집은 아직 `qmonster.toml` 직접 수정 방식입니다. 다음 config 로드 시
       Qmonster가 새 값을 읽어옵니다.
   - **v1.42.0 업데이트 (Phase H) — opt-in auto-snapshot at reset boundary**:
@@ -838,141 +748,11 @@ side_effects (N):
     `snapshot_eta_secs`)이 recommendation 발화 조건을 제어합니다;
     Phase H는 별도의 임계값 없이 이 값들을 그대로 재사용합니다.
 
-### 8.5 Metrics Overlay
+### 8.5 Action Explainer
 
-`m`으로 열리는 per-pane card overlay. 모든 pane의 메트릭을 한 화면에
-인라인으로 보여주므로 ↑/↓로 pane을 따로 고를 필요가 없습니다.
-
-각 카드:
-
-- divider 한 줄 (`━ provider:instance:role · pane_id ━━…━`)
-- 4개 content 행 — 두 열로 분리 (`<left> │ <right>`)
-- Qmonster monitor pane은 provider token/cache/quota surface가 없으므로
-  placeholder 행을 만들지 않고 `MEM <v> MiB <arrow>` compact 행만
-  보여줍니다.
-
-**왼쪽 열 (bounded)**: CTX / 5H / 7D / CACHE.
-
-- bar 길이는 modal 폭에 따라 8–24셀로 자동.
-- filled `█` cell: CTX/5H/7D는 severity 색 (SAFE 녹 / CONCERN 노 /
-  WARNING 주 / RISK 빨 — `theme::severity_color`), CACHE는 중립 흰색.
-- unfilled `░` cell: dim 회색 (`theme::TEXT_DIM`).
-- 누락값은 dim `─`.
-
-**오른쪽 열 (timeseries · counters)**: 4개 행으로 압축 —
-
-- 행 1: `5H reset ▸ <eta>  ·  7D reset ▸ <eta>` (텍스트 only, progress
-  bar 없음). 24h 이상은 `4d 6h` 형식, 미만은 `2h13m` / `45m` / `30s`.
-  둘 다 누락이면 dim `─`. 한 쪽만 누락이면 그 segment + 분리자 함께
-  drop.
-- 행 2/3: `TOKENS in/out  <sparkline>  <current>  Δ+<delta>`. sparkline은
-  modal 폭에 맞춰 동적 (~20셀+).
-- 행 4: `COST <sparkline> $<v> <trend> · MEM <v> MiB <arrow> · MEM-FILE <bytes> <arrow>`.
-  trend·arrow는 실측 ▲/▼/─ (per-poll MemObservation 트래커에서 산출
-  — 첫 관측은 ─, 다음 폴부터 변화 반영).
-
-상단 1줄에 `Hottest: <pane> · <metric> {pct}% [<source>]` 배너.
-Bounded pressure 데이터가 전혀 없으면 dim `Hottest: —`.
-
-조작:
-
-- `m`, `Esc`, `q`, `[x]` 클릭: 닫기.
-- `↑` / `↓` / `j` / `k`: body scroll (페인 선택 개념 없음 — 모든 pane이
-  항상 보임).
-- `[` / `]`: modal 5% 축소/확대. `=`: 기본 95×90으로 reset하면서
-  드래그 위치도 함께 (0, 0)로 reset. 운영자가 고른 크기·위치는 close 후
-  재오픈에도 유지 (Qmonster 재시작 시에는 기본값으로 초기화).
-- 마우스로 모달 **상단 제목 줄**(`[x]` 닫기 버튼 영역 제외)을 드래그하면
-  modal 위치를 옮길 수 있습니다. 좌/상 가장자리는 hard bound로 viewport
-  바깥으로 나가지 않도록 정확히 멈추고, 우/하 가장자리는 soft bound로
-  최소 가로 4셀 / 세로 1셀이 화면에 남도록 자동 클램프됩니다 (터미널
-  리사이즈 시에도 같은 안전 영역으로 끌려옴). 드래그를 멈추면 (마우스
-  버튼을 떼면) 위치가 고정됩니다.
-- 마우스휠: body가 modal 본문 높이를 넘으면 scroll.
-
-누락된 값은 `─` 한 글자로 표시합니다 (S3-4 honesty 규칙).
-
-### Phase 7 v1: anomaly observation surface (v1.43.0)
-
-`[anomaly] enabled = true`로 설정하면 m (Metrics) overlay의 각 pane 카드
-하단에 새 행이 추가됩니다:
-
-```
-ANOMALIES <n> <kind>:<conf>[, ...]
-```
-
-이 행은 `pane.anomalies`가 비어 있지 않을 때만 렌더링됩니다 —
-레이어를 비활성화한 operator는 레이아웃 변화를 전혀 보지 않습니다.
-
-Detector 목록:
-
-- IdentityChurn — rolling window 내 provider/path 전환
-- ErrorBurst — rolling window 내 error_hint 비율
-- CacheDiscontinuity — cache_hit_ratio 하락, 또는 F-7b가 2회 이상 발화
-- CrossPaneEditCluster — 같은 경로의 ConcurrentFileEdit findings (1-tick 지연)
-
-v1 severity는 항상 `Concern`; v2에서 신뢰도 High + severity Warning 이상일
-때 Recommendation 승격 + Notify를 추가할 예정입니다. v1은 audit event와
-Notify를 일체 발화하지 않습니다 — 순수 관찰 표면.
-
-Operator는 `qmonster.toml`에 `[anomaly] enabled = true`를 추가하여 활성화합니다.
-기본값(window_polls=20, min_confidence=medium, 검출기별 임계값)은 노이즈를
-최소화하도록 설계되었습니다 — 전체 기본값 블록은 `config/qmonster.example.toml`을
-참조하세요.
-
-**`[anomaly.promote]`** — per-kind promotion threshold (v1.46.0+).
-Distinct from `[anomaly] min_confidence` (which is a visibility
-filter): a visible signal is gated AGAIN here before becoming a
-Recommendation. Defaults: 7 kinds = `"high"`, `subagent_side_effect`
-= `"medium"`. Lower a kind's threshold to make it noisier; raise it
-to mute noisy detectors.
-
-**`[anomaly] retention_days`** — number of days to retain `anomaly_events`
-rows on disk (v1.47.0+). Default 30. Older rows are deleted on Qmonster
-startup. A 100K-row hard cap also applies regardless of this value, and
-`anomaly_history_snapshots` are auto-pruned at 4× the detection window.
-
-### Phase 7 v2: anomaly promotion (v1.44.0)
-
-When a v1 detector fires with `confidence = High`, the resulting
-`AnomalySignal` is promoted into the dashboard recommendation
-panel as a `Recommendation` and triggers a desktop notification
-via `RequestedEffect::Notify` (the same path F-9b cost-budget
-alerts use). The m overlay ANOMALIES row remains the underlying
-observation surface — promoted signals show up in both places at
-once.
-
-Promotion criteria: detector severity is `Warning` (which happens
-exactly when confidence is `High`); detector severity is `Concern`
-when confidence is `Medium` or `Low`, and Concern signals are
-observation-only — they appear in the m overlay row but do NOT
-emit a Recommendation or fire Notify.
-
-Operator opts in with the same `[anomaly] enabled = true` from
-v1.43.0 — there are no new knobs.
-
-### Phase 7 v2: detectors (v1.45.0)
-
-Phase 7 v2 ships four additional detector kinds on top of the v1.43.0 / v1.44.0 baseline:
-
-- `CostSlope` — cumulative cost_usd delta over the rolling window, normalized to USD/hour. Default threshold 20.0 USD/hour.
-- `TokenSlope` — cumulative input_tokens delta over the window, per-poll. Default threshold 20_000 tokens/poll.
-- `MemoryGrowth` — simple process_memory_mb delta over the window. Default threshold 1024 MB.
-- `SubagentSideEffect` — correlation annotator that fires only when `subagent_hint` is observed alongside other anomalies in the same window. Confidence is binary (Medium only); the recommendation reason explicitly says "correlation, not attribution" per Phase D D3-C.
-
-The first three slope detectors promote to Recommendation + Notify when `confidence=High` (≥ 1.5× threshold) — same as the v1 detectors. SubagentSideEffect promotes only when it co-occurs; severity stays at Concern (since confidence is always Medium).
-
-The `n` Anomaly Events overlay prefixes noisier evidence in the Reason
-column: `heuristic:` for `ErrorBurst` / `MemoryGrowth`, and
-`correlation:` for `SubagentSideEffect`. These labels are intentionally
-visible in the event row so operators can distinguish measured trends
-from pattern or correlation signals before acting.
-
-Operator opts in with the same `[anomaly] enabled = true` from v1.43.0. The 3 new thresholds (`cost_slope_usd_per_hour`, `token_slope_input_per_poll`, `memory_growth_mb`) are tunable via the `[anomaly]` section in `qmonster.toml`.
-
-### 8.6 Action Explainer
-
-`p` / `d` / `y` 누름 시 사전 모달이 뜹니다. 표시되는 항목:
+`p` / `d` / `y` 누름 시 사전 모달이 뜹니다 (단일 prompt-send actuation의
+confirmation gate — narrow vNext에서 BATCH `a` Pending Actions overlay는
+제거되고 이 단일 액션 경로만 유지). 표시되는 항목:
 
 - **Target pane**: `provider:instance:role · pane_id`
 - **What to send / What to reject / What to copy**: 실제로 보낼/거절할/복사할 텍스트
@@ -1003,219 +783,6 @@ hover_help_trigger = "label" # "label" | "row"
 
 `first_time`은 세션 로컬입니다 — Qmonster를 재시작하면 다시 모달이
 뜹니다. 영구 silence를 원하면 `never`로 설정하세요.
-
-### 8.7 Pending Actions Overlay
-
-`a` 키로 토글합니다. v1.39에서 추가된 디스커버리 layer가
-v1.40에서 좌/우 split + 멀티 선택 + 라이브 explainer + 벌크
-dispatch로 확장되었습니다.
-
-다음 항목을 한 화면에 보여줍니다:
-
-- pending prompt-send proposal을 보유한 모든 pane (operator가
-  `p`/`d`로 처리할 수 있는 항목)
-- 실행 가능한 `suggested_command`가 있는 모든 alert (operator가 `y`로
-  복사할 수 있는 항목)
-
-본 overlay 외에도 항목 존재는 두 가지 다른 surface로 노출됩니다:
-
-- **Header chip** — pane card 제목에 `★p`, alert 제목에 `★y`가
-  붙고 severity 색으로 강조됩니다.
-- **Footer counter** — 화면 하단에 `★p:N · ★y:M · ★a:X` 카운터가
-  항상 표시됩니다 (`★p`/`★y`는 0이면 dim, 양수면 severity 색;
-  `★a`는 최근 audit 심각도를 0/C/W/R로 표시).
-
-**모달 layout**
-
-- 좌측 (또는 좁은 폭에서는 상단): 항목 리스트
-- 우측 (또는 좁은 폭에서는 하단): 커서 항목의 라이브 Action
-  Explainer 패널 — `Why now`, `Severity`, `Audit chain`, `Mode now`
-  등 기존 Action Explainer 모달과 동일한 정보를 그대로 표시합니다.
-- 하단 1줄: 키 안내 + 멀티 선택 카운트 + `scroll x/y · more/END`
-- 모달 폭 ≥ 72셀이면 좌/우 split, 그 미만이면 상/하 split
-
-**행 형식**: `[x|space] ▶ [p|y] severity · command · context`
-
-- 좌측 `[x]` / `[ ]` = 멀티 선택 체크박스 (severity 색)
-- `▶` = 현재 커서 행
-- `[p]` proposal / `[y]` copyable alert
-- `command`는 backtick으로 감싼 슬래시 명령
-- `context`는 pane 식별자 또는 alert 제목
-
-**제목**: `"Pending Actions · {N} pending · {S} selected · a 다시로 닫기"`
-(멀티 선택이 비어있으면 `· {S} selected` 부분 생략)
-
-**조작 — 키보드**
-
-| 키                             | 동작                                                                |
-| ------------------------------ | ------------------------------------------------------------------- |
-| `↑/↓` · `j/k`                  | 커서 이동 → 우측 explainer 즉시 갱신                                |
-| `Space`                        | 커서 항목 멀티 선택 토글                                            |
-| `P` / `Y` / `A`                | proposal / alert / 전체 그룹 토글 (모두 선택 ↔ 모두 해제)           |
-| `c`                            | 멀티 선택 비움 (커서는 유지)                                        |
-| `p`                            | accept — 멀티에 proposal이 있으면 일괄, 없으면 커서 (proposal일 때) |
-| `d`                            | clear — proposal=reject, alert=hide. 멀티 우선, 없으면 커서         |
-| `y`                            | copy — 멀티의 첫 alert 또는 커서 alert (클립보드는 한 줄)           |
-| `Enter`                        | silently no-op (실수 입력 방지)                                     |
-| `Esc` · `q` · `a` · `[x]` 클릭 | overlay 닫기 (멀티 선택 비움)                                       |
-
-**조작 — 마우스**
-
-| 이벤트                        | 동작                                  |
-| ----------------------------- | ------------------------------------- |
-| 행 좌측 `[ ]` 영역 (cols 0–3) | 멀티 선택 토글, 커서 변경 없음        |
-| 행 cols 4 이상 (커서/내용)    | 커서를 그 행으로 이동, explainer 갱신 |
-| 휠 (모달 안)                  | 커서 이동                             |
-| `[x]` 클릭                    | 닫기                                  |
-
-**모달 사이즈 / 위치 조절** (TX-A + TX-B)
-
-| 키 / 마우스                          | 동작                                                |
-| ------------------------------------ | --------------------------------------------------- |
-| `[`                                  | 모달 5% 축소 (50%까지)                              |
-| `]`                                  | 모달 5% 확대 (99%까지)                              |
-| `,`                                  | list 폭 좁히기 (2셀씩, 44셀까지)                    |
-| `.`                                  | list 폭 넓히기 (2셀씩, 64셀까지)                    |
-| `=`                                  | 사이즈 + 위치 + list 비율 모두 default로 reset      |
-| 상단 제목 줄 드래그                  | 모달 위치 이동 (좌/상 hard, 우/하 ≥4셀 soft 클램프) |
-| list/explainer 사이 separator 드래그 | list/explainer 비율 조절 (44–64셀 범위)             |
-
-기본값: 모달 80%×65% (min 72×20), list = 60%·body (clamp 44–64). close 후 재오픈 시 사이즈/위치/비율 보존; Qmonster 재시작 시 기본값으로 초기화.
-
-**dispatch 후 처리**
-
-- 멀티 선택의 dispatch된 key**만** 제거됩니다. 예: `p` 누름 시
-  proposal key만 빠지고 alert key는 그대로 남아 다음에 `d`나 `y`로
-  처리할 수 있습니다.
-- 폴링 사이에 사라진 key는 자동 prune됩니다 (다음 render에서).
-
-**⚠ `[ux] confirm_actions` 무시 (기본값 `always`와 의도적으로 다름)**
-
-a 오버레이 안의 `p`/`d`/`y`는 `confirm_actions = always | first_time | never`
-설정과 **무관하게** 즉시 dispatch됩니다 — 우측 라이브 explainer 패널이
-confirmation 역할을 합니다. 운영자의 기본 안전 기대(`always`에서 모든
-dispatch는 별도 모달이 뜸)와 다른 부분이므로 다음을 확실히 인지하세요:
-
-- 대시보드 직접 키(`p`/`d`/`y`): 기존대로 `confirm_actions` 설정값에
-  따라 Action Explainer 모달을 띄움.
-- a 오버레이 안의 `p`/`d`/`y`: 즉시 dispatch. 우측 패널의
-  `Why now` / `Audit chain` / `Mode now` 줄로 "무엇이 일어날지"를
-  먼저 확인할 책임은 운영자에게 있음.
-
-`always`의 모달 대기 동작이 필요하다면 a 오버레이를 닫고 대시보드의
-직접 키를 사용하세요.
-
-**Mode 차단 표시**
-
-`observe_only` / `AutoSendOff`와 같이 actuation mode가 차단 중일
-때는 우측 explainer 패널의 `Mode now` 줄에 ⚠ 경고가 표시되어,
-operator가 dispatch 전에 확인할 수 있습니다.
-
-항목이 없을 때는 `Select an item to see what would happen.` 라는
-dim 안내 줄이 explainer 패널에 표시됩니다.
-
-### 8.8 Anomaly Events Overlay (v1.46.0)
-
-Press `n` (or click the `★a:X` status chip in the footer) to open the Anomaly Events overlay. This overlay is directly tied to the `★a` indicator, allowing you to quickly inspect recent audit events, especially when Risk or Warning severities are present. Shows the last 100
-`AnomalySignal`s recorded this session, newest first, with columns:
-Time / Pane / Kind / Conf / Promoted / Reason.
-
-- `n` (or `Esc` / `q` / `[x]`): close.
-- `[` / `]`: resize the overlay by 5% steps.
-- `=`: reset size and position to the default overlay geometry.
-- Drag the title row: move the overlay.
-- `Up` / `Down` (or `j` / `k`): scroll one row.
-- Mouse wheel over the modal body: scroll.
-- Click `[x]`: close.
-- `h`: toggle between Ring view (this session, in-memory) and History view (last 200 from disk).
-
-**View modes:**
-
-- **Ring (default):** shows the in-memory ring buffer (capacity 100, this session only).
-- **History:** queries `anomaly_events` SQLite table for the last 200 rows. Includes events from earlier sessions; wheel / `↑` / `↓` scrolling clamps to the active history length.
-
-The persistent `anomaly_events` table is pruned on startup by `[anomaly] retention_days` (default 30) and an emergency 100K-row cap.
-
-`Promoted = yes` means the signal passed its per-kind
-`[anomaly.promote]` confidence threshold and produced a
-Recommendation. `Promoted = no` means the signal was visible (passed
-the global `[anomaly] min_confidence` filter) but did not meet the
-per-kind promotion threshold.
-
-### 8.9 Token Insights Overlay (Phase 8)
-
-Press `i` to open the Token Insights overlay. It reads the configured
-Qmonster SQLite DB and renders the same Token Insights report shape used
-by the CLI: situation counts, cache reuse/cost/token deltas, recent
-lifecycle timeline, action ledger counts, and Action Rates (`accepted`,
-`completion`, `ignored`) when action rows exist.
-
-- `i` (or `Esc` / `q` / `[x]`): close.
-- `[` / `]`: resize the overlay by 5% steps.
-- `=`: reset size and position to the default overlay geometry.
-- Drag the title row: move the overlay.
-- `r`: refresh the current `[insights] default_window_secs` window.
-- `Up` / `Down` (or `j` / `k`): scroll one row.
-- Mouse wheel over the report body: scroll.
-
-The action ledger includes `emitted`, prompt-send outcomes
-(`accepted`/`rejected`/`blocked`/`completed`/`failed`), archive and
-snapshot outcomes, `hidden` alert-dismiss outcomes, and TTL-classified
-`ignored` recommendations. `ignored` is a Qmonster classification after
-`[insights] ignored_ttl_secs`; it is not treated as an operator rejection.
-
-v1.50.0 부터 `i` open / `r` refresh 는 worker thread 로 SQLite snapshot
-을 비동기 fetch 합니다. 결과가 도착하기 전까지 본문 가운데에
-`Aggregating insights ⠋` placeholder 가 회전 글리프 (10 프레임
-braille, 100ms 간격) 와 함께 표시됩니다. 로딩 중에는 6-패널 본문이
-숨겨지고 scroll keys (↑/↓/j/k/wheel) 가 일시적으로 비활성됩니다.
-`r` 을 빠르게 두 번 누르면 첫 번째 결과는 자동으로 드롭되고 두 번째
-결과만 반영됩니다 (request_id 기반 stale-drop).
-
-### Decorative fx (v1.53.0+)
-
-대문자 `Q` 핫키로 여는 선택적 장식 효과 오버레이. 세 가지 효과 중
-하나를 `[fx] effect = banner | confetti | matrix`로 고르고, dashboard
-위에 비파괴 렌더로 떠 있습니다 — alerts / panes / footer 정보가
-효과 뒤로 그대로 보입니다 (v1.54.0). 클릭 또는 아무 키 입력으로
-dismiss, 또는 `[fx] duration_secs` (기본 50초) 후 자동 종료.
-오버레이 활성 동안엔 메인 루프 폴링이 60 FPS로 올라가며 (v1.55.0)
-tmux 폴 틱이 잠시 정지해 stutter 없이 재생됩니다.
-
-- **banner**: `[fx] text` (기본 `~O~ Qmonster`)를 5-row 블록 폰트로
-  렌더해 DVD-스크린세이버처럼 화면 가장자리에 부딪히며 떠다님.
-  HSL hue 회전으로 무지개 그라데이션.
-- **confetti**: 화면 중앙에서 80개 유니코드 스파클(✨ ⋆ ☆ ⭐ ✦ ✧ ❋ ❀ ✺)이
-  방사 분출, 가벼운 중력으로 흩어지며 페이드. 모든 파티클이 끝나면
-  자동 종료.
-- **matrix**: 열별 카타카나 + ASCII 글자 스트림 폭우. 헤드는 밝은
-  흰-초록, 꼬리는 점차 어두워짐. v1.56.0부터 백드롭이 살짝 어둡게
-  처리되어 dashboard 텍스트와 시각적으로 구분됨.
-
-세 가지 트리거: (a) `Q` 핫키 (`[fx] hotkey_enabled = true`); (b) `p`
-액션 수락 시 confetti 자동 셀레브레이션 (`[fx] celebration_enabled =
-true`, 기본 off — celebration은 configured effect와 관계없이 항상
-confetti); (c) idle 스크린세이버 (`[fx] screensaver_enabled = true`,
-기본 off, `[fx] screensaver_idle_secs` 후 자동 발사 — 키/마우스 활동
-시 즉시 종료 + idle 클럭 리셋). 오버레이 우측 하단에는 dismiss 힌트
-`click / any key to dismiss · Q opens fx`가 표시됩니다.
-
-전체 설정은 `S` Settings → Parameters 탭의 FX 섹션에서 토글/편집할
-수 있습니다 (8개 파라미터: enabled / text / effect / duration_secs /
-hotkey_enabled / celebration_enabled / screensaver_enabled /
-screensaver_idle_secs).
-
-```toml
-[fx]
-enabled = true
-text = "~O~ Qmonster"
-effect = "banner"           # banner | confetti | matrix
-duration_secs = 50          # 0 = stay until dismissed
-hotkey_enabled = true
-celebration_enabled = false
-screensaver_enabled = false
-screensaver_idle_secs = 600
-```
 
 ## 9. 운영 파일
 

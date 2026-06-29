@@ -4,6 +4,38 @@
 - Date: 2026-04-20 (round r2 reconciled) / 2026-04-30 (implementation sync through v1.37.0: F-8 file-level multi-pane orchestration, F-9 opt-in dynamic profile switching, F-9b SQLite USD cost budget tracking with 80% / 100% alerts, and Phase 6 Team Mode layered configuration. v1.36.x remains the release-pipeline hardening base: scripts/release extraction, SBOM SPDX root-doc filter, cargo audit RUSTSEC gates, npm publish --dry-run, and sbom-diff.js --count / --count-purl modes) / 2026-05-04 (v1.37.0 introduces F-8 / F-9 / F-9b and Phase 6 Team Mode layered configuration. v1.38.0 ships the operator-facing UX bundle (Metrics overlay, pane card wrap fix, Action Explainer modal, toggle-on-entry-key + [x]). v1.39.0 polishes the metrics overlay into per-pane cards with severity-colored bars, real per-poll MEM trend tracking, eta day formatting, plus an Action Explainer hardening pass (mouse guard, snapshot dispatch, proposal*id audit) and a Codex App Server v0.128 JSON-RPC compatibility fix.) / 2026-05-06 (v1.40.0 lifts the m and a overlays from fixed-geometry surfaces to operator-controlled. m overlay gains drag-to-move on the title row with asymmetric clamp (left/top hard, right/bottom ≥ 4 cells horizontal / ≥ 1 row vertical soft) and `=` reset of size + position. The a overlay (Pending Actions) is rebuilt as a left/right split with a live Action Explainer panel for the cursor item, multi-select via Space/P/Y/A/c with `BTreeSet<String>` stable-key tracking and auto-prune, in-place p/d/y bulk dispatch routed per-item through the existing `confirm_pending_action(...)` path (no new audit event types), notice-routing parity via `dashboard.push_notice(notice, now)`, and full geometry controls — `[/]/=`, `,/.`, title-drag, separator-drag — mirroring the m overlay. UI_MANUAL §8.5 + §8.7 + help overlay updated.) / 2026-05-06 (current — v1.41.0 is a minor polish release on top of v1.40.0 that hardens two operator-reported bugs in the v1.40 a overlay and elevates the `confirm_actions` bypass to a first-class operator-facing surface. `prune_to()` now clamps `selected` against `items.len()` so polling-driven shrinks no longer leave the cursor stale; `,` / `.` list-width keys take the current effective list width as an argument so first-press direction is correct (`handle_pending_actions_overlay_key` gains a `viewport: Rect` param). Three discoverability surfaces warn about the a overlay's intentional `confirm_actions` bypass: `UI_MANUAL` §8.7 ⚠ caution, in-modal `(confirm_actions bypass)` hint chip, and a `PendingActionsOverlay::seen_first_open` flag that fires a Concern-severity `SystemNotice` on the first `a` press per session. Plus a doc/git consistency audit at the v1.40.0 baseline.) / 2026-05-06 (current — v1.42.0 ships Phase H: opt-in auto-snapshot at the reset boundary. `ResetConfig.auto_snapshot` (bool, default false) is the operator lever; `PolicyGates.reset_auto_snapshot` gates activation; `AutoSnapshotDedup` deduplicates within a `floor_to_minute` window keyed by `(target, QuotaKind)`; `maybe_auto_snapshot` orchestrates gate → dedup → archive; `Context.auto_snapshot_dedup` holds per-session state; `run_once_with_target` wires the call before the reset fires. Settings overlay gains Parameters and Rules rows. No provider adapter, audit chain, or SignalSet schema changes.) / 2026-05-07 (v1.43.0 ships Phase 7 v1: anomaly observation surface. `AnomalySignal`, `AnomalyKind`, `AnomalyConfidence`, and `AnomalyEvidence` types define the anomaly schema. Four detectors (`detect_error_burst`, `detect_identity_churn`, `detect_cache_discontinuity`, `detect_cross_pane_edit_cluster`) plus the `eval_anomalies` orchestrator drive detection with edge-triggered dedup via `AnomalyHistory`. `PolicyGates` gains `anomaly*\*`fields;`PaneReport.anomalies`surfaces results to the event loop; the m overlay pane card gains an ANOMALIES row; Settings gains Parameters/Rules/Badges rows for`[anomaly]`. No provider adapter, audit chain, or SignalSet schema changes.) / 2026-05-07 (current — v1.44.0 ships Phase 7 v2 promotion: anomaly → Recommendation + Notify. `severity*for(AnomalyConfidence)`maps`High`→`Warning`and`Medium`/`Low`→`Concern`; `promote_anomalies_to_recommendations`converts`AnomalySignal`slices into`Recommendation` vecs (`src/policy/rules/anomaly.rs`); the event loop wires the call and routes `Warning`-severity results through the `Notify` path (`src/app/event_loop.rs`); Settings Rules tab gains a 'promotes to Recommendation when confidence=High' annotation on all 4 anomaly rule rows (`src/ui/settings.rs`). No provider adapter, audit chain, or SignalSet schema changes. 1097 lib tests + 56 integration tests, all green.) / 2026-05-07 (current — v1.45.0 ships Phase 7 v2 detectors: 4 new AnomalyKind variants. CostSlope (`detect_cost_slope`, USD/hour rate), TokenSlope (`detect_token_slope`, input_tokens/poll rate), MemoryGrowth (`detect_memory_growth`, RSS process MB), SubagentSideEffect (`detect_subagent_side_effect`, orchestrator-hop correlation) — all in `src/policy/rules/anomaly.rs`using the same`severity_for`+`promote_anomalies_to_recommendations`path as v1.44.0.`AnomalyHistory`extended with 6 new deques;`AnomalyConfig`gains 3 new thresholds;`PolicyGates`gains 3 new`anomaly*\*` fields (`src/policy/gates.rs`); `run_once_with_target` history push +6 lines + 1 integration test (`src/app/event_loop.rs`); Settings Parameters +3 thresholds + Rules +4 anomaly rows (`src/ui/settings.rs`). No provider adapter, audit chain, SignalSet schema, or SQLite schema changes. 1123 lib tests + 57 integration tests, all green.) / 2026-05-11 (current — v2.1.0 ledger sync; body content updated through the v2.1.0 r2 cross-validated synthesis-slice implementation bundle on top of the v2.0.0 milestone, covering v1.46+ Phase 7 v3 anomaly persistence + n overlay, v1.48+ Token Insights overlay, v1.49+ pane CMD argv resolution + provider-coverage matrix, v1.50+ Insights overlay async loading, v1.55-v1.60 release-pipeline hardening, v2.0.0 Light theme + operator-facing polish, v2.1.0 Slice 0-6 + UI synthesis slices A-I, and v2.2.0 critical-eval-driven improvement bundle (P0 dead-code purge + log_storm/quota-window dedup + threshold provenance tags + P1-1 detector × provider eligibility matrix + P1-2 SubagentSideEffect honesty prose + P1-3 RecommendationOutcome::Copied lifecycle ledger row).) / 2026-05-13 (current — v2.3.0 release ledger sync: post-v2.2.0 stabilization + UX bundle. (a) Pane card `path`row appends` · wt of <display_path(parent_repo_root)>`for linked git worktrees via`pub(crate) enum WorktreeRole { Primary, Linked { parent_repo_root } }`resolved through`resolve_worktree_role(current_path)` (`src/app/worktree_info.rs`); `WorktreeRoleCache`memoizes both`Some`and`None`with a 10 s TTL and 128-key insertion-order eviction;`PaneReport.worktree_role`+`Context.worktree_role_cache`plumb the result through the event loop. (b) Expanded pane card body sections under NOW / WHERE / PRESSURE / RUNTIME / RECOMMENDATIONS headers and renders each row with`├ / └ / │` tree glyphs at depth-2-cell indent (`pane_sectioned_rows`+`PaneSectionRow`+`push_pane_section_tree`+`render_section_rows`+`group_into_section_rows`heuristic for grouping flat`Vec<Line>`returned by helpers into logical row groups;`section_wrap = wrap_width - 2`, `detail_wrap = wrap_width - 4`). (c) Alerts overlay surfaces related action lifecycle / family chips on a dedicated rail with a projection gate against stale context. (d) Post-v2.2.0 critical-review 9-item bundle + footer status chip mouse-click actions (`FooterChipQuery`struct resolves`clippy::too_many_arguments`). (e) `Copied` is a non-terminal lifecycle outcome (`ActionLedgerRow.copied`, `apply_lifecycle_outcome("copied")`, `is_terminal_lifecycle_outcome`, `rec_engagement_snapshot`CTE attaches unlinked copy outcomes to the latest prior event on the same (pane_id, action)); SubagentSideEffect action carries a canonical`⚠`marker via`domain::anomaly::SUBAGENT_SIDE_EFFECT_ACTION`; `done_when_refs`100 % coverage (23/23 binders +`cargo_fmt_check_passes`). (f) Settings module split: `src/ui/settings.rs`→`src/ui/settings/{mod,model,tests}.rs`. (g) Dependabot bump: thiserror 1 → 2, crossterm 0.28 → 0.29, rusqlite 0.32 → 0.39 (`u64: FromSql`workaround at`src/store/insights.rs:845`), toml 0.8 → 1.1, toml_edit 0.22 → 0.25, attest-build-provenance v3 → v4. No provider adapter, audit chain, or SignalSet schema changes.) / 2026-05-21 (v2.4.0 — `Provider::Antigravity`(Google`agy`CLI) added as a 6th`Provider`enum variant. ObserveOnly contract: adapter dispatch routes to`common::parse_common_signals`(same as`Provider::Unknown`); `AnomalyKind::supports_provider`matrix never claims Antigravity;`provider_honesty`returns Hidden for cache/cost chips;`profile_targets_for_provider`returns None; insights coverage marks Antigravity panes`unsupported`; `filter_token_samples_for_provider`drops agy token samples. Provider Setup overlay gains a 5th`agy`tab between Gemini and Tmux.`detect_provider_title`reordered so braille-spinner activity (≥ 2-word) and diamond +`Ready (`opener run BEFORE the keyword fallback.`process_memory` descendant-walk gains 2-tier priority: dedicated CLI binaries (`KNOWN_DEDICATED_CLI_COMMS`) beat generic interpreters (`KNOWN_INTERPRETER_COMMS`) by class, RSS breaks ties within class. No audit chain or SignalSet schema change.) / 2026-05-21 (current — v2.4.1 patch: `ProviderSetupTab::ALL: [Self; 5]`const +`ProviderSetupTab::index(self) -> usize` `match`-based method introduced in `src/ui/provider_setup.rs`as the single source of truth for Provider Setup tab render order and active-tab position.`src/ui/dashboard.rs::render_provider_setup_modal`and`src/app/provider_setup_overlay.rs::TAB_BY_INDEX`both now consume`ALL`(the former previously carried a hand-written 4-entry tab array that drifted from the enum). Pattern recommendation: any future provider-tab enum should ship its`ALL`const +`index()` method together with the enum and renderers should consume them — not re-list variants in a separate array. No audit chain or SignalSet schema change.)
 - Status: canonical architecture reference; phase notes below describe the historical rollout and current invariants.
 
+> **narrow vNext reduction (branch `narrow-vnext`, unreleased — vNext / version TBD).**
+> A scope reduction back to the provider-neutral observe / recommend
+> core. The sections above ("Module layout", "Module responsibilities",
+> "Token-optimization architecture", "Provider-coverage matrix") have
+> been brought into line with the narrow reality. The dated **historical
+> rollout notes below** still describe features as they shipped; the
+> following subsystems were subsequently **REMOVED** and any present-tense
+> claim about them below is historical only:
+>
+> - the `m` Metrics, `n` Anomaly Events, `i` Token Insights, `a`
+>   Pending-Actions-batch, and `Q` decorative-fx overlays (the Phase-7
+>   anomaly **detection** and the `--once` digest stay; only the overlays
+>   went);
+> - the Token Insights subsystem entirely — `store/insights.rs`, the
+>   `insights` + `rec-engagement` CLI subcommands, the
+>   recommendation-engagement telemetry, and the `[fx]` config section;
+> - the Phase-4 provider-profile recommender — `rules/profiles.rs`,
+>   `domain/profile.rs`, `Recommendation.profile`, and
+>   `ui::panels::format_profile_lines` (the opt-in `profile_switch` rule
+>   stays);
+> - all provider enrichment beyond the core-signal tail parsers — the
+>   Codex app-server (F-6) reset channel, agy enrichment (footer /
+>   sidefile / transcript → agy is ObserveOnly identification only), and
+>   Gemini `/stats` + `/model` interactive enrichment (Gemini is
+>   status-table-core; `u` cycles Claude /context//usage//status//stats
+>   capture surfaces + Codex /status only).
+>
+> Settings is now 3 tabs (Thresholds / Integrations / Parameters); the
+> pane card is 4 sections (IDENTITY / NOW / PRESSURE / NEXT); the agy
+> ObserveOnly contract is 5 gates (the insights data-completeness gate 4
+> retired with the insights feature).
+
 ## One-line shape (r2 canonical)
 
 ```
@@ -46,12 +78,15 @@ src/
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # PaneSource trait; auto source prefers control-mode with polling fallback
   adapters/    # per-provider tail parsers (no identity inference)
-  policy/      # pure rules; Phase 1 = rules/alerts.rs;
-               # Phase 3 adds rules/{advisories,concurrent}.rs;
-               # Phase 4 adds rules/profiles.rs (provider-profile recommender)
+  policy/      # pure rules: alerts, advisories, concurrent, cache, reset,
+               # agent_memory, auto_memory, identity_drift, idle, cost_budget,
+               # anomaly (detection only), profile_switch (opt-in error-rate
+               # script-low-token rule). narrow vNext removed the Phase-4
+               # provider-profile recommender (rules/profiles.rs + domain/profile.rs).
   store/       # Phase 1: EventSink trait + NoopSink/InMemorySink
                # Phase 2+: sqlite, archive_fs, audit (type-level raw split), snapshots, retention
-               # Phase F/6+: token_usage_samples and cost_usage_events/cost_budget_alerts
+               # Phase F/6+: token_usage_samples and cost_usage_events/cost_budget_alerts.
+               # narrow vNext removed store/insights.rs (Token Insights subsystem).
   ui/          # ratatui widgets, alert queue, per-pane panels, theme
   notify/      # desktop / terminal bell; severity-aware rate limiting
 ```
@@ -382,17 +417,20 @@ provider-specific recommendations). Every rule attaches a
 `SourceKind` to its output. Phase 1 ships `rules/alerts.rs` only;
 the A–G canonical situations (log storm / code exploration / context
 pressure / verbose output / permission wait / quota-tight /
-repeated output) land in Phase 3. Phase 4 adds `rules/profiles.rs` —
-a provider-profile recommender that bundles ProviderOfficial CLI
-flags / settings / env vars into named `ProjectCanonical` profiles
-(e.g. `claude-default`) with per-lever citations, consumed via
-`Engine::evaluate` alongside alerts and advisories.
-v1.15.22 adds a separate opt-in security posture gate:
-`[security] posture_advisories = true` promotes permissive runtime
-facts (YOLO, bypass permissions, Full Access, `danger-full-access`,
-`no sandbox`) into passive `Severity::Concern` recommendations. The
-default is false, so runtime facts remain badge-only unless the
-operator explicitly asks for policy surfacing.
+repeated output) land in Phase 3. The opt-in `rules/profile_switch.rs`
+rule recommends a script-low-token profile _name_ on a sustained
+error-rate (no lever payload). narrow vNext removed the Phase-4
+provider-profile _recommender_ (`rules/profiles.rs` + `domain/profile.rs`
+
+- the `Recommendation.profile` payload + `ui::panels::format_profile_lines`):
+  the 3×2 (Claude/Codex/Gemini × baseline/aggressive) + review-tier grid no
+  longer exists, so the engine emits no lever-bundled profile recommendations.
+  v1.15.22 adds a separate opt-in security posture gate:
+  `[security] posture_advisories = true` promotes permissive runtime
+  facts (YOLO, bypass permissions, Full Access, `danger-full-access`,
+  `no sandbox`) into passive `Severity::Concern` recommendations. The
+  default is false, so runtime facts remain badge-only unless the
+  operator explicitly asks for policy surfacing.
 
 ### `store/`
 
@@ -417,9 +455,12 @@ Ratatui widgets. Current operator surfaces:
 2. Resizable Alerts/Panes dashboard split. Operators can drag the
    divider with the mouse or use `[` / `]`, `/` cycle, and `=` reset
    from the keyboard; the footer shows the current Alerts percentage.
-3. Per-pane list with inline expansion for the selected pane's
-   recommendations, provider-profile payload, metrics, and runtime
-   facts (`modes`, `access`, `loaded`, `restrict`).
+3. Per-pane list with inline expansion for the selected pane, grouped
+   into four sections — IDENTITY / NOW / PRESSURE / NEXT — carrying
+   path/cmd, state/signals/proposal, metrics + runtime facts (`modes`,
+   `access`, `loaded`, `restrict`), and recommendations respectively.
+   (narrow vNext collapsed the former NOW/WHERE/PRESSURE/RUNTIME/
+   RECOMMENDATIONS layout and dropped the provider-profile lever payload.)
 4. Alert command ergonomics: recommendation and cross-pane alert
    `suggested_command` values render as `run:` lines only when they are
    concrete shell commands or in-pane slash-commands; comments and
@@ -427,8 +468,12 @@ Ratatui widgets. Current operator surfaces:
    `y` copies the selected alert's command to the system clipboard and
    reports missing-command/backend-failure cases as system notices.
    `c` clears system notices.
-5. Overlays for target selection (session -> window), help/legend, and
-   Git status from the bottom-right version badge.
+5. Overlays for target selection (session -> window), help/legend,
+   `S` Settings (3 tabs: Thresholds / Integrations / Parameters),
+   `P` Provider Setup, the `p`/`d`/`y` Action Explainer confirmation
+   modal, and Git status from the bottom-right version badge. (narrow
+   vNext removed the `m` Metrics, `n` Anomaly Events, `i` Token Insights,
+   `a` Pending-Actions-batch, and `Q` decorative-fx overlays.)
 6. Source labels rendered in long form (`[Official]`, `[Qmonster]`,
    `[Heur]`, `[Estimate]`) rather than two-letter abbreviations.
 
@@ -451,29 +496,20 @@ that still needs attention.
 Provider runtime facts are produced by adapter-local parsers from
 provider status/slash output and readable provider config sources. The
 TUI key `u` sends the selected provider's read-only runtime slash
-commands with terminal submit (`C-m`, Enter-equivalent) for Codex and
-Gemini only. Claude is statusline-only: pressing `u` on a Claude pane
-forces the next poll but sends no slash command and no `Escape`. Codex
-sends `/status`; Gemini cycles `/model`, `/stats session`,
-`/stats model` only when the pane is idle/stale/limit-hit. While
-Gemini is active, Qmonster skips `/model` and cycles only
-`/stats session`, `/stats model`.
-Gemini `/stats ...` surfaces are cycled without a pre-`Escape`; Gemini
-`/model` is treated as a picker surface, so Qmonster captures the tail
-and then sends one `Escape` to close it before the next `u` cycle
-command. Gemini v0.41 model usage rows render `Resets:` rather than
-`Reset:`, and both forms are parsed. When the live status table exposes
-the current `/model` value, Qmonster filters picker reset rows to that
-model family only (`gemini-3.1-pro-preview` maps to the `Pro` row, not
-`Flash` or `Flash Lite`). Unlike one-shot informational runtime
-overlays, Gemini `/model` reset captures persist until the next `/model`
-capture or pane lifecycle reset because closing the picker removes the
-reset rows from live scrollback. `/stats tools` is not sent because no
-current Gemini parser consumes it.
-Gemini
-`thinking...` progress markers and recently changing live-prompt tails
-suppress idle classification so a genuinely working Gemini pane does not
-display as `IDLE`.
+command with terminal submit (`C-m`, Enter-equivalent) for **Codex
+only** (`/status`). Claude is statusline-only: pressing `u` on a Claude
+pane forces the next poll but sends no slash command and no `Escape`
+(the `/context` · `/usage` · `/status` · `/stats` parsers only read a
+capture surface the operator opened). narrow vNext (Slice 6c) reduced
+Gemini to **status-table-core**: its always-visible status table
+(`context` / `quota` / `memory` / `model`) carries the core signal, so
+`u` on a Gemini pane no longer dispatches any slash command and the
+`/model` + `/stats session` + `/stats model` interactive enrichment
+(cumulative tokens / Cache Reads / SID / CALLS / per-model RESET) was
+removed.
+Gemini `thinking...` progress markers and recently changing live-prompt
+tails still suppress idle classification so a genuinely working Gemini
+pane does not display as `IDLE`.
 Claude `/btw` is not used as a runtime fact source because it has no
 tool or internal-state access. Unknown or unexposed fields stay absent
 rather than inferred.
@@ -683,10 +719,12 @@ value. Color is never used alone.
 
 ## Token-optimization architecture (five layers)
 
-1. **Provider-native profile** (Phase 4 implementation). Pick the right
-   CLI flags/settings per `(provider, role, situation)` using
-   `ProviderOfficial` levers (Claude/Codex/Gemini). Profile names are
-   project-local (`ProjectCanonical`).
+1. **Provider-native profile** — _removed in narrow vNext._ The Phase-4
+   provider-profile recommender (lever-bundled `ProjectCanonical`
+   profiles per `(provider, role, situation)`) was cut. The surviving
+   sliver is the opt-in `profile_switch` rule, which recommends a
+   script-low-token profile _name_ on a sustained error-rate without
+   shipping a lever payload.
 2. **Observation** (Phase 1). Polling pane tail, provider parsers,
    repeated-output / log-storm / verbose-answer / context-pressure /
    token / cost signal extraction, plus provider runtime facts for
@@ -699,103 +737,78 @@ value. Color is never used alone.
    preview/full split on screen; runtime snapshots pre-compact →
    `<qmonster-root>/snapshots/`. Never `.mission/CURRENT_STATE.md`.
 4. **Policy + recommendation** (Phase 1 = alerts only; Phase 3 =
-   A–G situations; Phase 4 = profile recommendations). Aggressive mode
-   gated by `quota_tight` flag.
+   A–G situations + cache/reset/memory/anomaly-promotion/opt-in
+   profile_switch). Aggressive variants gated by the `quota_tight` flag.
 5. **Limited actuation** (see "Actuation policy"). Destructive code
    paths are not created until the phase that owns them is approved.
 
 ## Provider-coverage matrix (v1.49.0 baseline)
 
-The five-layer token-optimization architecture and the eight-detector
-anomaly surface are **only as useful as the provider signals that feed
-them**. The matrix below is the canonical reference for which signals
-exist on which provider and which surfaces consume them. Operators
-reading the dashboard should consult this table when a metric appears
-empty: an empty value can mean _not collected this tick_ (Claude /
-Codex), _no upstream surface today_ (Gemini), or _gated behind a
-sidefile/app-server channel that hasn't been wired_ (Codex
-`resets_at_unix_seconds` for the weekly window).
+The provider signals below feed the alert/advisory rules and the
+anomaly **detection** surface (detection is kept; the `m`/`n`/`i`
+overlays that visualised it were removed in narrow vNext). The matrix
+is the canonical reference for which signals exist on which provider
+and which rules consume them. Operators reading the dashboard should
+consult this table when a metric appears empty: an empty value can mean
+_not collected this tick_ (Claude / Codex) or _no upstream surface
+today_ (Gemini). (narrow vNext also removed the Codex app-server, so the
+Codex `quota_*_resets_at` reset timestamps no longer have a source.)
 
-| Signal                                                     |                       Claude                       |                             Codex                             |               Gemini               | Notes                                                             |
-| ---------------------------------------------------------- | :------------------------------------------------: | :-----------------------------------------------------------: | :--------------------------------: | ----------------------------------------------------------------- |
-| `context_pressure`                                         | ✅ sidefile JSON (preferred) + statusline fallback |                     ✅ `Context %` footer                     | ✅ `parse_gemini_context_pressure` | All three providers expose this.                                  |
-| `context_window_size`                                      |                  ✅ sidefile JSON                  |           ✅ rollout JSONL (`model_context_window`)           |           ❌ no surface            | Task D-3: displays alongside CTX% for context window awareness.   |
-| `input_tokens`                                             |                   ✅ USAGE block                   |           ✅ status line (+ rollout JSONL backstop)           |          ✅ model summary          | All three providers expose this.                                  |
-| `output_tokens`                                            |            ✅ `↓ N tokens` + Done line             |           ✅ status line (+ rollout JSONL backstop)           |          ✅ model summary          | All three providers expose this.                                  |
-| `cached_input_tokens`                                      |                   ✅ USAGE block                   | ✅ `Token usage: ... (+ N cached)` (+ rollout JSONL backstop) |           ❌ no surface            | Required denominator for `cache_hit_ratio` derivation.            |
-| `cache_hit_ratio`                                          |                ✅ `cache N%` direct                |              ✅ derived from cached/input counts              |           ❌ no surface            | The `cache` rule (hot/cold/drift) is therefore Claude+Codex only. |
-| `cost_usd`                                                 |             ✅ pricing × token counts              |  ✅ pricing × token counts (when both input+output present)   |          ❌ no token rate          | `Estimated` (project pricing table).                              |
-| `quota_5h_pressure`                                        |         ✅ sidefile JSON (used_percentage)         |                     ✅ statusline `5h N%`                     |           ❌ no surface            | Codex statusline takes priority over app-server snapshot.         |
-| `quota_weekly_pressure`                                    |         ✅ sidefile JSON (used_percentage)         |                   ✅ statusline `weekly N%`                   |           ❌ no surface            | Same precedence rule as the 5h window.                            |
-| `quota_*_resets_at`                                        |                  ✅ sidefile JSON                  | ⚠️ app-server only (statusline carries % but not reset time)  |           ❌ no surface            | Phase F-6 broadcast wires the app-server values into Codex panes. |
-| `process_memory_mb` (RSS)                                  |            ✅ `/proc/<pid>/status` walk            |                            ✅ same                            |              ✅ same               | OS-level signal, provider-agnostic.                               |
-| `agent_memory_bytes`                                       |      ✅ `~/.claude/f<pane>/agent-*.yaml` scan      |                   ❌ no equivalent surface                    |      ❌ no equivalent surface      | Claude-only by file-path convention.                              |
-| `idle_state` (PermissionWait / InputWait / Working / Idle) |                   ✅ classifier                    |  ✅ classifier (Codex-specific cursor + 5h-limit detection)   |           ✅ classifier            | Common-tier markers populate the obvious cases first.             |
-| `error_hint` / `verbose_answer` / `log_storm`              |                  ✅ tail patterns                  |                       ✅ tail patterns                        |          ✅ tail patterns          | All `Heuristic`.                                                  |
-| `active_files` (tool-call markers)                         |            ✅ Claude tool-call markers             |                  ❌ no marker contract today                  |    ❌ no marker contract today     | Fuels F-8 `ConcurrentFileEdit` + Phase 7 `CrossPaneEditCluster`.  |
+| Signal                                                     |                       Claude                       |                             Codex                             |               Gemini               | Notes                                                                                       |
+| ---------------------------------------------------------- | :------------------------------------------------: | :-----------------------------------------------------------: | :--------------------------------: | ------------------------------------------------------------------------------------------- |
+| `context_pressure`                                         | ✅ sidefile JSON (preferred) + statusline fallback |                     ✅ `Context %` footer                     | ✅ `parse_gemini_context_pressure` | All three providers expose this.                                                            |
+| `context_window_size`                                      |                  ✅ sidefile JSON                  |           ✅ rollout JSONL (`model_context_window`)           |           ❌ no surface            | Task D-3: displays alongside CTX% for context window awareness.                             |
+| `input_tokens`                                             |                   ✅ USAGE block                   |           ✅ status line (+ rollout JSONL backstop)           |          ✅ model summary          | All three providers expose this.                                                            |
+| `output_tokens`                                            |            ✅ `↓ N tokens` + Done line             |           ✅ status line (+ rollout JSONL backstop)           |          ✅ model summary          | All three providers expose this.                                                            |
+| `cached_input_tokens`                                      |                   ✅ USAGE block                   | ✅ `Token usage: ... (+ N cached)` (+ rollout JSONL backstop) |           ❌ no surface            | Required denominator for `cache_hit_ratio` derivation.                                      |
+| `cache_hit_ratio`                                          |                ✅ `cache N%` direct                |              ✅ derived from cached/input counts              |           ❌ no surface            | The `cache` rule (hot/cold/drift) is therefore Claude+Codex only.                           |
+| `cost_usd`                                                 |             ✅ pricing × token counts              |  ✅ pricing × token counts (when both input+output present)   |          ❌ no token rate          | `Estimated` (project pricing table).                                                        |
+| `quota_5h_pressure`                                        |         ✅ sidefile JSON (used_percentage)         |                     ✅ statusline `5h N%`                     |           ❌ no surface            | Codex statusline takes priority over app-server snapshot.                                   |
+| `quota_weekly_pressure`                                    |         ✅ sidefile JSON (used_percentage)         |                   ✅ statusline `weekly N%`                   |           ❌ no surface            | Same precedence rule as the 5h window.                                                      |
+| `quota_*_resets_at`                                        |                  ✅ sidefile JSON                  |    ❌ no surface (statusline carries % but not reset time)    |           ❌ no surface            | narrow vNext removed the Codex app-server; only the Claude sidefile emits reset timestamps. |
+| `process_memory_mb` (RSS)                                  |            ✅ `/proc/<pid>/status` walk            |                            ✅ same                            |              ✅ same               | OS-level signal, provider-agnostic.                                                         |
+| `agent_memory_bytes`                                       |      ✅ `~/.claude/f<pane>/agent-*.yaml` scan      |                   ❌ no equivalent surface                    |      ❌ no equivalent surface      | Claude-only by file-path convention.                                                        |
+| `idle_state` (PermissionWait / InputWait / Working / Idle) |                   ✅ classifier                    |  ✅ classifier (Codex-specific cursor + 5h-limit detection)   |           ✅ classifier            | Common-tier markers populate the obvious cases first.                                       |
+| `error_hint` / `verbose_answer` / `log_storm`              |                  ✅ tail patterns                  |                       ✅ tail patterns                        |          ✅ tail patterns          | All `Heuristic`.                                                                            |
+| `active_files` (tool-call markers)                         |            ✅ Claude tool-call markers             |                  ❌ no marker contract today                  |    ❌ no marker contract today     | Fuels F-8 `ConcurrentFileEdit` + Phase 7 `CrossPaneEditCluster`.                            |
 
 Since Slice A (2026-06), Claude `context_pressure` / `quota_*_pressure` prefer the sidefile's structured `used_percentage` over the scraped statusline; `permission_mode` remains scrape-only (absent from the sidefile).
 
-Since Slice B (2026-06), Codex token counts + model fall back to the `codex-tui` rollout JSONL (`~/.codex/sessions/.../rollout-*.jsonl`, fill-when-absent) when the status-line scrape is unavailable; `codex_exec` rollouts are excluded by the `originator` gate. For `context_window_size` specifically: the Codex status-line scrape's `N window` token is the PRIMARY source; the rollout JSONL `model_context_window` is the fill-when-absent backstop. context% / rate-limits are unchanged (scrape + app-server).
+Since Slice B (2026-06), Codex token counts + model fall back to the `codex-tui` rollout JSONL (`~/.codex/sessions/.../rollout-*.jsonl`, fill-when-absent) when the status-line scrape is unavailable; `codex_exec` rollouts are excluded by the `originator` gate. For `context_window_size` specifically: the Codex status-line scrape's `N window` token is the PRIMARY source; the rollout JSONL `model_context_window` is the fill-when-absent backstop. context% is unchanged (scrape); rate-limit pressures come from the bottom status line (the app-server reset-timestamp channel was removed in narrow vNext).
 
-Antigravity (`agy`, Slice C) remains **ObserveOnly** for analytics on all six
-v2.4.0 gates:
+Antigravity (`agy`) is **ObserveOnly identification only**: narrow vNext
+(Slice 6b) removed all agy enrichment — the footer scrape + structured
+sidefile + activity transcript adapters (`agy_footer.rs` /
+`agy_sidefile.rs` / `agy_transcript.rs`) and their `agy_enrichment` /
+`agy_transcript` toggles are gone. agy is dispatched through
+`common::parse_common_signals` (the `Provider::Unknown` path), so a pane
+is recognised by its `agy:N:role` canonical title or its `agy`
+`pane_current_command` token and nothing analytic attaches to it. agy
+emits no `model_name` / `context_pressure` / `token_count` / quota.
+
+Five independent ObserveOnly gates (defense-in-depth) plus the engine
+`provider_is_observe_only` choke-point keep agy off every analytic
+surface — the insights data-completeness "gate 4" was retired together
+with the Token Insights subsystem:
 
 1. **Anomaly detectors** — no `AnomalyKind::supported_providers` slice includes
-   `Provider::Antigravity`; all eight detectors stay off for agy panes.
+   `Provider::Antigravity`; every detector stays off for agy panes.
 2. **Cost / cache chips** (`provider_honesty`) — `cache_metric_status` and
    `cost_metric_status` both return `Hidden` for Antigravity; no chip renders.
-3. **Profile-switch recommender** — `profile_targets_for_provider(Antigravity)`
+3. **Profile-switch rule** — `profile_targets_for_provider(Antigravity)`
    returns `None`; `eval_profile_switch` returns `Vec::new()` immediately.
-4. **Insights data-completeness** — the `PaneDataCompleteness` query maps provider
-   string `"Antigravity"` to status `"unsupported"` (same as `"Qmonster"` /
-   `"Unknown"`).
-5. **Token-sample filter** — `filter_token_samples_for_provider` returns `Vec::new()`
+4. **Token-sample filter** — `filter_token_samples_for_provider` returns `Vec::new()`
    for `Provider::Antigravity`; no token history accumulates.
-6. **Token sparkline / breakdown** — `token_rows_supported(Provider::Antigravity)`
-   returns `false`; the sparkline and breakdown rows never render, even when
-   `token_count` is populated by Slice C3.
+5. **Token sparkline / breakdown** — `token_rows_supported(Provider::Antigravity)`
+   returns `false`; the rows never render.
 
-**Slice C2 (v2.6.0)** surfaces a **live activity RuntimeFact** (Heuristic source,
-gated by `[provider_setup] agy_transcript` toggle, default false) by correlating
-`~/.gemini/antigravity-cli/history.jsonl` by workspace (cwd) with an ambiguity
-guard (mirrors codex_rollout's 60s window), then reading the latest transcript step
-to inform the display-fact's activity label.
-
-**Slice C3 (v2.7.0)** adds opt-in enrichment (`[provider_setup] agy_enrichment`,
-default false) via a two-path hybrid:
-
-- **Footer scrape** (primary, always pane-correct): parses `token-count N` and the
-  model name from the agy status-line footer; fills `model_name`, `context_pressure`,
-  and `token_count` when absent.
-- **Structured sidefile** (override when present):
-  `~/.local/share/ai-cli-status/agy/<conversation_id>.json` fields
-  (`model`, `context_used_percentage`, `context_window_size`, `token_count`) are
-  given priority over the footer scrape and also populate `context_window_size`.
-- Both paths use **`SourceKind::ProviderOfficial`** (`confidence 0.9`,
-  `provider Antigravity`).
-
-**Slice C4 (v2.8.0)** extends the structured sidefile to also surface **quota**:
-`quota_5h_pressure` and `quota_weekly_pressure` (plus their `*_resets_at` timestamps)
-are populated from the sidefile when present, using an active-model-aware window
-selection (`gemini-*` / `3p-*` family prefix) and pressure = `1 − remaining_fraction`
-(clamped to `[0, 1]`). `SourceKind::ProviderOfficial`; opt-in (gated by the same
-`agy_enrichment` toggle). The **C3 engine guard** (`provider_is_observe_only(Antigravity)`)
-early-returns before `eval_advisories` runs, so **quota pressure — like all other
-enrichment signals — leaks zero recommendations for agy**. The regression test
-`agy_enriched_pane_recommendations_are_empty` (engine.rs) now includes a populated
-`quota_5h_pressure: 0.95` to verify this guarantee explicitly (Slice C4 safety net).
-
-These enrichment fields are **display-only** — they appear in the pane card metrics
-chips (model badge, CTX% bar, token count, quota bars) but do NOT feed any of the
-six analytic gates above. The regression tests in `adapters::agy_observeonly_regression`
-(Task 6) verify byte-identical gate exclusion even when C3/C4 signals are populated.
-
-Session cost (`cost_usd`), plan_tier, and protobuf / gRPC introspection remain **out
-of scope** for agy; no `AuditEventKind` or SQLite schema changes.
-Command / title identification via the footer is the honest structured ceiling;
-deeper structured introspection awaits Google's documented headless/observability
-surface.
+Above the gates, `Engine::evaluate` returns early via
+`provider_is_observe_only(provider)` for agy, and the post-engine
+recommendation appends in `event_loop.rs` carry the same guard, so agy
+emits **zero recommendations / actuation** regardless of any future
+signal. Session cost, plan_tier, and protobuf / gRPC introspection
+remain **out of scope**; command / title identification is the honest
+ceiling until Google ships a documented headless/observability surface.
 
 ### Detector / rule reach implications
 
@@ -833,22 +846,15 @@ surface.
   honesty additions should follow the same pattern via
   `src/ui/provider_honesty.rs`'s `cache_metric_status` enum
   (`Value` / `Pending` / `Unsupported` / `Hidden`).
-- `m` Metrics overlay (`src/ui/metrics.rs`): row labels render as
-  em-dash (`—`) when the value is structurally absent. The em-dash is
-  the canonical "no value, by design" marker.
-- `i` Token Insights overlay (`src/ui/insights.rs`,
-  `src/insights_report.rs`): aggregations naturally exclude missing
-  panes (counts are zero, ratios undefined). Operators reading the
-  Action Ledger should cross-reference this matrix when a count looks
-  unexpectedly low — the rule may simply not apply to the panes in
-  question.
-- `n` Anomaly Events overlay: detectors that cannot fire on a given
-  provider produce no rows, which is correct. Operators should not
-  interpret an empty row count as "no anomalies"; consult this matrix
-  to confirm coverage.
+- Selected-pane card `PRESSURE` section: a structurally absent metric is
+  simply omitted (no em-dash placeholder row). (narrow vNext removed the
+  `m` Metrics, `i` Token Insights, and `n` Anomaly Events overlays that
+  formerly rendered per-pane em-dash / aggregate / event surfaces; the
+  underlying anomaly **detection** still runs, but its only consumer is
+  now the Recommendation/Notify promotion path, not a dedicated overlay.)
 
 When the matrix changes (a new adapter parsing path lands, a new
-sidefile or app-server channel wires up), update this section in the
+sidefile channel wires up), update this section in the
 same commit so the canonical reference stays truthful.
 
 ## MVP reference code — warning
