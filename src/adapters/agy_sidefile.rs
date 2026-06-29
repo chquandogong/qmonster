@@ -185,12 +185,14 @@ mod tests {
         write(
             &agy_dir(tmp.path()),
             "ok",
-            r#"{"cwd":"/repo","conversation_id":"ok","model":"Gemini 3.1 Pro (High)","context_used_percentage":37.5,"context_window_size":1048576,"token_count":34567}"#,
+            r#"{"cwd":"/repo","conversation_id":"ok","model":"Gemini 3.1 Pro (High)","context_used_percentage":37.5,"context_window_size":1048576,"token_count":34567,"quota_5h_pressure":0.0,"quota_5h_resets_at":1700000000,"quota_weekly_pressure":0.0032377,"quota_weekly_resets_at":1700600000}"#,
         );
         let s = read_agy_sidefile_for_path(tmp.path(), "/repo").expect("malformed must not block");
         assert_eq!(s.conversation_id.as_deref(), Some("ok"));
         assert_eq!(s.context_used_percentage, Some(37.5));
-        assert_eq!(s.context_window_size, Some(1048576));
-        assert_eq!(s.token_count, Some(34567));
+        assert_eq!(s.quota_5h_pressure, Some(0.0));
+        assert_eq!(s.quota_5h_resets_at, Some(1700000000));
+        assert_eq!(s.quota_weekly_pressure, Some(0.0032377));
+        assert_eq!(s.quota_weekly_resets_at, Some(1700600000));
     }
 }
