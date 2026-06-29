@@ -275,6 +275,20 @@ fn apply_claude_sidefile(
             .with_confidence(0.95),
         );
     }
+    // Slice A: fill model/effort from the sidefile only when the scrape
+    // didn't already produce them (is_none) — the statusline is the
+    // authoritative display string when present, so we avoid churning it.
+    if signals.model_name.is_none()
+        && let Some(m) = sidefile.model.as_ref()
+        && let Some(name) = m.display_name.clone().or_else(|| m.id.clone())
+    {
+        signals.model_name = Some(metric(name));
+    }
+    if signals.reasoning_effort.is_none()
+        && let Some(level) = sidefile.effort.as_ref().and_then(|e| e.level.clone())
+    {
+        signals.reasoning_effort = Some(metric(level));
+    }
 }
 
 /// Backward-compat shim — prefer `parse_for_with_environment` for
@@ -592,5 +606,40 @@ mod sidefile_integration_tests {
         assert!((signals.context_pressure.unwrap().value - 0.21).abs() < 1e-6);
         assert!((signals.quota_5h_pressure.unwrap().value - 0.09).abs() < 1e-6);
         assert!((signals.quota_weekly_pressure.unwrap().value - 0.20).abs() < 1e-6);
+    }
+
+    #[test]
+    fn sidefile_fills_model_and_effort_when_scrape_absent() {
+        let mut signals = crate::adapters::common::parse_common_signals("");
+        let sidefile: claude_sidefile::ClaudeSidefile = serde_json::from_str(
+            r#"{
+                "model": {"id": "claude-opus-4-8[1m]", "display_name": "Opus 4.8 (1M context)"},
+                "effort": {"level": "max"}
+            }"#,
+        )
+        .unwrap();
+
+        apply_claude_sidefile(&mut signals, sidefile);
+
+        assert_eq!(
+            signals.model_name.as_ref().unwrap().value,
+            "Opus 4.8 (1M context)"
+        );
+        assert_eq!(signals.reasoning_effort.as_ref().unwrap().value, "max");
+    }
+
+    #[test]
+    fn sidefile_does_not_override_scraped_model() {
+        let mut signals = crate::adapters::common::parse_common_signals("");
+        signals.model_name = Some(crate::domain::signal::MetricValue::new(
+            "scraped-model".to_string(),
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        let sidefile: claude_sidefile::ClaudeSidefile =
+            serde_json::from_str(r#"{"model":{"id":"x","display_name":"Y"}}"#).unwrap();
+
+        apply_claude_sidefile(&mut signals, sidefile);
+
+        assert_eq!(signals.model_name.as_ref().unwrap().value, "scraped-model");
     }
 }
