@@ -826,6 +826,42 @@ fn data_completeness_for(
     })
 }
 
+/// Returns the `PaneDataCompleteness.status` string for a given provider name
+/// string as used by the insights query.  Extracted from
+/// `collect_pane_data_completeness` so the ObserveOnly six-gate regression can
+/// call the real predicate without touching production behaviour.
+///
+/// Providers in the exclusion set ("Antigravity", "Qmonster", "Unknown") return
+/// `"unsupported"`.  High-coverage panes return `"ok"`, others `"?"`.
+/// The `coverage_pct` argument is ignored when the provider is in the exclusion
+/// set, matching the original inline code exactly.
+#[cfg(not(test))]
+fn pane_completeness_status(provider: &str, coverage_pct: f64) -> &'static str {
+    if matches!(provider, "Antigravity" | "Qmonster" | "Unknown") {
+        "unsupported"
+    } else if coverage_pct >= 80.0 {
+        "ok"
+    } else {
+        "?"
+    }
+}
+
+/// Same logic as the private `fn pane_completeness_status`; promoted to
+/// `pub(crate)` under `#[cfg(test)]` so that the ObserveOnly six-gate
+/// regression in `adapters` can call
+/// `crate::store::insights::pane_completeness_status("Antigravity", …)`
+/// without changing production visibility.  Body is identical.
+#[cfg(test)]
+pub(crate) fn pane_completeness_status(provider: &str, coverage_pct: f64) -> &'static str {
+    if matches!(provider, "Antigravity" | "Qmonster" | "Unknown") {
+        "unsupported"
+    } else if coverage_pct >= 80.0 {
+        "ok"
+    } else {
+        "?"
+    }
+}
+
 fn collect_pane_data_completeness(
     conn: &Connection,
     window: InsightsWindow,
@@ -860,13 +896,7 @@ fn collect_pane_data_completeness(
             let missing_polls = expected_polls.saturating_sub(sample_count);
             let coverage_pct = ((sample_count as f64 / expected_polls as f64) * 100.0).min(100.0);
             let coverage_pct = (coverage_pct * 10.0).round() / 10.0;
-            let status = if matches!(provider.as_str(), "Antigravity" | "Qmonster" | "Unknown") {
-                "unsupported"
-            } else if coverage_pct >= 80.0 {
-                "ok"
-            } else {
-                "?"
-            };
+            let status = pane_completeness_status(&provider, coverage_pct);
             panes.insert(
                 (pane_id.clone(), provider.clone()),
                 PaneDataCompleteness {

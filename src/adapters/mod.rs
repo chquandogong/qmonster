@@ -1556,24 +1556,11 @@ mod agy_observeonly_regression {
     /// status "unsupported" in the PaneDataCompleteness query.
     #[test]
     fn agy_enrichment_gate4_insights_coverage_is_unsupported() {
-        // The insights store computes:
-        //   if matches!(provider.as_str(), "Antigravity" | "Qmonster" | "Unknown")
-        //       { "unsupported" }
-        // Assert that the canonical provider string matches that pattern.
-        let provider_str = format!("{:?}", Provider::Antigravity);
-        assert_eq!(
-            provider_str, "Antigravity",
-            "Provider::Antigravity Debug string must be 'Antigravity' (insights gate depends on it)"
-        );
-        // Duplicate the gate logic to confirm coverage.
-        let status = if matches!(
-            provider_str.as_str(),
-            "Antigravity" | "Qmonster" | "Unknown"
-        ) {
-            "unsupported"
-        } else {
-            "ok"
-        };
+        // Calls the real predicate function extracted from
+        // `collect_pane_data_completeness` in `store::insights`.  If the
+        // "Antigravity" literal were removed from the exclusion set, the real
+        // function would return "ok" or "?" and this assertion would fail.
+        let status = crate::store::insights::pane_completeness_status("Antigravity", 100.0);
         assert_eq!(
             status, "unsupported",
             "insights coverage gate must map Antigravity → 'unsupported' after C3"
@@ -1584,16 +1571,25 @@ mod agy_observeonly_regression {
     /// filter_token_samples_for_provider returns Vec::new() for it.
     #[test]
     fn agy_enrichment_gate5_token_sample_filter_excludes_antigravity() {
-        // The filter in event_loop::filter_token_samples_for_provider is:
-        //   if matches!(provider, Provider::Antigravity | Provider::Qmonster | Provider::Unknown)
-        //       { return Vec::new(); }
-        // Assert the gate expression directly.
+        // Calls the real function in `app::event_loop`.  If Provider::Antigravity
+        // were removed from the exclusion matches!, the function would return the
+        // non-empty sample vec and the assert_eq! would fail.
+        let samples = vec![crate::store::TokenSample {
+            ts_unix_ms: 1,
+            pane_id: "%0".into(),
+            provider: Provider::Antigravity,
+            input_tokens: Some(100),
+            output_tokens: Some(10),
+            cost_usd: None,
+            cached_input_tokens: None,
+        }];
+        let result = crate::app::event_loop::filter_token_samples_for_provider(
+            samples,
+            Provider::Antigravity,
+        );
         assert!(
-            matches!(
-                Provider::Antigravity,
-                Provider::Antigravity | Provider::Qmonster | Provider::Unknown
-            ),
-            "Antigravity must remain in the token-sample exclusion set after C3"
+            result.is_empty(),
+            "filter_token_samples_for_provider must return Vec::new() for Antigravity after C3"
         );
     }
 

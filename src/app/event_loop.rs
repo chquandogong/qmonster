@@ -927,7 +927,31 @@ pub fn current_unix_ms() -> i64 {
         .unwrap_or(0)
 }
 
+#[cfg(not(test))]
 fn filter_token_samples_for_provider(
+    samples: Vec<crate::store::TokenSample>,
+    provider: Provider,
+) -> Vec<crate::store::TokenSample> {
+    if matches!(
+        provider,
+        Provider::Antigravity | Provider::Qmonster | Provider::Unknown
+    ) {
+        return Vec::new();
+    }
+    samples
+        .into_iter()
+        .filter(|sample| sample.provider == provider)
+        .collect()
+}
+
+/// Same logic as the private `fn filter_token_samples_for_provider`; promoted to
+/// `pub(crate)` under `#[cfg(test)]` so that the ObserveOnly six-gate regression
+/// in `adapters` can call
+/// `crate::app::event_loop::filter_token_samples_for_provider(…)` without
+/// changing production visibility. The body is identical — this is a guard-rail
+/// assertion path only.
+#[cfg(test)]
+pub(crate) fn filter_token_samples_for_provider(
     samples: Vec<crate::store::TokenSample>,
     provider: Provider,
 ) -> Vec<crate::store::TokenSample> {
