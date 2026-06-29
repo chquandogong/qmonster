@@ -296,6 +296,18 @@ pub fn parse_for_with_environment(
             if let Some(n) = sf.token_count {
                 signals.token_count = Some(metric_u64(n));
             }
+            if let Some(p) = sf.quota_5h_pressure {
+                signals.quota_5h_pressure = Some(metric_f32((p as f32).clamp(0.0, 1.0)));
+            }
+            if let Some(ts) = sf.quota_5h_resets_at {
+                signals.quota_5h_resets_at = Some(metric_u64(ts));
+            }
+            if let Some(p) = sf.quota_weekly_pressure {
+                signals.quota_weekly_pressure = Some(metric_f32((p as f32).clamp(0.0, 1.0)));
+            }
+            if let Some(ts) = sf.quota_weekly_resets_at {
+                signals.quota_weekly_resets_at = Some(metric_u64(ts));
+            }
         }
     }
     signals
@@ -1436,6 +1448,37 @@ mod agy_enrichment_integration_tests {
         assert!(
             signals.model_name.is_none(),
             "strict agy process-confirm gates enrichment"
+        );
+    }
+
+    #[test]
+    fn agy_enrichment_fills_quota_from_sidefile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 100, "bash", &[101]);
+        write_proc(&proc_root, 101, "agy", &[]);
+        let home = tmp.path().join("home");
+        write_agy_sidefile(
+            &home,
+            "c1",
+            r#"{"cwd":"/repo","conversation_id":"c1","quota_5h_pressure":0.25,"quota_5h_resets_at":1700000000,"quota_weekly_pressure":0.5,"quota_weekly_resets_at":1700600000}"#,
+        );
+        let id = agy_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, FOOTER_TAIL, &pricing, &settings, &history);
+        c.current_path = "/repo";
+        c.pane_pid = Some(100);
+        c.agy_enrichment_enabled = true;
+        let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
+        assert_eq!(signals.quota_5h_pressure.as_ref().map(|m| m.value), Some(0.25_f32));
+        assert_eq!(signals.quota_5h_resets_at.as_ref().map(|m| m.value), Some(1700000000));
+        assert_eq!(signals.quota_weekly_pressure.as_ref().map(|m| m.value), Some(0.5_f32));
+        assert_eq!(signals.quota_weekly_resets_at.as_ref().map(|m| m.value), Some(1700600000));
+        assert_eq!(
+            signals.quota_5h_pressure.as_ref().map(|m| m.source_kind),
+            Some(crate::domain::origin::SourceKind::ProviderOfficial)
         );
     }
 }
