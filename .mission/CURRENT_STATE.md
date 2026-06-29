@@ -1,6 +1,80 @@
 # CURRENT_STATE
 
-_Last updated: 2026-06-29 (Claude, v2.8.0 — Slice C4 agy quota enrichment: agy quota windows (5h/weekly pressure + resets) via the structured sidefile, active-model-aware, ObserveOnly inherited from C3; see the v2.8.0 section directly below)._
+_Last updated: 2026-06-30 (Claude, narrow vNext — branch `narrow-vnext`, UNRELEASED/unmerged. A 10-slice "narrow" reduction on top of v2.8.0: cut ~27k LOC of overlay/profile/enrichment/insights sprawl, keep the provider-neutral observe/recommend core, redesign the pane card to 4 sections. main stays at v2.8.0 `aa584b6`. Pending human gate for version + push/release. See the narrow-vNext section directly below; v2.8.0 prose preserved beneath it.)._
+
+## narrow-vNext — "narrow" reduction (branch `narrow-vnext`, unreleased)
+
+Triggered by the 2026-06-30 go/no-go cross-validation
+(`.docs/claude/Qmonster-2026-06-30-existence-vs-builtin-clis-crosscheck.md`,
+Quetzalcoatl §5, Codex + human): in the era of built-in CLI memory/hooks/
+subagents, Qmonster's moat is **provider-neutral attribution / cross-pane
+conflict / SourceKind / audit / observe-recommend-only**, not chasing every
+provider signal. Verdict = **`narrow`** (reduce; not retire, not rewrite).
+
+**Stack decision (S-level, operator opened language/library to anything "if
+justified"):** 5 alternatives researched (Rust+ratatui keep / Go+BubbleTea /
+Python+Textual / web dashboard / headless thin-layer). 3 independent research
+legs + a targeted Codex check (**confirm-S1, 84/100**) all converged: **keep &
+reduce the existing Rust+ratatui core** — a rewrite discards the 1642-test moat
+(anti-narrow) for no measurable edge that isn't also Rust-fixable; the
+thin-layer paradigm is the right *acquisition* principle but a small persistent
+monitor is still required for the pane-aware cross-session attention queue +
+cross-pane conflict (the irreplaceable moat). `STACK_DECISION.md`.
+
+**10 TDD reduction slices** (subagent-driven, each `cargo test --all-targets` +
+fmt + clippy green; HARD GATE = core signals never regressed; commits
+`b11a728..b62f45f` on `narrow-vnext`, parent v2.8.0 `aa584b6`):
+
+| # | slice | commit | lib | LOC |
+| - | ----- | ------ | --: | --- |
+| 1 | inventory-lock golden tests (core signals value+SourceKind) | `b11a728` | 1649 | +golden |
+| 2 | remove provider-profile 3×2 grid (domain/UI/schema) | `2997238` | 1619 | −3,234 |
+| 3 | remove decorative FX overlay (+ poll cadence restore) | `fc500ed` | 1576 | −1,916 |
+| 4 | remove metrics overlay (trend was overlay-only) | `4540915` | 1505 | −3,106 |
+| 5 | remove anomaly overlay (keep detection+SQLite+Alerts-promoted) | `4b95b87` | 1457 | −1,810 |
+| 6a | remove codex app-server enrichment (Codex reset-ETA dropped) | `11b199a` | 1439 | −1,295 |
+| 6b | remove agy enrichment → ObserveOnly identification | `175aa4d` | 1408 | −647 |
+| 6c | reduce Gemini to status-table core (drop /stats+/model) | `e6272c1` | 1385 | −1,237 |
+| 7 | remove Token Insights subsystem (overlay+store+CLI+telemetry) | `236d30b` | 1325 | −9,067 |
+| 8 | remove pending-actions BATCH overlay (keep single p/d actuation) | `f581194` | 1239 | −3,766 |
+| 9 | pane card 4-section reshape IDENTITY/NOW/PRESSURE/NEXT | `1e62924` | 1239 | flat |
+| 10 | drop Settings Rules/Badges tabs + inert FxConfig | `b62f45f` | 1227 | −1,043 |
+
+Net: **lib 1642 → 1227** (removed tests were for cut features), integration
+70 → 62, src ≈ 86k → ≈ 59k LOC. The known cli_version probe flake (parallel-load
+subprocess race; not touched) re-runs green.
+
+**KEPT (verified each slice):** tmux polling + identity (IdentityConfidence/
+Conflict/descendant walk) + cross-pane conflict (`concurrent.rs`) + the core
+SignalSet (context/quota/idle/permission/active_files) + MetricValue/SourceKind
++ audit SQLite + `Engine::evaluate` + ObserveOnly choke-point + alert/advisory/
+idle/reset/cache/anomaly-DETECTION/profile-switch rules + common/process/agent
+adapters + the provider core-signal tail parsers (Claude sidefile-primary,
+Codex/Gemini tail-core — HARD GATE held) + `--once` digest + single
+confirmation-gated prompt-send actuation + the EffectRunner safety boundary.
+
+**CUT:** profiles 3×2 grid · FX/metrics/anomaly/insights/pending-batch overlays ·
+codex app-server + agy enrichment + Gemini /stats·/model enrichment · insights
+store/CLI/rec-engagement telemetry · Settings Rules/Badges tabs · inert FxConfig.
+UI: overlays 9+5 → `?` + `S`(3 tabs) [+ Git]; pane card 5→4 sections.
+
+**Open human-gate decisions (deferred per "묻지 말고 끝까지"; reversible work
+done, irreversible/identity calls surfaced):**
+1. **Version** — recommend **v3.0.0** (narrow removes features = SemVer breaking). Not bumped on-branch yet.
+2. **A1 redesign direction** — proceeded with narrow-collapse (vs a visual reskin, which would contradict narrow); confirm.
+3. **"Remove ALL actuation?"** — kept single prompt-send (brief-sanctioned auditable automation behind the safety boundary); cut only batch. Confirm or go pure observe/recommend.
+4. **hover bilingual (ko/en)+trigger modes** — deferred as optional n=1-polish cut.
+5. **push / tag / release / npm publish** — NOT done (§1.6 gate).
+
+**Remaining wrap-up (in progress):** docs/ai sync (UI_MANUAL/ARCHITECTURE/
+VALIDATION still describe cut surfaces — deferred through all slices) → mission
+ledger (this file + mission.yaml + mission-history) → version-surface prep →
+app demo. Working docs: `.docs/claude/narrow-vnext/{DASHBOARD,UX_ALTERNATIVES,
+STACK_DECISION,SPEC,CONTEXT_INVENTORY}.md` + `.mission/decisions/
+MDR-DRAFT-vNext-narrow-scope.md` + `.mission/evals/Qmonster-vNext-2026-06-30-
+narrow-redesign-codex-review.result.yaml`.
+
+---
 
 ## v2.8.0 — Slice C4: agy quota enrichment
 
