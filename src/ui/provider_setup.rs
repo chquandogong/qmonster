@@ -304,13 +304,20 @@ printf '%s' "$input" | jq -r '"\(.model.display_name // "agy")  ctx \((.context_
 cid=$(printf '%s' "$input" | jq -r '.conversation_id // .session_id // ""')
 if [ -n "$cid" ] && [ "$cid" != "null" ]; then
   dir="$HOME/.local/share/ai-cli-status/agy"; mkdir -p "$dir"
-  printf '%s' "$input" | jq '{
+  printf '%s' "$input" | jq '
+    (.model.id // .model.display_name // "" | ascii_downcase
+       | if startswith("gemini") then "gemini" else "3p" end) as $fam
+    | {
     conversation_id: (.conversation_id // .session_id),
     cwd: (.cwd // .workspace.current_dir),
     model: (.model.display_name // .model.id),
     context_used_percentage: .context_window.used_percentage,
     context_window_size: .context_window.context_window_size,
-    token_count: ((.context_window.total_input_tokens // 0) + (.context_window.total_output_tokens // 0))
+    token_count: ((.context_window.total_input_tokens // 0) + (.context_window.total_output_tokens // 0)),
+    quota_5h_pressure:      (1 - (.quota[$fam + "-5h"].remaining_fraction // 1)),
+    quota_5h_resets_at:     (.quota[$fam + "-5h"].reset_time | fromdateiso8601?),
+    quota_weekly_pressure:  (1 - (.quota[$fam + "-weekly"].remaining_fraction // 1)),
+    quota_weekly_resets_at: (.quota[$fam + "-weekly"].reset_time | fromdateiso8601?)
   }' > "$dir/$cid.json"
 fi
 "#;
@@ -1292,6 +1299,29 @@ mod tests {
             "block references conversation_id field"
         );
         assert!(text.contains("jq"), "block uses jq to parse agy stdin JSON");
+    }
+
+    #[test]
+    fn agy_snippet_carries_quota_jq() {
+        let overlay = ProviderSetupOverlay {
+            tab: ProviderSetupTab::Antigravity,
+            agy_enrichment_enabled: true,
+            ..Default::default()
+        };
+        let (_, text) = snippet_for_tab(&overlay);
+        assert!(
+            text.contains("quota_5h_pressure"),
+            "block must emit quota_5h_pressure"
+        );
+        assert!(
+            text.contains("quota_weekly_resets_at"),
+            "block must emit quota_weekly_resets_at"
+        );
+        assert!(text.contains("fromdateiso8601"), "resets parsed from ISO");
+        assert!(
+            text.contains("startswith(\"gemini\")"),
+            "active-model-aware window selection"
+        );
     }
 
     #[test]
