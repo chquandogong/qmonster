@@ -42,10 +42,14 @@ leaks a single reviewer would have shipped. **Human sign-off** (Gemini leg
 retired). Artifact:
 `.mission/evals/Qmonster-v2.7.0-2026-06-29-slice-c3-codex-review.result.yaml`.
 
-**Release state: PREPPED ON `main`** (`5fb2c87` code + `02598ea` version surfaces
-+ this ledger); tag + OIDC npm publish executing on operator sign-off (`릴리스`).
-This section is updated to PUBLISHED + verification after the Release and Package
-Mirror run.
+**Release state: v2.7.0 is PUBLISHED** (verified 2026-06-29). `main` pushed
+(`26d22a7..a9719e6`); annotated tag `v2.7.0` on `a9719e6` (admin-bypass on the
+creation ruleset) triggered `Release and Package Mirror` run `28376710917`, both
+jobs success (build assets + publish). `npm view qmonster dist-tags` → `latest =
+2.7.0`; provenance `predicateType` → `https://slsa.dev/provenance/v1` (OIDC
+Trusted Publishers, no NPM_TOKEN); GitHub Release `v2.7.0` published (not
+prerelease, 5 assets). Version surfaces (package.json / Cargo.toml / Cargo.lock /
+VERSION.md / README) + mission ledger all at 2.7.0.
 
 **Follow-ups:** (1) agy quota/tier + session-cost are on the statusLine stdin
 (spike-confirmed) but OUT of v2.7.0 scope — a later slice maps agy quota →

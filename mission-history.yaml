@@ -23191,7 +23191,7 @@ timeline:
       - b8fb3b5 # Task 6: ObserveOnly six-gate regression + docs
       - 02598ea # release: v2.7.0 version surfaces
     follow_up:
-      - "Release ritual: version surfaces (02598ea) + this ledger synced; tag v2.7.0 + push main + OIDC npm publish is the immediate next step (operator sign-off given: 릴리스). CURRENT_STATE carries the verified-published details after the run."
+      - "Release ritual DONE (2026-06-29): pushed main (26d22a7..a9719e6) + annotated tag v2.7.0 on a9719e6 (admin-bypass) triggered Release and Package Mirror run 28376710917 — both jobs success. Verified: npm latest=2.7.0, provenance predicateType=https://slsa.dev/provenance/v1 (OIDC Trusted Publishers, no NPM_TOKEN), GitHub Release v2.7.0 published (not prerelease, 5 assets)."
       - "agy quota/tier + session-cost ARE on the statusLine stdin (spike-confirmed) but OUT of v2.7.0 scope; a later slice can map agy quota -> quota_5h/weekly pressures + reset etas and surface plan_tier with NO new spike needed."
       - "Gemini 2nd-reviewer reinstatement still blocked on operator Enterprise/API tier config (MDR-DRAFT-v2.5.x-gemini-crossreview-retirement); cross-review stays Codex + human."
 
