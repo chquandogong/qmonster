@@ -59,7 +59,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         }
     }
 

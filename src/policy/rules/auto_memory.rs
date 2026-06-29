@@ -85,7 +85,6 @@ fn recommend_mdr_over_auto_memory(
             "record in `.mission/CURRENT_STATE.md` or create a new `.mission/decisions/MDR-XXX.md`; avoid provider save_memory / auto-memory for state-critical content"
                 .into(),
         ),
-        profile: None,
     })
 }
 

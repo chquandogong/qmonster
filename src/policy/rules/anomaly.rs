@@ -1012,7 +1012,6 @@ pub fn promote_anomalies_to_recommendations(
             side_effects: vec![],
             is_strong: false,
             next_step: Some(next_step),
-            profile: None,
         });
     }
     out

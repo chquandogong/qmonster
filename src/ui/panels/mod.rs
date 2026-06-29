@@ -7,7 +7,6 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::app::event_loop::PaneReport;
 use crate::domain::identity::{IdentityConfidence, Provider, Role};
-use crate::domain::recommendation::Recommendation;
 use crate::domain::signal::{IdleCause, RuntimeFact, RuntimeFactKind, SignalSet};
 use crate::ui::help_glossary::HelpTopic;
 use crate::ui::labels::{ellipsize, format_count_with_suffix, source_kind_label};
@@ -37,57 +36,6 @@ impl PaneStateFlash {
     pub fn is_active(self, now: Instant) -> bool {
         now.saturating_duration_since(self.changed_at) < STATE_FLASH_DURATION
     }
-}
-
-/// Codex v1.8.1 (Phase 4 P4-1 remediation): shared renderer for the
-/// structured `ProviderProfile` payload carried by provider-profile
-/// recommendations. Emits one line per lever, each carrying the
-/// per-lever `SourceKind` badge + key = value + citation, so the
-/// `ProjectCanonical` bundle (profile name) vs `ProviderOfficial`
-/// levers (individual rows) authority split is visible end-to-end
-/// on both the TUI pane panel and `--once` output. Caller prepends
-/// its own leading indent.
-///
-/// Gemini G-6 (v1.8.3): when the profile carries a non-empty
-/// `side_effects` list, a `side_effects (<n>):` header line and one
-/// `- <effect>` line per entry are appended so the operator sees
-/// the aggregate trade-off cost BEFORE applying the profile.
-/// `claude-default` keeps `side_effects: vec![]` so the section is
-/// omitted; `claude-script-low-token` populates it 1:1 with its
-/// lever list.
-///
-/// Returns an empty `Vec` when the rec has no profile payload.
-pub fn format_profile_lines(rec: &Recommendation) -> Vec<String> {
-    let Some(profile) = &rec.profile else {
-        return Vec::new();
-    };
-    let mut lines = Vec::with_capacity(profile.levers.len() + profile.side_effects.len() + 2);
-    lines.push(format!(
-        "profile: {} ({} levers) [{}]",
-        profile.name,
-        profile.levers.len(),
-        source_kind_label(profile.source_kind),
-    ));
-    for lever in &profile.levers {
-        lines.push(format!(
-            "[{}] {} = {} — {}",
-            source_kind_label(lever.source_kind),
-            lever.key,
-            lever.value,
-            lever.citation,
-        ));
-    }
-    // G-6: render the side_effects list immediately after the lever
-    // rows so the operator scans cost before committing to the
-    // profile. Omit the section entirely when empty (so the
-    // healthy-state `claude-default` stays visually compact).
-    if !profile.side_effects.is_empty() {
-        lines.push(format!("side_effects ({}):", profile.side_effects.len()));
-        for effect in &profile.side_effects {
-            lines.push(format!("- {effect}"));
-        }
-    }
-    lines
 }
 
 pub fn render_pane_list(
@@ -582,13 +530,6 @@ fn pane_sectioned_rows(
             children.push(PaneSectionRow::leaf(
                 reflow_already_aligned(&formatted, detail_wrap),
                 HelpTopic::PaneRecommendation,
-            ));
-        }
-        for line in format_profile_lines(rec) {
-            let formatted = expanded_detail_field(&line);
-            children.push(PaneSectionRow::leaf(
-                reflow_already_aligned(&formatted, detail_wrap),
-                HelpTopic::PaneProfile,
             ));
         }
         recommendation_rows.push(PaneSectionRow {

@@ -1018,7 +1018,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep0 = fixture_report("%1", true, vec![]);
         let rep1 = fixture_report("%2", false, vec![rec_with_cmd]);
@@ -1051,7 +1050,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = fixture_report("%1", false, vec![rec_no_cmd]);
         let items = collect_pending_items(
@@ -1078,7 +1076,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep0 = fixture_report("%1", true, vec![]);
         let rep1 = fixture_report("%2", false, vec![rec_with_cmd]);

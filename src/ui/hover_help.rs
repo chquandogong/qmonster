@@ -573,7 +573,6 @@ mod tests {
             HelpTopic::PaneTokens,
             HelpTopic::PaneRuntime,
             HelpTopic::PaneRecommendation,
-            HelpTopic::PaneProfile,
             HelpTopic::DashboardDivider,
             HelpTopic::DashboardFooter,
             HelpTopic::DashboardVersionBadge,

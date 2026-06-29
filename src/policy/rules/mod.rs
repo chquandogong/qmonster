@@ -9,7 +9,6 @@ pub mod cost_budget;
 pub mod identity_drift;
 pub mod idle;
 pub mod profile_switch;
-pub mod profiles;
 pub mod reset;
 
 pub use alerts::eval_alerts;

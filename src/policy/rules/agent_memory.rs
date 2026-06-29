@@ -70,7 +70,6 @@ fn recommend_memory_bloat_advisory(
         next_step: Some(
             "trim CLAUDE.md / AGENTS.md / GEMINI.md content into per-task .claude/skills/, ~/.codex/AGENTS.override.md, or .gemini/skills/ on-demand docs to reduce session prompt surface".into(),
         ),
-        profile: None,
     })
 }
 

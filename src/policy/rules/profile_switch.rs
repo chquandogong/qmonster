@@ -104,7 +104,6 @@ pub fn eval_profile_switch(
         side_effects: vec![],
         is_strong: false,
         next_step: Some(next_step),
-        profile: None,
     }])
 }
 

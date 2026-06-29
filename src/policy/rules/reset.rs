@@ -124,7 +124,6 @@ fn recommend_wait_for_reset(
         next_step: Some(format!(
             "stop submitting prompts until the {window_label} window resets; F-5b / F-6 surface the countdown on the pane card"
         )),
-        profile: None,
     })
 }
 
@@ -164,7 +163,6 @@ fn recommend_snapshot_before_reset(
         side_effects: vec![],
         is_strong: false,
         next_step: Some("press 's' to write a runtime snapshot to ~/.qmonster/snapshots/".into()),
-        profile: None,
     })
 }
 

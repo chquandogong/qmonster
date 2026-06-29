@@ -92,9 +92,6 @@ pub fn format_once_report_lines(reports: &[PaneReport], config: &QmonsterConfig)
                 "  {}",
                 crate::ui::alerts::format_recommendation_body(rec, &r.pane_id)
             ));
-            for line in crate::ui::panels::format_profile_lines(rec) {
-                lines.push(format!("    {line}"));
-            }
         }
     }
 
@@ -153,7 +150,6 @@ mod tests {
             side_effects: vec![],
             is_strong,
             next_step: None,
-            profile: None,
         }
     }
 

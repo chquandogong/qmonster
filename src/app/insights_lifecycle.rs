@@ -364,7 +364,6 @@ mod tests {
             side_effects: vec![],
             is_strong: true,
             next_step: None,
-            profile: None,
         };
         let effects = vec![RequestedEffect::PromptSendProposed {
             target_pane_id: "%1".into(),
@@ -421,7 +420,6 @@ mod tests {
                 side_effects: vec![],
                 is_strong: false,
                 next_step: None,
-                profile: None,
             }],
             effects: Vec::new(),
             dead: false,
@@ -472,7 +470,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let cache = Recommendation {
             action: "cache: drift detected — /compact will let cache rebuild",
@@ -483,7 +480,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         for (idx, rec) in [context.clone(), cache.clone()].into_iter().enumerate() {
             lifecycle

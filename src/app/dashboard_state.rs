@@ -676,7 +676,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let reports = vec![base_report(vec![rec])];
         let mut alert_state = ListState::default();
@@ -883,7 +882,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let reports = vec![base_report(vec![rec.clone()])];
         let now = Instant::now();

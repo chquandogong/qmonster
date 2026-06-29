@@ -126,7 +126,6 @@ fn recommend_cache_hot_compact_warning(
             "let context fill further before /compact; compact when ctx >= 80% so the cache rebuild cost is amortized"
                 .into(),
         ),
-        profile: None,
     })
 }
 
@@ -172,7 +171,6 @@ fn recommend_compact_when_cache_cold(
         next_step: Some(
             "snapshot first via 's' key to preserve handoff state, then run /compact".into(),
         ),
-        profile: None,
     })
 }
 
@@ -226,7 +224,6 @@ fn recommend_cache_drift_compact(
             "snapshot first via 's' key to preserve handoff state, then run /compact to rebuild cache on the trimmed surface"
                 .into(),
         ),
-        profile: None,
     })
 }
 

@@ -2397,7 +2397,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: next_step.map(str::to_string),
-            profile: None,
         }
     }
 
@@ -3584,7 +3583,6 @@ mod tests {
                 side_effects: vec![],
                 is_strong: false,
                 next_step: None,
-                profile: None,
             },
             Recommendation {
                 action: "log-storm",
@@ -3595,7 +3593,6 @@ mod tests {
                 side_effects: vec![],
                 is_strong: false,
                 next_step: None,
-                profile: None,
             },
         ]);
         let fresh = HashSet::new();
@@ -3622,7 +3619,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         }]);
         let fresh = HashSet::new();
         let times = HashMap::new();
@@ -3644,7 +3640,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let normal = Recommendation {
             action: "notify-input-wait",
@@ -3655,7 +3650,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![strong.clone(), normal.clone()]);
         let fresh = HashSet::from([recommendation_key("%1", &strong)]);
@@ -3686,7 +3680,6 @@ mod tests {
             side_effects: vec![],
             is_strong: true,
             next_step: Some("press 's' to snapshot + archive now".into()),
-            profile: None,
         };
         let body = format_strong_rec_body(&strong, "%1");
 
@@ -3717,7 +3710,6 @@ mod tests {
             side_effects: vec![],
             is_strong: true,
             next_step: None,
-            profile: None,
         };
         let body = format_strong_rec_body(&strong, "%1");
         assert!(
@@ -3743,7 +3735,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let body = format_recommendation_body(&rec, "%7");
         assert!(body.contains("%7"));
@@ -3761,7 +3752,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: Some("record in CURRENT_STATE first".into()),
-            profile: None,
         };
         let body = format_recommendation_body(&rec, "%2");
         let next_idx = body
@@ -3782,7 +3772,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         }]);
         let mut state = ListState::default();
         state.select(Some(0));
@@ -3811,7 +3800,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         }]);
         let mut state = ListState::default();
         state.select(Some(0));
@@ -3841,7 +3829,6 @@ mod tests {
                 side_effects: vec![],
                 is_strong: false,
                 next_step: None,
-                profile: None,
             },
             Recommendation {
                 action: "placeholder command",
@@ -3852,7 +3839,6 @@ mod tests {
                 side_effects: vec![],
                 is_strong: false,
                 next_step: None,
-                profile: None,
             },
         ]);
         let mut state = ListState::default();
@@ -3900,7 +3886,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let new = Recommendation {
             action: "z-new",
@@ -3911,7 +3896,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![old.clone(), new.clone()]);
         let times = HashMap::from([
@@ -3983,7 +3967,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let newer = Recommendation {
             action: "log-storm",
@@ -3994,7 +3977,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![older.clone(), newer.clone()]);
         let fresh = HashSet::new();
@@ -4021,7 +4003,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         }]);
         rep.cross_pane_findings.push(CrossPaneFinding {
             kind: CrossPaneKind::ConcurrentMutatingWork,
@@ -4058,7 +4039,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![rec.clone()]);
         let fresh = HashSet::new();
@@ -4084,7 +4064,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![rec.clone()]);
         let key = recommendation_key("%1", &rec);
@@ -4107,7 +4086,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![rec.clone()]);
         let key = recommendation_key("%1", &rec);
@@ -4134,7 +4112,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![rec]);
         let items = collect_items(
@@ -4161,7 +4138,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rec_b = Recommendation {
             action: "log-storm",
@@ -4172,7 +4148,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![rec_a.clone(), rec_b.clone()]);
         let pending_key = recommendation_key("%1", &rec_a);
@@ -4425,7 +4400,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![rec.clone()]);
         let key = recommendation_key("%1", &rec);
@@ -4474,7 +4448,6 @@ mod tests {
             side_effects: vec!["will drop visible transcript".into()],
             is_strong: false,
             next_step: Some("compact context".into()),
-            profile: None,
         };
         let reports = vec![base_report(vec![rec])];
         let fresh = HashSet::new();
@@ -4545,7 +4518,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![rec.clone()]);
         let key = recommendation_key("%1", &rec);
@@ -4591,7 +4563,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![rec.clone()]);
         let key = recommendation_key("%1", &rec);
@@ -4636,7 +4607,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = base_report(vec![rec.clone()]);
         let key = recommendation_key("%1", &rec);

@@ -73,7 +73,6 @@ pub fn detect_identity_drift(
                 side_effects: vec![],
                 is_strong: false,
                 next_step: None,
-                profile: None,
             },
         });
     }
@@ -97,7 +96,6 @@ pub fn detect_identity_drift(
                 side_effects: vec![],
                 is_strong: false,
                 next_step: None,
-                profile: None,
             },
         });
     }

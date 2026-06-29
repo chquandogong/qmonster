@@ -2367,7 +2367,6 @@ mod tests {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         };
         let rep = pending_actions_pane_report(false, vec![rec]);
         let reports = vec![rep];
@@ -2434,7 +2433,6 @@ mod tests {
             side_effects: vec![],
             is_strong: true,
             next_step: None,
-            profile: None,
         };
         let report = pending_actions_pane_report(false, vec![rec]);
 

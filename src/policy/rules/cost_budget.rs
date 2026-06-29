@@ -20,7 +20,6 @@ pub fn recommendation_for_budget_alert(alert: &CostBudgetAlert) -> Recommendatio
             next_step: Some(
                 "pace prompts, switch to a cheaper model, or wrap up high-cost panes".into(),
             ),
-            profile: None,
         },
         CostBudgetAlertLevel::Critical100 => Recommendation {
             action: "cost-budget: exhausted",
@@ -39,7 +38,6 @@ pub fn recommendation_for_budget_alert(alert: &CostBudgetAlert) -> Recommendatio
                 "press 's' to snapshot, then pause new prompts until the budget is reset or raised"
                     .into(),
             ),
-            profile: None,
         },
     }
 }

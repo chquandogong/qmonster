@@ -49,9 +49,6 @@ impl Engine {
         recs.extend(crate::policy::rules::advisories::eval_advisories(
             id, signals, gates,
         ));
-        recs.extend(crate::policy::rules::profiles::eval_profiles(
-            id, signals, gates,
-        ));
         recs.extend(crate::policy::rules::auto_memory::eval_auto_memory(
             id, signals, gates,
         ));
@@ -303,8 +300,8 @@ mod tests {
 
     #[test]
     fn healthy_pane_produces_no_prompt_send_proposal() {
-        // Negative baseline: a healthy pane (Severity::Good profile
-        // rec only) has no strong rec and therefore no proposal.
+        // Negative baseline: a healthy pane has no strong rec and
+        // therefore no proposal.
         let s = SignalSet::default();
         let out = Engine.evaluate(&id(IdentityConfidence::High), &s, &gates(), None, &[], &[]);
         let any_proposal = out.effects.iter().any(|e| {

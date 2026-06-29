@@ -169,7 +169,6 @@ fn pane_panel_uses_sectioned_order_and_keeps_top_six_recommendations() {
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         })
         .collect();
 
@@ -360,235 +359,6 @@ fn state_summary_line_uses_full_words_instead_of_chips() {
     assert!(summary.contains("high confidence"));
     assert!(!summary.contains("waiting for input"));
     assert!(!summary.contains("verbose output"));
-}
-
-#[test]
-fn format_profile_lines_is_empty_when_rec_carries_no_profile() {
-    use crate::domain::recommendation::{Recommendation, Severity};
-    let rec = Recommendation {
-        action: "notify-input-wait",
-        reason: "r".into(),
-        severity: Severity::Warning,
-        source_kind: SourceKind::ProjectCanonical,
-        suggested_command: None,
-        side_effects: vec![],
-        is_strong: false,
-        next_step: None,
-        profile: None,
-    };
-    assert!(
-        format_profile_lines(&rec).is_empty(),
-        "no profile -> no lever lines emitted; caller prints only the rec header"
-    );
-}
-
-#[test]
-fn format_profile_lines_exposes_lever_key_value_citation_and_source_kind_badge() {
-    // Codex v1.8.1 (P4-1 finding #1 closed): the renderer must
-    // surface every lever's key + value + citation + per-lever
-    // SourceKind so the operator can audit authority directly on
-    // the panel / --once without having to cross-reference the
-    // reason prose. This test locks the exact line shape so a
-    // regression that drops any of those four pieces fails here.
-    use crate::domain::profile::{ProfileLever, ProviderProfile};
-    use crate::domain::recommendation::{Recommendation, Severity};
-    let profile = ProviderProfile {
-        name: "claude-default",
-        levers: vec![
-            ProfileLever {
-                key: "BASH_MAX_OUTPUT_LENGTH",
-                value: "30000",
-                citation: "Claude Code docs — env vars, bash output cap",
-                source_kind: SourceKind::ProviderOfficial,
-            },
-            ProfileLever {
-                key: "includeGitInstructions",
-                value: "false",
-                citation: "Claude Code docs — settings.json",
-                source_kind: SourceKind::ProviderOfficial,
-            },
-        ],
-        side_effects: vec![],
-        source_kind: SourceKind::ProjectCanonical,
-    };
-    let rec = Recommendation {
-        action: "provider-profile: claude-default",
-        reason: "r".into(),
-        severity: Severity::Good,
-        source_kind: SourceKind::ProjectCanonical,
-        suggested_command: None,
-        side_effects: vec![],
-        is_strong: false,
-        next_step: None,
-        profile: Some(profile),
-    };
-    let lines = format_profile_lines(&rec);
-    assert_eq!(lines.len(), 3, "1 header + 2 lever lines");
-
-    // Header: profile name + lever count + ProjectCanonical badge.
-    assert!(
-        lines[0].contains("claude-default"),
-        "header names the profile: {}",
-        lines[0]
-    );
-    assert!(
-        lines[0].contains("2 levers"),
-        "header reports lever count: {}",
-        lines[0]
-    );
-    assert!(
-        lines[0].contains("[Qmonster]"),
-        "header carries ProjectCanonical label so operator sees bundle authority: {}",
-        lines[0]
-    );
-
-    // Lever line #1: ProviderOfficial badge + key + value + citation.
-    assert!(
-        lines[1].contains("[Official]"),
-        "lever carries ProviderOfficial label: {}",
-        lines[1]
-    );
-    assert!(
-        lines[1].contains("BASH_MAX_OUTPUT_LENGTH"),
-        "lever key visible: {}",
-        lines[1]
-    );
-    assert!(
-        lines[1].contains("30000"),
-        "lever value visible: {}",
-        lines[1]
-    );
-    assert!(
-        lines[1].contains("bash output cap"),
-        "lever citation visible: {}",
-        lines[1]
-    );
-
-    // Lever line #2.
-    assert!(lines[2].contains("[Official]"));
-    assert!(lines[2].contains("includeGitInstructions"));
-    assert!(lines[2].contains("false"));
-    assert!(lines[2].contains("settings.json"));
-}
-
-#[test]
-fn format_profile_lines_appends_side_effects_section_when_profile_has_side_effects() {
-    // Gemini G-6 (v1.8.3): when a profile carries non-empty
-    // side_effects, the renderer appends a `side_effects (<n>):`
-    // header followed by `- <effect>` rows so the operator sees
-    // the aggregate trade-off cost BEFORE applying. This test
-    // fails if the renderer ever drops the section or mis-orders
-    // the placement (must come AFTER all lever rows).
-    use crate::domain::profile::{ProfileLever, ProviderProfile};
-    use crate::domain::recommendation::{Recommendation, Severity};
-    let profile = ProviderProfile {
-        name: "claude-script-low-token",
-        levers: vec![ProfileLever {
-            key: "--bare",
-            value: "enabled",
-            citation: "Claude Code docs",
-            source_kind: SourceKind::ProviderOfficial,
-        }],
-        side_effects: vec![
-            "--bare suppresses verbose status output".into(),
-            "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 disables provider auto-memory".into(),
-        ],
-        source_kind: SourceKind::ProjectCanonical,
-    };
-    let rec = Recommendation {
-        action: "provider-profile: claude-script-low-token",
-        reason: "r".into(),
-        severity: Severity::Good,
-        source_kind: SourceKind::ProjectCanonical,
-        suggested_command: None,
-        side_effects: vec![],
-        is_strong: false,
-        next_step: None,
-        profile: Some(profile),
-    };
-    let lines = format_profile_lines(&rec);
-
-    // Shape: 1 header + 1 lever + 1 side_effects header + 2 entries = 5.
-    assert_eq!(
-        lines.len(),
-        5,
-        "1 header + 1 lever + 1 side-effects header + 2 entries"
-    );
-
-    // side_effects section comes AFTER all lever rows. Find the
-    // section header and verify it's past the lever row.
-    let side_effects_header_idx = lines
-        .iter()
-        .position(|l| l.starts_with("side_effects"))
-        .expect("side_effects header line must be present");
-    assert!(
-        side_effects_header_idx > 1,
-        "side_effects section must come AFTER lever rows; got index {side_effects_header_idx}"
-    );
-
-    // Header declares the count.
-    assert!(
-        lines[side_effects_header_idx].contains("(2)"),
-        "header reports count: {}",
-        lines[side_effects_header_idx]
-    );
-
-    // Every entry after the header starts with `- ` and carries
-    // the operator-visible trade-off text.
-    let entries = &lines[side_effects_header_idx + 1..];
-    assert_eq!(entries.len(), 2);
-    for entry in entries {
-        assert!(
-            entry.starts_with("- "),
-            "each side-effect entry starts with '- ': {entry}"
-        );
-    }
-    assert!(
-        entries.iter().any(|e| e.contains("verbose status output")),
-        "--bare side effect visible in rendered lines"
-    );
-    assert!(
-        entries.iter().any(|e| e.contains("auto-memory")),
-        "DISABLE_AUTO_MEMORY side effect visible in rendered lines"
-    );
-}
-
-#[test]
-fn format_profile_lines_omits_side_effects_section_when_profile_side_effects_is_empty() {
-    // claude-default has `side_effects: vec![]` by design
-    // (healthy-state baseline has no operator-visible trade-offs).
-    // The renderer must keep that profile visually compact — NO
-    // `side_effects:` header line should appear.
-    use crate::domain::profile::{ProfileLever, ProviderProfile};
-    use crate::domain::recommendation::{Recommendation, Severity};
-    let profile = ProviderProfile {
-        name: "claude-default",
-        levers: vec![ProfileLever {
-            key: "BASH_MAX_OUTPUT_LENGTH",
-            value: "30000",
-            citation: "Claude Code docs",
-            source_kind: SourceKind::ProviderOfficial,
-        }],
-        side_effects: vec![],
-        source_kind: SourceKind::ProjectCanonical,
-    };
-    let rec = Recommendation {
-        action: "x",
-        reason: "r".into(),
-        severity: Severity::Good,
-        source_kind: SourceKind::ProjectCanonical,
-        suggested_command: None,
-        side_effects: vec![],
-        is_strong: false,
-        next_step: None,
-        profile: Some(profile),
-    };
-    let lines = format_profile_lines(&rec);
-    assert!(
-        !lines.iter().any(|l| l.starts_with("side_effects")),
-        "empty side_effects → no section rendered. lines: {:?}",
-        lines
-    );
 }
 
 #[test]
@@ -1567,7 +1337,6 @@ fn selected_pane_renders_token_sparkline_before_recommendation_details() {
         side_effects: vec![],
         is_strong: false,
         next_step: None,
-        profile: None,
     }];
 
     let lines = pane_list_lines(&rep, true, false)
@@ -1862,7 +1631,6 @@ fn pane_card_severity_reason_wraps_long_text() {
         side_effects: vec![],
         is_strong: false,
         next_step: None,
-        profile: None,
     }];
     let lines = pane_list_lines_with_width(&rep, true, false, 40);
     let reason_lines: Vec<&Line> = lines
@@ -1966,7 +1734,6 @@ fn expanded_pane_uses_sectioned_single_column_order() {
         side_effects: vec![],
         is_strong: false,
         next_step: Some("snapshot before compact".into()),
-        profile: None,
     }];
 
     let lines = pane_list_lines_with_width(&rep, true, false, 120);
@@ -2027,7 +1794,6 @@ fn expanded_pane_uses_sectioned_single_column_order() {
 
 #[test]
 fn expanded_pane_help_topics_follow_sectioned_rows() {
-    use crate::domain::profile::{ProfileLever, ProviderProfile};
     use crate::domain::recommendation::{Recommendation, RequestedEffect, Severity};
     use crate::ui::help_glossary::HelpTopic;
 
@@ -2060,17 +1826,6 @@ fn expanded_pane_help_topics_follow_sectioned_rows() {
         side_effects: vec![],
         is_strong: false,
         next_step: Some("snapshot before compact".into()),
-        profile: Some(ProviderProfile {
-            name: "claude-default",
-            levers: vec![ProfileLever {
-                key: "BASH_MAX_OUTPUT_LENGTH",
-                value: "30000",
-                citation: "provider docs",
-                source_kind: SourceKind::ProviderOfficial,
-            }],
-            side_effects: vec![],
-            source_kind: SourceKind::ProjectCanonical,
-        }),
     }];
 
     let reports = vec![rep];
@@ -2109,8 +1864,6 @@ fn expanded_pane_help_topics_follow_sectioned_rows() {
             index_containing(&text, "next"),
             HelpTopic::PaneRecommendation,
         ),
-        (index_containing(&text, "profile"), HelpTopic::PaneProfile),
-        (index_containing(&text, "lever"), HelpTopic::PaneProfile),
     ];
 
     for (row, expected) in row_expectations {

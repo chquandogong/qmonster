@@ -26,7 +26,6 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         });
     }
 
@@ -45,7 +44,6 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         });
     }
 
@@ -61,7 +59,6 @@ pub fn eval_alerts(_id: &ResolvedIdentity, s: &SignalSet) -> Vec<Recommendation>
             side_effects: vec![],
             is_strong: false,
             next_step: None,
-            profile: None,
         });
     }
 

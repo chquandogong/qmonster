@@ -88,7 +88,6 @@ fn log_storm_advisory(
         side_effects: vec![],
         is_strong: false,
         next_step: None,
-        profile: None,
     })
 }
 
@@ -105,7 +104,6 @@ fn aggressive_log_storm() -> Recommendation {
         next_step: Some(
             "edit config/qmonster.toml: set [logging] sensitivity = \"minimal\"".into(),
         ),
-        profile: None,
     }
 }
 
@@ -141,7 +139,6 @@ fn code_exploration(
         side_effects: vec![],
         is_strong: false,
         next_step: None,
-        profile: None,
     })
 }
 
@@ -174,7 +171,6 @@ fn context_pressure_warning(
         side_effects: vec![],
         is_strong: true,
         next_step: Some("press 's' to snapshot first, then archive large results".into()),
-        profile: None,
     })
 }
 
@@ -188,7 +184,6 @@ fn aggressive_context_pressure_warning() -> Recommendation {
         side_effects: vec![],
         is_strong: false,
         next_step: Some("edit config/qmonster.toml: set [token] strategy = \"terse\"".into()),
-        profile: None,
     }
 }
 
@@ -219,7 +214,6 @@ fn context_pressure_critical(
         side_effects: vec![],
         is_strong: true,
         next_step: Some("press 's' to snapshot + archive now, before running /compact".into()),
-        profile: None,
     })
 }
 
@@ -233,7 +227,6 @@ fn aggressive_context_pressure_critical() -> Recommendation {
         side_effects: vec![],
         is_strong: false,
         next_step: Some("edit config/qmonster.toml: set [token] strategy = \"terse\" and [logging] sensitivity = \"minimal\"".into()),
-        profile: None,
     }
 }
 
@@ -388,7 +381,6 @@ fn quota_pressure_rec(
         side_effects: vec![],
         is_strong,
         next_step: Some(next_step),
-        profile: None,
     })
 }
 
@@ -438,7 +430,6 @@ fn cost_pressure_warning(
             "consider switching to a cheaper model, archiving long outputs, or wrapping up the session"
                 .into(),
         ),
-        profile: None,
     })
 }
 
@@ -467,7 +458,6 @@ fn cost_pressure_critical(
             "press 's' to snapshot + archive, then pause or switch model before cost climbs further"
                 .into(),
         ),
-        profile: None,
     })
 }
 
@@ -495,7 +485,6 @@ fn verbose_review(
         side_effects: vec![],
         is_strong: false,
         next_step: Some("edit config/qmonster.toml: set [review] style = \"terse\"".into()),
-        profile: None,
     })
 }
 
@@ -509,7 +498,6 @@ fn aggressive_verbose_review() -> Recommendation {
         side_effects: vec![],
         is_strong: false,
         next_step: Some("edit ~/.claude/settings.json: set attribution.commit = false".into()),
-        profile: None,
     }
 }
 
@@ -539,7 +527,6 @@ fn quota_tight_nudge(
         side_effects: vec![],
         is_strong: false,
         next_step: Some("edit config/qmonster.toml: set [token] quota_tight = true".into()),
-        profile: None,
     })
 }
 
@@ -591,7 +578,6 @@ fn security_posture_advisory(
             "review YOLO / bypass / sandbox settings; disable permissive mode unless this pane is intentionally trusted"
                 .into(),
         ),
-        profile: None,
     })
 }
 

@@ -18,7 +18,6 @@ pub enum HelpTopic {
     PaneTokens,
     PaneRuntime,
     PaneRecommendation,
-    PaneProfile,
     /// v1.58.0: Alerts/Panes split divider — drag-to-resize +
     /// HANGUL/IME indicator banner explanation.
     DashboardDivider,
@@ -77,7 +76,6 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
             "details: summary 아래의 next/run/anchor/others 또는 FLOW rail 같은 추가 정보입니다.",
             "FLOW rail은 원인 신호 -> 후속 근거 -> 선행 조치 -> 실행 명령을 순서대로 보여줍니다.",
             "included 행은 FLOW가 묶은 원본 alert 근거입니다.",
-            "profile, side_effects, lever가 있으면 설정 변경의 근거와 트레이드오프를 함께 보여줍니다.",
         ],
         HelpTopic::AlertCopy => &[
             "copy: 선택된 알림에 실행 가능한 suggested_command가 있을 때만 나타나는 힌트입니다.",
@@ -126,10 +124,6 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
         HelpTopic::PaneRecommendation => &[
             "recommendations: Qmonster가 발견한 문제, 제안, 다음 조치를 pane 카드 안에 요약합니다.",
             "Risk/Warning/Concern/Good/Safe 라벨 뒤에 이유와 detail/next/run이 붙습니다.",
-        ],
-        HelpTopic::PaneProfile => &[
-            "profile: provider 설정 프리셋 제안입니다.",
-            "lever는 바뀔 설정값, citation은 근거, side_effects는 적용 시 트레이드오프입니다.",
         ],
         HelpTopic::DashboardDivider => &[
             "Alerts/Panes 분할 바: 드래그해 두 영역의 높이 비율을 조절합니다.",
@@ -195,7 +189,6 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
             "details: extra next/run/anchor/others rows or FLOW rail rows below the summary.",
             "A FLOW rail shows cause signal -> follow-on evidence -> prerequisite action -> command.",
             "included rows list the original alerts used as evidence.",
-            "profile, side_effects, and lever rows explain config-change tradeoffs when present.",
         ],
         HelpTopic::AlertCopy => &[
             "copy: shown only when the selected alert has an executable suggested_command.",
@@ -244,10 +237,6 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
         HelpTopic::PaneRecommendation => &[
             "recommendations: issues, suggestions, and next steps found by Qmonster for this pane.",
             "Risk/Warning/Concern/Good/Safe labels are followed by reason and detail/next/run rows.",
-        ],
-        HelpTopic::PaneProfile => &[
-            "profile: provider configuration preset proposal.",
-            "levers are settings to change, citations explain why, side_effects show tradeoffs.",
         ],
         HelpTopic::DashboardDivider => &[
             "Alerts/Panes split divider: drag to resize the two panels.",
@@ -310,7 +299,6 @@ mod tests {
             HelpTopic::PaneTokens,
             HelpTopic::PaneRuntime,
             HelpTopic::PaneRecommendation,
-            HelpTopic::PaneProfile,
             HelpTopic::DashboardDivider,
             HelpTopic::DashboardFooter,
             HelpTopic::DashboardVersionBadge,
