@@ -2164,6 +2164,7 @@ output_per_1m = 10.00
         pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
+        agy_transcript_enabled: false,
     };
     let signals = parse_for(&ctx);
 
@@ -2212,6 +2213,7 @@ fn codex_status_line_end_to_end_without_pricing_populates_three_metrics() {
         pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
+        agy_transcript_enabled: false,
     };
     let signals = parse_for(&ctx);
 
@@ -2279,6 +2281,7 @@ output_per_1m = 10.00
         pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
+        agy_transcript_enabled: false,
     };
 
     let signals = parse_for(&ctx);
@@ -2349,6 +2352,7 @@ fn claude_adapter_end_to_end_reads_model_from_claude_settings() {
         pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
+        agy_transcript_enabled: false,
     };
 
     let signals = parse_for(&ctx);

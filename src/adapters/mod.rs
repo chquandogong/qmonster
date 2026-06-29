@@ -43,6 +43,10 @@ pub struct ParserContext<'a> {
     /// (`[provider_setup] codex_rollout`). When false, the rollout
     /// reader is never consulted.
     pub codex_rollout_enabled: bool,
+    /// Slice C2: operator toggle for the agy transcript activity reader
+    /// (`[provider_setup] agy_transcript`). When false, the agy transcript
+    /// reader is never consulted.
+    pub agy_transcript_enabled: bool,
 }
 
 /// Provider-specific parser. Each adapter receives a ParserContext
@@ -394,6 +398,7 @@ pub(crate) fn ctx<'a>(
         pane_pid: None,
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
+        agy_transcript_enabled: false,
     }
 }
 

@@ -463,6 +463,8 @@ pub struct ProviderSetupConfig {
     /// Codex rollout reader backstop. `true` to read and observe Codex
     /// session data when available; `false` to disable the reader.
     pub codex_rollout: bool,
+    /// agy_transcript defaults to false — the agy transcript activity reader is opt-in; reverse-engineered schema.
+    pub agy_transcript: bool,
 }
 
 impl Default for ProviderSetupConfig {
@@ -471,6 +473,7 @@ impl Default for ProviderSetupConfig {
             claude_sidefile: true,
             codex_app_server: false,
             codex_rollout: true,
+            agy_transcript: false,
         }
     }
 }
@@ -1413,6 +1416,10 @@ stillness_polls = 6
         assert!(
             absent.provider_setup.codex_rollout,
             "codex_rollout must default to true — rollout files need no operator setup"
+        );
+        assert!(
+            !absent.provider_setup.agy_transcript,
+            "agy_transcript must default to false — the agy transcript activity reader is opt-in"
         );
     }
 
