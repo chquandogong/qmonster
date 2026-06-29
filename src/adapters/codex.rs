@@ -24,6 +24,7 @@ struct CodexStatus {
     worktree_path: Option<String>,
     git_branch: Option<String>,
     reasoning_effort: Option<String>,
+    context_window_size: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -145,6 +146,11 @@ impl ProviderParser for CodexAdapter {
         set.reasoning_effort = status.reasoning_effort.map(|e| {
             MetricValue::new(e, SourceKind::ProviderOfficial)
                 .with_confidence(0.6) // stale-risk from /status box tail retention
+                .with_provider(Provider::Codex)
+        });
+        set.context_window_size = status.context_window_size.map(|n| {
+            MetricValue::new(n, SourceKind::ProviderOfficial)
+                .with_confidence(0.95)
                 .with_provider(Provider::Codex)
         });
 
@@ -280,6 +286,7 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
         let mut status_line_reasoning_effort: Option<String> = None;
         let mut worktree_path: Option<String> = None;
         let mut git_branch: Option<String> = None;
+        let mut context_window_size: Option<u64> = None;
         let mut skip_next_plain_identifier = false;
 
         for token in line.split(" · ").map(str::trim) {
@@ -353,6 +360,14 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
                 output_tokens = Some(n);
                 continue;
             }
+            // Context window size (e.g. "258K window", "1.30M window")
+            if context_window_size.is_none()
+                && let Some(num) = token.strip_suffix(" window")
+                && let Some(n) = parse_count_with_suffix(num.trim())
+            {
+                context_window_size = Some(n);
+                continue;
+            }
             // Plain identifier: either the project name (skip once) or the branch.
             if git_branch.is_none() && model.is_some() && is_plain_identifier(token) {
                 if skip_next_plain_identifier {
@@ -388,6 +403,7 @@ fn parse_codex_status_line(tail: &str) -> Option<CodexStatus> {
                 worktree_path,
                 git_branch,
                 reasoning_effort,
+                context_window_size,
             });
         }
         return None;
@@ -1487,5 +1503,69 @@ Context 100% left · ~/Qmonster · gpt-5.5 · Qmonster · main · Context 0% use
         let c = ctx(&id, tail, &pricing, &settings, &history);
         let set = CodexAdapter.parse(&c);
         assert_eq!(set.idle_state, None);
+    }
+
+    #[test]
+    fn codex_parses_context_window_size_from_status_line() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(&id, STATUS_LINE, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+
+        let window = set
+            .context_window_size
+            .as_ref()
+            .expect("context_window_size parsed");
+        // STATUS_LINE contains "258K window" which parse_count_with_suffix yields as 258_000
+        assert_eq!(window.value, 258_000);
+        assert_eq!(window.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(window.provider, Some(Provider::Codex));
+        assert_eq!(window.confidence, Some(0.95));
+    }
+
+    #[test]
+    fn codex_parses_context_window_size_with_mega_suffix() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(
+            &id,
+            STATUS_LINE_WITH_REASONING,
+            &pricing,
+            &settings,
+            &history,
+        );
+        let set = CodexAdapter.parse(&c);
+
+        let window = set
+            .context_window_size
+            .as_ref()
+            .expect("context_window_size parsed");
+        // STATUS_LINE_WITH_REASONING contains "258K window" which parse_count_with_suffix yields as 258_000
+        assert_eq!(window.value, 258_000);
+        assert_eq!(window.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(window.provider, Some(Provider::Codex));
+    }
+
+    #[test]
+    fn codex_status_line_without_window_token_leaves_context_window_size_none() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(
+            &id,
+            STATUS_LINE_AFTER_CLEAR_WITHOUT_TOTAL,
+            &pricing,
+            &settings,
+            &history,
+        );
+        let set = CodexAdapter.parse(&c);
+
+        // STATUS_LINE_AFTER_CLEAR_WITHOUT_TOTAL does not contain a window token
+        assert!(set.context_window_size.is_none());
     }
 }
