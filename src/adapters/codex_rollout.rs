@@ -8,7 +8,6 @@
 //! and returns the latest cumulative token totals + model. Read-only;
 //! best-effort enrichment used only when the status-line scrape is absent.
 
-use std::cmp::Reverse;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -53,7 +52,8 @@ pub fn read_rollout_for_path(codex_home: &Path, current_path: &str) -> Option<Co
     let sessions = codex_home.join("sessions");
     let mut candidates: Vec<(SystemTime, PathBuf)> = Vec::new();
     collect_rollouts(&sessions, &mut candidates);
-    candidates.sort_by(|a, b| b.0.cmp(&a.0)); // newest first
+    // mtime desc → newest (actively-appended) session first; cap bounds the expensive content reads.
+    candidates.sort_by(|a, b| b.0.cmp(&a.0));
     for (_, path) in candidates.into_iter().take(MAX_CANDIDATES) {
         let body = match fs::read_to_string(&path) {
             Ok(b) => b,
@@ -66,24 +66,18 @@ pub fn read_rollout_for_path(codex_home: &Path, current_path: &str) -> Option<Co
     None
 }
 
-/// Recursively collect `rollout-*.jsonl` paths with their mtime,
-/// newest-first and bounded to `MAX_CANDIDATES`. Date-partitioned dir
-/// names (`YYYY/MM/DD`) and timestamped rollout filenames both sort
-/// chronologically, so descending name order visits the most recent
-/// sessions first and lets us stop without scanning the whole tree.
+/// Recursively collect every `rollout-*.jsonl` path with its mtime.
+/// Statting is cheap; the expensive step (reading + parsing file
+/// contents) is bounded separately by `read_rollout_for_path`'s
+/// mtime-sort + `MAX_CANDIDATES` take, so selection is always by true
+/// newest-mtime (the actively-appended session), not by filename
+/// (which encodes session-START time and can be older for a
+/// long-lived pane).
 fn collect_rollouts(dir: &Path, out: &mut Vec<(SystemTime, PathBuf)>) {
-    if out.len() >= MAX_CANDIDATES {
-        return;
-    }
     let Ok(read) = fs::read_dir(dir) else {
         return;
     };
-    let mut entries: Vec<_> = read.flatten().collect();
-    entries.sort_by_key(|e| Reverse(e.file_name()));
-    for entry in entries {
-        if out.len() >= MAX_CANDIDATES {
-            return;
-        }
+    for entry in read.flatten() {
         let path = entry.path();
         let Ok(ft) = entry.file_type() else { continue };
         if ft.is_dir() {
@@ -230,29 +224,41 @@ mod tests {
     }
 
     #[test]
-    fn returns_newest_matching_rollout_when_multiple_match() {
+    fn returns_newest_by_mtime_even_when_filename_is_older() {
         let tmp = tempdir().unwrap();
         let sessions = tmp.path().join("sessions/2026/06/29");
-        // Older-named rollout (visited later under descending-name order).
-        write_rollout_with_tokens(
+        // NEWER filename, but we force it to an OLDER mtime → must LOSE.
+        let loser = write_rollout_with_tokens(
             &sessions,
-            "rollout-2026-06-29T10-00-00-old.jsonl",
+            "rollout-2026-06-29T20-00-00-newname.jsonl",
             "codex-tui",
             "/repo/qmonster",
             100,
             200,
         );
-        // Newer-named rollout — must win.
-        write_rollout_with_tokens(
+        // OLDER filename (long-lived session that started earlier),
+        // forced to the NEWER mtime → must WIN (selection is by mtime).
+        let winner = write_rollout_with_tokens(
             &sessions,
-            "rollout-2026-06-29T20-00-00-new.jsonl",
+            "rollout-2026-06-29T08-00-00-oldname.jsonl",
             "codex-tui",
             "/repo/qmonster",
             999,
             888,
         );
+        let older = std::time::SystemTime::now() - std::time::Duration::from_secs(300);
+        filetime::set_file_mtime(&loser, filetime::FileTime::from_system_time(older)).unwrap();
+        filetime::set_file_mtime(
+            &winner,
+            filetime::FileTime::from_system_time(std::time::SystemTime::now()),
+        )
+        .unwrap();
         let s = read_rollout_for_path(tmp.path(), "/repo/qmonster").expect("must match");
-        assert_eq!(s.input_tokens, Some(999));
+        assert_eq!(
+            s.input_tokens,
+            Some(999),
+            "newest-mtime wins despite older filename"
+        );
         assert_eq!(s.output_tokens, Some(888));
     }
 }

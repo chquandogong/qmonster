@@ -885,11 +885,6 @@ mod codex_rollout_integration_tests {
         let mut c = ctx(&id, "", &pricing, &settings, &history);
         c.current_path = cwd;
         c.pane_pid = Some(1);
-        c.codex_rollout_enabled = true;
-
-        // Simulate a prior scrape value, then re-run enrichment-only would override?
-        // Instead assert: pre-seeding is not possible through parse_for; so prove the
-        // guard by disabling the toggle and confirming no fill.
         c.codex_rollout_enabled = false;
         let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
         assert!(
