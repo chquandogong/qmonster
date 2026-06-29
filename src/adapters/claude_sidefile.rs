@@ -22,7 +22,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use serde::Deserialize;
 
@@ -148,9 +148,12 @@ pub fn read_sidefile_for_path(home: &Path, current_path: &str) -> Option<ClaudeS
             .unwrap_or(SystemTime::UNIX_EPOCH);
         candidates.push((mtime, path));
     }
-    // Newest first so the first cwd match wins.
+    // Newest first.
     candidates.sort_by(|a, b| b.0.cmp(&a.0));
-    for (_, path) in candidates {
+    // Collect the cwd-matching sidefiles, newest first. Only the top two are
+    // needed to decide ambiguity, so stop after the second match.
+    let mut matches: Vec<(SystemTime, ClaudeSidefile)> = Vec::new();
+    for (mtime, path) in candidates {
         let body = match fs::read_to_string(&path) {
             Ok(b) => b,
             Err(_) => continue,
@@ -160,10 +163,27 @@ pub fn read_sidefile_for_path(home: &Path, current_path: &str) -> Option<ClaudeS
             Err(_) => continue,
         };
         if sidefile.cwd.as_deref() == Some(current_path) {
-            return Some(sidefile);
+            matches.push((mtime, sidefile));
+            if matches.len() == 2 {
+                break;
+            }
         }
     }
-    None
+    let (newest_mtime, newest_sidefile) = matches.first()?;
+    // Ambiguity guard: two concurrently-active same-cwd Claude sessions can't be
+    // told apart by cwd alone — don't attribute; leave the scrape authoritative.
+    // Mirrors the Codex rollout guard (closes the same cwd-not-session-unique
+    // limitation the v2.5.0 release review flagged for the Codex path).
+    const AMBIGUITY_WINDOW: Duration = Duration::from_secs(60);
+    if let Some((second_mtime, _)) = matches.get(1)
+        && newest_mtime
+            .duration_since(*second_mtime)
+            .unwrap_or(Duration::ZERO)
+            < AMBIGUITY_WINDOW
+    {
+        return None;
+    }
+    Some(newest_sidefile.clone())
 }
 
 #[cfg(test)]
@@ -213,8 +233,9 @@ mod tests {
         let tmp = tempdir().unwrap();
         let sub = tmp.path().join(".local/share/ai-cli-status/claude");
         let older = write_sidefile(&sub, "old", r#"{"cwd":"/repo","session_id":"old"}"#);
-        // Force older mtime to clearly precede the next write.
-        let earlier = SystemTime::now() - Duration::from_secs(60);
+        // Force older mtime clearly outside the ambiguity window (> 60s) so this
+        // exercises the unambiguous newest-wins path, not the concurrent guard.
+        let earlier = SystemTime::now() - Duration::from_secs(120);
         filetime::set_file_mtime(&older, filetime::FileTime::from_system_time(earlier)).unwrap();
         write_sidefile(&sub, "new", r#"{"cwd":"/repo","session_id":"new"}"#);
         let s = read_sidefile_for_path(tmp.path(), "/repo").expect("at least one match");
@@ -222,6 +243,28 @@ mod tests {
             s.session_id.as_deref(),
             Some("new"),
             "newest-mtime sidefile must win when multiple sessions share a cwd"
+        );
+    }
+
+    #[test]
+    fn read_sidefile_returns_none_for_concurrent_same_cwd_sessions() {
+        // Two sidefiles for the same cwd touched within the ambiguity window
+        // (concurrent active Claude sessions) → cannot attribute → None,
+        // rather than guess and cross-fill session B's numbers onto session A.
+        let tmp = tempdir().unwrap();
+        let sub = tmp.path().join(".local/share/ai-cli-status/claude");
+        let a = write_sidefile(&sub, "a", r#"{"cwd":"/repo","session_id":"a"}"#);
+        let b = write_sidefile(&sub, "b", r#"{"cwd":"/repo","session_id":"b"}"#);
+        let now = SystemTime::now();
+        filetime::set_file_mtime(
+            &a,
+            filetime::FileTime::from_system_time(now - Duration::from_secs(5)),
+        )
+        .unwrap();
+        filetime::set_file_mtime(&b, filetime::FileTime::from_system_time(now)).unwrap();
+        assert!(
+            read_sidefile_for_path(tmp.path(), "/repo").is_none(),
+            "two concurrent same-cwd Claude sidefiles must not be attributed"
         );
     }
 
