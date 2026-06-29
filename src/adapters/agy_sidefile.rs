@@ -28,6 +28,14 @@ pub struct AgySidefile {
     pub context_window_size: Option<u64>,
     #[serde(default)]
     pub token_count: Option<u64>,
+    #[serde(default)]
+    pub quota_5h_pressure: Option<f64>,
+    #[serde(default)]
+    pub quota_5h_resets_at: Option<u64>,
+    #[serde(default)]
+    pub quota_weekly_pressure: Option<f64>,
+    #[serde(default)]
+    pub quota_weekly_resets_at: Option<u64>,
 }
 
 const AMBIGUITY_WINDOW: Duration = Duration::from_secs(60);
