@@ -36,11 +36,14 @@ closed by the ambiguity guard (`bb69eaf`). Gemini leg retired
 (`IneligibleTierError`); **human sign-off is the second gate**. Artifact:
 `.mission/evals/Qmonster-v2.5.0-2026-06-29-bundle-codex-review.result.yaml`.
 
-**Release state:** version surfaces bumped to **2.5.0** (package.json /
-Cargo.toml / Cargo.lock / VERSION.md / README) + mission ledger synced. The
-work is on **local `main`** (merged from the per-slice branches), **NOT pushed
-/ tagged / published** — `git push`, the `v2.5.0` tag, and `npm publish` await
-explicit operator go (the irreversible npm step is deliberately gated).
+**Release state: v2.5.0 is PUBLISHED** (verified 2026-06-29). `main` pushed
+(`f1d16e6..34a14f3`); tag `v2.5.0` push (admin-bypass on the creation ruleset)
+triggered `Release and Package Mirror` run `28352569885`, both jobs success
+(build assets 7m17s + publish 25s). `npm view qmonster dist-tags` → `latest =
+2.5.0`; `npm view qmonster@2.5.0 dist.attestations.provenance.predicateType` →
+`https://slsa.dev/provenance/v1` (OIDC-only Trusted Publishers, no NPM_TOKEN);
+GitHub Release `v2.5.0` published (not prerelease). Version surfaces (package.json
+/ Cargo.toml / Cargo.lock / VERSION.md / README) + mission ledger all at 2.5.0.
 
 **Follow-ups:** (1) the Claude sidefile reader (F-5b) has the same
 `cwd`-not-pane-unique limitation flagged for Codex rollout — apply the
