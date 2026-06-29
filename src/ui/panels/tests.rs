@@ -297,6 +297,40 @@ fn metric_row_renders_quota_pressure_when_populated() {
 }
 
 #[test]
+fn metric_row_includes_context_window_size_when_populated() {
+    // Task D-3: context window size renders alongside context pressure
+    // e.g. "context 21% [Official] of 1.00M"
+    let s = SignalSet {
+        context_pressure: Some(MetricValue::new(0.21, SourceKind::ProviderOfficial)),
+        context_window_size: Some(MetricValue::new(
+            1_000_000_u64,
+            SourceKind::ProviderOfficial,
+        )),
+        ..SignalSet::default()
+    };
+    let row = metric_row(&s, Provider::Claude);
+    assert!(row.contains("context 21%"));
+    assert!(row.contains("of 1.00M"));
+}
+
+#[test]
+fn metric_row_renders_context_without_window_size_when_absent() {
+    // Task D-3: when context_window_size is None, render exactly as before
+    // (no regression: just "context 21%", not "context 21% of ?")
+    let s = SignalSet {
+        context_pressure: Some(MetricValue::new(0.21, SourceKind::ProviderOfficial)),
+        context_window_size: None,
+        ..SignalSet::default()
+    };
+    let row = metric_row(&s, Provider::Claude);
+    assert!(row.contains("context 21%"));
+    assert!(
+        !row.contains(" of "),
+        "should not contain ' of ' when window_size is None"
+    );
+}
+
+#[test]
 fn cost_metric_severity_thresholds_match_advisory_rule_pair() {
     // v1.15.15: cost severity thresholds must stay in sync with
     // the v1.15.14 cost_pressure_warning ($5.00) and
@@ -2370,6 +2404,57 @@ fn path_row_renders_unchanged_when_worktree_role_is_none() {
     assert!(
         !path_row.contains(" · wt of "),
         "non-git cwd must NOT add a worktree suffix, got {path_row:?}"
+    );
+}
+
+#[test]
+fn pane_card_renders_context_window_size_in_metrics_row() {
+    // Task D-3: context window size renders next to CTX% in pane card
+    // when signals.context_window_size is Some.
+    let mut report = base_report();
+    report.signals = SignalSet {
+        context_pressure: Some(MetricValue::new(0.21, SourceKind::ProviderOfficial)),
+        context_window_size: Some(MetricValue::new(
+            1_000_000_u64,
+            SourceKind::ProviderOfficial,
+        )),
+        ..SignalSet::default()
+    };
+
+    let lines = pane_list_lines_with_flash(&report, false, false, Instant::now(), None, 200);
+    let rendered: String = lines.iter().map(line_text).collect::<Vec<_>>().join(" ");
+
+    assert!(
+        rendered.contains("CTX 21%"),
+        "CTX percentage must render, got {rendered:?}"
+    );
+    assert!(
+        rendered.contains("of 1.00M"),
+        "window size must render as '1.00M' abbreviation, got {rendered:?}"
+    );
+}
+
+#[test]
+fn pane_card_renders_context_without_window_size_when_absent() {
+    // Task D-3: no regression when context_window_size is None
+    // Should render just "CTX 21%", not "CTX 21% of ?" or similar.
+    let mut report = base_report();
+    report.signals = SignalSet {
+        context_pressure: Some(MetricValue::new(0.21, SourceKind::ProviderOfficial)),
+        context_window_size: None,
+        ..SignalSet::default()
+    };
+
+    let lines = pane_list_lines_with_flash(&report, false, false, Instant::now(), None, 200);
+    let rendered: String = lines.iter().map(line_text).collect::<Vec<_>>().join(" ");
+
+    assert!(
+        rendered.contains("CTX 21%"),
+        "CTX percentage must render, got {rendered:?}"
+    );
+    assert!(
+        !rendered.contains(" of "),
+        "should not contain ' of ' when window_size is None, got {rendered:?}"
     );
 }
 

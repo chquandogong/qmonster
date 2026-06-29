@@ -995,11 +995,18 @@ fn secondary_signal_chips(s: &SignalSet) -> Vec<&'static str> {
 pub fn metric_row(s: &SignalSet, provider: Provider) -> String {
     let mut parts = Vec::new();
     if let Some(m) = s.context_pressure.as_ref() {
-        parts.push(format!(
+        let mut ctx_text = format!(
             "context {:.0}% [{}]",
             m.value * 100.0,
             source_kind_label(m.source_kind)
-        ));
+        );
+        if let Some(window_size) = s.context_window_size.as_ref() {
+            ctx_text.push_str(&format!(
+                " of {}",
+                format_count_with_suffix(window_size.value)
+            ));
+        }
+        parts.push(ctx_text);
     }
     if let Some(m) = s.quota_pressure.as_ref() {
         parts.push(format!(
@@ -1374,10 +1381,17 @@ fn primary_metric_row(signals: &SignalSet, provider: Provider) -> Option<Line<'s
     let mut has_any = false;
 
     if let Some(metric) = signals.context_pressure.as_ref() {
+        let mut ctx_text = format!(" CTX {:.0}% ", metric.value * 100.0);
+        if let Some(window_size) = signals.context_window_size.as_ref() {
+            ctx_text.push_str(&format!(
+                "of {} ",
+                format_count_with_suffix(window_size.value)
+            ));
+        }
         push_badge(
             &mut spans,
             &mut has_any,
-            format!(" CTX {:.0}% ", metric.value * 100.0),
+            ctx_text,
             theme::severity_badge_style(context_metric_severity(metric.value)),
         );
     }
