@@ -26,20 +26,17 @@ pub fn parse_agy_footer(tail: &str) -> AgyFooter {
     let mut out = AgyFooter::default();
     for raw in tail.lines() {
         let line = raw.trim();
-        // model: the left-most occurrence of a known model family + "(level)".
-        if out.model.is_none()
-            && let Some(m) = extract_model(line)
-        {
+        // model: prefer the BOTTOM-most occurrence — overwrite with each later
+        // match. The agy footer renders at the very bottom of the captured tail;
+        // earlier conversation prose (e.g. "migrate to Gemini 3.1 Pro (High)")
+        // must not win over the real footer line.
+        if let Some(m) = extract_model(line) {
             out.model = Some(m);
         }
-        if out.context_used_pct.is_none()
-            && let Some(p) = extract_labeled_pct(line, "context-used")
-        {
+        if let Some(p) = extract_labeled_pct(line, "context-used") {
             out.context_used_pct = Some(p);
         }
-        if out.token_count.is_none()
-            && let Some(n) = extract_labeled_count(line, "token-count")
-        {
+        if let Some(n) = extract_labeled_count(line, "token-count") {
             out.token_count = Some(n);
         }
     }
@@ -115,5 +112,20 @@ mod tests {
     fn absent_items_are_none() {
         let f = parse_agy_footer("> just a prompt, no footer line\n");
         assert!(f.model.is_none() && f.context_used_pct.is_none() && f.token_count.is_none());
+    }
+
+    #[test]
+    fn prefers_bottom_most_model_over_prose_mention() {
+        // IMPORTANT 3: the agy footer is at the BOTTOM of the captured tail.
+        // Earlier conversation prose like "migrate to Gemini 3.1 Pro (High)"
+        // must NOT win over the real footer line at the bottom.
+        let tail = "> migrate to Gemini 3.1 Pro (High)\n\
+                    ? for shortcuts                         Gemini 3.5 Flash (High)\n";
+        let f = parse_agy_footer(tail);
+        assert_eq!(
+            f.model.as_deref(),
+            Some("Gemini 3.5 Flash (High)"),
+            "must return the bottom-most footer model, not prose mention"
+        );
     }
 }
