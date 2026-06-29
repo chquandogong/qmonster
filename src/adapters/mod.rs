@@ -1464,8 +1464,8 @@ mod agy_observeonly_regression {
         crate::domain::anomaly::AnomalyKind::SubagentSideEffect,
     ];
 
-    /// Build a C3-enriched agy SignalSet — model_name + token_count populated,
-    /// matching what Tasks 2–4 produce when `agy_enrichment` is on.
+    /// Build a C3-enriched agy SignalSet — model_name + token_count + context_pressure
+    /// populated, matching what Tasks 2–4 produce when `agy_enrichment` is on.
     fn agy_enriched_signals() -> SignalSet {
         SignalSet {
             model_name: Some(
@@ -1479,6 +1479,8 @@ mod agy_observeonly_regression {
                 MetricValue::new(34_567_u64, SourceKind::ProviderOfficial)
                     .with_provider(Provider::Antigravity),
             ),
+            // C3 enrichment: context_pressure is populated from footer/sidefile.
+            context_pressure: Some(MetricValue::new(0.95_f32, SourceKind::ProviderOfficial)),
             ..SignalSet::default()
         }
     }
