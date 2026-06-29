@@ -1,0 +1,57 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-06-29"
+  target_versions:
+    - "2.5.0-pending"
+  commit_range: "6abbca0..0e74fe2"
+  head_reviewed_short: "0e74fe2"
+  remediation_commit_short: "b81f14f"
+  evidence_mode: "Live `codex exec --sandbox read-only` (codex-cli 0.142.3, gpt-5.5, xhigh), diff supplied inline. bwrap user-namespace warning on host; no command execution needed for a text review; narrative captured to stdout."
+  local_validation:
+    cargo_fmt_check: pass
+    cargo_clippy_all_targets_d_warnings: pass
+    cargo_test_all_targets: pass
+    test_counts: "1578 lib + 70 integration"
+    note: "Validation run by Claude controller before + after remediation b81f14f."
+  verdict: approve-with-fixes
+  summary:
+    code_assessment: "Slice A keeps Claude sidefile enrichment in adapters/, updates the provider-coverage matrix in the same change, preserves the upstream Claude/non-conflict/process/cwd gate, and labels structured used_percentage overrides ProviderOfficial. Boundary holds; deliberate deviations (model/effort fill-when-absent; context_window_size deferred) accepted."
+    primary_risk: "Test-origin coverage only — new tests asserted values but not SourceKind labels (REVIEW_GUIDE §3 unlabeled-metric risk). No production defect."
+  must_fix_before_next_phase:
+    - id: CFX-SA-1
+      severity: warning
+      file: "src/adapters/mod.rs"
+      title: "sidefile-filled model_name/reasoning_effort must be explicitly ProviderOfficial."
+      proposed_change: "metric() already hardwires ProviderOfficial; add a source_kind assertion to lock it."
+      status: closed
+      closed_by: "b81f14f"
+    - id: CFX-SA-2
+      severity: warning
+      file: "src/adapters/mod.rs (sidefile_integration_tests)"
+      title: "New tests assert values but not origin labels."
+      proposed_change: "Add source_kind == ProviderOfficial assertions on overridden pressures + filled model/effort."
+      status: closed
+      closed_by: "b81f14f"
+  observations:
+    - id: OBS-SA-1
+      severity: good
+      description: "Override precedence mirrors the pre-existing cache_hit_ratio override; clamp to [0,1] restores parity with the range-defensive scraped path."
+    - id: OBS-SA-2
+      severity: good
+      description: "Provider-coverage matrix updated in the same change (REVIEW_GUIDE §6 honored); permission_mode documented as scrape-only."
+  provider_abstraction_status:
+    - id: PA-SA-1
+      severity: safe
+      description: "Boundary holds — sidefile schema stays in claude_sidefile.rs, enrichment centralized in apply_claude_sidefile(), no cross-provider leak, upstream gate unchanged."
+  official_vs_heuristic_status:
+    - id: OH-SA-1
+      severity: safe
+      description: "All sidefile-derived values ProviderOfficial; now test-locked. No heuristic labels introduced."
+  todos_for_claude:
+    - id: TC-SA-1
+      description: "Origin assertions added (closes CFX-SA-1/2)."
+      status: done
+    - id: TC-SA-2
+      description: "context_window_size documented as intentionally deferred."
+      status: done

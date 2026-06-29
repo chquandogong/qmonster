@@ -1,0 +1,37 @@
+review:
+  project: Qmonster
+  reviewer: gemini
+  date: "2026-06-29"
+  target_versions:
+    - "2.5.0-pending"
+  commit_range: "6abbca0..0e74fe2"
+  head_reviewed_short: "0e74fe2"
+  evidence_mode: "Attempted live `gemini -p` (gemini-cli 0.43.0-preview.1). FAILED to start."
+  verdict: not_run
+  blocked_reason: |
+    IneligibleTierError: "This client is no longer supported for Gemini Code
+    Assist for individuals. To continue using Gemini, please migrate to the
+    Antigravity suite of products: https://antigravity.google"
+    This is the 2026-06-18 individual-tier Gemini CLI sunset that Qmonster
+    v2.4.0 was built around. The `gemini` CLI binary is still installed but
+    its individual-tier auth is now rejected at _doSetupUser. `agy` (the
+    Antigravity replacement) is an interactive coding agent, not a diff-review
+    tool, so it cannot substitute for the Gemini r1 cross-check leg.
+  local_validation:
+    note: "Not run — reviewer could not authenticate."
+  impact:
+    - id: GEM-DEAD-1
+      severity: warning
+      description: |
+        The project's documented two-reviewer cross-check contract (Codex
+        structural + Gemini research/policy/safety; WORKFLOWS.md §2, REVIEW_GUIDE
+        §1) now has a non-functional Gemini leg for individual-tier accounts.
+        Slice A carries Codex-only automated cross-review. Operator decision
+        needed for the go-forward review contract: (a) Gemini via Enterprise/
+        Cloud license or the Gemini API key path, (b) substitute a second
+        independent reviewer (e.g. a second high-capability model pass), or
+        (c) amend WORKFLOWS/REVIEW_GUIDE to Codex + human sign-off. This affects
+        ALL future releases, not just Slice A.
+  todos_for_claude:
+    - id: GEM-TC-1
+      description: "Surface the dead-Gemini-leg decision to the operator; do NOT silently drop the documented Gemini review step without a WORKFLOWS/REVIEW_GUIDE amendment + mission-history entry."
