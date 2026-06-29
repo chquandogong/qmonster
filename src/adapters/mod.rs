@@ -1,5 +1,6 @@
 pub mod agent_memory;
 pub mod agy_footer;
+pub mod agy_sidefile;
 pub mod agy_transcript;
 pub mod claude;
 pub mod claude_sidefile;
