@@ -317,6 +317,7 @@ mod tests {
             history: &history,
             pane_pid: None,
             current_path: &project_str,
+            codex_rollout_enabled: false,
         };
 
         let signals = parse_for_with_environment(&ctx, Path::new("/proc"), Some(&home));
@@ -367,6 +368,7 @@ mod tests {
             history: &history,
             pane_pid: None,
             current_path: "",
+            codex_rollout_enabled: false,
         };
 
         let signals = parse_for_with_environment(&ctx, Path::new("/proc"), Some(&home));

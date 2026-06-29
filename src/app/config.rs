@@ -446,6 +446,11 @@ impl Default for AnomalyConfig {
 /// `codex_app_server` defaults to `false` — running `codex
 /// app-server` is an advanced background daemon and not all
 /// operators want it; the toggle stays opt-in.
+///
+/// `codex_rollout` defaults to `true` — Codex writes rollout JSONL
+/// automatically (no operator setup); the reader is a fill-when-absent,
+/// codex-tui-gated backstop. Set `codex_rollout = false` to disable
+/// reading `~/.codex/sessions`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProviderSetupConfig {
@@ -455,6 +460,9 @@ pub struct ProviderSetupConfig {
     /// Qmonster-managed Codex App Server polling. `false` because the
     /// App Server is an advanced opt-in.
     pub codex_app_server: bool,
+    /// Codex rollout reader backstop. `true` to read and observe Codex
+    /// session data when available; `false` to disable the reader.
+    pub codex_rollout: bool,
 }
 
 impl Default for ProviderSetupConfig {
@@ -462,6 +470,7 @@ impl Default for ProviderSetupConfig {
         Self {
             claude_sidefile: true,
             codex_app_server: false,
+            codex_rollout: true,
         }
     }
 }
@@ -1400,6 +1409,10 @@ stillness_polls = 6
         assert!(
             !absent.provider_setup.codex_app_server,
             "codex_app_server must default to false (advanced opt-in)"
+        );
+        assert!(
+            absent.provider_setup.codex_rollout,
+            "codex_rollout must default to true — rollout files need no operator setup"
         );
     }
 

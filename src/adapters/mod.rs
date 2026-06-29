@@ -38,6 +38,10 @@ pub struct ParserContext<'a> {
     /// `SignalSet.agent_memory_bytes` via
     /// `agent_memory::read_agent_memory_bytes_with_filesystem`.
     pub current_path: &'a str,
+    /// Slice B: operator toggle for the Codex rollout backstop
+    /// (`[provider_setup] codex_rollout`). When false, the rollout
+    /// reader is never consulted.
+    pub codex_rollout_enabled: bool,
 }
 
 /// Provider-specific parser. Each adapter receives a ParserContext
@@ -322,6 +326,7 @@ pub(crate) fn ctx<'a>(
         history,
         pane_pid: None,
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
+        codex_rollout_enabled: false,
     }
 }
 

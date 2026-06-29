@@ -453,6 +453,7 @@ mod tests {
             history: &history,
             pane_pid: Some(42),
             current_path: "", // F-2: test fixture; production wires from snapshot.current_path
+            codex_rollout_enabled: false,
         };
         assert_eq!(ctx.pane_pid, Some(42));
     }
@@ -498,6 +499,7 @@ mod tests {
             history: &history,
             pane_pid: Some(1),
             current_path: "", // F-2: test fixture; production wires from snapshot.current_path
+            codex_rollout_enabled: false,
         };
 
         let signals = parse_for_with_proc_root(&ctx, root);
@@ -547,6 +549,7 @@ mod tests {
             history: &history,
             pane_pid: Some(99),
             current_path: "", // F-2: test fixture; production wires from snapshot.current_path
+            codex_rollout_enabled: false,
         };
         let signals = parse_for_with_proc_root(&ctx, root);
 
