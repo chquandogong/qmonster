@@ -82,7 +82,6 @@ where
     let mut settings_overlay = crate::ui::settings::SettingsOverlay::new();
     let mut provider_setup_overlay =
         crate::ui::provider_setup::ProviderSetupOverlay::from_config(&ctx.config);
-    let mut metrics_overlay = crate::ui::metrics::MetricsOverlay::new();
     let mut anomaly_overlay = crate::ui::anomaly_overlay::AnomalyOverlay::new();
     let mut insights_overlay = crate::ui::insights::InsightsOverlay::new();
     let mut action_explainer = crate::app::action_explainer::ActionExplainModal::new();
@@ -132,18 +131,6 @@ where
     let mut last_pane_idle_states: HashMap<String, Option<IdleCause>> = HashMap::new();
     let mut pane_state_flashes: HashMap<String, crate::ui::panels::PaneStateFlash> = HashMap::new();
     let mut runtime_refresh_offsets: HashMap<String, usize> = HashMap::new();
-    // v1.38 polish: per-pane MEM tracker. Updated once per poll cycle
-    // (not per render), so the metrics overlay's COST·MEM combined
-    // row can drive ▲/▼/─ trend arrows from the actual delta between
-    // successive observations rather than the placeholder dash.
-    let mut mem_observations: HashMap<String, crate::ui::metrics::MemObservation> = HashMap::new();
-    // v1.60.0: per-pane CTX/quota/cache pressure tracker. Updated
-    // once per poll cycle, parallel to the MEM tracker, so the
-    // metrics overlay's left-column bars can render ▲/▼/─ trend
-    // arrows next to the percentage and operators can see at a
-    // glance whether pressure is climbing.
-    let mut pressure_observations: HashMap<String, crate::ui::metrics::PressureObservation> =
-        HashMap::new();
 
     let result = {
         let mut run_loop = || -> anyhow::Result<()> {
@@ -174,32 +161,6 @@ where
                     }
                     if outcome.resync_dashboard {
                         dashboard.resync(now);
-                    }
-                    // v1.38 polish: refresh the per-pane MEM tracker
-                    // each poll so the metrics overlay's COST·MEM row
-                    // can render real ▲/▼/─ trend arrows derived from
-                    // last-poll deltas instead of the placeholder dash.
-                    for r in &dashboard.reports {
-                        crate::ui::metrics::update_mem_observation(
-                            &mut mem_observations,
-                            &r.pane_id,
-                            r.signals.process_memory_mb.as_ref().map(|m| m.value),
-                            r.signals.agent_memory_bytes.as_ref().map(|m| m.value),
-                        );
-                        // v1.60.0: refresh the parallel pressure
-                        // tracker so the metrics overlay can render
-                        // CTX/5H/7D/CACHE trend arrows derived from
-                        // last-poll deltas.
-                        let cache_ratio =
-                            r.signals.cache_hit_ratio.as_ref().map(|m| m.value as f32);
-                        crate::ui::metrics::update_pressure_observation(
-                            &mut pressure_observations,
-                            &r.pane_id,
-                            r.signals.context_pressure.as_ref().map(|m| m.value),
-                            r.signals.quota_5h_pressure.as_ref().map(|m| m.value),
-                            r.signals.quota_weekly_pressure.as_ref().map(|m| m.value),
-                            cache_ratio,
-                        );
                     }
                 }
 
@@ -258,12 +219,9 @@ where
                             help_modal: &help_modal,
                             settings_overlay: &settings_overlay,
                             provider_setup_overlay: &provider_setup_overlay,
-                            metrics_overlay: &metrics_overlay,
                             anomaly_overlay: &anomaly_overlay,
                             insights_overlay: &insights_overlay,
                             anomaly_events_ring: &ctx.anomaly_events_ring,
-                            mem_observations: &mem_observations,
-                            pressure_observations: &pressure_observations,
                             action_explainer: &action_explainer,
                             pending_actions: &pending_actions,
                             pending_items: &pending_items,
@@ -402,15 +360,6 @@ where
                                 }
                                 handle_provider_setup_overlay_key(
                                     &mut provider_setup_overlay,
-                                    k.code,
-                                );
-                                continue;
-                            }
-
-                            if metrics_overlay.is_open() {
-                                crate::app::metrics_overlay::handle_metrics_overlay_key(
-                                    &mut metrics_overlay,
-                                    dashboard.reports.len(),
                                     k.code,
                                 );
                                 continue;
@@ -746,13 +695,6 @@ where
                                     provider_setup_overlay.sync_from_config(&ctx.config);
                                     provider_setup_overlay.open();
                                 }
-                                KeyCode::Char('m') => {
-                                    if metrics_overlay.is_open() {
-                                        metrics_overlay.close();
-                                    } else {
-                                        metrics_overlay.open();
-                                    }
-                                }
                                 KeyCode::Char('n') => {
                                     if anomaly_overlay.is_open() {
                                         anomaly_overlay.close();
@@ -1001,7 +943,6 @@ where
                             let now = Instant::now();
                             let overlay_mouse_owner = settings_overlay.is_open()
                                 || provider_setup_overlay.is_open()
-                                || metrics_overlay.is_open()
                                 || anomaly_overlay.is_open()
                                 || insights_overlay.is_open()
                                 || pending_actions.is_open()
@@ -1029,17 +970,6 @@ where
                                 handle_provider_setup_overlay_mouse(
                                     &mut provider_setup_overlay,
                                     viewport,
-                                    m,
-                                );
-                                continue;
-                            }
-
-                            if metrics_overlay.is_open() {
-                                dashboard_split_dragging = false;
-                                crate::app::metrics_overlay::handle_metrics_overlay_mouse(
-                                    &mut metrics_overlay,
-                                    viewport,
-                                    dashboard.reports.len(),
                                     m,
                                 );
                                 continue;

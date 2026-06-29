@@ -18,7 +18,6 @@ pub mod insights_lifecycle;
 pub mod insights_load;
 pub mod insights_overlay;
 pub mod keymap;
-pub mod metrics_overlay;
 pub mod modal_state;
 pub mod once_report;
 pub mod operator_actions;

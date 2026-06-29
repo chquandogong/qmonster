@@ -357,7 +357,6 @@ fn quota_or_cost_now_summary(
         {
             text.push_str(&format!(" / cost burn ${rate:.2}/hr"));
         }
-        text.push_str(" — see m");
         return Some(NowStripSummary {
             text,
             severity: crate::domain::recommendation::Severity::Warning,
@@ -372,7 +371,7 @@ fn quota_or_cost_now_summary(
                 .map(|rate| format!("${rate:.2}/hr"))
                 .unwrap_or_else(|| "$?".to_string());
             NowStripSummary {
-                text: format!("{} cost burn {rate} — see m", report.pane_id),
+                text: format!("{} cost burn {rate}", report.pane_id),
                 severity: crate::domain::recommendation::Severity::Warning,
             }
         })
@@ -1222,7 +1221,7 @@ fn footer_chip_span(
 /// shape that pins `p accept` / `d dismiss` placement).
 #[cfg(test)]
 pub(crate) fn footer_keys_text() -> &'static str {
-    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} H hover-help \u{00b7} L help-lang \u{00b7} m metrics \u{00b7} n anomalies \u{00b7} a actions \u{00b7} i insights \u{00b7} ? help \u{00b7} q quit"
+    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} H hover-help \u{00b7} L help-lang \u{00b7} n anomalies \u{00b7} a actions \u{00b7} i insights \u{00b7} ? help \u{00b7} q quit"
 }
 
 fn footer_compact_keys_text() -> &'static str {
@@ -1309,11 +1308,11 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "Modal [x]",
-            "every overlay (Help / Settings / Provider Setup / Metrics / Anomaly Events / Pending Actions / Token Insights / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
+            "every overlay (Help / Settings / Provider Setup / Anomaly Events / Pending Actions / Token Insights / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
         ),
         (
             "Overlay chrome",
-            "scrollable overlays use title for identity and footer/hint for controls plus scroll x/y · more/END; large overlays (m/a/i/n) use [/] resize, = reset geometry, title drag move, body-wheel/↑/↓ scroll, same entry key/Esc/q/[x] close; S edit mode and short confirmation modals are exceptions",
+            "scrollable overlays use title for identity and footer/hint for controls plus scroll x/y · more/END; large overlays (a/i/n) use [/] resize, = reset geometry, title drag move, body-wheel/↑/↓ scroll, same entry key/Esc/q/[x] close; S edit mode and short confirmation modals are exceptions",
         ),
         ("Tab", "switch focus between alerts and pane list"),
         ("Up / Down", "move one item in the focused list"),
@@ -1322,7 +1321,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("Home / End", "jump to the first or last item"),
         (
             "[ and ]",
-            "shrink or grow Alerts (Panes uses remaining height); when a large overlay is open (m/a/i/n), resize that modal in 5% steps",
+            "shrink or grow Alerts (Panes uses remaining height); when a large overlay is open (a/i/n), resize that modal in 5% steps",
         ),
         (
             "/",
@@ -1330,15 +1329,11 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "=",
-            "reset the Alerts/Panes split; when a large overlay is open (m/a/i/n), also reset modal geometry to its default size + position",
+            "reset the Alerts/Panes split; when a large overlay is open (a/i/n), also reset modal geometry to its default size + position",
         ),
         (
             "t",
             "open tmux target picker (session -> window); hint shows scroll x/y · more/END for the list; press t again, click [x], or Esc to close",
-        ),
-        (
-            "m",
-            "open the Metrics overlay (per-pane card layout); ↑/↓ scroll the body; [ / ] resize the modal; = reset size + position to default; drag the title row to move the modal (left/top hard bound, right/bottom soft bound); m again, Esc, q, or [x] click to close",
         ),
         (
             "n",
@@ -2150,9 +2145,6 @@ mod tests {
         let lang_pos = text
             .find("L help-lang")
             .expect("footer must carry `L help-lang`");
-        let metrics_pos = text
-            .find("m metrics")
-            .expect("footer must carry `m metrics`");
         let anomalies_pos = text
             .find("n anomalies")
             .expect("footer must carry `n anomalies`");
@@ -2198,14 +2190,12 @@ mod tests {
             "hover help keys must follow provider setup"
         );
         assert!(
-            lang_pos < metrics_pos,
+            lang_pos < anomalies_pos,
             "hover help keys must precede the operational overlay cluster"
         );
         assert!(
-            metrics_pos < anomalies_pos
-                && anomalies_pos < actions_pos
-                && actions_pos < insights_pos,
-            "overlay cluster must stay m metrics -> n anomalies -> a actions -> i insights"
+            anomalies_pos < actions_pos && actions_pos < insights_pos,
+            "overlay cluster must stay n anomalies -> a actions -> i insights"
         );
         assert!(
             insights_pos < help_pos,
@@ -2455,7 +2445,7 @@ mod tests {
 
         let summary = now_strip_summary_for(&[report], &[], 1_700_000_000, 200.0);
 
-        assert_eq!(summary.text, "%1 QUOTA 88% — see m");
+        assert_eq!(summary.text, "%1 QUOTA 88%");
         assert_eq!(
             summary.severity,
             crate::domain::recommendation::Severity::Warning
@@ -2784,24 +2774,6 @@ mod tests {
     }
 
     #[test]
-    fn help_lists_m_metrics_overlay_key() {
-        // v1.38: the Metrics overlay key was missing from `?` Help.
-        // Lock its description so future row reorderings can't drop
-        // it again, and require the resize hint so operators learn
-        // that `[`/`]` reflow the modal too.
-        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
-        let dump = lines.join("\n");
-        assert!(
-            dump.contains("Metrics overlay"),
-            "Help should list m -> Metrics overlay; got:\n{dump}"
-        );
-        assert!(
-            dump.contains("[ / ] resize"),
-            "Help m row should mention [/] resize"
-        );
-    }
-
-    #[test]
     fn help_lists_n_anomaly_events_overlay_key() {
         let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
         let dump = lines.join("\n");
@@ -2873,12 +2845,12 @@ mod tests {
         let insights = entry_for("i");
 
         assert!(
-            overlay.contains("m/a/i/n")
+            overlay.contains("a/i/n")
                 && overlay.contains("[/] resize")
                 && overlay.contains("= reset geometry")
                 && overlay.contains("title drag move")
                 && overlay.contains("body-wheel"),
-            "Help Overlay chrome row should scope the shared contract to m/a/i/n; got: {overlay}\nfull help:\n{dump}"
+            "Help Overlay chrome row should scope the shared contract to a/i/n; got: {overlay}\nfull help:\n{dump}"
         );
         assert!(
             overlay.contains("exceptions"),

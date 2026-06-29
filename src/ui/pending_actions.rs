@@ -30,11 +30,12 @@ use crate::ui::dashboard::close_button_rect;
 use crate::ui::scroll_hint;
 use crate::ui::theme;
 
-// Modal size + position adjustability (parity with the m overlay).
-// `[`/`]` shrink/grow by SIZE_STEP percent (clamped to [SIZE_MIN, SIZE_MAX]).
-// `=` resets to defaults AND zeros offsets. Title-row drag updates offsets.
-// Mirrors `MetricsOverlay` (src/ui/metrics.rs) so the operator's mental
-// model of "modal geometry controls" is the same across overlays.
+// Modal size + position adjustability (parity with the other large
+// overlays). `[`/`]` shrink/grow by SIZE_STEP percent (clamped to
+// [SIZE_MIN, SIZE_MAX]). `=` resets to defaults AND zeros offsets.
+// Title-row drag updates offsets. Mirrors the anomaly overlay's
+// `ModalGeometry` controls so the operator's mental model of "modal
+// geometry controls" is the same across overlays.
 pub const SIZE_STEP: u16 = 5;
 pub const SIZE_MIN: u16 = 50;
 pub const SIZE_MAX: u16 = 99;

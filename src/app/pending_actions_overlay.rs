@@ -156,7 +156,7 @@ pub fn handle_pending_actions_overlay_mouse(
 
     // Title-row drag (move modal). Down(Left) on top border row outside [x]
     // starts the drag; Drag(Left) updates offset; Up(Left) (or any non-Drag)
-    // clears the anchor. Mirrors `handle_metrics_overlay_mouse`.
+    // clears the anchor. Mirrors `handle_anomaly_overlay_mouse`.
     let close = close_button_rect(rects.area);
     if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
         && event.row == rects.area.y
