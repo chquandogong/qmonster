@@ -718,7 +718,6 @@ pub fn render_provider_setup_modal(
         .map(crate::ui::provider_setup::detect_codex_state)
         .unwrap_or(crate::ui::provider_setup::CodexState {
             config_present: false,
-            app_server_running: false,
         });
     let gemini = home
         .as_deref()

@@ -443,10 +443,6 @@ impl Default for AnomalyConfig {
 /// Operators on minimal setups who do not want the sidefile written
 /// can opt out via `claude_sidefile = false`.
 ///
-/// `codex_app_server` defaults to `false` — running `codex
-/// app-server` is an advanced background daemon and not all
-/// operators want it; the toggle stays opt-in.
-///
 /// `codex_rollout` defaults to `true` — Codex writes rollout JSONL
 /// automatically (no operator setup); the reader is a fill-when-absent,
 /// codex-tui-gated backstop. Set `codex_rollout = false` to disable
@@ -457,9 +453,6 @@ pub struct ProviderSetupConfig {
     /// Claude statusline sidefile JSON export. `true` so the
     /// recommended workflow is on by default.
     pub claude_sidefile: bool,
-    /// Qmonster-managed Codex App Server polling. `false` because the
-    /// App Server is an advanced opt-in.
-    pub codex_app_server: bool,
     /// Codex rollout reader backstop. `true` to read and observe Codex
     /// session data when available; `false` to disable the reader.
     pub codex_rollout: bool,
@@ -476,7 +469,6 @@ impl Default for ProviderSetupConfig {
     fn default() -> Self {
         Self {
             claude_sidefile: true,
-            codex_app_server: false,
             codex_rollout: true,
             agy_transcript: false,
             agy_enrichment: false,
@@ -1409,15 +1401,11 @@ stillness_polls = 6
     }
 
     #[test]
-    fn provider_setup_config_defaults_to_sidefile_on_app_server_off() {
+    fn provider_setup_config_defaults_to_sidefile_on() {
         let absent: QmonsterConfig = toml::from_str("").unwrap();
         assert!(
             absent.provider_setup.claude_sidefile,
             "claude_sidefile must default to true so the recommended workflow is on out of the box"
-        );
-        assert!(
-            !absent.provider_setup.codex_app_server,
-            "codex_app_server must default to false (advanced opt-in)"
         );
         assert!(
             absent.provider_setup.codex_rollout,
@@ -1443,11 +1431,11 @@ stillness_polls = 6
         let toml = r#"
 [provider_setup]
 claude_sidefile = false
-codex_app_server = true
+codex_rollout = false
 "#;
         let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
         assert!(!cfg.provider_setup.claude_sidefile);
-        assert!(cfg.provider_setup.codex_app_server);
+        assert!(!cfg.provider_setup.codex_rollout);
     }
 
     #[test]
@@ -1457,14 +1445,14 @@ codex_app_server = true
         // toggle must not lose the other.
         let toml = r#"
 [provider_setup]
-codex_app_server = true
+codex_rollout = false
 "#;
         let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
         assert!(
             cfg.provider_setup.claude_sidefile,
             "missing claude_sidefile must keep the default-true value"
         );
-        assert!(cfg.provider_setup.codex_app_server);
+        assert!(!cfg.provider_setup.codex_rollout);
     }
 
     #[test]

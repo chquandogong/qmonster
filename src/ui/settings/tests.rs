@@ -212,11 +212,10 @@ fn integration_tab_toggles_provider_setup_values() {
     assert!(s.is_dirty());
     assert!(matches!(s.status(), SettingsStatus::Dirty));
 
+    // Claude sidefile is the only integration field now; next/previous
+    // self-cycle back to it.
     s.next_integration();
-    assert_eq!(s.selected_integration(), IntegrationField::CodexAppServer);
-    let before_server = config.provider_setup.codex_app_server;
-    s.toggle_integration(&mut config);
-    assert_ne!(config.provider_setup.codex_app_server, before_server);
+    assert_eq!(s.selected_integration(), IntegrationField::ClaudeSidefile);
 }
 
 #[test]
@@ -234,7 +233,7 @@ fn settings_integration_field_at_maps_body_rows() {
     );
     assert_eq!(
         settings_integration_field_at(rects.body, inner.x + 5, inner.y + 2),
-        Some(IntegrationField::CodexAppServer)
+        None
     );
     assert_eq!(
         settings_integration_field_at(rects.body, inner.x + 5, inner.y),
@@ -246,7 +245,6 @@ fn settings_integration_field_at_maps_body_rows() {
 fn integrations_tab_shows_provider_setup_values_and_guidance() {
     let mut config = cfg();
     config.provider_setup.claude_sidefile = false;
-    config.provider_setup.codex_app_server = true;
     let mut s = SettingsOverlay::new();
     s.open();
     s.switch_tab(SettingsTab::Integrations);
@@ -256,8 +254,6 @@ fn integrations_tab_shows_provider_setup_values_and_guidance() {
     assert!(rendered.contains("[provider_setup]"));
     assert!(rendered.contains("Claude sidefile export"));
     assert!(rendered.contains("OFF"));
-    assert!(rendered.contains("Codex app-server"));
-    assert!(rendered.contains("ON"));
     assert!(rendered.contains("Provider Setup (P) is read-only"));
     assert!(rendered.contains("press w to write TOML"));
 }
@@ -1077,7 +1073,7 @@ fn save_updates_provider_setup_values_in_existing_file() {
     use std::io::Write;
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("qmonster.toml");
-    let original = "# header\n[provider_setup]\nclaude_sidefile = true\ncodex_app_server = false\n";
+    let original = "# header\n[provider_setup]\nclaude_sidefile = true\n";
     std::fs::File::create(&path)
         .and_then(|mut f| f.write_all(original.as_bytes()))
         .expect("write seed");
@@ -1087,7 +1083,6 @@ fn save_updates_provider_setup_values_in_existing_file() {
     s.switch_tab(SettingsTab::Integrations);
     let mut config = cfg();
     config.provider_setup.claude_sidefile = false;
-    config.provider_setup.codex_app_server = true;
 
     s.save(&config, &path).expect("save ok");
 
@@ -1100,13 +1095,8 @@ fn save_updates_provider_setup_values_in_existing_file() {
         saved.contains("claude_sidefile = false"),
         "sidefile setting must be written: {saved}"
     );
-    assert!(
-        saved.contains("codex_app_server = true"),
-        "app-server setting must be written: {saved}"
-    );
     let reloaded: QmonsterConfig = toml::from_str(&saved).expect("parse");
     assert!(!reloaded.provider_setup.claude_sidefile);
-    assert!(reloaded.provider_setup.codex_app_server);
 }
 
 #[test]

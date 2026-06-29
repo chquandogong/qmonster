@@ -203,28 +203,24 @@ pub(super) const SETTINGS_TABS: [SettingsTab; 5] = [
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntegrationField {
     ClaudeSidefile,
-    CodexAppServer,
 }
 
 impl IntegrationField {
     pub const fn label(self) -> &'static str {
         match self {
             IntegrationField::ClaudeSidefile => "Claude sidefile export",
-            IntegrationField::CodexAppServer => "Codex app-server auto-spawn",
         }
     }
 
     pub(super) const fn next(self) -> Self {
         match self {
-            IntegrationField::ClaudeSidefile => IntegrationField::CodexAppServer,
-            IntegrationField::CodexAppServer => IntegrationField::ClaudeSidefile,
+            IntegrationField::ClaudeSidefile => IntegrationField::ClaudeSidefile,
         }
     }
 
     pub(super) const fn previous(self) -> Self {
         match self {
-            IntegrationField::ClaudeSidefile => IntegrationField::CodexAppServer,
-            IntegrationField::CodexAppServer => IntegrationField::ClaudeSidefile,
+            IntegrationField::ClaudeSidefile => IntegrationField::ClaudeSidefile,
         }
     }
 }

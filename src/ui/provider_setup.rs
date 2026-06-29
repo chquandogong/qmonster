@@ -78,7 +78,6 @@ impl ProviderSetupTab {
 pub struct ProviderSetupOverlay {
     pub tab: ProviderSetupTab,
     pub claude_sidefile_enabled: bool,
-    pub codex_app_server_enabled: bool,
     /// Slice C3: mirrors `config.provider_setup.agy_enrichment`. When
     /// true, the agy tab shows (and `y` copies) the recommended
     /// `statusLine.command` sidefile-export block.
@@ -96,7 +95,6 @@ impl Default for ProviderSetupOverlay {
         Self {
             tab: ProviderSetupTab::Claude,
             claude_sidefile_enabled: false,
-            codex_app_server_enabled: false,
             agy_enrichment_enabled: false,
             scroll_offset: 0,
             open: false,
@@ -116,7 +114,6 @@ impl ProviderSetupOverlay {
         Self {
             tab: ProviderSetupTab::Claude,
             claude_sidefile_enabled: config.provider_setup.claude_sidefile,
-            codex_app_server_enabled: config.provider_setup.codex_app_server,
             agy_enrichment_enabled: config.provider_setup.agy_enrichment,
             scroll_offset: 0,
             open: false,
@@ -125,7 +122,6 @@ impl ProviderSetupOverlay {
 
     pub fn sync_from_config(&mut self, config: &crate::app::config::QmonsterConfig) {
         self.claude_sidefile_enabled = config.provider_setup.claude_sidefile;
-        self.codex_app_server_enabled = config.provider_setup.codex_app_server;
         self.agy_enrichment_enabled = config.provider_setup.agy_enrichment;
     }
 
@@ -182,7 +178,6 @@ pub struct ClaudeState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexState {
     pub config_present: bool,
-    pub app_server_running: bool, // best-effort; we don't actually probe a socket
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -224,7 +219,6 @@ pub fn detect_codex_state(home: &Path) -> CodexState {
         config_present: fs::metadata(&config_path)
             .map(|m| m.is_file())
             .unwrap_or(false),
-        app_server_running: false,
     }
 }
 
@@ -277,8 +271,6 @@ pub const CLAUDE_SIDEFILE_ADDON: &str =
     include_str!("provider_setup_snippets/claude_sidefile_addon.sh");
 pub const CODEX_STATUSLINE_GUIDE: &str =
     include_str!("provider_setup_snippets/codex_statusline_guide.txt");
-pub const CODEX_APP_SERVER_GUIDE: &str =
-    include_str!("provider_setup_snippets/codex_app_server_guide.sh");
 pub const GEMINI_FOOTER_SETTINGS: &str =
     include_str!("provider_setup_snippets/gemini_footer_settings.json");
 pub const GEMINI_AUTH_NOTE: &str = include_str!("provider_setup_snippets/gemini_auth_note.txt");
@@ -331,10 +323,9 @@ fi
 /// surface name for the resulting toast notice. Honors the
 /// Settings-synced integration flags — when
 /// `claude_sidefile_enabled` is set, the addon block is appended to
-/// the Claude statusline; when `codex_app_server_enabled` is set, the
-/// app-server guide is appended to the Codex guidance. The Gemini auth
-/// note is informational and is intentionally excluded from the
-/// copied output (operator does not paste it anywhere).
+/// the Claude statusline. The Gemini auth note is informational and is
+/// intentionally excluded from the copied output (operator does not
+/// paste it anywhere).
 pub fn snippet_for_tab(overlay: &ProviderSetupOverlay) -> (&'static str, String) {
     match overlay.tab {
         ProviderSetupTab::Claude => {
@@ -350,17 +341,10 @@ pub fn snippet_for_tab(overlay: &ProviderSetupOverlay) -> (&'static str, String)
             }
             ("Claude statusline.sh", text)
         }
-        ProviderSetupTab::Codex => {
-            let mut text = String::from(CODEX_STATUSLINE_GUIDE);
-            if overlay.codex_app_server_enabled {
-                if !text.ends_with('\n') {
-                    text.push('\n');
-                }
-                text.push_str("\n# --- Codex App Server polling guide ---\n");
-                text.push_str(CODEX_APP_SERVER_GUIDE);
-            }
-            ("Codex /statusline guide", text)
-        }
+        ProviderSetupTab::Codex => (
+            "Codex /statusline guide",
+            String::from(CODEX_STATUSLINE_GUIDE),
+        ),
         ProviderSetupTab::Gemini => (
             "Gemini ~/.gemini/settings.json",
             String::from(GEMINI_FOOTER_SETTINGS),
@@ -416,13 +400,6 @@ fn append_copy_contract(out: &mut Vec<String>, overlay: &ProviderSetupOverlay) {
         ProviderSetupTab::Codex => {
             out.push(detail_row("Target", "Codex setup guide"));
             out.push(detail_row("Content", "/statusline ON/OFF guidance"));
-            out.push(detail_row(
-                "Optional included",
-                format!(
-                    "Codex App Server polling guide {} (from Settings)",
-                    on_off(overlay.codex_app_server_enabled)
-                ),
-            ));
         }
         ProviderSetupTab::Gemini => {
             out.push(detail_row("Target", "~/.gemini/settings.json"));
@@ -545,15 +522,9 @@ pub fn render_tab_content(
             ));
 
             section(&mut out, "Settings");
-            out.push(detail_row(
-                "provider_setup.codex_app_server",
-                on_off(overlay.codex_app_server_enabled),
-            ));
-            out.push("      Read-only here. Change in S Settings -> Integrations.".into());
-            out.push(
-                "      Restart Qmonster after saving ON; Qmonster auto-spawns app-server.".into(),
-            );
-            out.push("      App-server resets_at also drives F-7c reset-aware advisories — wait-for-reset and snapshot-before-reset (5h and weekly windows; configurable in S Settings -> Rules).".into());
+            out.push("  No optional sections on this tab.".into());
+            out.push("  Codex quota pressure (5h / weekly) is read from the /statusline".into());
+            out.push("  bottom-status scrape; no extra Qmonster setup is required.".into());
 
             append_copy_contract(&mut out, overlay);
             append_copied_preview(&mut out, overlay);
@@ -822,7 +793,6 @@ mod tests {
         let mut cfg = QmonsterConfig::defaults();
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: true,
-            codex_app_server: false,
             codex_rollout: true,
             agy_transcript: false,
             agy_enrichment: false,
@@ -831,18 +801,15 @@ mod tests {
 
         overlay.sync_from_config(&cfg);
         assert!(overlay.claude_sidefile_enabled);
-        assert!(!overlay.codex_app_server_enabled);
 
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: false,
-            codex_app_server: true,
             codex_rollout: false,
             agy_transcript: false,
             agy_enrichment: false,
         };
         overlay.sync_from_config(&cfg);
         assert!(!overlay.claude_sidefile_enabled);
-        assert!(overlay.codex_app_server_enabled);
     }
 
     #[test]
@@ -858,7 +825,6 @@ mod tests {
         };
         let codex = CodexState {
             config_present: false,
-            app_server_running: false,
         };
         let gemini = GeminiFooterState::default();
         let lines = render_tab_content(&overlay, &claude, &codex, &gemini);
@@ -925,31 +891,27 @@ mod tests {
         // Phase G G-2 (v1.30.0): the overlay's read-only flags mirror
         // whatever the operator persisted in the [provider_setup]
         // config section, so a fresh `P` press shows the current
-        // sidefile / app-server posture.
+        // sidefile posture.
         use crate::app::config::{ProviderSetupConfig, QmonsterConfig};
         let mut cfg = QmonsterConfig::defaults();
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: true,
-            codex_app_server: false,
             codex_rollout: true,
             agy_transcript: false,
             agy_enrichment: false,
         };
         let overlay = ProviderSetupOverlay::from_config(&cfg);
         assert!(overlay.claude_sidefile_enabled);
-        assert!(!overlay.codex_app_server_enabled);
         assert!(!overlay.is_open(), "from_config must not auto-open");
 
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: false,
-            codex_app_server: true,
             codex_rollout: false,
             agy_transcript: false,
             agy_enrichment: false,
         };
         let overlay = ProviderSetupOverlay::from_config(&cfg);
         assert!(!overlay.claude_sidefile_enabled);
-        assert!(overlay.codex_app_server_enabled);
     }
 
     #[test]
@@ -968,7 +930,6 @@ mod tests {
         };
         let codex = CodexState {
             config_present: false,
-            app_server_running: false,
         };
         let gemini = GeminiFooterState::default();
         let lines = render_tab_content(&overlay, &claude, &codex, &gemini);
@@ -979,10 +940,9 @@ mod tests {
     }
 
     #[test]
-    fn render_tab_content_codex_surfaces_settings_value_and_y_copy_target() {
+    fn render_tab_content_codex_surfaces_statusline_guidance_and_y_copy_target() {
         let overlay = ProviderSetupOverlay {
             tab: ProviderSetupTab::Codex,
-            codex_app_server_enabled: true,
             ..Default::default()
         };
         let claude = ClaudeState {
@@ -995,20 +955,26 @@ mod tests {
         };
         let codex = CodexState {
             config_present: true,
-            app_server_running: false,
         };
         let gemini = GeminiFooterState::default();
         let text = render_tab_content(&overlay, &claude, &codex, &gemini).join("\n");
         assert!(text.contains("Settings"));
-        assert!(text.contains("provider_setup.codex_app_server"));
-        assert!(text.contains("Change in S Settings -> Integrations"));
-        assert!(text.contains("Restart Qmonster after saving ON; Qmonster auto-spawns app-server"));
-        assert!(text.contains("Codex App Server polling guide ON (from Settings)"));
+        assert!(text.contains("No optional sections on this tab."));
+        // Codex quota PRESSURE survives via the /statusline scrape; the
+        // reset-ETA app-server path was removed in narrow vNext.
+        assert!(text.contains("Codex quota pressure (5h / weekly) is read from the /statusline"));
+        assert!(
+            !text.contains("provider_setup.codex_app_server"),
+            "the removed app-server toggle must not be surfaced"
+        );
+        assert!(
+            !text.contains("app-server"),
+            "no app-server guidance must remain on the Codex tab"
+        );
         assert!(text.contains("Copy With y"));
         assert!(text.contains("Target"));
         assert!(text.contains("Codex setup guide"));
         assert!(text.contains("Preview: y copies this content"));
-        assert!(text.contains("codex app-server"));
     }
 
     #[test]
@@ -1027,7 +993,6 @@ mod tests {
         };
         let codex = CodexState {
             config_present: false,
-            app_server_running: false,
         };
         let gemini = GeminiFooterState::default();
         let text = render_tab_content(&overlay, &claude, &codex, &gemini).join("\n");
@@ -1057,7 +1022,6 @@ mod tests {
         };
         let codex = CodexState {
             config_present: false,
-            app_server_running: false,
         };
         let gemini = GeminiFooterState::default();
         let text = render_tab_content(&overlay, &claude, &codex, &gemini).join("\n");
@@ -1100,7 +1064,9 @@ mod tests {
     }
 
     #[test]
-    fn snippet_for_tab_codex_default_is_just_the_statusline_guide() {
+    fn snippet_for_tab_codex_is_just_the_statusline_guide() {
+        // narrow vNext: the Codex tab only copies the /statusline guide;
+        // the app-server polling guide was removed.
         let overlay = ProviderSetupOverlay {
             tab: ProviderSetupTab::Codex,
             ..Default::default()
@@ -1109,21 +1075,9 @@ mod tests {
         assert_eq!(label, "Codex /statusline guide");
         assert!(text.contains("/statusline"));
         assert!(
-            !text.contains("codex app-server"),
-            "app-server guide must not be included unless enabled in Settings"
+            !text.contains("app-server"),
+            "app-server guide must not be included — it was removed in narrow vNext"
         );
-    }
-
-    #[test]
-    fn snippet_for_tab_codex_with_app_server_appends_guide() {
-        let overlay = ProviderSetupOverlay {
-            tab: ProviderSetupTab::Codex,
-            codex_app_server_enabled: true,
-            ..Default::default()
-        };
-        let (_, text) = snippet_for_tab(&overlay);
-        assert!(text.contains("/statusline"));
-        assert!(text.contains("codex app-server"));
     }
 
     #[test]
@@ -1155,7 +1109,6 @@ mod tests {
         };
         let codex = CodexState {
             config_present: false,
-            app_server_running: false,
         };
         let gemini = GeminiFooterState::default();
         let lines = render_tab_content(&overlay, &claude, &codex, &gemini);
@@ -1167,33 +1120,6 @@ mod tests {
         assert!(
             dump.contains("i Token Insights"),
             "Claude tab should name the downstream observation overlay; got:\n{dump}"
-        );
-    }
-
-    #[test]
-    fn codex_tab_mentions_f7c_reset_advisories() {
-        let overlay = ProviderSetupOverlay {
-            tab: ProviderSetupTab::Codex,
-            ..Default::default()
-        };
-        let claude = ClaudeState {
-            statusline_script_present: false,
-            statusline_size_bytes: 0,
-            exports_cache_read: false,
-            exports_cache_creation: false,
-            exports_input_tokens: false,
-            sidefile_export_present: false,
-        };
-        let codex = CodexState {
-            config_present: false,
-            app_server_running: false,
-        };
-        let gemini = GeminiFooterState::default();
-        let lines = render_tab_content(&overlay, &claude, &codex, &gemini);
-        let dump: String = lines.join("\n");
-        assert!(
-            dump.contains("F-7c reset-aware advisories"),
-            "Codex tab should mention F-7c context; got:\n{dump}"
         );
     }
 
@@ -1257,7 +1183,6 @@ mod tests {
         };
         let codex = CodexState {
             config_present: false,
-            app_server_running: false,
         };
         let gemini = GeminiFooterState::default();
         let lines = render_tab_content(&overlay, &claude, &codex, &gemini);

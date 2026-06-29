@@ -478,14 +478,13 @@ mod tests {
         handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('e'));
         assert_ne!(config.provider_setup.claude_sidefile, sidefile_before);
 
+        // Claude sidefile is the only integration field now; Down keeps
+        // the selection on it (single-entry self-cycle).
         handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Down);
         assert_eq!(
             overlay.selected_integration(),
-            IntegrationField::CodexAppServer
+            IntegrationField::ClaudeSidefile
         );
-        let server_before = config.provider_setup.codex_app_server;
-        handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char(' '));
-        assert_ne!(config.provider_setup.codex_app_server, server_before);
     }
 
     #[test]
@@ -656,7 +655,9 @@ mod tests {
         );
         assert_ne!(config.provider_setup.claude_sidefile, sidefile_before);
 
-        let server_before = config.provider_setup.codex_app_server;
+        // Row 2 is no longer an integration field (Claude sidefile is the
+        // only one); clicking it must not toggle anything.
+        let sidefile_after_first = config.provider_setup.claude_sidefile;
         handle_settings_overlay_mouse(
             &mut overlay,
             &mut config,
@@ -668,10 +669,9 @@ mod tests {
             ),
         );
         assert_eq!(
-            overlay.selected_integration(),
-            IntegrationField::CodexAppServer
+            config.provider_setup.claude_sidefile, sidefile_after_first,
+            "clicking the empty row 2 must not toggle the sidefile field"
         );
-        assert_ne!(config.provider_setup.codex_app_server, server_before);
     }
 
     #[test]

@@ -5,7 +5,6 @@ pub mod agy_transcript;
 pub mod claude;
 pub mod claude_sidefile;
 pub mod codex;
-pub mod codex_app_server;
 pub mod codex_rollout;
 pub mod common;
 pub mod gemini;

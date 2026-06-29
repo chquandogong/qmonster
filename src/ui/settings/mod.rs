@@ -368,9 +368,6 @@ impl SettingsOverlay {
             IntegrationField::ClaudeSidefile => {
                 config.provider_setup.claude_sidefile = !config.provider_setup.claude_sidefile;
             }
-            IntegrationField::CodexAppServer => {
-                config.provider_setup.codex_app_server = !config.provider_setup.codex_app_server;
-            }
         }
         self.dirty = true;
         self.status = SettingsStatus::Dirty;
@@ -700,11 +697,6 @@ impl SettingsOverlay {
             &mut doc,
             &["provider_setup", "claude_sidefile"],
             config.provider_setup.claude_sidefile,
-        );
-        set_nested_bool(
-            &mut doc,
-            &["provider_setup", "codex_app_server"],
-            config.provider_setup.codex_app_server,
         );
         for field in &self.dirty_parameters {
             merge_parameter_field(&mut doc, config, *field);
@@ -2518,7 +2510,6 @@ pub fn settings_integration_field_at_with_scroll(
     }
     match row.saturating_sub(inner.y).saturating_add(scroll_offset) {
         1 => Some(IntegrationField::ClaudeSidefile),
-        2 => Some(IntegrationField::CodexAppServer),
         _ => None,
     }
 }
@@ -2637,12 +2628,6 @@ fn build_integration_body_lines(
             IntegrationField::ClaudeSidefile,
             config.provider_setup.claude_sidefile,
             "copy Claude statusline snippet with JSON sidefile export",
-        ),
-        integration_row_line(
-            overlay,
-            IntegrationField::CodexAppServer,
-            config.provider_setup.codex_app_server,
-            "auto-spawn qmonster-managed app-server on next TUI start",
         ),
         Line::from(""),
         Line::from(vec![
@@ -2852,17 +2837,9 @@ fn build_parameter_body_lines(
             on_off(defaults.token.quota_tight).into(),
         ),
         setting_row(
-            "provider setup sidefile/server",
-            format!(
-                "{}/{}",
-                on_off(config.provider_setup.claude_sidefile),
-                on_off(config.provider_setup.codex_app_server)
-            ),
-            format!(
-                "{}/{}",
-                on_off(defaults.provider_setup.claude_sidefile),
-                on_off(defaults.provider_setup.codex_app_server)
-            ),
+            "provider setup sidefile",
+            on_off(config.provider_setup.claude_sidefile).into(),
+            on_off(defaults.provider_setup.claude_sidefile).into(),
         ),
         setting_row(
             "security posture/cross/drift",
