@@ -1,0 +1,50 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-06-29"
+  target_versions:
+    - "2.6.0"
+  commit_range: "v2.5.0..HEAD (src/ + docs/ai)"
+  scope: "Bundled release gate for v2.6.0 — backlog follow-ups to the v2.5.0 migration: (1) Claude sidefile concurrent-cwd ambiguity guard; (2) Slice C2 agy transcript activity RuntimeFact (opt-in, Heuristic, ObserveOnly preserved); (3) Slice D context_window_size (Codex scrape primary + sidefile + rollout backstop, rendered beside CTX%). Gemini leg retired (Codex + human contract, per MDR-DRAFT-v2.5.x-gemini-crossreview-retirement)."
+  evidence_mode: "Live `codex exec --sandbox read-only` (codex-cli 0.142.3, gpt-5.5, medium effort), full diff inline, < /dev/null."
+  remediation_commit_short: "1cd6af6"
+  local_validation:
+    cargo_fmt_check: pass
+    cargo_clippy_all_targets_d_warnings: pass
+    cargo_test_all_targets: pass
+    test_counts: "1612 lib + 70 integration (after remediation)"
+  verdict: approve-with-fixes
+  summary:
+    code_assessment: "Adapter boundaries preserved (agy/JSONL knowledge confined to its reader); agy fact is Heuristic and claims no token/model/cost/quota/context; context_window_size is a passive ProviderOfficial field not affecting context_pressure; sidefile/rollout fills are is_none()-guarded; agy_transcript defaults false; no SQLite/audit/actuation/anomaly/cost/cache/profile/token-sample change."
+    primary_risk: "Two attribution gaps in the new gating, both closed in 1cd6af6."
+  must_fix_before_next_phase:
+    - id: CFX-260-1
+      severity: warning
+      file: "src/adapters/claude_sidefile.rs"
+      title: "Ambiguity guard compared two newest FILES, not two newest DISTINCT sessions."
+      proposed_change: "Track distinct session_id (mirror agy distinct-conversationId loop); treat None as always-distinct; compare the two newest distinct sessions."
+      status: closed
+      closed_by: "1cd6af6"
+      note: "Near-moot given 1-file-per-session_id naming, but made distinct-session-aware for robustness + consistency with the agy guard; +regression tests."
+    - id: CFX-260-2
+      severity: warning
+      file: "src/adapters/mod.rs"
+      title: "agy_transcript_process_confirmed returned true on missing pane_pid (mirrored Claude/Codex), allowing agy attribution without a confirmed agy descendant."
+      proposed_change: "Return false on None pane_pid for agy specifically — its correlation is by shared workspace (weaker than Claude session_id / Codex cwd+rollout)."
+      status: closed
+      closed_by: "1cd6af6"
+  observations:
+    - id: OBS-260-1
+      severity: good
+      description: "agy RuntimeFact correctly Heuristic + Antigravity, no analytic claims; ObserveOnly six-gate contract intact."
+    - id: OBS-260-2
+      severity: good
+      description: "context_window_size primary source is the Codex status-line scrape (free, travels with tokens/model); rollout is the backstop — avoids an every-poll rollout read for a static value."
+  doc_fixes_applied:
+    - "ARCHITECTURE.md: agy RuntimeFact version v2.5.1 → v2.6.0 (closed_by 1cd6af6)."
+    - "ARCHITECTURE.md: Codex context_window_size source = scrape primary + rollout backstop (closed_by 1cd6af6)."
+  official_vs_heuristic_status:
+    - id: OH-260-1
+      severity: safe
+      description: "Sidefile/scrape/rollout context-window values ProviderOfficial; agy activity Heuristic. Ambiguity windows (60s) are Qmonster-chosen Heuristic thresholds, documented."
+  notes_gemini_leg: "Gemini r1 NOT run — retired (individual-tier sunset). Contract = Codex + human; operator sign-off is the second gate for this release."

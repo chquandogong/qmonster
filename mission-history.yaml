@@ -1,10 +1,10 @@
 meta:
   mission_id: "qmonster-v0.5.0-planning"
-  mission_title: "Qmonster v2.5.0 - structured data-source migration (Claude sidefile-preferred pressures + Codex codex-tui rollout backstop + agy ObserveOnly; Gemini cross-review leg retired -> Codex + human). PRIOR — Qmonster v2.4.0 - first feature minor on the v2.x line. Adds Provider::Antigravity (Google's new agy CLI replacing Gemini CLI for free / Pro / Ultra users on 2026-06-18) via a Tasks-1-7 TDD bundle routed through Provider::Unknown's minimal common::parse_common_signals path. Six independent ObserveOnly gates (adapter dispatch + AnomalyKind matrix + provider_honesty Hidden chips + profile_switch None + insights data-completeness 'unsupported' + token-sample filter exclusion) keep agy panes off every analytic surface. Provider Setup overlay (P key) gains a 5th 'agy' tab; recommended tmux bundle pane 0.2 flips from gemini:1:research to agy:1:research with an Enterprise-Gemini substitute comment. detect_provider_title reorder fixes Claude main pane misclassified as Gemini when its working-state activity sentence mentions another provider (e.g. '⠂ Migrate from Gemini CLI to Agy CLI'). process_memory descendant-walk gains a two-tier priority (dedicated CLI binaries beat generic interpreters). Gemini code, fixtures, mission history untouched — Enterprise / Cloud / Standard Gemini CLI retains support past 2026-06-18. v2.3.6 surface preserved: Phase D hygiene bundle (ci.yml cache key + workflow file hash, release.yml id-token comment, README install notice, SECURITY.md AI tooling expectations, dependency-review-action PR gate, prebuilt-npm MDR draft) on top of v2.3.5 OIDC-only verification on npm@11.14.1, v2.3.0 surface preserved (post-v2.2.0 stabilization + UX bundle: path-row worktree-role hint, sectioned pane panel tree branches, alert related-context rail, copied-outcome lifecycle, done_when_refs 100 % coverage, settings module split, dependabot bump)."
+  mission_title: "Qmonster v2.6.0 - v2.5.0 migration-backlog bundle (Claude sidefile distinct-session ambiguity guard closes F-5b; Slice C2 agy activity RuntimeFact, opt-in/Heuristic/ObserveOnly; Slice D context_window_size, Codex-scrape-primary + sidefile/rollout backstops; Codex approve-with-fixes, two attribution gaps closed in 1cd6af6; Gemini leg stays retired -> Codex + human). PRIOR — Qmonster v2.5.0 - structured data-source migration (Claude sidefile-preferred pressures + Codex codex-tui rollout backstop + agy ObserveOnly; Gemini cross-review leg retired -> Codex + human). PRIOR — Qmonster v2.4.0 - first feature minor on the v2.x line. Adds Provider::Antigravity (Google's new agy CLI replacing Gemini CLI for free / Pro / Ultra users on 2026-06-18) via a Tasks-1-7 TDD bundle routed through Provider::Unknown's minimal common::parse_common_signals path. Six independent ObserveOnly gates (adapter dispatch + AnomalyKind matrix + provider_honesty Hidden chips + profile_switch None + insights data-completeness 'unsupported' + token-sample filter exclusion) keep agy panes off every analytic surface. Provider Setup overlay (P key) gains a 5th 'agy' tab; recommended tmux bundle pane 0.2 flips from gemini:1:research to agy:1:research with an Enterprise-Gemini substitute comment. detect_provider_title reorder fixes Claude main pane misclassified as Gemini when its working-state activity sentence mentions another provider (e.g. '⠂ Migrate from Gemini CLI to Agy CLI'). process_memory descendant-walk gains a two-tier priority (dedicated CLI binaries beat generic interpreters). Gemini code, fixtures, mission history untouched — Enterprise / Cloud / Standard Gemini CLI retains support past 2026-06-18. v2.3.6 surface preserved: Phase D hygiene bundle (ci.yml cache key + workflow file hash, release.yml id-token comment, README install notice, SECURITY.md AI tooling expectations, dependency-review-action PR gate, prebuilt-npm MDR draft) on top of v2.3.5 OIDC-only verification on npm@11.14.1, v2.3.0 surface preserved (post-v2.2.0 stabilization + UX bundle: path-row worktree-role hint, sectioned pane panel tree branches, alert related-context rail, copied-outcome lifecycle, done_when_refs 100 % coverage, settings module split, dependabot bump)."
   tracking_since: "2026-04-20"
   tracking_mode: "human-led multi-agent shared repo ledger"
-  total_revisions: 218
-  latest_version: "2.5.0"
+  total_revisions: 219
+  latest_version: "2.6.0"
 
 timeline:
   - change_id: "initial"
@@ -23048,6 +23048,75 @@ timeline:
       - "Pre-existing: the Claude sidefile reader (F-5b) has the same cwd-not-pane-unique limitation flagged for Codex rollout; apply the ambiguity guard in a follow-up (out of v2.5.0 scope)."
       - "Slice C2 (agy transcript activity enricher) deferred until a documented agy headless/observability surface exists or pane-correlation is solved."
       - "Decide whether context_window_size / reasoning_output_tokens warrant a SignalSet field in a later slice (update fixtures + provider-coverage matrix in the same change)."
+
+  - change_id: "v2.6.0-migration-backlog-bundle"
+    semantic_version: "2.6.0"
+    change_sequence: 219
+    date: "2026-06-29"
+    author: "CHENGHAO QUAN (chquan@dogu.xyz)"
+    contributors:
+      - "Claude Code (Opus 4.8 1M context)"
+    change_type: "minor"
+    motivation_type: "feature"
+    persistence: "permanent"
+    intent: >
+      Three v2.5.0 migration-backlog follow-ups, same subagent-driven TDD +
+      opus whole-branch + external Codex cross-review gate (Gemini r1 stays
+      retired). Augment-not-replace and structured-preferred (with scrape
+      fallback) are preserved; no scrape source was removed.
+
+      (1) Claude sidefile concurrent-same-cwd ambiguity guard (closes the
+      v2.5.0 F-5b follow-up), made distinct-session-aware: the reader tracks
+      the two newest DISTINCT `session_id`s (a `None` id counts as always
+      distinct) and returns None when both fall inside AMBIGUITY_WINDOW = 60s,
+      so two concurrent same-cwd Claude panes never cross-attribute — mirroring
+      the codex_rollout / agy_transcript guards.
+
+      (2) Slice C2 (agy): a new `src/adapters/agy_transcript.rs` reads an
+      activity-only RuntimeFact `AgyActivity { conversation_id,
+      last_activity_unix, latest_step }`, correlated via `history.jsonl`
+      (workspace -> conversationId) with a distinct-conversationId ambiguity
+      guard and last_activity taken from the transcript file mtime. The fact is
+      Heuristic + Antigravity and claims no token / model / cost / quota /
+      context, so the v2.4.0 ObserveOnly six-gate contract is byte-identical;
+      it is opt-in via `[provider_setup] agy_transcript` (default false). agy
+      process-confirm returns false on a missing `pane_pid` (its workspace
+      correlation is weaker than Claude `session_id` / Codex cwd+rollout) —
+      divergent from the claude/codex helpers, which stay permissive.
+
+      (3) Slice D: a new `SignalSet.context_window_size`
+      (`Option<MetricValue<u64>>`) resolves the deferred v2.5.0 decision. It is
+      sourced from the Codex status-line scrape PRIMARY (ProviderOfficial — the
+      `N window` token, free and travelling with the existing tokens/model
+      scrape) with the Claude sidefile (`context_window_size`) and codex_rollout
+      (`info.model_context_window`) as fill-when-absent BACKSTOPS, and renders
+      as `CTX X% of <size>` via `format_count_with_suffix`. It is a passive
+      display field — it does not feed `context_pressure` or any gate.
+
+      Validation: 1587 -> 1612 lib tests (+25), integration 70. fmt + clippy
+      (-D warnings) clean (`--all-targets`). Cross-review: Codex
+      `approve-with-fixes` — two attribution gaps (CFX-260-1 sidefile guard
+      compared two newest FILES not DISTINCT sessions; CFX-260-2 agy
+      process-confirm returned true on missing pane_pid) both closed in
+      `1cd6af6`, plus two doc syncs. Gemini r1 retired (individual-tier sunset);
+      contract = Codex + human. No new actuation / audit kind / SQLite surface /
+      cost / cache / profile / token-sample / anomaly change.
+    related_commits:
+      - 26021e8 # sidefile concurrent-same-cwd ambiguity guard (closes F-5b)
+      - 18f7b84 # MDR: Gemini cross-review retirement + reinstatement criteria
+      - 7721d3e # Slice C2: RuntimeFactKind::AgyActivity
+      - 0b31b3e # Slice C2: history.jsonl-correlated agy activity reader
+      - 0315c68 # Slice C2: agy_transcript toggle (default false) via ParserContext
+      - c6e8277 # Slice C2: agy transcript activity enrichment branch
+      - 7308bf4 # Slice D: SignalSet.context_window_size field
+      - bb2f643 # Slice D: populate context_window_size from sidefile + rollout
+      - 8e5a5c8 # Slice D: Codex scrape 'N window' -> context_window_size (primary)
+      - 708d855 # Slice D: render context window size next to CTX%
+      - 1cd6af6 # review remediation: distinct-session guard + strict agy confirm + doc sync
+    follow_up:
+      - "Release ritual remaining (operator-gated): push main, create the v2.6.0 tag, npm publish. NOT yet done — awaits explicit operator go. main is 14 commits ahead of origin/main; the sidefile guard (26021e8) + v2.5.0-published record (dcf3e00) are already on origin/main from the prior push."
+      - "Gemini 2nd-reviewer reinstatement remains blocked on operator Enterprise/API tier config (see MDR-DRAFT-v2.5.x-gemini-crossreview-retirement); the cross-review contract stays Codex + human until then."
+      - "Slice C2 agy activity is observe-only/opt-in; deeper agy integration (token/model/cost) stays blocked until a documented agy headless/observability surface exists."
 
 evolution_summary:
   current_phase: "v1.50.0 — operator UX polish bundle on top of v1.49.0. (a) Insights overlay async fetch: new src/app/insights_load.rs spawns std::thread per i/r press, mpsc channel drained per main-loop iteration, centered Aggregating insights ⠋ placeholder rotating via 10-frame braille at the existing 100ms event::poll cadence, stale-id drop on set_snapshot_for. (b) Phase 7 v2 CrossPaneEditCluster fold-back loop closure — fold_finding_paths_into_history populates AnomalyHistory.cross_pane_edit_paths so the SubagentSideEffect detector finally sees cross-pane edits. (c) ARCHITECTURE.md provider-coverage matrix; REVIEW_GUIDE.md citation. (d) pricing.example.toml Gemini/Claude-Opus placeholder rows. (e) Codex parallel parameter-edit affordance in Settings overlay. Phase 8 (Token Insights) shipped in v1.48.0 remains the underlying runtime baseline. Per-release detail lives in the timeline entries; this summary stays high-level on purpose (MF-2 closure)."

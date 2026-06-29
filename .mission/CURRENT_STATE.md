@@ -1,6 +1,59 @@
 # CURRENT_STATE
 
-_Last updated: 2026-06-29 (Claude, v2.5.0 — structured data-source migration; see the v2.5.0 section directly below)._
+_Last updated: 2026-06-29 (Claude, v2.6.0 — v2.5.0 migration-backlog bundle: sidefile distinct-session guard + agy activity RuntimeFact + context_window_size; see the v2.6.0 section directly below)._
+
+## v2.6.0 — v2.5.0 migration-backlog bundle
+
+Three follow-ups to the v2.5.0 migration, same subagent-driven TDD + opus
+whole-branch + external Codex release gate. Augment-not-replace preserved; no
+scrape source removed.
+
+- **Sidefile distinct-session ambiguity guard** (closes the v2.5.0 F-5b
+  follow-up): the Claude sidefile reader now tracks the two newest **distinct**
+  `session_id`s (a `None` id is always-distinct) and returns None when both
+  fall inside `AMBIGUITY_WINDOW = 60s` — two concurrent same-cwd Claude panes
+  never cross-attribute. Mirrors the `codex_rollout` / `agy_transcript` guards.
+- **Slice C2 (agy activity):** new `src/adapters/agy_transcript.rs` reads an
+  activity-only `RuntimeFact` (`AgyActivity { conversation_id,
+  last_activity_unix, latest_step }`), correlated via `history.jsonl`
+  (workspace → conversationId, distinct-conversationId ambiguity guard),
+  last_activity from transcript mtime. **Heuristic + Antigravity**, claims no
+  token/model/cost/quota/context → v2.4.0 ObserveOnly six-gate contract intact.
+  Opt-in via `[provider_setup] agy_transcript` (**default false**); agy
+  process-confirm returns false on missing `pane_pid` (workspace correlation is
+  weaker than Claude `session_id` / Codex cwd+rollout).
+- **Slice D (context_window_size):** new `SignalSet.context_window_size`
+  (`Option<MetricValue<u64>>`) resolves the deferred v2.5.0 decision. Sourced
+  from the Codex status-line scrape **primary** (ProviderOfficial — the `N
+  window` token) + Claude sidefile + `codex_rollout`
+  (`info.model_context_window`) **backstops**; renders as `CTX X% of <size>`
+  via `format_count_with_suffix`. Passive display field — does not feed
+  `context_pressure`.
+
+**Tests:** 1587 → 1612 lib (+25), integration 70. fmt + clippy clean
+(`--all-targets`).
+
+**Cross-review (release gate):** Codex `approve-with-fixes` — two attribution
+gaps (CFX-260-1 sidefile guard compared files not distinct sessions; CFX-260-2
+agy process-confirm returned true on missing `pane_pid`) both closed in
+`1cd6af6`, plus two doc syncs. Gemini leg retired; **human sign-off is the
+second gate**. Artifact:
+`.mission/evals/Qmonster-v2.6.0-2026-06-29-bundle-codex-review.result.yaml`.
+
+**Release state: PREPPED ON LOCAL `main`, NOT YET RELEASED.** All version
+surfaces (package.json / Cargo.toml / Cargo.lock / VERSION.md / README) +
+mission ledger at 2.6.0. `main` is 14 commits ahead of `origin/main` (the
+sidefile guard `26021e8` + v2.5.0-published record `dcf3e00` are already on
+`origin/main` from the prior push). **Remaining (operator-gated):** push
+`main`, create the `v2.6.0` tag, npm publish — awaits explicit operator go (the
+irreversible step).
+
+**Follow-ups:** (1) Gemini 2nd-reviewer reinstatement stays blocked on operator
+Enterprise/API config (see `MDR-DRAFT-v2.5.x-gemini-crossreview-retirement`);
+(2) deeper agy integration (token/model/cost) stays blocked until a documented
+agy headless surface exists.
+
+---
 
 ## v2.5.0 — Structured data-source migration
 
