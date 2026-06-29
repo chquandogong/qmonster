@@ -510,7 +510,6 @@ where
                 dedup,
                 writer,
                 &*ctx.sink,
-                ctx.recommendation_lifecycle_sink.as_ref(),
                 &mut all_auto_notices,
             );
         }
@@ -710,16 +709,6 @@ where
                 );
             }
         }
-
-        crate::app::insights_lifecycle::record_recommendation_events(
-            ctx.recommendation_lifecycle_sink.as_ref(),
-            &ctx.config,
-            &pane.pane_id,
-            resolved.identity.provider,
-            resolved.identity.role,
-            &out.recommendations,
-            &out.effects,
-        );
 
         deliver_effects(permits, &out, &pane.pane_id, &pane.tail, now, ctx);
 
@@ -1074,13 +1063,6 @@ fn dispatch_archive<N: NotifyBackend>(
                 provider: None,
                 role: None,
             });
-            crate::app::insights_lifecycle::record_recommendation_outcome(
-                ctx_holder.recommendation_lifecycle_sink.as_ref(),
-                pane_id,
-                "archive-preview-suggested",
-                crate::store::RecommendationOutcome::Archived,
-                format!("archived {bytes}B to {}", path.display()),
-            );
         }
         Ok(crate::store::ArchiveOutcome::Skipped { .. }) => {}
         Err(e) => {
@@ -1092,13 +1074,6 @@ fn dispatch_archive<N: NotifyBackend>(
                 provider: None,
                 role: None,
             });
-            crate::app::insights_lifecycle::record_recommendation_outcome(
-                ctx_holder.recommendation_lifecycle_sink.as_ref(),
-                pane_id,
-                "archive-preview-suggested",
-                crate::store::RecommendationOutcome::Failed,
-                format!("archive failed: {e}"),
-            );
         }
     }
 }

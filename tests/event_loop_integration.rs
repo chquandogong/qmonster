@@ -904,68 +904,6 @@ fn strong_context_pressure_rec_emits_prompt_send_proposal_end_to_end() {
     assert!(rendered.contains("[d] dismiss"));
 }
 
-#[test]
-fn run_once_writes_recommendation_lifecycle_events() {
-    let tmp = tempfile::TempDir::new().unwrap();
-    let db_path = tmp.path().join("qmonster.sqlite3");
-    let lifecycle_sink =
-        qmonster::store::SqliteRecommendationLifecycleSink::open(&db_path).unwrap();
-    let source = FixturePaneSource {
-        panes: vec![pane(
-            "%7",
-            "claude:1:main",
-            "claude",
-            "context window usage 82%",
-            false,
-        )],
-    };
-    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
-    let sink = Box::new(InMemorySink::new());
-    let mut ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink)
-        .with_insights_db_path(db_path.clone())
-        .with_recommendation_lifecycle_sink(lifecycle_sink);
-
-    let reports = run_once(&mut ctx, Instant::now()).expect("ok");
-    assert!(
-        reports[0].effects.iter().any(|effect| matches!(
-            effect,
-            qmonster::domain::recommendation::RequestedEffect::PromptSendProposed {
-                slash_command,
-                ..
-            } if slash_command == "/compact"
-        )),
-        "fixture must produce the strong /compact prompt-send proposal"
-    );
-
-    let now = qmonster::app::event_loop::current_unix_ms();
-    let store = qmonster::store::SqliteInsightsStore::open(&db_path).unwrap();
-    let snapshot = store
-        .snapshot_with_ignored_ttl(
-            qmonster::store::InsightsWindow {
-                since_ms: now.saturating_sub(60_000),
-                until_ms: now.saturating_add(1_000),
-            },
-            0,
-        )
-        .unwrap();
-
-    assert!(snapshot.ignored_available);
-    assert!(
-        snapshot
-            .situations
-            .iter()
-            .any(|row| row.situation == "Context pressure" && row.emitted >= 1),
-        "lifecycle writer must preserve the design-situation label"
-    );
-    let row = snapshot
-        .actions
-        .iter()
-        .find(|row| row.action == "/compact")
-        .expect("strong prompt recommendations are ledgered by slash command");
-    assert_eq!(row.emitted, 1);
-    assert_eq!(row.ignored, 1);
-}
-
 // ---------------------------------------------------------------------------
 // Phase 3A integration tests: cross-pane findings
 // ---------------------------------------------------------------------------
@@ -3093,47 +3031,6 @@ fn event_loop_replays_anomaly_history_on_first_observation() {
         "expected >= 3 cost_usd samples after replay+live; got {}",
         history.cost_usd_samples.len()
     );
-}
-
-#[test]
-fn context_initializes_insights_load_channel_and_request_id() {
-    let source = FixturePaneSource { panes: vec![] };
-    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
-    let sink = Box::new(InMemorySink::new());
-    let ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
-
-    assert_eq!(ctx.next_insights_request_id, 0);
-    ctx.insights_load_tx
-        .send(qmonster::app::insights_load::InsightsLoadOutcome {
-            request_id: 99,
-            result: Err("ping".into()),
-        })
-        .unwrap();
-    let outcome = ctx.insights_load_rx.recv().unwrap();
-    assert_eq!(outcome.request_id, 99);
-}
-
-#[test]
-fn insights_load_channel_supports_try_recv_drain() {
-    let source = FixturePaneSource { panes: vec![] };
-    let notifier = RecordingNotifier(Arc::new(Mutex::new(Vec::new())));
-    let sink = Box::new(InMemorySink::new());
-    let ctx = Context::new(QmonsterConfig::defaults(), source, notifier, sink);
-
-    ctx.insights_load_tx
-        .send(qmonster::app::insights_load::InsightsLoadOutcome {
-            request_id: 5,
-            result: Err("nope".into()),
-        })
-        .unwrap();
-
-    let outcome = ctx
-        .insights_load_rx
-        .try_recv()
-        .expect("queued outcome should be available without blocking");
-    assert_eq!(outcome.request_id, 5);
-    assert!(outcome.result.is_err());
-    assert!(ctx.insights_load_rx.try_recv().is_err());
 }
 
 #[test]

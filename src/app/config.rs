@@ -21,8 +21,6 @@ pub struct QmonsterConfig {
     #[serde(default)]
     pub storage: StorageConfig,
     #[serde(default)]
-    pub insights: InsightsConfig,
-    #[serde(default)]
     pub idle: IdleConfig,
     #[serde(default)]
     pub cost: CostConfig,
@@ -198,25 +196,6 @@ pub struct TokenConfig {
 pub struct StorageConfig {
     /// `~/.qmonster/` by default; tests override via env `QMONSTER_ROOT`.
     pub root: Option<String>,
-}
-
-/// Phase 8 v2: Token Insights lifecycle-ledger knobs. The CLI report
-/// still accepts `--since`; these defaults backstop runtime/UI callers
-/// and the TTL ignored classifier once lifecycle rows are present.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(default)]
-pub struct InsightsConfig {
-    pub ignored_ttl_secs: u64,
-    pub default_window_secs: u64,
-}
-
-impl Default for InsightsConfig {
-    fn default() -> Self {
-        Self {
-            ignored_ttl_secs: 30 * 60,
-            default_window_secs: 24 * 60 * 60,
-        }
-    }
 }
 
 /// Phase F F-7-config (v1.28.0): operator-tunable thresholds for the
@@ -1062,7 +1041,6 @@ impl QmonsterConfig {
             logging: LoggingConfig::default(),
             token: TokenConfig::default(),
             storage: StorageConfig::default(),
-            insights: InsightsConfig::default(),
             idle: IdleConfig::default(),
             cost: CostConfig::default(),
             provider_setup: ProviderSetupConfig::default(),
@@ -1254,24 +1232,6 @@ mod tests {
         assert!(!c.actions.allow_destructive_actions);
         assert_eq!(c.refresh.policy, RefreshPolicy::ManualOnly);
         assert_eq!(c.logging.sensitivity, LogSensitivity::Balanced);
-    }
-
-    #[test]
-    fn insights_config_defaults_match_phase8_v2_spec() {
-        let c = InsightsConfig::default();
-        assert_eq!(c.ignored_ttl_secs, 30 * 60);
-        assert_eq!(c.default_window_secs, 24 * 60 * 60);
-    }
-
-    #[test]
-    fn insights_config_loads_from_toml_with_partial_overrides() {
-        let toml = r#"
-[insights]
-ignored_ttl_secs = 600
-"#;
-        let cfg: QmonsterConfig = toml::from_str(toml).expect("parse");
-        assert_eq!(cfg.insights.ignored_ttl_secs, 600);
-        assert_eq!(cfg.insights.default_window_secs, 24 * 60 * 60);
     }
 
     #[test]

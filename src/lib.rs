@@ -11,7 +11,6 @@
 pub mod adapters;
 pub mod app;
 pub mod domain;
-pub mod insights_report;
 pub mod notify;
 pub mod policy;
 pub mod store;

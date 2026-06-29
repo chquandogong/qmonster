@@ -518,14 +518,14 @@ mod tests {
         let mut config = QmonsterConfig::defaults();
         overlay.open();
         overlay.switch_tab(SettingsTab::Parameters);
-        overlay.select_parameter(ParameterField::InsightsIgnoredTtlSecs);
+        overlay.select_parameter(ParameterField::AnomalyRetentionDays);
 
         handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Char('e'));
         assert!(overlay.edit_buffer().is_some());
         overlay.replace_edit_buffer_for_test("120");
         handle_settings_overlay_key(&mut overlay, &mut config, None, KeyCode::Enter);
 
-        assert_eq!(config.insights.ignored_ttl_secs, 120);
+        assert_eq!(config.anomaly.retention_days, 120);
         assert!(overlay.edit_buffer().is_none());
     }
 

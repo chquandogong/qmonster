@@ -867,8 +867,6 @@ fn parameter_edit_kind(field: ParameterField) -> ParameterEditKind {
         | IdleStillnessPolls
         | LoggingRetentionDays
         | LoggingBigOutputChars
-        | InsightsIgnoredTtlSecs
-        | InsightsDefaultWindowSecs
         | CacheHotRatioThreshold
         | CacheColdRatioThreshold
         | CacheHotLowCtxThreshold
@@ -918,7 +916,6 @@ fn parameter_section_label(field: ParameterField) -> &'static str {
         | UxHoverHelpTrigger
         | UxHelpLanguage
         | UxTheme => "Actions",
-        InsightsIgnoredTtlSecs | InsightsDefaultWindowSecs => "Insights",
         TokenQuotaTight => "Policy Inputs",
         SecurityPostureAdvisories
         | SecurityCrossWindowFindings
@@ -991,8 +988,6 @@ fn parameter_label(field: ParameterField) -> &'static str {
         UxHoverHelpTrigger => "ux hover_help_trigger",
         UxHelpLanguage => "ux help_language",
         UxTheme => "ux theme",
-        InsightsIgnoredTtlSecs => "insights ignored_ttl_secs",
-        InsightsDefaultWindowSecs => "insights default_window_secs",
         TokenQuotaTight => "token quota_tight",
         SecurityPostureAdvisories => "security posture_advisories",
         SecurityCrossWindowFindings => "security cross_window_findings",
@@ -1065,8 +1060,6 @@ fn parameter_toml_path(field: ParameterField) -> Vec<&'static str> {
         UxHoverHelpTrigger => vec!["ux", "hover_help_trigger"],
         UxHelpLanguage => vec!["ux", "help_language"],
         UxTheme => vec!["ux", "theme"],
-        InsightsIgnoredTtlSecs => vec!["insights", "ignored_ttl_secs"],
-        InsightsDefaultWindowSecs => vec!["insights", "default_window_secs"],
         TokenQuotaTight => vec!["token", "quota_tight"],
         SecurityPostureAdvisories => vec!["security", "posture_advisories"],
         SecurityCrossWindowFindings => vec!["security", "cross_window_findings"],
@@ -1141,8 +1134,6 @@ fn parameter_value_for_display(config: &QmonsterConfig, field: ParameterField) -
         UxHoverHelpTrigger => hover_help_trigger_label(config.ux.hover_help_trigger).into(),
         UxHelpLanguage => help_language_label(config.ux.help_language).into(),
         UxTheme => config.ux.theme.as_str().into(),
-        InsightsIgnoredTtlSecs => seconds_label(config.insights.ignored_ttl_secs),
-        InsightsDefaultWindowSecs => seconds_label(config.insights.default_window_secs),
         TokenQuotaTight => on_off(config.token.quota_tight).into(),
         SecurityPostureAdvisories => on_off(config.security.posture_advisories).into(),
         SecurityCrossWindowFindings => on_off(config.security.cross_window_findings).into(),
@@ -1212,8 +1203,6 @@ fn parameter_value_for_edit(config: &QmonsterConfig, field: ParameterField) -> S
         IdleStillnessPolls => config.idle.stillness_polls.to_string(),
         LoggingRetentionDays => config.logging.retention_days.to_string(),
         LoggingBigOutputChars => config.logging.big_output_chars.to_string(),
-        InsightsIgnoredTtlSecs => config.insights.ignored_ttl_secs.to_string(),
-        InsightsDefaultWindowSecs => config.insights.default_window_secs.to_string(),
         CacheHotRatioThreshold => config.cache.hot_ratio_threshold.to_string(),
         CacheColdRatioThreshold => config.cache.cold_ratio_threshold.to_string(),
         CacheHotLowCtxThreshold => config.cache.hot_low_ctx_threshold.to_string(),
@@ -1457,12 +1446,6 @@ fn apply_parameter_edit(
         LoggingBigOutputChars => {
             config.logging.big_output_chars = parse_usize_value(label, raw, 1)?;
         }
-        InsightsIgnoredTtlSecs => {
-            config.insights.ignored_ttl_secs = parse_u64_value(label, raw, 0)?;
-        }
-        InsightsDefaultWindowSecs => {
-            config.insights.default_window_secs = parse_u64_value(label, raw, 1)?;
-        }
         CacheHotRatioThreshold => {
             config.cache.hot_ratio_threshold = f64::from(parse_unit_f32(label, raw)?);
         }
@@ -1587,12 +1570,6 @@ fn merge_parameter_field(
         }
         UxHelpLanguage => set_nested_str(doc, &path, help_language_label(config.ux.help_language)),
         UxTheme => set_nested_str(doc, &path, config.ux.theme.as_str()),
-        InsightsIgnoredTtlSecs => {
-            set_nested_i64(doc, &path, config.insights.ignored_ttl_secs as i64)
-        }
-        InsightsDefaultWindowSecs => {
-            set_nested_i64(doc, &path, config.insights.default_window_secs as i64);
-        }
         TokenQuotaTight => set_nested_bool(doc, &path, config.token.quota_tight),
         SecurityPostureAdvisories => {
             set_nested_bool(doc, &path, config.security.posture_advisories);
@@ -2816,19 +2793,6 @@ fn build_parameter_body_lines(
                 hover_help_trigger_label(defaults.ux.hover_help_trigger)
             ),
         ),
-        setting_row(
-            "insights ignored_ttl/default_window",
-            format!(
-                "{}/{}",
-                seconds_label(config.insights.ignored_ttl_secs),
-                seconds_label(config.insights.default_window_secs)
-            ),
-            format!(
-                "{}/{}",
-                seconds_label(defaults.insights.ignored_ttl_secs),
-                seconds_label(defaults.insights.default_window_secs)
-            ),
-        ),
         Line::from(""),
         reference_header_line("Policy Inputs"),
         setting_row(
@@ -3162,13 +3126,6 @@ fn build_rule_body_lines(overlay: &SettingsOverlay, config: &QmonsterConfig) -> 
             format!(
                 "p/d/y opens modal: always = every time, first_time = once per kind per session, never = skipped; target must exist; current = {}",
                 confirm_actions_label(config.ux.confirm_actions)
-            ),
-        ),
-        rule_row(
-            "insights ttl ignored",
-            format!(
-                "classifies unresolved recommendations as TTL ignored after {} without correlated outcome",
-                seconds_label(config.insights.ignored_ttl_secs)
             ),
         ),
         Line::from(""),
@@ -3708,12 +3665,6 @@ fn parameter_help_text(field: ParameterField) -> &'static str {
         UxHelpLanguage => "selects the language used by floating help and related glossary text",
         UxTheme => {
             "selects the dashboard color palette: dark (default low-saturation) or high_contrast (brighter severity colors + BOLD dim text for bright-profile terminals)"
-        }
-        InsightsIgnoredTtlSecs => {
-            "time after which unresolved recommendation lifecycle events become TTL-ignored in insights"
-        }
-        InsightsDefaultWindowSecs => {
-            "default reporting window for Token Insights and lifecycle summaries"
         }
         TokenQuotaTight => {
             "marks quota as tight so cache/profile recommendations can become more conservative"

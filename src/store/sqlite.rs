@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::Connection;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -92,50 +92,6 @@ CREATE INDEX IF NOT EXISTS idx_anomaly_history_pane_tick
     ON anomaly_history_snapshots(pane_id, tick_unix_secs DESC);
 ";
 
-pub const RECOMMENDATION_LIFECYCLE_SCHEMA: &str = r"
-CREATE TABLE IF NOT EXISTS recommendation_events (
-    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts_unix_ms              INTEGER NOT NULL,
-    pane_id                 TEXT    NOT NULL,
-    provider                TEXT,
-    role                    TEXT,
-    situation               TEXT    NOT NULL,
-    action                  TEXT    NOT NULL,
-    severity                TEXT    NOT NULL,
-    source_kind             TEXT    NOT NULL,
-    reason_summary          TEXT    NOT NULL,
-    suggested_command       TEXT,
-    is_strong               INTEGER NOT NULL,
-    dedup_key               TEXT    NOT NULL,
-    threshold_snapshot_json TEXT,
-    last_seen_unix_ms       INTEGER,
-    occurrence_count        INTEGER NOT NULL DEFAULT 1
-);
-CREATE INDEX IF NOT EXISTS idx_recommendation_events_ts
-    ON recommendation_events(ts_unix_ms DESC);
-CREATE INDEX IF NOT EXISTS idx_recommendation_events_pane_dedup
-    ON recommendation_events(pane_id, dedup_key, ts_unix_ms DESC);
-CREATE INDEX IF NOT EXISTS idx_recommendation_events_action
-    ON recommendation_events(action, ts_unix_ms DESC);
-
-CREATE TABLE IF NOT EXISTS recommendation_outcomes (
-    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts_unix_ms              INTEGER NOT NULL,
-    recommendation_event_id INTEGER,
-    pane_id                 TEXT    NOT NULL,
-    action                  TEXT    NOT NULL,
-    outcome                 TEXT    NOT NULL,
-    audit_event_id          INTEGER,
-    summary                 TEXT    NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_recommendation_outcomes_ts
-    ON recommendation_outcomes(ts_unix_ms DESC);
-CREATE INDEX IF NOT EXISTS idx_recommendation_outcomes_event
-    ON recommendation_outcomes(recommendation_event_id);
-CREATE INDEX IF NOT EXISTS idx_recommendation_outcomes_pane_action
-    ON recommendation_outcomes(pane_id, action, ts_unix_ms DESC);
-";
-
 pub const COST_USAGE_SCHEMA: &str = r"
 CREATE TABLE IF NOT EXISTS cost_usage_events (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -180,8 +136,6 @@ impl AuditDb {
             .map_err(|e| SqliteError::Query(e.to_string()))?;
         conn.execute_batch(ANOMALY_HISTORY_SNAPSHOTS_SCHEMA)
             .map_err(|e| SqliteError::Query(e.to_string()))?;
-        conn.execute_batch(RECOMMENDATION_LIFECYCLE_SCHEMA)
-            .map_err(|e| SqliteError::Query(e.to_string()))?;
         // F-4 (v1.25.0): existing DBs from v1.24.0 lack the
         // cached_input_tokens column. ALTER returns "duplicate column"
         // if it already exists; we swallow that explicitly so the
@@ -205,45 +159,6 @@ impl AuditDb {
                 return Err(SqliteError::Query(msg));
             }
         }
-        if let Err(e) = conn.execute(
-            "ALTER TABLE recommendation_events ADD COLUMN last_seen_unix_ms INTEGER",
-            [],
-        ) {
-            let msg = e.to_string();
-            if !msg.contains("duplicate column") {
-                return Err(SqliteError::Query(msg));
-            }
-        }
-        if let Err(e) = conn.execute(
-            "ALTER TABLE recommendation_events ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1",
-            [],
-        ) {
-            let msg = e.to_string();
-            if !msg.contains("duplicate column") {
-                return Err(SqliteError::Query(msg));
-            }
-        }
-        conn.execute(
-            "UPDATE recommendation_events
-             SET last_seen_unix_ms = ts_unix_ms
-             WHERE last_seen_unix_ms IS NULL",
-            [],
-        )
-        .map_err(|e| SqliteError::Query(e.to_string()))?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_recommendation_events_pane_dedup_seen
-             ON recommendation_events(pane_id, dedup_key, last_seen_unix_ms DESC)",
-            [],
-        )
-        .map_err(|e| SqliteError::Query(e.to_string()))?;
-        Ok(Self {
-            conn: Mutex::new(conn),
-        })
-    }
-
-    pub fn open_read_only(path: &Path) -> Result<Self, SqliteError> {
-        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(|e| SqliteError::Open(e.to_string()))?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -281,22 +196,5 @@ mod tests {
         let path = tmp.path().join("audit.db");
         let _db1 = AuditDb::open(&path).expect("first open ok");
         let _db2 = AuditDb::open(&path).expect("second open ok (no error on reopen)");
-    }
-
-    #[test]
-    fn audit_db_open_creates_recommendation_lifecycle_tables() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let path = tmp.path().join("audit.db");
-        let _db = AuditDb::open(&path).expect("open ok");
-        let conn = rusqlite::Connection::open(&path).unwrap();
-        let count: i64 = conn
-            .query_row(
-                "SELECT count(*) FROM sqlite_master WHERE type = 'table'
-                 AND name IN ('recommendation_events', 'recommendation_outcomes')",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 2);
     }
 }

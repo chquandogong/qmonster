@@ -1220,7 +1220,7 @@ fn footer_chip_span(
 /// shape that pins `p accept` / `d dismiss` placement).
 #[cfg(test)]
 pub(crate) fn footer_keys_text() -> &'static str {
-    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} H hover-help \u{00b7} L help-lang \u{00b7} n anomalies \u{00b7} a actions \u{00b7} i insights \u{00b7} ? help \u{00b7} q quit"
+    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} H hover-help \u{00b7} L help-lang \u{00b7} n anomalies \u{00b7} a actions \u{00b7} ? help \u{00b7} q quit"
 }
 
 fn footer_compact_keys_text() -> &'static str {
@@ -1307,7 +1307,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "Modal [x]",
-            "every overlay (Help / Settings / Provider Setup / Pending Actions / Token Insights / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
+            "every overlay (Help / Settings / Provider Setup / Pending Actions / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
         ),
         (
             "Overlay chrome",
@@ -1337,10 +1337,6 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         (
             "a",
             "open Pending Actions overlay (live explainer + multi-select bulk dispatch + size/ratio adjustability): lists every pane with a pending p/d proposal AND every alert with a y-copyable command; hint shows scroll x/y · more/END; Space=toggle selection, P/Y/A=group toggle, c=clear; p/d/y dispatch selected items bypassing confirm_actions; [/] resize modal, ,/. resize list pane, = reset all geometry; drag title row to move, drag separator to resize ratio; a again or Esc/q/[x] close",
-        ),
-        (
-            "i",
-            "open the resizable Token Insights overlay for the configured insight ledger window; [/] resize, = reset geometry, title drag move, r refreshes while open, body-wheel/Up/Down scroll, i again or Esc/q/[x] close",
         ),
         ("Space", "toggle multi-select on cursor item (a overlay)"),
         (
@@ -1412,7 +1408,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
 
     lines.extend(help_wrapped_detail_lines(
         "S",
-        "open the settings overlay (Thresholds / Integrations / Parameters / Rules / Badges; includes [insights], [anomaly], [reset], and [provider_setup] surfaces); Thresholds/Integrations use ↑/↓/wheel for selection, read-only tabs use ↑/↓/j/k/wheel/PgUp/PgDn/Home/End for body scroll; press 'w' inside to write back to the loaded TOML; press S again (when not editing), Esc, q, or click [x] to close",
+        "open the settings overlay (Thresholds / Integrations / Parameters / Rules / Badges; includes [anomaly], [reset], and [provider_setup] surfaces); Thresholds/Integrations use ↑/↓/wheel for selection, read-only tabs use ↑/↓/j/k/wheel/PgUp/PgDn/Home/End for body scroll; press 'w' inside to write back to the loaded TOML; press S again (when not editing), Esc, q, or click [x] to close",
         total_width,
     ));
 
@@ -2146,9 +2142,6 @@ mod tests {
         let actions_pos = text
             .find("a actions")
             .expect("footer must carry `a actions`");
-        let insights_pos = text
-            .find("i insights")
-            .expect("footer must carry `i insights`");
         let help_pos = text
             .find("? help")
             .expect("footer must keep the `? help` anchor");
@@ -2189,11 +2182,11 @@ mod tests {
             "hover help keys must precede the operational overlay cluster"
         );
         assert!(
-            anomalies_pos < actions_pos && actions_pos < insights_pos,
-            "overlay cluster must stay n anomalies -> a actions -> i insights"
+            anomalies_pos < actions_pos,
+            "overlay cluster must stay n anomalies -> a actions"
         );
         assert!(
-            insights_pos < help_pos,
+            actions_pos < help_pos,
             "overlay-opener keys must precede `? help` (generic tail)"
         );
     }
@@ -2797,10 +2790,6 @@ mod tests {
             dump.contains("Modal [x]") || dump.contains("[x] click target"),
             "Help should mention [x] click on modals; got:\n{dump}"
         );
-        assert!(
-            dump.contains("Token Insights"),
-            "Help modal [x] row should include the i Token Insights overlay; got:\n{dump}"
-        );
     }
 
     #[test]
@@ -2822,7 +2811,6 @@ mod tests {
         };
 
         let overlay = entry_for("Overlay chrome");
-        let insights = entry_for("i");
 
         assert!(
             overlay.contains("a/i")
@@ -2835,15 +2823,6 @@ mod tests {
         assert!(
             overlay.contains("exceptions"),
             "Help Overlay chrome row should mention exceptions briefly; got: {overlay}\nfull help:\n{dump}"
-        );
-        assert!(
-            insights.contains("resizable Token Insights")
-                && insights.contains("[/] resize")
-                && insights.contains("= reset geometry")
-                && insights.contains("title drag move")
-                && insights.contains("body-wheel")
-                && insights.contains("r refreshes"),
-            "Help i row should document the resizable Token Insights contract; got: {insights}\nfull help:\n{dump}"
         );
     }
 

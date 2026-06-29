@@ -19,7 +19,7 @@ use crate::policy::claude_settings::{ClaudeSettings, ClaudeSettingsError};
 use crate::policy::pricing::{PRICING_STALENESS_SECS, PricingTable, pricing_staleness_days};
 use crate::store::{
     ArchiveWriter, EventSink, InMemorySink, QmonsterPaths, SnapshotWriter, SqliteAuditSink,
-    SqliteCostUsageSink, SqliteRecommendationLifecycleSink, SqliteTokenUsageSink, sweep,
+    SqliteCostUsageSink, SqliteTokenUsageSink, sweep,
 };
 use crate::tmux::TmuxSource;
 
@@ -119,18 +119,6 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
             }
         };
 
-    let recommendation_lifecycle_sink: Option<SqliteRecommendationLifecycleSink> =
-        match SqliteRecommendationLifecycleSink::open(&paths.sqlite_path()) {
-            Ok(sink) => Some(sink),
-            Err(e) => {
-                eprintln!(
-                    "qmonster: recommendation lifecycle sink open failed ({e}); token insights \
-                     will fall back to audit-only recommendation correlation this session"
-                );
-                None
-            }
-        };
-
     let source_build = build_tmux_source(&config)?;
     let notifier = DesktopNotifier;
     let archive = ArchiveWriter::new(paths.clone(), config.logging.big_output_chars);
@@ -144,7 +132,7 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
         .with_pricing(pricing)
         .with_claude_settings(claude_settings)
         .with_config_path(writable_config_path)
-        .with_insights_db_path(paths.sqlite_path());
+        .with_sqlite_db_path(paths.sqlite_path());
     if let Some(sink) = token_usage_sink {
         ctx = ctx.with_token_usage_sink(sink);
     }
@@ -153,9 +141,6 @@ pub fn build_startup_runtime(options: StartupOptions<'_>) -> anyhow::Result<Star
     }
     if let Some(sink) = anomaly_sink {
         ctx = ctx.with_anomaly_sink(sink);
-    }
-    if let Some(sink) = recommendation_lifecycle_sink {
-        ctx = ctx.with_recommendation_lifecycle_sink(sink);
     }
 
     if !pairs.is_empty() {

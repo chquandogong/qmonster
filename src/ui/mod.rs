@@ -3,7 +3,6 @@ pub mod alerts;
 pub mod dashboard;
 pub mod help_glossary;
 pub mod hover_help;
-pub mod insights;
 pub mod labels;
 pub mod modal_chrome;
 pub mod panels;

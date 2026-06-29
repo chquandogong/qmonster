@@ -6,7 +6,7 @@ use ratatui::layout::Rect;
 
 use crate::app::bootstrap::Context;
 use crate::app::clipboard_actions::{
-    AlertCommandCopyView, copy_selected_alert_command_to_clipboard_with_ledger,
+    AlertCommandCopyView, copy_selected_alert_command_to_clipboard,
 };
 use crate::app::dashboard_render::{DashboardFrameView, render_dashboard_frame};
 use crate::app::dashboard_runtime::DashboardRuntimeState;
@@ -82,7 +82,6 @@ where
     let mut settings_overlay = crate::ui::settings::SettingsOverlay::new();
     let mut provider_setup_overlay =
         crate::ui::provider_setup::ProviderSetupOverlay::from_config(&ctx.config);
-    let mut insights_overlay = crate::ui::insights::InsightsOverlay::new();
     let mut action_explainer = crate::app::action_explainer::ActionExplainModal::new();
     // v1.39 surface C / v1.40 redesign: Pending Actions overlay (a key).
     // Split list+live-explainer modal listing every pane with a pending
@@ -150,7 +149,7 @@ where
                 // linger in `multi_selected` and re-dispatch.
                 pending_actions.prune_to(&pending_items);
                 let alert_filter_snapshot = dashboard.alert_filter().map(|s| s.to_string());
-                let audit_recent_severity = ctx.insights_db_path.as_deref().and_then(|path| {
+                let audit_recent_severity = ctx.sqlite_db_path.as_deref().and_then(|path| {
                     crate::store::recent_audit_max_severity(path, 15 * 60)
                         .ok()
                         .flatten()
@@ -184,7 +183,6 @@ where
                             help_modal: &help_modal,
                             settings_overlay: &settings_overlay,
                             provider_setup_overlay: &provider_setup_overlay,
-                            insights_overlay: &insights_overlay,
                             anomaly_events_ring: &ctx.anomaly_events_ring,
                             action_explainer: &action_explainer,
                             pending_actions: &pending_actions,
@@ -196,14 +194,6 @@ where
                         },
                     );
                 })?;
-
-                while let Ok(outcome) = ctx.insights_load_rx.try_recv() {
-                    let label = chrono::Local::now().format("%H:%M:%S").to_string();
-                    insights_overlay.set_snapshot_for(outcome.request_id, outcome.result, label);
-                }
-                if insights_overlay.is_loading() {
-                    insights_overlay.advance_spinner();
-                }
 
                 if event::poll(Duration::from_millis(100))? {
                     match event::read()? {
@@ -329,35 +319,6 @@ where
                                 continue;
                             }
 
-                            if insights_overlay.is_open() {
-                                let action =
-                                    crate::app::insights_overlay::handle_insights_overlay_key(
-                                        &mut insights_overlay,
-                                        k.code,
-                                    );
-                                if action
-                                    == crate::app::insights_overlay::InsightsOverlayAction::Refresh
-                                {
-                                    refresh_insights_overlay(&mut insights_overlay, ctx);
-                                    // v1.60.0: confirm the refresh kick to the
-                                    // operator. The async load takes a
-                                    // beat to land — without this nudge a
-                                    // stale chip + an `r` press feels
-                                    // ignored.
-                                    dashboard.push_notice(
-                                        SystemNotice {
-                                            title: "insights refresh requested".into(),
-                                            body: "aggregating fresh token insights …".into(),
-                                            severity: crate::domain::recommendation::Severity::Good,
-                                            source_kind:
-                                                crate::domain::origin::SourceKind::ProjectCanonical,
-                                        },
-                                        Instant::now(),
-                                    );
-                                }
-                                continue;
-                            }
-
                             if pending_actions.is_open() {
                                 // Re-collect items at key-handle time so
                                 // a poll between draw and key delivery
@@ -396,14 +357,12 @@ where
                                             &mut dashboard,
                                             &ctx.source,
                                             &*ctx.sink,
-                                            ctx.recommendation_lifecycle_sink.as_ref(),
                                             ctx.config.actions.mode,
                                             ctx.config.actions.allow_auto_prompt_send,
                                             Instant::now(),
                                         );
                                     }
                                     PendingActionsOutcome::ClearItems(idxs) => {
-                                        let hidden_before = dashboard.alert_hide_deadlines.clone();
                                         dispatch_bulk_clear(
                                             &idxs,
                                             &items,
@@ -411,20 +370,9 @@ where
                                             &mut dashboard,
                                             &ctx.source,
                                             &*ctx.sink,
-                                            ctx.recommendation_lifecycle_sink.as_ref(),
                                             ctx.config.actions.mode,
                                             ctx.config.actions.allow_auto_prompt_send,
                                             Instant::now(),
-                                        );
-                                        let hidden_keys = newly_hidden_alert_keys(
-                                            &hidden_before,
-                                            &dashboard.alert_hide_deadlines,
-                                            Instant::now(),
-                                        );
-                                        crate::app::insights_lifecycle::record_hidden_alert_outcomes(
-                                            ctx.recommendation_lifecycle_sink.as_ref(),
-                                            &dashboard.reports,
-                                            hidden_keys,
                                         );
                                     }
                                     PendingActionsOutcome::CopyItem(idx) => {
@@ -435,7 +383,6 @@ where
                                             &mut dashboard,
                                             &ctx.source,
                                             &*ctx.sink,
-                                            ctx.recommendation_lifecycle_sink.as_ref(),
                                             ctx.config.actions.mode,
                                             ctx.config.actions.allow_auto_prompt_send,
                                             Instant::now(),
@@ -455,7 +402,6 @@ where
                                                 &action,
                                                 &ctx.source,
                                                 &*ctx.sink,
-                                                ctx.recommendation_lifecycle_sink.as_ref(),
                                                 &dashboard.reports,
                                                 ctx.config.actions.mode,
                                                 ctx.config.actions.allow_auto_prompt_send,
@@ -521,14 +467,6 @@ where
                                 continue;
                             }
 
-                            let hidden_before =
-                                if matches!(k.code, KeyCode::Enter | KeyCode::Char(' '))
-                                    && focus == FocusedPanel::Alerts
-                                {
-                                    Some(dashboard.alert_hide_deadlines.clone())
-                                } else {
-                                    None
-                                };
                             if handle_dashboard_selection_key(
                                 DashboardSelectionKeyView {
                                     focus,
@@ -541,18 +479,6 @@ where
                                 },
                                 k.code,
                             ) {
-                                if let Some(hidden_before) = hidden_before {
-                                    let hidden_keys = newly_hidden_alert_keys(
-                                        &hidden_before,
-                                        &dashboard.alert_hide_deadlines,
-                                        now,
-                                    );
-                                    crate::app::insights_lifecycle::record_hidden_alert_outcomes(
-                                        ctx.recommendation_lifecycle_sink.as_ref(),
-                                        &dashboard.reports,
-                                        hidden_keys,
-                                    );
-                                }
                                 continue;
                             }
 
@@ -634,10 +560,6 @@ where
                                     provider_setup_overlay.sync_from_config(&ctx.config);
                                     provider_setup_overlay.open();
                                 }
-                                KeyCode::Char('i') => {
-                                    insights_overlay.open();
-                                    refresh_insights_overlay(&mut insights_overlay, ctx);
-                                }
                                 KeyCode::Char('a') => {
                                     // v1.39 surface C: open the Pending
                                     // Actions overlay. Toggle on `a`
@@ -689,13 +611,6 @@ where
                                         &dashboard.reports,
                                         &dashboard.notices,
                                     );
-                                    if notice.title == "snapshot saved" {
-                                        crate::app::insights_lifecycle::record_operator_snapshot_outcomes(
-                                            ctx.recommendation_lifecycle_sink.as_ref(),
-                                            &dashboard.reports,
-                                            format!("operator snapshot {}", notice.body),
-                                        );
-                                    }
                                     dashboard.push_notice(notice, Instant::now());
                                 }
                                 KeyCode::Char('u') if focus == FocusedPanel::Panes => {
@@ -772,18 +687,7 @@ where
                                             hidden_until: &dashboard.alert_hide_deadlines,
                                             now,
                                         };
-                                        // v2.2.0 (P1-3): route through the
-                                        // ledger-aware helper so the operator's
-                                        // `y` copy lands as a
-                                        // `RecommendationOutcome::Copied` row
-                                        // when the alert is recommendation-class.
-                                        let now_unix_ms = crate::app::event_loop::current_unix_ms();
-                                        let notice =
-                                            copy_selected_alert_command_to_clipboard_with_ledger(
-                                                view,
-                                                ctx.recommendation_lifecycle_sink.as_ref(),
-                                                now_unix_ms,
-                                            );
+                                        let notice = copy_selected_alert_command_to_clipboard(view);
                                         dashboard.push_notice(notice, now);
                                     }
                                 }
@@ -853,10 +757,9 @@ where
                                         }
                                     } else {
                                         let notice =
-                                            crate::app::prompt_send_actions::handle_prompt_send_action_with_lifecycle(
+                                            crate::app::prompt_send_actions::handle_prompt_send_action(
                                             &ctx.source,
                                             &*ctx.sink,
-                                            ctx.recommendation_lifecycle_sink.as_ref(),
                                             &dashboard.reports,
                                             Some(pane_idx),
                                             accepting,
@@ -875,7 +778,6 @@ where
                             let now = Instant::now();
                             let overlay_mouse_owner = settings_overlay.is_open()
                                 || provider_setup_overlay.is_open()
-                                || insights_overlay.is_open()
                                 || pending_actions.is_open()
                                 || action_explainer.is_open()
                                 || git_modal.is_open()
@@ -900,16 +802,6 @@ where
                                 dashboard_split_dragging = false;
                                 handle_provider_setup_overlay_mouse(
                                     &mut provider_setup_overlay,
-                                    viewport,
-                                    m,
-                                );
-                                continue;
-                            }
-
-                            if insights_overlay.is_open() {
-                                dashboard_split_dragging = false;
-                                crate::app::insights_overlay::handle_insights_overlay_mouse(
-                                    &mut insights_overlay,
                                     viewport,
                                     m,
                                 );
@@ -1048,7 +940,6 @@ where
                                 }
                             }
 
-                            let hidden_before = dashboard.alert_hide_deadlines.clone();
                             let action = handle_dashboard_mouse(
                                 viewport,
                                 m,
@@ -1091,16 +982,6 @@ where
                                 }
                                 DashboardMouseAction::None => {}
                             }
-                            let hidden_keys = newly_hidden_alert_keys(
-                                &hidden_before,
-                                &dashboard.alert_hide_deadlines,
-                                now,
-                            );
-                            crate::app::insights_lifecycle::record_hidden_alert_outcomes(
-                                ctx.recommendation_lifecycle_sink.as_ref(),
-                                &dashboard.reports,
-                                hidden_keys,
-                            );
                         }
                         _ => {}
                     }
@@ -1146,53 +1027,6 @@ fn matches_originating_key(
     )
 }
 
-fn newly_hidden_alert_keys(
-    before: &HashMap<String, Instant>,
-    after: &HashMap<String, Instant>,
-    now: Instant,
-) -> Vec<String> {
-    after
-        .iter()
-        .filter(|(key, deadline)| {
-            **deadline > now
-                && before
-                    .get(*key)
-                    .is_none_or(|old_deadline| *old_deadline <= now)
-        })
-        .map(|(key, _)| key.clone())
-        .collect()
-}
-
-fn refresh_insights_overlay<P, N>(
-    overlay: &mut crate::ui::insights::InsightsOverlay,
-    ctx: &mut Context<P, N>,
-) where
-    P: PaneSource,
-    N: NotifyBackend,
-{
-    let Some(path) = ctx.insights_db_path.clone() else {
-        overlay.set_error("insights database path is unavailable in this runtime");
-        return;
-    };
-    let now_ms = crate::app::event_loop::current_unix_ms();
-    let window_ms = i64::try_from(u128::from(ctx.config.insights.default_window_secs) * 1000)
-        .unwrap_or(i64::MAX);
-    let window = crate::store::InsightsWindow {
-        since_ms: now_ms.saturating_sub(window_ms),
-        until_ms: now_ms,
-    };
-    ctx.next_insights_request_id = ctx.next_insights_request_id.wrapping_add(1);
-    let request_id = ctx.next_insights_request_id;
-    overlay.mark_loading(request_id);
-    crate::app::insights_load::spawn_insights_load(
-        path,
-        window,
-        ctx.config.insights.ignored_ttl_secs,
-        ctx.insights_load_tx.clone(),
-        request_id,
-    );
-}
-
 /// v1.38 Bug B fix: at Enter time, build a `SystemNotice` from the
 /// snapshotted `PendingAction` rather than re-querying the live
 /// `pane_state` / `alert_state`. For accept/reject this validates the
@@ -1204,7 +1038,6 @@ fn confirm_pending_action<P: crate::tmux::polling::PaneSource>(
     action: &crate::app::action_explainer::PendingAction,
     source: &P,
     sink: &dyn crate::store::EventSink,
-    lifecycle_sink: Option<&crate::store::SqliteRecommendationLifecycleSink>,
     reports: &[crate::app::event_loop::PaneReport],
     mode: crate::app::config::ActionsMode,
     allow_auto_prompt_send: bool,
@@ -1231,10 +1064,9 @@ fn confirm_pending_action<P: crate::tmux::polling::PaneSource>(
             // command away from the modal-shown one.
             match resolve_accept_target(action, reports) {
                 Some(_idx) => {
-                    crate::app::prompt_send_actions::handle_prompt_send_action_for_proposal_with_lifecycle(
+                    crate::app::prompt_send_actions::handle_prompt_send_action_for_proposal(
                         source,
                         sink,
-                        lifecycle_sink,
                         mode,
                         allow_auto_prompt_send,
                         target_pane_id,
@@ -1294,7 +1126,6 @@ fn dispatch_bulk_accept<P: crate::tmux::polling::PaneSource>(
     dashboard: &mut crate::app::dashboard_runtime::DashboardRuntimeState,
     source: &P,
     sink: &dyn crate::store::EventSink,
-    lifecycle_sink: Option<&crate::store::SqliteRecommendationLifecycleSink>,
     mode: crate::app::config::ActionsMode,
     allow_auto_prompt_send: bool,
     now: std::time::Instant,
@@ -1311,7 +1142,6 @@ fn dispatch_bulk_accept<P: crate::tmux::polling::PaneSource>(
             &action,
             source,
             sink,
-            lifecycle_sink,
             &dashboard.reports,
             mode,
             allow_auto_prompt_send,
@@ -1347,7 +1177,6 @@ fn dispatch_bulk_clear<P: crate::tmux::polling::PaneSource>(
     dashboard: &mut crate::app::dashboard_runtime::DashboardRuntimeState,
     source: &P,
     sink: &dyn crate::store::EventSink,
-    lifecycle_sink: Option<&crate::store::SqliteRecommendationLifecycleSink>,
     mode: crate::app::config::ActionsMode,
     allow_auto_prompt_send: bool,
     now: std::time::Instant,
@@ -1412,7 +1241,6 @@ fn dispatch_bulk_clear<P: crate::tmux::polling::PaneSource>(
             &prep.action,
             source,
             sink,
-            lifecycle_sink,
             &dashboard.reports,
             mode,
             allow_auto_prompt_send,
@@ -1460,7 +1288,6 @@ fn dispatch_bulk_copy<P: crate::tmux::polling::PaneSource>(
     dashboard: &mut crate::app::dashboard_runtime::DashboardRuntimeState,
     source: &P,
     sink: &dyn crate::store::EventSink,
-    lifecycle_sink: Option<&crate::store::SqliteRecommendationLifecycleSink>,
     mode: crate::app::config::ActionsMode,
     allow_auto_prompt_send: bool,
     now: std::time::Instant,
@@ -1475,7 +1302,6 @@ fn dispatch_bulk_copy<P: crate::tmux::polling::PaneSource>(
         &action,
         source,
         sink,
-        lifecycle_sink,
         &dashboard.reports,
         mode,
         allow_auto_prompt_send,
@@ -1606,7 +1432,6 @@ mod tests {
             &mut dashboard,
             &source,
             &sink,
-            None,
             crate::app::config::ActionsMode::ObserveOnly,
             true,
             now,
@@ -1664,7 +1489,6 @@ mod tests {
             &mut dashboard,
             &StubSource,
             &NoopSink,
-            None,
             crate::app::config::ActionsMode::ObserveOnly,
             true,
             now,

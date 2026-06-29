@@ -1,32 +1,11 @@
 use std::path::PathBuf;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
-use anyhow::{Context as _, bail};
-use clap::{Parser, Subcommand};
-
+use clap::Parser;
 use qmonster::app::event_loop::run_once;
 use qmonster::app::once_report::print_once_reports;
 use qmonster::app::startup::{StartupOptions, build_startup_runtime};
 use qmonster::app::tui_loop::run_tui;
-use qmonster::insights_report::{
-    empty_insights_snapshot, format_insights_report_lines, format_rec_engagement_lines,
-    parse_since_arg, resolve_insights_paths,
-};
-use qmonster::store::{InsightsWindow, SqliteInsightsStore, rec_engagement_snapshot};
-
-#[derive(Debug, Subcommand)]
-enum CliCommand {
-    Insights {
-        #[arg(long, default_value = "24h")]
-        since: String,
-    },
-    /// Per-action surfaced / copied / accepted / ignored counts from the
-    /// lifecycle ledger. Drives MDR-P2-1 measurement.
-    RecEngagement {
-        #[arg(long, default_value = "14d")]
-        since: String,
-    },
-}
 
 #[derive(Debug, Parser)]
 #[command(name = "qmonster", about = "Observe-first TUI for multi-CLI tmux work")]
@@ -46,90 +25,12 @@ struct Cli {
     /// Run one iteration and exit (for smoke tests and scripted checks).
     #[arg(long)]
     once: bool,
-
-    #[command(subcommand)]
-    command: Option<CliCommand>,
-}
-
-fn build_window(since_secs: u64) -> anyhow::Result<InsightsWindow> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock before UNIX_EPOCH")?;
-    let now_ms = i64::try_from(now.as_millis()).context("current time exceeds i64 millis")?;
-    let since_delta_ms =
-        i64::try_from(u128::from(since_secs) * 1000).context("--since value exceeds i64 millis")?;
-    Ok(InsightsWindow {
-        since_ms: now_ms.saturating_sub(since_delta_ms),
-        until_ms: now_ms,
-    })
 }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    if cli.once && cli.command.is_some() {
-        bail!("--once cannot be combined with a subcommand");
-    }
-
     let env_root = std::env::var("QMONSTER_ROOT").ok();
-    if let Some(CliCommand::Insights { since }) = cli.command.as_ref() {
-        let since_secs = parse_since_arg(since)?;
-        let (paths, root_source, config) = resolve_insights_paths(
-            cli.config.as_deref(),
-            cli.root.as_deref(),
-            &cli.set,
-            env_root.as_deref(),
-        )?;
-        let window = build_window(since_secs)?;
-        let sqlite_path = paths.sqlite_path();
-        let snapshot = if sqlite_path.exists() {
-            let store = SqliteInsightsStore::open_read_only(&sqlite_path)
-                .with_context(|| format!("open insights store at {}", sqlite_path.display()))?;
-            store.snapshot_with_ignored_ttl(window, config.insights.ignored_ttl_secs)?
-        } else {
-            empty_insights_snapshot(window)
-        };
-        println!(
-            "qmonster paths: {} (source: {:?})",
-            paths.root().display(),
-            root_source
-        );
-        for line in format_insights_report_lines(&snapshot) {
-            println!("{line}");
-        }
-        return Ok(());
-    }
-
-    if let Some(CliCommand::RecEngagement { since }) = cli.command.as_ref() {
-        let since_secs = parse_since_arg(since)?;
-        let (paths, root_source, _config) = resolve_insights_paths(
-            cli.config.as_deref(),
-            cli.root.as_deref(),
-            &cli.set,
-            env_root.as_deref(),
-        )?;
-        let window = build_window(since_secs)?;
-        let sqlite_path = paths.sqlite_path();
-        let snapshot = if sqlite_path.exists() {
-            rec_engagement_snapshot(&sqlite_path, window)
-                .with_context(|| format!("rec-engagement read from {}", sqlite_path.display()))?
-        } else {
-            qmonster::store::RecEngagementSnapshot {
-                window,
-                rows: Vec::new(),
-                tables_missing: true,
-            }
-        };
-        println!(
-            "qmonster paths: {} (source: {:?})",
-            paths.root().display(),
-            root_source
-        );
-        for line in format_rec_engagement_lines(&snapshot) {
-            println!("{line}");
-        }
-        return Ok(());
-    }
 
     let runtime = build_startup_runtime(StartupOptions {
         config_path: cli.config.as_deref(),

@@ -9,10 +9,9 @@ use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Severity;
 
 /// Canonical action string emitted for `AnomalyKind::SubagentSideEffect`.
-/// Single source of truth: the policy rule emits this verbatim, the insights
-/// store lists it in `KNOWN_ACTION_PREFIXES`, and the integration tests
-/// classify against it via `starts_with`. The leading `⚠ correlation only`
-/// disclaimer is intentional (v2.2.0 P1-2 honesty rule).
+/// Single source of truth: the policy rule emits this verbatim, and the
+/// integration tests classify against it via `starts_with`. The leading
+/// `⚠ correlation only` disclaimer is intentional (v2.2.0 P1-2 honesty rule).
 pub const SUBAGENT_SIDE_EFFECT_ACTION: &str =
     "anomaly: subagent activity ⚠ correlated with other anomalies";
 

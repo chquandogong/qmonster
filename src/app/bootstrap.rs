@@ -8,9 +8,7 @@ use crate::policy::engine::Engine;
 use crate::policy::pricing::PricingTable;
 use crate::store::archive_fs::ArchiveWriter;
 use crate::store::sink::EventSink;
-use crate::store::{
-    SnapshotWriter, SqliteCostUsageSink, SqliteRecommendationLifecycleSink, SqliteTokenUsageSink,
-};
+use crate::store::{SnapshotWriter, SqliteCostUsageSink, SqliteTokenUsageSink};
 use crate::tmux::polling::PaneSource;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -32,10 +30,11 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// when the operator did not pass `--config` (defaults are in use)
     /// — in that case the overlay's save action is gated off.
     pub config_path: Option<std::path::PathBuf>,
-    pub insights_db_path: Option<std::path::PathBuf>,
-    pub insights_load_tx: std::sync::mpsc::Sender<crate::app::insights_load::InsightsLoadOutcome>,
-    pub insights_load_rx: std::sync::mpsc::Receiver<crate::app::insights_load::InsightsLoadOutcome>,
-    pub next_insights_request_id: u64,
+    /// Path to the shared audit SQLite DB (`~/.qmonster/qmonster.sqlite3`),
+    /// threaded so the dashboard can read the recent-audit max-severity
+    /// badge via `store::recent_audit_max_severity`. `None` in test
+    /// fixtures / when no `QmonsterPaths` is available.
+    pub sqlite_db_path: Option<std::path::PathBuf>,
     /// v1.51.0: heuristic non-English input indicator. Set when a
     /// non-ASCII alphabetic char arrives; cleared when an ASCII letter
     /// arrives or after `IME_INDICATOR_TTL` of silence. Read by the
@@ -161,7 +160,6 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
     /// and AnomalyHistory deque snapshots. None when persistence is
     /// disabled (test fixtures, operators without --config-with-db).
     pub anomaly_sink: Option<crate::store::SqliteAnomalySink>,
-    pub recommendation_lifecycle_sink: Option<SqliteRecommendationLifecycleSink>,
     /// Phase 7 v3 (c): per-session set of pane_ids whose AnomalyHistory
     /// has been replay-checked already. Prevents repeating the disk
     /// query every tick.
@@ -177,14 +175,10 @@ pub struct Context<P: PaneSource, N: NotifyBackend> {
 
 impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
     pub fn new(config: QmonsterConfig, source: P, notifier: N, sink: Box<dyn EventSink>) -> Self {
-        let (insights_load_tx, insights_load_rx) = std::sync::mpsc::channel();
         Self {
             config,
             config_path: None,
-            insights_db_path: None,
-            insights_load_tx,
-            insights_load_rx,
-            next_insights_request_id: 0,
+            sqlite_db_path: None,
             ime_state: crate::app::ime_state::ImeState::new(),
             source,
             notifier,
@@ -215,7 +209,6 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             token_usage_sink: None,
             cost_usage_sink: None,
             anomaly_sink: None,
-            recommendation_lifecycle_sink: None,
             anomaly_history_replayed: std::collections::HashSet::new(),
             token_usage_read_failed_logged: std::collections::HashSet::new(),
             known_pane_ids: Vec::new(),
@@ -227,8 +220,8 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
         self
     }
 
-    pub fn with_insights_db_path(mut self, path: std::path::PathBuf) -> Self {
-        self.insights_db_path = Some(path);
+    pub fn with_sqlite_db_path(mut self, path: std::path::PathBuf) -> Self {
+        self.sqlite_db_path = Some(path);
         self
     }
 
@@ -272,14 +265,6 @@ impl<P: PaneSource, N: NotifyBackend> Context<P, N> {
             eprintln!("anomaly_sink retention purge failed at startup: {e}");
         }
         self.anomaly_sink = Some(sink);
-        self
-    }
-
-    pub fn with_recommendation_lifecycle_sink(
-        mut self,
-        sink: SqliteRecommendationLifecycleSink,
-    ) -> Self {
-        self.recommendation_lifecycle_sink = Some(sink);
         self
     }
 

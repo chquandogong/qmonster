@@ -396,7 +396,6 @@ pub fn render_tab_content(
 ) -> Vec<String> {
     let mut out = Vec::new();
     section(&mut out, "Downstream Qmonster Surfaces");
-    out.push("  Provider telemetry configured here feeds i Token Insights.".into());
     out.push("  Thresholds, retention, and insight windows live in S Settings.".into());
     out.push("".into());
     match overlay.tab {
@@ -524,7 +523,6 @@ pub fn render_tab_content(
             out.push("  cache / cost / token chips → Hidden — no documented surface".into());
             out.push("  anomaly detectors → all 8 detectors gated off for agy".into());
             out.push("  profile-switch recommendations → none".into());
-            out.push("  insights coverage → marked `unsupported` (not penalized)".into());
 
             section(&mut out, "Background");
             out.push("  Gemini CLI sunsets 2026-06-18 for free / Pro / Ultra users.".into());
@@ -999,10 +997,6 @@ mod tests {
         assert!(
             dump.contains("F-7c reset-aware advisories"),
             "Claude tab should mention F-7c context; got:\n{dump}"
-        );
-        assert!(
-            dump.contains("i Token Insights"),
-            "Claude tab should name the downstream observation overlay; got:\n{dump}"
         );
     }
 

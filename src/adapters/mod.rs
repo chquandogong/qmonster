@@ -1142,21 +1142,6 @@ mod agy_observeonly_regression {
         );
     }
 
-    /// Gate 4: insights coverage — provider string "Antigravity" maps to
-    /// status "unsupported" in the PaneDataCompleteness query.
-    #[test]
-    fn agy_enrichment_gate4_insights_coverage_is_unsupported() {
-        // Calls the real predicate function extracted from
-        // `collect_pane_data_completeness` in `store::insights`.  If the
-        // "Antigravity" literal were removed from the exclusion set, the real
-        // function would return "ok" or "?" and this assertion would fail.
-        let status = crate::store::insights::pane_completeness_status("Antigravity", 100.0);
-        assert_eq!(
-            status, "unsupported",
-            "insights coverage gate must map Antigravity → 'unsupported'"
-        );
-    }
-
     /// Gate 5: token-sample filter — Antigravity is in the excluded set so
     /// filter_token_samples_for_provider returns Vec::new() for it.
     #[test]
@@ -1194,7 +1179,11 @@ mod agy_observeonly_regression {
         );
     }
 
-    /// Composite guard-rail: a metric-populated agy pane hits all six gates in one shot.
+    /// Composite guard-rail: a metric-populated agy pane hits the surviving
+    /// ObserveOnly gates (1/2/3/5/6) in one shot. Gate 4 (insights coverage)
+    /// was retired with the Token Insights subsystem (Slice 7); the other
+    /// gates plus the `provider_is_observe_only` engine choke-point keep an
+    /// Antigravity pane emitting zero recommendations / actuation.
     #[test]
     fn agy_enrichment_does_not_re_enable_token_rows_or_anomaly_gates() {
         // Gate 6
@@ -1238,12 +1227,6 @@ mod agy_observeonly_regression {
             );
             assert!(recs.is_empty());
         }
-        // Gate 4: insights coverage calls real pane_completeness_status
-        assert_eq!(
-            crate::store::insights::pane_completeness_status("Antigravity", 100.0),
-            "unsupported",
-            "insights coverage gate must map Antigravity → 'unsupported'"
-        );
         // Gate 5: token-sample filter calls real filter_token_samples_for_provider
         {
             let samples = vec![crate::store::TokenSample {

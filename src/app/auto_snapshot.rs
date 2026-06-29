@@ -118,7 +118,6 @@ pub fn maybe_auto_snapshot(
     dedup: &mut AutoSnapshotDedup,
     writer: &SnapshotWriter,
     sink: &dyn EventSink,
-    lifecycle_sink: Option<&crate::store::SqliteRecommendationLifecycleSink>,
     notices: &mut Vec<SystemNotice>,
 ) {
     if !auto_snapshot_enabled {
@@ -171,17 +170,6 @@ pub fn maybe_auto_snapshot(
                     provider: None,
                     role: None,
                 });
-                crate::app::insights_lifecycle::record_recommendation_outcome(
-                    lifecycle_sink,
-                    pane_id,
-                    rec.action,
-                    crate::store::RecommendationOutcome::AutoSnapshotWritten,
-                    format!(
-                        "auto-snapshot quota_kind={} window_id={window_id} path={}",
-                        kind.label(),
-                        path.display()
-                    ),
-                );
                 notices.push(SystemNotice {
                     title: format!("auto-snapshot taken at {} reset boundary", kind.label()),
                     body: format!("see {}", path.display()),
@@ -372,7 +360,6 @@ mod tests {
             &mut dedup,
             &writer,
             &sink,
-            None,
             &mut notices,
         );
 
@@ -402,7 +389,6 @@ mod tests {
             &mut dedup,
             &writer,
             &sink,
-            None,
             &mut notices,
         );
         // Tick 2: dedup blocks.
@@ -415,7 +401,6 @@ mod tests {
             &mut dedup,
             &writer,
             &sink,
-            None,
             &mut notices,
         );
 
@@ -449,7 +434,6 @@ mod tests {
             &mut dedup,
             &writer,
             &sink,
-            None,
             &mut notices,
         );
 
@@ -486,7 +470,6 @@ mod tests {
             &mut dedup,
             &writer,
             &sink,
-            None,
             &mut notices,
         );
         // Second window — new resets_at differs by more than a minute.
@@ -499,7 +482,6 @@ mod tests {
             &mut dedup,
             &writer,
             &sink,
-            None,
             &mut notices,
         );
 
@@ -538,7 +520,6 @@ mod tests {
             &mut dedup,
             &writer,
             &sink,
-            None,
             &mut notices,
         );
 

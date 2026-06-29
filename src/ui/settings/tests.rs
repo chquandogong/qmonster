@@ -419,7 +419,6 @@ fn parameters_tab_exposes_editable_fields_for_all_config_sections() {
     assert!(fields.contains(&ParameterField::LoggingSensitivity));
     assert!(fields.contains(&ParameterField::TokenQuotaTight));
     assert!(fields.contains(&ParameterField::StorageRoot));
-    assert!(fields.contains(&ParameterField::InsightsIgnoredTtlSecs));
     assert!(fields.contains(&ParameterField::IdleStillnessPolls));
     assert!(fields.contains(&ParameterField::SecurityPostureAdvisories));
     assert!(fields.contains(&ParameterField::CacheHotRatioThreshold));
@@ -526,35 +525,6 @@ fn rules_tab_shows_dynamic_activation_conditions() {
     assert!(rendered.contains("security.identity_drift_findings = on"));
     // Phase H: annotation telling operators the rule has an actuation hook
     assert!(rendered.contains("auto when [reset] auto_snapshot = true"));
-}
-
-#[test]
-fn parameters_tab_shows_insights_config() {
-    let mut config = cfg();
-    config.insights.ignored_ttl_secs = 600;
-    let mut s = SettingsOverlay::new();
-    s.open();
-    s.switch_tab(SettingsTab::Parameters);
-
-    let rendered = rendered_text(&build_body_lines(&s, &config));
-
-    assert!(rendered.contains("insights ignored_ttl/default_window"));
-    assert!(rendered.contains("10m/24h"));
-    assert!(rendered.contains("default 30m/24h"));
-}
-
-#[test]
-fn rules_tab_shows_insights_ttl_rule() {
-    let mut config = cfg();
-    config.insights.ignored_ttl_secs = 45;
-    let mut s = SettingsOverlay::new();
-    s.open();
-    s.switch_tab(SettingsTab::Rules);
-
-    let rendered = rendered_text(&build_body_lines(&s, &config));
-
-    assert!(rendered.contains("insights ttl ignored"));
-    assert!(rendered.contains("ignored after 45s without correlated outcome"));
 }
 
 #[test]
