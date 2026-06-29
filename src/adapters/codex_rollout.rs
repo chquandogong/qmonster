@@ -8,6 +8,7 @@
 //! and returns the latest cumulative token totals + model. Read-only;
 //! best-effort enrichment used only when the status-line scrape is absent.
 
+use std::cmp::Reverse;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -65,12 +66,24 @@ pub fn read_rollout_for_path(codex_home: &Path, current_path: &str) -> Option<Co
     None
 }
 
-/// Recursively collect `rollout-*.jsonl` paths with their mtime.
+/// Recursively collect `rollout-*.jsonl` paths with their mtime,
+/// newest-first and bounded to `MAX_CANDIDATES`. Date-partitioned dir
+/// names (`YYYY/MM/DD`) and timestamped rollout filenames both sort
+/// chronologically, so descending name order visits the most recent
+/// sessions first and lets us stop without scanning the whole tree.
 fn collect_rollouts(dir: &Path, out: &mut Vec<(SystemTime, PathBuf)>) {
-    let Ok(entries) = fs::read_dir(dir) else {
+    if out.len() >= MAX_CANDIDATES {
+        return;
+    }
+    let Ok(read) = fs::read_dir(dir) else {
         return;
     };
-    for entry in entries.flatten() {
+    let mut entries: Vec<_> = read.flatten().collect();
+    entries.sort_by_key(|e| Reverse(e.file_name()));
+    for entry in entries {
+        if out.len() >= MAX_CANDIDATES {
+            return;
+        }
         let path = entry.path();
         let Ok(ft) = entry.file_type() else { continue };
         if ft.is_dir() {
@@ -104,8 +117,7 @@ fn parse_if_matching(body: &str, current_path: &str) -> Option<CodexRolloutSigna
         };
         match parsed.kind.as_str() {
             "session_meta" => {
-                let meta: SessionMeta =
-                    serde_json::from_value(parsed.payload).unwrap_or_default();
+                let meta: SessionMeta = serde_json::from_value(parsed.payload).unwrap_or_default();
                 if meta.originator.as_deref() != Some("codex-tui")
                     || meta.cwd.as_deref() != Some(current_path)
                 {
@@ -140,19 +152,38 @@ mod tests {
     use tempfile::tempdir;
 
     // Write a minimal rollout JSONL (session_meta + turn_context + a token_count event_msg).
-    fn write_rollout(dir: &Path, name: &str, originator: &str, cwd: &str) -> PathBuf {
+    fn write_rollout_with_tokens(
+        dir: &Path,
+        name: &str,
+        originator: &str,
+        cwd: &str,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) -> PathBuf {
         fs::create_dir_all(dir).unwrap();
         let path = dir.join(name);
         let body = format!(
             concat!(
-                r#"{{"type":"session_meta","payload":{{"originator":"{orig}","cwd":"{cwd}","cli_version":"0.142.2"}}}}"#, "\n",
-                r#"{{"type":"turn_context","payload":{{"model":"gpt-5.5"}}}}"#, "\n",
-                r#"{{"type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":1510000,"cached_input_tokens":1200000,"output_tokens":20400,"reasoning_output_tokens":1000,"total_tokens":1530400}},"last_token_usage":{{"input_tokens":2000,"output_tokens":50,"total_tokens":2050}},"model_context_window":258400}}}}}}"#, "\n",
+                r#"{{"type":"session_meta","payload":{{"originator":"{orig}","cwd":"{cwd}","cli_version":"0.142.2"}}}}"#,
+                "\n",
+                r#"{{"type":"turn_context","payload":{{"model":"gpt-5.5"}}}}"#,
+                "\n",
+                r#"{{"type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":{input},"cached_input_tokens":1200000,"output_tokens":{output},"reasoning_output_tokens":1000,"total_tokens":{input_output}}},"last_token_usage":{{"input_tokens":2000,"output_tokens":50,"total_tokens":2050}},"model_context_window":258400}}}}}}"#,
+                "\n",
             ),
-            orig = originator, cwd = cwd,
+            orig = originator,
+            cwd = cwd,
+            input = input_tokens,
+            output = output_tokens,
+            input_output = input_tokens + output_tokens,
         );
         fs::write(&path, body).unwrap();
         path
+    }
+
+    // Convenience wrapper with fixed token values.
+    fn write_rollout(dir: &Path, name: &str, originator: &str, cwd: &str) -> PathBuf {
+        write_rollout_with_tokens(dir, name, originator, cwd, 1_510_000, 20_400)
     }
 
     #[test]
@@ -172,7 +203,12 @@ mod tests {
         let tmp = tempdir().unwrap();
         let sessions = tmp.path().join("sessions/2026/06/29");
         // A codex_exec rollout in the SAME cwd must be ignored (pollution guard).
-        write_rollout(&sessions, "rollout-exec.jsonl", "codex_exec", "/repo/qmonster");
+        write_rollout(
+            &sessions,
+            "rollout-exec.jsonl",
+            "codex_exec",
+            "/repo/qmonster",
+        );
         assert!(read_rollout_for_path(tmp.path(), "/repo/qmonster").is_none());
     }
 
@@ -191,5 +227,32 @@ mod tests {
         let sessions = tmp.path().join("sessions/2026/06/29");
         write_rollout(&sessions, "rollout-a.jsonl", "codex-tui", "/repo/qmonster");
         assert!(read_rollout_for_path(tmp.path(), "").is_none());
+    }
+
+    #[test]
+    fn returns_newest_matching_rollout_when_multiple_match() {
+        let tmp = tempdir().unwrap();
+        let sessions = tmp.path().join("sessions/2026/06/29");
+        // Older-named rollout (visited later under descending-name order).
+        write_rollout_with_tokens(
+            &sessions,
+            "rollout-2026-06-29T10-00-00-old.jsonl",
+            "codex-tui",
+            "/repo/qmonster",
+            100,
+            200,
+        );
+        // Newer-named rollout — must win.
+        write_rollout_with_tokens(
+            &sessions,
+            "rollout-2026-06-29T20-00-00-new.jsonl",
+            "codex-tui",
+            "/repo/qmonster",
+            999,
+            888,
+        );
+        let s = read_rollout_for_path(tmp.path(), "/repo/qmonster").expect("must match");
+        assert_eq!(s.input_tokens, Some(999));
+        assert_eq!(s.output_tokens, Some(888));
     }
 }
