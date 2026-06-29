@@ -156,19 +156,34 @@ pub fn parse_for_with_environment(
                 .with_provider(Provider::Codex)
             };
             if signals.input_tokens.is_none()
-                && let Some(n) = roll.input_tokens { signals.input_tokens = Some(metric(n)); }
+                && let Some(n) = roll.input_tokens
+            {
+                signals.input_tokens = Some(metric(n));
+            }
             if signals.output_tokens.is_none()
-                && let Some(n) = roll.output_tokens { signals.output_tokens = Some(metric(n)); }
+                && let Some(n) = roll.output_tokens
+            {
+                signals.output_tokens = Some(metric(n));
+            }
             if signals.cached_input_tokens.is_none()
-                && let Some(n) = roll.cached_input_tokens { signals.cached_input_tokens = Some(metric(n)); }
+                && let Some(n) = roll.cached_input_tokens
+            {
+                signals.cached_input_tokens = Some(metric(n));
+            }
+            // model_name is String; the `metric` closure above is u64-typed,
+            // so build inline. Keep ProviderOfficial/Codex/0.9 in sync with it.
             if signals.model_name.is_none()
-                && let Some(m) = roll.model {
-                    signals.model_name = Some(
-                        crate::domain::signal::MetricValue::new(m, crate::domain::origin::SourceKind::ProviderOfficial)
-                            .with_confidence(0.9)
-                            .with_provider(Provider::Codex),
-                    );
-                }
+                && let Some(m) = roll.model
+            {
+                signals.model_name = Some(
+                    crate::domain::signal::MetricValue::new(
+                        m,
+                        crate::domain::origin::SourceKind::ProviderOfficial,
+                    )
+                    .with_confidence(0.9)
+                    .with_provider(Provider::Codex),
+                );
+            }
         }
     }
     signals
@@ -758,12 +773,19 @@ mod sidefile_integration_tests {
 #[cfg(test)]
 mod codex_rollout_integration_tests {
     use super::*;
-    use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role};
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
     use std::fs;
 
     fn codex_id() -> ResolvedIdentity {
         ResolvedIdentity {
-            identity: PaneIdentity { provider: Provider::Codex, instance: 1, role: Role::Main, pane_id: "%2".into() },
+            identity: PaneIdentity {
+                provider: Provider::Codex,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%2".into(),
+            },
             confidence: IdentityConfidence::High,
         }
     }
@@ -772,10 +794,15 @@ mod codex_rollout_integration_tests {
         fs::create_dir_all(&dir).unwrap();
         let body = format!(
             concat!(
-                r#"{{"type":"session_meta","payload":{{"originator":"codex-tui","cwd":"{cwd}","cli_version":"0.142.2"}}}}"#, "\n",
-                r#"{{"type":"turn_context","payload":{{"model":"gpt-5.5"}}}}"#, "\n",
-                r#"{{"type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":1510000,"output_tokens":20400,"cached_input_tokens":1200000,"total_tokens":1530400}},"model_context_window":258400}}}}}}"#, "\n",
-            ), cwd = cwd);
+                r#"{{"type":"session_meta","payload":{{"originator":"codex-tui","cwd":"{cwd}","cli_version":"0.142.2"}}}}"#,
+                "\n",
+                r#"{{"type":"turn_context","payload":{{"model":"gpt-5.5"}}}}"#,
+                "\n",
+                r#"{{"type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":1510000,"output_tokens":20400,"cached_input_tokens":1200000,"total_tokens":1530400}},"model_context_window":258400}}}}}}"#,
+                "\n",
+            ),
+            cwd = cwd
+        );
         fs::write(dir.join("rollout-x.jsonl"), body).unwrap();
     }
     fn write_proc(root: &std::path::Path, pid: u32, comm: &str, children: &[u32]) {
@@ -784,7 +811,15 @@ mod codex_rollout_integration_tests {
         fs::write(d.join("status"), format!("Name:\t{comm}\nVmRSS:\t1 kB\n")).unwrap();
         let t = d.join("task").join(pid.to_string());
         fs::create_dir_all(&t).unwrap();
-        fs::write(t.join("children"), children.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(" ")).unwrap();
+        fs::write(
+            t.join("children"),
+            children
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+        .unwrap();
         let mut argv = Vec::new();
         argv.extend_from_slice(comm.as_bytes());
         argv.push(0);
@@ -813,16 +848,31 @@ mod codex_rollout_integration_tests {
 
         assert_eq!(signals.input_tokens.as_ref().unwrap().value, 1_510_000);
         assert_eq!(signals.output_tokens.as_ref().unwrap().value, 20_400);
-        assert_eq!(signals.cached_input_tokens.as_ref().unwrap().value, 1_200_000);
+        assert_eq!(
+            signals.cached_input_tokens.as_ref().unwrap().value,
+            1_200_000
+        );
         assert_eq!(signals.model_name.as_ref().unwrap().value, "gpt-5.5");
         assert_eq!(
             signals.input_tokens.as_ref().unwrap().source_kind,
             crate::domain::origin::SourceKind::ProviderOfficial
         );
+        assert_eq!(
+            signals.output_tokens.as_ref().unwrap().source_kind,
+            crate::domain::origin::SourceKind::ProviderOfficial
+        );
+        assert_eq!(
+            signals.cached_input_tokens.as_ref().unwrap().source_kind,
+            crate::domain::origin::SourceKind::ProviderOfficial
+        );
+        assert_eq!(
+            signals.model_name.as_ref().unwrap().source_kind,
+            crate::domain::origin::SourceKind::ProviderOfficial
+        );
     }
 
     #[test]
-    fn rollout_does_not_override_scraped_tokens() {
+    fn rollout_skipped_when_toggle_disabled() {
         let tmp = tempfile::tempdir().unwrap();
         let cwd = "/repo/qmonster";
         write_rollout(tmp.path(), cwd);
@@ -842,7 +892,10 @@ mod codex_rollout_integration_tests {
         // guard by disabling the toggle and confirming no fill.
         c.codex_rollout_enabled = false;
         let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
-        assert!(signals.input_tokens.is_none(), "toggle off → no rollout fill");
+        assert!(
+            signals.input_tokens.is_none(),
+            "toggle off → no rollout fill"
+        );
     }
 
     #[test]
