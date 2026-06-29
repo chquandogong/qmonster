@@ -514,12 +514,16 @@ fn aggressive_verbose_review() -> Recommendation {
 }
 
 fn quota_tight_nudge(
-    _id: &ResolvedIdentity,
+    id: &ResolvedIdentity,
     signals: &SignalSet,
     gates: &PolicyGates,
 ) -> Option<Recommendation> {
     if gates.quota_tight {
         return None; // no nudge if already enabled
+    }
+    // ObserveOnly: agy/Antigravity panes must not receive quota-tight nudges.
+    if matches!(id.identity.provider, Provider::Antigravity) {
+        return None;
     }
     let v = signals.context_pressure.as_ref()?.value;
     if v < 0.90 {
@@ -1059,9 +1063,23 @@ mod tests {
         };
         let s = SignalSet {
             context_pressure: Some(crate::domain::signal::MetricValue::new(
-                0.9,
+                0.95,
                 crate::domain::origin::SourceKind::ProviderOfficial,
             )),
+            model_name: Some(
+                crate::domain::signal::MetricValue::new(
+                    "Gemini 3.5 Flash (High)".to_string(),
+                    crate::domain::origin::SourceKind::ProviderOfficial,
+                )
+                .with_provider(crate::domain::identity::Provider::Antigravity),
+            ),
+            token_count: Some(
+                crate::domain::signal::MetricValue::new(
+                    34_567_u64,
+                    crate::domain::origin::SourceKind::ProviderOfficial,
+                )
+                .with_provider(crate::domain::identity::Provider::Antigravity),
+            ),
             ..SignalSet::default()
         };
         let recs = eval_advisories(&id, &s, &gates_default());
@@ -1077,6 +1095,11 @@ mod tests {
                 .iter()
                 .any(|r| r.action.starts_with("context-pressure")),
             "ObserveOnly: agy must not get context-pressure action; got {:?}",
+            recs
+        );
+        assert!(
+            recs.is_empty(),
+            "ObserveOnly: eval_advisories must return empty for agy (enriched); got {:?}",
             recs
         );
     }
