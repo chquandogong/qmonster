@@ -315,9 +315,9 @@ if [ -n "$cid" ] && [ "$cid" != "null" ]; then
     context_window_size: .context_window.context_window_size,
     token_count: ((.context_window.total_input_tokens // 0) + (.context_window.total_output_tokens // 0)),
     quota_5h_pressure:      (1 - (.quota[$fam + "-5h"].remaining_fraction // 1)),
-    quota_5h_resets_at:     (.quota[$fam + "-5h"].reset_time | fromdateiso8601?),
+    quota_5h_resets_at:     (try (.quota[$fam + "-5h"].reset_time | fromdateiso8601) catch null),
     quota_weekly_pressure:  (1 - (.quota[$fam + "-weekly"].remaining_fraction // 1)),
-    quota_weekly_resets_at: (.quota[$fam + "-weekly"].reset_time | fromdateiso8601?)
+    quota_weekly_resets_at: (try (.quota[$fam + "-weekly"].reset_time | fromdateiso8601) catch null)
   }' > "$dir/$cid.json"
 fi
 "#;
@@ -1309,15 +1309,34 @@ mod tests {
             ..Default::default()
         };
         let (_, text) = snippet_for_tab(&overlay);
+        // All four quota keys must be present.
         assert!(
             text.contains("quota_5h_pressure"),
             "block must emit quota_5h_pressure"
         );
         assert!(
+            text.contains("quota_5h_resets_at"),
+            "block must emit quota_5h_resets_at"
+        );
+        assert!(
+            text.contains("quota_weekly_pressure"),
+            "block must emit quota_weekly_pressure"
+        );
+        assert!(
             text.contains("quota_weekly_resets_at"),
             "block must emit quota_weekly_resets_at"
         );
-        assert!(text.contains("fromdateiso8601"), "resets parsed from ISO");
+        // Reset fields must use try/catch null (not bare `?`) to avoid
+        // empty-stream truncation of the whole jq object on absent/malformed
+        // reset_time values.
+        assert!(
+            text.contains("catch null"),
+            "reset exprs must use `try ... catch null` to stay null-safe"
+        );
+        assert!(
+            text.contains("fromdateiso8601"),
+            "resets parsed from ISO timestamps"
+        );
         assert!(
             text.contains("startswith(\"gemini\")"),
             "active-model-aware window selection"

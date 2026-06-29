@@ -1488,9 +1488,31 @@ mod agy_enrichment_integration_tests {
             signals.quota_weekly_resets_at.as_ref().map(|m| m.value),
             Some(1700600000)
         );
+        // source_kind and provider for all quota fields.
         assert_eq!(
             signals.quota_5h_pressure.as_ref().map(|m| m.source_kind),
             Some(crate::domain::origin::SourceKind::ProviderOfficial)
+        );
+        assert_eq!(
+            signals.quota_5h_pressure.as_ref().and_then(|m| m.provider),
+            Some(Provider::Antigravity),
+            "quota_5h_pressure must carry provider=Antigravity"
+        );
+        // Reset fields: value AND full metric contract (ProviderOfficial + Antigravity).
+        assert_eq!(
+            signals.quota_5h_resets_at.as_ref().map(|m| m.value),
+            Some(1700000000_u64),
+            "quota_5h_resets_at value must match sidefile"
+        );
+        assert_eq!(
+            signals.quota_5h_resets_at.as_ref().map(|m| m.source_kind),
+            Some(crate::domain::origin::SourceKind::ProviderOfficial),
+            "quota_5h_resets_at must be ProviderOfficial"
+        );
+        assert_eq!(
+            signals.quota_5h_resets_at.as_ref().and_then(|m| m.provider),
+            Some(Provider::Antigravity),
+            "quota_5h_resets_at must carry provider=Antigravity"
         );
     }
 }
