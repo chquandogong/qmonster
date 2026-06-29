@@ -150,9 +150,10 @@ pub fn read_sidefile_for_path(home: &Path, current_path: &str) -> Option<ClaudeS
     }
     // Newest first.
     candidates.sort_by(|a, b| b.0.cmp(&a.0));
-    // Collect the cwd-matching sidefiles, newest first. Only the top two are
-    // needed to decide ambiguity, so stop after the second match.
-    let mut matches: Vec<(SystemTime, ClaudeSidefile)> = Vec::new();
+    // Collect the cwd-matching sidefiles, newest first. Walk newest-first
+    // and collect up to 2 sidefiles with distinct session_ids for the ambiguity
+    // comparison (mirrors the distinct_cids loop in agy_transcript.rs).
+    let mut distinct_sids: Vec<(SystemTime, ClaudeSidefile)> = Vec::new();
     for (mtime, path) in candidates {
         let body = match fs::read_to_string(&path) {
             Ok(b) => b,
@@ -163,19 +164,30 @@ pub fn read_sidefile_for_path(home: &Path, current_path: &str) -> Option<ClaudeS
             Err(_) => continue,
         };
         if sidefile.cwd.as_deref() == Some(current_path) {
-            matches.push((mtime, sidefile));
-            if matches.len() == 2 {
-                break;
+            // Skip if this session_id already appears in our distinct list
+            // (treat None as always-distinct).
+            let is_distinct = if let Some(sid) = sidefile.session_id.as_deref() {
+                !distinct_sids.iter().any(|(_, s)| {
+                    s.session_id.as_deref() == Some(sid)
+                })
+            } else {
+                true
+            };
+            if is_distinct {
+                distinct_sids.push((mtime, sidefile));
+                if distinct_sids.len() == 2 {
+                    break;
+                }
             }
         }
     }
-    let (newest_mtime, newest_sidefile) = matches.first()?;
-    // Ambiguity guard: two concurrently-active same-cwd Claude sessions can't be
-    // told apart by cwd alone — don't attribute; leave the scrape authoritative.
-    // Mirrors the Codex rollout guard (closes the same cwd-not-session-unique
-    // limitation the v2.5.0 release review flagged for the Codex path).
+    let (newest_mtime, newest_sidefile) = distinct_sids.first()?;
+    // Ambiguity guard: two concurrently-active same-cwd Claude sessions with
+    // DISTINCT session_ids can't be told apart by cwd alone — don't attribute;
+    // leave the scrape authoritative. Mirrors the Codex rollout guard and the
+    // distinct_cids loop in agy_transcript.rs.
     const AMBIGUITY_WINDOW: Duration = Duration::from_secs(60);
-    if let Some((second_mtime, _)) = matches.get(1)
+    if let Some((second_mtime, _)) = distinct_sids.get(1)
         && newest_mtime
             .duration_since(*second_mtime)
             .unwrap_or(Duration::ZERO)
