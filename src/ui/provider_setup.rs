@@ -608,11 +608,11 @@ pub fn render_tab_content(
             section(&mut out, "Current Status");
             out.push(detail_row(
                 "agy CLI",
-                "not auto-detected — no documented status surface",
+                "detected via tmux title / pane command — enrichment is opt-in",
             ));
             out.push(detail_row(
-                "Documented surface",
-                "agy is the launcher for the Antigravity IDE; no headless API yet",
+                "Enrichment surface",
+                "statusLine.command stdin contract (C3); Qmonster writes no agy config",
             ));
 
             section(&mut out, "Identification");
@@ -657,17 +657,18 @@ pub fn render_tab_content(
             }
 
             section(&mut out, "Wiring (one-time, not copied by y)");
+            out.push("Save the copied script as an executable file, e.g.:".into());
+            out.push("  ~/.local/share/ai-cli-status/agy-statusline.sh  (chmod +x)".into());
             out.push(
-                "Set the copied script as statusLine.command in ~/.gemini/antigravity-cli/settings.json:"
+                "Then set statusLine.command to that file path in ~/.gemini/antigravity-cli/settings.json:"
                     .into(),
             );
             out.push(r#"  "statusLine": {"#.into());
             out.push(r#"    "type": "command","#.into());
-            out.push(r#"    "command": "/path/to/agy_sidefile.sh""#.into());
-            out.push(r#"  }"#.into());
             out.push(
-                "  Save the copied script as an executable file then reference it above.".into(),
+                r#"    "command": "/home/YOU/.local/share/ai-cli-status/agy-statusline.sh""#.into(),
             );
+            out.push(r#"  }"#.into());
         }
         ProviderSetupTab::Tmux => {
             section(&mut out, "Purpose");
