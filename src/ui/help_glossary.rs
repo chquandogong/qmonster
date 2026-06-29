@@ -148,12 +148,10 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
         HelpTopic::DashboardFooterProposalChip => &[
             "★p: 수락/거절 가능한 pending prompt-send 제안이 있는 pane 수입니다.",
             "포커스가 해당 pane/제안에 있을 때 p는 수락, d는 거절 경로로 들어갑니다.",
-            "a Pending Actions overlay를 열면 모든 ★p 항목을 한 곳에서 보고 선택/일괄 처리할 수 있습니다.",
         ],
         HelpTopic::DashboardFooterCopyChip => &[
             "★y: 실행 가능한 suggested_command가 있어 y로 복사 가능한 alert 수입니다.",
             "Alerts 포커스에서 해당 alert를 선택하고 y를 누르면 표시된 run 명령을 클립보드로 복사합니다.",
-            "a Pending Actions overlay에서도 ★y 항목을 모아 보고 선택한 항목을 복사할 수 있습니다.",
         ],
         HelpTopic::DashboardFooterAuditChip => &[
             "★a: 최근 15분 audit 이벤트의 최고 심각도입니다.",
@@ -261,12 +259,10 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
         HelpTopic::DashboardFooterProposalChip => &[
             "★p: count of panes with pending prompt-send proposals that can be accepted or dismissed.",
             "When focus is on the matching pane/proposal, p accepts and d dismisses through the proposal path.",
-            "Open the a Pending Actions overlay to review, select, and bulk-dispatch all ★p items.",
         ],
         HelpTopic::DashboardFooterCopyChip => &[
             "★y: count of alerts with an executable suggested_command that can be copied with y.",
             "With Alerts focus on that alert, y copies the rendered run command to the clipboard.",
-            "The a Pending Actions overlay also collects ★y items for review and selected copy dispatch.",
         ],
         HelpTopic::DashboardFooterAuditChip => &[
             "★a: highest severity from audit events in the recent 15-minute window.",

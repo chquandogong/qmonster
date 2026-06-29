@@ -18,7 +18,6 @@ pub mod modal_state;
 pub mod once_report;
 pub mod operator_actions;
 pub mod path_resolution;
-pub mod pending_actions_overlay;
 pub mod polling_tick;
 pub mod prompt_send_actions;
 pub mod provider_setup_overlay;

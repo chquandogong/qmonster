@@ -1295,7 +1295,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("Mouse double", "toggle hide on the clicked alert"),
         (
             "Mouse drag",
-            "drag the divider between Alerts and Panes to resize them; drag a large overlay title row to move the modal (a/i); drag the a overlay's list/explainer separator to resize the split",
+            "drag the divider between Alerts and Panes to resize them",
         ),
         (
             "Severity chip",
@@ -1307,11 +1307,11 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "Modal [x]",
-            "every overlay (Help / Settings / Provider Setup / Pending Actions / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
+            "every overlay (Help / Settings / Provider Setup / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
         ),
         (
             "Overlay chrome",
-            "scrollable overlays use title for identity and footer/hint for controls plus scroll x/y · more/END; large overlays (a/i) use [/] resize, = reset geometry, title drag move, body-wheel/↑/↓ scroll, same entry key/Esc/q/[x] close; S edit mode and short confirmation modals are exceptions",
+            "scrollable overlays use title for identity and footer/hint for controls plus scroll x/y · more/END; same entry key/Esc/q/[x] close; S edit mode and short confirmation modals are exceptions",
         ),
         ("Tab", "switch focus between alerts and pane list"),
         ("Up / Down", "move one item in the focused list"),
@@ -1320,32 +1320,16 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("Home / End", "jump to the first or last item"),
         (
             "[ and ]",
-            "shrink or grow Alerts (Panes uses remaining height); when a large overlay is open (a/i), resize that modal in 5% steps",
+            "shrink or grow Alerts (Panes uses remaining height)",
         ),
         (
             "/",
             "Alerts focused: open the alert filter input (Esc clears, Enter exits input keeping filter, Backspace edits, / restarts; case-insensitive substring against title/headline/details/suggested-command); Panes focused: cycle the Alerts/Panes split by one resize step",
         ),
-        (
-            "=",
-            "reset the Alerts/Panes split; when a large overlay is open (a/i), also reset modal geometry to its default size + position",
-        ),
+        ("=", "reset the Alerts/Panes split"),
         (
             "t",
             "open tmux target picker (session -> window); hint shows scroll x/y · more/END for the list; press t again, click [x], or Esc to close",
-        ),
-        (
-            "a",
-            "open Pending Actions overlay (live explainer + multi-select bulk dispatch + size/ratio adjustability): lists every pane with a pending p/d proposal AND every alert with a y-copyable command; hint shows scroll x/y · more/END; Space=toggle selection, P/Y/A=group toggle, c=clear; p/d/y dispatch selected items bypassing confirm_actions; [/] resize modal, ,/. resize list pane, = reset all geometry; drag title row to move, drag separator to resize ratio; a again or Esc/q/[x] close",
-        ),
-        ("Space", "toggle multi-select on cursor item (a overlay)"),
-        (
-            "P / Y / A",
-            "toggle proposal / alert / all group selection (a overlay)",
-        ),
-        (
-            "c (a overlay)",
-            "clear multi-select set, cursor stays (a overlay)",
         ),
         (
             "Enter",
@@ -2744,24 +2728,6 @@ mod tests {
     }
 
     #[test]
-    fn help_lists_a_pending_actions_overlay_key() {
-        // v1.39: the Pending Actions overlay key was added so
-        // operators can dispatch from anywhere without navigating to
-        // the right pane/alert. Lock the description so future row
-        // reorderings can't drop it.
-        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
-        let dump = lines.join("\n");
-        assert!(
-            dump.contains("Pending Actions overlay"),
-            "Help should list a -> Pending Actions overlay; got:\n{dump}"
-        );
-        assert!(
-            dump.contains("a again or Esc/q/[x] close"),
-            "Help a row should mention close affordances; got:\n{dump}"
-        );
-    }
-
-    #[test]
     fn help_documents_action_explainer_for_pdy() {
         // v1.38: p / d / y now route through the Action Explainer
         // modal when `[ux] confirm_actions != never`. Help must call
@@ -2812,13 +2778,16 @@ mod tests {
 
         let overlay = entry_for("Overlay chrome");
 
+        // narrow-vnext Slice 8: the only large resizable overlays were
+        // the Pending Actions (`a`) and Token Insights (`i`) overlays,
+        // both removed (Slice 8 / Slice 7). The surviving overlays are
+        // scroll modals, so the chrome row documents the scroll contract
+        // and the same-key/Esc/q/[x] close, not resize/geometry/drag.
         assert!(
-            overlay.contains("a/i")
-                && overlay.contains("[/] resize")
-                && overlay.contains("= reset geometry")
-                && overlay.contains("title drag move")
-                && overlay.contains("body-wheel"),
-            "Help Overlay chrome row should scope the shared contract to a/i; got: {overlay}\nfull help:\n{dump}"
+            overlay.contains("scrollable overlays")
+                && overlay.contains("scroll x/y")
+                && overlay.contains("Esc/q/[x] close"),
+            "Help Overlay chrome row should document the scroll-modal contract; got: {overlay}\nfull help:\n{dump}"
         );
         assert!(
             overlay.contains("exceptions"),

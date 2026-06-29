@@ -66,7 +66,6 @@ pub struct DashboardMouseView<'a> {
 pub enum DashboardMouseAction {
     None,
     OpenGitModal,
-    OpenPendingActionsModal,
 }
 
 pub fn handle_dashboard_selection_key(view: DashboardSelectionKeyView<'_>, key: KeyCode) -> bool {
@@ -273,15 +272,17 @@ pub fn handle_dashboard_mouse(
                         row: event.row,
                     },
                 ) {
+                    // The footer status chips (★p / ★y / ★a) are display-only:
+                    // the Pending Actions batch overlay they used to open was
+                    // removed in the narrow-vnext Slice 8 reduction (the ★a
+                    // anomaly overlay went in Slice 5), so clicking them is a
+                    // no-op. The single p/d accept-reject and y copy paths
+                    // remain on the dashboard keys; promoted anomalies still
+                    // surface live in Alerts.
                     Some(crate::ui::dashboard::FooterStatusChip::Proposal)
-                    | Some(crate::ui::dashboard::FooterStatusChip::Copy) => {
-                        return DashboardMouseAction::OpenPendingActionsModal;
-                    }
-                    // The audit-severity chip (★a) is a display-only chip:
-                    // the anomaly events overlay it used to open was removed in
-                    // the narrow-vnext Slice 5 reduction, so clicking it is a
-                    // no-op. Promoted anomalies still surface live in Alerts.
-                    Some(crate::ui::dashboard::FooterStatusChip::Audit) | None => {}
+                    | Some(crate::ui::dashboard::FooterStatusChip::Copy)
+                    | Some(crate::ui::dashboard::FooterStatusChip::Audit)
+                    | None => {}
                 }
             }
             if let Some(row) = list_row_at(rects.alerts, event) {

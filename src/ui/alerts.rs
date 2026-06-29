@@ -515,12 +515,9 @@ pub fn copy_alert_count(
     (count, top)
 }
 
-/// v1.39 Pending-action discoverability surface C (overlay).
-/// Per-alert metadata for `ui::pending_actions::collect_pending_items`.
-/// Each entry corresponds to an alert with an executable
-/// `suggested_command`, exposing enough state for the overlay to
-/// render a row and to drive `alert_state.select(idx)` when the
-/// operator presses Enter.
+/// Per-alert metadata for alerts that carry an executable
+/// `suggested_command`. Each entry exposes enough state to render a
+/// row and to drive `alert_state.select(idx)`.
 pub struct CommandAlertEntry {
     /// Index into the alert list as `render_alerts` orders it (so
     /// `alert_state.select(idx)` jumps to the matching alert).
@@ -536,9 +533,8 @@ pub struct CommandAlertEntry {
 }
 
 /// Walk the same alert pipeline `render_alerts` uses and return one
-/// entry per alert with a runnable `suggested_command`. Reused by
-/// the Pending Actions overlay (`a` key) so the overlay's row order
-/// matches the queue rendering exactly.
+/// entry per alert with a runnable `suggested_command`, in queue
+/// render order.
 pub fn alert_items_with_command(
     notices: &[SystemNotice],
     reports: &[PaneReport],
