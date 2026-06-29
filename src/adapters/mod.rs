@@ -224,7 +224,24 @@ fn apply_claude_sidefile(
     {
         signals.cost_usd = Some(metric(usd));
     }
+    // Slice A: prefer the sidefile's structured used_percentage over the
+    // scraped statusline pressure — same ProviderOfficial number, but not
+    // dependent on statusline text parsing. Override (not is_none) so the
+    // structured value wins whenever present.
+    if let Some(pct) = sidefile
+        .context_window
+        .as_ref()
+        .and_then(|cw| cw.used_percentage)
+    {
+        signals.context_pressure = Some(metric((pct / 100.0) as f32));
+    }
     if let Some(rl) = sidefile.rate_limits.as_ref() {
+        if let Some(pct) = rl.five_hour.as_ref().and_then(|w| w.used_percentage) {
+            signals.quota_5h_pressure = Some(metric((pct / 100.0) as f32));
+        }
+        if let Some(pct) = rl.seven_day.as_ref().and_then(|w| w.used_percentage) {
+            signals.quota_weekly_pressure = Some(metric((pct / 100.0) as f32));
+        }
         if signals.quota_5h_resets_at.is_none()
             && let Some(ts) = rl.five_hour.as_ref().and_then(|w| w.resets_at)
         {
@@ -535,5 +552,39 @@ mod sidefile_integration_tests {
 
         assert!(signals.cost_usd.is_none());
         assert!(signals.runtime_facts.is_empty());
+    }
+
+    #[test]
+    fn sidefile_used_percentage_overrides_scraped_pressure() {
+        // Pre-seed as if the scrape produced stale/rounded values.
+        let mut signals = crate::adapters::common::parse_common_signals("");
+        signals.context_pressure = Some(
+            crate::domain::signal::MetricValue::new(
+                0.50_f32,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            ),
+        );
+        signals.quota_5h_pressure = Some(
+            crate::domain::signal::MetricValue::new(
+                0.50_f32,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            ),
+        );
+        let sidefile: claude_sidefile::ClaudeSidefile = serde_json::from_str(
+            r#"{
+                "context_window": {"used_percentage": 21},
+                "rate_limits": {
+                    "five_hour": {"used_percentage": 9},
+                    "seven_day": {"used_percentage": 20}
+                }
+            }"#,
+        )
+        .unwrap();
+
+        apply_claude_sidefile(&mut signals, sidefile);
+
+        assert!((signals.context_pressure.unwrap().value - 0.21).abs() < 1e-6);
+        assert!((signals.quota_5h_pressure.unwrap().value - 0.09).abs() < 1e-6);
+        assert!((signals.quota_weekly_pressure.unwrap().value - 0.20).abs() < 1e-6);
     }
 }
