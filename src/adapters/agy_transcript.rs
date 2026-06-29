@@ -38,10 +38,6 @@ struct TranscriptLine {
     kind: Option<String>,
 }
 
-/// How many of the newest history entries (by timestamp) to inspect before
-/// giving up. Bounds per-poll cost when the history.jsonl is large.
-const MAX_CANDIDATES: usize = 64;
-
 /// Two distinct `conversationId`s in the same workspace whose newest timestamps fall
 /// within this window are treated as concurrent active agy panes → ambiguous →
 /// no enrichment. `workspace` (cwd) is not a pane-unique key, so rather than risk
@@ -78,10 +74,10 @@ pub fn read_agy_activity(gemini_home: &Path, current_path: &str) -> Option<AgyAc
             (parsed.workspace, parsed.conversation_id, parsed.timestamp)
             && ws == current_path
         {
+            // history.jsonl is one small append-only file — collect ALL
+            // matching entries and sort by timestamp below. No scan cap: a
+            // file-order cap would drop the newest entries (appended last).
             matches.push((ts, cid));
-            if matches.len() >= MAX_CANDIDATES {
-                break;
-            }
         }
     }
 
@@ -207,6 +203,23 @@ mod tests {
         assert_eq!(activity.conversation_id, "uuid-bbb");
         assert_eq!(activity.latest_step.as_deref(), Some("STEP_TWO"));
         assert!(activity.last_activity_unix.is_some());
+    }
+
+    #[test]
+    fn picks_newest_by_timestamp_even_when_appended_last() {
+        // Append-only order: oldest first, newest LAST in the file. Newest
+        // must still win — regression guard against a file-order scan cap.
+        let tmp = tempdir().unwrap();
+        write_history(
+            tmp.path(),
+            vec![
+                ("/repo/qmonster", "uuid-old", 1000),
+                ("/repo/qmonster", "uuid-new", 200_000), // newest, written last, >60s gap
+            ],
+        );
+        write_transcript(tmp.path(), "uuid-new", vec!["LATEST"]);
+        let activity = read_agy_activity(tmp.path(), "/repo/qmonster").expect("must match");
+        assert_eq!(activity.conversation_id, "uuid-new");
     }
 
     #[test]
