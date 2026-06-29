@@ -1,8 +1,15 @@
-use crate::domain::identity::ResolvedIdentity;
+use crate::domain::identity::{Provider, ResolvedIdentity};
 use crate::domain::recommendation::{Recommendation, RequestedEffect};
 use crate::domain::signal::{IdleCause, SignalSet};
 use crate::policy::gates::PolicyGates;
 use crate::policy::rules::eval_alerts;
+
+/// Returns `true` for providers operating under the ObserveOnly contract
+/// (no recommendations, no actuation). Currently only `Provider::Antigravity`.
+/// Claude / Codex / Gemini / Qmonster / Unknown are unaffected.
+fn provider_is_observe_only(p: Provider) -> bool {
+    matches!(p, Provider::Antigravity)
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Engine;
@@ -24,6 +31,19 @@ impl Engine {
         recent_errors: &[bool],
     ) -> EvalOutput {
         let mut recs = eval_alerts(id, signals);
+        // ObserveOnly: agy/Antigravity panes must never receive recommendations
+        // or actuation. Single choke-point — closes quota_tight_nudge and any
+        // future rec leak without per-rule whack-a-mole.
+        if provider_is_observe_only(id.identity.provider) {
+            let mut efx = Vec::new();
+            if signals.log_storm {
+                efx.push(RequestedEffect::ArchiveLocal);
+            }
+            return EvalOutput {
+                recommendations: vec![],
+                effects: efx,
+            };
+        }
         recs.extend(crate::policy::rules::advisories::eval_advisories(
             id, signals, gates,
         ));
@@ -446,5 +466,48 @@ mod tests {
         ];
         let findings = Engine.evaluate_cross_pane(&views, &gates());
         assert_eq!(findings.len(), 1);
+    }
+
+    #[test]
+    fn agy_enriched_pane_recommendations_are_empty() {
+        // ObserveOnly enforcement: Engine::evaluate for an agy/Antigravity pane
+        // with a fully enriched SignalSet must return recommendations that are
+        // EMPTY. This catches quota_tight_nudge and any current/future rec leak.
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::MetricValue;
+        let agy_id = ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Antigravity,
+                instance: 1,
+                role: crate::domain::identity::Role::Main,
+                pane_id: "%0".into(),
+            },
+            confidence: IdentityConfidence::High,
+        };
+        let signals = SignalSet {
+            context_pressure: Some(MetricValue::new(0.95_f32, SourceKind::ProviderOfficial)),
+            model_name: Some(
+                MetricValue::new(
+                    "Gemini 3.5 Flash (High)".to_string(),
+                    SourceKind::ProviderOfficial,
+                )
+                .with_provider(Provider::Antigravity),
+            ),
+            token_count: Some(
+                MetricValue::new(34_567_u64, SourceKind::ProviderOfficial)
+                    .with_provider(Provider::Antigravity),
+            ),
+            ..SignalSet::default()
+        };
+        let g = PolicyGates {
+            identity_confidence: IdentityConfidence::High,
+            ..PolicyGates::default()
+        };
+        let out = Engine.evaluate(&agy_id, &signals, &g, None, &[], &[]);
+        assert!(
+            out.recommendations.is_empty(),
+            "ObserveOnly: agy enriched pane must emit zero recommendations; got {:?}",
+            out.recommendations
+        );
     }
 }
