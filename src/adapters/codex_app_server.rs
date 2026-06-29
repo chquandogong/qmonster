@@ -1,9 +1,10 @@
 //! Phase F F-6 (v1.32.0): Codex `app-server` JSON-RPC client.
 //!
 //! Codex CLI 0.125.0 ships an `app-server` subcommand that speaks
-//! line-delimited JSON-RPC 2.0 over stdin/stdout. This module wraps
-//! a child `codex app-server` process (or any [`JsonRpcIo`] stub for
-//! tests) and exposes the two calls Qmonster needs in v1.32.0:
+//! line-delimited JSON-RPC 2.0 over stdin/stdout; verified working on
+//! 0.142.x. This module wraps a child `codex app-server` process (or
+//! any [`JsonRpcIo`] stub for tests) and exposes the two calls
+//! Qmonster needs in v1.32.0:
 //!
 //! 1. `initialize` — handshake required before any other call. The
 //!    response carries the server's `userAgent` string we keep for
@@ -24,7 +25,7 @@
 //! v1.30.0), so spawn passes the `sandbox_mode="danger-full-access"`
 //! config override to bypass the sandbox.
 //!
-//! ## Protocol shape (verified live, Codex 0.125.0)
+//! ## Protocol shape (verified live on codex-cli 0.142.x)
 //!
 //! Request line (NDJSON, exactly one JSON object per line):
 //!
@@ -302,10 +303,15 @@ impl<IO: JsonRpcIo> CodexAppServer<IO> {
             let value: Value = serde_json::from_str(&line)
                 .map_err(|e| format!("failed to parse response JSON: {e}"))?;
             // JSON-RPC 2.0 notification: has `method`, no `id`. Skip — the
-            // codex CLI v0.128.0 sends `remoteControl/status/changed`
-            // immediately after `initialize` and may push others between
-            // request/response pairs. Notifications are not addressed to
-            // any of our outstanding requests.
+            // codex CLI (v0.128.0+; 0.142.x verified) sends
+            // `remoteControl/status/changed` immediately after `initialize`
+            // and may push others between request/response pairs. Note: the
+            // `conversation/*` → `thread/*` JSON-RPC rename in later codex
+            // releases does NOT affect the two calls Qmonster uses
+            // (`initialize`, `account/rateLimits/read`); this skip logic
+            // stays correct regardless of that rename.
+            // Notifications are not addressed to any of our outstanding
+            // requests.
             if value.get("id").is_none() && value.get("method").is_some() {
                 continue;
             }
