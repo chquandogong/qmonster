@@ -414,10 +414,36 @@ fn pane_sectioned_rows(
     let section_wrap = wrap_width.saturating_sub(SECTION_INDENT_WIDTH);
     let detail_wrap = section_wrap.saturating_sub(SECTION_INDENT_WIDTH);
 
+    // IDENTITY — the stable "who + where": path/cmd rows (the
+    // provider/role/CLI-version + IDENTITY CONFLICT line live in the card
+    // title via `pane_panel_title`). The path row keeps its worktree-role
+    // `· wt of <parent>` hint through `path_row_value`.
+    let mut identity_rows: Vec<PaneSectionRow> = Vec::new();
+    identity_rows.extend(group_into_section_rows(
+        wrap_aligned_field("path", &path_row_value(report), section_wrap),
+        HelpTopic::PanePath,
+    ));
+    identity_rows.extend(group_into_section_rows(
+        wrap_aligned_field(
+            "cmd",
+            &display_command(&report.current_command),
+            section_wrap,
+        ),
+        HelpTopic::PaneCommand,
+    ));
+    push_pane_section_tree(&mut rows, "IDENTITY", HelpTopic::PanePath, identity_rows);
+
+    // NOW — the live state: idle state/reason + signal rows, the identity
+    // `status` row (moved here from the old WHERE section), and any pending
+    // prompt-send proposal.
     let mut now_rows: Vec<PaneSectionRow> = Vec::new();
     now_rows.extend(group_into_section_rows(
         render_pane_state_row_with_flash(report, now, flash, section_wrap),
         HelpTopic::PaneState,
+    ));
+    now_rows.extend(group_into_section_rows(
+        wrap_aligned_field("status", &state_summary_line(report), section_wrap),
+        HelpTopic::PaneStatus,
     ));
     now_rows.extend(group_into_section_rows(
         blocking_signal_lines(&report.signals, section_wrap),
@@ -446,25 +472,8 @@ fn pane_sectioned_rows(
     }
     push_pane_section_tree(&mut rows, "NOW", HelpTopic::PaneState, now_rows);
 
-    let mut where_rows: Vec<PaneSectionRow> = Vec::new();
-    where_rows.extend(group_into_section_rows(
-        wrap_aligned_field("path", &path_row_value(report), section_wrap),
-        HelpTopic::PanePath,
-    ));
-    where_rows.extend(group_into_section_rows(
-        wrap_aligned_field(
-            "cmd",
-            &display_command(&report.current_command),
-            section_wrap,
-        ),
-        HelpTopic::PaneCommand,
-    ));
-    where_rows.extend(group_into_section_rows(
-        wrap_aligned_field("status", &state_summary_line(report), section_wrap),
-        HelpTopic::PaneStatus,
-    ));
-    push_pane_section_tree(&mut rows, "WHERE", HelpTopic::PanePath, where_rows);
-
+    // PRESSURE — all metrics: context/quota/cache/token rows (old PRESSURE)
+    // MERGED with the runtime/mem rows (old RUNTIME) into one section.
     let mut pressure_rows: Vec<PaneSectionRow> = group_into_section_rows(
         metric_badge_lines(
             &report.signals,
@@ -508,14 +517,15 @@ fn pane_sectioned_rows(
             }
         }
     }
-    push_pane_section_tree(&mut rows, "PRESSURE", HelpTopic::PaneMetrics, pressure_rows);
-
-    let runtime_rows = group_into_section_rows(
+    // RUNTIME rows (session/permission/sandbox/mem facts) now live inside
+    // PRESSURE — kept under HelpTopic::PaneRuntime for hover-help.
+    pressure_rows.extend(group_into_section_rows(
         runtime_badge_lines_wrapped(&report.signals, section_wrap),
         HelpTopic::PaneRuntime,
-    );
-    push_pane_section_tree(&mut rows, "RUNTIME", HelpTopic::PaneRuntime, runtime_rows);
+    ));
+    push_pane_section_tree(&mut rows, "PRESSURE", HelpTopic::PaneMetrics, pressure_rows);
 
+    // NEXT — the recommendations section (renamed from RECOMMENDATIONS).
     let mut recommendation_rows: Vec<PaneSectionRow> = Vec::new();
     for rec in report
         .recommendations
@@ -546,7 +556,7 @@ fn pane_sectioned_rows(
     }
     push_pane_section_tree(
         &mut rows,
-        "RECOMMENDATIONS",
+        "NEXT",
         HelpTopic::PaneRecommendation,
         recommendation_rows,
     );

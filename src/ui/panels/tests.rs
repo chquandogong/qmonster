@@ -130,9 +130,11 @@ fn pane_cards_render_current_command_row() {
                 .collect::<String>()
         })
         .collect();
+    // cmd is the last row in IDENTITY (path then cmd), so it renders with
+    // the `└ ` last-child glyph.
     assert!(
         text.iter()
-            .any(|line| line.starts_with("├ cmd     : target/release/qmonster")),
+            .any(|line| line.starts_with("└ cmd     : target/release/qmonster")),
         "pane list must expose the tmux current command: {text:?}"
     );
 
@@ -179,30 +181,35 @@ fn pane_panel_uses_sectioned_order_and_keeps_top_six_recommendations() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let where_section = rendered
-        .find("WHERE")
-        .unwrap_or_else(|| panic!("WHERE missing in panel: {rendered}"));
+    let identity = rendered
+        .find("IDENTITY")
+        .unwrap_or_else(|| panic!("IDENTITY missing in panel: {rendered}"));
+    let now = rendered
+        .find("NOW")
+        .unwrap_or_else(|| panic!("NOW missing in panel: {rendered}"));
     let pressure = rendered
         .find("PRESSURE")
         .unwrap_or_else(|| panic!("PRESSURE missing in panel: {rendered}"));
-    let runtime = rendered
-        .find("RUNTIME")
-        .unwrap_or_else(|| panic!("RUNTIME missing in panel: {rendered}"));
-    let recommendations = rendered
-        .find("RECOMMENDATIONS")
-        .unwrap_or_else(|| panic!("RECOMMENDATIONS missing in panel: {rendered}"));
+    let next = rendered
+        .find("NEXT")
+        .unwrap_or_else(|| panic!("NEXT missing in panel: {rendered}"));
+    // RUNTIME merged into PRESSURE — its own header must be gone.
+    assert!(
+        !rendered.contains("RUNTIME"),
+        "RUNTIME header should be merged into PRESSURE: {rendered}"
+    );
 
     assert!(
-        where_section < pressure,
-        "WHERE should precede PRESSURE in panel: {rendered}"
+        identity < now,
+        "IDENTITY should precede NOW in panel: {rendered}"
     );
     assert!(
-        pressure < runtime,
-        "PRESSURE should precede RUNTIME in panel: {rendered}"
+        now < pressure,
+        "NOW should precede PRESSURE in panel: {rendered}"
     );
     assert!(
-        runtime < recommendations,
-        "RUNTIME should precede RECOMMENDATIONS in panel: {rendered}"
+        pressure < next,
+        "PRESSURE should precede NEXT in panel: {rendered}"
     );
     assert!(
         rendered.contains("panel recommendation 5"),
@@ -225,16 +232,16 @@ fn pane_panel_keeps_empty_recommendations_state_under_section() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let recommendations = rendered
-        .find("RECOMMENDATIONS")
-        .unwrap_or_else(|| panic!("RECOMMENDATIONS missing in panel: {rendered}"));
+    let next = rendered
+        .find("NEXT")
+        .unwrap_or_else(|| panic!("NEXT missing in panel: {rendered}"));
     let empty = rendered
         .find("status  : no active recommendations")
         .unwrap_or_else(|| panic!("empty recommendation state missing in panel: {rendered}"));
 
     assert!(
-        recommendations < empty,
-        "empty recommendation state should live under RECOMMENDATIONS in panel: {rendered}"
+        next < empty,
+        "empty recommendation state should live under NEXT in panel: {rendered}"
     );
 }
 
@@ -1560,7 +1567,7 @@ fn pane_card_path_line_wraps_when_narrow() {
     let mut rep = sample_pane_report();
     rep.current_path = "/home/operator/long/worktree/path/that/exceeds/width".into();
     let lines = pane_list_lines_with_width(&rep, true, false, 30);
-    // Sectioned rows render as a tree: the path row sits first in WHERE
+    // Sectioned rows render as a tree: the path row sits first in IDENTITY
     // (not last), so its first line is prefixed with `├ ` and its
     // wrapped continuation lines carry the parent's `│ ` bar followed by
     // the usual `cont_indent` (label_col + ": " worth of spaces = 10).
@@ -1677,10 +1684,15 @@ fn pane_help_topic_at_row_maps_sectioned_core_rows() {
     let mut state = ListState::default();
     state.select(Some(0));
 
+    // New 4-section order: IDENTITY (header, path, cmd) → NOW (header,
+    // status) → PRESSURE → NEXT. This report has no idle_state, so the NOW
+    // section has no state row — only the `status` row (moved here from the
+    // old WHERE section).
     assert_eq!(
         pane_help_topic_at_row(&reports, &state, 0, 100),
         Some(HelpTopic::PaneHeader)
     );
+    // IDENTITY header carries the section topic (PanePath).
     assert_eq!(
         pane_help_topic_at_row(&reports, &state, 1, 100),
         Some(HelpTopic::PanePath)
@@ -1693,14 +1705,17 @@ fn pane_help_topic_at_row_maps_sectioned_core_rows() {
         pane_help_topic_at_row(&reports, &state, 3, 100),
         Some(HelpTopic::PaneCommand)
     );
+    // NOW header carries PaneState.
     assert_eq!(
         pane_help_topic_at_row(&reports, &state, 4, 100),
-        Some(HelpTopic::PaneStatus)
+        Some(HelpTopic::PaneState)
     );
+    // status row moved into NOW.
     assert_eq!(
         pane_help_topic_at_row(&reports, &state, 5, 100),
-        Some(HelpTopic::PaneMetrics)
+        Some(HelpTopic::PaneStatus)
     );
+    // PRESSURE header carries PaneMetrics.
     assert_eq!(
         pane_help_topic_at_row(&reports, &state, 6, 100),
         Some(HelpTopic::PaneMetrics)
@@ -1739,56 +1754,56 @@ fn expanded_pane_uses_sectioned_single_column_order() {
     let lines = pane_list_lines_with_width(&rep, true, false, 120);
     let text = line_texts(&lines);
 
+    // New 4-section order: IDENTITY → NOW → PRESSURE (metrics + merged
+    // runtime) → NEXT.
     let title = index_containing(&text, "qwork:1");
-    let now = index_containing(&text, "NOW");
-    let proposal = index_containing(&text, "proposal");
-    let where_section = index_containing(&text, "WHERE");
+    let identity = index_containing(&text, "IDENTITY");
     let path = index_containing(&text, "path    : /home/chquan/Qmonster");
     let command = index_containing(&text, "cmd     : codex");
+    let now = index_containing(&text, "NOW");
+    let proposal = index_containing(&text, "proposal");
     let pressure = index_containing(&text, "PRESSURE");
     let metrics = index_containing(&text, "metrics");
-    let runtime = index_containing(&text, "RUNTIME");
     let modes = index_containing(&text, "modes");
-    let recommendations = index_containing(&text, "RECOMMENDATIONS");
+    let next = index_containing(&text, "NEXT");
     let rec = index_containing(&text, "CONCERN");
 
-    assert!(title < now, "title should precede NOW: {text:#?}");
+    // RUNTIME header is gone — runtime facts (modes) live inside PRESSURE.
+    assert!(
+        !text.iter().any(|line| line.trim() == "RUNTIME"),
+        "RUNTIME header should be merged into PRESSURE: {text:#?}"
+    );
+
+    assert!(title < identity, "title should precede IDENTITY: {text:#?}");
+    assert!(
+        identity < path,
+        "IDENTITY should contain path rows: {text:#?}"
+    );
+    assert!(path < command, "path should precede command: {text:#?}");
+    assert!(command < now, "IDENTITY should precede NOW: {text:#?}");
     assert!(
         now < proposal,
         "NOW should contain proposal rows: {text:#?}"
     );
     assert!(
-        proposal < where_section,
-        "NOW should precede WHERE: {text:#?}"
-    );
-    assert!(
-        where_section < path,
-        "WHERE should contain path rows: {text:#?}"
-    );
-    assert!(path < command, "path should precede command: {text:#?}");
-    assert!(
-        command < pressure,
-        "WHERE should precede PRESSURE: {text:#?}"
+        proposal < pressure,
+        "NOW should precede PRESSURE: {text:#?}"
     );
     assert!(
         pressure < metrics,
         "PRESSURE should contain metrics: {text:#?}"
     );
     assert!(
-        metrics < runtime,
-        "PRESSURE should precede RUNTIME: {text:#?}"
+        metrics < modes,
+        "PRESSURE should contain merged runtime facts after metrics: {text:#?}"
     );
     assert!(
-        runtime < modes,
-        "RUNTIME should contain runtime facts: {text:#?}"
+        modes < next,
+        "PRESSURE (incl. runtime) should precede NEXT: {text:#?}"
     );
     assert!(
-        modes < recommendations,
-        "RUNTIME should precede RECOMMENDATIONS: {text:#?}"
-    );
-    assert!(
-        recommendations < rec,
-        "RECOMMENDATIONS should contain recommendation rows: {text:#?}"
+        next < rec,
+        "NEXT should contain recommendation rows: {text:#?}"
     );
 }
 
@@ -1835,25 +1850,34 @@ fn expanded_pane_help_topics_follow_sectioned_rows() {
     let lines = pane_list_lines_with_width(&reports[0], true, false, 120);
     let text = line_texts(&lines);
 
+    // New 4-section order: IDENTITY → NOW → PRESSURE (metrics + tokens +
+    // merged runtime) → NEXT. Each row keeps its hover HelpTopic; only the
+    // section a row sits under changed.
     let row_expectations = [
+        // IDENTITY header carries PanePath; path/cmd rows under it.
+        (index_containing(&text, "IDENTITY"), HelpTopic::PanePath),
+        (index_containing(&text, "path"), HelpTopic::PanePath),
+        (index_containing(&text, "cmd"), HelpTopic::PaneCommand),
+        // NOW header carries PaneState; state + status rows under it; the
+        // proposal row stays a PaneRecommendation topic.
         (index_containing(&text, "NOW"), HelpTopic::PaneState),
         (index_containing(&text, "state"), HelpTopic::PaneState),
+        (index_containing(&text, "status"), HelpTopic::PaneStatus),
         (
             index_containing(&text, "proposal"),
             HelpTopic::PaneRecommendation,
         ),
-        (index_containing(&text, "WHERE"), HelpTopic::PanePath),
-        (index_containing(&text, "path"), HelpTopic::PanePath),
-        (index_containing(&text, "cmd"), HelpTopic::PaneCommand),
+        // PRESSURE header carries PaneMetrics; metrics + token rows + the
+        // merged runtime `modes` row all live here now.
         (index_containing(&text, "PRESSURE"), HelpTopic::PaneMetrics),
         (index_containing(&text, "metrics"), HelpTopic::PaneMetrics),
         (index_containing(&text, "tokens  :"), HelpTopic::PaneTokens),
         (index_containing(&text, "token io"), HelpTopic::PaneTokens),
         (index_containing(&text, "cache io"), HelpTopic::PaneTokens),
-        (index_containing(&text, "RUNTIME"), HelpTopic::PaneRuntime),
         (index_containing(&text, "modes"), HelpTopic::PaneRuntime),
+        // NEXT header carries PaneRecommendation; rec rows under it.
         (
-            index_containing(&text, "RECOMMENDATIONS"),
+            index_containing(&text, "NEXT"),
             HelpTopic::PaneRecommendation,
         ),
         (
@@ -1890,7 +1914,7 @@ fn collapsed_pane_keeps_flat_layout_without_section_headers() {
     let lines = pane_list_lines_with_width(&rep, false, false, 120);
     let text = line_texts(&lines);
 
-    for header in ["NOW", "WHERE", "PRESSURE", "RUNTIME", "RECOMMENDATIONS"] {
+    for header in ["IDENTITY", "NOW", "PRESSURE", "NEXT"] {
         assert!(
             !text.iter().any(|line| line.trim() == header),
             "collapsed pane must not render section header {header}: {text:#?}"
@@ -1909,12 +1933,12 @@ fn expanded_pane_keeps_empty_recommendations_state_under_section() {
     let lines = pane_list_lines_with_width(&rep, true, false, 120);
     let text = line_texts(&lines);
 
-    let recommendations = index_containing(&text, "RECOMMENDATIONS");
+    let next = index_containing(&text, "NEXT");
     let empty = index_containing(&text, "status  : no active recommendations");
 
     assert!(
-        recommendations < empty,
-        "empty recommendation state should live under RECOMMENDATIONS: {text:#?}"
+        next < empty,
+        "empty recommendation state should live under NEXT: {text:#?}"
     );
 }
 
