@@ -21,6 +21,7 @@ pub struct CodexRolloutSignals {
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     pub cached_input_tokens: Option<u64>,
+    pub context_window: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -153,12 +154,15 @@ fn parse_if_matching(body: &str, current_path: &str) -> Option<CodexRolloutSigna
             }
             "event_msg" => {
                 if parsed.payload.get("type").and_then(|v| v.as_str()) == Some("token_count")
-                    && let Some(total) = parsed.payload.pointer("/info/total_token_usage")
+                    && let Some(info) = parsed.payload.get("info")
                 {
-                    sig.input_tokens = total.get("input_tokens").and_then(|v| v.as_u64());
-                    sig.output_tokens = total.get("output_tokens").and_then(|v| v.as_u64());
-                    sig.cached_input_tokens =
-                        total.get("cached_input_tokens").and_then(|v| v.as_u64());
+                    if let Some(total) = info.get("total_token_usage") {
+                        sig.input_tokens = total.get("input_tokens").and_then(|v| v.as_u64());
+                        sig.output_tokens = total.get("output_tokens").and_then(|v| v.as_u64());
+                        sig.cached_input_tokens =
+                            total.get("cached_input_tokens").and_then(|v| v.as_u64());
+                    }
+                    sig.context_window = info.get("model_context_window").and_then(|v| v.as_u64());
                 }
             }
             _ => {}
@@ -322,5 +326,14 @@ mod tests {
             read_rollout_for_path(tmp.path(), "/repo/qmonster").is_none(),
             "two concurrent same-cwd codex-tui sessions must not cross-fill"
         );
+    }
+
+    #[test]
+    fn reads_context_window_from_token_count_info() {
+        let tmp = tempdir().unwrap();
+        let sessions = tmp.path().join("sessions/2026/06/29");
+        write_rollout(&sessions, "rollout-a.jsonl", "codex-tui", "/repo/qmonster");
+        let s = read_rollout_for_path(tmp.path(), "/repo/qmonster").expect("must match");
+        assert_eq!(s.context_window, Some(258400));
     }
 }

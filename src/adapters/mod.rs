@@ -189,6 +189,12 @@ pub fn parse_for_with_environment(
                     .with_provider(Provider::Codex),
                 );
             }
+            // Slice D: fill context_window_size from rollout (fill-when-absent).
+            if signals.context_window_size.is_none()
+                && let Some(n) = roll.context_window
+            {
+                signals.context_window_size = Some(metric(n));
+            }
         }
     }
     // Slice C2: agy transcript activity indicator. Surface a live activity
@@ -404,6 +410,15 @@ fn apply_claude_sidefile(
     {
         signals.reasoning_effort = Some(metric(level));
     }
+    // Slice D: fill context_window_size from sidefile (fill-when-absent).
+    if signals.context_window_size.is_none()
+        && let Some(n) = sidefile
+            .context_window
+            .as_ref()
+            .and_then(|cw| cw.context_window_size)
+    {
+        signals.context_window_size = Some(metric(n));
+    }
 }
 
 /// Backward-compat shim — prefer `parse_for_with_environment` for
@@ -445,6 +460,7 @@ pub(crate) fn ctx<'a>(
 mod sidefile_integration_tests {
     use super::*;
     use crate::domain::identity::{IdentityConfidence, PaneIdentity, Role};
+    use crate::domain::origin::SourceKind;
     use crate::domain::signal::RuntimeFactKind;
     use std::fs;
     use tempfile::tempdir;
@@ -813,6 +829,26 @@ mod sidefile_integration_tests {
             "claude-opus-4-8"
         );
     }
+
+    #[test]
+    fn sidefile_context_window_size_fill_when_absent() {
+        let mut signals = SignalSet::default();
+        let sidefile: claude_sidefile::ClaudeSidefile =
+            serde_json::from_str(r#"{"context_window":{"context_window_size":1000000}}"#).unwrap();
+        apply_claude_sidefile(&mut signals, sidefile);
+        assert_eq!(
+            signals.context_window_size.as_ref().unwrap().value,
+            1_000_000
+        );
+        assert_eq!(
+            signals.context_window_size.as_ref().unwrap().source_kind,
+            SourceKind::ProviderOfficial
+        );
+        assert_eq!(
+            signals.context_window_size.as_ref().unwrap().provider,
+            Some(Provider::Claude)
+        );
+    }
 }
 
 #[cfg(test)]
@@ -956,6 +992,40 @@ mod codex_rollout_integration_tests {
         c.codex_rollout_enabled = true;
         let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
         assert!(signals.input_tokens.is_none());
+    }
+
+    #[test]
+    fn rollout_enricher_fills_context_window_size() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = "/repo/qmonster";
+        write_rollout(tmp.path(), cwd);
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 1, "bash", &[2]);
+        write_proc(&proc_root, 2, "codex", &[]);
+        let id = codex_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, "", &pricing, &settings, &history);
+        c.current_path = cwd;
+        c.pane_pid = Some(1);
+        c.codex_rollout_enabled = true;
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
+
+        assert_eq!(
+            signals.context_window_size.as_ref().unwrap().value,
+            258400,
+            "Codex rollout fills context_window_size when absent"
+        );
+        assert_eq!(
+            signals.context_window_size.as_ref().unwrap().source_kind,
+            crate::domain::origin::SourceKind::ProviderOfficial
+        );
+        assert_eq!(
+            signals.context_window_size.as_ref().unwrap().provider,
+            Some(Provider::Codex)
+        );
     }
 }
 
