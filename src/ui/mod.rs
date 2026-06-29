@@ -2,7 +2,6 @@ pub mod action_explainer;
 pub mod alerts;
 pub mod anomaly_overlay;
 pub mod dashboard;
-pub mod fx;
 pub mod help_glossary;
 pub mod hover_help;
 pub mod insights;

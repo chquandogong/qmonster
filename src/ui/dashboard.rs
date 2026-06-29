@@ -1222,7 +1222,7 @@ fn footer_chip_span(
 /// shape that pins `p accept` / `d dismiss` placement).
 #[cfg(test)]
 pub(crate) fn footer_keys_text() -> &'static str {
-    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} H hover-help \u{00b7} L help-lang \u{00b7} m metrics \u{00b7} n anomalies \u{00b7} a actions \u{00b7} i insights \u{00b7} Q fx \u{00b7} ? help \u{00b7} q quit"
+    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} H hover-help \u{00b7} L help-lang \u{00b7} m metrics \u{00b7} n anomalies \u{00b7} a actions \u{00b7} i insights \u{00b7} ? help \u{00b7} q quit"
 }
 
 fn footer_compact_keys_text() -> &'static str {

@@ -93,10 +93,6 @@ where
     // p/d/y dispatch in-place; Enter is silently swallowed.
     let mut pending_actions = crate::ui::pending_actions::PendingActionsOverlay::new();
     let mut hover_help = HoverHelpState::new();
-    // v1.53.0: decorative effects overlay (Q hotkey, p-accept celebration,
-    // idle screensaver). Inert until Q / celebration / screensaver fires.
-    let mut fx_overlay = crate::app::fx_overlay::FxOverlay::new();
-    let mut last_user_activity = startup_now;
 
     // Phase F F-6 (v1.32.0): spawn `codex app-server` once at TUI
     // startup when the operator opted in via the [provider_setup]
@@ -153,13 +149,7 @@ where
         let mut run_loop = || -> anyhow::Result<()> {
             loop {
                 let now = Instant::now();
-                // v1.55.0: skip the tmux poll tick while the fx overlay
-                // is active so the 50-200ms tmux capture / parse pass
-                // doesn't visibly stutter the 60 FPS animation. The
-                // tick resumes the moment the overlay closes; one
-                // skipped tick at most == 2s of stale pane data, which
-                // is acceptable for a deliberately decorative moment.
-                if now.saturating_duration_since(last_poll) >= poll && !fx_overlay.is_open() {
+                if now.saturating_duration_since(last_poll) >= poll {
                     last_poll = now;
                     let outcome = handle_poll_tick(
                         ctx,
@@ -233,30 +223,6 @@ where
                 // every frame so a proposal accepted last tick cannot
                 // linger in `multi_selected` and re-dispatch.
                 pending_actions.prune_to(&pending_items);
-                // v1.53.0: idle screensaver auto-trigger + per-frame
-                // scene step. Pure helper so the gating conditions
-                // stay unit-testable; the `step` call advances the
-                // active effect's particles / banner / streams.
-                {
-                    let term_size = terminal.size()?;
-                    if crate::app::fx_overlay::should_auto_open_screensaver(
-                        &ctx.config.fx,
-                        &fx_overlay,
-                        last_user_activity,
-                        now,
-                    ) {
-                        fx_overlay.open(
-                            &ctx.config.fx,
-                            crate::app::fx_overlay::FxTrigger::Screensaver,
-                            now,
-                            term_size.width,
-                            term_size.height,
-                        );
-                    }
-                    if fx_overlay.is_open() {
-                        fx_overlay.step(now, term_size.width, term_size.height);
-                    }
-                }
                 let alert_filter_snapshot = dashboard.alert_filter().map(|s| s.to_string());
                 let audit_recent_severity = ctx.insights_db_path.as_deref().and_then(|path| {
                     crate::store::recent_audit_max_severity(path, 15 * 60)
@@ -304,8 +270,6 @@ where
                             hover_help: &hover_help,
                             config: &ctx.config,
                             ime_active: ctx.ime_state.is_active(now),
-                            fx_overlay: &fx_overlay,
-                            fx_text: ctx.config.fx.text.as_str(),
                             alert_filter: alert_filter_snapshot.as_deref(),
                         },
                     );
@@ -319,30 +283,9 @@ where
                     insights_overlay.advance_spinner();
                 }
 
-                // v1.53.0: tighten poll cadence to ~30 FPS while the fx
-                // overlay is active so banner / confetti / matrix animation
-                // looks smooth. Closed → keep the existing 100ms cadence so
-                // the quiet path stays cheap.
-                let poll_ms = if fx_overlay.is_open() {
-                    crate::app::fx_state::FX_FRAME_INTERVAL_MS
-                } else {
-                    100
-                };
-                if event::poll(Duration::from_millis(poll_ms))? {
+                if event::poll(Duration::from_millis(100))? {
                     match event::read()? {
                         Event::Key(k) if k.kind == KeyEventKind::Press => {
-                            // v1.53.0: any keypress refreshes the screensaver
-                            // idle clock so legitimate operator input keeps
-                            // the saver suppressed.
-                            last_user_activity = Instant::now();
-                            // v1.53.0: any key dismisses the fx overlay and
-                            // is consumed (not forwarded to per-overlay
-                            // dispatch) so the operator regains control on
-                            // a single press.
-                            if fx_overlay.is_open() {
-                                fx_overlay.dismiss();
-                                continue;
-                            }
                             // v1.51.0: feed Char keystrokes into the heuristic
                             // IME indicator BEFORE per-overlay dispatch so it
                             // observes keys consumed by any modal as well as
@@ -620,13 +563,6 @@ where
                                     KeyCode::Enter => {
                                         if let Some(action) = action_explainer.pending().cloned() {
                                             action_explainer.mark_seen(&action);
-                                            // v1.53.0: capture accept-edge before
-                                            // confirm_pending_action so celebration
-                                            // fires only on AcceptPromptSend.
-                                            let was_accept = matches!(
-                                                action,
-                                                crate::app::action_explainer::PendingAction::AcceptPromptSend { .. }
-                                            );
                                             let notice = confirm_pending_action(
                                                 &action,
                                                 &ctx.source,
@@ -638,19 +574,6 @@ where
                                             );
                                             action_explainer.close();
                                             dashboard.push_notice(notice, now);
-                                            if was_accept
-                                                && ctx.config.fx.celebration_enabled
-                                                && ctx.config.fx.enabled
-                                            {
-                                                let term_size = terminal.size()?;
-                                                fx_overlay.open(
-                                                    &ctx.config.fx,
-                                                    crate::app::fx_overlay::FxTrigger::Celebration,
-                                                    now,
-                                                    term_size.width,
-                                                    term_size.height,
-                                                );
-                                            }
                                         }
                                         continue;
                                     }
@@ -817,18 +740,6 @@ where
                                         badge.x,
                                         badge.y,
                                         now,
-                                    );
-                                }
-                                KeyCode::Char('Q')
-                                    if dashboard_fx_hotkey_allowed(k.code, &ctx.config, false) =>
-                                {
-                                    let term_size = terminal.size()?;
-                                    fx_overlay.open(
-                                        &ctx.config.fx,
-                                        crate::app::fx_overlay::FxTrigger::Hotkey,
-                                        now,
-                                        term_size.width,
-                                        term_size.height,
                                     );
                                 }
                                 KeyCode::Char('P') => {
@@ -1079,21 +990,6 @@ where
                                             ctx.config.actions.allow_auto_prompt_send,
                                         );
                                         dashboard.push_notice(notice, Instant::now());
-                                        // v1.53.0: celebration confetti on
-                                        // a successful pending-action accept.
-                                        if accepting
-                                            && ctx.config.fx.celebration_enabled
-                                            && ctx.config.fx.enabled
-                                        {
-                                            let term_size = terminal.size()?;
-                                            fx_overlay.open(
-                                                &ctx.config.fx,
-                                                crate::app::fx_overlay::FxTrigger::Celebration,
-                                                Instant::now(),
-                                                term_size.width,
-                                                term_size.height,
-                                            );
-                                        }
                                     }
                                 }
                                 _ => {}
@@ -1103,14 +999,6 @@ where
                             let size = terminal.size()?;
                             let viewport = Rect::new(0, 0, size.width, size.height);
                             let now = Instant::now();
-                            // v1.53.0: refresh idle clock on any mouse
-                            // event; dismiss fx overlay on a click.
-                            last_user_activity = now;
-                            if fx_overlay.is_open() && matches!(m.kind, MouseEventKind::Down(_)) {
-                                fx_overlay.dismiss();
-                                continue;
-                            }
-
                             let overlay_mouse_owner = settings_overlay.is_open()
                                 || provider_setup_overlay.is_open()
                                 || metrics_overlay.is_open()
@@ -1409,17 +1297,6 @@ fn matches_originating_key(
             | (Some(PendingAction::RejectPromptSend { .. }), 'd')
             | (Some(PendingAction::CopyAlertCommand { .. }), 'y')
     )
-}
-
-fn dashboard_fx_hotkey_allowed(
-    code: KeyCode,
-    config: &crate::app::config::QmonsterConfig,
-    overlay_owns_keyboard: bool,
-) -> bool {
-    matches!(code, KeyCode::Char('Q'))
-        && !overlay_owns_keyboard
-        && config.fx.hotkey_enabled
-        && config.fx.enabled
 }
 
 fn newly_hidden_alert_keys(
@@ -1772,7 +1649,6 @@ mod tests {
     use crate::tmux::polling::{PaneSource, PollingError};
     use crate::tmux::types::{RawPaneSnapshot, WindowTarget};
     use crate::ui::pending_actions::{PendingActionsOverlay, PendingItem};
-    use crossterm::event::KeyCode;
     use std::time::Instant;
 
     /// Minimal `PaneSource` that returns empty data for every query —
@@ -1813,22 +1689,6 @@ mod tests {
             severity: Severity::Warning,
             source_kind: SourceKind::Estimated,
         }
-    }
-
-    #[test]
-    fn fx_hotkey_is_disabled_while_an_overlay_owns_keyboard() {
-        let mut config = crate::app::config::QmonsterConfig::defaults();
-        config.fx.enabled = true;
-        config.fx.hotkey_enabled = true;
-
-        assert!(
-            dashboard_fx_hotkey_allowed(KeyCode::Char('Q'), &config, false),
-            "dashboard Q should open fx when no overlay owns input"
-        );
-        assert!(
-            !dashboard_fx_hotkey_allowed(KeyCode::Char('Q'), &config, true),
-            "overlay edit/input modes must receive Q as text instead of opening fx"
-        );
     }
 
     /// v1.40.1 review fix Critical 1 regression: bulk-clearing two

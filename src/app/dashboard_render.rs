@@ -64,12 +64,6 @@ pub struct DashboardFrameView<'a> {
     /// v1.51.0: heuristic non-English (IME) input indicator.
     /// Computed by the loop from `Context::ime_state.is_active(now)`.
     pub ime_active: bool,
-    /// v1.53.0: optional decorative effects overlay. Rendered last so
-    /// it sits above every other modal.
-    pub fx_overlay: &'a crate::app::fx_overlay::FxOverlay,
-    /// v1.53.0: operator-configured banner text (`[fx] text`). Plumbed
-    /// directly so the renderer doesn't need to re-read config.
-    pub fx_text: &'a str,
     /// v1.59.0: optional case-insensitive filter applied to the
     /// Alerts list. Set by `tui_loop` from
     /// `DashboardRuntimeState::alert_filter`.
@@ -245,13 +239,6 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
                 allow_auto_prompt_send: view.config.actions.allow_auto_prompt_send,
             },
         );
-    }
-
-    // v1.53.0: decorative effects overlay. Rendered as the topmost
-    // surface so the banner / confetti / matrix sit above every modal,
-    // including pending actions.
-    if let Some(scene) = view.fx_overlay.scene() {
-        crate::ui::fx::render_fx_overlay(frame, scene, view.fx_text);
     }
 }
 
