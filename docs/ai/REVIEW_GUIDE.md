@@ -28,7 +28,14 @@ Structural cross-check. Focus:
 - Is actuation risk calibrated to `recommend_only`?
 - Are `(official)` vs `(heuristic)` claims clean?
 
-### Gemini (research)
+### Gemini (research) — RETIRED (v2.5.0)
+
+The Gemini r1 cross-review leg is retired (individual-tier Gemini CLI sunset
+2026-06-18; `gemini` returns `IneligibleTierError`, and `agy` is not a diff
+reviewer). The standing cross-review contract is now **Codex (structural) +
+human sign-off**. A second-model reviewer may be reinstated if a
+non-individual-tier path is configured. Historical Gemini focus kept for
+archival reference:
 
 Research / policy / safety / ops reinforcement. Focus:
 

@@ -1,7 +1,7 @@
 # WORKFLOWS
 
 - Version: v0.4.0
-- Date: 2026-04-20 (round r2 reconciled) / 2026-05-21 (v2.4.0 ledger sync — Bootstrap-section tmux pane 0.2 slug updated to `agy:1:research` in the v2.4.0 commit; Gemini r1 reviewer narrative kept verbatim) / 2026-05-21 (current — v2.4.1 ledger sync; workflow loop, working-doc rotation, and `.docs`/`.mission` discipline rules below unchanged at the v2.4.1 baseline)
+- Date: 2026-04-20 (round r2 reconciled) / 2026-05-21 (v2.4.0 ledger sync — Bootstrap-section tmux pane 0.2 slug updated to `agy:1:research` in the v2.4.0 commit; Gemini r1 reviewer narrative kept verbatim) / 2026-05-21 (current — v2.4.1 ledger sync; workflow loop, working-doc rotation, and `.docs`/`.mission` discipline rules below unchanged at the v2.4.1 baseline) / 2026-06-29 (v2.5.0 — reviewer-contract amendment: Gemini r1 cross-review leg RETIRED (Google's 2026-06-18 individual-tier Gemini CLI sunset; `gemini` returns IneligibleTierError, `agy` is not a diff reviewer) → standing contract is now **Codex r1 (structural) + human sign-off**; §1 step 3 + §6 annotated; new §6 rule: shared-struct changes (ParserContext / SignalSet / config) verify with `cargo test --all-targets`, not `--lib`)
 
 ## 1. Planning loop (current round)
 
@@ -17,7 +17,10 @@ The round is `r<N>`; artefacts are named per the template in
    risk, provider abstraction, scope creep. Output:
    `.docs/codex/Qmonster-v0.4.0-2026-04-20-codex-crosscheck-r1.md`.
 3. **Gemini r1 — research / policy / safety**  
-   Gemini pane (`gemini:1:research`) reinforces research, operations,
+   **RETIRED v2.5.0** — the Gemini r1 leg is retired (individual-tier Gemini
+   CLI sunset 2026-06-18; cross-review is now Codex r1 + human sign-off, see
+   §6). Historical role kept for archival reference:
+   Gemini pane (`gemini:1:research`) reinforced research, operations,
    auto-memory placement, audit / approval, missing scenarios. Output:
    `.docs/gemini/Qmonster-v0.4.0-2026-04-20-gemini-research-r1.md`.
 4. **Claude r2 — final synthesis**  
@@ -116,6 +119,22 @@ Re-run the planning loop when any of the following happen:
   _"version drift detected — re-verify `[ProviderOfficial]` tags in
   `docs/ai/` and profile lever citations"_. The alert is informational;
   no auto-update happens (`refresh.policy = manual_only`).
+
+**v2.5.0 amendments:**
+
+- **Reviewer contract.** The cross-check is now **Codex r1 (structural) +
+  human sign-off**. The Gemini r1 leg is retired — Google's 2026-06-18
+  individual-tier Gemini CLI sunset means `gemini` returns
+  `IneligibleTierError`, and `agy` (the Antigravity replacement) is an
+  interactive coding agent, not a diff reviewer. A second-model reviewer may
+  be reinstated later if a non-individual-tier path (Enterprise / API key) is
+  configured. `codex --version` / `claude --version` / `tmux -V` version-drift
+  checks continue; `gemini --version` drift is no longer gated.
+- **Shared-struct verification.** Any change touching a struct shared with
+  `tests/*.rs` integration tests (`ParserContext`, `SignalSet`, config structs)
+  MUST be verified with `cargo test --all-targets`, not just `cargo test
+--lib` — a `--lib`-only gate misses integration-test construction-site
+  breakage (learned in the v2.5.0 Codex-rollout slice).
 
 ## 7. Release and npm package routine
 
