@@ -426,14 +426,16 @@ fn append_copy_contract(out: &mut Vec<String>, overlay: &ProviderSetupOverlay) {
             ));
         }
         ProviderSetupTab::Antigravity => {
-            out.push(detail_row(
-                "Target",
-                "~/.gemini/antigravity-cli/settings.json",
-            ));
-            out.push(detail_row(
-                "Content",
-                "statusLine.command sidefile-export script",
-            ));
+            if overlay.agy_enrichment_enabled {
+                out.push(detail_row(
+                    "Target",
+                    "~/.gemini/antigravity-cli/settings.json",
+                ));
+                out.push(detail_row(
+                    "Content",
+                    "statusLine.command sidefile-export script",
+                ));
+            }
             out.push(detail_row(
                 "Optional included",
                 format!(
@@ -640,12 +642,14 @@ pub fn render_tab_content(
                 on_off(overlay.agy_enrichment_enabled),
             ));
             out.push("      Read-only here. Change in S Settings -> Integrations.".into());
-            out.push("      y copies the agy sidefile block using this Settings value.".into());
+            if overlay.agy_enrichment_enabled {
+                out.push("      y copies the agy sidefile block using this Settings value.".into());
+                out.push(
+                    "      The statusLine.command sidefile block overrides the footer when applied."
+                        .into(),
+                );
+            }
             out.push("      Enabling context-used / token-count footer items in agy improves scrape coverage.".into());
-            out.push(
-                "      The statusLine.command sidefile block overrides the footer when applied."
-                    .into(),
-            );
 
             append_copy_contract(&mut out, overlay);
             append_copied_preview(&mut out, overlay);
