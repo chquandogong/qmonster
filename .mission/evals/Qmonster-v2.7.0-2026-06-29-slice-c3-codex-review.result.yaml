@@ -1,0 +1,64 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-06-29"
+  target_versions:
+    - "2.7.0"
+  commit_range: "b6b4dc1..5fb2c87 (Slice C3 — src/adapters/agy_footer.rs + agy_sidefile.rs, src/adapters/mod.rs enrichment branch, src/policy/{engine,rules/advisories}.rs ObserveOnly guards, src/app/event_loop.rs post-engine gates, src/ui/provider_setup.rs, src/app/config.rs, docs/ai)"
+  scope: "Release gate for v2.7.0 — Slice C3 agy (Antigravity CLI) structured/scrape enrichment: agy panes DISPLAY model + context% + context_window_size + token_count via a hybrid (footer scrape fill-when-absent + sidefile override, distinct-conversation 60s ambiguity guard), opt-in [provider_setup] agy_enrichment (default false), ProviderOfficial, reusing existing SignalSet fields. Provider Setup overlay shows a recommended statusLine.command sidefile-export block (spike-confirmed stdin contract). ObserveOnly contract: agy stays off the six analytic gates AND emits zero recommendations/actuation."
+  evidence_mode: "Live `codex exec` (codex-cli 0.142.3, medium effort), reading the full 96-106KB branch diff + spec from disk. NOTE: codex's default bubblewrap read-only sandbox failed to initialize in this externally-sandboxed environment (`bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`) — attempt #1 returned request-changes meaning 'blocked, could not read artifacts', NOT a code finding. Re-run used `--dangerously-bypass-approvals-and-sandbox` (codex's documented mode for externally-sandboxed envs); `git status` confirmed 0 file changes after each codex run (read-only honored)."
+  internal_review_first: "An internal opus whole-branch review preceded Codex and found the FIRST ObserveOnly leak: context_pressure_warning/_critical advisories were provider-blind, so C3-populated agy context_pressure emitted /compact recs. Closed by provider-gating both (commit 013cb31) + a negative regression test."
+  verdict: approve-with-fixes
+  local_validation:
+    cargo_fmt_check: pass
+    cargo_clippy_all_targets_d_warnings: pass
+    cargo_test_all_targets: pass
+    test_counts: "1640 lib + 140 integration/supporting (after all remediation)"
+  summary:
+    code_assessment: "Hybrid enrichment sound; sidefile/reader schema+dir aligned end-to-end; footer scrape bottom-most-match; ambiguity guard mirrors claude_sidefile/codex_rollout; agy stays off all six analytic gates (anomalies/honesty/profile/insights/token-sample/token_rows). The release-gate value was catching recommendation-surface leaks the per-task reviews missed: C3 newly populates context_pressure for agy, which reached provider-blind recommendation rules."
+    primary_risk: "ObserveOnly→actuation leaks via newly-populated agy context_pressure reaching provider-blind recommendation paths. All closed; surface verified complete (engine + 3 event-loop appends) by controller enumeration."
+  must_fix_before_release:
+    - id: CFX-C3-1
+      severity: critical
+      file: "src/policy/rules/advisories.rs"
+      title: "quota_tight_nudge — a THIRD provider-blind context_pressure consumer (fires >= 0.90) leaked a `quota-tight: consider enabling` recommendation for agy (opus had only gated context_pressure_warning/_critical)."
+      proposed_change: "Close all rec leaks at one choke point: provider_is_observe_only(p) + early-return in Engine::evaluate for Antigravity (empty recommendations, observe-safe log_storm→ArchiveLocal effect preserved). quota_tight_nudge also got its own provider guard (defense-in-depth)."
+      status: closed
+      closed_by: "414fb9b"
+    - id: CFX-C3-2
+      severity: important
+      file: "src/app/event_loop.rs"
+      title: "Post-engine recommendation appends bypass the engine guard — detect_identity_drift recs are pushed AFTER Engine::evaluate, so agy could still get identity-drift:* recs when [security] identity_drift_findings = true."
+      proposed_change: "Gate ALL THREE post-engine rec appends (cost-budget, identity-drift, anomaly-promotion) with `!provider_is_observe_only(provider)` (helper made pub(crate)); non-rec state updates preserved. Controller enumerated all src/ rec sources to confirm engine + these 3 are the complete, now-gated set."
+      status: closed
+      closed_by: "5fb2c87"
+    - id: CFX-C3-3
+      severity: important
+      file: "src/policy/engine.rs, src/policy/rules/advisories.rs, src/adapters/mod.rs"
+      title: "Regression fixtures claimed to model C3-enriched agy but did not set context_pressure, so they could not catch the leak class."
+      proposed_change: "New engine test agy_enriched_pane_recommendations_are_empty (context_pressure=0.95 → zero recs); agy advisory test strengthened to .is_empty(); the six-gate fixture sets context_pressure."
+      status: closed
+      closed_by: "414fb9b, 5fb2c87"
+    - id: CFX-C3-4
+      severity: important
+      file: "src/adapters/agy_footer.rs"
+      title: "Footer parser froze the FIRST top-down model match; the agy footer is at the BOTTOM, so earlier conversation prose mentioning a model could win."
+      proposed_change: "Prefer the bottom-most match (overwrite each field on later matches). +test prefers_bottom_most_model_over_prose_mention."
+      status: closed
+      closed_by: "414fb9b"
+  minor:
+    - id: MIN-C3-1
+      description: "agy Provider Setup tab text still said 'no documented status surface / no headless API' — stale after the spike confirmed the statusLine.command contract. Updated to distinguish opt-in enrichment from 'no surface'."
+      closed_by: "414fb9b"
+    - id: MIN-C3-2
+      description: "Wiring wording: operator saves the block as an executable script file and points statusLine.command at the PATH (not paste the body into the JSON). Aligned snippet + wiring."
+      closed_by: "414fb9b"
+  observations:
+    - id: OBS-C3-1
+      severity: good
+      description: "The two-reviewer gate earned its place: opus caught the first advisory leak; Codex independently caught quota_tight (3rd consumer) + the post-engine identity-drift append that the engine-level fix did not cover. Single-reviewer would have shipped a leak."
+    - id: OBS-C3-2
+      severity: good
+      description: "context_window_size / model_name / token_count are display-only (no policy consumers); the only leak vector was context_pressure → recommendation rules, now closed at the engine + event-loop choke points."
+  notes_gemini_leg: "Gemini r1 retired (individual-tier sunset; MDR-DRAFT-v2.5.x-gemini-crossreview-retirement). Contract = Codex (structural) + human sign-off. Operator sign-off: 릴리스 (2026-06-29)."
+  recommendation_followup: "Codex + opus both suggested a single provider_is_observe_only choke point — now implemented at BOTH the engine and the event loop. Future agy fields cannot re-leak recommendations without passing these guards."

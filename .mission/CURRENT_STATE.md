@@ -1,6 +1,59 @@
 # CURRENT_STATE
 
-_Last updated: 2026-06-29 (Claude, v2.6.0 — v2.5.0 migration-backlog bundle: sidefile distinct-session guard + agy activity RuntimeFact + context_window_size; see the v2.6.0 section directly below)._
+_Last updated: 2026-06-29 (Claude, v2.7.0 — Slice C3 agy structured/scrape enrichment: model/context%/window/tokens for agy via footer + sidefile, ObserveOnly hardened; see the v2.7.0 section directly below)._
+
+## v2.7.0 — Slice C3: agy structured/scrape enrichment
+
+Lifts agy (Antigravity CLI) panes from pure ObserveOnly to **display** `model_name`
+/ `context_pressure` / `context_window_size` / `token_count` — reusing existing
+`SignalSet` fields (zero new), opt-in via `[provider_setup] agy_enrichment`
+(default false), `ProviderOfficial`. Subagent-driven TDD + opus whole-branch +
+external Codex release gate.
+
+- **Hybrid acquisition:** `src/adapters/agy_footer.rs` scrapes the agy footer
+  (prefers the **bottom-most** match — the footer sits at the pane bottom —
+  fill-when-absent, always pane-correct); `src/adapters/agy_sidefile.rs` reads a
+  structured sidefile `~/.local/share/ai-cli-status/agy/<conversation_id>.json`
+  that **overrides** when present and unambiguous (distinct-conversation 60s
+  guard, mirroring `claude_sidefile`/`codex_rollout`). Wired in
+  `parse_for_with_environment`, gated by `agy_enrichment_enabled` + the strict
+  agy descendant process-confirm.
+- **Recommend-first block:** a Task-0 spike confirmed agy feeds
+  `statusLine.command` a session JSON on stdin (Claude-Code-style: cwd /
+  conversation_id / model / context_window / quota / plan_tier). The Provider
+  Setup agy tab now shows a recommended `statusLine.command` sidefile-export
+  block the operator applies — Qmonster never writes agy config.
+- **ObserveOnly hardened:** the six v2.4.0 analytic gates stay byte-identical;
+  AND because C3 populates `context_pressure` for agy, a new engine-level
+  `provider_is_observe_only` guard in `Engine::evaluate` + guards on all three
+  post-engine recommendation appends in `event_loop.rs` (cost-budget /
+  identity-drift / anomaly-promotion) guarantee agy emits **zero
+  recommendations/actuation**.
+
+**Tests:** 1612 → 1640 lib (+28), 140 integration/supporting. fmt + clippy clean
+(`--all-targets`).
+
+**Cross-review (release gate):** **opus** internal whole-branch caught the first
+advisory leak (`context_pressure` warning/critical, closed `013cb31`); **Codex**
+external `approve-with-fixes` independently caught a third provider-blind
+advisory (`quota_tight_nudge`) + a post-engine identity-drift append + a footer
+top-vs-bottom bug (closed `414fb9b`/`5fb2c87`) — the two-reviewer gate caught
+leaks a single reviewer would have shipped. **Human sign-off** (Gemini leg
+retired). Artifact:
+`.mission/evals/Qmonster-v2.7.0-2026-06-29-slice-c3-codex-review.result.yaml`.
+
+**Release state: PREPPED ON `main`** (`5fb2c87` code + `02598ea` version surfaces
++ this ledger); tag + OIDC npm publish executing on operator sign-off (`릴리스`).
+This section is updated to PUBLISHED + verification after the Release and Package
+Mirror run.
+
+**Follow-ups:** (1) agy quota/tier + session-cost are on the statusLine stdin
+(spike-confirmed) but OUT of v2.7.0 scope — a later slice maps agy quota →
+`quota_5h`/`weekly` pressures + reset etas + `plan_tier`, no new spike needed;
+(2) Gemini 2nd-reviewer reinstatement stays blocked on operator Enterprise/API
+config (`MDR-DRAFT-v2.5.x-gemini-crossreview-retirement`).
+
+---
 
 ## v2.6.0 — v2.5.0 migration-backlog bundle
 
