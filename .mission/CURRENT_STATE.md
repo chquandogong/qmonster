@@ -1,6 +1,57 @@
 # CURRENT_STATE
 
-_Last updated: 2026-05-21 (Claude, v2.4.1 patch — Provider Setup tab header regression fix + ALL refactor. v2.4.0 shipped `Provider::Antigravity` through the enum + key dispatcher + mouse hit-test but `dashboard::render_provider_setup_modal` carried a hand-written 4-entry tab array that silently rendered only `Claude/Codex/Gemini/Tmux`; the `4 agy` keystroke and click both worked but the header showed 4 tabs. v2.4.1 introduces `ProviderSetupTab::ALL` + `index()` as a single source of truth, `dashboard.rs` and `TAB_BY_INDEX` now consume `ALL`, and `all_constant_is_in_sync_with_index_method_and_labels` regression test pins length + uniqueness + non-empty labels + index() position match (the `index()` method is `match`-based so a future enum variant addition becomes a compile error before the test even runs). Also corrects the v2.4.0 ledger-sync miss in `README.md` (Cargo crate version row was still `2.3.6`). Lib 1572 → 1573 (+1 regression test), integration 70 unchanged, fmt + clippy + test all green. v2.4.0 prose and v2.3.6 supply-chain baseline below remain verbatim — this is a one-file code patch + ledger sync with no new security or behaviour surface)_
+_Last updated: 2026-06-29 (Claude, v2.5.0 — structured data-source migration; see the v2.5.0 section directly below)._
+
+## v2.5.0 — Structured data-source migration
+
+Moves pane signal acquisition off fragile tmux-text-scraping onto structured
+channels where it genuinely helps, in three slices (subagent-driven TDD +
+per-task/opus reviews + external Codex release gate).
+
+- **Slice A (Claude):** the sidefile JSON Qmonster already reads now drives
+  `context_pressure` / `quota_5h` / `quota_weekly` via `used_percentage`
+  (clamped [0,1]) — these **OVERRIDE** the scraped statusline pressures (same
+  ProviderOfficial authority, less fragile); `model_name` / `reasoning_effort`
+  fill-when-absent; `permission_mode` stays scrape-only (verified absent from
+  the sidefile).
+- **Slice B (Codex):** new `src/adapters/codex_rollout.rs` fills token counts +
+  model from the `codex-tui` rollout JSONL (`~/.codex/sessions`)
+  **fill-when-absent** (never overrides the rich scrape); `codex_rollout`
+  config toggle (threaded via `ParserContext`); `originator == codex-tui` gate
+  (excludes `codex_exec` cwd-pollution); concurrent-same-cwd ambiguity guard
+  (two same-cwd rollouts within 60s → None, no cross-pane mis-attribution);
+  newest-by-mtime selection. No context% derivation (scrape's `Context % used`
+  authoritative); reasoning/window fields deserialized but deferred.
+- **Slice C1 (docs):** agy stays ObserveOnly (transcript verified to carry no
+  token/model/cost); Gemini cross-review leg **retired** (individual-tier
+  sunset 2026-06-18) → contract now **Codex + human**;
+  `--all-targets`-for-shared-struct rule added; `codex_app_server.rs` version
+  comments refreshed. Slice C2 (agy activity enricher) deferred.
+
+**Tests:** 1573 → 1587 lib (+14), integration 70. fmt + clippy clean.
+
+**Cross-review (release gate):** Codex `approve-with-fixes` — one
+release-blocking must-fix (Codex rollout `cwd`-not-pane-unique cross-fill)
+closed by the ambiguity guard (`bb69eaf`). Gemini leg retired
+(`IneligibleTierError`); **human sign-off is the second gate**. Artifact:
+`.mission/evals/Qmonster-v2.5.0-2026-06-29-bundle-codex-review.result.yaml`.
+
+**Release state:** version surfaces bumped to **2.5.0** (package.json /
+Cargo.toml / Cargo.lock / VERSION.md / README) + mission ledger synced. The
+work is on **local `main`** (merged from the per-slice branches), **NOT pushed
+/ tagged / published** — `git push`, the `v2.5.0` tag, and `npm publish` await
+explicit operator go (the irreversible npm step is deliberately gated).
+
+**Follow-ups:** (1) the Claude sidefile reader (F-5b) has the same
+`cwd`-not-pane-unique limitation flagged for Codex rollout — apply the
+ambiguity guard in a follow-up; (2) Slice C2 agy activity enricher deferred
+until a documented agy headless surface or solved pane-correlation; (3) decide
+whether `context_window_size` / `reasoning_output_tokens` warrant a `SignalSet`
+field later (update fixtures + matrix in the same change).
+
+---
+
+_Earlier — Last updated: 2026-05-21 (Claude, v2.4.1 patch — Provider Setup tab header regression fix + ALL refactor. v2.4.0 shipped `Provider::Antigravity` through the enum + key dispatcher + mouse hit-test but `dashboard::render_provider_setup_modal` carried a hand-written 4-entry tab array that silently rendered only `Claude/Codex/Gemini/Tmux`; the `4 agy` keystroke and click both worked but the header showed 4 tabs. v2.4.1 introduces `ProviderSetupTab::ALL` + `index()` as a single source of truth, `dashboard.rs` and `TAB_BY_INDEX` now consume `ALL`, and `all_constant_is_in_sync_with_index_method_and_labels` regression test pins length + uniqueness + non-empty labels + index() position match (the `index()` method is `match`-based so a future enum variant addition becomes a compile error before the test even runs). Also corrects the v2.4.0 ledger-sync miss in `README.md` (Cargo crate version row was still `2.3.6`). Lib 1572 → 1573 (+1 regression test), integration 70 unchanged, fmt + clippy + test all green. v2.4.0 prose and v2.3.6 supply-chain baseline below remain verbatim — this is a one-file code patch + ledger sync with no new security or behaviour surface)_
 
 ## Mission
 

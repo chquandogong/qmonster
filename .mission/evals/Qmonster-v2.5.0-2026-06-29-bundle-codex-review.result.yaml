@@ -1,0 +1,49 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-06-29"
+  target_versions:
+    - "2.5.0"
+  commit_range: "6abbca0..536c3d0 (src/ + docs/ai)"
+  scope: "Bundled release gate for v2.5.0 (Slice A Claude sidefile-preferred + Slice B Codex rollout backstop + Slice C1 docs). Gemini r1 leg retired this release (individual-tier sunset) — contract is now Codex + human (WORKFLOWS §6 amended)."
+  evidence_mode: "Live `codex exec --sandbox read-only` (codex-cli 0.142.3, gpt-5.5, medium effort), full diff inline. (An xhigh first pass timed out at 420s on the 55KB diff; medium completed in ~minutes.)"
+  remediation_commit_short: "bb69eaf"
+  local_validation:
+    cargo_fmt_check: pass
+    cargo_clippy_all_targets_d_warnings: pass
+    cargo_test_all_targets: pass
+    test_counts: "1587 lib + 70 integration (after remediation)"
+  verdict: approve-with-fixes
+  summary:
+    code_assessment: "Structure preserved: Claude sidefile enrichment adapter-local; Codex rollout isolated in codex_rollout.rs; all sidefile/rollout values ProviderOfficial; Claude pressures override (clamped [0,1]) while model/effort + ALL Codex fields are fill-when-absent; no new actuation/audit/SQLite/SignalSet. Docs correctly state agy ObserveOnly + Codex context/rate-limit ceilings unchanged."
+    primary_risk: "Slice B cross-pane attribution: rollout matched by cwd + descendant-codex-process only — not pane-unique. Two Codex TUI panes in the same repo could cross-fill the newest rollout's tokens/model."
+  must_fix_before_next_phase:
+    - id: CFX-250-1
+      severity: risk
+      file: "src/adapters/codex_rollout.rs ; src/adapters/mod.rs"
+      title: "Codex rollout cwd-match is not pane-unique — concurrent same-cwd codex-tui panes can cross-fill."
+      proposed_change: "Conservative ceiling: when the two newest same-cwd codex-tui rollouts are touched within an ambiguity window, return None (don't attribute). Add a regression test for two concurrent same-cwd rollouts."
+      status: closed
+      closed_by: "bb69eaf"
+      resolution: "Added AMBIGUITY_WINDOW=60s; read_rollout_for_path collects the top-2 cwd-matching codex-tui rollouts and returns None when their mtimes fall within the window; regression test `ambiguous_concurrent_same_cwd_codex_tui_returns_none` added. The fill-when-absent + scrape fallback means the conservative None is safe."
+  observations:
+    - id: OBS-250-1
+      severity: good
+      description: "Claude pressure override semantics correct (clamped [0,1], override only when used_percentage present); Claude model/effort + Codex fields fill-only; boundary purity intact (rollout JSONL knowledge confined to codex_rollout.rs)."
+    - id: OBS-250-2
+      severity: good
+      description: "Deferring reasoning_output_tokens / model_context_window (no SignalSet expansion) is correct for an acquisition-channel-hardening release."
+  scope_reduction_suggestions:
+    - "Keep reasoning_output_tokens + model_context_window deferred; revisit a SignalSet field in a later slice (update fixtures + matrix in the same change)."
+  official_vs_heuristic_status:
+    - id: OH-250-1
+      severity: safe
+      description: "Sidefile + rollout values correctly ProviderOfficial. AMBIGUITY_WINDOW is a Qmonster-chosen Heuristic threshold, documented as such."
+  todos_for_claude:
+    - id: TC-250-1
+      description: "Keep permission_mode scrape-only until the sidefile exposes it."
+      status: done
+    - id: TC-250-2
+      description: "Pre-existing: the Claude sidefile reader (F-5b) has the same cwd-not-pane-unique limitation; consider the same ambiguity guard in a follow-up (out of v2.5.0 scope)."
+      status: open
+  notes_gemini_leg: "Gemini r1 cross-review NOT run — individual-tier Gemini CLI sunset (2026-06-18); `gemini` returns IneligibleTierError. Contract amended to Codex + human (WORKFLOWS §1/§6, REVIEW_GUIDE §1). Human sign-off is the second gate for this release."
