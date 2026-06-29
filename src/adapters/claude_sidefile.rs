@@ -40,6 +40,26 @@ pub struct ClaudeSidefile {
     pub context_window: Option<ClaudeSidefileContextWindow>,
     #[serde(default)]
     pub rate_limits: Option<ClaudeSidefileRateLimits>,
+    #[serde(default)]
+    pub model: Option<ClaudeSidefileModel>,
+    #[serde(default)]
+    pub effort: Option<ClaudeSidefileEffort>,
+    #[serde(default)]
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ClaudeSidefileModel {
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ClaudeSidefileEffort {
+    #[serde(default)]
+    pub level: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -52,6 +72,10 @@ pub struct ClaudeSidefileCost {
 pub struct ClaudeSidefileContextWindow {
     #[serde(default)]
     pub current_usage: Option<ClaudeSidefileCurrentUsage>,
+    #[serde(default)]
+    pub used_percentage: Option<f64>,
+    #[serde(default)]
+    pub context_window_size: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -78,6 +102,8 @@ pub struct ClaudeSidefileRateLimits {
 pub struct ClaudeSidefileRateWindow {
     #[serde(default)]
     pub resets_at: Option<u64>,
+    #[serde(default)]
+    pub used_percentage: Option<f64>,
 }
 
 /// Compute `cache_read / (cache_read + input_tokens)` from a parsed
@@ -215,6 +241,7 @@ mod tests {
                     cache_read_input_tokens: Some(150_000),
                     ..Default::default()
                 }),
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -231,6 +258,7 @@ mod tests {
                     cache_read_input_tokens: Some(0),
                     ..Default::default()
                 }),
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -279,11 +307,19 @@ mod tests {
             Some("/home/u/.claude/projects/x/abc.jsonl")
         );
         assert!((s.cost.unwrap().total_cost_usd.unwrap() - 12.34).abs() < 1e-9);
-        let usage = s.context_window.unwrap().current_usage.unwrap();
+        let usage = s.context_window.as_ref().unwrap().current_usage.as_ref().unwrap();
         assert_eq!(usage.cache_read_input_tokens, Some(80));
         assert_eq!(usage.cache_creation_input_tokens, Some(70));
-        let rl = s.rate_limits.unwrap();
-        assert_eq!(rl.five_hour.unwrap().resets_at, Some(1700000000));
-        assert_eq!(rl.seven_day.unwrap().resets_at, Some(1700100000));
+        let rl = s.rate_limits.as_ref().unwrap();
+        assert_eq!(rl.five_hour.as_ref().unwrap().resets_at, Some(1700000000));
+        assert_eq!(rl.seven_day.as_ref().unwrap().resets_at, Some(1700100000));
+        // Slice A: fields previously dropped by serde must now deserialize.
+        let cw = s.context_window.as_ref().unwrap();
+        assert_eq!(cw.used_percentage, Some(5.0));
+        assert_eq!(rl.five_hour.as_ref().unwrap().used_percentage, Some(30.0));
+        assert_eq!(rl.seven_day.as_ref().unwrap().used_percentage, Some(10.0));
+        let model = s.model.as_ref().unwrap();
+        assert_eq!(model.id.as_deref(), Some("claude-x"));
+        assert_eq!(model.display_name.as_deref(), Some("Claude X"));
     }
 }
