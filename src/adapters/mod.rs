@@ -570,6 +570,12 @@ mod sidefile_integration_tests {
                 crate::domain::origin::SourceKind::ProviderOfficial,
             ),
         );
+        signals.quota_weekly_pressure = Some(
+            crate::domain::signal::MetricValue::new(
+                0.50_f32,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            ),
+        );
         let sidefile: claude_sidefile::ClaudeSidefile = serde_json::from_str(
             r#"{
                 "context_window": {"used_percentage": 21},
