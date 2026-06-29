@@ -1424,6 +1424,15 @@ stillness_polls = 6
     }
 
     #[test]
+    fn provider_setup_agy_enrichment_defaults_off() {
+        let absent: QmonsterConfig = toml::from_str("").unwrap();
+        assert!(
+            !absent.provider_setup.agy_enrichment,
+            "agy_enrichment must default to false — opt-in scrape/sidefile enrichment"
+        );
+    }
+
+    #[test]
     fn provider_setup_config_loads_overrides_from_toml() {
         let toml = r#"
 [provider_setup]
