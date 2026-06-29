@@ -10,6 +10,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use std::time::SystemTime;
 
 use serde::Deserialize;
@@ -42,6 +43,14 @@ struct SessionMeta {
 /// giving up. Bounds per-poll cost when the sessions tree is large.
 const MAX_CANDIDATES: usize = 64;
 
+/// Two `codex-tui` rollouts matching the same cwd whose newest mtimes fall
+/// within this window are treated as concurrent active panes → ambiguous →
+/// no enrichment. `cwd` is not a pane-unique key, so rather than risk
+/// attributing pane B's tokens to pane A we fall back to the scrape. 60s
+/// comfortably separates a live session (its rollout is appended every turn)
+/// from a finished/older same-cwd session. (Heuristic — Qmonster-chosen.)
+const AMBIGUITY_WINDOW: Duration = Duration::from_secs(60);
+
 /// Locate the newest `codex-tui` rollout whose `session_meta.cwd`
 /// matches `current_path`, and parse its latest token totals + model.
 /// Returns None on empty path, missing sessions dir, or no match.
@@ -52,18 +61,36 @@ pub fn read_rollout_for_path(codex_home: &Path, current_path: &str) -> Option<Co
     let sessions = codex_home.join("sessions");
     let mut candidates: Vec<(SystemTime, PathBuf)> = Vec::new();
     collect_rollouts(&sessions, &mut candidates);
-    // mtime desc → newest (actively-appended) session first; cap bounds the expensive content reads.
+    // mtime desc → newest (actively-appended) session first; cap bounds the
+    // expensive content reads.
     candidates.sort_by(|a, b| b.0.cmp(&a.0));
-    for (_, path) in candidates.into_iter().take(MAX_CANDIDATES) {
+    // Collect the cwd-matching codex-tui rollouts, newest first. Only the top
+    // two are needed to decide ambiguity, so stop after the second match.
+    let mut matches: Vec<(SystemTime, CodexRolloutSignals)> = Vec::new();
+    for (mtime, path) in candidates.into_iter().take(MAX_CANDIDATES) {
         let body = match fs::read_to_string(&path) {
             Ok(b) => b,
             Err(_) => continue,
         };
         if let Some(sig) = parse_if_matching(&body, current_path) {
-            return Some(sig);
+            matches.push((mtime, sig));
+            if matches.len() == 2 {
+                break;
+            }
         }
     }
-    None
+    let (newest_mtime, newest_sig) = matches.first()?;
+    // Ambiguity guard: two concurrently-active same-cwd codex-tui panes can't
+    // be told apart by cwd alone — don't attribute, fall back to the scrape.
+    if let Some((second_mtime, _)) = matches.get(1)
+        && newest_mtime
+            .duration_since(*second_mtime)
+            .unwrap_or(Duration::ZERO)
+            < AMBIGUITY_WINDOW
+    {
+        return None;
+    }
+    Some(newest_sig.clone())
 }
 
 /// Recursively collect every `rollout-*.jsonl` path with its mtime.
@@ -260,5 +287,40 @@ mod tests {
             "newest-mtime wins despite older filename"
         );
         assert_eq!(s.output_tokens, Some(888));
+    }
+
+    #[test]
+    fn ambiguous_concurrent_same_cwd_codex_tui_returns_none() {
+        // Two codex-tui rollouts, same cwd, touched within the ambiguity
+        // window (concurrent active panes) → cannot attribute → None.
+        let tmp = tempdir().unwrap();
+        let sessions = tmp.path().join("sessions/2026/06/29");
+        let a = write_rollout_with_tokens(
+            &sessions,
+            "rollout-2026-06-29T20-00-00-a.jsonl",
+            "codex-tui",
+            "/repo/qmonster",
+            111,
+            222,
+        );
+        let b = write_rollout_with_tokens(
+            &sessions,
+            "rollout-2026-06-29T20-00-05-b.jsonl",
+            "codex-tui",
+            "/repo/qmonster",
+            999,
+            888,
+        );
+        let now = std::time::SystemTime::now();
+        filetime::set_file_mtime(
+            &a,
+            filetime::FileTime::from_system_time(now - std::time::Duration::from_secs(5)),
+        )
+        .unwrap();
+        filetime::set_file_mtime(&b, filetime::FileTime::from_system_time(now)).unwrap();
+        assert!(
+            read_rollout_for_path(tmp.path(), "/repo/qmonster").is_none(),
+            "two concurrent same-cwd codex-tui sessions must not cross-fill"
+        );
     }
 }
