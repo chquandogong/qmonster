@@ -308,7 +308,13 @@ mod tests {
             Some("/home/u/.claude/projects/x/abc.jsonl")
         );
         assert!((s.cost.unwrap().total_cost_usd.unwrap() - 12.34).abs() < 1e-9);
-        let usage = s.context_window.as_ref().unwrap().current_usage.as_ref().unwrap();
+        let usage = s
+            .context_window
+            .as_ref()
+            .unwrap()
+            .current_usage
+            .as_ref()
+            .unwrap();
         assert_eq!(usage.cache_read_input_tokens, Some(80));
         assert_eq!(usage.cache_creation_input_tokens, Some(70));
         let rl = s.rate_limits.as_ref().unwrap();

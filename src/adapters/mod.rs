@@ -572,24 +572,18 @@ mod sidefile_integration_tests {
     fn sidefile_used_percentage_overrides_scraped_pressure() {
         // Pre-seed as if the scrape produced stale/rounded values.
         let mut signals = crate::adapters::common::parse_common_signals("");
-        signals.context_pressure = Some(
-            crate::domain::signal::MetricValue::new(
-                0.50_f32,
-                crate::domain::origin::SourceKind::ProviderOfficial,
-            ),
-        );
-        signals.quota_5h_pressure = Some(
-            crate::domain::signal::MetricValue::new(
-                0.50_f32,
-                crate::domain::origin::SourceKind::ProviderOfficial,
-            ),
-        );
-        signals.quota_weekly_pressure = Some(
-            crate::domain::signal::MetricValue::new(
-                0.50_f32,
-                crate::domain::origin::SourceKind::ProviderOfficial,
-            ),
-        );
+        signals.context_pressure = Some(crate::domain::signal::MetricValue::new(
+            0.50_f32,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        signals.quota_5h_pressure = Some(crate::domain::signal::MetricValue::new(
+            0.50_f32,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        signals.quota_weekly_pressure = Some(crate::domain::signal::MetricValue::new(
+            0.50_f32,
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
         let sidefile: claude_sidefile::ClaudeSidefile = serde_json::from_str(
             r#"{
                 "context_window": {"used_percentage": 21},
@@ -647,7 +641,10 @@ mod sidefile_integration_tests {
         apply_claude_sidefile(&mut signals, sidefile);
 
         assert_eq!(signals.model_name.as_ref().unwrap().value, "scraped-model");
-        assert_eq!(signals.reasoning_effort.as_ref().unwrap().value, "scraped-effort");
+        assert_eq!(
+            signals.reasoning_effort.as_ref().unwrap().value,
+            "scraped-effort"
+        );
     }
 
     #[test]
@@ -656,6 +653,9 @@ mod sidefile_integration_tests {
         let sidefile: claude_sidefile::ClaudeSidefile =
             serde_json::from_str(r#"{"model":{"id":"claude-opus-4-8"}}"#).unwrap();
         apply_claude_sidefile(&mut signals, sidefile);
-        assert_eq!(signals.model_name.as_ref().unwrap().value, "claude-opus-4-8");
+        assert_eq!(
+            signals.model_name.as_ref().unwrap().value,
+            "claude-opus-4-8"
+        );
     }
 }
