@@ -284,6 +284,7 @@ pub fn parse_common_signals(tail: &str) -> SignalSet {
         quota_5h_resets_at: None,
         quota_weekly_resets_at: None,
         token_count: None,
+        context_window_size: None,
         input_tokens: None,
         output_tokens: None,
         cached_input_tokens: None,

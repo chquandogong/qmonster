@@ -188,6 +188,12 @@ pub struct SignalSet {
     /// the App Server `weekly` window once F-6 lands.
     pub quota_weekly_resets_at: Option<MetricValue<u64>>,
     pub token_count: Option<MetricValue<u64>>,
+    /// Slice D: the model's total context-window size in tokens (e.g. 200_000,
+    /// 1_000_000). Supplementary display alongside `context_pressure`; populated
+    /// fill-when-absent from structured channels (Claude sidefile
+    /// `context_window.context_window_size`, Codex rollout `model_context_window`).
+    /// Does NOT affect context_pressure computation.
+    pub context_window_size: Option<MetricValue<u64>>,
     /// S3-1: cumulative session input tokens. Currently populated only
     /// by the Codex bottom-status-line parser (`1.51M in` token).
     /// Codex's `/statusline` may hide this item per operator config; if
