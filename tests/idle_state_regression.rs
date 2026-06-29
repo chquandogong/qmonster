@@ -49,8 +49,6 @@ fn claude_idle_cursor_fixture_classifies_as_work_complete() {
         pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
-        agy_transcript_enabled: false,
-        agy_enrichment_enabled: false,
     };
     let s = ClaudeAdapter.parse(&c);
     assert_eq!(s.idle_state, Some(IdleCause::WorkComplete));
@@ -71,8 +69,6 @@ fn claude_limit_hit_fixture_classifies_as_limit_hit() {
         pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
-        agy_transcript_enabled: false,
-        agy_enrichment_enabled: false,
     };
     let s = ClaudeAdapter.parse(&c);
     assert_eq!(s.idle_state, Some(IdleCause::LimitHit));
@@ -93,8 +89,6 @@ fn codex_idle_cursor_fixture_classifies_as_work_complete() {
         pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
-        agy_transcript_enabled: false,
-        agy_enrichment_enabled: false,
     };
     let s = CodexAdapter.parse(&c);
     assert_eq!(s.idle_state, Some(IdleCause::WorkComplete));
@@ -115,8 +109,6 @@ fn codex_limit_hit_fixture_classifies_as_limit_hit() {
         pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
-        agy_transcript_enabled: false,
-        agy_enrichment_enabled: false,
     };
     let s = CodexAdapter.parse(&c);
     assert_eq!(s.idle_state, Some(IdleCause::LimitHit));
@@ -137,8 +129,6 @@ fn gemini_idle_fixture_classifies_as_work_complete() {
         pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
-        agy_transcript_enabled: false,
-        agy_enrichment_enabled: false,
     };
     let s = GeminiAdapter.parse(&c);
     assert_eq!(s.idle_state, Some(IdleCause::WorkComplete));
@@ -159,8 +149,6 @@ fn gemini_quota_full_fixture_classifies_as_limit_hit() {
         pane_pid: None, // F-1: test fixture; production wires via parse_ctx in event_loop.rs
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
-        agy_transcript_enabled: false,
-        agy_enrichment_enabled: false,
     };
     let s = GeminiAdapter.parse(&c);
     assert_eq!(s.idle_state, Some(IdleCause::LimitHit));

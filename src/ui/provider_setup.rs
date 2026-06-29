@@ -78,10 +78,6 @@ impl ProviderSetupTab {
 pub struct ProviderSetupOverlay {
     pub tab: ProviderSetupTab,
     pub claude_sidefile_enabled: bool,
-    /// Slice C3: mirrors `config.provider_setup.agy_enrichment`. When
-    /// true, the agy tab shows (and `y` copies) the recommended
-    /// `statusLine.command` sidefile-export block.
-    pub agy_enrichment_enabled: bool,
     pub scroll_offset: usize,
     /// Whether the overlay is currently visible. Mirrors the
     /// `SettingsOverlay::open` field so the dashboard frame can
@@ -95,7 +91,6 @@ impl Default for ProviderSetupOverlay {
         Self {
             tab: ProviderSetupTab::Claude,
             claude_sidefile_enabled: false,
-            agy_enrichment_enabled: false,
             scroll_offset: 0,
             open: false,
         }
@@ -114,7 +109,6 @@ impl ProviderSetupOverlay {
         Self {
             tab: ProviderSetupTab::Claude,
             claude_sidefile_enabled: config.provider_setup.claude_sidefile,
-            agy_enrichment_enabled: config.provider_setup.agy_enrichment,
             scroll_offset: 0,
             open: false,
         }
@@ -122,7 +116,6 @@ impl ProviderSetupOverlay {
 
     pub fn sync_from_config(&mut self, config: &crate::app::config::QmonsterConfig) {
         self.claude_sidefile_enabled = config.provider_setup.claude_sidefile;
-        self.agy_enrichment_enabled = config.provider_setup.agy_enrichment;
     }
 
     pub fn is_open(&self) -> bool {
@@ -277,43 +270,6 @@ pub const GEMINI_AUTH_NOTE: &str = include_str!("provider_setup_snippets/gemini_
 pub const TMUX_QMONSTER_BUNDLE: &str =
     include_str!("provider_setup_snippets/tmux_qmonster_bundle.sh");
 
-/// Slice C3: recommended agy `statusLine.command` sidefile-export block.
-/// The operator pastes this into `~/.gemini/antigravity-cli/settings.json`
-/// as `statusLine.command` (type "command"). agy feeds this script its
-/// session JSON on stdin; the script writes a flat sidefile that Qmonster
-/// reads, then echoes a status line so the agy footer still renders. The
-/// `jq` input paths are confirmed by the Task-0 spike against agy's
-/// `statusLine.command` stdin contract.
-const AGY_SIDEFILE_BLOCK: &str = r#"#!/usr/bin/env bash
-# Qmonster agy sidefile export. Set as agy statusLine.command (type "command")
-# in ~/.gemini/antigravity-cli/settings.json. agy feeds this its session JSON on
-# stdin; we write a flat sidefile Qmonster reads, then echo a status line.
-input=$(cat)
-# Always emit a status line for agy's footer:
-printf '%s' "$input" | jq -r '"\(.model.display_name // "agy")  ctx \((.context_window.used_percentage // 0) | floor)%"'
-# Write the sidefile only once a real conversation id exists (avoids a stale
-# placeholder file tripping Qmonster's same-cwd ambiguity guard):
-cid=$(printf '%s' "$input" | jq -r '.conversation_id // .session_id // ""')
-if [ -n "$cid" ] && [ "$cid" != "null" ]; then
-  dir="$HOME/.local/share/ai-cli-status/agy"; mkdir -p "$dir"
-  printf '%s' "$input" | jq '
-    (.model.id // .model.display_name // "" | ascii_downcase
-       | if startswith("gemini") then "gemini" else "3p" end) as $fam
-    | {
-    conversation_id: (.conversation_id // .session_id),
-    cwd: (.cwd // .workspace.current_dir),
-    model: (.model.display_name // .model.id),
-    context_used_percentage: .context_window.used_percentage,
-    context_window_size: .context_window.context_window_size,
-    token_count: ((.context_window.total_input_tokens // 0) + (.context_window.total_output_tokens // 0)),
-    quota_5h_pressure:      (1 - (.quota[$fam + "-5h"].remaining_fraction // 1)),
-    quota_5h_resets_at:     (try (.quota[$fam + "-5h"].reset_time | fromdateiso8601) catch null),
-    quota_weekly_pressure:  (1 - (.quota[$fam + "-weekly"].remaining_fraction // 1)),
-    quota_weekly_resets_at: (try (.quota[$fam + "-weekly"].reset_time | fromdateiso8601) catch null)
-  }' > "$dir/$cid.json"
-fi
-"#;
-
 /// Compose the raw, copy-pasteable snippet text for the active tab —
 /// used by the clipboard-copy action so operators don't have to mouse-
 /// select rendered text out of the terminal (which would pick up
@@ -349,13 +305,8 @@ pub fn snippet_for_tab(overlay: &ProviderSetupOverlay) -> (&'static str, String)
             "Gemini ~/.gemini/settings.json",
             String::from(GEMINI_FOOTER_SETTINGS),
         ),
-        ProviderSetupTab::Antigravity => {
-            if overlay.agy_enrichment_enabled {
-                ("agy statusLine.command", String::from(AGY_SIDEFILE_BLOCK))
-            } else {
-                ("", String::new())
-            }
-        }
+        // agy is ObserveOnly: identified but not analyzed. No copyable snippet.
+        ProviderSetupTab::Antigravity => ("", String::new()),
         ProviderSetupTab::Tmux => (
             "Qmonster tmux bundle installer",
             String::from(TMUX_QMONSTER_BUNDLE),
@@ -409,25 +360,8 @@ fn append_copy_contract(out: &mut Vec<String>, overlay: &ProviderSetupOverlay) {
                 "/stats instructions and auth note below",
             ));
         }
-        ProviderSetupTab::Antigravity => {
-            if overlay.agy_enrichment_enabled {
-                out.push(detail_row(
-                    "Target",
-                    "~/.gemini/antigravity-cli/settings.json",
-                ));
-                out.push(detail_row(
-                    "Content",
-                    "statusLine.command sidefile-export script",
-                ));
-            }
-            out.push(detail_row(
-                "Optional included",
-                format!(
-                    "agy enrichment {} (from Settings)",
-                    on_off(overlay.agy_enrichment_enabled)
-                ),
-            ));
-        }
+        // agy is ObserveOnly: nothing is copied for it.
+        ProviderSetupTab::Antigravity => {}
         ProviderSetupTab::Tmux => {
             out.push(detail_row("Target", "~/ts.sh + ~/.tmux/qmonster.tmux.conf"));
             out.push(detail_row(
@@ -583,11 +517,7 @@ pub fn render_tab_content(
             section(&mut out, "Current Status");
             out.push(detail_row(
                 "agy CLI",
-                "detected via tmux title / pane command — enrichment is opt-in",
-            ));
-            out.push(detail_row(
-                "Enrichment surface",
-                "statusLine.command stdin contract (C3); Qmonster writes no agy config",
+                "identified but not analyzed — ObserveOnly, no enrichment",
             ));
 
             section(&mut out, "Identification");
@@ -608,42 +538,9 @@ pub fn render_tab_content(
             out.push("  Antigravity CLI (`agy`) is the migration target for".into());
             out.push("  personal / Pro / Ultra users. When Google ships a".into());
             out.push("  documented headless companion or stabilizes an agy".into());
-            out.push("  session-screen format, a real adapter will land and".into());
-            out.push("  these surfaces will turn on.".into());
-
-            section(&mut out, "Settings");
-            out.push(detail_row(
-                "provider_setup.agy_enrichment",
-                on_off(overlay.agy_enrichment_enabled),
-            ));
-            out.push("      Read-only here. Change in S Settings -> Integrations.".into());
-            if overlay.agy_enrichment_enabled {
-                out.push("      y copies the agy sidefile block using this Settings value.".into());
-                out.push(
-                    "      The statusLine.command sidefile block overrides the footer when applied."
-                        .into(),
-                );
-            }
-            out.push("      Enabling context-used / token-count footer items in agy improves scrape coverage.".into());
-
-            if overlay.agy_enrichment_enabled {
-                append_copy_contract(&mut out, overlay);
-                append_copied_preview(&mut out, overlay);
-            }
-
-            section(&mut out, "Wiring (one-time, not copied by y)");
-            out.push("Save the copied script as an executable file, e.g.:".into());
-            out.push("  ~/.local/share/ai-cli-status/agy-statusline.sh  (chmod +x)".into());
-            out.push(
-                "Then set statusLine.command to that file path in ~/.gemini/antigravity-cli/settings.json:"
-                    .into(),
-            );
-            out.push(r#"  "statusLine": {"#.into());
-            out.push(r#"    "type": "command","#.into());
-            out.push(
-                r#"    "command": "/home/YOU/.local/share/ai-cli-status/agy-statusline.sh""#.into(),
-            );
-            out.push(r#"  }"#.into());
+            out.push("  session-screen format, a real adapter can land and".into());
+            out.push("  these surfaces will turn on. Until then agy stays".into());
+            out.push("  identified-only; nothing is copied for it.".into());
         }
         ProviderSetupTab::Tmux => {
             section(&mut out, "Purpose");
@@ -794,8 +691,6 @@ mod tests {
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: true,
             codex_rollout: true,
-            agy_transcript: false,
-            agy_enrichment: false,
         };
         let mut overlay = ProviderSetupOverlay::default();
 
@@ -805,8 +700,6 @@ mod tests {
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: false,
             codex_rollout: false,
-            agy_transcript: false,
-            agy_enrichment: false,
         };
         overlay.sync_from_config(&cfg);
         assert!(!overlay.claude_sidefile_enabled);
@@ -897,8 +790,6 @@ mod tests {
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: true,
             codex_rollout: true,
-            agy_transcript: false,
-            agy_enrichment: false,
         };
         let overlay = ProviderSetupOverlay::from_config(&cfg);
         assert!(overlay.claude_sidefile_enabled);
@@ -907,8 +798,6 @@ mod tests {
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: false,
             codex_rollout: false,
-            agy_transcript: false,
-            agy_enrichment: false,
         };
         let overlay = ProviderSetupOverlay::from_config(&cfg);
         assert!(!overlay.claude_sidefile_enabled);
@@ -1198,82 +1087,6 @@ mod tests {
         assert!(
             !joined.contains("Copy With y") && !joined.contains("Preview: y copies this content"),
             "Antigravity tab must NOT include copy-contract or copied-preview blocks; got:\n{joined}"
-        );
-    }
-
-    #[test]
-    fn agy_snippet_carries_sidefile_block_when_enabled() {
-        let overlay = ProviderSetupOverlay {
-            tab: ProviderSetupTab::Antigravity,
-            agy_enrichment_enabled: true,
-            ..Default::default()
-        };
-        let (label, text) = snippet_for_tab(&overlay);
-        assert!(label.contains("agy"), "label names the agy target");
-        assert!(
-            text.contains("ai-cli-status/agy"),
-            "block writes the agy sidefile dir"
-        );
-        assert!(
-            text.contains("conversation_id"),
-            "block references conversation_id field"
-        );
-        assert!(text.contains("jq"), "block uses jq to parse agy stdin JSON");
-    }
-
-    #[test]
-    fn agy_snippet_carries_quota_jq() {
-        let overlay = ProviderSetupOverlay {
-            tab: ProviderSetupTab::Antigravity,
-            agy_enrichment_enabled: true,
-            ..Default::default()
-        };
-        let (_, text) = snippet_for_tab(&overlay);
-        // All four quota keys must be present.
-        assert!(
-            text.contains("quota_5h_pressure"),
-            "block must emit quota_5h_pressure"
-        );
-        assert!(
-            text.contains("quota_5h_resets_at"),
-            "block must emit quota_5h_resets_at"
-        );
-        assert!(
-            text.contains("quota_weekly_pressure"),
-            "block must emit quota_weekly_pressure"
-        );
-        assert!(
-            text.contains("quota_weekly_resets_at"),
-            "block must emit quota_weekly_resets_at"
-        );
-        // Reset fields must use try/catch null (not bare `?`) to avoid
-        // empty-stream truncation of the whole jq object on absent/malformed
-        // reset_time values.
-        assert!(
-            text.contains("catch null"),
-            "reset exprs must use `try ... catch null` to stay null-safe"
-        );
-        assert!(
-            text.contains("fromdateiso8601"),
-            "resets parsed from ISO timestamps"
-        );
-        assert!(
-            text.contains("startswith(\"gemini\")"),
-            "active-model-aware window selection"
-        );
-    }
-
-    #[test]
-    fn agy_snippet_empty_when_disabled() {
-        let overlay = ProviderSetupOverlay {
-            tab: ProviderSetupTab::Antigravity,
-            agy_enrichment_enabled: false,
-            ..Default::default()
-        };
-        let (_, text) = snippet_for_tab(&overlay);
-        assert!(
-            text.is_empty(),
-            "no copyable block until the operator opts in"
         );
     }
 }

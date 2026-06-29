@@ -2036,7 +2036,6 @@ fn runtime_text_groups(signals: &SignalSet) -> Vec<(&'static str, Vec<String>)> 
             ],
         ),
         ("restrict", &[RuntimeFactKind::RestrictedTool]),
-        ("activity", &[RuntimeFactKind::AgyActivity]),
     ];
 
     GROUPS
@@ -2085,7 +2084,6 @@ fn runtime_fact_label(kind: RuntimeFactKind) -> &'static str {
         RuntimeFactKind::ModelReset => "RESET",
         RuntimeFactKind::TranscriptPath => "XSCRIPT",
         RuntimeFactKind::CliVersion => "CLI",
-        RuntimeFactKind::AgyActivity => "AGY",
     }
 }
 

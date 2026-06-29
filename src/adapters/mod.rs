@@ -1,7 +1,4 @@
 pub mod agent_memory;
-pub mod agy_footer;
-pub mod agy_sidefile;
-pub mod agy_transcript;
 pub mod claude;
 pub mod claude_sidefile;
 pub mod codex;
@@ -44,13 +41,6 @@ pub struct ParserContext<'a> {
     /// (`[provider_setup] codex_rollout`). When false, the rollout
     /// reader is never consulted.
     pub codex_rollout_enabled: bool,
-    /// Slice C2: operator toggle for the agy transcript activity reader
-    /// (`[provider_setup] agy_transcript`). When false, the agy transcript
-    /// reader is never consulted.
-    pub agy_transcript_enabled: bool,
-    /// Slice C3: operator toggle for agy footer/sidefile enrichment
-    /// (`[provider_setup] agy_enrichment`). When false, no agy enrichment runs.
-    pub agy_enrichment_enabled: bool,
 }
 
 /// Provider-specific parser. Each adapter receives a ParserContext
@@ -201,114 +191,6 @@ pub fn parse_for_with_environment(
             }
         }
     }
-    // Slice C2: agy transcript activity indicator. Surface a live activity
-    // RuntimeFact when the agy_transcript toggle is enabled, the pane is Antigravity,
-    // the identity is not conflicted, a cwd is present, and an agy binary is the
-    // descendant process. The transcript activity is correlated from the
-    // history.jsonl history by workspace (cwd) and the ambiguity guard prevents
-    // mis-attribution when multiple agy sessions are active in the same workspace.
-    // Activity is always Heuristic (reverse-engineered) and never PopupOption
-    // (no token/model/cost claims). The six v2.4.0 ObserveOnly gates are untouched.
-    if ctx.agy_transcript_enabled
-        && matches!(ctx.identity.identity.provider, Provider::Antigravity)
-        && !identity_conflict
-        && !ctx.current_path.is_empty()
-        && agy_process_confirmed(ctx, proc_root)
-        && let Some(home) = home_dir
-    {
-        let gemini_home = home.join(".gemini");
-        if let Some(activity) = agy_transcript::read_agy_activity(&gemini_home, ctx.current_path) {
-            signals.runtime_facts.push(
-                crate::domain::signal::RuntimeFact::new(
-                    crate::domain::signal::RuntimeFactKind::AgyActivity,
-                    format!(
-                        "transcript · {}",
-                        activity.latest_step.as_deref().unwrap_or("active")
-                    ),
-                    crate::domain::origin::SourceKind::Heuristic,
-                )
-                .with_provider(Provider::Antigravity),
-            );
-        }
-    }
-    // Slice C3: agy footer/sidefile enrichment. Footer scrape fills model /
-    // context% / token-count (always pane-correct) when absent; the structured
-    // sidefile OVERRIDES when present and unambiguously attributed by cwd. Both
-    // ProviderOfficial. Display-only — the six v2.4.0 ObserveOnly gates are
-    // untouched (agy is NOT added to token_rows_supported / token-sample / insights).
-    if ctx.agy_enrichment_enabled
-        && matches!(ctx.identity.identity.provider, Provider::Antigravity)
-        && !identity_conflict
-        && !ctx.current_path.is_empty()
-        && agy_process_confirmed(ctx, proc_root)
-    {
-        use crate::domain::identity::Provider;
-        use crate::domain::origin::SourceKind;
-        use crate::domain::signal::MetricValue;
-        let metric_str = |v: String| {
-            MetricValue::new(v, SourceKind::ProviderOfficial)
-                .with_confidence(0.9)
-                .with_provider(Provider::Antigravity)
-        };
-        let metric_f32 = |v: f32| {
-            MetricValue::new(v, SourceKind::ProviderOfficial)
-                .with_confidence(0.9)
-                .with_provider(Provider::Antigravity)
-        };
-        let metric_u64 = |v: u64| {
-            MetricValue::new(v, SourceKind::ProviderOfficial)
-                .with_confidence(0.9)
-                .with_provider(Provider::Antigravity)
-        };
-
-        // (a) Footer scrape — fill-when-absent (always the pane's own text).
-        let footer = agy_footer::parse_agy_footer(ctx.tail);
-        if signals.model_name.is_none()
-            && let Some(m) = footer.model
-        {
-            signals.model_name = Some(metric_str(m));
-        }
-        if signals.context_pressure.is_none()
-            && let Some(p) = footer.context_used_pct
-        {
-            signals.context_pressure = Some(metric_f32(p));
-        }
-        if signals.token_count.is_none()
-            && let Some(n) = footer.token_count
-        {
-            signals.token_count = Some(metric_u64(n));
-        }
-
-        // (b) Structured sidefile — OVERRIDE when present + unambiguous.
-        if let Some(home) = home_dir
-            && let Some(sf) = agy_sidefile::read_agy_sidefile_for_path(home, ctx.current_path)
-        {
-            if let Some(m) = sf.model {
-                signals.model_name = Some(metric_str(m));
-            }
-            if let Some(pct) = sf.context_used_percentage {
-                signals.context_pressure = Some(metric_f32((pct / 100.0).clamp(0.0, 1.0) as f32));
-            }
-            if let Some(n) = sf.context_window_size {
-                signals.context_window_size = Some(metric_u64(n));
-            }
-            if let Some(n) = sf.token_count {
-                signals.token_count = Some(metric_u64(n));
-            }
-            if let Some(p) = sf.quota_5h_pressure {
-                signals.quota_5h_pressure = Some(metric_f32((p as f32).clamp(0.0, 1.0)));
-            }
-            if let Some(ts) = sf.quota_5h_resets_at {
-                signals.quota_5h_resets_at = Some(metric_u64(ts));
-            }
-            if let Some(p) = sf.quota_weekly_pressure {
-                signals.quota_weekly_pressure = Some(metric_f32((p as f32).clamp(0.0, 1.0)));
-            }
-            if let Some(ts) = sf.quota_weekly_resets_at {
-                signals.quota_weekly_resets_at = Some(metric_u64(ts));
-            }
-        }
-    }
     signals
 }
 
@@ -330,22 +212,6 @@ fn codex_rollout_process_confirmed(ctx: &ParserContext, proc_root: &std::path::P
         return false;
     };
     cli_process_basename_contains(&desc, "codex")
-}
-
-fn agy_process_confirmed(ctx: &ParserContext, proc_root: &std::path::Path) -> bool {
-    // agy correlation is by shared `workspace` (cwd), which is weaker than
-    // Claude session_id or Codex cwd+rollout. Without a confirmed descendant
-    // `agy` process, we must NOT attribute agy activity — return false (not true
-    // like Claude/Codex helpers). This prevents mis-attribution across unrelated
-    // agy sessions in the same workspace.
-    let Some(pid) = ctx.pane_pid else {
-        return false;
-    };
-    let Some(desc) = process_memory::read_descendant_cli_process_with_proc_root(pid, proc_root)
-    else {
-        return false;
-    };
-    cli_process_basename_contains(&desc, "agy")
 }
 
 fn cli_process_basename_contains(
@@ -541,8 +407,6 @@ pub(crate) fn ctx<'a>(
         pane_pid: None,
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
-        agy_transcript_enabled: false,
-        agy_enrichment_enabled: false,
     }
 }
 
@@ -1151,408 +1015,14 @@ mod codex_rollout_integration_tests {
     }
 }
 
-#[cfg(test)]
-mod agy_transcript_integration_tests {
-    use super::*;
-    use crate::domain::identity::{
-        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
-    };
-    use std::fs;
-
-    fn agy_id() -> ResolvedIdentity {
-        ResolvedIdentity {
-            identity: PaneIdentity {
-                provider: Provider::Antigravity,
-                instance: 1,
-                role: Role::Main,
-                pane_id: "%1".into(),
-            },
-            confidence: IdentityConfidence::High,
-        }
-    }
-
-    fn write_history(home: &std::path::Path, entries: Vec<(&str, &str, u64)>) {
-        let agy_dir = home.join(".gemini/antigravity-cli");
-        fs::create_dir_all(&agy_dir).unwrap();
-        let path = agy_dir.join("history.jsonl");
-        let mut body = String::new();
-        for (workspace, conversation_id, timestamp) in entries {
-            body.push_str(&format!(
-                r#"{{"workspace":"{}","conversationId":"{}","timestamp":{}}}"#,
-                workspace, conversation_id, timestamp
-            ));
-            body.push('\n');
-        }
-        fs::write(&path, body).unwrap();
-    }
-
-    fn write_transcript(home: &std::path::Path, conversation_id: &str, steps: Vec<&str>) {
-        let transcript_dir = home.join(format!(
-            ".gemini/antigravity-cli/brain/{}/.system_generated/logs",
-            conversation_id
-        ));
-        fs::create_dir_all(&transcript_dir).unwrap();
-        let path = transcript_dir.join("transcript.jsonl");
-        let mut body = String::new();
-        for step in steps {
-            body.push_str(&format!(
-                r#"{{"type":"{}","created_at":"2026-06-29T12:00:00Z"}}"#,
-                step
-            ));
-            body.push('\n');
-        }
-        fs::write(&path, body).unwrap();
-    }
-
-    fn write_proc(root: &std::path::Path, pid: u32, comm: &str, children: &[u32]) {
-        let d = root.join(pid.to_string());
-        fs::create_dir_all(&d).unwrap();
-        fs::write(d.join("status"), format!("Name:\t{comm}\nVmRSS:\t1 kB\n")).unwrap();
-        let t = d.join("task").join(pid.to_string());
-        fs::create_dir_all(&t).unwrap();
-        fs::write(
-            t.join("children"),
-            children
-                .iter()
-                .map(|p| p.to_string())
-                .collect::<Vec<_>>()
-                .join(" "),
-        )
-        .unwrap();
-        let mut argv = Vec::new();
-        argv.extend_from_slice(comm.as_bytes());
-        argv.push(0);
-        fs::write(d.join("cmdline"), argv).unwrap();
-    }
-
-    #[test]
-    fn transcript_activity_fact_pushed_when_toggle_and_agy_descendant_present() {
-        let tmp = tempfile::tempdir().unwrap();
-        let cwd = "/repo/qmonster";
-        write_history(tmp.path(), vec![("/repo/qmonster", "uuid-aaa", 1000)]);
-        write_transcript(
-            tmp.path(),
-            "uuid-aaa",
-            vec!["CONVERSATION_STARTED", "STEP_ONE"],
-        );
-        let proc_root = tmp.path().join("proc");
-        write_proc(&proc_root, 1, "bash", &[2]);
-        write_proc(&proc_root, 2, "agy", &[]);
-        let id = agy_id();
-        let pricing = crate::policy::pricing::PricingTable::empty();
-        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
-        let history = crate::adapters::common::PaneTailHistory::empty();
-        let mut c = ctx(&id, "", &pricing, &settings, &history);
-        c.current_path = cwd;
-        c.pane_pid = Some(1);
-        c.agy_transcript_enabled = true;
-
-        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
-
-        assert_eq!(signals.runtime_facts.len(), 1);
-        let fact = &signals.runtime_facts[0];
-        assert_eq!(
-            fact.kind,
-            crate::domain::signal::RuntimeFactKind::AgyActivity
-        );
-        assert_eq!(
-            fact.source_kind,
-            crate::domain::origin::SourceKind::Heuristic
-        );
-        assert_eq!(fact.provider, Some(Provider::Antigravity));
-        assert!(fact.value.contains("STEP_ONE"));
-    }
-
-    #[test]
-    fn transcript_activity_not_added_when_toggle_disabled() {
-        let tmp = tempfile::tempdir().unwrap();
-        let cwd = "/repo/qmonster";
-        write_history(tmp.path(), vec![("/repo/qmonster", "uuid-aaa", 1000)]);
-        write_transcript(tmp.path(), "uuid-aaa", vec!["STEP"]);
-        let proc_root = tmp.path().join("proc");
-        write_proc(&proc_root, 1, "bash", &[2]);
-        write_proc(&proc_root, 2, "agy", &[]);
-        let id = agy_id();
-        let pricing = crate::policy::pricing::PricingTable::empty();
-        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
-        let history = crate::adapters::common::PaneTailHistory::empty();
-        let mut c = ctx(&id, "", &pricing, &settings, &history);
-        c.current_path = cwd;
-        c.pane_pid = Some(1);
-        c.agy_transcript_enabled = false;
-
-        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
-
-        assert!(
-            signals.runtime_facts.is_empty(),
-            "toggle off → no activity fact"
-        );
-    }
-
-    #[test]
-    fn transcript_activity_not_added_when_descendant_is_not_agy() {
-        let tmp = tempfile::tempdir().unwrap();
-        let cwd = "/repo/qmonster";
-        write_history(tmp.path(), vec![("/repo/qmonster", "uuid-aaa", 1000)]);
-        write_transcript(tmp.path(), "uuid-aaa", vec!["STEP"]);
-        let proc_root = tmp.path().join("proc");
-        write_proc(&proc_root, 1, "bash", &[2]);
-        write_proc(&proc_root, 2, "node", &[]); // not agy
-        let id = agy_id();
-        let pricing = crate::policy::pricing::PricingTable::empty();
-        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
-        let history = crate::adapters::common::PaneTailHistory::empty();
-        let mut c = ctx(&id, "", &pricing, &settings, &history);
-        c.current_path = cwd;
-        c.pane_pid = Some(1);
-        c.agy_transcript_enabled = true;
-
-        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
-
-        assert!(signals.runtime_facts.is_empty());
-    }
-}
-
-#[cfg(test)]
-mod agy_enrichment_integration_tests {
-    use super::*;
-    use crate::domain::identity::{
-        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
-    };
-    use std::fs;
-
-    fn agy_id() -> ResolvedIdentity {
-        ResolvedIdentity {
-            identity: PaneIdentity {
-                provider: Provider::Antigravity,
-                instance: 1,
-                role: Role::Main,
-                pane_id: "%1".into(),
-            },
-            confidence: IdentityConfidence::High,
-        }
-    }
-
-    fn write_proc(root: &std::path::Path, pid: u32, comm: &str, children: &[u32]) {
-        let d = root.join(pid.to_string());
-        fs::create_dir_all(&d).unwrap();
-        fs::write(d.join("status"), format!("Name:\t{comm}\nVmRSS:\t1 kB\n")).unwrap();
-        let t = d.join("task").join(pid.to_string());
-        fs::create_dir_all(&t).unwrap();
-        fs::write(
-            t.join("children"),
-            children
-                .iter()
-                .map(|p| p.to_string())
-                .collect::<Vec<_>>()
-                .join(" "),
-        )
-        .unwrap();
-        let mut argv = Vec::new();
-        argv.extend_from_slice(comm.as_bytes());
-        argv.push(0);
-        fs::write(d.join("cmdline"), argv).unwrap();
-    }
-
-    fn write_agy_sidefile(home: &std::path::Path, cid: &str, body: &str) {
-        let dir = home.join(".local/share/ai-cli-status/agy");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(format!("{cid}.json")), body).unwrap();
-    }
-
-    /// Footer tail: model "Gemini 3.5 Flash (High)" with token-count item enabled.
-    const FOOTER_TAIL: &str = "> hello\n? for shortcuts                         token-count 34567  Gemini 3.5 Flash (High)\n";
-
-    #[test]
-    fn agy_enrichment_fills_model_and_token_from_footer_when_enabled() {
-        let tmp = tempfile::tempdir().unwrap();
-        let proc_root = tmp.path().join("proc");
-        write_proc(&proc_root, 100, "bash", &[101]);
-        write_proc(&proc_root, 101, "agy", &[]);
-        let home = tmp.path().join("home");
-        let id = agy_id();
-        let pricing = crate::policy::pricing::PricingTable::empty();
-        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
-        let history = crate::adapters::common::PaneTailHistory::empty();
-        let mut c = ctx(&id, FOOTER_TAIL, &pricing, &settings, &history);
-        c.current_path = "/repo";
-        c.pane_pid = Some(100);
-        c.agy_enrichment_enabled = true;
-
-        let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
-
-        assert_eq!(
-            signals.model_name.as_ref().map(|m| m.value.as_str()),
-            Some("Gemini 3.5 Flash (High)")
-        );
-        assert_eq!(
-            signals.token_count.as_ref().map(|m| m.value),
-            Some(34567),
-            "footer token_count must parse to exact value 34567"
-        );
-        assert_eq!(
-            signals.model_name.as_ref().map(|m| m.source_kind),
-            Some(crate::domain::origin::SourceKind::ProviderOfficial)
-        );
-    }
-
-    #[test]
-    fn agy_enrichment_sidefile_overrides_footer() {
-        let tmp = tempfile::tempdir().unwrap();
-        let proc_root = tmp.path().join("proc");
-        write_proc(&proc_root, 100, "bash", &[101]);
-        write_proc(&proc_root, 101, "agy", &[]);
-        let home = tmp.path().join("home");
-        write_agy_sidefile(
-            &home,
-            "c1",
-            r#"{"cwd":"/repo","conversation_id":"c1","model":"Gemini 3.1 Pro (High)","context_window_size":1048576,"context_used_percentage":72}"#,
-        );
-        let id = agy_id();
-        let pricing = crate::policy::pricing::PricingTable::empty();
-        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
-        let history = crate::adapters::common::PaneTailHistory::empty();
-        let mut c = ctx(&id, FOOTER_TAIL, &pricing, &settings, &history);
-        c.current_path = "/repo";
-        c.pane_pid = Some(100);
-        c.agy_enrichment_enabled = true;
-
-        let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
-
-        assert_eq!(
-            signals.model_name.as_ref().map(|m| m.value.as_str()),
-            Some("Gemini 3.1 Pro (High)"),
-            "sidefile model must override the footer-scraped model"
-        );
-        assert_eq!(
-            signals.context_window_size.as_ref().map(|m| m.value),
-            Some(1048576)
-        );
-        assert!(
-            (signals.context_pressure.unwrap().value - 0.72_f32).abs() < 1e-6,
-            "sidefile context_used_percentage must override context_pressure"
-        );
-    }
-
-    #[test]
-    fn agy_enrichment_skipped_when_toggle_disabled() {
-        let tmp = tempfile::tempdir().unwrap();
-        let proc_root = tmp.path().join("proc");
-        write_proc(&proc_root, 100, "bash", &[101]);
-        write_proc(&proc_root, 101, "agy", &[]);
-        let home = tmp.path().join("home");
-        let id = agy_id();
-        let pricing = crate::policy::pricing::PricingTable::empty();
-        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
-        let history = crate::adapters::common::PaneTailHistory::empty();
-        let mut c = ctx(&id, FOOTER_TAIL, &pricing, &settings, &history);
-        c.current_path = "/repo";
-        c.pane_pid = Some(100);
-        c.agy_enrichment_enabled = false;
-
-        let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
-
-        assert!(
-            signals.model_name.is_none(),
-            "no enrichment when toggle off"
-        );
-    }
-
-    #[test]
-    fn agy_enrichment_skipped_when_descendant_is_not_agy() {
-        let tmp = tempfile::tempdir().unwrap();
-        let proc_root = tmp.path().join("proc");
-        write_proc(&proc_root, 100, "bash", &[101]);
-        write_proc(&proc_root, 101, "bash", &[]); // no agy descendant
-        let home = tmp.path().join("home");
-        let id = agy_id();
-        let pricing = crate::policy::pricing::PricingTable::empty();
-        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
-        let history = crate::adapters::common::PaneTailHistory::empty();
-        let mut c = ctx(&id, FOOTER_TAIL, &pricing, &settings, &history);
-        c.current_path = "/repo";
-        c.pane_pid = Some(100);
-        c.agy_enrichment_enabled = true;
-
-        let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
-
-        assert!(
-            signals.model_name.is_none(),
-            "strict agy process-confirm gates enrichment"
-        );
-    }
-
-    #[test]
-    fn agy_enrichment_fills_quota_from_sidefile() {
-        let tmp = tempfile::tempdir().unwrap();
-        let proc_root = tmp.path().join("proc");
-        write_proc(&proc_root, 100, "bash", &[101]);
-        write_proc(&proc_root, 101, "agy", &[]);
-        let home = tmp.path().join("home");
-        write_agy_sidefile(
-            &home,
-            "c1",
-            r#"{"cwd":"/repo","conversation_id":"c1","quota_5h_pressure":0.25,"quota_5h_resets_at":1700000000,"quota_weekly_pressure":0.5,"quota_weekly_resets_at":1700600000}"#,
-        );
-        let id = agy_id();
-        let pricing = crate::policy::pricing::PricingTable::empty();
-        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
-        let history = crate::adapters::common::PaneTailHistory::empty();
-        let mut c = ctx(&id, FOOTER_TAIL, &pricing, &settings, &history);
-        c.current_path = "/repo";
-        c.pane_pid = Some(100);
-        c.agy_enrichment_enabled = true;
-        let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
-        assert_eq!(
-            signals.quota_5h_pressure.as_ref().map(|m| m.value),
-            Some(0.25_f32)
-        );
-        assert_eq!(
-            signals.quota_5h_resets_at.as_ref().map(|m| m.value),
-            Some(1700000000)
-        );
-        assert_eq!(
-            signals.quota_weekly_pressure.as_ref().map(|m| m.value),
-            Some(0.5_f32)
-        );
-        assert_eq!(
-            signals.quota_weekly_resets_at.as_ref().map(|m| m.value),
-            Some(1700600000)
-        );
-        // source_kind and provider for all quota fields.
-        assert_eq!(
-            signals.quota_5h_pressure.as_ref().map(|m| m.source_kind),
-            Some(crate::domain::origin::SourceKind::ProviderOfficial)
-        );
-        assert_eq!(
-            signals.quota_5h_pressure.as_ref().and_then(|m| m.provider),
-            Some(Provider::Antigravity),
-            "quota_5h_pressure must carry provider=Antigravity"
-        );
-        // Reset fields: value AND full metric contract (ProviderOfficial + Antigravity).
-        assert_eq!(
-            signals.quota_5h_resets_at.as_ref().map(|m| m.value),
-            Some(1700000000_u64),
-            "quota_5h_resets_at value must match sidefile"
-        );
-        assert_eq!(
-            signals.quota_5h_resets_at.as_ref().map(|m| m.source_kind),
-            Some(crate::domain::origin::SourceKind::ProviderOfficial),
-            "quota_5h_resets_at must be ProviderOfficial"
-        );
-        assert_eq!(
-            signals.quota_5h_resets_at.as_ref().and_then(|m| m.provider),
-            Some(Provider::Antigravity),
-            "quota_5h_resets_at must carry provider=Antigravity"
-        );
-    }
-}
-
-// ── Task 6 (Slice C3): ObserveOnly six-gate regression ──────────────────────
-// C3 populates model_name / context_pressure / context_window_size /
-// token_count for agy panes, but agy must stay off every analytic surface.
-// These tests are GUARD-RAILS: they must pass immediately; if any assertion
-// fails, C3 broke a gate and must be fixed before proceeding.
+// ── ObserveOnly six-gate regression ─────────────────────────────────────────
+// agy (Antigravity) is identified but NEVER analyzed: it must stay off every
+// analytic surface even if a SignalSet carries populated metrics. These tests
+// are GUARD-RAILS for the six v2.4.0 ObserveOnly gates: they must pass
+// immediately; if any assertion fails, a gate regressed and must be fixed
+// before proceeding. (The v2.7.0/v2.8.0 agy enrichment that once populated
+// these signals was removed in vNext; the gates still hold on the bare
+// ObserveOnly path.)
 #[cfg(test)]
 mod agy_observeonly_regression {
     use crate::domain::identity::{
@@ -1572,9 +1042,11 @@ mod agy_observeonly_regression {
         crate::domain::anomaly::AnomalyKind::SubagentSideEffect,
     ];
 
-    /// Build a C3-enriched agy SignalSet — model_name + token_count + context_pressure
-    /// populated, matching what Tasks 2–4 produce when `agy_enrichment` is on.
-    fn agy_enriched_signals() -> SignalSet {
+    /// Build an agy SignalSet with model_name + token_count + context_pressure
+    /// populated by hand. Even with metrics present, agy must stay off every
+    /// analytic surface — this fixture proves the ObserveOnly gates hold
+    /// regardless of whether any signal is populated.
+    fn agy_populated_signals() -> SignalSet {
         SignalSet {
             model_name: Some(
                 MetricValue::new(
@@ -1587,7 +1059,7 @@ mod agy_observeonly_regression {
                 MetricValue::new(34_567_u64, SourceKind::ProviderOfficial)
                     .with_provider(Provider::Antigravity),
             ),
-            // C3 enrichment: context_pressure is populated from footer/sidefile.
+            // context_pressure populated by hand to exercise the gate.
             context_pressure: Some(MetricValue::new(0.95_f32, SourceKind::ProviderOfficial)),
             ..SignalSet::default()
         }
@@ -1611,35 +1083,35 @@ mod agy_observeonly_regression {
         for kind in ALL_ANOMALY_KINDS {
             assert!(
                 !kind.supports_provider(Provider::Antigravity),
-                "{:?} must not support Antigravity after C3 — ObserveOnly contract",
+                "{:?} must not support Antigravity — ObserveOnly contract",
                 kind
             );
         }
     }
 
     /// Gate 2: provider_honesty cache chip — Hidden for Antigravity even when
-    /// C3-enriched signals include token_count.
+    /// populated signals include token_count.
     #[test]
     fn agy_enrichment_gate2_cache_metric_hidden() {
         use crate::ui::provider_honesty::{CacheMetricStatus, cache_metric_status};
-        let signals = agy_enriched_signals();
+        let signals = agy_populated_signals();
         assert_eq!(
             cache_metric_status(&signals, Provider::Antigravity),
             CacheMetricStatus::Hidden,
-            "cache_metric_status must stay Hidden for Antigravity after C3"
+            "cache_metric_status must stay Hidden for Antigravity"
         );
     }
 
     /// Gate 2b: provider_honesty cost chip — Hidden for Antigravity even when
-    /// C3-enriched signals include token_count.
+    /// populated signals include token_count.
     #[test]
     fn agy_enrichment_gate2b_cost_metric_hidden() {
         use crate::ui::provider_honesty::{CostMetricStatus, cost_metric_status};
-        let signals = agy_enriched_signals();
+        let signals = agy_populated_signals();
         assert_eq!(
             cost_metric_status(&signals, Provider::Antigravity),
             CostMetricStatus::Hidden,
-            "cost_metric_status must stay Hidden for Antigravity after C3"
+            "cost_metric_status must stay Hidden for Antigravity"
         );
     }
 
@@ -1651,7 +1123,7 @@ mod agy_observeonly_regression {
         use crate::policy::gates::PolicyGates;
         use crate::policy::rules::profile_switch::eval_profile_switch;
         let id = agy_resolved_id();
-        let signals = agy_enriched_signals();
+        let signals = agy_populated_signals();
         // All conditions that would normally trigger the rule: gate on,
         // window full, 100% error rate.
         let gates = PolicyGates {
@@ -1665,7 +1137,7 @@ mod agy_observeonly_regression {
         let recs = eval_profile_switch(&id, &signals, &history, &gates);
         assert!(
             recs.is_empty(),
-            "profile_switch must return empty Vec for Antigravity after C3; got {:?}",
+            "profile_switch must return empty Vec for Antigravity; got {:?}",
             recs
         );
     }
@@ -1681,7 +1153,7 @@ mod agy_observeonly_regression {
         let status = crate::store::insights::pane_completeness_status("Antigravity", 100.0);
         assert_eq!(
             status, "unsupported",
-            "insights coverage gate must map Antigravity → 'unsupported' after C3"
+            "insights coverage gate must map Antigravity → 'unsupported'"
         );
     }
 
@@ -1707,7 +1179,7 @@ mod agy_observeonly_regression {
         );
         assert!(
             result.is_empty(),
-            "filter_token_samples_for_provider must return Vec::new() for Antigravity after C3"
+            "filter_token_samples_for_provider must return Vec::new() for Antigravity"
         );
     }
 
@@ -1718,29 +1190,29 @@ mod agy_observeonly_regression {
     fn agy_enrichment_gate6_token_rows_not_supported() {
         assert!(
             !crate::ui::panels::token_rows_supported(Provider::Antigravity),
-            "token_rows_supported must stay false for Antigravity after C3"
+            "token_rows_supported must stay false for Antigravity"
         );
     }
 
-    /// Composite guard-rail: enriched agy pane hits all six gates in one shot.
+    /// Composite guard-rail: a metric-populated agy pane hits all six gates in one shot.
     #[test]
     fn agy_enrichment_does_not_re_enable_token_rows_or_anomaly_gates() {
         // Gate 6
         assert!(
             !crate::ui::panels::token_rows_supported(Provider::Antigravity),
-            "token_rows_supported must stay false for Antigravity after C3"
+            "token_rows_supported must stay false for Antigravity"
         );
         // Gate 1
         assert!(
             ALL_ANOMALY_KINDS
                 .iter()
                 .all(|k| !k.supports_provider(Provider::Antigravity)),
-            "no anomaly kind may support Antigravity after C3"
+            "no anomaly kind may support Antigravity"
         );
         // Gate 2: cache metric Hidden
         assert_eq!(
             crate::ui::provider_honesty::cache_metric_status(
-                &agy_enriched_signals(),
+                &agy_populated_signals(),
                 Provider::Antigravity
             ),
             crate::ui::provider_honesty::CacheMetricStatus::Hidden,
@@ -1750,7 +1222,7 @@ mod agy_observeonly_regression {
             use crate::domain::identity::IdentityConfidence;
             use crate::policy::gates::PolicyGates;
             let id = agy_resolved_id();
-            let signals = agy_enriched_signals();
+            let signals = agy_populated_signals();
             let gates = PolicyGates {
                 identity_confidence: IdentityConfidence::High,
                 profile_switch_enabled: true,
@@ -1770,7 +1242,7 @@ mod agy_observeonly_regression {
         assert_eq!(
             crate::store::insights::pane_completeness_status("Antigravity", 100.0),
             "unsupported",
-            "insights coverage gate must map Antigravity → 'unsupported' after C3"
+            "insights coverage gate must map Antigravity → 'unsupported'"
         );
         // Gate 5: token-sample filter calls real filter_token_samples_for_provider
         {
@@ -1789,7 +1261,7 @@ mod agy_observeonly_regression {
             );
             assert!(
                 filtered.is_empty(),
-                "filter_token_samples_for_provider must return Vec::new() for Antigravity after C3"
+                "filter_token_samples_for_provider must return Vec::new() for Antigravity"
             );
         }
     }

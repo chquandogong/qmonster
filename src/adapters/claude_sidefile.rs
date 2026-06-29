@@ -152,7 +152,7 @@ pub fn read_sidefile_for_path(home: &Path, current_path: &str) -> Option<ClaudeS
     candidates.sort_by(|a, b| b.0.cmp(&a.0));
     // Collect the cwd-matching sidefiles, newest first. Walk newest-first
     // and collect up to 2 sidefiles with distinct session_ids for the ambiguity
-    // comparison (mirrors the distinct_cids loop in agy_transcript.rs).
+    // comparison (mirrors the distinct-id ambiguity guard in codex_rollout.rs).
     let mut distinct_sids: Vec<(SystemTime, ClaudeSidefile)> = Vec::new();
     for (mtime, path) in candidates {
         let body = match fs::read_to_string(&path) {
@@ -184,8 +184,7 @@ pub fn read_sidefile_for_path(home: &Path, current_path: &str) -> Option<ClaudeS
     let (newest_mtime, newest_sidefile) = distinct_sids.first()?;
     // Ambiguity guard: two concurrently-active same-cwd Claude sessions with
     // DISTINCT session_ids can't be told apart by cwd alone — don't attribute;
-    // leave the scrape authoritative. Mirrors the Codex rollout guard and the
-    // distinct_cids loop in agy_transcript.rs.
+    // leave the scrape authoritative. Mirrors the Codex rollout guard.
     const AMBIGUITY_WINDOW: Duration = Duration::from_secs(60);
     if let Some((second_mtime, _)) = distinct_sids.get(1)
         && newest_mtime

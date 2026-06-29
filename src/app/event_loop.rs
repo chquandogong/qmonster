@@ -199,8 +199,6 @@ where
             pane_pid: pane.pane_pid,
             current_path: &pane.current_path,
             codex_rollout_enabled: ctx.config.provider_setup.codex_rollout,
-            agy_transcript_enabled: ctx.config.provider_setup.agy_transcript,
-            agy_enrichment_enabled: ctx.config.provider_setup.agy_enrichment,
         };
         let mut signals = crate::adapters::parse_for(&parse_ctx);
         if !matches!(

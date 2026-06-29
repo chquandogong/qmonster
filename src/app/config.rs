@@ -456,13 +456,6 @@ pub struct ProviderSetupConfig {
     /// Codex rollout reader backstop. `true` to read and observe Codex
     /// session data when available; `false` to disable the reader.
     pub codex_rollout: bool,
-    /// agy_transcript defaults to false — the agy transcript activity reader is opt-in; reverse-engineered schema.
-    pub agy_transcript: bool,
-    /// agy_enrichment defaults to false — opt-in. When true, agy panes are
-    /// enriched with model / context% / token-count from the agy footer scrape
-    /// and (if the operator applied the recommended statusLine.command block)
-    /// the agy sidefile. Display-only; the v2.4.0 ObserveOnly gates are unchanged.
-    pub agy_enrichment: bool,
 }
 
 impl Default for ProviderSetupConfig {
@@ -470,8 +463,6 @@ impl Default for ProviderSetupConfig {
         Self {
             claude_sidefile: true,
             codex_rollout: true,
-            agy_transcript: false,
-            agy_enrichment: false,
         }
     }
 }
@@ -1410,19 +1401,6 @@ stillness_polls = 6
         assert!(
             absent.provider_setup.codex_rollout,
             "codex_rollout must default to true — rollout files need no operator setup"
-        );
-        assert!(
-            !absent.provider_setup.agy_transcript,
-            "agy_transcript must default to false — the agy transcript activity reader is opt-in"
-        );
-    }
-
-    #[test]
-    fn provider_setup_agy_enrichment_defaults_off() {
-        let absent: QmonsterConfig = toml::from_str("").unwrap();
-        assert!(
-            !absent.provider_setup.agy_enrichment,
-            "agy_enrichment must default to false — opt-in scrape/sidefile enrichment"
         );
     }
 

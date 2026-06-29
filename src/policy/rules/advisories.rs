@@ -612,8 +612,7 @@ fn runtime_fact_kind_label(kind: RuntimeFactKind) -> &'static str {
         | RuntimeFactKind::ToolCalls
         | RuntimeFactKind::ModelReset
         | RuntimeFactKind::TranscriptPath
-        | RuntimeFactKind::CliVersion
-        | RuntimeFactKind::AgyActivity => "session",
+        | RuntimeFactKind::CliVersion => "session",
     }
 }
 
