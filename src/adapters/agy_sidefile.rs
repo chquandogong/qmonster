@@ -115,8 +115,16 @@ mod tests {
     #[test]
     fn matches_by_cwd() {
         let tmp = tempdir().unwrap();
-        write(&agy_dir(tmp.path()), "a", r#"{"cwd":"/repo/a","conversation_id":"a","model":"Gemini 3.5 Flash (High)"}"#);
-        write(&agy_dir(tmp.path()), "b", r#"{"cwd":"/repo/b","conversation_id":"b"}"#);
+        write(
+            &agy_dir(tmp.path()),
+            "a",
+            r#"{"cwd":"/repo/a","conversation_id":"a","model":"Gemini 3.5 Flash (High)"}"#,
+        );
+        write(
+            &agy_dir(tmp.path()),
+            "b",
+            r#"{"cwd":"/repo/b","conversation_id":"b"}"#,
+        );
         let s = read_agy_sidefile_for_path(tmp.path(), "/repo/a").expect("cwd match");
         assert_eq!(s.conversation_id.as_deref(), Some("a"));
         assert_eq!(s.model.as_deref(), Some("Gemini 3.5 Flash (High)"));
@@ -125,10 +133,22 @@ mod tests {
     #[test]
     fn none_for_concurrent_same_cwd_distinct_conversations() {
         let tmp = tempdir().unwrap();
-        let a = write(&agy_dir(tmp.path()), "a", r#"{"cwd":"/repo","conversation_id":"a"}"#);
-        let b = write(&agy_dir(tmp.path()), "b", r#"{"cwd":"/repo","conversation_id":"b"}"#);
+        let a = write(
+            &agy_dir(tmp.path()),
+            "a",
+            r#"{"cwd":"/repo","conversation_id":"a"}"#,
+        );
+        let b = write(
+            &agy_dir(tmp.path()),
+            "b",
+            r#"{"cwd":"/repo","conversation_id":"b"}"#,
+        );
         let now = SystemTime::now();
-        filetime::set_file_mtime(&a, filetime::FileTime::from_system_time(now - Duration::from_secs(5))).unwrap();
+        filetime::set_file_mtime(
+            &a,
+            filetime::FileTime::from_system_time(now - Duration::from_secs(5)),
+        )
+        .unwrap();
         filetime::set_file_mtime(&b, filetime::FileTime::from_system_time(now)).unwrap();
         assert!(read_agy_sidefile_for_path(tmp.path(), "/repo").is_none());
     }
@@ -136,12 +156,25 @@ mod tests {
     #[test]
     fn newest_wins_when_same_conversation_within_window() {
         let tmp = tempdir().unwrap();
-        let a = write(&agy_dir(tmp.path()), "old", r#"{"cwd":"/repo","conversation_id":"same","token_count":1}"#);
-        let b = write(&agy_dir(tmp.path()), "new", r#"{"cwd":"/repo","conversation_id":"same","token_count":2}"#);
+        let a = write(
+            &agy_dir(tmp.path()),
+            "old",
+            r#"{"cwd":"/repo","conversation_id":"same","token_count":1}"#,
+        );
+        let b = write(
+            &agy_dir(tmp.path()),
+            "new",
+            r#"{"cwd":"/repo","conversation_id":"same","token_count":2}"#,
+        );
         let now = SystemTime::now();
-        filetime::set_file_mtime(&a, filetime::FileTime::from_system_time(now - Duration::from_secs(5))).unwrap();
+        filetime::set_file_mtime(
+            &a,
+            filetime::FileTime::from_system_time(now - Duration::from_secs(5)),
+        )
+        .unwrap();
         filetime::set_file_mtime(&b, filetime::FileTime::from_system_time(now)).unwrap();
-        let s = read_agy_sidefile_for_path(tmp.path(), "/repo").expect("same conversation → newest");
+        let s =
+            read_agy_sidefile_for_path(tmp.path(), "/repo").expect("same conversation → newest");
         assert_eq!(s.token_count, Some(2));
     }
 
@@ -149,7 +182,11 @@ mod tests {
     fn parses_full_shape_and_skips_malformed() {
         let tmp = tempdir().unwrap();
         write(&agy_dir(tmp.path()), "broken", "not json {");
-        write(&agy_dir(tmp.path()), "ok", r#"{"cwd":"/repo","conversation_id":"ok","model":"Gemini 3.1 Pro (High)","context_used_percentage":37.5,"context_window_size":1048576,"token_count":34567}"#);
+        write(
+            &agy_dir(tmp.path()),
+            "ok",
+            r#"{"cwd":"/repo","conversation_id":"ok","model":"Gemini 3.1 Pro (High)","context_used_percentage":37.5,"context_window_size":1048576,"token_count":34567}"#,
+        );
         let s = read_agy_sidefile_for_path(tmp.path(), "/repo").expect("malformed must not block");
         assert_eq!(s.conversation_id.as_deref(), Some("ok"));
         assert_eq!(s.context_used_percentage, Some(37.5));

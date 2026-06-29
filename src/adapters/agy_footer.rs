@@ -47,10 +47,7 @@ pub fn parse_agy_footer(tail: &str) -> AgyFooter {
 }
 
 fn extract_model(line: &str) -> Option<String> {
-    let start = MODEL_PREFIXES
-        .iter()
-        .filter_map(|p| line.find(p))
-        .min()?;
+    let start = MODEL_PREFIXES.iter().filter_map(|p| line.find(p)).min()?;
     let candidate = line[start..].trim();
     // Require the "(level)" suffix the agy footer always renders so we don't grab
     // prose mentioning "Gemini".
