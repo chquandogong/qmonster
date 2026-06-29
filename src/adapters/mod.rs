@@ -1472,10 +1472,22 @@ mod agy_enrichment_integration_tests {
         c.pane_pid = Some(100);
         c.agy_enrichment_enabled = true;
         let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
-        assert_eq!(signals.quota_5h_pressure.as_ref().map(|m| m.value), Some(0.25_f32));
-        assert_eq!(signals.quota_5h_resets_at.as_ref().map(|m| m.value), Some(1700000000));
-        assert_eq!(signals.quota_weekly_pressure.as_ref().map(|m| m.value), Some(0.5_f32));
-        assert_eq!(signals.quota_weekly_resets_at.as_ref().map(|m| m.value), Some(1700600000));
+        assert_eq!(
+            signals.quota_5h_pressure.as_ref().map(|m| m.value),
+            Some(0.25_f32)
+        );
+        assert_eq!(
+            signals.quota_5h_resets_at.as_ref().map(|m| m.value),
+            Some(1700000000)
+        );
+        assert_eq!(
+            signals.quota_weekly_pressure.as_ref().map(|m| m.value),
+            Some(0.5_f32)
+        );
+        assert_eq!(
+            signals.quota_weekly_resets_at.as_ref().map(|m| m.value),
+            Some(1700600000)
+        );
         assert_eq!(
             signals.quota_5h_pressure.as_ref().map(|m| m.source_kind),
             Some(crate::domain::origin::SourceKind::ProviderOfficial)
