@@ -455,6 +455,7 @@ mod tests {
             current_path: "", // F-2: test fixture; production wires from snapshot.current_path
             codex_rollout_enabled: false,
             agy_transcript_enabled: false,
+            agy_enrichment_enabled: false,
         };
         assert_eq!(ctx.pane_pid, Some(42));
     }
@@ -502,6 +503,7 @@ mod tests {
             current_path: "", // F-2: test fixture; production wires from snapshot.current_path
             codex_rollout_enabled: false,
             agy_transcript_enabled: false,
+            agy_enrichment_enabled: false,
         };
 
         let signals = parse_for_with_proc_root(&ctx, root);
@@ -553,6 +555,7 @@ mod tests {
             current_path: "", // F-2: test fixture; production wires from snapshot.current_path
             codex_rollout_enabled: false,
             agy_transcript_enabled: false,
+            agy_enrichment_enabled: false,
         };
         let signals = parse_for_with_proc_root(&ctx, root);
 

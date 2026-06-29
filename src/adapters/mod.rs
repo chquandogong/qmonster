@@ -47,6 +47,9 @@ pub struct ParserContext<'a> {
     /// (`[provider_setup] agy_transcript`). When false, the agy transcript
     /// reader is never consulted.
     pub agy_transcript_enabled: bool,
+    /// Slice C3: operator toggle for agy footer/sidefile enrichment
+    /// (`[provider_setup] agy_enrichment`). When false, no agy enrichment runs.
+    pub agy_enrichment_enabled: bool,
 }
 
 /// Provider-specific parser. Each adapter receives a ParserContext
@@ -460,6 +463,7 @@ pub(crate) fn ctx<'a>(
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
         agy_transcript_enabled: false,
+        agy_enrichment_enabled: false,
     }
 }
 

@@ -465,6 +465,11 @@ pub struct ProviderSetupConfig {
     pub codex_rollout: bool,
     /// agy_transcript defaults to false — the agy transcript activity reader is opt-in; reverse-engineered schema.
     pub agy_transcript: bool,
+    /// agy_enrichment defaults to false — opt-in. When true, agy panes are
+    /// enriched with model / context% / token-count from the agy footer scrape
+    /// and (if the operator applied the recommended statusLine.command block)
+    /// the agy sidefile. Display-only; the v2.4.0 ObserveOnly gates are unchanged.
+    pub agy_enrichment: bool,
 }
 
 impl Default for ProviderSetupConfig {
@@ -474,6 +479,7 @@ impl Default for ProviderSetupConfig {
             codex_app_server: false,
             codex_rollout: true,
             agy_transcript: false,
+            agy_enrichment: false,
         }
     }
 }

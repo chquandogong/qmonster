@@ -319,6 +319,7 @@ mod tests {
             current_path: &project_str,
             codex_rollout_enabled: false,
             agy_transcript_enabled: false,
+            agy_enrichment_enabled: false,
         };
 
         let signals = parse_for_with_environment(&ctx, Path::new("/proc"), Some(&home));
@@ -371,6 +372,7 @@ mod tests {
             current_path: "",
             codex_rollout_enabled: false,
             agy_transcript_enabled: false,
+            agy_enrichment_enabled: false,
         };
 
         let signals = parse_for_with_environment(&ctx, Path::new("/proc"), Some(&home));
