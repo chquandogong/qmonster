@@ -3,6 +3,7 @@ pub mod claude;
 pub mod claude_sidefile;
 pub mod codex;
 pub mod codex_app_server;
+pub mod codex_rollout;
 pub mod common;
 pub mod gemini;
 pub mod process_memory;
