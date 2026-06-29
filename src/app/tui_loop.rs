@@ -82,7 +82,6 @@ where
     let mut settings_overlay = crate::ui::settings::SettingsOverlay::new();
     let mut provider_setup_overlay =
         crate::ui::provider_setup::ProviderSetupOverlay::from_config(&ctx.config);
-    let mut anomaly_overlay = crate::ui::anomaly_overlay::AnomalyOverlay::new();
     let mut insights_overlay = crate::ui::insights::InsightsOverlay::new();
     let mut action_explainer = crate::app::action_explainer::ActionExplainModal::new();
     // v1.39 surface C / v1.40 redesign: Pending Actions overlay (a key).
@@ -219,7 +218,6 @@ where
                             help_modal: &help_modal,
                             settings_overlay: &settings_overlay,
                             provider_setup_overlay: &provider_setup_overlay,
-                            anomaly_overlay: &anomaly_overlay,
                             insights_overlay: &insights_overlay,
                             anomaly_events_ring: &ctx.anomaly_events_ring,
                             action_explainer: &action_explainer,
@@ -360,31 +358,6 @@ where
                                 }
                                 handle_provider_setup_overlay_key(
                                     &mut provider_setup_overlay,
-                                    k.code,
-                                );
-                                continue;
-                            }
-
-                            if anomaly_overlay.is_open() {
-                                if matches!(k.code, KeyCode::Char('h')) {
-                                    match anomaly_overlay.view() {
-                                        crate::ui::anomaly_overlay::AnomalyOverlayView::Ring => {
-                                            let events = ctx
-                                                .anomaly_sink
-                                                .as_ref()
-                                                .map(|sink| sink.fetch_recent_anomaly_events(200))
-                                                .unwrap_or_default();
-                                            anomaly_overlay.toggle_view(events);
-                                        }
-                                        crate::ui::anomaly_overlay::AnomalyOverlayView::History => {
-                                            anomaly_overlay.toggle_view(Vec::new());
-                                        }
-                                    }
-                                    continue;
-                                }
-                                let _ = crate::app::anomaly_overlay::handle_anomaly_overlay_key(
-                                    &mut anomaly_overlay,
-                                    ctx.anomaly_events_ring.len(),
                                     k.code,
                                 );
                                 continue;
@@ -695,13 +668,6 @@ where
                                     provider_setup_overlay.sync_from_config(&ctx.config);
                                     provider_setup_overlay.open();
                                 }
-                                KeyCode::Char('n') => {
-                                    if anomaly_overlay.is_open() {
-                                        anomaly_overlay.close();
-                                    } else {
-                                        anomaly_overlay.open();
-                                    }
-                                }
                                 KeyCode::Char('i') => {
                                     insights_overlay.open();
                                     refresh_insights_overlay(&mut insights_overlay, ctx);
@@ -943,7 +909,6 @@ where
                             let now = Instant::now();
                             let overlay_mouse_owner = settings_overlay.is_open()
                                 || provider_setup_overlay.is_open()
-                                || anomaly_overlay.is_open()
                                 || insights_overlay.is_open()
                                 || pending_actions.is_open()
                                 || action_explainer.is_open()
@@ -970,17 +935,6 @@ where
                                 handle_provider_setup_overlay_mouse(
                                     &mut provider_setup_overlay,
                                     viewport,
-                                    m,
-                                );
-                                continue;
-                            }
-
-                            if anomaly_overlay.is_open() {
-                                dashboard_split_dragging = false;
-                                crate::app::anomaly_overlay::handle_anomaly_overlay_mouse(
-                                    &mut anomaly_overlay,
-                                    viewport,
-                                    ctx.anomaly_events_ring.len(),
                                     m,
                                 );
                                 continue;
@@ -1168,9 +1122,6 @@ where
                                         pending_actions.mark_first_open_seen();
                                     }
                                     pending_actions.open();
-                                }
-                                DashboardMouseAction::OpenAnomalyEventsModal => {
-                                    anomaly_overlay.open();
                                 }
                                 DashboardMouseAction::None => {}
                             }

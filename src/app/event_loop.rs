@@ -651,7 +651,10 @@ where
         }
 
         // Phase 7 v3 (v1.46.0): push every visible signal into the
-        // AnomalyEventsRing with its gate result, for the `n` overlay.
+        // AnomalyEventsRing with its gate result. The ring feeds the
+        // footer NOW strip (recent promoted-anomaly line + "last
+        // anomaly" age); the `n` events overlay that also read it was
+        // removed in the narrow-vnext Slice 5 reduction.
         // `anomalies` holds the post-eval_anomalies signal vec (visible
         // signals, post-visibility-filter); `gates` is the same
         // PolicyGates value used by the promote call above.

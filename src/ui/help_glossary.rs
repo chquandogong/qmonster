@@ -143,7 +143,7 @@ fn ko_lines(topic: HelpTopic) -> &'static [&'static str] {
         HelpTopic::DashboardNowStrip => &[
             "Now row: 화면 맨 위에서 지금 가장 중요한 상태를 한 줄로 요약합니다.",
             "입력/승인 대기, Risk 추천, quota/cost 압박, 최근 anomaly, healthy 상태 순서로 우선순위를 정합니다.",
-            "`p send`/`d dismiss`는 선택된 제안 조치, `see n`은 Anomaly overlay에서 세부 내용을 보라는 뜻입니다.",
+            "`p send`/`d dismiss`는 선택된 제안 조치, `see Alerts`는 승격된 anomaly가 Alerts 큐에 추천으로 올라와 있다는 뜻입니다.",
         ],
         HelpTopic::DashboardFooterProposalChip => &[
             "★p: 수락/거절 가능한 pending prompt-send 제안이 있는 pane 수입니다.",
@@ -256,7 +256,7 @@ fn en_lines(topic: HelpTopic) -> &'static [&'static str] {
         HelpTopic::DashboardNowStrip => &[
             "Now row: the topmost one-line summary of the most important current condition.",
             "Priority order is input/approval waits, Risk recommendations, quota/cost pressure, recent anomalies, then healthy status.",
-            "`p send`/`d dismiss` point to proposal actions; `see n` points to Anomaly details.",
+            "`p send`/`d dismiss` point to proposal actions; `see Alerts` means the promoted anomaly is queued as a recommendation in Alerts.",
         ],
         HelpTopic::DashboardFooterProposalChip => &[
             "★p: count of panes with pending prompt-send proposals that can be accepted or dismissed.",

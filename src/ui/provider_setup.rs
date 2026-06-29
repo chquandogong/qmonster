@@ -485,10 +485,7 @@ pub fn render_tab_content(
 ) -> Vec<String> {
     let mut out = Vec::new();
     section(&mut out, "Downstream Qmonster Surfaces");
-    out.push(
-        "  Provider telemetry configured here feeds m Metrics, n Anomaly Events, and i Token Insights."
-            .into(),
-    );
+    out.push("  Provider telemetry configured here feeds i Token Insights.".into());
     out.push("  Thresholds, retention, and insight windows live in S Settings.".into());
     out.push("".into());
     match overlay.tab {
@@ -1168,10 +1165,8 @@ mod tests {
             "Claude tab should mention F-7c context; got:\n{dump}"
         );
         assert!(
-            dump.contains("m Metrics")
-                && dump.contains("n Anomaly Events")
-                && dump.contains("i Token Insights"),
-            "Claude tab should name downstream observation overlays; got:\n{dump}"
+            dump.contains("i Token Insights"),
+            "Claude tab should name the downstream observation overlay; got:\n{dump}"
         );
     }
 

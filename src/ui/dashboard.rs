@@ -310,7 +310,7 @@ fn now_strip_summary_for(
     }) {
         return NowStripSummary {
             text: format!(
-                "{} ANOMALY {} ({}) — see n",
+                "{} ANOMALY {} ({}) — see Alerts",
                 event.pane_id,
                 event.kind.label(),
                 event.confidence.label()
@@ -1296,7 +1296,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("Mouse double", "toggle hide on the clicked alert"),
         (
             "Mouse drag",
-            "drag the divider between Alerts and Panes to resize them; drag a large overlay title row to move the modal (m/a/i/n); drag the a overlay's list/explainer separator to resize the split",
+            "drag the divider between Alerts and Panes to resize them; drag a large overlay title row to move the modal (a/i); drag the a overlay's list/explainer separator to resize the split",
         ),
         (
             "Severity chip",
@@ -1308,11 +1308,11 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "Modal [x]",
-            "every overlay (Help / Settings / Provider Setup / Anomaly Events / Pending Actions / Token Insights / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
+            "every overlay (Help / Settings / Provider Setup / Pending Actions / Token Insights / Git / Action Explainer / Target picker) has an [x] click target in the top-right corner",
         ),
         (
             "Overlay chrome",
-            "scrollable overlays use title for identity and footer/hint for controls plus scroll x/y · more/END; large overlays (a/i/n) use [/] resize, = reset geometry, title drag move, body-wheel/↑/↓ scroll, same entry key/Esc/q/[x] close; S edit mode and short confirmation modals are exceptions",
+            "scrollable overlays use title for identity and footer/hint for controls plus scroll x/y · more/END; large overlays (a/i) use [/] resize, = reset geometry, title drag move, body-wheel/↑/↓ scroll, same entry key/Esc/q/[x] close; S edit mode and short confirmation modals are exceptions",
         ),
         ("Tab", "switch focus between alerts and pane list"),
         ("Up / Down", "move one item in the focused list"),
@@ -1321,7 +1321,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ("Home / End", "jump to the first or last item"),
         (
             "[ and ]",
-            "shrink or grow Alerts (Panes uses remaining height); when a large overlay is open (a/i/n), resize that modal in 5% steps",
+            "shrink or grow Alerts (Panes uses remaining height); when a large overlay is open (a/i), resize that modal in 5% steps",
         ),
         (
             "/",
@@ -1329,15 +1329,11 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
         ),
         (
             "=",
-            "reset the Alerts/Panes split; when a large overlay is open (a/i/n), also reset modal geometry to its default size + position",
+            "reset the Alerts/Panes split; when a large overlay is open (a/i), also reset modal geometry to its default size + position",
         ),
         (
             "t",
             "open tmux target picker (session -> window); hint shows scroll x/y · more/END for the list; press t again, click [x], or Esc to close",
-        ),
-        (
-            "n",
-            "open the resizable Anomaly Events overlay; [/] resize, = reset geometry, title drag move, body-wheel/↑/↓ scroll, h toggles Ring/History, n again or Esc/q/[x] close",
         ),
         (
             "a",
@@ -2470,7 +2466,7 @@ mod tests {
 
         let summary = now_strip_summary_for(&[report], &[event], 1_700_000_000, 200.0);
 
-        assert_eq!(summary.text, "%1 ANOMALY CostSlope (high) — see n");
+        assert_eq!(summary.text, "%1 ANOMALY CostSlope (high) — see Alerts");
         assert_eq!(summary.severity, Severity::Warning);
     }
 
@@ -2774,20 +2770,6 @@ mod tests {
     }
 
     #[test]
-    fn help_lists_n_anomaly_events_overlay_key() {
-        let lines: Vec<String> = help_lines().into_iter().map(line_text).collect();
-        let dump = lines.join("\n");
-        assert!(
-            dump.contains("Anomaly Events overlay"),
-            "Help should list n -> Anomaly Events overlay; got:\n{dump}"
-        );
-        assert!(
-            dump.contains("h toggles Ring/History"),
-            "Help n row should mention the h history toggle; got:\n{dump}"
-        );
-    }
-
-    #[test]
     fn help_documents_action_explainer_for_pdy() {
         // v1.38: p / d / y now route through the Action Explainer
         // modal when `[ux] confirm_actions != never`. Help must call
@@ -2817,8 +2799,8 @@ mod tests {
             "Help should mention [x] click on modals; got:\n{dump}"
         );
         assert!(
-            dump.contains("Anomaly Events") && dump.contains("Token Insights"),
-            "Help modal [x] row should include newer n/i overlays; got:\n{dump}"
+            dump.contains("Token Insights"),
+            "Help modal [x] row should include the i Token Insights overlay; got:\n{dump}"
         );
     }
 
@@ -2841,29 +2823,19 @@ mod tests {
         };
 
         let overlay = entry_for("Overlay chrome");
-        let anomaly = entry_for("n");
         let insights = entry_for("i");
 
         assert!(
-            overlay.contains("a/i/n")
+            overlay.contains("a/i")
                 && overlay.contains("[/] resize")
                 && overlay.contains("= reset geometry")
                 && overlay.contains("title drag move")
                 && overlay.contains("body-wheel"),
-            "Help Overlay chrome row should scope the shared contract to a/i/n; got: {overlay}\nfull help:\n{dump}"
+            "Help Overlay chrome row should scope the shared contract to a/i; got: {overlay}\nfull help:\n{dump}"
         );
         assert!(
             overlay.contains("exceptions"),
             "Help Overlay chrome row should mention exceptions briefly; got: {overlay}\nfull help:\n{dump}"
-        );
-        assert!(
-            anomaly.contains("resizable Anomaly Events")
-                && anomaly.contains("[/] resize")
-                && anomaly.contains("= reset geometry")
-                && anomaly.contains("title drag move")
-                && anomaly.contains("body-wheel")
-                && anomaly.contains("h toggles Ring/History"),
-            "Help n row should document the resizable Anomaly Events contract; got: {anomaly}\nfull help:\n{dump}"
         );
         assert!(
             insights.contains("resizable Token Insights")

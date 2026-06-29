@@ -1,7 +1,11 @@
 //! Phase 7 v3 (v1.46.0): bounded in-memory ring buffer of recent
 //! `AnomalyEvent` records. Pushed by `event_loop` after
-//! `eval_anomalies` and the per-kind promotion gate run; rendered
-//! by the `n` overlay (`src/ui/anomaly_overlay.rs`).
+//! `eval_anomalies` and the per-kind promotion gate run; consumed by
+//! the dashboard footer NOW strip (`ui::dashboard::now_strip_summary`)
+//! for the recent promoted-anomaly line and the "last anomaly" age.
+//! (The `n` events overlay that also read it was removed in the
+//! narrow-vnext Slice 5 reduction; the forensic trail lives in the
+//! SQLite anomaly sink.)
 //!
 //! Capacity is a `const` (100). Operator-configurable size is
 //! deferred. Buffer resets on every session start (no persistence;

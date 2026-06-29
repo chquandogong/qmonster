@@ -67,7 +67,6 @@ pub enum DashboardMouseAction {
     None,
     OpenGitModal,
     OpenPendingActionsModal,
-    OpenAnomalyEventsModal,
 }
 
 pub fn handle_dashboard_selection_key(view: DashboardSelectionKeyView<'_>, key: KeyCode) -> bool {
@@ -278,10 +277,11 @@ pub fn handle_dashboard_mouse(
                     | Some(crate::ui::dashboard::FooterStatusChip::Copy) => {
                         return DashboardMouseAction::OpenPendingActionsModal;
                     }
-                    Some(crate::ui::dashboard::FooterStatusChip::Audit) => {
-                        return DashboardMouseAction::OpenAnomalyEventsModal;
-                    }
-                    None => {}
+                    // The audit-severity chip (★a) is a display-only chip:
+                    // the anomaly events overlay it used to open was removed in
+                    // the narrow-vnext Slice 5 reduction, so clicking it is a
+                    // no-op. Promoted anomalies still surface live in Alerts.
+                    Some(crate::ui::dashboard::FooterStatusChip::Audit) | None => {}
                 }
             }
             if let Some(row) = list_row_at(rects.alerts, event) {

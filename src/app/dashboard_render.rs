@@ -50,7 +50,6 @@ pub struct DashboardFrameView<'a> {
     pub help_modal: &'a ScrollModalState,
     pub settings_overlay: &'a SettingsOverlay,
     pub provider_setup_overlay: &'a ProviderSetupOverlay,
-    pub anomaly_overlay: &'a crate::ui::anomaly_overlay::AnomalyOverlay,
     pub insights_overlay: &'a crate::ui::insights::InsightsOverlay,
     pub anomaly_events_ring: &'a crate::app::anomaly_events_ring::AnomalyEventsRing,
     pub action_explainer: &'a crate::app::action_explainer::ActionExplainModal,
@@ -74,7 +73,6 @@ struct OverlayFocusFlags {
     help_modal_open: bool,
     settings_overlay_open: bool,
     provider_setup_overlay_open: bool,
-    anomaly_overlay_open: bool,
     insights_overlay_open: bool,
     action_explainer_open: bool,
     pending_actions_open: bool,
@@ -88,7 +86,6 @@ impl OverlayFocusFlags {
             help_modal_open: view.help_modal.is_open(),
             settings_overlay_open: view.settings_overlay.is_open(),
             provider_setup_overlay_open: view.provider_setup_overlay.is_open(),
-            anomaly_overlay_open: view.anomaly_overlay.is_open(),
             insights_overlay_open: view.insights_overlay.is_open(),
             action_explainer_open: view.action_explainer.is_open(),
             pending_actions_open: view.pending_actions.is_open(),
@@ -102,7 +99,6 @@ fn overlay_owns_keyboard(flags: OverlayFocusFlags) -> bool {
         || flags.help_modal_open
         || flags.settings_overlay_open
         || flags.provider_setup_overlay_open
-        || flags.anomaly_overlay_open
         || flags.insights_overlay_open
         || flags.action_explainer_open
         || flags.pending_actions_open
@@ -194,11 +190,6 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
         render_provider_setup_modal(frame, view.provider_setup_overlay);
     }
 
-    if view.anomaly_overlay.is_open() {
-        view.anomaly_overlay
-            .render(frame, frame.area(), view.anomaly_events_ring);
-    }
-
     if view.insights_overlay.is_open() {
         crate::ui::insights::render_insights_modal(frame, view.insights_overlay, view.now);
     }
@@ -250,10 +241,6 @@ mod tests {
             },
             OverlayFocusFlags {
                 provider_setup_overlay_open: true,
-                ..OverlayFocusFlags::default()
-            },
-            OverlayFocusFlags {
-                anomaly_overlay_open: true,
                 ..OverlayFocusFlags::default()
             },
             OverlayFocusFlags {

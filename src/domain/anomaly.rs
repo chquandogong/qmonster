@@ -1,7 +1,9 @@
 //! Phase 7 v1 (v1.43.0): per-pane anomaly observation types. Pure
-//! data only — `Vec<AnomalySignal>` rides on `PaneReport`, the m
-//! overlay reads it. v1 emits no Recommendation, no Notify, no
-//! audit event; severity is informational metadata, not a gate.
+//! data only — `Vec<AnomalySignal>` rides on `PaneReport`. Promoted
+//! signals become Recommendations (Alerts); every visible signal is
+//! also recorded in the in-memory `AnomalyEventsRing` (footer NOW
+//! strip) and persisted to the SQLite anomaly sink. Severity is
+//! informational metadata on the signal itself, not a gate.
 
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::Severity;
@@ -79,7 +81,7 @@ impl AnomalyKind {
     /// returns the explicit list of providers whose adapter populates
     /// the detector's required input signal.
     ///
-    /// Used by `n` overlay + Settings Rules tab to render
+    /// Used by the Settings Rules tab to render
     /// `n/a (provider)` instead of leaving operators to wonder why a
     /// detector is dim. This is the canonical reference for the
     /// detector-provider coverage matrix flagged in the v2.2.0
@@ -185,9 +187,11 @@ pub struct AnomalyEvidence {
 }
 
 /// Phase 7 v3 (v1.46.0): record pushed into the in-memory
-/// `AnomalyEventsRing` for every visible `AnomalySignal`. Carries the
-/// promotion-gate result so the `n` overlay can show which signals
-/// became Recommendations and which stayed at passive observation.
+/// `AnomalyEventsRing` for every visible `AnomalySignal`, and persisted
+/// to the SQLite anomaly sink. Carries the promotion-gate result so
+/// consumers (the footer NOW strip + the forensic SQLite trail) can
+/// tell which signals became Recommendations and which stayed at
+/// passive observation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnomalyEvent {
     pub timestamp: u64,
