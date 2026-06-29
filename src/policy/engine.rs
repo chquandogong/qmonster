@@ -7,7 +7,9 @@ use crate::policy::rules::eval_alerts;
 /// Returns `true` for providers operating under the ObserveOnly contract
 /// (no recommendations, no actuation). Currently only `Provider::Antigravity`.
 /// Claude / Codex / Gemini / Qmonster / Unknown are unaffected.
-fn provider_is_observe_only(p: Provider) -> bool {
+/// `pub(crate)` so `event_loop` can gate its post-engine rec appends
+/// against the same definition (single source of truth).
+pub(crate) fn provider_is_observe_only(p: Provider) -> bool {
     matches!(p, Provider::Antigravity)
 }
 

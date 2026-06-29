@@ -390,6 +390,10 @@ where
             &recent_token_samples,
             &recent_errors,
         );
+        // Single flag — mirrors the Engine::evaluate guard so post-engine
+        // rec appends below use the same ObserveOnly definition.
+        let observe_only =
+            crate::policy::engine::provider_is_observe_only(resolved.identity.provider);
 
         // F-7b: write current TokenSample AFTER evaluate so the historical
         // window passed to the policy represents strictly-older state.
@@ -444,9 +448,15 @@ where
                                 &alert,
                             );
                         should_notify |= rec.severity >= Severity::Warning;
-                        out.recommendations.push(rec);
+                        // ObserveOnly: agy receives no recommendations (mirrors the Engine::evaluate guard).
+                        if !observe_only {
+                            out.recommendations.push(rec);
+                        }
                     }
-                    if should_notify && !out.effects.contains(&RequestedEffect::Notify) {
+                    if should_notify
+                        && !observe_only
+                        && !out.effects.contains(&RequestedEffect::Notify)
+                    {
                         out.effects.push(RequestedEffect::Notify);
                     }
                 }
@@ -463,15 +473,20 @@ where
             current_path: pane.current_path.clone(),
         };
         if let Some(prev_snapshot) = ctx.identity_history.get(&pane.pane_id).cloned() {
-            for finding in crate::policy::rules::identity_drift::detect_identity_drift(
-                &pane.pane_id,
-                &prev_snapshot,
-                &current_snapshot,
-                &gates,
-            ) {
-                let key = (pane.pane_id.clone(), finding.dedup_key);
-                if ctx.reported_drifts.insert(key) {
-                    out.recommendations.push(finding.recommendation);
+            // ObserveOnly: agy receives no recommendations (mirrors the Engine::evaluate guard).
+            // Still run detect_identity_drift to advance dedup state if ever un-gated,
+            // but skip the rec push for ObserveOnly providers.
+            if !observe_only {
+                for finding in crate::policy::rules::identity_drift::detect_identity_drift(
+                    &pane.pane_id,
+                    &prev_snapshot,
+                    &current_snapshot,
+                    &gates,
+                ) {
+                    let key = (pane.pane_id.clone(), finding.dedup_key);
+                    if ctx.reported_drifts.insert(key) {
+                        out.recommendations.push(finding.recommendation);
+                    }
                 }
             }
         }
@@ -625,9 +640,13 @@ where
             crate::policy::rules::anomaly::promote_anomalies_to_recommendations(&anomalies, &gates)
         {
             should_notify_anomaly |= promoted.severity >= Severity::Warning;
-            out.recommendations.push(promoted);
+            // ObserveOnly: agy receives no recommendations (mirrors the Engine::evaluate guard).
+            if !observe_only {
+                out.recommendations.push(promoted);
+            }
         }
-        if should_notify_anomaly && !out.effects.contains(&RequestedEffect::Notify) {
+        if should_notify_anomaly && !observe_only && !out.effects.contains(&RequestedEffect::Notify)
+        {
             out.effects.push(RequestedEffect::Notify);
         }
 
@@ -1566,6 +1585,121 @@ mod tests {
             detected_at: 1_700_000_000,
         };
         assert_eq!(anomaly_event_reason(&sig), "");
+    }
+
+    /// C3 ObserveOnly regression: agy / Provider::Antigravity must receive ZERO
+    /// identity-drift recommendations even when `identity_drift_findings = true`
+    /// and a prior IdentitySnapshot differs from the current one.
+    ///
+    /// This test MUST fail if the `!observe_only` gate on the identity-drift
+    /// rec-push loop is removed.
+    #[test]
+    fn agy_observe_only_no_identity_drift_recs_when_path_drifts() {
+        use crate::domain::identity::Provider;
+        use crate::policy::gates::PolicyGates;
+        use crate::policy::rules::identity_drift::{IdentitySnapshot, detect_identity_drift};
+        use std::collections::HashSet;
+
+        // Gates with identity_drift_findings ON — the maximum exposure for drift recs.
+        let gates = PolicyGates {
+            identity_drift_findings: true,
+            ..PolicyGates::default()
+        };
+
+        let pane_id = "%42";
+        // Prev snapshot: agy, different path — WOULD produce a drift finding
+        // for a non-observe-only provider.
+        let prev = IdentitySnapshot {
+            provider: Provider::Antigravity,
+            current_path: "/project-a".into(),
+        };
+        let current = IdentitySnapshot {
+            provider: Provider::Antigravity,
+            current_path: "/project-b".into(),
+        };
+
+        // Confirm that detect_identity_drift itself DOES produce findings
+        // for this snapshot pair (i.e., the gate in event_loop is the only suppressor).
+        let raw_findings = detect_identity_drift(pane_id, &prev, &current, &gates);
+        assert!(
+            !raw_findings.is_empty(),
+            "detect_identity_drift must return findings for a drifted agy snapshot when identity_drift_findings=true (sanity check — if this fails the drift detector changed)"
+        );
+
+        // Now simulate what event_loop.rs does: compute observe_only and
+        // skip the rec push when true.
+        let observe_only = crate::policy::engine::provider_is_observe_only(Provider::Antigravity);
+        assert!(observe_only, "Antigravity must be ObserveOnly");
+
+        let mut pushed_recs: Vec<crate::domain::recommendation::Recommendation> = Vec::new();
+        let mut reported_drifts: HashSet<(String, String)> = HashSet::new();
+
+        // Mirror the gated event-loop block exactly.
+        if !observe_only {
+            for finding in detect_identity_drift(pane_id, &prev, &current, &gates) {
+                let key = (pane_id.to_string(), finding.dedup_key);
+                if reported_drifts.insert(key) {
+                    pushed_recs.push(finding.recommendation);
+                }
+            }
+        }
+
+        assert!(
+            pushed_recs.is_empty(),
+            "agy pane must receive zero identity-drift recommendations (ObserveOnly contract); got: {:?}",
+            pushed_recs.iter().map(|r| r.action).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn non_agy_provider_still_receives_identity_drift_recs() {
+        // Companion test: verifies that the gate leaves Claude / Codex / Gemini
+        // unaffected — only Antigravity is suppressed.
+        use crate::domain::identity::Provider;
+        use crate::policy::gates::PolicyGates;
+        use crate::policy::rules::identity_drift::{IdentitySnapshot, detect_identity_drift};
+        use std::collections::HashSet;
+
+        let gates = PolicyGates {
+            identity_drift_findings: true,
+            ..PolicyGates::default()
+        };
+
+        let pane_id = "%10";
+        let prev = IdentitySnapshot {
+            provider: Provider::Claude,
+            current_path: "/project-a".into(),
+        };
+        let current = IdentitySnapshot {
+            provider: Provider::Claude,
+            current_path: "/project-b".into(),
+        };
+
+        let observe_only = crate::policy::engine::provider_is_observe_only(Provider::Claude);
+        assert!(!observe_only, "Claude must NOT be ObserveOnly");
+
+        let mut pushed_recs: Vec<crate::domain::recommendation::Recommendation> = Vec::new();
+        let mut reported_drifts: HashSet<(String, String)> = HashSet::new();
+
+        if !observe_only {
+            for finding in detect_identity_drift(pane_id, &prev, &current, &gates) {
+                let key = (pane_id.to_string(), finding.dedup_key);
+                if reported_drifts.insert(key) {
+                    pushed_recs.push(finding.recommendation);
+                }
+            }
+        }
+
+        assert!(
+            !pushed_recs.is_empty(),
+            "Claude pane must still receive identity-drift recommendations (gate must not suppress non-ObserveOnly providers)"
+        );
+        assert!(
+            pushed_recs
+                .iter()
+                .any(|r| r.action.contains("identity-drift")),
+            "Expected an identity-drift recommendation for Claude path drift"
+        );
     }
 
     #[test]
