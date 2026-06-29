@@ -1,0 +1,59 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-06-30"
+  target_versions:
+    - "vNext (narrow)"
+  branch: "narrow-vnext (from main/v2.8.0 aa584b6; main stays intact)"
+  scope: "Narrow vNext redesign plan — UI/UX reduction (alternative B+: two-pane core + overlay collapse + --once) + module-level cut/keep/reduce matrix. Reviewed docs: .docs/claude/narrow-vnext/UX_ALTERNATIVES.md, .mission/decisions/MDR-DRAFT-vNext-narrow-scope.md, the 2026-06-30 narrow cross-check, + src (ui/, policy/rules/profiles.rs, adapters/, engine.rs, domain/)."
+  evidence_mode: "Live `codex exec --dangerously-bypass-approvals-and-sandbox -c model_reasoning_effort=medium` (codex-cli 0.142.3). Read-only review (no file writes). Full trace: scratchpad/codex-narrow-redesign-output.md."
+  internal_analysis_first: "Independent Claude verification (grep of adapter signal sources) had already found Gemini context/quota are scrape-only; Codex confirmed AND extended this to Codex (rollout backfills only token/model/window; context/quota/idle stay tail-derived)."
+  verdict: approve-with-fixes
+  confidence: 82
+  baseline_green: "1642 lib + 140 integration/supporting, 0 failed (cargo test --all-targets on narrow-vnext = v2.8.0 code)."
+  summary:
+    direction: "B+ direction is correct (collapse overlays, keep provider-neutral core), but two premises were overstated in the draft and would damage core signals / forensic UX if cut literally."
+    overstated_premises:
+      - "'structured-output primary, scrape fallback' — true ONLY for Claude (sidefile). Codex rollout backfills token/model/window only; Gemini has no structured channel."
+      - "'overlay 흡수는 무손실' — metrics (trend/slope-ETA) and anomaly overlay (Ring/History, promoted/high filter, evidence) carry state Alerts/pane-card don't."
+  must_fix:
+    - id: SFX-1
+      severity: critical
+      title: "Adapter plan: Codex/Gemini tail parsing is the CORE signal path, not a fallback."
+      detail: "context_pressure/quota_5h/quota_weekly/idle for Codex come from codex.rs:74,85 (tail), not rollout (codex_rollout.rs:19 = token/model/window only). Gemini context/quota/model/memory all from status-table tail (gemini.rs:188,247); /stats /model also tail-merged. REDUCE-to-fallback only applies to Claude (sidefile)."
+      resolution: "MDR §8.2 — Codex/Gemini core-signal tail parsers reclassified KEEP; only enrichment-chasing (codex_app_server, agy x3, gemini /stats /model interactive) is CUT."
+    - id: SFX-2
+      severity: important
+      title: "Define minimal replacement surfaces BEFORE removing metrics/anomaly overlays."
+      detail: "metrics overlay holds pressure/mem trend + slope ETA (metrics.rs:103,146); anomaly overlay holds Ring/History + promoted/high filter + evidence (anomaly_overlay.rs:16,34). Folding anomaly into Alerts risks showing only promoted anomalies, weakening the forensic trail."
+      resolution: "MDR §8.2/§8.4 slice 4 — port metrics trend/ETA to pane PRESSURE/--once; add a 'recent anomaly strip'/digest history in Alerts; detection stays, only the overlay surface moves."
+    - id: SFX-3
+      severity: important
+      title: "profiles.rs removal is a domain/UI/schema migration, not a single-file cut."
+      detail: "Recommendation.profile (recommendation.rs:73) + domain/profile.rs + ui::panels::format_profile_lines (panels/mod.rs:42) + settings profile config all know the ProviderProfile payload."
+      resolution: "MDR §8.2/§8.4 slice 2 — remove eval_profiles call, then the profile field + domain type + renderer + settings together, each step --all-targets green."
+  other_findings:
+    over_cut:
+      - "codex_app_server cut is OK (Codex-only) but SignalSet:178 designed Codex reset-ETA via app-server — must explicitly state 'Codex reset ETA abandoned in vNext'."
+      - "Provider Setup '정적 1화면' is risky — Claude sidefile install status determines core-signal quality; keep a minimal diagnostic (is sidefile/rollout installed?)."
+    under_cut:
+      - "auto_memory/agent_memory/cache/profile_switch rules are token/provider-tuning smell → off-by-default/opt-in candidates."
+      - "insights_report CLI/store/lifecycle remains even after the overlay is cut — decide scope."
+      - "settings write-back/editing may be over-featured for narrow — read-only + config-path could suffice."
+  ui_redesign_fix:
+    - "5→3 sections loses WHERE/RUNTIME placement clarity. Adopt 4 sections: IDENTITY / NOW / PRESSURE / NEXT (panels/mod.rs:499-606)."
+  adopted_execution_order:
+    - "1. Inventory lock (golden tests for core signals across providers) — safety net first."
+    - "2. Profiles slice (engine.rs:52 → Recommendation.profile → domain/profile.rs → format_profile_lines → settings)."
+    - "3. UI shell slice (keymap/footer/help → render entrypoint → overlay state → delete files)."
+    - "4. Metrics/anomaly absorption (port trend/ETA/history/evidence minimal surfaces first)."
+    - "5. Adapter narrow (per-provider: Codex tail KEEP + rollout backstop; Gemini status KEEP + /stats optional cut; Claude sidefile primary + tail fallback)."
+    - "6. Settings/provider-setup (Thresholds/Integrations + availability diagnostics)."
+    - "7. Final prune (FX wiring-first, insights overlay/store, pending batch, hover bilingual)."
+  cross_validation:
+    contract: "Codex + human (Gemini leg retired)."
+    codex_leg: "this review (approve-with-fixes)."
+    human_leg: "pending — version number (v3.0.0?), A1 redesign direction, push/tag/release/publish remain human-approval gates."
+  artifacts:
+    raw_trace: "scratchpad/codex-narrow-redesign-output.md (~14.6k lines, read-only)"
+    plan_docs: ".docs/claude/narrow-vnext/{UX_ALTERNATIVES,STACK_DECISION,SPEC,DASHBOARD}.md + .mission/decisions/MDR-DRAFT-vNext-narrow-scope.md"

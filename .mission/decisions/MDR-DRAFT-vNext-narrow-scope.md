@@ -84,3 +84,38 @@ Qmonster vNext를 **narrow**로 재구성한다: provider-neutral 코어(identit
 
 - 승인자: chquan (대기)
 - 재검토 조건: Codex 교차검증 결과 + 4주 narrow 사용 후 retire/freeze 판단.
+
+## 8. Codex 교차검증 반영 + 스택 확정 + 실행 순서 (2026-06-30)
+
+### 8.1 스택 결정 — **S1: Rust+ratatui 유지·축소** (`STACK_DECISION.md`)
+
+사용자 지시("기존 설계/언어/라이브러리 무관, 오직 이유가 타당하면")에 따라 스택/패러다임 5대안(S1 Rust유지 / S2 Go+BubbleTea / S3 Py+Textual / S4 웹대시보드 / S5 헤드리스 thin-layer)을 3개 독립 리서치로 조사. **전부 "테스트된 코어 축소"로 수렴** — S1=71/80 압도. 재작성 기각(1642-테스트 moat 폐기 = narrow 정반대, §4.2 입증책임 미충족). S5(thin-layer)는 *어댑터 획득 원칙*으로 S1에 흡수. S4(웹)는 미래 read-only 추가뷰로만 유보.
+
+### 8.2 Codex(reduction) approve-with-fixes 반영 — §3 보정
+
+- **MUST-FIX#1 (adapter 재분류 — §3 REDUCE 행 override):** "구조화 primary, scrape fallback"은 **Claude만** 참(sidefile이 context/quota/cost/reset 제공). **Codex/Gemini의 context/quota/idle은 tail 파서가 _유일 core 경로_** → **KEEP**(축소 금지). Codex rollout은 token/model/window만 backstop. Gemini는 구조화 채널 없음. ⇒ 어댑터 cut은 *enrichment 추격분*만(codex_app_server, agy 3종, gemini `/stats`·`/model` 인터랙티브 파서). 핵심신호 scrape는 보존.
+- **MUST-FIX#2:** metrics/anomaly 오버레이 제거 _전에_ 대체표면 정의 — metrics의 trend/slope-ETA → pane PRESSURE 카드 또는 `--once`; anomaly → Alerts 내 "recent anomaly strip"/digest history(탐지는 유지, 표면만 이전).
+- **MUST-FIX#3:** `profiles.rs` 삭제 = **domain/UI/schema 마이그레이션**(`Recommendation.profile` 필드 + `domain/profile.rs` + `ui::panels::format_profile_lines` + settings profile config 동반 제거), 단일 파일 cut 아님.
+- **under-cut 정련:** `auto_memory`/`agent_memory`/`cache`/`profile_switch`는 token/provider-tuning 성격 → **off-by-default/opt-in** 후보. `insights_report` CLI/store/lifecycle는 오버레이 cut 후에도 남음 → scope 명시. settings write-back은 read-only+config-path 안내로 대체 가능.
+
+### 8.3 UI 재설계 확정 — pane 카드 **4섹션**
+
+Codex 지적(5→3은 WHERE/RUNTIME 흡수처 불명확)에 따라 **4섹션: IDENTITY / NOW / PRESSURE / NEXT** 채택(scanability 보존). 오버레이는 `?` Help + 최소 `S`(Thresholds/Integrations) [+ 옵션 Git]. `--once` 다이제스트 유지·강화.
+
+### 8.4 실행 순서 (Codex 권장, 의존성-안전, 채택)
+
+1. **Inventory lock** — 핵심신호 golden 테스트 추가/고정(Claude sidefile, Codex statusline+rollout, Gemini status/stats가 context/quota/idle/permission/SourceKind 보장). _안전망 먼저._
+2. **Profiles slice** — `engine.rs:52` eval_profiles 제거 → `Recommendation.profile`/`domain/profile.rs`/`format_profile_lines`/settings 제거. 매 단계 `--all-targets`.
+3. **UI shell slice** — footer/help/keymap에서 cut 키 제거 → render 진입점 차단 → app overlay state 제거 → UI 파일 삭제(순서 중요: 파일 먼저 지우면 import/handler 깨짐).
+4. **Metrics/anomaly 흡수** — trend/ETA/history/evidence 최소 대체표면 이식 후 오버레이 제거.
+5. **Adapter narrow** — provider별 1개씩. Codex tail=core KEEP+rollout backstop 명명; Gemini status KEEP+`/stats`·`/model` 선택 cut; Claude sidefile primary+tail fallback.
+6. **Settings/provider-setup** — Thresholds/Integrations만, 단 sidefile/rollout/status 가용성 diagnostic 유지.
+7. **Final prune** — FX(wiring 먼저), insights overlay/store lifecycle, pending batch, hover 양언어 모드 제거 → 최종 fmt+clippy+test.
+
+각 슬라이스: `cargo test --all-targets` + `cargo fmt --check` + `cargo clippy --all-targets -- -D warnings -A clippy::uninlined_format_args` green. 베이스라인 = **1642 lib + 140 int/supp**.
+
+### 8.5 교차검증 상태
+
+- reduction plan: **Codex approve-with-fixes (82/100)** — `.mission/evals/Qmonster-vNext-2026-06-30-narrow-redesign-codex-review.result.yaml`.
+- 스택 결정: 3개 독립 리서치 수렴 + Codex 1회 확인(클린룸-rust-rewrite vs 축소 갭 표적) 진행.
+- 사람 승인 대기: 버전번호(v3.0.0?) · A1 방향 · push/tag/release/publish.
