@@ -214,7 +214,7 @@ pub fn parse_for_with_environment(
         && matches!(ctx.identity.identity.provider, Provider::Antigravity)
         && !identity_conflict
         && !ctx.current_path.is_empty()
-        && agy_transcript_process_confirmed(ctx, proc_root)
+        && agy_process_confirmed(ctx, proc_root)
         && let Some(home) = home_dir
     {
         let gemini_home = home.join(".gemini");
@@ -230,6 +230,73 @@ pub fn parse_for_with_environment(
                 )
                 .with_provider(Provider::Antigravity),
             );
+        }
+    }
+    // Slice C3: agy footer/sidefile enrichment. Footer scrape fills model /
+    // context% / token-count (always pane-correct) when absent; the structured
+    // sidefile OVERRIDES when present and unambiguously attributed by cwd. Both
+    // ProviderOfficial. Display-only — the six v2.4.0 ObserveOnly gates are
+    // untouched (agy is NOT added to token_rows_supported / token-sample / insights).
+    if ctx.agy_enrichment_enabled
+        && matches!(ctx.identity.identity.provider, Provider::Antigravity)
+        && !identity_conflict
+        && !ctx.current_path.is_empty()
+        && agy_process_confirmed(ctx, proc_root)
+    {
+        use crate::domain::identity::Provider;
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::MetricValue;
+        let metric_str = |v: String| {
+            MetricValue::new(v, SourceKind::ProviderOfficial)
+                .with_confidence(0.9)
+                .with_provider(Provider::Antigravity)
+        };
+        let metric_f32 = |v: f32| {
+            MetricValue::new(v, SourceKind::ProviderOfficial)
+                .with_confidence(0.9)
+                .with_provider(Provider::Antigravity)
+        };
+        let metric_u64 = |v: u64| {
+            MetricValue::new(v, SourceKind::ProviderOfficial)
+                .with_confidence(0.9)
+                .with_provider(Provider::Antigravity)
+        };
+
+        // (a) Footer scrape — fill-when-absent (always the pane's own text).
+        let footer = agy_footer::parse_agy_footer(ctx.tail);
+        if signals.model_name.is_none()
+            && let Some(m) = footer.model
+        {
+            signals.model_name = Some(metric_str(m));
+        }
+        if signals.context_pressure.is_none()
+            && let Some(p) = footer.context_used_pct
+        {
+            signals.context_pressure = Some(metric_f32(p));
+        }
+        if signals.token_count.is_none()
+            && let Some(n) = footer.token_count
+        {
+            signals.token_count = Some(metric_u64(n));
+        }
+
+        // (b) Structured sidefile — OVERRIDE when present + unambiguous.
+        if let Some(home) = home_dir
+            && let Some(sf) = agy_sidefile::read_agy_sidefile_for_path(home, ctx.current_path)
+        {
+            if let Some(m) = sf.model {
+                signals.model_name = Some(metric_str(m));
+            }
+            if let Some(pct) = sf.context_used_percentage {
+                signals.context_pressure =
+                    Some(metric_f32((pct / 100.0).clamp(0.0, 1.0) as f32));
+            }
+            if let Some(n) = sf.context_window_size {
+                signals.context_window_size = Some(metric_u64(n));
+            }
+            if let Some(n) = sf.token_count {
+                signals.token_count = Some(metric_u64(n));
+            }
         }
     }
     signals
@@ -255,7 +322,7 @@ fn codex_rollout_process_confirmed(ctx: &ParserContext, proc_root: &std::path::P
     cli_process_basename_contains(&desc, "codex")
 }
 
-fn agy_transcript_process_confirmed(ctx: &ParserContext, proc_root: &std::path::Path) -> bool {
+fn agy_process_confirmed(ctx: &ParserContext, proc_root: &std::path::Path) -> bool {
     // agy correlation is by shared `workspace` (cwd), which is weaker than
     // Claude session_id or Codex cwd+rollout. Without a confirmed descendant
     // `agy` process, we must NOT attribute agy activity — return false (not true
@@ -1201,5 +1268,165 @@ mod agy_transcript_integration_tests {
         let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
 
         assert!(signals.runtime_facts.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod agy_enrichment_integration_tests {
+    use super::*;
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
+    use std::fs;
+
+    fn agy_id() -> ResolvedIdentity {
+        ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Antigravity,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::High,
+        }
+    }
+
+    fn write_proc(root: &std::path::Path, pid: u32, comm: &str, children: &[u32]) {
+        let d = root.join(pid.to_string());
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("status"), format!("Name:\t{comm}\nVmRSS:\t1 kB\n")).unwrap();
+        let t = d.join("task").join(pid.to_string());
+        fs::create_dir_all(&t).unwrap();
+        fs::write(
+            t.join("children"),
+            children
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+        .unwrap();
+        let mut argv = Vec::new();
+        argv.extend_from_slice(comm.as_bytes());
+        argv.push(0);
+        fs::write(d.join("cmdline"), argv).unwrap();
+    }
+
+    fn write_agy_sidefile(home: &std::path::Path, cid: &str, body: &str) {
+        let dir = home.join(".local/share/ai-cli-status/agy");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(format!("{cid}.json")), body).unwrap();
+    }
+
+    /// Footer tail: model "Gemini 3.5 Flash (High)" with token-count item enabled.
+    const FOOTER_TAIL: &str =
+        "> hello\n? for shortcuts                         token-count 34567  Gemini 3.5 Flash (High)\n";
+
+    #[test]
+    fn agy_enrichment_fills_model_and_token_from_footer_when_enabled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 100, "bash", &[101]);
+        write_proc(&proc_root, 101, "agy", &[]);
+        let home = tmp.path().join("home");
+        let id = agy_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, FOOTER_TAIL, &pricing, &settings, &history);
+        c.current_path = "/repo";
+        c.pane_pid = Some(100);
+        c.agy_enrichment_enabled = true;
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
+
+        assert_eq!(
+            signals.model_name.as_ref().map(|m| m.value.as_str()),
+            Some("Gemini 3.5 Flash (High)")
+        );
+        assert!(signals.token_count.is_some());
+        assert_eq!(
+            signals.model_name.as_ref().map(|m| m.source_kind),
+            Some(crate::domain::origin::SourceKind::ProviderOfficial)
+        );
+    }
+
+    #[test]
+    fn agy_enrichment_sidefile_overrides_footer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 100, "bash", &[101]);
+        write_proc(&proc_root, 101, "agy", &[]);
+        let home = tmp.path().join("home");
+        write_agy_sidefile(
+            &home,
+            "c1",
+            r#"{"cwd":"/repo","conversation_id":"c1","model":"Gemini 3.1 Pro (High)","context_window_size":1048576}"#,
+        );
+        let id = agy_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, FOOTER_TAIL, &pricing, &settings, &history);
+        c.current_path = "/repo";
+        c.pane_pid = Some(100);
+        c.agy_enrichment_enabled = true;
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
+
+        assert_eq!(
+            signals.model_name.as_ref().map(|m| m.value.as_str()),
+            Some("Gemini 3.1 Pro (High)"),
+            "sidefile model must override the footer-scraped model"
+        );
+        assert_eq!(
+            signals.context_window_size.as_ref().map(|m| m.value),
+            Some(1048576)
+        );
+    }
+
+    #[test]
+    fn agy_enrichment_skipped_when_toggle_disabled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 100, "bash", &[101]);
+        write_proc(&proc_root, 101, "agy", &[]);
+        let home = tmp.path().join("home");
+        let id = agy_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, FOOTER_TAIL, &pricing, &settings, &history);
+        c.current_path = "/repo";
+        c.pane_pid = Some(100);
+        c.agy_enrichment_enabled = false;
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
+
+        assert!(signals.model_name.is_none(), "no enrichment when toggle off");
+    }
+
+    #[test]
+    fn agy_enrichment_skipped_when_descendant_is_not_agy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 100, "bash", &[101]);
+        write_proc(&proc_root, 101, "bash", &[]); // no agy descendant
+        let home = tmp.path().join("home");
+        let id = agy_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, FOOTER_TAIL, &pricing, &settings, &history);
+        c.current_path = "/repo";
+        c.pane_pid = Some(100);
+        c.agy_enrichment_enabled = true;
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(&home));
+
+        assert!(
+            signals.model_name.is_none(),
+            "strict agy process-confirm gates enrichment"
+        );
     }
 }
