@@ -597,9 +597,25 @@ mod sidefile_integration_tests {
 
         apply_claude_sidefile(&mut signals, sidefile);
 
-        assert!((signals.context_pressure.unwrap().value - 0.21).abs() < 1e-6);
-        assert!((signals.quota_5h_pressure.unwrap().value - 0.09).abs() < 1e-6);
-        assert!((signals.quota_weekly_pressure.unwrap().value - 0.20).abs() < 1e-6);
+        // Codex r1 must-fix: lock both value AND origin label (ProviderOfficial).
+        let cp = signals.context_pressure.as_ref().unwrap();
+        assert!((cp.value - 0.21).abs() < 1e-6);
+        assert_eq!(
+            cp.source_kind,
+            crate::domain::origin::SourceKind::ProviderOfficial
+        );
+        let q5 = signals.quota_5h_pressure.as_ref().unwrap();
+        assert!((q5.value - 0.09).abs() < 1e-6);
+        assert_eq!(
+            q5.source_kind,
+            crate::domain::origin::SourceKind::ProviderOfficial
+        );
+        let qw = signals.quota_weekly_pressure.as_ref().unwrap();
+        assert!((qw.value - 0.20).abs() < 1e-6);
+        assert_eq!(
+            qw.source_kind,
+            crate::domain::origin::SourceKind::ProviderOfficial
+        );
     }
 
     #[test]
@@ -633,6 +649,15 @@ mod sidefile_integration_tests {
             "Opus 4.8 (1M context)"
         );
         assert_eq!(signals.reasoning_effort.as_ref().unwrap().value, "max");
+        // Codex r1 must-fix: sidefile-filled values are ProviderOfficial.
+        assert_eq!(
+            signals.model_name.as_ref().unwrap().source_kind,
+            crate::domain::origin::SourceKind::ProviderOfficial
+        );
+        assert_eq!(
+            signals.reasoning_effort.as_ref().unwrap().source_kind,
+            crate::domain::origin::SourceKind::ProviderOfficial
+        );
     }
 
     #[test]

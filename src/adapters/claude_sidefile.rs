@@ -74,6 +74,9 @@ pub struct ClaudeSidefileContextWindow {
     pub current_usage: Option<ClaudeSidefileCurrentUsage>,
     #[serde(default)]
     pub used_percentage: Option<f64>,
+    /// Slice A: deserialized for completeness but intentionally NOT surfaced —
+    /// surfacing requires a new `SignalSet` field (ripples to ~12 fixtures);
+    /// deferred to a later slice (Codex r1 TODO #3).
     #[serde(default)]
     pub context_window_size: Option<u64>,
 }
