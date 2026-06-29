@@ -843,6 +843,38 @@ mod sidefile_integration_tests {
     }
 
     #[test]
+    fn golden_sidefile_quota_resets_at_sourcekind_locked() {
+        // Slice 1 (Inventory Lock): the sidefile-derived 5h/weekly
+        // reset timestamps are a CORE signal. `sidefile_enriches_...`
+        // asserts the values; this golden test additionally pins the
+        // SourceKind (ProviderOfficial) + provider so a later cut to
+        // apply_claude_sidefile's rate-limit branch can't drop the
+        // structured reset path or relabel its origin.
+        let mut signals = crate::adapters::common::parse_common_signals("");
+        let sidefile: claude_sidefile::ClaudeSidefile = serde_json::from_str(
+            r#"{
+                "rate_limits": {
+                    "five_hour": {"resets_at": 1700000000},
+                    "seven_day": {"resets_at": 1700100000}
+                }
+            }"#,
+        )
+        .unwrap();
+
+        apply_claude_sidefile(&mut signals, sidefile);
+
+        let r5 = signals.quota_5h_resets_at.as_ref().unwrap();
+        assert_eq!(r5.value, 1_700_000_000);
+        assert_eq!(r5.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(r5.provider, Some(Provider::Claude));
+
+        let rw = signals.quota_weekly_resets_at.as_ref().unwrap();
+        assert_eq!(rw.value, 1_700_100_000);
+        assert_eq!(rw.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(rw.provider, Some(Provider::Claude));
+    }
+
+    #[test]
     fn sidefile_used_percentage_over_100_is_clamped_to_full() {
         let mut signals = crate::adapters::common::parse_common_signals("");
         let sidefile: claude_sidefile::ClaudeSidefile = serde_json::from_str(

@@ -1006,6 +1006,60 @@ mod tests {
         assert!(set.subagent_hint);
     }
 
+    // -----------------------------------------------------------------
+    // Slice 1 (Inventory Lock): the cross-provider PermissionWait /
+    // InputWait idle markers (owned by `parse_common_signals`) must
+    // survive a full `GeminiAdapter.parse`. The adapter only refines
+    // `idle_state` when the common tier left it None, so these markers
+    // should flow through unchanged — but no test pinned that for
+    // Gemini. A later "narrow vNext" cut to classify_idle_gemini that
+    // unconditionally overwrote idle_state would silently drop the
+    // operator-blocking PermissionWait/InputWait classification on
+    // Gemini panes. These golden tests lock it.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn golden_gemini_permission_wait_marker_survives_parse() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(
+            &id,
+            "This action requires approval (y/n)",
+            &pricing,
+            &settings,
+            &history,
+        );
+        let set = GeminiAdapter.parse(&c);
+        assert_eq!(
+            set.idle_state,
+            Some(IdleCause::PermissionWait),
+            "common-tier PermissionWait must survive GeminiAdapter.parse"
+        );
+    }
+
+    #[test]
+    fn golden_gemini_input_wait_marker_survives_parse() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let c = ctx(
+            &id,
+            "...\nPress ENTER to continue\n",
+            &pricing,
+            &settings,
+            &history,
+        );
+        let set = GeminiAdapter.parse(&c);
+        assert_eq!(
+            set.idle_state,
+            Some(IdleCause::InputWait),
+            "common-tier InputWait must survive GeminiAdapter.parse"
+        );
+    }
+
     #[test]
     fn gemini_type_your_message_placeholder_yields_work_complete() {
         let id = id();

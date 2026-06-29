@@ -1441,4 +1441,102 @@ Plugins: github
         let set = ClaudeAdapter.parse(&c);
         assert_eq!(set.idle_state, Some(IdleCause::Stale));
     }
+
+    // -----------------------------------------------------------------
+    // Slice 1 (Inventory Lock): golden regression tests pinning the
+    // VALUE *and* SourceKind of the provider-neutral CORE signals on
+    // the Claude statusline-scrape path. The pre-existing
+    // `claude_statusline_populates_...` test asserts only the values;
+    // a later "narrow vNext" cut that drops the structured statusline
+    // parse (or relabels its SourceKind) would silently regress the
+    // CTX / 5h / 7d origin labels without these. Each asserts both the
+    // value and `SourceKind::ProviderOfficial` (+ Provider::Claude) so
+    // the structured scrape extraction cannot drift.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn golden_claude_statusline_context_pressure_sourcekind_locked() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+
+        let cp = set
+            .context_pressure
+            .as_ref()
+            .expect("statusline CTX must populate context_pressure");
+        assert!((cp.value - 0.51).abs() < 1e-6);
+        assert_eq!(
+            cp.source_kind,
+            SourceKind::ProviderOfficial,
+            "Claude statusline CTX is a provider-official scrape"
+        );
+        assert_eq!(cp.provider, Some(Provider::Claude));
+    }
+
+    #[test]
+    fn golden_claude_statusline_quota_5h_and_weekly_sourcekind_locked() {
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Opus 4.7 (1M context)·max  CTX 51%  5h 9%  7d 1%  ~/Qmonster";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+
+        let q5 = set
+            .quota_5h_pressure
+            .as_ref()
+            .expect("statusline 5h must populate quota_5h_pressure");
+        assert!((q5.value - 0.09).abs() < 1e-6);
+        assert_eq!(
+            q5.source_kind,
+            SourceKind::ProviderOfficial,
+            "Claude statusline 5h is a provider-official scrape"
+        );
+        assert_eq!(q5.provider, Some(Provider::Claude));
+
+        let qw = set
+            .quota_weekly_pressure
+            .as_ref()
+            .expect("statusline 7d must populate quota_weekly_pressure");
+        assert!((qw.value - 0.01).abs() < 1e-6);
+        assert_eq!(
+            qw.source_kind,
+            SourceKind::ProviderOfficial,
+            "Claude statusline 7d is a provider-official scrape"
+        );
+        assert_eq!(qw.provider, Some(Provider::Claude));
+    }
+
+    #[test]
+    fn golden_claude_usage_block_weekly_quota_sourcekind_locked() {
+        // The `/usage` "Current week (all models) … 100% used" scrape
+        // path (parse_claude_usage_quotas) is distinct from the
+        // statusline path. The existing test asserts value + provider
+        // but not the SourceKind; lock it so a cut to the /usage parser
+        // can't relabel the weekly quota origin.
+        let id = id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Current week (all models) 100% used (resets Apr 30)";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = ClaudeAdapter.parse(&c);
+
+        let qw = set
+            .quota_weekly_pressure
+            .as_ref()
+            .expect("/usage current-week maps to weekly quota");
+        assert!((qw.value - 1.0).abs() < f32::EPSILON);
+        assert_eq!(
+            qw.source_kind,
+            SourceKind::ProviderOfficial,
+            "Claude /usage weekly quota is a provider-official scrape"
+        );
+        assert_eq!(qw.provider, Some(Provider::Claude));
+    }
 }

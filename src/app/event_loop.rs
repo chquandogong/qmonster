@@ -1362,6 +1362,51 @@ mod tests {
     }
 
     #[test]
+    fn golden_codex_rate_limits_quota_and_resets_sourcekind_locked() {
+        // Slice 1 (Inventory Lock): the Codex account-level rate-limit
+        // broadcast is the Codex source for quota_5h/weekly pressure +
+        // resets_at. The other apply_codex_rate_limits tests assert
+        // values only; this golden test additionally pins the SourceKind
+        // (ProviderOfficial) + provider on all four CORE fields so a
+        // later cut to apply_codex_rate_limits can't relabel the origin
+        // or drop the app-server quota path silently.
+        let mut signals = SignalSet::default();
+        let rl = CodexRateLimits {
+            primary: Some(CodexRateWindow {
+                used_percent: 12,
+                window_duration_mins: 300,
+                resets_at_unix_seconds: 1_700_000_000,
+            }),
+            secondary: Some(CodexRateWindow {
+                used_percent: 7,
+                window_duration_mins: 10080,
+                resets_at_unix_seconds: 1_700_500_000,
+            }),
+        };
+        apply_codex_rate_limits(&mut signals, &rl);
+
+        let q5 = signals.quota_5h_pressure.as_ref().unwrap();
+        assert!((q5.value - 0.12).abs() < 1e-6);
+        assert_eq!(q5.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(q5.provider, Some(Provider::Codex));
+
+        let qw = signals.quota_weekly_pressure.as_ref().unwrap();
+        assert!((qw.value - 0.07).abs() < 1e-6);
+        assert_eq!(qw.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(qw.provider, Some(Provider::Codex));
+
+        let r5 = signals.quota_5h_resets_at.as_ref().unwrap();
+        assert_eq!(r5.value, 1_700_000_000);
+        assert_eq!(r5.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(r5.provider, Some(Provider::Codex));
+
+        let rw = signals.quota_weekly_resets_at.as_ref().unwrap();
+        assert_eq!(rw.value, 1_700_500_000);
+        assert_eq!(rw.source_kind, SourceKind::ProviderOfficial);
+        assert_eq!(rw.provider, Some(Provider::Codex));
+    }
+
+    #[test]
     fn apply_codex_rate_limits_handles_missing_secondary_window() {
         let mut signals = SignalSet::default();
         let rl = CodexRateLimits {
