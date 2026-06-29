@@ -233,14 +233,14 @@ fn apply_claude_sidefile(
         .as_ref()
         .and_then(|cw| cw.used_percentage)
     {
-        signals.context_pressure = Some(metric((pct / 100.0) as f32));
+        signals.context_pressure = Some(metric((pct / 100.0).clamp(0.0, 1.0) as f32));
     }
     if let Some(rl) = sidefile.rate_limits.as_ref() {
         if let Some(pct) = rl.five_hour.as_ref().and_then(|w| w.used_percentage) {
-            signals.quota_5h_pressure = Some(metric((pct / 100.0) as f32));
+            signals.quota_5h_pressure = Some(metric((pct / 100.0).clamp(0.0, 1.0) as f32));
         }
         if let Some(pct) = rl.seven_day.as_ref().and_then(|w| w.used_percentage) {
-            signals.quota_weekly_pressure = Some(metric((pct / 100.0) as f32));
+            signals.quota_weekly_pressure = Some(metric((pct / 100.0).clamp(0.0, 1.0) as f32));
         }
         if signals.quota_5h_resets_at.is_none()
             && let Some(ts) = rl.five_hour.as_ref().and_then(|w| w.resets_at)
@@ -600,6 +600,19 @@ mod sidefile_integration_tests {
         assert!((signals.context_pressure.unwrap().value - 0.21).abs() < 1e-6);
         assert!((signals.quota_5h_pressure.unwrap().value - 0.09).abs() < 1e-6);
         assert!((signals.quota_weekly_pressure.unwrap().value - 0.20).abs() < 1e-6);
+    }
+
+    #[test]
+    fn sidefile_used_percentage_over_100_is_clamped_to_full() {
+        let mut signals = crate::adapters::common::parse_common_signals("");
+        let sidefile: claude_sidefile::ClaudeSidefile = serde_json::from_str(
+            r#"{"context_window": {"used_percentage": 130},
+                "rate_limits": {"five_hour": {"used_percentage": 150}}}"#,
+        )
+        .unwrap();
+        apply_claude_sidefile(&mut signals, sidefile);
+        assert!((signals.context_pressure.unwrap().value - 1.0).abs() < 1e-6);
+        assert!((signals.quota_5h_pressure.unwrap().value - 1.0).abs() < 1e-6);
     }
 
     #[test]
