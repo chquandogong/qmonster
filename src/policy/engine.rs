@@ -499,6 +499,7 @@ mod tests {
                 MetricValue::new(34_567_u64, SourceKind::ProviderOfficial)
                     .with_provider(Provider::Antigravity),
             ),
+            quota_5h_pressure: Some(MetricValue::new(0.95_f32, SourceKind::ProviderOfficial)),
             ..SignalSet::default()
         };
         let g = PolicyGates {

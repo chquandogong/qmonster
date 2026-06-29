@@ -775,13 +775,24 @@ default false) via a two-path hybrid:
 - Both paths use **`SourceKind::ProviderOfficial`** (`confidence 0.9`,
   `provider Antigravity`).
 
-These three fields are **display-only** — they appear in the pane card metrics
-chips (model badge, CTX% bar, token count) but do NOT feed any of the six
-analytic gates above. The regression tests in `adapters::agy_observeonly_regression`
-(Task 6) verify byte-identical gate exclusion even when C3 signals are populated.
+**Slice C4 (v2.8.0)** extends the structured sidefile to also surface **quota**:
+`quota_5h_pressure` and `quota_weekly_pressure` (plus their `*_resets_at` timestamps)
+are populated from the sidefile when present, using an active-model-aware window
+selection (`gemini-*` / `3p-*` family prefix) and pressure = `1 − remaining_fraction`
+(clamped to `[0, 1]`). `SourceKind::ProviderOfficial`; opt-in (gated by the same
+`agy_enrichment` toggle). The **C3 engine guard** (`provider_is_observe_only(Antigravity)`)
+early-returns before `eval_advisories` runs, so **quota pressure — like all other
+enrichment signals — leaks zero recommendations for agy**. The regression test
+`agy_enriched_pane_recommendations_are_empty` (engine.rs) now includes a populated
+`quota_5h_pressure: 0.95` to verify this guarantee explicitly (Slice C4 safety net).
 
-Quota, session cost (`cost_usd`), and protobuf / gRPC introspection remain **out
-of scope** for agy; no `AuditEventKind`, SignalSet schema, or SQLite schema changes.
+These enrichment fields are **display-only** — they appear in the pane card metrics
+chips (model badge, CTX% bar, token count, quota bars) but do NOT feed any of the
+six analytic gates above. The regression tests in `adapters::agy_observeonly_regression`
+(Task 6) verify byte-identical gate exclusion even when C3/C4 signals are populated.
+
+Session cost (`cost_usd`), plan_tier, and protobuf / gRPC introspection remain **out
+of scope** for agy; no `AuditEventKind` or SQLite schema changes.
 Command / title identification via the footer is the honest structured ceiling;
 deeper structured introspection awaits Google's documented headless/observability
 surface.
