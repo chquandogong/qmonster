@@ -731,6 +731,7 @@ mod tests {
             codex_app_server: false,
             codex_rollout: true,
             agy_transcript: false,
+            agy_enrichment: false,
         };
         let mut overlay = ProviderSetupOverlay::default();
 
@@ -743,6 +744,7 @@ mod tests {
             codex_app_server: true,
             codex_rollout: false,
             agy_transcript: false,
+            agy_enrichment: false,
         };
         overlay.sync_from_config(&cfg);
         assert!(!overlay.claude_sidefile_enabled);
@@ -837,6 +839,7 @@ mod tests {
             codex_app_server: false,
             codex_rollout: true,
             agy_transcript: false,
+            agy_enrichment: false,
         };
         let overlay = ProviderSetupOverlay::from_config(&cfg);
         assert!(overlay.claude_sidefile_enabled);
@@ -848,6 +851,7 @@ mod tests {
             codex_app_server: true,
             codex_rollout: false,
             agy_transcript: false,
+            agy_enrichment: false,
         };
         let overlay = ProviderSetupOverlay::from_config(&cfg);
         assert!(!overlay.claude_sidefile_enabled);
