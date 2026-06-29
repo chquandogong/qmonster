@@ -23114,7 +23114,7 @@ timeline:
       - 708d855 # Slice D: render context window size next to CTX%
       - 1cd6af6 # review remediation: distinct-session guard + strict agy confirm + doc sync
     follow_up:
-      - "Release ritual remaining (operator-gated): push main, create the v2.6.0 tag, npm publish. NOT yet done — awaits explicit operator go. main is 14 commits ahead of origin/main; the sidefile guard (26021e8) + v2.5.0-published record (dcf3e00) are already on origin/main from the prior push."
+      - "Release ritual DONE (2026-06-29): pushed main (26021e8..2de4eec) + annotated tag v2.6.0 on 2de4eec (admin-bypass on the creation ruleset) triggered Release and Package Mirror run 28365792305 — both jobs success (build assets 6m48s + publish 26s). Verified: npm latest=2.6.0, provenance predicateType=https://slsa.dev/provenance/v1 (OIDC-only Trusted Publishers, no NPM_TOKEN), GitHub Release v2.6.0 published (not prerelease, 5 assets)."
       - "Gemini 2nd-reviewer reinstatement remains blocked on operator Enterprise/API tier config (see MDR-DRAFT-v2.5.x-gemini-crossreview-retirement); the cross-review contract stays Codex + human until then."
       - "Slice C2 agy activity is observe-only/opt-in; deeper agy integration (token/model/cost) stays blocked until a documented agy headless/observability surface exists."
 

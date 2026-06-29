@@ -40,13 +40,15 @@ agy process-confirm returned true on missing `pane_pid`) both closed in
 second gate**. Artifact:
 `.mission/evals/Qmonster-v2.6.0-2026-06-29-bundle-codex-review.result.yaml`.
 
-**Release state: PREPPED ON LOCAL `main`, NOT YET RELEASED.** All version
-surfaces (package.json / Cargo.toml / Cargo.lock / VERSION.md / README) +
-mission ledger at 2.6.0. `main` is 14 commits ahead of `origin/main` (the
-sidefile guard `26021e8` + v2.5.0-published record `dcf3e00` are already on
-`origin/main` from the prior push). **Remaining (operator-gated):** push
-`main`, create the `v2.6.0` tag, npm publish — awaits explicit operator go (the
-irreversible step).
+**Release state: v2.6.0 is PUBLISHED** (verified 2026-06-29). `main` pushed
+(`26021e8..2de4eec`); annotated tag `v2.6.0` on `2de4eec` (admin-bypass on the
+creation ruleset) triggered `Release and Package Mirror` run `28365792305`,
+both jobs success (build assets 6m48s + publish 26s). `npm view qmonster
+dist-tags` → `latest = 2.6.0`; `npm view qmonster@2.6.0
+dist.attestations.provenance.predicateType` → `https://slsa.dev/provenance/v1`
+(OIDC-only Trusted Publishers, no NPM_TOKEN); GitHub Release `v2.6.0` published
+(not prerelease, 5 assets). Version surfaces (package.json / Cargo.toml /
+Cargo.lock / VERSION.md / README) + mission ledger all at 2.6.0.
 
 **Follow-ups:** (1) Gemini 2nd-reviewer reinstatement stays blocked on operator
 Enterprise/API config (see `MDR-DRAFT-v2.5.x-gemini-crossreview-retirement`);
