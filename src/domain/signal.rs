@@ -103,6 +103,10 @@ pub enum RuntimeFactKind {
     /// Display-only CLI version for the exact pane process. Qmonster
     /// monitor panes intentionally omit this fact from headers.
     CliVersion,
+    /// Antigravity transcript activity indicator (opt-in, Heuristic,
+    /// informational). Sourced from `~/.gemini/antigravity-cli/history.jsonl`
+    /// and the correlated transcript; gated behind `[provider_setup] agy_transcript` toggle.
+    AgyActivity,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -354,5 +358,17 @@ mod tests {
         assert_eq!(fact.source_kind, SourceKind::ProviderOfficial);
         assert_eq!(fact.confidence, Some(0.9));
         assert_eq!(fact.provider, Some(Provider::Claude));
+    }
+
+    #[test]
+    fn runtime_fact_agy_activity_round_trips() {
+        let fact = RuntimeFact::new(
+            RuntimeFactKind::AgyActivity,
+            "active from transcript",
+            SourceKind::Heuristic,
+        );
+        assert_eq!(fact.kind, RuntimeFactKind::AgyActivity);
+        assert_eq!(fact.value, "active from transcript");
+        assert_eq!(fact.source_kind, SourceKind::Heuristic);
     }
 }
