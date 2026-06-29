@@ -737,14 +737,19 @@ Since Slice A (2026-06), Claude `context_pressure` / `quota_*_pressure` prefer t
 
 Since Slice B (2026-06), Codex token counts + model fall back to the `codex-tui` rollout JSONL (`~/.codex/sessions/.../rollout-*.jsonl`, fill-when-absent) when the status-line scrape is unavailable; `codex_exec` rollouts are excluded by the `originator` gate. context% / rate-limits are unchanged (scrape + app-server).
 
-Antigravity (`agy`, Slice C) remains **ObserveOnly**: its transcript JSONL
-(`~/.gemini/antigravity-cli/brain/<uuid>/.system_generated/logs/transcript.jsonl`)
+Antigravity (`agy`, Slice C) remains **ObserveOnly** for analytics, with an
+**opt-in transcript activity RuntimeFact** shipped in v2.5.1 (Slice C2). The
+transcript JSONL (`~/.gemini/antigravity-cli/brain/<uuid>/.system_generated/logs/transcript.jsonl`)
 was verified (2026-06-29) to expose only activity / timestamps / tool-calls —
-**no token, model, cost, or context fields** — so agy stays off every analytic
-surface (the v2.4.0 six-gate ObserveOnly contract). Command/title identification
-is the honest structured ceiling; a transcript activity-tail enricher was scoped
-but **deferred** (correlation is fragile — the transcript carries no cwd) until
-Google ships a documented headless/observability surface.
+**no token, model, cost, or context fields** — so all analytic surfaces (the six
+v2.4.0 ObserveOnly gates: anomaly detectors, cost/cache chips, profile recommenders,
+insights data-completeness, and token-sample filters) remain **Hidden**. Slice C2
+surfaces a **live activity RuntimeFact** (Heuristic source, gated by `[provider_setup]
+agy_transcript` toggle, default false) by correlating `~/.gemini/antigravity-cli/history.jsonl`
+by workspace (cwd) with an ambiguity guard (mirrors codex_rollout's 60s window),
+then reading the latest transcript step to inform the displayfact's activity label.
+Command/title identification is the honest structured ceiling; deeper structured
+introspection awaits Google's documented headless/observability surface.
 
 ### Detector / rule reach implications
 

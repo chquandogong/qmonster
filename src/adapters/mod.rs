@@ -191,6 +191,36 @@ pub fn parse_for_with_environment(
             }
         }
     }
+    // Slice C2: agy transcript activity indicator. Surface a live activity
+    // RuntimeFact when the agy_transcript toggle is enabled, the pane is Antigravity,
+    // the identity is not conflicted, a cwd is present, and an agy binary is the
+    // descendant process. The transcript activity is correlated from the
+    // history.jsonl history by workspace (cwd) and the ambiguity guard prevents
+    // mis-attribution when multiple agy sessions are active in the same workspace.
+    // Activity is always Heuristic (reverse-engineered) and never PopupOption
+    // (no token/model/cost claims). The six v2.4.0 ObserveOnly gates are untouched.
+    if ctx.agy_transcript_enabled
+        && matches!(ctx.identity.identity.provider, Provider::Antigravity)
+        && !identity_conflict
+        && !ctx.current_path.is_empty()
+        && agy_transcript_process_confirmed(ctx, proc_root)
+        && let Some(home) = home_dir
+    {
+        let gemini_home = home.join(".gemini");
+        if let Some(activity) = agy_transcript::read_agy_activity(&gemini_home, ctx.current_path) {
+            signals.runtime_facts.push(
+                crate::domain::signal::RuntimeFact::new(
+                    crate::domain::signal::RuntimeFactKind::AgyActivity,
+                    format!(
+                        "transcript · {}",
+                        activity.latest_step.as_deref().unwrap_or("active")
+                    ),
+                    crate::domain::origin::SourceKind::Heuristic,
+                )
+                .with_provider(Provider::Antigravity),
+            );
+        }
+    }
     signals
 }
 
@@ -212,6 +242,15 @@ fn codex_rollout_process_confirmed(ctx: &ParserContext, proc_root: &std::path::P
         return false;
     };
     cli_process_basename_contains(&desc, "codex")
+}
+
+fn agy_transcript_process_confirmed(ctx: &ParserContext, proc_root: &std::path::Path) -> bool {
+    let Some(pid) = ctx.pane_pid else { return true };
+    let Some(desc) = process_memory::read_descendant_cli_process_with_proc_root(pid, proc_root)
+    else {
+        return false;
+    };
+    cli_process_basename_contains(&desc, "agy")
 }
 
 fn cli_process_basename_contains(
@@ -917,5 +956,167 @@ mod codex_rollout_integration_tests {
         c.codex_rollout_enabled = true;
         let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
         assert!(signals.input_tokens.is_none());
+    }
+}
+
+#[cfg(test)]
+mod agy_transcript_integration_tests {
+    use super::*;
+    use crate::domain::identity::{
+        IdentityConfidence, PaneIdentity, Provider, ResolvedIdentity, Role,
+    };
+    use std::fs;
+
+    fn agy_id() -> ResolvedIdentity {
+        ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Antigravity,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%1".into(),
+            },
+            confidence: IdentityConfidence::High,
+        }
+    }
+
+    fn write_history(home: &std::path::Path, entries: Vec<(&str, &str, u64)>) {
+        let agy_dir = home.join(".gemini/antigravity-cli");
+        fs::create_dir_all(&agy_dir).unwrap();
+        let path = agy_dir.join("history.jsonl");
+        let mut body = String::new();
+        for (workspace, conversation_id, timestamp) in entries {
+            body.push_str(&format!(
+                r#"{{"workspace":"{}","conversationId":"{}","timestamp":{}}}"#,
+                workspace, conversation_id, timestamp
+            ));
+            body.push('\n');
+        }
+        fs::write(&path, body).unwrap();
+    }
+
+    fn write_transcript(home: &std::path::Path, conversation_id: &str, steps: Vec<&str>) {
+        let transcript_dir = home.join(format!(
+            ".gemini/antigravity-cli/brain/{}/.system_generated/logs",
+            conversation_id
+        ));
+        fs::create_dir_all(&transcript_dir).unwrap();
+        let path = transcript_dir.join("transcript.jsonl");
+        let mut body = String::new();
+        for step in steps {
+            body.push_str(&format!(
+                r#"{{"type":"{}","created_at":"2026-06-29T12:00:00Z"}}"#,
+                step
+            ));
+            body.push('\n');
+        }
+        fs::write(&path, body).unwrap();
+    }
+
+    fn write_proc(root: &std::path::Path, pid: u32, comm: &str, children: &[u32]) {
+        let d = root.join(pid.to_string());
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("status"), format!("Name:\t{comm}\nVmRSS:\t1 kB\n")).unwrap();
+        let t = d.join("task").join(pid.to_string());
+        fs::create_dir_all(&t).unwrap();
+        fs::write(
+            t.join("children"),
+            children
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+        .unwrap();
+        let mut argv = Vec::new();
+        argv.extend_from_slice(comm.as_bytes());
+        argv.push(0);
+        fs::write(d.join("cmdline"), argv).unwrap();
+    }
+
+    #[test]
+    fn transcript_activity_fact_pushed_when_toggle_and_agy_descendant_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = "/repo/qmonster";
+        write_history(tmp.path(), vec![("/repo/qmonster", "uuid-aaa", 1000)]);
+        write_transcript(
+            tmp.path(),
+            "uuid-aaa",
+            vec!["CONVERSATION_STARTED", "STEP_ONE"],
+        );
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 1, "bash", &[2]);
+        write_proc(&proc_root, 2, "agy", &[]);
+        let id = agy_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, "", &pricing, &settings, &history);
+        c.current_path = cwd;
+        c.pane_pid = Some(1);
+        c.agy_transcript_enabled = true;
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
+
+        assert_eq!(signals.runtime_facts.len(), 1);
+        let fact = &signals.runtime_facts[0];
+        assert_eq!(
+            fact.kind,
+            crate::domain::signal::RuntimeFactKind::AgyActivity
+        );
+        assert_eq!(
+            fact.source_kind,
+            crate::domain::origin::SourceKind::Heuristic
+        );
+        assert_eq!(fact.provider, Some(Provider::Antigravity));
+        assert!(fact.value.contains("STEP_ONE"));
+    }
+
+    #[test]
+    fn transcript_activity_not_added_when_toggle_disabled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = "/repo/qmonster";
+        write_history(tmp.path(), vec![("/repo/qmonster", "uuid-aaa", 1000)]);
+        write_transcript(tmp.path(), "uuid-aaa", vec!["STEP"]);
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 1, "bash", &[2]);
+        write_proc(&proc_root, 2, "agy", &[]);
+        let id = agy_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, "", &pricing, &settings, &history);
+        c.current_path = cwd;
+        c.pane_pid = Some(1);
+        c.agy_transcript_enabled = false;
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
+
+        assert!(
+            signals.runtime_facts.is_empty(),
+            "toggle off → no activity fact"
+        );
+    }
+
+    #[test]
+    fn transcript_activity_not_added_when_descendant_is_not_agy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = "/repo/qmonster";
+        write_history(tmp.path(), vec![("/repo/qmonster", "uuid-aaa", 1000)]);
+        write_transcript(tmp.path(), "uuid-aaa", vec!["STEP"]);
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 1, "bash", &[2]);
+        write_proc(&proc_root, 2, "node", &[]); // not agy
+        let id = agy_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, "", &pricing, &settings, &history);
+        c.current_path = cwd;
+        c.pane_pid = Some(1);
+        c.agy_transcript_enabled = true;
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
+
+        assert!(signals.runtime_facts.is_empty());
     }
 }
