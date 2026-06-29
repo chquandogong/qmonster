@@ -736,10 +736,10 @@ sidefile/app-server channel that hasn't been wired_ (Codex
 
 Since Slice A (2026-06), Claude `context_pressure` / `quota_*_pressure` prefer the sidefile's structured `used_percentage` over the scraped statusline; `permission_mode` remains scrape-only (absent from the sidefile).
 
-Since Slice B (2026-06), Codex token counts + model fall back to the `codex-tui` rollout JSONL (`~/.codex/sessions/.../rollout-*.jsonl`, fill-when-absent) when the status-line scrape is unavailable; `codex_exec` rollouts are excluded by the `originator` gate. context% / rate-limits are unchanged (scrape + app-server).
+Since Slice B (2026-06), Codex token counts + model fall back to the `codex-tui` rollout JSONL (`~/.codex/sessions/.../rollout-*.jsonl`, fill-when-absent) when the status-line scrape is unavailable; `codex_exec` rollouts are excluded by the `originator` gate. For `context_window_size` specifically: the Codex status-line scrape's `N window` token is the PRIMARY source; the rollout JSONL `model_context_window` is the fill-when-absent backstop. context% / rate-limits are unchanged (scrape + app-server).
 
 Antigravity (`agy`, Slice C) remains **ObserveOnly** for analytics, with an
-**opt-in transcript activity RuntimeFact** shipped in v2.5.1 (Slice C2). The
+**opt-in transcript activity RuntimeFact** shipped in v2.6.0 (Slice C2). The
 transcript JSONL (`~/.gemini/antigravity-cli/brain/<uuid>/.system_generated/logs/transcript.jsonl`)
 was verified (2026-06-29) to expose only activity / timestamps / tool-calls —
 **no token, model, cost, or context fields** — so all analytic surfaces (the six

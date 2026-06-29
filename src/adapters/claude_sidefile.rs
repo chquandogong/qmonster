@@ -167,9 +167,9 @@ pub fn read_sidefile_for_path(home: &Path, current_path: &str) -> Option<ClaudeS
             // Skip if this session_id already appears in our distinct list
             // (treat None as always-distinct).
             let is_distinct = if let Some(sid) = sidefile.session_id.as_deref() {
-                !distinct_sids.iter().any(|(_, s)| {
-                    s.session_id.as_deref() == Some(sid)
-                })
+                !distinct_sids
+                    .iter()
+                    .any(|(_, s)| s.session_id.as_deref() == Some(sid))
             } else {
                 true
             };
@@ -261,8 +261,9 @@ mod tests {
     #[test]
     fn read_sidefile_returns_none_for_concurrent_same_cwd_sessions() {
         // Two sidefiles for the same cwd touched within the ambiguity window
-        // (concurrent active Claude sessions) → cannot attribute → None,
-        // rather than guess and cross-fill session B's numbers onto session A.
+        // with DISTINCT session_ids (concurrent active Claude sessions)
+        // → cannot attribute → None, rather than guess and cross-fill
+        // session B's numbers onto session A.
         let tmp = tempdir().unwrap();
         let sub = tmp.path().join(".local/share/ai-cli-status/claude");
         let a = write_sidefile(&sub, "a", r#"{"cwd":"/repo","session_id":"a"}"#);
@@ -276,7 +277,33 @@ mod tests {
         filetime::set_file_mtime(&b, filetime::FileTime::from_system_time(now)).unwrap();
         assert!(
             read_sidefile_for_path(tmp.path(), "/repo").is_none(),
-            "two concurrent same-cwd Claude sidefiles must not be attributed"
+            "two concurrent same-cwd Claude sidefiles with distinct session_ids must not be attributed"
+        );
+    }
+
+    #[test]
+    fn read_sidefile_returns_newest_when_same_session_id_touched_within_60s() {
+        // Two sidefiles for the same cwd with THE SAME session_id
+        // touched within the ambiguity window should return the newest
+        // (not None) because they represent the same session across
+        // two consecutive polls, not concurrent ambiguous sessions.
+        let tmp = tempdir().unwrap();
+        let sub = tmp.path().join(".local/share/ai-cli-status/claude");
+        let a = write_sidefile(&sub, "old", r#"{"cwd":"/repo","session_id":"same"}"#);
+        let b = write_sidefile(&sub, "new", r#"{"cwd":"/repo","session_id":"same"}"#);
+        let now = SystemTime::now();
+        filetime::set_file_mtime(
+            &a,
+            filetime::FileTime::from_system_time(now - Duration::from_secs(5)),
+        )
+        .unwrap();
+        filetime::set_file_mtime(&b, filetime::FileTime::from_system_time(now)).unwrap();
+        let s = read_sidefile_for_path(tmp.path(), "/repo")
+            .expect("same session_id within 60s should return newest");
+        assert_eq!(
+            s.session_id.as_deref(),
+            Some("same"),
+            "newest file with same session_id must be selected"
         );
     }
 

@@ -251,7 +251,14 @@ fn codex_rollout_process_confirmed(ctx: &ParserContext, proc_root: &std::path::P
 }
 
 fn agy_transcript_process_confirmed(ctx: &ParserContext, proc_root: &std::path::Path) -> bool {
-    let Some(pid) = ctx.pane_pid else { return true };
+    // agy correlation is by shared `workspace` (cwd), which is weaker than
+    // Claude session_id or Codex cwd+rollout. Without a confirmed descendant
+    // `agy` process, we must NOT attribute agy activity — return false (not true
+    // like Claude/Codex helpers). This prevents mis-attribution across unrelated
+    // agy sessions in the same workspace.
+    let Some(pid) = ctx.pane_pid else {
+        return false;
+    };
     let Some(desc) = process_memory::read_descendant_cli_process_with_proc_root(pid, proc_root)
     else {
         return false;
