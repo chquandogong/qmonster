@@ -651,8 +651,10 @@ pub fn render_tab_content(
             }
             out.push("      Enabling context-used / token-count footer items in agy improves scrape coverage.".into());
 
-            append_copy_contract(&mut out, overlay);
-            append_copied_preview(&mut out, overlay);
+            if overlay.agy_enrichment_enabled {
+                append_copy_contract(&mut out, overlay);
+                append_copied_preview(&mut out, overlay);
+            }
 
             section(&mut out, "Wiring (one-time, not copied by y)");
             out.push(
@@ -1266,7 +1268,7 @@ mod tests {
             "tab must mention 'agy' label; got:\n{joined}"
         );
         assert!(
-            !joined.contains("Press `y` to copy") && !joined.contains("Copied preview"),
+            !joined.contains("Copy With y") && !joined.contains("Preview: y copies this content"),
             "Antigravity tab must NOT include copy-contract or copied-preview blocks; got:\n{joined}"
         );
     }

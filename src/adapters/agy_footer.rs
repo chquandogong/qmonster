@@ -26,7 +26,7 @@ pub fn parse_agy_footer(tail: &str) -> AgyFooter {
     let mut out = AgyFooter::default();
     for raw in tail.lines() {
         let line = raw.trim();
-        // model: the right-most occurrence of a known model family + "(level)".
+        // model: the left-most occurrence of a known model family + "(level)".
         if out.model.is_none()
             && let Some(m) = extract_model(line)
         {
@@ -65,6 +65,11 @@ fn extract_labeled_pct(line: &str, label: &str) -> Option<f32> {
     if num.is_empty() {
         return None;
     }
+    // Require a literal '%' immediately after the digits
+    let after_digits = &rest[num.len()..];
+    if !after_digits.starts_with('%') {
+        return None;
+    }
     let pct: f32 = num.parse().ok()?;
     Some((pct / 100.0).clamp(0.0, 1.0))
 }
@@ -95,7 +100,12 @@ mod tests {
         // Footer with context-used + token-count items enabled (showLabels on).
         let tail = "context-used 37%  token-count 34567  Gemini 3.1 Pro (High)\n";
         let f = parse_agy_footer(tail);
-        assert_eq!(f.context_used_pct, Some(0.37));
+        assert!(
+            f.context_used_pct
+                .map(|v| (v - 0.37_f32).abs() < 1e-6)
+                .unwrap_or(false),
+            "context_used_pct must be ~0.37"
+        );
         assert_eq!(f.context_window, None); // window size not shown in footer
         assert_eq!(f.token_count, Some(34567));
         assert_eq!(f.model.as_deref(), Some("Gemini 3.1 Pro (High)"));

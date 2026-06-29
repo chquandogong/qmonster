@@ -1,4 +1,4 @@
-use crate::domain::identity::{ResolvedIdentity, Role};
+use crate::domain::identity::{Provider, ResolvedIdentity, Role};
 use crate::domain::origin::SourceKind;
 use crate::domain::recommendation::{Recommendation, Severity};
 use crate::domain::signal::{RuntimeFact, RuntimeFactKind, SignalSet};
@@ -146,11 +146,17 @@ fn code_exploration(
 }
 
 fn context_pressure_warning(
-    _id: &ResolvedIdentity,
+    id: &ResolvedIdentity,
     signals: &SignalSet,
     gates: &PolicyGates,
 ) -> Option<Recommendation> {
     let v = signals.context_pressure.as_ref()?.value;
+    if !matches!(
+        id.identity.provider,
+        Provider::Claude | Provider::Codex | Provider::Gemini
+    ) {
+        return None;
+    }
     if !(gates.context_warning_pct..gates.context_critical_pct).contains(&v) {
         return None;
     }
@@ -187,11 +193,17 @@ fn aggressive_context_pressure_warning() -> Recommendation {
 }
 
 fn context_pressure_critical(
-    _id: &ResolvedIdentity,
+    id: &ResolvedIdentity,
     signals: &SignalSet,
     gates: &PolicyGates,
 ) -> Option<Recommendation> {
     let v = signals.context_pressure.as_ref()?.value;
+    if !matches!(
+        id.identity.provider,
+        Provider::Claude | Provider::Codex | Provider::Gemini
+    ) {
+        return None;
+    }
     if v < gates.context_critical_pct {
         return None;
     }
@@ -1028,6 +1040,44 @@ mod tests {
                 .iter()
                 .any(|r| r.action.starts_with("context-pressure")),
             "Codex #2: context_pressure_* must respect the gate"
+        );
+    }
+
+    #[test]
+    fn context_pressure_advisory_does_not_fire_for_agy() {
+        // ObserveOnly: agy panes must never emit /compact advisories even when
+        // context_pressure is populated (C3 now fills it for agy).
+        use crate::domain::identity::{IdentityConfidence, PaneIdentity, Provider};
+        let id = ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Antigravity,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%0".into(),
+            },
+            confidence: IdentityConfidence::High,
+        };
+        let s = SignalSet {
+            context_pressure: Some(crate::domain::signal::MetricValue::new(
+                0.9,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )),
+            ..SignalSet::default()
+        };
+        let recs = eval_advisories(&id, &s, &gates_default());
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.suggested_command == Some("/compact".into())),
+            "ObserveOnly: agy must not get /compact recommendations; got {:?}",
+            recs
+        );
+        assert!(
+            !recs
+                .iter()
+                .any(|r| r.action.starts_with("context-pressure")),
+            "ObserveOnly: agy must not get context-pressure action; got {:?}",
+            recs
         );
     }
 

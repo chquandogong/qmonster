@@ -1342,7 +1342,11 @@ mod agy_enrichment_integration_tests {
             signals.model_name.as_ref().map(|m| m.value.as_str()),
             Some("Gemini 3.5 Flash (High)")
         );
-        assert!(signals.token_count.is_some());
+        assert_eq!(
+            signals.token_count.as_ref().map(|m| m.value),
+            Some(34567),
+            "footer token_count must parse to exact value 34567"
+        );
         assert_eq!(
             signals.model_name.as_ref().map(|m| m.source_kind),
             Some(crate::domain::origin::SourceKind::ProviderOfficial)
@@ -1359,7 +1363,7 @@ mod agy_enrichment_integration_tests {
         write_agy_sidefile(
             &home,
             "c1",
-            r#"{"cwd":"/repo","conversation_id":"c1","model":"Gemini 3.1 Pro (High)","context_window_size":1048576}"#,
+            r#"{"cwd":"/repo","conversation_id":"c1","model":"Gemini 3.1 Pro (High)","context_window_size":1048576,"context_used_percentage":72}"#,
         );
         let id = agy_id();
         let pricing = crate::policy::pricing::PricingTable::empty();
@@ -1380,6 +1384,10 @@ mod agy_enrichment_integration_tests {
         assert_eq!(
             signals.context_window_size.as_ref().map(|m| m.value),
             Some(1048576)
+        );
+        assert!(
+            (signals.context_pressure.unwrap().value - 0.72_f32).abs() < 1e-6,
+            "sidefile context_used_percentage must override context_pressure"
         );
     }
 
@@ -1648,19 +1656,31 @@ mod agy_observeonly_regression {
             );
             assert!(recs.is_empty());
         }
-        // Gate 4: insights coverage string
-        let provider_str = format!("{:?}", Provider::Antigravity);
-        assert!(
-            matches!(
-                provider_str.as_str(),
-                "Antigravity" | "Qmonster" | "Unknown"
-            ),
-            "Antigravity must remain in the insights 'unsupported' string set"
+        // Gate 4: insights coverage calls real pane_completeness_status
+        assert_eq!(
+            crate::store::insights::pane_completeness_status("Antigravity", 100.0),
+            "unsupported",
+            "insights coverage gate must map Antigravity → 'unsupported' after C3"
         );
-        // Gate 5: token-sample filter exclusion set
-        assert!(matches!(
-            Provider::Antigravity,
-            Provider::Antigravity | Provider::Qmonster | Provider::Unknown
-        ));
+        // Gate 5: token-sample filter calls real filter_token_samples_for_provider
+        {
+            let samples = vec![crate::store::TokenSample {
+                ts_unix_ms: 1,
+                pane_id: "%0".into(),
+                provider: Provider::Antigravity,
+                input_tokens: Some(100),
+                output_tokens: Some(10),
+                cost_usd: None,
+                cached_input_tokens: None,
+            }];
+            let filtered = crate::app::event_loop::filter_token_samples_for_provider(
+                samples,
+                Provider::Antigravity,
+            );
+            assert!(
+                filtered.is_empty(),
+                "filter_token_samples_for_provider must return Vec::new() for Antigravity after C3"
+            );
+        }
     }
 }
