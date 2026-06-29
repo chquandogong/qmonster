@@ -278,6 +278,7 @@ mod tests {
             "cwd": "/home/u/repo",
             "model": {"id": "claude-x", "display_name": "Claude X"},
             "version": "2.1.0",
+            "effort": {"level": "max"},
             "cost": {
                 "total_cost_usd": 12.34,
                 "total_duration_ms": 9999,
@@ -321,5 +322,7 @@ mod tests {
         let model = s.model.as_ref().unwrap();
         assert_eq!(model.id.as_deref(), Some("claude-x"));
         assert_eq!(model.display_name.as_deref(), Some("Claude X"));
+        assert_eq!(s.version.as_deref(), Some("2.1.0"));
+        assert_eq!(s.effort.as_ref().unwrap().level.as_deref(), Some("max"));
     }
 }
