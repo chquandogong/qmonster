@@ -635,11 +635,27 @@ mod sidefile_integration_tests {
             "scraped-model".to_string(),
             crate::domain::origin::SourceKind::ProviderOfficial,
         ));
-        let sidefile: claude_sidefile::ClaudeSidefile =
-            serde_json::from_str(r#"{"model":{"id":"x","display_name":"Y"}}"#).unwrap();
+        signals.reasoning_effort = Some(crate::domain::signal::MetricValue::new(
+            "scraped-effort".to_string(),
+            crate::domain::origin::SourceKind::ProviderOfficial,
+        ));
+        let sidefile: claude_sidefile::ClaudeSidefile = serde_json::from_str(
+            r#"{"model":{"id":"x","display_name":"Y"},"effort":{"level":"z"}}"#,
+        )
+        .unwrap();
 
         apply_claude_sidefile(&mut signals, sidefile);
 
         assert_eq!(signals.model_name.as_ref().unwrap().value, "scraped-model");
+        assert_eq!(signals.reasoning_effort.as_ref().unwrap().value, "scraped-effort");
+    }
+
+    #[test]
+    fn sidefile_model_falls_back_to_id_when_display_name_absent() {
+        let mut signals = crate::adapters::common::parse_common_signals("");
+        let sidefile: claude_sidefile::ClaudeSidefile =
+            serde_json::from_str(r#"{"model":{"id":"claude-opus-4-8"}}"#).unwrap();
+        apply_claude_sidefile(&mut signals, sidefile);
+        assert_eq!(signals.model_name.as_ref().unwrap().value, "claude-opus-4-8");
     }
 }
