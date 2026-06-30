@@ -251,6 +251,12 @@ fn now_strip_summary_for(
     now_unix_secs: u64,
     cost_budget_usd: f64,
 ) -> NowStripSummary {
+    // uniform-vNext (diff-review F1): the wait-state line surfaces ANY pane that
+    // needs the operator — including ObserveOnly agy. This is STATE ("which pane
+    // is waiting for you"), the operator's core read, NOT an advisory: ObserveOnly
+    // forbids recommendations/actuation for agy, not basic state visibility. The
+    // quota/cost promotion below (quota_or_cost_now_summary) DOES filter
+    // observe-only, because surfacing agy quota as a Warning IS advisory.
     if let Some((report, idle_cause)) = reports
         .iter()
         .filter_map(|report| {
@@ -2453,6 +2459,25 @@ mod tests {
         assert!(
             !summary.text.contains("QUOTA"),
             "agy quota must not reach the Now strip (ObserveOnly); got: {}",
+            summary.text
+        );
+    }
+
+    #[test]
+    fn now_strip_surfaces_observe_only_agy_wait_state() {
+        use crate::domain::identity::Provider;
+        // uniform-vNext (diff-review F1): the WAIT-state line is STATE, not an
+        // advisory — agy's "waiting for input" MUST surface (the operator's core
+        // read), unlike the quota promotion above which filters observe-only.
+        let mut report = pending_actions_pane_report(false, vec![]);
+        report.identity.identity.provider = Provider::Antigravity;
+        report.idle_state = Some(crate::domain::signal::IdleCause::InputWait);
+
+        let summary = now_strip_summary_for(&[report], &[], 1_700_000_000, 200.0);
+
+        assert!(
+            summary.text.contains("WAIT INPUT"),
+            "agy wait-state IS surfaced (state, not advisory); got: {}",
             summary.text
         );
     }

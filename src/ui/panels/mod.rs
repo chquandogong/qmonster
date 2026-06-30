@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::app::event_loop::PaneReport;
 use crate::domain::identity::{IdentityConfidence, Provider, Role};
-use crate::domain::signal::{IdleCause, RuntimeFact, RuntimeFactKind, SignalSet};
+use crate::domain::signal::{IdleCause, MetricValue, RuntimeFact, RuntimeFactKind, SignalSet};
 use crate::ui::help_glossary::HelpTopic;
 use crate::ui::labels::{ellipsize, format_count_with_suffix, source_kind_label};
 use crate::ui::provider_honesty::{self, CacheMetricStatus};
@@ -1279,7 +1279,7 @@ fn metric_badge_lines(
     // (CTX / quota / 5h / weekly) render as gauge bars above the badge row;
     // primary_metric_row then skips them as badges to avoid duplication.
     if bounded_as_gauges {
-        rows.extend(gauge_bar_rows(signals));
+        rows.extend(gauge_bar_rows(signals, wrap_width));
     }
     if let Some(line) = primary_metric_row(signals, provider, bounded_as_gauges) {
         rows.extend(wrap_badge_line(line, wrap_width));
@@ -1358,18 +1358,18 @@ const GAUGE_PARTIALS: [char; 8] = ['▏', '▎', '▍', '▌', '▋', '▊', '�
 
 /// Split a 0..1 ratio into (filled, empty) gauge segments. Uses the
 /// left-eighth glyphs so a 58% bar reads precisely, not rounded to whole cells.
-fn gauge_filled_empty(value: f32) -> (String, String) {
+fn gauge_filled_empty(value: f32, width: usize) -> (String, String) {
     let v = value.clamp(0.0, 1.0);
-    let eighths = (v * (GAUGE_WIDTH as f32) * 8.0).round() as usize;
-    let full = (eighths / 8).min(GAUGE_WIDTH);
+    let eighths = (v * (width as f32) * 8.0).round() as usize;
+    let full = (eighths / 8).min(width);
     let mut filled = "█".repeat(full);
     let mut used = full;
     let rem = eighths % 8;
-    if used < GAUGE_WIDTH && rem > 0 {
+    if used < width && rem > 0 {
         filled.push(GAUGE_PARTIALS[rem - 1]);
         used += 1;
     }
-    (filled, "░".repeat(GAUGE_WIDTH - used))
+    (filled, "░".repeat(width - used))
 }
 
 /// One gauge-bar line: `CTX  ████████▌░░░░░  58%  resets 2h13m`. Fill + value
@@ -1377,9 +1377,25 @@ fn gauge_filled_empty(value: f32) -> (String, String) {
 /// badges use; the empty track is dim, the reset eta faint. DISPLAY-ONLY — agy
 /// bars render here, but the engine choke-point + Now-strip guard keep agy off
 /// every alert surface (uniform-vNext S2).
-fn gauge_bar_line(label: &str, value: f32, trailing: Option<String>) -> Line<'static> {
+fn gauge_bar_line(
+    label: &str,
+    value: f32,
+    trailing: Option<String>,
+    max_width: u16,
+) -> Line<'static> {
     let color = theme::severity_color(context_metric_severity(value));
-    let (filled, empty) = gauge_filled_empty(value);
+    // F4 (diff-review): clamp the bar so `label + bar + " NN%" [+ "  trailing"]`
+    // fits max_width on narrow splits — drop the trailing first, then shrink the
+    // bar (min 4 cells). Label gutter = max(4, label) + 1 space; pct = " 100%" = 5.
+    let label_w = label.chars().count().max(4) + 1;
+    let pct_w = 5usize;
+    let max = max_width as usize;
+    let trail = trailing.map(|t| format!("  {t}"));
+    let trail_w = trail.as_ref().map(|s| s.chars().count()).unwrap_or(0);
+    let fits_trail = max >= label_w + pct_w + trail_w + 4;
+    let avail = max.saturating_sub(label_w + pct_w + if fits_trail { trail_w } else { 0 });
+    let bar_w = avail.clamp(4, GAUGE_WIDTH);
+    let (filled, empty) = gauge_filled_empty(value, bar_w);
     let mut spans = vec![
         Span::styled(
             format!("{label:<4}"),
@@ -1393,18 +1409,15 @@ fn gauge_bar_line(label: &str, value: f32, trailing: Option<String>) -> Line<'st
             Style::default().fg(color),
         ),
     ];
-    if let Some(t) = trailing {
-        spans.push(Span::styled(
-            format!("  {t}"),
-            Style::default().fg(theme::text_dim()),
-        ));
+    if fits_trail && let Some(t) = trail {
+        spans.push(Span::styled(t, Style::default().fg(theme::text_dim())));
     }
     Line::from(spans)
 }
 
 /// Bounded-metric gauge bars for the expanded pane card: CTX, then either a
 /// single QUOTA (Gemini) or split 5H + 7D (Claude/Codex/agy) with reset etas.
-fn gauge_bar_rows(signals: &SignalSet) -> Vec<Line<'static>> {
+fn gauge_bar_rows(signals: &SignalSet, max_width: u16) -> Vec<Line<'static>> {
     let mut rows = Vec::new();
     if let Some(m) = signals.context_pressure.as_ref() {
         // preserve the Slice-D window-size readout as the CTX bar's trailing text.
@@ -1412,28 +1425,63 @@ fn gauge_bar_rows(signals: &SignalSet) -> Vec<Line<'static>> {
             .context_window_size
             .as_ref()
             .map(|w| format!("of {}", format_count_with_suffix(w.value)));
-        rows.push(gauge_bar_line("CTX", m.value, of_size));
+        rows.push(gauge_bar_line("CTX", m.value, of_size, max_width));
     }
     if let Some(m) = signals.quota_pressure.as_ref() {
-        rows.push(gauge_bar_line("QUOTA", m.value, None));
+        rows.push(gauge_bar_line("QUOTA", m.value, None, max_width));
     }
-    if let Some(m) = signals.quota_5h_pressure.as_ref() {
-        let eta = signals
-            .quota_5h_resets_at
-            .as_ref()
-            .and_then(|r| format_resets_eta(r.value))
-            .map(|eta| format!("resets {eta}"));
-        rows.push(gauge_bar_line("5H", m.value, eta));
-    }
-    if let Some(m) = signals.quota_weekly_pressure.as_ref() {
-        let eta = signals
-            .quota_weekly_resets_at
-            .as_ref()
-            .and_then(|r| format_resets_eta(r.value))
-            .map(|eta| format!("resets {eta}"));
-        rows.push(gauge_bar_line("7D", m.value, eta));
-    }
+    push_quota_gauge(
+        &mut rows,
+        "5H",
+        signals.quota_5h_pressure.as_ref(),
+        signals.quota_5h_resets_at.as_ref(),
+        max_width,
+    );
+    push_quota_gauge(
+        &mut rows,
+        "7D",
+        signals.quota_weekly_pressure.as_ref(),
+        signals.quota_weekly_resets_at.as_ref(),
+        max_width,
+    );
     rows
+}
+
+/// One quota window's row: a gauge bar when pressure is known (reset eta in the
+/// trailing), OR — F3 (diff-review) — a reset-only line when the reset is known
+/// but pressure is absent (e.g. the Codex status line hides quota % while the
+/// rollout still carries resets_at), so the reset ETA is never silently dropped
+/// under gauge mode.
+fn push_quota_gauge(
+    rows: &mut Vec<Line<'static>>,
+    label: &str,
+    pressure: Option<&MetricValue<f32>>,
+    resets_at: Option<&MetricValue<u64>>,
+    max_width: u16,
+) {
+    let eta = resets_at.and_then(|r| format_resets_eta(r.value));
+    match pressure {
+        Some(m) => rows.push(gauge_bar_line(
+            label,
+            m.value,
+            eta.map(|e| format!("resets {e}")),
+            max_width,
+        )),
+        None => {
+            if let Some(e) = eta {
+                rows.push(Line::from(vec![
+                    Span::styled(
+                        format!("{label:<4}"),
+                        Style::default().fg(theme::text_primary()),
+                    ),
+                    Span::styled(
+                        format!("  resets {e}"),
+                        Style::default().fg(theme::text_dim()),
+                    ),
+                ]));
+            }
+        }
+    }
 }
 
 fn primary_metric_row(

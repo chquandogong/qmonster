@@ -666,19 +666,62 @@ fn metric_badge_lines_render_reset_etas() {
 
 #[test]
 fn gauge_filled_empty_splits_by_ratio() {
-    let (f, e) = gauge_filled_empty(0.0);
+    let (f, e) = gauge_filled_empty(0.0, GAUGE_WIDTH);
     assert_eq!(f, "");
     assert_eq!(e.chars().count(), GAUGE_WIDTH);
-    let (f, e) = gauge_filled_empty(1.0);
+    let (f, e) = gauge_filled_empty(1.0, GAUGE_WIDTH);
     assert_eq!(f.chars().count(), GAUGE_WIDTH);
     assert_eq!(e, "");
-    let (f, e) = gauge_filled_empty(0.5);
+    let (f, e) = gauge_filled_empty(0.5, GAUGE_WIDTH);
     assert_eq!(
         f.chars().count() + e.chars().count(),
         GAUGE_WIDTH,
         "filled+empty must always equal the track width: {f:?} + {e:?}"
     );
     assert!(f.contains('█'), "a half bar must have full blocks: {f:?}");
+}
+
+#[test]
+fn gauge_rows_show_reset_only_when_quota_pressure_absent() {
+    // F3 (diff-review): S1 can fill quota_*_resets_at without a status-line quota
+    // pressure; the reset ETA must still render (not silently drop) under gauges.
+    let s = crate::domain::signal::SignalSet {
+        quota_5h_resets_at: Some(MetricValue::new(
+            future_unix_seconds(std::time::Duration::from_secs(2 * 3600)),
+            SourceKind::ProviderOfficial,
+        )),
+        ..crate::domain::signal::SignalSet::default()
+    };
+    let text = metric_badge_lines(&s, Provider::Codex, 120, true)
+        .iter()
+        .map(line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        text.contains("5H") && text.contains("resets"),
+        "reset-only 5H window must still show its eta under gauges: {text:?}"
+    );
+    assert!(
+        !text.contains('%'),
+        "a reset-only window must not render a bogus 0% gauge: {text:?}"
+    );
+}
+
+#[test]
+fn gauge_bar_line_fits_narrow_width() {
+    // F4 (diff-review): on a narrow split the line must fit max_width — the bar
+    // shrinks and the trailing is dropped rather than overflowing.
+    let narrow = line_text(&gauge_bar_line("CTX", 0.58, Some("of 1.00M".into()), 18));
+    assert!(
+        narrow.chars().count() <= 18,
+        "gauge line must fit max_width=18, got {} chars: {narrow:?}",
+        narrow.chars().count()
+    );
+    let wide = line_text(&gauge_bar_line("CTX", 0.58, Some("of 1.00M".into()), 120));
+    assert!(
+        wide.contains("of 1.00M"),
+        "wide keeps the trailing: {wide:?}"
+    );
 }
 
 #[test]
