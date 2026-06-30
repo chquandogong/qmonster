@@ -224,6 +224,7 @@ fn pane_list_help_topics_with_width(
                 &report.signals,
                 report.identity.identity.provider,
                 wrap_width,
+                true,
             )
             .len(),
         );
@@ -479,6 +480,7 @@ fn pane_sectioned_rows(
             &report.signals,
             report.identity.identity.provider,
             section_wrap,
+            true,
         ),
         HelpTopic::PaneMetrics,
     );
@@ -672,6 +674,7 @@ fn pane_list_lines_with_flash(
             &report.signals,
             report.identity.identity.provider,
             wrap_width,
+            true,
         ) {
             lines.push(row);
         }
@@ -1248,16 +1251,23 @@ fn severity_label(severity: crate::domain::recommendation::Severity) -> &'static
 
 #[cfg(test)]
 fn metric_badge_line(signals: &SignalSet, provider: Provider) -> Vec<Line<'static>> {
-    metric_badge_lines(signals, provider, BADGE_WRAP_FALLBACK_WIDTH)
+    metric_badge_lines(signals, provider, BADGE_WRAP_FALLBACK_WIDTH, false)
 }
 
 fn metric_badge_lines(
     signals: &SignalSet,
     provider: Provider,
     wrap_width: u16,
+    bounded_as_gauges: bool,
 ) -> Vec<Line<'static>> {
-    let mut rows = Vec::with_capacity(2);
-    if let Some(line) = primary_metric_row(signals, provider) {
+    let mut rows = Vec::with_capacity(4);
+    // uniform-vNext S3: in the expanded card the bounded pressure metrics
+    // (CTX / quota / 5h / weekly) render as gauge bars above the badge row;
+    // primary_metric_row then skips them as badges to avoid duplication.
+    if bounded_as_gauges {
+        rows.extend(gauge_bar_rows(signals));
+    }
+    if let Some(line) = primary_metric_row(signals, provider, bounded_as_gauges) {
         rows.extend(wrap_badge_line(line, wrap_width));
     }
     if let Some(line) = context_metric_row(signals) {
@@ -1327,76 +1337,171 @@ fn push_badge(spans: &mut Vec<Span<'static>>, has_any: &mut bool, content: Strin
     spans.push(Span::styled(content, style));
 }
 
-fn primary_metric_row(signals: &SignalSet, provider: Provider) -> Option<Line<'static>> {
+/// uniform-vNext S3 gauge bars. Total cell width of the bar track.
+const GAUGE_WIDTH: usize = 16;
+/// Left-eighth block glyphs (1/8 .. 8/8) for sub-cell horizontal fill.
+const GAUGE_PARTIALS: [char; 8] = ['▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
+
+/// Split a 0..1 ratio into (filled, empty) gauge segments. Uses the
+/// left-eighth glyphs so a 58% bar reads precisely, not rounded to whole cells.
+fn gauge_filled_empty(value: f32) -> (String, String) {
+    let v = value.clamp(0.0, 1.0);
+    let eighths = (v * (GAUGE_WIDTH as f32) * 8.0).round() as usize;
+    let full = (eighths / 8).min(GAUGE_WIDTH);
+    let mut filled = "█".repeat(full);
+    let mut used = full;
+    let rem = eighths % 8;
+    if used < GAUGE_WIDTH && rem > 0 {
+        filled.push(GAUGE_PARTIALS[rem - 1]);
+        used += 1;
+    }
+    (filled, "░".repeat(GAUGE_WIDTH - used))
+}
+
+/// One gauge-bar line: `CTX  ████████▌░░░░░  58%  resets 2h13m`. Fill + value
+/// are colored by the SAME `context_metric_severity` thresholds (60/75/85) the
+/// badges use; the empty track is dim, the reset eta faint. DISPLAY-ONLY — agy
+/// bars render here, but the engine choke-point + Now-strip guard keep agy off
+/// every alert surface (uniform-vNext S2).
+fn gauge_bar_line(label: &str, value: f32, trailing: Option<String>) -> Line<'static> {
+    let color = theme::severity_color(context_metric_severity(value));
+    let (filled, empty) = gauge_filled_empty(value);
+    let mut spans = vec![
+        Span::styled(
+            format!("{label:<4}"),
+            Style::default().fg(theme::text_primary()),
+        ),
+        Span::raw(" "),
+        Span::styled(filled, Style::default().fg(color)),
+        Span::styled(empty, Style::default().fg(theme::text_dim())),
+        Span::styled(
+            format!(" {:>3.0}%", (value * 100.0).clamp(0.0, 100.0)),
+            Style::default().fg(color),
+        ),
+    ];
+    if let Some(t) = trailing {
+        spans.push(Span::styled(
+            format!("  {t}"),
+            Style::default().fg(theme::text_dim()),
+        ));
+    }
+    Line::from(spans)
+}
+
+/// Bounded-metric gauge bars for the expanded pane card: CTX, then either a
+/// single QUOTA (Gemini) or split 5H + 7D (Claude/Codex/agy) with reset etas.
+fn gauge_bar_rows(signals: &SignalSet) -> Vec<Line<'static>> {
+    let mut rows = Vec::new();
+    if let Some(m) = signals.context_pressure.as_ref() {
+        // preserve the Slice-D window-size readout as the CTX bar's trailing text.
+        let of_size = signals
+            .context_window_size
+            .as_ref()
+            .map(|w| format!("of {}", format_count_with_suffix(w.value)));
+        rows.push(gauge_bar_line("CTX", m.value, of_size));
+    }
+    if let Some(m) = signals.quota_pressure.as_ref() {
+        rows.push(gauge_bar_line("QUOTA", m.value, None));
+    }
+    if let Some(m) = signals.quota_5h_pressure.as_ref() {
+        let eta = signals
+            .quota_5h_resets_at
+            .as_ref()
+            .and_then(|r| format_resets_eta(r.value))
+            .map(|eta| format!("resets {eta}"));
+        rows.push(gauge_bar_line("5H", m.value, eta));
+    }
+    if let Some(m) = signals.quota_weekly_pressure.as_ref() {
+        let eta = signals
+            .quota_weekly_resets_at
+            .as_ref()
+            .and_then(|r| format_resets_eta(r.value))
+            .map(|eta| format!("resets {eta}"));
+        rows.push(gauge_bar_line("7D", m.value, eta));
+    }
+    rows
+}
+
+fn primary_metric_row(
+    signals: &SignalSet,
+    provider: Provider,
+    skip_bounded: bool,
+) -> Option<Line<'static>> {
     let mut spans = vec![Span::raw(format!("{:<8}: ", "metrics"))];
     let mut has_any = false;
 
-    if let Some(metric) = signals.context_pressure.as_ref() {
-        let mut ctx_text = format!(" CTX {:.0}% ", metric.value * 100.0);
-        if let Some(window_size) = signals.context_window_size.as_ref() {
-            ctx_text.push_str(&format!(
-                "of {} ",
-                format_count_with_suffix(window_size.value)
-            ));
+    // uniform-vNext S3: when the expanded card shows the bounded metrics
+    // (CTX / quota / 5h / weekly + reset etas) as gauge BARS above this row,
+    // skip them here so they are not duplicated as badges. Collapsed/fallback
+    // contexts pass skip_bounded=false and keep the compact badges.
+    if !skip_bounded {
+        if let Some(metric) = signals.context_pressure.as_ref() {
+            let mut ctx_text = format!(" CTX {:.0}% ", metric.value * 100.0);
+            if let Some(window_size) = signals.context_window_size.as_ref() {
+                ctx_text.push_str(&format!(
+                    "of {} ",
+                    format_count_with_suffix(window_size.value)
+                ));
+            }
+            push_badge(
+                &mut spans,
+                &mut has_any,
+                ctx_text,
+                theme::severity_badge_style(context_metric_severity(metric.value)),
+            );
         }
-        push_badge(
-            &mut spans,
-            &mut has_any,
-            ctx_text,
-            theme::severity_badge_style(context_metric_severity(metric.value)),
-        );
-    }
-    if let Some(metric) = signals.quota_pressure.as_ref() {
-        push_badge(
-            &mut spans,
-            &mut has_any,
-            format!(" QUOTA {:.0}% ", metric.value * 100.0),
-            theme::severity_badge_style(context_metric_severity(metric.value)),
-        );
-    }
-    if let Some(metric) = signals.quota_5h_pressure.as_ref() {
-        push_badge(
-            &mut spans,
-            &mut has_any,
-            format!(" QUOTA 5H {:.0}% ", metric.value * 100.0),
-            theme::severity_badge_style(context_metric_severity(metric.value)),
-        );
-    }
-    if let Some(metric) = signals.quota_5h_resets_at.as_ref()
-        && let Some(eta) = format_resets_eta(metric.value)
-    {
-        push_badge(
-            &mut spans,
-            &mut has_any,
-            format!(
-                " RESET 5H {} [{}] ",
-                eta,
-                source_kind_label(metric.source_kind)
-            ),
-            Style::default().fg(theme::text_primary()),
-        );
-    }
-    if let Some(metric) = signals.quota_weekly_pressure.as_ref() {
-        push_badge(
-            &mut spans,
-            &mut has_any,
-            format!(" QUOTA WEEK {:.0}% ", metric.value * 100.0),
-            theme::severity_badge_style(context_metric_severity(metric.value)),
-        );
-    }
-    if let Some(metric) = signals.quota_weekly_resets_at.as_ref()
-        && let Some(eta) = format_resets_eta(metric.value)
-    {
-        push_badge(
-            &mut spans,
-            &mut has_any,
-            format!(
-                " RESET 7D {} [{}] ",
-                eta,
-                source_kind_label(metric.source_kind)
-            ),
-            Style::default().fg(theme::text_primary()),
-        );
+        if let Some(metric) = signals.quota_pressure.as_ref() {
+            push_badge(
+                &mut spans,
+                &mut has_any,
+                format!(" QUOTA {:.0}% ", metric.value * 100.0),
+                theme::severity_badge_style(context_metric_severity(metric.value)),
+            );
+        }
+        if let Some(metric) = signals.quota_5h_pressure.as_ref() {
+            push_badge(
+                &mut spans,
+                &mut has_any,
+                format!(" QUOTA 5H {:.0}% ", metric.value * 100.0),
+                theme::severity_badge_style(context_metric_severity(metric.value)),
+            );
+        }
+        if let Some(metric) = signals.quota_5h_resets_at.as_ref()
+            && let Some(eta) = format_resets_eta(metric.value)
+        {
+            push_badge(
+                &mut spans,
+                &mut has_any,
+                format!(
+                    " RESET 5H {} [{}] ",
+                    eta,
+                    source_kind_label(metric.source_kind)
+                ),
+                Style::default().fg(theme::text_primary()),
+            );
+        }
+        if let Some(metric) = signals.quota_weekly_pressure.as_ref() {
+            push_badge(
+                &mut spans,
+                &mut has_any,
+                format!(" QUOTA WEEK {:.0}% ", metric.value * 100.0),
+                theme::severity_badge_style(context_metric_severity(metric.value)),
+            );
+        }
+        if let Some(metric) = signals.quota_weekly_resets_at.as_ref()
+            && let Some(eta) = format_resets_eta(metric.value)
+        {
+            push_badge(
+                &mut spans,
+                &mut has_any,
+                format!(
+                    " RESET 7D {} [{}] ",
+                    eta,
+                    source_kind_label(metric.source_kind)
+                ),
+                Style::default().fg(theme::text_primary()),
+            );
+        }
     }
     if let Some(fact) = first_model_reset_fact(signals) {
         push_badge(

@@ -593,7 +593,7 @@ fn metric_badge_lines_surface_first_model_reset_fact() {
         ..crate::domain::signal::SignalSet::default()
     };
 
-    let text = metric_badge_lines(&s, Provider::Claude, 120)
+    let text = metric_badge_lines(&s, Provider::Claude, 120, false)
         .iter()
         .map(line_text)
         .collect::<Vec<_>>()
@@ -625,7 +625,7 @@ fn metric_badge_lines_wrap_many_badges_with_indented_continuations() {
         ..SignalSet::default()
     };
 
-    let rows = metric_badge_lines(&s, Provider::Claude, 48);
+    let rows = metric_badge_lines(&s, Provider::Claude, 48, false);
     let text: Vec<String> = rows.iter().map(line_text).collect();
 
     assert!(text.len() > 2, "badges should wrap: {text:?}");
@@ -656,12 +656,53 @@ fn metric_badge_lines_render_reset_etas() {
         ..SignalSet::default()
     };
 
-    let rows = metric_badge_lines(&s, Provider::Claude, 120);
+    let rows = metric_badge_lines(&s, Provider::Claude, 120, false);
     let text = rows.iter().map(line_text).collect::<Vec<_>>().join(" ");
 
     assert!(text.contains("RESET 5H"), "text = {text:?}");
     assert!(text.contains("RESET 7D"), "text = {text:?}");
     assert!(text.contains("[Official]"), "text = {text:?}");
+}
+
+#[test]
+fn gauge_filled_empty_splits_by_ratio() {
+    let (f, e) = gauge_filled_empty(0.0);
+    assert_eq!(f, "");
+    assert_eq!(e.chars().count(), GAUGE_WIDTH);
+    let (f, e) = gauge_filled_empty(1.0);
+    assert_eq!(f.chars().count(), GAUGE_WIDTH);
+    assert_eq!(e, "");
+    let (f, e) = gauge_filled_empty(0.5);
+    assert_eq!(
+        f.chars().count() + e.chars().count(),
+        GAUGE_WIDTH,
+        "filled+empty must always equal the track width: {f:?} + {e:?}"
+    );
+    assert!(f.contains('█'), "a half bar must have full blocks: {f:?}");
+}
+
+#[test]
+fn expanded_card_renders_bounded_metrics_as_gauge_bars_not_badges() {
+    let s = crate::domain::signal::SignalSet {
+        context_pressure: Some(MetricValue::new(0.58, SourceKind::ProviderOfficial)),
+        quota_5h_pressure: Some(MetricValue::new(0.88, SourceKind::ProviderOfficial)),
+        ..crate::domain::signal::SignalSet::default()
+    };
+    // bounded_as_gauges = true → the expanded-card path (S3).
+    let rows = metric_badge_lines(&s, Provider::Claude, 120, true);
+    let text = rows.iter().map(line_text).collect::<Vec<_>>().join("\n");
+    assert!(
+        text.contains('█'),
+        "expanded card must render gauge bars: {text:?}"
+    );
+    assert!(text.contains("CTX"), "CTX bar label present: {text:?}");
+    assert!(text.contains("5H"), "5H bar present: {text:?}");
+    // The bounded value shows exactly once (as the bar), never also as a badge.
+    assert_eq!(
+        text.matches("58%").count(),
+        1,
+        "CTX value must appear once (bar only, no badge duplicate): {text:?}"
+    );
 }
 
 #[test]
@@ -2201,9 +2242,11 @@ fn pane_card_renders_context_window_size_in_metrics_row() {
     let lines = pane_list_lines_with_flash(&report, false, false, Instant::now(), None, 200);
     let rendered: String = lines.iter().map(line_text).collect::<Vec<_>>().join(" ");
 
+    // S3: CTX renders as a gauge BAR with its value; the window size moves to
+    // the bar's trailing slot ("of 1.00M") from the old `CTX 21% of 1.00M` badge.
     assert!(
-        rendered.contains("CTX 21%"),
-        "CTX percentage must render, got {rendered:?}"
+        rendered.contains('█') && rendered.contains("21%"),
+        "CTX must render as a gauge bar with its value, got {rendered:?}"
     );
     assert!(
         rendered.contains("of 1.00M"),
@@ -2225,9 +2268,10 @@ fn pane_card_renders_context_without_window_size_when_absent() {
     let lines = pane_list_lines_with_flash(&report, false, false, Instant::now(), None, 200);
     let rendered: String = lines.iter().map(line_text).collect::<Vec<_>>().join(" ");
 
+    // S3: CTX gauge bar with value; no trailing window-size when absent.
     assert!(
-        rendered.contains("CTX 21%"),
-        "CTX percentage must render, got {rendered:?}"
+        rendered.contains('█') && rendered.contains("21%"),
+        "CTX must render as a gauge bar with its value, got {rendered:?}"
     );
     assert!(
         !rendered.contains(" of "),
