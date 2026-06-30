@@ -438,22 +438,10 @@ where
                                     );
                                 }
                                 KeyCode::Char('S') => settings_overlay.open(),
-                                KeyCode::Char('K') => {
-                                    let size = terminal.size()?;
-                                    let viewport = Rect::new(0, 0, size.width, size.height);
-                                    let rects = crate::ui::dashboard::dashboard_rects(
-                                        viewport,
-                                        dashboard_split,
-                                    );
-                                    let badge =
-                                        crate::ui::dashboard::footer_keys_badge_rect(rects.footer);
-                                    hover_help.set_hover(
-                                        crate::ui::help_glossary::HelpTopic::DashboardFooter,
-                                        badge.x,
-                                        badge.y,
-                                        now,
-                                    );
-                                }
+                                // v3.1.2: the legacy `K` footer-keys hover binding was
+                                // dropped (operator shortcut cleanup). It duplicated `?`
+                                // (full help modal) and the still-clickable `[keys]`
+                                // footer badge, and was absent from the `?` help list.
                                 KeyCode::Char('P') => {
                                     provider_setup_overlay.sync_from_config(&ctx.config);
                                     provider_setup_overlay.open();

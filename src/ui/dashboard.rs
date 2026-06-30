@@ -1239,7 +1239,7 @@ pub(crate) fn footer_keys_text() -> &'static str {
 }
 
 fn footer_compact_keys_text() -> &'static str {
-    "\u{2191}/\u{2193} select \u{00b7} Enter/Space action \u{00b7} Tab focus \u{00b7} S settings \u{00b7} K keys \u{00b7} ? help \u{00b7} q quit"
+    "\u{2191}/\u{2193} select \u{00b7} Enter/Space action \u{00b7} Tab focus \u{00b7} S settings \u{00b7} ? help \u{00b7} q quit"
 }
 
 /// Pure footer-line builder. Extracted from `render_footer` in v1.10.2
@@ -1407,7 +1407,7 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
 
     lines.extend(help_wrapped_detail_lines(
         "S",
-        "open the settings overlay (Thresholds / Integrations / Parameters / Rules / Badges; includes [anomaly], [reset], and [provider_setup] surfaces); Thresholds/Integrations use ↑/↓/wheel for selection, read-only tabs use ↑/↓/j/k/wheel/PgUp/PgDn/Home/End for body scroll; press 'w' inside to write back to the loaded TOML; press S again (when not editing), Esc, q, or click [x] to close",
+        "open the settings overlay (Thresholds / Integrations / Parameters; includes [anomaly], [reset], and [provider_setup] surfaces); Thresholds/Integrations use ↑/↓/wheel for selection, read-only tabs use ↑/↓/j/k/wheel/PgUp/PgDn/Home/End for body scroll; press 'w' inside to write back to the loaded TOML; press S again (when not editing), Esc, q, or click [x] to close",
         total_width,
     ));
 
@@ -2194,17 +2194,20 @@ mod tests {
     fn compact_footer_keeps_detailed_keys_out_of_main_row() {
         let text = footer_text("focus: alerts", DashboardSplit::default());
 
+        // v3.1.2: the redundant `K keys` hint was removed (it duplicated `?` and
+        // the clickable [keys] badge). The compact footer keeps the essential
+        // keyboard entries and pushes the long reference into the keys hover legend.
         assert!(
-            text.contains("keys"),
-            "compact footer should expose the keys badge: {text}"
-        );
-        assert!(
-            text.contains("K keys"),
-            "compact footer should advertise the key legend shortcut: {text}"
+            !text.contains("K keys"),
+            "compact footer must not advertise the removed K shortcut: {text}"
         );
         assert!(
             text.contains("? help"),
             "compact footer should keep the full help entry: {text}"
+        );
+        assert!(
+            text.contains("S settings"),
+            "compact footer should keep the settings entry: {text}"
         );
         assert!(
             !text.contains("click severity bulk hide"),
@@ -2237,10 +2240,10 @@ mod tests {
         assert!(status_row.contains("\u{2605}y:0"));
         assert!(status_row.contains("\u{2605}a:0"));
         assert!(
-            !status_row.contains("K keys"),
+            !status_row.contains("? help"),
             "key hints belong on the second row: {status_row}"
         );
-        assert!(key_row.contains("K keys"));
+        assert!(key_row.contains("? help"));
         assert!(
             !key_row.contains("focus:"),
             "status text belongs on the first row: {key_row}"

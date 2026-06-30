@@ -727,6 +727,44 @@ mod tests {
     }
 
     #[test]
+    fn agy_idle_stale_yields_no_runtime_refresh_command_or_actuation() {
+        // v3.1.2 (Codex cross-check must-fix): agy/Antigravity now reaches
+        // idle_state=Some(Stale) via the common-path stillness fallback. The
+        // runtime-refresh actuation surface must stay closed — Antigravity
+        // exposes no refresh command in ANY idle state, and the full action path
+        // sends nothing to the source even in the most permissive Execute mode.
+        assert_eq!(
+            runtime_refresh_commands(Provider::Antigravity, Some(IdleCause::Stale)),
+            &[] as &[&str],
+            "agy must expose no runtime-refresh command when idle=Stale"
+        );
+
+        let source = RecordingRefreshSource::default();
+        let sink = InMemorySink::new();
+        let mut report = base_report(Provider::Antigravity);
+        report.idle_state = Some(IdleCause::Stale);
+        let mut offsets = HashMap::new();
+        let mut overlays = HashMap::new();
+
+        let outcome = handle_runtime_refresh_action(
+            &source,
+            &sink,
+            Some(&report),
+            ActionsMode::SafeAuto, // most permissive mode — agy must STILL not actuate
+            40,
+            &mut offsets,
+            &mut overlays,
+        );
+
+        assert!(
+            source.calls().is_empty(),
+            "ObserveOnly: agy idle=Stale must send no runtime-refresh command to the provider; got {:?}",
+            source.calls()
+        );
+        assert!(!outcome.force_poll);
+    }
+
+    #[test]
     fn runtime_refresh_action_success_records_request_completion_and_forces_poll() {
         let source = RecordingRefreshSource::default();
         let sink = InMemorySink::new();

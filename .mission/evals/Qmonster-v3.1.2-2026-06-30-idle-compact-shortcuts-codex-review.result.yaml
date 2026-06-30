@@ -1,0 +1,34 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-06-30"
+  target_versions:
+    - "3.1.2"
+  commit_range: "bd2f0a1 (v3.1.1 ledger) → working tree: auto-checkpoint 37f0df1 carries the 8-file core (idle fix + compact render + shortcut cleanup + docs); the 2 ObserveOnly regression tests added to close the must-fix are uncommitted at review time. Pre-push gate for v3.1.2."
+  scope: "Pre-push diff-review of v3.1.2 — four operator-driven items: (1) agy active/idle fix (common-path stillness→Stale fallback in parse_for_with_environment so a statically-idle agy pane goes IDLE STALE instead of persistent ACTIVE); (2) compact non-selected pane render (non-selected = title + status pill + ctx/5h/7d gauges only; dense block reserved for the selected pane); (3) unused-shortcut cleanup (removed dead K binding + dead `n anomalies`/`a actions` legend entries + stale Rules/Badges Settings-tab help text); (4) docs sync (UI_MANUAL + ARCHITECTURE)."
+  evidence_mode: "Live `codex exec --dangerously-bypass-approvals-and-sandbox -c model_reasoning_effort=medium` (codex-cli 0.142.4; env externally sandboxed so Codex's nested bwrap can't init — diff INLINED in the prompt per the established pattern, no repo reads). Completed in one pass at ~21k tokens."
+  verdict: approve-with-fixes
+  confidence: 86
+  local_validation:
+    cargo_fmt_check: pass
+    cargo_clippy_all_targets_d_warnings: pass
+    cargo_test_all_targets: pass
+    test_counts: "1256 lib + 62 integration + 24 supporting; --all-targets green single-threaded (node_cli_probe parallel-exec ETXTBSY flake unrelated, passes single-threaded)"
+  guard_points_verified:
+    - "stillness gate `ctx.history.is_still(capacity())` matches the dispatch shape; `used_common_path` (identity_conflict || Antigravity || Unknown) excludes Claude/Codex/Gemini → no double-application (Codex confirmed)"
+    - "compact render: pane_list_lines_with_flash else-branch and pane_list_help_topics_with_width else-branch both call `gauge_bar_rows(&signals, wrap_width).len()` with the same width → no hover-topic row drift across stacked panes (Codex confirmed)"
+    - "K removal: no orphaned fn/import; footer text + legend + tests updated consistently (Codex confirmed)"
+    - "engine.rs provider_is_observe_only choke-point returns zero recs + empty effects for agy at idle_state=Some(Stale) (no log_storm) — new regression agy_idle_stale_pane_emits_no_recommendations_or_actuation"
+    - "runtime_refresh_commands(Antigravity, Some(Stale)) == &[]; handle_runtime_refresh_action in SafeAuto (most permissive) sends nothing to the source — new regression agy_idle_stale_yields_no_runtime_refresh_command_or_actuation"
+  findings:
+    - id: F1
+      severity: medium
+      title: "ObserveOnly contract not proven for the newly-reachable agy idle_state=Some(Stale): diff only added an idle-state test, not a no-leak regression"
+      status: fixed
+      resolution: "agy could not reach IdleCause::Stale before this change (common path was marker-only). Codex asked for a regression exercising agy at idle=Stale that asserts no refresh command / recommendation / advisory / actuation. The behavior was already correct (choke-point + empty Antigravity command list); added two regressions to pin it."
+      closed_by: "engine.rs::agy_idle_stale_pane_emits_no_recommendations_or_actuation (zero recs + zero effects on None→Stale transition) + runtime_refresh.rs::agy_idle_stale_yields_no_runtime_refresh_command_or_actuation (empty command list + no source actuation in SafeAuto)"
+  non_findings:
+    - "stillness gate correctness / double-application — none found"
+    - "compact render hover-topic 1:1 drift — none found"
+    - "orphaned code from K removal — none found"
+  human_signoff: pending

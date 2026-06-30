@@ -182,56 +182,14 @@ fn pane_list_help_topics_with_width(
             .map(|row| row.topic),
         );
     } else {
-        push_topic_count(
-            &mut topics,
-            Some(HelpTopic::PaneState),
-            render_pane_state_row_with_flash(report, now, None, wrap_width).len(),
-        );
-        push_topic_count(
-            &mut topics,
-            Some(HelpTopic::PanePath),
-            wrap_aligned_field("path", &path_row_value(report), wrap_width).len(),
-        );
-        push_topic_count(
-            &mut topics,
-            Some(HelpTopic::PaneCommand),
-            wrap_aligned_field("cmd", &display_command(&report.current_command), wrap_width).len(),
-        );
-        push_topic_count(
-            &mut topics,
-            Some(HelpTopic::PaneStatus),
-            wrap_aligned_field("status", &state_summary_line(report), wrap_width).len(),
-        );
-        push_topic_count(
-            &mut topics,
-            Some(HelpTopic::PaneSignals),
-            blocking_signal_lines(&report.signals, wrap_width).len(),
-        );
-        push_topic_count(
-            &mut topics,
-            Some(HelpTopic::PaneSignals),
-            signal_badge_lines(
-                "signals",
-                secondary_signal_chips(&report.signals),
-                wrap_width,
-            )
-            .len(),
-        );
+        // 1:1 with the compact render above (pane_list_lines_with_flash else
+        // branch): one PaneMetrics hover topic per ctx/5h/7d gauge row. Same
+        // gauge_bar_rows() call ⇒ identical row count, so hover-topic alignment
+        // across stacked panes stays exact.
         push_topic_count(
             &mut topics,
             Some(HelpTopic::PaneMetrics),
-            metric_badge_lines(
-                &report.signals,
-                report.identity.identity.provider,
-                wrap_width,
-                true,
-            )
-            .len(),
-        );
-        push_topic_count(
-            &mut topics,
-            Some(HelpTopic::PaneRuntime),
-            runtime_badge_lines_wrapped(&report.signals, wrap_width).len(),
+            gauge_bar_rows(&report.signals, wrap_width).len(),
         );
     }
 
@@ -647,43 +605,15 @@ fn pane_list_lines_with_flash(
             .map(|row| row.line),
         );
     } else {
-        for row in render_pane_state_row_with_flash(report, now, flash, wrap_width) {
-            lines.push(row);
-        }
-        lines.extend(wrap_aligned_field(
-            "path",
-            &path_row_value(report),
-            wrap_width,
-        ));
-        lines.extend(wrap_aligned_field(
-            "cmd",
-            &display_command(&report.current_command),
-            wrap_width,
-        ));
-        lines.extend(wrap_aligned_field(
-            "status",
-            &state_summary_line(report),
-            wrap_width,
-        ));
-
-        lines.extend(blocking_signal_lines(&report.signals, wrap_width));
-        lines.extend(signal_badge_lines(
-            "signals",
-            secondary_signal_chips(&report.signals),
-            wrap_width,
-        ));
-
-        for row in metric_badge_lines(
-            &report.signals,
-            report.identity.identity.provider,
-            wrap_width,
-            true,
-        ) {
-            lines.push(row);
-        }
-        for row in runtime_badge_lines_wrapped(&report.signals, wrap_width) {
-            lines.push(row);
-        }
+        // v3.1.2 compact non-selected render (operator ask 2026-06-30): a pane
+        // that is NOT the selected pane shows ONLY its ctx / 5h / 7d gauge bars
+        // beneath the title+status pill already pushed above. Selecting the pane
+        // (expanded=true) opens the full section tree (path, cmd, status,
+        // signals, metric/runtime badges, recommendations). With the Qmonster
+        // monitor pane selected by default, every observed CLI tile stays
+        // scannable at a glance — headroom + reset eta — without three dense
+        // cards competing for attention.
+        lines.extend(gauge_bar_rows(&report.signals, wrap_width));
     }
 
     if with_separator {

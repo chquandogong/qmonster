@@ -1988,6 +1988,7 @@ fn collapsed_pane_keeps_flat_layout_without_section_headers() {
     let mut rep = sample_pane_report();
     rep.current_path = "/home/chquan/Qmonster".into();
     rep.current_command = "codex".into();
+    rep.signals.context_pressure = Some(MetricValue::new(0.55, SourceKind::ProviderOfficial));
     rep.signals.cost_usd = Some(MetricValue::new(3.0, SourceKind::ProviderOfficial));
     rep.signals.runtime_facts.push(RuntimeFact::new(
         RuntimeFactKind::Sandbox,
@@ -2005,10 +2006,39 @@ fn collapsed_pane_keeps_flat_layout_without_section_headers() {
         );
     }
     assert!(
-        text.iter()
-            .any(|line| line.starts_with("path    : /home/chquan/Qmonster")),
-        "collapsed pane should keep existing path row: {text:#?}"
+        text.iter().any(|line| line.contains("CTX")),
+        "collapsed pane should show the CTX gauge bar: {text:#?}"
     );
+}
+
+#[test]
+fn non_selected_pane_shows_only_gauge_bars_not_dense_fields() {
+    // v3.1.2 (operator ask 2026-06-30): scanning three panes' full detail at
+    // once is too much. A non-selected (collapsed) pane now shows ONLY its
+    // ctx / 5h / 7d gauge bars beneath the title+status pill; the dense
+    // path / cmd / status / signals / metric-badge block is reserved for the
+    // SELECTED (expanded) pane.
+    let mut rep = sample_pane_report();
+    rep.current_path = "/home/chquan/Qmonster".into();
+    rep.current_command = "codex".into();
+    rep.signals.context_pressure = Some(MetricValue::new(0.62, SourceKind::ProviderOfficial));
+    rep.signals.quota_5h_pressure = Some(MetricValue::new(0.40, SourceKind::ProviderOfficial));
+    rep.signals.quota_weekly_pressure = Some(MetricValue::new(0.20, SourceKind::ProviderOfficial));
+
+    let collapsed = line_texts(&pane_list_lines_with_width(&rep, false, false, 120));
+
+    for gauge in ["CTX", "5H", "7D"] {
+        assert!(
+            collapsed.iter().any(|l| l.contains(gauge)),
+            "compact pane must show the {gauge} gauge bar: {collapsed:#?}"
+        );
+    }
+    for dense in ["path    :", "cmd     :", "status  :", "signals :"] {
+        assert!(
+            !collapsed.iter().any(|l| l.starts_with(dense)),
+            "compact pane must drop dense field {dense:?}: {collapsed:#?}"
+        );
+    }
 }
 
 #[test]
@@ -2232,12 +2262,10 @@ fn path_row_appends_wt_of_suffix_when_pane_is_in_linked_worktree() {
         parent_repo_root: PathBuf::from("/home/operator/proj"),
     });
 
-    let lines = pane_list_lines_with_flash(&report, false, false, Instant::now(), None, 200);
-    let path_row = lines
-        .iter()
-        .map(line_text)
-        .find(|s| s.trim_start().starts_with("path"))
-        .expect("path row must be present");
+    // v3.1.2: the compact non-selected card shows only gauge bars, so assert
+    // the path/worktree-suffix logic directly on path_row_value (unchanged; it
+    // still feeds the path row in the expanded/selected card).
+    let path_row = path_row_value(&report);
 
     assert!(
         path_row.contains("/proj-feat-x"),
@@ -2261,12 +2289,9 @@ fn path_row_renders_unchanged_for_primary_worktree() {
     report.current_path = "/home/operator/proj".into();
     report.worktree_role = Some(WorktreeRole::Primary);
 
-    let lines = pane_list_lines_with_flash(&report, false, false, Instant::now(), None, 200);
-    let path_row = lines
-        .iter()
-        .map(line_text)
-        .find(|s| s.trim_start().starts_with("path"))
-        .expect("path row must be present");
+    // v3.1.2: path row lives in the expanded card now; assert path_row_value
+    // (the worktree-suffix logic) directly (see sibling test).
+    let path_row = path_row_value(&report);
 
     assert!(
         !path_row.contains(" · wt of "),
@@ -2280,12 +2305,9 @@ fn path_row_renders_unchanged_when_worktree_role_is_none() {
     report.current_path = "/tmp/non-git-cwd".into();
     report.worktree_role = None;
 
-    let lines = pane_list_lines_with_flash(&report, false, false, Instant::now(), None, 200);
-    let path_row = lines
-        .iter()
-        .map(line_text)
-        .find(|s| s.trim_start().starts_with("path"))
-        .expect("path row must be present");
+    // v3.1.2: path row lives in the expanded card now; assert path_row_value
+    // (the worktree-suffix logic) directly (see sibling test).
+    let path_row = path_row_value(&report);
 
     assert!(
         !path_row.contains(" · wt of "),

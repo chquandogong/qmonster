@@ -31,10 +31,21 @@
 >   status-table-core; `u` cycles Claude /context//usage//status//stats
 >   capture surfaces + Codex /status only).
 >
-> Settings is now 3 tabs (Thresholds / Integrations / Parameters); the
-> pane card is 4 sections (IDENTITY / NOW / PRESSURE / NEXT); the agy
-> ObserveOnly contract is 5 gates (the insights data-completeness gate 4
-> retired with the insights feature).
+> Settings is now 3 tabs (Thresholds / Integrations / Parameters) — the
+> earlier **`Rules` and `Badges` Settings tabs were removed**, so any
+> present-tense `Rules`/`Badges` Settings-tab mention in the dated rollout
+> notes below is historical only; the pane card is 4 sections (IDENTITY /
+> NOW / PRESSURE / NEXT); the agy ObserveOnly contract is 5 gates (the
+> insights data-completeness gate 4 retired with the insights feature).
+>
+> **Post-narrow additions (v3.1.0 → v3.1.2, layered on top of the reduction):**
+> bounded signals (CTX / QUOTA / 5H / WEEK) render as **gauge bars** on every
+> pane card; **non-selected panes render compact** (title + status pill +
+> ctx/5h/7d gauges only — the dense IDENTITY/NOW/PRESSURE/NEXT tree is the
+> selected pane's); the stillness→`Stale` idle fallback now also runs on the
+> **common-signal path** (agy/Antigravity, Unknown, identity-conflict), so a
+> statically-idle agy pane goes `IDLE STALE` instead of showing a persistent
+> `ACTIVE`; and the dead `K` / `n` / `a` footer-legend shortcuts were dropped.
 
 ## One-line shape (r2 canonical)
 
@@ -455,12 +466,18 @@ Ratatui widgets. Current operator surfaces:
 2. Resizable Alerts/Panes dashboard split. Operators can drag the
    divider with the mouse or use `[` / `]`, `/` cycle, and `=` reset
    from the keyboard; the footer shows the current Alerts percentage.
-3. Per-pane list with inline expansion for the selected pane, grouped
-   into four sections — IDENTITY / NOW / PRESSURE / NEXT — carrying
-   path/cmd, state/signals/proposal, metrics + runtime facts (`modes`,
-   `access`, `loaded`, `restrict`), and recommendations respectively.
+3. Per-pane list. The **selected** pane expands inline, grouped into four
+   sections — IDENTITY / NOW / PRESSURE / NEXT — carrying path/cmd,
+   state/signals/proposal, metrics + runtime facts (`modes`, `access`,
+   `loaded`, `restrict`), and recommendations respectively.
    (narrow vNext collapsed the former NOW/WHERE/PRESSURE/RUNTIME/
    RECOMMENDATIONS layout and dropped the provider-profile lever payload.)
+   **Non-selected panes render compact** (v3.1.2): just the title + status
+   pill + ctx/5h/7d gauge rows, so all observed CLIs stay scannable at a
+   glance while the Qmonster monitor pane holds the default selection.
+   Bounded signals (CTX / QUOTA / 5H / WEEK) render as **gauge bars**
+   (`gauge_bar_rows`, left-eighth block glyphs, severity-colored fill) on
+   both the selected and non-selected cards (v3.1.0 uniform dashboard).
 4. Alert command ergonomics: recommendation and cross-pane alert
    `suggested_command` values render as `run:` lines only when they are
    concrete shell commands or in-pane slash-commands; comments and
@@ -754,23 +771,23 @@ _not collected this tick_ (Claude / Codex) or _no upstream surface
 today_ (Gemini). (narrow vNext also removed the Codex app-server, so the
 Codex `quota_*_resets_at` reset timestamps no longer have a source.)
 
-| Signal                                                     |                       Claude                       |                             Codex                             |               Gemini               | Notes                                                                                       |
-| ---------------------------------------------------------- | :------------------------------------------------: | :-----------------------------------------------------------: | :--------------------------------: | ------------------------------------------------------------------------------------------- |
-| `context_pressure`                                         | ✅ sidefile JSON (preferred) + statusline fallback |                     ✅ `Context %` footer                     | ✅ `parse_gemini_context_pressure` | All three providers expose this.                                                            |
-| `context_window_size`                                      |                  ✅ sidefile JSON                  |           ✅ rollout JSONL (`model_context_window`)           |           ❌ no surface            | Task D-3: displays alongside CTX% for context window awareness.                             |
-| `input_tokens`                                             |                   ✅ USAGE block                   |           ✅ status line (+ rollout JSONL backstop)           |          ✅ model summary          | All three providers expose this.                                                            |
-| `output_tokens`                                            |            ✅ `↓ N tokens` + Done line             |           ✅ status line (+ rollout JSONL backstop)           |          ✅ model summary          | All three providers expose this.                                                            |
-| `cached_input_tokens`                                      |                   ✅ USAGE block                   | ✅ `Token usage: ... (+ N cached)` (+ rollout JSONL backstop) |           ❌ no surface            | Required denominator for `cache_hit_ratio` derivation.                                      |
-| `cache_hit_ratio`                                          |                ✅ `cache N%` direct                |              ✅ derived from cached/input counts              |           ❌ no surface            | The `cache` rule (hot/cold/drift) is therefore Claude+Codex only.                           |
-| `cost_usd`                                                 |             ✅ pricing × token counts              |  ✅ pricing × token counts (when both input+output present)   |          ❌ no token rate          | `Estimated` (project pricing table).                                                        |
-| `quota_5h_pressure`                                        |         ✅ sidefile JSON (used_percentage)         |                     ✅ statusline `5h N%`                     |           ❌ no surface            | Codex statusline takes priority over app-server snapshot.                                   |
-| `quota_weekly_pressure`                                    |         ✅ sidefile JSON (used_percentage)         |                   ✅ statusline `weekly N%`                   |           ❌ no surface            | Same precedence rule as the 5h window.                                                      |
-| `quota_*_resets_at`                                        |                  ✅ sidefile JSON                  |    ❌ no surface (statusline carries % but not reset time)    |           ❌ no surface            | narrow vNext removed the Codex app-server; only the Claude sidefile emits reset timestamps. |
-| `process_memory_mb` (RSS)                                  |            ✅ `/proc/<pid>/status` walk            |                            ✅ same                            |              ✅ same               | OS-level signal, provider-agnostic.                                                         |
-| `agent_memory_bytes`                                       |      ✅ `~/.claude/f<pane>/agent-*.yaml` scan      |                   ❌ no equivalent surface                    |      ❌ no equivalent surface      | Claude-only by file-path convention.                                                        |
-| `idle_state` (PermissionWait / InputWait / Working / Idle) |                   ✅ classifier                    |  ✅ classifier (Codex-specific cursor + 5h-limit detection)   |           ✅ classifier            | Common-tier markers populate the obvious cases first.                                       |
-| `error_hint` / `verbose_answer` / `log_storm`              |                  ✅ tail patterns                  |                       ✅ tail patterns                        |          ✅ tail patterns          | All `Heuristic`.                                                                            |
-| `active_files` (tool-call markers)                         |            ✅ Claude tool-call markers             |                  ❌ no marker contract today                  |    ❌ no marker contract today     | Fuels F-8 `ConcurrentFileEdit` + Phase 7 `CrossPaneEditCluster`.                            |
+| Signal                                                     |                       Claude                       |                             Codex                             |               Gemini               | Notes                                                                                                                                                                         |
+| ---------------------------------------------------------- | :------------------------------------------------: | :-----------------------------------------------------------: | :--------------------------------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `context_pressure`                                         | ✅ sidefile JSON (preferred) + statusline fallback |                     ✅ `Context %` footer                     | ✅ `parse_gemini_context_pressure` | All three providers expose this.                                                                                                                                              |
+| `context_window_size`                                      |                  ✅ sidefile JSON                  |           ✅ rollout JSONL (`model_context_window`)           |           ❌ no surface            | Task D-3: displays alongside CTX% for context window awareness.                                                                                                               |
+| `input_tokens`                                             |                   ✅ USAGE block                   |           ✅ status line (+ rollout JSONL backstop)           |          ✅ model summary          | All three providers expose this.                                                                                                                                              |
+| `output_tokens`                                            |            ✅ `↓ N tokens` + Done line             |           ✅ status line (+ rollout JSONL backstop)           |          ✅ model summary          | All three providers expose this.                                                                                                                                              |
+| `cached_input_tokens`                                      |                   ✅ USAGE block                   | ✅ `Token usage: ... (+ N cached)` (+ rollout JSONL backstop) |           ❌ no surface            | Required denominator for `cache_hit_ratio` derivation.                                                                                                                        |
+| `cache_hit_ratio`                                          |                ✅ `cache N%` direct                |              ✅ derived from cached/input counts              |           ❌ no surface            | The `cache` rule (hot/cold/drift) is therefore Claude+Codex only.                                                                                                             |
+| `cost_usd`                                                 |             ✅ pricing × token counts              |  ✅ pricing × token counts (when both input+output present)   |          ❌ no token rate          | `Estimated` (project pricing table).                                                                                                                                          |
+| `quota_5h_pressure`                                        |         ✅ sidefile JSON (used_percentage)         |                     ✅ statusline `5h N%`                     |           ❌ no surface            | Codex statusline takes priority over app-server snapshot.                                                                                                                     |
+| `quota_weekly_pressure`                                    |         ✅ sidefile JSON (used_percentage)         |                   ✅ statusline `weekly N%`                   |           ❌ no surface            | Same precedence rule as the 5h window.                                                                                                                                        |
+| `quota_*_resets_at`                                        |                  ✅ sidefile JSON                  |    ❌ no surface (statusline carries % but not reset time)    |           ❌ no surface            | narrow vNext removed the Codex app-server; only the Claude sidefile emits reset timestamps.                                                                                   |
+| `process_memory_mb` (RSS)                                  |            ✅ `/proc/<pid>/status` walk            |                            ✅ same                            |              ✅ same               | OS-level signal, provider-agnostic.                                                                                                                                           |
+| `agent_memory_bytes`                                       |      ✅ `~/.claude/f<pane>/agent-*.yaml` scan      |                   ❌ no equivalent surface                    |      ❌ no equivalent surface      | Claude-only by file-path convention.                                                                                                                                          |
+| `idle_state` (PermissionWait / InputWait / Working / Idle) |                   ✅ classifier                    |  ✅ classifier (Codex-specific cursor + 5h-limit detection)   |           ✅ classifier            | Common-tier markers populate the obvious cases first; v3.1.2 also runs the byte-identical-tail → `Stale` stillness fallback on the common-signal path (agy/Unknown/conflict). |
+| `error_hint` / `verbose_answer` / `log_storm`              |                  ✅ tail patterns                  |                       ✅ tail patterns                        |          ✅ tail patterns          | All `Heuristic`.                                                                                                                                                              |
+| `active_files` (tool-call markers)                         |            ✅ Claude tool-call markers             |                  ❌ no marker contract today                  |    ❌ no marker contract today     | Fuels F-8 `ConcurrentFileEdit` + Phase 7 `CrossPaneEditCluster`.                                                                                                              |
 
 Since Slice A (2026-06), Claude `context_pressure` / `quota_*_pressure` prefer the sidefile's structured `used_percentage` over the scraped statusline; `permission_mode` remains scrape-only (absent from the sidefile).
 

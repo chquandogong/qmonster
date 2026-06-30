@@ -541,4 +541,49 @@ mod tests {
             out.effects
         );
     }
+
+    #[test]
+    fn agy_idle_stale_pane_emits_no_recommendations_or_actuation() {
+        // v3.1.2 (Codex cross-check must-fix): agy/Antigravity now reaches
+        // idle_state=Some(Stale) via the common-path stillness fallback —
+        // previously unreachable (agy only got marker idle). Prove the
+        // ObserveOnly contract still holds for this newly reachable state: an
+        // agy pane transitioning None -> Stale must emit zero recommendations
+        // and zero effects (no Notify / prompt-send / actuation). log_storm is
+        // unset so even the local-only ArchiveLocal observability effect stays off.
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::{IdleCause, MetricValue};
+        let agy_id = ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Antigravity,
+                instance: 1,
+                role: crate::domain::identity::Role::Main,
+                pane_id: "%0".into(),
+            },
+            confidence: IdentityConfidence::High,
+        };
+        let signals = SignalSet {
+            idle_state: Some(IdleCause::Stale),
+            context_pressure: Some(MetricValue::new(0.95_f32, SourceKind::ProviderOfficial)),
+            quota_5h_pressure: Some(MetricValue::new(0.95_f32, SourceKind::ProviderOfficial)),
+            quota_weekly_pressure: Some(MetricValue::new(0.95_f32, SourceKind::ProviderOfficial)),
+            ..SignalSet::default()
+        };
+        let g = PolicyGates {
+            identity_confidence: IdentityConfidence::High,
+            ..PolicyGates::default()
+        };
+        // last_idle_state = None ⇒ exercise the exact None -> Stale transition.
+        let out = Engine.evaluate(&agy_id, &signals, &g, None, &[], &[]);
+        assert!(
+            out.recommendations.is_empty(),
+            "ObserveOnly: agy idle=Stale must emit zero recommendations; got {:?}",
+            out.recommendations
+        );
+        assert!(
+            out.effects.is_empty(),
+            "ObserveOnly: agy idle=Stale must produce zero effects (no Notify/prompt-send/actuation); got {:?}",
+            out.effects
+        );
+    }
 }

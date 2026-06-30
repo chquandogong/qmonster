@@ -85,6 +85,26 @@ pub fn parse_for_with_environment(
             Provider::Unknown => common::parse_common_signals(ctx.tail),
         }
     };
+    // v3.1.2 idle fix: the common-signal path (identity conflict, Antigravity,
+    // Unknown) derives idle ONLY from permission/input markers and never sees
+    // ctx.history — so a pane frozen at its idle prompt (agy's normal resting
+    // state) kept idle_state=None and rendered a persistent `● ACTIVE` pill.
+    // The per-provider adapters (claude.rs/codex.rs/gemini.rs) each already do
+    // `if idle_state.is_none() { … is_still() → Stale }`; mirror that stillness
+    // fallback for the common path here. The is_none() guard preserves any
+    // marker-based idle (PermissionWait/InputWait) already set by the parser,
+    // and the provider arms above are untouched (they ran their own classify).
+    let used_common_path = identity_conflict
+        || matches!(
+            ctx.identity.identity.provider,
+            Provider::Antigravity | Provider::Unknown
+        );
+    if used_common_path
+        && signals.idle_state.is_none()
+        && ctx.history.is_still(ctx.history.capacity())
+    {
+        signals.idle_state = Some(crate::domain::signal::IdleCause::Stale);
+    }
     // F-1: process_memory_mb fill from /proc descendant RSS when the
     // adapter left it None (Gemini's status-table ProviderOfficial
     // path is preserved by the is_none() guard).
@@ -1265,6 +1285,41 @@ mod codex_rollout_integration_tests {
         assert!(
             signals.quota_5h_pressure.is_none(),
             "toggle off → agy stays pure ObserveOnly (no enrichment)"
+        );
+    }
+
+    #[test]
+    fn agy_still_tail_marks_idle_stale_via_common_path() {
+        // v3.1.2 idle fix: agy routes through common::parse_common_signals,
+        // which derives idle ONLY from permission/input markers and never saw
+        // ctx.history. A pane frozen at its idle prompt therefore kept
+        // idle_state=None and rendered a persistent `● ACTIVE` pill. The common
+        // path must mirror the per-provider adapters (claude/codex/gemini all do
+        // `if idle_state.is_none() { … is_still() → Stale }`): a byte-identical
+        // tail across the full history window means the pane is idle.
+        let idle_tail = "  ▄▀▀ ▀▀▄\n> \nGemini 3.5 Flash (High)  ctx 0%";
+        let mut history = crate::adapters::common::PaneTailHistory::new(4);
+        for _ in 0..4 {
+            history.push(idle_tail.to_string());
+        }
+        assert!(
+            history.is_still(history.capacity()),
+            "fixture precondition: history must be still"
+        );
+        let id = agy_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let c = ctx(&id, idle_tail, &pricing, &settings, &history);
+
+        let signals = parse_for_with_environment(&c, std::path::Path::new("/proc"), None);
+
+        assert!(
+            matches!(
+                signals.idle_state,
+                Some(crate::domain::signal::IdleCause::Stale)
+            ),
+            "still agy tail must classify IDLE STALE, not persistent ACTIVE; got {:?}",
+            signals.idle_state
         );
     }
 }

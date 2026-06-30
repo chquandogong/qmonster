@@ -23,9 +23,13 @@
 - **Footer**: 2줄 상태 바입니다. 첫 줄은 현재 focus, Alerts/Panes split
   비율, `★p`/`★y`/`★a` 카운터를 보여주고, 둘째 줄은 왼쪽 `keys` 칩과
   자주 쓰는 핵심 키, 오른쪽 버전 배지를 한 줄에 맞춰 보여줍니다.
-  `keys` 칩에 마우스를 올리거나 `K`를 누르면 기존의 긴 키 목록이
+  `keys` 칩에 마우스를 올리면(또는 클릭하면) 기존의 긴 키 목록이
   title/footer 없는 넓은 key legend로 열립니다. legend는 Move / Layout /
-  Actions / Overlays 그룹으로 나뉘어 한눈에 스캔할 수 있게 표시됩니다.
+  Actions / Overlays 그룹으로 나뉘어 한눈에 스캔할 수 있게 표시되며,
+  **실제 활성 키만** 싣습니다 — narrow vNext에서 제거된 `n`(anomalies)/`a`
+  (actions) 오버레이와 v3.1.2에서 제거된 `K`(keys) 단축키는 더 이상
+  legend·footer에 표시하지 않습니다(중복이던 `K`는 `?` Help + `keys` 칩
+  클릭으로 대체).
 - **Overlay**: `t`로 target picker, `S`로 settings, `P`로 provider setup,
   `?`로 help, footer 오른쪽 아래 버전 배지를 클릭하면 Git overlay가
   열립니다. (narrow vNext에서 Metrics `m` / Anomaly Events `n` /
@@ -66,9 +70,11 @@ the Alerts/Panes split.)
 열립니다. Alerts에서는 `bulk hide`, 헤더, `dismiss`,
 `summary`, detail(`next`/`run`/`anchor`/`others`), copy hint를 행별로
 설명합니다. 최상단 `Now` row는 현재 우선순위 요약을 설명합니다.
-Panes에서는 헤더(provider/role/CLI version), `state`,
+Panes에서 **선택된(펼친) pane**은 헤더(provider/role/CLI version), `state`,
 `path`, `cmd`, `status`, `signals`, metrics, tokens/cache io, runtime
 facts(`session`/`loaded` 포함), recommendations를 행별로 설명합니다.
+**비선택 pane**은 제목 + 상태 알약 + ctx/5h/7d 게이지 행만 두므로(v3.1.2
+축약 렌더) hover 토픽도 그 게이지 행에 1:1로 대응합니다.
 하단 상태 줄의 `★p`, `★y`, `★a`는 각각 prompt-send 제안 수, 복사 가능한
 alert 수, 최근 audit 심각도에 대한 help를 엽니다 (display-only 카운터 —
 클릭해도 오버레이를 열지 않습니다). footer의 `keys` 칩은
@@ -174,8 +180,12 @@ session:window · Provider role · %pane_id
   state/blocked/signals/proposal, `PRESSURE`는 metrics/tokens/cache에
   더해 이전 `RUNTIME` 구역의 provider runtime facts(modes/access/loaded
   /restrict)를 합쳐 담습니다, `NEXT`는 추천과 그 detail을 담습니다
-  (이전 `RECOMMENDATIONS`에서 이름 변경). 접힌 pane 행은 기존처럼 flat
-  row로 유지됩니다.
+  (이전 `RECOMMENDATIONS`에서 이름 변경). **비선택(접힌) pane은 v3.1.2에서
+  축약**되어 제목 + 상태 알약 아래 **ctx/5h/7d 게이지 바만** 보여줍니다.
+  path/cmd/status/signals/metrics/runtime 블록은 선택된 pane에서만 펼칩니다.
+  기본값인 Qmonster monitor pane이 선택돼 있으면 관찰 대상 CLI 타일은 모두
+  게이지만 표시 → 한눈에 헤드룸을 스캔하고, ↑/↓로 pane을 선택하면 그 카드만
+  전체 detail로 펼쳐집니다.
 - 펼친 pane card는 각 섹션 헤더 아래 행에 트리 글리프를 덧붙입니다.
   형제 행 중 마지막은 `└ `, 그 외에는 `├ `로 시작하고, 랩 발생 시의
   continuation 라인은 위쪽 형제가 더 있으면 `│ `, 마지막 형제의 본문
@@ -194,9 +204,10 @@ session:window · Provider role · %pane_id
   descendant CLI `pid`/`exe`/`argv`를 확인한 뒤 그 exact executable/script에
   `--version`을 실행해 얻은 값만 표시합니다. 현재 pane의 실행 버전이라고
   확정할 수 없으면 배지 자체를 생략합니다.
-- 각 pane에는 보통 다음 줄들이 붙습니다.
+- **선택된(펼친) pane**에는 보통 다음 줄들이 붙습니다.
   `state`, `path`, `cmd`, `status`, `blocked`, `signals`, `metrics`,
-  `modes`, `access`, `loaded`, `restrict`
+  `modes`, `access`, `loaded`, `restrict` (비선택 pane은 이 블록 대신
+  ctx/5h/7d 게이지 바만 표시 — v3.1.2 축약 렌더).
 - `state` 줄은 pane가 멈춤/대기 상태일 때 보입니다. 상태가 바뀐 직후에는
   약 3초 동안 `CHANGED` 배지와 pulse highlight가 붙고, active로 돌아온
   경우에도 짧게 `▶ ACTIVE` state 줄을 보여줍니다. 색만으로 상태 변화를
@@ -242,10 +253,17 @@ session:window · Provider role · %pane_id
   정밀도를 주고, 채움/값 색은 위 60/75/85 severity 임계치를 그대로 따릅니다.
   막대 뒤 trailing에는 CTX의 window-size(`of 1.00M`) 또는 quota의 reset
   eta(`resets 2h13m`)가 붙습니다. `TOKENS` / `COST` / `MODEL` / `MEM` /
-  `CACHE`는 계속 badge로 표시됩니다. 선택(섹션트리)·비선택(flat) pane 모두
-  같은 막대바를 보여줍니다. pane 제목의 상태 칩은 at-a-glance 글리프
+  `CACHE`는 계속 badge로 표시됩니다. 게이지 막대바는 **선택된 pane(섹션
+  트리 안)과 비선택 pane(v3.1.2 축약 — 제목+상태 칩 아래 게이지만) 양쪽
+  모두** 같은 형식으로 렌더됩니다. pane 제목의 상태 칩은 at-a-glance 글리프
   (`⌛ WAIT INPUT` / `● ACTIVE` / `✓ IDLE DONE` / `◌ IDLE STALE` /
-  `⛔ USAGE LIMIT`)를 달고, 비-idle pane은 상시 `● ACTIVE`를 표시합니다.
+  `⛔ USAGE LIMIT`)를 답니다. `● ACTIVE`는 **tail이 계속 변하는 동안에만**
+  표시되고, full history window에서 tail이 byte-동일하면 `◌ IDLE STALE`로
+  바뀝니다 — v3.1.2부터 이 stillness fallback이 per-provider adapter뿐 아니라
+  **common 경로(agy/Antigravity·Unknown·identity-conflict)에도** 적용되어,
+  정적으로 멈춘 idle agy pane이 더 이상 영구 `● ACTIVE`로 오표시되지 않습니다
+  (agy는 ObserveOnly라 IDLE STALE 표시는 actuation을 일으키지 않음 —
+  `runtime_refresh_commands`가 Antigravity에 빈 목록을 반환).
 - 현재 `CTX`는 구조적으로 확인 가능한 provider status에서만 채웁니다.
   Claude는 live statusline의 `CTX N%`, Codex는 bottom status line,
   Gemini는 status table의 `context` 컬럼을 사용합니다. Claude `/clear`
