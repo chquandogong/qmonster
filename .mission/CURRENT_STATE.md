@@ -1,6 +1,51 @@
 # CURRENT_STATE
 
-_Last updated: 2026-06-30 (Claude, narrow vNext — branch `narrow-vnext`, UNRELEASED/unmerged. A 10-slice "narrow" reduction on top of v2.8.0: cut ~27k LOC of overlay/profile/enrichment/insights sprawl, keep the provider-neutral observe/recommend core, redesign the pane card to 4 sections. main stays at v2.8.0 `aa584b6`. Pending human gate for version + push/release. See the narrow-vNext section directly below; v2.8.0 prose preserved beneath it.)._
+_Last updated: 2026-06-30 (Claude, **uniform-vNext** — branch `vNext-uniform`, UNRELEASED/unmerged on top of the published v3.0.0. A 4-slice "uniform per-CLI display" feature add (→ v3.1.0): every CLI (Claude/Codex/agy) shows ctx/quota/reset, rendered as gauge bars + status pills; agy enrichment restored ObserveOnly-safe. main stays at v3.0.0 `908c089`. Pending human gate for push/tag/release. See the uniform-vNext section directly below; narrow-vNext (shipped as v3.0.0) + v2.8.0 prose preserved beneath.)._
+
+## uniform-vNext — uniform per-CLI display (branch `vNext-uniform`, unreleased → v3.1.0)
+
+Triggered by the post-v3.0.0 UI re-examination
+(`.docs/claude/Qmonster-2026-06-30-ui-weight-rethink.md`): the narrow reduction cut
+code but the operator-facing surface stayed ≈ v2.8.0. Operator chose **(A) uniform** —
+every CLI shows ctx/quota/reset as gauge bars; agy treadmill risk explicitly accepted.
+
+**4 slices** (each `cargo test --all-targets` + clippy + fmt green; commits
+`890be3d..ef868e2`, parent v3.0.0 `908c089`):
+
+| # | slice | commit | lib |
+| - | ----- | ------ | --: |
+| S1 | Codex reset ETA ← rollout `rate_limits` (no app-server resurrection) | `890be3d` | 1230 |
+| S2 | agy footer/sidefile enrichment restored + ObserveOnly hardening | `124841e` | 1242 |
+| S3 | CTX/quota gauge bars in the pane card | `cade006` | 1244 |
+| S3b | status-pill glyphs + persistent `● ACTIVE` + tile spacing | `ef868e2` | 1246 |
+
+Net: lib **1227 → 1246**, integration 62 unchanged. 16 files, +1081/−85 over v3.0.0.
+
+- **S1:** `codex_rollout.rs` reads `rate_limits.{primary,secondary}.resets_at` → fills
+  `quota_5h/weekly_resets_at` (classify by `window_minutes` ≤720→5h else weekly,
+  fill-when-absent). Reset restored WITHOUT the app-server (Slice 6a stays cut).
+- **S2:** `agy_footer.rs`/`agy_sidefile.rs` restored verbatim from v2.8.0; `[provider_setup]
+  agy_enrichment` toggle (**default false** — opt-in; quota/reset need the operator-wired
+  statusLine sidefile export); fail-closed agy descendant confirm. **ObserveOnly held**
+  (Codex §5 plan-cross-check, proceed-with-fixes 82/100): the engine choke-point +
+  post-engine cost/identity/anomaly guards already held; NEW — `dashboard::
+  quota_or_cost_now_summary` filters observe-only (**CFX-S2-1**: agy quota shows in its
+  tile but never promotes to the Now-strip), auto-snapshot gains `!observe_only`
+  (**CFX-S2-2**). cross-pane + token-persist = OOS (verified). agy_transcript NOT restored.
+  eval: `.mission/evals/Qmonster-vNext-2026-06-30-s2-agy-restore-codex-review.result.yaml`.
+- **S3/S3b:** CTX/quota → gauge bars (`gauge_filled_empty`/`gauge_bar_line`/`gauge_bar_rows`,
+  left-eighth glyphs, severity 60/75/85, trailing = window-size or reset eta), every pane
+  (selected=section-tree, others=flat). Status pills gain glyphs (⌛/●/✓/◌/⛔) + persistent
+  `● ACTIVE`; blank-line tile spacing (hover-topic map kept 1:1). Deferred: full box
+  borders + `--once` gauge parity.
+
+**Human gate — PENDING:** Codex diff-review (pre-push) → **push/tag/release v3.1.0** (§1.6).
+main = v3.0.0 `908c089` unchanged; `vNext-uniform` is local commits only.
+
+---
+
+_Earlier — narrow-vNext shipped as **v3.0.0** (PUBLISHED 2026-06-30; npm latest=3.0.0,
+SLSA v1, GitHub Release). Full detail in the narrow-vNext section directly below._
 
 ## narrow-vNext — "narrow" reduction (branch `narrow-vnext`, unreleased)
 

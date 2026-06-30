@@ -235,6 +235,17 @@ session:window · Provider role · %pane_id
   85% 이상은 `Risk`, 75% 이상은 `Warning`, 60% 이상은 `Concern`으로
   취급됩니다. `QUOTA`, `QUOTA 5H`, `QUOTA WEEK` badge도 같은 severity
   임계치를 공유합니다.
+- **v3.1.0 (uniform vNext)**: 펼친 pane 카드에서 bounded 신호(CTX / QUOTA /
+  QUOTA 5H / QUOTA WEEK)는 badge 대신 **게이지 막대바**로 렌더됩니다 — 예:
+  `CTX  █████████▎░░░░░░  58%  of 1.00M`,
+  `5H  ██████████████▏░  88%  resets 47m`. 좌-8분할 글리프로 sub-cell
+  정밀도를 주고, 채움/값 색은 위 60/75/85 severity 임계치를 그대로 따릅니다.
+  막대 뒤 trailing에는 CTX의 window-size(`of 1.00M`) 또는 quota의 reset
+  eta(`resets 2h13m`)가 붙습니다. `TOKENS` / `COST` / `MODEL` / `MEM` /
+  `CACHE`는 계속 badge로 표시됩니다. 선택(섹션트리)·비선택(flat) pane 모두
+  같은 막대바를 보여줍니다. pane 제목의 상태 칩은 at-a-glance 글리프
+  (`⌛ WAIT INPUT` / `● ACTIVE` / `✓ IDLE DONE` / `◌ IDLE STALE` /
+  `⛔ USAGE LIMIT`)를 달고, 비-idle pane은 상시 `● ACTIVE`를 표시합니다.
 - 현재 `CTX`는 구조적으로 확인 가능한 provider status에서만 채웁니다.
   Claude는 live statusline의 `CTX N%`, Codex는 bottom status line,
   Gemini는 status table의 `context` 컬럼을 사용합니다. Claude `/clear`
@@ -594,7 +605,7 @@ script-low-token 프로파일 *이름*을 추천하는 별개 룰; lever payload
     템플릿과, OAuth는 그대로 유지하되 cache 필드는 FAQ-documented OAuth
     한계로 인해 노출되지 않는다는 informational note (API key 전환은
     운영자 선호에 따라 deferred).
-  - **agy 탭 (v2.4.0; narrow vNext에서 ObserveOnly-only로 환원)**:
+  - **agy 탭 (v2.4.0; v3.0.0 ObserveOnly-only 환원; v3.1.0 opt-in enrichment 복원)**:
     Google이 2026-06-18부터 free / Pro / Ultra / Code Assist 개인
     라이선스에서 Gemini CLI를 대체하기로 발표한 새 Antigravity
     CLI(`agy`)를 위한 탭입니다. 짧고 솔직한 안내 — agy는 Antigravity
@@ -606,12 +617,17 @@ script-low-token 프로파일 *이름*을 추천하는 별개 룰; lever payload
     Enterprise / Cloud / Standard Gemini CLI 라이선스는 2026-06-18
     이후에도 유지되므로 Gemini 탭은 계속 유효합니다.
 
-    (narrow vNext에서 agy enrichment — footer scrape + structured
-    sidefile로 `model_name` · `context%` · `token_count` · quota를
-    채우던 v2.7.0/v2.8.0 `agy_enrichment` 경로와 그 `statusLine.command`
-    권장 스니펫 + `[provider_setup] agy_enrichment` 토글 — 은 통째로
-    제거되었습니다. agy 탭은 다시 짧은 ObserveOnly 안내만 보여주며,
-    어떤 enrichment 배지도 표시하지 않습니다.)
+    (narrow vNext(v3.0.0)에서 제거됐던 agy enrichment — footer scrape +
+    structured sidefile로 `model_name` · `context%` · `token_count` ·
+    quota · reset을 채우는 v2.7.0/v2.8.0 경로 — 가 **v3.1.0(uniform vNext)
+    에서 복원**되었습니다. `[provider_setup] agy_enrichment` 토글(기본
+    **false**, opt-in)로 켜고 운영자가 agy `statusLine.command` sidefile
+    export를 wiring하면, agy pane도 ctx/quota/reset 게이지를 Claude/Codex와
+    동일하게 보여줍니다. 단 agy는 여전히 **ObserveOnly** — enrichment로 신호가
+    채워져도 engine `provider_is_observe_only` choke-point + Now-strip
+    observe-only 가드가 agy를 추천/경보/actuation 표면에서 완전히 차단합니다
+    (이 contract는 v3.1.0 S2에서 Codex §5 교차검증으로 재확인). statusLine
+    미설정 시 agy 탭은 짧은 ObserveOnly 식별 안내만 보여줍니다.)
 
   - **Tmux 탭**: 추천 4-pane 워크플로우 설치 스크립트를 `y`로 복사합니다.
     복사한 스크립트를 실행하면 `~/ts.sh` (Claude/Codex/Gemini/Qmonster
