@@ -1,0 +1,55 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-06-30"
+  target_versions:
+    - "3.1.0"
+  commit_range: "plan-level cross-check on aa584b6 snapshot, before S2 implementation on branch vNext-uniform (S1 parent 890be3d)"
+  scope: "uniform-vNext S2 — restore agy (Antigravity) footer/sidefile enrichment (model/context%/quota 5h+weekly/reset) removed by narrow Slice 6b (175aa4d), for uniform per-CLI display, WITHOUT breaking the agy ObserveOnly contract. Operator decision A (uniform dashboard; treadmill risk accepted)."
+  evidence_mode: "Live `codex exec --sandbox read-only` (codex-cli 0.142.4). Plan/leak-inventory review: enumerate every surface that consumes context_pressure/quota and could emit a recommendation/advisory/actuation/notify for an agy pane once enrichment populates those fields; identify guard points + regression tests + restore pitfalls. Raw 458-line trace+answer at .docs/claude/Qmonster-vNext-2026-06-30-s2-agy-restore-codex-crosscheck.md."
+  internal_review_first: "Claude verified Codex's primary UI-leak finding directly in code (dashboard.rs quota_or_cost_now_summary scans all reports' quota_5h_pressure with no observe-only filter) before implementing the guard. Confirmed the engine choke-point + the three post-engine appends (cost/identity/anomaly) already carry !observe_only in v3.0.0."
+  verdict: proceed-with-fixes
+  confidence: 82
+  local_validation:
+    cargo_fmt_check: pass
+    cargo_clippy_all_targets_d_warnings: pass
+    cargo_test_all_targets: pass
+    test_counts: "1242 lib (+12 over S1's 1230) + 62 integration + 24 supporting; --all-targets green single-threaded; the known cli_version parallel-load flake re-ran green"
+  summary:
+    code_assessment: "Engine path is safe: provider_is_observe_only (engine.rs:39) early-returns empty recs for agy; the alert queue only regroups existing recs (mints none from SignalSet); cost/identity-drift/anomaly post-engine appends are already !observe_only-gated. The ONE new leak the enrichment opens is the UI Now-strip raw-signal promotion."
+    primary_risk: "dashboard::quota_or_cost_now_summary promotes any pane with quota_5h_pressure >= 0.85 (and cost-budget pressure) into the Now attention strip with NO observe-only filter — populating agy quota would surface agy as a Warning attention item (ObserveOnly violation)."
+  must_fix_before_release:
+    - id: CFX-S2-1
+      severity: critical
+      file: "src/ui/dashboard.rs"
+      title: "Now-strip quota_or_cost_now_summary has no observe-only filter — agy quota would be promoted into the attention strip once enrichment populates it."
+      proposed_change: "Filter observe-only providers from BOTH the quota selection and the cost selection in quota_or_cost_now_summary. agy quota stays visible in its pane tile (display) but is never promoted as an alert. agy idle/wait state still shows (state, not advisory)."
+      status: closed
+      closed_by: "S2 (vNext-uniform) — observe-only filter added to both selections; regression now_strip_does_not_promote_observe_only_agy_quota locks it (a non-observe pane with the same pressure IS promoted, isolating the gate)."
+    - id: CFX-S2-2
+      severity: important
+      file: "src/app/event_loop.rs"
+      title: "Auto-snapshot block (reset-boundary) lacked an explicit !observe_only guard — indirectly safe only because agy recs are empty."
+      proposed_change: "Add `&& !observe_only` to the auto-snapshot gate (defense-in-depth, mirrors the cost/identity/anomaly appends)."
+      status: closed
+      closed_by: "S2 — guard added."
+    - id: CFX-S2-3
+      severity: important
+      title: "Need enriched-agy regression: ctx + 5h/weekly quota + resets populated => zero recs, zero effects (no Notify, no PromptSendProposed)."
+      proposed_change: "Strengthen policy::engine::tests::agy_enriched_pane_recommendations_are_empty with weekly quota + both resets + effects assertions."
+      status: closed
+      closed_by: "S2 — engine test strengthened; 6-gate agy_observeonly_regression stays green."
+  decided_out_of_scope:
+    - id: OOS-S2-1
+      title: "Cross-pane findings (event_loop.rs) carry no agy filter."
+      decision: "OUT of S2 — Codex confirmed these are NOT enrichment-driven (pre-existing, path-based). Whether agy participates in cross-pane conflict is a separate operator semantic call; S2 does not change pre-existing behavior. Logged as a follow-up question."
+    - id: OOS-S2-2
+      title: "Token/cost sample write-side is not observe-only guarded."
+      decision: "MOOT for agy — agy enrichment populates token_count/context/quota, NOT input_tokens/output_tokens/cost_usd/cached_input_tokens, so the sample-write trigger never fires for agy; the read-side filter already excludes agy. No untestable guard added."
+  scope_note:
+    transcript: "agy_transcript.rs (activity-only, depended on the removed RuntimeFactKind::AgyActivity) NOT restored — Codex confirmed footer+sidefile are sufficient for ctx/quota/reset/model/token uniformity."
+  follow_ups:
+    - "Codex DIFF-review of the S2 commit (this artifact is the plan-level pass; the diff-review is the pre-push gate)."
+    - "Provider Setup agy snippet (statusLine sidefile export) — moved to dashboard.rs in v3.0.0; transplant deferred (operator already wired it in v2.8.0)."
+    - "docs/ai sync (UI_MANUAL/ARCHITECTURE/VALIDATION) + mission ledger for v3.1.0."
+    - "agy_enrichment defaults FALSE (opt-in) — operator enables + wires the sidefile export for live quota/reset."

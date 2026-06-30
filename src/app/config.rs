@@ -433,6 +433,13 @@ pub struct ProviderSetupConfig {
     /// Codex rollout reader backstop. `true` to read and observe Codex
     /// session data when available; `false` to disable the reader.
     pub codex_rollout: bool,
+    /// uniform-vNext S2: agy (Antigravity) footer/sidefile enrichment.
+    /// `false` by default — agy's quota/reset come from an operator-wired
+    /// `statusLine.command` sidefile export and its schema is less stable,
+    /// so enrichment stays opt-in. When enabled the agy tile shows
+    /// model/context/quota/reset; agy remains ObserveOnly regardless
+    /// (the engine choke-point + Now-strip guard emit zero recommendations).
+    pub agy_enrichment: bool,
 }
 
 impl Default for ProviderSetupConfig {
@@ -440,6 +447,7 @@ impl Default for ProviderSetupConfig {
         Self {
             claude_sidefile: true,
             codex_rollout: true,
+            agy_enrichment: false,
         }
     }
 }
@@ -1268,6 +1276,10 @@ stillness_polls = 6
             absent.provider_setup.codex_rollout,
             "codex_rollout must default to true — rollout files need no operator setup"
         );
+        assert!(
+            !absent.provider_setup.agy_enrichment,
+            "agy_enrichment must default to false — opt-in, operator-wired sidefile"
+        );
     }
 
     #[test]
@@ -1276,10 +1288,15 @@ stillness_polls = 6
 [provider_setup]
 claude_sidefile = false
 codex_rollout = false
+agy_enrichment = true
 "#;
         let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
         assert!(!cfg.provider_setup.claude_sidefile);
         assert!(!cfg.provider_setup.codex_rollout);
+        assert!(
+            cfg.provider_setup.agy_enrichment,
+            "agy_enrichment override must parse to true"
+        );
     }
 
     #[test]

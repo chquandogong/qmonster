@@ -199,6 +199,7 @@ where
             pane_pid: pane.pane_pid,
             current_path: &pane.current_path,
             codex_rollout_enabled: ctx.config.provider_setup.codex_rollout,
+            agy_enrichment_enabled: ctx.config.provider_setup.agy_enrichment,
         };
         let mut signals = crate::adapters::parse_for(&parse_ctx);
         if !matches!(
@@ -484,6 +485,7 @@ where
         // baseline (disabled) regression sees an empty map.
         if let Some(writer) = ctx.snapshot_writer.as_ref()
             && gates.reset_auto_snapshot
+            && !observe_only
         {
             // Extract the fields we need before any mutable borrow of ctx
             // so the borrow checker can verify disjoint access.

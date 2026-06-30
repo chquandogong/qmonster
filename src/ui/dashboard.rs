@@ -341,6 +341,11 @@ fn quota_or_cost_now_summary(
 ) -> Option<NowStripSummary> {
     let quota = reports
         .iter()
+        // ObserveOnly (agy): its quota is shown in the pane tile, but must never
+        // be promoted into the Now attention strip — that is an advisory surface.
+        .filter(|report| {
+            !crate::policy::engine::provider_is_observe_only(report.identity.identity.provider)
+        })
         .filter_map(|report| {
             report
                 .signals
@@ -365,6 +370,10 @@ fn quota_or_cost_now_summary(
 
     reports
         .iter()
+        // ObserveOnly (agy): never promote agy cost into the Now strip.
+        .filter(|report| {
+            !crate::policy::engine::provider_is_observe_only(report.identity.identity.provider)
+        })
         .find(|report| cost_is_budget_pressure(report, cost_budget_usd))
         .map(|report| {
             let rate = cost_burn_usd_per_hour(&report.recent_token_samples)
@@ -2421,6 +2430,30 @@ mod tests {
         assert_eq!(
             summary.severity,
             crate::domain::recommendation::Severity::Warning
+        );
+    }
+
+    #[test]
+    fn now_strip_does_not_promote_observe_only_agy_quota() {
+        use crate::domain::identity::Provider;
+        use crate::domain::origin::SourceKind;
+        use crate::domain::signal::MetricValue;
+        // uniform-vNext S2 guard: agy is ObserveOnly. Even with enrichment
+        // populating a high quota, it must NOT be promoted into the Now
+        // attention strip (it is shown in the pane tile only) — promotion is
+        // an advisory surface. A non-observe-only pane with the same pressure
+        // (the test above) IS promoted, so this isolates the provider gate.
+        let mut report = pending_actions_pane_report(false, vec![]);
+        report.identity.identity.provider = Provider::Antigravity;
+        report.signals.quota_5h_pressure =
+            Some(MetricValue::new(0.95, SourceKind::ProviderOfficial));
+
+        let summary = now_strip_summary_for(&[report], &[], 1_700_000_000, 200.0);
+
+        assert!(
+            !summary.text.contains("QUOTA"),
+            "agy quota must not reach the Now strip (ObserveOnly); got: {}",
+            summary.text
         );
     }
 

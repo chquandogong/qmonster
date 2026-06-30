@@ -683,6 +683,7 @@ mod tests {
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: true,
             codex_rollout: true,
+            agy_enrichment: false,
         };
         let mut overlay = ProviderSetupOverlay::default();
 
@@ -692,6 +693,7 @@ mod tests {
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: false,
             codex_rollout: false,
+            agy_enrichment: false,
         };
         overlay.sync_from_config(&cfg);
         assert!(!overlay.claude_sidefile_enabled);
@@ -782,6 +784,7 @@ mod tests {
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: true,
             codex_rollout: true,
+            agy_enrichment: false,
         };
         let overlay = ProviderSetupOverlay::from_config(&cfg);
         assert!(overlay.claude_sidefile_enabled);
@@ -790,6 +793,7 @@ mod tests {
         cfg.provider_setup = ProviderSetupConfig {
             claude_sidefile: false,
             codex_rollout: false,
+            agy_enrichment: false,
         };
         let overlay = ProviderSetupOverlay::from_config(&cfg);
         assert!(!overlay.claude_sidefile_enabled);

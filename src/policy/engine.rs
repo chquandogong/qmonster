@@ -497,6 +497,15 @@ mod tests {
                     .with_provider(Provider::Antigravity),
             ),
             quota_5h_pressure: Some(MetricValue::new(0.95_f32, SourceKind::ProviderOfficial)),
+            quota_weekly_pressure: Some(MetricValue::new(0.95_f32, SourceKind::ProviderOfficial)),
+            quota_5h_resets_at: Some(MetricValue::new(
+                1_700_000_000_u64,
+                SourceKind::ProviderOfficial,
+            )),
+            quota_weekly_resets_at: Some(MetricValue::new(
+                1_700_600_000_u64,
+                SourceKind::ProviderOfficial,
+            )),
             ..SignalSet::default()
         };
         let g = PolicyGates {
@@ -508,6 +517,23 @@ mod tests {
             out.recommendations.is_empty(),
             "ObserveOnly: agy enriched pane must emit zero recommendations; got {:?}",
             out.recommendations
+        );
+        // uniform-vNext S2: full enrichment (ctx + 5h/weekly quota + resets) must
+        // also leak no actuation/notify, not merely empty recs.
+        assert!(
+            !out.effects
+                .iter()
+                .any(|e| matches!(e, crate::domain::recommendation::RequestedEffect::Notify)),
+            "ObserveOnly: agy must not trigger Notify; got {:?}",
+            out.effects
+        );
+        assert!(
+            !out.effects.iter().any(|e| matches!(
+                e,
+                crate::domain::recommendation::RequestedEffect::PromptSendProposed { .. }
+            )),
+            "ObserveOnly: agy must not produce a prompt-send proposal; got {:?}",
+            out.effects
         );
     }
 }

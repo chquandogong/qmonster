@@ -1,4 +1,6 @@
 pub mod agent_memory;
+pub mod agy_footer;
+pub mod agy_sidefile;
 pub mod claude;
 pub mod claude_sidefile;
 pub mod codex;
@@ -41,6 +43,10 @@ pub struct ParserContext<'a> {
     /// (`[provider_setup] codex_rollout`). When false, the rollout
     /// reader is never consulted.
     pub codex_rollout_enabled: bool,
+    /// uniform-vNext S2: operator toggle for agy footer/sidefile enrichment
+    /// (`[provider_setup] agy_enrichment`). When false, agy stays pure
+    /// ObserveOnly identification (no model/context/quota/reset signals).
+    pub agy_enrichment_enabled: bool,
 }
 
 /// Provider-specific parser. Each adapter receives a ParserContext
@@ -206,6 +212,92 @@ pub fn parse_for_with_environment(
             }
         }
     }
+    // uniform-vNext S2: agy footer/sidefile enrichment (restores v2.8.0 Slice
+    // C3). Footer scrape fills model / context% / token-count (always
+    // pane-correct) when absent; the structured sidefile OVERRIDES when present
+    // and unambiguously attributed by cwd. Both ProviderOfficial. DISPLAY-ONLY —
+    // agy stays ObserveOnly: the `provider_is_observe_only` engine choke-point +
+    // the Now-strip observe-only guard keep these populated signals off every
+    // recommendation / alert / actuation surface.
+    if ctx.agy_enrichment_enabled
+        && matches!(ctx.identity.identity.provider, Provider::Antigravity)
+        && !identity_conflict
+        && !ctx.current_path.is_empty()
+        && agy_process_confirmed(ctx, proc_root)
+    {
+        let metric_str = |v: String| {
+            crate::domain::signal::MetricValue::new(
+                v,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )
+            .with_confidence(0.9)
+            .with_provider(Provider::Antigravity)
+        };
+        let metric_f32 = |v: f32| {
+            crate::domain::signal::MetricValue::new(
+                v,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )
+            .with_confidence(0.9)
+            .with_provider(Provider::Antigravity)
+        };
+        let metric_u64 = |v: u64| {
+            crate::domain::signal::MetricValue::new(
+                v,
+                crate::domain::origin::SourceKind::ProviderOfficial,
+            )
+            .with_confidence(0.9)
+            .with_provider(Provider::Antigravity)
+        };
+
+        // (a) Footer scrape — fill-when-absent (always the pane's own text).
+        let footer = agy_footer::parse_agy_footer(ctx.tail);
+        if signals.model_name.is_none()
+            && let Some(m) = footer.model
+        {
+            signals.model_name = Some(metric_str(m));
+        }
+        if signals.context_pressure.is_none()
+            && let Some(p) = footer.context_used_pct
+        {
+            signals.context_pressure = Some(metric_f32(p));
+        }
+        if signals.token_count.is_none()
+            && let Some(n) = footer.token_count
+        {
+            signals.token_count = Some(metric_u64(n));
+        }
+
+        // (b) Structured sidefile — OVERRIDE when present + unambiguous by cwd.
+        if let Some(home) = home_dir
+            && let Some(sf) = agy_sidefile::read_agy_sidefile_for_path(home, ctx.current_path)
+        {
+            if let Some(m) = sf.model {
+                signals.model_name = Some(metric_str(m));
+            }
+            if let Some(pct) = sf.context_used_percentage {
+                signals.context_pressure = Some(metric_f32((pct / 100.0).clamp(0.0, 1.0) as f32));
+            }
+            if let Some(n) = sf.context_window_size {
+                signals.context_window_size = Some(metric_u64(n));
+            }
+            if let Some(n) = sf.token_count {
+                signals.token_count = Some(metric_u64(n));
+            }
+            if let Some(p) = sf.quota_5h_pressure {
+                signals.quota_5h_pressure = Some(metric_f32((p as f32).clamp(0.0, 1.0)));
+            }
+            if let Some(ts) = sf.quota_5h_resets_at {
+                signals.quota_5h_resets_at = Some(metric_u64(ts));
+            }
+            if let Some(p) = sf.quota_weekly_pressure {
+                signals.quota_weekly_pressure = Some(metric_f32((p as f32).clamp(0.0, 1.0)));
+            }
+            if let Some(ts) = sf.quota_weekly_resets_at {
+                signals.quota_weekly_resets_at = Some(metric_u64(ts));
+            }
+        }
+    }
     signals
 }
 
@@ -227,6 +319,22 @@ fn codex_rollout_process_confirmed(ctx: &ParserContext, proc_root: &std::path::P
         return false;
     };
     cli_process_basename_contains(&desc, "codex")
+}
+
+fn agy_process_confirmed(ctx: &ParserContext, proc_root: &std::path::Path) -> bool {
+    // agy correlation is by shared `workspace` (cwd), which is weaker than
+    // Claude session_id or Codex cwd+rollout. Without a confirmed descendant
+    // `agy` process we must NOT attribute — return false (fail closed), unlike
+    // the Claude/Codex helpers that return true on a missing pane_pid. Prevents
+    // mis-attribution across unrelated agy sessions in the same workspace.
+    let Some(pid) = ctx.pane_pid else {
+        return false;
+    };
+    let Some(desc) = process_memory::read_descendant_cli_process_with_proc_root(pid, proc_root)
+    else {
+        return false;
+    };
+    cli_process_basename_contains(&desc, "agy")
 }
 
 fn cli_process_basename_contains(
@@ -422,6 +530,7 @@ pub(crate) fn ctx<'a>(
         pane_pid: None,
         current_path: "", // F-2: test fixture; production wires from snapshot.current_path
         codex_rollout_enabled: false,
+        agy_enrichment_enabled: false,
     }
 }
 
@@ -871,6 +980,22 @@ mod codex_rollout_integration_tests {
             confidence: IdentityConfidence::High,
         }
     }
+    fn agy_id() -> ResolvedIdentity {
+        ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Antigravity,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%3".into(),
+            },
+            confidence: IdentityConfidence::High,
+        }
+    }
+    fn write_agy_sidefile(home: &std::path::Path, cid: &str, body: &str) {
+        let dir = home.join(".local/share/ai-cli-status/agy");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(format!("{cid}.json")), body).unwrap();
+    }
     fn write_rollout(home: &std::path::Path, cwd: &str) {
         let dir = home.join(".codex/sessions/2026/06/29");
         fs::create_dir_all(&dir).unwrap();
@@ -1070,6 +1195,76 @@ mod codex_rollout_integration_tests {
         assert_eq!(
             signals.quota_5h_resets_at.as_ref().unwrap().source_kind,
             crate::domain::origin::SourceKind::ProviderOfficial
+        );
+    }
+
+    #[test]
+    fn agy_enrichment_fills_quota_when_enabled_and_agy_descendant_confirmed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = "/repo/qmonster";
+        write_agy_sidefile(
+            tmp.path(),
+            "conv1",
+            r#"{"cwd":"/repo/qmonster","conversation_id":"conv1","model":"Gemini 3.5 Flash (High)","context_used_percentage":42.0,"quota_5h_pressure":0.95,"quota_5h_resets_at":1700000000,"quota_weekly_pressure":0.30,"quota_weekly_resets_at":1700600000}"#,
+        );
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 1, "bash", &[2]);
+        write_proc(&proc_root, 2, "agy", &[]);
+        let id = agy_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, "", &pricing, &settings, &history);
+        c.current_path = cwd;
+        c.pane_pid = Some(1);
+        c.agy_enrichment_enabled = true;
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
+
+        let q5 = signals.quota_5h_pressure.as_ref().expect(
+            "agy sidefile must fill 5h quota when enrichment on + agy descendant confirmed",
+        );
+        assert!(
+            (q5.value - 0.95).abs() < 1e-3,
+            "5h quota ~0.95, got {}",
+            q5.value
+        );
+        assert_eq!(q5.provider, Some(Provider::Antigravity));
+        assert_eq!(
+            signals.quota_5h_resets_at.as_ref().map(|m| m.value),
+            Some(1_700_000_000)
+        );
+        assert!(
+            signals.model_name.is_some(),
+            "agy model filled from sidefile"
+        );
+    }
+
+    #[test]
+    fn agy_enrichment_skipped_when_toggle_disabled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = "/repo/qmonster";
+        write_agy_sidefile(
+            tmp.path(),
+            "conv1",
+            r#"{"cwd":"/repo/qmonster","conversation_id":"conv1","quota_5h_pressure":0.95}"#,
+        );
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 1, "agy", &[]);
+        let id = agy_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, "", &pricing, &settings, &history);
+        c.current_path = cwd;
+        c.pane_pid = Some(1);
+        c.agy_enrichment_enabled = false; // opt-in toggle OFF
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
+
+        assert!(
+            signals.quota_5h_pressure.is_none(),
+            "toggle off → agy stays pure ObserveOnly (no enrichment)"
         );
     }
 }
