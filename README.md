@@ -34,11 +34,11 @@ taking destructive action by default.
 
 | Surface             | Current                                                |
 | ------------------- | ------------------------------------------------------ |
-| Release             | `v3.1.1`                                               |
-| npm                 | `qmonster@3.1.1`                                       |
+| Release             | `v3.1.2`                                               |
+| npm                 | `qmonster@3.1.2`                                       |
 | Rust                | `1.88+`                                                |
 | Runtime version     | `git describe --tags --always --dirty` from `build.rs` |
-| Cargo crate version | `3.1.1`                                                |
+| Cargo crate version | `3.1.2`                                                |
 
 ## Why
 
