@@ -63,7 +63,9 @@ UI: overlays 9+5 → `?` + `S`(3 tabs) [+ Git]; pane card 5→4 sections.
 2. **A1 redesign direction = narrow-collapse, confirmed** ✅.
 3. **Actuation = current** ✅ — single confirmation-gated prompt-send KEPT, only the batch overlay cut.
 4. **hover bilingual = KEPT** ✅ — not cut (operator chose to keep ko/en).
-5. **merge + push = approved** ✅ — `narrow-vnext` merged to `main` (fast-forward) + `main` pushed. **GitHub release / annotated tag / npm publish remain DEFERRED** (operator scoped this round to "merge + push까지"; release is a separate future step, CI-owned via the `vX.Y.Z` tag).
+5. **merge + push + RELEASE = DONE** ✅ — `narrow-vnext` merged to `main` (fast-forward `aa584b6..2a1171e`) + `main` pushed; main CI `28418693821` success. Then (operator follow-up "CI green 확인 후 릴리스") annotated tag `v3.0.0` pushed (admin-bypass on the creation ruleset) → `Release and Package Mirror` run `28418885199` **both jobs success**.
+
+**Release state: v3.0.0 is PUBLISHED** (verified 2026-06-30). `npm view qmonster dist-tags` → `latest = 3.0.0`; provenance `predicateType` → `https://slsa.dev/provenance/v1` (OIDC Trusted Publishers, no NPM_TOKEN); GitHub Release `v3.0.0` published (not draft/prerelease, 5 assets). All version surfaces + mission ledger at 3.0.0. `narrow-vnext` is now == `main` (redundant; safe to delete).
 
 **Remaining wrap-up (in progress):** docs/ai sync (UI_MANUAL/ARCHITECTURE/
 VALIDATION still describe cut surfaces — deferred through all slices) → mission
