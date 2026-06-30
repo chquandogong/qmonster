@@ -38,6 +38,11 @@ impl Engine {
         // future rec leak without per-rule whack-a-mole.
         if provider_is_observe_only(id.identity.provider) {
             let mut efx = Vec::new();
+            // uniform-vNext (diff-review F5, accepted): ArchiveLocal is permitted
+            // even for ObserveOnly. It archives Qmonster's OWN captured log tail to
+            // a local file on log_storm — an observability action, NOT actuation on
+            // the provider (no keys/prompts/config ever reach agy). The
+            // no-provider-actuation contract stays intact.
             if signals.log_storm {
                 efx.push(RequestedEffect::ArchiveLocal);
             }

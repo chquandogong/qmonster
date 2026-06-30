@@ -748,6 +748,14 @@ where
         .iter()
         .map(|r| format!("{}:{}", r.session_name, r.window_index))
         .collect();
+    // uniform-vNext (diff-review F2, operator decision B): ObserveOnly providers
+    // (agy) are intentionally NOT filtered out of cross-pane conflict detection.
+    // A cross-pane conflict is a SAFETY observation ("two panes editing the same
+    // path+branch"), not an agy recommendation/actuation — ObserveOnly forbids the
+    // latter, not cross-cutting safety signals. The concurrent rules already gate
+    // on Main/Review role, so the recommended agy:research role is excluded; this
+    // only fires if an operator runs agy as a Main/Review pane on a shared path.
+    // Locked by concurrent::tests::observe_only_agy_main_pane_participates_in_cross_pane_conflict.
     let views: Vec<crate::policy::PaneView<'_>> = reports
         .iter()
         .zip(window_labels.iter())

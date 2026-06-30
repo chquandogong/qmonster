@@ -287,6 +287,54 @@ mod tests {
     }
 
     #[test]
+    fn observe_only_agy_main_pane_participates_in_cross_pane_conflict() {
+        // uniform-vNext (diff-review F2, operator decision B): agy is ObserveOnly
+        // for recommendations/actuation, but a cross-pane conflict is a SAFETY
+        // observation ("two panes editing the same path+branch"), not an agy
+        // recommendation — so agy is intentionally NOT filtered. Only Main/Review
+        // roles qualify, so the recommended agy:research role is excluded; this
+        // fires only when an operator runs agy as a Main/Review pane sharing a path.
+        let agy = ResolvedIdentity {
+            identity: PaneIdentity {
+                provider: Provider::Antigravity,
+                instance: 1,
+                role: Role::Main,
+                pane_id: "%agy".into(),
+            },
+            confidence: IdentityConfidence::High,
+        };
+        let claude = mk_id(Role::Main, "%cl");
+        let s = busy_branch_signals("main");
+        let views = vec![
+            PaneView {
+                identity: &agy,
+                signals: &s,
+                current_path: "/repo",
+                window_label: "",
+            },
+            PaneView {
+                identity: &claude,
+                signals: &s,
+                current_path: "/repo",
+                window_label: "",
+            },
+        ];
+        let findings = eval_concurrent(&views, &PolicyGates::default());
+        assert_eq!(
+            findings.len(),
+            1,
+            "agy Main pane must participate in cross-pane conflict (safety obs): {findings:?}"
+        );
+        let ids: Vec<&str> = std::iter::once(findings[0].anchor_pane_id.as_str())
+            .chain(findings[0].other_pane_ids.iter().map(|s| s.as_str()))
+            .collect();
+        assert!(
+            ids.contains(&"%agy"),
+            "agy must be in the conflict finding: {ids:?}"
+        );
+    }
+
+    #[test]
     fn same_current_path_without_branch_no_longer_co_qualifies() {
         let id_a = mk_id(Role::Main, "%1");
         let id_b = mk_id(Role::Main, "%2");
