@@ -1,6 +1,14 @@
 # CURRENT_STATE
 
-_Last updated: 2026-06-30 (Claude, **uniform-vNext** — branch `vNext-uniform`, UNRELEASED/unmerged on top of the published v3.0.0. A 4-slice "uniform per-CLI display" feature add (→ v3.1.0): every CLI (Claude/Codex/agy) shows ctx/quota/reset, rendered as gauge bars + status pills; agy enrichment restored ObserveOnly-safe. main stays at v3.0.0 `908c089`. Pending human gate for push/tag/release. See the uniform-vNext section directly below; narrow-vNext (shipped as v3.0.0) + v2.8.0 prose preserved beneath.)._
+_Last updated: 2026-06-30 (Claude, **v3.1.1 patch** — on `main`, atop the published v3.1.0. Two pre-existing parser/probe gaps surfaced by the v3.1.0 uniform dashboard, both fixed + regression-tested (lib 1250→1252; `--all-targets` + clippy + fmt green; neither a v3.1.0 regression): (1) Codex quota — `parse_named_percent_token` reads the number before `%` so Codex 0.142.x's `5h 96% left`/`weekly 99% left` parse (was showing only CTX, no 5H/7D); (2) `agy` added to the CLI version probe so `agy --version` (1.0.14) shows the `CLI <version>` badge. Release in progress (operator authorized). v3.1.0 uniform-vNext section + narrow-vNext (v3.0.0) + v2.8.0 prose preserved below.)._
+
+## v3.1.1 patch — Codex quota "left" suffix + agy version probe (on `main`)
+
+Surfaced by the operator using the new uniform dashboard. Both PRE-EXISTING (not v3.1.0 regressions), both small + regression-tested:
+- **Codex quota** (`src/adapters/codex.rs`): Codex 0.142.x writes `5h 96% left · weekly 99% left`; the old `parse_named_percent_token` did `strip_suffix('%')` → `None` on the ` left` suffix → Codex rendered only the CTX gauge. Fix: read the number before `%`. Test `codex_adapter_parses_quota_with_left_suffix_codex_0_142`.
+- **agy CLI version** (`src/app/cli_version.rs`): the version probe only knew `claude|codex|gemini` (agy excluded since v2.4.0 ObserveOnly-only) → no `CLI <version>` badge for agy. Fix: add `agy` to `version_probe_command` + `path_basename_contains_known_cli`; `agy --version` → `1.0.14`. Test `agy_native_cli_probe_reads_version`.
+
+lib 1250→1252, integration 62; version surfaces + title bumped to 3.1.1.
 
 ## uniform-vNext — uniform per-CLI display (branch `vNext-uniform`, unreleased → v3.1.0)
 

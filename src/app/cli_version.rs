@@ -94,7 +94,7 @@ pub(crate) fn probe_cli_version(desc: &CliProcessDescriptor) -> Option<RuntimeFa
 fn version_probe_command(desc: &CliProcessDescriptor) -> Option<(PathBuf, Vec<String>)> {
     let program = exact_program_path(desc)?;
     match desc.comm.as_str() {
-        "claude" | "codex" | "gemini" => Some((program, vec!["--version".into()])),
+        "claude" | "codex" | "gemini" | "agy" => Some((program, vec!["--version".into()])),
         "node" | "nodejs" | "python" | "python3" => {
             let script = cli_script_arg(&desc.argv)?;
             Some((program, vec![script, "--version".into()]))
@@ -125,7 +125,7 @@ fn path_basename_contains_known_cli(path: &str) -> bool {
         .and_then(|s| s.to_str())
         .unwrap_or(path)
         .to_ascii_lowercase();
-    ["claude", "codex", "gemini"]
+    ["claude", "codex", "gemini", "agy"]
         .iter()
         .any(|needle| basename.contains(needle))
 }
@@ -268,6 +268,26 @@ mod tests {
 
         assert_eq!(fact.kind, RuntimeFactKind::CliVersion);
         assert_eq!(fact.value, "1.2.3");
+        assert_eq!(fact.source_kind, SourceKind::ProviderOfficial);
+    }
+
+    #[test]
+    fn agy_native_cli_probe_reads_version() {
+        // v3.1.1: agy was added to the version-probe allow-list so its
+        // `CLI <version>` badge shows like Claude/Codex. `agy --version` → "1.0.14".
+        let tmp = tempdir().unwrap();
+        let exe = tmp.path().join("agy");
+        write_executable(&exe, "#!/bin/sh\necho '1.0.14'\n");
+        let desc = CliProcessDescriptor {
+            pid: 99,
+            comm: "agy".into(),
+            argv: vec![exe.to_string_lossy().into_owned()],
+            exe_path: Some(exe),
+        };
+
+        let fact = probe_cli_version(&desc).expect("agy must be version-probed");
+        assert_eq!(fact.kind, RuntimeFactKind::CliVersion);
+        assert_eq!(fact.value, "1.0.14");
         assert_eq!(fact.source_kind, SourceKind::ProviderOfficial);
     }
 

@@ -438,8 +438,15 @@ fn parse_reasoning_effort_token(token: &str) -> Option<String> {
 
 fn parse_named_percent_token(token: &str, label: &str) -> Option<u8> {
     let rest = token.strip_prefix(label)?.trim_start();
-    let pct_str = rest.strip_suffix('%')?.trim();
-    pct_str.parse::<u8>().ok().filter(|pct| *pct <= 100)
+    // Take the number immediately before '%'. Tolerates both the bare `96%`
+    // form and Codex 0.142.x's suffixed `96% left` / `96% used` window tokens
+    // (the older `strip_suffix('%')` returned None on anything after the '%').
+    let pct_end = rest.find('%')?;
+    rest[..pct_end]
+        .trim()
+        .parse::<u8>()
+        .ok()
+        .filter(|pct| *pct <= 100)
 }
 
 fn remaining_pct_to_pressure(pct: u8) -> f32 {
@@ -711,6 +718,45 @@ output_per_1m = 10.00
         );
         let set = CodexAdapter.parse(&c);
         assert!(matches!(set.idle_state, Some(IdleCause::PermissionWait)));
+    }
+
+    #[test]
+    fn codex_adapter_parses_quota_with_left_suffix_codex_0_142() {
+        // Codex 0.142.x suffixes the window tokens with " left"
+        // (`5h 96% left · weekly 99% left`). The old strip_suffix('%') parser
+        // returned None on the suffix; the fix reads the number before '%'.
+        let id = id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let tail = "Context 100% left · ~/Qmonster · gpt-5.5 · Qmonster · main · Context 0% used · 5h 96% left · weekly 99% left · 0.142.4 · 0 in · 0 out · gpt-5.5 xhigh";
+        let c = ctx(&id, tail, &pricing, &settings, &history);
+        let set = CodexAdapter.parse(&c);
+
+        let cx = set.context_pressure.as_ref().expect("context parsed");
+        assert!(
+            cx.value.abs() < 0.001,
+            "Context 0% used → 0 pressure, got {}",
+            cx.value
+        );
+        let q5 = set
+            .quota_5h_pressure
+            .as_ref()
+            .expect("5h quota must parse despite the ' left' suffix");
+        assert!(
+            (q5.value - 0.04).abs() < 0.001,
+            "5h 96% left → 0.04, got {}",
+            q5.value
+        );
+        let qw = set
+            .quota_weekly_pressure
+            .as_ref()
+            .expect("weekly quota must parse despite the ' left' suffix");
+        assert!(
+            (qw.value - 0.01).abs() < 0.001,
+            "weekly 99% left → 0.01, got {}",
+            qw.value
+        );
     }
 
     #[test]
