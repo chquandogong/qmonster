@@ -58,13 +58,12 @@ codex app-server + agy enrichment + Gemini /stats·/model enrichment · insights
 store/CLI/rec-engagement telemetry · Settings Rules/Badges tabs · inert FxConfig.
 UI: overlays 9+5 → `?` + `S`(3 tabs) [+ Git]; pane card 5→4 sections.
 
-**Open human-gate decisions (deferred per "묻지 말고 끝까지"; reversible work
-done, irreversible/identity calls surfaced):**
-1. **Version** — recommend **v3.0.0** (narrow removes features = SemVer breaking). Not bumped on-branch yet.
-2. **A1 redesign direction** — proceeded with narrow-collapse (vs a visual reskin, which would contradict narrow); confirm.
-3. **"Remove ALL actuation?"** — kept single prompt-send (brief-sanctioned auditable automation behind the safety boundary); cut only batch. Confirm or go pure observe/recommend.
-4. **hover bilingual (ko/en)+trigger modes** — deferred as optional n=1-polish cut.
-5. **push / tag / release / npm publish** — NOT done (§1.6 gate).
+**Human-gate decisions — RESOLVED (operator, 2026-06-30):**
+1. **Version = v3.0.0** ✅ — all surfaces bumped (package.json / Cargo.toml / Cargo.lock / VERSION.md / README / mission.yaml).
+2. **A1 redesign direction = narrow-collapse, confirmed** ✅.
+3. **Actuation = current** ✅ — single confirmation-gated prompt-send KEPT, only the batch overlay cut.
+4. **hover bilingual = KEPT** ✅ — not cut (operator chose to keep ko/en).
+5. **merge + push = approved** ✅ — `narrow-vnext` merged to `main` (fast-forward) + `main` pushed. **GitHub release / annotated tag / npm publish remain DEFERRED** (operator scoped this round to "merge + push까지"; release is a separate future step, CI-owned via the `vX.Y.Z` tag).
 
 **Remaining wrap-up (in progress):** docs/ai sync (UI_MANUAL/ARCHITECTURE/
 VALIDATION still describe cut surfaces — deferred through all slices) → mission

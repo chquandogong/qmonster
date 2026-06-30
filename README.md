@@ -34,11 +34,11 @@ taking destructive action by default.
 
 | Surface             | Current                                                |
 | ------------------- | ------------------------------------------------------ |
-| Release             | `v2.8.0`                                               |
-| npm                 | `qmonster@2.8.0`                                       |
+| Release             | `v3.0.0`                                               |
+| npm                 | `qmonster@3.0.0`                                       |
 | Rust                | `1.88+`                                                |
 | Runtime version     | `git describe --tags --always --dirty` from `build.rs` |
-| Cargo crate version | `2.8.0`                                                |
+| Cargo crate version | `3.0.0`                                                |
 
 ## Why
 
@@ -89,8 +89,8 @@ cargo build --release
 > provenance) instead of compiling locally:
 >
 > ```sh
-> gh release download v2.8.0 --pattern '*-linux-x86_64.tar.gz' --repo chquandogong/qmonster
-> gh attestation verify qmonster-v2.8.0-linux-x86_64.tar.gz --owner chquandogong
+> gh release download v3.0.0 --pattern '*-linux-x86_64.tar.gz' --repo chquandogong/qmonster
+> gh attestation verify qmonster-v3.0.0-linux-x86_64.tar.gz --owner chquandogong
 > tar -xzf qmonster-v2.8.0-linux-x86_64.tar.gz
 > ./qmonster-v2.8.0-linux-x86_64/qmonster --help
 > ```
