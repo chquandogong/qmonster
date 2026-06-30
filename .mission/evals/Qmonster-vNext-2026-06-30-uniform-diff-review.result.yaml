@@ -1,0 +1,52 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-06-30"
+  target_versions:
+    - "3.1.0"
+  commit_range: "908c089..c839d70 (uniform-vNext S1+S2+S3+S3b + release prep); fixes landed c839d70 + 1866e06"
+  scope: "Pre-push diff-review of the full uniform-vNext branch (every CLI shows ctx/quota/reset; agy enrichment restored ObserveOnly-safe; CTX/quota gauge bars + status pills). Pre-push gate for v3.1.0."
+  evidence_mode: "Live `codex exec --dangerously-bypass-approvals-and-sandbox` (codex-cli 0.142.4; the env is externally sandboxed so Codex's nested bwrap can't init — same pattern as the v2.8.0 eval). Read local files + git; ran targeted `cargo test` on the key cases. (A first `--sandbox read-only` attempt was BLOCKED by the bwrap loopback failure with no verdict.)"
+  verdict: merge-with-fixes
+  confidence: 86
+  local_validation:
+    cargo_fmt_check: pass
+    cargo_clippy_all_targets_d_warnings: pass
+    cargo_test_all_targets: pass
+    test_counts: "1250 lib + 62 integration + 24 supporting after fixes; --all-targets green single-threaded (cli_version parallel-load flake unrelated)"
+  guard_points_verified:
+    - "engine.rs provider_is_observe_only choke-point → enriched agy returns zero recs, no Notify, no PromptSendProposed"
+    - "event_loop cost-budget / identity-drift / anomaly / auto-snapshot appends all !observe_only-guarded"
+    - "dashboard quota_or_cost_now_summary filters observe-only (quota + cost)"
+    - "codex_rollout window_minutes <=720 -> 5h, >720 -> weekly; fill-when-absent; same-cwd ambiguity guard intact"
+    - "pane_list_help_topics_with_width 1:1 with rendered lines after the blank spacer"
+  findings:
+    - id: F3
+      severity: medium
+      title: "reset ETA silently dropped under gauge mode when quota_*_resets_at exists without matching quota pressure (S1+S3 interaction)"
+      status: fixed
+      closed_by: "c839d70 — push_quota_gauge() emits a reset-only line; test gauge_rows_show_reset_only_when_quota_pressure_absent"
+    - id: F4
+      severity: medium
+      title: "gauge lines not width-clamped -> overflow/clip on narrow splits"
+      status: fixed
+      closed_by: "c839d70 — gauge_filled_empty width-parameterized; gauge_bar_line clamps bar (min 4) to max_width, drops trailing first; test gauge_bar_line_fits_narrow_width"
+    - id: F1
+      severity: high
+      title: "agy wait-state promoted into the Now strip (unguarded)"
+      status: accepted-intentional
+      resolution: "Operator-needed STATE display ('which pane is waiting for you'), NOT an advisory; ObserveOnly forbids recs/actuation, not state visibility. Documented in now_strip_summary_for; locked by now_strip_surfaces_observe_only_agy_wait_state. (Codex's own fix-text offered 'document/test as allowed'.)"
+      closed_by: "c839d70"
+    - id: F2
+      severity: high
+      title: "agy can enter cross-pane conflict findings (Alerts + --once); no ObserveOnly filter"
+      status: accepted-operator-decision-B
+      resolution: "PRE-EXISTING (v3.0.0 908c089:event_loop.rs:753 builds PaneView unfiltered — not a uniform-vNext regression). Operator decision B: KEEP — a same-path+branch conflict is a cross-cutting SAFETY observation, not an agy recommendation/actuation. Role-gated to Main/Review (recommended agy:research is excluded). Documented at the PaneView build site; locked by concurrent::tests::observe_only_agy_main_pane_participates_in_cross_pane_conflict."
+      closed_by: "1866e06"
+    - id: F5
+      severity: low
+      title: "ObserveOnly choke-point permits ArchiveLocal on log_storm"
+      status: accepted
+      resolution: "PRE-EXISTING. ArchiveLocal archives Qmonster's OWN captured log tail to a local file — an observability action, not actuation on the provider (no keys/prompts/config reach agy). No-provider-actuation contract intact. Documented at the engine choke-point."
+      closed_by: "1866e06"
+  outcome: "All 5 findings resolved (2 fixed + tested, 3 operator-accepted with rationale + tests). Clean for push per operator authorization (option B)."

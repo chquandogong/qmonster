@@ -39,8 +39,16 @@ Net: lib **1227 → 1246**, integration 62 unchanged. 16 files, +1081/−85 over
   `● ACTIVE`; blank-line tile spacing (hover-topic map kept 1:1). Deferred: full box
   borders + `--once` gauge parity.
 
-**Human gate — PENDING:** Codex diff-review (pre-push) → **push/tag/release v3.1.0** (§1.6).
-main = v3.0.0 `908c089` unchanged; `vNext-uniform` is local commits only.
+**Codex diff-review DONE** (`.mission/evals/Qmonster-vNext-2026-06-30-uniform-diff-review.result.yaml`):
+MERGE-WITH-FIXES 86/100; **all 5 findings resolved** — F3/F4 fixed+tested (`c839d70`),
+F1/F2/F5 operator-decided + documented + tested (`c839d70`/`1866e06`; F2 = decision B, keep
+agy in cross-pane as a SAFETY observation; F5 = accept ArchiveLocal as Qmonster's own log).
+Codex verified the S2 ObserveOnly core (choke-point + post-engine guards + Now-strip filter).
+
+**RELEASE: in progress** (operator authorized push-if-clean; clean confirmed). Sequence:
+merge `vNext-uniform`→`main` (ff) → push → main CI → tag `v3.1.0` → Release workflow (npm
+publish via OIDC). This file gets the PUBLISHED evidence once the workflow completes.
+main = v3.0.0 `908c089` until the merge.
 
 ---
 
