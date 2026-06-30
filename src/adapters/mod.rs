@@ -138,7 +138,9 @@ pub fn parse_for_with_environment(
         && (signals.input_tokens.is_none()
             || signals.output_tokens.is_none()
             || signals.cached_input_tokens.is_none()
-            || signals.model_name.is_none())
+            || signals.model_name.is_none()
+            || signals.quota_5h_resets_at.is_none()
+            || signals.quota_weekly_resets_at.is_none())
         && codex_rollout_process_confirmed(ctx, proc_root)
         && let Some(home) = home_dir
     {
@@ -188,6 +190,19 @@ pub fn parse_for_with_environment(
                 && let Some(n) = roll.context_window
             {
                 signals.context_window_size = Some(metric(n));
+            }
+            // uniform-vNext S1: the Codex status line exposes no reset ETA, so
+            // fill the reset timestamps from the rollout's `rate_limits` when
+            // absent (ProviderOfficial, same authority as the token totals).
+            if signals.quota_5h_resets_at.is_none()
+                && let Some(ts) = roll.quota_5h_resets_at
+            {
+                signals.quota_5h_resets_at = Some(metric(ts));
+            }
+            if signals.quota_weekly_resets_at.is_none()
+                && let Some(ts) = roll.quota_weekly_resets_at
+            {
+                signals.quota_weekly_resets_at = Some(metric(ts));
             }
         }
     }
@@ -1011,6 +1026,50 @@ mod codex_rollout_integration_tests {
         assert_eq!(
             signals.context_window_size.as_ref().unwrap().provider,
             Some(Provider::Codex)
+        );
+    }
+
+    #[test]
+    fn rollout_fills_codex_reset_etas() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = "/repo/qmonster";
+        // Raw JSONL (no format!) so brace-escaping can't bite; cwd is fixed to
+        // match `c.current_path` below.
+        let dir = tmp.path().join(".codex/sessions/2026/06/30");
+        fs::create_dir_all(&dir).unwrap();
+        let body = concat!(
+            r#"{"type":"session_meta","payload":{"originator":"codex-tui","cwd":"/repo/qmonster"}}"#,
+            "\n",
+            r#"{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15},"model_context_window":258400},"rate_limits":{"primary":{"used_percent":1.0,"window_minutes":300,"resets_at":1782764339},"secondary":{"used_percent":2.0,"window_minutes":10080,"resets_at":1783313312}}}}"#,
+            "\n",
+        );
+        fs::write(dir.join("rollout-rl.jsonl"), body).unwrap();
+        let proc_root = tmp.path().join("proc");
+        write_proc(&proc_root, 1, "bash", &[2]);
+        write_proc(&proc_root, 2, "codex", &[]);
+        let id = codex_id();
+        let pricing = crate::policy::pricing::PricingTable::empty();
+        let settings = crate::policy::claude_settings::ClaudeSettings::empty();
+        let history = crate::adapters::common::PaneTailHistory::empty();
+        let mut c = ctx(&id, "", &pricing, &settings, &history);
+        c.current_path = cwd;
+        c.pane_pid = Some(1);
+        c.codex_rollout_enabled = true;
+
+        let signals = parse_for_with_environment(&c, &proc_root, Some(tmp.path()));
+
+        assert_eq!(
+            signals.quota_5h_resets_at.as_ref().unwrap().value,
+            1782764339,
+            "Codex rollout fills 5h reset ETA (status line has none)"
+        );
+        assert_eq!(
+            signals.quota_weekly_resets_at.as_ref().unwrap().value,
+            1783313312
+        );
+        assert_eq!(
+            signals.quota_5h_resets_at.as_ref().unwrap().source_kind,
+            crate::domain::origin::SourceKind::ProviderOfficial
         );
     }
 }

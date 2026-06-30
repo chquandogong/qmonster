@@ -22,6 +22,11 @@ pub struct CodexRolloutSignals {
     pub output_tokens: Option<u64>,
     pub cached_input_tokens: Option<u64>,
     pub context_window: Option<u64>,
+    /// Reset ETAs (unix secs) from the rollout's `rate_limits` event. The Codex
+    /// status line carries no reset time, so the rollout is the only source.
+    /// `primary` window (≤720 min) → 5h, `secondary` (>720 min) → weekly.
+    pub quota_5h_resets_at: Option<u64>,
+    pub quota_weekly_resets_at: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -163,6 +168,29 @@ fn parse_if_matching(body: &str, current_path: &str) -> Option<CodexRolloutSigna
                             total.get("cached_input_tokens").and_then(|v| v.as_u64());
                     }
                     sig.context_window = info.get("model_context_window").and_then(|v| v.as_u64());
+                    // `rate_limits` sits beside `info` in the same token_count
+                    // payload; the status line carries no reset, so the rollout
+                    // is the only reset-ETA source. Latest token_count event
+                    // wins; classify each window by `window_minutes` (≤720 → 5h,
+                    // else weekly) so a label/order change can't misattribute.
+                    if let Some(rl) = parsed.payload.get("rate_limits") {
+                        for key in ["primary", "secondary"] {
+                            let Some(window) = rl.get(key) else {
+                                continue;
+                            };
+                            let (Some(ts), Some(win)) = (
+                                window.get("resets_at").and_then(|v| v.as_u64()),
+                                window.get("window_minutes").and_then(|v| v.as_u64()),
+                            ) else {
+                                continue;
+                            };
+                            if win <= 720 {
+                                sig.quota_5h_resets_at = Some(ts);
+                            } else {
+                                sig.quota_weekly_resets_at = Some(ts);
+                            }
+                        }
+                    }
                 }
             }
             _ => {}
@@ -335,5 +363,42 @@ mod tests {
         write_rollout(&sessions, "rollout-a.jsonl", "codex-tui", "/repo/qmonster");
         let s = read_rollout_for_path(tmp.path(), "/repo/qmonster").expect("must match");
         assert_eq!(s.context_window, Some(258400));
+    }
+
+    #[test]
+    fn reads_rate_limit_resets_classified_by_window_minutes() {
+        let tmp = tempdir().unwrap();
+        let sessions = tmp.path().join("sessions/2026/06/30");
+        fs::create_dir_all(&sessions).unwrap();
+        // Raw JSONL (no format!) — `rate_limits` beside `info`; primary = 5h
+        // window (300 min), secondary = weekly (10080 min).
+        let body = concat!(
+            r#"{"type":"session_meta","payload":{"originator":"codex-tui","cwd":"/repo/qmonster"}}"#,
+            "\n",
+            r#"{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}},"rate_limits":{"primary":{"used_percent":1.0,"window_minutes":300,"resets_at":1782764339},"secondary":{"used_percent":2.0,"window_minutes":10080,"resets_at":1783313312}}}}"#,
+            "\n",
+        );
+        fs::write(sessions.join("rollout-rl.jsonl"), body).unwrap();
+        let s = read_rollout_for_path(tmp.path(), "/repo/qmonster").expect("must match");
+        assert_eq!(
+            s.quota_5h_resets_at,
+            Some(1782764339),
+            "primary window (300 min ≤ 720) → 5h reset"
+        );
+        assert_eq!(
+            s.quota_weekly_resets_at,
+            Some(1783313312),
+            "secondary window (10080 min > 720) → weekly reset"
+        );
+    }
+
+    #[test]
+    fn rollout_without_rate_limits_yields_no_resets() {
+        let tmp = tempdir().unwrap();
+        let sessions = tmp.path().join("sessions/2026/06/30");
+        write_rollout(&sessions, "rollout-a.jsonl", "codex-tui", "/repo/qmonster");
+        let s = read_rollout_for_path(tmp.path(), "/repo/qmonster").expect("must match");
+        assert_eq!(s.quota_5h_resets_at, None);
+        assert_eq!(s.quota_weekly_resets_at, None);
     }
 }
