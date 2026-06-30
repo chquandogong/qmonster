@@ -45,10 +45,18 @@ F1/F2/F5 operator-decided + documented + tested (`c839d70`/`1866e06`; F2 = decis
 agy in cross-pane as a SAFETY observation; F5 = accept ArchiveLocal as Qmonster's own log).
 Codex verified the S2 ObserveOnly core (choke-point + post-engine guards + Now-strip filter).
 
-**RELEASE: in progress** (operator authorized push-if-clean; clean confirmed). Sequence:
-merge `vNext-uniform`→`main` (ff) → push → main CI → tag `v3.1.0` → Release workflow (npm
-publish via OIDC). This file gets the PUBLISHED evidence once the workflow completes.
-main = v3.0.0 `908c089` until the merge.
+**RELEASE: v3.1.0 is PUBLISHED** (verified 2026-06-30). `vNext-uniform` merged to `main`
+(fast-forward `908c089..e975115`) + pushed; main CI `28429662381` success. Annotated tag
+`v3.1.0` on `e975115` (admin-bypass on the creation ruleset) → `Release and Package Mirror`
+run `28429969967` **both jobs success** (build assets + publish). `npm view qmonster
+dist-tags` → `latest = 3.1.0`; provenance `predicateType` → `https://slsa.dev/provenance/v1`
+(OIDC Trusted Publishers, no NPM_TOKEN); GitHub Release `v3.1.0` published (not prerelease,
+5 assets). All version surfaces + mission ledger at 3.1.0. `vNext-uniform` is now == `main`
+(redundant; safe to delete).
+
+**Remaining follow-ups (non-blocking):** full box-drawing tile borders + `--once` gauge
+parity + Provider Setup agy snippet transplant + docs/ai ARCHITECTURE.md/VALIDATION.md
+deep-sync (UI_MANUAL synced this release).
 
 ---
 
