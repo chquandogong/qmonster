@@ -236,7 +236,10 @@ fn pane_list_help_topics_with_width(
     }
 
     if with_separator {
-        topics.push(None);
+        // uniform-vNext S3b: keep this 1:1 with the rendered separator block,
+        // which is now a blank spacer line + the divider rule (two lines).
+        topics.push(None); // blank spacer
+        topics.push(None); // divider rule
     }
     topics
 }
@@ -684,6 +687,9 @@ fn pane_list_lines_with_flash(
     }
 
     if with_separator {
+        // uniform-vNext S3b: a blank line above the divider gives each pane
+        // "tile" breathing room (시원) between cards.
+        lines.push(Line::raw(""));
         lines.push(Line::styled(
             "────────────────────────────────────────",
             Style::default().fg(theme::text_dim()),
@@ -866,18 +872,26 @@ fn pane_title_state_badge(
 ) -> Option<(&'static str, Style)> {
     match report.idle_state {
         Some(cause) => Some((idle_title_state_label(cause), idle_title_state_style(cause))),
-        None if flash.is_some() => Some(("ACTIVE", active_state_badge_style())),
-        None => None,
+        // uniform-vNext S3b: persistent `● ACTIVE` pill so every pane shows its
+        // live state at a glance (mockup), not only on the state-change flash —
+        // the transient flash is still surfaced by the separate STATE CHANGED
+        // badge in pane_panel_title_line.
+        None => {
+            let _ = flash;
+            Some(("● ACTIVE", active_state_badge_style()))
+        }
     }
 }
 
 fn idle_title_state_label(cause: IdleCause) -> &'static str {
+    // uniform-vNext S3b: lead each state with an at-a-glance glyph (mockup
+    // status pills). `.contains()`-based tests keep passing (substring intact).
     match cause {
-        IdleCause::WorkComplete => "IDLE DONE",
-        IdleCause::Stale => "IDLE STALE",
-        IdleCause::InputWait => "WAIT INPUT",
-        IdleCause::PermissionWait => "WAIT APPROVAL",
-        IdleCause::LimitHit => "USAGE LIMIT",
+        IdleCause::WorkComplete => "✓ IDLE DONE",
+        IdleCause::Stale => "◌ IDLE STALE",
+        IdleCause::InputWait => "⌛ WAIT INPUT",
+        IdleCause::PermissionWait => "⌛ WAIT APPROVAL",
+        IdleCause::LimitHit => "⛔ USAGE LIMIT",
     }
 }
 

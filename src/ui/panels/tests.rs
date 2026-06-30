@@ -2052,6 +2052,31 @@ fn collapsed_pane_with_pending_proposal_does_not_shift_hover_topics() {
 }
 
 #[test]
+fn active_pane_shows_persistent_active_pill() {
+    // S3b: a non-idle pane shows `● ACTIVE` even without a state-change flash
+    // (every pane shows its state at a glance, per the mockup).
+    let mut report = sample_pane_report();
+    report.idle_state = None;
+    let text = line_text(&pane_panel_title_line(&report, Instant::now(), None));
+    assert!(
+        text.contains("● ACTIVE"),
+        "active pane must show a persistent ● ACTIVE pill (no flash): {text:?}"
+    );
+}
+
+#[test]
+fn wait_input_state_carries_at_a_glance_glyph() {
+    // S3b: idle/wait states lead with a glyph in the title pill.
+    let mut report = sample_pane_report();
+    report.idle_state = Some(crate::domain::signal::IdleCause::InputWait);
+    let text = line_text(&pane_panel_title_line(&report, Instant::now(), None));
+    assert!(
+        text.contains("⌛ WAIT INPUT"),
+        "wait-input state must carry the ⌛ glyph: {text:?}"
+    );
+}
+
+#[test]
 fn pane_card_title_carries_pending_proposal_chip() {
     // v1.39 surface A: pane card title must carry a `★p` chip
     // when the pane has a pending PromptSendProposed effect, so
