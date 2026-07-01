@@ -8,8 +8,8 @@ use ratatui::widgets::ListState;
 
 use crate::app::event_loop::PaneReport;
 use crate::app::keymap::{
-    FocusedPanel, ScrollDir, list_row_at, move_selection, page_selection, rect_contains,
-    select_first, select_last,
+    FocusedPanel, ScrollDir, list_row_at, move_pane_selection, move_selection, page_selection,
+    rect_contains, select_first, select_last,
 };
 use crate::app::system_notice::SystemNotice;
 use crate::domain::recommendation::Severity;
@@ -82,7 +82,7 @@ pub fn handle_dashboard_selection_key(view: DashboardSelectionKeyView<'_>, key: 
                     move_selection(view.alert_state, total, -1);
                 }
                 FocusedPanel::Panes => {
-                    move_selection(view.pane_state, view.reports.len(), -1);
+                    move_pane_selection(view.pane_state, view.reports.len(), -1);
                 }
             }
             true
@@ -99,7 +99,7 @@ pub fn handle_dashboard_selection_key(view: DashboardSelectionKeyView<'_>, key: 
                     move_selection(view.alert_state, total, 1);
                 }
                 FocusedPanel::Panes => {
-                    move_selection(view.pane_state, view.reports.len(), 1);
+                    move_pane_selection(view.pane_state, view.reports.len(), 1);
                 }
             }
             true
@@ -116,7 +116,7 @@ pub fn handle_dashboard_selection_key(view: DashboardSelectionKeyView<'_>, key: 
                     page_selection(view.alert_state, total, 6, ScrollDir::Up);
                 }
                 FocusedPanel::Panes => {
-                    page_selection(view.pane_state, view.reports.len(), 3, ScrollDir::Up);
+                    move_pane_selection(view.pane_state, view.reports.len(), -3);
                 }
             }
             true
@@ -133,7 +133,7 @@ pub fn handle_dashboard_selection_key(view: DashboardSelectionKeyView<'_>, key: 
                     page_selection(view.alert_state, total, 6, ScrollDir::Down);
                 }
                 FocusedPanel::Panes => {
-                    page_selection(view.pane_state, view.reports.len(), 3, ScrollDir::Down);
+                    move_pane_selection(view.pane_state, view.reports.len(), 3);
                 }
             }
             true
@@ -209,7 +209,7 @@ pub fn handle_dashboard_mouse(
                 move_selection(view.alert_state, total, -1);
             } else if rect_contains(rects.panes, event.column, event.row) {
                 *view.focus = FocusedPanel::Panes;
-                move_selection(view.pane_state, view.reports.len(), -1);
+                move_pane_selection(view.pane_state, view.reports.len(), -1);
             }
             DashboardMouseAction::None
         }
@@ -226,7 +226,7 @@ pub fn handle_dashboard_mouse(
             } else if rect_contains(rects.panes, event.column, event.row) {
                 *view.focus = FocusedPanel::Panes;
                 *view.last_alert_click = None;
-                move_selection(view.pane_state, view.reports.len(), 1);
+                move_pane_selection(view.pane_state, view.reports.len(), 1);
             }
             DashboardMouseAction::None
         }
@@ -414,13 +414,15 @@ pub fn handle_dashboard_mouse(
 }
 
 pub fn sync_pane_selection(state: &mut ListState, pane_count: usize) {
-    match pane_count {
-        0 => state.select(None),
-        count => {
-            let selected = state.selected().unwrap_or(0).min(count.saturating_sub(1));
-            state.select(Some(selected));
-        }
-    }
+    // v3.1.3: no forced selection. Preserve None (the clean no-selection default
+    // shown at startup and after ↑-off-the-top); only drop a selection that has
+    // fallen out of range (the list shrank or emptied). Selecting a pane is an
+    // explicit operator action (↓ / click) — never auto-forced on poll/startup.
+    // (Previously this did `unwrap_or(0)` + `select(Some(..))`, which re-selected
+    // pane 0 the moment the first poll populated reports — the "flash then a pane
+    // expands" on launch.)
+    let kept = state.selected().filter(|&i| i < pane_count);
+    state.select(kept);
 }
 
 pub fn sync_alert_selection(
@@ -797,6 +799,30 @@ mod tests {
         assert_eq!(action, DashboardMouseAction::None);
         assert!(dragging);
         assert!(last_click.is_none());
+    }
+
+    #[test]
+    fn sync_pane_selection_never_auto_forces_a_selection() {
+        // v3.1.3: the default is no selection (clean gauge-tile view). A poll
+        // that populates reports must NOT auto-select pane 0 (that was the
+        // "no-selection flashes then a pane expands" bug on launch).
+        let mut s = ListState::default();
+        sync_pane_selection(&mut s, 3);
+        assert_eq!(s.selected(), None, "poll must not auto-select a pane");
+
+        // an explicit in-range selection is preserved across polls
+        s.select(Some(2));
+        sync_pane_selection(&mut s, 3);
+        assert_eq!(s.selected(), Some(2));
+
+        // a selection that fell out of range (list shrank) drops back to clean
+        sync_pane_selection(&mut s, 2);
+        assert_eq!(s.selected(), None);
+
+        // an emptied list clears any selection
+        s.select(Some(0));
+        sync_pane_selection(&mut s, 0);
+        assert_eq!(s.selected(), None);
     }
 
     #[test]

@@ -1,0 +1,24 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-07-01"
+  target_versions:
+    - "3.1.3"
+  commit_range: "0d1af41 (v3.1.2 published ledger) → working tree: the no-forced-selection pane-list model (auto-checkpoints 2e73754 + 6187a9b carry the src/*.rs; docs + version surfaces uncommitted at review time). Pre-push gate for v3.1.3."
+  scope: "Pre-push code review of v3.1.3 — the pane list drops its forced selection. keymap::move_pane_selection (single None state reachable off both ends, directional re-entry, page-overshoot clamp); pane_is_expanded(idx, Option<selected>) provider-agnostic; render_pane_list + pane_index_at_row + pane_help_topic_at_row filter selection to Option; sync_pane_selection preserves None (fixes the launch auto-select flash). Docs-only sweep reviewed separately (not sent to Codex — prose)."
+  evidence_mode: "Live `codex exec --dangerously-bypass-approvals-and-sandbox -c model_reasoning_effort=medium` (codex-cli 0.142.4; env externally sandboxed → nested bwrap can't init, so the 344-line code diff was INLINED in the prompt, no repo reads)."
+  verdict: approve
+  confidence: n/a
+  local_validation:
+    cargo_fmt_check: pass
+    cargo_clippy_all_targets_d_warnings: pass
+    cargo_test_all_targets: pass
+    test_counts: "1259 lib + 62 integration + 24 supporting; --all-targets green single-threaded (node_cli_probe parallel-exec flake unrelated)"
+  guard_points_verified:
+    - "move_pane_selection edge behavior matches the model: None re-enters directionally (down→first, up→last); single-item lists deselect off both ends; page overshoot from the interior clamps to the edge; total==0 clears (Codex confirmed)"
+    - "no new `.unwrap()` dependency introduced; None selection is now reachable and consumers (u/p/d actions) already handle it (Codex confirmed)"
+    - "render_pane_list + pane_index_at_row + pane_help_topic_at_row all compute the same filtered Option<usize> and use the same pane_is_expanded → per-pane heights stay aligned between render, mouse hit-test, and hover (Codex confirmed)"
+    - "sync_pane_selection preserves None and drops stale/out-of-range selections without touching Alerts navigation (Codex confirmed)"
+    - "pure UI navigation — no ObserveOnly / recommendation / actuation surface reached"
+  findings: []
+  human_signoff: pending

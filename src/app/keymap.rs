@@ -43,6 +43,43 @@ pub fn page_selection(state: &mut ListState, total: usize, page: usize, dir: Scr
     }
 }
 
+/// Pane-list navigation with a single "nothing selected" (clean) state reachable
+/// off BOTH ends of the list (v3.1.3). Unlike `move_selection` (which clamps to
+/// `[0, total-1]` and treats `None` as `0`), the selection can leave the list off
+/// either end → `None`, so the operator can collapse every pane back to the
+/// compact default gauge-tile view. Directional re-entry: from the clean state a
+/// downward move enters at the FIRST pane and an upward move at the LAST pane —
+/// the key you press decides where you land, so the single clean state needs no
+/// top/bottom indicator. Deselecting happens only when you step off an end you
+/// are already sitting on; a page move that would overshoot from the interior
+/// clamps to that end instead. `step` is ±1 for Up/Down and ±page for
+/// PageUp/PageDown.
+pub fn move_pane_selection(state: &mut ListState, total: usize, step: isize) {
+    if total == 0 {
+        state.select(None);
+        return;
+    }
+    let last = total - 1;
+    match state.selected() {
+        // From the clean state: down enters at the first pane, up at the last.
+        None => state.select(Some(if step > 0 { 0 } else { last })),
+        Some(cur) => {
+            let next = cur as isize + step;
+            if next < 0 {
+                // Up past the top: deselect only if already at the top; a page
+                // overshoot from the interior clamps to the first pane instead.
+                state.select(if cur == 0 { None } else { Some(0) });
+            } else if next as usize > last {
+                // Down past the bottom: deselect only if already at the bottom;
+                // otherwise clamp to the last pane.
+                state.select(if cur == last { None } else { Some(last) });
+            } else {
+                state.select(Some(next as usize));
+            }
+        }
+    }
+}
+
 pub fn select_first(state: &mut ListState, total: usize) {
     if total == 0 {
         state.select(None);
@@ -95,6 +132,53 @@ mod tests {
 
         move_selection(&mut state, 3, -10);
         assert_eq!(state.selected(), Some(0));
+    }
+
+    #[test]
+    fn move_pane_selection_deselects_off_either_end_with_directional_entry() {
+        let mut s = ListState::default(); // None = clean / nothing selected
+
+        // from clean: down enters at the FIRST pane, up enters at the LAST pane
+        move_pane_selection(&mut s, 3, 1);
+        assert_eq!(s.selected(), Some(0));
+        s.select(None);
+        move_pane_selection(&mut s, 3, -1);
+        assert_eq!(s.selected(), Some(2));
+
+        // symmetric deselect: up off the top → clean; down off the bottom → clean
+        s.select(Some(0));
+        move_pane_selection(&mut s, 3, -1);
+        assert_eq!(s.selected(), None, "up from the first pane returns to clean");
+        s.select(Some(2));
+        move_pane_selection(&mut s, 3, 1);
+        assert_eq!(s.selected(), None, "down from the last pane returns to clean");
+
+        // interior steps just move
+        s.select(Some(1));
+        move_pane_selection(&mut s, 3, 1);
+        assert_eq!(s.selected(), Some(2));
+        move_pane_selection(&mut s, 3, -1);
+        move_pane_selection(&mut s, 3, -1);
+        assert_eq!(s.selected(), Some(0));
+
+        // page overshoot FROM the interior clamps to the edge (does not skip to clean)
+        s.select(Some(3));
+        move_pane_selection(&mut s, 5, 3); // 3+3=6 > last 4, cur 3 != last → clamp to 4
+        assert_eq!(s.selected(), Some(4));
+        s.select(Some(1));
+        move_pane_selection(&mut s, 5, -3); // 1-3=-2 < 0, cur 1 != 0 → clamp to 0
+        assert_eq!(s.selected(), Some(0));
+
+        // …but a page move FROM the edge deselects, and the two-press wrap holds
+        move_pane_selection(&mut s, 5, -3); // at 0, up → None
+        assert_eq!(s.selected(), None);
+        move_pane_selection(&mut s, 5, -1); // clean + up → last (directional entry)
+        assert_eq!(s.selected(), Some(4));
+
+        // empty list always clears
+        s.select(Some(0));
+        move_pane_selection(&mut s, 0, 1);
+        assert_eq!(s.selected(), None);
     }
 
     #[test]

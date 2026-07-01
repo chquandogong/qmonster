@@ -38,7 +38,7 @@
 > NOW / PRESSURE / NEXT); the agy ObserveOnly contract is 5 gates (the
 > insights data-completeness gate 4 retired with the insights feature).
 >
-> **Post-narrow additions (v3.1.0 → v3.1.2, layered on top of the reduction):**
+> **Post-narrow additions (v3.1.0 → v3.1.3, layered on top of the reduction):**
 > bounded signals (CTX / QUOTA / 5H / WEEK) render as **gauge bars** on every
 > pane card; **non-selected panes render compact** (title + status pill +
 > ctx/5h/7d gauges only — the dense IDENTITY/NOW/PRESSURE/NEXT tree is the
@@ -46,6 +46,11 @@
 > **common-signal path** (agy/Antigravity, Unknown, identity-conflict), so a
 > statically-idle agy pane goes `IDLE STALE` instead of showing a persistent
 > `ACTIVE`; and the dead `K` / `n` / `a` footer-legend shortcuts were dropped.
+> **v3.1.3** removes the forced pane selection: the list launches with nothing
+> selected (all panes compact); `↓`/`↑` enter at the first/last pane, stepping
+> off either end returns to the clean state, and any selected pane — Qmonster
+> monitor included — expands. `sync_pane_selection` + `render_pane_list` +
+> `move_pane_selection` all preserve the no-selection state (no auto-select on poll).
 
 ## One-line shape (r2 canonical)
 
@@ -474,7 +479,11 @@ Ratatui widgets. Current operator surfaces:
    RECOMMENDATIONS layout and dropped the provider-profile lever payload.)
    **Non-selected panes render compact** (v3.1.2): just the title + status
    pill + ctx/5h/7d gauge rows, so all observed CLIs stay scannable at a
-   glance while the Qmonster monitor pane holds the default selection.
+   glance. **v3.1.3: no forced selection** — the list launches with nothing
+   selected (every pane compact); `↓` from the clean state enters at the first
+   pane and `↑` at the last, stepping off either end returns to the clean
+   state, and any selected pane — the Qmonster monitor pane included — expands
+   into the dense section tree.
    Bounded signals (CTX / QUOTA / 5H / WEEK) render as **gauge bars**
    (`gauge_bar_rows`, left-eighth block glyphs, severity-colored fill) on
    both the selected and non-selected cards (v3.1.0 uniform dashboard).

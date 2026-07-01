@@ -68,11 +68,12 @@ pub fn render_pane_list(
         return;
     }
 
-    let selected = state
-        .selected()
-        .unwrap_or(0)
-        .min(reports.len().saturating_sub(1));
-    state.select(Some(selected));
+    // v3.1.3: no forced selection. The default is "nothing selected", so every
+    // pane renders compact (clean gauge-tile view); selecting a pane (↓ / click)
+    // expands it and ↑ off the top clears it again. Clamp a stale out-of-range
+    // selection to None rather than snapping back to pane 0.
+    let selected = state.selected().filter(|&i| i < reports.len());
+    state.select(selected);
     let wrap_width = pane_badge_wrap_width(area);
     let items: Vec<ListItem<'static>> = reports
         .iter()
@@ -80,7 +81,7 @@ pub fn render_pane_list(
         .map(|(idx, report)| {
             pane_list_item(
                 report,
-                idx == selected,
+                pane_is_expanded(idx, selected),
                 idx + 1 < reports.len(),
                 flash_view.now,
                 flash_view.state_flashes.get(&report.pane_id),
@@ -101,6 +102,15 @@ pub fn render_pane_list(
     );
 }
 
+/// Whether a pane renders its full expanded section tree. There is no forced
+/// selection (v3.1.3): with nothing selected every pane is compact (the clean
+/// gauge-tile view), and selecting a pane — via `↓` / click, the Qmonster
+/// monitor pane included — expands exactly that one to full detail. Centralized
+/// so render, mouse hit-test, and hover-topic heights stay in lockstep.
+fn pane_is_expanded(idx: usize, selected: Option<usize>) -> bool {
+    selected == Some(idx)
+}
+
 pub fn pane_index_at_row(
     reports: &[PaneReport],
     state: &ListState,
@@ -110,15 +120,12 @@ pub fn pane_index_at_row(
     if reports.is_empty() {
         return None;
     }
-    let selected = state
-        .selected()
-        .unwrap_or(0)
-        .min(reports.len().saturating_sub(1));
+    let selected = state.selected().filter(|&i| i < reports.len());
     let mut remaining = row;
     for (idx, report) in reports.iter().enumerate().skip(state.offset()) {
         let height = pane_list_lines_with_width(
             report,
-            idx == selected,
+            pane_is_expanded(idx, selected),
             idx + 1 < reports.len(),
             wrap_width,
         )
@@ -140,15 +147,12 @@ pub fn pane_help_topic_at_row(
     if reports.is_empty() {
         return None;
     }
-    let selected = state
-        .selected()
-        .unwrap_or(0)
-        .min(reports.len().saturating_sub(1));
+    let selected = state.selected().filter(|&i| i < reports.len());
     let mut remaining = row;
     for (idx, report) in reports.iter().enumerate().skip(state.offset()) {
         let topics = pane_list_help_topics_with_width(
             report,
-            idx == selected,
+            pane_is_expanded(idx, selected),
             idx + 1 < reports.len(),
             wrap_width,
         );

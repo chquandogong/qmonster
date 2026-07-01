@@ -34,11 +34,11 @@ taking destructive action by default.
 
 | Surface             | Current                                                |
 | ------------------- | ------------------------------------------------------ |
-| Release             | `v3.1.2`                                               |
-| npm                 | `qmonster@3.1.2`                                       |
+| Release             | `v3.1.3`                                               |
+| npm                 | `qmonster@3.1.3`                                       |
 | Rust                | `1.88+`                                                |
 | Runtime version     | `git describe --tags --always --dirty` from `build.rs` |
-| Cargo crate version | `3.1.2`                                                |
+| Cargo crate version | `3.1.3`                                                |
 
 ## Why
 
@@ -89,10 +89,10 @@ cargo build --release
 > provenance) instead of compiling locally:
 >
 > ```sh
-> gh release download v3.1.1 --pattern '*-linux-x86_64.tar.gz' --repo chquandogong/qmonster
-> gh attestation verify qmonster-v3.1.1-linux-x86_64.tar.gz --owner chquandogong
-> tar -xzf qmonster-v2.8.0-linux-x86_64.tar.gz
-> ./qmonster-v2.8.0-linux-x86_64/qmonster --help
+> gh release download v3.1.3 --pattern '*-linux-x86_64.tar.gz' --repo chquandogong/qmonster
+> gh attestation verify qmonster-v3.1.3-linux-x86_64.tar.gz --owner chquandogong
+> tar -xzf qmonster-v3.1.3-linux-x86_64.tar.gz
+> ./qmonster-v3.1.3-linux-x86_64/qmonster --help
 > ```
 
 **Set the stage** — Qmonster watches a tmux session that already has
@@ -116,22 +116,24 @@ tmux new -s ai
 
 - **Top: Alerts** — notices, recommendations, cross-pane findings.
   Press `/` (v1.59.0) to filter by case-insensitive substring.
-- **Bottom: Panes** — one card per attached AI CLI pane with state,
-  context, quota, tokens, cache, cost, and reset ETA.
+- **Bottom: Panes** — one card per attached AI CLI pane. It opens with
+  **nothing selected**, so every pane is compact: title + status pill +
+  `ctx` / `5h` / `7d` gauge bars. Select a pane (`↓` / `↑` / click) to
+  expand it to full detail — state, path/cmd, quota, tokens, cache, cost,
+  reset ETA, runtime facts, and recommendations. Step off either end of
+  the list to collapse everything back to the compact view.
 - **Footer** — current target, key cluster, version badge. Click the
   badge to inspect Git status.
 
 The most useful first keys:
 
-| Key | Action                                                                                            |
-| --- | ------------------------------------------------------------------------------------------------- |
-| `?` | Help overlay with the full key map and badge legend                                               |
-| `t` | Pick which tmux session/window to observe                                                         |
-| `S` | Settings overlay (`/` filters parameters by label)                                                |
-| `P` | Provider Setup overlay (sidefile + tmux installers)                                               |
-| `i` | Insights overlay (recent operator-affecting actions)                                              |
-| `n` | Anomaly events overlay (`f` cycles severity filter)                                               |
-| `Q` | Open the decorative fx overlay (banner / confetti / matrix / snow / fireworks / plasma / sampler) |
+| Key       | Action                                                                                                |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| `↑` / `↓` | Select a pane (expands it to full detail); step off either end to collapse everything back to compact |
+| `?`       | Help overlay with the full key map and badge legend                                                   |
+| `t`       | Pick which tmux session/window to observe                                                             |
+| `S`       | Settings overlay (`/` filters parameters by label)                                                    |
+| `P`       | Provider Setup overlay (sidefile + tmux installers)                                                   |
 
 **Smoke checks** if anything looks off:
 
@@ -150,18 +152,43 @@ npm install -g @chquandogong/qmonster
 
 ## What It Shows
 
-<p align="center">
-  <img src="docs/assets/qmonster-dashboard.png" alt="Qmonster TUI dashboard: alert queue at the top, per-pane cards below" width="100%">
-</p>
+The dashboard launches with **nothing selected** — every pane is compact
+(status pill + `ctx` / `5h` / `7d` gauge bars). Select a pane to expand it
+to full detail; step off either end of the list to collapse everything back:
 
-| Area            | Operator-visible result                                              |
-| --------------- | -------------------------------------------------------------------- |
-| Pane state      | Work complete, active, stale, input wait, permission wait, limit hit |
-| Metrics         | CTX, quota, tokens, cache, memory, cost, reset ETA                   |
-| Runtime facts   | Session IDs, transcript paths, tool calls, model reset rows          |
-| Recommendations | Alert/advisory queue with source-labeled reasons and commands        |
-| Settings        | Thresholds, integrations, parameters, rules, badge glossary          |
-| Git status      | Click the footer version badge to inspect local repo state           |
+```text
+ Alerts · 3 ──────────────────────────────────────────────────────────
+   ▸ Now   codex:1:review — waiting for approval
+   ⚠ CONFLICT  src/ui/panels/mod.rs · claude:1:main ↔ codex:1:review
+   ◇ Claude 5h quota 88% — resets in 47m                     [Official]
+
+ Panes · target qwork:0 · ↓ selects & expands · nothing selected ──────
+   ● ACTIVE            claude:1:main · CLI 2.1.4 [Official] · %25
+   CTX  █████████▉░░░░░░  64%  of 1.00M
+   5H   ██████████████▏░  88%  resets 47m
+   7D   ███▎░░░░░░░░░░░░  31%  resets 4d 6h
+
+   ⌛ WAIT APPROVAL     codex:1:review · CLI 0.142 [Official] · %27
+   CTX  █████▏░░░░░░░░░░  36%  of 258K
+   5H   █████████▏░░░░░░  61%  resets 1h05m
+   7D   ██████▌░░░░░░░░░  44%  resets 5d
+
+   ◌ IDLE STALE ⏱35s   agy:1:research · CLI 1.0.14 [Official] · %28
+   CTX  █████▉░░░░░░░░░░  41%
+
+   ● ACTIVE            qmonster:0:monitor · %24
+ ──────────────────────────────────────────────────────────────────────
+  ↑/↓ select · Enter/Space action · Tab focus · S settings · ? help · q quit
+```
+
+| Area            | Operator-visible result                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| Pane state      | Active, work complete, stale, input wait, permission wait, limit hit — shown as a status pill |
+| Metrics         | CTX / quota / 5h / weekly as gauge bars, plus tokens, cache, memory, cost, reset ETA          |
+| Runtime facts   | Session IDs, transcript paths, tool calls, model reset rows                                   |
+| Recommendations | Alert/advisory queue with source-labeled reasons and commands                                 |
+| Settings        | `S` overlay — Thresholds / Integrations / Parameters (3 tabs)                                 |
+| Git status      | Click the footer version badge to inspect local repo state                                    |
 
 Sanitized provider tails for demos and screenshots live in
 [examples/demo](examples/demo/).
@@ -199,18 +226,23 @@ Qmonster labels every provider-derived value by authority:
 
 Metric contract:
 
-| Metric   | Claude                             | Codex                       | Gemini                     |
-| -------- | ---------------------------------- | --------------------------- | -------------------------- |
-| `CTX`    | statusline context used            | bottom status context       | status table context       |
-| `QUOTA`  | statusline 5h / weekly             | bottom status or app-server | status table quota         |
-| `RESET`  | sidefile timestamps                | app-server timestamps       | `/model` display rows only |
-| `TOKENS` | statusline + sidefile              | bottom status / usage line  | `/stats model`             |
-| `CACHE`  | statusline ratio or sidefile reads | cached input tokens         | cache reads when exposed   |
-| `COST`   | sidefile total cost                | pricing estimate            | unset today                |
+| Metric   | Claude                             | Codex                      | Gemini               |
+| -------- | ---------------------------------- | -------------------------- | -------------------- |
+| `CTX`    | statusline context used            | bottom status context      | status table context |
+| `QUOTA`  | statusline 5h / weekly             | bottom status or rollout   | status table quota   |
+| `RESET`  | sidefile timestamps                | rollout `rate_limits`      | —                    |
+| `TOKENS` | statusline + sidefile              | bottom status / usage line | —                    |
+| `CACHE`  | statusline ratio or sidefile reads | cached input tokens        | —                    |
+| `COST`   | sidefile total cost                | pricing estimate           | unset today          |
 
-Gemini `/model` reset rows are display-only runtime facts. Policy-grade
-reset advisories still require machine-readable timestamps, currently
-available from Claude sidefiles and Codex app-server only.
+Codex reset ETA comes from the codex-tui rollout `rate_limits` (v3.1.0);
+policy-grade reset advisories require machine-readable timestamps, currently
+available from Claude sidefiles and the Codex rollout. Gemini is
+status-table-core (context / quota / memory / model); its former `/stats` and
+`/model` enrichment was removed in the narrow reduction (v3.0.0).
+**Antigravity (`agy`)** is ObserveOnly identification by default — its ctx /
+quota / reset appear only when the operator wires the opt-in sidefile export
+(Provider Setup → `agy` tab), and never promote to alerts or actuation.
 
 ## Releases
 

@@ -183,9 +183,12 @@ session:window · Provider role · %pane_id
   (이전 `RECOMMENDATIONS`에서 이름 변경). **비선택(접힌) pane은 v3.1.2에서
   축약**되어 제목 + 상태 알약 아래 **ctx/5h/7d 게이지 바만** 보여줍니다.
   path/cmd/status/signals/metrics/runtime 블록은 선택된 pane에서만 펼칩니다.
-  기본값인 Qmonster monitor pane이 선택돼 있으면 관찰 대상 CLI 타일은 모두
-  게이지만 표시 → 한눈에 헤드룸을 스캔하고, ↑/↓로 pane을 선택하면 그 카드만
-  전체 detail로 펼쳐집니다.
+  **v3.1.3: 강제 선택이 없습니다.** 시작 시 아무 pane도 선택되지 않아 모든
+  타일이 게이지만 표시하는 가장 깔끔한 상태로 열립니다. 무선택 상태에서 `↓`는
+  첫 pane, `↑`는 마지막 pane으로 진입하고, 양 끝에서 한 번 더 벗어나면 다시
+  무선택 상태로 돌아갑니다(단일 무선택 상태 + 방향 진입이라 위/아래 구분
+  표시가 필요 없음). 선택된 pane만 전체 detail로 펼쳐지며, Qmonster monitor
+  pane도 동일하게 선택 시 detail을 표시합니다.
 - 펼친 pane card는 각 섹션 헤더 아래 행에 트리 글리프를 덧붙입니다.
   형제 행 중 마지막은 `└ `, 그 외에는 `├ `로 시작하고, 랩 발생 시의
   continuation 라인은 위쪽 형제가 더 있으면 `│ `, 마지막 형제의 본문

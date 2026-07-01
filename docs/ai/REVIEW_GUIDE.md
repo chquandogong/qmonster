@@ -132,7 +132,7 @@ sections:
   Reviews that call (b)/(c) "broken" without citing the matrix
   should be returned as `rework`. When the matrix itself is wrong,
   the matrix update must land in the same commit as the new
-  adapter / sidefile / app-server wiring — never as a follow-up.
+  adapter / sidefile / rollout wiring — never as a follow-up.
 
 ## 7. What reviewers should NOT do
 

@@ -2042,6 +2042,31 @@ fn non_selected_pane_shows_only_gauge_bars_not_dense_fields() {
 }
 
 #[test]
+fn pane_expansion_follows_selection_uniformly() {
+    // v3.1.3 (operator ask 2026-07-01): the pane list has NO forced selection.
+    // With nothing selected every pane renders compact (clean gauge-tile view);
+    // selecting a pane expands exactly that one to full detail — every provider
+    // behaves the same, the Qmonster monitor pane included (selecting it shows
+    // its detail like before, not just the one-line compact tile).
+    assert!(
+        !pane_is_expanded(0, None),
+        "with nothing selected, every pane must stay compact"
+    );
+    assert!(
+        pane_is_expanded(0, Some(0)),
+        "the selected pane must expand"
+    );
+    assert!(
+        !pane_is_expanded(1, Some(0)),
+        "a non-selected pane must stay compact"
+    );
+    assert!(
+        pane_is_expanded(2, Some(2)),
+        "any selected pane expands — Qmonster monitor pane included"
+    );
+}
+
+#[test]
 fn expanded_pane_keeps_empty_recommendations_state_under_section() {
     let rep = sample_pane_report();
     let lines = pane_list_lines_with_width(&rep, true, false, 120);
