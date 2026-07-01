@@ -1,6 +1,7 @@
 # GEMINI
 
 Shared docs:
+
 - docs/ai/PROJECT_BRIEF.md
 - docs/ai/ARCHITECTURE.md
 - docs/ai/VALIDATION.md
@@ -9,16 +10,24 @@ Shared docs:
 - docs/ai/UI_MANUAL.md
 
 Local contract / ledger:
+
 - mission.yaml
 - mission-history.yaml
 - .mission/CURRENT_STATE.md
 
 Working docs:
+
 - .docs/gemini/
 - .docs/shared/
 - .docs/final/
 
 Rules:
+
 - Treat save_memory / auto memory as optional local convenience only.
 - Read AGENTS.md and current state before producing research or policy reviews.
 - Put raw research notes under .docs/gemini first.
+- NOTE: the Gemini cross-review leg is RETIRED (individual-tier Gemini CLI
+  sunset 2026-06-18; the contract is now Codex + human — see
+  docs/ai/WORKFLOWS.md §6 / REVIEW_GUIDE.md §1). This router is archival
+  unless a non-individual-tier Gemini path (Enterprise / API key) is
+  reconfigured.

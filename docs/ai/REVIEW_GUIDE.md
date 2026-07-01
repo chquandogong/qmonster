@@ -81,7 +81,7 @@ A reviewer MUST flag the following as at least `warning`:
 8. Any approval / sandbox / audit gap relative to
    `mission.yaml` constraints.
 
-## 4. Output format (Codex / Gemini rounds)
+## 4. Output format (Codex round — Gemini leg retired, see §1)
 
 Each reviewer produces a markdown file under their pane's `.docs/<model>/`
 directory using the filename template in `WORKFLOWS.md`. Required
@@ -95,7 +95,7 @@ sections:
 - **Token-optimization architecture review.**
 - **Doc / mission / memory separation review.**
 - **Provider abstraction + tmux integration review.** (Codex emphasis)
-- **Safety / audit / approval reinforcement.** (Gemini emphasis)
+- **Safety / audit / approval reinforcement.** (safety emphasis — formerly the Gemini round; now Codex + human)
 - **Official-vs-heuristic cleanup list.**
 - **Concrete TODOs for Claude** (the next author).
 - **Final verdict**: one of

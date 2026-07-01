@@ -71,12 +71,11 @@ Qmonster is operated by a single maintainer at present
   allows `RepositoryRole: 5` (admin) bypass on `refs/tags/v*`. An
   emergency-recovery path exists once a co-maintainer with admin
   access is added; until then the recovery surface is one person.
-- **npm publish auth**. While the v2.3.x release line is on the
-  `NPM_TOKEN` fallback, the secret is the single point of failure for
-  npmjs.com publish. Once the npmjs.com Trusted Publisher entry is
-  configured, publish auth becomes workflow-bound via OIDC and the
-  token can be deleted; the bus-factor surface shrinks to GitHub admin
-  access only.
+- **npm publish auth**. npmjs.com publish is workflow-bound via Trusted
+  Publishers OIDC — the `NPM_TOKEN` secret was retired after v2.3.5 and is
+  no longer present anywhere (every v2.4.0+ release publishes OIDC-only).
+  The bus-factor surface is GitHub admin access only (plus the workflow
+  identity the Trusted Publisher entry trusts).
 - **Repo admin**. `chquandogong` is currently the sole repo admin.
   Adding a second admin would reduce bus-factor to two, at the cost of
   expanding the bypass surface for the tag protection ruleset
